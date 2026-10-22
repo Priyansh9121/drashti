@@ -1808,7 +1808,8 @@ function start(): void {
   // ---- Audience and Stage (Session 50; outputs/screen-switches.ts): this computer's screens off and on --------
   // Never saved: both are on at every start.
   const screenSwitches = new ScreenSwitchService({
-    outputs: manager,
+    // Turned through the screens, which remember what each screen showed as its switch went off (Session 51).
+    outputs: screens,
     simple: () => simpleNow(),
     screens: () => ({ groups: screenRepo.groups(), status: manager.status() }),
     state: () => engine.current,

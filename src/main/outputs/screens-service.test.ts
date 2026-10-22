@@ -757,14 +757,24 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
   });
 });
 
-describe('Audience or Stage off (Session 51, S2-1): a switched-off screen shows nothing on its display', () => {
-  /** One display; the output windows counted as they open and close; each screen answers to its group's switch. */
+describe('Audience or Stage off (Session 51, S2-1): a screen switched off, as it was then, shows nothing on its display', () => {
+  const side: DisplayInfo = {
+    ...hall,
+    id: 3,
+    label: 'Side TV',
+    bounds: { ...hall.bounds, x: 3360 },
+    key: { ...hall.key, id: 3, label: 'Side TV', x: 3360 },
+  };
+  /**
+   * Two displays, the hall's screen on the first; the output windows counted as they open and close; each screen
+   * answers to its group's switch, turned as the switches do (through the screens, which remember what it showed).
+   */
   function switched() {
     const db = openDatabase(':memory:');
     const r = new ScreenRepo(db);
     const open = new Set<number>();
     const outputs = new OutputManager({
-      listDisplays: () => [hall],
+      listDisplays: () => [hall, side],
       screens: () => r.screens(),
       saveDisplayKey: (id, key) => {
         r.setDisplayKey(id, key);
@@ -789,7 +799,7 @@ describe('Audience or Stage off (Session 51, S2-1): a switched-off screen shows 
     const s = new ScreensService(
       r,
       outputs,
-      () => [hall],
+      () => [hall, side],
       () => operatorDisplay,
       looksOf(db),
     );
@@ -804,14 +814,16 @@ describe('Audience or Stage off (Session 51, S2-1): a switched-off screen shows 
       later: () => () => undefined,
     });
     s.createGroup('Main Hall');
-    s.assignDisplay(r.groups()[0]?.id, 2);
-    return { service: s, repo: r, outputs, open, keep, screenId: r.screens()[0]?.id ?? '' };
+    const groupId = r.groups()[0]?.id ?? '';
+    s.assignDisplay(groupId, 2);
+    return { service: s, repo: r, open, keep, groupId, screenId: r.screens()[0]?.id ?? '' };
   }
 
   it('turned off and on again in Screens while Audience is off asks nothing; Audience on, it is back where it was', () => {
     const t = switched();
     expect(t.open.size).toBe(1);
-    t.outputs.setSwitch('audience', false);
+    expect(t.service.setSwitch('audience', false)).toBe(true);
+    expect(t.service.switches()).toEqual({ audience: false, stage: true });
     expect(t.open.size).toBe(0);
     // Its display shows the computer's desktop: nothing of Drashti's is on it.
     expect(t.service.placed()).toEqual(new Map());
@@ -823,16 +835,61 @@ describe('Audience or Stage off (Session 51, S2-1): a switched-off screen shows 
     expect(t.service.snapshot().status).toEqual([
       { screenId: t.screenId, state: 'switched-off', displayId: 2 },
     ]);
-    // Audience on again: on the display it was on, never asked.
-    t.outputs.setSwitch('audience', true);
+    // Audience on again: on the display it was on, showing there as before; on again changes nothing.
+    expect(t.service.setSwitch('audience', true)).toBe(true);
     expect(t.open.size).toBe(1);
     expect(t.service.snapshot().status).toEqual([{ screenId: t.screenId, state: 'showing', displayId: 2 }]);
+    expect(t.service.placed()).toEqual(new Map([['here 2', `${t.screenId} ${t.groupId} audience`]]));
+    expect(t.service.setSwitch('audience', true)).toBe(false);
+  });
+
+  it('asks, as for any other change, when a screen that was off as Audience went off is turned on meanwhile', () => {
+    const t = switched();
+    t.keep.change(() => t.service.updateScreen(t.screenId, { enabled: false }));
+    t.service.setSwitch('audience', false);
+    t.keep.change(() => t.service.updateScreen(t.screenId, { enabled: true }));
+    expect(t.keep.current()).not.toBeNull();
+    // Go back: off, as it was before.
+    t.keep.goBack();
+    expect(t.repo.screen(t.screenId)?.enabled).toBe(false);
+    expect(t.open.size).toBe(0);
+  });
+
+  it('asks when the hall is given another display while Audience is off: in Set Up Screens…, or the controls’ display in Screens', () => {
+    const t = switched();
+    t.service.setSwitch('audience', false);
+    // Set Up Screens…: the hall's picture on the other display instead.
+    t.keep.change(() =>
+      t.service.applySetup([
+        { displayId: 2, use: 'none', languages: null },
+        { displayId: 3, use: 'audience', languages: null },
+      ]),
+    );
+    expect(t.keep.current()).not.toBeNull();
+    // Go back: the hall's screen on its display again, switched off as it went off, so nothing on a display.
+    t.keep.goBack();
     expect(t.keep.current()).toBeNull();
+    expect(t.service.placed()).toEqual(new Map());
+    // Screens' Use this display on the display the controls are on, agreed to: asked too, though Audience is off.
+    operatorDisplay = 3;
+    t.keep.change(() => t.service.assignDisplay(t.groupId, 3, { coverOperator: true }));
+    expect(t.keep.current()).not.toBeNull();
+    expect(t.open.size).toBe(0);
+  });
+
+  it('remembers each time it goes off: turned off while Audience was on, and on again once it went off, it asks', () => {
+    const t = switched();
+    t.service.setSwitch('audience', false);
+    t.service.setSwitch('audience', true);
+    t.keep.change(() => t.service.updateScreen(t.screenId, { enabled: false }));
+    t.service.setSwitch('audience', false);
+    t.keep.change(() => t.service.updateScreen(t.screenId, { enabled: true }));
+    expect(t.keep.current()).not.toBeNull();
   });
 
   it('still asks when a change does put something on a display: the hall’s screen made a stage screen while Audience is off', () => {
     const t = switched();
-    t.outputs.setSwitch('audience', false);
+    t.service.setSwitch('audience', false);
     t.keep.change(() => t.service.applySetup([{ displayId: 2, use: 'stage', languages: null }]));
     expect(t.keep.current()).not.toBeNull();
     expect(t.open.size).toBe(1);

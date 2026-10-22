@@ -3,6 +3,7 @@ import { matchDisplays } from '../../shared/display-match';
 import type { GroupLook } from '../../shared/looks';
 import { DEFAULT_GROUP_LOOK } from '../../shared/looks';
 import type { Lang } from '../../shared/model';
+import { type ScreenSwitch, type ScreenSwitches, switchFor } from '../../shared/screen-switches';
 import { GROUP_ROLES } from '../../shared/screens';
 import type { SetupOutput } from '../../shared/setup';
 import type {
@@ -84,11 +85,33 @@ export interface NodeScreens {
 
 const NO_NODES: NodeScreens = { displays: () => [], screenStatus: () => [] };
 
+/** One output on a connected display: placed()'s key for the display, and what it shows there. */
+interface Placement {
+  screen: ScreenConfig;
+  /** This computer's, not a node's. */
+  here: boolean;
+  /** "here 2", or a node's id and its display. */
+  display: string;
+  /** Its screen, group and role, and in a key and fill pair what it sends. */
+  shows: string;
+}
+
+/** A placement as remembered: its display and what it showed there. */
+const shownAs = (p: Placement) => `${p.display} | ${p.shows}`;
+
 /**
  * The operator's screen-setup actions. Every input is validated here (it
  * arrives over IPC), then saved, then the output windows are reconciled.
  */
 export class ScreensService {
+  /**
+   * What each screen showed as Audience or Stage switched it off (Session 51, S2-1), by switch: its display and
+   * what it showed there. While its switch is off, a screen that would show just that again is left out of
+   * placed(), as it comes back so, asking nothing; one turned on, added, moved or changed meanwhile counts, so Keep
+   * these screens? asks at that change, as for any other.
+   */
+  private readonly switchedOffAs = new Map<ScreenSwitch, Map<string, string>>();
+
   constructor(
     private readonly repo: ScreenRepo,
     private readonly outputs: OutputManager,
@@ -372,6 +395,43 @@ export class ScreensService {
     return this.done();
   }
 
+  // ---- Audience and Stage (Session 50): turned through here, so what their screens showed is remembered ----
+
+  /** Which are on (output-manager.ts). */
+  switches(): ScreenSwitches {
+    return this.outputs.switches();
+  }
+
+  /**
+   * Audience or Stage off or on, as the switches ask it (screen-switches.ts); the outputs follow. Going off, what
+   * its screens show is remembered first (Session 51, S2-1). True when it changed.
+   */
+  setSwitch(which: ScreenSwitch, on: boolean): boolean {
+    if (this.outputs.switches()[which] === on) return false;
+    if (on) this.switchedOffAs.delete(which);
+    else {
+      const showing = new Map<string, string>();
+      for (const p of this.placements())
+        if (p.here && this.switchOf(p.screen) === which) showing.set(p.screen.id, shownAs(p));
+      this.switchedOffAs.set(which, showing);
+    }
+    return this.outputs.setSwitch(which, on);
+  }
+
+  /** The switch a screen answers to, by its group's role, as the outputs' (index.ts). */
+  private switchOf(screen: ScreenConfig): ScreenSwitch | null {
+    return switchFor(this.repo.groupRole(screen.groupId) ?? 'audience');
+  }
+
+  /** What a screen showed as its switch went off, or undefined. */
+  private shownAsSwitchedOff(screenId: string): string | undefined {
+    for (const showing of this.switchedOffAs.values()) {
+      const was = showing.get(screenId);
+      if (was !== undefined) return was;
+    }
+    return undefined;
+  }
+
   // ---- Keep these screens? (Session 50) ------------------------------------------------------------------
 
   /** The screen setup as it is now: every group and screen, and each group's settings in every Look. */
@@ -401,22 +461,13 @@ export class ScreensService {
   }
 
   /**
-   * What each display shows: every output on a connected display, this computer's ("here") and each node's, as
-   * its screen, group and role, and in a key and fill pair what it sends (Session 51: the key is another
-   * picture). A change that makes a display show something it did not is one Drashti asks about; turning an
-   * output off is not. A screen Audience or Stage has switched off shows nothing on its display (Session 51,
-   * S2-1): turned off and on again meanwhile, nothing is put on a display, so nothing is asked, and the switch on
-   * again puts it back where it was, asking nothing as ever.
+   * Every output on a connected display, this computer's and each node's: each screen on and given a display,
+   * matched with the rest as the outputs are, so each has its own (a switched-off screen's too: it keeps its
+   * display while off).
    */
-  placed(): Map<string, string> {
+  private placements(): Placement[] {
     const roles = new Map(this.repo.groupIds().map((g) => [g.id, g.role]));
-    const switchedOff = new Set(
-      this.outputs
-        .status()
-        .filter((st) => st.state === 'switched-off')
-        .map((st) => st.screenId),
-    );
-    const placed = new Map<string, string>();
+    const placements: Placement[] = [];
     const place = (where: string, screens: ScreenConfig[], displays: readonly DisplayInfo[]) => {
       const on = screens.filter(
         (sc): sc is ScreenConfig & { displayKey: DisplayKey } => sc.enabled && sc.displayKey !== null,
@@ -425,19 +476,44 @@ export class ScreensService {
         on.map((sc) => ({ screenId: sc.id, key: sc.displayKey })),
         displays,
       );
-      // Matched with the rest, as the outputs are, so each keeps its own display.
       for (const sc of on) {
-        if (switchedOff.has(sc.id)) continue;
         const displayId = matched.get(sc.id);
         if (displayId !== undefined && displayId !== null)
-          placed.set(
-            `${where} ${String(displayId)}`,
-            `${sc.id} ${sc.groupId} ${roles.get(sc.groupId) ?? ''}${sc.feed ? ` ${sc.feed}` : ''}`,
-          );
+          placements.push({
+            screen: sc,
+            here: where === 'here',
+            display: `${where} ${String(displayId)}`,
+            shows: `${sc.id} ${sc.groupId} ${roles.get(sc.groupId) ?? ''}${sc.feed ? ` ${sc.feed}` : ''}`,
+          });
       }
     };
     place('here', this.repo.screens(), this.listDisplays());
     for (const node of this.nodes.displays()) place(node.id, this.repo.nodeScreens(node.id), node.displays);
+    return placements;
+  }
+
+  /**
+   * What each display shows: every output on a connected display, this computer's ("here") and each node's, as
+   * its screen, group and role, and in a key and fill pair what it sends (Session 51: the key is another
+   * picture). A change that makes a display show something it did not is one Drashti asks about; turning an
+   * output off is not. A screen Audience or Stage has switched off (Session 51, S2-1) is left out while it would
+   * show just what it showed as its switch went off: turned off and on again meanwhile, nothing new is put on a
+   * display, so nothing is asked, and the switch on puts it back where it was, asking nothing as ever. One turned
+   * on that was off then, added, given another display, or changed meanwhile counts, as Session 50 had it: Keep
+   * these screens? asks at that change, as it will show there once the switch is on.
+   */
+  placed(): Map<string, string> {
+    const switchedOff = new Set(
+      this.outputs
+        .status()
+        .filter((st) => st.state === 'switched-off')
+        .map((st) => st.screenId),
+    );
+    const placed = new Map<string, string>();
+    for (const p of this.placements()) {
+      if (switchedOff.has(p.screen.id) && this.shownAsSwitchedOff(p.screen.id) === shownAs(p)) continue;
+      placed.set(p.display, p.shows);
+    }
     return placed;
   }
 }
