@@ -1,6 +1,7 @@
 import type { EngineState } from '../../../shared/engine/state';
 import type { LiveGroupLook } from '../../../shared/looks';
 import type { Size } from '../../../shared/scaling';
+import type { HallPicture } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { Placed } from './Placed';
 import { StageLayoutView } from './StageLayoutView';
@@ -18,11 +19,14 @@ export function StageScreen({
   look,
   canvas,
   clockStyle,
+  hall,
 }: {
   state: EngineState;
   look: LiveGroupLook;
   canvas: Size;
   clockStyle?: ClockStyle | null;
+  /** The hall's group and canvas, for a layout's audience picture box (Session 50). */
+  hall?: HallPicture | null;
 }) {
   if (!look.stageLayout)
     return <StageView state={state} languages={look.languages} {...(clockStyle ? { clockStyle } : {})} />;
@@ -32,6 +36,7 @@ export function StageScreen({
         layout={look.stageLayout}
         state={state}
         languages={look.languages}
+        hall={hall ?? null}
         {...(clockStyle ? { clockStyle } : {})}
       />
     </Placed>
