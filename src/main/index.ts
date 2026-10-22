@@ -4984,10 +4984,10 @@ function start(): void {
               now: new Date(),
             })
           ).folder,
-        change: () => {
+        add: (name) => {
           presentations.insert({
             libraryId: presentations.ensureLibrary('Default'),
-            name: 'Placeholder added after the backup',
+            name,
             groups: [{ name: '', slides: [{ elements: [] }] }],
           });
         },
