@@ -366,7 +366,9 @@ function PipDialogBody() {
             </p>
           )}
           {kind === 'input' &&
-            (inputs !== null && inputs.length === 0 ? (
+            (inputs === null ? (
+              <p className="text-xs text-muted">Looking for video inputs…</p>
+            ) : inputs.length === 0 ? (
               <p className="text-xs text-muted" data-testid="pip-no-inputs">
                 No video inputs yet: name one under Video inputs in Media first.
               </p>
@@ -375,12 +377,11 @@ function PipDialogBody() {
                 <Select
                   data-testid="pip-input"
                   value={input?.id ?? ''}
-                  disabled={inputs === null}
                   onChange={(e) => {
                     setInputId(e.target.value);
                   }}
                 >
-                  {(inputs ?? []).map((i) => (
+                  {inputs.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name}
                     </option>
@@ -389,7 +390,9 @@ function PipDialogBody() {
               </Field>
             ))}
           {kind === 'media' &&
-            (mediaLoaded && media.length === 0 ? (
+            (!mediaLoaded ? (
+              <p className="text-xs text-muted">Looking for pictures and videos…</p>
+            ) : media.length === 0 ? (
               <p className="text-xs text-muted" data-testid="pip-no-media">
                 No pictures or videos in Media yet: import some first.
               </p>
