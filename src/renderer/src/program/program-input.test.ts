@@ -5,7 +5,8 @@ import { programPicture } from '../../../shared/program';
 /*
  * A video input up as the background (Session 50), as the stream shows it: in the Slides layout the stream follows
  * the hall, the input with it; in the Camera layout the stream keeps its own camera (which may be the same input),
- * never the input in its place (ProgramView draws it in neither of the Camera layout's pictures).
+ * never the input in its place (Session 51: only a full-frame moment with a picture-in-picture box up draws it, as
+ * part of the hall's picture: ./full-frame.test.ts).
  */
 
 const input: InputBackground = {

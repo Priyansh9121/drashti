@@ -35,7 +35,7 @@ function CameraVideo({ stream }: { stream: MediaStream | null }) {
  * background (Session 50) is in the Slides layout's picture as the hall has it; the Camera layout keeps the
  * stream's own camera (which may be the same input). Whenever the stream shows the hall's picture, in either
  * layout, the picture-in-picture box shows with it (Session 51: the Camera layout's full-frame picture is the
- * hall's own Scene, ./full-frame.ts).
+ * hall's own Scene, ./full-frame.ts, a video input behind included while a box is up).
  */
 export function ProgramView({
   state,
@@ -85,8 +85,8 @@ export function ProgramView({
       <CameraVideo stream={camera} />
       {picture.full && (
         <div style={{ position: 'absolute', inset: 0, background: '#000000' }} data-testid="program-full">
-          {/* The hall's picture (Session 51): its background and slide with the picture-in-picture box, as the
-              Slides layout draws them; a video input (Session 50) never takes the camera's place. */}
+          {/* The hall's picture (Session 51): its background, slide and props with the picture-in-picture box
+              over them, as the Slides layout draws them; a video input (Session 50) only with a box up. */}
           <Scene
             state={hall}
             canvas={canvas}
@@ -108,7 +108,10 @@ export function ProgramView({
         canvas={canvas}
         movement={movement}
       />
-      {picture.props && <PropsLayer props={state.layers.props} canvas={canvas} scaling="fit" />}
+      {/* Over the camera; at full frame the hall's picture has them, under the box. */}
+      {picture.props && !picture.full && (
+        <PropsLayer props={state.layers.props} canvas={canvas} scaling="fit" />
+      )}
       {/* A lower third from the Lower Thirds panel, for the stream (Session 44). */}
       <LowerThirdView
         layer={state.layers.lowerThird}
