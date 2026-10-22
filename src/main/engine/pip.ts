@@ -29,7 +29,8 @@ export type PipResolved = { ok: true; actions: EngineAction[] } | Refused;
 /** Where the engine looks up what a box may hold, and where a new one goes (show-engine.ts EngineOptions). */
 export interface PipLookups {
   mediaKind?: (mediaId: string) => 'image' | 'video' | 'audio' | null;
-  inputs?: (inputId: string) => Pick<VideoInput, 'name' | 'device'> | null;
+  /** A video input in this computer's list (Session 50), the same lookup showInput uses. */
+  videoInput?: (inputId: string) => Pick<VideoInput, 'name' | 'device'> | null;
   windows?: (id: string) => { sourceId: string; name: string } | null;
   pipPlace?: () => PipPlace;
 }
@@ -51,7 +52,7 @@ export function pipSourceFor(
         : { ok: false, error: 'unknown-item', message: 'That picture or video is not in Media any more.' };
     }
     case 'input': {
-      const input = lookups.inputs?.(choice.inputId) ?? null;
+      const input = lookups.videoInput?.(choice.inputId) ?? null;
       return input
         ? {
             ok: true,
@@ -145,7 +146,7 @@ export function restoredPip(
   const source = saved.source;
   if (source.kind === 'window') return { layer: null, window: source.name };
   if (source.kind !== 'input') return { layer: still, window: null };
-  const input = lookups.inputs?.(source.inputId) ?? null;
+  const input = lookups.videoInput?.(source.inputId) ?? null;
   return {
     layer: input ? { ...still, source: { ...source, name: input.name, device: input.device } } : null,
     window: null,

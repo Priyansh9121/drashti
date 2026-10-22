@@ -17,7 +17,7 @@ import { makeSource, RecordingTransport } from './testing';
  * and the logo cover it and never take it off. Placeholder names only.
  */
 
-const CAMERA = { name: 'Input 1', device: 'Placeholder capture device' };
+const CAMERA = { id: 'in-1', name: 'Input 1', device: 'Placeholder capture device', fit: 'fit' as const };
 const MEETING = { id: 'window:4021:0', name: 'Placeholder meeting' };
 const REMEMBERED: PipPlace = { ...DEFAULT_PIP_PLACE, corner: 'top-left', size: 'small', motion: 'slide' };
 const DRAGGED: PipPlace = {
@@ -42,7 +42,7 @@ function setup(options: { simple?: boolean } = {}) {
   const transport = new RecordingTransport();
   const engine = new ShowEngine(makeSource(), transport, () => (clock += 10), undefined, {
     mediaKind: (id) => media.get(id) ?? null,
-    inputs: (id) => inputs.get(id) ?? null,
+    videoInput: (id) => inputs.get(id) ?? null,
     windows: (id) => {
       const name = offered.get(id);
       return name === undefined ? null : { sourceId: id, name };

@@ -60,8 +60,9 @@ describe('Simple Mode locks', () => {
     for (const channel of [IPC.looks.list, IPC.masks.list, IPC.midi.get, IPC.media.reportLength])
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
     // Switching the Look is an engine command: the engine refuses it (from anywhere) in Simple Mode, as it
-    // does zooming the live picture (Session 26e, Pro Mode's) and setting up, swapping or moving a
-    // picture-in-picture box (Session 50; taking one off is not refused).
+    // does zooming the live picture (Session 26e, Pro Mode's), setting up, swapping or moving a
+    // picture-in-picture box (Session 50; taking one off is not refused), and choosing a video input (Session 50:
+    // Pro Mode's Media puts one up; Simple Mode may clear it, as any background).
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual([
       'setLook',
       'zoomLive',
@@ -69,6 +70,7 @@ describe('Simple Mode locks', () => {
       'showPip',
       'swapPip',
       'placePip',
+      'showInput',
     ]);
   });
 

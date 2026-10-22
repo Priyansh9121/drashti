@@ -8,6 +8,8 @@ import { ENGINE_STATE_VERSION, LAYER_NAMES } from '../../shared/engine/state';
 import type { SlideCue } from '../../shared/library';
 import type { LowerThird } from '../../shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
+import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
+import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { MemoryPlaylistSource } from './playlist-source';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
@@ -1304,6 +1306,8 @@ describe('ShowEngine', () => {
         pip: false,
         pipWindow: null,
         window: null,
+        input: null,
+        inputGone: null,
       });
       // The sound, the timer and the lower third keep their start times: they carry on, not start over.
       expect(engine.current.layers.audio).toEqual(audio);
@@ -1393,6 +1397,260 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.background).toBeNull();
       expect(engine.current.layers.slide).not.toBeNull();
       expect(put).toMatchObject({ slide: true, background: false, window: 'Placeholder meeting' });
+    });
+  });
+
+  describe('a video input as the background (Session 50)', () => {
+    const INPUT: VideoInput = {
+      id: 'in-1',
+      name: 'Placeholder input',
+      device: 'Placeholder camera',
+      fit: 'fit',
+    };
+    const OTHER: VideoInput = {
+      id: 'in-2',
+      name: 'Placeholder mixer',
+      device: 'Placeholder capture',
+      fit: 'fill',
+    };
+
+    /** An engine whose computer has these inputs in Media (a Map the test may change), in Pro Mode or Simple. */
+    function withInputs() {
+      const source = makeSource();
+      const transport = new RecordingTransport();
+      let clock = 1000;
+      let simple = false;
+      const list = new Map([INPUT, OTHER].map((i) => [i.id, i]));
+      const engine = new ShowEngine(source, transport, () => ++clock, undefined, {
+        videoInput: (id) => list.get(id) ?? null,
+        // As Drashti refuses in Simple Mode (src/main/index.ts).
+        refuse: (c) => (simple && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type) ? SIMPLE_MODE_REFUSAL : null),
+      });
+      return {
+        source,
+        transport,
+        engine,
+        list,
+        setSimple: (on: boolean) => {
+          simple = on;
+        },
+      };
+    }
+    const show = (inputId: string): EngineCommand => ({ type: 'showInput', inputId });
+
+    it('puts one up from this computer’s list as the live background, fading in over 1 s; the slide stays over it', () => {
+      const { engine } = withInputs();
+      engine.dispatch(goLive('p1', 0));
+      engine.dispatch({ type: 'showLowerThird', lowerThird: PLACEHOLDER_LOWER_THIRD });
+      engine.dispatch({ type: 'showMessage', message: { id: 'm', text: 'Placeholder message' } });
+      const before = engine.current.layers;
+      expect(engine.dispatch(show('in-1'))).toMatchObject({ ok: true, changed: true });
+      const up = engine.current.layers.background;
+      if (up?.kind !== 'input') throw new Error('no input up');
+      expect(up).toEqual({
+        kind: 'input',
+        inputId: 'in-1',
+        name: 'Placeholder input',
+        device: 'Placeholder camera',
+        fit: 'fit',
+        startedAt: up.startedAt,
+        fade: { at: up.startedAt, durationMs: INPUT_FADE_MS },
+      });
+      expect(INPUT_FADE_MS).toBe(1000);
+      // The words over the camera are the point: the slide, the lower third and the message stay as they were.
+      expect(engine.current.layers.slide).toBe(before.slide);
+      expect(engine.current.layers.lowerThird).toBe(before.lowerThird);
+      expect(engine.current.layers.messages).toBe(before.messages);
+      // Fill, as Media has it for the other.
+      engine.dispatch(show('in-2'));
+      expect(engine.current.layers.background).toMatchObject({ kind: 'input', inputId: 'in-2', fit: 'fill' });
+    });
+
+    it('is only ever one of this computer’s list: anything else is unknown-input, and a command names nothing else', () => {
+      const { engine, transport } = withInputs();
+      expect(engine.dispatch(show('not-here'))).toEqual({
+        ok: false,
+        error: 'unknown-input',
+        message: 'That video input is not on this computer.',
+      });
+      expect(transport.messages).toHaveLength(0);
+      // An engine that knows no inputs (a node never has one) knows none.
+      const bare = setup().engine;
+      expect(bare.dispatch(show('in-1'))).toMatchObject({ ok: false, error: 'unknown-input' });
+      // A page names an input by its id, never a device: anything else it sends is dropped.
+      expect(parseEngineCommand({ type: 'showInput', inputId: 'in-1', device: 'Another camera' })).toEqual({
+        ok: true,
+        command: { type: 'showInput', inputId: 'in-1' },
+      });
+      expect(
+        parseEngineCommand({
+          type: 'setBackground',
+          background: { kind: 'input', inputId: 'in-1', name: 'x', device: 'y', fit: 'fit' },
+        }).ok,
+      ).toBe(false);
+    });
+
+    it('shown again carries on (its time kept), as Media has it now', () => {
+      const { engine, list } = withInputs();
+      engine.dispatch(show('in-1'));
+      const up = engine.current.layers.background;
+      expect(engine.dispatch(show('in-1'))).toMatchObject({ ok: true, changed: false });
+      list.set('in-1', { ...INPUT, fit: 'fill' });
+      engine.dispatch(show('in-1'));
+      expect(engine.current.layers.background).toEqual({ ...up, fit: 'fill' });
+    });
+
+    it('Clear all and the background’s own clear take it off; Put it back brings it back, as Media has it now', () => {
+      const { engine, list } = withInputs();
+      engine.dispatch(goLive('p1', 0));
+      engine.dispatch(show('in-1'));
+      const up = engine.current.layers.background;
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.current.layers.background).toBeNull();
+      expect(engine.current.canPutBack).toBe(true);
+      // Renamed in Media meanwhile: it comes back with its new name, its time kept.
+      list.set('in-1', { ...INPUT, name: 'Placeholder program' });
+      engine.dispatch({ type: 'putBack' });
+      expect(engine.current.layers.background).toEqual({ ...up, name: 'Placeholder program' });
+      expect(engine.current.layers.slide).not.toBeNull();
+      // F3 and Clear the input.
+      engine.dispatch({ type: 'clearLayer', layer: 'background' });
+      expect(engine.current.layers.background).toBeNull();
+      // Removed from Media meanwhile: Put it back brings back what was up.
+      engine.dispatch(show('in-1'));
+      const again = engine.current.layers.background;
+      engine.dispatch({ type: 'clearAll' });
+      list.delete('in-1');
+      engine.dispatch({ type: 'putBack' });
+      expect(engine.current.layers.background).toEqual(again);
+    });
+
+    it('is covered by black-out and the logo, never taken off by them', () => {
+      const { engine } = withInputs();
+      engine.dispatch(show('in-1'));
+      const up = engine.current.layers.background;
+      expect(up?.kind).toBe('input');
+      engine.dispatch({ type: 'setBlackout', on: true });
+      engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Logo', elements: [] } });
+      expect(engine.current.layers.background).toBe(up);
+      engine.dispatch({ type: 'hideLogo' });
+      engine.dispatch({ type: 'setBlackout', on: false });
+      expect(engine.current.layers.background).toBe(up);
+    });
+
+    it('stays under the slides that follow; a slide’s video replaces it, and Back brings it back', () => {
+      const { engine, source } = withInputs();
+      const clouds = {
+        kind: 'background' as const,
+        label: '',
+        name: 'clouds.mp4',
+        missing: false,
+        unplayable: null,
+        background: {
+          kind: 'media' as const,
+          mediaId: 'clouds',
+          media: 'video' as const,
+          fit: 'fill' as const,
+          loop: true,
+        },
+      };
+      source.set(
+        'pv',
+        [textSlide('pv1', 'One'), textSlide('pv2', 'Two'), textSlide('pv3', 'Three')],
+        [[], [], [clouds]],
+      );
+      engine.dispatch(goLive('pv', 0));
+      engine.dispatch(show('in-1'));
+      const up = engine.current.layers.background;
+      expect(up?.kind).toBe('input');
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.layers.background).toBe(up);
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.layers.background).toMatchObject({ kind: 'media', mediaId: 'clouds' });
+      engine.dispatch({ type: 'back' });
+      expect(engine.current.layers.background).toEqual(up);
+      expect(engine.current.live.slideIndex).toBe(1);
+    });
+
+    it('a change in Media while it is up follows at once, and is no change Back or Put it back undo', () => {
+      const { engine, list } = withInputs();
+      engine.dispatch(goLive('p1', 0));
+      engine.dispatch(show('in-1'));
+      const up = engine.current.layers.background;
+      engine.dispatch({ type: 'next' });
+      const renamed: VideoInput = { ...INPUT, name: 'Placeholder program', fit: 'fill' };
+      list.set('in-1', renamed);
+      expect(engine.refreshInput(renamed)).toMatchObject({ ok: true, changed: true });
+      expect(engine.current.layers.background).toEqual({ ...up, name: 'Placeholder program', fit: 'fill' });
+      // Back still undoes the Next, the input as Media has it now.
+      engine.dispatch({ type: 'back' });
+      expect(engine.current.live.slideIndex).toBe(0);
+      expect(engine.current.layers.background).toEqual({ ...up, name: 'Placeholder program', fit: 'fill' });
+      // Not up: nothing to follow.
+      expect(engine.refreshInput(OTHER)).toMatchObject({ ok: true, changed: false });
+    });
+
+    it('Simple Mode may not choose one (from the window, a phone or the API alike), but may clear it', () => {
+      const { engine, setSimple } = withInputs();
+      engine.dispatch(show('in-1'));
+      const up = engine.current.layers.background;
+      setSimple(true);
+      expect(engine.dispatch(show('in-2'))).toEqual({
+        ok: false,
+        error: 'forbidden',
+        message: SIMPLE_MODE_REFUSAL,
+      });
+      expect(engine.current.layers.background).toBe(up);
+      expect(engine.dispatch({ type: 'clearLayer', layer: 'background' })).toMatchObject({
+        ok: true,
+        changed: true,
+      });
+      expect(engine.current.layers.background).toBeNull();
+      expect(SIMPLE_MODE_REFUSED_COMMANDS).toContain('showInput');
+    });
+
+    it('after a restart: put back as Media has it now while it is on this computer; one no longer there is named', () => {
+      const saved = {
+        kind: 'input' as const,
+        inputId: 'in-1',
+        name: 'Placeholder input',
+        device: 'Placeholder camera',
+        fit: 'fit' as const,
+        startedAt: 42,
+        fade: { at: 42, durationMs: INPUT_FADE_MS },
+      };
+      const { engine, list } = withInputs();
+      list.set('in-1', { ...INPUT, name: 'Placeholder program' });
+      const put = engine.restore({
+        slide: { presentationId: 'p1', slideIndex: 0 },
+        background: saved,
+        blackout: false,
+      });
+      expect(engine.current.layers.background).toEqual({ ...saved, name: 'Placeholder program' });
+      expect(engine.current.layers.slide).not.toBeNull();
+      expect(put).toMatchObject({
+        slide: true,
+        background: false,
+        input: 'Placeholder program',
+        inputGone: null,
+      });
+      const gone = withInputs();
+      gone.list.delete('in-1');
+      const named = gone.engine.restore({ slide: null, background: saved, blackout: true });
+      expect(gone.engine.current.layers.background).toBeNull();
+      expect(named).toMatchObject({
+        background: false,
+        blackout: true,
+        input: null,
+        inputGone: 'Placeholder input',
+      });
+      // Anything else as before.
+      const color = { kind: 'color' as const, color: '#202020' };
+      expect(withInputs().engine.restore({ slide: null, background: color, blackout: false })).toMatchObject({
+        background: true,
+        input: null,
+        inputGone: null,
+      });
     });
   });
 
