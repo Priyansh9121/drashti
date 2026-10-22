@@ -1,18 +1,25 @@
-import type { WebContents } from 'electron';
+import type { Session, WebContents } from 'electron';
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import {
   allowHangStacks,
+  applySessionSecurity,
+  cameraAllowed,
+  type CameraPage,
   HANG_STACKS_POLICY,
   isAudioPage,
   isOperatorPage,
+  isOutputPage,
   permissionCheckAllowed,
+  type PermissionRules,
   screenPictureAllowed,
   secureWebContents,
 } from './security';
 
-const AUDIO = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/audio.html';
-const OPERATOR = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/index.html';
+const RENDERER = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/';
+const AUDIO = `${RENDERER}audio.html`;
+const OPERATOR = `${RENDERER}index.html`;
+const OUTPUT = `${RENDERER}output.html`;
 
 describe('permissions', () => {
   it('lets only the audio player see and choose sound outputs', () => {
@@ -75,6 +82,164 @@ describe('permissions', () => {
     expect(isAudioPage(`${AUDIO}?x=1`)).toBe(true);
     expect(isAudioPage('file:///x/audio.html.evil')).toBe(false);
     expect(isAudioPage('not a url')).toBe(false);
+  });
+});
+
+describe('a camera for a video input (Session 50)', () => {
+  const own = (url: string) => url.startsWith(RENDERER) || url.startsWith('http://localhost:5173/');
+  const camera = (over: Partial<Parameters<typeof cameraAllowed>[0]> = {}) =>
+    cameraAllowed(
+      {
+        permission: 'media',
+        mediaTypes: ['video'],
+        page: 'operator',
+        url: OPERATOR,
+        mainFrame: true,
+        ...over,
+      },
+      own,
+    );
+
+  it('is given, alone, to the operator window’s page and to an output’s, each known by its window and its address', () => {
+    expect(camera()).toBe(true);
+    expect(camera({ page: 'output', url: OUTPUT })).toBe(true);
+    expect(camera({ page: 'output', url: `${OUTPUT}?screen=s1` })).toBe(true);
+    // In development, from Vite's server.
+    expect(camera({ url: 'http://localhost:5173/' })).toBe(true);
+    expect(camera({ page: 'output', url: 'http://localhost:5173/output.html' })).toBe(true);
+    // The window and its address must agree: the operator window showing an output's page, or the other way.
+    expect(camera({ page: 'operator', url: OUTPUT })).toBe(false);
+    expect(camera({ page: 'output', url: OPERATOR })).toBe(false);
+    expect(isOutputPage(OUTPUT)).toBe(true);
+    expect(isOutputPage('file:///x/output.html.evil')).toBe(false);
+    expect(isOutputPage('not a url')).toBe(false);
+  });
+
+  it('is never given with sound, as sound, as a screen’s picture, or to another page, window or frame', () => {
+    // A microphone, a camera with a microphone, nothing named (that is a screen's picture: getDisplayMedia).
+    expect(camera({ mediaTypes: ['audio'] })).toBe(false);
+    expect(camera({ mediaTypes: ['video', 'audio'] })).toBe(false);
+    expect(camera({ mediaTypes: ['audio', 'video'] })).toBe(false);
+    expect(camera({ mediaTypes: ['video', 'video'] })).toBe(false);
+    expect(camera({ mediaTypes: [] })).toBe(false);
+    expect(camera({ mediaTypes: null })).toBe(false);
+    expect(camera({ mediaTypes: ['unknown'] })).toBe(false);
+    // Any other window (the window for Zoom, the gallery, a PDF's hidden window): not a screen's page.
+    expect(camera({ page: null })).toBe(false);
+    // A frame inside the page, or a page that is not Drashti's own.
+    expect(camera({ mainFrame: false })).toBe(false);
+    expect(camera({ url: 'https://example.com/index.html' })).toBe(false);
+    expect(camera({ page: 'output', url: 'https://example.com/output.html' })).toBe(false);
+    expect(camera({ url: 'file:///Users/someone/Downloads/index.html' })).toBe(false);
+    // Only a camera is ever given this way.
+    for (const permission of ['display-capture', 'notifications', 'midi', 'speaker-selection', 'unknown'])
+      expect(camera({ permission }), permission).toBe(false);
+  });
+
+  /** A stand-in for a session: its two handlers, kept to be asked. */
+  function stand(rules: PermissionRules) {
+    type Request = Parameters<Session['setPermissionRequestHandler']>[0];
+    type Check = Parameters<Session['setPermissionCheckHandler']>[0];
+    let request: Request = null;
+    let check: Check = null;
+    const session = {
+      setPermissionRequestHandler: (handler: Request) => {
+        request = handler;
+      },
+      setPermissionCheckHandler: (handler: Check) => {
+        check = handler;
+      },
+    } as unknown as Session;
+    applySessionSecurity(session, { isOwnPage: own, ...rules });
+    const page = (id: number, url: string) => ({ id, getURL: () => url }) as unknown as WebContents;
+    const asks = (
+      contents: WebContents,
+      permission: string,
+      details: { mediaTypes?: string[]; isMainFrame?: boolean; requestingUrl?: string },
+    ): boolean => {
+      const answer: { given?: boolean } = {};
+      request?.(
+        contents,
+        permission as Parameters<NonNullable<Request>>[1],
+        (ok) => {
+          answer.given = ok;
+        },
+        {
+          isMainFrame: details.isMainFrame ?? true,
+          requestingUrl: details.requestingUrl ?? contents.getURL(),
+          ...(details.mediaTypes ? { mediaTypes: details.mediaTypes as ('video' | 'audio')[] } : {}),
+        },
+      );
+      if (answer.given === undefined) throw new Error('the request was never answered');
+      return answer.given;
+    };
+    const checks = (
+      contents: WebContents | null,
+      permission: string,
+      details: { mediaType?: 'video' | 'audio' | 'unknown'; isMainFrame?: boolean; requestingUrl?: string },
+    ): boolean =>
+      check?.(contents, permission as Parameters<NonNullable<Check>>[1], '', {
+        ...details,
+        isMainFrame: details.isMainFrame ?? true,
+      }) ?? false;
+    return { page, asks, checks };
+  }
+
+  const operatorPage = 1;
+  const outputPage = 2;
+  const zoomPage = 3;
+  const cameraPage = (contents: WebContents | null): CameraPage | null =>
+    contents?.id === operatorPage ? 'operator' : contents?.id === outputPage ? 'output' : null;
+
+  it('in the default session on Main: a camera for the screens’ pages and their device names, nothing more', () => {
+    const { page, asks, checks } = stand({
+      isOperator: (c) => c?.id === operatorPage,
+      cameraPage,
+      mayCapture: () => false,
+    });
+    const operator = page(operatorPage, OPERATOR);
+    const output = page(outputPage, OUTPUT);
+    const zoom = page(zoomPage, `${RENDERER}zoom.html`);
+    expect(asks(operator, 'media', { mediaTypes: ['video'] })).toBe(true);
+    expect(asks(output, 'media', { mediaTypes: ['video'] })).toBe(true);
+    // Its device names (enumerateDevices) are a permission check: the cameras' only.
+    expect(checks(operator, 'media', { mediaType: 'video' })).toBe(true);
+    expect(checks(output, 'media', { mediaType: 'video', requestingUrl: OUTPUT })).toBe(true);
+    expect(checks(operator, 'media', { mediaType: 'audio' })).toBe(false);
+    expect(checks(operator, 'media', { mediaType: 'unknown' })).toBe(false);
+    expect(checks(operator, 'media', {})).toBe(false);
+    expect(checks(null, 'media', { mediaType: 'video', requestingUrl: OPERATOR })).toBe(false);
+    // Never a microphone, never with one, never a screen's picture the page was not given.
+    expect(asks(operator, 'media', { mediaTypes: ['audio'] })).toBe(false);
+    expect(asks(output, 'media', { mediaTypes: ['video', 'audio'] })).toBe(false);
+    expect(asks(output, 'media', { mediaTypes: [] })).toBe(false);
+    // Never another window, a frame inside the page, or a page that is not Drashti's own.
+    expect(asks(zoom, 'media', { mediaTypes: ['video'] })).toBe(false);
+    expect(checks(zoom, 'media', { mediaType: 'video' })).toBe(false);
+    expect(asks(output, 'media', { mediaTypes: ['video'], isMainFrame: false })).toBe(false);
+    expect(checks(output, 'media', { mediaType: 'video', isMainFrame: false, requestingUrl: OUTPUT })).toBe(
+      false,
+    );
+    expect(
+      asks(output, 'media', { mediaTypes: ['video'], requestingUrl: 'https://example.com/output.html' }),
+    ).toBe(false);
+    // MIDI for the operator window stays as it was.
+    expect(asks(operator, 'midi', {})).toBe(true);
+    expect(asks(output, 'midi', {})).toBe(false);
+  });
+
+  it('nowhere else: a session without the rule (the audio player’s, a node’s) never gives a camera', () => {
+    const audio = stand({ isAudioPlayer: (c) => c?.id === operatorPage });
+    const node = stand({ isOperator: () => false });
+    for (const { page, asks, checks } of [audio, node]) {
+      for (const [id, url] of [
+        [operatorPage, OPERATOR],
+        [outputPage, OUTPUT],
+      ] as const) {
+        expect(asks(page(id, url), 'media', { mediaTypes: ['video'] })).toBe(false);
+        expect(checks(page(id, url), 'media', { mediaType: 'video' })).toBe(false);
+      }
+    }
   });
 });
 
