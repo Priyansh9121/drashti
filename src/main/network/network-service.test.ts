@@ -354,6 +354,18 @@ describe('the network in the main process', () => {
     ).toBe(403);
   });
 
+  it('lets a Remote clear a video input, never choose one (Session 50)', () => {
+    const { service, commands } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const command = (args: Record<string, unknown>) =>
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status;
+    expect(command({ type: 'showInput', inputId: 'in-1' })).toBe(403);
+    expect(commands).toEqual([]);
+    expect(command({ type: 'clearLayer', layer: 'background' })).toBe(200);
+    expect(command({ type: 'clearAll' })).toBe(200);
+    expect(commands).toEqual([{ type: 'clearLayer', layer: 'background' }, { type: 'clearAll' }]);
+  });
+
   it('lets a Remote see Repeat Slides going round, and start and stop it (Session 26d)', () => {
     const { service, commands, state } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
