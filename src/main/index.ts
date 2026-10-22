@@ -241,6 +241,7 @@ import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
 import { applyCaptureRules } from './live-window/capture-rules';
 import { ZoomWindow } from './stream/zoom-window';
+import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/placeholder';
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
 import { Leftovers, leftoversFile } from './system/leftovers';
@@ -760,6 +761,12 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   ffmpegPath: () => string | null;
   /** Every screen group in the live Look to move this way (a scenario; Session 27). */
   setMovement: (movement: Movement) => void;
+  /** The window for Zoom (DRASHTI_PERF_ZOOM, Session 48). */
+  zoom: { open(): void };
+  /** live-window (Session 48): the placeholder meeting up as the background; false without the stand-in. */
+  showPlaceholderWindow: () => Promise<boolean>;
+  /** The stream's page while it is open. */
+  program: () => Pick<Electron.BrowserWindow, 'webContents'> | null;
 };
 
 /** The performance check with a heavy case for the screens (DRASHTI_PERF_SCENARIO; Session 15). */
@@ -773,6 +780,12 @@ function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerf
     outputs: ctx.outputs,
     sharpened: ctx.library.sharpened,
     setMovement: ctx.setMovement,
+    showPlaceholderWindow: ctx.showPlaceholderWindow,
+    program: ctx.program,
+    withoutWindow: sw('DRASHTI_PERF_NO_WINDOW') === '1',
+    streamSlides: () => {
+      ctx.stream.setLayout('slides');
+    },
   });
   return runPerformanceTestWithNodes({ ...ctx, scenario });
 }
@@ -847,6 +860,7 @@ async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof run
     url,
     folder,
     sw('DRASHTI_PERF_STREAM_ALSO') ?? null,
+    sw('DRASHTI_PERF_ZOOM') === '1' ? ctx.zoom : null,
   );
   try {
     const result = await runPerformanceTest(ctx);
@@ -4803,7 +4817,12 @@ function start(): void {
         operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
         outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
         // Three outputs for that scenario (windowed, with two extra displays, on a runner).
-        ensureOutput: () => ensureTestOutput('Performance test', perfScenario === 'three-outputs' ? 3 : 1),
+        // Two for live-window (Session 48: a window on two outputs and the stream).
+        ensureOutput: () =>
+          ensureTestOutput(
+            'Performance test',
+            perfScenario === 'three-outputs' ? 3 : perfScenario === 'live-window' ? 2 : 1,
+          ),
         workerRunning: () =>
           app.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti import'),
         diagnostics: { loopDelay, handlerTimes, gc },
@@ -4825,6 +4844,23 @@ function start(): void {
         setMovement: (movement) => {
           const lookId = engine.current.look.id;
           for (const g of screens.snapshot().groups) looks.setGroup(lookId, g.id, { movement });
+        },
+        zoom: {
+          open: () => {
+            zoom.open();
+          },
+        },
+        // live-window (Session 48): the placeholder meeting, offered by the stand-in, chosen and shown.
+        showPlaceholderWindow: async () => {
+          if (!windowStandIn) return false;
+          await openPlaceholderMeeting();
+          const list = await shownWindows.list();
+          const offered = list.ok ? list.windows.find((w) => w.name === PLACEHOLDER_MEETING) : undefined;
+          return offered ? shownWindows.show(offered.id).ok : false;
+        },
+        program: () => {
+          const contents = streaming.programContents();
+          return contents ? { webContents: contents } : null;
         },
         ffmpegPath: () =>
           findFfmpeg({

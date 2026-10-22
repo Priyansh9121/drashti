@@ -84,8 +84,11 @@ export async function startPerfStream(
   folder: string,
   /** A second place on this computer (Several platforms), or null. */
   also: string | null = null,
+  /** DRASHTI_PERF_ZOOM (Session 48): the window for Zoom open while it streams, or null. */
+  zoom: { open(): void } | null = null,
 ): Promise<PerfStream> {
   stream.watchPreview(operator, true);
+  zoom?.open();
   for (let i = 0; i < 100; i++) {
     const s = stream.status();
     if (s.inputs.cameras.length > 0 && s.inputs.microphones.length > 0) break;
@@ -130,7 +133,7 @@ export async function startPerfStream(
     summary: () => {
       const s = stream.status();
       const places = Math.max(1, s.live.destinations.length);
-      return `streaming ${STREAM_PRESETS[preset].label}${places > 1 ? ` to ${String(places)} places` : ''} (${s.encoder ?? 'no encoder'}) and recording through the slide changes: ${s.live.state}, ${s.live.fps?.toFixed(1) ?? '—'} fps, ${s.live.droppedFrames} frames dropped, ${s.live.reconnects} reconnections; ${cpu}`;
+      return `streaming ${STREAM_PRESETS[preset].label}${places > 1 ? ` to ${String(places)} places` : ''} (${s.encoder ?? 'no encoder'}) and recording through the slide changes${zoom ? ', with the window for Zoom open' : ''}: ${s.live.state}, ${s.live.fps?.toFixed(1) ?? '—'} fps, ${s.live.droppedFrames} frames dropped, ${s.live.reconnects} reconnections; ${cpu}`;
     },
     stop: async () => {
       stream.end();

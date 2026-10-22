@@ -563,6 +563,17 @@ export function watchSummary(watch: MainWatch): string {
   return `main process worst block ${watch.worstBlockMs()} ms, ${(watch.worstBlockAt() / 1000).toFixed(1)} s into the measuring, gaps over 100 ms: ${watch.gaps.length}${told.length > 0 ? ` (${told.join(' | ')})` : ''}`;
 }
 
+/**
+ * Each output's late frames since its page loaded (output/main.tsx counts them for the screens dashboard: a
+ * frame more than one and a half frames after the one before).
+ */
+const lateFrames = (outputs: BrowserWindow[]): Promise<number[]> =>
+  Promise.all(
+    outputs.map((w) =>
+      w.isDestroyed() ? Promise.resolve(0) : js<number>(w, 'window.drashtiLateFrames ?? 0').catch(() => 0),
+    ),
+  );
+
 const js = <T>(win: BrowserWindow, code: string) =>
   win.webContents.executeJavaScript(code, true) as Promise<T>;
 
@@ -661,6 +672,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     d.handlerTimes.clear();
     d.gc.max = 0;
     ctx.watch?.reset();
+    // Each screen's late frames so far (Session 48): what the measured part adds is said.
+    const lateBefore = await lateFrames(ctx.outputs());
     ctx.watch?.note(noImport ? 'slide changes begin (no import)' : 'slide changes begin');
     const midway = ctx.during;
     const later = midway
@@ -696,6 +709,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     if (later) clearTimeout(later);
     const cpu = ctx.cpu?.();
     const scenario = await ctx.scenario?.end();
+    const lateAfter = await lateFrames(ctx.outputs());
+    const late = lateAfter.map((n, i) => n - (lateBefore[i] ?? 0));
     ctx.watch?.note('slide changes end');
     await ctx.profile?.stop(ctx.watch ?? null);
     // With a trace: the GPU's new pipelines while it ran, and during the first Bold transition (Session 27).
@@ -741,7 +756,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
-    const summary = `${what}; ${settleLine(settled)}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; ${segmentsLine(raw)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
+    const summary = `${what}; ${settleLine(settled)}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; ${segmentsLine(raw)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}; late frames on the screens ${late.length > 0 ? late.join(', ') : 'none counted'}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {
