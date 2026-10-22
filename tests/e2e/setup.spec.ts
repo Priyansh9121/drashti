@@ -236,7 +236,8 @@ test('never covers the operator’s display without the confirm step', async () 
   await fromMenu(app);
   const wizard = win.getByTestId('setup-wizard');
   const row = wizard.locator(`[data-testid="setup-display"][data-display-id="${operatorDisplay}"]`);
-  await expect(row).toContainText('The Drashti controls are here');
+  // Marked wherever it is offered (Session 50).
+  await expect(row).toContainText('The controls are on this display');
   await row.getByTestId('setup-use-audience').click();
   await expect(row).toContainText('Finish asks before it does');
   for (const step of ['Screens', 'Sound', 'Stream', 'Theme', 'PINs']) {

@@ -69,8 +69,9 @@ export const NO_PLACEHOLDERS = { DRASHTI_TEST_SEED_PLACEHOLDERS: '' } as const;
  * Launch the built app (out/), with a fresh data folder unless one is given (to test restarts).
  * The setup wizard, which opens by itself on a first start, stays shut unless a test asks for it
  * (DRASHTI_TEST_NO_WIZARD: '0'), Drashti starts as Main without asking (DRASHTI_ROLE), and a new
- * library has the placeholder presentations the tests use (unless NO_PLACEHOLDERS). Quiet
- * locally (see QUIET).
+ * library has the placeholder presentations the tests use (unless NO_PLACEHOLDERS). Keep these
+ * screens? (Session 50) is asked only in a test about it (DRASHTI_TEST_KEEP_SCREENS: '1'): elsewhere a
+ * screen change stands at once, as before. Quiet locally (see QUIET).
  */
 export async function launchApp(
   extraEnv: Record<string, string> = {},
@@ -84,6 +85,7 @@ export async function launchApp(
       DRASHTI_USER_DATA_DIR: userData,
       DRASHTI_NO_QUIT_CONFIRM: '1',
       DRASHTI_TEST_NO_WIZARD: '1',
+      DRASHTI_TEST_KEEP_SCREENS: '0',
       DRASHTI_TEST_QUIET: QUIET ? '1' : '0',
       // A first start asks whether the computer is Main or a node (Session 13): tests are Main
       // unless they say otherwise (tests/e2e/nodes.ts starts nodes).
@@ -164,6 +166,7 @@ function sayIfItStops(app: ElectronApplication): void {
 /**
  * Press "Use this display" on a display row. If that display holds the
  * operator window, Drashti asks first; agree, as a test needs the output.
+ * Keep these screens? (in a test that asks it) is answered Keep.
  */
 export async function useDisplay(page: Page, row = page.getByTestId('display-row').first()): Promise<void> {
   await row.getByRole('button', { name: 'Use this display' }).click();
@@ -172,6 +175,21 @@ export async function useDisplay(page: Page, row = page.getByTestId('display-row
   await expect(confirm.or(added)).toBeVisible();
   if (await confirm.isVisible()) await confirm.getByRole('button', { name: 'Cover the controls' }).click();
   await expect(added).toBeVisible();
+  await keepScreens(page);
+}
+
+/**
+ * Keep these screens? (Session 50), in a test that asks it (DRASHTI_TEST_KEEP_SCREENS: '1'): keep the change
+ * waiting, as the operator would with Keep, and wait until the question has gone. Nothing waiting (the tests'
+ * own default asks nothing): nothing to do. The main process says a change waits before it answers the change
+ * itself, so a change already answered is one this sees.
+ */
+export async function keepScreens(win: Page): Promise<void> {
+  const waiting = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.pending());
+  if (waiting === null) return;
+  const question = win.getByTestId('keep-screens');
+  await question.getByTestId('keep-screens-keep').click();
+  await expect(question).toHaveCount(0);
 }
 
 /**
@@ -326,6 +344,8 @@ export async function setUpScreen(win: Page, name = 'Main Hall', displayIndex = 
       const displayId = created.snapshot.displays[displayIndex]?.id ?? -1;
       const assigned = await d.screens.assignDisplay(group?.id ?? '', displayId, { coverOperator: true });
       if (!assigned.ok) throw new Error(assigned.message);
+      // Keep these screens? (Session 50), in a test that asks it: kept, as a test needs the output.
+      if ((await d.screens.pending()) !== null) await d.screens.keep();
       return assigned.snapshot.groups.find((g) => g.name === name)?.screens[0]?.id ?? '';
     },
     { name, displayIndex },
