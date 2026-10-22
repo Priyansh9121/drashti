@@ -8,6 +8,7 @@ import type {
   ImportRunSummary,
 } from '../../../shared/import';
 import { useEngine } from '../engine/engine-store';
+import type { ShownItem } from './library-store';
 import { chooseNothing, leaveItem, loadLibrary, selectPresentation, useLibrary } from './library-store';
 import { describeSome, pushRemoval } from './undo';
 
@@ -162,6 +163,24 @@ export function requestRemovalOfOpen(id: string, name: string): void {
   const liveId = useEngine.getState().state?.live.presentationId ?? null;
   useImports.setState({ confirmRemove: { ids: [id], names: [name], live: liveId === id, closes: true } });
 }
+
+/**
+ * The middle's menu entry for it (Session 51): "Delete from the library…" while a playlist item is open there,
+ * so it is never taken for the item's own trash, which only takes the item out of its playlist; "Delete…" for a
+ * presentation opened from the library.
+ */
+export const deleteOpenLabel = (item: ShownItem | null): string =>
+  item ? 'Delete from the library…' : 'Delete…';
+
+/**
+ * The question's line on playlists (Session 51), the same from the library's trash and the middle's menu: a
+ * deleted presentation's cards stay in their playlists saying "Removed from the library", and the show passes
+ * over them, until Undo brings it back.
+ */
+export const leavesPlaylists = (count: number): string =>
+  count === 1
+    ? 'It also leaves every playlist it is in: each shows it as removed from the library.'
+    : 'They also leave every playlist they are in: each shows them as removed from the library.';
 
 export function cancelRemoval(): void {
   useImports.setState({ confirmRemove: null });

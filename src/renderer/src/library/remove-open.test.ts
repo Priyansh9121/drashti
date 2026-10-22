@@ -1,15 +1,25 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PresentationDoc, PresentationSummary, RemoveResult } from '../../../shared/library';
 import { useEngine } from '../engine/engine-store';
-import { confirmRemoval, requestRemoval, requestRemovalOfOpen, useImports } from './import-store';
+import {
+  confirmRemoval,
+  deleteOpenLabel,
+  leavesPlaylists,
+  requestRemoval,
+  requestRemovalOfOpen,
+  useImports,
+} from './import-store';
+import type { ShownItem } from './library-store';
 import { useLibrary } from './library-store';
 import { undoRemoval, useUndo } from './undo';
 
 /*
  * Delete… in the menu of the presentation open in the middle (Session 50): that presentation alone, asked
  * first, with Undo, as the library's trash does; once it is deleted the middle shows nothing chosen (not the
- * next presentation, as the library's trash leaves it). The main process is stood in for by a fake that
- * removes and restores as src/main/db/presentations.ts does. Placeholder names only.
+ * next presentation, as the library's trash leaves it). Session 51: while a playlist item is open the menu
+ * says Delete from the library…, and the one question (the library's trash's too) says it also leaves every
+ * playlist. The main process is stood in for by a fake that removes and restores as
+ * src/main/db/presentations.ts does. Placeholder names only.
  */
 
 interface Stored {
@@ -155,5 +165,43 @@ describe('Delete… in the middle’s menu (Session 50)', () => {
     requestRemoval('B');
     await confirmRemoval();
     expect(open()).toMatchObject({ selectedId: 'A', nothingChosen: false });
+  });
+});
+
+describe('Delete from the library… while a playlist item is open (Session 51)', () => {
+  const bravoItem: ShownItem = {
+    id: 'item-1',
+    playlistId: 'P',
+    kind: 'presentation',
+    label: 'Placeholder Bravo',
+    presentationId: 'B',
+    presentationName: 'Placeholder Bravo',
+    order: { mode: 'presentation' },
+    arrangementName: null,
+    timers: [],
+  };
+
+  it('the menu says Delete from the library… for a playlist item, and Delete… for one opened from the library', () => {
+    expect(deleteOpenLabel(bravoItem)).toBe('Delete from the library…');
+    expect(deleteOpenLabel(null)).toBe('Delete…');
+  });
+
+  it('the question says it also leaves every playlist, for one presentation or several', () => {
+    expect(leavesPlaylists(1)).toBe(
+      'It also leaves every playlist it is in: each shows it as removed from the library.',
+    );
+    expect(leavesPlaylists(3)).toBe(
+      'They also leave every playlist they are in: each shows them as removed from the library.',
+    );
+  });
+
+  it('asks the library’s trash’s question, whether it was opened from a playlist or the library', () => {
+    useLibrary.setState({ item: bravoItem });
+    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    const fromItem = useImports.getState().confirmRemove;
+    useLibrary.setState({ item: null, marked: ['B'] });
+    requestRemoval('B');
+    // The same presentation, named the same, the same count for the same words; only the middle's closes.
+    expect(fromItem).toEqual({ ...useImports.getState().confirmRemove, closes: true });
   });
 });
