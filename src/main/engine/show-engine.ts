@@ -484,12 +484,23 @@ export class ShowEngine {
    * back would undo stays.
    */
   refreshInput(input: VideoInput): CommandResult {
+    const actions: EngineAction[] = [];
     const bg = this.state.layers.background;
-    if (bg?.kind !== 'input' || bg.inputId !== input.id) return this.unchanged();
-    const next: InputBackground = { ...bg, name: input.name, device: input.device, fit: input.fit };
+    if (bg?.kind === 'input' && bg.inputId === input.id) {
+      const next: InputBackground = { ...bg, name: input.name, device: input.device, fit: input.fit };
+      actions.push({ type: 'background/set', background: next });
+    }
+    // The same input in the picture-in-picture box (Session 50, section 8's review): it follows too.
+    const box = this.state.layers.pip;
+    if (box?.source.kind === 'input' && box.source.inputId === input.id)
+      actions.push({
+        type: 'pip/set',
+        layer: { ...box, source: { ...box.source, name: input.name, device: input.device } },
+      });
+    if (actions.length === 0) return this.unchanged();
     this.bookkeeping = true;
     try {
-      return this.apply([{ type: 'background/set', background: next }]);
+      return this.apply(actions);
     } finally {
       this.bookkeeping = false;
     }
