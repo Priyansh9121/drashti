@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { type ElectronApplication, expect, type Page, test } from '@playwright/test';
 import type { PipPlace } from '../../src/shared/engine/state';
 import { LOOK_LAYERS } from '../../src/shared/looks';
+import { pipSwapMs } from '../../src/shared/pip';
 import { pipRect } from '../../src/renderer/src/render/pip';
 import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
@@ -266,6 +267,9 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   });
   await expect(win.getByTestId('live-pip')).toContainText('swapped');
   // Swapped back: the slide goes out over the background as the box goes out, then comes in again in the box.
+  // A Swap pressed while one still runs changes nothing (Session 51): the first one is over by the engine's own
+  // clock first, which ran on while the screens were held.
+  await expect.poll(() => Date.now() - changedAt).toBeGreaterThanOrEqual(pipSwapMs([]));
   await heldChange(app, () => win.getByTestId('live-pip-swap').click());
   await expect.poll(async () => (await pipNow(win))?.swapped).toBe(false);
   const backAt = (await pipNow(win))?.changed?.at ?? 0;

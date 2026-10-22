@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PipLayer, PipPlace } from '../../../shared/engine/state';
 import type { LookLayer } from '../../../shared/looks';
+import { pipSwapMs } from '../../../shared/pip';
 import {
   droppedPlace,
   keptPipRun,
@@ -149,6 +150,10 @@ describe('how the box moves', () => {
     expect(pipLength('move', 'slide', 'calm')).toBe(400);
     expect(pipLength('move', 'slide', 'bold')).toBe(500);
     expect(pipLength('move', 'fade', 'calm')).toBe(500);
+    // The engine takes no other Swap while one runs on the slowest group's screens (Session 51): as long.
+    expect(pipSwapMs([])).toBe(pipLength('swap', 'fade', 'calm'));
+    expect(pipSwapMs(['calm'])).toBe(pipLength('swap', 'scale', 'calm'));
+    expect(pipSwapMs(['calm', 'bold'])).toBe(pipLength('swap', 'slide', 'bold'));
   });
 
   it('comes in from when it went up, then stays; a screen that joins later draws it still', () => {

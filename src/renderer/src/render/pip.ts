@@ -2,6 +2,7 @@ import type { PipLayer, PipMotion, PipPlace, PipSize, PipSource } from '../../..
 import { PIP_CORNERS } from '../../../shared/engine/state';
 import type { LiveGroupLook, Movement } from '../../../shared/looks';
 import { LOOK_LAYERS } from '../../../shared/looks';
+import { PIP_OUT_MS } from '../../../shared/pip';
 import type { Size } from '../../../shared/scaling';
 import { cubicBezier, EASE, lerp, seg } from './easing';
 
@@ -98,8 +99,11 @@ const samePlace = (a: PipPlace, b: PipPlace, canvas: Size): boolean => {
 
 /** How long the box takes coming in, by the group's Movement (ms). */
 const IN_MS: Record<Movement, number> = { calm: 300, bold: 400 };
-/** Going out, and each half of a swap (out with the old pictures, in with the new). */
-const OUT_MS: Record<Movement, number> = { calm: 250, bold: 300 };
+/**
+ * Going out, and each half of a swap (out with the old pictures, in with the new): shared with the engine, which
+ * takes no other Swap while one runs (Session 51, shared/pip.ts pipSwapMs).
+ */
+const OUT_MS = PIP_OUT_MS;
 /** A slide's move from one place to another: it glides there. */
 const GLIDE_MS: Record<Movement, number> = { calm: 400, bold: 500 };
 

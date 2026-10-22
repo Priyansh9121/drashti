@@ -1723,7 +1723,12 @@ export class ShowEngine {
       case 'hidePip':
         return hidePip(this.state.layers.pip, this.now());
       case 'swapPip':
-        return swapPip(this.state.layers.pip, this.now());
+        // None taken while one still runs on the slowest group's screens (Session 51).
+        return swapPip(
+          this.state.layers.pip,
+          this.now(),
+          Object.values(this.state.look.groups).map((g) => g.movement),
+        );
       case 'placePip':
         return placePip(this.state.layers.pip, command.place, this.now());
       case 'showInput': {
