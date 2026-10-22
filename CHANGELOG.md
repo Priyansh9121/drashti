@@ -2,13 +2,20 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.11 (22 Oct 2026)
+## 1.0.0-alpha.11 (23 Oct 2026)
 
-Zoom works both ways: a Zoom meeting can see the stream's picture, and a Zoom meeting's window can show live on the hall's screens and the stream. Update the node computer the same evening: until it runs this version, as Main does, it says so and its screens keep their last picture. A phone page left open from before needs reloading. Update after a sabha, never on the day of one.
+The keys are now the ones the operators already press: F5 clears the sound and F6 messages (they changed places), F7 clears the ticker and F8 the Masks layer (they changed places), F12 is the logo (L still works), and Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows) turn the Audience and Stage screens off and on. Zoom works both ways, and the video mixer's program can be on the screens. Update the node computer the same evening: until it runs this version, as Main does, it says so and its screens keep their last picture. A phone page left open from before needs reloading. Update after a sabha, never on the day of one.
 
-- Zoom, both ways, with no Zoom account of Drashti's own and nothing to pay for. Window for Zoom… (in the Stream panel and the View menu) opens a window called Drashti for Zoom with exactly the stream's picture, on air or not: in Zoom, Share Screen and choose that window, with the mixer's input as Zoom's microphone. Drashti sends Zoom no sound.
-- Show a Window… (Library, then Media) shows another app's open window, a Zoom meeting say, live on the hall's screens and the stream as the background. Choose it by name with its small picture: nothing goes up until Show on the screens. Black-out and the Logo cover it, and Clear all takes it off. If it closes, the screens keep its last picture and a notice says so, with Clear the window. On a Mac, macOS asks once for Screen Recording, and may ask again after an update.
-- After an unexpected stop, a window that was on the screens is not put back, and the note at the top names it. The phone remote names it and can clear it; an output node's screens show the rest of the show without it.
+- Video inputs: in Media, Add a Video Input… names a camera or the mixer's USB output (Input 1, say). One click puts it up behind the slide's words with a 1 s fade, on LIVE, the hall's screens and the stream's Slides layout. If it stops, the screens keep its last picture and a notice says so. Never show the mixer's program while the mixer shows Drashti's own picture.
+- Audience and Stage, beside Screens, give this computer's hall or stage screens back to the desktop and take them again; the show carries on. Both are on at every start.
+- After a change that puts a screen on a display, Keep these screens? asks: Keep, or Go back. Nothing pressed in 15 s, it goes back by itself.
+- Picture in picture: a camera, a picture or video, a window or the slides in a corner box, with Swap and Take off, three sizes, and dragging in LIVE.
+- A timer alone on the screens (Show on the screens in Timers), a Timer on any slide, and New Timer Slide…, with moving digits.
+- Back 15 s, Forward 15 s and Last 10 s for the sound and the background video. A stage layout can show the audience picture, live.
+- More video and sound files are taken, and anything Drashti cannot play (an MKV with AC-3 sound, say) is converted by itself after the import.
+- A new library starts without the test presentations, and untouched ones go at this update. Delete… is in the ⋯ menu of the presentation open in the middle.
+- The Mac disk image shows how to open Drashti the first time: System Settings, Privacy & Security, Open Anyway.
+- Zoom, both ways, with no Zoom account of Drashti's own and nothing to pay for. Window for Zoom… (Stream panel, View menu) opens a window with exactly the stream's picture, for Zoom's Share Screen. Show a Window… (Library, then Media) shows another app's window, a Zoom meeting say, live as the background. If it closes, the screens keep its last picture; after an unexpected stop it is not put back, and the note at the top names it.
 
 ## 1.0.0-alpha.10 (21 Oct 2026)
 
