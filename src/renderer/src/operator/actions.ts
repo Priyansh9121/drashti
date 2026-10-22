@@ -10,6 +10,7 @@ import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
 // logo-store uses dispatch from here; both only call each other when an action runs.
 import { toggleLogo } from './logo-store';
+import { toggleSwitch, turnOnIfOff } from './screen-switches-store';
 
 /** The last problem to show the operator (for example "Slide 4 of 3 does not exist"). */
 export const useNotice = create<{ text: string | null }>(() => ({ text: null }));
@@ -168,6 +169,14 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
       return dispatch({ type: 'toggleBlackout' });
     case 'toggleLogo':
       return toggleLogo();
+    // This computer's audience screens (key and fill too) or its stage screens off and on (Session 50): off asks
+    // first while they show something.
+    case 'toggleAudience':
+    case 'toggleStage': {
+      const problem = await toggleSwitch(action === 'toggleAudience' ? 'audience' : 'stage');
+      if (problem) useNotice.setState({ text: problem });
+      return;
+    }
     // Esc does nothing when nothing is repeating.
     case 'stopRepeat':
       if (useEngine.getState().state?.repeat) return dispatch({ type: 'stopRepeat' });
@@ -230,6 +239,13 @@ async function performSimple(action: OperatorAction, start: () => Promise<void>)
       return dispatch({ type: 'back' });
     case 'undo':
       return dispatch({ type: 'putBack' });
+    // Audience and Stage (Session 50): Simple Mode turns them on, never off.
+    case 'toggleAudience':
+    case 'toggleStage': {
+      const problem = await turnOnIfOff(action === 'toggleAudience' ? 'audience' : 'stage');
+      if (problem) useNotice.setState({ text: problem });
+      return;
+    }
     // Simple Mode keeps its key line; the keys sheet is Pro Mode's.
     case 'openScreens':
     case 'findInLibrary':

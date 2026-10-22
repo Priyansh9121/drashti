@@ -27,6 +27,7 @@ import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
 import { connectScreens } from '../screens/screens-store';
+import { connectScreenSwitches } from './screen-switches-store';
 import { runAction, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
@@ -110,6 +111,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
   useEffect(() => {
     connectEngine();
     connectScreens();
+    // Audience and Stage (Session 50): in both modes (Simple Mode's status bar turns one on).
+    connectScreenSwitches();
     connectStream();
     connectLiveWindow();
     connectVideoInputs();
@@ -211,8 +214,14 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const practising = usePractice((s) => s.on);
   const run = useCallback(
     (action: OperatorAction) => {
-      // The practice show takes the show's keys while it is on (Session 26g): never the engine's.
-      const windowOnly = action === 'openScreens' || action === 'showKeys' || action === 'uncoverControls';
+      // The practice show takes the show's keys while it is on (Session 26g): never the engine's. Screens, the keys
+      // sheet, Uncover, and Audience and Stage (Session 50: real displays, not a step of the show) still act.
+      const windowOnly =
+        action === 'openScreens' ||
+        action === 'showKeys' ||
+        action === 'uncoverControls' ||
+        action === 'toggleAudience' ||
+        action === 'toggleStage';
       if (!windowOnly && practiceKey(action)) return;
       void runAction(action, { openScreens, showKeys: showKeysSheet });
     },
