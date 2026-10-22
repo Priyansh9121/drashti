@@ -111,6 +111,7 @@ const KIND_NAME: Record<SlideElement['kind'], string> = {
   shape: 'Shape',
   image: 'Picture',
   video: 'Video',
+  timer: 'Timer',
 };
 
 /** How an element is read out: its kind and words, or its kind. */

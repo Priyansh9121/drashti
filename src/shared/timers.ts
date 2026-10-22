@@ -98,6 +98,76 @@ export function formatTimer(t: TimerState, now: number, style?: ClockStyle | nul
   return timerDuration(value, t.kind !== 'countup');
 }
 
+// ---- a timer on a slide (Session 50) -------------------------------------------------------------
+
+/** The kinds that count down to zero: a countdown, and a countdown to a time of day. */
+export const countsDown = (t: Pick<TimerDefinition, 'kind'>): boolean =>
+  t.kind === 'countdown' || t.kind === 'countdown_to_time';
+
+/** Time left on a countdown at `now`, below zero too (whatever the timer shows); null for the other kinds. */
+function leftAt(t: TimerState, now: number): number | null {
+  if (t.kind === 'countdown') return t.durationMs - elapsedAt(t, now);
+  if (t.kind === 'countdown_to_time') {
+    const target = t.targetTime === null ? null : todayAt(t.targetTime, now);
+    return target === null ? null : target - now;
+  }
+  return null;
+}
+
+/**
+ * When what a timer shows next changes by itself, after `now` (the engine's clock), or null: it stands still
+ * (stopped, paused, or held at 0:00). A clock changes at each minute; a countdown, a count-up and a countdown
+ * to a time at each of their seconds. A slide's Timer draws again only then.
+ */
+export function changesAt(t: TimerState, now: number): number | null {
+  if (t.kind === 'clock') return now + (60_000 - (now % 60_000));
+  // A countdown to a time counts by the clock, started or not; the others only while they run.
+  if (t.kind !== 'countdown_to_time' && t.startedAt === null) return null;
+  if (t.kind === 'countup') return now + (1000 - (elapsedAt(t, now) % 1000));
+  const left = leftAt(t, now);
+  if (left === null) return null;
+  // Rounded up: 0:05 shows until 4 s are left.
+  if (left > 0) return now + (left - (Math.ceil(left / 1000) - 1) * 1000);
+  if (!t.allowsOverrun) return null;
+  const over = -left;
+  return now + ((Math.floor(over / 1000) + 1) * 1000 - over);
+}
+
+/**
+ * When what a timer shows last changed by itself, at or before `now`, or null: it has not since it was
+ * started (or it does not run). A slide's Timer moves the digits that changed from then, so every screen
+ * draws the same frame.
+ */
+export function changedAt(t: TimerState, now: number): number | null {
+  if (t.kind === 'clock') return now - (now % 60_000);
+  if (t.kind !== 'countdown_to_time' && t.startedAt === null) return null;
+  let at: number;
+  if (t.kind === 'countup') at = now - (elapsedAt(t, now) % 1000);
+  else {
+    const left = leftAt(t, now);
+    if (left === null) return null;
+    if (left > 0) at = now - (Math.ceil(left / 1000) * 1000 - left);
+    else if (!t.allowsOverrun) at = now + left;
+    else at = now - (-left - Math.floor(-left / 1000) * 1000);
+  }
+  return t.kind !== 'countdown_to_time' && t.startedAt !== null && at < t.startedAt ? null : at;
+}
+
+/** A countdown's last minute: a minute or less left, or past zero. Never a count-up's or a clock's. */
+export const inLastMinute = (t: TimerState, now: number): boolean =>
+  countsDown(t) && timerValue(t, now) <= 60_000;
+
+/**
+ * When a running countdown reaches zero (the engine's clock), or null: one stopped or paused, or a timer of
+ * another kind. A countdown to a time of day reaches it at that time today.
+ */
+export function zeroAt(t: TimerState, now: number): number | null {
+  if (t.startedAt === null) return null;
+  if (t.kind === 'countdown') return t.startedAt + t.durationMs - t.elapsedMs;
+  if (t.kind === 'countdown_to_time') return t.targetTime === null ? null : todayAt(t.targetTime, now);
+  return null;
+}
+
 /** "5:00" or "1:30:00" to ms; null if it is not a duration. */
 export function parseDuration(text: string): number | null {
   const parts = text.trim().split(':');

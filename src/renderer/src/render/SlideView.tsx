@@ -486,6 +486,8 @@ export function ElementView({
 }) {
   if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} band={band} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
+  // A timer on a slide (Session 50): drawn once the screens can.
+  if (el.kind === 'timer') return null;
   return <MediaView el={el} media={media} startedAt={startedAt} />;
 }
 

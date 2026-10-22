@@ -37,7 +37,8 @@ export interface ElementRow {
   id: string;
   slide_id: string;
   position: number;
-  kind: 'text' | 'shape' | 'image' | 'video';
+  /** 'timer' since migration 46 (Session 50). */
+  kind: 'text' | 'shape' | 'image' | 'video' | 'timer';
   x: number;
   y: number;
   width: number;

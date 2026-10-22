@@ -94,6 +94,8 @@ const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
   shape: new Set(['shape', 'fill', 'cornerRadius', 'opacity', 'outline']),
   image: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume']),
   video: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume']),
+  // A timer on a slide (Session 50).
+  timer: new Set(['timerId', 'style', 'lastMinute', 'atZero', 'opacity']),
 };
 
 function parseObject(text: string): Record<string, unknown> {

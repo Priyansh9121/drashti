@@ -181,7 +181,30 @@ export interface MediaElement extends ElementBase {
   volume?: number;
 }
 
-export type SlideElement = TextElement | ShapeElement | MediaElement;
+/** What a countdown on a slide does at zero (Session 50): holds at 0:00, or the next slide comes on. */
+export type TimerAtZero = 'hold' | 'next';
+export const TIMER_AT_ZERO = ['hold', 'next'] as const satisfies readonly TimerAtZero[];
+
+/**
+ * A timer on a slide (Session 50): one of the library's timers (shared/timers.ts), live, styled as words are
+ * (font, size, weight, colour, outline and shadow, placed in its box as a text box's words are). Each screen
+ * works out its time from the engine's timers, as a message's timer does; only the digits that change move,
+ * once a second.
+ */
+export interface TimerElement extends ElementBase {
+  kind: 'timer';
+  /** The timer it shows; one no longer in the library shows --:--. */
+  timerId: string;
+  style: TextStyle;
+  /** A countdown's last minute: the time turns this colour. Left out or null: it stays as it is. */
+  lastMinute?: { color: string } | null;
+  /** A countdown at zero: it holds at 0:00 (the default, left out), or the next slide comes on. */
+  atZero?: TimerAtZero;
+  /** 0 to 1; left out for fully there. */
+  opacity?: number;
+}
+
+export type SlideElement = TextElement | ShapeElement | MediaElement | TimerElement;
 
 /** A slide resolved for display: everything a renderer needs, nothing more. */
 /**
