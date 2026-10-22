@@ -29,7 +29,7 @@ export const PANEL_HELP = {
   library: {
     title: 'The library',
     doc: 'operator',
-    text: 'Every presentation, picture, video and sound on this computer. Type a few letters of a kirtan’s title or words in the search box to find it. Choose one and press Add to playlist to put it in the open playlist, or bring more in with Import….',
+    text: 'Every presentation, picture, video and sound on this computer. Type a few letters of a kirtan’s title or words in the search box to find it. Choose one and press Add to playlist to put it in the open playlist, bring more in with Import…, or, in Media, show another app’s window (a Zoom meeting) live with Show a Window….',
     guide: 'the **Library**',
   },
   slides: {
@@ -119,7 +119,7 @@ export const PANEL_HELP = {
   stream: {
     title: 'Stream',
     doc: 'operator',
-    text: 'The stream from this computer to YouTube or another platform: what it shows, going live and recording. ON AIR and REC in the header say when it is public and when it is being recorded.',
+    text: 'The stream from this computer to YouTube or another platform: what it shows, going live and recording. ON AIR and REC in the header say when it is public and when it is being recorded. Window for Zoom… shows the same picture in a window of its own, for Zoom to share.',
     guide: '**The stream** (only on the computer that streams',
   },
   phones: {

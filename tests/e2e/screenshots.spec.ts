@@ -2038,3 +2038,80 @@ test('Lower Thirds: the panel with one up, and its editor finding an animation (
   });
   await app.close();
 });
+
+test('Zoom, both ways: the window for Zoom with the stream’s picture, and Show a Window… with a placeholder (Session 48)', async () => {
+  test.setTimeout(120_000);
+  // Chromium's fake camera; a window this test opens, titled "Placeholder meeting", stands in for a meeting's.
+  const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1', DRASHTI_TEST_WINDOW_STANDIN: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await operatorReady(win);
+  await running(win);
+
+  // The window for Zoom: the stream's picture (the camera with the verse's words as a lower third), nothing else.
+  await chooseMenuItem(app, 'zoom-window');
+  const isZoom = (p: Page) => p.url().includes('zoom.html');
+  const zoom = app.windows().find(isZoom) ?? (await app.waitForEvent('window', { predicate: isZoom }));
+  await expect(zoom.getByTestId('zoom-picture')).toHaveAttribute('data-program', '1920x1080', {
+    timeout: 30_000,
+  });
+  await expect
+    .poll(() => zoom.evaluate(() => document.querySelector('video')?.videoWidth ?? 0), { timeout: 30_000 })
+    .toBeGreaterThan(0);
+  // The stream's camera: Chromium's fake one (a moving test pattern), seen once the stream's page is open.
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status())).inputs.cameras.length,
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(0);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const camera = (await d.stream.status()).inputs.cameras[0] ?? null;
+    await d.stream.setInputs(camera, null);
+  });
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status())).inputs.camera,
+      {
+        timeout: 30_000,
+      },
+    )
+    .toBe('on');
+  await letTimePass(zoom, 2000, 'the docs’ picture: the camera and the lower third settle');
+  await mkdirAndShot(zoom, 'zoom-window');
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((w) => w.webContents.getURL().includes('zoom.html'))
+      ?.close();
+  });
+
+  // Show a Window…: the placeholder meeting offered, by name with its small picture, and chosen.
+  await app.evaluate(async ({ BrowserWindow }) => {
+    const w = new BrowserWindow({
+      width: 640,
+      height: 360,
+      show: false,
+      title: 'Placeholder meeting',
+      webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false },
+    });
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Placeholder meeting</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#1d4ed8}#bar{position:absolute;top:35%;left:30%;width:20%;height:30%;background:#facc15}p{position:absolute;left:4%;bottom:4%;margin:0;font:32px sans-serif;color:#ffffff}</style></head><body><div id="bar"></div><p>Placeholder meeting</p></body></html>`;
+    await w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    w.showInactive();
+  });
+  const sheet = await openLibrary(win);
+  await sheet.getByTestId('library-tab-media').click();
+  await win.getByTestId('show-a-window').click();
+  const picker = win.getByTestId('window-picker');
+  const choice = picker.getByTestId('window-choice').filter({ hasText: 'Placeholder meeting' });
+  await expect(choice.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/u, {
+    timeout: 15_000,
+  });
+  await choice.click();
+  await expect(picker.getByTestId('window-show')).toBeEnabled();
+  await shot(win, 'window-picker');
+  await picker.getByRole('button', { name: 'Cancel' }).click();
+  await app.close();
+});

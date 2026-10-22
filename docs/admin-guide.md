@@ -46,7 +46,7 @@ On the Mac, open the `.dmg` and drag Drashti into **Applications**; on Windows, 
 
 ![The node offering the update](screenshots/node-update-offer.png)
 
-**Never update on the day of a sabha.** Update after a sabha, run the checks in section 12 on both computers, and keep the old installer until the next sabha has gone well.
+**Never update on the day of a sabha.** Update after a sabha, run the checks in section 12 on both computers, and keep the old installer until the next sabha has gone well. On a Mac, an update can also mean turning Screen Recording on again for **Show a Window…** (section 4).
 
 ---
 
@@ -116,6 +116,8 @@ Nothing else changes: the library, the playlists and the settings are as they we
 **Sound.** In **Screens**, under **Sound output**, choose the output that goes to the mixer. If it is not connected when Drashti starts, Drashti plays on the computer's default sound output, and a warning stays in the status bar until it is back.
 
 **The logo.** In **Props** under the live picture, the stamp button beside a prop makes it the logo (**L**, and **Logo** in both modes).
+
+**Another app's window on the screens (a Zoom meeting): Screen Recording on a Mac.** An operator's **Show a Window…** (in the library's **Media**) shows another app's open window live as the hall's background (the operator's guide, section 5). To see other apps' windows, macOS must let Drashti record the screen. The first time it is pressed on a Mac, Drashti says why and offers **Open System Settings**, which opens **Privacy & Security**, then **Screen Recording**: turn **Drashti** on there, then quit Drashti and open it again (macOS asks for that). Drashti only ever shows the one window an operator chooses, by name with its picture, never a whole screen, and only on this computer's screens and the stream: output nodes, phones and stage screens never show it. **After each update** macOS may ask again, or show Drashti turned off in that list: Drashti is signed ad hoc (it has no paid Apple certificate), so macOS can take an updated Drashti for a new app. Turn it on again, and quit and reopen. On Windows nothing is asked.
 
 ---
 

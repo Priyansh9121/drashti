@@ -184,7 +184,9 @@ ws.onmessage = (e) => {
 | `{"type":"clock","t0":<this device's ms>}` | Clock sync: of a few round trips, the shortest says how far this device's clock is from the engine's (`server - (t0 + t1) / 2`). |
 | `{"type":"resync"}`                        | A revision went missing (`baseRev` is not the one held): send the whole state again.                                             |
 
-A `version` the client does not know (`ENGINE_STATE_VERSION` in `src/shared/engine/state.ts`, 10 since Sessions 31–36: a slide's `darken`) means the state's shape changed: such a client should stop and say so. Output nodes (Session 13) will follow this same feed.
+A `version` the client does not know (`ENGINE_STATE_VERSION` in `src/shared/engine/state.ts`, 12 since Session 48: a background of kind `window`; 11 since Session 44: the lower third's layer; 10 since Sessions 31–36: a slide's `darken`) means the state's shape changed: such a client should stop and say so. Output nodes (Session 13) will follow this same feed.
+
+A background of kind `window` (Session 48) is another app's window live on Main's own screens (`layers.background`: `sourceId`, `name`, `startedAt`). It is there to be named ("A window: Zoom Meeting"), never drawn: it is only on Main's computer. `POST /api/v1/clear/background` takes it off as any background; nothing on the network can put one up.
 
 ## Companion (Stream Deck)
 

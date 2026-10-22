@@ -75,6 +75,8 @@ extraResources:
       - screenshots/updates-offer.png
       - screenshots/video-timeline.png
       - screenshots/what-is-this.png
+      - screenshots/window-picker.png
+      - screenshots/zoom-window.png
 # Electron's fuses (Sessions 31–36, REL-7): a packaged Drashti never runs as Node (ELECTRON_RUN_AS_NODE),
 # never reads NODE_OPTIONS and never takes --inspect; its pages are file://, so file:// keeps its privileges.
 # Asar integrity is not now. electron-builder flips them right before it signs (ad hoc on a Mac without a
