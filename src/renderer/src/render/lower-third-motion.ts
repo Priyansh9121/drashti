@@ -1,4 +1,5 @@
 import type { Movement } from '../../../shared/looks';
+import type { LowerThirdLine } from '../../../shared/program';
 import { EASE, seg } from './easing';
 import type { UnitFrame } from './reveal';
 
@@ -107,4 +108,56 @@ export function lowerThirdFrame(phase: LowerThirdPhase, movement: Movement, t: n
       };
     }
   }
+}
+
+/**
+ * What a slide's moving lower third is doing (render/LowerThird.tsx): the lines up, the lines going (changed
+ * from, or taken off), and the motion it began when what was up last changed, from when; `still` or `gone` when
+ * it began none (a screen that comes along later draws what is up, still).
+ */
+export interface LowerThirdRun {
+  key: string | null;
+  lines: LowerThirdLine[];
+  prev: LowerThirdLine[] | null;
+  phase: LowerThirdPhase | 'still' | 'gone';
+  start: number;
+}
+
+/** How long a run's motion takes, in ms (0: none). */
+export const lowerThirdRunLength = (run: LowerThirdRun, movement: Movement): number =>
+  run.phase === 'still' || run.phase === 'gone' ? 0 : lowerThirdLength(run.phase, movement, run.lines.length);
+
+/**
+ * A run as it is drawn at `now`, the engine's time (Session 51): its motion part-way, or once that is over, still
+ * (gone after going out). A pure function of the run and the time, however many frames a screen drew before, so
+ * a key and its fill draw the same at the same moment. Before, only a screen's next animation frame ended a
+ * motion: a key whose window had none yet drew its lower third coming in when its fill drew it still.
+ */
+export function lowerThirdAt(run: LowerThirdRun, movement: Movement, now: number): LowerThirdRun {
+  if (run.phase === 'still' || run.phase === 'gone') return run;
+  if (now - run.start < lowerThirdRunLength(run, movement)) return run;
+  return { ...run, prev: null, phase: run.phase === 'out' ? 'gone' : 'still' };
+}
+
+/**
+ * What a lower third begins when what is up changes (`key`: a slide's id and shownAt; null, none), at `now`: in, a
+ * change as its box holds (when it draws words then), or out when the slide was taken off on its own
+ * (`leaving`: state.slideOff); else gone at once (Clear all, a slide with no words). The run keeps its motion even
+ * when it is over by `now` (a screen told late): lowerThirdAt draws it as the time has it.
+ */
+export function nextLowerThirdRun(
+  was: LowerThirdRun,
+  key: string | null,
+  lines: LowerThirdLine[],
+  shownAt: number,
+  leaving: { at: number } | null,
+  movement: Movement,
+  now: number,
+): LowerThirdRun {
+  const drawn = lowerThirdAt(was, movement, now);
+  const had = drawn.phase !== 'gone' && drawn.phase !== 'out' && drawn.lines.length > 0 ? drawn.lines : null;
+  if (key !== null && lines.length > 0)
+    return { key, lines, prev: had, phase: had ? 'change' : 'in', start: shownAt };
+  if (had && leaving) return { key: null, lines: [], prev: had, phase: 'out', start: leaving.at };
+  return { key: null, lines: [], prev: null, phase: 'gone', start: 0 };
 }
