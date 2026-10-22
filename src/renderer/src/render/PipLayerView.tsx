@@ -136,6 +136,16 @@ export function PipBox({
   useLayoutEffect(() => {
     paint(drawnAt);
   });
+  // The clock held or set (a test, the warm-up, a node's offset): drawn at once where the time puts it while its
+  // run is still the same then; else the screen is drawn again with its next run (usePipRun).
+  useEffect(
+    () =>
+      onClockJump(() => {
+        const now = engineNow();
+        if (samePipRun(pipRunLater(run, now, { width, height }), run)) paint(now);
+      }),
+    [run, paint, width, height],
+  );
   const { layer, place } = run;
   if (!layer || !place) return null;
   const r = pipRect(place, canvas);
@@ -232,6 +242,14 @@ export function usePipMainMove(ref: RefObject<HTMLElement | null>, run: PipRun |
   useLayoutEffect(() => {
     paint(drawnAt);
   });
+  // The clock held or set: drawn at once where the time puts it while the swap's run is still the same then.
+  useEffect(() => {
+    if (!run) return;
+    return onClockJump(() => {
+      const now = engineNow();
+      if (samePipRun(pipRunLater(run, now, { width, height }), run)) paint(now);
+    });
+  }, [run, paint, width, height]);
 }
 
 /**
