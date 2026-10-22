@@ -486,7 +486,8 @@ export class ShowEngine {
       background: background !== null && background.kind !== 'input',
       blackout: request.blackout,
       logo: Boolean(request.logo),
-      audio: Boolean(request.audio),
+      // Not an audio playlist that would have ended meanwhile (caughtUp took it off): the notice says no sound.
+      audio: Boolean(request.audio) && this.state.layers.audio !== null,
       props: request.props?.length ?? 0,
       messages: request.messages?.length ?? 0,
       ticker: request.ticker?.items.length ?? 0,
