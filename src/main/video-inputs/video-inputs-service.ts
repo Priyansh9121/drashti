@@ -148,12 +148,16 @@ export class VideoInputsService {
   }
 
   /**
-   * Remove one from the list. The show never changes for it: an input up now stays on the screens until
-   * something replaces or clears it (it is not put back after a restart).
+   * Remove one from the list. Never the input up now: the screens draw only an input this list has, so it stays
+   * listed until it is cleared (the show never changes from Media's list).
    */
   remove(id: unknown): VideoInputResult {
-    if (typeof id !== 'string' || !this.inputs.some((i) => i.id === id)) return { ok: false, message: GONE };
-    const kept = this.keep(this.inputs.filter((i) => i.id !== id));
+    const input = typeof id === 'string' ? this.inputs.find((i) => i.id === id) : undefined;
+    if (!input) return { ok: false, message: GONE };
+    const bg = this.deps.background();
+    if (bg?.kind === 'input' && bg.inputId === input.id)
+      return { ok: false, message: `“${input.name}” is on the screens: clear it first, then remove it.` };
+    const kept = this.keep(this.inputs.filter((i) => i.id !== input.id));
     if (kept) return kept;
     this.deps.log('info', `Video input removed (${String(this.inputs.length)} on this computer)`);
     return { ok: true, view: this.view() };

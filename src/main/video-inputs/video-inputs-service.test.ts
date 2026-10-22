@@ -158,8 +158,8 @@ describe('this computer’s video inputs', () => {
     expect(views).toHaveLength(20);
   });
 
-  it('a change follows on the screens while that input is up; removing one never changes the show', () => {
-    const { service, refreshed, cleared, up } = setup();
+  it('a change follows on the screens while that input is up; one up is never removed (the screens open only what is listed)', () => {
+    const { service, refreshed, cleared, up, setBackground } = setup();
     const one = added(service.add(fields), 'Placeholder input');
     const two = added(service.add({ ...fields, name: 'Placeholder mixer' }), 'Placeholder mixer');
     // Not up: the list changes, the screens are not told.
@@ -184,9 +184,16 @@ describe('this computer’s video inputs', () => {
       ok: false,
       message: 'That video input cannot be kept.',
     });
-    // Removed while up: it stays on the screens until something replaces or clears it.
-    expect(service.remove(one.id)).toEqual({ ok: true, view: { inputs: [{ ...two, fit: 'fill' }] } });
+    // Up now: not removed (the screens draw only an input in this list), and the show is left as it is.
+    expect(service.remove(one.id)).toEqual({
+      ok: false,
+      message: '“PLACEHOLDER PROGRAM” is on the screens: clear it first, then remove it.',
+    });
+    expect(service.view().inputs).toHaveLength(2);
     expect(cleared()).toBe(0);
+    // Cleared: removed.
+    setBackground(null);
+    expect(service.remove(one.id)).toEqual({ ok: true, view: { inputs: [{ ...two, fit: 'fill' }] } });
     expect(service.remove(one.id)).toEqual({
       ok: false,
       message: 'That video input is no longer on this computer.',
