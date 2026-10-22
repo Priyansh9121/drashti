@@ -210,7 +210,6 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       if (end - v.currentTime > limits.jumpOver) holdAt(end);
       return;
     }
-    if (v.paused && !v.ended) void v.play().catch(() => undefined);
     const span = end - start;
     const offset = playbackOffset(v.currentTime, at, span, c.loop);
     const correction = playbackCorrection(offset, limits);
@@ -243,6 +242,11 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (correction.seek || reaim)
       jump(c.loop && span > 0 ? start + ((at - start + lead()) % span) - lead() : at);
     else if (v.playbackRate !== correction.rate) v.playbackRate = correction.rate;
+    // Paused where the clock says it plays: it plays on, once any jump is made (Session 51). Held at its own end
+    // (`ended`), play() would start it again from the top, so one taken back from there (Back 15 s, a marker) used
+    // to wait for the next check, up to a quarter of a second late and at a different moment on each screen; now
+    // it plays from where it lands, at once. One that got to its end a moment before the clock (no jump) waits.
+    if (v.paused && !v.ended) void v.play().catch(() => undefined);
     // A loop goes round by a jump, aimed as every jump is, from where the clock is, a moment before its end
     // (Sessions 31–36): left to the element's own loop, a whole file came round late, a picture 0.08 s and a
     // sound 0.2 to 0.3 s on a Mac, so a looping video's sound fell further behind each time round.
