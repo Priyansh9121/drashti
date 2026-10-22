@@ -89,7 +89,7 @@ export const PANEL_HELP = {
   music: {
     title: 'Music',
     doc: 'operator',
-    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play, and Back 15 s, Forward 15 s and Last 10 s move in the track playing. A slide with its own sound stops the music.',
+    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play; Back 15 s, Forward 15 s and Last 10 s, small icons in the row with Play and Pause, move in the track playing. A slide with its own sound stops the music.',
     guide: '**Music before the sabha.**',
   },
   idle: {
@@ -143,7 +143,7 @@ export const PANEL_HELP = {
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and Back 15 s, Forward 15 s and Last 10 s move in its track. Clear audio along the bottom, or F5, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and Back 15 s, Forward 15 s and Last 10 s, small icons in the row with Play and Pause, move in its track. Clear audio along the bottom, or F5, stops whatever sound is playing.',
     guide: '**Audio.** In the right column',
   },
   tools: {
