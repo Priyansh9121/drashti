@@ -3,7 +3,7 @@ import type { EngineCommand } from '../../shared/engine/commands';
 import type { BackgroundCue } from '../../shared/library';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
 import { INPUT_FADE_MS, inputNamed, type VideoInput } from '../../shared/video-inputs';
-import { MemoryPlaylistSource } from './playlist-source';
+import { MemoryPlaylistSource, type PlayItem } from './playlist-source';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
@@ -189,6 +189,40 @@ describe('a video input as a playlist item', () => {
     expect(again.current.layers.background).toMatchObject({ kind: 'input', inputId: 'in-1' });
     again.dispatch({ type: 'next' });
     expect(again.current.live).toMatchObject({
+      presentationId: 'p1',
+      playlist: { playlistId: 'sunday', itemId: 'i-p1' },
+    });
+  });
+
+  it('after a restart, an input item whose input is no longer in Media keeps the playlist’s place: Next goes on', () => {
+    const { engine } = show();
+    engine.dispatch(play('i-cam'));
+    const up = engine.current.layers.background;
+    if (up?.kind !== 'input') throw new Error('no input up');
+    // Started again on a computer without it: the library reads the item as nothing to play.
+    const again = show();
+    again.list.splice(0, 1);
+    const items = again.playlists.items('sunday') ?? [];
+    again.playlists.set(
+      'sunday',
+      items.map((i): PlayItem =>
+        i.id === 'i-cam'
+          ? { id: i.id, kind: 'skip', why: 'The video input “Input 1” is not on this computer' }
+          : i,
+      ),
+    );
+    again.engine.restore({
+      slide: null,
+      playlist: { playlistId: 'sunday', itemId: 'i-cam' },
+      background: up,
+      blackout: false,
+    });
+    expect(again.engine.current.live.playlist).toEqual({ playlistId: 'sunday', itemId: 'i-cam' });
+    // The input is not put back (no screen opens one this computer does not list).
+    expect(again.engine.current.layers.background).toBeNull();
+    // Next goes on from its place, past the other item that is not here, to the next presentation.
+    again.engine.dispatch({ type: 'next' });
+    expect(again.engine.current.live).toMatchObject({
       presentationId: 'p1',
       playlist: { playlistId: 'sunday', itemId: 'i-p1' },
     });
