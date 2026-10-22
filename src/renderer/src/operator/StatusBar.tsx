@@ -15,6 +15,7 @@ import { cx } from '../ui/cx';
 import { useArrival, useLeaving } from '../ui/motion';
 import { useNotice, useTaskProgress } from './actions';
 import { ScreensSummary } from './StatusLine';
+import { SwitchedOffStatus } from './ScreenSwitches';
 import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
 import { nodeWarnings } from '../../../shared/nodes';
 import { useNow } from '../render/useNow';
@@ -297,6 +298,8 @@ export function StatusBar({
       >
         {/* The screens dashboard opens from here in both modes (Simple Mode only looks). */}
         <ScreensSummary onOpen={openDashboard} />
+        {/* Audience or Stage off (Session 50), with Turn on: in both modes. */}
+        <SwitchedOffStatus />
         <NodeWarnings />
         <BackupWarning />
         <UpdateStatus />

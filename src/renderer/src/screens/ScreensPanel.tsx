@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/screens';
 import { shortcutText } from '../../../shared/keymap';
 import { CANVAS_PRESETS, SCALING_MODES } from '../../../shared/screens';
+import { SWITCH_NAMES, switchFor } from '../../../shared/screen-switches';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
@@ -99,13 +100,17 @@ function ScreenRow({
   screen,
   state,
   displays,
+  role,
 }: {
   screen: ScreenConfig;
   state: ScreenState;
   displays: DisplayInfo[];
+  /** Its group's: which switch, Audience or Stage, it answers to (Session 50). */
+  role: ScreenGroupConfig['role'];
 }) {
   const update = (patch: Parameters<ReturnType<typeof bridge>['updateScreen']>[1]) =>
     void screensAction((consent) => bridge().updateScreen(screen.id, patch, consent));
+  const switchName = SWITCH_NAMES[switchFor(role) ?? 'audience'];
   const preset = CANVAS_PRESETS.find(
     (p) => p.width === screen.canvasWidth && p.height === screen.canvasHeight,
   );
@@ -127,6 +132,11 @@ function ScreenRow({
         </span>
         {state === 'missing-display' && (
           <span className="text-xs text-warning-fg">It opens by itself when the display is connected.</span>
+        )}
+        {state === 'switched-off' && (
+          <span className="text-xs text-muted" data-testid="screen-switched-off">
+            {switchName} is off: its display shows this computer’s desktop until {switchName} is on again.
+          </span>
         )}
         {state === 'stopped' && (
           <>
@@ -313,6 +323,7 @@ function GroupCard({
             <ScreenRow
               key={sc.id}
               screen={sc}
+              role={group.role}
               state={states.get(sc.id) ?? 'unassigned'}
               displays={sc.nodeId ? (nodes.find((n) => n.id === sc.nodeId)?.displays ?? []) : displays}
             />

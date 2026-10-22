@@ -109,7 +109,10 @@ export async function openSetup(from = 0): Promise<void> {
   const look = useEngine.getState().state?.look;
   const outputs: Record<number, OutputChoice> = {};
   for (const d of snapshot.displays) {
-    const st = snapshot.status.find((x) => x.displayId === d.id && x.state === 'showing');
+    // A screen switched off (Session 50) still has its display: Finish must not take it away.
+    const st = snapshot.status.find(
+      (x) => x.displayId === d.id && (x.state === 'showing' || x.state === 'switched-off'),
+    );
     const group = st ? snapshot.groups.find((g) => g.screens.some((sc) => sc.id === st.screenId)) : undefined;
     const languages = group ? (look?.groups[group.id]?.languages ?? null) : null;
     outputs[d.id] = group
