@@ -128,7 +128,10 @@ export function applyTheme(rows: ContentRows, theme: Theme, newId: () => string 
   for (const e of rows.elements) elements.set(e.slide_id, [...(elements.get(e.slide_id) ?? []), e]);
   const out: ElementRow[] = [];
   for (const [, list] of elements) {
-    const firstText = byPosition(list).find((e) => readText(e) !== null)?.id;
+    // A slide with a Timer (Session 50) keeps its layout: its words (Timer with words' line above the time) stay
+    // where they are, taking only the theme's look, never moved into the theme's box across the time.
+    const timed = list.some((e) => e.kind === 'timer');
+    const firstText = timed ? undefined : byPosition(list).find((e) => readText(e) !== null)?.id;
     for (const e of list) {
       const p = readText(e);
       if (!p) {
