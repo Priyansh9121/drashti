@@ -1,6 +1,8 @@
 import type { BrowserWindow } from 'electron';
 import type { EngineCommand } from '../shared/engine/commands';
+import type { TextElement } from '../shared/model';
 import type { ScreensResult } from '../shared/screens';
+import type { NewPresentation } from './db/presentations';
 import type { RendererWatchdog } from './watchdog';
 
 /*
@@ -33,8 +35,73 @@ export interface SelfTestContext {
   dispatch: (command: EngineCommand) => { ok: boolean };
   engineRev: () => number;
   firstPresentationId: () => string | null;
+  /** Put a presentation in the library (the self-test's own placeholder slides); its id. */
+  addPresentation: (doc: SelfTestPresentation) => string;
+  /** Take that presentation out of the library again (as the library's trash does). */
+  removePresentation: (id: string) => void;
   /** Make sure at least one output is showing; returns an undo function. */
   ensureOutput: () => Promise<() => void>;
+}
+
+export type SelfTestPresentation = Omit<NewPresentation, 'libraryId'>;
+
+const words = (id: string, text: string, y: number): TextElement => ({
+  id,
+  kind: 'text',
+  frame: { x: 100, y, width: 1720, height: 200 },
+  text,
+  lang: 'en',
+  style: {
+    fontFamily: null,
+    fontSize: 110,
+    fontWeight: 700,
+    color: '#ffffff',
+    align: 'center',
+    verticalAlign: 'middle',
+    lineHeight: 1.2,
+    shadow: true,
+  },
+});
+
+/** The self-test's own slides: bright words, each slide its own, so the output shows something and Next changes it. */
+export const SELF_TEST_PRESENTATION: SelfTestPresentation = {
+  name: 'Placeholder slides for the watchdog self-test',
+  groups: [
+    {
+      name: 'Self-test',
+      slides: [
+        {
+          background: '#101828',
+          elements: [
+            words('first', 'Placeholder self-test slide one', 300),
+            words('second', 'Placeholder words, first slide', 580),
+          ],
+        },
+        { background: '#0b3d2e', elements: [words('first', 'Placeholder self-test slide two', 440)] },
+        { background: '#3b0d2e', elements: [words('first', 'Placeholder self-test slide three', 440)] },
+      ],
+    },
+  ],
+};
+
+/**
+ * What the self-test shows (Session 50): the library's first presentation, or, in a library with none, its own
+ * placeholder slides, taken out again when it is done. A new library starts without Drashti's placeholder
+ * presentations now, and the installed app's check (scripts/check-installers.mjs) starts it in a new data folder,
+ * where a packaged Drashti ignores the tests' switch that seeds them.
+ */
+export function presentationToShow(
+  ctx: Pick<SelfTestContext, 'firstPresentationId' | 'addPresentation' | 'removePresentation'>,
+): { id: string; done: () => void } {
+  const first = ctx.firstPresentationId();
+  if (first !== null) return { id: first, done: () => undefined };
+  const id = ctx.addPresentation(SELF_TEST_PRESENTATION);
+  return {
+    id,
+    done: () => {
+      ctx.removePresentation(id);
+    },
+  };
 }
 
 interface Frame {
@@ -128,8 +195,10 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
     return ok;
   };
   const undo = await ctx.ensureOutput();
+  let shown: { id: string; done: () => void } | null = null;
   try {
-    const presentationId = ctx.firstPresentationId();
+    shown = presentationToShow(ctx);
+    const presentationId = shown.id;
     const output = await (async () => {
       await waitFor(() => ctx.outputs().length > 0);
       return ctx.outputs()[0] ?? null;
@@ -286,6 +355,8 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
     return { passed: checks.every((c) => c.ok), checks };
   } finally {
     ctx.dispatch({ type: 'clearAll' });
+    // Its own slides come out once the screens are clear (nothing live is left on them).
+    shown?.done();
     undo();
   }
 }

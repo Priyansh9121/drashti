@@ -4509,6 +4509,17 @@ function start(): void {
       dispatch: (command) => engine.dispatch(command),
       engineRev: () => engine.rev,
       firstPresentationId: () => presentations.list()[0]?.id ?? null,
+      // A library with none (Session 50): the self-test's own placeholder slides, in, and out again after.
+      addPresentation: (doc) => {
+        const id = presentations.insert({ libraryId: presentations.ensureLibrary('Default'), ...doc });
+        libraryChanged(true);
+        return id;
+      },
+      removePresentation: (id) => {
+        for (const removed of presentations.remove([id])) slides.invalidate(removed);
+        engine.refreshNext();
+        libraryChanged(true);
+      },
       ensureOutput: () => ensureTestOutput('Watchdog self-test'),
     });
 
