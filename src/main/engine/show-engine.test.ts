@@ -240,12 +240,12 @@ describe('ShowEngine', () => {
       for (const c of commands) s.engine.dispatch(c);
       s.engine.dispatch({ type: 'showLowerThird', lowerThird: PLACEHOLDER_LOWER_THIRD });
       s.engine.showTicker({ id: 'a1', text: 'Placeholder announcement' });
+      // The picture-in-picture box (Session 50), with the slides in it.
+      s.engine.dispatch({ type: 'showPip', source: { kind: 'slides' } });
       return s;
     }
 
-    // The picture-in-picture box (Session 50) joins these once its command is in (section 8 adds it to populated()).
-    const POPULATED = LAYER_NAMES.filter((l) => l !== 'pip');
-    it.each(POPULATED)('clearLayer %s empties that layer only, in one patch', (layer) => {
+    it.each(LAYER_NAMES)('clearLayer %s empties that layer only, in one patch', (layer) => {
       const { engine, transport } = populated();
       const before = engine.current;
       const result = engine.dispatch({ type: 'clearLayer', layer });
@@ -268,6 +268,12 @@ describe('ShowEngine', () => {
         expect(off?.layer).toBe(before.layers.lowerThird);
         expect(typeof off?.at).toBe('number');
         expect(patch.ops).toEqual([emptied, { path: ['lowerThirdOff'], value: off }]);
+      } else if (layer === 'pip') {
+        // The box taken off on its own (Session 50): its out plays from then, as Take off's does.
+        const off = engine.current.pipOff;
+        expect(off?.layer).toBe(before.layers.pip);
+        expect(typeof off?.at).toBe('number');
+        expect(patch.ops).toEqual([emptied, { path: ['pipOff'], value: off }]);
       } else expect(patch.ops).toEqual([emptied]);
     });
 
@@ -1295,6 +1301,7 @@ describe('ShowEngine', () => {
         stageMessage: true,
         timers: 1,
         lowerThird: true,
+        pip: false,
         window: null,
       });
       // The sound, the timer and the lower third keep their start times: they carry on, not start over.

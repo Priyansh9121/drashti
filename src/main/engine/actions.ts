@@ -14,6 +14,7 @@ import type {
   LowerThirdLayer,
   MaskLayer,
   MessageItem,
+  PipLayer,
   PlaylistCursor,
   PropItem,
   RepeatRun,
@@ -89,6 +90,10 @@ export type EngineAction =
   | { type: 'lowerThird/show'; layer: LowerThirdLayer }
   /** The lower third hidden: its out plays from `at`. */
   | { type: 'lowerThird/hide'; at: number }
+  /** The picture-in-picture box up as given (Session 50): put up, its picture changed, swapped or moved. */
+  | { type: 'pip/set'; layer: PipLayer }
+  /** The box taken off (Take off): its out plays from `at`. */
+  | { type: 'pip/hide'; at: number }
   /** Restart recovery: the count as it was, with the time it had left. */
   | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null }
   /** Repeat Slides going round, or stopped (Session 26d). */
