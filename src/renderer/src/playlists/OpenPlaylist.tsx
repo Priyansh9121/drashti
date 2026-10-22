@@ -788,7 +788,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
         />
       </div>
       {byFolder && <FolderCrumbs path={shownFolder} top={node?.name ?? ''} />}
-      {help.card && <div className="shrink-0 pt-2">{help.card}</div>}
+      {/* Its words shrink and scroll in the playlist's share of the middle (Session 51: in a 1024 × 645 window its
+          buttons had run under the slides' strip below). */}
+      {help.card && <div className="min-h-0 overflow-y-auto pt-2">{help.card}</div>}
       {node?.kind === 'smart' && <SmartBar playlistId={openId} />}
       {node?.kind === 'repeat' && node.repeat && <RepeatBar playlistId={openId} settings={node.repeat} />}
       {isTemplate && (
