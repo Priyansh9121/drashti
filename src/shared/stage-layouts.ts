@@ -279,17 +279,29 @@ export interface HallPicture {
 export interface HallGroup {
   id: string;
   role: ScreenRole;
-  screens: readonly { canvasWidth: number; canvasHeight: number; scaling: ScalingMode }[];
+  screens: readonly {
+    canvasWidth: number;
+    canvasHeight: number;
+    scaling: ScalingMode;
+    /** A node's screen (another computer's), or null for this computer's; left out where unknown. */
+    nodeId?: string | null;
+    /** Turned off in Screens; left out where unknown. */
+    enabled?: boolean;
+  }[];
 }
 
 /**
- * The hall's picture among these groups, in their order in Screens: the first audience group's (as the
- * remote's picture follows it), 1920 x 1080 fitted while it has no screen; null with no audience group.
+ * The hall's picture among these groups, in their order in Screens: the first audience group with a screen of
+ * this computer's that is on (Session 50: what this computer's audience screens show, not a group Set Up
+ * Screens… left empty, nor one whose screens are a node's or off), else the first audience group (as the remote's
+ * picture follows it); 1920 x 1080 fitted while it has no screen; null with no audience group.
  */
 export function hallPicture(groups: readonly HallGroup[]): HallPicture | null {
-  const hall = groups.find((g) => g.role === 'audience');
+  const here = (s: HallGroup['screens'][number]) => (s.nodeId ?? null) === null && s.enabled !== false;
+  const audience = groups.filter((g) => g.role === 'audience');
+  const hall = audience.find((g) => g.screens.some(here)) ?? audience[0];
   if (!hall) return null;
-  const screen = hall.screens[0];
+  const screen = hall.screens.find(here) ?? hall.screens[0];
   if (!screen || screen.canvasWidth <= 0 || screen.canvasHeight <= 0)
     return { groupId: hall.id, canvasWidth: STAGE_WIDTH, canvasHeight: STAGE_HEIGHT, scaling: 'fit' };
   return {

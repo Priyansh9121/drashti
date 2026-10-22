@@ -112,6 +112,30 @@ describe('the hall’s picture', () => {
     expect(hallPicture([])).toBeNull();
   });
 
+  // Section 4 review (Session 50): "this computer's audience screens" — an audience group left empty by Set Up
+  // Screens…, or one whose screens are all a node's or turned off, is not the hall this computer shows.
+  it('is the first audience group with a screen on this computer that is on', () => {
+    const local = (w: number, h: number) => ({ ...screen(w, h), nodeId: null, enabled: true });
+    expect(
+      hallPicture([
+        { id: 'emptied', role: 'audience', screens: [] },
+        {
+          id: 'node-hall',
+          role: 'audience',
+          screens: [{ ...screen(1920, 1080), nodeId: 'n1', enabled: true }],
+        },
+        {
+          id: 'off-hall',
+          role: 'audience',
+          screens: [{ ...screen(1920, 1080), nodeId: null, enabled: false }],
+        },
+        { id: 'hall', role: 'audience', screens: [local(1280, 720)] },
+      ]),
+    ).toEqual({ groupId: 'hall', canvasWidth: 1280, canvasHeight: 720, scaling: 'fit' });
+    // With no such screen anywhere, the first audience group, as before.
+    expect(hallPicture([{ id: 'emptied', role: 'audience', screens: [] }])?.groupId).toBe('emptied');
+  });
+
   it('on a node is its own first audience screen’s: the node knows only its own screens', () => {
     const on = (groupId: string, role: 'audience' | 'stage', canvas: ReturnType<typeof screen>) => ({
       groupId,
