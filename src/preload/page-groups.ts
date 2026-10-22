@@ -51,14 +51,15 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'themes',
     'timers',
     'updates',
+    'videoInputs',
     'zoom',
   ],
-  // The hall's screens.
-  output: ['app', 'engine', 'liveWindow', 'media', 'output'],
+  // The hall's screens (a video input up now, Session 50: whether this computer has it, and how it stands).
+  output: ['app', 'engine', 'liveWindow', 'media', 'output', 'videoInputs'],
   // The audio player.
   audio: ['audio', 'engine', 'media'],
   // The stream's picture.
-  stream: ['app', 'engine', 'liveWindow', 'media', 'output', 'stream'],
+  stream: ['app', 'engine', 'liveWindow', 'media', 'output', 'stream', 'videoInputs'],
   // A node's own window.
   node: ['app', 'guides', 'node'],
   // A deck's PDF made into pictures.

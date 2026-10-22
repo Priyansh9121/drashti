@@ -31,6 +31,7 @@ export interface Slot {
 export type MediaSlot = Slot & { layer: MediaLayer };
 export type InputSlot = Slot & { layer: InputBackground };
 export const isMediaSlot = (slot: Slot): slot is MediaSlot => slot.layer.kind === 'media';
+export const isInputSlot = (slot: Slot): slot is InputSlot => slot.layer.kind === 'input';
 
 export interface Slots {
   /** On screen (or failed, which shows nothing). */
