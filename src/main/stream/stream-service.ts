@@ -1,4 +1,10 @@
-import { type BrowserWindow, dialog, MessageChannelMain, type WebContents } from 'electron';
+import {
+  type BrowserWindow,
+  dialog,
+  MessageChannelMain,
+  type WebContents,
+  type WebFrameMain,
+} from 'electron';
 import { basename } from 'node:path';
 import type { EventChannel, EventContract } from '../../shared/ipc';
 import { IPC } from '../../shared/ipc';
@@ -70,6 +76,11 @@ export interface StreamServiceDeps {
   statusChanged?(status: StreamStatus): void;
   /** The screen groups changed (the stream group was made): Screens shows it. */
   screensChanged(): void;
+  /**
+   * The Program's page became ready, was resized, or closed (Session 48): the window for Zoom captures it
+   * afresh (programFrame()).
+   */
+  programChanged?(): void;
   /** The bundled FFmpeg, or null when it is missing. */
   ffmpegPath(): string | null;
   spawnWorker(): StreamWorker;
@@ -137,6 +148,8 @@ export class StreamService {
   /** When the stream's page last got the encoder's port, and how often since without a picture. */
   private encoderPaired = { at: 0, tries: 0 };
   private readonly watchers = new Map<number, WebContents>();
+  /** What else keeps the Program open, by name (Session 48: the window for Zoom), without the preview's port. */
+  private readonly holders = new Set<string>();
   private inputs: ProgramInputs = NO_INPUTS;
   private layout: StreamLayout;
   private systemBlocked: { camera: boolean; microphone: boolean } = { camera: false, microphone: false };
@@ -418,11 +431,29 @@ export class StreamService {
     );
   }
 
-  /** The Program window is open while the preview is watched, or the stream is live or recording. */
+  /** The Program's page and its size, once it is open and ready (Session 48: the window for Zoom shows it). */
+  programFrame(): { frame: WebFrameMain; width: number; height: number } | null {
+    const program = this.program;
+    if (!pageAlive(program) || !this.programReady) return null;
+    const [width = 0, height = 0] = program.getContentSize();
+    return { frame: program.webContents.mainFrame, width, height };
+  }
+
+  /**
+   * Keep the Program open (or let it go) for something other than the preview (Session 48: the window for
+   * Zoom), as the preview does: whether or not the stream is on air or recording.
+   */
+  hold(who: string, on: boolean): void {
+    if (on) this.holders.add(who);
+    else this.holders.delete(who);
+    this.updateProgram();
+  }
+
+  /** The Program window is open while the preview is watched, something holds it, or the stream is live or recording. */
   private updateProgram(): void {
     // Stopped after crashing too often: only Try again starts it (tryAgainPage).
     if (this.closing || this.pageStopped) return;
-    const wanted = this.watchers.size > 0 || this.inUse();
+    const wanted = this.watchers.size > 0 || this.holders.size > 0 || this.inUse();
     if (wanted && (!this.program || this.program.isDestroyed())) {
       void this.openProgram();
     } else if (!wanted && this.program && !this.program.isDestroyed()) {
@@ -432,6 +463,7 @@ export class StreamService {
       this.programReady = false;
       this.inputs = NO_INPUTS;
       this.changed();
+      this.deps.programChanged?.();
     }
   }
 
@@ -451,11 +483,13 @@ export class StreamService {
       this.pairPreviews();
       this.pairEncoder();
       this.changed();
+      this.deps.programChanged?.();
     });
     win.webContents.on('render-process-gone', (_e, details) => {
       this.programReady = false;
       if (!win.isDestroyed()) win.destroy();
       if (this.program === win) this.program = null;
+      this.deps.programChanged?.();
       if (!this.pageRestarts.allow(this.deps.now())) {
         this.pageStopped = true;
         this.deps.log(
@@ -546,6 +580,7 @@ export class StreamService {
       const [w, h] = program.getContentSize();
       if (w !== context.width || h !== context.height) {
         program.setContentSize(context.width, context.height);
+        this.deps.programChanged?.();
         const [nw, nh] = program.getContentSize();
         if (nw !== context.width || nh !== context.height)
           this.deps.log(

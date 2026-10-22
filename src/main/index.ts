@@ -240,6 +240,7 @@ import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
 import { applyCaptureRules } from './live-window/capture-rules';
+import { ZoomWindow } from './stream/zoom-window';
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
 import { Leftovers, leftoversFile } from './system/leftovers';
@@ -1029,12 +1030,15 @@ function start(): void {
     log: permissionLog,
     // MIDI controllers: the operator window's page only (never SysEx).
     isOperator: (contents) => contents !== null && contents.id === operatorWindow?.webContents.id,
-    // A screen's picture (Session 48): a screen's page that just asked for the window up as the background.
-    mayCapture: (contents) => contents !== null && (liveWindows?.mayCapture(contents.mainFrame) ?? false),
+    // A screen's picture (Session 48): a screen's page that just asked for the window up as the background,
+    // or the window for Zoom (the stream's picture).
+    mayCapture: (contents) =>
+      contents !== null &&
+      ((zoomWindow?.isZoomPage(contents) ?? false) || (liveWindows?.mayCapture(contents.mainFrame) ?? false)),
   });
   // A screen's picture (getDisplayMedia, Session 48): only what the main process decides for that page.
   applyCaptureRules(session.defaultSession, {
-    grant: (frame) => liveWindows?.grantFor(frame) ?? null,
+    grant: (frame) => zoomWindow?.grantFor(frame) ?? liveWindows?.grantFor(frame) ?? null,
     log: permissionLog,
   });
   const audioSession = session.fromPartition(AUDIO_PARTITION);
@@ -1629,8 +1633,9 @@ function start(): void {
       ? null
       : electronScreen.getDisplayMatching(operatorWindow.getBounds()).id;
   let stream: StreamService | null = null;
-  // Show a Window… (Session 48): made with the stream, below.
+  // Show a Window… and the window for Zoom (Session 48): made with the stream, below.
   let liveWindows: LiveWindowService | null = null;
+  let zoomWindow: ZoomWindow | null = null;
   const screens = new ScreensService(screenRepo, manager, listDisplays, operatorDisplayId, looks, {
     displays: () => nodeService?.displays() ?? [],
     screenStatus: () => nodeService?.screenStatus() ?? [],
@@ -2002,6 +2007,9 @@ function start(): void {
       looks.groupsChanged();
       sendToOperator(IPC.screens.changed, screens.snapshot());
     },
+    programChanged: () => {
+      zoomWindow?.programChanged();
+    },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
       else log.info(message);
@@ -2039,6 +2047,29 @@ function start(): void {
   });
   stops.add('shown window', () => {
     shownWindows.close();
+  });
+
+  // ---- the window for Zoom (Session 48) -------------------------------------------
+  const zoom = new ZoomWindow({
+    program: () => streaming.programFrame(),
+    holdProgram: (on) => {
+      streaming.hold('window for Zoom', on);
+    },
+    workAreas: () => {
+      const controls =
+        operatorWindow && !operatorWindow.isDestroyed()
+          ? electronScreen.getDisplayMatching(operatorWindow.getBounds())
+          : electronScreen.getPrimaryDisplay();
+      return { all: electronScreen.getAllDisplays().map((d) => d.workArea), controls: controls.workArea };
+    },
+    placeFile: join(app.getPath('userData'), 'zoom-window.json'),
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  zoomWindow = zoom;
+  stops.add('window for Zoom', () => {
+    zoom.close();
   });
   // A passage fits where the live Look shows it: audience and key and fill groups, and the stream's
   // lower third while it is on air or recording in its Camera layout.
@@ -4220,7 +4251,11 @@ function start(): void {
     return null;
   });
   handle(IPC.liveWindow.status, () => shownWindows.current());
-
+  handle(IPC.zoom.open, (e) => {
+    if (fromOperator(e) && mode === 'pro') zoom.open();
+    return null;
+  });
+  handle(IPC.zoom.program, (e) => (zoom.isZoomPage(e.sender) ? zoom.program() : null));
   // The screens' pages only: an output, the stream's page, and the operator window's pictures of them.
   const screenPage = (e: IpcMainInvokeEvent) =>
     fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined || streaming.isProgram(e.sender);
@@ -4576,7 +4611,10 @@ function start(): void {
           sendToOperator(IPC.setup.open, { at: Date.now() });
         });
     },
-
+    // An operator's: no PIN asked (Session 48).
+    zoomWindow: () => {
+      if (mode === 'pro') zoom.open();
+    },
     backUpLibrary: () => {
       if (mode === 'pro')
         requireAdmin('back up the library', () => {

@@ -2,7 +2,8 @@ import { app, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { sw } from '../switches';
 
-export type RendererPage = 'index' | 'output' | 'audio' | 'gallery' | 'stream' | 'node' | 'pdf' | 'sharpen';
+export type RendererPage =
+  'index' | 'output' | 'audio' | 'gallery' | 'stream' | 'node' | 'pdf' | 'sharpen' | 'zoom';
 
 export const rendererDir = (): string => join(__dirname, '../renderer');
 export const devServerUrl = (): string | undefined =>

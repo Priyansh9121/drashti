@@ -24,6 +24,7 @@ const ENTRIES: Record<BridgePage, string> = {
   pdf: 'pictures/main.ts',
   sharpen: 'sharpen/main.ts',
   gallery: 'gallery/main.tsx',
+  zoom: 'zoom/main.tsx',
 };
 
 const IMPORT =

@@ -8,7 +8,7 @@ import { connectScreens, useScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
-import { Camera, Mic, Settings } from '../ui/icons';
+import { Camera, Mic, ScreenShare, Settings } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
@@ -174,15 +174,26 @@ export function StreamPanel() {
       bodyClassName="space-y-5"
       testId="stream-panel"
       headerActions={
-        <Button
-          icon={Settings}
-          data-testid="open-stream-settings"
-          onClick={() => {
-            useStream.setState({ settingsOpen: true });
-          }}
-        >
-          Stream settings
-        </Button>
+        <>
+          {/* The stream's picture in a window of its own, for Zoom's Share Screen (Session 48). */}
+          <Button
+            icon={ScreenShare}
+            data-testid="open-zoom-window"
+            title="The stream’s picture in a window of its own, for Zoom to share"
+            onClick={() => void window.drashti.zoom.open()}
+          >
+            Window for Zoom…
+          </Button>
+          <Button
+            icon={Settings}
+            data-testid="open-stream-settings"
+            onClick={() => {
+              useStream.setState({ settingsOpen: true });
+            }}
+          >
+            Stream settings
+          </Button>
+        </>
       }
     >
       {error && (
