@@ -39,6 +39,11 @@ import { freeFileName } from './trim';
  * Session 50: what an import finds Drashti's player cannot play (a video or a
  * sound: import/media-store.ts reads each with FFmpeg) is converted by itself,
  * in the same queue, a moment after the import ends (convertImported).
+ *
+ * Session 51: the conversions not finished are kept with the library as they
+ * change, so those waiting or going on when Drashti quits (or stops) wait
+ * again at its next start, and start by themselves once the stream's own
+ * start is known (resumeWaiting), never while it is on air or recording.
  */
 
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
@@ -51,6 +56,12 @@ export { PROBE_MS, readInfo };
  * add (Audio's playlist, a folder playlist's items) points at the file by then, and so is moved to the copy.
  */
 export const AFTER_IMPORT_MS = 2000;
+
+/**
+ * How long after the stream's own start is known the conversions kept from the last run wait before they start
+ * (Session 51): the screens and the stream settle first.
+ */
+export const AFTER_START_MS = 10_000;
 
 /** An import report's lines, as convertImported reads them. */
 export interface ImportedLines {
@@ -85,8 +96,21 @@ export interface ConvertDeps {
   /** A conversion was made or undone: these presentations' slides are read again; the lists reload. */
   libraryChanged(presentations: string[]): void;
   log(level: 'info' | 'warn', message: string): void;
-  /** Tests: shorter time limits than PROBE_MS and workMsFor, and a wait after an import than AFTER_IMPORT_MS. */
-  limits?: { probeMs?: number; workMs?(lengthMs: number | null): number; afterImportMs?: number };
+  /**
+   * Tests: shorter time limits than PROBE_MS and workMsFor, and waits after an import and after the start than
+   * AFTER_IMPORT_MS and AFTER_START_MS.
+   */
+  limits?: {
+    probeMs?: number;
+    workMs?(lengthMs: number | null): number;
+    afterImportMs?: number;
+    afterStartMs?: number;
+  };
+  /**
+   * The conversions not finished, by media item in order, kept with the library (Session 51): what was kept when
+   * Drashti last stopped, and keeping it as it changes.
+   */
+  kept?: { load(): unknown; save(mediaIds: string[]): void };
   /**
    * Each FFmpeg started, and its end (Session 31, ROB-3: ../system/leftovers.ts), so one left running by a
    * crash is stopped at the next start, with the part-file it was writing.
@@ -106,6 +130,8 @@ interface MediaRow {
 }
 
 const idsSchema = z.array(z.string().min(1).max(100)).min(1).max(10_000);
+/** The conversions kept from the last run (Session 51): none when it cannot be read. */
+const keptSchema = z.array(z.string().min(1).max(100)).max(10_000);
 const movedSchema = z.object({
   cues: z.array(z.string()),
   items: z.array(z.string()),
@@ -209,9 +235,16 @@ export class ConvertService {
   /** Files waiting to be made no taller than a height (after the library's own jobs), and the one going. */
   private files: FileJob[] = [];
   private runningFile: RunningFile | null = null;
-  /** Conversions an import found, by job, and when each may start (Session 50). */
+  /**
+   * Conversions an import found, by job, and when each may start (Session 50); those kept from the last run wait
+   * for resumeWaiting (Session 51).
+   */
   private readonly heldUntil = new Map<string, number>();
   private readonly timer: NodeJS.Timeout;
+  /** The conversions not finished as last kept (Session 51), to keep them again only when they change. */
+  private keptNow = '';
+  /** Quitting: what changes from now on is not kept (what was waiting or going on starts again next time). */
+  private closed = false;
 
   /** How long reading what a file holds may take (tests give less). */
   private probeMs(): number {
@@ -231,6 +264,34 @@ export class ConvertService {
       this.watch();
     }, 1000);
     this.timer.unref();
+    // Those not finished when Drashti last stopped (Session 51): waiting again, held until resumeWaiting.
+    const kept = keptSchema.safeParse(deps.kept?.load());
+    if (kept.success && kept.data.length > 0) {
+      this.keptNow = kept.data.join('\n');
+      this.enqueue(kept.data, Number.POSITIVE_INFINITY);
+    }
+  }
+
+  /**
+   * The conversions waiting when Drashti last stopped start again by themselves, a moment from now (Session 51):
+   * called once the stream's own start is known (index.ts: once the operator window has opened, after the stream
+   * may have gone on air again by itself). Never while it is on air or recording.
+   */
+  resumeWaiting(): void {
+    const at = Date.now() + (this.deps.limits?.afterStartMs ?? AFTER_START_MS);
+    let resumed = 0;
+    for (const [id, until] of this.heldUntil)
+      if (until === Number.POSITIVE_INFINITY) {
+        this.heldUntil.set(id, at);
+        resumed++;
+      }
+    if (resumed > 0)
+      this.deps.log(
+        'info',
+        resumed === 1
+          ? '1 conversion waiting when Drashti last stopped starts again by itself'
+          : `${String(resumed)} conversions waiting when Drashti last stopped start again by themselves`,
+      );
   }
 
   list(): ConversionJob[] {
@@ -241,7 +302,20 @@ export class ConvertService {
     // Finished and cancelled jobs are kept a while for the window to see, then let go.
     if (this.jobs.length > 200)
       this.jobs = this.jobs.filter((j) => j.state === 'waiting' || j.state === 'converting');
+    this.keep();
     this.deps.changed(this.list());
+  }
+
+  /** Keep the conversions not finished, in order, for the next start (Session 51), when they have changed. */
+  private keep(): void {
+    if (this.closed) return;
+    const ids = this.jobs
+      .filter((j) => j.state === 'waiting' || j.state === 'converting')
+      .map((j) => j.mediaId);
+    const now = ids.join('\n');
+    if (now === this.keptNow) return;
+    this.keptNow = now;
+    this.deps.kept?.save(ids);
   }
 
   private row(id: string): MediaRow | null {
@@ -253,7 +327,7 @@ export class ConvertService {
 
   /** Convert these media items (each once, in turn). */
   convert(rawIds: unknown): ConvertResult {
-    return this.enqueue(rawIds, false).result;
+    return this.enqueue(rawIds, null).result;
   }
 
   /**
@@ -273,7 +347,7 @@ export class ConvertService {
       return row !== null && row.kind !== 'image';
     });
     if (wanted.length === 0) return 0;
-    const { added } = this.enqueue(wanted, true);
+    const { added } = this.enqueue(wanted, Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS));
     if (added > 0)
       this.deps.log(
         'info',
@@ -282,8 +356,12 @@ export class ConvertService {
     return added;
   }
 
-  /** Add jobs for these media items (`byItself`: an import found them); how many were added. */
-  private enqueue(rawIds: unknown, byItself: boolean): { result: ConvertResult; added: number } {
+  /**
+   * Add jobs for these media items; how many were added. `heldUntil`: Drashti found them by itself (an import, or
+   * the last run's, Session 51), and each waits until then; null: the operator asked.
+   */
+  private enqueue(rawIds: unknown, heldUntil: number | null): { result: ConvertResult; added: number } {
+    const byItself = heldUntil !== null;
     const ids = idsSchema.safeParse(rawIds);
     if (!ids.success) return { result: { ok: false, message: 'Choose the files to convert.' }, added: 0 };
     if (!this.deps.ffmpegPath())
@@ -339,8 +417,7 @@ export class ConvertService {
         ...(byItself ? { byItself: true } : {}),
       };
       this.jobs.push(job);
-      if (byItself)
-        this.heldUntil.set(job.id, Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS));
+      if (heldUntil !== null) this.heldUntil.set(job.id, heldUntil);
       added++;
     }
     // Asked again for files being converted (Session 50: an import may have started them): they are.
@@ -929,8 +1006,12 @@ export class ConvertService {
     done({ ok: true, copy: dest });
   }
 
-  /** Stop (Drashti is quitting): a conversion going is let go of, its part-file removed. */
+  /**
+   * Stop (Drashti is quitting): a conversion going is let go of, its part-file removed. What was waiting or going
+   * on stays kept, to start again at the next start (Session 51).
+   */
   close(): void {
+    this.closed = true;
     clearInterval(this.timer);
     for (const f of this.files.splice(0)) f.resolve({ ok: false, message: 'Stopped: Drashti is quitting.' });
     const file = this.runningFile;

@@ -2755,6 +2755,14 @@ function start(): void {
       if (level === 'warn') log.warn(message);
       else log.info(message);
     },
+    // The conversions not finished, kept with the library's settings (Session 51): those waiting or going on when
+    // Drashti quits or stops start again by themselves at its next start (resumeWaiting, below).
+    kept: {
+      load: () => settings.get('conversionsWaiting'),
+      save: (mediaIds) => {
+        laterSetting('conversionsWaiting', mediaIds);
+      },
+    },
   });
   stops.add('conversions', () => {
     conversions.close();
@@ -4804,6 +4812,13 @@ function start(): void {
   };
   operatorWindow.webContents.once('did-finish-load', startAudioPlayer);
   operatorWindow.webContents.once('did-finish-load', resumeStream);
+  // Conversions waiting when Drashti last stopped start again by themselves (Session 51), now that the stream's own
+  // start is known (just above, it may go on air or record again by itself): never while it is. A self-test's run
+  // leaves them waiting for the next start.
+  if (sw('DRASHTI_SELFTEST') === undefined)
+    operatorWindow.webContents.once('did-finish-load', () => {
+      conversions.resumeWaiting();
+    });
   // Whether this computer plays HEVC video (Session 51): asked of the window as the media list asks it, unless a
   // test gave the answer; again after a reload while it could not be told.
   if (playsHevc === null) {
