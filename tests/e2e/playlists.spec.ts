@@ -225,7 +225,8 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await expect(tree.getByTestId('playlist-node')).toHaveCount(0);
   await openLibrary(win);
   await win.getByTestId('library-tab-presentations').click();
-  // The two sample presentations a new library starts with, and the two imported.
+  // The tests' two placeholder presentations (launchApp seeds them; an operator's new library has none since
+  // Session 50), and the two imported.
   await expect(presentations.getByTestId('presentation-row')).toHaveCount(4);
   await undo.getByRole('button', { name: /Undo/ }).click();
   await expect(tree.getByTestId('playlist-node')).toHaveCount(3);

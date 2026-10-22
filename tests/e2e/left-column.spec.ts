@@ -107,18 +107,18 @@ async function smallestWindow(
 }
 
 test('nothing in the left column draws outside it or over the layer bar, with an empty library and the Undo notice', async () => {
-  const { app } = await launchApp();
+  // An empty library, as a new one is (Session 50: without the tests' placeholder presentations).
+  const { app } = await launchApp({ DRASHTI_TEST_SEED_PLACEHOLDERS: '' });
   const win = await operatorPage(app);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
 
-  // An empty library: a new one holds two sample presentations.
-  await win.evaluate(async () => {
+  const presentations = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    const all = await d.library.listPresentations();
-    await d.library.removePresentations(all.map((p) => p.id));
     await d.playlists.create('New', null, false);
+    return (await d.library.listPresentations()).length;
   });
+  expect(presentations).toBe(0);
   await win.reload();
   await operatorReady(win);
 
