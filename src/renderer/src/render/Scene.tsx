@@ -32,8 +32,16 @@ import { ScreenPictures } from './picture-looks';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
 import { useLiveHere } from './live-here';
-import { type PipPicture, pipPlaces, pipShownFor, pipShowsHere, type PipSlot } from './pip';
-import { PipBox, PipSourcePicture, usePipRun } from './PipLayerView';
+import {
+  pipMainMove,
+  pipMainPlaces,
+  type PipPicture,
+  type PipRun,
+  pipShownFor,
+  pipShowsHere,
+  type PipSlot,
+} from './pip';
+import { PipBox, PipSourcePicture, usePipMainMove, usePipRun } from './PipLayerView';
 import { MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
 
 /** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
@@ -368,15 +376,32 @@ function BackgroundPicture({
 /**
  * One of the main picture's pictures (Session 50): always in its own place, so a background or a slide never
  * loads again as the box comes and goes; drawn, or ready unseen while a swap goes out (render/pip.ts pipPlaces).
+ * Session 51: in a swap, the one that changes there moves with the box, never a cut at the middle (render/pip.ts
+ * pipMainMove), whole on the screen's black (a key and fill pair's on nothing: black there would be keyed).
  */
-function MainSlot({ slot, children }: { slot: PipSlot | undefined; children: ReactNode }) {
+function MainSlot({
+  slot,
+  swap,
+  children,
+}: {
+  slot: PipSlot | undefined;
+  /** The box up's run (null when this screen draws none) and the screen it moves over. */
+  swap: { run: PipRun | null; canvas: Size; keyed: boolean };
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const moving = slot !== undefined && swap.run !== null && pipMainMove(swap.run)?.picture === slot.picture;
+  usePipMainMove(ref, moving ? swap.run : null, swap.canvas);
   if (!slot) return null;
   return (
     <div
+      ref={ref}
       data-pip-main={slot.picture}
       data-pip-ready={slot.shown ? undefined : ''}
+      data-pip-moving={moving ? '' : undefined}
       style={{ ...FULL, visibility: slot.shown ? undefined : 'hidden' }}
     >
+      {moving && !swap.keyed && <div data-pip-base="" style={{ ...FULL, background: '#000000' }} />}
       {children}
     </div>
   );
@@ -456,12 +481,11 @@ export const Scene = memo(function Scene({
   );
   // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
   const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;
-  // The main picture as the box up has it; while it swaps, as drawn (they change places at the swap's middle).
-  const main = pipPlaces(
-    up?.source.kind ?? null,
-    up !== null && run.layer === up ? run.swapped : (up?.swapped ?? false),
-    up?.swapped ?? false,
-  ).main;
+  // The main picture as the box up has it; while it swaps, as drawn (they change places at the swap's middle),
+  // the picture that changes there moving with the box (Session 51, render/pip.ts pipMainPlaces).
+  const upRun = up !== null && run.layer === up ? run : null;
+  const main = pipMainPlaces(up?.source.kind ?? null, upRun, up?.swapped ?? false);
+  const swap = { run: upRun, canvas, keyed };
   const slotOf = (picture: PipPicture) => main.find((s) => s.picture === picture);
   /** One of the screen's pictures in the box, at the box's size: the slide there as designed, made small. */
   const inBox = (picture: PipPicture, size: Size): ReactNode => {
@@ -503,15 +527,15 @@ export const Scene = memo(function Scene({
           {!off && (
             <>
               <div style={FULL}>
-                <MainSlot slot={slotOf('background')}>
+                <MainSlot slot={slotOf('background')} swap={swap}>
                   <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
                 </MainSlot>
                 {/* The box's own picture in the background's place, once swapped (Session 50). */}
-                <MainSlot slot={slotOf('source')}>
+                <MainSlot slot={slotOf('source')} swap={swap}>
                   {up && <PipSourcePicture source={up.source} shownAt={up.shownAt} size={canvas} />}
                 </MainSlot>
                 {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
-                <MainSlot slot={slotOf('slide')}>
+                <MainSlot slot={slotOf('slide')} swap={swap}>
                   <SlideLayerView
                     layer={shown('slide') ? layers.slide : null}
                     canvas={canvas}
