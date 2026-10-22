@@ -10,7 +10,7 @@ import { dispatch } from './actions';
 /*
  * The Masks layer: a mask from the library up on the audience screens (each
  * group's Look can leave the layer out), until it is taken down here, with
- * F7 or Clear all. Pro Mode only. A group's own mask (its screens' shape) is
+ * F8 or Clear all. Pro Mode only. A group's own mask (its screens' shape) is
  * set in Screens, in each Look, and is never cleared.
  */
 /** `nested`: inside a panel group (Session 26a: Audio, More tools). */

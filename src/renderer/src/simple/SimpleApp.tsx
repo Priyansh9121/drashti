@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
 import type { OperatorAction } from '../../../shared/keymap';
-import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
+import { keyText, shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import { useKeymapNow } from '../operator/single-keys-store';
 import { useEngine } from '../engine/engine-store';
 import { mediaKindIcon, mediaKindLabel } from '../library/MediaList';
@@ -446,10 +446,14 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       setMidiHandler(null);
     };
   }, [run]);
-  // Its key line names only keys that act: not B, . or L while an admin has turned them off (Session 37).
+  // Its key line names only keys that act: not B, . or L while an admin has turned them off (Session 37). The
+  // Logo keeps F12 then, as the operators press it (Session 50).
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
   const covering = key('toggleBlackout') !== '';
+  const logoKeys = keymap.find((b) => b.action === 'toggleLogo')?.keys.map((k) => keyText(k, platform)) ?? [];
+  // Those left with no key: their buttons do it.
+  const buttonsOnly = [...(covering ? [] : ['Black-out']), ...(logoKeys.length > 0 ? [] : ['Logo'])];
   return (
     <div className="flex h-full min-h-0 flex-col bg-ink" data-testid="simple-mode">
       <header
@@ -505,12 +509,24 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·{' '}
             {covering && (
               <>
-                Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> · Logo{' '}
-                <Kbd>{key('toggleLogo')}</Kbd> ·{' '}
+                Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> ·{' '}
+              </>
+            )}
+            {logoKeys.length > 0 && (
+              <>
+                Logo{' '}
+                {logoKeys.map((k, i) => (
+                  <Fragment key={k}>
+                    {i > 0 && ' or '}
+                    <Kbd>{k}</Kbd>
+                  </Fragment>
+                ))}{' '}
+                ·{' '}
               </>
             )}
             Clear all <Kbd>{key('clearAll')}</Kbd> · Put it back <Kbd>{key('undo')}</Kbd>
-            {!covering && ' · Black-out and Logo: their buttons'}
+            {buttonsOnly.length > 0 &&
+              ` · ${buttonsOnly.join(' and ')}: ${buttonsOnly.length > 1 ? 'their buttons' : 'its button'}`}
           </p>
         </main>
       </div>

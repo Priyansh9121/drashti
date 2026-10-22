@@ -61,7 +61,8 @@ export function PracticeShow({ platform, run }: { platform: string; run: (action
 
 /** The keys a show runs on, to try here. */
 function TryTheKeys({ platform }: { platform: string }) {
-  // Only keys that act: Black-out and the logo have none while an admin has turned B, . and L off (Session 37).
+  // Only keys that act: Black-out has none while an admin has turned B, . and L off (Session 37); the
+  // logo keeps F12, as the operators press it (Session 50).
   const keymap = useKeymapNow();
   const keys: { what: string; key: string }[] = [
     { what: 'Next slide', key: shortcutText('next', platform, keymap) },
