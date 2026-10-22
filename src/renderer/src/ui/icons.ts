@@ -26,6 +26,8 @@ export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'luci
 export { LogOut } from 'lucide-react';
 // Roles and PINs, scheduled backups, updates, music and markers (Session 14).
 export { Bookmark, Download, LockOpen, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
+// Last 10 s, towards the end (Session 50; Back 15 s and Forward 15 s turn round, RotateCcw and RotateCw).
+export { ArrowRightToLine } from 'lucide-react';
 // Import from a Link (Session 25b): a link, Dropbox (a cloud) and YouTube (a played video).
 export { Cloud, Link2, MonitorPlay } from 'lucide-react';
 // Session 26a: the open playlist's Add files…, Audio, More tools and Repeat Slides.
