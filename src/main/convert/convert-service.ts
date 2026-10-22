@@ -113,6 +113,8 @@ const movedSchema = z.object({
   elements: z.array(z.string()),
   props: z.array(z.string()),
   themes: z.array(z.string()),
+  // Audio playlists' tracks (Session 14), kept so Undo moves them back too.
+  tracks: z.array(z.string()).optional(),
 });
 
 const KIND_OF: Record<ConvertTarget, MediaRow['kind']> = {
@@ -309,11 +311,17 @@ export class ConvertService {
         going++;
         continue;
       }
-      // Converted already (and not undone): everything uses the copy.
+      // Converted already (and not undone): everything uses the copy. What uses the original since (an import made
+      // it again: a folder playlist looking again, the same file dropped again, Session 50) is moved to the copy too.
       const done = this.deps.db
-        .prepare('SELECT 1 FROM media_conversions WHERE original_id = ? AND undone_at IS NULL')
-        .get(id);
-      if (done) continue;
+        .prepare(
+          'SELECT id, converted_id, moved FROM media_conversions WHERE original_id = ? AND undone_at IS NULL',
+        )
+        .get(id) as { id: string; converted_id: string; moved: string } | undefined;
+      if (done) {
+        this.followCopy(id, done);
+        continue;
+      }
       const job: ConversionJob = {
         id: randomUUID(),
         mediaId: id,
@@ -361,6 +369,35 @@ export class ConvertService {
     }
     this.changed();
     return { ok: true, jobs: this.list() };
+  }
+
+  /**
+   * What uses an original converted already is moved to its copy (Session 50, section 9's review), and added to what
+   * the conversion's Undo moves back.
+   */
+  private followCopy(originalId: string, done: { id: string; converted_id: string; moved: string }): void {
+    const db = this.deps.db;
+    const more = moveMedia(db, originalId, done.converted_id);
+    const lists = Object.values(more) as (string[] | undefined)[];
+    if (lists.every((ids) => !ids || ids.length === 0)) return;
+    let was: Moved;
+    try {
+      was = movedSchema.parse(JSON.parse(done.moved));
+    } catch {
+      was = { cues: [], items: [], kirtans: [], elements: [], props: [], themes: [] };
+    }
+    const merged: Moved = {
+      cues: [...was.cues, ...more.cues],
+      items: [...was.items, ...more.items],
+      kirtans: [...was.kirtans, ...more.kirtans],
+      elements: [...was.elements, ...more.elements],
+      props: [...was.props, ...more.props],
+      themes: [...was.themes, ...more.themes],
+      tracks: [...(was.tracks ?? []), ...(more.tracks ?? [])],
+    };
+    db.prepare('UPDATE media_conversions SET moved = ? WHERE id = ?').run(JSON.stringify(merged), done.id);
+    this.deps.log('info', 'A file converted already was used again: what uses it now uses its copy');
+    this.deps.libraryChanged(presentationsMoved(db, more));
   }
 
   /** Undo a conversion: everything that was moved to the copy goes back to the original. */

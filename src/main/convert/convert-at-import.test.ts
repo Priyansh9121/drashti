@@ -167,6 +167,49 @@ function make(args: string[]): void {
 const PICTURE = ['-f', 'lavfi', '-i', 'testsrc2=s=64x48:r=10'];
 const TONE = ['-f', 'lavfi', '-i', 'sine=r=48000:d=1'];
 
+describe('an original converted already, imported again (Session 50, section 9 review)', () => {
+  // A folder playlist looking again, or the same file dropped again, makes a new item using the original: it is
+  // moved to the copy too, and kept with the conversion so its Undo moves it back.
+  it('moves what uses it since to its copy, kept for Undo', () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-at-import-'));
+    const mediaDir = join(dir, 'Media');
+    mkdirSync(mediaDir, { recursive: true });
+    const library = openDatabase(join(dir, 'drashti.sqlite'));
+    db = library;
+    library.exec(`
+      INSERT INTO media (id, kind, name, path, playable) VALUES ('m-mkv', 'video', 'Placeholder katha.mkv', 'in/a.mkv', 0);
+      INSERT INTO media (id, kind, name, path, playable, converted_from)
+        VALUES ('m-copy', 'video', 'Placeholder katha.mp4', 'in/a.mp4', 1, 'm-mkv');
+      INSERT INTO playlists (id, name) VALUES ('pl', 'Placeholder');
+      INSERT INTO playlist_items (id, playlist_id, position, kind, media_id) VALUES ('i-new', 'pl', 0, 'media', 'm-mkv');
+    `);
+    const was = { cues: [], items: ['i-old'], kirtans: [], elements: [], props: [], themes: [], tracks: [] };
+    library
+      .prepare(
+        "INSERT INTO media_conversions (id, original_id, converted_id, moved) VALUES ('cv1', 'm-mkv', 'm-copy', ?)",
+      )
+      .run(JSON.stringify(was));
+    service = new ConvertService({
+      db: library,
+      mediaDir,
+      ffmpegPath: () => join(dir, 'no-ffmpeg-here'),
+      busy: () => null,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: () => undefined,
+      libraryChanged: () => undefined,
+      log: () => undefined,
+    });
+    expect(service.convertImported({ items: [line('converting-media', 'm-mkv')] })).toBe(0);
+    expect(library.prepare("SELECT media_id FROM playlist_items WHERE id = 'i-new'").get()).toEqual({
+      media_id: 'm-copy',
+    });
+    const moved = library.prepare("SELECT moved FROM media_conversions WHERE id = 'cv1'").get() as {
+      moved: string;
+    };
+    expect((JSON.parse(moved.moved) as { items: string[] }).items).toEqual(['i-old', 'i-new']);
+  });
+});
+
 describe.skipIf(!ffmpegHere(ffmpeg))('converting at import, with FFmpeg', () => {
   it('converts an MKV with AC-3 sound, an AVI, a WMA and an AIFF by themselves; a FLAC and an MP4 that play never', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-convert-at-import-'));
