@@ -7,6 +7,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import { z } from 'zod';
 import type { ConversionJob, ConvertResult } from '../../shared/convert';
 import { isHevc } from '../../shared/convert';
+import type { ImportIssue } from '../../shared/import';
 import type { Db } from '../db/database';
 import { CONVERTING_DIR, MediaStore, sha256File } from '../import/media-store';
 import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
@@ -34,12 +35,27 @@ import { freeFileName } from './trim';
  * that used the original is moved to it (src/main/convert/relink.ts), kept
  * so Undo can move it back. What is on the screens is left alone: it keeps
  * playing the original until it is taken down.
+ *
+ * Session 50: what an import finds Drashti's player cannot play (a video or a
+ * sound: import/media-store.ts reads each with FFmpeg) is converted by itself,
+ * in the same queue, a moment after the import ends (convertImported).
  */
 
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
 
 // Reading what a file holds is its own module (Session 50: the import worker reads every video and sound).
 export { PROBE_MS, readInfo };
+
+/**
+ * How long a conversion an import found waits before it starts (Session 50): what the import's own next steps
+ * add (Audio's playlist, a folder playlist's items) points at the file by then, and so is moved to the copy.
+ */
+export const AFTER_IMPORT_MS = 2000;
+
+/** An import report's lines, as convertImported reads them. */
+export interface ImportedLines {
+  items: readonly { issues: readonly ImportIssue[] }[];
+}
 
 /**
  * The longest a conversion or a Save as MP4 may take, each time it is tried: four times the file's length,
@@ -69,8 +85,8 @@ export interface ConvertDeps {
   /** A conversion was made or undone: these presentations' slides are read again; the lists reload. */
   libraryChanged(presentations: string[]): void;
   log(level: 'info' | 'warn', message: string): void;
-  /** Tests: shorter time limits than PROBE_MS and workMsFor. */
-  limits?: { probeMs?: number; workMs?(lengthMs: number | null): number };
+  /** Tests: shorter time limits than PROBE_MS and workMsFor, and a wait after an import than AFTER_IMPORT_MS. */
+  limits?: { probeMs?: number; workMs?(lengthMs: number | null): number; afterImportMs?: number };
   /**
    * Each FFmpeg started, and its end (Session 31, ROB-3: ../system/leftovers.ts), so one left running by a
    * crash is stopped at the next start, with the part-file it was writing.
@@ -191,6 +207,8 @@ export class ConvertService {
   /** Files waiting to be made no taller than a height (after the library's own jobs), and the one going. */
   private files: FileJob[] = [];
   private runningFile: RunningFile | null = null;
+  /** Conversions an import found, by job, and when each may start (Session 50). */
+  private readonly heldUntil = new Map<string, number>();
   private readonly timer: NodeJS.Timeout;
 
   /** How long reading what a file holds may take (tests give less). */
@@ -233,14 +251,49 @@ export class ConvertService {
 
   /** Convert these media items (each once, in turn). */
   convert(rawIds: unknown): ConvertResult {
+    return this.enqueue(rawIds, false).result;
+  }
+
+  /**
+   * Convert by itself what an import found Drashti's player cannot play (Session 50): the report's lines that
+   * say so ('converting-media'), videos and sounds only (a picture is converted when someone asks). Each starts
+   * a moment after the import (AFTER_IMPORT_MS), one at a time, never while the stream is on air or recording.
+   * How many were added.
+   */
+  convertImported(report: ImportedLines | null): number {
+    const ids = new Set<string>();
+    for (const item of report?.items ?? [])
+      for (const issue of item.issues)
+        if (issue.code === 'converting-media' && issue.fix?.kind === 'convert-media')
+          ids.add(issue.fix.mediaId);
+    const wanted = [...ids].filter((id) => {
+      const row = this.row(id);
+      return row !== null && row.kind !== 'image';
+    });
+    if (wanted.length === 0) return 0;
+    const { added } = this.enqueue(wanted, true);
+    if (added > 0)
+      this.deps.log(
+        'info',
+        `An import found ${String(added)} file${added === 1 ? '' : 's'} Drashti cannot play: converted by itself`,
+      );
+    return added;
+  }
+
+  /** Add jobs for these media items (`byItself`: an import found them); how many were added. */
+  private enqueue(rawIds: unknown, byItself: boolean): { result: ConvertResult; added: number } {
     const ids = idsSchema.safeParse(rawIds);
-    if (!ids.success) return { ok: false, message: 'Choose the files to convert.' };
+    if (!ids.success) return { result: { ok: false, message: 'Choose the files to convert.' }, added: 0 };
     if (!this.deps.ffmpegPath())
       return {
-        ok: false,
-        message: 'Drashti’s copy of FFmpeg is missing, so it cannot convert. Install Drashti again.',
+        result: {
+          ok: false,
+          message: 'Drashti’s copy of FFmpeg is missing, so it cannot convert. Install Drashti again.',
+        },
+        added: 0,
       };
     let added = 0;
+    let going = 0;
     for (const id of new Set(ids.data)) {
       const row = this.row(id);
       if (!row) continue;
@@ -252,13 +305,16 @@ export class ConvertService {
       const pending = this.jobs.some(
         (j) => j.mediaId === id && (j.state === 'waiting' || j.state === 'converting'),
       );
-      if (pending) continue;
+      if (pending) {
+        going++;
+        continue;
+      }
       // Converted already (and not undone): everything uses the copy.
       const done = this.deps.db
         .prepare('SELECT 1 FROM media_conversions WHERE original_id = ? AND undone_at IS NULL')
         .get(id);
       if (done) continue;
-      this.jobs.push({
+      const job: ConversionJob = {
         id: randomUUID(),
         mediaId: id,
         name: row.name,
@@ -269,17 +325,26 @@ export class ConvertService {
         convertedId: null,
         convertedName: null,
         conversionId: null,
-      });
+      };
+      this.jobs.push(job);
+      if (byItself)
+        this.heldUntil.set(job.id, Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS));
       added++;
     }
-    if (added === 0)
+    // Asked again for files being converted (Session 50: an import may have started them): they are.
+    if (added === 0 && going === 0)
       return {
-        ok: false,
-        message: 'Those files play as they are, or are converted already, or being converted.',
+        result: {
+          ok: false,
+          message: 'Those files play as they are, or are converted already, or being converted.',
+        },
+        added,
       };
-    this.changed();
-    this.watch();
-    return { ok: true, jobs: this.list() };
+    if (added > 0) {
+      this.changed();
+      this.watch();
+    }
+    return { result: { ok: true, jobs: this.list() }, added };
   }
 
   /** Cancel one job (or, with null, every one not finished). */
@@ -292,6 +357,7 @@ export class ConvertService {
         this.running.stop = 'cancel';
         this.running.child?.kill();
       } else job.state = 'cancelled';
+      this.heldUntil.delete(job.id);
     }
     this.changed();
     return { ok: true, jobs: this.list() };
@@ -363,7 +429,12 @@ export class ConvertService {
       }
       return;
     }
-    void this.run(next);
+    // One an import found waits its moment after the import (Session 50); the timer looks again.
+    const now = Date.now();
+    const ready = this.jobs.find((j) => j.state === 'waiting' && (this.heldUntil.get(j.id) ?? 0) <= now);
+    if (!ready) return;
+    this.heldUntil.delete(ready.id);
+    void this.run(ready);
   }
 
   /** Convert one file; false when it failed. */
