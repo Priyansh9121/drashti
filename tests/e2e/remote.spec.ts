@@ -54,7 +54,8 @@ async function where(win: Page) {
 }
 
 test('the remote’s waits are said as a status, and its empty places say where they are filled (Sessions 31–36)', async () => {
-  const { app } = await launchApp(NETWORK_ENV);
+  // A new library as a person's starts (Session 50): without the tests' placeholder presentations either.
+  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_TEST_SEED_PLACEHOLDERS: '' });
   const win = await operatorPage(app);
   await operatorReady(win);
   const { base } = await networkOn(win);
@@ -84,7 +85,7 @@ test('the remote’s waits are said as a status, and its empty places say where 
     await p.getByTestId('remote-tab-more').click();
     await expect(p.getByRole('status').filter({ hasText: 'Loading the messages…' })).toBeVisible();
     release();
-    // A new library has no messages and no playlists: each place says where they are made.
+    // A new library has no messages, no playlists and no presentations: each place says where they are made.
     await expect(
       p.getByText('There are no messages yet: they are made in Drashti on the computer'),
     ).toBeVisible();
@@ -93,6 +94,12 @@ test('the remote’s waits are said as a status, and its empty places say where 
       p.getByText('There are no playlists yet: they are made in Drashti on the computer, in Pro Mode.'),
     ).toBeVisible();
     await expectNoSeriousA11yIssues(p, 'the remote with no playlists');
+    await p.getByTestId('remote-tab-library').click();
+    await expect(
+      p.getByText(
+        'The library is empty: presentations are imported in Drashti on the computer, in Pro Mode.',
+      ),
+    ).toBeVisible();
   } finally {
     await phone.close();
   }
