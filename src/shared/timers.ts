@@ -158,13 +158,14 @@ export const inLastMinute = (t: TimerState, now: number): boolean =>
   countsDown(t) && timerValue(t, now) <= 60_000;
 
 /**
- * When a running countdown reaches zero (the engine's clock), or null: one stopped or paused, or a timer of
- * another kind. A countdown to a time of day reaches it at that time today.
+ * When a countdown reaches zero (the engine's clock), or null: a countdown stopped or paused, or a timer of
+ * another kind. A countdown to a time of day reaches it at that time today, started or not: it counts by the
+ * clock, as its digits do (Session 50, section 7's review).
  */
 export function zeroAt(t: TimerState, now: number): number | null {
+  if (t.kind === 'countdown_to_time') return t.targetTime === null ? null : todayAt(t.targetTime, now);
   if (t.startedAt === null) return null;
   if (t.kind === 'countdown') return t.startedAt + t.durationMs - t.elapsedMs;
-  if (t.kind === 'countdown_to_time') return t.targetTime === null ? null : todayAt(t.targetTime, now);
   return null;
 }
 

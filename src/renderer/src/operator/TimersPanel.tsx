@@ -249,7 +249,8 @@ export function TimersPanel() {
       </ul>
       {timers.length === 0 && editing !== 'new' && (
         <EmptyState icon={Timer} title="No timers yet" compact>
-          A countdown can show on the screens, for example “Sabha starts in 5:00”.
+          A countdown can go up on the screens on its own, or in a message, for example “Sabha starts in
+          5:00”.
         </EmptyState>
       )}
     </Panel>
