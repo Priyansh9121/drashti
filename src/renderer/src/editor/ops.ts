@@ -9,6 +9,7 @@ import type {
   TextElement,
   TextRun,
   TextShadow,
+  TimerElement,
   VerticalAlign,
 } from '../../../shared/model';
 import type { EditDoc, EditSlide, SlideLook } from '../../../shared/slide-edit';
@@ -16,6 +17,12 @@ import { newGroupColor } from '../../../shared/group-colors';
 import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
+import {
+  DRASHTI_TIMER_LOOK,
+  timerElement,
+  timerLayoutElements,
+  type TimerLayout,
+} from '../../../shared/timer-slides';
 
 /*
  * What the slide editor does to its document, as pure functions: each
@@ -255,6 +262,27 @@ export function newMedia(
   };
 }
 
+/**
+ * A new Timer (Session 50) showing a timer: large (a fifth of the slide's height), in the middle, in the theme's
+ * words (their font, weight, colour, shadow and outline).
+ */
+export function newTimerElement(
+  timerId: string,
+  look: SlideLook | null,
+  size: { width: number; height: number },
+): TimerElement {
+  const width = Math.round(size.width * 0.6);
+  const height = Math.round(size.height * 0.3);
+  return timerElement(
+    newId(),
+    timerId,
+    { x: Math.round((size.width - width) / 2), y: Math.round((size.height - height) / 2), width, height },
+    look?.style ?? DRASHTI_TIMER_LOOK,
+    Math.round(size.height * 0.2),
+    'middle',
+  );
+}
+
 // ---- text styles for a whole box --------------------------------------------------------
 
 /** A change to how text looks: a value sets it, undefined goes back to the box's (or default). */
@@ -357,6 +385,23 @@ export function newSlide(look: SlideLook | null): EditSlide {
     macroId: null,
     elements: [],
     cues: [],
+  };
+}
+
+/**
+ * New Timer Slide… (Session 50): a slide in the presentation's theme (its colour, darkening and words) with one
+ * of the two ready layouts, Timer only or Timer with words (`words`, else "Starting in").
+ */
+export function newTimerSlide(
+  layout: TimerLayout,
+  timerId: string,
+  look: SlideLook | null,
+  size: { width: number; height: number },
+  words?: string,
+): EditSlide {
+  return {
+    ...newSlide(look),
+    elements: timerLayoutElements(layout, timerId, look?.style ?? DRASHTI_TIMER_LOOK, size, newId, words),
   };
 }
 

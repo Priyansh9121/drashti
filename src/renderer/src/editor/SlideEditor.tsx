@@ -27,6 +27,7 @@ import {
   Redo2,
   Shapes,
   Square,
+  Timer,
   Trash2,
   Type,
   Undo2,
@@ -66,11 +67,14 @@ import {
   newShape,
   newSlide,
   newTextBox,
+  newTimerElement,
   placeOf,
   placeSlide,
   removeSlide,
 } from './ops';
 import { finishTextEditing } from './TextBoxEditor';
+import { NewTimerSlideDialog } from './NewTimerSlide';
+import { TIMER_KIND_NAMES } from '../../../shared/timers';
 
 /*
  * The slide editor (PLAN.md 5.2, Session 7): it covers the operator window,
@@ -116,6 +120,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const unreadable = useEditor((s) => s.unreadable);
   const note = useEditor((s) => s.note);
   const [shapeMenu, setShapeMenu] = useState<MenuPlace | null>(null);
+  // A Timer's menu (Session 50): which timer it shows.
+  const [timerMenu, setTimerMenu] = useState<MenuPlace | null>(null);
+  const timers = useEngine((e) => e.state?.timers);
   const [picking, setPicking] = useState(false);
   const mod = platform === 'darwin' ? '⌘' : 'Ctrl+';
 
@@ -173,6 +180,14 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       noteMade(box.id);
       commit(addElement(s.doc, slide.id, box), { select: [box.id] });
       startEditing(box.id);
+    });
+  };
+  const addTimer = (timerId: string) => {
+    add(() => {
+      const s = useEditor.getState();
+      if (!s.doc || !slide) return;
+      const el = newTimerElement(timerId, s.look, s.doc);
+      commit(addElement(s.doc, slide.id, el), { select: [el.id] });
     });
   };
   const addShape = (choice: ShapeChoice) => {
@@ -234,6 +249,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
         >
           Picture or video
+        </Button>
+        <Button
+          size="sm"
+          icon={Timer}
+          disabled={!slide}
+          data-testid="add-timer"
+          aria-haspopup="menu"
+          onClick={(e) => {
+            finishTextEditing();
+            const r = e.currentTarget.getBoundingClientRect();
+            setTimerMenu({ x: r.left, y: r.bottom + 4 });
+          }}
+        >
+          Timer
         </Button>
         <span className="mx-1 h-6 w-px bg-line" aria-hidden="true" />
         <Button
@@ -313,6 +342,26 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }))}
         />
       )}
+      {timerMenu && (
+        <Menu
+          at={timerMenu}
+          label="Add a timer"
+          onClose={() => {
+            setTimerMenu(null);
+          }}
+          entries={
+            timers && timers.length > 0
+              ? timers.map((t) => ({
+                  label: `${t.name} (${TIMER_KIND_NAMES[t.kind]})`,
+                  icon: Timer,
+                  onSelect: () => {
+                    addTimer(t.id);
+                  },
+                }))
+              : [{ label: 'No timers yet: make one in Timers', disabled: true, onSelect: () => undefined }]
+          }
+        />
+      )}
       {picking && (
         <MediaPicker
           title="Put a picture or video on the slide"
@@ -382,6 +431,9 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
   // Slides with words past a box (Sessions 31–36, SLD-1), marked on their thumbnails.
   const [overset, setOverset] = useState<ReadonlySet<string>>(new Set());
   const [dropAt, setDropAt] = useState<{ groupId: string; index: number } | null>(null);
+  // New Timer Slide… (Session 50): after the slide being edited, in the presentation's theme.
+  const [timerSlide, setTimerSlide] = useState(false);
+  const theme = useEditor((s) => s.look);
   const act = (fn: (d: EditDoc, slideId: string) => { doc: EditDoc; show?: string } | null) => {
     finishTextEditing();
     const s = useEditor.getState();
@@ -429,6 +481,16 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
               const made = newSlide(look());
               return { doc: addSlideAfter(d, id, made), show: made.id };
             });
+          }}
+        />
+        <IconButton
+          icon={Timer}
+          size="sm"
+          label="New timer slide after this one…"
+          data-testid="slide-new-timer"
+          onClick={() => {
+            finishTextEditing();
+            setTimerSlide(true);
           }}
         />
         <IconButton
@@ -604,6 +666,20 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
           </section>
         ))}
       </div>
+      {timerSlide && (
+        <NewTimerSlideDialog
+          where={`after slide ${String(current ? (numbers.get(current) ?? total) : total)}`}
+          look={theme}
+          size={doc}
+          onAdd={(made) => {
+            act((d, id) => ({ doc: addSlideAfter(d, id, made), show: made.id }));
+            return null;
+          }}
+          onClose={() => {
+            setTimerSlide(false);
+          }}
+        />
+      )}
     </nav>
   );
 }

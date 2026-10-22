@@ -9,7 +9,11 @@ import type {
   ShapeKind,
   SlideElement,
   TextElement,
+  TimerAtZero,
+  TimerElement,
 } from '../../../shared/model';
+import { countsDown, TIMER_KIND_NAMES, type TimerState } from '../../../shared/timers';
+import { useEngine } from '../engine/engine-store';
 import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import {
   drawnPx,
@@ -328,6 +332,7 @@ export function Inspector() {
           {(single?.kind === 'image' || single?.kind === 'video') && (
             <MediaSection el={single} change={change} />
           )}
+          {single?.kind === 'timer' && <TimerSection el={single} change={change} />}
         </>
       )}
     </aside>
@@ -1028,6 +1033,270 @@ function MediaSection({ el, change }: { el: MediaElement; change: Change }) {
           )}
         </>
       )}
+    </Section>
+  );
+}
+
+const NO_TIMERS: TimerState[] = [];
+
+/** A countdown's last minute in another colour until the operator chooses theirs (Session 50). */
+const LAST_MINUTE_COLOR = '#f5a524';
+
+/**
+ * A Timer's own settings (Session 50): which timer it shows; its look, as words have (font, size, weight,
+ * colour, shadow, outline, alignment); a countdown's last minute in another colour (off until chosen); and what
+ * a countdown does at zero (holds at 0:00, or the next slide comes on).
+ */
+function TimerSection({ el, change }: { el: TimerElement; change: Change }) {
+  const timers = useEngine((e) => e.state?.timers) ?? NO_TIMERS;
+  const timer = timers.find((t) => t.id === el.timerId);
+  const s = el.style;
+  const own: Shadow | null = typeof s.shadow === 'object' ? s.shadow : null;
+  const outline: Outline | null = s.outline ?? null;
+  const set = (fn: (e: TimerElement) => TimerElement, coalesce?: string) => {
+    change([el.id], (e) => (e.kind === 'timer' ? fn(e) : e), coalesce);
+  };
+  const setStyle = (patch: Partial<TimerElement['style']>, coalesce?: string) => {
+    set((e) => ({ ...e, style: { ...e.style, ...patch } }), coalesce);
+  };
+  return (
+    <Section title="Timer" testId="inspector-timer">
+      <Field label="Timer" layout="inline">
+        <Select
+          className="flex-1"
+          data-testid="field-timer"
+          value={el.timerId}
+          onChange={(e) => {
+            const timerId = e.target.value;
+            set((t) => ({ ...t, timerId }));
+          }}
+        >
+          {!timer && (
+            <option value={el.timerId} disabled>
+              No longer in Timers
+            </option>
+          )}
+          {timers.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({TIMER_KIND_NAMES[t.kind]})
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Font" layout="inline">
+        <TextInput
+          list="timer-fonts"
+          className="flex-1"
+          data-testid="field-timer-font"
+          placeholder="Drashti’s own"
+          value={s.fontFamily ?? ''}
+          onChange={(e) => {
+            setStyle(
+              { fontFamily: e.target.value.trim() === '' ? null : e.target.value },
+              `timer-font:${el.id}`,
+            );
+          }}
+        />
+        <datalist id="timer-fonts">
+          {BUNDLED_FAMILIES.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
+      </Field>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <NumberField
+          label="Size"
+          value={round(s.fontSize)}
+          min={4}
+          max={2000}
+          testId="field-timer-size"
+          onChange={(v) => {
+            setStyle({ fontSize: v }, `timer-size:${el.id}`);
+          }}
+        />
+        <Field label="Weight" layout="inline">
+          <Select
+            data-testid="field-timer-weight"
+            value={String(s.fontWeight >= 650 ? 700 : s.fontWeight >= 450 ? 500 : 400)}
+            onChange={(e) => {
+              setStyle({ fontWeight: Number(e.target.value) });
+            }}
+          >
+            <option value="400">Regular</option>
+            <option value="500">Medium</option>
+            <option value="700">Bold</option>
+          </Select>
+        </Field>
+      </div>
+      <Field label="Colour" layout="inline">
+        <ColorInput
+          data-testid="field-timer-color"
+          value={s.color.slice(0, 7)}
+          onChange={(e) => {
+            setStyle({ color: withSameAlpha(e.target.value, s.color) }, `timer-color:${el.id}`);
+          }}
+        />
+      </Field>
+      <Field label="Shadow" layout="inline">
+        <Select
+          className="flex-1"
+          data-testid="field-timer-shadow"
+          value={shadowChoice(s.shadow)}
+          onChange={(e) => {
+            const v = e.target.value as ShadowChoice;
+            setStyle({
+              shadow:
+                v === 'none'
+                  ? false
+                  : v === 'soft'
+                    ? true
+                    : {
+                        color: '#000000d9',
+                        blur: Math.round(s.fontSize * 0.18),
+                        x: 0,
+                        y: Math.round(s.fontSize * 0.06),
+                      },
+            });
+          }}
+        >
+          <option value="none">None</option>
+          <option value="soft">Soft (Drashti’s)</option>
+          <option value="own">Its own</option>
+        </Select>
+      </Field>
+      {own && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 pl-2">
+          <Field label="Colour" layout="inline" className="col-span-2">
+            <ColorInput
+              value={own.color.slice(0, 7)}
+              onChange={(e) => {
+                setStyle(
+                  { shadow: { ...own, color: withSameAlpha(e.target.value, own.color) } },
+                  `timer-shadow:${el.id}`,
+                );
+              }}
+            />
+          </Field>
+          <NumberField
+            label="Blur"
+            value={own.blur}
+            min={0}
+            max={200}
+            onChange={(v) => {
+              setStyle({ shadow: { ...own, blur: v } }, `timer-shadow:${el.id}`);
+            }}
+          />
+          <NumberField
+            label="Down"
+            value={own.y}
+            min={-500}
+            max={500}
+            onChange={(v) => {
+              setStyle({ shadow: { ...own, y: v } }, `timer-shadow:${el.id}`);
+            }}
+          />
+        </div>
+      )}
+      <Toggle
+        label="Outline round the digits"
+        checked={outline !== null}
+        data-testid="field-timer-outline"
+        onChange={(on) => {
+          set((e) => {
+            const { outline: _was, ...style } = e.style;
+            return {
+              ...e,
+              style: on
+                ? { ...style, outline: { color: '#000000', width: Math.max(1, Math.round(s.fontSize / 30)) } }
+                : style,
+            };
+          });
+        }}
+      />
+      {outline && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 pl-2">
+          <Field label="Colour" layout="inline" className="col-span-2">
+            <ColorInput
+              value={outline.color.slice(0, 7)}
+              onChange={(e) => {
+                setStyle(
+                  { outline: { ...outline, color: withSameAlpha(e.target.value, outline.color) } },
+                  `timer-outline:${el.id}`,
+                );
+              }}
+            />
+          </Field>
+          <NumberField
+            label="Width"
+            value={outline.width}
+            min={0.5}
+            max={100}
+            step={0.5}
+            onChange={(v) => {
+              setStyle({ outline: { ...outline, width: v } }, `timer-outline:${el.id}`);
+            }}
+          />
+        </div>
+      )}
+      <Choice
+        label="Align"
+        value={s.align}
+        options={[
+          { value: 'left', label: 'Left', icon: AlignLeft },
+          { value: 'center', label: 'Centre', icon: AlignCenter },
+          { value: 'right', label: 'Right', icon: AlignRight },
+        ]}
+        onChange={(align) => {
+          setStyle({ align });
+        }}
+      />
+      <div className="space-y-2 border-t border-line pt-2">
+        <p className="text-xs text-faint" data-testid="timer-countdown-note">
+          {!timer || countsDown(timer)
+            ? 'For a countdown:'
+            : 'For a countdown (this timer does not count down, so these change nothing):'}
+        </p>
+        <Toggle
+          label="Another colour in the last minute"
+          checked={Boolean(el.lastMinute)}
+          data-testid="field-last-minute"
+          onChange={(on) => {
+            set((e) => {
+              const { lastMinute: _was, ...rest } = e;
+              return on ? { ...rest, lastMinute: { color: LAST_MINUTE_COLOR } } : rest;
+            });
+          }}
+        />
+        {el.lastMinute && (
+          <Field label="Colour" layout="inline" className="pl-2">
+            <ColorInput
+              data-testid="field-last-minute-color"
+              value={el.lastMinute.color.slice(0, 7)}
+              onChange={(e) => {
+                const color = e.target.value;
+                set((t) => ({ ...t, lastMinute: { color } }), `last-minute:${el.id}`);
+              }}
+            />
+          </Field>
+        )}
+        <Field label="At zero" layout="inline">
+          <Select
+            className="flex-1"
+            data-testid="field-at-zero"
+            value={el.atZero ?? 'hold'}
+            onChange={(e) => {
+              const atZero = e.target.value as TimerAtZero;
+              set((t) => {
+                const { atZero: _was, ...rest } = t;
+                return atZero === 'next' ? { ...rest, atZero } : rest;
+              });
+            }}
+          >
+            <option value="hold">Hold at 0:00</option>
+            <option value="next">The next slide comes on</option>
+          </Select>
+        </Field>
+      </div>
     </Section>
   );
 }

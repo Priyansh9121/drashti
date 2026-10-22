@@ -5,7 +5,7 @@ import type { EditDoc } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
 import { MediaStill } from '../render/MediaStill';
-import { ElementView } from '../render/SlideView';
+import { darkensBehind, ElementView } from '../render/SlideView';
 import { TranslitSourceContext } from '../render/lang';
 import { translitSource } from '../../../shared/tracks';
 import { MeasureContext, type MeasureReport } from '../render/measure';
@@ -173,11 +173,8 @@ export function Canvas({ platform }: { platform: string }) {
   const width = doc.width * scale;
   const height = doc.height * scale;
   const elements = slide.elements;
-  // The words the whole-picture darkening goes under: the first box with any.
-  const wholeUnder =
-    slide.darken?.kind === 'whole'
-      ? elements.find((e) => e.kind === 'text' && e.text.trim() !== '')?.id
-      : undefined;
+  // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
+  const wholeUnder = slide.darken?.kind === 'whole' ? elements.find(darkensBehind)?.id : undefined;
   const selected = elements.filter((e) => selection.includes(e.id));
   const single = selected.length === 1 ? selected[0] : undefined;
   const background = slide.cues.find((c) => c.kind === 'background' && c.mediaId !== null);
@@ -575,9 +572,7 @@ export function Canvas({ platform }: { platform: string }) {
                       el={el}
                       media="still"
                       band={
-                        slide.darken?.kind === 'band' && el.kind === 'text' && el.text.trim() !== ''
-                          ? slide.darken.strength
-                          : undefined
+                        slide.darken?.kind === 'band' && darkensBehind(el) ? slide.darken.strength : undefined
                       }
                     />
                   ),
