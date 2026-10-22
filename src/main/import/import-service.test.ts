@@ -119,6 +119,21 @@ describe('ImportService', () => {
     expect(w?.killed).toBe(true);
   });
 
+  it('tells each import whether this computer plays HEVC, as known when it starts (Session 51)', async () => {
+    let plays: boolean | null = null;
+    const { service, workers } = setup({ playsHevc: () => plays });
+    const first = service.start(['/Placeholder phone.mov']);
+    expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: null });
+    workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
+    await first;
+    // The window has said since: this computer cannot play it.
+    plays = false;
+    const second = service.start(['/Placeholder phone.mov']);
+    expect(workers[1]?.sent[0]).toMatchObject({ type: 'start', playsHevc: false });
+    workers[1]?.emit({ type: 'finished', run: summary(workers[1].runId) });
+    await second;
+  });
+
   it('runs one import at a time, in order', async () => {
     const { service, workers } = setup();
     const first = service.start(['/a']);

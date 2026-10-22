@@ -118,6 +118,8 @@ async function start(message: StartMessage): Promise<void> {
       media: new MediaStore(db, {
         dir: message.mediaDir,
         ...(ffmpeg ? { readInfo: (file: string) => readInfo(ffmpeg, file) } : {}),
+        // Where this computer cannot play HEVC, it is converted by itself too (Session 51).
+        playsHevc: message.playsHevc ?? null,
       }),
       runId: message.runId,
       skipDir: (dir: string) => dir === message.userDataDir || dir.startsWith(inside),

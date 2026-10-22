@@ -30,7 +30,12 @@ export interface WorkerProcess {
 
 export interface ImportServiceDeps {
   spawn(): WorkerProcess;
-  worker: Omit<StartMessage, 'type' | 'job' | 'runId' | 'paths' | 'options' | 'mediaIds'>;
+  worker: Omit<StartMessage, 'type' | 'job' | 'runId' | 'paths' | 'options' | 'mediaIds' | 'playsHevc'>;
+  /**
+   * Whether this computer plays HEVC video (Session 51), as known when each import starts: the operator window
+   * says once it has opened (null until then).
+   */
+  playsHevc?(): boolean | null;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
   /** After every run, with its summary when it finished. */
@@ -294,6 +299,7 @@ export class ImportService {
       options: job.options,
       ...(job.mediaIds ? { mediaIds: job.mediaIds } : {}),
       ...this.deps.worker,
+      ...(this.deps.playsHevc ? { playsHevc: this.deps.playsHevc() } : {}),
     });
   }
 

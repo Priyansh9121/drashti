@@ -268,6 +268,7 @@ import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { ConvertService, readInfo } from './convert/convert-service';
+import { askPlaysHevc } from './convert/plays-hevc';
 import { diskFreeBytes } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
@@ -2610,6 +2611,11 @@ function start(): void {
   // Tests only (never a packaged Drashti): imports judge media by their headers alone, as before Session 50,
   // and nothing is converted by itself, so a test can try Convert as an operator does.
   const noConvertAtImport = !app.isPackaged && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';
+  // Whether this computer plays HEVC video (Session 51): the operator window says once it has opened (below), and
+  // each import from then on converts HEVC by itself where it cannot. Tests only (never a packaged Drashti): the
+  // answer given ('1' plays, '0' cannot), as no test can rely on a real HEVC decoder.
+  const testPlaysHevc = app.isPackaged ? undefined : sw('DRASHTI_TEST_PLAYS_HEVC');
+  let playsHevc: boolean | null = testPlaysHevc === '1' ? true : testPlaysHevc === '0' ? false : null;
   const imports = new ImportService({
     spawn: spawnImportWorker,
     children: {
@@ -2646,6 +2652,7 @@ function start(): void {
           }),
     },
     drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
+    playsHevc: () => playsHevc,
     onProgress: (progress) => {
       sendToOperator(IPC.library.importProgress, progress);
     },
@@ -4797,6 +4804,23 @@ function start(): void {
   };
   operatorWindow.webContents.once('did-finish-load', startAudioPlayer);
   operatorWindow.webContents.once('did-finish-load', resumeStream);
+  // Whether this computer plays HEVC video (Session 51): asked of the window as the media list asks it, unless a
+  // test gave the answer; again after a reload while it could not be told.
+  if (playsHevc === null) {
+    const contents = operatorWindow.webContents;
+    contents.on('did-finish-load', () => {
+      if (playsHevc !== null) return;
+      void askPlaysHevc((script) => contents.executeJavaScript(script)).then((answer) => {
+        if (answer === null || playsHevc !== null) return;
+        playsHevc = answer;
+        log.info(
+          answer
+            ? 'This computer plays HEVC video'
+            : 'This computer cannot play HEVC video: imports convert it by itself',
+        );
+      });
+    });
+  }
   operatorWindow.webContents.once('did-finish-load', () => {
     holdPriority('with the operator window open');
   });

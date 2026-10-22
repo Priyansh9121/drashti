@@ -29,6 +29,11 @@ export interface StartMessage {
    * player cannot play is marked to be converted by itself. Null or left out where it is missing.
    */
   ffmpeg?: string | null;
+  /**
+   * Whether this computer plays HEVC video (Session 51), as the operator window said; null or left out while it
+   * is not known. Where it cannot, an import converts HEVC by itself.
+   */
+  playsHevc?: boolean | null;
 }
 
 export interface CancelMessage {
