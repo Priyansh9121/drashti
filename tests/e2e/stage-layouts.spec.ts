@@ -1,17 +1,30 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, openLibrary, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  outputReady,
+  setUpScreen,
+} from './helpers';
 
 /*
  * Stage layouts (Session 11): with none chosen a stage screen is the Standard
  * stage screen, drawn as before; a layout made in the editor puts each box
  * where it was set; a stage group gets its layout through the live Look; the
- * stage display in a browser shows the same layout. The seeded sample kirtan
- * and placeholder words only.
+ * stage display in a browser shows the same layout. The audience picture box
+ * (Session 50) draws what the hall's screens draw, black-out and the logo
+ * too, under the stage message. The seeded sample kirtan and placeholder
+ * words only.
  */
+
+const dispatch = (win: Page, command: unknown) =>
+  win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
 
 /** The output showing this screen. */
 async function outputFor(app: ElectronApplication, screenId: string): Promise<Page> {
@@ -169,5 +182,179 @@ test('Standard is the stage screen as before; a layout made in the editor puts e
   } finally {
     await tablet.close();
   }
+  await app.close();
+});
+
+/**
+ * What a picture of the show draws, read from its Scene (Session 50: the hall's output and a stage layout's
+ * audience picture box must draw the same): its canvas and Look's layers, the background's colour, the
+ * slide's words, the messages, black-out and the logo.
+ */
+const sceneOn = (scene: Locator) =>
+  scene.evaluate((root) => {
+    const background = root.querySelector<HTMLElement>('[data-layer="background"]');
+    const slide = root.querySelector<HTMLElement>('[data-layer="slide"]');
+    return {
+      canvas: root.getAttribute('data-canvas'),
+      layers: root.getAttribute('data-look-layers'),
+      background: background ? getComputedStyle(background).backgroundColor : null,
+      words: slide ? slide.innerText.replace(/\s+/gu, ' ').trim() : null,
+      messages: [...root.querySelectorAll<HTMLElement>('[data-message]')].map((m) => m.innerText.trim()),
+      blackout: root.querySelector('[data-testid="blackout"]') !== null,
+      logo: root.querySelector('[data-testid="logo"]') !== null,
+    };
+  });
+
+test('the audience picture, live, as a stage layout box: what the hall shows, black-out and the logo too, under the stage message', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const hallId = await setUpScreen(win, 'Hall', 0);
+  const stageId = await setUpScreen(win, 'Stage', 1);
+  const hallGroup = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const groups = (await d.screens.get()).groups;
+    const set = await d.screens.setGroupRole(groups.find((g) => g.name === 'Stage')?.id ?? '', 'stage');
+    if (!set.ok) throw new Error(set.message);
+    return groups.find((g) => g.name === 'Hall')?.id ?? '';
+  });
+
+  // In the stage layout editor, beside the other boxes; added to a copy of Standard, it goes under them all.
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  await win.getByTestId('edit-stage-layouts').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await expect(editor).toBeVisible();
+  await editor.getByTestId('stage-layout-duplicate').click();
+  await editor.getByTestId('stage-layout-name').fill('Placeholder hall picture layout');
+  const kinds = editor.getByTestId('stage-box-kind');
+  await expect(kinds.locator('option[value="audience"]')).toHaveText('The audience picture, live');
+  await kinds.selectOption('audience');
+  await editor.getByTestId('stage-box-add').click();
+  const list = editor.getByTestId('stage-box-list').getByRole('button');
+  await expect(list).toHaveCount(8);
+  await expect(list.first()).toHaveText('The audience picture, live');
+  await expect(list.first()).toHaveAttribute('aria-pressed', 'true');
+  // Its settings: its place and size (made 16:9), no text size, colour or alignment.
+  const settings = editor.getByTestId('stage-box-settings');
+  await expect(settings.getByTestId('stage-box-audience-note')).toContainText('at 16:9 with black around it');
+  await expect(settings.getByTestId('stage-box-color')).toHaveCount(0);
+  await expect(settings.getByTestId('stage-box-fit')).toHaveCount(0);
+  await expect(settings.getByRole('spinbutton', { name: 'Width' })).toHaveValue('960');
+  await expect(settings.getByRole('spinbutton', { name: 'Height' })).toHaveValue('540');
+  // Here, the whole stage canvas.
+  for (const [name, value] of [
+    ['Across', '0'],
+    ['Down', '0'],
+    ['Width', '1920'],
+    ['Height', '1080'],
+  ] as const)
+    await settings.getByRole('spinbutton', { name }).fill(value);
+  await expectNoSeriousA11yIssues(win, 'the stage layout editor, the audience picture box chosen');
+  await editor.getByTestId('stage-layout-save').click();
+  await expect(editor.getByTestId('stage-layout-list')).toContainText('Placeholder hall picture layout');
+  await editor.getByRole('button', { name: 'Close stage layouts' }).click();
+  await win.getByTestId('look-stage-layout').selectOption({ label: 'Placeholder hall picture layout' });
+  await win.getByRole('button', { name: 'Close screens' }).click();
+
+  const hall = await outputFor(app, hallId);
+  const stage = await outputFor(app, stageId);
+  await outputReady(hall);
+  const box = stage.locator('[data-stage-box="audience"]');
+  await expect(box).toBeVisible();
+  await expect(box.getByTestId('stage-audience')).toHaveAttribute('data-hall-group', hallGroup);
+  // Bottom to top: the picture first, so the stage message, the clock and the timer draw over it.
+  expect((await boxesOn(stage)).map((b) => b.kind)).toEqual([
+    'audience',
+    'stageMessage',
+    'current',
+    'screensState',
+    'notes',
+    'clock',
+    'timer',
+    'next',
+  ]);
+
+  // A slide over a colour, and a message: the box draws exactly what the hall's output draws.
+  const presentationId = await win.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.library.newFromWords(
+      'Placeholder hall picture',
+      'Placeholder words for the hall',
+    );
+    if (!made.ok) throw new Error(made.message);
+    return made.id;
+  });
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#1f6f8b' } });
+  await dispatch(win, {
+    type: 'showMessage',
+    message: { id: 'placeholder-message', text: 'Placeholder message for the hall' },
+  });
+  await dispatch(win, { type: 'setStageMessage', text: 'Placeholder: two minutes' });
+  const inHall = hall.getByTestId('scene');
+  const inBox = box.getByTestId('scene');
+  await expect
+    .poll(() => sceneOn(inHall))
+    .toMatchObject({
+      canvas: '1920x1080',
+      background: 'rgb(31, 111, 139)',
+      words: expect.stringMatching(/placeholder words for the hall/iu),
+      messages: ['Placeholder message for the hall'],
+      blackout: false,
+      logo: false,
+    });
+  await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
+
+  // The stage message draws over the picture: where it is, it is what the stage sees.
+  const message = stage.getByTestId('stage-box-message');
+  await expect(message).toHaveText('Placeholder: two minutes');
+  expect(
+    await message.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        message: hit !== null && el.contains(hit),
+        picture: (hit?.closest('[data-stage-box="audience"]') ?? null) !== null,
+      };
+    }),
+  ).toEqual({ message: true, picture: false });
+
+  // The hall's own settings in the live Look, never the stage group's: messages left out of the hall go from
+  // the box too.
+  await win.evaluate(async (group) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const set = await d.looks.setGroup((await d.looks.list()).liveId, group, {
+      layers: ['background', 'slide', 'props', 'ticker', 'masks'],
+    });
+    if (!set.ok) throw new Error(set.message);
+  }, hallGroup);
+  await expect.poll(async () => (await sceneOn(inHall)).messages).toEqual([]);
+  await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
+
+  // The hall's canvas: its screen's, as its output draws it.
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.screens.updateScreen(id, { canvasWidth: 1280, canvasHeight: 720 }),
+    hallId,
+  );
+  await expect.poll(async () => (await sceneOn(inHall)).canvas).toBe('1280x720');
+  await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
+
+  // Black-out and the logo show in the box, as the hall sees them; the stage's own boxes stay.
+  await dispatch(win, { type: 'setBlackout', on: true });
+  await expect(inHall.getByTestId('blackout')).toHaveCount(1);
+  await expect(inBox.getByTestId('blackout')).toHaveCount(1);
+  await expect(message).toHaveText('Placeholder: two minutes');
+  await dispatch(win, { type: 'setBlackout', on: false });
+  await expect(inBox.getByTestId('blackout')).toHaveCount(0);
+  await dispatch(win, {
+    type: 'showLogo',
+    prop: { id: 'placeholder-logo', name: 'Placeholder logo', elements: [] },
+  });
+  await expect(inHall.getByTestId('logo')).toHaveCount(1);
+  await expect(inBox.getByTestId('logo')).toHaveCount(1);
+  await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
+  await dispatch(win, { type: 'hideLogo' });
+  await expect(inBox.getByTestId('logo')).toHaveCount(0);
   await app.close();
 });
