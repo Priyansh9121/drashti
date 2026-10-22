@@ -104,6 +104,7 @@ import { UPDATE_BASE } from '../shared/updates';
 import { lowerThirdInputSchema } from '../shared/lower-thirds';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedLibrary, seedOptions } from './db/seed';
+import { removeUntouchedPlaceholders } from './library/placeholders';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import {
@@ -690,6 +691,15 @@ function openLibrary(): { db: Db } | { error: unknown } {
   try {
     const opened = openDatabase(libraryFile());
     try {
+      // The placeholder presentations an earlier Drashti put in every new library go at this Drashti's first start,
+      // each only when unchanged and in no playlist (Session 50, library/placeholders.ts), before anything is
+      // seeded. Never in the way of opening the library: if the look fails, they stay, and it is tried again
+      // at the next start.
+      try {
+        for (const line of removeUntouchedPlaceholders(opened)) log.info(line);
+      } catch (error) {
+        log.warn('Could not look at the placeholder presentations; they stay for now', error);
+      }
       // A new library's example sabha templates and built-in themes; the placeholder presentations only for the
       // tests (Session 50: DRASHTI_TEST_SEED_PLACEHOLDERS, which a packaged Drashti ignores).
       const seeded = seedLibrary(opened, seedOptions(sw));
