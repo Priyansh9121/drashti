@@ -9,9 +9,9 @@ import { Truncate } from '../ui/Truncate';
 import { closeDrop, connectDrop, useDrop } from './drop-store';
 
 /*
- * File › Drop Folder… (Session 28, decision 21): the folder whose pictures and videos come into the library
- * by themselves, whether it is on, how it stands, and what was not taken and why (a file over 2 GB can be
- * imported anyway). An admin's, in Pro Mode only.
+ * File › Drop Folder… (Session 28, decision 21): the folder whose pictures, videos and (Session 51) sounds come
+ * into the library by themselves, whether it is on, how it stands, and what was not taken and why (a file over
+ * 2 GB can be imported anyway). An admin's, in Pro Mode only.
  */
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -70,9 +70,9 @@ function DropFolderForm({ view }: { view: DropFolderView }) {
     >
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Pictures and videos put in this folder come into Media by themselves, once each has held still for 5
-          seconds. Drashti only reads the folder, and nothing leaves the library when a file leaves it. While
-          the stream is on air or recording, they wait.
+          Pictures, videos and sounds put in this folder come into Media by themselves, once each has held
+          still for 5 seconds. Drashti only reads the folder, and nothing leaves the library when a file
+          leaves it. While the stream is on air or recording, they wait.
         </p>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted">Folder</span>

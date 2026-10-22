@@ -1,8 +1,8 @@
 /*
- * The drop folder (Session 28, decision 21): one folder an admin chooses, where pictures and videos put in
- * it are imported by themselves, once each has held still for 5 seconds; the library only ever gains from
- * it (nothing is removed when a file goes, and the folder itself is never written to). It waits while the
- * stream is on air or recording, and carries on quietly in Simple Mode. Media lists what came from it.
+ * The drop folder (Session 28, decision 21): one folder an admin chooses, where pictures, videos and (Session
+ * 51) sounds put in it are imported by themselves, once each has held still for 5 seconds; the library only
+ * ever gains from it (nothing is removed when a file goes, and the folder itself is never written to). It waits
+ * while the stream is on air or recording, and carries on quietly in Simple Mode. Media lists what came from it.
  */
 
 /** A file's size limit (2 GB); a larger one is listed, and an admin can Import anyway. */
