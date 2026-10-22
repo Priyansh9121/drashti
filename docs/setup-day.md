@@ -87,10 +87,10 @@ The old presentation program stays installed and untouched all day. Drashti only
 
 ## 7. The stream (the computer that streams)
 
-- [ ] Stream settings: the key from YouTube Studio (pasted once; Drashti never shows it again), the camera, the mixer's line in, **Good** or **Weak internet** from a speed test. Then, in the Stream panel's recording part, **Choose a folder…** for the recordings.
+- [ ] Stream settings: the key from YouTube Studio (pasted once; Drashti never shows it again), the camera, the mixer's line in (or the video mixer's USB output, which can be the stream's **Sound input** too), **Good** or **Weak internet** from a speed test. Then, in the Stream panel's recording part, **Choose a folder…** for the recordings.
 - [ ] Write down the **Encoder** line the Stream panel shows (a graphics encoder such as VideoToolbox, NVENC, Quick Sync or AMF is best).
 - [ ] **On the Mac that streams**: during the test stream, write down the frames a second the Stream panel shows (it should hold at the profile's 30). CI's Mac, a virtual machine, managed only about 9: a real Mac has never been measured.
-- [ ] **Go live** on the unlisted stream for ten minutes while changing slides and playing a video. In YouTube Studio: the picture, the sound, the lips in time with the words (else raise **Sound delay**).
+- [ ] **Go live** on the unlisted stream for ten minutes while changing slides and playing a video, and for a minute with **Input 1** up and the stream's **Layout** on **Slides**. In YouTube Studio: the picture (Input 1 as the hall sees it, a slide's words over it), the sound (from the video mixer's USB output, if it is the **Sound input**), the lips in time with the words (else raise **Sound delay**).
 - [ ] End it, open the recording in VLC, and do it all a second time on another day before a real sabha.
 
 ## 8. The checks
@@ -111,6 +111,13 @@ On each computer:
 - [ ] **The fallback drill**: the named fallback operator quits Drashti and opens the old program. Time it: it should take under a minute.
 - [ ] **(operators)** **Zoom sees the stream's picture**, with a placeholder slide, not a real meeting: in the Stream panel, **Window for Zoom…**. **Drashti for Zoom** shows exactly the Stream panel's picture with nothing else on it, keeps its shape when dragged bigger from a corner, and opens there again next time; closing it changes nothing on the screens or the stream.
 - [ ] **(operators)** **A window on the hall's screens**, with a placeholder window, not a real meeting (a TextEdit or Notepad window with a few placeholder words): on a Mac, turn on Screen Recording first (admin guide, section 4). **Library**, **Media**, **Show a Window…**: it lists that window by name with its picture (never a whole screen or Drashti's own), and **Show on the screens** puts it on the hall's screens, fitted with black around it. **B** covers it, and **F3** takes it off. Minimise it while it is up: the screens keep its last picture and the yellow notice says so; **Clear the window** takes it off.
+- [ ] **(operators)** **Input 1 on the screens**, with the video mixer on a camera: one click on **Input 1** under **Video inputs** in **Media** puts it up, dissolving in over a second, on LIVE, the hall's screens and the stream's **Slides** layout, with a slide's words over it. With no slide up, stage screens say **Video input on the screens**; the node's screens show the rest of the show without it, as the screens dashboard says. **B** and **F12** cover it, and **F3** takes it off. Drashti shows only its picture, never its sound: the hall's sound comes through the mixer, as now.
+- [ ] **(operators)** **Input 1 unplugged**: while it is up, pull the video mixer's USB cable for ten seconds. The screens keep its last picture, and a notice says the video input "Input 1" has stopped, with **Clear the input**. Plug it back in: the picture comes back by itself, and the notice goes.
+- [ ] **(operators)** **Never a picture inside itself**: as **Add a Video Input…** warns, if the video mixer's program shows Drashti's own picture (the mixer's input that Drashti feeds), putting Input 1 up makes a picture inside itself, over and over. Keep the mixer on a camera while testing, and check the operators know: Input 1 goes up only while the mixer shows a camera, and **F3** takes it off.
+- [ ] **A real MKV with AC-3 or DTS sound** (one of the mandir's own videos: it stays on the mandir's computers, and is never copied or sent anywhere else): drag it onto the library. It says **Converting…**, and cannot go live, until Drashti has converted it by itself a moment later, and the import report says what it converted. Then put it up: it plays on the screens, with its sound through the mixer.
+- [ ] **(operators)** **Picture in picture**: **Library**, **Media**, **Picture in Picture…**: **A video input** (Input 1, the mixer on a camera) or **The slides**, a corner and a size, then **Show in the box**. On the hall's screens and the stream's **Slides** layout the box comes in smoothly in its corner; **Swap**, under LIVE, changes places with the main picture; **B** covers it; **Take off** takes it off.
+- [ ] **(operators)** **A timer alone on the screens**: in **Timers**, **Show on the screens** beside a running countdown. It fades in, in the slide's place over the background, on the hall's screens and the stream, only the digits that change moving, and LIVE says **Timer** and its name. **Take off** (or **F2**) fades it out.
+- [ ] **(operators)** **Back 15 s**, **Forward 15 s** and **Last 10 s**, under the live picture, with a video background playing (and in **Music**, for a track playing): each jumps every screen at once, the node's and the stream's too, with the sound in step. **Last 10 s** goes to the last ten seconds. They are dimmed for a moment as a video starts.
 
 ## Write down
 
@@ -124,6 +131,7 @@ Keep this with the notebook. Never the PINs, the stream key or pairing codes.
 | Address (reserved in the router), and the `.local` name       |      |                        |
 | Each display: which output, which screens, canvas size        |      |                        |
 | Sound output to the mixer                                     |      |                        |
+| Video input: the mixer's name, the stream's sound input       |      |                        |
 | Import report: presentations, playlists, media, problems      |      |                        |
 | Missing media left, files converted                           |      |                        |
 | Legacy fonts, and where installed                             |      |                        |
@@ -139,4 +147,5 @@ Keep this with the notebook. Never the PINs, the stream key or pairing codes.
 | Who holds the admin PIN (not the PIN)                         |      |                        |
 | Named fallback operator, and the drill's time                 |      |                        |
 | Keys the operators want changed                               |      |                        |
+| F12, Cmd/Ctrl+1 and 2: as they are, or with Fn or Fn Lock     |      |                        |
 | Anything different from the old program, with the time        |      |                        |
