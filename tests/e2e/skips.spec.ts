@@ -283,3 +283,57 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
     await expect(win.getByRole('button', { name })).toHaveCount(0);
   await app.close();
 });
+
+test('an audio playlist’s three sit in the row with its Play and Pause, in a window 1024 wide (Session 51)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // CI's operator window, about 1024 × 645, with the live column as wide as it starts.
+  await win.setViewportSize({ width: 1024, height: 645 });
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-skips-row-'));
+  const [one = '', two = ''] = await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder row one.wav'), { seconds: 20, hz: 330 }),
+    makeTestTone(join(dir, 'Placeholder row two.wav'), { seconds: 12, hz: 550 }),
+  ]);
+  const listId = await win.evaluate(
+    async ({ one, two }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const list = await d.music.create('Placeholder row');
+      if (!list.ok || !list.id) throw new Error('not made');
+      await d.music.addTracks(list.id, [one, two], null);
+      return list.id;
+    },
+    { one, two },
+  );
+  await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id, 0), listId);
+  const row = win.getByTestId('music-panel').getByRole('group', { name: 'Play the music' });
+  const pause = row.getByTestId('music-pause');
+  await expect(pause).toBeVisible();
+  // In the row itself (Session 50 put them in a row of their own under it), pressable once the length is known.
+  await expect(row.getByTestId('music-skips')).toHaveCount(1);
+  const controls = [
+    row.getByRole('button', { name: 'Previous track' }),
+    pause,
+    row.getByRole('button', { name: 'Next track' }),
+    await skipButton(row, 'Back 15 s'),
+    await skipButton(row, 'Forward 15 s'),
+    await skipButton(row, 'Last 10 s'),
+    row.getByTestId('music-loop'),
+    row.getByTestId('music-shuffle'),
+  ];
+  // One line: every control's middle level with Pause's, and nothing past the column's edge.
+  const middles = await Promise.all(
+    controls.map(async (control) => {
+      const box = await control.boundingBox();
+      if (!box) throw new Error('a control is not drawn');
+      return box.y + box.height / 2;
+    }),
+  );
+  const level = middles[1] ?? 0;
+  expect(
+    middles.every((y) => Math.abs(y - level) < 2),
+    `each control's middle, from the top (px): ${middles.map((y) => y.toFixed(1)).join(' ')}`,
+  ).toBe(true);
+  expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await app.close();
+});
