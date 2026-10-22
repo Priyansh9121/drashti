@@ -176,6 +176,37 @@ describe('a file played once to an end point', () => {
     expect(Math.abs(v.currentTime - 1.5)).toBeLessThanOrEqual(FRAME);
     stop();
   });
+
+  it('goes straight to its own end when a jump takes it there, holds it, and plays again from a jump back', () => {
+    // Session 50: Forward 15 s within the last 15 s of a 30 s sound, 2 s in; then Back 15 s from the end.
+    for (const limits of [undefined, SOUND_LIMITS]) {
+      const v = new FakeMedia(30);
+      const timing: { seek?: PlaybackSeek } = {};
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'once',
+        startedAt: Date.now(),
+        audible: limits !== undefined,
+        ...(limits ? { limits } : {}),
+        timing: () => ({ loop: false, ...timing }),
+      });
+      runFor(v, 2000);
+      timing.seek = { at: Date.now(), toMs: 30_000 };
+      stop.resync();
+      runFor(v, 300);
+      expect(Math.abs(v.currentTime - 30), 'at its end at once, not playing on to it').toBeLessThanOrEqual(
+        FRAME,
+      );
+      expect(runFor(v, 2000)).toBeLessThanOrEqual(30);
+      expect(Math.abs(v.currentTime - 30)).toBeLessThanOrEqual(FRAME);
+      timing.seek = { at: Date.now(), toMs: 15_000 };
+      stop.resync();
+      runFor(v, 600);
+      expect(v.paused).toBe(false);
+      expect(v.currentTime).toBeGreaterThan(15.2);
+      expect(v.currentTime).toBeLessThan(16);
+      stop();
+    }
+  });
 });
 
 describe('a file that loops, and a sound that starts late', () => {

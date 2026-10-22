@@ -200,8 +200,12 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       return;
     }
     // Played once to its end: the file's own end comes by itself (it plays on to it and holds its last
-    // frame, even a moment behind the clock).
-    if (!c.loop && at >= end - 0.01) return;
+    // frame, even a moment behind the clock). A jump there (Session 50: Forward 15 s, Last 10 s on a short
+    // file) puts it there at once, holding it, rather than playing on to it.
+    if (!c.loop && at >= end - 0.01) {
+      if (end - v.currentTime > limits.jumpOver) holdAt(end);
+      return;
+    }
     if (v.paused && !v.ended) void v.play().catch(() => undefined);
     const span = end - start;
     const offset = playbackOffset(v.currentTime, at, span, c.loop);
