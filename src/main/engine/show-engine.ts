@@ -198,6 +198,8 @@ export interface RestoreRequest {
   repeat?: { playlistId: string } | null;
   /** The Look that was live (left out or gone: the one already live stays). */
   lookId?: string | null;
+  /** A timer shown alone (Session 50): it comes back over the slide, still, while that timer is in the library. */
+  timer?: { timerId: string } | null;
 }
 
 /** What restart recovery put back. */
@@ -229,6 +231,8 @@ export interface Restored {
   input: string | null;
   /** A video input that was the background but is no longer in this computer's list, by name: only said. */
   inputGone: string | null;
+  /** A timer shown alone came back over the slide (Session 50); left out when none did. */
+  timer?: boolean;
 }
 
 /**
@@ -379,6 +383,10 @@ export class ShowEngine {
     } else if (playlist?.item.kind === 'media') {
       actions.push({ type: 'live/item', playlist: playlist.cursor });
     }
+    // A timer shown alone (Session 50) comes back over it as it was, still: no transition plays again.
+    const wanted = request.timer?.timerId;
+    const alone = wanted === undefined ? undefined : this.state.timers.find((t) => t.id === wanted);
+    if (alone) actions.push({ type: 'slide/put', layer: this.timerLayer(alone, null) });
     // Another app's window is never put back: it may be gone, or be another window now (Session 48).
     const window = request.background?.kind === 'window' ? request.background.name : null;
     // A video input (Session 50) comes back while it is still in this computer's list, as the list has it now;
@@ -450,6 +458,7 @@ export class ShowEngine {
       pipWindow: box.window,
       input: input?.name ?? null,
       inputGone: wasInput && !input ? wasInput.name : null,
+      ...(alone ? { timer: true } : {}),
     };
   }
 
