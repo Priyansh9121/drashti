@@ -12,7 +12,10 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
  * differently from the hall's screens.
  */
 
-/** The box's picture: 16:9, scaled into the box with black around it. The hall's canvas is placed in it as on a 16:9 screen. */
+/**
+ * The box's picture: 16:9, scaled into the box with black around it. The hall's canvas is placed in it as
+ * on a 16:9 screen.
+ */
 export const PICTURE: Size = { width: 1920, height: 1080 };
 
 export interface HallView {
