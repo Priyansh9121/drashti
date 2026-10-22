@@ -1,5 +1,6 @@
 import type { ImportProgress, ImportRunSummary } from '../../shared/import';
 import { emptyTotals, NO_COUNTS } from '../../shared/import';
+import { moveMedia } from '../convert/relink';
 import type { Db } from '../db/database';
 import { addToTotals, ImportRepo, type NewImportItem } from '../db/imports';
 import type { MediaStore } from './media-store';
@@ -15,15 +16,14 @@ import { scanPaths } from './scan';
 
 /**
  * Point everything that used one media item at another (when a relinked
- * file turns out to be stored already). Slides use media through image and
- * video elements.
+ * file turns out to be stored already): slides' pictures, videos and cues,
+ * playlists' items, audio playlists' tracks, kirtans' recordings, props and
+ * themes, as a conversion moves them (Session 51 review: only slides moved
+ * before, and playlist items and audio tracks went with the missing row,
+ * deleted after this).
  */
 export function repointMedia(db: Db, fromId: string, toId: string): void {
-  db.prepare(
-    `UPDATE elements SET props = json_set(props, '$.mediaId', ?)
-      WHERE kind IN ('image', 'video') AND json_extract(props, '$.mediaId') = ?`,
-  ).run(toId, fromId);
-  db.prepare('UPDATE slide_cues SET media_id = ? WHERE media_id = ?').run(toId, fromId);
+  moveMedia(db, fromId, toId);
 }
 
 export interface RelinkContext {
