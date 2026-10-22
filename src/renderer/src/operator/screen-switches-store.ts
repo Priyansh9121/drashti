@@ -13,8 +13,8 @@ import { useScreens } from '../screens/screens-store';
  * Audience and Stage (Session 50), as the operator window keeps them: which are on, as the main process says,
  * and the one waiting for its question. Off closes this computer's screens of that kind, so their displays go
  * back to the computer; on opens them again where they were. Turning one off asks first while its screens show
- * something (the top bar's switch, Mod+1 and Mod+2); on never asks. Simple Mode only turns them on. Both are on
- * at every start.
+ * something (the top bar's switch, Mod+1 and Mod+2), and in the window's first moments, before it has the
+ * screens (Session 51, S2-4); on never asks. Simple Mode only turns them on. Both are on at every start.
  */
 
 interface SwitchesView {
@@ -59,10 +59,14 @@ export async function turnSwitch(which: ScreenSwitch, on: boolean): Promise<stri
   return null;
 }
 
-/** Would turning it off ask first now? While its screens on this computer are open and show something. */
+/**
+ * Would turning it off ask first now? While its screens on this computer are open and show something; and before
+ * this window knows which are on, or which screens are open (its first moments: the safe side, Session 51, S2-4).
+ */
 export function switchAsksFirst(which: ScreenSwitch): boolean {
   const snapshot = useScreens.getState().snapshot;
-  return asksFirst(which, snapshot ? openUnder(snapshot, which) : 0, useEngine.getState().state);
+  const open = snapshot && useScreenSwitches.getState().known ? openUnder(snapshot, which) : null;
+  return asksFirst(which, open, useEngine.getState().state);
 }
 
 /**

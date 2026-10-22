@@ -166,4 +166,17 @@ describe('Audience and Stage in the operator window (Session 50)', () => {
     );
     expect(fake.store.useScreenSwitches.getState().switches.audience).toBe(true);
   });
+
+  it('asks in the first moments, before this window has the screens, whatever is open (Session 51, S2-4)', async () => {
+    const fake = await connected();
+    await showIs(false);
+    // Nothing up, as far as this window knows, and no screens known yet: asked, never turned off at once.
+    await fake.store.toggleSwitch('audience');
+    expect(fake.store.useScreenSwitches.getState().asking).toBe('audience');
+    expect(fake.turns).toEqual([]);
+    fake.store.cancelAsk();
+    await fake.store.toggleSwitch('stage');
+    expect(fake.store.useScreenSwitches.getState().asking).toBe('stage');
+    expect(fake.turns).toEqual([]);
+  });
 });
