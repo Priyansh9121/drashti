@@ -159,7 +159,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   // spelling in every mode, and its state in words, said once (Session 25).
   await win.keyboard.press('.');
   await expect(audience.getByTestId('blackout')).toBeVisible();
-  await expect(win.getByTestId('simple-blackout')).toHaveAccessibleName('Black-out is on');
+  // Its words, then its key (Session 51: Simple Mode's big buttons show their keys).
+  await expect(win.getByTestId('simple-blackout')).toHaveAccessibleName(/^Black-out is on/u);
   await expect(win.getByTestId('simple-blackout')).not.toHaveAttribute('aria-pressed');
   await expect(stage.getByTestId('stage-view')).toContainText('AUDIENCE SCREENS BLACK');
   await win.keyboard.press('b');

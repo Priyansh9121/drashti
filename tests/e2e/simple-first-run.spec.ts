@@ -87,10 +87,11 @@ test('never while a slide is live: not then, but the next time Simple Mode opens
   const steps = win.getByTestId('simple-first-run');
   await expect(steps).toBeVisible();
   // They take no keys: Black-out's works while they show.
+  // (Its words, then its key: Simple Mode's big buttons show their keys since Session 51.)
   await win.keyboard.press('b');
-  await expect(win.getByTestId('simple-blackout')).toHaveText('Black-out is on');
+  await expect(win.getByTestId('simple-blackout')).toHaveText(/^Black-out is on/u);
   await win.keyboard.press('b');
-  await expect(win.getByTestId('simple-blackout')).toHaveText('Black-out');
+  await expect(win.getByTestId('simple-blackout')).toHaveText(/^Black-out(?! is on)/u);
   await expect(steps).toBeVisible();
   // A slide going up (here from the bridge, as a phone's would) ends them for good.
   await live();
