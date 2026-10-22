@@ -58,8 +58,9 @@ export function EmptyState({
  * The whole of a place, for what it holds while it has nothing else to show (Session 51): centred while it fits,
  * and from its top, scrolling, when it does not (a small window, a notice or the open playlist above it), so none
  * of it is ever cut off or drawn under the show controls and the status bar below. The middle's empty places use
- * it: Start here, a playlist item's note and a presentation that could not be opened. Centred with nothing to
- * scroll, Start here's third step ran under the status bar in a 1024 × 645 window, out of reach.
+ * it: Start here, a playlist item's note, a video input item's view, a presentation with no slides yet and one that
+ * could not be opened. Centred with nothing to scroll, Start here's third step ran under the status bar in a
+ * 1024 × 645 window, out of reach.
  */
 export function CentredPlace({ children, ...data }: { children: ReactNode } & DataAttributes) {
   return (

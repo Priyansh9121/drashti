@@ -754,15 +754,19 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
           }}
         />
       </div>
-      {help.card && <div className="shrink-0 pt-2">{help.card}</div>}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-6">
-        {order.slides.length === 0 && (
+      {/* Its words shrink and scroll in a short place (Session 51: with a playlist open in a 1024 × 645 window, Read
+          more and Got it had run under the layer bar). */}
+      {help.card && <div className="min-h-0 overflow-y-auto pt-2">{help.card}</div>}
+      {order.slides.length === 0 ? (
+        // Centred while it fits, from its top when it does not (Session 51), as the middle's other places are.
+        <CentredPlace>
           <EmptyState icon={Presentation} title="No slides yet">
             Use Edit words to write its words, and each blank line starts a slide.
           </EmptyState>
-        )}
-        {order.slides.length > 0 && (
-          // Every slide in play order, wrapping across the width: a chorus sung again shows again.
+        </CentredPlace>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-6">
+          {/* Every slide in play order, wrapping across the width: a chorus sung again shows again. */}
           <ul
             data-testid="slide-list"
             className="grid gap-3"
@@ -789,8 +793,8 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
               );
             })}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
       {timerSlide && (
         <NewTimerSlideInLibrary
           presentationId={doc.id}
