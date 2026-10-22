@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { rename, rm, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
-import { audioChoiceSchema, messageSchema, musicStartSchema, propSchema } from '../../shared/engine/commands';
+import {
+  audioChoiceSchema,
+  messageSchema,
+  musicStartSchema,
+  pipPlaceSchema,
+  propSchema,
+} from '../../shared/engine/commands';
 import type {
   AudioLayer,
   BackgroundLayer,
@@ -10,6 +16,7 @@ import type {
   LowerThirdLayer,
   MaskLayer,
   MessageItem,
+  PipLayer,
   PlaylistCursor,
   PropItem,
   TickerLayer,
@@ -76,6 +83,11 @@ export interface SavedLive {
   masks: MaskLayer | null;
   /** The lower third up (Session 44), with when it went up: put back, it comes back still. */
   lowerThird: LowerThirdLayer | null;
+  /**
+   * The picture-in-picture box up (Session 50), with when it went up, without what it was animating: put back,
+   * it comes back still (never a window, an input only while it is in the list: show-engine.ts decides).
+   */
+  pip: PipLayer | null;
 }
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
@@ -116,6 +128,24 @@ const savedPropSchema = propSchema.and(z.object({ shownAt: z.number().optional()
 const savedLowerThirdSchema: z.ZodType<LowerThirdLayer> = lowerThirdSchema.and(
   z.object({ shownAt: z.number() }),
 );
+/** A saved picture-in-picture box (Session 50): what it held, where, swapped or not, and when it went up. */
+const savedPipSchema: z.ZodType<PipLayer> = z.object({
+  source: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('slides') }),
+    z.object({ kind: z.literal('media'), mediaId: idSchema, media: z.enum(['image', 'video']) }),
+    z.object({
+      kind: z.literal('input'),
+      inputId: idSchema,
+      name: z.string().max(500),
+      device: z.string().max(500),
+    }),
+    // Read back only to be named: the engine never puts a window back.
+    z.object({ kind: z.literal('window'), sourceId: z.string().min(1).max(200), name: z.string().max(500) }),
+  ]),
+  place: pipPlaceSchema,
+  swapped: z.boolean(),
+  shownAt: z.number(),
+});
 
 const savedSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]),
@@ -158,6 +188,8 @@ const savedSchema = z.object({
   masks: z.unknown().default(null),
   // Files saved before Lower Thirds (Session 44) have none.
   lowerThird: z.unknown().default(null),
+  // Files saved before picture in picture (Session 50) have none.
+  pip: z.unknown().default(null),
 });
 const audioLayerSchema = z.intersection(
   audioChoiceSchema,
@@ -170,6 +202,13 @@ const audioLayerSchema = z.intersection(
   }),
 );
 const markSchema = z.object({ session: z.string().min(1).max(64) });
+
+/** The picture-in-picture box as it is, without what it was animating (Session 50). */
+function stillBox(box: PipLayer | null): PipLayer | null {
+  if (!box) return null;
+  const { changed: _animating, ...still } = box;
+  return still;
+}
 
 export function savedFrom(state: EngineState, session: string, now = new Date()): SavedLive {
   const slide = state.layers.slide;
@@ -207,6 +246,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     lookId: state.look.id === '' ? null : state.look.id,
     masks: state.layers.masks,
     lowerThird: state.layers.lowerThird,
+    pip: stillBox(state.layers.pip),
   };
 }
 
@@ -286,6 +326,7 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
   const ticker = layer(tickerSchema.nullable(), s.ticker, null);
   const masks = layer(maskSchema.nullable(), s.masks, null);
   const lowerThird = layer(savedLowerThirdSchema.nullable(), s.lowerThird, null);
+  const pip = layer(savedPipSchema.nullable(), s.pip, null);
   const timers = same ? s.timers : [];
   const stageMessage = same ? s.stageMessage : null;
   const anything = [
@@ -300,12 +341,26 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
     ticker !== null,
     masks !== null,
     lowerThird !== null,
+    pip !== null,
     stageMessage !== null,
     timers.length > 0,
     s.lookId !== null && s.lookId !== startLookId,
   ].some(Boolean);
   if (!anything) return null;
-  return { ...s, background, logo, audio, props, messages, ticker, masks, lowerThird, stageMessage, timers };
+  return {
+    ...s,
+    background,
+    logo,
+    audio,
+    props,
+    messages,
+    ticker,
+    masks,
+    lowerThird,
+    pip,
+    stageMessage,
+    timers,
+  };
 }
 
 /**

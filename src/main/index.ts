@@ -1828,13 +1828,15 @@ function start(): void {
       ticker: put.ticker,
       masks: put.masks,
       lowerThird: put.lowerThird,
+      pip: put.pip,
       stageMessage: put.stageMessage,
       timers: put.timers,
       window: put.window,
+      pipWindow: put.pipWindow,
     };
     // Ids and counts only in the log (the notice itself names the presentation, and a window: its name can
-    // be anything, an inbox's say, Session 48).
-    const { slide: slideBack, window: windowName, ...alsoBack } = put;
+    // be anything, an inbox's say, Session 48; the picture-in-picture box's too, Session 50).
+    const { slide: slideBack, window: windowName, pipWindow: boxWindowName, ...alsoBack } = put;
     log.warn(
       `Recovery after an unexpected stop: ${JSON.stringify({
         slide:
@@ -1845,6 +1847,7 @@ function start(): void {
         playlistItem: saved.playlist?.itemId ?? null,
         ...alsoBack,
         windowNotPutBack: windowName !== null,
+        boxWindowNotPutBack: boxWindowName !== null,
       })}`,
     );
   }
@@ -1867,6 +1870,9 @@ function start(): void {
       slideGone,
       background: old.background !== null && old.background.kind !== 'window',
       window: old.background?.kind === 'window' ? old.background.name : null,
+      // The picture-in-picture box (Session 50): a window in it named apart, as the background's is.
+      pip: old.pip !== null && old.pip.source.kind !== 'window',
+      pipWindow: old.pip?.source.kind === 'window' ? old.pip.source.name : null,
       blackout: old.blackout,
       logo: old.logo !== null,
       audio: old.audio !== null,

@@ -69,6 +69,30 @@ describe('the recovery notice', () => {
     );
   });
 
+  it('names the picture-in-picture box put back, and a window that was in it and was not (Session 50)', () => {
+    expect(recoveryText({ ...notice, lowerThird: true, pip: true, timers: 1 })).toBe(
+      'Drashti stopped unexpectedly and has put back what was live: the lower third, the picture-in-picture box and a timer.',
+    );
+    expect(
+      recoveryText({
+        ...notice,
+        background: true,
+        window: 'Placeholder slides app',
+        pipWindow: 'Placeholder meeting',
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly and has put back what was live: the background. The window “Placeholder slides app” was on the screens and was not put back, as it may be gone: Show a Window… shows it again. The window “Placeholder meeting” was in the picture-in-picture box and was not put back, as it may be gone.',
+    );
+    // A stop too long ago: named with the rest of what was live.
+    const savedAt = new Date(2026, 9, 9, 18, 34).toISOString();
+    expect(recoveryText({ ...notice, savedAt, putBack: false, pip: true })).toBe(
+      'Drashti stopped unexpectedly on Fri 9 Oct at 18:34, 3 hours or more before it started again, so nothing was put back on the screens. What was live then: the picture-in-picture box.',
+    );
+    expect(recoveryText({ ...notice, savedAt, putBack: false, pipWindow: 'Placeholder meeting' })).toBe(
+      'Drashti stopped unexpectedly on Fri 9 Oct at 18:34, 3 hours or more before it started again, so nothing was put back on the screens. What was live then: the window “Placeholder meeting” in the picture-in-picture box.',
+    );
+  });
+
   it('after a stop too long ago, says what was live and when, and that nothing went back (Session 20)', () => {
     expect(RECOVERY_MAX_AGE_MS).toBe(3 * 60 * 60 * 1000);
     // Made from the computer's own time, so it reads 18:34 wherever the test runs.

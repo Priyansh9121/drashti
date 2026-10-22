@@ -1302,6 +1302,7 @@ describe('ShowEngine', () => {
         timers: 1,
         lowerThird: true,
         pip: false,
+        pipWindow: null,
         window: null,
       });
       // The sound, the timer and the lower third keep their start times: they carry on, not start over.

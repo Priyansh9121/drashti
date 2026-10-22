@@ -2,12 +2,13 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EngineState, LowerThirdLayer } from '../../shared/engine/state';
+import type { EngineState, LowerThirdLayer, PipLayer } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { textSlide } from '../engine/testing';
 import type { RecoveryFiles } from './live-state';
 import { startingMode } from '../../shared/mode';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
+import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
 import { LiveStateWriter, savedFrom, startupRecovery, toRestore } from './live-state';
 
@@ -82,8 +83,58 @@ describe('restart recovery', () => {
       lookId: null,
       masks: null,
       lowerThird: null,
+      pip: null,
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
+  });
+
+  it('keeps the picture-in-picture box (Session 50) with when it went up, so it comes back still; alone, it is worth putting back', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    const place = { ...DEFAULT_PIP_PLACE, corner: null, x: 0.5, y: 0.25, size: 'large' } as const;
+    const box: PipLayer = {
+      source: { kind: 'media', mediaId: 'clouds', media: 'video' },
+      place,
+      swapped: true,
+      shownAt: 4321,
+    };
+    const nothing = initialEngineState();
+    // What it was animating then is not kept.
+    const animating: PipLayer = { ...box, changed: { at: 4400, place: DEFAULT_PIP_PLACE, swapped: false } };
+    await saved(writer, { ...nothing, layers: { ...nothing.layers, pip: animating } });
+    expect(toRestore(files)?.pip).toEqual(box);
+    // Every kind of picture is kept: the engine decides what comes back (never a window; an input in the list).
+    for (const source of [
+      { kind: 'slides' },
+      { kind: 'input', inputId: 'in-1', name: 'Input 1', device: 'Placeholder capture device' },
+      { kind: 'window', sourceId: 'window:4021:0', name: 'Placeholder meeting' },
+    ] as const) {
+      await saved(writer, { ...nothing, layers: { ...nothing.layers, pip: { ...box, source } } });
+      expect(toRestore(files)?.pip?.source).toEqual(source);
+    }
+  });
+
+  it('reads a damaged box as none, and files saved before the box as having none', () => {
+    const file = (pip: unknown) => {
+      // As a run saved it before the box (no `pip` at all), or with this in its place.
+      const { pip: _box, ...before } = savedFrom(live(), 'crashed-run', new Date('2026-10-22T10:00:00.000Z'));
+      writeFileSync(files.state, JSON.stringify({ ...before, ...(pip === undefined ? {} : { pip }) }));
+      return toRestore(files, null, new Date('2026-10-22T10:05:00.000Z'));
+    };
+    expect(file(undefined)?.pip).toBeNull();
+    for (const pip of [
+      { source: { kind: 'camera' }, place: DEFAULT_PIP_PLACE, swapped: false, shownAt: 1 },
+      {
+        source: { kind: 'slides' },
+        place: { ...DEFAULT_PIP_PLACE, size: 'huge' },
+        swapped: false,
+        shownAt: 1,
+      },
+      { source: { kind: 'slides' }, place: DEFAULT_PIP_PLACE, swapped: 'yes', shownAt: 1 },
+      'box',
+    ])
+      expect(file(pip)?.pip, JSON.stringify(pip)).toBeNull();
+    // The slide still comes back.
+    expect(file('box')?.slide).toMatchObject({ slideIndex: 2 });
   });
 
   it('keeps another app’s window that was the background, so the notice can name it (Session 48)', async () => {

@@ -307,7 +307,7 @@ describe('the picture-in-picture box in the engine', () => {
         const { engine } = setup();
         const saved = { ...at({ source }), changed: { at: 700, place: REMEMBERED, swapped: false } };
         const put = engine.restore({ slide: null, background: null, blackout: false, pip: saved });
-        expect(put).toMatchObject({ pip: true, window: null });
+        expect(put).toMatchObject({ pip: true, pipWindow: null, window: null });
         // As it was, without the animation it was playing then.
         expect(engine.current.layers.pip).toEqual(at({ source }));
       }
@@ -336,8 +336,16 @@ describe('the picture-in-picture box in the engine', () => {
         blackout: false,
         pip: at({ source: { kind: 'window', sourceId: MEETING.id, name: MEETING.name } }),
       });
-      expect(put).toMatchObject({ slide: true, pip: false, window: MEETING.name });
+      // Said apart from a window that was the background (that one, Show a Window… shows again).
+      expect(put).toMatchObject({ slide: true, pip: false, pipWindow: MEETING.name, window: null });
       expect(engine.current.layers.pip).toBeNull();
+      const both = setup().engine.restore({
+        slide: null,
+        background: { kind: 'window', sourceId: 'window:5:0', name: 'Placeholder slides app', startedAt: 7 },
+        blackout: false,
+        pip: at({ source: { kind: 'window', sourceId: MEETING.id, name: MEETING.name } }),
+      });
+      expect(both).toMatchObject({ window: 'Placeholder slides app', pipWindow: MEETING.name });
     });
   });
 });
