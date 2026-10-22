@@ -263,16 +263,19 @@ export async function finishSetup(coverOperator = false): Promise<void> {
 // ---- Keep these screens? (Session 50) ------------------------------------------------------------------------
 
 /**
- * The group a display is used by now: its screen's, showing there, or switched off by Audience or Stage (Session
- * 50), which keeps its display (Session 51, S2-1: Set Up Screens… counts it in use as it opens, so Finish never
- * takes the display away, and as Keep these screens? goes, so what Done set is seen kept).
+ * The group a display is used by now: its screen's, showing there, stopped (Session 23: black, but still its
+ * window on that display, tried again), or switched off by Audience or Stage (Session 50), which keeps its display
+ * (Session 51: Set Up Screens… counts it in use as it opens, so Done and Finish never take the display away and
+ * remove its screen, and as Keep these screens? goes, so what Done set is seen kept).
  */
 function groupOn(
   snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>,
   displayId: number,
 ): ScreenGroupConfig | undefined {
   const st = snapshot.status.find(
-    (x) => x.displayId === displayId && (x.state === 'showing' || x.state === 'switched-off'),
+    (x) =>
+      x.displayId === displayId &&
+      (x.state === 'showing' || x.state === 'stopped' || x.state === 'switched-off'),
   );
   return st ? snapshot.groups.find((g) => g.screens.some((sc) => sc.id === st.screenId)) : undefined;
 }

@@ -113,6 +113,15 @@ describe('Set Up Screens… and Keep these screens?', () => {
     expect(setup.screensKept({ 1: 'none', 2: 'audience', 3: 'stage' }, setup.usesOf(off), null)).toBe(true);
   });
 
+  it('counts a stopped screen’s display as in use, so Done never removes it (Session 51)', async () => {
+    const { setup } = await fresh();
+    const stopped = {
+      ...after,
+      status: [{ screenId: 's2', state: 'stopped' as const, displayId: 2 }, showing('s3', 3)],
+    };
+    expect(setup.usesOf(stopped)).toEqual({ 1: 'none', 2: 'audience', 3: 'stage' });
+  });
+
   it('kept: as this window answered, or else whether every display shows what was chosen', async () => {
     const { setup } = await fresh();
     const applied = { 1: 'none', 2: 'audience', 3: 'stage' } as const;
