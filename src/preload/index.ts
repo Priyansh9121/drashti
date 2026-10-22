@@ -461,6 +461,23 @@ const bridge: DrashtiBridge = {
     ask: (sourceId) => invoke(IPC.liveWindow.ask, sourceId),
     ended: (sourceId) => invoke(IPC.liveWindow.ended, sourceId),
   },
+  videoInputs: {
+    list: () => invoke(IPC.videoInputs.list),
+    onChanged: (listener) => on(IPC.videoInputs.changed, listener),
+    add: (fields) => invoke(IPC.videoInputs.add, fields),
+    update: (id, fields) => invoke(IPC.videoInputs.update, id, fields),
+    remove: (id) => invoke(IPC.videoInputs.remove, id),
+    access: () => invoke(IPC.videoInputs.access),
+    askAccess: () => invoke(IPC.videoInputs.askAccess),
+    openSettings: () => invoke(IPC.videoInputs.openSettings),
+    report: (report) => invoke(IPC.videoInputs.report, report),
+    status: () => invoke(IPC.videoInputs.status),
+    onStatus: (listener) => on(IPC.videoInputs.statusChanged, listener),
+  },
+  pip: {
+    place: () => invoke(IPC.pip.place),
+    savePlace: (place) => invoke(IPC.pip.savePlace, place),
+  },
   zoom: {
     open: () => invoke(IPC.zoom.open),
     program: () => invoke(IPC.zoom.program),
@@ -549,6 +566,15 @@ const bridge: DrashtiBridge = {
     identify: () => invoke(IPC.screens.identify),
     uncoverOperator: () => invoke(IPC.screens.uncoverOperator),
     tryAgain: (screenId) => invoke(IPC.screens.tryAgain, screenId),
+    pending: () => invoke(IPC.screens.pending),
+    onPending: (listener) => on(IPC.screens.pendingChanged, listener),
+    keep: () => invoke(IPC.screens.keep),
+    goBack: () => invoke(IPC.screens.goBack),
+  },
+  screenSwitches: {
+    get: () => invoke(IPC.screenSwitches.get),
+    onChanged: (listener) => on(IPC.screenSwitches.changed, listener),
+    turn: (which, isOn) => invoke(IPC.screenSwitches.turn, which, isOn),
   },
   output: {
     getContext: () => invoke(IPC.output.getContext),
@@ -571,6 +597,8 @@ const bridge: DrashtiBridge = {
       on(IPC.output.testClock, ({ at }) => {
         listener(at);
       }),
+    onKeepQuestion: (listener) => on(IPC.output.keepQuestion, listener),
+    keepAnswer: (keep) => invoke(IPC.output.keepAnswer, keep),
   },
   pictures: {
     job: () => invoke(IPC.pictures.job),

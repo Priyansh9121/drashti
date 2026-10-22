@@ -221,6 +221,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.liveWindow.show,
   IPC.liveWindow.access,
   IPC.zoom.open,
+  // Video inputs and picture in picture (Session 50) are set up in Pro Mode; the Audience and Stage switches and
+  // Keep or Go back are not locked (Simple Mode may turn screens on, and go back).
+  IPC.videoInputs.add,
+  IPC.videoInputs.update,
+  IPC.videoInputs.remove,
+  IPC.pip.savePlace,
 ];
 
 /** Each locked channel's answer: a refusal in its own result's shape. */

@@ -185,6 +185,7 @@ describe('reduce', () => {
         props: [],
         messages: [],
         ticker: null,
+        pip: null,
         lowerThird: null,
         masks: null,
       });

@@ -20,12 +20,13 @@ import type { LowerThird } from '../lower-thirds';
  * Movement, new transition kinds, a message's shownAt; an older phone, browser page or node says
  * 'incompatible' rather than drawing a kind it does not know. 10 (Sessions 31–36): a slide's darkening
  * behind the words, which an older one would leave out. 11 (Session 44): the lower third's layer. 12
- * (Session 48): another app's window as the background.
+ * (Session 48): another app's window as the background; and, before any release read 12 (Session 50), a video
+ * input as the background, a timer shown alone in the slide's place, and the picture-in-picture box.
  */
 export const ENGINE_STATE_VERSION = 12;
 
 export type LayerName =
-  'audio' | 'background' | 'slide' | 'props' | 'lowerThird' | 'messages' | 'ticker' | 'masks';
+  'audio' | 'background' | 'slide' | 'props' | 'pip' | 'lowerThird' | 'messages' | 'ticker' | 'masks';
 
 /** Bottom to top, the order outputs composite visible layers in. Audio has no picture. */
 export const LAYER_NAMES = [
@@ -33,6 +34,7 @@ export const LAYER_NAMES = [
   'background',
   'slide',
   'props',
+  'pip',
   'lowerThird',
   'messages',
   'ticker',
@@ -78,6 +80,19 @@ export interface SlideLayer {
    * that join later show it finished). Left out for a cut.
    */
   transition?: Transition;
+  /**
+   * A timer shown alone (Session 50: the Timers panel's Show on the screens): the slide is Drashti's Timer only
+   * layout, made for that timer, in the slide's place; no presentation in the library holds it (presentationId is
+   * `timer:<timerId>`). A phone names it "Timer: <name>".
+   */
+  timer?: TimerShow;
+}
+
+/** The timer a slide layer shows alone (Session 50). */
+export interface TimerShow {
+  timerId: string;
+  /** The timer's name, for LIVE, a stage screen and a phone. */
+  name: string;
 }
 
 /**
@@ -178,14 +193,40 @@ export interface WindowBackground {
   startedAt: number;
 }
 
+/** How a live picture sits on the screen: inside it with black around (fit), or filling it (fill). */
+export type LiveFit = 'fit' | 'fill';
+
+/**
+ * A video input, live (Session 50): a camera or capture input on this computer (a capture card, a video mixer's
+ * program out through its USB output), named by the operator in Media's Video inputs ("Input 1"). It is a live
+ * background: it comes on with the same fade a video does, and the slide stays over it. Each screen on this
+ * computer, its LIVE picture and the stream's page open it (video only, never sound); output nodes and phones
+ * cannot show it. Restart recovery puts it back when that input is there.
+ */
+export interface InputBackground {
+  kind: 'input';
+  /** The video input's id in this computer's list (shared/video-inputs.ts). */
+  inputId: string;
+  /** Its name as the operator gave it ("Input 1"), for LIVE, a stage screen, a phone and the notices. */
+  name: string;
+  /** The device's name as this computer gives it (its label), by which each screen finds it. */
+  device: string;
+  fit: LiveFit;
+  /** When it went up (ms since the epoch, main-process clock). */
+  startedAt: number;
+  /** It came on dissolving from the background before, with its slide: from `at` for `durationMs`. */
+  fade?: { at: number; durationMs: number };
+}
+
 /**
  * What the background layer shows: a colour, an image or video from the
- * media library, or another app's window (Session 48). A slide's background cue sets it (PLAN.md 4.3); it
- * stays up on later slides until something replaces or clears it.
+ * media library, another app's window (Session 48) or a video input (Session 50). A slide's background cue sets
+ * it (PLAN.md 4.3); it stays up on later slides until something replaces or clears it.
  */
 export type BackgroundLayer =
   | { kind: 'color'; color: string }
   | WindowBackground
+  | InputBackground
   | (MediaBackground & {
       /**
        * When playback started (ms since the epoch, main-process clock). The
@@ -281,11 +322,67 @@ export interface LowerThirdLayer extends LowerThird {
   shownAt: number;
 }
 
+/**
+ * What the picture-in-picture box holds (Session 50): a video input, a video or picture from Media, another app's
+ * window, or the slides (the slide as designed, made small, while the main picture shows the background).
+ */
+export type PipSource =
+  | { kind: 'slides' }
+  | { kind: 'media'; mediaId: string; media: 'image' | 'video' }
+  | { kind: 'input'; inputId: string; name: string; device: string }
+  | { kind: 'window'; sourceId: string; name: string };
+
+export type PipCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export const PIP_CORNERS = [
+  'top-left',
+  'top-right',
+  'bottom-left',
+  'bottom-right',
+] as const satisfies readonly PipCorner[];
+
+/** Small, Medium or Large: a quarter, a third or two fifths of the screen's width, always 16:9. */
+export type PipSize = 'small' | 'medium' | 'large';
+export const PIP_SIZES = ['small', 'medium', 'large'] as const satisfies readonly PipSize[];
+
+/** How the box comes on and goes off: a fade, a scale, or a slide in from its corner. */
+export type PipMotion = 'fade' | 'scale' | 'slide';
+export const PIP_MOTIONS = ['fade', 'scale', 'slide'] as const satisfies readonly PipMotion[];
+
+/** Where the box sits and how it looks, as the library remembers it for next time. */
+export interface PipPlace {
+  /** The corner it sits in, or null once dragged elsewhere (then x and y say where). */
+  corner: PipCorner | null;
+  /** Its top-left corner, as fractions of the screen's width and height (0 to 1). */
+  x: number;
+  y: number;
+  size: PipSize;
+  border: boolean;
+  rounded: boolean;
+  motion: PipMotion;
+}
+
+/**
+ * The picture-in-picture box on the audience screens (Session 50). Black-out and the logo cover it, Clear all
+ * takes it off, a Look can leave it out of a group, and a phone names it. No sound comes from it.
+ */
+export interface PipLayer {
+  source: PipSource;
+  place: PipPlace;
+  /** The box's picture and the main picture changed places (Swap). */
+  swapped: boolean;
+  /** When it came on, by the engine's clock: its in plays from then, and a video in it plays from then. */
+  shownAt: number;
+  /** The last Swap or move, by the engine's clock, and how it was before: it animates from there. */
+  changed?: { at: number; place: PipPlace; swapped: boolean };
+}
+
 export interface Layers {
   audio: AudioLayer | null;
   background: BackgroundLayer | null;
   slide: SlideLayer | null;
   props: PropItem[];
+  /** The picture-in-picture box (Session 50), or null. */
+  pip: PipLayer | null;
   lowerThird: LowerThirdLayer | null;
   messages: MessageItem[];
   ticker: TickerLayer | null;
@@ -397,6 +494,12 @@ export interface EngineState {
    * every screen. Null once one is shown again, after Clear all (which takes it off at once) and Put it back.
    */
   lowerThirdOff: { layer: LowerThirdLayer; at: number } | null;
+  /**
+   * The picture-in-picture box just taken off (Session 50), and when by the engine's clock: its out plays from then,
+   * the same on every screen. Null once a box is up again, after Clear all (which takes it off at once) and Put it
+   * back.
+   */
+  pipOff: { layer: PipLayer; at: number } | null;
 }
 
 export function emptyLayers(): Layers {
@@ -405,6 +508,7 @@ export function emptyLayers(): Layers {
     background: null,
     slide: null,
     props: [],
+    pip: null,
     lowerThird: null,
     messages: [],
     ticker: null,
@@ -435,6 +539,7 @@ export function initialEngineState(): EngineState {
     look: NO_LOOK,
     slideOff: null,
     lowerThirdOff: null,
+    pipOff: null,
   };
 }
 
