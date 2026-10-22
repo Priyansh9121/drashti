@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type ElectronApplication, expect, type Page, test } from '@playwright/test';
+import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import {
   killApp,
@@ -73,6 +74,8 @@ async function showMeeting(win: Page): Promise<void> {
   // Nothing goes up until Show on the screens.
   await expect(picker.getByTestId('window-show')).toBeDisabled();
   await choices.click();
+  await settled(win);
+  await expectNoSeriousA11yIssues(win, 'Show a Window, a window chosen');
   expect(await background(win)).toBeNull();
   await picker.getByTestId('window-show').click();
   await expect(picker).toHaveCount(0);
@@ -334,6 +337,8 @@ test('on a Mac that has not given Screen Recording, the picker says why and open
   await expect(why).toContainText('nothing goes up until you press Show on the screens');
   await expect(win.getByTestId('window-choice')).toHaveCount(0);
   await expect(win.getByTestId('window-show')).toBeDisabled();
+  await settled(win);
+  await expectNoSeriousA11yIssues(win, 'Show a Window, asking for Screen Recording');
   await why.getByTestId('window-open-settings').click();
   // The stand-in says in the log that System Settings would open (a test never opens it).
   await expect
