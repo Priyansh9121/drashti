@@ -8,6 +8,7 @@ import { NO_COUNTS, type ImportItemReport } from '../../shared/import';
 import { SOUND_EXTENSIONS } from '../../shared/media';
 import { openDatabase, type Db } from '../db/database';
 import { DropFolder } from './drop-folder';
+import { mediaKindOf } from './scan';
 
 /*
  * The drop folder (Session 28, decision 21): a temporary folder of made-up files, a stand-in for the import
@@ -64,7 +65,8 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
         continue;
       }
       const sha = createHash('sha256').update(content).digest('hex').slice(0, 16);
-      const kind = /\.(mp4|webm|mov)$/iu.test(path) ? 'video' : 'image';
+      // As the import stores it: by its type, or (a made-up file saying so) a sound in a video's file.
+      const kind = content.toString() === 'only sound' ? 'audio' : (mediaKindOf(path) ?? 'image');
       const had = db.prepare('SELECT 1 FROM media WHERE id = ?').get(sha);
       db.prepare('INSERT OR IGNORE INTO media (id, kind, name, path) VALUES (?, ?, ?, ?)').run(
         sha,
@@ -209,6 +211,54 @@ describe('the drop folder', () => {
     expect(h.notices).toEqual([`${String(names.length)} sounds from the drop folder are in Media.`]);
     // One more, on its own: one sound.
     await put('Placeholder bell.wav', 'placeholder bell');
+    await h.settle();
+    expect(h.notices.at(-1)).toBe('1 sound from the drop folder is in Media.');
+  });
+
+  it('judges again what alpha.10 listed as not taken for its type (Session 51 review): a sound and an FLV are taken', async () => {
+    const OLD = 'Only pictures and videos are taken from the drop folder.';
+    await put('Talk.mp3', 'a sound');
+    await put('Arti.flv', 'a video');
+    await put('Notes.pdf', 'a deck');
+    await put('Big.mp4', 'a much larger video');
+    const db = openDatabase(':memory:');
+    const listed = db.prepare(
+      `INSERT INTO drop_files (folder, name, size, mtime_ms, state, media_id, reason, seen_at)
+       VALUES (?, ?, ?, ?, 'not-taken', NULL, ?, '2026-10-20T10:00:00.000Z')`,
+    );
+    for (const [name, reason] of [
+      ['Talk.mp3', OLD],
+      ['Arti.flv', OLD],
+      ['Notes.pdf', OLD],
+      ['Big.mp4', 'Larger than 12 B: an admin can import it anyway.'],
+    ] as const) {
+      const s = await stat(join(folder, name));
+      listed.run(folder, name, s.size, Math.round(s.mtimeMs), reason);
+    }
+    const h = setup({ db, maxBytes: 12 });
+    await h.service.setFolder(folder);
+    await h.settle();
+    expect(h.imports.map((i) => i.names.sort())).toEqual([['Arti.flv', 'Talk.mp3']]);
+    expect(h.dropped()).toEqual(['Arti.flv', 'Talk.mp3']);
+    // Still not taken: the deck, in today's words, and the file over the limit, as it was.
+    expect(h.service.view().notTaken).toEqual([
+      { name: 'Big.mp4', reason: 'Larger than 12 B: an admin can import it anyway.', tooLarge: true },
+      {
+        name: 'Notes.pdf',
+        reason: 'Only pictures, videos and sounds are taken from the drop folder.',
+        tooLarge: false,
+      },
+    ]);
+  });
+
+  it('says only what was not taken when nothing came in; names a batch by what was stored (Session 51 review)', async () => {
+    await put('broken.png', 'broken');
+    const h = setup();
+    await h.service.setFolder(folder);
+    await h.settle();
+    expect(h.notices).toEqual(['1 file from the drop folder was not taken: see File › Drop Folder….']);
+    // A video's file holding only sound, stored as a sound: one sound.
+    await put('Recording.mp4', 'only sound');
     await h.settle();
     expect(h.notices.at(-1)).toBe('1 sound from the drop folder is in Media.');
   });
