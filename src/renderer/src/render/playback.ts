@@ -194,11 +194,12 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const { start, end } = playbackBounds(c.clip, v.duration);
     const point = endPoint(c);
     // An end point is held once the clock gets there, or once the element has (a moment ahead of the
-    // clock, which is near it).
+    // clock, which is near it). Not a sound the engine has just sent back from there (Session 51: a marker
+    // 0.3 s before it was held, silent while the clock played that last stretch): it plays it, from a jump.
     if (
       point !== null &&
       (at >= point - 0.01 ||
-        (v.paused && v.currentTime >= point - HOLD_TOLERANCE && at >= point - limits.jumpOver))
+        (!moved && v.paused && v.currentTime >= point - HOLD_TOLERANCE && at >= point - limits.jumpOver))
     ) {
       holdAt(point);
       return;
