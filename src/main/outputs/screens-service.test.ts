@@ -545,6 +545,11 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     expect(t.service.placed()).toEqual(new Map([['here 2', `${screenId} ${groupId} audience`]]));
     t.service.setGroupRole(groupId, 'stage');
     expect(t.service.placed()).toEqual(new Map([['here 2', `${screenId} ${groupId} stage`]]));
+    // A key and fill pair's screen, by what it sends (Session 51, S3-3): the key is another picture.
+    t.service.setGroupRole(groupId, 'keyfill');
+    expect(t.service.placed()).toEqual(new Map([['here 2', `${screenId} ${groupId} keyfill fill`]]));
+    t.service.updateScreen(screenId, { feed: 'key' });
+    expect(t.service.placed()).toEqual(new Map([['here 2', `${screenId} ${groupId} keyfill key`]]));
     // Turned off, or its display gone: nothing on a display.
     t.service.updateScreen(screenId, { enabled: false });
     expect(t.service.placed()).toEqual(new Map());
@@ -702,6 +707,45 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  // Session 51, S3-3: Screens' Shows (a group's role) and a key and fill pair's Sends put another picture on a display.
+  it('Shows and Sends ask; Go back puts back the role, the key and fill pair’s settings in every Look, and what each screen sends', () => {
+    const t = two();
+    const keep = keeperOf(t);
+    t.service.createGroup('Switcher');
+    const id = groupNamed(t, 'Switcher');
+    t.service.assignDisplay(id, 2);
+    t.service.assignDisplay(id, 3);
+    t.looks.create('Festival', null);
+    const looks = () => t.looks.view().looks.map((l) => l.groups[id]);
+    const was = looks();
+    const feeds = () => t.repo.screens().map((sc) => sc.feed);
+
+    // Shows: a key and fill pair. Asked; the words as a lower third in every Look; Go back puts it all back.
+    keep.change(() => t.service.setGroupRole(id, 'keyfill'));
+    expect(keep.current()).not.toBeNull();
+    expect(feeds()).toEqual(['fill', 'key']);
+    expect(looks().map((g) => g?.slides)).toEqual(['lowerThird', 'lowerThird']);
+    expect(keep.goBack()).toMatchObject({ ok: true });
+    expect(t.repo.groups()[0]?.role).toBe('audience');
+    expect(feeds()).toEqual([null, null]);
+    expect(looks()).toEqual(was);
+
+    // Kept; then Sends swapped on the fill: asked, and Go back sends the fill again.
+    keep.change(() => t.service.setGroupRole(id, 'keyfill'));
+    keep.keep();
+    const fill = t.repo.screens()[0]?.id ?? '';
+    keep.change(() => t.service.updateScreen(fill, { feed: 'key' }));
+    expect(keep.current()).not.toBeNull();
+    expect(feeds()).toEqual(['key', 'key']);
+    keep.goBack();
+    expect(feeds()).toEqual(['fill', 'key']);
+
+    // A group with nothing on a display: its role changes without a question.
+    t.service.createGroup('Spare');
+    keep.change(() => t.service.setGroupRole(groupNamed(t, 'Spare'), 'stage'));
+    expect(keep.current()).toBeNull();
   });
 });
 

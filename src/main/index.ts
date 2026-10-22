@@ -4485,7 +4485,8 @@ function start(): void {
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
   handle(IPC.screens.setGroupRole, (e, id, role) => {
     if (!fromOperator(e)) return notAllowed;
-    const result = screens.setGroupRole(id, role);
+    // Shows (Session 51, S3-3): another picture on the group's displays asks Keep these screens? too.
+    const result = keepScreens.change(() => screens.setGroupRole(id, role));
     // A stage display in a browser shows the stage group's languages.
     net.hint('screens');
     return result;
@@ -4509,7 +4510,8 @@ function start(): void {
     net.hint('screens');
     return result;
   });
-  // Use this display and On (Session 50): a change that puts an output on a display asks Keep these screens?
+  // Use this display and On (Session 50): a change that puts an output on a display asks Keep these screens?; so
+  // does a key and fill pair's Sends (Session 51, S3-3: the key is another picture), through updateScreen.
   handle(IPC.screens.assignDisplay, (e, groupId, displayId, options) =>
     fromOperator(e)
       ? keepScreens.change(() => screens.assignDisplay(groupId, displayId, options))
