@@ -1,21 +1,23 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { OperatorAction } from '../shared/keymap';
-import { acceleratorFor, KEYMAP, toAccelerator } from '../shared/keymap';
+import type { KeyBinding, KeyInput, OperatorAction } from '../shared/keymap';
+import { acceleratorFor, actionFor, KEYMAP, SIMPLE_KEYMAP, toAccelerator } from '../shared/keymap';
 import type { OperatorMode } from '../shared/mode';
 import type { MenuActions, NodeMenuActions } from './menu';
 import { installMenu, installNodeMenu } from './menu';
 
 /*
- * The keys the operators already press (Session 50): F12 puts the logo up, and Cmd+1 and Cmd+2 (Ctrl+1
- * and Ctrl+2 on Windows) turn the Audience and Stage screens off and on. Nothing else in a packaged
- * Drashti answers them: no item in Main's menus or a node's, in Pro or Simple Mode, on the Mac or on
- * Windows, with diagnostics on or off, by its own accelerator or by its role's (the keys Electron gives
- * the role), except the logo's and the Audience and Stage screens' own; no key that works system-wide;
- * and no key handler of a window's own. Electron's menu is stood in for, so each menu is read just as it
- * is built.
+ * One press, one action (Session 50; its gaps closed in Session 51). The page answers the keymap's keys
+ * (shared/keymap.ts), the ones the operators already press among them: F5 to F8 (moved in Session 50), F12 for
+ * the logo, Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows) for the Audience and Stage screens. No menu of a
+ * packaged Drashti answers one of them as well: no item in Main's menus or a node's, in Pro or Simple Mode, on
+ * the Mac or on Windows, with diagnostics on or off, by its own accelerator or by its role's (the keys Electron
+ * gives the role), but the item that is that key's own action's (OWN). Every key of the keymap is checked, each
+ * menu key pressed as the page's own keyMatches hears it, whatever spelling it is written in. Nothing else built
+ * in Drashti answers the operators' keys either: no key that works system-wide, and no key handler of a
+ * window's own. Electron's menu is stood in for, so each menu is read just as it is built.
  */
 
 const menus = vi.hoisted(() => ({ built: [] as MenuItemConstructorOptions[][] }));
@@ -30,97 +32,267 @@ vi.mock('electron', () => ({
 }));
 
 type Platform = 'darwin' | 'win32';
+const PLATFORMS = ['darwin', 'win32'] as const;
 
-/** The keys checked here, the action the keymap gives each, and the words naming that action's items. */
-const THEIRS: readonly { key: string; action: OperatorAction; own: RegExp }[] = [
-  { key: 'F12', action: 'toggleLogo', own: /\blogo\b/iu },
-  { key: 'Mod+1', action: 'toggleAudience', own: /\baudience\b/iu },
-  { key: 'Mod+2', action: 'toggleStage', own: /\bstage\b/iu },
+/** The operators' keys, and the action the keymap gives each. */
+const THEIRS: readonly { key: string; action: OperatorAction }[] = [
+  { key: 'F5', action: 'clearAudio' },
+  { key: 'F6', action: 'clearMessages' },
+  { key: 'F7', action: 'clearTicker' },
+  { key: 'F8', action: 'clearMasks' },
+  { key: 'F12', action: 'toggleLogo' },
+  { key: 'Mod+1', action: 'toggleAudience' },
+  { key: 'Mod+2', action: 'toggleStage' },
 ];
 
-const both = (...keys: string[]): Record<Platform, readonly string[]> => ({ darwin: keys, win32: keys });
+/**
+ * The only items that may answer a key the page answers: that key's own action's, by id (a role's key by its
+ * role). Every other key of the keymap, F12 among them, belongs to no item.
+ */
+const OWN: Partial<Record<OperatorAction, readonly string[]>> = {
+  // The menu's key (the keymap's menuOnly): the page leaves Mod+Z to Edit › Undo, Main's or a node's.
+  undo: ['undo'],
+  // Whichever hears it first uncovers the controls, and that is all it does (system-wide too while covered).
+  uncoverControls: ['uncover-controls'],
+  // Shown without being bound (Session 51): Windows' menu leaves them unbound (registerAccelerator: false);
+  // the Mac's binds every key it shows, so the page takes every press of them first (the keymap's shownInMenu).
+  toggleAudience: ['screen-switch-audience'],
+  toggleStage: ['screen-switch-stage'],
+};
+
+/** The keys Electron gives a role's items, each item named by its own role. */
+type RoleKeys = Record<Platform, readonly (readonly [role: string, accelerator: string])[]>;
+const both = (...keys: (readonly [string, string])[]): RoleKeys => ({ darwin: keys, win32: keys });
+
+/** The Electron whose roles' keys ROLE_KEYS has. A newer one fails the test until they are read again. */
+const ELECTRON_READ = '44.4.5';
 
 /**
- * The keys Electron gives each role these menus use, on the Mac and on Windows, as Electron 44.4.5 has
- * them (its own menu-item roles); a submenu role's are its items'. A role not here fails the test: look
- * up its keys first.
+ * The keys Electron gives each role these menus use, on the Mac and on Windows, as Electron 44.4.5 has them
+ * (its own menu-item roles); a submenu role's are its items'. A role not here fails the test: look up its keys
+ * first.
  */
-const ROLE_KEYS: Record<string, Record<Platform, readonly string[]>> = {
+const ROLE_KEYS: Record<string, RoleKeys> = {
   // About, Services, Hide, Hide Others, Show All and Quit (the Mac's only).
-  appmenu: both('Command+H', 'Command+Alt+H', 'CommandOrControl+Q'),
+  appmenu: both(['hide', 'Command+H'], ['hideothers', 'Command+Alt+H'], ['quit', 'CommandOrControl+Q']),
   // Undo, Redo, Cut, Copy, Paste, Paste and Match Style (the Mac's), Delete and Select All, then the
   // Mac's Substitutions and Speech, which have no keys.
   editmenu: {
     darwin: [
-      'CommandOrControl+Z',
-      'Shift+CommandOrControl+Z',
-      'CommandOrControl+X',
-      'CommandOrControl+C',
-      'CommandOrControl+V',
-      'Cmd+Option+Shift+V',
-      'CommandOrControl+A',
+      ['undo', 'CommandOrControl+Z'],
+      ['redo', 'Shift+CommandOrControl+Z'],
+      ['cut', 'CommandOrControl+X'],
+      ['copy', 'CommandOrControl+C'],
+      ['paste', 'CommandOrControl+V'],
+      ['pasteandmatchstyle', 'Cmd+Option+Shift+V'],
+      ['selectall', 'CommandOrControl+A'],
     ],
     win32: [
-      'CommandOrControl+Z',
-      'Control+Y',
-      'CommandOrControl+X',
-      'CommandOrControl+C',
-      'CommandOrControl+V',
-      'CommandOrControl+A',
+      ['undo', 'CommandOrControl+Z'],
+      ['redo', 'Control+Y'],
+      ['cut', 'CommandOrControl+X'],
+      ['copy', 'CommandOrControl+C'],
+      ['paste', 'CommandOrControl+V'],
+      ['selectall', 'CommandOrControl+A'],
     ],
   },
   // Minimize, Zoom and Bring All to Front on the Mac; Minimize and Close on Windows.
-  windowmenu: { darwin: ['CommandOrControl+M'], win32: ['CommandOrControl+M', 'CommandOrControl+W'] },
+  windowmenu: {
+    darwin: [['minimize', 'CommandOrControl+M']],
+    win32: [
+      ['minimize', 'CommandOrControl+M'],
+      ['close', 'CommandOrControl+W'],
+    ],
+  },
   help: both(),
-  cut: both('CommandOrControl+X'),
-  copy: both('CommandOrControl+C'),
-  paste: both('CommandOrControl+V'),
-  pasteandmatchstyle: { darwin: ['Cmd+Option+Shift+V'], win32: ['Shift+CommandOrControl+V'] },
+  cut: both(['cut', 'CommandOrControl+X']),
+  copy: both(['copy', 'CommandOrControl+C']),
+  paste: both(['paste', 'CommandOrControl+V']),
+  pasteandmatchstyle: {
+    darwin: [['pasteandmatchstyle', 'Cmd+Option+Shift+V']],
+    win32: [['pasteandmatchstyle', 'Shift+CommandOrControl+V']],
+  },
   delete: both(),
-  selectall: both('CommandOrControl+A'),
-  togglefullscreen: { darwin: ['Control+Command+F'], win32: ['F11'] },
-  minimize: both('CommandOrControl+M'),
+  selectall: both(['selectall', 'CommandOrControl+A']),
+  togglefullscreen: {
+    darwin: [['togglefullscreen', 'Control+Command+F']],
+    win32: [['togglefullscreen', 'F11']],
+  },
+  minimize: both(['minimize', 'CommandOrControl+M']),
   zoom: both(),
   front: both(),
-  close: both('CommandOrControl+W'),
-  toggledevtools: { darwin: ['Alt+Command+I'], win32: ['Ctrl+Shift+I'] },
+  close: both(['close', 'CommandOrControl+W']),
+  toggledevtools: {
+    darwin: [['toggledevtools', 'Alt+Command+I']],
+    win32: [['toggledevtools', 'Ctrl+Shift+I']],
+  },
 };
 
-/** An accelerator as the keys pressed on `platform`: its modifiers in one order, then its key. */
+/** Each way Electron writes a modifier, as the key pressed on `platform`. */
+const MODIFIERS: Record<string, (platform: Platform) => string> = {
+  commandorcontrol: (platform) => (platform === 'darwin' ? 'Cmd' : 'Ctrl'),
+  cmdorctrl: (platform) => (platform === 'darwin' ? 'Cmd' : 'Ctrl'),
+  command: () => 'Cmd',
+  cmd: () => 'Cmd',
+  super: () => 'Cmd',
+  meta: () => 'Cmd',
+  control: () => 'Ctrl',
+  ctrl: () => 'Ctrl',
+  alt: () => 'Alt',
+  option: () => 'Alt',
+  altgr: () => 'Alt',
+  shift: () => 'Shift',
+};
+
+/**
+ * Other names for one key: Electron's (Up, Esc, Return, Plus) and the keymap's (KeyboardEvent.key, as
+ * ArrowUp), and the number pad's digits and point, which type what the main keys do (the page hears "1" from
+ * either 1).
+ */
+const SAME_KEY: Record<string, string> = {
+  UP: 'ARROWUP',
+  DOWN: 'ARROWDOWN',
+  LEFT: 'ARROWLEFT',
+  RIGHT: 'ARROWRIGHT',
+  ESC: 'ESCAPE',
+  RETURN: 'ENTER',
+  SPACEBAR: 'SPACE',
+  PLUS: '+',
+  NUMDEC: '.',
+  ...Object.fromEntries([...'0123456789'].map((d) => [`NUM${d}`, d])),
+};
+
+/** A character typed with Shift on a US keyboard, as Electron reads it: "?" is Shift and "/". */
+const SHIFTED: Record<string, string> = {
+  '!': '1',
+  '@': '2',
+  '#': '3',
+  $: '4',
+  '%': '5',
+  '^': '6',
+  '&': '7',
+  '*': '8',
+  '(': '9',
+  ')': '0',
+  _: '-',
+  '+': '=',
+  '{': '[',
+  '}': ']',
+  '|': '\\',
+  ':': ';',
+  '"': "'",
+  '<': ',',
+  '>': '.',
+  '?': '/',
+  '~': '`',
+};
+
+/**
+ * A press on `platform`, however it is written (an Electron accelerator, or a keymap key through toAccelerator):
+ * its modifiers, in any case and by any of their names, in one order, then its key by one name.
+ */
 function pressed(accelerator: string, platform: Platform): string {
   const parts = accelerator.split('+');
-  const key = (parts.pop() ?? '').toUpperCase();
-  const mods = parts.map((part) => {
-    const p = part.toLowerCase();
-    if (p === 'commandorcontrol' || p === 'cmdorctrl') return platform === 'darwin' ? 'Cmd' : 'Ctrl';
-    if (p === 'command' || p === 'cmd' || p === 'super' || p === 'meta') return 'Cmd';
-    if (p === 'control' || p === 'ctrl') return 'Ctrl';
-    if (p === 'alt' || p === 'option' || p === 'altgr') return 'Alt';
-    return part;
-  });
-  return [...[...new Set(mods)].sort(), key].join('+');
+  const written = (parts.pop() ?? '').toUpperCase();
+  const key = SAME_KEY[written] ?? written;
+  const mods = new Set(parts.map((part) => MODIFIERS[part.toLowerCase()]?.(platform) ?? part));
+  const unshifted = SHIFTED[key];
+  if (unshifted !== undefined) mods.add('Shift');
+  return [...[...mods].sort(), unshifted ?? key].join('+');
 }
 
-/** Every key a menu answers, and the item answering it: by its own accelerator, or else its role's. */
-function keysOf(
-  template: readonly MenuItemConstructorOptions[],
-  platform: Platform,
-): { item: string; key: string }[] {
-  const found: { item: string; key: string }[] = [];
-  const walk = (items: readonly MenuItemConstructorOptions[]) => {
+/** KeyboardEvent.key of a named key, by the one name pressed() gives it. */
+const EVENT_KEY: Record<string, string> = {
+  ARROWUP: 'ArrowUp',
+  ARROWDOWN: 'ArrowDown',
+  ARROWLEFT: 'ArrowLeft',
+  ARROWRIGHT: 'ArrowRight',
+  ESCAPE: 'Escape',
+  ENTER: 'Enter',
+  SPACE: ' ',
+  TAB: 'Tab',
+  BACKSPACE: 'Backspace',
+  DELETE: 'Delete',
+  INSERT: 'Insert',
+  HOME: 'Home',
+  END: 'End',
+  PAGEUP: 'PageUp',
+  PAGEDOWN: 'PageDown',
+};
+
+/** What a key types with Shift on a US keyboard: "/" types "?". */
+const TYPED_WITH_SHIFT: Record<string, string> = Object.fromEntries(
+  Object.entries(SHIFTED).map(([typed, key]) => [key, typed]),
+);
+
+/**
+ * A press (as pressed() writes it) as the page's keydown event has it, on a US keyboard: "Cmd+Shift+Z" is Z
+ * with Cmd and Shift down, "Shift+/" is "?". The page's own keyMatches then says whether it answers the press.
+ */
+function eventFor(press: string): KeyInput {
+  const parts = press.split('+');
+  const key = parts.pop() ?? '';
+  const shiftKey = parts.includes('Shift');
+  const typed = shiftKey ? (TYPED_WITH_SHIFT[key] ?? key) : key;
+  return {
+    key: EVENT_KEY[typed] ?? typed,
+    metaKey: parts.includes('Cmd'),
+    ctrlKey: parts.includes('Ctrl'),
+    altKey: parts.includes('Alt'),
+    shiftKey,
+  };
+}
+
+/** A key a menu shows: its item, the key as pressed, and whether that item answers it on this system. */
+interface MenuKey {
+  /** The item's id, or the role Electron gives the key to. */
+  item: string;
+  /** Where it is, for a failure's message: "View › Audience". */
+  where: string;
+  key: string;
+  /** Told not to bind its key (registerAccelerator: false). */
+  unbound: boolean;
+  /** Answers its key: Windows' menu leaves an unbound key alone, and Electron has no such thing on the Mac. */
+  answers: boolean;
+}
+
+/** Every key a menu shows, by an item's own accelerator, or else its role's. */
+function keysOf(template: readonly MenuItemConstructorOptions[], platform: Platform): MenuKey[] {
+  const found: MenuKey[] = [];
+  const walk = (items: readonly MenuItemConstructorOptions[], under: string) => {
     for (const item of items) {
-      const name = item.label ?? item.role ?? item.id ?? '';
-      if (typeof item.accelerator === 'string')
-        found.push({ item: name, key: pressed(item.accelerator, platform) });
-      else if (item.role !== undefined) {
+      const where = `${under}${item.label ?? item.role ?? item.id ?? ''}`;
+      // Read as given: a key from a part this test does not name would be a stand-in, never a string.
+      const accelerator: unknown = item.accelerator;
+      if (accelerator !== undefined) expect(typeof accelerator, `${where}: its key, as given`).toBe('string');
+      if (typeof accelerator === 'string') {
+        const unbound = item.registerAccelerator === false;
+        found.push({
+          item: item.id ?? item.role ?? where,
+          where,
+          key: pressed(accelerator, platform),
+          unbound,
+          answers: !unbound || platform === 'darwin',
+        });
+      } else if (item.role !== undefined) {
         const role = ROLE_KEYS[item.role.toLowerCase()];
         expect(role, `the keys Electron gives the ${item.role} role`).toBeDefined();
-        for (const key of role?.[platform] ?? []) found.push({ item: name, key: pressed(key, platform) });
+        for (const [own, key] of role?.[platform] ?? [])
+          found.push({
+            item: own,
+            where: `${where} › ${own}`,
+            key: pressed(key, platform),
+            unbound: false,
+            answers: true,
+          });
       }
-      if (Array.isArray(item.submenu)) walk(item.submenu);
+      // Every submenu is read: a list of items, never something else this test would pass over.
+      const submenu: unknown = item.submenu;
+      if (submenu !== undefined) expect(Array.isArray(submenu), `${where}: its submenu, read`).toBe(true);
+      if (Array.isArray(item.submenu)) walk(item.submenu, `${where} › `);
     }
   };
-  walk(template);
+  walk(template, '');
   return found;
 }
 
@@ -160,6 +332,7 @@ const mainActions = (mode: OperatorMode, platform: Platform, diagnostics: boolea
       choose: () => undefined,
       open: () => undefined,
     },
+    screenSwitches: { on: { audience: true, stage: true }, toggle: () => undefined },
     diagnostics: diagnostics ? (standIn as MenuActions['diagnostics']) : null,
   });
 
@@ -180,26 +353,56 @@ function on<T>(platform: Platform, run: () => T): T {
   }
 }
 
-/** Every menu Drashti can have on `platform`: Main's in each mode and a node's, diagnostics off and on. */
-function everyMenu(platform: Platform): { menu: string; template: MenuItemConstructorOptions[] }[] {
+/**
+ * The keys the window under each menu answers: Pro Mode's page and its lists (all but Undo, the menu's), Simple
+ * Mode's page (Undo too: Put it back), and a node's, whose window answers none: the operators' keys all the same,
+ * as an operator there would press them.
+ */
+const HEARD: Record<'pro' | 'simple' | 'node', readonly KeyBinding[]> = {
+  pro: KEYMAP.filter((b) => b.menuOnly !== true),
+  simple: SIMPLE_KEYMAP,
+  node: KEYMAP.filter((b) => THEIRS.some((t) => t.action === b.action)),
+};
+
+interface BuiltMenu {
+  menu: string;
+  /** Main's, not a node's. */
+  main: boolean;
+  /** The keys its window answers. */
+  heard: readonly KeyBinding[];
+  template: MenuItemConstructorOptions[];
+}
+
+/**
+ * Every menu Drashti can have on `platform`: Main's in each mode and a node's, diagnostics off and on. Roles on
+ * or off give the same menus (an admin's items ask for the PIN when chosen), so they are built once.
+ */
+function everyMenu(platform: Platform): BuiltMenu[] {
   return on(platform, () => {
-    const out: { menu: string; template: MenuItemConstructorOptions[] }[] = [];
-    const take = (menu: string) => {
+    const out: BuiltMenu[] = [];
+    const take = (menu: string, heard: 'pro' | 'simple' | 'node') => {
       const template = menus.built.pop();
       expect(template, menu).toBeDefined();
-      if (template) out.push({ menu, template });
+      if (template) out.push({ menu, main: heard !== 'node', heard: HEARD[heard], template });
     };
     for (const diagnostics of [false, true]) {
       const also = diagnostics ? ', diagnostics on' : '';
       for (const mode of ['pro', 'simple'] as const) {
         installMenu(mainActions(mode, platform, diagnostics));
-        take(`Main's menu in ${mode} mode${also}`);
+        take(`Main's menu in ${mode} mode${also}`, mode);
       }
       installNodeMenu(nodeActions(platform, diagnostics));
-      take(`a node's menu${also}`);
+      take(`a node's menu${also}`, 'node');
     }
     return out;
   });
+}
+
+/** Every key every menu shows on `platform` (all six menus read), with the menu it is in. */
+function everyKey(platform: Platform): (MenuKey & Omit<BuiltMenu, 'template'>)[] {
+  const all = everyMenu(platform);
+  expect(all).toHaveLength(6);
+  return all.flatMap(({ template, ...menu }) => keysOf(template, platform).map((k) => ({ ...k, ...menu })));
 }
 
 const src = join(__dirname, '..');
@@ -213,65 +416,165 @@ function sources(dir: string): string[] {
   });
 }
 
+/** Each line of code (not a comment) of the source files, with where it is. */
+const codeLines = () =>
+  sources(src).flatMap((path) =>
+    readFileSync(path, 'utf8')
+      .split('\n')
+      .map((line, i) => ({ path, line, at: `${relative(src, path)}:${String(i + 1)} ${line.trim()}` }))
+      .filter(({ line }) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/u.test(line)),
+  );
+
 /**
- * A line of code naming F12, or 1 or 2 as a key: in a string, as a key handler compares it (e.key, e.code)
- * or as the slide editor's ProseMirror keymap writes it ("Mod-1").
+ * A line of code naming F12, or 1 or 2 as a key: in a string, alone or after modifiers, as an accelerator or a
+ * keymap writes it ("F12", "Shift+F12", "CommandOrControl+1", "Ctrl+2"); as a key handler compares it (e.key,
+ * e.code's "Digit1" and "Numpad1", the old key codes 123, 49 and 50); or as the slide editor's ProseMirror keymap
+ * writes it ("Mod-1").
  */
 const NAMES_THEM = [
-  /['"`]F12['"`]/u,
-  /\bDigit[12]\b/u,
+  /['"`](?:[A-Za-z]+\+)*F12['"`]/u,
+  /['"`](?:[A-Za-z]+\+)+[12]['"`]/u,
+  /\b(?:Digit|Numpad)[12]\b/u,
   /\.key\b.*['"`][12]['"`]|['"`][12]['"`].*\.key\b/u,
+  /\.(?:keyCode|which)\s*[!=]==?\s*(?:123|49|50)\b|\b(?:123|49|50)\s*[!=]==?\s*[\w.]+\.(?:keyCode|which)\b/u,
   /['"`](?:(?:Shift|Alt|Mod|Ctrl|Cmd|Meta)-)+[12]['"`]/u,
 ];
 
-describe('F12, Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows): only the logo’s and the screens’ keys (Session 50)', () => {
-  it('are the keymap’s keys for the Logo and for the Audience and Stage screens', () => {
+describe('one press, one action: the menus never answer a key the page answers (Sessions 50 and 51)', () => {
+  it('has the operators’ keys in the keymap: F5 to F8, F12 for the Logo, Mod+1 and Mod+2 for the Audience and Stage screens', () => {
     for (const { key, action } of THEIRS)
       expect(KEYMAP.find((b) => b.action === action)?.keys, action).toContain(key);
   });
 
-  it.each(['darwin', 'win32'] as const)(
-    'no menu item answers them but the Logo’s and the Audience and Stage screens’ own (%s)',
+  it(`reads the roles’ keys from the Electron Drashti is built with (${ELECTRON_READ})`, () => {
+    const pkg = JSON.parse(readFileSync(join(src, '..', 'package.json'), 'utf8')) as {
+      devDependencies?: Record<string, string>;
+    };
+    expect(
+      pkg.devDependencies?.['electron'],
+      'a new Electron: read its roles’ keys again (ROLE_KEYS), then say which Electron they are',
+    ).toBe(ELECTRON_READ);
+  });
+
+  it.each(PLATFORMS)(
+    'no menu item answers a key the page answers, but that key’s own action’s item (%s)',
     (platform) => {
-      const all = everyMenu(platform);
-      expect(all).toHaveLength(6);
-      const keys = all.flatMap(({ menu, template }) =>
-        keysOf(template, platform).map((k) => ({ ...k, menu })),
-      );
-      // Every key is read: the menus' own (Undo, Reload, Uncover the controls) and their roles' (Copy,
-      // Minimize).
+      const keys = everyKey(platform);
+      // Every key is read: the menus' own (Undo, Reload, Uncover the controls) and their roles' (Copy, Minimize).
       const mod = platform === 'darwin' ? 'Cmd' : 'Ctrl';
       expect(keys.map((k) => k.key)).toEqual(
         expect.arrayContaining([`${mod}+Z`, `${mod}+R`, `${mod}+Shift+U`, `${mod}+C`, `${mod}+M`]),
       );
-      const taken = keys.flatMap(({ menu, item, key }) =>
-        THEIRS.filter((t) => pressed(toAccelerator(t.key), platform) === key && !t.own.test(item)).map(
-          (t) => `${menu}: ${item} answers ${t.key}`,
-        ),
-      );
-      expect(taken).toEqual([]);
+      // Each key a menu answers, pressed: the page's own keyMatches says what its window does with it.
+      const twice = keys
+        .filter((k) => k.answers)
+        .flatMap(({ menu, heard, item, where, key }) => {
+          const action = actionFor(eventFor(key), platform, heard);
+          return action && !(OWN[action] ?? []).includes(item)
+            ? [`${menu}: ${where} answers ${key}, which the page answers too (${action})`]
+            : [];
+        });
+      expect(twice).toEqual([]);
     },
   );
 
-  it('none of them works system-wide (Windows keeps F12 for debuggers: it is never a system-wide key)', () => {
+  it.each(PLATFORMS)(
+    'Audience and Stage show Mod+1 and Mod+2 unbound, the page’s keys: Windows leaves them to the page, and on the Mac the page takes every press of them first (%s)',
+    (platform) => {
+      const keys = everyKey(platform);
+      const unbound = keys.filter((k) => k.unbound);
+      // In Main's Pro Mode menu, diagnostics off and on.
+      expect(unbound.map((k) => `${k.where} ${k.key}`).sort()).toEqual(
+        Array.from({ length: 2 }, () => [
+          `View › Audience ${pressed(toAccelerator('Mod+1'), platform)}`,
+          `View › Stage ${pressed(toAccelerator('Mod+2'), platform)}`,
+        ])
+          .flat()
+          .sort(),
+      );
+      for (const k of unbound) {
+        // Its own action's key, which the page takes every press of (on the Mac the menu binds it all the same).
+        const action = actionFor(eventFor(k.key), platform);
+        const binding = KEYMAP.find((b) => b.action === action && (OWN[b.action] ?? []).includes(k.item));
+        expect(binding, `${k.where}: its own action’s key`).toBeDefined();
+        expect(binding?.shownInMenu, `${k.where}: the page takes every press of ${k.key}`).toBe(true);
+        expect(binding?.menuOnly, `${k.where}: the page’s key`).toBeUndefined();
+        expect(k.answers).toBe(platform === 'darwin');
+      }
+    },
+  );
+
+  it.each(PLATFORMS)(
+    'the keys the page leaves to the menu are its own items’, in Pro and Simple Mode: Edit › Undo’s Mod+Z (%s)',
+    (platform) => {
+      const left = KEYMAP.filter((b) => b.menuOnly === true);
+      expect(left.length).toBeGreaterThan(0);
+      for (const { menu, template } of everyMenu(platform).filter((m) => m.main)) {
+        const answered = keysOf(template, platform).filter((k) => k.answers);
+        for (const b of left)
+          expect(
+            answered.some(
+              (a) =>
+                (OWN[b.action] ?? []).includes(a.item) &&
+                actionFor(eventFor(a.key), platform, [b]) === b.action,
+            ),
+            `${menu}: ${b.label} answered by its own item`,
+          ).toBe(true);
+      }
+    },
+  );
+
+  it('none of the operators’ keys works system-wide (Windows keeps F12 for debuggers: it is never a system-wide key)', () => {
     const global = KEYMAP.filter((b) => b.global === true).flatMap((b) => b.keys);
     expect(global.length).toBeGreaterThan(0);
     expect(global.filter((key) => THEIRS.some((t) => t.key === key))).toEqual([]);
   });
 
+  it('builds every menu in menu.ts, read here, and registers no system-wide key but the keymap’s', () => {
+    // Only the main process can make a menu or a system-wide key (a page cannot import Electron).
+    const main = join(src, 'main');
+    const menuFile = join(main, 'menu.ts');
+    const builds = /\b(?:buildFromTemplate|setApplicationMenu|new MenuItem)\b|\.setMenu\(/u;
+    // globalShortcut is given the keymap's keys (acceleratorFor), never one written out.
+    const writesOut = /globalShortcut\.register(?:All)?\(\s*['"`[]/u;
+    const found = codeLines()
+      .filter(({ path }) => path.startsWith(`${main}${sep}`))
+      .filter(({ path, line }) => (builds.test(line) && path !== menuFile) || writesOut.test(line))
+      .map(({ at }) => at);
+    expect(found).toEqual([]);
+  });
+
+  it('the code check reads every way a line can name F12, or 1 or 2 as a key', () => {
+    const names = (line: string) => NAMES_THEM.some((n) => n.test(line));
+    for (const line of [
+      "if (e.key === 'F12') toggle();",
+      "{ label: 'Logo', accelerator: 'Shift+F12' }",
+      "globalShortcut.register('CommandOrControl+1', turn);",
+      "{ label: 'Stage', accelerator: 'CmdOrCtrl+2' }",
+      "{ accelerator: 'Ctrl+1' }",
+      "if (input.control && input.key === '1') turn();",
+      "if (e.code === 'Digit2' || e.code === 'Numpad2') turn();",
+      'if (event.keyCode === 123) return;',
+      'if (49 === e.which) turn();',
+      "keys: { 'Mod-1': heading }",
+    ])
+      expect(names(line), line).toBe(true);
+    for (const line of [
+      'const step = 1;',
+      'items.slice(0, 2)',
+      "accelerator: 'F11'",
+      "padStart(2, '0')",
+      "const version = '1.2';",
+      'width: 123,',
+    ])
+      expect(names(line), line).toBe(false);
+  });
+
   it('no window’s own key handler answers F12, or 1 or 2 with Cmd or Ctrl: only the keymap names them', () => {
     const keymap = join(src, 'shared', 'keymap.ts');
-    const found = sources(src)
-      .filter((path) => path !== keymap)
-      .flatMap((path) =>
-        readFileSync(path, 'utf8')
-          .split('\n')
-          .map((line, i) => ({ line, n: i + 1 }))
-          // Code, not comments.
-          .filter(({ line }) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/u.test(line))
-          .filter(({ line }) => NAMES_THEM.some((names) => names.test(line)))
-          .map(({ line, n }) => `${relative(src, path)}:${String(n)} ${line.trim()}`),
-      );
+    const found = codeLines()
+      .filter(({ path, line }) => path !== keymap && NAMES_THEM.some((names) => names.test(line)))
+      .map(({ at }) => at);
     expect(found).toEqual([]);
   });
 });
