@@ -146,11 +146,28 @@ async function fingerprint(win: Page) {
   await expect.poll(() => win.evaluate(() => document.getAnimations().length)).toBe(0);
   return win.evaluate((panelHeading) => {
     const css = (el: Element | null, p: string) => (el ? getComputedStyle(el).getPropertyValue(p) : null);
-    const box = (el: Element | null) => {
-      const r = el?.getBoundingClientRect();
-      return r ? [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] : null;
-    };
     const header = document.querySelector('[data-testid="app-header"]');
+    // Session 50 put Audience and Stage beside Screens on purpose: the header's parts before them sit further left
+    // by the switches' width and the gap between the header's buttons, and LIVE's line is as much shorter. That is
+    // added back here, so everything else is still compared exactly as drawn at 9ed5d00.
+    const switches = header?.querySelector('[data-testid="screen-switches"]') ?? null;
+    const between = switches?.parentElement
+      ? parseFloat(getComputedStyle(switches.parentElement).columnGap)
+      : 0;
+    const moved = switches
+      ? switches.getBoundingClientRect().width + (Number.isNaN(between) ? 0 : between)
+      : 0;
+    const box = (el: Element | null, shift: { x?: number; width?: number } = {}) => {
+      const r = el?.getBoundingClientRect();
+      return r
+        ? [
+            Math.round(r.x + (shift.x ?? 0)),
+            Math.round(r.y),
+            Math.round(r.width + (shift.width ?? 0)),
+            Math.round(r.height),
+          ]
+        : null;
+    };
     const h1 = header?.querySelector('h1') ?? null;
     const stream = header?.querySelector('[data-testid="open-stream"]') ?? null;
     const screens =
@@ -169,14 +186,14 @@ async function fingerprint(win: Page) {
         box(header),
       ],
       name: [css(h1, 'color'), box(h1)],
-      stream: [css(stream, 'color'), css(stream, 'background-color'), box(stream)],
+      stream: [css(stream, 'color'), css(stream, 'background-color'), box(stream, { x: moved })],
       screens: [
         css(screens, 'color'),
         css(screens, 'border-top-color'),
         css(screens, 'background-color'),
-        box(screens),
+        box(screens, { x: moved }),
       ],
-      live: [css(live, 'color'), box(live)],
+      live: [css(live, 'color'), box(live, { width: moved })],
       underline: [css(underline, 'background-color')],
       row: [css(row, 'border-top-color'), css(row, 'background-color')],
       heading: [css(heading, 'color')],

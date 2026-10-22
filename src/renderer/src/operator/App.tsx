@@ -27,7 +27,7 @@ import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
 import { connectScreens } from '../screens/screens-store';
-import { connectScreenSwitches } from './screen-switches-store';
+import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
 import { runAction, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
@@ -63,6 +63,7 @@ import { SlideGrid } from './SlideGrid';
 import { RecoveryBanner } from './RecoveryBanner';
 import { StageMessageControl } from './StageControls';
 import { NoticeArea, StatusBar } from './StatusBar';
+import { ScreenSwitchAsk } from './ScreenSwitches';
 import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
@@ -272,6 +273,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
     () => () => {
       stopPractice();
       closeWelcome();
+      // A question about turning a screen off (Session 50) is Pro Mode's: it goes with it.
+      cancelAsk();
     },
     [],
   );
@@ -424,6 +427,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <UpdatesDialog />
       <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />
+      <ScreenSwitchAsk platform={platform} />
       <GuidesDialog />
       <MarkersDialog />
       <PictureEditor />

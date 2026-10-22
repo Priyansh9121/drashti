@@ -3,6 +3,7 @@ import type { PresentationDoc } from '../../../../shared/library';
 import type { MessageTemplate } from '../../../../shared/messages';
 import type { RemoteLibraryPage, RemotePresentation } from '../../../../shared/network-api';
 import type { ItemOrder, PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
+import { ALL_ON, type ScreenSwitches } from '../../../../shared/screen-switches';
 import type { SearchHit, SearchResult } from '../../../../shared/search';
 import { useEngine } from '../../engine/engine-store';
 import { api } from '../device';
@@ -61,9 +62,14 @@ interface RemoteView {
   shastra: { name: string; abbreviation: string; itemCount: number }[] | null;
   /**
    * The hall's group, whose live Look the picture follows, and how Drashti's computer writes the time
-   * (Sessions 31–36, SLD-6); null until read.
+   * (Sessions 31–36, SLD-6), and which of Main's screens are on, Audience and Stage (Session 50: said, never
+   * changed, here); null until read.
    */
-  hall: { groupId: string | null; clock: { locale: string; timeZone: string } } | null;
+  hall: {
+    groupId: string | null;
+    clock: { locale: string; timeZone: string };
+    switches: ScreenSwitches;
+  } | null;
 }
 
 const NOTES_KEY = 'drashti.remote.notes';
@@ -190,10 +196,15 @@ async function loadShastra(): Promise<void> {
 }
 
 async function loadHall(): Promise<void> {
-  const r = await api<{ groupId: string | null; clock: { locale: string; timeZone: string } }>(
-    '/api/v1/hall',
-  );
-  if (r.ok) useRemote.setState({ hall: { groupId: r.groupId, clock: r.clock } });
+  const r = await api<{
+    groupId: string | null;
+    clock: { locale: string; timeZone: string };
+    switches?: ScreenSwitches;
+  }>('/api/v1/hall');
+  if (r.ok)
+    useRemote.setState({
+      hall: { groupId: r.groupId, clock: r.clock, switches: r.switches ?? { ...ALL_ON } },
+    });
 }
 
 async function loadLooks(): Promise<void> {

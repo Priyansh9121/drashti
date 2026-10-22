@@ -8,6 +8,7 @@ import {
   STEP_ROUND_TRIP_MS,
 } from '../../../shared/nodes';
 import type { DisplayInfo, ScreenConfig, ScreenState } from '../../../shared/screens';
+import { SWITCH_NAMES, switchFor } from '../../../shared/screen-switches';
 import { useNow } from '../render/useNow';
 import { useEngine } from '../engine/engine-store';
 import { connectScreens, screensAction, useScreens } from '../screens/screens-store';
@@ -80,11 +81,25 @@ interface DisplayCardProps {
   thumb: string | null;
   nodeId: string | null;
   simple: boolean;
+  /** Switched off (Session 50): its switch's words, "Audience off" or "Stage off". */
+  offWords?: string | null;
 }
 
-function DisplayCard({ display, number, screen, state, output, thumb, nodeId, simple }: DisplayCardProps) {
+function DisplayCard({
+  display,
+  number,
+  screen,
+  state,
+  output,
+  thumb,
+  nodeId,
+  simple,
+  offWords = null,
+}: DisplayCardProps) {
   const [removing, setRemoving] = useState(false);
-  const shown = state ? STATE[state] : null;
+  const known = state ? STATE[state] : null;
+  // Switched off (Session 50): which switch, "Audience off", in the neutral tone of something off on purpose.
+  const shown = known && state === 'switched-off' && offWords ? { ...known, text: offWords } : known;
   const name = screen?.name ?? (display.label || `Display ${number}`);
   return (
     <li
@@ -243,6 +258,8 @@ function DisplayGrid({
         const state = screen
           ? (snapshot?.status.find((st) => st.screenId === screen.id)?.state ?? null)
           : null;
+        const role = screen ? snapshot?.groups.find((g) => g.id === screen.groupId)?.role : undefined;
+        const which = role ? switchFor(role) : null;
         return (
           <DisplayCard
             key={d.id}
@@ -254,6 +271,7 @@ function DisplayGrid({
             thumb={screen ? (thumbs[screen.id]?.url ?? null) : null}
             nodeId={nodeId}
             simple={simple}
+            offWords={which ? `${SWITCH_NAMES[which]} off` : null}
           />
         );
       })}

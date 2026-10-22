@@ -34,6 +34,7 @@ import {
   Eraser,
   FileText,
   ListMusic,
+  MonitorOff,
   Pause,
   PictureInPicture2,
   Play,
@@ -138,8 +139,21 @@ function useHallLook(state: EngineState | null): LiveGroupLook {
   return groupLookIn(state?.look, groupId);
 }
 
+/**
+ * Which of Main's screens are off, Audience and Stage (Session 50), in words: "Audience off", "Stage off" or
+ * both; null while both are on. A phone says so, and cannot turn them (the operator does, in Drashti).
+ */
+function switchedOffWords(switches: { audience: boolean; stage: boolean } | undefined): string | null {
+  if (!switches) return null;
+  const off = [switches.audience ? null : 'Audience', switches.stage ? null : 'Stage'].filter(
+    (name): name is string => name !== null,
+  );
+  return off.length === 0 ? null : `${off.join(' and ')} off`;
+}
+
 function LivePicture({ state }: { state: EngineState | null }) {
   const hallLook = useHallLook(state);
+  const switchedOff = useRemote((s) => switchedOffWords(s.hall?.switches));
   const up = state
     ? state.layers.slide !== null || state.layers.background !== null || state.layers.pip !== null
     : false;
@@ -171,6 +185,20 @@ function LivePicture({ state }: { state: EngineState | null }) {
           {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
         </PlacedInParent>
       </div>
+      {/* Audience or Stage off on Main's computer (Session 50): said, with no button (the operator turns it on). */}
+      {switchedOff && (
+        <div
+          role="status"
+          data-testid="remote-switched-off"
+          className="flex items-center gap-2 rounded-lg border border-warning/60 bg-warning-bg px-3 py-2 text-warning-fg"
+        >
+          <MonitorOff size={18} aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 text-base">
+            <span className="font-bold">{switchedOff}</span> on Drashti’s computer: those screens show its
+            desktop until the operator turns them on again.
+          </span>
+        </div>
+      )}
       {/* Another app's window (Session 48) or a video input (Session 50) as the background: named, and cleared
           like any background; a phone can never choose one, nor draw it (it is on Main's computer). */}
       {named && (

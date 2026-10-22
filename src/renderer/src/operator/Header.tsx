@@ -15,6 +15,7 @@ import { enterSimpleMode } from './mode-store';
 import { Tooltip } from '../ui/Tooltip';
 import { LiveStatus } from './StatusLine';
 import { RoleChip } from '../roles/RolesDialogs';
+import { ScreenSwitchButtons } from './ScreenSwitches';
 
 /**
  * Announcements from phones: shown while the network is on, or while any is
@@ -109,6 +110,8 @@ export function Header({
               Screens
             </Button>
           </Tooltip>
+          {/* Audience and Stage (Session 50): this computer's screens of each kind, off and on. */}
+          <ScreenSwitchButtons platform={platform} />
           <RoleChip />
           <Tooltip
             content="One screen with big buttons, for volunteers. Nothing can be changed there."
