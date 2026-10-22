@@ -260,10 +260,10 @@ describe('what goes where', () => {
     expect(pipDraw('slides', true)).toEqual({ main: ['slide'], box: ['background'] });
   });
 
-  it('anything else in the box: the main picture as now; swapped, it full and the screen’s own picture small', () => {
+  it('anything else in the box: over the show; swapped, it fills the background’s place under the slide, and the background is small', () => {
     for (const kind of ['media', 'input', 'window'] as const) {
       expect(pipDraw(kind, false)).toEqual({ main: ['background', 'slide'], box: ['source'] });
-      expect(pipDraw(kind, true)).toEqual({ main: ['source'], box: ['background', 'slide'] });
+      expect(pipDraw(kind, true)).toEqual({ main: ['source', 'slide'], box: ['background'] });
     }
   });
 
@@ -282,12 +282,11 @@ describe('what goes where', () => {
       main: [
         { picture: 'background', shown: false },
         { picture: 'source', shown: true },
-        { picture: 'slide', shown: false },
+        { picture: 'slide', shown: true },
       ],
       box: [
         { picture: 'background', shown: true },
         { picture: 'source', shown: false },
-        { picture: 'slide', shown: true },
       ],
     });
     // Not swapping: only what shows.
@@ -331,10 +330,10 @@ describe('what goes where', () => {
     expect(pipShownFor({ layers: without }, false)).toBe(true);
   });
 
-  it('is named in words', () => {
-    expect(pipName({ kind: 'slides' })).toBe('The slides');
-    expect(pipName({ kind: 'media', mediaId: 'm', media: 'video' })).toBe('A video');
-    expect(pipName({ kind: 'media', mediaId: 'm', media: 'image' })).toBe('A picture');
+  it('is named in words: by its kind, or the input’s or window’s own name (the state has no media name)', () => {
+    expect(pipName({ kind: 'slides' })).toBe('the slides');
+    expect(pipName({ kind: 'media', mediaId: 'm', media: 'video' })).toBe('a video');
+    expect(pipName({ kind: 'media', mediaId: 'm', media: 'image' })).toBe('a picture');
     expect(pipName({ kind: 'input', inputId: 'i', name: 'Input 1', device: 'Placeholder camera' })).toBe(
       'Input 1',
     );

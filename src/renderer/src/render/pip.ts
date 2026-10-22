@@ -9,9 +9,9 @@ import { cubicBezier, EASE, lerp, seg } from './easing';
  * The picture-in-picture box on the audience screens (Session 50), worked out as pure functions so every screen
  * draws the same: where it sits on a screen's canvas, what each frame of its in, out, swap and move looks like
  * from the engine's time (its shownAt, its last change and the pipOff it leaves by), and which pictures go where.
- * Two pictures share the screen: the screen's own (the background, and the slide unless the box holds the
- * slides) and the box's (a video input, a picture or video from Media, a window, or the slides). Swap changes
- * their places. Only opacity and transform move, as the lower thirds do (no blur, no filter, no layer).
+ * The box holds a video input, a picture or video from Media, a window, or the slides (the main picture then
+ * shows the background without the slide). Swap puts the box's picture in the background's place and the
+ * background in the box. Only opacity and transform move, as the lower thirds do (no blur, no filter, no layer).
  */
 
 /** The box's width as a share of the screen's: Small a quarter, Medium a third, Large two fifths. 16:9 always. */
@@ -343,18 +343,21 @@ const ORDER: readonly PipPicture[] = ['background', 'source', 'slide'];
 
 /**
  * What the main picture and the box show. Without a box: the background and the slide, as always. The slides in
- * the box: the main picture is the background alone (a camera full, the words in the corner); swapped, the slide
- * full and the background small. Anything else in the box: the main picture as now, it in the box; swapped, it
- * full and the screen's own picture (the background and the slide) small.
+ * the box: the main picture is the background without the slide (a camera full, the words in the corner);
+ * swapped, the slide full as usual and the background small. Anything else in the box: it sits in the box over
+ * the show; swapped, it fills the background's place, under the slide and everything else, and the background is
+ * small in the box. (Props, the lower third, messages and the ticker stay on the main picture throughout.)
  */
 export function pipDraw(
   kind: PipSource['kind'] | null,
   swapped: boolean,
 ): { main: PipPicture[]; box: PipPicture[] } {
   if (kind === null) return { main: ['background', 'slide'], box: [] };
-  const own: PipPicture[] = kind === 'slides' ? ['background'] : ['background', 'slide'];
-  const its: PipPicture[] = kind === 'slides' ? ['slide'] : ['source'];
-  return swapped ? { main: its, box: own } : { main: own, box: its };
+  if (kind === 'slides')
+    return swapped ? { main: ['slide'], box: ['background'] } : { main: ['background'], box: ['slide'] };
+  return swapped
+    ? { main: ['source', 'slide'], box: ['background'] }
+    : { main: ['background', 'slide'], box: ['source'] };
 }
 
 export interface PipSlot {
@@ -397,13 +400,16 @@ const LOOKS_KNOW_PIP = (LOOK_LAYERS as readonly string[]).includes('pip');
 export const pipShownFor = (look: Pick<LiveGroupLook, 'layers'>, known = LOOKS_KNOW_PIP): boolean =>
   !known || (look.layers as readonly string[]).includes('pip');
 
-/** What the box holds, in words, for LIVE and a phone ("Picture in picture: Input 1"). */
+/**
+ * What the box holds, in words, for LIVE and a phone ("Picture in picture: a video", "Picture in picture:
+ * Input 1"): by its kind, or the input's or window's own name (the state carries no media name).
+ */
 export function pipName(source: PipSource): string {
   switch (source.kind) {
     case 'slides':
-      return 'The slides';
+      return 'the slides';
     case 'media':
-      return source.media === 'video' ? 'A video' : 'A picture';
+      return source.media === 'video' ? 'a video' : 'a picture';
     case 'input':
     case 'window':
       return source.name;
