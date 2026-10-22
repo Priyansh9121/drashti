@@ -80,7 +80,7 @@ describe('the input that stopped', () => {
 
   it('says its last picture stays and it comes back by itself, or that the camera is refused and where to turn it on', () => {
     expect(stoppedWords('granted', 'darwin')).toBe(
-      'The screens keep its last picture. Its cable may be out, or another app may be using it: it comes back by itself when the input returns.',
+      'The screens keep its last picture, if it showed one. Its cable may be out, or another app may be using it: it comes back by itself when the input returns.',
     );
     expect(stoppedWords('denied', 'darwin')).toContain('macOS no longer lets Drashti use the camera');
     expect(stoppedWords('denied', 'win32')).toContain('Windows’ camera privacy setting is off');

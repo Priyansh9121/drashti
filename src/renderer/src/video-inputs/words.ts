@@ -84,7 +84,8 @@ export function stoppedInput(
 
 /** The stopped notice's words: its last picture stays, and why it may have stopped. */
 export function stoppedWords(access: CameraAccess, platform: string): string {
-  const kept = 'The screens keep its last picture.';
+  // An input that never started has no last picture (Session 50, section 1's review): said so.
+  const kept = 'The screens keep its last picture, if it showed one.';
   if (access === 'denied' || access === 'restricted')
     return platform === 'win32'
       ? `Windows’ camera privacy setting is off. ${kept} Press Open Settings and turn on Camera access and Let desktop apps access your camera, or clear it.`
