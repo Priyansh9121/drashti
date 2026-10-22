@@ -18,6 +18,7 @@ import type {
   PlaylistCursor,
   PropItem,
   RepeatRun,
+  SlideLayer,
   TickerItem,
   TickerLayer,
   UpcomingItem,
@@ -45,6 +46,11 @@ export type EngineAction =
       /** How it comes on (a dissolve); left out for a cut. Kept when the same slide is shown again. */
       transition?: Transition;
     }
+  /**
+   * A slide up in the slide's place that is no presentation's (Session 50: a timer shown alone); the live
+   * position stays where it was, so Next goes on from there.
+   */
+  | { type: 'slide/put'; layer: SlideLayer }
   /** The live position moves (the order changed) while the same slide stays on screen. */
   | { type: 'live/move'; slideIndex: number; slideCount: number; arrangementId: string | null }
   /** The cursor moves to a playlist item that is not a presentation (a picture, video or sound). */

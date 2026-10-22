@@ -84,6 +84,11 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
             },
       };
     }
+    case 'slide/put':
+      // In the slide's place, the live position as it was; a slide up again: nothing is leaving any more.
+      return sameData(state.layers.slide, action.layer) && state.slideOff === null
+        ? state
+        : { ...state, slideOff: null, layers: { ...state.layers, slide: action.layer } };
     case 'live/move': {
       const { slideIndex, slideCount, arrangementId } = action;
       const live = state.live;
