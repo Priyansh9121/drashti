@@ -148,7 +148,10 @@ export function MusicPanel({
               setRemoving(ids);
             }}
           />
-          <div className="flex items-center gap-1.5" role="group" aria-label="Play the music">
+          {/* One row (Session 51): previous, Play or Pause, next, Back 15 s, Forward 15 s and Last 10 s, then loop
+              and shuffle. It fits the live column at 1024 wide; dragged narrower, loop and shuffle go to a line of
+              their own first. */}
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Play the music">
             <IconButton
               icon={SkipBack}
               label="Previous track"
@@ -185,18 +188,20 @@ export function MusicPanel({
               disabled={!isShownPlaying}
               onClick={() => void dispatch('musicNext')}
             />
-            <span className="flex-1" />
-            <OptionToggle playlist={shown} option="loop" />
-            <OptionToggle playlist={shown} option="shuffle" />
-          </div>
-          {/* Back 15 s, Forward 15 s, Last 10 s (Session 50), beside Play and Pause: the track playing. */}
-          <div
-            className="flex flex-wrap items-center gap-1.5"
-            role="group"
-            aria-label="Move in the track playing"
-            data-testid="music-skips"
-          >
-            <SkipButtons layer="audio" shown={isShownPlaying ? skips : null} />
+            {/* Back 15 s, Forward 15 s, Last 10 s (Session 50) for the track playing: icons named by their
+                tooltips, as previous and next are (with their words, the row would not fit). */}
+            <div
+              className="flex items-center gap-1"
+              role="group"
+              aria-label="Move in the track playing"
+              data-testid="music-skips"
+            >
+              <SkipButtons layer="audio" shown={isShownPlaying ? skips : null} compact />
+            </div>
+            <span className="ml-auto flex items-center gap-1">
+              <OptionToggle playlist={shown} option="loop" />
+              <OptionToggle playlist={shown} option="shuffle" />
+            </span>
           </div>
           <AudioDrop playlistId={shown.id}>
             <Tracks
