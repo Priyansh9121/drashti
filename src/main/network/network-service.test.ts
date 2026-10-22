@@ -4,7 +4,8 @@ import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/st
 import type { InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
 import { DEVICE_KINDS, type NetworkStatus, PAIRING_CODE_TTL_MS } from '../../shared/network';
-import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
+import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
+import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { SIMPLE_MODE_LOCKED } from '../simple-mode';
@@ -222,6 +223,28 @@ describe('the network in the main process', () => {
     expect(
       service.answer({ address: PHONE, deviceId: id, op: 'command', args: { type: 'next' } }).status,
     ).toBe(401);
+  });
+
+  it('lets a Remote take the picture-in-picture box off (Session 50), never set one up, swap or move it', () => {
+    const { service, commands } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const send = (args: Record<string, unknown>) =>
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status;
+    for (const args of [
+      { type: 'showPip', source: { kind: 'slides' } },
+      { type: 'showPip', source: { kind: 'window', id: 'window:4021:0' } },
+      { type: 'showPip', source: { kind: 'input', inputId: 'in-1' } },
+      { type: 'swapPip' },
+      { type: 'placePip', place: DEFAULT_PIP_PLACE },
+    ])
+      expect(send(args), JSON.stringify(args)).toBe(403);
+    expect(commands).toEqual([]);
+    // Take off, and the box's own clear (POST /api/v1/clear/pip): both play its out.
+    expect(send({ type: 'hidePip' })).toBe(200);
+    expect(send({ type: 'clearLayer', layer: 'pip' })).toBe(200);
+    expect(commands).toEqual([{ type: 'hidePip' }, { type: 'clearLayer', layer: 'pip' }]);
+    for (const type of ['showPip', 'swapPip', 'placePip'])
+      expect(REMOTE_COMMANDS as readonly string[]).not.toContain(type);
   });
 
   it('lets each kind of device do only its own things, and a Remote only run the show', () => {

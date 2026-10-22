@@ -99,6 +99,8 @@ export const REMOTE_COMMANDS = [
   // Repeat Slides (Session 26d): start one going round, and stop it (its slide staying up).
   'startRepeat',
   'stopRepeat',
+  // Picture in picture (Session 50): Take off only; setting one up, Swap and moving it are the operator's.
+  'hidePip',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */
