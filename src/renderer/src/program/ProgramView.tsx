@@ -1,16 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Lang } from '../../../shared/model';
 import { DEFAULT_LIVE_GROUP_LOOK, type Movement } from '../../../shared/looks';
 import { programPicture } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { StreamLayout } from '../../../shared/stream';
-import { BackgroundMedia } from '../render/BackgroundMedia';
-import { LiveWindowView } from '../render/LiveWindowView';
 import { MovingLowerThird } from '../render/LowerThird';
 import { LowerThirdView } from '../render/LowerThirdView';
 import { MessageBanner, PropsLayer, Scene } from '../render/Scene';
-import { SlideLayerView } from '../render/SlideLayerView';
+import { FULL_FRAME_LAYERS, fullFrameState } from './full-frame';
 
 function CameraVideo({ stream }: { stream: MediaStream | null }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -35,7 +33,9 @@ function CameraVideo({ stream }: { stream: MediaStream | null }) {
 /**
  * What the stream shows, on its 1920 x 1080 canvas (see shared/program.ts for the rules). A video input up as the
  * background (Session 50) is in the Slides layout's picture as the hall has it; the Camera layout keeps the
- * stream's own camera (which may be the same input).
+ * stream's own camera (which may be the same input). Whenever the stream shows the hall's picture, in either
+ * layout, the picture-in-picture box shows with it (Session 51: the Camera layout's full-frame picture is the
+ * hall's own Scene, ./full-frame.ts).
  */
 export function ProgramView({
   state,
@@ -54,6 +54,8 @@ export function ProgramView({
   camera: MediaStream | null;
 }) {
   const picture = programPicture(state, layout, languages);
+  // The Camera layout's full-frame picture draws from the state without what that layout draws itself.
+  const hall = useMemo(() => fullFrameState(state), [state]);
   if (picture.kind === 'scene')
     return (
       <div data-testid="program-picture" data-kind="scene">
@@ -83,25 +85,16 @@ export function ProgramView({
       <CameraVideo stream={camera} />
       {picture.full && (
         <div style={{ position: 'absolute', inset: 0, background: '#000000' }} data-testid="program-full">
-          {state.layers.background?.kind === 'color' && (
-            <div style={{ position: 'absolute', inset: 0, background: state.layers.background.color }} />
-          )}
-          {/* A video input (Session 50) never takes the camera's place here: the stream keeps its own camera. */}
-          <BackgroundMedia
-            layer={state.layers.background?.kind === 'input' ? null : state.layers.background}
-            annotate={false}
-            movement={movement}
+          {/* The hall's picture (Session 51): its background and slide with the picture-in-picture box, as the
+              Slides layout draws them; a video input (Session 50) never takes the camera's place. */}
+          <Scene
+            state={hall}
+            canvas={canvas}
+            scaling="fit"
+            look={{ ...DEFAULT_LIVE_GROUP_LOOK, layers: FULL_FRAME_LAYERS, languages, movement }}
+            ticker={false}
+            place="stream"
           />
-          {state.layers.background?.kind === 'window' && <LiveWindowView layer={state.layers.background} />}
-          {picture.full === 'slide' && (
-            <SlideLayerView
-              layer={state.layers.slide}
-              canvas={canvas}
-              scaling="fit"
-              languages={languages}
-              movement={movement}
-            />
-          )}
         </div>
       )}
       {/* The Camera layout's lower third moves as a Look's does (Session 27), on the stream group's Movement. */}
