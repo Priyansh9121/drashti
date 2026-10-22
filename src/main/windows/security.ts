@@ -28,6 +28,13 @@ export interface PermissionRules {
    * a camera.
    */
   cameraPage?(contents: WebContents | null): CameraPage | null;
+  /**
+   * With cameraPage (Session 50): whether the system lets Drashti use the cameras now. On a Mac that is System
+   * Settings' Camera saying granted: until then every camera request is refused, so macOS never asks before the
+   * page has said why (its askAccess asks). The cameras' names (a permission check) need no such answer. Left
+   * out: nothing to wait for.
+   */
+  cameraGranted?(): boolean;
   /** Tests only: what counts as one of Drashti's own pages (left out: the built renderer's, or Vite's). */
   isOwnPage?(url: string): boolean;
   /** Told about every permission a page checks or asks for (DRASHTI_LOG_PERMISSIONS=1). */
@@ -154,7 +161,7 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
     const allowed =
       (permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url)) ||
       screenPictureAllowed(permission, media, rules.mayCapture?.(contents) ?? false) ||
-      cameraAllowed(
+      (cameraAllowed(
         {
           permission,
           mediaTypes: media,
@@ -163,7 +170,8 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
           mainFrame: details.isMainFrame,
         },
         own,
-      );
+      ) &&
+        (rules.cameraGranted?.() ?? true));
     rules.log?.(`Permission ${allowed ? 'given' : 'refused'}: ${permission} for ${url}`);
     callback(allowed);
   });
