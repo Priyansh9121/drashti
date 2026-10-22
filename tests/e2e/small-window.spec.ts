@@ -10,9 +10,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * centred in a place that could neither shrink nor scroll, so they ran on under the layer bar and the status bar,
  * and step 3's Show on could not be clicked (show-on.spec:81 failed on every job); and the layer bar scrolled
  * sideways, only Clear all showing its key. Now the middle's empty places are centred while they fit and scroll
- * from their top when they do not; every button of the layer bar shows its words and its key, the clears in the
- * order of their keys, from the smallest window Drashti allows (1008 px wide on Windows) to a full HD display's,
- * in every state; and so do Simple Mode's big buttons. The displays are Drashti's pretend ones.
+ * from their top when they do not (a video input item's view too, Session 51's B1, under the open playlist); every
+ * button of the layer bar shows its words and its key, the clears in the order of their keys, from the smallest
+ * window Drashti allows (1008 px wide on Windows) to a full HD display's, in every state; and so do Simple Mode's
+ * big buttons. The displays are Drashti's pretend ones.
  */
 
 /** A first start as a person meets it, a display free for the hall: the welcome, then Start here behind it. */
@@ -102,18 +103,19 @@ async function expectClickable(buttons: Locator, what: string) {
 }
 
 /**
- * Start here as laid out now: any of it outside the middle or under the bars, a button sticking out of the
- * middle, and whether it is centred while it fits, or shown from its top, scrolling, when it does not.
+ * A place in the middle as laid out now (Start here; a video input item's view, Session 51), by its test id: any of
+ * it outside the middle or under the bars, a button sticking out of the middle, and whether it is centred while it
+ * fits, or shown from its top, scrolling, when it does not.
  */
-const startHereNow = (win: Page) =>
-  win.evaluate(() => {
+const placeNow = (win: Page, testId: string) =>
+  win.evaluate((id) => {
     const out: string[] = [];
-    const place = document.querySelector('[data-testid="start-here"]');
+    const place = document.querySelector(`[data-testid="${id}"]`);
     const middle = document.querySelector('[data-testid="column-middle"]');
     const bar = document.querySelector('[data-testid="layer-bar"]');
     const content = place?.firstElementChild;
     if (!(place instanceof HTMLElement) || !middle || !bar || !content)
-      return ['Start here, the middle or the layer bar is missing'];
+      return [`${id}, the middle or the layer bar is missing`];
     place.scrollTop = 0;
     const p = place.getBoundingClientRect();
     const m = middle.getBoundingClientRect();
@@ -134,7 +136,7 @@ const startHereNow = (win: Page) =>
       out.push('it fits, but is not centred');
     if (scrolls && c.top < p.top - 0.5) out.push('it does not fit, and its top is cut off');
     return out;
-  });
+  }, testId);
 
 const CLEARS = [
   ['slide', 'F2'],
@@ -169,10 +171,56 @@ test('Start here at 1024 × 645 and 1024 × 768 in an empty library: centred or 
   for (const size of [CI_WINDOW, { width: 1024, height: 768 }]) {
     const where = `${String(size.width)} × ${String(size.height)}`;
     await sizeOperatorWindow(app, win, size);
-    await expect.poll(() => startHereNow(win), { message: `Start here at ${where}` }).toEqual([]);
+    await expect.poll(() => placeNow(win, 'start-here'), { message: `Start here at ${where}` }).toEqual([]);
     await expectClickable(startHere.getByRole('button'), `Start here’s buttons at ${where}`);
     await expect
       .poll(async () => (await barNow(win, 'layer-bar')).problems, { message: `the layer bar at ${where}` })
+      .toEqual([]);
+  }
+  await app.close();
+});
+
+test('a video input item’s view at 1024 × 645 and 1024 × 768, on this computer and not: centred or scrolling from its top, never under the bars, its picture clickable', async () => {
+  test.setTimeout(90_000);
+  // Chromium's fake camera (a moving test pattern) stands in for the input: never a real camera's picture.
+  const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  // A playlist of one video input item (Session 51), shown in the middle under the open playlist.
+  const inputId = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const added = await d.videoInputs.add({ name: 'Placeholder input', device: 'fake_device_0', fit: 'fit' });
+    if (!added.ok) throw new Error(added.message);
+    const made = await d.playlists.create('Placeholder Sunday', null, false);
+    if (!made.ok) throw new Error(made.message);
+    const items = await d.playlists.addItems(made.ids[0] ?? '', null, [
+      { kind: 'input', name: 'Placeholder input' },
+    ]);
+    if (!items.ok) throw new Error(items.message);
+    return added.view.inputs[0]?.id ?? '';
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sunday' }).click();
+  await win.getByTestId('open-playlist').getByTestId('playlist-item').click();
+  const view = win.getByTestId('item-view');
+  await expect(view.getByTestId('item-input')).toBeVisible();
+  const sizes = [CI_WINDOW, { width: 1024, height: 768 }];
+  for (const size of sizes) {
+    const where = `${String(size.width)} × ${String(size.height)}`;
+    await sizeOperatorWindow(app, win, size);
+    await expect
+      .poll(() => placeNow(win, 'input-item-place'), { message: `the input item at ${where}` })
+      .toEqual([]);
+    await expectClickable(view.getByRole('button'), `the input item’s picture at ${where}`);
+  }
+  // Not on this computer (removed from Media): why, in the same place.
+  await win.evaluate((id) => (globalThis as PageGlobals).drashti.videoInputs.remove(id), inputId);
+  await expect(view).toHaveAttribute('data-missing', 'true');
+  for (const size of sizes) {
+    const where = `${String(size.width)} × ${String(size.height)}`;
+    await sizeOperatorWindow(app, win, size);
+    await expect
+      .poll(() => placeNow(win, 'input-item-place'), { message: `the missing input item at ${where}` })
       .toEqual([]);
   }
   await app.close();

@@ -355,60 +355,64 @@ function itemArrangement(item: ShownItem & { kind: 'presentation' }, doc: Presen
 
 /**
  * A video input item (Session 51): its live picture, a click putting it up as the background (the slide taken
- * off), or, where this computer has no input of its name, why not: Next goes past it.
+ * off), or, where this computer has no input of its name, why not: Next goes past it. Centred while it fits, from
+ * its top when it does not, as the middle's other places are: never under the bars below, its picture always in
+ * reach (a 1024 × 645 window leaves the middle little room under the open playlist).
  */
 function InputItemView({ item, isLive }: { item: ShownItem & { kind: 'input' }; isLive: boolean }) {
   const input = useInputNamed(item.name);
   const capture = useSmallPicture(input?.device ?? null);
-  if (!input)
-    return (
-      <section
-        className="flex flex-1 items-center justify-center"
-        data-testid="item-view"
-        data-missing="true"
-        aria-label={item.label}
-      >
-        <EmptyState icon={Video} title="Not on this computer">
-          No video input called “{item.name}” is on this computer, so Next goes past it. Add a Video Input… in
-          Media can name one “{item.name}”: then it goes up from here.
-        </EmptyState>
-      </section>
-    );
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="item-view" aria-label={item.label}>
-      <div className="mb-3 flex items-center gap-2">
-        <h2 className="min-w-0 text-lg font-bold">
-          <Truncate text={item.label} />
-        </h2>
-        <Badge>Video input</Badge>
-      </div>
-      <button
-        type="button"
-        data-testid="item-input"
-        data-show-control
-        aria-current={isLive ? 'true' : undefined}
-        aria-label={`Video input: ${input.name}${isLive ? ' (live)' : ''}`}
-        onClick={() => void playItem(item.playlistId, item.id)}
-        className={cx(
-          // A thumbnail: live at once, with no fade (Session 26g).
-          'w-full max-w-xl overflow-hidden rounded-lg border-2 bg-black text-left',
-          isLive ? 'border-live shadow-live-thumb' : 'border-line shadow-thumb hover:border-field',
+    <section
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="item-view"
+      data-missing={input ? undefined : 'true'}
+      aria-label={item.label}
+    >
+      <CentredPlace data-testid="input-item-place">
+        {input ? (
+          <div className="mx-auto w-full max-w-xl p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <h2 className="min-w-0 text-lg font-bold">
+                <Truncate text={item.label} />
+              </h2>
+              <Badge>Video input</Badge>
+            </div>
+            <button
+              type="button"
+              data-testid="item-input"
+              data-show-control
+              aria-current={isLive ? 'true' : undefined}
+              aria-label={`Video input: ${input.name}${isLive ? ' (live)' : ''}`}
+              onClick={() => void playItem(item.playlistId, item.id)}
+              className={cx(
+                // A thumbnail: live at once, with no fade (Session 26g).
+                'w-full overflow-hidden rounded-lg border-2 bg-black text-left',
+                isLive ? 'border-live shadow-live-thumb' : 'border-line shadow-thumb hover:border-field',
+              )}
+            >
+              <InputPicture capture={capture} className="pointer-events-none w-full" />
+              <span
+                className={cx(
+                  'flex h-7 items-center gap-2 px-2 text-xs',
+                  isLive ? 'bg-live text-white' : 'bg-panel-2 text-muted',
+                )}
+              >
+                Video input · {FIT_WORDS[input.fit].row}
+                {isLive && <span className="ml-auto font-bold tracking-wide">LIVE</span>}
+              </span>
+            </button>
+            <p className="mt-2 text-sm text-muted">
+              Goes up as the background, coming on over 1 second, and takes the slide off.
+            </p>
+          </div>
+        ) : (
+          <EmptyState icon={Video} title="Not on this computer">
+            No video input called “{item.name}” is on this computer, so Next goes past it. Add a Video Input…
+            in Media can name one “{item.name}”: then it goes up from here.
+          </EmptyState>
         )}
-      >
-        <InputPicture capture={capture} className="pointer-events-none w-full" />
-        <span
-          className={cx(
-            'flex h-7 items-center gap-2 px-2 text-xs',
-            isLive ? 'bg-live text-white' : 'bg-panel-2 text-muted',
-          )}
-        >
-          Video input · {FIT_WORDS[input.fit].row}
-          {isLive && <span className="ml-auto font-bold tracking-wide">LIVE</span>}
-        </span>
-      </button>
-      <p className="mt-2 text-sm text-muted">
-        Goes up as the background, coming on over 1 second, and takes the slide off.
-      </p>
+      </CentredPlace>
     </section>
   );
 }
