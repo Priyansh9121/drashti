@@ -30,14 +30,15 @@ import { groupLanguagesSchema } from './screens-schema';
  * transition's length is the slide's, whatever the Movement.
  */
 
-/** The picture layers a Look can leave out of a group (audio has no picture). */
-export type LookLayer = 'background' | 'slide' | 'props' | 'messages' | 'ticker' | 'masks';
+/** The picture layers a Look can leave out of a group (audio has no picture; the box since Session 50). */
+export type LookLayer = 'background' | 'slide' | 'props' | 'pip' | 'messages' | 'ticker' | 'masks';
 
 /** Bottom to top, as the screens draw them. */
 export const LOOK_LAYERS = [
   'background',
   'slide',
   'props',
+  'pip',
   'messages',
   'ticker',
   'masks',
@@ -47,10 +48,24 @@ export const LOOK_LAYER_NAMES: Record<LookLayer, string> = {
   background: 'Background',
   slide: 'Slides',
   props: 'Props',
+  pip: 'Picture in picture',
   messages: 'Messages',
   ticker: 'Ticker',
   masks: 'Masks layer',
 };
+
+/**
+ * Layers that came after Looks were first kept (Session 50: the picture-in-picture box). A group's stored
+ * `layers` lists only the earlier ones it shows (as an older Drashti reads it), and a later layer it leaves out
+ * is kept apart, in `leftOut`: so a group saved before a layer came shows it, and only a Look saved with it
+ * left out hides it.
+ */
+const LATER_LOOK_LAYERS = ['pip'] as const satisfies readonly LookLayer[];
+type LaterLookLayer = (typeof LATER_LOOK_LAYERS)[number];
+const isLater = (layer: LookLayer): layer is LaterLookLayer =>
+  (LATER_LOOK_LAYERS as readonly LookLayer[]).includes(layer);
+/** The layers a group's stored `layers` lists (those it shows): the earlier ones. */
+const EARLIER_LOOK_LAYERS = LOOK_LAYERS.filter((l) => !isLater(l));
 
 /** How a group's screens draw slides: as designed, or the words as a lower third (the stream's). */
 export type SlideStyle = 'designed' | 'lowerThird';
@@ -159,6 +174,11 @@ export const lookLayersSchema = z
   .array(z.enum(LOOK_LAYERS))
   .max(LOOK_LAYERS.length)
   .refine((list) => new Set(list).size === list.length, 'a layer is listed twice');
+/** A group's stored later layers it leaves out (see LATER_LOOK_LAYERS). */
+const leftOutSchema = z
+  .array(z.enum(LATER_LOOK_LAYERS))
+  .max(LATER_LOOK_LAYERS.length)
+  .refine((list) => new Set(list).size === list.length, 'a layer is listed twice');
 
 /** A change to one group's settings in a Look (only what is given changes). */
 export const groupLookPatchSchema = z
@@ -189,8 +209,13 @@ export function readGroupLook(raw: unknown): GroupLook {
   const out: GroupLook = { ...DEFAULT_GROUP_LOOK, layers: [...DEFAULT_GROUP_LOOK.layers] };
   if (typeof raw !== 'object' || raw === null) return out;
   const r = raw as Record<string, unknown>;
+  // The earlier layers as listed (every one when there is no list); a later one unless kept as left out.
   const layers = lookLayersSchema.safeParse(r['layers']);
-  if (layers.success) out.layers = LOOK_LAYERS.filter((l) => layers.data.includes(l));
+  const leftOut = leftOutSchema.safeParse(r['leftOut']);
+  const off: readonly LookLayer[] = leftOut.success ? leftOut.data : [];
+  out.layers = LOOK_LAYERS.filter((l) =>
+    isLater(l) ? !off.includes(l) : !layers.success || layers.data.includes(l),
+  );
   const languages = groupLanguagesSchema.safeParse(r['languages']);
   if (languages.success) out.languages = languages.data;
   const slides = z.enum(SLIDE_STYLES).safeParse(r['slides']);
@@ -209,8 +234,10 @@ export function readGroupLook(raw: unknown): GroupLook {
 /** What to store for a group: only what differs from the defaults (nothing at all for the defaults). */
 export function storedGroupLook(g: GroupLook): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const all = LOOK_LAYERS.every((l) => g.layers.includes(l));
-  if (!all) out['layers'] = LOOK_LAYERS.filter((l) => g.layers.includes(l));
+  const shown = EARLIER_LOOK_LAYERS.filter((l) => g.layers.includes(l));
+  if (shown.length < EARLIER_LOOK_LAYERS.length) out['layers'] = shown;
+  const leftOut = LATER_LOOK_LAYERS.filter((l) => !g.layers.includes(l));
+  if (leftOut.length > 0) out['leftOut'] = leftOut;
   if (g.languages !== null) out['languages'] = g.languages;
   if (g.slides !== 'designed') out['slides'] = g.slides;
   if (g.stageLayoutId !== null) out['stageLayoutId'] = g.stageLayoutId;
