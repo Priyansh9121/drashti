@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { SlideLayer } from '../../../shared/engine/state';
 import type { Movement } from '../../../shared/looks';
@@ -55,6 +55,56 @@ function Lines({ lines }: { lines: LowerThirdLine[] }) {
       ))}
     </>
   );
+}
+
+/** How a moving lower third is drawn: what it is doing, how its group moves, its box's corners, the canvas's scale. */
+interface Drawing {
+  phase: LowerThirdRun['phase'];
+  movement: Movement;
+  radius: number;
+  scale: number;
+}
+
+/**
+ * A moving lower third `t` ms into its phase (still or gone: at rest), set straight on its elements: frame by
+ * frame, and after every drawing.
+ */
+function paintLowerThird(
+  root: HTMLDivElement | null,
+  box: HTMLDivElement | null,
+  words: { old: HTMLDivElement | null; fresh: HTMLDivElement | null },
+  { phase, movement, radius, scale }: Drawing,
+  t: number,
+): void {
+  if (!root || !box) return;
+  const lineOf = (el: HTMLDivElement | null) =>
+    el ? [...el.querySelectorAll<HTMLElement>('[data-lt-line]')] : [];
+  const place = (el: HTMLElement, f: UnitFrame) => {
+    el.style.opacity = f.opacity === 1 ? '' : String(f.opacity);
+    el.style.top = f.rise === 0 ? '' : `${String(f.rise * scale)}px`;
+  };
+  // How far into its motion it was drawn (ms), for tests (a held clock) and diagnostics.
+  root.dataset['ltAt'] = phase === 'still' || phase === 'gone' ? '' : String(Math.round(t));
+  if (phase === 'still' || phase === 'gone') {
+    root.style.opacity = '';
+    box.style.clipPath = '';
+    for (const el of lineOf(words.fresh)) place(el, { opacity: 1, rise: 0 });
+    return;
+  }
+  const f = lowerThirdFrame(phase, movement, t);
+  root.style.opacity = f.whole === 1 ? '' : String(f.whole);
+  box.style.clipPath =
+    f.side === null
+      ? ''
+      : `inset(0 ${f.side.toFixed(2)}% 0 ${f.side.toFixed(2)}% round ${radius.toFixed(1)}px)`;
+  if (words.old) words.old.style.opacity = String(f.oldWords);
+  lineOf(words.old).forEach((el, i) => {
+    place(el, f.oldLine(i));
+  });
+  if (phase !== 'out')
+    lineOf(words.fresh).forEach((el, i) => {
+      place(el, f.newLine(i));
+    });
 }
 
 /**
@@ -114,47 +164,12 @@ export function MovingLowerThird({
   const radius = size * 0.3;
   const scale = canvas.height / 1080;
   const length = lowerThirdRunLength(drawn, movement);
-  const paint = useCallback(
-    (t: number) => {
-      const root = rootRef.current;
-      const box = boxRef.current;
-      if (!root || !box) return;
-      const lineOf = (el: HTMLDivElement | null) =>
-        el ? [...el.querySelectorAll<HTMLElement>('[data-lt-line]')] : [];
-      const place = (el: HTMLElement, f: UnitFrame) => {
-        el.style.opacity = f.opacity === 1 ? '' : String(f.opacity);
-        el.style.top = f.rise === 0 ? '' : `${String(f.rise * scale)}px`;
-      };
-      // How far into its motion it was drawn (ms), for tests (a held clock) and diagnostics.
-      root.dataset['ltAt'] = phase === 'still' || phase === 'gone' ? '' : String(Math.round(t));
-      if (phase === 'still' || phase === 'gone') {
-        root.style.opacity = '';
-        box.style.clipPath = '';
-        for (const el of lineOf(newRef.current)) place(el, { opacity: 1, rise: 0 });
-        return;
-      }
-      const f = lowerThirdFrame(phase, movement, t);
-      root.style.opacity = f.whole === 1 ? '' : String(f.whole);
-      box.style.clipPath =
-        f.side === null
-          ? ''
-          : `inset(0 ${f.side.toFixed(2)}% 0 ${f.side.toFixed(2)}% round ${radius.toFixed(1)}px)`;
-      if (oldRef.current) oldRef.current.style.opacity = String(f.oldWords);
-      lineOf(oldRef.current).forEach((el, i) => {
-        place(el, f.oldLine(i));
-      });
-      if (phase !== 'out')
-        lineOf(newRef.current).forEach((el, i) => {
-          place(el, f.newLine(i));
-        });
-    },
-    [phase, movement, radius, scale],
-  );
   // Frame by frame, from the engine's clock, while it moves. At the frame it is over, drawn again at once, still
   // (or gone), before that frame is shown: never its motion's last frame left up a frame longer. Started and
   // stopped as each drawing is put on the page, so no frame paints a motion it no longer draws.
   useLayoutEffect(() => {
     if (phase === 'still' || phase === 'gone') return;
+    const drawing = { phase, movement, radius, scale };
     let frame = 0;
     const tick = () => {
       const t = engineNow() - start;
@@ -162,17 +177,29 @@ export function MovingLowerThird({
         flushSync(redraw);
         return;
       }
-      paint(t);
+      paintLowerThird(
+        rootRef.current,
+        boxRef.current,
+        { old: oldRef.current, fresh: newRef.current },
+        drawing,
+        t,
+      );
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [phase, start, length, paint]);
+  }, [phase, start, length, movement, radius, scale]);
   // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
-    paint(now - start);
+    paintLowerThird(
+      rootRef.current,
+      boxRef.current,
+      { old: oldRef.current, fresh: newRef.current },
+      { phase, movement, radius, scale },
+      now - start,
+    );
   });
   if (phase === 'gone') return null;
   return (
