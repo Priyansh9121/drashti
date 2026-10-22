@@ -23,6 +23,7 @@ import {
   type PlaylistCursor,
   type PropItem,
   type RepeatRun,
+  type SlideLayer,
   type TickerItem,
   type TickerLayer,
   UPCOMING_ITEMS,
@@ -47,7 +48,8 @@ import {
   type PictureLook,
   slideShowing,
 } from '../../shared/picture-look';
-import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
+import { elapsedAt, type TimerDefinition, type TimerRun, zeroAt } from '../../shared/timers';
+import { DRASHTI_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } from '../../shared/timer-slides';
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
@@ -107,6 +109,12 @@ export const MUSIC_UNKNOWN_LENGTH_MS = 20_000;
 
 type MusicLayer = AudioLayer & { music: MusicRun };
 
+/**
+ * How a timer shown alone comes on when Drashti's slide transition is a cut (Session 50): a fade of half a
+ * second, so it never just appears.
+ */
+export const TIMER_FADE: Transition = { kind: 'dissolve', durationMs: 500 };
+
 /** The message a timer cue shows: one per timer (showing it again replaces it). */
 export const timerMessageId = (timerId: string): string => `timer:${timerId}`;
 
@@ -156,6 +164,8 @@ export interface EngineOptions {
    * name, device and fit.
    */
   videoInput?: (inputId: string) => VideoInput | null;
+  /** How a timer shown alone looks (Session 50): the library's default theme's words; Drashti's own when left out. */
+  timerLook?: () => TimerLook;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -255,6 +265,10 @@ export class ShowEngine {
   private cancelScheduled: (() => void) | null = null;
   /** An audio playlist's track waiting to end (its key), and how to cancel the wait. */
   private musicWait: { key: string; cancel: () => void } | null = null;
+  /** The slide up going on when a countdown on it reaches zero (Session 50): its key, and how to cancel the wait. */
+  private zeroWait: { key: string; cancel: () => void } | null = null;
+  /** The last zero that came: it is not waited for again (a slide with nowhere to go holds at 0:00). */
+  private zeroDone: string | null = null;
   /** The time of the change being made, read once (null between changes). */
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
@@ -532,9 +546,23 @@ export class ShowEngine {
     return this.apply([{ type: 'look/set', look }]);
   }
 
-  /** The timers as the library defines them (at startup, and after the operator edits one). */
+  /**
+   * The timers as the library defines them (at startup, and after the operator edits one). A timer shown alone
+   * (Session 50) takes its timer's new name, and goes off, its out from now, when its timer is removed.
+   */
   setTimers(timers: readonly TimerDefinition[]): CommandResult {
-    return this.apply([{ type: 'timers/define', timers }]);
+    return this.atOnce(() => {
+      const actions: EngineAction[] = [{ type: 'timers/define', timers }];
+      const shown = this.state.layers.slide;
+      const alone = shown?.timer;
+      if (shown && alone) {
+        const t = timers.find((x) => x.id === alone.timerId);
+        if (!t) actions.push({ type: 'layer/clear', layer: 'slide', at: this.now() });
+        else if (t.name !== alone.name)
+          actions.push({ type: 'slide/put', layer: { ...shown, timer: { ...alone, name: t.name } } });
+      }
+      return this.apply(actions);
+    });
   }
 
   /** What the idle rotation shows (from the admin's settings, the media library and the quotes). */
@@ -587,6 +615,42 @@ export class ShowEngine {
         },
       ];
     });
+  }
+
+  /**
+   * How a timer shown alone comes on (Session 50), and goes off when it is taken off on its own: Drashti's slide
+   * transition, as each screen's Look draws it; a fade after a cut, and instead of a slow zoom (which would grow
+   * the time while it is up).
+   */
+  private timerTransition(): Transition {
+    const t = this.options.defaultTransition?.() ?? CUT;
+    if (t.kind === 'cut' || t.durationMs <= 0) return TIMER_FADE;
+    return { kind: t.kind === 'zoom' ? 'dissolve' : t.kind, durationMs: t.durationMs };
+  }
+
+  /** A timer shown alone as the slide layer has it: Drashti's Timer only layout, made for that timer. */
+  private timerLayer(t: TimerDefinition, transition: Transition | null): SlideLayer {
+    return {
+      presentationId: timerShowId(t.id),
+      slideIndex: 0,
+      slide: timerAloneSlide(t.id, this.options.timerLook?.() ?? DRASHTI_TIMER_LOOK),
+      shownAt: this.now(),
+      notes: '',
+      ...(transition ? { transition } : {}),
+      timer: { timerId: t.id, name: t.name },
+    };
+  }
+
+  /**
+   * Show on the screens (Session 50): a timer up alone in the slide's place, over whatever background is up,
+   * coming on with the slide transition. The live position stays where it was, so Next goes on from there,
+   * and no presentation is made for it. Shown already, it stays as it is.
+   */
+  private showTimer(timerId: string): Resolved {
+    const t = this.state.timers.find((x) => x.id === timerId);
+    if (!t) return { ok: false, error: 'unknown-timer', message: 'That timer no longer exists' };
+    if (this.state.layers.slide?.timer?.timerId === timerId) return NO_CHANGE;
+    return { ok: true, actions: [{ type: 'slide/put', layer: this.timerLayer(t, this.timerTransition()) }] };
   }
 
   /** Start, pause or reset a timer: the only changes the windows need to count by themselves. */
@@ -1522,6 +1586,8 @@ export class ShowEngine {
           actions: [{ type: 'audio/set', audio: { ...a, music: { ...a.music, loop: command.loop } } }],
         };
       }
+      case 'showTimer':
+        return this.showTimer(command.timerId);
       // Picture in picture (Session 50, pip.ts): what the box holds is looked up here, never taken from a page.
       case 'showPip':
         return showPip(this.state.layers.pip, command.source, command.place, this.now(), this.options);
@@ -1538,9 +1604,6 @@ export class ShowEngine {
           return { ok: false, error: 'unknown-input', message: 'That video input is not on this computer.' };
         return { ok: true, actions: [{ type: 'background/set', background: this.inputLayer(input) }] };
       }
-      // Session 50's commands: each section's builder puts its own in place of these.
-      case 'showTimer':
-        return { ok: false, error: 'invalid-command', message: 'Not built yet' };
     }
   }
 
@@ -1649,6 +1712,7 @@ export class ShowEngine {
     for (const listener of this.listeners) listener(next);
     this.scheduleAdvance();
     this.scheduleMusic();
+    this.scheduleZero();
     return { ok: true, changed: true, rev: this.revision };
   }
 
@@ -1805,8 +1869,70 @@ export class ShowEngine {
     });
   }
 
+  /** Run `run` after `ms` (the schedule option's way when given); returns how to cancel it. */
+  private wait(ms: number, run: () => void): () => void {
+    if (this.options.schedule) return this.options.schedule(ms, run);
+    const t = setTimeout(run, ms);
+    return () => {
+      clearTimeout(t);
+    };
+  }
+
+  /**
+   * When the slide up goes on at zero (Session 50): the soonest of its countdowns that say so and are running,
+   * that had not reached zero when it went up, while it is the live presentation's slide. Null when none.
+   */
+  private zeroFor(state: EngineState): { at: number; key: string } | null {
+    const slide = state.layers.slide;
+    if (!slide || slide.timer || state.live.presentationId !== slide.presentationId) return null;
+    let at: number | null = null;
+    for (const el of slide.slide.elements) {
+      if (el.kind !== 'timer' || el.atZero !== 'next') continue;
+      const t = state.timers.find((x) => x.id === el.timerId);
+      const zero = t ? zeroAt(t, this.now()) : null;
+      if (zero !== null && zero > slide.shownAt && (at === null || zero < at)) at = zero;
+    }
+    return at === null ? null : { at, key: `${slide.slide.id}@${String(slide.shownAt)}>${String(at)}` };
+  }
+
+  /** Wait for the slide up to reach zero (again when that changed), when it goes on then. */
+  private scheduleZero(): void {
+    const found = this.zeroFor(this.state);
+    const want = found && found.key !== this.zeroDone ? found : null;
+    if ((want?.key ?? null) === (this.zeroWait?.key ?? null)) return;
+    this.zeroWait?.cancel();
+    this.zeroWait = null;
+    if (!want) return;
+    const cancel = this.wait(Math.max(0, want.at - this.now()), () => {
+      if (this.zeroWait?.key === want.key) this.zeroWait = null;
+      this.atZero(want.key);
+    });
+    this.zeroWait = { key: want.key, cancel };
+  }
+
+  /**
+   * A countdown on the slide up reached zero: the next slide comes on with its transition, as Next would bring
+   * it (on into the next playlist item at the end of a presentation). Nowhere to go: it holds at 0:00.
+   */
+  private atZero(key: string): void {
+    this.atOnce(() => {
+      const found = this.zeroFor(this.state);
+      if (found?.key !== key) return;
+      // A timer can come a moment early (its clock and this one differ by a millisecond or so): wait again.
+      if (this.now() < found.at) {
+        this.scheduleZero();
+        return;
+      }
+      this.zeroDone = key;
+      const moved = this.step(1);
+      if (moved.ok) this.apply(moved.actions);
+    });
+  }
+
   /** Stop waiting (the engine is going away: tests, and quitting). */
   dispose(): void {
+    this.zeroWait?.cancel();
+    this.zeroWait = null;
     this.cancelScheduled?.();
     this.cancelScheduled = null;
     this.scheduled = null;
