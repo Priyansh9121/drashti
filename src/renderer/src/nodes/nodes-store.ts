@@ -32,6 +32,14 @@ export function closeDashboard(): void {
   useNodes.setState({ dashboard: false, thumbs: {} });
 }
 
+/** Forget these screens' last pictures (Session 51: switched off, a screen's display shows the desktop). */
+export function forgetThumbs(screenIds: readonly string[]): void {
+  const thumbs = useNodes.getState().thumbs;
+  if (!screenIds.some((id) => id in thumbs)) return;
+  const gone = new Set(screenIds);
+  useNodes.setState({ thumbs: Object.fromEntries(Object.entries(thumbs).filter(([id]) => !gone.has(id))) });
+}
+
 let started = false;
 
 export function connectNodes(): void {
