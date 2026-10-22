@@ -10,8 +10,9 @@ import {
 } from '../../../shared/model';
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { DARKEN_STRENGTHS } from '../../../shared/model';
-import { slidesOf } from '../../../shared/slide-edit';
+import { cueInputName, slidesOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
+import { useInputNamed } from '../video-inputs/video-inputs-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { radioKeys, radioTabIndex } from '../ui/radio';
@@ -202,7 +203,12 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
   const [askLook, setAskLook] = useState(false);
   const [appDefault, setAppDefault] = useDefaultTransition();
   const number = slidesOf(doc).findIndex((s) => s.id === slide.id) + 1;
-  const background = slide.cues.find((c) => c.kind === 'background' && c.mediaId);
+  // A picture or video behind it, or a video input by its name (Session 51).
+  const background = slide.cues.find(
+    (c) => c.kind === 'background' && (c.mediaId !== null || cueInputName(c) !== null),
+  );
+  const inputName = background ? cueInputName(background) : null;
+  const inputHere = useInputNamed(inputName) !== null;
   const sound = slide.cues.find((c) => c.kind === 'audio' && c.mediaId);
   const others = slide.cues.filter((c) => c !== background && c !== sound);
   const nameOf = (cue: EditCue | undefined) => {
@@ -405,7 +411,9 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 text-sm">
             {background ? (
-              <span data-testid="background-cue">Background: {nameOf(background)}</span>
+              <span data-testid="background-cue">
+                Background: {inputName !== null ? `the video input “${inputName}”` : nameOf(background)}
+              </span>
             ) : (
               <span className="text-muted">No background picture or video</span>
             )}
@@ -426,7 +434,14 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
             </Button>
           )}
         </div>
-        {background && (
+        {/* A video input this computer has none of (Session 51): another computer's, say. */}
+        {inputName !== null && !inputHere && (
+          <p className="text-xs text-warning-fg" data-testid="background-input-missing">
+            No video input called “{inputName}” is on this computer: here the background stays as it was when
+            this slide goes up. On a computer with an input of that name, it goes up there.
+          </p>
+        )}
+        {background && inputName === null && (
           <BackgroundSettings
             cue={background}
             kind={media.find((m) => m.id === background.mediaId)?.kind}
@@ -611,6 +626,15 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
           onClose={() => {
             setPicking(null);
           }}
+          // Behind the slide, one of this computer's video inputs too (Session 51), by its name.
+          {...(picking === 'background'
+            ? {
+                onChooseInput: (name: string) => {
+                  setPicking(null);
+                  change((d) => mapSlide(d, slide.id, (s) => setBackgroundCue(s, { input: name })));
+                },
+              }
+            : {})}
           onChoose={(m) => {
             const which = picking;
             setPicking(null);
