@@ -70,7 +70,8 @@ describe('restart recovery', () => {
       session: 'run-1',
       engineVersion: ENGINE_STATE_VERSION,
       savedAt: '1970-01-01T00:00:00.000Z',
-      slide: { presentationId: 'p1', slideIndex: 2, arrangementId: null },
+      // With when it went up (Session 51), so its videos carry on.
+      slide: { presentationId: 'p1', slideIndex: 2, arrangementId: null, shownAt: 5 },
       playlist: null,
       background,
       blackout: true,
@@ -89,6 +90,30 @@ describe('restart recovery', () => {
       pip: null,
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
+  });
+
+  it('keeps when the slide on the screens went up, so its videos and their sound carry on after a restart (Session 51)', async () => {
+    // Since Session 3 a slide came back as if it had just gone up: its videos, and their sound, from the start.
+    // (Under a timer shown alone the slide the show was at was not on the screens: none, timer-recovery.test.ts.)
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, live());
+    expect(toRestore(files)?.slide).toEqual({
+      presentationId: 'p1',
+      slideIndex: 2,
+      arrangementId: null,
+      shownAt: 5,
+    });
+    // A file saved before has none: the slide comes back from the restart, as it did.
+    const was = savedFrom(live(), 'crashed-run', new Date('2026-10-23T10:00:00.000Z'));
+    writeFileSync(
+      files.state,
+      JSON.stringify({ ...was, slide: { presentationId: 'p1', slideIndex: 2, arrangementId: null } }),
+    );
+    expect(toRestore(files, null, new Date('2026-10-23T10:05:00.000Z'))?.slide).toEqual({
+      presentationId: 'p1',
+      slideIndex: 2,
+      arrangementId: null,
+    });
   });
 
   it('keeps the picture-in-picture box (Session 50) with when it went up, so it comes back still; alone, it is worth putting back', async () => {
@@ -470,7 +495,12 @@ describe('restart recovery', () => {
     // A later run that stops unexpectedly is not covered by the earlier mark.
     const next = new LiveStateWriter(files, { throttleMs: 10 });
     await saved(next, live({ slideIndex: 4 }));
-    expect(toRestore(files)?.slide).toEqual({ presentationId: 'p1', slideIndex: 4, arrangementId: null });
+    expect(toRestore(files)?.slide).toEqual({
+      presentationId: 'p1',
+      slideIndex: 4,
+      arrangementId: null,
+      shownAt: 5,
+    });
   });
 
   it('writes a run of changes once, whole, and leaves no partial files', async () => {

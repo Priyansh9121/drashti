@@ -176,7 +176,16 @@ export interface EngineOptions {
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
 export interface RestoreRequest {
-  slide: { presentationId: string; slideIndex: number; arrangementId?: string | null } | null;
+  /**
+   * The slide, and when it went up (Session 51; left out by files saved before): it keeps that time, so its videos
+   * and their sound carry on, and it draws settled, with no entrance again.
+   */
+  slide: {
+    presentationId: string;
+    slideIndex: number;
+    arrangementId?: string | null;
+    shownAt?: number;
+  } | null;
   /** The playlist item that was playing, so Next carries on from it. */
   playlist?: PlaylistCursor | null;
   background: BackgroundLayer | null;
@@ -380,14 +389,18 @@ export class ShowEngine {
     if (look) actions.push({ type: 'look/set', look });
     const playlist = request.playlist ? this.checkItem(request.playlist) : null;
     if (request.slide) {
-      const { presentationId, slideIndex, arrangementId } = request.slide;
+      const { presentationId, slideIndex, arrangementId, shownAt } = request.slide;
       const order = this.source.order(presentationId, arrangementId);
       const found = order?.slides[slideIndex];
       if (order && found) {
         const from =
           playlist?.item.kind === 'presentation' && playlist.item.presentationId === presentationId;
+        // From when it went up (Session 51), as props and the logo are (Session 27): its videos and their sound carry
+        // on where they would be, and what draws from that time (a lower third's in) is long over. Since Session 3 it
+        // went up again at the restart. Never from a time to come (a clock set back since).
+        const at = shownAt === undefined ? {} : { at: Math.min(shownAt, this.now()) };
         actions.push(
-          this.showAction(presentationId, slideIndex, order, found, from ? playlist.cursor : null),
+          this.showAction(presentationId, slideIndex, order, found, from ? playlist.cursor : null, at),
         );
         slide = true;
       }

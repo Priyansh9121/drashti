@@ -12,6 +12,7 @@ import {
   importAndGetIds,
   killApp,
   launchApp,
+  letTimePass,
   openLibrary,
   operatorPage,
   operatorReady,
@@ -357,6 +358,85 @@ test('after a crash a video and a sound come back from their last jump, between 
   );
   await nearTheClock(player, `audio[data-media-id="${toneId}"]`, audio, 'the sound');
   await expect(win2.getByTestId('recovery-notice')).toContainText('the background and the sound');
+  await second.app.close();
+});
+
+test('after a crash a video on the slide itself, and its sound, play on from where they would be, not from the start (Session 51)', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-slide-video-'));
+  const loop = await makeTestVideo(win, join(dir, 'Placeholder slide loop.webm'), {
+    seconds: 6,
+    hue: 120,
+    tone: 440,
+    width: 64,
+    height: 36,
+  });
+  const [videoId = ''] = await importAndGetIds(win, [loop]);
+  const words = join(dir, 'Placeholder Slide Video.txt');
+  writeFileSync(words, '[Verse]\nPlaceholder words over a video\n');
+  const [presentationId = ''] = await importAndGetIds(win, [words]);
+  // The slide's own video, looping (not a background: it goes and comes with the slide).
+  await win.evaluate(
+    async ({ presentationId, videoId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const opened = await d.library.slidesForEdit(presentationId);
+      if (!opened.ok) throw new Error(opened.message);
+      const slide = opened.doc.groups[0]?.slides[0];
+      if (!slide) throw new Error('The presentation has no slide.');
+      slide.elements = [
+        {
+          id: 'placeholder-slide-video',
+          kind: 'video',
+          mediaId: videoId,
+          frame: { x: 0, y: 0, width: 1920, height: 1080 },
+          fit: 'fit',
+          loop: true,
+        },
+        ...slide.elements,
+      ];
+      const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { presentationId, videoId },
+  );
+  await setUpScreen(win);
+  const output = await outputPage(first.app);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      }),
+    presentationId,
+  );
+  const picture = `[data-layer="slide"] video[data-media-id="${videoId}"]`;
+  await expect(output.locator(picture)).toHaveCount(1);
+  const shownAt = await win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide?.shownAt,
+  );
+  if (shownAt === undefined) throw new Error('The slide did not go up.');
+  await savedLive(first.userData, (saved) => saved.slide?.slideIndex === 0);
+  await letTimePass(win, 2000, 'the slide’s video plays on a moment before Drashti stops');
+  await killApp(first.app);
+
+  // Since Session 3 the slide went up again at the restart: its video and its sound began again from the top.
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
+  await operatorReady(win2);
+  const slide = await win2.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide,
+  );
+  expect(slide).toMatchObject({ presentationId, slideIndex: 0, shownAt });
+  expect(slide?.transition).toBeUndefined();
+  const clock = { startedAt: shownAt, loop: true };
+  const output2 = await outputPage(second.app);
+  const player = await audioPage(second.app);
+  await nearTheClock(output2, picture, clock, 'the slide’s video');
+  await nearTheClock(player, 'audio[data-key^="slide:"]', clock, 'its sound');
   await second.app.close();
 });
 

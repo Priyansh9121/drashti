@@ -1334,6 +1334,26 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.slide).toBeNull();
       expect(engine.current.layers.background).toEqual(background);
     });
+
+    it('puts the slide back with the time it went up, so its videos and their sound carry on (Session 51); never later than now', () => {
+      // Since Session 3 a slide put back went up again at the restart: its videos and their sound began again.
+      const putBack = (shownAt?: number) => {
+        const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => 50_000);
+        engine.restore({
+          slide: { presentationId: 'p1', slideIndex: 1, ...(shownAt === undefined ? {} : { shownAt }) },
+          background: null,
+          blackout: false,
+        });
+        return engine.current.layers.slide;
+      };
+      expect(putBack(41_000)).toMatchObject({ slideIndex: 1, shownAt: 41_000 });
+      // As it was: no transition again (what draws from that time, a lower third's in, is long over).
+      expect(putBack(41_000)?.transition).toBeUndefined();
+      // Saved by a clock ahead of this one (set back since): from now, never from a time to come.
+      expect(putBack(60_000)?.shownAt).toBe(50_000);
+      // A file saved before Session 51 says nothing: from now, as before.
+      expect(putBack()?.shownAt).toBe(50_000);
+    });
   });
 
   describe('another app’s window as the background (Session 48)', () => {
