@@ -204,10 +204,12 @@ export interface Restored {
   stageMessage: boolean;
   timers: number;
   /**
-   * Another app's window that was the background (Session 48), or else in the picture-in-picture box (Session
-   * 50), by name: never put back (it may be gone), only said. Null when there was none.
+   * Another app's window that was the background (Session 48), by name: never put back (it may be gone),
+   * only said. Null when there was none.
    */
   window: string | null;
+  /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
+  pipWindow: string | null;
 }
 
 /**
@@ -416,7 +418,8 @@ export class ShowEngine {
       pip: box.layer !== null,
       stageMessage: Boolean(request.stageMessage),
       timers,
-      window: window ?? box.window,
+      window,
+      pipWindow: box.window,
     };
   }
 

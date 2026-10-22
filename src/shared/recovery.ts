@@ -32,6 +32,8 @@ export interface RecoveryNotice {
   masks?: boolean;
   /** A lower third (Session 44). */
   lowerThird?: boolean;
+  /** The picture-in-picture box (Session 50): put back (or, too long ago, up then) holding anything but a window. */
+  pip?: boolean;
   stageMessage?: boolean;
   /** Timers, running or paused. */
   timers?: number;
@@ -39,6 +41,8 @@ export interface RecoveryNotice {
   look?: string | null;
   /** Another app's window that was the background (Session 48), by name: never put back, only said. */
   window?: string | null;
+  /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
+  pipWindow?: string | null;
 }
 
 function joinParts(parts: string[]): string {
@@ -71,15 +75,18 @@ export function recoveryText(notice: RecoveryNotice): string {
   if (notice.ticker && notice.ticker > 0) parts.push('the ticker');
   if (notice.masks) parts.push('the mask');
   if (notice.lowerThird) parts.push('the lower third');
+  if (notice.pip) parts.push('the picture-in-picture box');
   if (notice.stageMessage) parts.push('the stage message');
   count(notice.timers, 'a timer', 'timers');
   if (notice.logo) parts.push('the logo');
   if (notice.blackout) parts.push('black-out');
   if (notice.look) parts.push(`the Look “${notice.look}”`);
   const window = notice.window ?? null;
+  const boxWindow = notice.pipWindow ?? null;
   const gone = notice.slideGone ? ' The slide that was live is no longer in the library.' : '';
   if (notice.putBack === false) {
     if (window !== null) parts.push(`the window “${window}”`);
+    if (boxWindow !== null) parts.push(`the window “${boxWindow}” in the picture-in-picture box`);
     const when = stoppedWhen(notice.savedAt);
     const hours = String(RECOVERY_MAX_AGE_MS / 3_600_000);
     const live = parts.length > 0 ? ` What was live then: ${joinParts(parts)}.` : '';
@@ -96,5 +103,9 @@ export function recoveryText(notice: RecoveryNotice): string {
     window === null
       ? ''
       : ` The window “${window}” was on the screens and was not put back, as it may be gone: Show a Window… shows it again.`;
-  return `${put}${gone}${notBack}`;
+  const boxNotBack =
+    boxWindow === null
+      ? ''
+      : ` The window “${boxWindow}” was in the picture-in-picture box and was not put back, as it may be gone.`;
+  return `${put}${gone}${notBack}${boxNotBack}`;
 }
