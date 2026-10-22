@@ -1722,6 +1722,8 @@ function start(): void {
   const keepScreens = new KeepScreens<ScreensSetup>({
     capture: () => screens.setup(),
     restore: (setup, quitting) => {
+      // The setup's test slide ends with the change it showed (the screens put back show the show again).
+      if (!quitting) testCardUntil = 0;
       const result = screens.putBack(setup, quitting);
       if (!quitting) {
         // As Screens' own changes do: the stream's languages, and a stage display in a browser.
