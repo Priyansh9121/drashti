@@ -2551,6 +2551,9 @@ function start(): void {
     },
   });
   leftovers.stopLeft();
+  // Tests only (never a packaged Drashti): imports judge media by their headers alone, as before Session 50,
+  // and nothing is converted by itself, so a test can try Convert as an operator does.
+  const noConvertAtImport = !app.isPackaged && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';
   const imports = new ImportService({
     spawn: spawnImportWorker,
     children: {
@@ -2573,6 +2576,18 @@ function start(): void {
           : sw('DRASHTI_TEST_DECK_CONVERTER') === '1'
             ? 'stand-in'
             : true,
+      // Every video and sound read with the bundled FFmpeg at import (Session 50): what Drashti's player
+      // cannot play is converted by itself once the import ends (onFinished, below).
+      ffmpeg: noConvertAtImport
+        ? null
+        : findFfmpeg({
+            packaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+            platform: process.platform,
+            arch: process.arch,
+            override: sw('DRASHTI_FFMPEG'),
+          }),
     },
     drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
     onProgress: (progress) => {

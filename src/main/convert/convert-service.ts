@@ -17,10 +17,10 @@ import {
   convertArgs,
   type ConvertTarget,
   type MediaInfo,
-  parseFfmpegInfo,
   TARGET_EXT,
   TARGET_FORMAT,
 } from './plan';
+import { PROBE_MS, readInfo } from './read-info';
 import { moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
 import { freeFileName } from './trim';
 
@@ -38,8 +38,8 @@ import { freeFileName } from './trim';
 
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
 
-/** The longest FFmpeg may take to read what a file holds (Session 31, MED-6). */
-export const PROBE_MS = 30_000;
+// Reading what a file holds is its own module (Session 50: the import worker reads every video and sound).
+export { PROBE_MS, readInfo };
 
 /**
  * The longest a conversion or a Save as MP4 may take, each time it is tried: four times the file's length,
@@ -106,40 +106,6 @@ const KIND_OF: Record<ConvertTarget, MediaRow['kind']> = {
   png: 'image',
   m4a: 'audio',
 };
-
-/**
- * What FFmpeg says the file holds (it prints this and stops: there is no output), within `timeoutMs`
- * (30 s): longer, it is stopped and `timedOut` says so. Only files may be opened, and FFmpeg gets the
- * stream's clean environment (Session 31, MED-6). `onSpawn` lets a caller stop it meanwhile.
- */
-export function readInfo(
-  ffmpeg: string,
-  file: string,
-  options: { timeoutMs?: number; onSpawn?(child: ChildProcess): void } = {},
-): Promise<MediaInfo & { timedOut?: true }> {
-  return new Promise((resolve) => {
-    const child = spawn(ffmpeg, ['-hide_banner', '-protocol_whitelist', 'file', '-i', file], {
-      windowsHide: true,
-      env: ffmpegEnv(),
-    });
-    options.onSpawn?.(child);
-    let text = '';
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGKILL');
-    }, options.timeoutMs ?? PROBE_MS);
-    child.stderr.on('data', (d: Buffer) => (text += d.toString()));
-    child.on('error', () => {
-      clearTimeout(timer);
-      resolve(parseFfmpegInfo(''));
-    });
-    child.on('exit', () => {
-      clearTimeout(timer);
-      resolve(timedOut ? { ...parseFfmpegInfo(''), timedOut: true } : parseFfmpegInfo(text));
-    });
-  });
-}
 
 /** What the operator is told when reading a file took too long. */
 const probeTooLong = (ms: number) =>

@@ -6,17 +6,18 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
-import { MediaStore } from './media-store';
+import { parseFfmpegInfo } from '../convert/plan';
+import { MediaStore, type MediaStoreOptions } from './media-store';
 import { runRelink } from './relink';
 
-function setup() {
+function setup(options: Pick<MediaStoreOptions, 'readInfo'> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-relink-'));
   const mediaDir = join(dir, 'Media');
   const found = join(dir, 'Found media');
   mkdirSync(mediaDir);
   mkdirSync(join(found, 'deep'), { recursive: true });
   const db = openDatabase(join(dir, 'drashti.sqlite'));
-  const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
+  const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4, ...options });
   return { db, media, found, dir };
 }
 
@@ -42,6 +43,27 @@ describe('runRelink', () => {
     ]);
     expect(report?.items[1]?.issues[0]?.fix).toEqual({ kind: 'relink-media', mediaId: gone });
     expect(media.missing().map((m) => m.id)).toEqual([gone]);
+  });
+
+  it('says a found file Drashti cannot play is converted by itself (Session 50)', async () => {
+    const mkv = [
+      "Input #0, matroska,webm, from '/x.mkv':",
+      '  Stream #0:0: Video: h264 (High), yuv420p(tv, progressive), 64x48, 10 fps, 10 tbr, 1k tbn',
+      '  Stream #0:1: Audio: dts (dca) (DTS), 48000 Hz, stereo, fltp, 1411 kb/s',
+    ].join('\n');
+    const { db, media, found } = setup({ readInfo: () => Promise.resolve(parseFfmpegInfo(mkv)) });
+    const id = media.addMissing('/Volumes/Old/Placeholder loop.mkv', 'video', { kind: 'pp6', path: '/p' });
+    writeFileSync(join(found, 'Placeholder loop.mkv'), 'placeholder loop');
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: found });
+    const [issue] = new ImportRepo(db).report(run.id)?.items[0]?.issues ?? [];
+    expect(issue).toMatchObject({
+      severity: 'info',
+      code: 'converting-media',
+      message: expect.stringContaining(
+        'H.264 video with DTS sound (Matroska). It converts it by itself',
+      ) as unknown,
+      fix: { kind: 'convert-media', mediaId: id },
+    });
   });
 
   it('only looks for the items asked for', async () => {

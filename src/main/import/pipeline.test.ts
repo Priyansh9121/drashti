@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ImportOptions, ImportProgress } from '../../shared/import';
 import type { Db } from '../db/database';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
-import { MediaStore } from './media-store';
+import { parseFfmpegInfo } from '../convert/plan';
+import { MediaStore, type MediaStoreOptions } from './media-store';
 import { MAX_TEXT_BYTES, readabilityIssues, runImport } from './pipeline';
 import { makeTestDocx } from './testing/make-docx';
 import { cocoaRtf, pp6Presentation } from './testing/pp6-fixtures';
@@ -16,14 +17,14 @@ import { cocoaRtf, pp6Presentation } from './testing/pp6-fixtures';
 const SONG_A = '[Verse 1]\nPlaceholder line one\nPlaceholder line two\n\n[Chorus]\nPlaceholder chorus\n';
 const SONG_B = '[Verse]\nOther placeholder\n\nSecond slide\n\nThird slide\n';
 
-function setup() {
+function setup(options: Pick<MediaStoreOptions, 'readInfo'> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
   const source = join(dir, 'source');
   mkdirSync(source);
   const mediaDir = join(dir, 'Media');
   mkdirSync(mediaDir);
   const db = openDatabase(join(dir, 'drashti.sqlite'));
-  const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
+  const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4, ...options });
   const write = (rel: string, content: string | Buffer) => {
     const full = join(source, rel);
     mkdirSync(join(full, '..'), { recursive: true });
@@ -244,6 +245,63 @@ describe('runImport', () => {
       { name: 'Blue Loop.mov', playable: 0, format: 'ProRes 422 HQ video (QuickTime)' },
       { name: 'Logo.png', playable: 1, format: 'PNG picture' },
       { name: 'Old clip.avi', playable: 0, format: 'AVI video' },
+    ]);
+  });
+
+  it('says what Drashti converts by itself, on the file’s line and on a presentation using it, and nothing of what plays (Session 50)', async () => {
+    // The bundled FFmpeg, stood in for by each stored file's extension: an MKV whose sound is AC-3, and a FLAC.
+    const reads: Record<string, string> = {
+      mkv: [
+        "Input #0, matroska,webm, from '/x.mkv':",
+        '  Stream #0:0: Video: h264 (High), yuv420p(tv, progressive), 64x48, 10 fps, 10 tbr, 1k tbn',
+        '  Stream #0:1: Audio: ac3, 48000 Hz, stereo, fltp, 192 kb/s',
+      ].join('\n'),
+      flac: ["Input #0, flac, from '/x.flac':", '  Stream #0:0: Audio: flac, 48000 Hz, mono, s16'].join('\n'),
+    };
+    const t = setup({
+      readInfo: (file) => Promise.resolve(parseFfmpegInfo(reads[extname(file).slice(1)] ?? '')),
+    });
+    t.write('media/Placeholder katha.mkv', 'placeholder katha');
+    t.write('media/Placeholder dhun.flac', 'placeholder dhun');
+    t.write(
+      'Placeholder Hymn.pro6',
+      pp6Presentation({
+        uuid: 'HYMN-MKV',
+        groups: [
+          {
+            name: 'Verse',
+            slides: [
+              {
+                background: { path: '/Volumes/Old/Placeholder katha.mkv', kind: 'video', loop: true },
+                text: [{ rtf: cocoaRtf([['Placeholder line', 72, [255, 255, 255]]]) }],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const { report } = await t.run([t.source]);
+    const item = (name: string) => report?.items.find((i) => i.name === name);
+    const mkvId = (
+      t.db.prepare("SELECT id FROM media WHERE name = 'Placeholder katha.mkv'").get() as { id: string }
+    ).id;
+    const converting = {
+      severity: 'info',
+      code: 'converting-media',
+      message:
+        'Drashti cannot play Placeholder katha.mkv as it is: H.264 video with AC-3 sound (Matroska). It converts it by itself, and uses the copy wherever this file is; the original stays as it is.',
+      fix: { kind: 'convert-media', mediaId: mkvId },
+    };
+    expect(item('Placeholder katha.mkv')?.issues).toEqual([
+      { ...converting, fix: { ...converting.fix, advice: expect.stringMatching(/H\.264 MP4/u) as unknown } },
+    ]);
+    expect(item('Placeholder Hymn')?.issues.filter((i) => i.code === 'converting-media')).toMatchObject([
+      converting,
+    ]);
+    expect(item('Placeholder dhun.flac')?.issues).toEqual([]);
+    expect(t.db.prepare('SELECT name, playable FROM media ORDER BY name').all()).toEqual([
+      { name: 'Placeholder dhun.flac', playable: 1 },
+      { name: 'Placeholder katha.mkv', playable: 0 },
     ]);
   });
 
