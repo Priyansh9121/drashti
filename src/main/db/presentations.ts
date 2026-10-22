@@ -14,6 +14,7 @@ import type { KirtanDetails } from '../../shared/kirtans';
 import { occasionsFrom } from '../../shared/kirtans';
 import { type Lang, LANGS, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
 import { darkenFromJson, slideElementSchema } from '../../shared/model-schema';
+import { cueInputName } from '../../shared/slide-edit';
 import { langsOf } from '../../shared/tracks';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
 import { playOrder } from '../../shared/order';
@@ -85,10 +86,22 @@ function propsOf(row: CueRow): Record<string, unknown> {
 
 /**
  * A stored cue as the engine runs it; null for kinds Drashti does not run
- * yet, and for cues whose media item is gone.
+ * yet, and for cues whose media item is gone. A background with no file that names a video input (Session 51) is
+ * that input, by its name.
  */
 export function cueFromRow(row: CueRow): SlideCue | null {
-  if (!row.media_id) return null;
+  if (!row.media_id) {
+    const input = cueInputName({ kind: row.kind, mediaId: null, props: row.props });
+    if (input === null) return null;
+    return {
+      kind: 'background',
+      label: row.label,
+      name: input,
+      missing: false,
+      unplayable: null,
+      background: { kind: 'input', name: input },
+    };
+  }
   const media = row.media_kind;
   const props = propsOf(row);
   const unplayable =

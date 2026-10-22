@@ -8,6 +8,7 @@ import {
   slideElementSchema,
   transitionSchema,
 } from './model-schema';
+import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
 
 /*
  * The slide editor's document (PLAN.md 5.2, Session 7): a presentation's
@@ -27,8 +28,34 @@ export interface EditCue {
   label: string;
   /** The media library item it plays, if any. */
   mediaId: string | null;
-  /** Its settings as stored (JSON): fit and loop for a background, volume and loop for a sound. */
+  /**
+   * Its settings as stored (JSON): fit and loop for a background, volume and loop for a sound; for a video input as
+   * the background (Session 51), no file and the input's own name: {"input": "Input 1"} (cueInputName).
+   */
   props: string;
+}
+
+/** A cue's settings, or none when they do not read as an object. */
+function settingsOf(props: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(props);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The video input a slide's background cue names (Session 51), by the input's own name: a background cue with no
+ * file and the name in its settings. Each computer puts up its own input of that name (shared/video-inputs.ts
+ * inputNamed). Null for any other cue, and for a background whose file was removed for good (no name in it).
+ */
+export function cueInputName(cue: { kind: string; mediaId: string | null; props: string }): string | null {
+  if (cue.kind !== 'background' || cue.mediaId !== null) return null;
+  const input = settingsOf(cue.props)['input'];
+  return typeof input === 'string' && input.trim() !== '' ? input.trim() : null;
 }
 
 export interface EditSlide {
@@ -116,23 +143,36 @@ export interface ThemeSlide {
 
 const MAX_SLIDES = 2_000;
 
-const cueSchema: z.ZodType<EditCue> = z.object({
-  id: idSchema,
-  kind: z.enum(['background', 'audio', 'media', 'clear', 'message', 'timer', 'other']),
-  label: z.string().max(500),
-  mediaId: idSchema.nullable(),
-  props: z
-    .string()
-    .max(20_000)
-    .refine((text) => {
-      try {
-        const parsed: unknown = JSON.parse(text);
-        return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
-      } catch {
-        return false;
-      }
-    }, 'cue settings must be a JSON object'),
-});
+const cueSchema: z.ZodType<EditCue> = z
+  .object({
+    id: idSchema,
+    kind: z.enum(['background', 'audio', 'media', 'clear', 'message', 'timer', 'other']),
+    label: z.string().max(500),
+    mediaId: idSchema.nullable(),
+    props: z
+      .string()
+      .max(20_000)
+      .refine((text) => {
+        try {
+          const parsed: unknown = JSON.parse(text);
+          return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+        } catch {
+          return false;
+        }
+      }, 'cue settings must be a JSON object'),
+  })
+  .refine((cue) => {
+    // A video input named as the background (Session 51): a name an input can have, on a background with no file.
+    const input = settingsOf(cue.props)['input'];
+    if (input === undefined) return true;
+    return (
+      cue.kind === 'background' &&
+      cue.mediaId === null &&
+      typeof input === 'string' &&
+      input.trim() !== '' &&
+      input.length <= VIDEO_INPUT_NAME_MAX
+    );
+  }, 'a video input as the background needs its name, and no file');
 
 const slideSchema: z.ZodType<EditSlide> = z.object({
   id: idSchema,

@@ -82,20 +82,34 @@ export function summariesOf(listing: PresentationListing[]): PresentationSummary
 }
 
 /**
- * A slide's background image or video (PLAN.md 4.3): when the slide goes
+ * A video input as a slide's background (Session 51): named by the input's own name ("Input 1"), for an input
+ * belongs to one computer while the library travels. Each computer puts up its own input of that name
+ * (shared/video-inputs.ts inputNamed), with the input's fixed 1 s fade; on one with none of that name the
+ * background stays as it was, and LIVE says so (shared/engine/state.ts SlideLayer.inputMissing).
+ */
+export interface CueInput {
+  kind: 'input';
+  name: string;
+}
+
+/**
+ * A slide's background image or video (PLAN.md 4.3), or a video input (Session 51): when the slide goes
  * live it goes on the background layer, and stays there on later slides
  * without a background of their own.
  */
 export interface BackgroundCue {
   kind: 'background';
   label: string;
-  /** The media file's name, for the operator. */
+  /** The media file's name, or the video input's, for the operator. */
   name: string;
-  /** The file was not found at import; it shows once it is relinked. */
+  /**
+   * The file was not found at import; it shows once it is relinked. Always false for a video input: whether this
+   * computer has it is looked up where its list is (the engine as the slide goes up, the operator window's marks).
+   */
   missing: boolean;
   /** What the file is, when Drashti cannot play it (ProRes, HEIC...); null when it plays or is not known. */
   unplayable: string | null;
-  background: MediaBackground;
+  background: MediaBackground | CueInput;
 }
 
 /** A slide's sound: when the slide goes live it plays on the audio layer. */
