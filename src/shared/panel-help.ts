@@ -29,7 +29,7 @@ export const PANEL_HELP = {
   library: {
     title: 'The library',
     doc: 'operator',
-    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words to find it, then press Add to playlist. Import… brings more in, and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner.',
+    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in, and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner.',
     guide: 'the **Library**',
   },
   slides: {
