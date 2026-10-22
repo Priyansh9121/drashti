@@ -117,4 +117,40 @@ describe('the operator window’s keys, as its listener takes them', () => {
     expect(ran).toEqual([]);
     expect([used, ...unknown].filter((p) => p.taken)).toEqual([]);
   });
+
+  // View › Audience and Stage show ⌘1 and ⌘2 (Ctrl+1 and Ctrl+2) beside them (Session 51). Windows' menu shows a
+  // key without binding it (registerAccelerator: false), but the Mac's acts on any key it shows that the page
+  // leaves alone: so the page takes every press of them, the ones it lets go by included, and each acts once.
+  it.each([
+    ['darwin', { metaKey: true }],
+    ['win32', { ctrlKey: true }],
+  ] as const)(
+    'takes every press of Mod+1 and Mod+2, the keys View › Audience and Stage show, and runs none it lets go by (%s)',
+    (platform, mod) => {
+      const { ran, onKey } = listening(platform);
+      const letGo = ['1', '2'].flatMap((key) => [
+        new Press(key, { ...mod, repeat: true }),
+        new Press(key, { ...mod, ...typingIn('INPUT') }),
+        new Press(key, { ...mod, isComposing: true }),
+      ]);
+      for (const p of letGo) onKey(p);
+      dialogOpen = true;
+      const underDialog = [new Press('1', mod), new Press('2', mod)];
+      for (const p of underDialog) onKey(p);
+      expect(ran).toEqual([]);
+      const all = [...letGo, ...underDialog];
+      expect(all).toHaveLength(8);
+      expect(all.filter((p) => !p.taken).map((p) => `${p.key}${p.repeat ? ' held' : ''}`)).toEqual([]);
+      // A press a control already took stays as it was, and runs nothing.
+      dialogOpen = false;
+      const used = new Press('1', { ...mod, defaultPrevented: true });
+      onKey(used);
+      expect(ran).toEqual([]);
+      expect(used.taken).toBe(false);
+      // The keys the menu does not show are let go by as before.
+      const f2 = new Press('F2', { repeat: true });
+      onKey(f2);
+      expect(f2.taken).toBe(false);
+    },
+  );
 });
