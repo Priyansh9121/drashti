@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -222,5 +222,11 @@ describe('the change waiting, kept on disk until it is answered (Session 51, S3-
       expect(takeWaiting(file)).toBeNull();
       expect(existsSync(file)).toBe(false);
     }
+  });
+
+  it('one that cannot be read even a moment later (a folder in its place) is left for the next start', () => {
+    mkdirSync(file);
+    expect(takeWaiting(file)).toBeNull();
+    expect(existsSync(file)).toBe(true);
   });
 });

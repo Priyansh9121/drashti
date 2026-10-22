@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, fsyncSync, openSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, fsyncSync, openSync, renameSync, rmSync, writeSync } from 'node:fs';
 import { z } from 'zod';
 import type { GroupLook } from '../../shared/looks';
 import { readGroupLook, storedGroupLook } from '../../shared/looks';
@@ -7,6 +7,7 @@ import { idSchema } from '../../shared/model-schema';
 import type { ScreenRole } from '../../shared/screens';
 import { SCALING_MODES } from '../../shared/screens';
 import type { SavedGroup, SavedScreen, SavedScreens } from '../db/screens';
+import { readStateTwice } from '../state-file';
 
 /*
  * The screen setup as Keep these screens? takes it (Session 50), just before and just after each change, so Go
@@ -228,29 +229,21 @@ export function keepWaiting(file: string, changes: readonly ScreensChange[] | nu
 
 /**
  * The changes the last run left waiting (it stopped before an answer: a crash, a power cut), taken off the disk:
- * null when none, or when what is there cannot be read (it is cleared all the same). Never throws: a start goes on
- * whatever is there.
+ * null when none. One that is not what Drashti writes (damaged) is cleared; one that cannot be read even a moment
+ * later (state-file.ts: locked, say) is left for the next start. Never throws: a start goes on whatever is there.
  */
 export function takeWaiting(file: string): ScreensChange[] | null {
-  let text: string;
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    return null;
-  }
+  const found = readStateTwice(file, (raw) => {
+    const waiting = waitingSchema.safeParse(raw);
+    return waiting.success ? waiting.data : null;
+  });
+  if (found.status === 'missing' || found.status === 'unreadable') return null;
   try {
     rmSync(file, { force: true });
   } catch {
     // Read again at the next start: going back a second time changes nothing.
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  const waiting = waitingSchema.safeParse(parsed);
-  return waiting.success
-    ? waiting.data.changes.map((c) => ({ before: read(c.before), after: read(c.after) }))
+  return found.status === 'ok'
+    ? found.value.changes.map((c) => ({ before: read(c.before), after: read(c.after) }))
     : null;
 }
