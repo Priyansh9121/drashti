@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { NO_LOOK } from '../../shared/looks';
 import type { DisplayInfo } from '../../shared/screens';
@@ -15,6 +18,7 @@ import { coveringScreens, KeepScreens } from './keep-screens';
 import { OutputManager, type OutputWindow } from './output-manager';
 import { ScreensService } from './screens-service';
 import type { ScreensSetup } from './screens-setup';
+import { keepWaiting, takeWaiting } from './screens-setup';
 
 /** The library's Looks, with the engine that keeps the live one (each group's languages are there). */
 function looksAndEngine(db: Db): { looks: LookService; engine: ShowEngine } {
@@ -652,6 +656,52 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     expect(settingsIn(t, festival, hall)?.languages).toEqual(['translit']);
     expect(t.engine.current.look.id).toBe(festival);
     expect(t.looks.liveLanguages(hall)).toEqual(['translit']);
+  });
+
+  // Session 51, S3-2: a crash or a power cut within the 15 s; the next start goes back, before the outputs open.
+  it('a change left waiting on disk by a stop goes back at the next start, saved only: no window opens or closes', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-keep-'));
+    try {
+      const file = join(dir, 'keep-screens.json');
+      const t = two();
+      t.service.createGroup('Main Hall');
+      const hall = groupNamed(t, 'Main Hall');
+      t.service.assignDisplay(hall, 2);
+      t.service.setGroupLanguages(hall, ['gu']);
+      const was = shape(t);
+      const keep = new KeepScreens<ScreensSetup>({
+        capture: () => t.service.setup(),
+        restore: (changes, quitting) => t.service.undo(changes, quitting),
+        placed: () => t.service.placed(),
+        coversControls: () => false,
+        snapshot: () => t.service.snapshot(),
+        changed: () => undefined,
+        remember: (changes) => {
+          keepWaiting(file, changes);
+        },
+        now: () => 0,
+        later: () => () => undefined,
+      });
+      keep.change(() =>
+        t.service.applySetup([
+          { displayId: 2, use: 'stage', languages: ['en'] },
+          { displayId: 3, use: 'audience', languages: null },
+        ]),
+      );
+      expect(keep.current()).not.toBeNull();
+      expect(t.open.size).toBe(2);
+      // Drashti stops dead here: nothing answers, nothing quits. The next start finds the change on disk.
+      const left = takeWaiting(file);
+      expect(left).toHaveLength(1);
+      expect(t.service.undo(left ?? [], true)).toMatchObject({ ok: true });
+      expect(shape(t)).toEqual(was);
+      // Saved only: the start opens the outputs afterwards, as they are.
+      expect(t.open.size).toBe(2);
+      // Taken: the start after that finds nothing.
+      expect(takeWaiting(file)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

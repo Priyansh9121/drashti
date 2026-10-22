@@ -228,7 +228,8 @@ export function keepWaiting(file: string, changes: readonly ScreensChange[] | nu
 
 /**
  * The changes the last run left waiting (it stopped before an answer: a crash, a power cut), taken off the disk:
- * null when none, or when what is there cannot be read (it is cleared all the same).
+ * null when none, or when what is there cannot be read (it is cleared all the same). Never throws: a start goes on
+ * whatever is there.
  */
 export function takeWaiting(file: string): ScreensChange[] | null {
   let text: string;
@@ -237,7 +238,11 @@ export function takeWaiting(file: string): ScreensChange[] | null {
   } catch {
     return null;
   }
-  rmSync(file, { force: true });
+  try {
+    rmSync(file, { force: true });
+  } catch {
+    // Read again at the next start: going back a second time changes nothing.
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);

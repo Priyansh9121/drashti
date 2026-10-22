@@ -63,6 +63,10 @@ const change: ScreensChange = { before, after };
 describe('Go back undoes only what the change changed (Session 51)', () => {
   it('with nothing else changed meanwhile, the screens are exactly as they were', () => {
     expect(sorted(undoChange(after, change))).toEqual(sorted(before));
+    // Going back a second time (a start that could not clear what waited) changes nothing more.
+    expect(undoChange(undoChange(after, change), change)).toEqual(undoChange(after, change));
+    // Nor does going back over screens the change never reached (a power cut lost the change itself).
+    expect(sorted(undoChange(before, change))).toEqual(sorted(before));
   });
 
   it('what changed meanwhile stays: a group made, a group renamed, other settings, other groups, other Looks', () => {

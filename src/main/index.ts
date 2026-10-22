@@ -208,6 +208,7 @@ import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
 import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
+import { keepWaiting, takeWaiting } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
@@ -1815,6 +1816,8 @@ function start(): void {
   let controlsBefore: ControlsPlace<Rectangle> | null = null;
   const controlsDisplayId = () => (controlsBefore ? controlsBefore.displayId : operatorDisplayId());
   const coveringNow = () => coveringScreens(manager.status(), controlsDisplayId());
+  // The changes waiting for an answer, on disk until it comes (Session 51, S3-2): see below for the next start.
+  const keepScreensFile = join(userDataDir, 'keep-screens.json');
   const keepScreens = new KeepScreens<ScreensSetup>({
     starting: () => {
       const here =
@@ -1866,6 +1869,9 @@ function start(): void {
               : COULD_NOT_GO_BACK,
       });
     },
+    remember: (changes) => {
+      keepWaiting(keepScreensFile, changes);
+    },
     asks: sw('DRASHTI_TEST_KEEP_SCREENS') !== '0',
     waitMs: swMs('DRASHTI_TEST_KEEP_SCREENS_MS') ?? undefined,
     now: Date.now,
@@ -1877,6 +1883,28 @@ function start(): void {
   stops.add('keep these screens', () => {
     keepScreens.quitting();
   });
+  // A change the last run left waiting (it stopped: a crash, a power cut) goes back now, as nothing pressed would
+  // have, saved only: the outputs then open on the screens as they were before it, and the operator is told. A
+  // backup restored at this start is another library: the change was made to the one before it, so is dropped.
+  const leftWaiting = takeWaiting(keepScreensFile);
+  if (leftWaiting && restored.restored)
+    log.info('Keep these screens?: a change left waiting was the library’s before the restore; dropped');
+  else if (leftWaiting) {
+    let said =
+      'Drashti stopped before the change to the screens was kept, so they went back to how they were before it.';
+    try {
+      screens.undo(leftWaiting, true);
+      log.warn(
+        'Keep these screens?: Drashti stopped before a change was answered, so the screens went back to how they were before it',
+      );
+    } catch (error) {
+      log.warn(
+        `Keep these screens?: could not go back after Drashti stopped (${error instanceof Error ? error.message : String(error)})`,
+      );
+      said = COULD_NOT_GO_BACK;
+    }
+    startNotice = startNotice ? `${startNotice}\n\n${said}` : said;
+  }
   /** Keep these screens? as an output shows it: only one over the controls, while a change waits. */
   const keepQuestionFor = (screenId: string) => {
     const pending = keepScreens.current();
