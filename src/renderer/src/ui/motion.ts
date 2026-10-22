@@ -258,7 +258,10 @@ export function leave(node: Element | null, kind: Leaving): void {
   host.setAttribute('aria-hidden', 'true');
   host.inert = true;
   host.dataset['leavingHost'] = kind;
-  host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:70';
+  // In its own layer when it has one, so a dialog that goes under Keep these screens? leaves under it too
+  // (Session 51); otherwise over everything.
+  const layer = Number.parseInt(seen.zIndex, 10);
+  host.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:${String(Number.isNaN(layer) ? 70 : layer)}`;
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.adoptedStyleSheets = pageStyles();
   const copy = node.cloneNode(true) as HTMLElement;

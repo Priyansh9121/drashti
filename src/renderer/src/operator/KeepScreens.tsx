@@ -11,8 +11,10 @@ import { answerKeepScreens, secondsLeft, useKeepScreens } from './keep-screens-s
  * Keep these screens? (Session 50): after a change that put an output on a display, Keep (the focused primary,
  * so Enter keeps) and Go back (Esc too), with the seconds left in words. Nothing pressed, the main process goes
  * back by itself. It is the window's innermost dialog, in either mode, over Set Up Screens… when that made the
- * change. When an output now covers these controls, that output asks the same, large, in its middle; the keys
- * reach this window under it (an output never takes the keyboard), and the uncover key works as ever.
+ * change, and on top until it is answered (Session 51, S3-5): a dialog opened meanwhile (from the menu, say)
+ * goes under it and leaves it the keyboard. When an output now covers these controls, that output asks the
+ * same, large, in its middle; the keys reach this window under it (an output never takes the keyboard), and the
+ * uncover key works as ever.
  */
 
 /**
@@ -53,6 +55,7 @@ function Question({ pending, platform }: { pending: PendingScreens; platform: st
       closeButton={false}
       describedBy={textId}
       testId="keep-screens"
+      onTop
       footer={
         <>
           <Button data-testid="keep-screens-go-back" onClick={() => void answerKeepScreens(false)}>
@@ -85,8 +88,8 @@ function Question({ pending, platform }: { pending: PendingScreens; platform: st
 }
 
 /**
- * The question while a change waits, nothing otherwise. Made again for each new change (a new deadline), so it
- * opens last: over any dialog opened meanwhile (View, Set Up Screens…), with the keyboard.
+ * The question while a change waits, nothing otherwise. Made again for each new change (a new deadline), with
+ * the keyboard, over every other dialog (Set Up Screens…, and any opened while it waits).
  */
 export function KeepScreensQuestion({ platform }: { platform: string }) {
   const pending = useKeepScreens((s) => s.pending);
