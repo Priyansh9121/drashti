@@ -178,6 +178,10 @@ test('playlists, the library’s presentations and Audio’s lists and sounds: m
   );
   await sheet.getByTestId('chosen-delete').click();
   await expect(confirm).toContainText(`Delete ${String(before)} presentations?`);
+  // What becomes of their playlists' cards, for several (Session 51).
+  await expect(confirm).toContainText(
+    'Any playlist they are in keeps their cards, marked Removed from the library, and Next goes past them.',
+  );
   await confirm.getByRole('button', { name: 'Delete' }).click();
   await expect(rows).toHaveCount(0);
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/u }).click();

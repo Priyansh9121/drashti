@@ -19,12 +19,13 @@ import { launchApp, NO_PLACEHOLDERS, operatorPage, operatorReady, relaunchApp } 
  * first start of this one only when it is as Drashti made it and in no playlist, the log says so, and it
  * happens once. And the presentation open in the middle has Delete… in its header's menu, asked first, with
  * Undo, as the library's trash. Session 51: while a playlist item is open there it says Delete from the
- * library…, and the question (the library's trash's too) says it also leaves every playlist. Quiet; nothing
- * here needs a display wider than 1024.
+ * library…, the question (the library's trash's too) says the playlists keep its card, marked, and Next goes
+ * past it, and Undo shows that card again. Quiet; nothing here needs a display wider than 1024.
  */
 
 /** The question's line on playlists, from the library's trash and the middle's menu alike (Session 51). */
-const LEAVES_PLAYLISTS = 'It also leaves every playlist it is in: each shows it as removed from the library.';
+const CARDS_KEPT =
+  'Any playlist it is in keeps its card, marked Removed from the library, and Next goes past it.';
 
 /** The library's presentations and sabha templates, by name, as the operator window is told them. */
 async function library(app: ElectronApplication): Promise<{ presentations: string[]; templates: string[] }> {
@@ -147,7 +148,7 @@ test('Delete… in the menu of the presentation open in the middle asks first, d
   await expect(del).toBeFocused();
   await win.keyboard.press('Enter');
   await expect(confirm).toContainText(`Delete “${TEST_PRESENTATION_NAME}”?`);
-  await expect(confirm).toContainText(LEAVES_PLAYLISTS);
+  await expect(confirm).toContainText(CARDS_KEPT);
   await expect(confirm).toContainText('You can bring it back with Undo');
   await expectNoSeriousA11yIssues(win, 'the question before deleting the presentation open in the middle');
   await confirm.getByRole('button', { name: 'Cancel' }).click();
@@ -171,7 +172,7 @@ test('Delete… in the menu of the presentation open in the middle asks first, d
   await app.close();
 });
 
-test('while a playlist item is open the menu says Delete from the library…, and the question says it leaves every playlist', async () => {
+test('while a playlist item is open the menu says Delete from the library…, the question says its card stays, marked, and Undo shows that card again', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -209,20 +210,23 @@ test('while a playlist item is open the menu says Delete from the library…, an
   await expect(fromLibrary).toBeVisible();
   await expect(win.getByRole('menuitem', { name: 'Delete…', exact: true })).toHaveCount(0);
   await fromLibrary.click();
-  // The library's trash's question, saying it also leaves every playlist.
+  // The library's trash's question, saying what becomes of its card.
   const confirm = win.getByTestId('remove-confirm');
   await expect(confirm).toContainText(`Delete “${TEST_PRESENTATION_NAME}”?`);
-  await expect(confirm).toContainText(LEAVES_PLAYLISTS);
+  await expect(confirm).toContainText(CARDS_KEPT);
   await expect(confirm).toContainText('You can bring it back with Undo');
   await confirm.getByRole('button', { name: 'Delete' }).click();
 
-  // As it says: out of the library, nothing chosen in the middle, and the card says it was removed.
+  // As it says: out of the library, nothing chosen in the middle, and its card kept, marked.
   await expect(win.getByTestId('start-here')).toBeVisible();
   await expect(card).toContainText('Removed from the library');
   expect((await library(app)).presentations).toEqual([KIRTAN_PRESENTATION_NAME]);
-  // Undo: back in the library and in the playlist.
+  // Undo: back in the library and in the playlist, and the middle shows its card again (a slide clicked plays
+  // in the playlist, as before), not the library's presentation.
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/u }).click();
   await expect(card).not.toContainText('Removed from the library');
+  await expect(card).toHaveAttribute('aria-current', 'true');
+  await expect(grid).toHaveAttribute('data-presentation-id', testId);
   expect((await library(app)).presentations).toEqual([TEST_PRESENTATION_NAME, KIRTAN_PRESENTATION_NAME]);
   await app.close();
 });
