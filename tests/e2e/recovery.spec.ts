@@ -1,8 +1,11 @@
 import { expect, test } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
+import type { PlaybackClock } from '../../src/shared/media';
+import { playbackBounds, playbackOffset, playbackPosition } from '../../src/shared/media';
 import type { PageGlobals } from './helpers';
 import {
   holdStill,
@@ -11,13 +14,14 @@ import {
   launchApp,
   openLibrary,
   operatorPage,
+  operatorReady,
   outputPage,
   relaunchApp,
   savedLive,
   setUpScreen,
 } from './helpers';
 import { crashAndRecover } from './recovery-figure';
-import { makeTestImage, makeTestVideo } from './test-media';
+import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 
 /*
  * Restart recovery: after an unexpected stop, the next start puts the same
@@ -200,6 +204,158 @@ test('after a crash a running timer, a message and the sound come back, carrying
     )
     .toBe(true);
   await expect(win2.getByTestId('recovery-notice')).toContainText('the sound, a message and a timer');
+  await second.app.close();
+});
+
+/** The background video and the sound playing, as the engine has them. */
+const playing = (win: Page) =>
+  win.evaluate(async () => {
+    const layers = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers;
+    return {
+      background: layers.background?.kind === 'media' ? layers.background : null,
+      audio: layers.audio,
+    };
+  });
+
+async function audioPage(app: ElectronApplication): Promise<Page> {
+  await expect.poll(() => app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
+  const page = app.windows().find((w) => w.url().includes('audio.html'));
+  if (!page) throw new Error('no audio player');
+  return page;
+}
+
+/**
+ * Wait until a window's copy of a file plays within a quarter of a second of where the engine's clock has it: from
+ * its last jump, between its start and end points, round its loop (shared/media.ts playbackPosition, as every
+ * screen and the audio player work it out), the median of a few looks.
+ */
+async function nearTheClock(page: Page, selector: string, clock: PlaybackClock, what: string): Promise<void> {
+  const until = Date.now() + 15_000;
+  const seen: string[] = [];
+  for (;;) {
+    const looks = await page.evaluate(async (s) => {
+      const out: { at: number; now: number; duration: number }[] = [];
+      for (let i = 0; i < 5; i++) {
+        const v = document.querySelector<HTMLMediaElement>(s);
+        if (!v || !Number.isFinite(v.duration) || v.paused) return null;
+        out.push({ at: v.currentTime, now: Date.now(), duration: v.duration });
+        // eslint-disable-next-line no-restricted-syntax -- in the page: looks 60 ms apart while it plays
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
+      return out;
+    }, selector);
+    const offsets = (looks ?? []).map((l) => {
+      const { start, end } = playbackBounds(clock.clip, l.duration);
+      return playbackOffset(l.at, playbackPosition(clock, l.duration, l.now), end - start, clock.loop);
+    });
+    const median = offsets.sort((a, b) => a - b)[2];
+    seen.push(median === undefined ? 'none' : median.toFixed(3));
+    if (median !== undefined && Math.abs(median) < 0.25) return;
+    if (Date.now() > until)
+      throw new Error(
+        `${what}: not where the clock has it after 15 s. Offsets, each look: ${seen.join(' ')}`,
+      );
+  }
+}
+
+test('after a crash a video and a sound come back from their last jump, between their start and end points (Session 51)', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-jumps-'));
+  const loop = await makeTestVideo(win, join(dir, 'Placeholder recovery loop.webm'), {
+    seconds: 6,
+    hue: 200,
+    width: 64,
+    height: 36,
+  });
+  const tone = makeTestTone(join(dir, 'Placeholder recovery tone.wav'), { seconds: 120, hz: 330 });
+  const [videoId = '', toneId = ''] = await importAndGetIds(win, [loop, tone]);
+  // The video loops between 0:01 and 0:05, with a marker at 0:03; the sound plays once between 0:05 and 1:50.
+  const set = await win.evaluate(
+    ({ videoId, toneId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      return Promise.all([
+        d.media.setMarkers(videoId, {
+          startMs: 1000,
+          endMs: 5000,
+          markers: [{ id: 'placeholder-verse', name: 'Placeholder verse', atMs: 3000 }],
+        }),
+        d.media.setMarkers(toneId, { startMs: 5000, endMs: 110_000, markers: [] }),
+      ]);
+    },
+    { videoId, toneId },
+  );
+  expect(set.map((s) => s.ok)).toEqual([true, true]);
+  await setUpScreen(win);
+  await outputPage(first.app);
+  await win.evaluate(
+    async ({ videoId, toneId }) => {
+      const engine = (globalThis as PageGlobals).drashti.engine;
+      await engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: videoId, media: 'video', fit: 'fill', loop: true },
+      });
+      await engine.dispatch({
+        type: 'playAudio',
+        audio: { id: 'placeholder-tone', title: 'Placeholder tone', mediaId: toneId, volume: 1, loop: false },
+      });
+    },
+    { videoId, toneId },
+  );
+  // Once their lengths are known (a moment after they start): the video jumps to its marker, the sound on 15 s.
+  await expect
+    .poll(async () => {
+      const { background, audio } = await playing(win);
+      return background?.durationMs !== undefined && audio?.durationMs !== undefined;
+    })
+    .toBe(true);
+  await win.evaluate(async () => {
+    const engine = (globalThis as PageGlobals).drashti.engine;
+    await engine.dispatch({ type: 'jumpToMarker', layer: 'background', markerId: 'placeholder-verse' });
+    await engine.dispatch({ type: 'skip', layer: 'audio', jump: 'forward' });
+  });
+  const before = await playing(win);
+  expect(before.background?.seek?.toMs).toBe(3000);
+  expect(before.audio?.seek?.toMs).toBeGreaterThanOrEqual(20_000);
+  // Saved with both jumps, then stopped dead.
+  await savedLive(
+    first.userData,
+    (saved) => 'seek' in (saved.background ?? {}) && 'seek' in (saved.audio ?? {}),
+  );
+  await killApp(first.app);
+
+  // Since Session 14 both came back as if never jumped, over the whole file (and the video without its marker).
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
+  await operatorReady(win2);
+  const { background, audio } = await playing(win2);
+  expect(background).toMatchObject({
+    mediaId: videoId,
+    startedAt: before.background?.startedAt,
+    seek: before.background?.seek,
+    clip: { startMs: 1000, endMs: 5000 },
+    marks: [{ id: 'placeholder-verse', name: 'Placeholder verse', atMs: 3000 }],
+  });
+  expect(audio).toMatchObject({
+    mediaId: toneId,
+    startedAt: before.audio?.startedAt,
+    seek: before.audio?.seek,
+    clip: { startMs: 5000, endMs: 110_000 },
+  });
+  if (!background || !audio) throw new Error('not put back');
+  // The screen and the audio player play them there.
+  const output = await outputPage(second.app);
+  const player = await audioPage(second.app);
+  await nearTheClock(
+    output,
+    `[data-layer="background"] video[data-media-id="${videoId}"]`,
+    background,
+    'the video',
+  );
+  await nearTheClock(player, `audio[data-media-id="${toneId}"]`, audio, 'the sound');
+  await expect(win2.getByTestId('recovery-notice')).toContainText('the background and the sound');
   await second.app.close();
 });
 

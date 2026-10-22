@@ -394,12 +394,22 @@ export class ShowEngine {
     // to draw it says (src/main/video-inputs/), and one that is not there comes off again, named.
     const wasInput = request.background?.kind === 'input' ? request.background : null;
     const input = wasInput ? this.asListed(wasInput) : null;
-    const background = window !== null ? null : wasInput ? input : request.background;
+    let background = window !== null ? null : wasInput ? input : request.background;
+    // A video keeps its start time and its last jump, so it carries on where it would be now, between its start
+    // and end points (Session 51: since Session 14 it came back as if never jumped, over the whole file).
+    if (background?.kind === 'media') {
+      const { clip: _clip, marks: _marks, ...played } = background;
+      background = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
+    }
     if (background) actions.push({ type: 'background/set', background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
     if (request.logo) actions.push({ type: 'logo/set', prop: request.logo });
-    // The sound keeps its start time, so it carries on where it would be now, as a video does.
-    if (request.audio) actions.push({ type: 'audio/set', audio: request.audio });
+    // The sound keeps its start time and its last jump, so it carries on where it would be now, as a video does.
+    if (request.audio) {
+      const { clip: _clip, marks: _marks, ...played } = request.audio;
+      const audio = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
+      actions.push({ type: 'audio/set', audio });
+    }
     for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop });
     for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
@@ -1125,6 +1135,18 @@ export class ShowEngine {
   private playedOf(a: AudioLayer, now: number): number {
     if (a.seek) return Math.max(0, a.seek.toMs - (a.clip?.startMs ?? 0)) + Math.max(0, now - a.seek.at);
     return Math.max(0, now - a.startedAt);
+  }
+
+  /**
+   * What the library says of a video or a sound put back after an unexpected stop (Session 51): its start and
+   * end points and markers as they are now (restart recovery keeps none of them: the library is where they
+   * live, as refreshMarkers has it), and its length when it was not known.
+   */
+  private libraryOf(
+    mediaId: string | null,
+    durationMs: number | undefined,
+  ): { durationMs?: number; clip?: PlaybackClip; marks?: PlaybackMarker[] } {
+    return { ...(durationMs === undefined ? this.lengthOf(mediaId) : {}), ...this.clipOf(mediaId) };
   }
 
   /** A file's length when the library knows it (left out otherwise). */
