@@ -689,10 +689,12 @@ export class ShowEngine {
     if (playing?.music && layers.audio !== playing) layers = { ...layers, audio: playing };
     layers = this.withJumps(layers);
     // A video input as Media has it now (Session 50): renamed or set to fill since, it comes back so. One no
-    // longer in the list comes back as it was (the operator asked for it back).
+    // longer in this computer's list does not come back (no screen opens an input the list does not have).
     const was = layers.background;
-    const listed = was?.kind === 'input' ? this.asListed(was) : null;
-    if (listed && !sameData(listed, was)) layers = { ...layers, background: listed };
+    if (was?.kind === 'input') {
+      const listed = this.asListed(was);
+      if (!sameData(listed, was)) layers = { ...layers, background: listed };
+    }
     const bg = layers.background;
     const audio = layers.audio;
     const bgLength = bg?.kind === 'media' && bg.durationMs === undefined ? this.lengthOf(bg.mediaId) : {};

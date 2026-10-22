@@ -1500,7 +1500,7 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.background).toEqual({ ...up, fit: 'fill' });
     });
 
-    it('Clear all and the background’s own clear take it off; Put it back brings it back, as Media has it now', () => {
+    it('Clear all and the background’s own clear take it off; Put it back brings it back, as Media has it now (or not, once removed)', () => {
       const { engine, list } = withInputs();
       engine.dispatch(goLive('p1', 0));
       engine.dispatch(show('in-1'));
@@ -1516,13 +1516,14 @@ describe('ShowEngine', () => {
       // F3 and Clear the input.
       engine.dispatch({ type: 'clearLayer', layer: 'background' });
       expect(engine.current.layers.background).toBeNull();
-      // Removed from Media meanwhile: Put it back brings back what was up.
+      // Removed from Media meanwhile: the rest comes back, the input does not (no screen opens an input this
+      // computer no longer lists).
       engine.dispatch(show('in-1'));
-      const again = engine.current.layers.background;
       engine.dispatch({ type: 'clearAll' });
       list.delete('in-1');
       engine.dispatch({ type: 'putBack' });
-      expect(engine.current.layers.background).toEqual(again);
+      expect(engine.current.layers.background).toBeNull();
+      expect(engine.current.layers.slide).not.toBeNull();
     });
 
     it('is covered by black-out and the logo, never taken off by them', () => {
