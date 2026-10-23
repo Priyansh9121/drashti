@@ -1,5 +1,6 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { AUDIENCE_BOX_MIN, newStageBox } from '../../src/shared/stage-layouts';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import type { PageGlobals } from './helpers';
@@ -19,8 +20,9 @@ import {
  * where it was set; a stage group gets its layout through the live Look; the
  * stage display in a browser shows the same layout. The audience picture box
  * (Session 50) draws what the hall's screens draw, black-out and the logo
- * too, under the stage message. The seeded sample kirtan and placeholder
- * words only.
+ * too, under the stage message; the editor makes it no smaller than its line
+ * needs, and leaves one saved smaller as it was (Session 53). The seeded
+ * sample kirtan and placeholder words only.
  */
 
 const dispatch = (win: Page, command: unknown) =>
@@ -356,5 +358,122 @@ test('the audience picture, live, as a stage layout box: what the hall shows, bl
   await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
   await dispatch(win, { type: 'hideLogo' });
   await expect(inBox.getByTestId('logo')).toHaveCount(0);
+  await app.close();
+});
+
+/** A layout saved before Session 53, with the audience picture box smaller than the editor makes it now. */
+const SMALL_LAYOUT = 'Placeholder small hall picture layout';
+
+test('the editor makes the audience picture box no smaller than its line needs, by its fields and its handles, and leaves one saved smaller as it was', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // A stage group, with no screen and no audience group, and the layout saved smaller.
+  const small = {
+    ...newStageBox('audience', 'placeholder-hall-box'),
+    frame: { x: 900, y: 500, width: 96, height: 54 },
+  };
+  await win.evaluate(
+    async ({ small, name }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.screens.createGroup('Stage');
+      if (!made.ok) throw new Error(made.message);
+      const role = await d.screens.setGroupRole(
+        made.snapshot.groups.find((g) => g.name === 'Stage')?.id ?? '',
+        'stage',
+      );
+      if (!role.ok) throw new Error(role.message);
+      const saved = await d.stageLayouts.save(null, { name, background: '#000000', boxes: [small] });
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { small, name: SMALL_LAYOUT },
+  );
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  await win.getByTestId('edit-stage-layouts').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await expect(editor).toBeVisible();
+  await editor.getByTestId('stage-layout-list').getByRole('button', { name: SMALL_LAYOUT }).click();
+  await editor
+    .getByTestId('stage-box-list')
+    .getByRole('button', { name: 'The audience picture, live' })
+    .click();
+  const settings = editor.getByTestId('stage-box-settings');
+  const field = (name: string) => settings.getByRole('spinbutton', { name, exact: true });
+  const save = editor.getByTestId('stage-layout-save');
+
+  // Saved smaller: left as it was, with nothing to save, and moved by the arrow keys at the size it was.
+  await expect(field('Width')).toHaveValue('96');
+  await expect(field('Height')).toHaveValue('54');
+  await expect(save).toBeDisabled();
+  const canvas = editor.getByTestId('stage-layout-canvas-stage');
+  await canvas.focus();
+  await win.keyboard.press('ArrowRight');
+  await expect(field('Across')).toHaveValue('901');
+  await expect(field('Width')).toHaveValue('96');
+  await expect(field('Height')).toHaveValue('54');
+
+  // A size typed below its smallest (a sixth of the stage each way): its smallest, once the field is left.
+  await field('Width').fill('100');
+  await field('Width').blur();
+  await expect(field('Width')).toHaveValue(String(AUDIENCE_BOX_MIN.width));
+  await field('Height').fill('50');
+  await field('Height').blur();
+  await expect(field('Height')).toHaveValue(String(AUDIENCE_BOX_MIN.height));
+  // A size typed figure by figure, below its smallest on the way: as typed (each figure was taken as it came).
+  await field('Width').fill('');
+  await field('Width').pressSequentially('400');
+  await field('Width').blur();
+  await expect(field('Width')).toHaveValue('400');
+
+  // Its corner handle dragged in far past its smallest: its smallest, the other corner where it was.
+  const scale = Number(await canvas.getAttribute('data-scale'));
+  const handle = await canvas.getByTestId('canvas-handle-se').boundingBox();
+  if (!handle) throw new Error('no handle');
+  const from = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+  await win.mouse.move(from.x, from.y);
+  await win.mouse.down();
+  for (let i = 1; i <= 5; i++)
+    await win.mouse.move(from.x - (300 * scale * i) / 5, from.y - (200 * scale * i) / 5);
+  await win.mouse.up();
+  await expect(field('Width')).toHaveValue(String(AUDIENCE_BOX_MIN.width));
+  await expect(field('Height')).toHaveValue(String(AUDIENCE_BOX_MIN.height));
+  await expect(field('Across')).toHaveValue('901');
+  await expect(field('Down')).toHaveValue('500');
+  // There its line reads at a box's label's size (30 px) at the least: no audience group here.
+  const line = editor.getByTestId('stage-audience-none');
+  await expect(line).toHaveText('No audience screens');
+  await expect.poll(async () => Number(await line.getAttribute('data-fit-size'))).toBeGreaterThanOrEqual(30);
+
+  // Dragged out again, it grows as ever; saved, the layout keeps what the editor shows.
+  const corner = await canvas.getByTestId('canvas-handle-se').boundingBox();
+  if (!corner) throw new Error('no handle');
+  const at = { x: corner.x + corner.width / 2, y: corner.y + corner.height / 2 };
+  await win.mouse.move(at.x, at.y);
+  await win.mouse.down();
+  for (let i = 1; i <= 5; i++)
+    await win.mouse.move(at.x + (200 * scale * i) / 5, at.y + (100 * scale * i) / 5);
+  await win.mouse.up();
+  await expect
+    .poll(async () => Number(await field('Width').inputValue()))
+    .toBeGreaterThan(AUDIENCE_BOX_MIN.width);
+  await expect
+    .poll(async () => Number(await field('Height').inputValue()))
+    .toBeGreaterThan(AUDIENCE_BOX_MIN.height);
+  const shown = {
+    x: Number(await field('Across').inputValue()),
+    y: Number(await field('Down').inputValue()),
+    width: Number(await field('Width').inputValue()),
+    height: Number(await field('Height').inputValue()),
+  };
+  await save.click();
+  await expect(save).toBeDisabled();
+  const kept = await win.evaluate(
+    async (name) =>
+      (await (globalThis as PageGlobals).drashti.stageLayouts.list()).find((l) => l.name === name)?.boxes[0]
+        ?.frame,
+    SMALL_LAYOUT,
+  );
+  expect(kept).toEqual(shown);
   await app.close();
 });
