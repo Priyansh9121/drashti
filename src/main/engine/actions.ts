@@ -23,6 +23,7 @@ import type {
   TickerLayer,
   UpcomingItem,
   UpNext,
+  VideoClips,
 } from '../../shared/engine/state';
 
 /**
@@ -51,10 +52,13 @@ export type EngineAction =
        * slide up, restart recovery): the slide up keeps what it said.
        */
       inputMissing?: string | null;
+      /** Its videos' start and end points as the library has them now (Session 52); left out when none has any. */
+      clips?: VideoClips;
     }
   /**
-   * A slide up in the slide's place that is no presentation's (Session 50: a timer shown alone); the live
-   * position stays where it was, so Next goes on from there.
+   * A slide up in the slide's place that is no presentation's (Session 50: a timer shown alone), or the slide up as
+   * it is with its videos' points anew (Session 52: the library's changed); the live position stays where it was, so
+   * Next goes on from there.
    */
   | { type: 'slide/put'; layer: SlideLayer }
   /** The live position moves (the order changed) while the same slide stays on screen. */

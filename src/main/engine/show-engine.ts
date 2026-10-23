@@ -29,6 +29,7 @@ import {
   UPCOMING_ITEMS,
   type UpcomingItem,
   type UpNext,
+  type VideoClips,
   type WindowBackground,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
@@ -36,7 +37,7 @@ import type { CalendarDay } from '../../shared/calendar';
 import type { IdleState, Quote } from '../../shared/idle';
 import type { BackgroundCue } from '../../shared/library';
 import type { LiveLook } from '../../shared/looks';
-import { CUT, type Transition } from '../../shared/model';
+import { CUT, type SlideElement, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
 import {
@@ -433,14 +434,16 @@ export class ShowEngine {
     }
     if (background) actions.push({ type: 'background/set', background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
-    if (request.logo) actions.push({ type: 'logo/set', prop: request.logo });
+    // The logo and the props keep the time they went up, so their videos carry on where they would be, between their
+    // files' points as the library has them now (Session 52: restart recovery keeps none, as for a video above).
+    if (request.logo) actions.push({ type: 'logo/set', prop: this.propClips(request.logo) });
     // The sound keeps its start time and its last jump, so it carries on where it would be now, as a video does.
     if (request.audio) {
       const { clip: _clip, marks: _marks, ...played } = request.audio;
       const audio = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
       actions.push({ type: 'audio/set', audio });
     }
-    for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop });
+    for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop: this.propClips(prop) });
     for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
     if (request.masks) actions.push({ type: 'mask/set', mask: request.masks });
@@ -807,14 +810,19 @@ export class ShowEngine {
 
   /**
    * Layers as they were (Put it back, Back), with the lengths of their files
-   * the library knows by now. An audio playlist playing now goes on as it is
-   * (it is independent of the slides); one that was playing then comes back
-   * where it would be now.
+   * the library knows by now, and the points the slide's and the props' videos play between as it has them now
+   * (Session 52). An audio playlist playing now goes on as it is (it is independent of the slides); one that was
+   * playing then comes back where it would be now.
    */
   private withLengths(layers: Layers): Layers {
     const playing = this.state.layers.audio;
     if (playing?.music && layers.audio !== playing) layers = { ...layers, audio: playing };
     layers = this.withJumps(layers);
+    // The slide's and the props' videos' points (Session 52): ones saved since they went off are not lost.
+    const slide = layers.slide && this.slideClips(layers.slide);
+    const props = layers.props.map((p) => this.propClips(p));
+    if (!sameData(slide, layers.slide) || !sameData(props, layers.props))
+      layers = { ...layers, slide, props };
     // A video input as Media has it now (Session 50): renamed or set to fill since, it comes back so. One no
     // longer in this computer's list does not come back (no screen opens an input the list does not have).
     const was = layers.background;
@@ -926,6 +934,8 @@ export class ShowEngine {
       at: how.at ?? this.now(),
       ...(how.transition ? { transition: how.transition } : {}),
       ...(how.inputMissing !== undefined ? { inputMissing: how.inputMissing } : {}),
+      // Its videos play between their files' points as the library has them (Session 52), however it goes up.
+      ...this.clipsOf(played.slide.elements),
     };
   }
 
@@ -1172,8 +1182,36 @@ export class ShowEngine {
   }
 
   /**
+   * The start and end points of the files the videos among these elements play (Session 52), by media id, as the
+   * library has them: a slide's, a prop's and the logo's videos play between them, as a background video does.
+   * Left out when none has any (a picture never plays, so it has none).
+   */
+  private clipsOf(elements: readonly SlideElement[]): { clips?: VideoClips } {
+    const clips = new Map<string, PlaybackClip>();
+    for (const el of elements) {
+      if (el.kind !== 'video' || clips.has(el.mediaId)) continue;
+      const { clip } = this.clipOf(el.mediaId);
+      if (clip) clips.set(el.mediaId, clip);
+    }
+    return clips.size > 0 ? { clips: Object.fromEntries(clips) } : {};
+  }
+
+  /** A prop or the logo with its videos' points as the library has them now (Session 52), never a page's. */
+  private propClips(prop: PropItem): PropItem {
+    const { clips: _given, ...rest } = prop;
+    return { ...rest, ...this.clipsOf(prop.elements) };
+  }
+
+  /** The slide up with its videos' points as the library has them now (Session 52). */
+  private slideClips(layer: SlideLayer): SlideLayer {
+    const { clips: _was, ...rest } = layer;
+    return { ...rest, ...this.clipsOf(layer.slide.elements) };
+  }
+
+  /**
    * A file's markers changed in the library: what is playing it now plays
-   * between its new points (carrying on), with its new markers.
+   * between its new points (carrying on), with its new markers: a video on the slide up, a prop or the logo too
+   * (Session 52).
    */
   refreshMarkers(mediaId: string): CommandResult {
     const actions: EngineAction[] = [];
@@ -1187,6 +1225,16 @@ export class ShowEngine {
     const audio = this.state.layers.audio;
     if (audio?.mediaId === mediaId)
       actions.push({ type: 'audio/set', audio: { ...strip(audio), ...this.clipOf(mediaId) } });
+    const plays = (elements: readonly SlideElement[]) =>
+      elements.some((el) => el.kind === 'video' && el.mediaId === mediaId);
+    const slide = this.state.layers.slide;
+    if (slide && plays(slide.slide.elements))
+      actions.push({ type: 'slide/put', layer: this.slideClips(slide) });
+    // Each keeps the time it went up (a prop or logo already up does), so its videos carry on.
+    for (const prop of this.state.layers.props)
+      if (plays(prop.elements)) actions.push({ type: 'prop/show', prop: this.propClips(prop) });
+    const logo = this.state.logo;
+    if (logo && plays(logo.elements)) actions.push({ type: 'logo/set', prop: this.propClips(logo) });
     if (actions.length === 0) return this.unchanged();
     this.bookkeeping = true;
     try {
@@ -1577,7 +1625,10 @@ export class ShowEngine {
       case 'toggleBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: !this.state.blackout }] };
       case 'showLogo':
-        return { ok: true, actions: [{ type: 'logo/set', prop: command.prop, at: this.now() }] };
+        return {
+          ok: true,
+          actions: [{ type: 'logo/set', prop: this.propClips(command.prop), at: this.now() }],
+        };
       case 'hideLogo':
         return { ok: true, actions: [{ type: 'logo/set', prop: null }] };
       case 'setBackground':
@@ -1588,7 +1639,10 @@ export class ShowEngine {
       case 'playAudio':
         return { ok: true, actions: [{ type: 'audio/set', audio: this.audioLayer(command.audio) }] };
       case 'showProp':
-        return { ok: true, actions: [{ type: 'prop/show', prop: command.prop, at: this.now() }] };
+        return {
+          ok: true,
+          actions: [{ type: 'prop/show', prop: this.propClips(command.prop), at: this.now() }],
+        };
       case 'hideProp':
         return { ok: true, actions: [{ type: 'prop/hide', propId: command.propId }] };
       case 'showMessage':
