@@ -3,6 +3,7 @@ import type { LiveLook } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK, NO_LOOK } from '../../../shared/looks';
 import {
   AUDIENCE_OFF,
+  audienceOffSize,
   fittedSize,
   hallView,
   NO_AUDIENCE,
@@ -13,8 +14,9 @@ import {
 
 /*
  * What a stage layout's audience picture box draws (Session 50): the hall's group, as its own screens do; with
- * Audience off, the same picture, said off (Session 51) in its bottom left corner (Session 52); with no audience
- * group at all, black and one short line saying so, never every layer (Session 52).
+ * Audience off, the same picture, said off (Session 51) in its bottom left corner (Session 52), never below the
+ * stage's smallest words while it fits (Session 53); with no audience group at all, black and one short line saying
+ * so, never every layer (Session 52).
  */
 
 const look: LiveLook = {
@@ -92,6 +94,26 @@ describe('the audience picture box', () => {
     expect(noAudienceLine({ width: 1920, height: 270 })).toEqual({ size: 30, inset: 10 });
     // The smallest box a layout allows (8 x 8): wanted at 30 too, and brought down to fit (fittedSize).
     expect(noAudienceLine({ width: 8, height: 8 }).size).toBe(30);
+  });
+
+  // Session 53 (question 5): drawn on the picture at 64 px, Audience off was a sixth of that (10.7 px) in a box a
+  // sixth of the stage each way, where the line with no audience group keeps to 30 px.
+  it('wants Audience off as large as on the whole stage’s picture, never below the stage’s smallest words', () => {
+    // The whole stage, and a new box's size (half each way): 64 px on the picture, as built.
+    expect(audienceOffSize({ width: 1920, height: 1080 })).toEqual({ size: 64, scale: 1 });
+    expect(audienceOffSize({ width: 960, height: 540 })).toEqual({ size: 32, scale: 0.5 });
+    // The layout editor's smallest box (a sixth of the stage each way), and a strip: 30 px on the stage.
+    expect(audienceOffSize({ width: 320, height: 180 })).toEqual({ size: 30, scale: 1 / 6 });
+    expect(audienceOffSize({ width: 1920, height: 270 })).toEqual({ size: 30, scale: 0.25 });
+    // Wanted as the line with no audience group is, in every box: then fitted as it is (fittedSize).
+    for (const box of [
+      { width: 1920, height: 1080 },
+      { width: 1000, height: 600 },
+      { width: 320, height: 180 },
+      { width: 96, height: 54 },
+      { width: 8, height: 8 },
+    ])
+      expect(audienceOffSize(box).size).toBe(noAudienceLine(box).size);
   });
 
   it('brings the line down only as far as it must to fit the box, never below 8 px', () => {

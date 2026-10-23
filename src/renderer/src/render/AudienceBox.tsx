@@ -4,6 +4,7 @@ import type { Size } from '../../../shared/scaling';
 import type { HallPicture } from '../../../shared/stage-layouts';
 import {
   AUDIENCE_OFF,
+  audienceOffSize,
   fittedSize,
   hallView,
   NO_AUDIENCE,
@@ -30,7 +31,9 @@ import { useElementSize } from './useElementSize';
  *
  * With Audience off (Session 51) the hall's screens show the computer's desktop: the box keeps the picture (the
  * one the hall comes back to) and says "Audience off" in its bottom left corner (Session 52: in the top left, a
- * stage message along the top covered it), so the performers are not misled.
+ * stage message along the top covered it), so the performers are not misled: in words never below the stage's
+ * smallest while they fit (Session 53: on the picture, scaled with it, they were 10.7 px in a box a sixth of the
+ * stage each way).
  *
  * In a phone's or tablet's browser (the stage display, Session 51) it draws the same Scene as the remote's live
  * picture does: pictures and videos as small previews (render/previews.tsx, given by the page), and no video
@@ -98,62 +101,7 @@ export const AudienceBox = memo(function AudienceBox({
                 <Scene state={state} canvas={view.canvas} scaling={view.scaling} look={view.look} />
               </Placed>
             </SceneBoundary>
-            {/* Over the picture, in its bottom left corner, scaled with it: the status bar's words on its warning
-                amber, and under them what this page cannot draw, muted. */}
-            {(view.off || unseen.length > 0) && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: WORDS_CORNER.left,
-                  bottom: WORDS_CORNER.bottom,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  gap: 16,
-                  fontFamily: fontFamilyFor(null, null),
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {view.off && (
-                  <p
-                    data-testid="stage-audience-off"
-                    style={{
-                      margin: 0,
-                      padding: '12px 28px',
-                      borderRadius: 16,
-                      background: '#f5a524',
-                      color: '#000000',
-                      fontSize: 64,
-                      fontWeight: 700,
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {AUDIENCE_OFF}
-                  </p>
-                )}
-                {unseen.map((line) => (
-                  <p
-                    key={line}
-                    data-testid="stage-audience-unseen"
-                    lang={textLang(line)}
-                    style={{
-                      margin: 0,
-                      maxWidth: PICTURE.width - 2 * WORDS_CORNER.left,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      padding: '8px 20px',
-                      borderRadius: 12,
-                      background: 'rgba(0, 0, 0, 0.6)',
-                      color: '#8b93a3',
-                      fontSize: 40,
-                      lineHeight: 1.25,
-                    }}
-                  >
-                    {line}
-                  </p>
-                ))}
-              </div>
-            )}
+            {(view.off || unseen.length > 0) && <PictureWords box={size} off={view.off} unseen={unseen} />}
           </div>
         </Placed>
       )}
@@ -161,6 +109,114 @@ export const AudienceBox = memo(function AudienceBox({
     </div>
   );
 });
+
+/**
+ * A count of the fonts loaded while the box is drawn: words fitted to it are measured again at each, as a box
+ * fitting its words is, since a fallback font measures otherwise.
+ */
+function useFontsLoaded(): number {
+  const [fonts, setFonts] = useState(0);
+  useEffect(() => {
+    const loaded = () => {
+      setFonts((n) => n + 1);
+    };
+    document.fonts.addEventListener('loadingdone', loaded);
+    return () => {
+      document.fonts.removeEventListener('loadingdone', loaded);
+    };
+  }, []);
+  return fonts;
+}
+
+/** Where the words on the picture go (picture pixels): the picture, 40 px in from its edges (WORDS_CORNER). */
+const ROOM: Size = {
+  width: PICTURE.width - 2 * WORDS_CORNER.left,
+  height: PICTURE.height - 2 * WORDS_CORNER.bottom,
+};
+
+/**
+ * Over the picture, in its bottom left corner, scaled with it (Session 52): Audience off, the status bar's words on
+ * its warning amber, and under them what this page cannot draw, muted. Audience off is as large as on the whole
+ * stage's picture but never below the stage's smallest words (Session 53, audienceOffSize), measured as the line
+ * with no audience group is (fittedSize): on its one line, with what is under it, inside the picture 40 px in from
+ * its edges, coming down only as far as it must. Its padding and corners go with its size, as they were at 64 px.
+ */
+function PictureWords({ box, off, unseen }: { box: Size; off: boolean; unseen: readonly string[] }) {
+  const words = useRef<HTMLDivElement>(null);
+  const said = useRef<HTMLParagraphElement>(null);
+  const { size, scale } = audienceOffSize(box);
+  const fonts = useFontsLoaded();
+  const lines = unseen.join('\n');
+  useLayoutEffect(() => {
+    const w = words.current;
+    const p = said.current;
+    if (!w || !p) return;
+    // Sizes tried in the stage's pixels, set on the picture, each of whose pixels is `scale` of one.
+    const fitted = fittedSize(size, (px) => {
+      p.style.fontSize = `${px / scale}px`;
+      return (
+        w.offsetHeight <= ROOM.height + 0.5 && Math.max(p.offsetWidth, p.scrollWidth) <= ROOM.width + 0.5
+      );
+    });
+    p.style.fontSize = `${fitted / scale}px`;
+    p.setAttribute('data-fit-size', String(fitted));
+  }, [size, scale, off, lines, fonts]);
+  return (
+    <div
+      ref={words}
+      style={{
+        position: 'absolute',
+        left: WORDS_CORNER.left,
+        bottom: WORDS_CORNER.bottom,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 16,
+        fontFamily: fontFamilyFor(null, null),
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {off && (
+        <p
+          ref={said}
+          data-testid="stage-audience-off"
+          style={{
+            margin: 0,
+            padding: '0.1875em 0.4375em',
+            borderRadius: '0.25em',
+            background: '#f5a524',
+            color: '#000000',
+            fontWeight: 700,
+            lineHeight: 1.2,
+          }}
+        >
+          {AUDIENCE_OFF}
+        </p>
+      )}
+      {unseen.map((line) => (
+        <p
+          key={line}
+          data-testid="stage-audience-unseen"
+          lang={textLang(line)}
+          style={{
+            margin: 0,
+            maxWidth: ROOM.width,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            padding: '8px 20px',
+            borderRadius: 12,
+            background: 'rgba(0, 0, 0, 0.6)',
+            color: '#8b93a3',
+            fontSize: 40,
+            lineHeight: 1.25,
+          }}
+        >
+          {line}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 /**
  * With no audience group at all (Session 52): one short plain line in the box's bottom left corner, in the stage's
@@ -173,17 +229,7 @@ function NoAudienceLine({ box }: { box: Size }) {
   const room = useRef<HTMLDivElement>(null);
   const line = useRef<HTMLParagraphElement>(null);
   const { size, inset } = noAudienceLine(box);
-  // Measured again once a font has loaded, as a box fitting its words is: a fallback font measures otherwise.
-  const [fonts, setFonts] = useState(0);
-  useEffect(() => {
-    const loaded = () => {
-      setFonts((n) => n + 1);
-    };
-    document.fonts.addEventListener('loadingdone', loaded);
-    return () => {
-      document.fonts.removeEventListener('loadingdone', loaded);
-    };
-  }, []);
+  const fonts = useFontsLoaded();
   useLayoutEffect(() => {
     const r = room.current;
     const p = line.current;
