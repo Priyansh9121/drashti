@@ -835,8 +835,9 @@ export class ShowEngine {
     // The slide's and the props' videos' points (Session 52): ones saved since they went off are not lost.
     const slide = layers.slide && this.slideClips(layers.slide);
     const props = layers.props.map((p) => this.propClips(p));
-    if (!sameData(slide, layers.slide) || !sameData(props, layers.props))
-      layers = { ...layers, slide, props };
+    const newProps = props.some((p, i) => p !== layers.props[i]);
+    if (slide !== layers.slide || newProps)
+      layers = { ...layers, slide, props: newProps ? props : layers.props };
     // A video input as Media has it now (Session 50): renamed or set to fill since, it comes back so. One no
     // longer in this computer's list does not come back (no screen opens an input the list does not have).
     const was = layers.background;
@@ -1226,16 +1227,22 @@ export class ShowEngine {
     return clips.size > 0 ? { clips: Object.fromEntries(clips) } : {};
   }
 
-  /** A prop or the logo with its videos' points as the library has them now (Session 52), never a page's. */
+  /**
+   * A prop or the logo with its videos' points as the library has them now (Session 52), never a page's: the very
+   * prop given while they are the same, as Back knows the layers a Next left by the object itself (made anew, with
+   * its keys in another order, a second Back in a row was Previous).
+   */
   private propClips(prop: PropItem): PropItem {
-    const { clips: _given, ...rest } = prop;
-    return { ...rest, ...this.clipsOf(prop.elements) };
+    const { clips: given, ...rest } = prop;
+    const now = this.clipsOf(prop.elements);
+    return sameData(given, now.clips) ? prop : { ...rest, ...now };
   }
 
-  /** The slide up with its videos' points as the library has them now (Session 52). */
+  /** The slide up with its videos' points as the library has them now (Session 52): the same layer while they are. */
   private slideClips(layer: SlideLayer): SlideLayer {
-    const { clips: _was, ...rest } = layer;
-    return { ...rest, ...this.clipsOf(layer.slide.elements) };
+    const { clips: was, ...rest } = layer;
+    const now = this.clipsOf(layer.slide.elements);
+    return sameData(was, now.clips) ? layer : { ...rest, ...now };
   }
 
   /**
