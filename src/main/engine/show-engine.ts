@@ -35,7 +35,7 @@ import {
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { CalendarDay } from '../../shared/calendar';
 import type { IdleState, Quote } from '../../shared/idle';
-import type { BackgroundCue } from '../../shared/library';
+import { backgroundCueOf } from '../../shared/library';
 import type { LiveLook, Movement } from '../../shared/looks';
 import { CUT, type SlideElement, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
@@ -86,12 +86,15 @@ function withoutItem(layers: Layers, id: string): Layers {
 }
 
 /**
- * The file a slide's background cue names, by the library's name for it, when that file is missing (Session 52: not
- * found at import, or deleted from the library); null when it is there, or the cue names a video input or none.
+ * The file a slide's background cue (backgroundCueOf) names, by the library's name for it, when that file is missing
+ * (Session 52: not found at import, or deleted from the library); null when it is there, when the cue names a video
+ * input or none, and when it is the background up (`up`): deleted while it is up, it stays up until it is changed,
+ * and a slide naming it carries it on, as the same file always does.
  */
-function missingFile(played: PlayedSlide): string | null {
-  const cue = played.cues.find((c): c is BackgroundCue => c.kind === 'background');
-  return cue?.missing === true && cue.background.kind === 'media' ? cue.name : null;
+function missingFile(played: PlayedSlide, up: BackgroundLayer | null): string | null {
+  const cue = backgroundCueOf(played.cues);
+  if (cue?.missing !== true || cue.background.kind !== 'media') return null;
+  return up?.kind === 'media' && up.mediaId === cue.background.mediaId ? null : cue.name;
 }
 
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
@@ -410,11 +413,11 @@ export class ShowEngine {
         // went up again at the restart. Never from a time to come (a clock set back since).
         const at = shownAt === undefined ? {} : { at: Math.min(shownAt, this.now()) };
         // Its background cue's file still missing (Session 52) is said again, as when it went up: its cues do not run
-        // again, so the background is the one put back below, as it was.
+        // again, so the background is the one put back below, as it was (never that file itself, named over it).
         actions.push(
           this.showAction(presentationId, slideIndex, order, found, from ? playlist.cursor : null, {
             ...at,
-            fileMissing: missingFile(found),
+            fileMissing: missingFile(found, request.background),
           }),
         );
         slide = true;
@@ -787,7 +790,14 @@ export class ShowEngine {
         },
       ]);
     } else {
-      this.apply([this.showAction(presentationId, index, order, played, live.playlist)]);
+      // What the slide up said of its cues (Session 52: an input not on this computer, a file missing) stays, even
+      // when the edit moves it (a slide added before it): its cues do not run again.
+      this.apply([
+        this.showAction(presentationId, index, order, played, live.playlist, {
+          inputMissing: shown.inputMissing ?? null,
+          fileMissing: shown.fileMissing ?? null,
+        }),
+      ]);
     }
     return this.refreshNext();
   }
@@ -1010,22 +1020,25 @@ export class ShowEngine {
     const layers: EngineAction[] = [];
     let inputMissing: string | null = null;
     let fileMissing: string | null = null;
+    // Its one background cue, the last when it has more (Session 52: what Next and its thumbnail read too); the last
+    // always went up over the others. A file deleted while it is the background up carries on (missingFile).
+    const bg = backgroundCueOf(played.cues)?.background;
+    if (bg?.kind === 'input') {
+      const input = this.options.inputNamed?.(bg.name) ?? null;
+      if (input) layers.push({ type: 'background/set', background: this.inputLayer(input) });
+      else inputMissing = bg.name;
+    } else if (bg) {
+      fileMissing = missingFile(played, this.state.layers.background);
+      if (fileMissing === null)
+        layers.push({ type: 'background/set', background: this.backgroundLayer(bg, fade) });
+    }
     for (const cue of played.cues) {
-      if (cue.kind === 'background') {
-        const bg = cue.background;
-        if (bg.kind === 'input') {
-          const input = this.options.inputNamed?.(bg.name) ?? null;
-          if (input) layers.push({ type: 'background/set', background: this.inputLayer(input) });
-          else inputMissing = bg.name;
-        } else if (cue.missing) fileMissing = cue.name;
-        else layers.push({ type: 'background/set', background: this.backgroundLayer(bg, fade) });
-      } else {
-        const { mediaId, volume, loop } = cue;
-        layers.push({
-          type: 'audio/set',
-          audio: this.audioLayer({ id: mediaId, title: cue.label || cue.name, mediaId, volume, loop }),
-        });
-      }
+      if (cue.kind !== 'audio') continue;
+      const { mediaId, volume, loop } = cue;
+      layers.push({
+        type: 'audio/set',
+        audio: this.audioLayer({ id: mediaId, title: cue.label || cue.name, mediaId, volume, loop }),
+      });
     }
     const actions: EngineAction[] = [
       this.showAction(presentationId, slideIndex, order, played, playlist, {
@@ -1505,12 +1518,16 @@ export class ShowEngine {
   }
 
   /** What Next will show from here: what was cued, else the next slide or item. */
-  private upNext(live: LiveCursor, cue: CuedNext | null = this.state.cue): UpNext | null {
+  private upNext(
+    live: LiveCursor,
+    cue: CuedNext | null = this.state.cue,
+    up: BackgroundLayer | null = this.state.layers.background,
+  ): UpNext | null {
     if (cue) {
       const item = cue.playlist ? this.checkItem(cue.playlist) : null;
       const arrangement = item?.item.kind === 'presentation' ? item.item.arrangementId : undefined;
       const first = this.source.order(cue.presentationId, arrangement)?.slides[0];
-      if (first) return this.slideUpNext(cue.presentationId, 0, first, item?.cursor.itemId ?? null);
+      if (first) return this.slideUpNext(cue.presentationId, 0, first, item?.cursor.itemId ?? null, up);
     }
     if (live.presentationId !== null && live.slideIndex !== null) {
       const order = this.source.order(live.presentationId, live.arrangementId);
@@ -1521,7 +1538,7 @@ export class ShowEngine {
           : live.slideIndex + 1;
       const following = order?.slides[index];
       if (following && index !== live.slideIndex)
-        return this.slideUpNext(live.presentationId, index, following, null);
+        return this.slideUpNext(live.presentationId, index, following, null, up);
     }
     const at = live.playlist ? this.checkItem(live.playlist) : null;
     if (!at) return null;
@@ -1542,7 +1559,7 @@ export class ShowEngine {
       }
       if (item.kind === 'presentation') {
         const first = this.source.order(item.presentationId, item.arrangementId)?.slides[0];
-        if (first) return this.slideUpNext(item.presentationId, 0, first, item.id);
+        if (first) return this.slideUpNext(item.presentationId, 0, first, item.id, up);
       }
     }
     return null;
@@ -1553,10 +1570,13 @@ export class ShowEngine {
     slideIndex: number,
     played: PlayedSlide,
     itemId: string | null,
+    /** The background up, as the change being made leaves it: a file deleted while it is up is never named missing. */
+    up: BackgroundLayer | null,
   ): UpNext {
-    const cue = played.cues.find((c): c is BackgroundCue => c.kind === 'background');
+    // The cue it plays: its last background cue (Session 52), as the slide going up does.
+    const cue = backgroundCueOf(played.cues);
     const bg = cue?.background;
-    const missing = missingFile(played);
+    const missing = missingFile(played, up);
     return {
       kind: 'slide',
       presentationId,
@@ -1897,7 +1917,7 @@ export class ShowEngine {
       next = reduce(next, { type: 'cue/set', cue: null });
     // A new position (or a cue) has a new slide after it, and other items coming up.
     if (next.live !== prev.live || next.cue !== prev.cue) {
-      const upNext = this.upNext(next.live, next.cue);
+      const upNext = this.upNext(next.live, next.cue, next.layers.background);
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
       next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
     }
