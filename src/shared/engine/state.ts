@@ -23,9 +23,20 @@ import type { LowerThird } from '../lower-thirds';
  * (Session 48): another app's window as the background; and, before any release read 12 (Session 50), a video
  * input as the background, a timer shown alone in the slide's place, and the picture-in-picture box; and (Session
  * 51, still before any release read 12) a video input as a playlist item and a slide's background cue: Next's
- * 'input' kind, the next slide's `input`, a slide's `inputMissing` and a coming-up item's 'input' kind.
+ * 'input' kind, the next slide's `input`, a slide's `inputMissing` and a coming-up item's 'input' kind. 13
+ * (Session 52, after alpha.11 had published 12): a slide's and a prop's videos play between their files' start and
+ * end points, which only the engine's state can tell every screen and node. 13 only adds to 12, so a state saved
+ * by alpha.11 (its recovery file, a node's last picture) is read as it is: `readsEngineVersion`.
  */
-export const ENGINE_STATE_VERSION = 12;
+export const ENGINE_STATE_VERSION = 13;
+
+/**
+ * Whether a state saved by this engine version is read whole (Session 52): this version's own, and 12, alpha.11's,
+ * as 13 only adds fields to it. Any other version's layers are left out, as their shapes may differ.
+ */
+export function readsEngineVersion(version: unknown): boolean {
+  return version === ENGINE_STATE_VERSION || version === 12;
+}
 
 export type LayerName =
   'audio' | 'background' | 'slide' | 'props' | 'pip' | 'lowerThird' | 'messages' | 'ticker' | 'masks';
