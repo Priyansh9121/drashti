@@ -68,6 +68,8 @@ async function addInput(win: Page): Promise<Locator> {
   await expect(dialog.getByTestId('video-input-name')).toHaveValue('Input 1');
   await dialog.getByTestId('video-input-name').fill(INPUT);
   await expect(dialog.getByTestId('video-input-fit')).toHaveValue('fit');
+  // What a new name does is said only when changing one (Session 53): adding one renames nothing.
+  await expect(dialog.getByTestId('video-input-renaming')).toHaveCount(0);
   await settled(win);
   await expectNoSeriousA11yIssues(win, 'Add a Video Input, an input chosen and named');
   expect(await background(win)).toBeNull();
