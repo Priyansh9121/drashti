@@ -440,6 +440,114 @@ test('after a crash a video on the slide itself, and its sound, play on from whe
   await second.app.close();
 });
 
+test('after a crash a slide’s video, its sound and a prop’s video come back between their file’s start and end points, where they would be (Session 52)', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-points-'));
+  const loop = await makeTestVideo(win, join(dir, 'Placeholder points loop.webm'), {
+    seconds: 6,
+    hue: 40,
+    tone: 440,
+    width: 64,
+    height: 36,
+  });
+  const [videoId = ''] = await importAndGetIds(win, [loop]);
+  const words = join(dir, 'Placeholder Points Video.txt');
+  writeFileSync(words, '[Verse]\nPlaceholder words over a clip\n');
+  const [presentationId = ''] = await importAndGetIds(win, [words]);
+  // The file plays between 0:01 and 0:05 wherever it is used.
+  const clip = { startMs: 1000, endMs: 5000 };
+  const set = await win.evaluate(
+    ({ id, clip }) => (globalThis as PageGlobals).drashti.media.setMarkers(id, { ...clip, markers: [] }),
+    { id: videoId, clip },
+  );
+  expect(set.ok).toBe(true);
+  const element = (id: string) =>
+    ({
+      id,
+      kind: 'video',
+      mediaId: videoId,
+      frame: { x: 0, y: 0, width: 640, height: 360 },
+      fit: 'fit',
+      loop: true,
+    }) as const;
+  // On the slide itself, looping, and on a prop over it.
+  await win.evaluate(
+    async ({ presentationId, el }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const opened = await d.library.slidesForEdit(presentationId);
+      if (!opened.ok) throw new Error(opened.message);
+      const slide = opened.doc.groups[0]?.slides[0];
+      if (!slide) throw new Error('The presentation has no slide.');
+      slide.elements = [el, ...slide.elements];
+      const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { presentationId, el: element('placeholder-slide-points') },
+  );
+  await setUpScreen(win);
+  await outputPage(first.app);
+  await win.evaluate(
+    async ({ presentationId, el }) => {
+      const engine = (globalThis as PageGlobals).drashti.engine;
+      await engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 });
+      await engine.dispatch({
+        type: 'showProp',
+        prop: { id: 'placeholder-points-prop', name: 'Placeholder prop', elements: [el] },
+      });
+    },
+    { presentationId, el: element('placeholder-prop-points') },
+  );
+  /** The slide and the prop up, as the engine has them. */
+  const shown = (page: Page) =>
+    page.evaluate(async () => {
+      const layers = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers;
+      return { slide: layers.slide, prop: layers.props[0] };
+    });
+  const before = await shown(win);
+  const points = { [videoId]: clip };
+  expect(before.slide?.clips).toEqual(points);
+  expect(before.prop?.clips).toEqual(points);
+  await savedLive(first.userData, (saved) => {
+    const props = saved['props'];
+    return saved.slide?.slideIndex === 0 && Array.isArray(props) && props.length === 1;
+  });
+  await letTimePass(win, 2000, 'the videos play on a moment before Drashti stops');
+  await killApp(first.app);
+
+  // Since Session 27 (the prop) and Session 51 (the slide's) they came back where they would be, over the whole file.
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
+  await operatorReady(win2);
+  const after = await shown(win2);
+  expect(after.slide).toMatchObject({
+    presentationId,
+    slideIndex: 0,
+    shownAt: before.slide?.shownAt,
+    clips: points,
+  });
+  expect(after.prop).toMatchObject({ shownAt: before.prop?.shownAt, clips: points });
+  const slideClock = { startedAt: before.slide?.shownAt ?? 0, loop: true, clip };
+  const output2 = await outputPage(second.app);
+  const player = await audioPage(second.app);
+  await nearTheClock(
+    output2,
+    `[data-layer="slide"] video[data-media-id="${videoId}"]`,
+    slideClock,
+    'the slide’s video',
+  );
+  await nearTheClock(
+    output2,
+    `[data-layer="props"] video[data-media-id="${videoId}"]`,
+    { startedAt: before.prop?.shownAt ?? 0, loop: true, clip },
+    'the prop’s video',
+  );
+  await nearTheClock(player, 'audio[data-key^="slide:"]', slideClock, 'its sound');
+  await second.app.close();
+});
+
 test('after a crash the first action lands on what recovery put back, never under it (Sessions 31–36)', async () => {
   test.setTimeout(150_000);
   const first = await launchApp();
