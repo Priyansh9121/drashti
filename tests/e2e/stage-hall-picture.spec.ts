@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PipPlace } from '../../src/shared/engine/state';
-import { newStageBox } from '../../src/shared/stage-layouts';
+import { newStageBox, type StageBox } from '../../src/shared/stage-layouts';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import {
   importAndGetIds,
@@ -26,7 +26,10 @@ import { makeTestImage } from './test-media';
  * stand-in: DRASHTI_TEST_WINDOW_STANDIN) and a picture-in-picture box show under it as on the hall's screen; with
  * Audience off it keeps the picture and says so in a corner, and the box of the audience screens' state says off;
  * a tablet draws it from small previews, as the phone remote's picture does, naming a window it cannot draw; a
- * node with no audience screen of its own draws Main's hall as the live Look sets it, never every layer.
+ * node with no audience screen of its own draws Main's hall as the live Look sets it, never every layer. Since
+ * Session 52 it says Audience off in the picture's bottom left corner, where a stage message along the top never
+ * covers it, and with no audience group at all it is black and says so in one short line, never every layer: on
+ * this computer's stage screen (read in a small box, inside a tiny one), a tablet's and a node's.
  * Placeholder words and generated media only. Quiet: outputs as windows, nothing wider than 1024 assumed.
  */
 
@@ -36,10 +39,28 @@ const INPUT = 'Placeholder input';
 /** The stage layout's box of the audience picture, on a stage page. */
 const BOX = '[data-stage-box="audience"]';
 
-/** The layout: the audience picture over the whole stage canvas. */
-const BOXES = [
-  { ...newStageBox('audience', 'placeholder-hall-box'), frame: { x: 0, y: 0, width: 1920, height: 1080 } },
+/** The audience picture over the whole stage canvas. */
+const HALL_BOX: StageBox = {
+  ...newStageBox('audience', 'placeholder-hall-box'),
+  frame: { x: 0, y: 0, width: 1920, height: 1080 },
+};
+/** The layout: that box alone. */
+const BOXES: StageBox[] = [HALL_BOX];
+
+/** The same, with the stage message along the top over the picture, where Standard has it (Session 52). */
+const WITH_MESSAGE: StageBox[] = [
+  ...BOXES,
+  {
+    ...newStageBox('stageMessage', 'placeholder-message-box'),
+    frame: { x: 48, y: 48, width: 1824, height: 110 },
+    size: 64,
+  },
 ];
+
+/** The stage message the performers are sent, placeholder words. */
+const STAGE_MESSAGE = 'Placeholder: two minutes';
+/** What the box says with no audience group at all (Session 52). */
+const NO_AUDIENCE = 'No audience screens';
 
 const PLACE: PipPlace = {
   corner: 'bottom-right',
@@ -85,9 +106,13 @@ async function outputFor(app: ElectronApplication, screenId: string): Promise<Pa
 
 /**
  * Make "Stage" a stage group (making it first when asked) whose layout, in the live Look, is the audience picture
- * over the whole canvas; the hall's group's id ("Main Hall"), and the stage group's.
+ * over the whole canvas (or these boxes); the hall's group's id ("Main Hall"), and the stage group's.
  */
-function stageWithHallPicture(win: Page, make: boolean): Promise<{ hallGroup: string; stageGroup: string }> {
+function stageWithHallPicture(
+  win: Page,
+  make: boolean,
+  boxes: StageBox[] = BOXES,
+): Promise<{ hallGroup: string; stageGroup: string }> {
   return win.evaluate(
     async ({ boxes, make }) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -112,18 +137,57 @@ function stageWithHallPicture(win: Page, make: boolean): Promise<{ hallGroup: st
       if (!set.ok) throw new Error(set.message);
       return { hallGroup: hall.id, stageGroup: stage.id };
     },
-    { boxes: BOXES, make },
+    { boxes, make },
   );
+}
+
+/**
+ * Save a stage layout of these boxes (again, given its id) and give it, in the live Look, to the stage group; the
+ * layout's id.
+ */
+function giveLayout(
+  win: Page,
+  stageGroup: string,
+  boxes: StageBox[],
+  layoutId: string | null = null,
+): Promise<string> {
+  return win.evaluate(
+    async ({ boxes, stageGroup, layoutId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const saved = await d.stageLayouts.save(layoutId, {
+        name: 'Placeholder stage box layout',
+        background: '#000000',
+        boxes,
+      });
+      if (!saved.ok) throw new Error(saved.message);
+      const set = await d.looks.setGroup((await d.looks.list()).liveId, stageGroup, {
+        stageLayoutId: saved.id,
+      });
+      if (!set.ok) throw new Error(set.message);
+      return saved.id;
+    },
+    { boxes, stageGroup, layoutId },
+  );
+}
+
+/** Delete a screen group, as Screens' Delete group does. */
+async function deleteGroup(win: Page, groupId: string): Promise<void> {
+  const deleted = await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.screens.deleteGroup(id),
+    groupId,
+  );
+  expect(deleted.ok).toBe(true);
 }
 
 /** The hall's screen on the first display and the stage screen, with the hall picture layout, on the second. */
 async function hallAndStage(
   app: ElectronApplication,
   win: Page,
+  boxes: StageBox[] = BOXES,
 ): Promise<{ hall: Page; stage: Page; hallGroup: string }> {
   const hallId = await setUpScreen(win, 'Main Hall', 0);
   const stageId = await setUpScreen(win, 'Stage', 1);
-  const { hallGroup } = await stageWithHallPicture(win, false);
+  const { hallGroup } = await stageWithHallPicture(win, false, boxes);
   const hall = await outputFor(app, hallId);
   const stage = await outputFor(app, stageId);
   await outputReady(hall);
@@ -297,13 +361,17 @@ test('a video input, a window and a picture-in-picture box show under the stage 
   await app.close();
 });
 
-test('with Audience off the stage box keeps the hall’s picture and says “Audience off” in its corner', async () => {
+test('with Audience off the stage box keeps the hall’s picture and says “Audience off” in its bottom left corner, clear of the stage message', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp(OUTPUTS);
   const win = await operatorPage(app);
   await operatorReady(win);
-  const { stage } = await hallAndStage(app, win);
+  // The stage message along the top, over the picture, as Standard has it, with a message up (Session 52).
+  const { stage } = await hallAndStage(app, win, WITH_MESSAGE);
   await slideOverColour(win);
+  await dispatch(win, { type: 'setStageMessage', text: STAGE_MESSAGE });
+  const message = stage.getByTestId('stage-box-message');
+  await expect(message).toHaveText(STAGE_MESSAGE);
   const box = stage.locator(BOX);
   const picture = box.getByTestId('scene');
   const drawn = { background: 'rgb(31, 111, 139)', words: expect.stringMatching(WORDS) };
@@ -318,7 +386,8 @@ test('with Audience off the stage box keeps the hall’s picture and says “Aud
   await expect(said).toHaveText('Audience off');
   await expect(box.getByTestId('stage-audience')).toHaveAttribute('data-audience', 'off');
   expect(await sceneOn(picture)).toMatchObject(drawn);
-  // In the picture's top left corner, and over it: at its middle is the label itself.
+  // In the picture's bottom left corner (Session 52; its top left until then, where the stage message along the
+  // top covered it), and over it: at its middle is the label itself, never the message.
   const where = await said.evaluate((el) => {
     const r = el.getBoundingClientRect();
     const p = el.closest('[data-hall-picture]')?.getBoundingClientRect();
@@ -335,10 +404,20 @@ test('with Audience off the stage box keeps the hall’s picture and says “Aud
   });
   expect(where).not.toBeNull();
   expect(where?.left).toBeLessThan(0.05);
-  expect(where?.top).toBeLessThan(0.07);
   expect(where?.right).toBeLessThan(0.5);
-  expect(where?.bottom).toBeLessThan(0.2);
+  expect(where?.top).toBeGreaterThan(0.8);
+  expect(where?.bottom).toBeGreaterThan(0.93);
+  expect(where?.bottom).toBeLessThanOrEqual(1);
   expect(where?.over).toBe(true);
+  // The message stays along the top, over the picture: the stage sees both.
+  await expect(message).toHaveText(STAGE_MESSAGE);
+  expect(
+    await message.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return hit !== null && el.contains(hit);
+    }),
+  ).toBe(true);
 
   // On again: the hall's screen opens where it was; the box says nothing more.
   await audience(win, true);
@@ -348,7 +427,106 @@ test('with Audience off the stage box keeps the hall’s picture and says “Aud
   await app.close();
 });
 
-test('a tablet’s stage page draws the box from small previews, as the remote’s live picture does, and says Audience off', async () => {
+/**
+ * The box's line with no audience group (Session 52), as the page draws it: the box's size and the line's in stage
+ * canvas pixels, its words, whether it lies wholly inside the box with no word cut, and whether it sits in the
+ * box's bottom left.
+ */
+const noAudienceLineOn = (box: Locator) =>
+  box.getByTestId('stage-audience').evaluate((area) => {
+    const line = area.querySelector<HTMLElement>('[data-testid="stage-audience-none"]');
+    if (!line) return null;
+    const a = area.getBoundingClientRect();
+    const r = line.getBoundingClientRect();
+    return {
+      box: `${String(area.clientWidth)}x${String(area.clientHeight)}`,
+      text: line.textContent,
+      size: parseFloat(getComputedStyle(line).fontSize),
+      inside:
+        r.left >= a.left - 0.5 &&
+        r.top >= a.top - 0.5 &&
+        r.right <= a.right + 0.5 &&
+        r.bottom <= a.bottom + 0.5,
+      whole: line.scrollWidth <= line.clientWidth + 0.5,
+      bottomLeft: r.left - a.left < a.width / 4 && a.bottom - r.bottom < a.height / 4,
+    };
+  });
+
+test('with no audience group at all the stage box is black and says so in one short line, read in a small box, never every layer', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp(OUTPUTS);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // The stage screen alone: no group shows the audience picture.
+  const stageId = await setUpScreen(win, 'Stage', 0);
+  const stageGroup = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const group = (await d.screens.get()).groups.find((g) => g.name === 'Stage');
+    if (!group) throw new Error('no stage group');
+    const role = await d.screens.setGroupRole(group.id, 'stage');
+    if (!role.ok) throw new Error(role.message);
+    return group.id;
+  });
+  const layoutId = await giveLayout(win, stageGroup, BOXES);
+  const stage = await outputFor(app, stageId);
+  await outputReady(stage);
+  // A slide over a colour: every layer would draw it, and the box must not.
+  await slideOverColour(win);
+  const box = stage.locator(BOX);
+  const area = box.getByTestId('stage-audience');
+  await expect(area).toHaveAttribute('data-audience', 'none');
+  await expect(area).toHaveAttribute('data-hall-group', '');
+  await expect(box.getByTestId('stage-audience-none')).toHaveText(NO_AUDIENCE);
+  await expect(box.getByTestId('scene')).toHaveCount(0);
+  await expect(box).not.toContainText(WORDS);
+  // In the whole stage: as large as Audience off is there (64 px), in the box's bottom left corner.
+  await expect
+    .poll(() => noAudienceLineOn(box))
+    .toEqual({
+      box: '1920x1080',
+      text: NO_AUDIENCE,
+      size: 64,
+      inside: true,
+      whole: true,
+      bottomLeft: true,
+    });
+
+  // A small box (a sixth of the stage each way): never smaller than a box's label (30 px), and inside it.
+  await giveLayout(
+    win,
+    stageGroup,
+    [{ ...HALL_BOX, frame: { x: 800, y: 450, width: 320, height: 180 } }],
+    layoutId,
+  );
+  await expect
+    .poll(() => noAudienceLineOn(box))
+    .toMatchObject({ box: '320x180', text: NO_AUDIENCE, inside: true, whole: true, bottomLeft: true });
+  expect((await noAudienceLineOn(box))?.size).toBeGreaterThanOrEqual(30);
+
+  // A tiny one (a twentieth each way): smaller, as it must be to fit, and still wholly inside it.
+  await giveLayout(
+    win,
+    stageGroup,
+    [{ ...HALL_BOX, frame: { x: 900, y: 500, width: 96, height: 54 } }],
+    layoutId,
+  );
+  await expect
+    .poll(() => noAudienceLineOn(box))
+    .toMatchObject({ box: '96x54', text: NO_AUDIENCE, inside: true, whole: true });
+  expect((await noAudienceLineOn(box))?.size).toBeLessThan(30);
+
+  // An audience group with its screen: the box draws the hall's picture, and says nothing more.
+  const hallId = await setUpScreen(win, 'Main Hall', 1);
+  await outputReady(await outputFor(app, hallId));
+  await expect(area).toHaveAttribute('data-audience', 'on');
+  await expect(box.getByTestId('stage-audience-none')).toHaveCount(0);
+  await expect
+    .poll(() => sceneOn(box.getByTestId('scene')))
+    .toMatchObject({ background: 'rgb(31, 111, 139)', words: expect.stringMatching(WORDS) });
+  await app.close();
+});
+
+test('a tablet’s stage page draws the box from small previews, as the remote’s live picture does, and says Audience off and no audience screens', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...NETWORK_ENV, ...OUTPUTS });
   const win = await operatorPage(app);
@@ -392,6 +570,13 @@ test('a tablet’s stage page draws the box from small previews, as the remote�
     await expect(box.locator('img[data-preview="shown"]')).toHaveCount(1);
     await audience(win, true);
     await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
+
+    // No audience group at all (Session 52): black, and said in one short line, never every layer (the picture).
+    await deleteGroup(win, hallGroup);
+    await expect(box.getByTestId('stage-audience')).toHaveAttribute('data-audience', 'none');
+    await expect(box.getByTestId('stage-audience-none')).toHaveText(NO_AUDIENCE);
+    await expect(box.getByTestId('scene')).toHaveCount(0);
+    await expect(box.locator('img[data-preview]')).toHaveCount(0);
   } finally {
     await tablet.close();
   }
@@ -410,7 +595,7 @@ async function nodeDisplays(win: Page, nodeId: string): Promise<number[]> {
   );
 }
 
-test('on a node with no audience screen, the stage box draws Main’s hall as the live Look sets it, and says Audience off', async () => {
+test('on a node with no audience screen, the stage box draws Main’s hall as the live Look sets it, and says Audience off and no audience screens', async () => {
   test.setTimeout(240_000);
   const main = await launchMain();
   const node = await launchNode();
@@ -463,6 +648,13 @@ test('on a node with no audience screen, the stage box draws Main’s hall as th
     expect(await sceneOn(box.getByTestId('scene'))).toMatchObject({ words: expect.stringMatching(WORDS) });
     await audience(main.win, true);
     await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
+
+    // No audience group at all on Main (Session 52): the node's box is black and says so, never every layer.
+    await deleteGroup(main.win, hallGroup);
+    await expect(box.getByTestId('stage-audience')).toHaveAttribute('data-audience', 'none');
+    await expect(box.getByTestId('stage-audience-none')).toHaveText(NO_AUDIENCE);
+    await expect(box.getByTestId('scene')).toHaveCount(0);
+    await expect(box).not.toContainText(WORDS);
   } finally {
     await node.app.close();
     await main.app.close();
