@@ -12,8 +12,9 @@ import { useOutput } from './output-store';
  * The operator window's "Turn Audience off?" (or Stage) on the output that covers the controls (Session 51, S2-2),
  * as Keep these screens? is asked there: with only the one display, the question in the window under this output
  * could not be seen. Enter turns it off and Esc cancels: the keys reach the operator window under it (an output
- * never takes the keyboard), whose question then has Turn off ready for Enter, and this page answers them too
- * when it has them (a windowed output). Setting up, never the show: the hall may see it until it is answered.
+ * never takes the keyboard), whose question then has Turn off ready for Enter. This page answers them too, were it
+ * ever to have the keyboard (one over the controls is full screen and never does; windowed outputs never cover the
+ * controls). Setting up, never the show: the hall may see it until it is answered.
  */
 
 function Asked({ which }: { which: ScreenSwitch }) {

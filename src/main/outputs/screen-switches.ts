@@ -163,9 +163,10 @@ export interface SwitchQuestionDeps {
  * controls (Session 51, S2-2), as Keep these screens? is: with only the one display, the question in the window
  * under that output could not be seen. The window asks, and says so here as it opens and goes; the output over
  * the controls shows it large, and Enter turns it off and Esc cancels. The keys reach the window under it (an
- * output never takes the keyboard), whose dialog then has Turn off focused; an output that has the keyboard (a
- * windowed one) answers itself, and its answer goes to the window, which acts. The window is the one place the
- * question is kept: a phone, the View menu or another window never asks it here.
+ * output never takes the keyboard), whose dialog then has Turn off focused. Were an output ever to have the
+ * keyboard (none does: one over the controls is full screen and never takes it, and windowed outputs never cover
+ * the controls), its own Enter or Esc would go to the window, which acts. The window is the one place the question
+ * is kept: a phone, the View menu or another window never asks it here.
  */
 export class SwitchQuestion {
   private which: ScreenSwitch | null = null;
@@ -220,8 +221,8 @@ export class SwitchQuestion {
   }
 
   /**
-   * An output's own Enter (true) or Esc (false), when it has the keyboard: only from the output asking, and only
-   * a yes or a no. The window acts on it, as on its own buttons. True when it was taken.
+   * An output's own Enter (true) or Esc (false), were it to have the keyboard: only from the output asking, and
+   * only a yes or a no. The window acts on it, as on its own buttons. True when it was taken.
    */
   answer(screenId: string, rawYes: unknown): boolean {
     const which = this.questionFor(screenId);
