@@ -18,6 +18,7 @@ import {
   outputPages,
   outputReady,
   relaunchApp,
+  setTicked,
   setUpScreen,
 } from './helpers';
 
@@ -137,21 +138,21 @@ test('two groups show their own layers, languages and slide style, and switching
   const groups = win.getByTestId('screen-group');
   const hallCard = groups.nth(0).getByTestId('group-look');
   await expect(hallCard).toContainText('In the Look “Placeholder lower thirds”');
-  await hallCard.getByTestId('look-layer-background').uncheck();
+  await setTicked(hallCard.getByTestId('look-layer-background'), false);
   await hallCard.getByTestId('look-slides').selectOption('lowerThird');
-  await hallCard.getByTestId('languages-some').check();
+  await setTicked(hallCard.getByTestId('languages-some'), true);
   for (const name of ['Gujarati', 'Hindi', 'English'])
-    await hallCard.getByTestId('language-picker').getByRole('checkbox', { name }).uncheck();
+    await setTicked(hallCard.getByTestId('language-picker').getByRole('checkbox', { name }), false);
   // The hall moves Bold in this Look (Session 27); the side stays Calm, the default.
   await expect(hallCard.getByTestId('look-movement')).toHaveValue('calm');
   await hallCard.getByTestId('look-movement').selectOption('bold');
   await expect(hallCard.getByTestId('look-movement-note')).toContainText('pictures only dissolve');
   const sideCard = groups.nth(1).getByTestId('group-look');
   await expect(sideCard.getByTestId('look-movement')).toHaveValue('calm');
-  await sideCard.getByTestId('look-layer-messages').uncheck();
-  await sideCard.getByTestId('languages-some').check();
+  await setTicked(sideCard.getByTestId('look-layer-messages'), false);
+  await setTicked(sideCard.getByTestId('languages-some'), true);
   for (const name of ['Hindi', 'Transliteration', 'English'])
-    await sideCard.getByTestId('language-picker').getByRole('checkbox', { name }).uncheck();
+    await setTicked(sideCard.getByTestId('language-picker').getByRole('checkbox', { name }), false);
   await expectNoSeriousA11yIssues(win, 'Screens with two Looks, a group’s settings in one');
   // Standard is unchanged: its settings are still the defaults.
   await section.getByTestId('look-choice').filter({ hasText: 'Standard' }).click();

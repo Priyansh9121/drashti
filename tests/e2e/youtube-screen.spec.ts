@@ -8,7 +8,15 @@ import { join } from 'node:path';
 import type { EngineCommand } from '../../src/shared/engine/commands';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
-import { holdStill, launchApp, letTimePass, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  holdStill,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  setTicked,
+  type PageGlobals,
+} from './helpers';
 import { freePort, rtmpListener, setUpStream, streamPage, testFfmpeg } from './stream-helpers';
 
 /*
@@ -35,12 +43,11 @@ const openScreens = (win: Page) => win.getByRole('button', { name: 'Screens', ex
 
 /** Tick only these languages in a language picker (its rows move as they are ticked: each is found by its language). */
 async function onlyLanguages(picker: Locator, keep: string[]): Promise<void> {
-  await picker.getByTestId('languages-some').check();
+  await setTicked(picker.getByTestId('languages-some'), true);
   for (const lang of ['gu', 'hi', 'translit', 'en']) {
     if (keep.includes(lang)) continue;
     const box = picker.locator(`[data-testid="language-row"][data-lang="${lang}"]`).getByRole('checkbox');
-    await box.click();
-    await expect(box).not.toBeChecked();
+    await setTicked(box, false);
   }
 }
 
@@ -185,7 +192,7 @@ test('the YouTube card and the Stream panel are one setting: the layout and lang
     languages.getByTestId('language-row').filter({ has: win.getByRole('checkbox', { checked: true }) }),
   ).toHaveCount(1);
   await panel.getByTestId('stream-layout-camera').click();
-  await languages.getByTestId('languages-all').check();
+  await setTicked(languages.getByTestId('languages-all'), true);
   await expect(root).toHaveAttribute('data-layout', 'camera');
   await expect(root).toHaveAttribute('data-languages', 'all');
   await run(win, { type: 'goLive', presentationId: kirtan, slideIndex: 0 });

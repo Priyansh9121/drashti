@@ -8,7 +8,7 @@ import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady, setTicked } from './helpers';
 
 /*
  * Events out (Session 28, decision 20): an admin adds an address on this computer and ticks what it gets;
@@ -145,8 +145,8 @@ test('an address on this computer gets each slide within a second of Next, signe
     await dispatch(win, { type: 'next' });
     await holdStill(() => r.got.length === 0, 500, 'nothing is on yet, so nothing is sent');
 
-    await dialog.getByTestId('events-kind-slide.changed-0').check();
-    await dialog.getByTestId('events-kind-blackout.changed-0').check();
+    await setTicked(dialog.getByTestId('events-kind-slide.changed-0'), true);
+    await setTicked(dialog.getByTestId('events-kind-blackout.changed-0'), true);
     await expect(dialog.getByTestId('events-words-slide.changed-0')).not.toBeChecked();
     await expectNoSeriousA11yIssues(win, 'Events out');
     // Next: there within a second.
@@ -161,7 +161,7 @@ test('an address on this computer gets each slide within a second of Next, signe
     expect(first.body).not.toContain(MARKER);
 
     // Include the words: now they come.
-    await dialog.getByTestId('events-words-slide.changed-0').check();
+    await setTicked(dialog.getByTestId('events-words-slide.changed-0'), true);
     await dispatch(win, { type: 'goLive', presentationId, slideIndex: 1 });
     await expect.poll(() => r.got.filter((g) => g.type === 'slide.changed').length).toBe(2);
     expect(r.got.at(-1)?.body).toContain(MARKER);
@@ -242,7 +242,7 @@ test('a receiver that never answers changes neither slide changes nor quitting',
     const without = await changes();
     await chooseMenuItem(app, 'events-out');
     await addAddress(win, r.url);
-    await win.getByTestId('events-dialog').getByTestId('events-kind-slide.changed-0').check();
+    await setTicked(win.getByTestId('events-dialog').getByTestId('events-kind-slide.changed-0'), true);
     await win.getByTestId('events-dialog').getByRole('button', { name: 'Close', exact: true }).click();
     const withHung = await changes();
     // The receiver has them, unanswered.
