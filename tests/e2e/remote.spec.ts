@@ -12,18 +12,33 @@ import {
   pairToken,
   TABLET,
 } from './devices';
-import { launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
+import {
+  killApp,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  type PageGlobals,
+  relaunchApp,
+  savedLive,
+  setUpScreen,
+} from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-show';
 
 /*
  * The phone remote runs a sabha, each step seen on a real output: a slide
  * tapped, Next and Back, Clear, black-out, the logo, Put it back, a timer
  * and a message. Next twice quickly goes on, never restarting an item. The
- * remote comes back by itself after the server stops and starts again.
- * Placeholder content; codes and tokens are made at run time.
+ * remote comes back by itself after the server stops and starts again, and
+ * a remote and a stage display left open while Drashti restarts follow its
+ * new run (Session 53). Placeholder content; codes and tokens are made at
+ * run time.
  */
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+
+const dispatch = (win: Page, command: unknown) =>
+  win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
 
 /**
  * The icons a page names (Session 19), each fetched and opened as a picture in the phone's own browser:
@@ -287,13 +302,94 @@ test('two remotes pressing Next at once move one slide; a phone’s Next says wh
     await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
     await expect(phone.page.getByTestId('remote-slide').nth(3)).toHaveAttribute('data-live', 'true');
-    const seen = (await snapshot(win)).rev;
+    const { rev: seen, session } = await snapshot(win);
     const sent = phone.page.waitForRequest((r) => r.url().endsWith('/api/v1/trigger/next'));
     await phone.page.getByTestId('remote-next-button').click();
-    expect((await sent).postDataJSON()).toEqual({ rev: seen });
+    // With the run of the engine that revision is from (Session 53).
+    expect((await sent).postDataJSON()).toEqual({ rev: seen, session });
     await expect.poll(async () => (await where(win)).slideIndex).toBe(4);
   } finally {
     await phone.close();
   }
   await app.close();
+});
+
+// Session 53: a run of the engine counts its revisions from 0, and the feed's snapshot did not say its run, so a page
+// left open while Drashti restarted (a crash, an update) kept the last run's picture and stage, and its Next, sent
+// with the last run's revision, did nothing.
+test('a phone’s remote and a tablet’s stage display left open while Drashti restarts follow its new run at once, with no reload: the picture, what is next, Next itself and the stage (Session 53)', async () => {
+  test.setTimeout(240_000);
+  const { app, userData } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const show = await setUpPlaceholderShow(win);
+  const { base, port } = await networkOn(win);
+  const phone = await device('chromium');
+  const tablet = await device('webkit', TABLET);
+  const p = phone.page;
+  const t = tablet.page;
+  const mark = 'opened before the restart';
+  const marked = (page: Page) => page.evaluate(() => (globalThis as { e2eMark?: string }).e2eMark ?? null);
+  try {
+    await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await pairByQr(t, base, await pairingCode(win, 'stage', 'Placeholder stage tablet'), '/stage');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await expect(t.getByTestId('stage-view')).toBeVisible();
+    // The kirtan's second verse up, this run well on (black-out on and off): far past where the next run, counting
+    // from 0 again, is while the pages are looked at.
+    await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 3 });
+    for (let i = 0; i < 30; i++) {
+      await dispatch(win, { type: 'setBlackout', on: true });
+      await dispatch(win, { type: 'setBlackout', on: false });
+    }
+    const before = await snapshot(win);
+    await expect(t.getByTestId('stage-current')).toContainText('Placeholder second verse');
+    await expect(p.getByTestId('remote-slide').nth(3)).toHaveAttribute('data-live', 'true');
+    // A mark on each page, which loading it again would take away.
+    for (const page of [p, t])
+      await page.evaluate((m) => {
+        (globalThis as { e2eMark?: string }).e2eMark = m;
+      }, mark);
+    await savedLive(userData, (saved) => saved.slide?.slideIndex === 3 && saved.blackout === false);
+
+    // Drashti stops dead (a crash) and starts again on its data folder: the phone server on the same port, both
+    // devices still paired, recovery putting the second verse back. Both pages connect again by themselves.
+    await killApp(app);
+    await expect(p.getByTestId('connection')).toHaveAttribute('data-state', 'offline', { timeout: 20_000 });
+    await expect(t.getByTestId('stage-offline')).toBeVisible({ timeout: 20_000 });
+    const again = await relaunchApp(userData, NETWORK_ENV);
+    const win2 = await operatorPage(again.app);
+    await operatorReady(win2);
+    const status = () => win2.evaluate(() => (globalThis as PageGlobals).drashti.network.status());
+    await expect.poll(async () => (await status()).state).toBe('listening');
+    expect((await status()).port).toBe(port);
+    await expect(p.getByTestId('connection')).toHaveText('Connected', { timeout: 30_000 });
+    await expect(t.getByTestId('stage-offline')).toHaveCount(0, { timeout: 30_000 });
+    // A new run, its revisions from 0 again: below the pages' copies of the last one.
+    const after = await snapshot(win2);
+    expect(after.session).not.toBe(before.session);
+    expect(after.rev).toBeLessThan(before.rev);
+
+    // The new run's own slide, the chorus: on both pages at once, and what comes next with it.
+    await dispatch(win2, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
+    await expect(t.getByTestId('stage-current')).toContainText('Placeholder chorus line');
+    await expect(t.getByTestId('stage-next')).toContainText('Placeholder first verse');
+    await expect(p.getByTestId('remote-live').locator('[data-layer="slide"]')).toContainText(
+      'Placeholder chorus line',
+    );
+    await expect(p.getByTestId('remote-next')).toContainText('Placeholder first verse');
+    await expect(p.getByTestId('remote-slide').nth(0)).toHaveAttribute('data-live', 'true');
+    // The phone's Next works: on to the first verse, the stage display with it.
+    await p.getByTestId('remote-next-button').click();
+    await expect.poll(async () => (await where(win2)).slideIndex).toBe(1);
+    await expect(t.getByTestId('stage-current')).toContainText('Placeholder first verse');
+    await expect(p.getByTestId('remote-slide').nth(1)).toHaveAttribute('data-live', 'true');
+    // Neither page was loaded again.
+    expect(await marked(p)).toBe(mark);
+    expect(await marked(t)).toBe(mark);
+    await again.app.close();
+  } finally {
+    await phone.close();
+    await tablet.close();
+  }
 });
