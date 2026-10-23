@@ -135,9 +135,15 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   /**
    * Next. A phone's or the API's carries the revision it saw (Sessions 31–36, TST-11): when the show has moved
    * since, it does nothing (changed: false), so two people pressing Next at once move one slide. The operator's
-   * own Next, and one without it (Companion, an older phone), always acts.
+   * own Next, and one without it (Companion, an older phone), always acts. A phone's says the run of the engine
+   * that revision is from too (Session 53): in another run (Drashti restarted since, its revisions from 0 again)
+   * it does nothing, even at the same number.
    */
-  z.object({ type: z.literal('next'), rev: z.number().int().nonnegative().optional() }),
+  z.object({
+    type: z.literal('next'),
+    rev: z.number().int().nonnegative().optional(),
+    session: z.string().min(1).max(128).optional(),
+  }),
   z.object({ type: z.literal('previous') }),
   /**
    * Back: undoes the last Next exactly (the slide, background and sound as

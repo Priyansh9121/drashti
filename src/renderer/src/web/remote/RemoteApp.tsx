@@ -1245,10 +1245,12 @@ function next(): Promise<void> {
         body: { playlistId, itemId: first.id },
       });
     // With the revision this phone saw (Sessions 31–36, TST-11): if the show has moved since (another phone,
-    // the operator), it does nothing, so two Nexts at once move one slide.
+    // the operator), it does nothing, so two Nexts at once move one slide. And the run it is from (Session 53): a
+    // tap before this page has the new run's state, Drashti having just restarted, does nothing either.
+    const { rev, session } = useEngine.getState();
     return api<{ rev?: number }>('/api/v1/trigger/next', {
       method: 'POST',
-      body: { rev: useEngine.getState().rev },
+      body: { rev, ...(session !== undefined ? { session } : {}) },
     });
   });
 }
