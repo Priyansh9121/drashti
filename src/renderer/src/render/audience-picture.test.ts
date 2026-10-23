@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveLook } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK, NO_LOOK } from '../../../shared/looks';
-import { AUDIENCE_OFF, hallView, PICTURE } from './audience-picture';
+import {
+  AUDIENCE_OFF,
+  fittedSize,
+  hallView,
+  NO_AUDIENCE,
+  noAudienceLine,
+  PICTURE,
+  WORDS_CORNER,
+} from './audience-picture';
 
 /*
  * What a stage layout's audience picture box draws (Session 50): the hall's group, as its own screens do; with
- * Audience off, the same picture, said off (Session 51).
+ * Audience off, the same picture, said off (Session 51) in its bottom left corner (Session 52); with no audience
+ * group at all, black and one short line saying so, never every layer (Session 52).
  */
 
 const look: LiveLook = {
@@ -23,6 +32,7 @@ describe('the audience picture box', () => {
     const hall = { groupId: 'hall', canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' as const };
     const view = hallView(look, hall);
     expect(view).toEqual({
+      kind: 'hall',
       groupId: 'hall',
       look: look.groups['hall'],
       canvas: { width: 1280, height: 720 },
@@ -30,22 +40,31 @@ describe('the audience picture box', () => {
       off: false,
     });
     // The same object the hall's own output draws with (groupLookIn), never a copy that could differ.
-    expect(view.look).toBe(look.groups['hall']);
+    expect(view.kind === 'hall' ? view.look : null).toBe(look.groups['hall']);
   });
 
-  it('draws every layer and language at 1920 x 1080 with no hall known, or one the Look does not list', () => {
-    const everything = {
-      groupId: null,
+  it('draws every layer and language for a group the live Look does not list, as that group’s screens do', () => {
+    expect(
+      hallView(NO_LOOK, { groupId: 'hall', canvasWidth: 1920, canvasHeight: 1080, scaling: 'fit' }),
+    ).toEqual({
+      kind: 'hall',
+      groupId: 'hall',
       look: DEFAULT_LIVE_GROUP_LOOK,
       canvas: { width: 1920, height: 1080 },
       scaling: 'fit',
       off: false,
-    };
-    expect(hallView(look, null)).toEqual(everything);
-    expect(hallView(look, undefined)).toEqual(everything);
-    expect(
-      hallView(NO_LOOK, { groupId: 'hall', canvasWidth: 1920, canvasHeight: 1080, scaling: 'fit' }),
-    ).toEqual({ ...everything, groupId: 'hall' });
+    });
+  });
+
+  // Session 52 (question 4): with no audience group it drew every layer, a picture no hall's screen shows.
+  it('with no audience group at all draws nothing of the show, and says so in one short plain line', () => {
+    expect(hallView(look, null)).toEqual({ kind: 'none' });
+    expect(hallView(NO_LOOK, null)).toEqual({ kind: 'none' });
+    expect(NO_AUDIENCE).toBe('No audience screens');
+  });
+
+  it('is black alone, saying nothing, until it is told the hall', () => {
+    expect(hallView(look, undefined)).toEqual({ kind: 'unknown' });
   });
 
   // Session 51 (S4-3): the hall's screens closed by Audience off; the box keeps the picture, and says so.
@@ -53,9 +72,45 @@ describe('the audience picture box', () => {
     const hall = { groupId: 'hall', canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' as const };
     const off = hallView(look, { ...hall, off: true });
     expect(off).toEqual({ ...hallView(look, hall), off: true });
-    expect(off.look).toBe(look.groups['hall']);
-    expect(hallView(look, { ...hall, off: false }).off).toBe(false);
+    expect(off.kind === 'hall' ? off.look : null).toBe(look.groups['hall']);
+    const on = hallView(look, { ...hall, off: false });
+    expect(on.kind === 'hall' && on.off).toBe(false);
     expect(AUDIENCE_OFF).toBe('Audience off');
+  });
+
+  // Session 52 (question 4): in the top left corner, a stage message along the top covered it.
+  it('says it in the picture’s bottom left corner, 40 px in each way', () => {
+    expect(WORDS_CORNER).toEqual({ left: 40, bottom: 40 });
+  });
+
+  it('wants its line as large as Audience off is in the box, never below the stage’s smallest words', () => {
+    // The whole stage, and a new box's size (half each way): Audience off's size and inset there.
+    expect(noAudienceLine({ width: 1920, height: 1080 })).toEqual({ size: 64, inset: 40 });
+    expect(noAudienceLine({ width: 960, height: 540 })).toEqual({ size: 32, inset: 20 });
+    // A small box and a strip: the size of a box's label (30 px), where Audience off would be 16 px.
+    expect(noAudienceLine({ width: 480, height: 270 })).toEqual({ size: 30, inset: 10 });
+    expect(noAudienceLine({ width: 1920, height: 270 })).toEqual({ size: 30, inset: 10 });
+    // The smallest box a layout allows (8 x 8): wanted at 30 too, and brought down to fit (fittedSize).
+    expect(noAudienceLine({ width: 8, height: 8 }).size).toBe(30);
+  });
+
+  it('brings the line down only as far as it must to fit the box, never below 8 px', () => {
+    // Fits as wanted: tried there first, and never made smaller.
+    const tried: number[] = [];
+    expect(
+      fittedSize(64, (px) => {
+        tried.push(px);
+        return true;
+      }),
+    ).toBe(64);
+    expect(tried).toEqual([64]);
+    // A small box: the largest whole size that fits.
+    expect(fittedSize(30, (px) => px <= 21.7)).toBe(21);
+    expect(fittedSize(30, (px) => px <= 29.99)).toBe(29);
+    // Wanted between whole sizes: a whole size, no larger.
+    expect(fittedSize(33.6, () => true)).toBe(33);
+    // A box too small for any words: 8 px, as a layout's box fitting its words goes no smaller; the box cuts it.
+    expect(fittedSize(30, () => false)).toBe(8);
   });
 
   it('is a 16:9 picture', () => {

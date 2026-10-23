@@ -27,7 +27,8 @@ export function StageScreen({
   clockStyle?: ClockStyle | null;
   /**
    * The hall's group and canvas, for a layout's audience picture box (Session 50), and whether its screens are off
-   * (Session 51), which the Standard stage screen says too.
+   * (Session 51), which the Standard stage screen says too; null with no audience group at all, which the box says
+   * (Session 52), and left out while not known.
    */
   hall?: HallPicture | null;
 }) {
@@ -46,7 +47,7 @@ export function StageScreen({
         layout={look.stageLayout}
         state={state}
         languages={look.languages}
-        hall={hall ?? null}
+        hall={hall}
         {...(clockStyle ? { clockStyle } : {})}
       />
     </Placed>

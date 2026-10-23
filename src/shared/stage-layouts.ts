@@ -42,7 +42,8 @@ export type StageBoxKind =
   | 'screensState'
   /**
    * What the hall's screens show at that moment (Session 50): the first audience group's picture, black-out
-   * and the logo too, scaled into the box at 16:9 with black around it.
+   * and the logo too, scaled into the box at 16:9 with black around it; with no audience group at all, black
+   * and a line saying so (Session 52).
    */
   | 'audience'
   /** Words that stay the same. */
