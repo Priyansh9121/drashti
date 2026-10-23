@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import type { PipLayer, PipSource } from '../../../shared/engine/state';
+import type { PipLayer, PipSource, VideoClips } from '../../../shared/engine/state';
 import type { Movement } from '../../../shared/looks';
 import type { MediaElement } from '../../../shared/model';
 import type { Size } from '../../../shared/scaling';
@@ -31,8 +31,9 @@ import { useInputReport, useVideoInput } from './video-input';
  * from its last change, and goes out from when it was taken off, each frame worked out from the engine's clock;
  * only its opacity and transform move, and in a swap the main picture dissolves in its time (Session 52,
  * usePipMainDissolve; Session 51 moved it with the box). Black-out and the logo cover it, as they cover the slide.
- * A video in it plays muted from when it went up; a video input and a window are opened as every picture of them
- * is (render/video-input.ts, render/live-window.ts), video only.
+ * A video in it plays muted from when it went up, between its file's start and end points (Session 53); a video
+ * input and a window are opened as every picture of them is (render/video-input.ts, render/live-window.ts), video
+ * only.
  */
 
 const FULL: CSSProperties = { position: 'absolute', inset: 0 };
@@ -260,20 +261,26 @@ export function usePipMainDissolve(
 /**
  * The box's own picture at a size (the box's; or the screen's, in the background's place, once swapped): a
  * picture or a video from Media fitted inside it with black around (a video plays muted from when the box went up,
- * round and round), a video input, or another app's window, both fitted inside, live and silent.
+ * round and round, between its file's start and end points since Session 53), a video input, or another app's
+ * window, both fitted inside, live and silent.
  */
 export function PipSourcePicture({
   source,
   shownAt,
+  clips,
   size,
 }: {
   source: PipSource;
   shownAt: number;
+  /** Its video's start and end points, the engine's (the box's clips, Session 53). */
+  clips: VideoClips | undefined;
   size: Size;
 }) {
   switch (source.kind) {
     case 'media':
-      return <PipMedia mediaId={source.mediaId} media={source.media} shownAt={shownAt} size={size} />;
+      return (
+        <PipMedia mediaId={source.mediaId} media={source.media} shownAt={shownAt} clips={clips} size={size} />
+      );
     case 'input':
       return <PipInputPicture inputId={source.inputId} device={source.device} shownAt={shownAt} />;
     case 'window':
@@ -294,15 +301,18 @@ function PipMedia({
   mediaId,
   media,
   shownAt,
+  clips,
   size,
 }: {
   mediaId: string;
   media: 'image' | 'video';
   shownAt: number;
+  clips: VideoClips | undefined;
   size: Size;
 }) {
   const { width, height } = size;
-  // As a slide's picture or video is drawn (its look, a node's copy, a phone's preview), filling the box.
+  // As a slide's picture or video is drawn (its look, a node's copy, a phone's preview), filling the box; a video
+  // between its file's points as a slide's is (Session 53), new ones moving it at once without a reload.
   const el = useMemo<MediaElement>(
     () => ({
       id: 'pip-media',
@@ -316,7 +326,7 @@ function PipMedia({
   );
   return (
     <div data-pip-picture="media" style={BLACK}>
-      <ElementView el={el} startedAt={shownAt} />
+      <ElementView el={el} startedAt={shownAt} clips={clips} />
     </div>
   );
 }
