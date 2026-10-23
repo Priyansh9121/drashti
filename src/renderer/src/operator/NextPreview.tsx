@@ -52,6 +52,9 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
     caption += behind
       ? `, over the video input “${next.input}”`
       : `, over the video input “${next.input}”, which is not on this computer: the background stays as it is`;
+  // Its background file missing (Session 52), said as a missing input is.
+  if (next?.kind === 'slide' && next.fileMissing !== undefined)
+    caption += `, over the file “${next.fileMissing}”, which is missing: the background stays as it is`;
   if (next?.kind === 'media') caption = `${mediaKindLabel[next.media]}: ${next.label}`;
   if (next?.kind === 'input') caption = `Video input: ${next.name}`;
   const heading = (
