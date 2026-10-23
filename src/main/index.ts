@@ -65,6 +65,7 @@ import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
 import { LATEST_VERSION, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
+import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
 import { SearchIndex } from './db/search';
@@ -1311,6 +1312,8 @@ function start(): void {
   let videoInputs: VideoInputsService | null = null;
   /** Their list changed (Session 51): playlist items and what comes next may name one that is or is not here now. */
   let inputsChanged = (): void => undefined;
+  /** One renamed (Session 52): the library's items and slides that named it take its new name (set further down). */
+  let inputRenamed = (_from: string, _to: string): void => undefined;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1372,6 +1375,9 @@ function start(): void {
     },
     refresh: (input) => {
       engine.refreshInput(input);
+    },
+    renamed: (from, to) => {
+      inputRenamed(from, to);
     },
     changed: (view) => {
       sendToPage(operatorWindow, IPC.videoInputs.changed, view);
@@ -4130,6 +4136,20 @@ function start(): void {
   // A video input added, renamed or removed in Media (Session 51): the items naming one are read again, here and
   // on the phones, marked as on this computer or not, and Next goes to it or past it.
   inputsChanged = playlistsChanged;
+  // Renamed (Session 52): the library's playlist items and slides that named it take its new name in one write, and
+  // the slides' copies kept for Undo too, before the list's change is told (inputsChanged, just above, then reads
+  // the items and what comes next again, by the new name). What is on the screens keeps playing: those slides are
+  // read again from now on, and the operator's library, the phones and the nodes hear they changed.
+  inputRenamed = (from, to) => {
+    const carried = carryInputName(libraryDb, from, to);
+    revisions.carryInput(from, to);
+    for (const id of carried.presentations) slides.invalidate(id);
+    if (carried.presentations.length > 0) libraryChanged(true);
+    if (carried.items.length + carried.cues.length > 0)
+      log.info(
+        `A renamed video input’s new name went to ${String(carried.items.length)} playlist item(s) and ${String(carried.cues.length)} slide background(s)`,
+      );
+  };
   // ---- Smart playlists (Session 26c): a playlist that follows a folder on the computer ----
   /** A test switch (never a packaged Drashti): a positive number of milliseconds, or null. */
   const smartFolders = new SmartFolders({

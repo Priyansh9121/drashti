@@ -32,6 +32,10 @@ function setup(options: { access?: CameraAccess } = {}) {
   const statuses: VideoInputStatus[] = [];
   const refreshed: VideoInput[] = [];
   const lines: string[] = [];
+  // Renames carried into the library (Session 52): each with the list's names and how many changes were told as
+  // it ran, and what the library says when it cannot be written.
+  const renames: { from: string; to: string; listed: string[]; told: number }[] = [];
+  let libraryRefuses: Error | null = null;
   let cleared = 0;
   const waits: { ms: number; run: () => void; cancelled: boolean }[] = [];
   const camera: CameraSystem = {
@@ -60,6 +64,15 @@ function setup(options: { access?: CameraAccess } = {}) {
         service?.follow();
       },
       refresh: (input) => refreshed.push(input),
+      renamed: (from, to) => {
+        renames.push({
+          from,
+          to,
+          listed: service?.view().inputs.map((i) => i.name) ?? [],
+          told: views.length,
+        });
+        if (libraryRefuses) throw libraryRefuses;
+      },
       changed: (view) => views.push(view),
       statusChanged: (status) => statuses.push(status),
       log: (_level, line) => lines.push(line),
@@ -95,6 +108,11 @@ function setup(options: { access?: CameraAccess } = {}) {
     refreshed,
     lines,
     waits,
+    renames,
+    /** The library cannot be written from now on (a full disk, say). */
+    refuseRenames: (error: Error) => {
+      libraryRefuses = error;
+    },
     up,
     cleared: () => cleared,
     takenOff: () => takenOff,
@@ -248,6 +266,55 @@ describe('this computer’s video inputs', () => {
       ok: false,
       message: 'That video input is no longer on this computer.',
     });
+  });
+});
+
+describe('a video input renamed in Media (Session 52)', () => {
+  it('the library’s items and slides that named it take its new name first, in the same change, before anyone is told', () => {
+    const { service, views, renames } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    // Not renamed: nothing to carry (another device, fit or fill, its own name again).
+    expect(service.update(one.id, { device: 'Placeholder capture', fit: 'fill' }).ok).toBe(true);
+    expect(service.update(one.id, { name: ' Placeholder input ' }).ok).toBe(true);
+    expect(renames).toEqual([]);
+    const told = views.length;
+    expect(service.update(one.id, { name: '  Placeholder camera ' }).ok).toBe(true);
+    // Its new name as kept; the list holds it already (what the library finds by it is this input), and the
+    // operator window, the playlists and what comes next hear of the change only after, with the names carried.
+    expect(renames).toEqual([
+      { from: 'Placeholder input', to: 'Placeholder camera', listed: ['Placeholder camera'], told },
+    ]);
+    expect(views).toHaveLength(told + 1);
+    // Only its letters changed: what names it says it as Media now has it.
+    expect(service.update(one.id, { name: 'PLACEHOLDER CAMERA' }).ok).toBe(true);
+    expect(renames.at(-1)).toMatchObject({ from: 'Placeholder camera', to: 'PLACEHOLDER CAMERA' });
+    // A name refused is never carried.
+    added(service.add({ ...fields, name: 'Placeholder mixer' }), 'Placeholder mixer');
+    expect(service.update(one.id, { name: 'placeholder MIXER' }).ok).toBe(false);
+    expect(renames).toHaveLength(2);
+  });
+
+  it('a library that cannot take the new name: refused, and the input keeps its name, here, on disk and on the screens', () => {
+    const { service, views, refreshed, renames, lines, make, up, refuseRenames } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    up(one);
+    const told = views.length;
+    refuseRenames(new Error('database or disk is full'));
+    expect(service.update(one.id, { name: 'Placeholder camera', fit: 'fill' })).toEqual({
+      ok: false,
+      message:
+        'The playlists and slides that name “Placeholder input” could not be changed, so it keeps its name. Try again.',
+    });
+    expect(renames).toHaveLength(1);
+    expect(service.get(one.id)).toEqual(one);
+    expect(service.named('Placeholder camera')).toBeNull();
+    // Nothing changed: the file as it was, nobody told, the screens left as they are.
+    expect(make().view()).toEqual({ inputs: [one] });
+    expect(views).toHaveLength(told);
+    expect(refreshed).toEqual([]);
+    expect(lines.at(-1)).toBe(
+      'A renamed video input’s playlist items and slides could not be changed, so it keeps its name: Error: database or disk is full',
+    );
   });
 });
 
