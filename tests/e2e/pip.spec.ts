@@ -30,9 +30,10 @@ import { makeTestVideo } from './test-media';
  * 48's stand-in, a placeholder window the test opens itself: DRASHTI_TEST_WINDOW_STANDIN), each as an output
  * draws it; Swap, Take off, Clear all and Put it back; a Look leaving the box out of the hall's group; black-out
  * and the logo over it; dragging it in LIVE; the stream's Slides layout; and the phone remote. Session 51: Swap
- * moves the main picture's own change with the box at held moments; the stream's Camera layout shows the box with
- * the hall's picture at full frame; a key and fill group leaves the box out unless its Look turns it on. Generated
- * media and placeholder words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
+ * changes the main picture in the box's time at held moments (a dissolve since Session 52, nothing on the main
+ * picture growing or shrinking as the box does); the stream's Camera layout shows the box with the hall's picture
+ * at full frame; a key and fill group leaves the box out unless its Look turns it on. Generated media and
+ * placeholder words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
  */
 
 const WINDOWED = { DRASHTI_WINDOWED_OUTPUTS: '1' };
@@ -57,30 +58,36 @@ const PLACE: PipPlace = {
 /**
  * What a screen draws of the box: whether it is up (and swapped) on the scene, the box's own marks and how it
  * is drawn now, the pictures drawn on the main picture and in the box (not those ready unseen for a swap), and
- * the main picture's own picture moving with the box in a swap (Session 51), drawn or not.
+ * in a swap the main picture's two pictures as they dissolve (Session 52), the one coming in and the one going
+ * out, with how many of the main picture's pictures are moved or scaled (none, whatever the box's motion).
  */
 function drawn(page: Page) {
   return page.evaluate(() => {
     const scene = document.querySelector<HTMLElement>('[data-testid="scene"]');
     const box = document.querySelector<HTMLElement>('[data-testid="pip-box"]');
-    const moving = document.querySelector<HTMLElement>('[data-pip-main][data-pip-moving]');
+    const main = [...document.querySelectorAll<HTMLElement>('[data-pip-main]')];
     const shown = (els: Iterable<HTMLElement>, key: string) =>
       [...els].filter((e) => e.dataset['pipReady'] === undefined).map((e) => e.dataset[key] ?? '');
+    const dissolving = (way: 'in' | 'out') => {
+      const el = main.find((e) => e.dataset['pipDissolve'] === way);
+      return el
+        ? {
+            picture: el.dataset['pipMain'] ?? '',
+            shown: el.dataset['pipReady'] === undefined,
+            at: el.dataset['pipAt'] ?? '',
+            opacity: el.style.opacity,
+            // The upper of the two added light for light over the other ('plus-lighter'), the other as usual.
+            blend: el.style.mixBlendMode,
+          }
+        : null;
+    };
     return {
       canvas: scene?.dataset['canvas'] ?? '',
       pip: scene?.dataset['pip'] ?? '',
-      main: shown(document.querySelectorAll<HTMLElement>('[data-pip-main]'), 'pipMain'),
-      moving: moving
-        ? {
-            picture: moving.dataset['pipMain'] ?? '',
-            shown: moving.dataset['pipReady'] === undefined,
-            at: moving.dataset['pipAt'] ?? '',
-            opacity: moving.style.opacity,
-            transform: moving.style.transform,
-            // Whole on the screen's black as it moves.
-            base: moving.querySelector(':scope > [data-pip-base]') !== null,
-          }
-        : null,
+      main: shown(main, 'pipMain'),
+      coming: dissolving('in'),
+      going: dissolving('out'),
+      moved: main.filter((e) => getComputedStyle(e).transform !== 'none').length,
       inBox: box ? shown(box.querySelectorAll<HTMLElement>('[data-pip-slot]'), 'pipSlot') : [],
       box: box
         ? {
@@ -92,12 +99,20 @@ function drawn(page: Page) {
             size: box.dataset['pipSize'] ?? '',
             rect: box.dataset['pipRect'] ?? '',
             opacity: box.style.opacity,
+            transform: box.style.transform,
             border: box.querySelector('[data-pip-border]') !== null,
           }
         : null,
     };
   });
 }
+
+/** A picture's opacity as drawn: '' is whole. */
+const opacityOf = (style: string): number => (style === '' ? 1 : Number(style));
+
+/** The main picture's two pictures' opacities while they dissolve, added up: 1 where nothing dips. */
+const together = (d: Awaited<ReturnType<typeof drawn>>): number =>
+  opacityOf(d.coming?.opacity ?? '') + opacityOf(d.going?.opacity ?? '');
 
 /** Where the box should be on a screen of this canvas ("1920x1080"), as its marks write it. */
 function rectOn(canvas: string, place: PipPlace): string {
@@ -134,7 +149,7 @@ async function upWithBackdrop(win: Page, backdrop: string, slides: string): Prom
   await goLive(win, slides, 0);
 }
 
-test('the slides in the box from Picture in Picture…: the background alone on the main picture, the slide small in its corner; Swap, the slide moving in and out with the box; Take off, Clear all and Put it back', async () => {
+test('the slides in the box from Picture in Picture…: the background alone on the main picture, the slide small in its corner; Swap, the main picture dissolving in the box’s time as the box scales; Take off, Clear all and Put it back', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...WINDOWED, DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
@@ -160,14 +175,14 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await expect(dialog.getByTestId('pip-kind-slides')).toHaveAttribute('aria-checked', 'true');
   await dialog.getByTestId('pip-corner-top-left').click();
   await dialog.getByTestId('pip-size-small').click();
-  await dialog.getByTestId('pip-motion-fade').click();
+  await dialog.getByTestId('pip-motion-scale').click();
   expect(await pipNow(win)).toBeNull();
   // The library remembers where the box goes, for next time.
   await expect
     .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.pip.place()))
-    .toMatchObject({ corner: 'top-left', size: 'small', motion: 'fade' });
+    .toMatchObject({ corner: 'top-left', size: 'small', motion: 'scale' });
 
-  // In: from when it went up, fading, the same on every screen (held at a moment part-way).
+  // In: from when it went up, growing as it fades in, the same on every screen (held at a moment part-way).
   await heldChange(app, () => dialog.getByTestId('pip-show').click());
   await expect(dialog).toHaveCount(0);
   const box = await pipNow(win);
@@ -214,17 +229,18 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await goLive(win, slides, 1);
   await expect(hall.getByTestId('pip-box')).toHaveCount(1);
 
-  // Swap, under LIVE: the box goes out and comes in again, its pictures changing places at its middle, out of
-  // sight, those for after it ready unseen. The main picture's own change moves with it (Session 51), the same
-  // move at the same moment, never a cut at the middle: here the slide comes in whole, on black, over the
-  // background as the box comes in again (a Fade, Calm: 250 ms out, then 250 ms in).
+  // Swap, under LIVE: the box goes out and comes in again (a Scale, Calm: 250 ms shrinking out, then 250 ms
+  // growing in), its pictures changing places at its middle, out of sight, those for after it ready unseen. The
+  // main picture dissolves in the box's time (Session 52), never a cut and never black: here the background goes
+  // as the slide comes in over it while the box comes in again, the slide added light for light, the two adding
+  // up at every moment; nothing on the main picture grows or shrinks as the box does.
   const moment = async (at: number, t: number) => {
     await holdClock(app, at + t);
-    // Drawn at the moment held: the box, and the main picture's moving picture when there is one.
+    // Drawn at the moment held: the box, and the main picture's two pictures while they dissolve.
     await expect
       .poll(async () => {
         const d = await drawn(hall);
-        return d.box?.at === String(t) && (d.moving === null || d.moving.at === String(t));
+        return d.box?.at === String(t) && [d.coming, d.going].every((p) => p === null || p.at === String(t));
       })
       .toBe(true);
     return drawn(hall);
@@ -232,64 +248,92 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await heldChange(app, () => win.getByTestId('live-pip-swap').click());
   await expect.poll(async () => (await pipNow(win))?.swapped).toBe(true);
   const changedAt = (await pipNow(win))?.changed?.at ?? 0;
-  expect(await moment(changedAt, 100)).toMatchObject({
+  // The box going out, shrinking: the main picture as it was, the slide ready unseen, nothing on it scaled.
+  const out = await moment(changedAt, 100);
+  expect(out).toMatchObject({
     main: ['background'],
     inBox: ['slide'],
     box: { phase: 'swap', swapped: 'false' },
-    moving: { picture: 'slide', shown: false },
+    coming: null,
+    going: null,
+    moved: 0,
   });
+  expect(out.box?.transform).toContain('scale(');
   await expect(hall.locator('[data-pip-main="slide"][data-pip-ready]')).toHaveCount(1);
   await expect(
     hall.locator('[data-testid="pip-box"] [data-pip-slot="background"][data-pip-ready]'),
   ).toHaveCount(1);
-  // Just past the middle: the box's pictures have changed places unseen; the slide is only starting to come in,
-  // the background whole under it.
+  // Just past the middle: the box's pictures have changed places unseen; the slide is only starting to come in
+  // over the background, which is all but whole, the two adding up.
   const middle = await moment(changedAt, 251);
   expect(middle).toMatchObject({
     main: ['background', 'slide'],
     inBox: ['background'],
     box: { phase: 'swap', swapped: 'true' },
-    moving: { picture: 'slide', shown: true, base: true },
+    coming: { picture: 'slide', shown: true, blend: 'plus-lighter' },
+    going: { picture: 'background', shown: true, blend: '' },
+    moved: 0,
   });
-  expect(Number(middle.moving?.opacity)).toBeLessThan(0.01);
-  // Half way through the in: the slide half in over the background, as the box is.
+  expect(opacityOf(middle.coming?.opacity ?? '')).toBeLessThan(0.01);
+  expect(together(middle)).toBeCloseTo(1, 4);
+  // Half way through the in: the slide half in as the background half goes, as the box is half in (Calm moves
+  // both on smoothstep), the box growing while nothing on the main picture does.
   const halfIn = await moment(changedAt, 375);
-  expect(halfIn).toMatchObject({ main: ['background', 'slide'], moving: { picture: 'slide', base: true } });
-  expect(Number(halfIn.moving?.opacity)).toBeCloseTo(0.5, 2);
-  expect(halfIn.moving?.opacity).toBe(halfIn.box?.opacity);
+  expect(halfIn).toMatchObject({
+    main: ['background', 'slide'],
+    coming: { picture: 'slide' },
+    going: { picture: 'background' },
+    moved: 0,
+  });
+  expect(opacityOf(halfIn.coming?.opacity ?? '')).toBeCloseTo(0.5, 2);
+  expect(together(halfIn)).toBeCloseTo(1, 4);
+  expect(halfIn.coming?.opacity).toBe(halfIn.box?.opacity);
+  expect(halfIn.box?.transform).toContain('scale(');
   await holdClock(app, changedAt + 3000);
   await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
   expect(await drawn(hall)).toMatchObject({
     pip: 'swapped',
     main: ['slide'],
     inBox: ['background'],
-    moving: null,
+    coming: null,
+    going: null,
+    moved: 0,
   });
   await expect(win.getByTestId('live-pip')).toContainText('swapped');
-  // Swapped back: the slide goes out over the background as the box goes out, then comes in again in the box.
-  // A Swap pressed while one still runs changes nothing (Session 51): the first one is over by the engine's own
-  // clock first, which ran on while the screens were held.
+  // Swapped back: the slide goes from over the background as the background comes, while the box goes out, then
+  // comes in again in the box. A Swap pressed while one still runs changes nothing (Session 51): the first one is
+  // over by the engine's own clock first, which ran on while the screens were held.
   await expect.poll(() => Date.now() - changedAt).toBeGreaterThanOrEqual(pipSwapMs([]));
   await heldChange(app, () => win.getByTestId('live-pip-swap').click());
   await expect.poll(async () => (await pipNow(win))?.swapped).toBe(false);
   const backAt = (await pipNow(win))?.changed?.at ?? 0;
-  const going = await moment(backAt, 125);
-  expect(going).toMatchObject({
+  const back = await moment(backAt, 125);
+  expect(back).toMatchObject({
     main: ['background', 'slide'],
     inBox: ['background'],
     box: { phase: 'swap', swapped: 'true' },
-    moving: { picture: 'slide', shown: true, base: true },
+    coming: { picture: 'background', shown: true, blend: '' },
+    going: { picture: 'slide', shown: true, blend: 'plus-lighter' },
+    moved: 0,
   });
-  expect(Number(going.moving?.opacity)).toBeCloseTo(0.5, 2);
-  expect(going.moving?.opacity).toBe(going.box?.opacity);
-  expect(await moment(backAt, 300)).toMatchObject({ main: ['background'], inBox: ['slide'], moving: null });
+  expect(opacityOf(back.going?.opacity ?? '')).toBeCloseTo(0.5, 2);
+  expect(together(back)).toBeCloseTo(1, 4);
+  expect(back.going?.opacity).toBe(back.box?.opacity);
+  expect(await moment(backAt, 300)).toMatchObject({
+    main: ['background'],
+    inBox: ['slide'],
+    coming: null,
+    going: null,
+    moved: 0,
+  });
   await holdClock(app, backAt + 3000);
   await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
   expect(await drawn(hall)).toMatchObject({
     pip: 'up',
     main: ['background'],
     inBox: ['slide'],
-    moving: null,
+    coming: null,
+    going: null,
   });
   await holdClock(app, null);
 
