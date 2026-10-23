@@ -176,10 +176,12 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/music/previous', 'command', command('musicPrevious')),
   route('GET', '/api/v1/shastra', 'shastra.texts'),
   route('POST', '/api/v1/shastra', 'shastra', (b) => ({ reference: b['reference'] })),
-  // Next with the revision it saw, when it says (Sessions 31–36, TST-11): nothing when the show has moved since.
+  // Next with the revision it saw, when it says (Sessions 31–36, TST-11): nothing when the show has moved since;
+  // with the run that revision is from, nothing in another run either (Session 53: Drashti restarted since).
   route('POST', '/api/v1/trigger/next', 'command', (b) => ({
     type: 'next',
     ...(b['rev'] !== undefined ? { rev: b['rev'] } : {}),
+    ...(b['session'] !== undefined ? { session: b['session'] } : {}),
   })),
   route('POST', '/api/v1/trigger/back', 'command', command('back')),
   route('POST', '/api/v1/trigger/previous', 'command', command('previous')),
@@ -588,7 +590,13 @@ export class NetworkServer {
         return;
       }
       if (r.op === 'state') {
-        this.json(res, 200, { ok: true, rev: this.mirror.rev, state: this.mirror.state });
+        // With the run its revision is from (Session 53), as the feed's snapshot says it.
+        this.json(res, 200, {
+          ok: true,
+          rev: this.mirror.rev,
+          session: this.mirror.session,
+          state: this.mirror.state,
+        });
         return;
       }
       if (r.op === 'preview') {
@@ -770,6 +778,9 @@ export class NetworkServer {
         rev: this.mirror.rev,
         state,
         sentAt: Date.now(),
+        // The run it is from (Session 53), as the engine's own pages and a node's link have it: a page left open
+        // while Drashti restarted takes the new run's state at once, though its revisions started again from 0.
+        session: this.mirror.session,
       },
     });
   }

@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import type { EngineMessage } from '../../shared/engine/protocol';
+import { EngineMirror } from '../../shared/engine/mirror';
+import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import type { ToDevice } from '../../shared/network';
 import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
@@ -456,6 +457,61 @@ describe('the network server', () => {
     expect(await closed).toBe(4000);
     expect(messages.at(-1)).toEqual({ type: 'bye', reason: 'revoked' });
     await until(() => host.connectedNow.length === 0);
+  });
+
+  // Session 53: each run of the engine (Drashti started again after a crash or an update) counts its revisions from
+  // 0 again. To a phone's or tablet's page left open over the restart, a snapshot that did not say its run was old
+  // news: the page kept the last run's picture, and its Next, sent with the last run's revision, did nothing.
+  it('says which run of the engine each snapshot is from: a page left open over a restart follows the new run', async () => {
+    const { port, server: s, host } = await start();
+    const run = (rev: number, session: string, blackout: boolean): EngineSnapshotMessage => ({
+      kind: 'snapshot',
+      version: ENGINE_STATE_VERSION,
+      rev,
+      state: { ...initialEngineState(), blackout },
+      sentAt: Date.now(),
+      session,
+    });
+    // The page's copy, as a phone keeps it (web/feed.ts, engine/engine-store.ts).
+    const page = new EngineMirror();
+    const follow = async () => {
+      const f = await feed(port);
+      f.ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN }));
+      await until(() => f.messages.some((m) => m.type === 'engine'));
+      const first = f.messages.find((m) => m.type === 'engine');
+      return { ...f, first, result: first?.type === 'engine' ? page.apply(first.message) : null };
+    };
+    s.engine(run(57, 'run-1', false));
+    const before = await follow();
+    expect(before.result).toBe('applied');
+    before.ws.close();
+    // Drashti starts again: the new run's state, a few revisions in; the page connects again by itself.
+    s.engine(run(3, 'run-2', true));
+    const after = await follow();
+    expect(after.result).toBe('applied');
+    expect({ rev: page.rev, session: page.session, blackout: page.state?.blackout }).toEqual({
+      rev: 3,
+      session: 'run-2',
+      blackout: true,
+    });
+    expect(before.first).toMatchObject({ message: { kind: 'snapshot', rev: 57, session: 'run-1' } });
+    expect(after.first).toMatchObject({ message: { kind: 'snapshot', rev: 3, session: 'run-2' } });
+    // The whole state asked for again (a revision went missing) says its run too, and so does the API's state.
+    after.ws.send(JSON.stringify({ type: 'resync' }));
+    await until(() => after.messages.filter((m) => m.type === 'engine').length === 2);
+    expect(after.messages.filter((m) => m.type === 'engine').at(-1)).toMatchObject({
+      message: { kind: 'snapshot', rev: 3, session: 'run-2' },
+    });
+    const state = await call(port, '/api/v1/state', { headers: bearer(STAGE_TOKEN) });
+    expect(JSON.parse(state.body)).toMatchObject({ ok: true, rev: 3, session: 'run-2' });
+    // A phone's Next says the run it saw with the revision: both reach the main process.
+    await call(port, '/api/v1/trigger/next', {
+      method: 'POST',
+      headers: { ...bearer(REMOTE_TOKEN), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rev: 3, session: 'run-2' }),
+    });
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'next', rev: 3, session: 'run-2' });
+    after.ws.close();
   });
 
   it('closes a feed that does not say hello with a token, and one from a device that may not watch', async () => {
