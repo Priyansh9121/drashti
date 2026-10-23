@@ -2,6 +2,7 @@ import { type Page, expect, test } from '@playwright/test';
 import type { EngineCommand } from '../../src/shared/engine/commands';
 import type { NewItem } from '../../src/shared/playlists';
 import { expectNoSeriousA11yIssues, settled } from './a11y';
+import { expectFits } from './fit';
 import {
   closeLibrary,
   launchApp,
@@ -12,13 +13,15 @@ import {
   type PageGlobals,
   setUpScreen,
 } from './helpers';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
  * A video input as a playlist item and as a slide's background cue (Session 51). Chromium's fake camera
  * (DRASHTI_TEST_FAKE_DEVICES: a moving test pattern named "fake_device_0") stands in for the input, named
  * "Placeholder input": never a real camera's picture. An input another computer has and this one does not is an
  * input added, used, then removed from Media: the playlist and the slide still name it. Renamed in Media (Session
- * 52), it is "Placeholder camera", and the playlist and the slide name it so.
+ * 52), it is "Placeholder camera", and the playlist and the slide name it so; its Change dialog says they will,
+ * and that the spare computer's input needs the new name too (Session 53).
  */
 
 const FAKE = { DRASHTI_TEST_FAKE_DEVICES: '1' };
@@ -27,6 +30,9 @@ const RENAMED = 'Placeholder camera';
 /** Chromium's fake camera, as the computer names it. */
 const DEVICE = 'fake_device_0';
 const LIVE = '[data-testid="live-preview"]';
+/** What changing an input says a new name does (Session 53). */
+const RENAMING =
+  'Renaming it takes this computer’s playlist items and slides that use it to the new name. The spare computer’s input needs the same new name.';
 
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
@@ -303,7 +309,7 @@ test('an input this computer does not have: its item and slide say so plainly, n
   await app.close();
 });
 
-test('renaming an input in Media carries its playlist item and the slide naming it to the new name: neither says Not on this computer, Next puts it up by it, and the input up plays on (Session 52)', async () => {
+test('renaming an input in Media carries its playlist item and the slide naming it to the new name: neither says Not on this computer, Next puts it up by it, and the input up plays on (Session 52); the Change dialog says so before a name is typed, fitting 1024 × 645 (Session 53)', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ ...FAKE, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
@@ -331,15 +337,38 @@ test('renaming an input in Media carries its playlist item and the slide naming 
   const up = (await state(win)).layers.background;
   if (up?.kind !== 'input') throw new Error('the input expected up');
 
-  // Renamed in Media: Change on its row, a new name, Save.
+  // Renamed in Media: Change on its row, a new name, Save. In CI's window, 1024 × 645 (Session 53).
+  await sizeOperatorWindow(app, win, CI_WINDOW);
   const sheet = await openLibrary(win);
   await sheet.getByTestId('library-tab-media').click();
   const row = sheet.getByTestId('video-input-row').and(sheet.locator(`[data-name="${INPUT}"]`));
   await row.getByTestId('video-input-change').click();
   const dialog = win.getByTestId('video-input-dialog');
   await expect(dialog.getByTestId('video-input-name')).toHaveValue(INPUT);
+  await expect(
+    dialog.getByTestId('video-input-device').and(dialog.locator(`[data-name="${DEVICE}"]`)),
+  ).toBeVisible({ timeout: 15_000 });
+  // It says what a new name does from the start, before one is typed (Session 53), in a muted line.
+  const renaming = dialog.getByTestId('video-input-renaming');
+  await expect(renaming).toHaveText(RENAMING);
+  await settled(win);
+  const height = () => dialog.evaluate((d) => d.getBoundingClientRect().height);
+  const before = await height();
   await dialog.getByTestId('video-input-name').fill(RENAMED);
   await expect(dialog.getByTestId('video-input-save')).toBeEnabled({ timeout: 15_000 });
+  // The same once the name differs, so the dialog never grows as it is typed; it fits CI's window, the line and
+  // its buttons in reach.
+  await expect(renaming).toHaveText(RENAMING);
+  expect(await height()).toBe(before);
+  await expectFits(dialog, 'Change “Placeholder input” at 1024 × 645');
+  await expect(renaming).toBeInViewport();
+  const buttons = [dialog.getByRole('button', { name: 'Cancel' }), dialog.getByTestId('video-input-save')];
+  for (const button of buttons) await button.click({ trial: true });
+  await expectNoSeriousA11yIssues(
+    win,
+    'Change a video input, a new name typed',
+    '[data-testid="video-input-dialog"]',
+  );
   await dialog.getByTestId('video-input-save').click();
   await expect(dialog).toHaveCount(0);
   await expect(
