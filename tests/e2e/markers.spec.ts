@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -24,7 +24,8 @@ import { makeTestVideo } from './test-media';
  * marker, set from its Markers button in the media list; as a background it
  * loops between its points, and a jump to the marker from under the live
  * picture lands in step on two output windows and the audio player (which
- * plays its sound). A generated video with a tone only.
+ * plays its sound). Since Session 52 a video on a slide loops between its points
+ * too. A generated video with a tone only.
  */
 
 async function audioPage(app: ElectronApplication): Promise<Page> {
@@ -346,6 +347,119 @@ test('a file played once stops at its end point, within two frames, on two scree
       2 * FRAME_60,
     );
     expect(w.furthest ?? Infinity, `${c.name} never plays past it`).toBeLessThanOrEqual(END + 2 * FRAME_60);
+  }
+  await app.close();
+});
+
+test('a video on a slide loops between its file’s start and end points, in step on two screens and the audio player (Session 52)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-slide-points-e2e-'));
+  const video = await makeTestVideo(win, join(dir, 'Placeholder slide points clip.webm'), {
+    seconds: 8,
+    hue: 280,
+    tone: 330,
+  });
+  const [mediaId = ''] = await importAndGetIds(win, [video]);
+  const words = join(dir, 'Placeholder Slide Points.txt');
+  writeFileSync(words, '[Verse]\nPlaceholder words over a video\n');
+  const [presentationId = ''] = await importAndGetIds(win, [words]);
+  // Its start and end points, as Media's Markers keeps them: it plays between 0:02 and 0:06.
+  const set = await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.media.setMarkers(id, { startMs: 2000, endMs: 6000, markers: [] }),
+    mediaId,
+  );
+  expect(set.ok).toBe(true);
+  // The slide's own video, looping (not a background: it goes and comes with the slide).
+  await win.evaluate(
+    async ({ presentationId, mediaId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const opened = await d.library.slidesForEdit(presentationId);
+      if (!opened.ok) throw new Error(opened.message);
+      const slide = opened.doc.groups[0]?.slides[0];
+      if (!slide) throw new Error('The presentation has no slide.');
+      slide.elements = [
+        {
+          id: 'placeholder-slide-video',
+          kind: 'video',
+          mediaId,
+          frame: { x: 0, y: 0, width: 1920, height: 1080 },
+          fit: 'fit',
+          loop: true,
+        },
+        ...slide.elements,
+      ];
+      const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { presentationId, mediaId },
+  );
+  await setUpScreen(win, 'Main Hall', 0);
+  await setUpScreen(win, 'Overflow', 1);
+  await expect.poll(() => outputPages(app).length).toBe(2);
+  const [a, b] = outputPages(app) as [Page, Page];
+  for (const o of [a, b]) await outputReady(o);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      }),
+    presentationId,
+  );
+  const picture = `[data-layer="slide"] video[data-media-id="${mediaId}"]`;
+  const sound = `audio[data-key^="slide:"][data-media-id="${mediaId}"]`;
+  const audio = await audioPage(app);
+  const copies = [
+    { name: 'the first screen', page: a, selector: picture },
+    { name: 'the second screen', page: b, selector: picture },
+    { name: 'the audio player', page: audio, selector: sound },
+  ];
+  for (const c of copies)
+    await expect
+      .poll(
+        () =>
+          c.page.evaluate((s) => !(document.querySelector<HTMLMediaElement>(s)?.paused ?? true), c.selector),
+        { message: `${c.name} plays it` },
+      )
+      .toBe(true);
+  // Between its points only, going round: never before 0:02 or (much) after 0:06. Before, it played the whole file.
+  const seen = await positions(a, picture, 6000);
+  expect(seen.length).toBeGreaterThan(20);
+  expect(Math.min(...seen)).toBeGreaterThan(1.8);
+  expect(Math.max(...seen)).toBeLessThan(6.35);
+  expect(seen.some((p, i) => i > 0 && p < (seen[i - 1] ?? 0) - 2)).toBe(true);
+  // The points come from the engine (the slide layer's clips), from when the slide went up.
+  const slide = await win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide,
+  );
+  const clip = slide?.clips?.[mediaId];
+  expect(clip).toEqual({ startMs: 2000, endMs: 6000 });
+  if (!slide || !clip) throw new Error('The slide has no points.');
+  const t: Timing = { startedAt: slide.shownAt, clip };
+  // The two screens within two frames of each other, the sound near them, each near the clock.
+  const end = Date.now() + 15_000;
+  const looks: string[] = [];
+  for (;;) {
+    const [pa, pb, heard] = await Promise.all(copies.map((c) => offsetOf(c.page, c.selector, t)));
+    looks.push([pa, pb, heard].map((o) => (o == null ? 'none' : o.toFixed(3))).join(' '));
+    if (
+      pa != null &&
+      pb != null &&
+      heard != null &&
+      [pa, pb, heard].every((o) => Math.abs(o) < 0.25) &&
+      Math.abs(pa - pb) < 2 * FRAME &&
+      Math.abs(heard - (pa + pb) / 2) < SOUND_MARGIN
+    )
+      break;
+    if (Date.now() > end)
+      throw new Error(
+        `Not in step after 15 s. Offsets (screen, screen, sound), each look:\n${looks.join('\n')}`,
+      );
   }
   await app.close();
 });
