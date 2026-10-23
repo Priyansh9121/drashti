@@ -485,6 +485,9 @@ export const Scene = memo(function Scene({
   const upRun = up !== null && run.layer === up ? run : null;
   const main = pipMainPlaces(up?.source.kind ?? null, upRun, up?.swapped ?? false);
   const swap = { run: upRun, canvas };
+  // While it dissolves, the main picture's pictures blend with each other only, in a group of their own, then go
+  // over the screen's black as one, as a slide's dissolve does.
+  const dissolving = main.some((s) => s.adds === true);
   const slotOf = (picture: PipPicture) => main.find((s) => s.picture === picture);
   /** One of the screen's pictures in the box, at the box's size: the slide there as designed, made small. */
   const inBox = (picture: PipPicture, size: Size): ReactNode => {
@@ -525,7 +528,7 @@ export const Scene = memo(function Scene({
         <div data-matte={matte ?? undefined} data-off={off ? 'true' : undefined} style={content}>
           {!off && (
             <>
-              <div style={FULL}>
+              <div style={{ ...FULL, isolation: dissolving ? 'isolate' : undefined }}>
                 <MainSlot slot={slotOf('background')} swap={swap}>
                   <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
                 </MainSlot>

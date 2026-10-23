@@ -439,14 +439,14 @@ export function pipPlaces(
 // ---- the main picture in a swap (Session 51; a dissolve since Session 52) -------------------------------------
 
 /**
- * What the main picture does in a swap (Session 52): of what it shows before and after, the one picture that
- * changes (the box's own, or the slide for a box of the slides; never the background, which lies under both) goes
- * as the one replacing it comes, a dissolve, while the box makes its own move. It dissolves in the half of the
- * swap in which the box moves the same way: a picture coming over the one it replaces comes in as the box comes in
- * again (the second half); one going from over the picture replacing it goes as the box goes out (the first).
+ * What the main picture does in a swap (Session 52): the background and the box's own picture (or, for a box of
+ * the slides, the slide) change places there, the one going as the other comes, a dissolve, while the box makes
+ * its own move; a slide over both (anything but the slides in the box) stays whole. It dissolves in the half of
+ * the swap in which the box moves the same way: the box's own picture (or the slide), which lies over the
+ * background, comes in as the box comes in again (the second half) and goes as the box goes out (the first).
  * Only opacity changes, as every picture only dissolves (docs/design.md §40), so a darshan picture stays whole:
- * none on the main picture shrinks, grows or slides, whatever the box's motion. Session 51 gave it the box's own
- * move, whole on the screen's black.
+ * none on the main picture shrinks, grows or slides, whatever the box's motion. Session 51 gave the box's own
+ * picture (or the slide) the box's own move, whole on the screen's black, the background staying whole under it.
  */
 export interface PipMainDissolve {
   going: PipPicture;
