@@ -60,9 +60,11 @@ export interface VideoInputsDeps {
   /**
    * An input renamed (Session 52): the library's playlist items and slides' background cues that named it by its
    * old name take its new one (../db/input-renames.ts), once the list has its new name and before anyone is told
-   * of the change. Throws when the library cannot be written (nothing in it changed then): the rename is refused.
+   * of the change. Throws only when the library cannot be written (nothing in it changed then): the rename is
+   * refused. Once it returns, the library has the new name and the rename stands: what it returns is run straight
+   * after, for the rest of Drashti to hear of it, and a failure there is only logged.
    */
-  renamed(from: string, to: string): void;
+  renamed(from: string, to: string): () => void;
   /** The operator window is told of every change to the list. */
   changed(view: VideoInputsView): void;
   /** And of every change to how the input up now stands. */
@@ -403,8 +405,7 @@ export class VideoInputsService {
 
   /**
    * Keep the list on disk, then tell the operator window; why not, when it could not be written. Renamed (Session
-   * 52), the library's names are carried once the list is kept and before anyone is told; when the library cannot
-   * take them, the list is put back as it was, on disk too.
+   * 52), the library's names are carried once the list is kept and before anyone is told (carry).
    */
   private keep(inputs: VideoInput[], renamed?: { from: string; to: string }): VideoInputResult | null {
     try {
@@ -416,26 +417,48 @@ export class VideoInputsService {
     const before = this.inputs;
     this.inputs = inputs;
     if (renamed) {
-      try {
-        this.deps.renamed(renamed.from, renamed.to);
-      } catch (error) {
-        this.inputs = before;
-        this.deps.log(
-          'warn',
-          `A renamed video input’s playlist items and slides could not be changed, so it keeps its name: ${String(error)}`,
-        );
-        try {
-          writeVideoInputs(this.deps.userData, before);
-        } catch (again) {
-          this.deps.log('warn', `The video inputs could not be put back as they were: ${String(again)}`);
-        }
-        return {
-          ok: false,
-          message: `The playlists and slides that name “${renamed.from}” could not be changed, so it keeps its name. Try again.`,
-        };
-      }
+      const refused = this.carry(renamed, before);
+      if (refused) return refused;
     }
     this.deps.changed(this.view());
+    return null;
+  }
+
+  /**
+   * A rename's names carried in the library (Session 52), the list holding the new name already. Only the library's
+   * write can refuse it: then the list is put back as it was, on disk too, and its words say why. Once the library
+   * has the new name the rename stands, whatever happens as the rest of Drashti hears of it (only logged): undoing it
+   * then would leave the library naming an input this computer no longer has, every item and slide that named it
+   * Not on this computer.
+   */
+  private carry(renamed: { from: string; to: string }, before: VideoInput[]): VideoInputResult | null {
+    let heard: () => void;
+    try {
+      heard = this.deps.renamed(renamed.from, renamed.to);
+    } catch (error) {
+      this.inputs = before;
+      this.deps.log(
+        'warn',
+        `A renamed video input’s playlist items and slides could not be changed, so it keeps its name: ${String(error)}`,
+      );
+      try {
+        writeVideoInputs(this.deps.userData, before);
+      } catch (again) {
+        this.deps.log('warn', `The video inputs could not be put back as they were: ${String(again)}`);
+      }
+      return {
+        ok: false,
+        message: `The playlists and slides that name “${renamed.from}” could not be changed, so it keeps its name. Try again.`,
+      };
+    }
+    try {
+      heard();
+    } catch (error) {
+      this.deps.log(
+        'warn',
+        `A renamed video input’s playlist items and slides took its new name, but not everything heard of it: ${String(error)}`,
+      );
+    }
     return null;
   }
 
