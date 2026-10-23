@@ -9,10 +9,11 @@ import { startPlayback } from './playback';
  * loops goes round in step, and a sound that starts late is brought into step
  * at once (Sessions 31–36). A sound the engine sends somewhere new (a skip or a
  * jump to a marker) lands in step there, and is aimed again if it lands off
- * (Session 51), and so does a screen's picture (Session 52). A stand-in media
- * element plays on the test's clock (fake timers drive Date.now,
- * performance.now and the timers alike); at its own end it pauses and is
- * `ended`, as a real one is (Session 51).
+ * (Session 51), and so does a screen's picture (Session 52). The first jump
+ * of either, aimed again, lands in step, not as far ahead as it landed behind
+ * (Session 52). A stand-in media element plays on the test's clock (fake
+ * timers drive Date.now, performance.now and the timers alike); at its own
+ * end it pauses and is `ended`, as a real one is (Session 51).
  */
 
 const FRAME = 1 / 60;
@@ -404,6 +405,25 @@ describe('a file that loops, and a sound that starts late', () => {
     stop();
   });
 
+  it('a sound that starts 0.3 s late, its seeks taking 0.1 s, is aimed again into step: not as far ahead as its first jump landed behind', () => {
+    // Session 52: the first jump that put it right, aimed by nothing learned yet, landed a seek's time behind, and
+    // that time was learned twice, as the seek's own and as how far off it then played: aimed again, it landed as
+    // far ahead, with both its re-aims used, and was left to come back at 2% a second (0.09 s took 4.5 s).
+    const v = new FakeMedia(30, { startLate: 300, seekMs: 100 });
+    const startedAt = Date.now();
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'late-slow-seeks',
+      startedAt,
+      audible: true,
+      limits: SOUND_LIMITS,
+      timing: () => ({ loop: false }),
+    });
+    runFor(v, 1500);
+    const off = offset(v, startedAt, 30, false);
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock`).toBeLessThan(2 / 30);
+    stop();
+  });
+
   it('a loop to the file’s own end whose turn round comes late plays on from its start at once, not a check later', () => {
     // Session 51: with start and end points the element's own loop is off, so a turn round held up past the
     // file's own end (a busy moment) found it stopped there, and its jump left it paused until the next check:
@@ -595,6 +615,30 @@ describe('a sound or a picture the engine sends somewhere new: a skip or a jump 
         Math.abs(off),
         `${kind.what}: ${off.toFixed(3)} s off the clock a second after the jump`,
       ).toBeLessThan(IN_STEP);
+      s.stop();
+    }
+  });
+
+  it('the first jump, aimed again, lands in step: not as far ahead as it landed behind (Session 52)', () => {
+    // Its seeks take 0.1 s to land. Aimed by nothing learned yet, the first jump lands a seek's time behind, and that
+    // time was learned twice, as the seek's own and as how far off it then played: aimed again, it landed about as
+    // far ahead (0.09 s), and only the third landing was in step.
+    for (const kind of KINDS) {
+      const v = new FakeMedia(40, { seekMs: 100 });
+      const s = played(v, kind);
+      runFor(v, 2000);
+      // Where each landing puts it, the moment it lands.
+      const landings: number[] = [];
+      v.addEventListener('seeked', () => landings.push(s.offset()));
+      s.jumpTo(20_000);
+      runFor(v, 2000);
+      const seen = `${kind.what}: offsets as each landed: ${landings.map((o) => o.toFixed(3)).join(' ')}`;
+      expect(landings[0], seen).toBeCloseTo(-0.1, 2);
+      expect(landings.length, seen).toBeGreaterThan(1);
+      expect(
+        landings.slice(1).every((o) => Math.abs(o) < IN_STEP),
+        seen,
+      ).toBe(true);
       s.stop();
     }
   });

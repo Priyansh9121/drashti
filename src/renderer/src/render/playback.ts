@@ -91,6 +91,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   // 31–36: a video's first loop, aimed by nothing learned yet, came round 0.16 s late).
   let settleLead = 0;
   let settleFrom = 0;
+  // How far ahead the last jump was aimed (Session 52): that, less how far off it is once it has played on, is
+  // the lead the jump needed (the seek's own time and the rest).
+  let aimed = 0;
   // Its start, once it plays (Sessions 31–36): a moment later, where it plays says whether it began in step
   // (a busy computer's sound device starts late). Not learned from: a jump lands as jumps do.
   let startFrom = 0;
@@ -104,7 +107,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   const jump = (to: number) => {
     // eslint-disable-next-line no-restricted-properties -- a length of time: when this seek began, to see how long it takes to land
     seekFrom = performance.now();
-    v.currentTime = to + lead();
+    aimed = lead();
+    v.currentTime = to + aimed;
   };
   const landed = () => {
     if (seekFrom > 0) {
@@ -224,7 +228,12 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     let measured: number | null = null;
     if (settleFrom > 0 && (correction.seek || now - settleFrom >= SETTLE_MS)) {
       settleFrom = 0;
-      settleLead = Math.min(0.5 - seekLead, Math.max(-seekLead, settleLead - offset));
+      // The lead that jump needed: what it was aimed with, less how far off it played on. The seek's own time is
+      // learned as it lands; the rest is how long it takes to play on. Worked out from the lead it had before, as
+      // if this seek had taken as long as the last (until Session 52), a first jump, aimed by nothing learned yet,
+      // learned its seek's time twice: aimed again, it landed about as far ahead as it had landed behind (0.09 s
+      // with seeks of 0.1 s), and a start put right that way used up its re-aims there.
+      settleLead = Math.min(0.5, Math.max(0, aimed - offset)) - seekLead;
       measured = offset;
     }
     if (startFrom > 0 && (correction.seek || now - startFrom >= SETTLE_MS)) {
