@@ -162,10 +162,10 @@ export function hidePip(was: PipLayer | null, at: number): PipResolved {
 /**
  * The box restart recovery puts back (recovery/live-state.ts): the slides or media as it was, still (its video
  * carrying on from when it went up, between its file's points as the library has them now: show-engine.ts stamps
- * them, Session 53); a video input while it is still in this computer's list, as the list names
- * it now (whether its camera is there, the screens then say: src/main/video-inputs/); never a window (it may be
- * gone, or be another window now), only named. A video input no longer in the list is named too (`inputGone`,
- * Session 51), as the background's is. What it was animating is not put back.
+ * them, Session 53); a video input while it is still in this computer's list, as the list names it now (whether
+ * its camera is there, the screens then say: src/main/video-inputs/); never a window (it may be gone, or be
+ * another window now), only named. A video input no longer in the list is named too (`inputGone`, Session 51), as
+ * the background's is. What it was animating is not put back.
  */
 export function restoredPip(
   saved: PipLayer | null,
