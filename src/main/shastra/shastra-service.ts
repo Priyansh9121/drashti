@@ -30,7 +30,11 @@ export interface ShastraServiceDeps {
   theme(themeId: string | null): ThemeFields;
   /** Where passages must fit, from the live Look. */
   targets(): FitTargets;
-  /** A background picture or video's name and state, for the slide grid. */
+  /**
+   * A background picture or video as a slide's background cue reads it (Session 52: db/media.ts asCue): its name,
+   * whether it is missing (not found, or deleted from the library) and what it is when Drashti cannot play it; null
+   * for no such item. For the engine (a missing one is never put up) and the slide grid.
+   */
   media?(mediaId: string): { name: string; missing: boolean; unplayable: string | null } | null;
 }
 
@@ -60,7 +64,17 @@ export class ShastraService {
     if (!content) return null;
     const theme = this.deps.theme(content.text.themeId);
     const targets = this.deps.targets();
-    const stamp = JSON.stringify([content.text.loadedAt, content.text.themeId, theme, targets]);
+    // Its theme's background file as the library has it now (Session 52), in the stamp too: a passage made while the
+    // file was missing (or deleted) is made again once it is back, as a slide's cue is read afresh.
+    const bg = theme.background;
+    const media = bg.kind === 'media' && this.deps.media ? this.deps.media(bg.mediaId) : undefined;
+    const stamp = JSON.stringify([
+      content.text.loadedAt,
+      content.text.themeId,
+      theme,
+      targets,
+      media ?? null,
+    ]);
     const earlier = this.made.get(id);
     if (earlier?.stamp === stamp) return earlier;
     const items = content.items.map((it) => ({
@@ -70,10 +84,9 @@ export class ShastraService {
       texts: it.texts,
     }));
     const slides = passageSlides(items, theme, id, targets);
-    const bg = theme.background;
-    const media = bg.kind === 'media' ? this.deps.media?.(bg.mediaId) : null;
+    // As a slide's background cue (db/presentations.ts cueFromRow): none for a file the library has no item of.
     const cues: SlideCue[] =
-      bg.kind === 'media'
+      bg.kind === 'media' && media !== null
         ? [
             {
               kind: 'background',

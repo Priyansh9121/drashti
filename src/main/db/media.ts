@@ -74,6 +74,26 @@ export class MediaRepo {
     return row?.missing === 0 ? { kind: row.kind, name: row.name } : null;
   }
 
+  /**
+   * A media item as a slide's background cue reads it (Session 52, as db/presentations.ts reads a slide's own): its
+   * name, whether it is missing (not found at import, or deleted from the library) and what it is when Drashti cannot
+   * play it; null for no such item. A Shastra passage's theme background is made from it.
+   */
+  asCue(mediaId: string): { name: string; missing: boolean; unplayable: string | null } | null {
+    const row = this.db
+      .prepare(
+        'SELECT name, missing OR deleted_at IS NOT NULL AS missing, playable, format FROM media WHERE id = ?',
+      )
+      .get(mediaId) as
+      { name: string; missing: number; playable: number | null; format: string | null } | undefined;
+    if (!row) return null;
+    return {
+      name: row.name,
+      missing: row.missing === 1,
+      unplayable: row.playable === 0 ? (row.format ?? 'a kind of file Drashti cannot play') : null,
+    };
+  }
+
   /** How long a video or sound is, in ms, once Drashti has played it; null when not known. */
   lengthOf(mediaId: string): number | null {
     const row = this.db.prepare('SELECT duration_ms FROM media WHERE id = ?').get(mediaId) as
