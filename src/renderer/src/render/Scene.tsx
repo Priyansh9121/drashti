@@ -507,7 +507,10 @@ export const Scene = memo(function Scene({
         />
       );
     const box = boxRun?.layer;
-    return box ? <PipSourcePicture source={box.source} shownAt={box.shownAt} size={size} /> : null;
+    // A video in it between its file's start and end points, the engine's (Session 53).
+    return box ? (
+      <PipSourcePicture source={box.source} shownAt={box.shownAt} clips={box.clips} size={size} />
+    ) : null;
   };
   return (
     <ScreenPictures.Provider value={pictures}>
@@ -532,9 +535,17 @@ export const Scene = memo(function Scene({
                 <MainSlot slot={slotOf('background')} swap={swap}>
                   <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
                 </MainSlot>
-                {/* The box's own picture in the background's place, once swapped (Session 50). */}
+                {/* The box's own picture in the background's place, once swapped (Session 50), a video between its
+                    file's start and end points as in the box (Session 53). */}
                 <MainSlot slot={slotOf('source')} swap={swap}>
-                  {up && <PipSourcePicture source={up.source} shownAt={up.shownAt} size={canvas} />}
+                  {up && (
+                    <PipSourcePicture
+                      source={up.source}
+                      shownAt={up.shownAt}
+                      clips={up.clips}
+                      size={canvas}
+                    />
+                  )}
                 </MainSlot>
                 {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
                 <MainSlot slot={slotOf('slide')} swap={swap}>
