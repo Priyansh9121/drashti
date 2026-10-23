@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { initialEngineState } from '../../../shared/engine/state';
 import type { EngineState } from '../../../shared/engine/state';
-import { soundsOf } from './sounds';
+import { type Sound, soundMoved, soundsOf } from './sounds';
 
 function state(patch: Partial<EngineState['layers']>, blackout = false): EngineState {
   const s = initialEngineState();
@@ -153,5 +153,40 @@ describe('the sounds the show makes', () => {
       startedAt: 1,
     } as const;
     expect(soundsOf(state({ background: bg }, true))).toHaveLength(1);
+  });
+});
+
+describe('a sound the engine sends somewhere new while it plays (Session 52)', () => {
+  /** A play-once background video's sound, 1 s into its file to begin with. */
+  const playing: Sound = {
+    key: 'background:bg@1000',
+    mediaId: 'bg',
+    startedAt: 1000,
+    loop: false,
+    volume: 1,
+    clip: { startMs: 1000, endMs: null },
+  };
+
+  it('is checked again at a jump, as before', () => {
+    expect(soundMoved(playing, { ...playing, seek: { at: 4000, toMs: 20_000 } })).toBe(true);
+    const jumped = { ...playing, seek: { at: 4000, toMs: 20_000 } };
+    expect(soundMoved(jumped, { ...jumped, seek: { at: 9000, toMs: 20_000 } })).toBe(true);
+    expect(soundMoved(jumped, { ...jumped, seek: { at: 4000, toMs: 20_000 } })).toBe(false);
+  });
+
+  it('is checked again when its start or end point moves, as its picture is on every screen', () => {
+    // A start point moved 0.2 s while it plays: every screen's picture lands there by a jump (BackgroundMedia.tsx,
+    // SlideView.tsx); the sound, not asked, stayed 0.2 s off it, short of the half second that makes a sound jump,
+    // easing back at 2% a second for 10 s.
+    expect(soundMoved(playing, { ...playing, clip: { startMs: 1200, endMs: null } }), 'a new start').toBe(
+      true,
+    );
+    expect(soundMoved(playing, { ...playing, clip: { startMs: 1000, endMs: 8000 } }), 'a new end').toBe(true);
+    const { clip: _points, ...whole } = playing;
+    expect(soundMoved(playing, whole), 'its points taken away').toBe(true);
+    expect(soundMoved(whole, playing), 'points given').toBe(true);
+    // The same points, in a new copy of the state: nothing moved.
+    expect(soundMoved(playing, { ...playing, clip: { startMs: 1000, endMs: null } })).toBe(false);
+    expect(soundMoved(playing, { ...playing, volume: 0.5, loop: true })).toBe(false);
   });
 });

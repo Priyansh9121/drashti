@@ -20,6 +20,21 @@ export interface Sound {
 }
 
 /**
+ * Whether the engine has sent a sound that plays on somewhere new since `was`: a jump (a skip or a marker), or
+ * new start or end points while it plays (Session 52), which move every screen's picture at once
+ * (BackgroundMedia.tsx, SlideView.tsx). Its player then checks it against the clock at once (resync()), so it
+ * lands there with its picture: asked only at a jump, a start point moved 0.2 s left the sound 0.2 s off,
+ * short of the half second that makes a sound jump, easing back at 2% a second for 10 s.
+ */
+export function soundMoved(was: Sound, now: Sound): boolean {
+  return (
+    was.seek?.at !== now.seek?.at ||
+    was.clip?.startMs !== now.clip?.startMs ||
+    was.clip?.endMs !== now.clip?.endMs
+  );
+}
+
+/**
  * Every sound the show should be making now: the audio layer, the
  * background video's sound, and the sound of videos on the live slide, each
  * from when it started (so it is in step with the pictures). Black-out
