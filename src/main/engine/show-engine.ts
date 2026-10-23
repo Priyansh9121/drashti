@@ -998,7 +998,7 @@ export class ShowEngine {
     // input carries on); with none of that name, the background stays as it was (never black because of it) and
     // the slide says which input it named, for LIVE to say so. A file that is missing (Session 52: not found at
     // import, or deleted from the library) does the same, the slide naming the file; before, it went up all the
-    // same, and every screen went black with nothing said. One Drashti cannot play still goes up, as before.
+    // same, and every screen went black. One Drashti cannot play still goes up, as before.
     const fade =
       transition && transition.durationMs > 0 ? { at, durationMs: transition.durationMs } : undefined;
     const layers: EngineAction[] = [];
