@@ -57,6 +57,12 @@ export interface VideoInputsDeps {
   takeOffBox(): void;
   /** An input changed in the list while it is up: the screens follow (the engine's refreshInput). */
   refresh(input: VideoInput): void;
+  /**
+   * An input renamed (Session 52): the library's playlist items and slides' background cues that named it by its
+   * old name take its new one (../db/input-renames.ts), once the list has its new name and before anyone is told
+   * of the change. Throws when the library cannot be written (nothing in it changed then): the rename is refused.
+   */
+  renamed(from: string, to: string): void;
   /** The operator window is told of every change to the list. */
   changed(view: VideoInputsView): void;
   /** And of every change to how the input up now stands. */
@@ -173,7 +179,11 @@ export class VideoInputsService {
     return { ok: true, view: this.view() };
   }
 
-  /** A change to one (its name, its device, fit or fill): the screens follow while it is up. */
+  /**
+   * A change to one (its name, its device, fit or fill): the screens follow while it is up. Renamed (Session 52),
+   * the library's items and slides that named it take its new name in the same change, so none is left Not on
+   * this computer; when the library cannot take it, the input keeps its name.
+   */
   update(id: unknown, raw: unknown): VideoInputResult {
     const was = typeof id === 'string' ? this.inputs.find((i) => i.id === id) : undefined;
     if (!was) return { ok: false, message: GONE };
@@ -182,7 +192,10 @@ export class VideoInputsService {
     const checked = this.check({ ...was, ...defined(parsed.data) }, was.id);
     if (typeof checked === 'string') return { ok: false, message: checked };
     const input: VideoInput = { id: was.id, ...checked };
-    const kept = this.keep(this.inputs.map((i) => (i.id === was.id ? input : i)));
+    const kept = this.keep(
+      this.inputs.map((i) => (i.id === was.id ? input : i)),
+      input.name === was.name ? undefined : { from: was.name, to: input.name },
+    );
     if (kept) return kept;
     const bg = this.deps.background();
     const inBox = this.inBox()?.inputId === input.id;
@@ -388,15 +401,40 @@ export class VideoInputsService {
     return { name, device: fields.device, fit: fields.fit };
   }
 
-  /** Keep the list on disk, then tell the operator window; why not, when it could not be written. */
-  private keep(inputs: VideoInput[]): VideoInputResult | null {
+  /**
+   * Keep the list on disk, then tell the operator window; why not, when it could not be written. Renamed (Session
+   * 52), the library's names are carried once the list is kept and before anyone is told; when the library cannot
+   * take them, the list is put back as it was, on disk too.
+   */
+  private keep(inputs: VideoInput[], renamed?: { from: string; to: string }): VideoInputResult | null {
     try {
       writeVideoInputs(this.deps.userData, inputs);
     } catch (error) {
       this.deps.log('warn', `The video inputs could not be saved: ${String(error)}`);
       return { ok: false, message: 'The video inputs could not be saved on this computer. Try again.' };
     }
+    const before = this.inputs;
     this.inputs = inputs;
+    if (renamed) {
+      try {
+        this.deps.renamed(renamed.from, renamed.to);
+      } catch (error) {
+        this.inputs = before;
+        this.deps.log(
+          'warn',
+          `A renamed video input’s playlist items and slides could not be changed, so it keeps its name: ${String(error)}`,
+        );
+        try {
+          writeVideoInputs(this.deps.userData, before);
+        } catch (again) {
+          this.deps.log('warn', `The video inputs could not be put back as they were: ${String(again)}`);
+        }
+        return {
+          ok: false,
+          message: `The playlists and slides that name “${renamed.from}” could not be changed, so it keeps its name. Try again.`,
+        };
+      }
+    }
     this.deps.changed(this.view());
     return null;
   }
