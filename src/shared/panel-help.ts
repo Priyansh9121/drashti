@@ -59,7 +59,7 @@ export const PANEL_HELP = {
   stage: {
     title: 'Stage screen',
     doc: 'operator',
-    text: 'What the speaker and the singers see, never the hall. Type a short message for them, such as “Two minutes left”, and send it; its own Clear takes it off. Edit layout… can add the box “The audience picture, live”, to show them what the hall sees, on a stage tablet too; while the hall’s screens are switched off, it says Audience off in its corner.',
+    text: 'What the speaker and the singers see, never the hall. Type a short message for them, such as “Two minutes left”, and send it; its own Clear takes it off. Edit layout… can add the box “The audience picture, live”, to show them what the hall sees, on a stage tablet too; it says Audience off in its bottom left corner while the hall’s screens are switched off, and No audience screens if none are set up.',
     guide: '**The stage message.**',
   },
   props: {
