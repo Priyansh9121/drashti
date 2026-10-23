@@ -176,6 +176,58 @@ describe('a slide’s missing background file, as the library and the show move 
       cues,
     );
   };
+  const FOUND = { ...GONE, missing: false };
+
+  it('found again while its slide is up, says so no more, the background as it was until the slide goes up again; Back still undoes the Next', () => {
+    const { engine, source } = show();
+    source.set('swap', [textSlide('s1', 'One'), textSlide('s2', 'Two')], [[LOOP], [GONE]]);
+    engine.dispatch(goLive('swap', 0));
+    // Cleared, so that Back (the Next undone) and Previous (the first slide's cue run again) differ.
+    engine.dispatch({ type: 'clearLayer', layer: 'background' });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({ slideIndex: 1, fileMissing: 'Placeholder gone.mov' });
+    // Find missing media…, Undo of a delete, the same file imported again: the library reads it there now.
+    expect(engine.refreshFiles()).toMatchObject({ ok: true, changed: false });
+    source.set('swap', [textSlide('s1', 'One'), textSlide('s2', 'Two')], [[LOOP], [FOUND]]);
+    expect(engine.refreshFiles()).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.slide?.slideIndex).toBe(1);
+    expect(engine.current.layers.slide).not.toHaveProperty('fileMissing');
+    expect(engine.current.layers.background).toBeNull();
+    // Not a change to the show: Back undoes the Next exactly (the first slide, the background still cleared).
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(0);
+    expect(engine.current.layers.background).toBeNull();
+  });
+
+  it('found again while it was off, a slide Back or Put it back brings again says so no more, and Back after Back still undoes each Next exactly', () => {
+    const { engine, source } = show();
+    const slides = [textSlide('s1', 'One'), textSlide('s2', 'Two'), textSlide('s3', 'Three')];
+    source.set('swap', slides, [[LOOP], [GONE], [PRORES]]);
+    engine.dispatch(goLive('swap', 0));
+    // Cleared, so that Back (the Next undone) and Previous (the first slide's cue run again) differ.
+    engine.dispatch({ type: 'clearLayer', layer: 'background' });
+    engine.dispatch({ type: 'next' });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.background).toMatchObject({ mediaId: 'prores' });
+    source.set('swap', slides, [[LOOP], [FOUND], [PRORES]]);
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(1);
+    expect(engine.current.layers.slide).not.toHaveProperty('fileMissing');
+    // Its background as it was then: nothing.
+    expect(engine.current.layers.background).toBeNull();
+    // Back again undoes the first Next exactly: the first slide, the background still cleared.
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(0);
+    expect(engine.current.layers.background).toBeNull();
+    // Put it back, the same.
+    const again = show();
+    again.engine.dispatch(goLive('files', 2));
+    again.engine.dispatch({ type: 'clearAll' });
+    setFiles(again.source, [[LOOP], [], [FOUND], [PRORES]]);
+    again.engine.dispatch({ type: 'putBack' });
+    expect(again.engine.current.layers.slide?.slideIndex).toBe(2);
+    expect(again.engine.current.layers.slide).not.toHaveProperty('fileMissing');
+  });
 
   it('an edit that moves the slide up (a slide added before it) keeps what it said: a file missing, an input not here', () => {
     const { engine, source } = show();

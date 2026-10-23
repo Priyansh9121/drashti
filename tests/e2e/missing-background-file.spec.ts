@@ -162,7 +162,8 @@ test('a missing file behind a slide: the background stays as it was, never black
   await expect(win2.getByTestId('live-file-missing')).toHaveText(LINE);
   await showsColour(second.app);
 
-  // Found again (Find missing media…, the folder answered here by the test): the slide shown again puts it up.
+  // Found again (Find missing media…, the folder answered here by the test): LIVE says so no more at once, as for an
+  // input added to Media, the background as it was; the slide shown again puts it up.
   const found = mkdtempSync(join(tmpdir(), 'drashti-found-'));
   await makeTestImage(win2, join(found, FILE), { color: '#1e3a8a' });
   await second.app.evaluate(({ dialog }, folder) => {
@@ -170,11 +171,13 @@ test('a missing file behind a slide: the background stays as it was, never black
   }, found);
   const relinked = await win2.evaluate(() => (globalThis as PageGlobals).drashti.library.relinkMedia());
   expect(relinked.ok).toBe(true);
+  await expect(win2.getByTestId('live-file-missing')).toHaveCount(0);
+  expect((await state(win2)).layers.slide).not.toHaveProperty('fileMissing');
+  expect((await state(win2)).layers.background).toEqual(COLOUR);
   await dispatch(win2, { type: 'goLive', presentationId, slideIndex: 1 });
   await expect
     .poll(async () => (await state(win2)).layers.background)
     .toMatchObject({ kind: 'media', media: 'image' });
-  expect((await state(win2)).layers.slide).not.toHaveProperty('fileMissing');
   await expect(win2.getByTestId('live-file-missing')).toHaveCount(0);
   await second.app.close();
 });
