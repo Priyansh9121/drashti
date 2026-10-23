@@ -3677,9 +3677,10 @@ function start(): void {
         }),
       stage: () => {
         const groupId = screenRepo.firstGroup('stage');
-        // A layout's audience picture box on a tablet (Session 51): the hall as this computer's stage screens draw it.
-        return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null, hall: hallHere() };
+        return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
       },
+      // A layout's audience picture box on a tablet (Session 51): the hall as this computer's stage screens draw it.
+      hallGroups: () => screenRepo.groups(),
       hall: () => ({ groupId: screenRepo.firstGroup('audience') }),
       // Audience and Stage (Session 50): a Remote says which are off.
       switches: () => manager.switches(),
