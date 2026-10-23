@@ -32,10 +32,10 @@ export interface ImportServiceDeps {
   spawn(): WorkerProcess;
   worker: Omit<StartMessage, 'type' | 'job' | 'runId' | 'paths' | 'options' | 'mediaIds' | 'playsHevc'>;
   /**
-   * Whether this computer plays HEVC video (Session 51), as known when each import starts: the operator window
-   * says once it has opened (null until then).
+   * Whether this computer plays HEVC video (Session 51), as the operator window says once it has opened: each
+   * import waits for it before it starts (Session 51 review), a moment at most (null: not known).
    */
-  playsHevc?(): boolean | null;
+  playsHevc?(): Promise<boolean | null>;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
   /** After every run, with its summary when it finished. */
@@ -291,16 +291,27 @@ export class ImportService {
       this.recordFailure(job, message);
       settle({ ok: false, message }, null);
     });
-    worker.postMessage({
-      type: 'start',
-      job: job.job,
-      runId: job.runId,
-      paths: job.paths,
-      options: job.options,
-      ...(job.mediaIds ? { mediaIds: job.mediaIds } : {}),
-      ...this.deps.worker,
-      ...(this.deps.playsHevc ? { playsHevc: this.deps.playsHevc() } : {}),
-    });
+    const start = (playsHevc?: boolean | null) => {
+      // Stopped, or ended, while it waited for the answer: never started.
+      if (settled || this.active !== active) return;
+      worker.postMessage({
+        type: 'start',
+        job: job.job,
+        runId: job.runId,
+        paths: job.paths,
+        options: job.options,
+        ...(job.mediaIds ? { mediaIds: job.mediaIds } : {}),
+        ...this.deps.worker,
+        ...(playsHevc === undefined ? {} : { playsHevc }),
+      });
+    };
+    // Once it is known whether this computer plays HEVC (Session 51 review: an import in the first moments after
+    // the start waits for the window's answer, a moment at most).
+    if (this.deps.playsHevc)
+      void this.deps.playsHevc().then(start, () => {
+        start(null);
+      });
+    else start();
   }
 
   private recordFailure(job: Job, message: string): void {
