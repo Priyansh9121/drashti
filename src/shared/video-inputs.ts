@@ -81,16 +81,22 @@ export const INPUT_FADE_MS = 1000;
 export const sameInputName = (a: string, b: string): boolean => nfc(a).toLowerCase() === nfc(b).toLowerCase();
 
 /**
+ * Whether the name a playlist item or a slide's background cue keeps (`kept`) names the input called `input`, as
+ * inputNamed finds it: its spaces at either end aside, any letter case, any Unicode form.
+ */
+export const namesInput = (kept: string, input: string): boolean => sameInputName(kept.trim(), input);
+
+/**
  * The input of this computer's list that a playlist item or a slide's background cue names (Session 51), or null.
  *
  * An input belongs to one computer while the library travels (a backup put back on another computer, a spare
  * computer taking over), so the library keeps the input's own name ("Input 1") and each computer finds its own
  * input of that name. By the name alone, never by the id it had on the computer it was chosen on: what the
- * playlist or the slide says is what goes up, the same on every computer, and an input renamed in Media is never
- * put up under the name it had (the item or the slide says plainly that no input of that name is on this
- * computer, and Next goes on past it).
+ * playlist or the slide says is what goes up, the same on every computer. An input renamed in Media takes this
+ * library's items and slides that named it to its new name (Session 52: main/db/input-renames.ts); another
+ * computer finds its own input by the new name, so its input needs that name too (where none has it, the item or
+ * the slide says plainly that no input of that name is on that computer, and Next goes on past it).
  */
 export function inputNamed(inputs: readonly VideoInput[], name: string): VideoInput | null {
-  const wanted = name.trim();
-  return inputs.find((i) => sameInputName(i.name, wanted)) ?? null;
+  return inputs.find((i) => namesInput(name, i.name)) ?? null;
 }
