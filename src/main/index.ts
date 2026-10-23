@@ -3880,7 +3880,15 @@ function start(): void {
   handle(IPC.nodes.startPairing, (e) => (fromOperator(e) ? nodes.startPairing() : notNodesOperator));
   handle(IPC.nodes.cancelPairing, (e) => (fromOperator(e) ? nodes.cancelPairing() : notNodesOperator));
   handle(IPC.nodes.rename, (e, id, name) => (fromOperator(e) ? nodes.rename(id, name) : notNodesOperator));
-  handle(IPC.nodes.remove, (e, id) => (fromOperator(e) ? nodes.remove(id) : notNodesOperator));
+  handle(IPC.nodes.remove, (e, id) => {
+    if (!fromOperator(e)) return notNodesOperator;
+    const removed = nodes.remove(id);
+    // Its screens went with it (Session 51): the hall's picture may be another group's now. Reconciled, as after any
+    // change to the screens, so this computer's stage screens, the other nodes and a tablet's stage display are told
+    // (onChange). Not on every node report (the dependency the service calls): each would push every node's screens.
+    if (removed.ok) manager.reconcile();
+    return removed;
+  });
   handle(IPC.nodes.newIdentity, (e) => (fromOperator(e) ? nodes.newIdentity() : notNodesOperator));
   handle(IPC.nodes.everything, (e, id, on) =>
     fromOperator(e) ? nodes.setEverything(id, on) : notNodesOperator,
