@@ -340,13 +340,16 @@ export type HallScreen = { groupId: string; role: ScreenRole } & HallGroup['scre
 /**
  * The hall's picture among one computer's screens, in Screens' order: the first audience screen's. A node
  * knows only its own screens, so a node's stage screens show that node's own audience picture (Main's Audience
- * switch never closes them). With no audience screen of its own, Main's hall as Main tells it (Session 51: the
- * live Look's first audience group, as Main's own stage screens draw it, said off with Main's Audience off),
- * never every layer and language.
+ * switch never closes them). With no audience screen of its own that is on (one turned off in Screens shows
+ * nothing), Main's hall as Main tells it (Session 51: the live Look's first audience group, as Main's own stage
+ * screens draw it, said off with Main's Audience off), never every layer and language; its own turned-off one only
+ * while Main's is not known.
  */
 export function hallPictureOfScreens(
   screens: readonly HallScreen[],
   main: HallPicture | null = null,
 ): HallPicture | null {
-  return hallPicture(screens.map((s) => ({ id: s.groupId, role: s.role, screens: [s] }))) ?? main;
+  const own = (list: readonly HallScreen[]) =>
+    hallPicture(list.map((s) => ({ id: s.groupId, role: s.role, screens: [s] })));
+  return own(screens.filter((s) => s.enabled !== false)) ?? main ?? own(screens);
 }

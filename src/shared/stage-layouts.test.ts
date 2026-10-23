@@ -174,6 +174,29 @@ describe('the hall’s picture', () => {
     expect(hallPictureOfScreens([stage], null)).toBeNull();
   });
 
+  // Session 51 review: a node's audience screen turned off in Screens shows nothing, so it is not the hall there.
+  it('on a node whose only audience screen is turned off is Main’s; its own when Main’s is not known', () => {
+    const stage = { groupId: 'stage', role: 'stage' as const, ...screen(1920, 1080), enabled: true };
+    const side = { groupId: 'side', role: 'audience' as const, ...screen(1024, 768), enabled: false };
+    const main = {
+      groupId: 'hall',
+      canvasWidth: 1280,
+      canvasHeight: 720,
+      scaling: 'fill' as const,
+      off: true,
+    };
+    expect(hallPictureOfScreens([stage, side], main)).toEqual(main);
+    expect(hallPictureOfScreens([stage, { ...side, enabled: true }], main)).toEqual({
+      groupId: 'side',
+      canvasWidth: 1024,
+      canvasHeight: 768,
+      scaling: 'fit',
+    });
+    // Main's hall not known yet (a node's screens kept from before, Main away): its own group's Look, never every
+    // layer and language.
+    expect(hallPictureOfScreens([stage, side], null)?.groupId).toBe('side');
+  });
+
   // Session 51 (S4-3): Audience off closes this computer's screens of the hall, and the box keeps its picture and
   // says so, so the performers are not misled. Only a hall shown here is closed by this computer's switch.
   it('is said off while Audience is off and the hall is shown on this computer, and only then', () => {
