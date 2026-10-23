@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { NodeStore } from './node-state';
 
 let dir = '';
@@ -32,5 +33,33 @@ describe('a node’s pairing file (Session 23)', () => {
     expect(readFileSync(join(dir, 'node.unreadable-2026-10-10 05-36.json'), 'utf8')).toBe(
       '{"main": {"id": "cut sh',
     );
+  });
+});
+
+describe('a node’s last picture (Session 52)', () => {
+  const snapshot = (version: number) => ({
+    kind: 'snapshot',
+    version,
+    rev: 4,
+    sentAt: 1,
+    state: { ...initialEngineState(), version },
+  });
+
+  it('reads the one alpha.11 kept (engine 12) as it is, as this engine’s', () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-node-state-'));
+    writeFileSync(join(dir, 'node-show.json'), JSON.stringify({ offsetMs: 7, snapshot: snapshot(12) }));
+    const shown = new NodeStore(dir).readShow();
+    expect(shown?.offsetMs).toBe(7);
+    expect(shown?.snapshot).toMatchObject({ rev: 4, version: ENGINE_STATE_VERSION });
+    expect(shown?.snapshot.state.version).toBe(ENGINE_STATE_VERSION);
+  });
+
+  it('reads its own, and leaves out any other version’s', () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-node-state-'));
+    const store = new NodeStore(dir);
+    writeFileSync(store.showFile, JSON.stringify({ offsetMs: 0, snapshot: snapshot(ENGINE_STATE_VERSION) }));
+    expect(store.readShow()?.snapshot.rev).toBe(4);
+    writeFileSync(store.showFile, JSON.stringify({ offsetMs: 0, snapshot: snapshot(11) }));
+    expect(store.readShow()).toBeNull();
   });
 });

@@ -21,7 +21,7 @@ import type {
   PropItem,
   TickerLayer,
 } from '../../shared/engine/state';
-import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
+import { ENGINE_STATE_VERSION, readsEngineVersion } from '../../shared/engine/state';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { maskSchema } from '../../shared/masks';
 import type { PlaybackSeek } from '../../shared/media';
@@ -362,8 +362,9 @@ function quitCleanly(files: RecoveryFiles, saved: Saved): boolean {
  * Drashti starts with) counts as something live.
  */
 function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
-  // The layers' shapes belong to one engine version: from another, only the slide and cursors come back.
-  const same = s.engineVersion === ENGINE_STATE_VERSION;
+  // The layers' shapes belong to one engine version: from another, only the slide and cursors come back. 12
+  // (alpha.11's) is read whole, as 13 only adds to it (Session 52).
+  const same = readsEngineVersion(s.engineVersion);
   const layer = <T>(schema: z.ZodType<T>, value: unknown, none: T): T => {
     if (!same) return none;
     const parsed = schema.safeParse(value);

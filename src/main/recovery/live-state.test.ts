@@ -431,7 +431,7 @@ describe('restart recovery', () => {
       JSON.stringify({
         version: 1,
         session: 'other-version',
-        engineVersion: ENGINE_STATE_VERSION - 1,
+        engineVersion: 11,
         savedAt: '2026-09-01T10:00:00.000Z',
         slide: { presentationId: 'p1', slideIndex: 1, arrangementId: null },
         background: null,
@@ -450,6 +450,14 @@ describe('restart recovery', () => {
       stageMessage: null,
       timers: [],
     });
+  });
+
+  it('reads a file alpha.11 saved (engine 12) whole: 13 only adds to it (Session 52)', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, live());
+    const raw = JSON.parse(readFileSync(files.state, 'utf8')) as Record<string, unknown>;
+    writeFileSync(files.state, JSON.stringify({ ...raw, engineVersion: 12 }));
+    expect(toRestore(files)).toMatchObject({ slide: { slideIndex: 2 }, background });
   });
 
   it('reads files saved before playlists could be played', () => {
@@ -528,7 +536,7 @@ describe('restart recovery', () => {
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     await saved(writer, live());
     const raw = JSON.parse(readFileSync(files.state, 'utf8')) as Record<string, unknown>;
-    writeFileSync(files.state, JSON.stringify({ ...raw, engineVersion: ENGINE_STATE_VERSION - 1 }));
+    writeFileSync(files.state, JSON.stringify({ ...raw, engineVersion: 11 }));
     expect(toRestore(files)).toMatchObject({ slide: { slideIndex: 2 }, background: null });
     writeFileSync(files.state, JSON.stringify({ ...raw, background: { kind: 'media', mediaId: '../x' } }));
     expect(toRestore(files)?.background).toBeNull();

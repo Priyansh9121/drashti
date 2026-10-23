@@ -2,7 +2,7 @@ import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
-import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
+import { ENGINE_STATE_VERSION, readsEngineVersion } from '../../shared/engine/state';
 import type { NodeScreen } from '../../shared/nodes';
 import { nodeScreenListSchema } from '../../shared/nodes-schema';
 import { readState, readStateTwice, setAside } from '../state-file';
@@ -107,9 +107,16 @@ export class NodeStore {
         offsetMs?: unknown;
       };
       const s = raw.snapshot;
-      if (s?.kind !== 'snapshot' || s.version !== ENGINE_STATE_VERSION || typeof s.rev !== 'number')
-        return null;
-      return { snapshot: s, offsetMs: typeof raw.offsetMs === 'number' ? raw.offsetMs : 0 };
+      // alpha.11's last picture (engine 12) is read as it is (Session 52): 13 only adds to it.
+      if (s?.kind !== 'snapshot' || !readsEngineVersion(s.version) || typeof s.rev !== 'number') return null;
+      return {
+        snapshot: {
+          ...s,
+          version: ENGINE_STATE_VERSION,
+          state: { ...s.state, version: ENGINE_STATE_VERSION },
+        },
+        offsetMs: typeof raw.offsetMs === 'number' ? raw.offsetMs : 0,
+      };
     } catch {
       return null;
     }
