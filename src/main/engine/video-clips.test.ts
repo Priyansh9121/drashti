@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../shared/engine/commands';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EnginePatchMessage } from '../../shared/engine/protocol';
-import type { PropItem } from '../../shared/engine/state';
+import type { PipLayer, PropItem } from '../../shared/engine/state';
 import type { SlideCue } from '../../shared/library';
 import type { MediaMarkers } from '../../shared/markers';
 import type { MediaElement, RenderSlide } from '../../shared/model';
+import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
@@ -14,7 +15,8 @@ import { makeSource, RecordingTransport, textSlide } from './testing';
  * (Session 52), as a background video does: the engine stamps the points on the slide layer and on the prop
  * (`clips`, by media id) from the library as they go up, so every screen, node, key and fill and the stream play
  * the same part of each file; and they follow the library when its points change. Before, they played the whole
- * file. Placeholder media ids only.
+ * file. Since Session 53 a video from Media in the picture-in-picture box does too (the box's `clips`).
+ * Placeholder media ids only.
  */
 
 /** The library's points (Session 14), by placeholder file. */
@@ -26,6 +28,15 @@ const MARKERS: Record<string, MediaMarkers> = {
   marked: { startMs: null, endMs: null, markers: [{ id: 'm2', name: 'Placeholder verse', atMs: 1000 }] },
   // A picture never has points; were the library to say so, a picture still plays nothing.
   still: { startMs: 1000, endMs: 2000, markers: [] },
+};
+
+/** Each placeholder file as Media has it, for the picture-in-picture box (Session 53). */
+const KINDS: Record<string, 'image' | 'video'> = {
+  clipped: 'video',
+  ending: 'video',
+  marked: 'video',
+  plain: 'video',
+  still: 'image',
 };
 
 const video = (id: string, mediaId: string, loop = true): MediaElement => ({
@@ -65,6 +76,9 @@ const goLive = (slideIndex: number): EngineCommand => ({
   slideIndex,
 });
 
+/** The picture-in-picture box up with a file from Media (Picture in Picture… sends the same command). */
+const boxed = (mediaId: string): EngineCommand => ({ type: 'showPip', source: { kind: 'media', mediaId } });
+
 function setup() {
   const markers: Record<string, MediaMarkers> = { ...MARKERS };
   const source = makeSource();
@@ -98,6 +112,7 @@ function setup() {
   const transport = new RecordingTransport();
   const engine = new ShowEngine(source, transport, () => ++clock, undefined, {
     mediaMarkers: (id) => markers[id] ?? null,
+    mediaKind: (id) => KINDS[id] ?? null,
   });
   return { engine, markers, transport };
 }
@@ -260,5 +275,125 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
       shownAt: 960_000,
       clips: { ending: { startMs: 0, endMs: 5000 } },
     });
+  });
+});
+
+describe('a video from Media in the picture-in-picture box between its start and end points (Session 53)', () => {
+  // Before, it played the whole file wherever the box was: on every screen, a node, key and fill and the stream.
+
+  it('the box going up carries its video’s points, the library’s: none for a file without, a picture or the slides', () => {
+    const { engine } = setup();
+    engine.dispatch(boxed('clipped'));
+    expect(engine.current.layers.pip).toMatchObject({
+      source: { kind: 'media', mediaId: 'clipped', media: 'video' },
+      clips: { clipped: { startMs: 2000, endMs: 6000 } },
+    });
+    // The same picture again is no change.
+    expect(engine.dispatch(boxed('clipped'))).toMatchObject({ ok: true, changed: false });
+    engine.dispatch(boxed('ending'));
+    expect(engine.current.layers.pip?.clips).toEqual({ ending: { startMs: 0, endMs: 5000 } });
+    // Markers alone are no points, a picture never plays, and the slides' own videos are the slide layer's.
+    const none: EngineCommand[] = [
+      boxed('plain'),
+      boxed('marked'),
+      boxed('still'),
+      { type: 'showPip', source: { kind: 'slides' } },
+    ];
+    for (const command of none) {
+      expect(engine.dispatch(command)).toMatchObject({ ok: true, changed: true });
+      expect(engine.current.layers.pip).not.toHaveProperty('clips');
+    }
+  });
+
+  it('follow the library as its points change, carrying on: its time, its place and its swap kept, on every screen and node; not a change to the show', () => {
+    const { engine, markers, transport } = setup();
+    const mirror = new EngineMirror();
+    expect(mirror.apply(engine.snapshot())).toBe('applied');
+    let seen = 0;
+    /** The copy every screen and node keeps, from the engine's snapshot and patches as the wire carries them. */
+    const follow = () => {
+      for (; seen < transport.messages.length; seen++) {
+        const wire = JSON.parse(JSON.stringify(transport.messages[seen])) as EnginePatchMessage;
+        expect(mirror.apply(wire)).toBe('applied');
+      }
+      expect(mirror.state).toEqual(engine.current);
+    };
+    engine.dispatch(boxed('clipped'));
+    engine.dispatch({ type: 'swapPip' });
+    engine.dispatch({ type: 'goLive', presentationId: 'words', slideIndex: 0 });
+    engine.dispatch({ type: 'next' });
+    const up = engine.current.layers.pip;
+    if (!up) throw new Error('No box is up.');
+    markers['clipped'] = { startMs: 3000, endMs: null, markers: [] };
+    expect(engine.refreshMarkers('clipped')).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.pip).toEqual({ ...up, clips: { clipped: { startMs: 3000, endMs: null } } });
+    follow();
+    // Its points taken away: the whole file again, the box as it was otherwise.
+    delete markers['clipped'];
+    engine.refreshMarkers('clipped');
+    const { clips: _points, ...whole } = up;
+    expect(engine.current.layers.pip).toEqual(whole);
+    follow();
+    // Another file's points change nothing.
+    expect(engine.refreshMarkers('ending')).toMatchObject({ changed: false });
+    // Not a change to the show: Back still undoes the Next exactly (the backdrop its cue put up goes too), and the
+    // box stays between the points the library has now.
+    expect(engine.current.layers.background).toMatchObject({ mediaId: 'backdrop' });
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(0);
+    expect(engine.current.layers.background).toBeNull();
+    expect(engine.current.layers.pip).toEqual(whole);
+  });
+
+  it('Back after Back still undoes each Next exactly while a box whose video has points is up', () => {
+    // As for a prop (Session 52): made anew with the same points, Back's layers would be new ones each time, and a
+    // second Back in a row Previous, the backdrop the second slide's cue put up left behind the first.
+    const { engine } = setup();
+    engine.dispatch(boxed('clipped'));
+    engine.dispatch({ type: 'goLive', presentationId: 'words', slideIndex: 0 });
+    const before = engine.current.layers;
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.background).toMatchObject({ mediaId: 'backdrop' });
+    engine.dispatch({ type: 'next' });
+    engine.dispatch({ type: 'back' });
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(0);
+    expect(engine.current.layers.background).toBeNull();
+    expect(engine.current.layers).toBe(before);
+  });
+
+  it('Put it back brings the box’s video back between the points the library has now', () => {
+    const { engine, markers } = setup();
+    engine.dispatch(boxed('clipped'));
+    engine.dispatch({ type: 'clearAll' });
+    // Set while nothing played the file: Put it back brings it back between the new points.
+    markers['clipped'] = { startMs: 3000, endMs: 7000, markers: [] };
+    expect(engine.refreshMarkers('clipped')).toMatchObject({ changed: false });
+    expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.pip?.clips).toEqual({ clipped: { startMs: 3000, endMs: 7000 } });
+  });
+
+  it('put back after an unexpected stop, it takes the library’s points as they are now: recovery keeps none', () => {
+    const saved: PipLayer = {
+      source: { kind: 'media', mediaId: 'clipped', media: 'video' },
+      place: DEFAULT_PIP_PLACE,
+      swapped: true,
+      shownAt: 950_000,
+      clips: { clipped: { startMs: 0, endMs: 1 } },
+    };
+    const { engine } = setup();
+    expect(engine.restore({ slide: null, background: null, blackout: false, pip: saved })).toMatchObject({
+      pip: true,
+    });
+    expect(engine.current.layers.pip).toEqual({
+      ...saved,
+      clips: { clipped: { startMs: 2000, endMs: 6000 } },
+    });
+    // Its file without points by now: the whole file.
+    const plain = setup();
+    delete plain.markers['clipped'];
+    plain.engine.restore({ slide: null, background: null, blackout: false, pip: saved });
+    const { clips: _forged, ...whole } = saved;
+    expect(plain.engine.current.layers.pip).toEqual(whole);
   });
 });

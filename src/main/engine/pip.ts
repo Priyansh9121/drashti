@@ -12,7 +12,9 @@ import { sameData } from './reducer';
  * 48), a picture or video in Media, or the slides (the slide as designed, made small). A new box goes where the
  * library remembers (src/main/pip/); Swap and moving it keep how it was (`changed`), so every screen animates
  * from there alike (moved while a swap runs, it keeps the swap's: Session 52); Take off plays its out (`pipOff`).
- * Clear all, Put it back and black-out are the engine's own, as for every layer.
+ * Clear all, Put it back and black-out are the engine's own, as for every layer. A video from Media in it plays
+ * between its file's start and end points as the library has them, stamped on the box by show-engine.ts (`clips`,
+ * Session 53) as on a slide.
  *
  * Swap: `swapped` says which picture is the main one, and the screens draw from it.
  * - The slides in the box: unswapped, the main picture shows the background (with the props, messages and
@@ -159,7 +161,8 @@ export function hidePip(was: PipLayer | null, at: number): PipResolved {
 
 /**
  * The box restart recovery puts back (recovery/live-state.ts): the slides or media as it was, still (its video
- * carrying on from when it went up); a video input while it is still in this computer's list, as the list names
+ * carrying on from when it went up, between its file's points as the library has them now: show-engine.ts stamps
+ * them, Session 53); a video input while it is still in this computer's list, as the list names
  * it now (whether its camera is there, the screens then say: src/main/video-inputs/); never a window (it may be
  * gone, or be another window now), only named. A video input no longer in the list is named too (`inputGone`,
  * Session 51), as the background's is. What it was animating is not put back.
