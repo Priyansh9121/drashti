@@ -241,7 +241,7 @@ function Output() {
             <LiveHere.Provider value={liveHere}>
               <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
                 {stage ? (
-                  <StageScreen state={state} look={look} canvas={canvas} hall={context.hall ?? null} />
+                  <StageScreen state={state} look={look} canvas={canvas} hall={context.hall} />
                 ) : (
                   <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
                 )}

@@ -45,10 +45,18 @@ afterEach(() => {
 });
 
 describe('the hall’s picture in the operator window', () => {
-  it('is the first audience group shown on this computer, at its screen’s canvas; none before the screens', () => {
-    expect(hallPictureNow()).toBeNull();
+  it('is the first audience group shown on this computer, at its screen’s canvas; not known before the screens', () => {
+    // Session 52: not known, so the box is black alone, never said to have no audience group.
+    expect(hallPictureNow()).toBeUndefined();
     useScreens.setState({ snapshot });
     expect(hallPictureNow()).toEqual(hall);
+  });
+
+  it('is none with no audience group at all, which the box says (Session 52)', () => {
+    useScreens.setState({
+      snapshot: { ...snapshot, groups: snapshot.groups.filter((g) => g.role !== 'audience') },
+    });
+    expect(hallPictureNow()).toBeNull();
   });
 
   it('is said off while Audience is off, as the stage screens are told it (Session 51)', () => {

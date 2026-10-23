@@ -316,8 +316,9 @@ export function StageLayoutView({
   /** How to write the time: Drashti's computer's way, on a stage display in another device's browser. */
   clockStyle?: ClockStyle | null;
   /**
-   * The hall's group and canvas, for an audience picture box (Session 50); unknown: every layer and
-   * language at 1920 x 1080.
+   * The hall's group and canvas, for an audience picture box (Session 50); null with no audience group at all,
+   * the box black and saying so (Session 52: it drew every layer and language), and left out while not known,
+   * the box black alone.
    */
   hall?: HallPicture | null;
 }) {

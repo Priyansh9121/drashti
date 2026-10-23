@@ -25,7 +25,8 @@ import { type ClockStyle, validClockStyle } from '../../../../shared/format';
  * stage screens draw it (its group and canvas, and Audience off, from the
  * stage's answer), as the phone remote's live picture does: pictures and
  * videos as the same small previews, under the same rules, and no video input
- * or window, which are on Drashti's computer.
+ * or window, which are on Drashti's computer. With no audience group at all
+ * it says so (Session 52), and until the answer comes it is black alone.
  */
 
 const CANVAS = { width: 1920, height: 1080 };
@@ -38,8 +39,9 @@ export function StageDisplay() {
   const [groupId, setGroupId] = useState<string | null>(null);
   const look = groupLookIn(state?.look, groupId);
   const [clockStyle, setClockStyle] = useState<ClockStyle | null>(null);
-  // The hall's picture for a layout's audience picture box (Session 51); null until said, or with no hall.
-  const [hall, setHall] = useState<HallPicture | null>(null);
+  // The hall's picture for a layout's audience picture box (Session 51); null with no audience group, which the
+  // box says (Session 52), and undefined until said: the box is black alone, never said to have none.
+  const [hall, setHall] = useState<HallPicture | null | undefined>(undefined);
   const previews = useMemo(() => networkPreviews(), []);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
@@ -51,8 +53,9 @@ export function StageDisplay() {
         if (!r.ok) return;
         setGroupId(r.groupId);
         setClockStyle(validClockStyle(r.clock));
-        const read = hallPictureSchema.safeParse(r.hall);
-        setHall(read.success ? read.data : null);
+        // The hall, or null with none; an answer that says neither changes nothing.
+        const read = hallPictureSchema.nullable().safeParse(r.hall);
+        if (read.success) setHall(read.data);
       });
     };
     onOnline(load);
