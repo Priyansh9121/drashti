@@ -161,7 +161,11 @@ const savedPropSchema = propSchema.and(z.object({ shownAt: z.number().optional()
 const savedLowerThirdSchema: z.ZodType<LowerThirdLayer> = lowerThirdSchema.and(
   z.object({ shownAt: z.number() }),
 );
-/** A saved picture-in-picture box (Session 50): what it held, where, swapped or not, and when it went up. */
+/**
+ * A saved picture-in-picture box (Session 50): what it held, where, swapped or not, and when it went up. Its video's
+ * start and end points are not read back (Session 53): the engine takes them from the library as it puts the box
+ * back, as for a background's (show-engine.ts restore).
+ */
 const savedPipSchema: z.ZodType<PipLayer> = z.object({
   source: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('slides') }),

@@ -458,6 +458,38 @@ describe('restart recovery', () => {
     expect(at(logo?.shownAt, false, logo?.clips)).toBe(40);
   });
 
+  it('after an unexpected stop, a video from Media in the picture-in-picture box comes back between its start and end points, where it would be by now (Session 53)', async () => {
+    // Since Session 50 it came back where it would be, but over the whole file.
+    const markers: Record<string, MediaMarkers> = { clouds: { startMs: 10_000, endMs: 40_000, markers: [] } };
+    const clock = { now: 1_000_000 };
+    const engine = () =>
+      new ShowEngine(makeSource(), new RecordingTransport(), () => clock.now, undefined, {
+        mediaMarkers: (id) => markers[id] ?? null,
+        mediaKind: (id) => (id === 'clouds' ? 'video' : null),
+      });
+    const before = engine();
+    before.dispatch({ type: 'showPip', source: { kind: 'media', mediaId: 'clouds' } });
+    const was = before.current.layers.pip;
+    expect(was?.clips).toEqual({ clouds: { startMs: 10_000, endMs: 40_000 } });
+    await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
+    // Drashti stops dead 8 s on, and starts again 2 s later.
+    clock.now += 10_000;
+    const after = engine();
+    const back = toRestore(files);
+    if (!back) throw new Error('nothing to put back');
+    expect(after.restore(back)).toMatchObject({ pip: true });
+    expect(after.current.layers.pip).toEqual(was);
+    // 35 s after it went up, every screen has it where it would be: round its loop between 0:10 and 0:40, at 0:15.
+    const box = after.current.layers.pip;
+    expect(
+      playbackPosition(
+        { startedAt: box?.shownAt ?? 0, loop: true, clip: videoClip(box?.clips, 'clouds') },
+        60,
+        clock.now + 25_000,
+      ),
+    ).toBe(15);
+  });
+
   it('puts props, the logo and messages back with the time they went up, so their videos carry on in step (Session 27)', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const writer = new LiveStateWriter(files, { throttleMs: 10 });

@@ -26,9 +26,10 @@ import type { LowerThird } from '../lower-thirds';
  * 'input' kind, the next slide's `input`, a slide's `inputMissing` and a coming-up item's 'input' kind. 13
  * (Session 52, after alpha.11 had published 12): a slide's and a prop's videos play between their files' start and
  * end points, which only the engine's state can tell every screen and node (the slide layer's and a prop's
- * `clips`); and a slide's and the next slide's background file that is missing (`fileMissing`), and a slide's sound
- * file (Session 53, `soundMissing`). 13 only adds to 12, so a state saved by alpha.11 (its recovery file, a node's
- * last picture) is read as it is: `readsEngineVersion`.
+ * `clips`); and a slide's and the next slide's background file that is missing (`fileMissing`); and (Session 53,
+ * still before any release read 13) a slide's sound file that is missing (`soundMissing`), and a video from Media in
+ * the picture-in-picture box playing between its points too (the box's `clips`). 13 only adds to 12, so a state saved
+ * by alpha.11 (its recovery file, a node's last picture) is read as it is: `readsEngineVersion`.
  */
 export const ENGINE_STATE_VERSION = 13;
 
@@ -123,10 +124,11 @@ export interface SlideLayer {
 }
 
 /**
- * The start and end points of the files a slide's, a prop's or the logo's videos play (Session 52), by media id, as
- * the library has them: each plays between them, looping round between them, as a background video does (its
- * `clip`), on every screen, node, key and fill and the stream. Only the engine stamps them, as the slide or prop
- * goes up and as the library's points change; a page's command never sets them.
+ * The start and end points of the files a slide's, a prop's or the logo's videos play (Session 52), and a video
+ * from Media in the picture-in-picture box (Session 53), by media id, as the library has them: each plays between
+ * them, looping round between them, as a background video does (its `clip`), on every screen, node, key and fill
+ * and the stream. Only the engine stamps them, as the slide, prop or box goes up and as the library's points change;
+ * a page's command never sets them.
  */
 export type VideoClips = Record<string, PlaybackClip>;
 
@@ -423,6 +425,11 @@ export interface PipLayer {
   shownAt: number;
   /** The last Swap or move, by the engine's clock, and how it was before: it animates from there. */
   changed?: { at: number; place: PipPlace; swapped: boolean };
+  /**
+   * Its video's start and end points (Session 53): a video from Media in it plays between them, going round between
+   * them, as a slide's does (see VideoClips). Left out for anything else, and for a file without any.
+   */
+  clips?: VideoClips;
 }
 
 export interface Layers {

@@ -494,8 +494,9 @@ export class ShowEngine {
     if (request.lowerThird) actions.push({ type: 'lowerThird/show', layer: request.lowerThird });
     // The picture-in-picture box (Session 50): never a window, a video input only while it is in the list (one no
     // longer there is only said, Session 51; whether its camera is there the screens tell, as for the background's).
+    // A video from Media in it carries on between its file's points as the library has them now (Session 53).
     const box = restoredPip(request.pip ?? null, this.options);
-    if (box.layer) actions.push({ type: 'pip/set', layer: box.layer });
+    if (box.layer) actions.push({ type: 'pip/set', layer: this.pipClips(box.layer) });
     if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
     // Timers that still exist: running ones count on from their start, paused ones keep their count.
     let timers = 0;
@@ -907,19 +908,21 @@ export class ShowEngine {
   /**
    * Layers as they were (Put it back, Back), with the lengths of their files
    * the library knows by now, and the points the slide's and the props' videos play between as it has them now
-   * (Session 52). An audio playlist playing now goes on as it is (it is independent of the slides); one that was
-   * playing then comes back where it would be now.
+   * (Session 52), and the picture-in-picture box's video (Session 53). An audio playlist playing now goes on as it
+   * is (it is independent of the slides); one that was playing then comes back where it would be now.
    */
   private withLengths(layers: Layers): Layers {
     const playing = this.state.layers.audio;
     if (playing?.music && layers.audio !== playing) layers = { ...layers, audio: playing };
     layers = this.withJumps(layers);
-    // The slide's and the props' videos' points (Session 52): ones saved since they went off are not lost.
+    // The slide's and the props' videos' points (Session 52), and the box's (Session 53): ones saved since they went
+    // off are not lost.
     const slide = layers.slide && this.slideClips(layers.slide);
     const props = layers.props.map((p) => this.propClips(p));
     const newProps = props.some((p, i) => p !== layers.props[i]);
-    if (slide !== layers.slide || newProps)
-      layers = { ...layers, slide, props: newProps ? props : layers.props };
+    const pip = layers.pip && this.pipClips(layers.pip);
+    if (slide !== layers.slide || newProps || pip !== layers.pip)
+      layers = { ...layers, slide, props: newProps ? props : layers.props, pip };
     // A video input as Media has it now (Session 50): renamed or set to fill since, it comes back so. One no
     // longer in this computer's list does not come back (no screen opens an input the list does not have).
     const was = layers.background;
@@ -1339,9 +1342,22 @@ export class ShowEngine {
   }
 
   /**
+   * The picture-in-picture box with its video's points as the library has them now (Session 53), never a page's: a
+   * video from Media in it plays between them, as a slide's does; a picture, a video input, a window and the slides
+   * have none (the slides' own videos are the slide layer's). The same box while they are the same, as for a prop.
+   */
+  private pipClips(box: PipLayer): PipLayer {
+    const { clips: was, ...rest } = box;
+    const video = box.source.kind === 'media' && box.source.media === 'video' ? box.source.mediaId : null;
+    const clip = video === null ? undefined : this.clipOf(video).clip;
+    const now = video !== null && clip ? { [video]: clip } : undefined;
+    return sameData(was, now) ? box : { ...rest, ...(now ? { clips: now } : {}) };
+  }
+
+  /**
    * A file's markers changed in the library: what is playing it now plays
    * between its new points (carrying on), with its new markers: a video on the slide up, a prop or the logo too
-   * (Session 52).
+   * (Session 52), and in the picture-in-picture box (Session 53).
    */
   refreshMarkers(mediaId: string): CommandResult {
     const actions: EngineAction[] = [];
@@ -1365,6 +1381,10 @@ export class ShowEngine {
       if (plays(prop.elements)) actions.push({ type: 'prop/show', prop: this.propClips(prop) });
     const logo = this.state.logo;
     if (logo && plays(logo.elements)) actions.push({ type: 'logo/set', prop: this.propClips(logo) });
+    // The box keeps its time, its place and a swap running (Session 53), so its video carries on.
+    const box = this.state.layers.pip;
+    if (box?.source.kind === 'media' && box.source.mediaId === mediaId)
+      actions.push({ type: 'pip/set', layer: this.pipClips(box) });
     if (actions.length === 0) return this.unchanged();
     this.bookkeeping = true;
     try {
@@ -1911,9 +1931,16 @@ export class ShowEngine {
       }
       case 'showTimer':
         return this.showTimer(command.timerId);
-      // Picture in picture (Session 50, pip.ts): what the box holds is looked up here, never taken from a page.
-      case 'showPip':
-        return showPip(this.state.layers.pip, command.source, command.place, this.now(), this.options);
+      // Picture in picture (Session 50, pip.ts): what the box holds is looked up here, never taken from a page; a
+      // video from Media in it plays between its file's points as the library has them (Session 53).
+      case 'showPip': {
+        const shown = showPip(this.state.layers.pip, command.source, command.place, this.now(), this.options);
+        if (!shown.ok) return shown;
+        const actions = shown.actions.map((a) =>
+          a.type === 'pip/set' ? { ...a, layer: this.pipClips(a.layer) } : a,
+        );
+        return { ok: true, actions };
+      }
       case 'hidePip':
         return hidePip(this.state.layers.pip, this.now());
       case 'swapPip':
