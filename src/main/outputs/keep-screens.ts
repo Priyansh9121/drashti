@@ -52,8 +52,8 @@ export interface KeepScreensDeps<S> {
   changed(pending: PendingScreens | null): void;
   /**
    * The changes waiting for an answer, kept on disk until it comes (null: answered, gone back, or Drashti quit and
-   * went back), so a crash or a power cut meanwhile goes back at the next start. One that cannot be kept is said
-   * in the log; the question goes on.
+   * went back: cleared), so a crash or a power cut meanwhile goes back at the next start. One that cannot be kept,
+   * or cleared, is said in the log; the question goes on.
    */
   remember?(changes: readonly Change<S>[] | null): void;
   /** A question ended: the operator is told when the screens went back, or could not (whoever answered). */
@@ -144,8 +144,11 @@ export class KeepScreens<S> {
     try {
       this.deps.remember?.(changes);
     } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
       this.log(
-        `could not keep the change on disk (${error instanceof Error ? error.message : String(error)})`,
+        changes
+          ? `could not keep the change on disk (${why})`
+          : `could not clear the change kept on disk (${why}): the next start may go back over it`,
       );
     }
   }

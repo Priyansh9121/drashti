@@ -531,7 +531,11 @@ describe('Keep these screens?', () => {
     expect(keep.current()).not.toBeNull();
     expect(keep.goBack()).toMatchObject({ ok: true });
     expect(world).toEqual(before);
-    expect(logged.filter((m) => m.includes('the disk is full'))).toHaveLength(2);
+    // Keeping it, then clearing it, each said in its own words.
+    expect(logged.filter((m) => m.includes('the disk is full'))).toEqual([
+      'Keep these screens?: could not keep the change on disk (the disk is full)',
+      'Keep these screens?: could not clear the change kept on disk (the disk is full): the next start may go back over it',
+    ]);
   });
 
   it('a Go back that fails still ends the question, and says so', () => {

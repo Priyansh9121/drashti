@@ -18,7 +18,7 @@ import { coveringScreens, KeepScreens } from './keep-screens';
 import { OutputManager, type OutputWindow } from './output-manager';
 import { ScreensService } from './screens-service';
 import type { ScreensSetup } from './screens-setup';
-import { keepWaiting, takeWaiting } from './screens-setup';
+import { afterStop, WaitingFile, WENT_BACK_AFTER_STOP } from './screens-setup';
 
 /** The library's Looks, with the engine that keeps the live one (each group's languages are there). */
 function looksAndEngine(db: Db): { looks: LookService; engine: ShowEngine } {
@@ -674,6 +674,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
       t.service.assignDisplay(hall, 2);
       t.service.setGroupLanguages(hall, ['gu']);
       const was = shape(t);
+      const waiting = new WaitingFile(file);
       const keep = new KeepScreens<ScreensSetup>({
         capture: () => t.service.setup(),
         restore: (changes, quitting) => t.service.undo(changes, quitting),
@@ -682,7 +683,8 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
         snapshot: () => t.service.snapshot(),
         changed: () => undefined,
         remember: (changes) => {
-          keepWaiting(file, changes);
+          if (changes) waiting.keep(changes);
+          else waiting.forget();
         },
         now: () => 0,
         later: () => () => undefined,
@@ -696,14 +698,20 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
       expect(keep.current()).not.toBeNull();
       expect(t.open.size).toBe(2);
       // Drashti stops dead here: nothing answers, nothing quits. The next start finds the change on disk.
-      const left = takeWaiting(file);
-      expect(left).toHaveLength(1);
-      expect(t.service.undo(left ?? [], true)).toMatchObject({ ok: true });
+      const start = () =>
+        afterStop(new WaitingFile(file), {
+          goBack: (changes) => {
+            t.service.undo(changes, true);
+          },
+          otherLibrary: false,
+          log: () => undefined,
+        });
+      expect(start()).toBe(WENT_BACK_AFTER_STOP);
       expect(shape(t)).toEqual(was);
       // Saved only: the start opens the outputs afterwards, as they are.
       expect(t.open.size).toBe(2);
-      // Taken: the start after that finds nothing.
-      expect(takeWaiting(file)).toBeNull();
+      // Cleared once gone back: the start after that finds nothing.
+      expect(start()).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
