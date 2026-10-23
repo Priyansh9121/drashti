@@ -11,9 +11,10 @@ import type { HallPicture } from '../../../shared/stage-layouts';
  * output finds its own (groupLookIn, as output/main.tsx does), so the box can never show the hall
  * differently from the hall's screens. With Audience off (Session 51) it keeps that picture, the one the hall
  * comes back to, and says the hall's screens are off in its bottom left corner (Session 52: in the top left, a
- * stage message along the top covered it), so the performers are not misled. With no audience group at all
- * (Session 52) there is no hall's picture to draw: the box is black and says so in one short line, where it drew
- * every layer, a picture no hall's screen shows.
+ * stage message along the top covered it), so the performers are not misled: in words never below the stage's
+ * smallest while they fit (Session 53). With no audience group at all (Session 52) there is no hall's picture to
+ * draw: the box is black and says so in one short line, where it drew every layer, a picture no hall's screen
+ * shows.
  */
 
 /** What the box says in a corner while Audience is off: the words the status bar and a phone say. */
@@ -34,9 +35,15 @@ export const PICTURE: Size = { width: 1920, height: 1080 };
  */
 export const WORDS_CORNER = { left: 40, bottom: 40 } as const;
 
-/** Audience off's size on the picture (64 px), which the line with no audience group matches. */
+/**
+ * Audience off's size on the picture (64 px), where that is no smaller than the stage's smallest words on the stage
+ * (Session 53); the line with no audience group matches it.
+ */
 const WORDS_SIZE = 64;
-/** The stage's smallest words (a box's label, 30 px): the line is never drawn smaller while the box holds it. */
+/**
+ * The stage's smallest words (a box's label, 30 px): Audience off (Session 53) and the line with no audience group
+ * are never drawn smaller while they fit.
+ */
 const LINE_MIN = 30;
 /** As small as a layout's box fitting its words goes (StageLayoutView's FIT_MIN): a box smaller still cuts it. */
 const LINE_FLOOR = 8;
@@ -79,20 +86,40 @@ export function hallView(look: LiveLook, hall: HallPicture | null | undefined): 
   };
 }
 
+/** The picture's scale in a box of this size (stage canvas pixels), fitted into it with black around it. */
+const pictureScale = (box: Size) => Math.min(box.width / PICTURE.width, box.height / PICTURE.height);
+
+/**
+ * The size wanted for the box's words with the picture at this scale (stage canvas pixels): as large as Audience
+ * off is on the picture, never below the stage's smallest words.
+ */
+const wantedAt = (scale: number) => Math.max(LINE_MIN, WORDS_SIZE * scale);
+
 /**
  * The line with no audience group (Session 52) in a box of this size (stage canvas pixels), before the box fits it
  * (fittedSize): as large and as far in from the corner as Audience off would be there, on the picture scaled into
  * the box, but never below the stage's smallest words, so it still reads in a small box.
  */
 export function noAudienceLine(box: Size): { size: number; inset: number } {
-  const scale = Math.min(box.width / PICTURE.width, box.height / PICTURE.height);
-  return { size: Math.max(LINE_MIN, WORDS_SIZE * scale), inset: WORDS_CORNER.left * scale };
+  const scale = pictureScale(box);
+  return { size: wantedAt(scale), inset: WORDS_CORNER.left * scale };
 }
 
 /**
- * The line's size in its box (Session 52): the size wanted (to the whole pixel) when the line fits there, measured
- * on the page (`fits`), else the largest that fits, found by halving as a layout's boxes fit their words, and never
- * below 8 px: a box too small for words even then cuts them.
+ * Audience off in a box of this size (Session 53), before it is fitted to the picture (fittedSize): the size wanted
+ * in stage canvas pixels, as the line with no audience group wants it (64 px in a box the size of the whole stage,
+ * and never below the stage's smallest words), and the picture's scale in the box, as it is drawn on the picture.
+ * Until then it was 64 px on the picture in any box: 10.7 px in a box a sixth of the stage each way.
+ */
+export function audienceOffSize(box: Size): { size: number; scale: number } {
+  const scale = pictureScale(box);
+  return { size: wantedAt(scale), scale };
+}
+
+/**
+ * The line's size in its box (Session 52), and Audience off's on its picture (Session 53): the size wanted (to the
+ * whole pixel) when the words fit there, measured on the page (`fits`), else the largest that fits, found by
+ * halving as a layout's boxes fit their words, and never below 8 px: a box too small for words even then cuts them.
  */
 export function fittedSize(wanted: number, fits: (px: number) => boolean): number {
   const top = Math.floor(wanted);
