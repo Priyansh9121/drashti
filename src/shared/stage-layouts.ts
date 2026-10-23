@@ -257,6 +257,31 @@ export function withBoxAdded(boxes: readonly StageBox[], box: StageBox): StageBo
   return box.kind === 'audience' ? [box, ...boxes] : [...boxes, box];
 }
 
+/** The smallest the layout editor makes a box each way (canvas pixels): as small as a layout keeps one. */
+const BOX_MIN = 8;
+
+/**
+ * The smallest the layout editor makes the audience picture box (Session 53): a sixth of the stage each way, where
+ * its line, "No audience screens" in the box or "Audience off" on its picture, keeps to the stage's smallest words
+ * (30 px, render/audience-picture.ts). Until then it went down to 8 x 8, as any box does. A layout saved smaller
+ * before is read, drawn and saved as it was: only a size changed in the editor stops here.
+ */
+export const AUDIENCE_BOX_MIN = { width: STAGE_WIDTH / 6, height: STAGE_HEIGHT / 6 } as const;
+
+/** The smallest the layout editor makes a box of this kind, by its handles and its fields. */
+export function smallestBox(kind: StageBoxKind): { width: number; height: number } {
+  return kind === 'audience' ? AUDIENCE_BOX_MIN : { width: BOX_MIN, height: BOX_MIN };
+}
+
+/**
+ * A box's frame with one of its numbers as typed in the layout editor, in whole pixels: its width and height no
+ * smaller than its kind's smallest (smallestBox), its place as typed, to a canvas's width before the canvas.
+ */
+export function typedFrame(box: StageBox, key: keyof Rect, value: number): Rect {
+  const min = key === 'width' || key === 'height' ? smallestBox(box.kind)[key] : -STAGE_WIDTH;
+  return { ...box.frame, [key]: Math.max(min, Math.round(value)) };
+}
+
 /**
  * Whether a layout draws the hall's picture (Session 50): its screen then loads what comes next, as the
  * hall's screens do.

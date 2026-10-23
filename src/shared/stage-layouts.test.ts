@@ -7,12 +7,14 @@ import {
   hallPictureSchema,
   newStageBox,
   showsHall,
+  smallestBox,
   STAGE_BOX_KINDS,
   STAGE_BOX_LABELS,
   STAGE_BOX_NAMES,
   stageBoxSchema,
   stageLayoutDefinitionSchema,
   standardAsBoxes,
+  typedFrame,
   withBoxAdded,
 } from './stage-layouts';
 
@@ -70,6 +72,36 @@ describe('the audience picture box', () => {
       ],
     };
     expect(stageLayoutDefinitionSchema.parse(JSON.parse(JSON.stringify(withHall)))).toEqual(withHall);
+  });
+
+  // Session 53 (question 5): the editor made it as small as any box (8 x 8), where its line ("No audience screens",
+  // "Audience off") cannot keep to the stage's smallest words (30 px).
+  it('is made no smaller in the editor than a sixth of the stage each way, where its line keeps to 30 px', () => {
+    expect(smallestBox('audience')).toEqual({ width: 320, height: 180 });
+    for (const kind of STAGE_BOX_KINDS.filter((k) => k !== 'audience'))
+      expect(smallestBox(kind), kind).toEqual({ width: 8, height: 8 });
+    // A new one is larger already.
+    const hall = newStageBox('audience', 'hall');
+    expect(hall.frame.width).toBeGreaterThanOrEqual(smallestBox('audience').width);
+    expect(hall.frame.height).toBeGreaterThanOrEqual(smallestBox('audience').height);
+    // A size typed in its fields: never below it, in whole pixels.
+    expect(typedFrame(hall, 'width', 100)).toEqual({ ...hall.frame, width: 320 });
+    expect(typedFrame(hall, 'height', 50.4)).toEqual({ ...hall.frame, height: 180 });
+    expect(typedFrame(hall, 'width', 400.6)).toEqual({ ...hall.frame, width: 401 });
+    // Its place as typed; another kind of box 8 px each way at the least, as before.
+    expect(typedFrame(hall, 'x', -50)).toEqual({ ...hall.frame, x: -50 });
+    expect(typedFrame(hall, 'y', 12.2)).toEqual({ ...hall.frame, y: 12 });
+    const clock = newStageBox('clock', 'clock');
+    expect(typedFrame(clock, 'width', 3)).toEqual({ ...clock.frame, width: 8 });
+    expect(typedFrame(clock, 'height', 40)).toEqual({ ...clock.frame, height: 40 });
+  });
+
+  it('saved smaller than that before, is read and drawn as it was, its size kept as its place is typed', () => {
+    const small = { ...newStageBox('audience', 'hall'), frame: { x: 900, y: 500, width: 96, height: 54 } };
+    const before = { background: '#000000', boxes: [small] };
+    expect(stageLayoutDefinitionSchema.parse(JSON.parse(JSON.stringify(before)))).toEqual(before);
+    expect(typedFrame(small, 'x', 901)).toEqual({ ...small.frame, x: 901 });
+    expect(typedFrame(small, 'y', 480)).toEqual({ ...small.frame, y: 480 });
   });
 
   it('marks a layout that draws the hall’s picture', () => {

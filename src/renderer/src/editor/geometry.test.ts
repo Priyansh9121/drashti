@@ -86,6 +86,40 @@ describe('resizing', () => {
     });
   });
 
+  // Session 53: a stage layout's audience picture box is made no smaller than 320 x 180, where its line reads.
+  it('never goes below a smallest width and height of their own', () => {
+    const min = { width: 320, height: 180 };
+    const big = { x: 100, y: 100, width: 960, height: 540 };
+    // Dragged in past it from a corner: the smallest, the opposite corner where it was.
+    expect(resizeFrame({ frame: big }, 'se', { x: 0, y: 0 }, { min })).toEqual({
+      x: 100,
+      y: 100,
+      width: 320,
+      height: 180,
+    });
+    expect(resizeFrame({ frame: big }, 'nw', { x: 2000, y: 2000 }, { min })).toEqual({
+      x: 740,
+      y: 460,
+      width: 320,
+      height: 180,
+    });
+    // An edge changes its own side only: a box saved smaller keeps its other side as it was.
+    const small = { x: 900, y: 500, width: 96, height: 54 };
+    expect(resizeFrame({ frame: small }, 'e', { x: 1000, y: 0 }, { min })).toEqual({
+      x: 900,
+      y: 500,
+      width: 320,
+      height: 54,
+    });
+    // Kept in proportion, both at their smallest at least.
+    close(resizeFrame({ frame: small }, 'se', { x: 950, y: 520 }, { min, keepRatio: true }), {
+      x: 900,
+      y: 500,
+      width: 320,
+      height: 180,
+    });
+  });
+
   it('keeps the fixed corner of a turned frame where it was on the slide', () => {
     const p = { frame, rotation: 30 };
     const fixedBefore = cornersOf(p)[0];
@@ -129,6 +163,25 @@ describe('snapping', () => {
     const r = snapResize({ x: 100, y: 100, width: 1815, height: 200 }, 'e', lines, 8);
     expect(r.frame).toEqual({ x: 100, y: 100, width: 1820, height: 200 });
     expect(r.guides).toEqual({ x: [1920], y: [] });
+  });
+
+  // Session 53: snapped to a line just inside, a box at its smallest was made smaller than that.
+  it('never snaps a resized edge to a line that makes the box smaller than its smallest', () => {
+    const lines = snapLines(slide, []);
+    const min = { width: 320, height: 180 };
+    // Its right edge 5 px past the middle (960), its bottom 4 px past it (540): no snap back.
+    const r = snapResize({ x: 645, y: 364, width: 320, height: 180 }, 'se', lines, 8, min);
+    expect(r.frame).toEqual({ x: 645, y: 364, width: 320, height: 180 });
+    expect(r.guides).toEqual({ x: [], y: [] });
+    // Its left edge moved, the same.
+    expect(snapResize({ x: 955, y: 100, width: 320, height: 180 }, 'w', lines, 8, min).frame).toEqual({
+      x: 955,
+      y: 100,
+      width: 320,
+      height: 180,
+    });
+    // Larger than its smallest, it snaps as ever.
+    expect(snapResize({ x: 600, y: 100, width: 365, height: 180 }, 'e', lines, 8, min).frame.width).toBe(360);
   });
 });
 

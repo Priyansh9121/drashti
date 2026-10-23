@@ -15,9 +15,10 @@ import { useElementSize } from '../render/useElementSize';
  * mask editor's shapes. The canvas is drawn scaled to fit, with `picture`
  * behind the boxes (what the screen will show). Click a box to choose it,
  * drag to move it (snapping to the canvas's edges and middle and to the
- * other boxes; Alt places freely), drag a handle to resize it. From the
- * keyboard: Tab chooses the next box, the arrows move it (Shift: ten
- * pixels); sizes are typed in the editor's fields.
+ * other boxes; Alt places freely), drag a handle to resize it (no smaller
+ * than its own smallest, Session 53). From the keyboard: Tab chooses the
+ * next box, the arrows move it (Shift: ten pixels); sizes are typed in the
+ * editor's fields.
  */
 
 export interface CanvasBox {
@@ -25,6 +26,11 @@ export interface CanvasBox {
   frame: Rect;
   /** How it is read out, and shown on it. */
   name: string;
+  /**
+   * The smallest its handles make it, each way (Session 53: a stage layout's audience picture box), where not the
+   * canvas's own (minSize). One already smaller stays so until it is resized.
+   */
+  min?: Size;
 }
 
 const PAD = 24;
@@ -34,7 +40,7 @@ const HANDLE_PX = 10;
 
 type Drag =
   | { kind: 'move'; id: string; start: Point; frame: Rect; lines: SnapLines; dragging: boolean }
-  | { kind: 'resize'; id: string; handle: Handle; frame: Rect; lines: SnapLines };
+  | { kind: 'resize'; id: string; handle: Handle; frame: Rect; lines: SnapLines; min: Size };
 
 const CURSOR: Record<Handle, string> = {
   nw: 'nwse-resize',
@@ -127,6 +133,7 @@ export function BoxCanvas({
         handle,
         frame: chosen.frame,
         lines: linesWithout(chosen.id),
+        min: chosen.min ?? { width: minSize, height: minSize },
       };
       return;
     }
@@ -161,10 +168,10 @@ export function BoxCanvas({
       onChange(d.id, round({ ...moved, x: moved.x + (snap?.dx ?? 0), y: moved.y + (snap?.dy ?? 0) }), false);
       setGuides(snap && (snap.guides.x.length || snap.guides.y.length) ? snap.guides : null);
     } else {
-      let frame = resizeFrame({ frame: d.frame }, d.handle, p, { keepRatio: e.shiftKey, min: minSize });
+      let frame = resizeFrame({ frame: d.frame }, d.handle, p, { keepRatio: e.shiftKey, min: d.min });
       let shownGuides: Guides | null = null;
       if (within > 0 && !e.shiftKey) {
-        const snapped = snapResize(frame, d.handle, d.lines, within);
+        const snapped = snapResize(frame, d.handle, d.lines, within, d.min);
         frame = snapped.frame;
         shownGuides = snapped.guides.x.length || snapped.guides.y.length ? snapped.guides : null;
       }
