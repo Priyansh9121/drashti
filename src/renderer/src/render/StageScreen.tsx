@@ -25,11 +25,21 @@ export function StageScreen({
   look: LiveGroupLook;
   canvas: Size;
   clockStyle?: ClockStyle | null;
-  /** The hall's group and canvas, for a layout's audience picture box (Session 50). */
+  /**
+   * The hall's group and canvas, for a layout's audience picture box (Session 50), and whether its screens are off
+   * (Session 51), which the Standard stage screen says too.
+   */
   hall?: HallPicture | null;
 }) {
   if (!look.stageLayout)
-    return <StageView state={state} languages={look.languages} {...(clockStyle ? { clockStyle } : {})} />;
+    return (
+      <StageView
+        state={state}
+        languages={look.languages}
+        audienceOff={hall?.off === true}
+        {...(clockStyle ? { clockStyle } : {})}
+      />
+    );
   return (
     <Placed content={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }} box={canvas} mode="fit">
       <StageLayoutView

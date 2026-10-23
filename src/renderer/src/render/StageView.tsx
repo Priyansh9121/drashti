@@ -24,6 +24,26 @@ export function backgroundWords(background: EngineState['layers']['background'])
   return 'Nothing on the screens';
 }
 
+/**
+ * What the audience screens show, as a stage layout's box of their state says it. Off first (Session 51: with
+ * Audience off they show this computer's desktop, whatever is up), then black-out, the logo, a picture or nothing.
+ */
+export function screensStateWords(state: EngineState, off: boolean): string {
+  if (off) return 'Audience screens off';
+  if (state.blackout) return 'Audience screens black';
+  if (state.logo) return 'Logo on the audience screens';
+  return state.layers.slide || state.layers.background
+    ? 'Audience screens showing'
+    : 'Nothing on the audience screens';
+}
+
+/** The same beside NOW on the Standard stage screen: said only when they do not show the picture. */
+export function screensStateNote(state: EngineState, off: boolean): string {
+  if (off) return ' · AUDIENCE SCREENS OFF';
+  if (state.blackout) return ' · AUDIENCE SCREENS BLACK';
+  return state.logo ? ' · LOGO ON THE AUDIENCE SCREENS' : '';
+}
+
 /*
  * The stage screen (PLAN.md 4.3): what the performers need, in large text
  * on black. The slide on the screens and the one after it, the slide's
@@ -198,12 +218,15 @@ export function StageView({
   state,
   languages = null,
   clockStyle,
+  audienceOff = false,
 }: {
   state: EngineState;
   /** The languages the stage screens show of a kirtan's slides, in order; null for all of them. */
   languages?: readonly Lang[] | null;
   /** How to write the time: Drashti's computer's way, on a stage display in another device's browser. */
   clockStyle?: ClockStyle | null;
+  /** The hall's screens are off (Audience off, Session 51): said beside NOW. */
+  audienceOff?: boolean;
 }) {
   const now = useNow();
   const slide = state.layers.slide;
@@ -249,11 +272,7 @@ export function StageView({
         <section style={{ flex: 3, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <p style={label}>
             NOW
-            {state.blackout
-              ? ' · AUDIENCE SCREENS BLACK'
-              : state.logo
-                ? ' · LOGO ON THE AUDIENCE SCREENS'
-                : ''}
+            {screensStateNote(state, audienceOff)}
           </p>
           {/* A timer shown alone (Session 50): named, its time in the box. */}
           {slide?.timer && (

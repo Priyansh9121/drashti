@@ -11,7 +11,7 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { timerDuration } from '../../../shared/timers';
 import { AudienceBox } from './AudienceBox';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
-import { backgroundWords, kindName, StageText } from './StageView';
+import { backgroundWords, kindName, screensStateWords, StageText } from './StageView';
 import { textLang } from './lang';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
@@ -120,12 +120,15 @@ function BoxContents({
   languages,
   clock,
   now,
+  audienceOff,
 }: {
   box: StageBox;
   state: EngineState;
   languages: readonly Lang[] | null;
   clock: string;
   now: number;
+  /** The hall's screens are off (Audience off, Session 51): the box of their state says so. */
+  audienceOff: boolean;
 }): ReactNode {
   const slide = state.layers.slide;
   switch (box.kind) {
@@ -283,17 +286,7 @@ function BoxContents({
       ) : null;
     }
     case 'screensState':
-      return (
-        <span>
-          {state.blackout
-            ? 'Audience screens black'
-            : state.logo
-              ? 'Logo on the audience screens'
-              : state.layers.slide || state.layers.background
-                ? 'Audience screens showing'
-                : 'Nothing on the audience screens'}
-        </span>
-      );
+      return <span>{screensStateWords(state, audienceOff)}</span>;
     case 'audience':
       // Drawn by the box itself (AudienceBox), never as words.
       return null;
@@ -332,6 +325,8 @@ export function StageLayoutView({
   // Main's way of writing the time (Sessions 31–36, I18N-8): given, or the page's.
   const pageStyle = useContext(ClockStyleContext);
   const clock = formatClock(now, clockStyle ?? pageStyle);
+  // Audience off (Session 51): the box of the audience screens' state says so, as the audience picture box does.
+  const audienceOff = hall?.off === true;
   return (
     <div
       data-testid="stage-layout"
@@ -376,8 +371,18 @@ export function StageLayoutView({
           {box.kind === 'audience' ? (
             <AudienceBox state={state} hall={hall} />
           ) : (
-            <Sized size={box.size} again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state))}`}>
-              <BoxContents box={box} state={state} languages={languages} clock={clock} now={now} />
+            <Sized
+              size={box.size}
+              again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state, audienceOff))}`}
+            >
+              <BoxContents
+                box={box}
+                state={state}
+                languages={languages}
+                clock={clock}
+                now={now}
+                audienceOff={audienceOff}
+              />
             </Sized>
           )}
         </div>
@@ -387,7 +392,7 @@ export function StageLayoutView({
 }
 
 /** What a box shows, so a box that fits its words measures again when they change. */
-function contentKey(box: StageBox, state: EngineState): unknown {
+function contentKey(box: StageBox, state: EngineState, audienceOff: boolean): unknown {
   switch (box.kind) {
     case 'current':
       return [state.layers.slide?.slide.id, state.layers.slide?.shownAt, state.layers.background?.kind];
@@ -404,7 +409,13 @@ function contentKey(box: StageBox, state: EngineState): unknown {
     case 'mediaLeft':
       return [state.layers.background, state.layers.audio];
     case 'screensState':
-      return [state.blackout, state.logo?.id, state.layers.slide?.slide.id, state.layers.background?.kind];
+      return [
+        audienceOff,
+        state.blackout,
+        state.logo?.id,
+        state.layers.slide?.slide.id,
+        state.layers.background?.kind,
+      ];
     case 'clock':
     case 'samvat':
       return [box.calendar, box.lang, state.calendar];
