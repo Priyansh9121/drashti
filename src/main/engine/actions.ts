@@ -52,6 +52,11 @@ export type EngineAction =
        * slide up, restart recovery): the slide up keeps what it said.
        */
       inputMissing?: string | null;
+      /**
+       * The same for its background cue's file (Session 52): its name when it is missing, null when it is there or
+       * the cue names none; left out as above. Restart recovery says it again (its cues still do not run).
+       */
+      fileMissing?: string | null;
       /** Its videos' start and end points as the library has them now (Session 52); left out when none has any. */
       clips?: VideoClips;
     }

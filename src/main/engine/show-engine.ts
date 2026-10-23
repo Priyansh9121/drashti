@@ -85,6 +85,15 @@ function withoutItem(layers: Layers, id: string): Layers {
   };
 }
 
+/**
+ * The file a slide's background cue names, by the library's name for it, when that file is missing (Session 52: not
+ * found at import, or deleted from the library); null when it is there, or the cue names a video input or none.
+ */
+function missingFile(played: PlayedSlide): string | null {
+  const cue = played.cues.find((c): c is BackgroundCue => c.kind === 'background');
+  return cue?.missing === true && cue.background.kind === 'media' ? cue.name : null;
+}
+
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
 const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousItem']);
 
@@ -400,8 +409,13 @@ export class ShowEngine {
         // on where they would be, and what draws from that time (a lower third's in) is long over. Since Session 3 it
         // went up again at the restart. Never from a time to come (a clock set back since).
         const at = shownAt === undefined ? {} : { at: Math.min(shownAt, this.now()) };
+        // Its background cue's file still missing (Session 52) is said again, as when it went up: its cues do not run
+        // again, so the background is the one put back below, as it was.
         actions.push(
-          this.showAction(presentationId, slideIndex, order, found, from ? playlist.cursor : null, at),
+          this.showAction(presentationId, slideIndex, order, found, from ? playlist.cursor : null, {
+            ...at,
+            fileMissing: missingFile(found),
+          }),
         );
         slide = true;
       }
@@ -920,7 +934,12 @@ export class ShowEngine {
     order: PlayOrder,
     played: PlayedSlide,
     playlist: PlaylistCursor | null,
-    how: { at?: number; transition?: Transition; inputMissing?: string | null } = {},
+    how: {
+      at?: number;
+      transition?: Transition;
+      inputMissing?: string | null;
+      fileMissing?: string | null;
+    } = {},
   ): EngineAction {
     return {
       type: 'slide/show',
@@ -934,6 +953,7 @@ export class ShowEngine {
       at: how.at ?? this.now(),
       ...(how.transition ? { transition: how.transition } : {}),
       ...(how.inputMissing !== undefined ? { inputMissing: how.inputMissing } : {}),
+      ...(how.fileMissing !== undefined ? { fileMissing: how.fileMissing } : {}),
       // Its videos play between their files' points as the library has them (Session 52), however it goes up.
       ...this.clipsOf(played.slide.elements),
     };
@@ -976,11 +996,14 @@ export class ShowEngine {
     // A new background comes on with the slide (dissolving with it); the same file carries on. A video input
     // (Session 51) is this computer's input of the name the cue keeps, coming on with its own fixed fade (the same
     // input carries on); with none of that name, the background stays as it was (never black because of it) and
-    // the slide says which input it named, for LIVE to say so.
+    // the slide says which input it named, for LIVE to say so. A file that is missing (Session 52: not found at
+    // import, or deleted from the library) does the same, the slide naming the file; before, it went up all the
+    // same, and every screen went black with nothing said. One Drashti cannot play still goes up, as before.
     const fade =
       transition && transition.durationMs > 0 ? { at, durationMs: transition.durationMs } : undefined;
     const layers: EngineAction[] = [];
     let inputMissing: string | null = null;
+    let fileMissing: string | null = null;
     for (const cue of played.cues) {
       if (cue.kind === 'background') {
         const bg = cue.background;
@@ -988,7 +1011,8 @@ export class ShowEngine {
           const input = this.options.inputNamed?.(bg.name) ?? null;
           if (input) layers.push({ type: 'background/set', background: this.inputLayer(input) });
           else inputMissing = bg.name;
-        } else layers.push({ type: 'background/set', background: this.backgroundLayer(bg, fade) });
+        } else if (cue.missing) fileMissing = cue.name;
+        else layers.push({ type: 'background/set', background: this.backgroundLayer(bg, fade) });
       } else {
         const { mediaId, volume, loop } = cue;
         layers.push({
@@ -1002,6 +1026,7 @@ export class ShowEngine {
         at,
         ...(transition ? { transition } : {}),
         inputMissing,
+        fileMissing,
       }),
       ...layers,
     ];
@@ -1519,6 +1544,7 @@ export class ShowEngine {
   ): UpNext {
     const cue = played.cues.find((c): c is BackgroundCue => c.kind === 'background');
     const bg = cue?.background;
+    const missing = missingFile(played);
     return {
       kind: 'slide',
       presentationId,
@@ -1527,6 +1553,8 @@ export class ShowEngine {
       background: cue?.unplayable === null && !cue.missing && bg?.kind === 'media' ? bg : null,
       // A video input behind it (Session 51), by the name its cue keeps.
       ...(bg?.kind === 'input' ? { input: bg.name } : {}),
+      // Its file missing (Session 52), by its name: the background stays as it is when it goes up.
+      ...(missing !== null ? { fileMissing: missing } : {}),
       itemId,
       notes: played.notes,
     };
