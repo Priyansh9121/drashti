@@ -7,6 +7,11 @@ import { noteShowChange } from './show-changed';
 interface EngineView {
   state: EngineState | null;
   rev: number;
+  /**
+   * The run of the engine `rev` counts in (Session 53): each run starts again from 0, so a phone's Next says both.
+   * Undefined until a snapshot says it.
+   */
+  session?: string;
   /** Wall-clock time the last applied message left the main process. */
   sentAt: number;
   connected: boolean;
@@ -57,6 +62,7 @@ export function connectEngineSource(source: EngineSource): void {
       useEngine.setState({
         state: mirror.state,
         rev: mirror.rev,
+        session: mirror.session,
         sentAt: message.sentAt,
         connected: true,
         unread: false,

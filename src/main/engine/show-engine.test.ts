@@ -75,6 +75,35 @@ describe('ShowEngine', () => {
         command: { type: 'next', rev: 7 },
       });
     });
+
+    // Session 53: a page left open while Drashti restarted can press Next before its copy has the new run (its feed
+    // connects again a few seconds after the server is back). The new run counts from 0 again, so the last run's
+    // revision may by chance be this run's.
+    it('does nothing when the revision it saw is from another run of the engine, even the same number (Session 53)', () => {
+      const { engine } = setup();
+      engine.dispatch(goLive('p1', 0));
+      const seen = engine.rev;
+      expect(engine.dispatch({ type: 'next', rev: seen, session: 'placeholder-earlier-run' })).toEqual({
+        ok: true,
+        changed: false,
+        rev: seen,
+      });
+      expect(engine.current.live.slideIndex).toBe(0);
+      // Seen in this run: Next acts, and two at once still move one slide.
+      expect(engine.dispatch({ type: 'next', rev: seen, session: engine.session })).toMatchObject({
+        changed: true,
+      });
+      expect(engine.dispatch({ type: 'next', rev: seen, session: engine.session })).toMatchObject({
+        changed: false,
+      });
+      expect(engine.current.live.slideIndex).toBe(1);
+      // The run is kept from what was sent; it is never empty.
+      expect(parseEngineCommand({ type: 'next', rev: 7, session: 'run-1' })).toEqual({
+        ok: true,
+        command: { type: 'next', rev: 7, session: 'run-1' },
+      });
+      expect(parseEngineCommand({ type: 'next', rev: 7, session: '' }).ok).toBe(false);
+    });
   });
 
   describe('goLive', () => {

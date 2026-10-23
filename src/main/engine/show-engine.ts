@@ -368,8 +368,13 @@ export class ShowEngine {
   dispatch(command: EngineCommand): CommandResult {
     const refused = this.options.refuse?.(command) ?? null;
     if (refused !== null) return { ok: false, error: 'forbidden', message: refused };
-    // A Next sent with the revision it saw, the show having moved since (Sessions 31–36, TST-11): nothing.
-    if (command.type === 'next' && command.rev !== undefined && command.rev !== this.revision)
+    // A Next sent with the revision it saw, the show having moved since (Sessions 31–36, TST-11), or seen in another
+    // run of the engine (Session 53: a page's copy from before Drashti restarted, whatever the number): nothing.
+    if (
+      command.type === 'next' &&
+      ((command.rev !== undefined && command.rev !== this.revision) ||
+        (command.session !== undefined && command.session !== this.session))
+    )
       return this.unchanged();
     return this.atOnce(() => {
       const resolved = this.resolve(command);
