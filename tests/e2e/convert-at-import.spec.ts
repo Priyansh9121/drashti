@@ -1,9 +1,10 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { HEVC_TYPE } from '../../src/shared/convert';
 import {
   closeLibrary,
   dropFiles,
@@ -218,8 +219,8 @@ test('an MKV with AC-3 sound, an AVI, a WMA and an AIFF are converted by themsel
   }
 });
 
-test('HEVC is converted by itself at import where this computer cannot play it; where it can, it plays as it is (Session 51)', async () => {
-  test.setTimeout(180_000);
+test('HEVC is converted by itself at import where this computer cannot play it; where it can, it plays as it is; unless told, as the window says (Session 51)', async () => {
+  test.setTimeout(240_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-convert-hevc-e2e-'));
   const phone = join(dir, 'Placeholder phone.mov');
   make([
@@ -238,12 +239,26 @@ test('HEVC is converted by itself at import where this computer cannot play it; 
     phone,
   ]);
   try {
-    // As the operator window would say on a Windows PC without Microsoft's HEVC extension ('0'), and on a Mac ('1').
-    for (const plays of [false, true]) {
-      const { app } = await launchApp({ DRASHTI_TEST_PLAYS_HEVC: plays ? '1' : '0' });
+    // As the operator window would say on a Windows PC without Microsoft's HEVC extension ('0'), on a Mac ('1'), and
+    // with no answer given, as this computer's own window says (Chromium's canPlayType, which the import is told:
+    // likely playing on a Mac, converted on a Windows runner without a GPU decoder).
+    for (const given of ['0', '1', null] as const) {
+      const { app, userData } = await launchApp(given === null ? {} : { DRASHTI_TEST_PLAYS_HEVC: given });
       try {
         const win = await operatorPage(app);
         await operatorReady(win);
+        const plays =
+          given === null
+            ? await win.evaluate(
+                (type) => document.createElement('video').canPlayType(type) !== '',
+                HEVC_TYPE,
+              )
+            : given === '1';
+        // Asked of the window, not given: the log says what it answered.
+        if (given === null)
+          await expect
+            .poll(() => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'))
+            .toContain(plays ? 'This computer plays HEVC video' : 'This computer cannot play HEVC video');
         const imported = await importOne(win, phone);
         if (plays) {
           // Plays as it is: no line about it, and never converted.
