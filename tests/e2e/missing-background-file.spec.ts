@@ -23,11 +23,11 @@ import { makeTestImage } from './test-media';
 
 /*
  * A slide's background cue whose file is missing (Session 52): a presentation imported with its background picture
- * not found (on another computer's drive), as a ProPresenter library brought from elsewhere often is. It goes as a
- * video input this computer has none of does (Session 51): the background stays as it was, never black, and LIVE
- * says why; its thumbnail, the slide editor and what Next shows say so too; it says so again after an unexpected
- * restart; and once the file is found (Find missing media…) the slide puts it up. Placeholder names, a generated
- * picture.
+ * not found (on another computer's drive), as a library brought from another computer often is. It goes as a video
+ * input this computer has none of does (Session 51): the background stays as it was, never black, and LIVE says
+ * why; its thumbnail, the slide editor and Simple Mode's picture of what is next say so too; it says so again after
+ * an unexpected restart; and once the file is found (Find missing media…) the slide puts it up. Placeholder names, a
+ * generated picture.
  */
 
 const ENV = { DRASHTI_WINDOWED_OUTPUTS: '1' };
@@ -52,7 +52,7 @@ async function showsColour(app: ElectronApplication): Promise<void> {
   await expect(hall.locator('[data-layer="background"]')).toHaveCSS('background-color', 'rgb(32, 48, 64)');
 }
 
-test('a missing file behind a slide: the background stays as it was, never black, and LIVE, the thumbnail, Next and the editor say why; again after a restart, and it goes up once found', async () => {
+test('a missing file behind a slide: the background stays as it was, never black, and LIVE, the thumbnail, the editor and Simple Mode’s Next say why; again after a restart, and it goes up once found', async () => {
   test.setTimeout(180_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-missing-file-'));
   const show = join(dir, 'Placeholder Missing Backdrop.pro6');
@@ -101,14 +101,9 @@ test('a missing file behind a slide: the background stays as it was, never black
   await expect(thumbs.nth(1).getByTestId('thumb-missing')).toHaveText('Missing');
   await expect(thumbs.nth(0).getByTestId('thumb-missing')).toHaveCount(0);
 
-  // What Next shows says so before it goes up.
+  // Up: the background stays the colour on the screens, and LIVE says why.
   await thumbs.nth(0).click();
   await expect.poll(async () => (await state(win)).live.slideIndex).toBe(0);
-  await expect(win.getByTestId('next-caption')).toHaveText(
-    `Placeholder Missing Backdrop, slide 2, over the file “${FILE}”, which is missing: the background stays as it is`,
-  );
-
-  // Up: the background stays the colour on the screens, and LIVE says why.
   await thumbs.nth(1).click();
   await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
   expect((await state(win)).layers.background).toEqual(COLOUR);
@@ -134,6 +129,23 @@ test('a missing file behind a slide: the background stays as it was, never black
   );
   await win.keyboard.press('Escape');
   await expect(editor).toHaveCount(0);
+
+  // Simple Mode: its picture of what is next says so before it goes up, and its LIVE says why, as Pro Mode's does.
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await expect(win.getByTestId('live-file-missing')).toHaveText(LINE);
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  await expect(win.getByTestId('live-file-missing')).toHaveCount(0);
+  await expect(win.getByTestId('next-caption')).toHaveText(
+    `Placeholder Missing Backdrop, slide 2, over the file “${FILE}”, which is missing: the background stays as it is`,
+  );
+  await win.getByTestId('simple-buttons').getByRole('button', { name: /^Next/u }).click();
+  await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
+  await expect(win.getByTestId('live-file-missing')).toHaveText(LINE);
+  expect((await state(win)).layers.background).toEqual(COLOUR);
+  const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  expect(pro.ok).toBe(true);
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
 
   // Stopped dead with it up: the next start puts it back, the background as it was, and LIVE says why again.
   await savedLive(
