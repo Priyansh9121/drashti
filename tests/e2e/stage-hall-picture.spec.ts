@@ -23,9 +23,9 @@ import { makeTestImage } from './test-media';
 /*
  * The audience picture, live, as a stage layout's box (Session 50), where Session 51 finished it: a video input
  * (Chromium's fake camera: DRASHTI_TEST_FAKE_DEVICES, never a real one), another app's window (Session 48's
- * stand-in, a placeholder window the test opens itself: DRASHTI_TEST_WINDOW_STANDIN) and a picture-in-picture
- * box show under the stage box as on the hall's screen; with Audience off the box keeps the picture and says so
- * in a corner; a tablet's stage page draws it from small previews, as the phone remote's live picture does; and a
+ * stand-in: DRASHTI_TEST_WINDOW_STANDIN) and a picture-in-picture box show under it as on the hall's screen; with
+ * Audience off it keeps the picture and says so in a corner, and the box of the audience screens' state says off;
+ * a tablet draws it from small previews, as the phone remote's picture does, naming a window it cannot draw; a
  * node with no audience screen of its own draws Main's hall as the live Look sets it, never every layer.
  * Placeholder words and generated media only. Quiet: outputs as windows, nothing wider than 1024 assumed.
  */
@@ -467,4 +467,72 @@ test('on a node with no audience screen, the stage box draws Main’s hall as th
     await node.app.close();
     await main.app.close();
   }
+});
+
+test('a tablet’s box names a window it cannot draw, and the box of the audience screens says when they are off', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ ...NETWORK_ENV, ...OUTPUTS, DRASHTI_TEST_WINDOW_STANDIN: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win, 'Main Hall', 0);
+  const { stageGroup } = await stageWithHallPicture(win, true);
+  // The picture, with the box of the audience screens' state under it.
+  const boxes = [
+    { ...newStageBox('audience', 'placeholder-hall-box'), frame: { x: 0, y: 0, width: 1920, height: 900 } },
+    {
+      ...newStageBox('screensState', 'placeholder-state-box'),
+      frame: { x: 0, y: 920, width: 1920, height: 120 },
+    },
+  ];
+  await win.evaluate(
+    async ({ boxes, stageGroup }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const saved = await d.stageLayouts.save(null, {
+        name: 'Placeholder hall picture and state layout',
+        background: '#000000',
+        boxes,
+      });
+      if (!saved.ok) throw new Error(saved.message);
+      const set = await d.looks.setGroup((await d.looks.list()).liveId, stageGroup, {
+        stageLayoutId: saved.id,
+      });
+      if (!set.ok) throw new Error(set.message);
+    },
+    { boxes, stageGroup },
+  );
+  // Another app's window (the placeholder) as the hall's background.
+  const meeting = await openPlaceholder(app);
+  const shown = await win.evaluate(async (name) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const list = await d.liveWindow.list();
+    const choice = list.ok ? list.windows.find((w) => w.name === name) : undefined;
+    if (!choice) throw new Error('the placeholder window is not offered');
+    return d.liveWindow.show(choice.id);
+  }, MEETING);
+  expect(shown).toEqual({ ok: true });
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'stage', 'Placeholder tablet');
+  const tablet = await device('chromium', TABLET);
+  try {
+    await pairByQr(tablet.page, base, code, '/stage');
+    const box = tablet.page.locator(BOX);
+    // Never drawn there, as on the phone remote's picture: named in its words, in the box's corner.
+    await expect(box.getByTestId('stage-audience-unseen')).toHaveText(`A window: ${MEETING}`);
+    await expect(box.locator('[data-kind="window"]')).toHaveCount(0);
+    const screensState = tablet.page.locator('[data-stage-box="screensState"]');
+    await expect(screensState).toHaveText('Audience screens showing');
+
+    // Audience off: the box says so above the window's name, and the box of the screens' state says they are off.
+    await audience(win, false);
+    await expect(screensState).toHaveText('Audience screens off');
+    await expect(box.getByTestId('stage-audience-off')).toHaveText('Audience off');
+    await expect(box.getByTestId('stage-audience-unseen')).toHaveText(`A window: ${MEETING}`);
+    await audience(win, true);
+    await expect(screensState).toHaveText('Audience screens showing');
+    await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
+  } finally {
+    await tablet.close();
+  }
+  await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.destroy(), meeting);
+  await app.close();
 });
