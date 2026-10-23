@@ -4,7 +4,12 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { MenuEntry, MenuPlace } from '../ui/Menu';
 import { Menu, MenuButton, menuPlace } from '../ui/Menu';
 import type { MediaBackground, PlaylistCursor } from '../../../shared/engine/state';
-import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
+import {
+  backgroundCueOf,
+  type BackgroundCue,
+  type PresentationDoc,
+  type SlideInfo,
+} from '../../../shared/library';
 import { type OrderedSlide, playOrder } from '../../../shared/order';
 import type { ItemOrder } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
@@ -160,7 +165,8 @@ const Thumb = memo(function Thumb({
   useEffect(() => {
     if (found) ref.current?.scrollIntoView({ block: 'center' });
   }, [found]);
-  const background = info.cues.find((c): c is BackgroundCue => c.kind === 'background');
+  // The background cue it plays: its last, when it has more than one (Session 52), as the slide going up does.
+  const background = backgroundCueOf(info.cues);
   // Its picture or video behind it, or a video input by name (Session 51), named in its caption.
   const behind = background?.background;
   const inputName = behind?.kind === 'input' ? behind.name : null;

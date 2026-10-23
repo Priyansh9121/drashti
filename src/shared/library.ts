@@ -131,6 +131,14 @@ export interface AudioCue {
 /** What a slide does on the other layers when it goes live. Cues Drashti does not run yet stay in the library. */
 export type SlideCue = BackgroundCue | AudioCue;
 
+/**
+ * The background cue a slide plays (Session 52), for the engine, what Next shows and the slide's thumbnail alike: its
+ * last, as a slide with more than one (an import can give it two) has always put the last up; null for none.
+ */
+export function backgroundCueOf(cues: readonly SlideCue[]): BackgroundCue | null {
+  return cues.findLast((c): c is BackgroundCue => c.kind === 'background') ?? null;
+}
+
 export interface SlideInfo {
   id: string;
   /** Position in the presentation's slide order (what the engine calls slideIndex). */

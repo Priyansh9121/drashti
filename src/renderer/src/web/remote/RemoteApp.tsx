@@ -3,7 +3,7 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import type { RemotePresentation } from '../../../../shared/network-api';
 import { KIRTAN_FIELD_NAMES, type SearchHit } from '../../../../shared/search';
 import type { EngineState } from '../../../../shared/engine/state';
-import type { PresentationDoc } from '../../../../shared/library';
+import { backgroundCueOf, type PresentationDoc } from '../../../../shared/library';
 import type { PlaybackMarker } from '../../../../shared/markers';
 import { fieldOf, type MessageTemplate, messageItemId, templateFields } from '../../../../shared/messages';
 import { type OrderedSlide, playOrder } from '../../../../shared/order';
@@ -492,7 +492,8 @@ function SlideThumb({
   focus: boolean;
   onTap: () => void;
 }) {
-  const bg = s.slide.cues.find((c) => c.kind === 'background');
+  // The background cue it plays: its last, when it has more than one (Session 52).
+  const bg = backgroundCueOf(s.slide.cues);
   const words = firstLine(s);
   return (
     <li>
@@ -519,7 +520,7 @@ function SlideThumb({
           >
             <div style={{ position: 'relative', width: s.slide.slide.width, height: s.slide.slide.height }}>
               {/* A picture or video behind it; a video input (Session 51) is Main's alone, never drawn here. */}
-              {bg?.kind === 'background' && bg.background.kind === 'media' && (
+              {bg?.background.kind === 'media' && (
                 <PreviewPicture
                   mediaId={bg.background.mediaId}
                   style={{

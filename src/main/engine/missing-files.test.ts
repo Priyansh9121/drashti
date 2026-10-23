@@ -3,6 +3,7 @@ import type { EngineCommand } from '../../shared/engine/commands';
 import type { BackgroundCue } from '../../shared/library';
 import { MemoryPlaylistSource } from './playlist-source';
 import { ShowEngine } from './show-engine';
+import type { MemorySlideSource } from './slide-source';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
 /*
@@ -163,6 +164,105 @@ describe('a slide’s background cue whose file is missing', () => {
     const plain = show().engine;
     plain.restore({ slide: { presentationId: 'files', slideIndex: 0 }, background: null, blackout: false });
     expect(plain.current.layers.slide).not.toHaveProperty('fileMissing');
+  });
+});
+
+describe('a slide’s missing background file, as the library and the show move on (Session 52 review)', () => {
+  /** 'files' as the library reads it now: its four slides, with these cues. */
+  const setFiles = (source: MemorySlideSource, cues: BackgroundCue[][]) => {
+    source.set(
+      'files',
+      [textSlide('f1', 'One'), textSlide('f2', 'Two'), textSlide('f3', 'Three'), textSlide('f4', 'Four')],
+      cues,
+    );
+  };
+
+  it('an edit that moves the slide up (a slide added before it) keeps what it said: a file missing, an input not here', () => {
+    const { engine, source } = show();
+    const input: BackgroundCue = {
+      kind: 'background',
+      label: '',
+      name: 'Placeholder input',
+      missing: false,
+      unplayable: null,
+      background: { kind: 'input', name: 'Placeholder input' },
+    };
+    const m1 = textSlide('m1', 'One');
+    const m2 = textSlide('m2', 'Two');
+    source.set('moving', [m1, m2], [[GONE], [input]]);
+    engine.dispatch(goLive('moving', 0));
+    expect(engine.current.layers.slide).toMatchObject({ slideIndex: 0, fileMissing: 'Placeholder gone.mov' });
+    source.set('moving', [textSlide('m0', 'New'), m1, m2], [[], [GONE], [input]]);
+    engine.refreshLive('moving');
+    expect(engine.current.layers.slide).toMatchObject({ slideIndex: 1, fileMissing: 'Placeholder gone.mov' });
+    // This engine has no video inputs: the input the third slide names is not on this computer.
+    engine.dispatch(goLive('moving', 2));
+    expect(engine.current.layers.slide).toMatchObject({ slideIndex: 2, inputMissing: 'Placeholder input' });
+    source.set(
+      'moving',
+      [textSlide('mx', 'Newer'), textSlide('m0', 'New'), m1, m2],
+      [[], [], [GONE], [input]],
+    );
+    engine.refreshLive('moving');
+    expect(engine.current.layers.slide).toMatchObject({ slideIndex: 3, inputMissing: 'Placeholder input' });
+  });
+
+  it('names no file that is the background up: deleted while up, it stays up, and a slide naming it carries it on', () => {
+    const { engine, source } = show();
+    engine.dispatch(goLive('files', 0));
+    const loop = engine.current.layers.background;
+    if (loop?.kind !== 'media') throw new Error('no video up');
+    // Deleted from the library while it is up (it stays up until it is changed): every cue naming it reads missing.
+    const deleted = { ...LOOP, missing: true };
+    setFiles(source, [[deleted], [], [deleted], [PRORES]]);
+    engine.dispatch({ type: 'next' });
+    // What Next shows names it not, nor does the slide once up: it carries on, from when it started.
+    expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 2 });
+    expect(engine.current.next).not.toHaveProperty('fileMissing');
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(2);
+    expect(engine.current.layers.slide).not.toHaveProperty('fileMissing');
+    expect(engine.current.layers.background).toMatchObject({
+      kind: 'media',
+      mediaId: 'loop',
+      startedAt: loop.startedAt,
+    });
+    // After an unexpected restart, the same: it comes back up, and the slide names nothing.
+    const again = show();
+    setFiles(again.source, [[deleted], [], [deleted], [PRORES]]);
+    again.engine.restore({
+      slide: { presentationId: 'files', slideIndex: 2 },
+      background: engine.current.layers.background,
+      blackout: false,
+    });
+    expect(again.engine.current.layers.slide).not.toHaveProperty('fileMissing');
+    expect(again.engine.current.layers.background).toMatchObject({ kind: 'media', mediaId: 'loop' });
+  });
+
+  it('a slide with two background cues (an import can give it two) is read by the last, the one that goes up', () => {
+    const { engine, source } = show();
+    source.set(
+      'twice',
+      [textSlide('t1', 'One'), textSlide('t2', 'Two'), textSlide('t3', 'Three')],
+      [[], [GONE, LOOP], [LOOP, GONE]],
+    );
+    // The last is there: it goes up, nothing is said, and Next loads it ahead.
+    engine.dispatch(goLive('twice', 0));
+    expect(engine.current.next).toMatchObject({ slideIndex: 1, background: { mediaId: 'loop' } });
+    expect(engine.current.next).not.toHaveProperty('fileMissing');
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).not.toHaveProperty('fileMissing');
+    expect(engine.current.layers.background).toMatchObject({ kind: 'media', mediaId: 'loop' });
+    // The last is missing: the background stays as it was (the first never goes up instead), and it is named.
+    engine.dispatch({ type: 'clearLayer', layer: 'background' });
+    expect(engine.current.next).toMatchObject({
+      slideIndex: 2,
+      background: null,
+      fileMissing: 'Placeholder gone.mov',
+    });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({ slideIndex: 2, fileMissing: 'Placeholder gone.mov' });
+    expect(engine.current.layers.background).toBeNull();
   });
 });
 

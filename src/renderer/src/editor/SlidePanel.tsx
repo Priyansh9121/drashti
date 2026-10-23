@@ -203,8 +203,9 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
   const [askLook, setAskLook] = useState(false);
   const [appDefault, setAppDefault] = useDefaultTransition();
   const number = slidesOf(doc).findIndex((s) => s.id === slide.id) + 1;
-  // A picture or video behind it, or a video input by its name (Session 51).
-  const background = slide.cues.find(
+  // A picture or video behind it, or a video input by its name (Session 51): the last, when it has more than one
+  // (Session 52), as the slide going up plays.
+  const background = slide.cues.findLast(
     (c) => c.kind === 'background' && (c.mediaId !== null || cueInputName(c) !== null),
   );
   const inputName = background ? cueInputName(background) : null;
