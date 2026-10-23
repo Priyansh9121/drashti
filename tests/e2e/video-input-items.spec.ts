@@ -5,12 +5,15 @@ import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { expectFits } from './fit';
 import {
   closeLibrary,
+  killApp,
   launchApp,
   openLibrary,
   operatorPage,
   operatorReady,
   outputPages,
   type PageGlobals,
+  relaunchApp,
+  savedLive,
   setUpScreen,
 } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -19,9 +22,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * A video input as a playlist item and as a slide's background cue (Session 51). Chromium's fake camera
  * (DRASHTI_TEST_FAKE_DEVICES: a moving test pattern named "fake_device_0") stands in for the input, named
  * "Placeholder input": never a real camera's picture. An input another computer has and this one does not is an
- * input added, used, then removed from Media: the playlist and the slide still name it. Renamed in Media (Session
- * 52), it is "Placeholder camera", and the playlist and the slide name it so; its Change dialog says they will,
- * and that the spare computer's input needs the new name too (Session 53).
+ * input added, used, then removed from Media: the playlist and the slide still name it (and LIVE names it again after
+ * an unexpected restart, Session 53). Renamed in Media (Session 52), it is "Placeholder camera", and the playlist and
+ * the slide name it so; its Change dialog says they will, and that the spare computer's input needs the new name too
+ * (Session 53).
  */
 
 const FAKE = { DRASHTI_TEST_FAKE_DEVICES: '1' };
@@ -33,6 +37,9 @@ const LIVE = '[data-testid="live-preview"]';
 /** What changing an input says a new name does (Session 53). */
 const RENAMING =
   'Renaming it takes this computer’s playlist items and slides that use it to the new name. The spare computer’s input needs the same new name.';
+const COLOUR = { kind: 'color', color: '#203040' } as const;
+/** LIVE's line for a slide naming an input this computer does not have. */
+const INPUT_LINE = `Video input not on this computer: “${INPUT}”. The background stays as it was.`;
 
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
@@ -307,6 +314,46 @@ test('an input this computer does not have: its item and slide say so plainly, n
   await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
   await expect(win.getByTestId('live-input-missing')).toHaveCount(0);
   await app.close();
+});
+
+test('after an unexpected restart, LIVE names an input this computer does not have again, the background as it was, as it names a missing file (Session 53)', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp(FAKE);
+  const win = await operatorPage(first.app);
+  await operatorReady(win);
+  // Another computer's "Placeholder input": named by a slide, not in this computer's list.
+  const id = await addInput(win, INPUT);
+  const behind = await makeWords(win, 'Placeholder over the input', 2, [INPUT, null]);
+  const removed = await win.evaluate(
+    (inputId) => (globalThis as PageGlobals).drashti.videoInputs.remove(inputId),
+    id,
+  );
+  expect(removed.ok).toBe(true);
+  // Up over a colour: the background stays the colour, and LIVE says why.
+  await dispatch(win, { type: 'setBackground', background: COLOUR });
+  await dispatch(win, { type: 'goLive', presentationId: behind, slideIndex: 0 });
+  await expect(win.getByTestId('live-input-missing')).toHaveText(INPUT_LINE);
+  expect((await state(win)).layers.background).toEqual(COLOUR);
+
+  // Stopped dead with it up: the next start puts it back, the background as it was, and LIVE says why again (since
+  // Session 51 it said so only as the slide went up).
+  await savedLive(
+    first.userData,
+    (saved) => saved.slide?.slideIndex === 0 && saved.background?.kind === 'color',
+  );
+  await killApp(first.app);
+  const second = await relaunchApp(first.userData, FAKE);
+  const win2 = await operatorPage(second.app);
+  await operatorReady(win2);
+  await expect.poll(async () => (await state(win2)).layers.slide?.presentationId).toBe(behind);
+  expect((await state(win2)).layers.slide).toMatchObject({ slideIndex: 0, inputMissing: INPUT });
+  expect((await state(win2)).layers.background).toEqual(COLOUR);
+  await expect(win2.getByTestId('live-input-missing')).toHaveText(INPUT_LINE);
+  // Next goes on to the next slide, which names none: LIVE says nothing more.
+  await dispatch(win2, { type: 'next' });
+  await expect.poll(async () => (await state(win2)).live.slideIndex).toBe(1);
+  await expect(win2.getByTestId('live-input-missing')).toHaveCount(0);
+  await second.app.close();
 });
 
 test('renaming an input in Media carries its playlist item and the slide naming it to the new name: neither says Not on this computer, Next puts it up by it, and the input up plays on (Session 52); the Change dialog says so before a name is typed, fitting 1024 × 645 (Session 53)', async () => {
