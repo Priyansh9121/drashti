@@ -355,13 +355,19 @@ describe('the main picture in a swap (Session 51; a dissolve since Session 52)',
   });
 
   /**
-   * The main picture's light at `now` where all its pictures are the same whole picture, drawn as a screen draws
-   * them (Scene.tsx MainSlot): bottom to top over black, each at its opacity, one that adds (plus-lighter) added
-   * light for light, any other over what is under it. 1 is the picture as it was; under 1 it dips.
+   * The light at `now` of the main picture's pictures that change places in a swap (`changing`), where they are
+   * the same whole picture, drawn as a screen draws them (Scene.tsx MainSlot): bottom to top over black, each at
+   * its opacity, one that adds (plus-lighter) added light for light, any other over what is under it. 1 is the
+   * picture as it was; under 1 it dips. A slide whole over both is left out: it would hide any dip under it.
    */
-  const lightOf = (slots: readonly PipSlot[], run: PipRun, now: number): number =>
+  const lightOf = (
+    slots: readonly PipSlot[],
+    changing: readonly string[],
+    run: PipRun,
+    now: number,
+  ): number =>
     slots
-      .filter((s) => s.shown)
+      .filter((s) => s.shown && changing.includes(s.picture))
       .reduce((light, s) => {
         const a = s.dissolve ? pipMainOpacity(run, s.dissolve, now) : 1;
         return s.adds ? light + a : a + (1 - a) * light;
@@ -390,7 +396,7 @@ describe('the main picture in a swap (Session 51; a dissolve since Session 52)',
               const slots = pipMainPlaces(kind, run, to);
               const at = `${what} at ${String(t)}`;
               // Never under the old: as whole as the picture was at every moment, never dipping or black.
-              expect(lightOf(slots, run, now), at).toBeCloseTo(1, 12);
+              expect(lightOf(slots, ['background', own], run, now), at).toBeCloseTo(1, 12);
               const dissolving = slots.filter((s) => s.dissolve !== undefined);
               if (t < from || t >= from + half) {
                 expect(dissolving, at).toEqual([]);
@@ -422,6 +428,26 @@ describe('the main picture in a swap (Session 51; a dissolve since Session 52)',
             for (const t of [half / 2, half + half / 2])
               expect(pipPose(runAt(b, t, movement), 30_000 + t, HD), what).not.toEqual(PIP_REST);
           }
+  });
+
+  it('moved or restyled while it swaps (the engine keeps the swap’s change, Session 52), it swaps on in its new place at once, the main picture dissolving on', () => {
+    // Swapped at 30 s from the bottom right; then dragged to the top left and made a Scale.
+    const moved = box({
+      swapped: true,
+      place: place({ corner: 'top-left', motion: 'scale' }),
+      changed: { at: 30_000, place: place(), swapped: false },
+    });
+    const still = swapping(false, true);
+    for (const t of [100, 300]) {
+      const run = runAt(moved, t);
+      expect(run, String(t)).toMatchObject({ phase: 'swap', start: 30_000, length: 500, place: moved.place });
+      // The main picture as if nothing had moved: the same dissolve at the same moment.
+      expect(pipMainPlaces('slides', run, true)).toEqual(pipMainPlaces('slides', runAt(still, t), true));
+      expect(pipMainOpacity(run, 'in', 30_000 + t)).toBe(pipMainOpacity(runAt(still, t), 'in', 30_000 + t));
+    }
+    // The box comes in again where it now is, by its new motion.
+    expect(pipPose(runAt(moved, 375), 30_375, HD).scaleX).toBeLessThan(1);
+    expect(runAt(moved, 500)).toMatchObject({ phase: 'still', place: moved.place });
   });
 
   it('draws both pictures through the half in which the main picture dissolves, the upper added light for light over the other', () => {
