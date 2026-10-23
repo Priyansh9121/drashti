@@ -503,18 +503,18 @@ YouTube's own table (October 2026) asks for at least 5 Mbps at 1080p30 (14 recom
 
 **A limiter** (Session 31, MED-3). Before AAC, every stream and recording goes through FFmpeg's `alimiter` at -1 dBFS with its own level setting off (`src/main/stream/worker/encoders.ts`), so a loud desk, or Drashti's own sound mixed in with the microphone (whose sum can pass full scale), never clips on YouTube or in a recording; quieter sound passes as it is. There is no setting. In the pipeline's test a full-scale tone and one 3.5 dB louder both read back at -1.0 dBFS, and a quiet tone (RMS -17 dBFS) changed by 0.003 dB. It limits the samples' peaks: a very high tone can still peak a little above between samples once AAC has made it (an 8 kHz tone 3.5 dB over full scale read back at +0.8 dBFS on the dev Mac). The Stream panel's meter shows the mix as it comes, before the limiter.
 
-**The layouts.** **Camera and words**: the camera full frame, the live slide's words as a lower third in the stream group's languages (chosen and ordered as on the hall's screens), and a picture or video full frame when one goes live (a media item, or a slide with a picture and no words), with the picture-in-picture box as the hall has it since Session 51 (never over the camera). **Slides**: what an audience screen shows, in the stream group's languages. Switch at any time, on air too. What the hall's controls do to the stream:
+**The layouts.** **Camera and words**: the camera full frame, the live slide's words as a lower third in the stream group's languages (chosen and ordered as on the hall's screens), and a picture or video full frame when one goes live (a media item, or a slide with a picture and no words), with the picture-in-picture box as the hall has it since Session 51, over the props (never over the camera); while a box is up, a video input behind is part of that picture too. **Slides**: what an audience screen shows, in the stream group's languages. Switch at any time, on air too. What the hall's controls do to the stream:
 
-|                         | Camera and words                                  | Slides          |
-| ----------------------- | ------------------------------------------------- | --------------- |
-| A slide with words      | Camera, with the words as a lower third           | As the hall     |
-| A picture or video live | That picture, full frame                          | As the hall     |
-| Clear slide, Clear all  | The camera alone (props and messages as the hall) | As the hall     |
-| Black-out, Logo         | For the hall only: the camera stays, the words go | Black, the logo |
-| Props, messages         | Shown (messages along the top)                    | Shown           |
-| Picture in picture      | With a full-frame picture only (Session 51)       | As the hall     |
-| Masks                   | Left out (they are for the hall's screens)        | As the hall     |
-| The stage message       | Never                                             | Never           |
+|                         | Camera and words                                                                       | Slides          |
+| ----------------------- | -------------------------------------------------------------------------------------- | --------------- |
+| A slide with words      | Camera, with the words as a lower third                                                | As the hall     |
+| A picture or video live | That picture, full frame; with a box up, as the hall has it (a video input behind too) | As the hall     |
+| Clear slide, Clear all  | The camera alone (props and messages as the hall)                                      | As the hall     |
+| Black-out, Logo         | For the hall only: the camera stays, the words go                                      | Black, the logo |
+| Props, messages         | Shown (messages along the top)                                                         | Shown           |
+| Picture in picture      | With a full-frame picture only (Session 51)                                            | As the hall     |
+| Masks                   | Left out (they are for the hall's screens)                                             | As the hall     |
+| The stage message       | Never                                                                                  | Never           |
 
 **Several platforms at once** (Session 28, decision 18). A profile can send the same stream to up to two more places beside its own address, each with its own address and its own key (**Also send to another platform** in Stream settings; Facebook's address must be `rtmps://`). There is one encode; each place has its own connection, reconnecting on its own, so one place dropping never stops the others, the recording or the encoder. ON AIR stays while any place is on air, with how many of them (**On air · 1 of 2**); the panel lists each place and names the one reconnecting. Drashti tests no internet speed: the settings say the upload the places need at the preset chosen (the table), to compare with a speed test on that computer. The other places live in `stream_destinations` (migration 41), never their keys, which the key store keeps by each place's id. A test streams only to 127.0.0.1: any other address is refused, loudly (the guard every end-to-end run sets).
 
