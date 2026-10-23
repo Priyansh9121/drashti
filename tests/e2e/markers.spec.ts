@@ -434,32 +434,53 @@ test('a video on a slide loops between its file’s start and end points, in ste
   expect(Math.max(...seen)).toBeLessThan(6.35);
   expect(seen.some((p, i) => i > 0 && p < (seen[i - 1] ?? 0) - 2)).toBe(true);
   // The points come from the engine (the slide layer's clips), from when the slide went up.
-  const slide = await win.evaluate(
-    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide,
-  );
+  const slideNow = () =>
+    win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide,
+    );
+  const slide = await slideNow();
   const clip = slide?.clips?.[mediaId];
   expect(clip).toEqual({ startMs: 2000, endMs: 6000 });
   if (!slide || !clip) throw new Error('The slide has no points.');
-  const t: Timing = { startedAt: slide.shownAt, clip };
-  // The two screens within two frames of each other, the sound near them, each near the clock.
-  const end = Date.now() + 15_000;
-  const looks: string[] = [];
-  for (;;) {
-    const [pa, pb, heard] = await Promise.all(copies.map((c) => offsetOf(c.page, c.selector, t)));
-    looks.push([pa, pb, heard].map((o) => (o == null ? 'none' : o.toFixed(3))).join(' '));
-    if (
-      pa != null &&
-      pb != null &&
-      heard != null &&
-      [pa, pb, heard].every((o) => Math.abs(o) < 0.25) &&
-      Math.abs(pa - pb) < 2 * FRAME &&
-      Math.abs(heard - (pa + pb) / 2) < SOUND_MARGIN
-    )
-      break;
-    if (Date.now() > end)
-      throw new Error(
-        `Not in step after 15 s. Offsets (screen, screen, sound), each look:\n${looks.join('\n')}`,
-      );
-  }
+  /** Wait until the two screens are within two frames of each other, the sound near them, and each near the clock. */
+  const inStep = async (t: Timing, what: string) => {
+    const end = Date.now() + 15_000;
+    const looks: string[] = [];
+    for (;;) {
+      const [pa, pb, heard] = await Promise.all(copies.map((c) => offsetOf(c.page, c.selector, t)));
+      looks.push([pa, pb, heard].map((o) => (o == null ? 'none' : o.toFixed(3))).join(' '));
+      if (
+        pa != null &&
+        pb != null &&
+        heard != null &&
+        [pa, pb, heard].every((o) => Math.abs(o) < 0.25) &&
+        Math.abs(pa - pb) < 2 * FRAME &&
+        Math.abs(heard - (pa + pb) / 2) < SOUND_MARGIN
+      )
+        return;
+      if (Date.now() > end)
+        throw new Error(
+          `${what}: not in step after 15 s. Offsets (screen, screen, sound), each look:\n${looks.join('\n')}`,
+        );
+    }
+  };
+  await inStep({ startedAt: slide.shownAt, clip }, 'between 0:02 and 0:06');
+
+  // New points saved while it plays (Media's Markers): both screens and its sound move between them, from the
+  // slide's time as before, in step (SlideView.tsx's resync, the audio player's soundMoved).
+  const moved = { startMs: 3000, endMs: 7000 };
+  const saved = await win.evaluate(
+    ({ id, moved }) => (globalThis as PageGlobals).drashti.media.setMarkers(id, { ...moved, markers: [] }),
+    { id: mediaId, moved },
+  );
+  expect(saved.ok).toBe(true);
+  await expect.poll(async () => (await slideNow())?.clips?.[mediaId]).toEqual(moved);
+  expect((await slideNow())?.shownAt).toBe(slide.shownAt);
+  await inStep({ startedAt: slide.shownAt, clip: moved }, 'between 0:03 and 0:07');
+  const after = await positions(a, picture, 6000);
+  expect(after.length).toBeGreaterThan(20);
+  expect(Math.min(...after)).toBeGreaterThan(2.8);
+  expect(Math.max(...after)).toBeLessThan(7.35);
+  expect(after.some((p, i) => i > 0 && p < (after[i - 1] ?? 0) - 2)).toBe(true);
   await app.close();
 });
