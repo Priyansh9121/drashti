@@ -20,6 +20,8 @@ function Asked({ which }: { which: ScreenSwitch }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || (e.key !== 'Enter' && e.key !== 'Escape')) return;
+      // Keep these screens?, drawn over this one, takes the keys while it asks: one key answers one question.
+      if (useOutput.getState().keepQuestion) return;
       e.preventDefault();
       void window.drashti.output.switchAnswer(e.key === 'Enter');
     };
