@@ -371,8 +371,8 @@ test('a video input, a window and a picture-in-picture box show under the stage 
 
 /**
  * Audience off in the box, as the page draws it (Session 53): the box's size and the words' in stage canvas pixels
- * (drawn on the picture, which is scaled into the box), whether they lie wholly inside the picture, and whether
- * they sit in its bottom left.
+ * (drawn on the picture, which is scaled into the box), whether the picture is drawn fitted to the box's size yet,
+ * whether the words lie wholly inside the picture, and whether they sit in its bottom left.
  */
 const audienceOffOn = (box: Locator) =>
   box.getByTestId('stage-audience-off').evaluate((said) => {
@@ -384,9 +384,15 @@ const audienceOffOn = (box: Locator) =>
     const r = said.getBoundingClientRect();
     // The picture's pixels on the page, and the page's in stage canvas pixels.
     const stage = (p.width / picture.offsetWidth) * (area.clientWidth / a.width);
+    // Fitted as the box draws it, one side the box's and the other no larger (to a pixel): until the box's new size
+    // reaches the picture, it is drawn at the scale of the size before, and its words read at that scale.
+    const near = (x: number, y: number) => Math.abs(x - y) <= 1;
     return {
       box: `${String(area.clientWidth)}x${String(area.clientHeight)}`,
       size: Math.round(parseFloat(getComputedStyle(said).fontSize) * stage * 10) / 10,
+      fitted:
+        (near(p.width, a.width) && p.height <= a.height + 1) ||
+        (near(p.height, a.height) && p.width <= a.width + 1),
       inside:
         r.left >= p.left - 0.5 &&
         r.top >= p.top - 0.5 &&
@@ -467,9 +473,8 @@ test('with Audience off the stage box keeps the hall’s picture and says “Aud
   const layoutId = await giveLayout(win, stageGroup, [small]);
   await expect
     .poll(() => audienceOffOn(box))
-    .toMatchObject({ box: '320x180', inside: true, bottomLeft: true });
-  await expect.poll(async () => (await audienceOffOn(box))?.size ?? 0).toBeGreaterThanOrEqual(30);
-  expect(await audienceOffOn(box)).toMatchObject({ box: '320x180', inside: true, bottomLeft: true });
+    .toMatchObject({ box: '320x180', fitted: true, inside: true, bottomLeft: true });
+  expect((await audienceOffOn(box))?.size).toBeGreaterThanOrEqual(30);
   // A smaller one, saved before the editor stopped there: smaller, as it must be to fit, and still wholly inside.
   await giveLayout(
     win,
@@ -477,9 +482,8 @@ test('with Audience off the stage box keeps the hall’s picture and says “Aud
     [{ ...HALL_BOX, frame: { x: 900, y: 500, width: 96, height: 54 } }],
     layoutId,
   );
-  await expect.poll(() => audienceOffOn(box)).toMatchObject({ box: '96x54', inside: true });
-  await expect.poll(async () => (await audienceOffOn(box))?.size ?? 30).toBeLessThan(30);
-  expect(await audienceOffOn(box)).toMatchObject({ box: '96x54', inside: true });
+  await expect.poll(() => audienceOffOn(box)).toMatchObject({ box: '96x54', fitted: true, inside: true });
+  expect((await audienceOffOn(box))?.size).toBeLessThan(30);
 
   // On again: the hall's screen opens where it was; the box says nothing more.
   await audience(win, true);
