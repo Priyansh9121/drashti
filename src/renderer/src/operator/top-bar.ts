@@ -13,3 +13,12 @@ export const WORDS_IF_NARROW = 'max-[1680px]:sr-only';
 export const ICON_IF_NARROW = 'max-[1680px]:w-8 max-[1680px]:px-0';
 /** That button with a count beside its icon (Announcements waiting). */
 export const COUNT_IF_NARROW = 'max-[1680px]:px-2';
+
+/**
+ * Narrower still, below 1280 px (Session 51, S2-3's review): crowded, the states' panel holds ON AIR and REC (or
+ * "On air · reconnecting", or No sound) beside the network's badge and LIVE only when the badge says its count
+ * alone beside its icon and the ? beside Stream, Phones and Announcements go (each panel has its own ?).
+ */
+export const WORDS_IF_NARROWER = 'max-[1280px]:sr-only';
+/** A ? beside a top bar button, gone below 1280 px while the top bar is crowded. */
+export const HIDDEN_IF_NARROWER = 'max-[1280px]:hidden';
