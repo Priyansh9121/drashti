@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { CALENDAR_LANG_NAMES, CALENDAR_LANGS } from '../../../shared/calendar';
 import type { StageBox, StageBoxKind } from '../../../shared/stage-layouts';
 import {
+  AUDIENCE_BOX_MIN,
   MAX_STAGE_BOXES,
+  smallestBox,
   STAGE_BOX_KINDS,
   STAGE_BOX_NAMES,
   STAGE_HEIGHT,
   STAGE_WIDTH,
+  typedFrame,
 } from '../../../shared/stage-layouts';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { BoxCanvas } from '../boxes/BoxCanvas';
@@ -50,33 +53,69 @@ import {
 
 const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
 
+const FRAME_NAMES = { x: 'Across', y: 'Down', width: 'Width', height: 'Height' } as const;
+
+/**
+ * One of a box's place and size, in pixels. What is typed shows while the field has the keyboard, and the box takes
+ * it at once, no smaller than its smallest (typedFrame); leaving the field shows what the box took (Session 53:
+ * each figure was taken as it came, so a size begun below the smallest was made the smallest before its next
+ * figure).
+ */
+function FrameField({
+  label,
+  value,
+  min,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  /** The smallest it takes (a width or a height): its arrows stop there. */
+  min?: number;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <Field label={label}>
+      <NumberInput
+        value={draft ?? String(value)}
+        min={min}
+        unit="px"
+        onFocus={() => {
+          setDraft(String(value));
+        }}
+        onBlur={() => {
+          setDraft(null);
+        }}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          const v = e.target.valueAsNumber;
+          if (Number.isFinite(v)) onChange(v);
+        }}
+      />
+    </Field>
+  );
+}
+
 function BoxSettings({ box }: { box: StageBox }) {
   const timers = useEngine((s) => s.state?.timers);
   const set = (patch: Partial<StageBox>) => {
     change((e) => ({ ...e, boxes: e.boxes.map((b) => (b.id === box.id ? { ...b, ...patch } : b)) }));
   };
-  const frame = (key: 'x' | 'y' | 'width' | 'height', value: number) => {
-    if (!Number.isFinite(value)) return;
-    const min = key === 'width' || key === 'height' ? 8 : -STAGE_WIDTH;
-    set({ frame: { ...box.frame, [key]: Math.max(min, Math.round(value)) } });
-  };
+  const smallest = smallestBox(box.kind);
   return (
     <div className="space-y-3" data-testid="stage-box-settings">
       <p className="text-sm font-medium">{STAGE_BOX_NAMES[box.kind]}</p>
       <div className="grid grid-cols-2 gap-2">
         {(['x', 'y', 'width', 'height'] as const).map((key) => (
-          <Field
+          <FrameField
             key={key}
-            label={key === 'x' ? 'Across' : key === 'y' ? 'Down' : key === 'width' ? 'Width' : 'Height'}
-          >
-            <NumberInput
-              value={box.frame[key]}
-              unit="px"
-              onChange={(e) => {
-                frame(key, e.target.valueAsNumber);
-              }}
-            />
-          </Field>
+            label={FRAME_NAMES[key]}
+            value={box.frame[key]}
+            min={key === 'width' || key === 'height' ? smallest[key] : undefined}
+            onChange={(value) => {
+              set({ frame: typedFrame(box, key, value) });
+            }}
+          />
         ))}
       </div>
       {box.kind === 'audience' ? (
@@ -84,7 +123,8 @@ function BoxSettings({ box }: { box: StageBox }) {
         <p className="text-xs text-muted" data-testid="stage-box-audience-note">
           What the hall’s screens show now, as the first audience group shows it: the background, the slide,
           messages and the ticker, black-out and the logo too, at 16:9 with black around it. The boxes after
-          it in the list draw over it.
+          it in the list draw over it. Resized here, it goes no smaller than {AUDIENCE_BOX_MIN.width} ×{' '}
+          {AUDIENCE_BOX_MIN.height}, so “Audience off” and “No audience screens” can be read in it.
         </p>
       ) : (
         <Checkbox
@@ -349,7 +389,13 @@ export function StageLayoutEditor() {
       {e ? (
         <BoxCanvas
           size={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}
-          boxes={e.boxes.map((b) => ({ id: b.id, frame: b.frame, name: STAGE_BOX_NAMES[b.kind] }))}
+          boxes={e.boxes.map((b) => ({
+            id: b.id,
+            frame: b.frame,
+            name: STAGE_BOX_NAMES[b.kind],
+            // No smaller than its kind's smallest (Session 53: the audience picture's, where its line reads).
+            min: smallestBox(b.kind),
+          }))}
           selected={s.boxId}
           onSelect={chooseBox}
           onChange={(id, frame) => {
@@ -464,7 +510,12 @@ export function StageLayoutEditor() {
               </Button>
             </div>
           </section>
-          {box ? <BoxSettings box={box} /> : <p className="text-xs text-muted">Choose a box to change it.</p>}
+          {/* Its own fields for each box (Session 53): what is typed in one never shows for another. */}
+          {box ? (
+            <BoxSettings key={box.id} box={box} />
+          ) : (
+            <p className="text-xs text-muted">Choose a box to change it.</p>
+          )}
         </aside>
       )}
 

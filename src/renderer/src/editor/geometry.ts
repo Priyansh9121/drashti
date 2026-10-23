@@ -1,4 +1,5 @@
 import type { Rect } from '../../../shared/model';
+import type { Size } from '../../../shared/scaling';
 
 /*
  * The slide editor's geometry, in slide pixels: turned frames, what is under
@@ -124,15 +125,18 @@ export const HANDLE_AT: Record<Handle, Point> = {
 /**
  * The frame after dragging a handle to `pointer`. The opposite corner (or
  * edge) stays where it is on the slide, also when the frame is turned. With
- * `keepRatio` a corner keeps the frame's proportions. Never smaller than `min`.
+ * `keepRatio` a corner keeps the frame's proportions. Never smaller than `min`,
+ * the same each way or a width and height of its own (Session 53), on the
+ * sides the handle moves.
  */
 export function resizeFrame(
   p: Placed,
   handle: Handle,
   pointer: Point,
-  { keepRatio = false, min = 4 }: { keepRatio?: boolean; min?: number } = {},
+  { keepRatio = false, min = 4 }: { keepRatio?: boolean; min?: number | Size } = {},
 ): Rect {
   const f = p.frame;
+  const least = typeof min === 'number' ? { width: min, height: min } : min;
   const rotation = p.rotation ?? 0;
   const at = HANDLE_AT[handle];
   // The fixed point: opposite the handle (its middle on the axis the handle does not move).
@@ -145,12 +149,12 @@ export function resizeFrame(
   const dy = v.y - anchor.y;
   const movesX = at.x !== 0.5;
   const movesY = at.y !== 0.5;
-  let width = movesX ? Math.max(min, at.x === 1 ? dx : -dx) : f.width;
-  let height = movesY ? Math.max(min, at.y === 1 ? dy : -dy) : f.height;
+  let width = movesX ? Math.max(least.width, at.x === 1 ? dx : -dx) : f.width;
+  let height = movesY ? Math.max(least.height, at.y === 1 ? dy : -dy) : f.height;
   if (keepRatio && movesX && movesY && f.width > 0 && f.height > 0) {
     const scale = Math.max(width / f.width, height / f.height);
-    width = Math.max(min, f.width * scale);
-    height = Math.max(min, f.height * scale);
+    width = Math.max(least.width, f.width * scale);
+    height = Math.max(least.height, f.height * scale);
   }
   // Put the new frame so its fixed point is where it was.
   const newAnchorLocal = { x: anchorShare.x * width, y: anchorShare.y * height };
@@ -250,12 +254,16 @@ export function snapMove(
   };
 }
 
-/** A resized upright frame with the edges the handle moves snapped to the nearest lines. */
+/**
+ * A resized upright frame with the edges the handle moves snapped to the nearest lines; given `min`, never to a
+ * line that would make it smaller than that (Session 53: a box at its smallest was snapped smaller still).
+ */
 export function snapResize(
   frame: Rect,
   handle: Handle,
   lines: SnapLines,
   within: number,
+  min?: Size,
 ): { frame: Rect; guides: Guides } {
   const at = HANDLE_AT[handle];
   let { x, y, width, height } = frame;
@@ -263,7 +271,7 @@ export function snapResize(
   if (at.x !== 0.5) {
     const edge = at.x === 1 ? x + width : x;
     const s = nearest([edge], lines.x, within);
-    if (s) {
+    if (s && (!min || (at.x === 1 ? width + s.delta : width - s.delta) >= min.width)) {
       if (at.x === 1) width += s.delta;
       else {
         x += s.delta;
@@ -275,7 +283,7 @@ export function snapResize(
   if (at.y !== 0.5) {
     const edge = at.y === 1 ? y + height : y;
     const s = nearest([edge], lines.y, within);
-    if (s) {
+    if (s && (!min || (at.y === 1 ? height + s.delta : height - s.delta) >= min.height)) {
       if (at.y === 1) height += s.delta;
       else {
         y += s.delta;
