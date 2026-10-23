@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { type ElectronApplication, expect, type Page, test } from '@playwright/test';
 import type { PipPlace } from '../../src/shared/engine/state';
 import { LOOK_LAYERS } from '../../src/shared/looks';
+import { type PlaybackClock, playbackBounds, playbackOffset, playbackPosition } from '../../src/shared/media';
 import { pipSwapMs } from '../../src/shared/pip';
 import { pipRect } from '../../src/renderer/src/render/pip';
 import { expectNoSeriousA11yIssues, settled } from './a11y';
@@ -15,6 +16,7 @@ import {
   operatorPage,
   operatorReady,
   outputPage,
+  outputPages,
   outputReady,
   type PageGlobals,
   setUpScreen,
@@ -32,8 +34,9 @@ import { makeTestVideo } from './test-media';
  * and the logo over it; dragging it in LIVE; the stream's Slides layout; and the phone remote. Session 51: Swap
  * changes the main picture in the box's time at held moments (a dissolve since Session 52, nothing on the main
  * picture growing or shrinking as the box does); the stream's Camera layout shows the box with the hall's picture
- * at full frame; a key and fill group leaves the box out unless its Look turns it on. Generated media and
- * placeholder words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
+ * at full frame; a key and fill group leaves the box out unless its Look turns it on. Session 53: a video from
+ * Media in it loops between its file's start and end points, as a slide's does. Generated media and placeholder
+ * words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
  */
 
 const WINDOWED = { DRASHTI_WINDOWED_OUTPUTS: '1' };
@@ -478,6 +481,149 @@ test('a video from Media, a video input and a window in the box, live and silent
   await dispatch(win, { type: 'hidePip' });
   await expect(hall.getByTestId('pip-box')).toHaveCount(0);
   await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.destroy(), meeting);
+  await app.close();
+});
+
+/** A screen's output by its screen's id (each group's one screen). */
+async function outputFor(app: ElectronApplication, screenId: string): Promise<Page> {
+  let found: Page | undefined;
+  await expect
+    .poll(async () => {
+      for (const p of outputPages(app))
+        if ((await p.getByTestId('output-root').getAttribute('data-screen')) === screenId) found = p;
+      return found !== undefined;
+    })
+    .toBe(true);
+  if (!found) throw new Error(`no output for ${screenId}`);
+  return found;
+}
+
+/** Where a page's copy of a video plays, sampled every 50 ms for a while (seconds). */
+function positions(page: Page, selector: string, ms: number): Promise<number[]> {
+  return page.evaluate(
+    ({ selector, ms }) =>
+      new Promise<number[]>((resolve) => {
+        const seen: number[] = [];
+        const t = setInterval(() => {
+          const v = document.querySelector<HTMLMediaElement>(selector);
+          if (v && Number.isFinite(v.duration)) seen.push(v.currentTime);
+        }, 50);
+        setTimeout(() => {
+          clearInterval(t);
+          resolve(seen);
+        }, ms);
+      }),
+    { selector, ms },
+  );
+}
+
+/**
+ * How far a page's copy of a video is from where the engine's clock has it (seconds; shared/media.ts, as every
+ * screen works it out), the median of five looks 60 ms apart; null while it does not play.
+ */
+async function offsetFrom(page: Page, selector: string, clock: PlaybackClock): Promise<number | null> {
+  const looks = await page.evaluate(async (s) => {
+    const out: { at: number; now: number; duration: number }[] = [];
+    for (let i = 0; i < 5; i++) {
+      const v = document.querySelector<HTMLMediaElement>(s);
+      if (!v || !Number.isFinite(v.duration) || v.paused) return null;
+      out.push({ at: v.currentTime, now: Date.now(), duration: v.duration });
+      // eslint-disable-next-line no-restricted-syntax -- in the page: looks 60 ms apart while it plays
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    return out;
+  }, selector);
+  if (!looks) return null;
+  const offsets = looks.map((l) => {
+    const { start, end } = playbackBounds(clock.clip, l.duration);
+    return playbackOffset(l.at, playbackPosition(clock, l.duration, l.now), end - start, clock.loop);
+  });
+  return offsets.sort((x, y) => x - y)[2] ?? null;
+}
+
+/** Wait until each screen plays it within a quarter of a second of the engine's clock, and of the other. */
+async function inStep(pages: readonly Page[], selector: string, clock: PlaybackClock, what: string) {
+  const until = Date.now() + 15_000;
+  const looks: string[] = [];
+  for (;;) {
+    const offsets = await Promise.all(pages.map((p) => offsetFrom(p, selector, clock)));
+    looks.push(offsets.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' '));
+    const got = offsets.filter((o) => o !== null);
+    if (
+      got.length === pages.length &&
+      got.every((o) => Math.abs(o) < 0.25) &&
+      Math.max(...got) - Math.min(...got) < 0.15
+    )
+      return;
+    if (Date.now() > until)
+      throw new Error(
+        `${what}: not in step after 15 s. Offsets (each screen), each look: ${looks.join(' | ')}`,
+      );
+  }
+}
+
+test('a video from Media in the box loops between its file’s start and end points, in step on two screens, swapped too; new points saved while it plays move it (Session 53)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ ...WINDOWED, DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-pip-points-'));
+  const [clip = ''] = await importAndGetIds(win, [
+    await makeTestVideo(win, join(dir, 'Placeholder box points clip.webm'), { seconds: 8, hue: 160 }),
+  ]);
+  // Its start and end points, as Media's Markers keeps them: it plays between 0:02 and 0:06.
+  const points = { startMs: 2000, endMs: 6000 };
+  const set = await win.evaluate(
+    ({ id, points }) => (globalThis as PageGlobals).drashti.media.setMarkers(id, { ...points, markers: [] }),
+    { id: clip, points },
+  );
+  expect(set.ok).toBe(true);
+  const first = await outputFor(app, await setUpScreen(win, 'Main Hall', 0));
+  const second = await outputFor(app, await setUpScreen(win, 'Side Hall', 1));
+  const screens = [first, second];
+  for (const o of screens) await outputReady(o);
+  await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: clip }, place: PLACE });
+  const playing = (page: Page, selector: string) =>
+    page.evaluate((s) => !(document.querySelector<HTMLMediaElement>(s)?.paused ?? true), selector);
+  /** Between those points only, going round: never before the start point or (much) after the end point. */
+  const between = async (page: Page, selector: string, from: number, to: number) => {
+    const seen = await positions(page, selector, 6000);
+    expect(seen.length).toBeGreaterThan(20);
+    expect(Math.min(...seen)).toBeGreaterThan(from - 0.2);
+    expect(Math.max(...seen)).toBeLessThan(to + 0.35);
+    expect(seen.some((p, i) => i > 0 && p < (seen[i - 1] ?? 0) - 2)).toBe(true);
+  };
+  const inTheBox = `[data-testid="pip-box"] [data-pip-picture="media"] video[data-media-id="${clip}"]`;
+  for (const o of screens) await expect.poll(() => playing(o, inTheBox), { timeout: 20_000 }).toBe(true);
+  // Before, it played the whole file.
+  await between(first, inTheBox, 2, 6);
+  // The points come from the engine (the box's clips), from when it went up: each screen where its clock has it.
+  const box = await pipNow(win);
+  expect(box?.clips).toEqual({ [clip]: points });
+  const clock: PlaybackClock = { startedAt: box?.shownAt ?? 0, loop: true, clip: points };
+  await inStep(screens, inTheBox, clock, 'in the box, between 0:02 and 0:06');
+
+  // Swapped: it fills the background's place, between the same points, from the box's time, in step.
+  await dispatch(win, { type: 'swapPip' });
+  for (const o of screens)
+    await expect.poll(async () => (await drawn(o)).main, { timeout: 5000 }).toEqual(['source', 'slide']);
+  const full = `[data-pip-main="source"] [data-pip-picture="media"] video[data-media-id="${clip}"]`;
+  for (const o of screens) await expect.poll(() => playing(o, full), { timeout: 20_000 }).toBe(true);
+  await inStep(screens, full, clock, 'swapped, between 0:02 and 0:06');
+  await between(first, full, 2, 6);
+
+  // New points saved while it plays (Media's Markers): both screens move between them at once, from the box's time
+  // as before, in step (SlideView.tsx's resync); the box stays as it was, swapped.
+  const moved = { startMs: 3000, endMs: 7000 };
+  const saved = await win.evaluate(
+    ({ id, moved }) => (globalThis as PageGlobals).drashti.media.setMarkers(id, { ...moved, markers: [] }),
+    { id: clip, moved },
+  );
+  expect(saved.ok).toBe(true);
+  await expect.poll(async () => (await pipNow(win))?.clips?.[clip]).toEqual(moved);
+  expect(await pipNow(win)).toMatchObject({ shownAt: box?.shownAt, swapped: true });
+  await inStep(screens, full, { ...clock, clip: moved }, 'swapped, between 0:03 and 0:07');
+  await between(first, full, 3, 7);
   await app.close();
 });
 
