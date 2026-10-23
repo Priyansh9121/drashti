@@ -111,6 +111,8 @@ describe('the hall’s picture', () => {
       ]),
     ).toBeNull();
     expect(hallPicture([])).toBeNull();
+    // A key and fill pair alone is no audience group: the stage's boxes say No audience screens (Session 52, kept).
+    expect(hallPicture([{ id: 'keyfill', role: 'keyfill', screens: [screen(1920, 1080)] }])).toBeNull();
   });
 
   // Section 4 review (Session 50): "this computer's audience screens" — an audience group left empty by Set Up
