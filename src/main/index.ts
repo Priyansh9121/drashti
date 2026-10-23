@@ -2728,7 +2728,11 @@ function start(): void {
       libraryChanged();
     },
     onFinished: (run) => {
-      // An import can change what comes next (a replaced presentation, a filled playlist).
+      // An import can change what comes next (a replaced presentation, a filled playlist). It can also find a file
+      // the library was missing (Find missing media…, or the same file imported again): the slides are read again,
+      // so one whose background it is puts it up from now on (Session 52: while it is missing, the background stays
+      // as it was).
+      slides.invalidate();
       engine.refreshNext();
       libraryChanged(true);
       // It may have loaded a Shastra text (or loaded one again).
@@ -2807,9 +2811,11 @@ function start(): void {
     changed: (jobs) => {
       sendToOperator(IPC.media.conversionsChanged, jobs);
     },
-    libraryChanged: (changedPresentations) => {
-      // What is on the screens keeps playing the original; slides read from now on use the copy.
-      for (const id of changedPresentations) slides.invalidate(id);
+    libraryChanged: () => {
+      // What is on the screens keeps playing the original; slides read from now on use the copy. Every presentation's
+      // slides are read again (Session 52: not only those it moved), as a copy whose bytes were deleted from the
+      // library before brings that file back for every slide that names it, no longer missing.
+      slides.invalidate();
       engine.refreshNext();
       libraryChanged(true);
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
