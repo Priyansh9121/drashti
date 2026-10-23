@@ -35,7 +35,7 @@ import {
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { CalendarDay } from '../../shared/calendar';
 import type { IdleState, Quote } from '../../shared/idle';
-import { backgroundCueOf } from '../../shared/library';
+import { backgroundCueOf, soundCueOf } from '../../shared/library';
 import type { LiveLook, Movement } from '../../shared/looks';
 import { CUT, type SlideElement, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
@@ -95,6 +95,17 @@ function missingFile(played: PlayedSlide, up: BackgroundLayer | null): string | 
   const cue = backgroundCueOf(played.cues);
   if (cue?.missing !== true || cue.background.kind !== 'media') return null;
   return up?.kind === 'media' && up.mediaId === cue.background.mediaId ? null : cue.name;
+}
+
+/**
+ * The file a slide's sound cue (soundCueOf) names, by the library's name for it, when that file is missing (Session
+ * 53), as missingFile has its background's: null when it is there, when the slide has no sound, and when it is the
+ * sound playing (`up`): deleted while it plays, it plays on until it is changed, and a slide naming it carries it on.
+ */
+function missingSound(played: PlayedSlide, up: AudioLayer | null): string | null {
+  const cue = soundCueOf(played.cues);
+  if (cue?.missing !== true) return null;
+  return up?.mediaId === cue.mediaId ? null : cue.name;
 }
 
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
@@ -420,11 +431,20 @@ export class ShowEngine {
         // went up again at the restart. Never from a time to come (a clock set back since).
         const at = shownAt === undefined ? {} : { at: Math.min(shownAt, this.now()) };
         // Its background cue's file still missing (Session 52) is said again, as when it went up: its cues do not run
-        // again, so the background is the one put back below, as it was (never that file itself, named over it).
+        // again, so the background is the one put back below, as it was (never that file itself, named over it). So
+        // are a video input it names that this computer has none of (Session 53: since Session 51 said only as it went
+        // up), and its sound cue's file still missing (Session 53), the sound put back below as it was.
+        const named = backgroundCueOf(found.cues)?.background;
+        const inputMissing =
+          named?.kind === 'input' && (this.options.inputNamed?.(named.name) ?? null) === null
+            ? named.name
+            : null;
         actions.push(
           this.showAction(presentationId, slideIndex, order, found, from ? playlist.cursor : null, {
             ...at,
+            inputMissing,
             fileMissing: missingFile(found, request.background),
+            soundMissing: missingSound(found, request.audio ?? null),
           }),
         );
         slide = true;
@@ -578,14 +598,15 @@ export class ShowEngine {
 
   /**
    * The library's media changed (Session 52: a file found by Find missing media… or imported again, a deletion
-   * undone, a conversion's copy bringing a deleted file back): the slide up names its background file as missing no
-   * more once its cue no longer reads missing, as LIVE's line for a video input goes once Media has it. The
-   * background stays as it was until the slide goes up again. Not a change to the show: what Back and Put it back
-   * would undo stays. Run after Back and Put it back too, for the slide they bring back exactly.
+   * undone, a conversion's copy bringing a deleted file back): the slide up names its background file (or its sound
+   * file, Session 53) as missing no more once its cue no longer reads missing, as LIVE's line for a video input goes
+   * once Media has it. The background (and the sound) stays as it was until the slide goes up again. Not a change to
+   * the show: what Back and Put it back would undo stays. Run after Back and Put it back too, for the slide they bring
+   * back exactly.
    */
   refreshFiles(): CommandResult {
     const shown = this.state.layers.slide;
-    const now = this.stillMissing(shown, this.state.layers.background);
+    const now = this.stillMissing(shown, this.state.layers);
     if (now === shown || now === null) return this.unchanged();
     this.bookkeeping = true;
     try {
@@ -596,17 +617,27 @@ export class ShowEngine {
   }
 
   /**
-   * A slide layer as its cue reads now (Session 52): one naming its background file as missing names it no more once
-   * that cue no longer reads missing (found, or brought back, since), its background left as it is. A slide no longer
-   * in the library keeps what it said.
+   * A slide layer as its cues read now (Session 52): one naming its background file as missing names it no more once
+   * that cue no longer reads missing (found, or brought back, since), its background left as it is; and the same for
+   * its sound file (Session 53), the sound left as it is. A slide no longer in the library keeps what it said.
    */
-  private stillMissing(slide: SlideLayer | null, up: BackgroundLayer | null): SlideLayer | null {
-    if (!slide?.fileMissing) return slide;
+  private stillMissing(
+    slide: SlideLayer | null,
+    up: Pick<Layers, 'background' | 'audio'>,
+  ): SlideLayer | null {
+    if (!slide || (slide.fileMissing === undefined && slide.soundMissing === undefined)) return slide;
     // The slide itself, by its id, among every slide of its presentation (an arrangement can leave it out).
     const played = this.source.order(slide.presentationId, null)?.slides.find((s) => s.id === slide.slide.id);
-    if (!played || missingFile(played, up) !== null) return slide;
-    const { fileMissing: _found, ...rest } = slide;
-    return rest;
+    if (!played) return slide;
+    const fileFound = slide.fileMissing !== undefined && missingFile(played, up.background) === null;
+    const soundFound = slide.soundMissing !== undefined && missingSound(played, up.audio) === null;
+    if (!fileFound && !soundFound) return slide;
+    const { fileMissing, soundMissing, ...rest } = slide;
+    return {
+      ...rest,
+      ...(fileFound || fileMissing === undefined ? {} : { fileMissing }),
+      ...(soundFound || soundMissing === undefined ? {} : { soundMissing }),
+    };
   }
 
   /**
@@ -830,12 +861,13 @@ export class ShowEngine {
         },
       ]);
     } else {
-      // What the slide up said of its cues (Session 52: an input not on this computer, a file missing) stays, even
-      // when the edit moves it (a slide added before it): its cues do not run again.
+      // What the slide up said of its cues (Session 52: an input not on this computer, a file missing; Session 53, its
+      // sound's file missing) stays, even when the edit moves it (a slide added before it): its cues do not run again.
       this.apply([
         this.showAction(presentationId, index, order, played, live.playlist, {
           inputMissing: shown.inputMissing ?? null,
           fileMissing: shown.fileMissing ?? null,
+          soundMissing: shown.soundMissing ?? null,
         }),
       ]);
     }
@@ -995,6 +1027,7 @@ export class ShowEngine {
       transition?: Transition;
       inputMissing?: string | null;
       fileMissing?: string | null;
+      soundMissing?: string | null;
     } = {},
   ): EngineAction {
     return {
@@ -1010,6 +1043,7 @@ export class ShowEngine {
       ...(how.transition ? { transition: how.transition } : {}),
       ...(how.inputMissing !== undefined ? { inputMissing: how.inputMissing } : {}),
       ...(how.fileMissing !== undefined ? { fileMissing: how.fileMissing } : {}),
+      ...(how.soundMissing !== undefined ? { soundMissing: how.soundMissing } : {}),
       // Its videos play between their files' points as the library has them (Session 52), however it goes up.
       ...this.clipsOf(played.slide.elements),
     };
@@ -1072,12 +1106,17 @@ export class ShowEngine {
       if (fileMissing === null)
         layers.push({ type: 'background/set', background: this.backgroundLayer(bg, fade) });
     }
-    for (const cue of played.cues) {
-      if (cue.kind !== 'audio') continue;
-      const { mediaId, volume, loop } = cue;
+    // Its one sound cue, the last when it has more (Session 53), as the last always played. Its file missing goes as
+    // the background's does: nothing goes on the audio layer for it, so what is playing carries on (a sound, an audio
+    // playlist's music), and the slide names the file; before, it went on all the same, silent, stopping what played.
+    // A file deleted while it is the sound playing carries on (missingSound).
+    const sound = soundCueOf(played.cues);
+    const soundMissing = missingSound(played, this.state.layers.audio);
+    if (sound && soundMissing === null) {
+      const { mediaId, volume, loop } = sound;
       layers.push({
         type: 'audio/set',
-        audio: this.audioLayer({ id: mediaId, title: cue.label || cue.name, mediaId, volume, loop }),
+        audio: this.audioLayer({ id: mediaId, title: sound.label || sound.name, mediaId, volume, loop }),
       });
     }
     const actions: EngineAction[] = [
@@ -1086,6 +1125,7 @@ export class ShowEngine {
         ...(transition ? { transition } : {}),
         inputMissing,
         fileMissing,
+        soundMissing,
       }),
       ...layers,
     ];

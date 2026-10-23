@@ -71,8 +71,9 @@ export function LivePreview() {
   const inputMissing = state?.layers.slide?.inputMissing ?? null;
   const stillMissing = useInputNamed(inputMissing) === null && inputMissing !== null;
   // Its background cue's file was missing as it went up (Session 52), named as the library names it: said while the
-  // slide is up, until its cues run again.
+  // slide is up, until its cues run again. Its sound cue's file the same (Session 53).
   const fileMissing = state?.layers.slide?.fileMissing ?? null;
+  const soundMissing = state?.layers.slide?.soundMissing ?? null;
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
   const help = useWhatIsThis('live');
@@ -185,6 +186,12 @@ export function LivePreview() {
       {fileMissing !== null && (
         <p className="text-xs text-warning-fg" data-testid="live-file-missing">
           File missing: “{fileMissing}”. The background stays as it was.
+        </p>
+      )}
+      {/* The live slide's sound file is missing (Session 53): nothing went on the audio layer for it. */}
+      {soundMissing !== null && (
+        <p className="text-xs text-warning-fg" data-testid="live-sound-missing">
+          File missing: “{soundMissing}”. The sound stays as it was.
         </p>
       )}
       {lowerThirdShort && (

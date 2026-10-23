@@ -298,6 +298,51 @@ describe('a video input as a slide’s background cue', () => {
     expect(engine.current.layers.background).toMatchObject({ kind: 'input', inputId: 'in-9' });
   });
 
+  it('after an unexpected restart, the slide put back names it again, the background as it was, as a missing file is named (Session 53)', () => {
+    const { engine } = show();
+    engine.dispatch(goLive('pics', 0));
+    engine.dispatch(goLive('cam', 2));
+    const was = engine.current;
+    expect(was.layers.slide).toMatchObject({ slideIndex: 2, inputMissing: 'Input 9' });
+    const again = show();
+    again.engine.restore({
+      slide: { presentationId: 'cam', slideIndex: 2, shownAt: was.layers.slide?.shownAt },
+      background: was.layers.background,
+      blackout: false,
+    });
+    expect(again.engine.current.layers.slide).toMatchObject({ slideIndex: 2, inputMissing: 'Input 9' });
+    expect(again.engine.current.layers.background).toMatchObject({ kind: 'media', mediaId: 'pic' });
+    // With none up then, none comes up now; and it is said all the same.
+    const bare = show();
+    bare.engine.restore({
+      slide: { presentationId: 'cam', slideIndex: 2 },
+      background: null,
+      blackout: false,
+    });
+    expect(bare.engine.current.layers.slide?.inputMissing).toBe('Input 9');
+    expect(bare.engine.current.layers.background).toBeNull();
+    // On this computer by then (added to Media): nothing is said, the background as it was (its cues do not run again).
+    const added = show();
+    added.list.push({ id: 'in-9', name: 'Input 9', device: 'Placeholder spare', fit: 'fit' });
+    added.engine.restore({
+      slide: { presentationId: 'cam', slideIndex: 2 },
+      background: null,
+      blackout: false,
+    });
+    expect(added.engine.current.layers.slide?.slideIndex).toBe(2);
+    expect(added.engine.current.layers.slide?.inputMissing).toBeUndefined();
+    expect(added.engine.current.layers.background).toBeNull();
+    // A slide naming one that is here names none.
+    const here = show();
+    here.engine.restore({
+      slide: { presentationId: 'cam', slideIndex: 0 },
+      background: null,
+      blackout: false,
+    });
+    expect(here.engine.current.layers.slide?.slideIndex).toBe(0);
+    expect(here.engine.current.layers.slide?.inputMissing).toBeUndefined();
+  });
+
   it('what Next shows names the input behind the next slide, and a slide without one names none', () => {
     const { engine } = show();
     engine.dispatch(goLive('p1', 0));

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../shared/engine/commands';
-import type { BackgroundCue } from '../../shared/library';
+import type { MusicRun } from '../../shared/engine/state';
+import type { AudioCue, BackgroundCue, SlideCue } from '../../shared/library';
 import { MemoryPlaylistSource } from './playlist-source';
 import { ShowEngine } from './show-engine';
 import type { MemorySlideSource } from './slide-source';
@@ -10,7 +11,8 @@ import { makeSource, RecordingTransport, textSlide } from './testing';
  * A slide's background cue whose file is missing (Session 52): not found at import, or deleted from the library,
  * as the library reads it (db/presentations.ts cueFromRow). It goes as a video input this computer has none of
  * does (Session 51): the background stays as it was, never black because of it, and the slide names the file for
- * LIVE to say why. Placeholder names only.
+ * LIVE to say why. A slide's sound cue whose file is missing goes the same way (Session 53): nothing goes on the
+ * audio layer for it, so what is playing carries on, and the slide names the file. Placeholder names only.
  */
 
 /** A slide's background cue: a video from the library, its file there unless it says otherwise. */
@@ -315,6 +317,246 @@ describe('a slide’s missing background file, as the library and the show move 
     engine.dispatch({ type: 'next' });
     expect(engine.current.layers.slide).toMatchObject({ slideIndex: 2, fileMissing: 'Placeholder gone.mov' });
     expect(engine.current.layers.background).toBeNull();
+  });
+});
+
+/** A slide's sound cue: a sound from the library, looping, its file there unless it says otherwise. */
+const soundCue = (mediaId: string, name: string, how: { missing?: boolean } = {}): AudioCue => ({
+  kind: 'audio',
+  label: '',
+  name,
+  missing: how.missing ?? false,
+  unplayable: null,
+  mediaId,
+  volume: 0.8,
+  loop: true,
+});
+
+const TUNE = soundCue('tune', 'Placeholder tune.wav');
+const HYMN = soundCue('hymn', 'Placeholder hymn.wav', { missing: true });
+const BELL = soundCue('bell', 'Placeholder bell.wav');
+const HYMN_FOUND = { ...HYMN, missing: false };
+
+/** An audio playlist of one track (its length not known: it never ends by itself here). */
+const MUSIC: Omit<MusicRun, 'index'> = {
+  playlistId: 'before-sabha',
+  name: 'Placeholder music',
+  tracks: [{ mediaId: 'track', title: 'Placeholder track' }],
+  loop: false,
+  shuffle: false,
+};
+
+/**
+ * An engine over 'sounds': its first slide's sound is there, the second has none, the third's file is missing and
+ * the fourth's is another that is there. No wait comes by itself (a track's end): the tests move the show on.
+ */
+function sounds() {
+  const source = makeSource();
+  const setSounds = (cues: SlideCue[][]) => {
+    source.set(
+      'sounds',
+      [textSlide('n1', 'One'), textSlide('n2', 'Two'), textSlide('n3', 'Three'), textSlide('n4', 'Four')],
+      cues,
+    );
+  };
+  setSounds([[TUNE], [], [HYMN], [BELL]]);
+  let clock = 1000;
+  const engine = new ShowEngine(source, new RecordingTransport(), () => ++clock, undefined, {
+    schedule: () => () => undefined,
+  });
+  return { engine, source, setSounds };
+}
+
+describe('a slide’s sound cue whose file is missing (Session 53)', () => {
+  it('puts nothing on the audio layer for it, the sound playing carrying on, and the slide names the file for LIVE to say why', () => {
+    const { engine } = sounds();
+    engine.dispatch(goLive('sounds', 0));
+    const tune = engine.current.layers.audio;
+    expect(tune).toMatchObject({ mediaId: 'tune' });
+    engine.dispatch({ type: 'next' });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    expect(engine.current.layers.audio).toBe(tune);
+    // Next goes on: a slide whose sound is there plays it, and names none.
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(3);
+    expect(engine.current.layers.slide).not.toHaveProperty('soundMissing');
+    expect(engine.current.layers.audio).toMatchObject({ mediaId: 'bell' });
+    // Back brings the slide back exactly, saying so again, the tune as it was.
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    expect(engine.current.layers.audio).toBe(tune);
+    // So does Put it back, after Clear all.
+    engine.dispatch({ type: 'clearAll' });
+    engine.dispatch({ type: 'putBack' });
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    expect(engine.current.layers.audio).toEqual(tune);
+  });
+
+  it('with nothing playing, nothing plays, and the slide still names the file; an audio playlist’s music plays on under it', () => {
+    const { engine } = sounds();
+    engine.dispatch(goLive('sounds', 2));
+    expect(engine.current.layers.audio).toBeNull();
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    // A slide naming none says nothing more.
+    engine.dispatch(goLive('sounds', 1));
+    expect(engine.current.layers.slide).not.toHaveProperty('soundMissing');
+    // The music, as it was: never stopped for it.
+    engine.dispatch({ type: 'playMusic', music: MUSIC, index: 0 });
+    const music = engine.current.layers.audio;
+    expect(music).toMatchObject({ mediaId: 'track', music: { playlistId: 'before-sabha' } });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    expect(engine.current.layers.audio).toBe(music);
+    // A slide whose sound is there takes the audio layer from the music, as it always has.
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.audio).toMatchObject({ mediaId: 'bell' });
+    expect(engine.current.layers.audio).not.toHaveProperty('music');
+  });
+
+  it('after an unexpected restart, the slide put back says so again, the sound as it was', () => {
+    const { engine } = sounds();
+    engine.dispatch(goLive('sounds', 0));
+    engine.dispatch(goLive('sounds', 2));
+    const was = engine.current;
+    const again = sounds().engine;
+    again.restore({
+      slide: { presentationId: 'sounds', slideIndex: 2, shownAt: was.layers.slide?.shownAt },
+      background: null,
+      blackout: false,
+      audio: was.layers.audio,
+    });
+    expect(again.current.layers.slide).toMatchObject({ slideIndex: 2, soundMissing: 'Placeholder hymn.wav' });
+    expect(again.current.layers.audio).toMatchObject({
+      mediaId: 'tune',
+      startedAt: was.layers.audio?.startedAt,
+    });
+    // With none playing then, none plays now.
+    const bare = sounds().engine;
+    bare.restore({ slide: { presentationId: 'sounds', slideIndex: 2 }, background: null, blackout: false });
+    expect(bare.current.layers.slide).toMatchObject({ soundMissing: 'Placeholder hymn.wav' });
+    expect(bare.current.layers.audio).toBeNull();
+    // A slide whose sound is there names none.
+    const plain = sounds().engine;
+    plain.restore({ slide: { presentationId: 'sounds', slideIndex: 3 }, background: null, blackout: false });
+    expect(plain.current.layers.slide).not.toHaveProperty('soundMissing');
+  });
+
+  it('found again while its slide is up, says so no more, the sound as it was until the slide goes up again; Back still undoes the Next', () => {
+    const { engine, setSounds } = sounds();
+    engine.dispatch(goLive('sounds', 0));
+    const tune = engine.current.layers.audio;
+    engine.dispatch({ type: 'next' });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    // Find missing media…, Undo of a delete, the same file imported again: the library reads it there now.
+    expect(engine.refreshFiles()).toMatchObject({ ok: true, changed: false });
+    setSounds([[TUNE], [], [HYMN_FOUND], [BELL]]);
+    expect(engine.refreshFiles()).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.slide?.slideIndex).toBe(2);
+    expect(engine.current.layers.slide).not.toHaveProperty('soundMissing');
+    expect(engine.current.layers.audio).toBe(tune);
+    // Not a change to the show: Back undoes the Next exactly.
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(1);
+    expect(engine.current.layers.audio).toBe(tune);
+    // The slide shown again plays it.
+    engine.dispatch(goLive('sounds', 2));
+    expect(engine.current.layers.audio).toMatchObject({ mediaId: 'hymn' });
+  });
+
+  it('names its background’s file and its sound’s apart, each said no more once found; an edit that moves the slide keeps them', () => {
+    const { engine, source } = sounds();
+    const one = textSlide('b1', 'One');
+    source.set('both', [one], [[GONE, HYMN]]);
+    engine.dispatch(goLive('both', 0));
+    expect(engine.current.layers.slide).toMatchObject({
+      fileMissing: 'Placeholder gone.mov',
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    expect(engine.current.layers.background).toBeNull();
+    expect(engine.current.layers.audio).toBeNull();
+    // A slide added before it: it still says both, at its new place.
+    source.set('both', [textSlide('b0', 'New'), one], [[], [GONE, HYMN]]);
+    engine.refreshLive('both');
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 1,
+      fileMissing: 'Placeholder gone.mov',
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    // The sound found: only the background's file is said.
+    source.set('both', [textSlide('b0', 'New'), one], [[], [GONE, HYMN_FOUND]]);
+    engine.refreshFiles();
+    expect(engine.current.layers.slide).toMatchObject({ fileMissing: 'Placeholder gone.mov' });
+    expect(engine.current.layers.slide).not.toHaveProperty('soundMissing');
+    // Then the background's: nothing is.
+    source.set('both', [textSlide('b0', 'New'), one], [[], [{ ...GONE, missing: false }, HYMN_FOUND]]);
+    engine.refreshFiles();
+    expect(engine.current.layers.slide).not.toHaveProperty('fileMissing');
+    expect(engine.current.layers.slide?.slideIndex).toBe(1);
+  });
+
+  it('names no sound that is the one playing: deleted while it plays, it plays on, and a slide naming it carries it on', () => {
+    const { engine, setSounds } = sounds();
+    engine.dispatch(goLive('sounds', 0));
+    const tune = engine.current.layers.audio;
+    if (!tune) throw new Error('no sound playing');
+    // Deleted from the library while it plays (it plays on until it is changed): every cue naming it reads missing.
+    const deleted = { ...TUNE, missing: true };
+    setSounds([[deleted], [], [deleted], [BELL]]);
+    engine.dispatch(goLive('sounds', 2));
+    expect(engine.current.layers.slide).not.toHaveProperty('soundMissing');
+    expect(engine.current.layers.audio).toMatchObject({ mediaId: 'tune', startedAt: tune.startedAt });
+    // After an unexpected restart, the same: it plays on, and the slide names nothing.
+    const again = sounds();
+    again.setSounds([[deleted], [], [deleted], [BELL]]);
+    again.engine.restore({
+      slide: { presentationId: 'sounds', slideIndex: 2 },
+      background: null,
+      blackout: false,
+      audio: engine.current.layers.audio,
+    });
+    expect(again.engine.current.layers.slide).not.toHaveProperty('soundMissing');
+    expect(again.engine.current.layers.audio).toMatchObject({ mediaId: 'tune' });
+  });
+
+  it('a slide with two sound cues (an import can give it two) is read by the last, the one that always played', () => {
+    const { engine, source } = sounds();
+    source.set(
+      'twice',
+      [textSlide('w1', 'One'), textSlide('w2', 'Two'), textSlide('w3', 'Three')],
+      [[], [HYMN, TUNE], [TUNE, HYMN]],
+    );
+    // The last is there: it plays, and nothing is said.
+    engine.dispatch(goLive('twice', 1));
+    expect(engine.current.layers.audio).toMatchObject({ mediaId: 'tune' });
+    expect(engine.current.layers.slide).not.toHaveProperty('soundMissing');
+    // The last is missing: the sound stays as it was (the first never plays instead), and it is named.
+    engine.dispatch({ type: 'clearLayer', layer: 'audio' });
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    expect(engine.current.layers.audio).toBeNull();
   });
 });
 
