@@ -49,7 +49,11 @@ async function keyFillPair(app: ElectronApplication, win: Page): Promise<{ fill:
     const group = made.snapshot.groups.find((g) => g.name === 'Placeholder switcher');
     const role = await d.screens.setGroupRole(group?.id ?? '', 'keyfill');
     if (!role.ok) throw new Error(role.message);
-    for (const display of made.snapshot.displays) {
+    // The main display and the test's extra one, a copy of it (CI's two), however many this computer has: the
+    // fill's and the key's windows on one physical screen, so their pixels are read alike.
+    const { displays } = made.snapshot;
+    for (const display of [displays.find((x) => x.primary), displays[displays.length - 1]]) {
+      if (!display) throw new Error('no main display');
       const used = await d.screens.assignDisplay(group?.id ?? '', display.id, { coverOperator: true });
       if (!used.ok) throw new Error(used.message);
     }
