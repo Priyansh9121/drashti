@@ -434,8 +434,41 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
   );
 }
 
+/**
+ * Whether a place scrolls, its content taller than it is (Session 52), told again as it or anything in it changes
+ * size: while it does it takes the keyboard's focus too, as a place that scrolls must be reachable from the keyboard
+ * (with nothing in it to focus, the keys could not scroll it), and otherwise it is no stop of the Tab key's.
+ */
+function useScrolls(): [(el: HTMLElement | null) => void, boolean] {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [scrolls, setScrolls] = useState(false);
+  useEffect(() => {
+    if (!el) return;
+    const check = () => {
+      setScrolls(el.scrollHeight > el.clientHeight + 1);
+    };
+    const sizes = new ResizeObserver(check);
+    const watch = () => {
+      sizes.disconnect();
+      sizes.observe(el);
+      for (const child of el.children) sizes.observe(child);
+      check();
+    };
+    // A line or the music strip coming or going is a child coming or going.
+    const children = new MutationObserver(watch);
+    children.observe(el, { childList: true });
+    watch();
+    return () => {
+      children.disconnect();
+      sizes.disconnect();
+    };
+  }, [el]);
+  return [setEl, scrolls];
+}
+
 export function SimpleApp({ info }: { info: AppInfo | null }) {
   const platform = info?.platform ?? 'darwin';
+  const [middle, middleScrolls] = useScrolls();
   const dashboardOpen = useNodes((s) => s.dashboard);
   const items = usePlaylists((s) => s.items);
   const openId = usePlaylists((s) => s.openId);
@@ -523,8 +556,16 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <SimpleFirstRun platform={platform} />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
         <PlaylistColumn />
-        <main aria-label="On the screens" className="flex min-h-0 flex-col overflow-hidden pb-3">
-          <div className="flex min-h-0 items-start gap-2">
+        {/* LIVE and Next keep their height, the lines under LIVE saying why (a file or a video input not here) too:
+            in a window too short for them all (CI's 1024 × 645 with the music strip, Session 52) the middle scrolls,
+            the keys' reminder going under, never under the music strip; it takes the keyboard while it scrolls. */}
+        <main
+          ref={middle}
+          aria-label="On the screens"
+          className="flex min-h-0 flex-col overflow-y-auto pb-3"
+          tabIndex={middleScrolls ? 0 : undefined}
+        >
+          <div className="flex shrink-0 items-start gap-2">
             <div className="min-w-0 flex-[3]">
               <LivePreview />
             </div>
