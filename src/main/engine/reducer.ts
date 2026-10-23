@@ -48,6 +48,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         at,
         transition,
         inputMissing,
+        fileMissing,
         clips,
       } = action;
       const live = state.live;
@@ -64,12 +65,15 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       // when they did not run, as the slide up said.
       const missing =
         inputMissing === undefined ? (samePlace ? current.inputMissing : undefined) : inputMissing;
+      // The same for its background cue's file that is missing (Session 52).
+      const gone = fileMissing === undefined ? (samePlace ? current.fileMissing : undefined) : fileMissing;
       // Its videos' points as the library has them now (Session 52): new ones are new content, as an edit is.
       const sameSlide =
         samePlace &&
         current.notes === notes &&
         sameData(current.slide, slide) &&
         current.inputMissing === (missing ?? undefined) &&
+        current.fileMissing === (gone ?? undefined) &&
         sameData(current.clips, clips);
       if (sameCursor && sameSlide) return state;
       // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on,
@@ -93,6 +97,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
                 notes,
                 ...(came ? { transition: came } : {}),
                 ...(missing ? { inputMissing: missing } : {}),
+                ...(gone ? { fileMissing: gone } : {}),
                 ...(clips ? { clips } : {}),
               },
             },

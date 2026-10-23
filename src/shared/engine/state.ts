@@ -26,8 +26,8 @@ import type { LowerThird } from '../lower-thirds';
  * 'input' kind, the next slide's `input`, a slide's `inputMissing` and a coming-up item's 'input' kind. 13
  * (Session 52, after alpha.11 had published 12): a slide's and a prop's videos play between their files' start and
  * end points, which only the engine's state can tell every screen and node (the slide layer's and a prop's
- * `clips`). 13 only adds to 12, so a state saved by alpha.11 (its recovery file, a node's last picture) is read as
- * it is: `readsEngineVersion`.
+ * `clips`); and a slide's and the next slide's background file that is missing (`fileMissing`). 13 only adds to
+ * 12, so a state saved by alpha.11 (its recovery file, a node's last picture) is read as it is: `readsEngineVersion`.
  */
 export const ENGINE_STATE_VERSION = 13;
 
@@ -105,6 +105,12 @@ export interface SlideLayer {
    * stayed as it was (never black because of it), and LIVE says so while the slide is up. Left out otherwise.
    */
   inputMissing?: string;
+  /**
+   * Its background cue's file is missing (Session 52: not found at import, or deleted from the library), by the
+   * library's name for it: as for an input, the background stayed as it was (never black because of it), and LIVE
+   * says so while the slide is up. Left out otherwise.
+   */
+  fileMissing?: string;
   /** Its videos' start and end points (Session 52): see VideoClips. Left out when none has any. */
   clips?: VideoClips;
 }
@@ -444,6 +450,11 @@ export type UpNext =
        * goes up behind it (or, with none, the background stays as it was). Left out when it names none.
        */
       input?: string;
+      /**
+       * The file its background cue names is missing (Session 52), by its name: the background stays as it is when
+       * it goes up. Left out otherwise.
+       */
+      fileMissing?: string;
       /** The playlist item it starts, when it is in the next item. */
       itemId: string | null;
       /** Its notes, for a presenter's remote (Session 18). */
