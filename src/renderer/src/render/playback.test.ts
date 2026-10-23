@@ -671,9 +671,10 @@ describe('a sound or a picture the engine sends somewhere new: a skip or a jump 
     }
   });
 
-  it('asked to check before its first frame (as BackgroundMedia.tsx asks as it mounts), it starts just as it would have', () => {
+  it('asked to check before its first frame (as a screen’s video asks as it mounts), it starts just as it would have', () => {
     // Session 52: what a jump starts afresh (its re-aims, a short jump landed by a jump) is not for a file still
-    // loading: its start is aimed by the clock and measured as a start is, on every screen, whenever it mounts.
+    // loading: its start is aimed by the clock and measured as a start is, on every screen, whenever it mounts
+    // (BackgroundMedia.tsx's and SlideView.tsx's videos ask then).
     for (const kind of KINDS) {
       const landings = [false, true].map((asked) => {
         // Joined 2 s in (a screen that opens late): it starts by a seek there, which takes 0.1 s.
@@ -703,8 +704,8 @@ describe('a sound or a picture the engine sends somewhere new: a skip or a jump 
   it('a picture whose seeks land 0.15 s off, either way, stops jumping a moment after a skip: no hunting', () => {
     // Sessions 31–36: CI's Mac, short of time, landed its seeks 0.1 to 0.2 s off either way, and aiming a picture
     // again whenever it drifted made a loop test worse. A skip (Session 52) lands by a jump and may be aimed again
-    // twice in a row, as a start and each time round a loop may, and jumps once more only if it is then more than
-    // a quarter of a second off: then it is left to its speed, however far off it landed.
+    // twice in a row, as a start and each time round a loop may; past those, it jumps only when it is more than a
+    // quarter of a second off, as a picture always does, and is otherwise left to its speed, however far off it is.
     const v = new FakeMedia(40, {
       landOff: Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? 0.15 : -0.15)),
     });

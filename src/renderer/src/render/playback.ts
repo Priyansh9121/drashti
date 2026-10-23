@@ -320,15 +320,16 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       wrap = null;
       hold = null;
       if (framed) {
-        // A file the engine has sent somewhere new (Session 51: a skip, a jump to a marker) lands there by a
-        // jump, however short (check()), and may be aimed again, as a start and each time round a loop may,
-        // whatever the landings before it used up. A landing or a start not yet measured, or a seek still
-        // landing, is not measured: from the new place it would seem 15 or 30 s off. On CI's Windows, skips
-        // pressed that quickly taught the sound a lead at its 0.5 s cap, and with its re-aims used up just
-        // before, Forward 15 s landed 0.4 s ahead and was eased back at 2% a second. A screen's picture alike
-        // since Session 52, every screen the same: it landed up to 0.45 s ahead for up to a quarter of a second,
-        // or a seek's time behind, easing back. Before its first frame nothing is aimed again here: its start is
-        // aimed by the clock and measured as a start is (BackgroundMedia.tsx asks as it mounts).
+        // A file the engine has sent somewhere new (Session 51: a skip, a jump to a marker; or new start or end
+        // points while it plays) lands there by a jump, however short (check()), and may be aimed again, as a
+        // start and each time round a loop may, whatever the landings before it used up. A landing or a start
+        // not yet measured, or a seek still landing, is not measured: from the new place it would seem 15 or
+        // 30 s off. On CI's Windows, skips pressed that quickly taught the sound a lead at its 0.5 s cap, and
+        // with its re-aims used up just before, Forward 15 s landed 0.4 s ahead and was eased back at 2% a
+        // second. A screen's picture alike since Session 52, every screen the same: it landed up to 0.45 s
+        // ahead for up to a quarter of a second, or a seek's time behind, easing back. Before its first frame
+        // nothing is aimed again here: its start is aimed by the clock and measured as a start is
+        // (BackgroundMedia.tsx's and SlideView.tsx's videos ask as they mount).
         seekFrom = 0;
         settleFrom = 0;
         startFrom = 0;
