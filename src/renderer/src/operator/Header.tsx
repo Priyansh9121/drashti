@@ -18,7 +18,7 @@ import { LiveStatus } from './StatusLine';
 import { RoleChip } from '../roles/RolesDialogs';
 import { useRoles } from '../roles/roles-store';
 import { ScreenSwitchButtons } from './ScreenSwitches';
-import { COUNT_IF_NARROW, ICON_IF_NARROW, WORDS_IF_NARROW } from './top-bar';
+import { COUNT_IF_NARROW, HIDDEN_IF_NARROWER, ICON_IF_NARROW, WORDS_IF_NARROW } from './top-bar';
 
 /** Whether the Announcements button shows: while the network is on, or while any is waiting or on the screens. */
 function useAnnouncementsShown(): boolean {
@@ -31,6 +31,11 @@ function useAnnouncementsShown(): boolean {
 /** A button's words: for screen readers only while a crowded top bar shows its icon alone (top-bar.ts). */
 function Words({ crowded, children }: { crowded: boolean; children: string }) {
   return <span className={crowded ? WORDS_IF_NARROW : undefined}>{children}</span>;
+}
+
+/** A ? beside a button: gone below 1280 px while the top bar is crowded, as each panel has its own (top-bar.ts). */
+function Help({ crowded, children }: { crowded: boolean; children: ReactNode }) {
+  return <span className={cx('flex', crowded && HIDDEN_IF_NARROWER)}>{children}</span>;
 }
 
 /**
@@ -62,7 +67,7 @@ function AnnouncementsButton({ help, crowded }: { help: ReactNode; crowded: bool
           )}
         </Button>
       </Tooltip>
-      {help}
+      <Help crowded={crowded}>{help}</Help>
     </span>
   );
 }
@@ -90,16 +95,6 @@ export function Header({
   // Phones or the PINs on (Session 51, S2-3): below 1680 px wide, some buttons show their icon alone (top-bar.ts).
   const rolesOn = useRoles((s) => s.view.on);
   const crowded = useAnnouncementsShown() || rolesOn;
-  const themes = (
-    <Button
-      variant="ghost"
-      icon={Palette}
-      onClick={() => openThemes()}
-      className={cx(crowded && ICON_IF_NARROW)}
-    >
-      <Words crowded={crowded}>Themes</Words>
-    </Button>
-  );
   return (
     <>
       <header
@@ -112,21 +107,26 @@ export function Header({
         </h1>
         <HeaderStates>
           <OnAirBadges />
-          {/* How many announcements wait is on the Announcements button beside it. */}
-          <NetworkBadge waiting={false} />
-          <div className="min-w-0 flex-1">
+          {/* How many announcements wait is on the Announcements button beside it. Crowded and below 1280 px,
+              how many devices alone (top-bar.ts). */}
+          <NetworkBadge waiting={false} compact={crowded} />
+          {/* Its end is cut, if it must be, rather than drawn over the buttons beside it. */}
+          <div className="min-w-0 flex-1 overflow-hidden">
             <LiveStatus />
           </div>
         </HeaderStates>
         <div className="flex shrink-0 items-center gap-2" data-crowded={crowded ? 'true' : undefined}>
-          {/* Its icon alone says nothing: crowded, its tooltip names it. */}
-          {crowded ? (
-            <Tooltip content="Themes" side="bottom" describes={false}>
-              {themes}
-            </Tooltip>
-          ) : (
-            themes
-          )}
+          {/* Its icon alone says nothing: its tooltip names it (always there, so it stays put as that changes). */}
+          <Tooltip content="Themes" side="bottom" describes={false}>
+            <Button
+              variant="ghost"
+              icon={Palette}
+              onClick={() => openThemes()}
+              className={cx(crowded && ICON_IF_NARROW)}
+            >
+              <Words crowded={crowded}>Themes</Words>
+            </Button>
+          </Tooltip>
           <span className="flex items-center gap-0.5">
             <Tooltip content="The stream to YouTube, and recording" side="bottom">
               <Button
@@ -139,7 +139,7 @@ export function Header({
                 <Words crowded={crowded}>Stream</Words>
               </Button>
             </Tooltip>
-            {stream.button}
+            <Help crowded={crowded}>{stream.button}</Help>
           </span>
           <span className="flex items-center gap-0.5">
             <Tooltip
@@ -156,7 +156,7 @@ export function Header({
                 <Words crowded={crowded}>Phones</Words>
               </Button>
             </Tooltip>
-            {phones.button}
+            <Help crowded={crowded}>{phones.button}</Help>
           </span>
           <AnnouncementsButton help={announcements.button} crowded={crowded} />
           <Tooltip content="Screens and sound" kbd={shortcutText('openScreens', platform)} side="bottom">

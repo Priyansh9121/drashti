@@ -115,10 +115,10 @@ function AdminPinForm({ what }: { what: string | null }) {
   );
 }
 
-/** Who is at the controls (roles on): Operator, or Admin and Lock. */
 /**
- * Who is at the controls, in the top bar while roles are on. `compact`: the top bar is crowded (Session 51,
- * operator/top-bar.ts), so below 1680 px wide it shows its icon alone, its tooltip saying the rest.
+ * Who is at the controls, in the top bar while roles are on: Operator, or Admin and Lock. `compact`: the top bar
+ * is crowded (Session 51, operator/top-bar.ts), so below 1680 px wide it shows its icon alone, its tooltip saying
+ * the rest.
  */
 export function RoleChip({ compact = false }: { compact?: boolean }) {
   const view = useRoles((s) => s.view);
