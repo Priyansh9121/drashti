@@ -120,15 +120,18 @@ function BoxContents({
   languages,
   clock,
   now,
-  audienceOff,
+  hall,
 }: {
   box: StageBox;
   state: EngineState;
   languages: readonly Lang[] | null;
   clock: string;
   now: number;
-  /** The hall's screens are off (Audience off, Session 51): the box of their state says so. */
-  audienceOff: boolean;
+  /**
+   * The hall as the page is told it (Session 50): the box of the audience screens' state says when they are off
+   * (Audience off, Session 51) and when there are none (no audience group at all, Session 53).
+   */
+  hall: HallPicture | null | undefined;
 }): ReactNode {
   const slide = state.layers.slide;
   switch (box.kind) {
@@ -286,7 +289,7 @@ function BoxContents({
       ) : null;
     }
     case 'screensState':
-      return <span>{screensStateWords(state, audienceOff)}</span>;
+      return <span>{screensStateWords(state, hall)}</span>;
     case 'audience':
       // Drawn by the box itself (AudienceBox), never as words.
       return null;
@@ -318,7 +321,7 @@ export function StageLayoutView({
   /**
    * The hall's group and canvas, for an audience picture box (Session 50); null with no audience group at all,
    * the box black and saying so (Session 52: it drew every layer and language), and left out while not known,
-   * the box black alone.
+   * the box black alone. The box of the audience screens' state says it off and none too (Sessions 51 and 53).
    */
   hall?: HallPicture | null;
 }) {
@@ -326,8 +329,6 @@ export function StageLayoutView({
   // Main's way of writing the time (Sessions 31–36, I18N-8): given, or the page's.
   const pageStyle = useContext(ClockStyleContext);
   const clock = formatClock(now, clockStyle ?? pageStyle);
-  // Audience off (Session 51): the box of the audience screens' state says so, as the audience picture box does.
-  const audienceOff = hall?.off === true;
   return (
     <div
       data-testid="stage-layout"
@@ -374,7 +375,7 @@ export function StageLayoutView({
           ) : (
             <Sized
               size={box.size}
-              again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state, audienceOff))}`}
+              again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state, hall))}`}
             >
               <BoxContents
                 box={box}
@@ -382,7 +383,7 @@ export function StageLayoutView({
                 languages={languages}
                 clock={clock}
                 now={now}
-                audienceOff={audienceOff}
+                hall={hall}
               />
             </Sized>
           )}
@@ -393,7 +394,7 @@ export function StageLayoutView({
 }
 
 /** What a box shows, so a box that fits its words measures again when they change. */
-function contentKey(box: StageBox, state: EngineState, audienceOff: boolean): unknown {
+function contentKey(box: StageBox, state: EngineState, hall: HallPicture | null | undefined): unknown {
   switch (box.kind) {
     case 'current':
       return [state.layers.slide?.slide.id, state.layers.slide?.shownAt, state.layers.background?.kind];
@@ -411,7 +412,8 @@ function contentKey(box: StageBox, state: EngineState, audienceOff: boolean): un
       return [state.layers.background, state.layers.audio];
     case 'screensState':
       return [
-        audienceOff,
+        hall === null,
+        hall?.off === true,
         state.blackout,
         state.logo?.id,
         state.layers.slide?.slide.id,

@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Lang, RenderSlide, TextElement, TimerElement } from '../../../shared/model';
+import type { HallPicture } from '../../../shared/stage-layouts';
 import type { TimerState } from '../../../shared/timers';
+import { NO_AUDIENCE } from './audience-picture';
 import { fontFamilyFor } from './fonts';
 import { htmlLang, textLang } from './lang';
 import { translitSource } from '../../../shared/tracks';
@@ -25,11 +27,15 @@ export function backgroundWords(background: EngineState['layers']['background'])
 }
 
 /**
- * What the audience screens show, as a stage layout's box of their state says it. Off first (Session 51: with
- * Audience off they show this computer's desktop, whatever is up), then black-out, the logo, a picture or nothing.
+ * What the audience screens show, as a stage layout's box of their state says it, from the hall as the page is
+ * told it. None first (Session 53: with no audience group at all, a key and fill pair alone too, there are none to
+ * be off, black or showing, as the audience picture box says; it said they were showing), then off (Session 51:
+ * with Audience off they show this computer's desktop, whatever is up), then black-out, the logo, a picture or
+ * nothing. Until the page is told the hall, what is up: never that there are none.
  */
-export function screensStateWords(state: EngineState, off: boolean): string {
-  if (off) return 'Audience screens off';
+export function screensStateWords(state: EngineState, hall: HallPicture | null | undefined): string {
+  if (hall === null) return NO_AUDIENCE;
+  if (hall?.off === true) return 'Audience screens off';
   if (state.blackout) return 'Audience screens black';
   if (state.logo) return 'Logo on the audience screens';
   return state.layers.slide || state.layers.background
@@ -37,7 +43,13 @@ export function screensStateWords(state: EngineState, off: boolean): string {
     : 'Nothing on the audience screens';
 }
 
-/** The same beside NOW on the Standard stage screen: said only when they do not show the picture. */
+/**
+ * The same beside NOW on the Standard stage screen: said only while they do not show the picture, off, black or
+ * with the logo, which the performers must know while it lasts. Never that there are none (Session 53): that lasts
+ * all the show, where none is how the mandir set it up (a hall with no screen, or a key and fill pair alone whose
+ * video switcher may well put the picture on the hall's screens), and it would stand beside NOW at every slide,
+ * words the performers can do nothing about. A layout's box of their state, chosen to say it, says so.
+ */
 export function screensStateNote(state: EngineState, off: boolean): string {
   if (off) return ' · AUDIENCE SCREENS OFF';
   if (state.blackout) return ' · AUDIENCE SCREENS BLACK';
