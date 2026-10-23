@@ -57,6 +57,11 @@ export type EngineAction =
        * the cue names none; left out as above. Restart recovery says it again (its cues still do not run).
        */
       fileMissing?: string | null;
+      /**
+       * The same for its sound cue's file (Session 53): its name when it is missing, null when it is there or the
+       * slide has no sound; left out as above. Restart recovery says it again.
+       */
+      soundMissing?: string | null;
       /** Its videos' start and end points as the library has them now (Session 52); left out when none has any. */
       clips?: VideoClips;
     }

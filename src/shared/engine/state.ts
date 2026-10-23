@@ -26,8 +26,9 @@ import type { LowerThird } from '../lower-thirds';
  * 'input' kind, the next slide's `input`, a slide's `inputMissing` and a coming-up item's 'input' kind. 13
  * (Session 52, after alpha.11 had published 12): a slide's and a prop's videos play between their files' start and
  * end points, which only the engine's state can tell every screen and node (the slide layer's and a prop's
- * `clips`); and a slide's and the next slide's background file that is missing (`fileMissing`). 13 only adds to
- * 12, so a state saved by alpha.11 (its recovery file, a node's last picture) is read as it is: `readsEngineVersion`.
+ * `clips`); and a slide's and the next slide's background file that is missing (`fileMissing`), and a slide's sound
+ * file (Session 53, `soundMissing`). 13 only adds to 12, so a state saved by alpha.11 (its recovery file, a node's
+ * last picture) is read as it is: `readsEngineVersion`.
  */
 export const ENGINE_STATE_VERSION = 13;
 
@@ -111,6 +112,12 @@ export interface SlideLayer {
    * says so while the slide is up. Left out otherwise.
    */
   fileMissing?: string;
+  /**
+   * Its sound cue's file is missing (Session 53: not found at import, or deleted from the library), by the library's
+   * name for it: as for its background's, nothing went on the audio layer for it, so what was playing carried on (a
+   * sound, an audio playlist's music), and LIVE says so while the slide is up. Left out otherwise.
+   */
+  soundMissing?: string;
   /** Its videos' start and end points (Session 52): see VideoClips. Left out when none has any. */
   clips?: VideoClips;
 }

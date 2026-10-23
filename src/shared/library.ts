@@ -139,6 +139,14 @@ export function backgroundCueOf(cues: readonly SlideCue[]): BackgroundCue | null
   return cues.findLast((c): c is BackgroundCue => c.kind === 'background') ?? null;
 }
 
+/**
+ * The sound cue a slide plays (Session 53): its last, as a slide with more than one has always played the last (each
+ * went on the audio layer in turn, the last staying); null for none.
+ */
+export function soundCueOf(cues: readonly SlideCue[]): AudioCue | null {
+  return cues.findLast((c): c is AudioCue => c.kind === 'audio') ?? null;
+}
+
 export interface SlideInfo {
   id: string;
   /** Position in the presentation's slide order (what the engine calls slideIndex). */

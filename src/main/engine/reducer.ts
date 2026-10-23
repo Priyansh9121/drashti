@@ -49,6 +49,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         transition,
         inputMissing,
         fileMissing,
+        soundMissing,
         clips,
       } = action;
       const live = state.live;
@@ -65,8 +66,10 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       // when they did not run, as the slide up said.
       const missing =
         inputMissing === undefined ? (samePlace ? current.inputMissing : undefined) : inputMissing;
-      // The same for its background cue's file that is missing (Session 52).
+      // The same for its background cue's file that is missing (Session 52), and its sound cue's (Session 53).
       const gone = fileMissing === undefined ? (samePlace ? current.fileMissing : undefined) : fileMissing;
+      const unheard =
+        soundMissing === undefined ? (samePlace ? current.soundMissing : undefined) : soundMissing;
       // Its videos' points as the library has them now (Session 52): new ones are new content, as an edit is.
       const sameSlide =
         samePlace &&
@@ -74,6 +77,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         sameData(current.slide, slide) &&
         current.inputMissing === (missing ?? undefined) &&
         current.fileMissing === (gone ?? undefined) &&
+        current.soundMissing === (unheard ?? undefined) &&
         sameData(current.clips, clips);
       if (sameCursor && sameSlide) return state;
       // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on,
@@ -98,6 +102,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
                 ...(came ? { transition: came } : {}),
                 ...(missing ? { inputMissing: missing } : {}),
                 ...(gone ? { fileMissing: gone } : {}),
+                ...(unheard ? { soundMissing: unheard } : {}),
                 ...(clips ? { clips } : {}),
               },
             },
