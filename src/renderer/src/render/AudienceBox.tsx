@@ -3,6 +3,9 @@ import type { EngineState } from '../../../shared/engine/state';
 import type { HallPicture } from '../../../shared/stage-layouts';
 import { AUDIENCE_OFF, hallView, PICTURE } from './audience-picture';
 import { fontFamilyFor } from './fonts';
+import { textLang } from './lang';
+import { useLiveHere } from './live-here';
+import { unseenLive } from './named-background';
 import { Placed } from './Placed';
 import { Scene } from './Scene';
 import { SceneBoundary } from './SceneBoundary';
@@ -21,7 +24,9 @@ import { useElementSize } from './useElementSize';
  *
  * In a phone's or tablet's browser (the stage display, Session 51) it draws the same Scene as the remote's live
  * picture does: pictures and videos as small previews (render/previews.tsx, given by the page), and no video
- * input or window, which are on Drashti's computer.
+ * input or window, which are on Drashti's computer. There, and on a node, the box names a video input or a window
+ * the hall's picture holds, in a small muted line under "Audience off", in the phone remote's words
+ * (render/named-background.ts), so the performers see why it is black there.
  */
 
 /** Each engine state a page drew, numbered: a picture that failed to draw tries again with the next one. */
@@ -47,6 +52,9 @@ export const AudienceBox = memo(function AudienceBox({
   const area = useRef<HTMLDivElement>(null);
   const size = useElementSize(area);
   const view = useMemo(() => hallView(state.look, hall), [state.look, hall]);
+  // A video input or a window this page cannot draw (a tablet's, a node's), named (Session 51).
+  const live = useLiveHere();
+  const unseen = unseenLive(state, view.look, live);
   return (
     <div
       ref={area}
@@ -72,28 +80,61 @@ export const AudienceBox = memo(function AudienceBox({
                 <Scene state={state} canvas={view.canvas} scaling={view.scaling} look={view.look} />
               </Placed>
             </SceneBoundary>
-            {/* Over the picture, in its corner, scaled with it: the status bar's words on its warning amber. */}
-            {view.off && (
-              <p
-                data-testid="stage-audience-off"
+            {/* Over the picture, in its corner, scaled with it: the status bar's words on its warning amber, and
+                under them what this page cannot draw, muted. */}
+            {(view.off || unseen.length > 0) && (
+              <div
                 style={{
                   position: 'absolute',
                   left: 40,
                   top: 40,
-                  margin: 0,
-                  padding: '12px 28px',
-                  borderRadius: 16,
-                  background: '#f5a524',
-                  color: '#000000',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: 16,
                   fontFamily: fontFamilyFor(null, null),
-                  fontSize: 64,
-                  fontWeight: 700,
-                  lineHeight: 1.2,
                   whiteSpace: 'nowrap',
                 }}
               >
-                {AUDIENCE_OFF}
-              </p>
+                {view.off && (
+                  <p
+                    data-testid="stage-audience-off"
+                    style={{
+                      margin: 0,
+                      padding: '12px 28px',
+                      borderRadius: 16,
+                      background: '#f5a524',
+                      color: '#000000',
+                      fontSize: 64,
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {AUDIENCE_OFF}
+                  </p>
+                )}
+                {unseen.map((line) => (
+                  <p
+                    key={line}
+                    data-testid="stage-audience-unseen"
+                    lang={textLang(line)}
+                    style={{
+                      margin: 0,
+                      maxWidth: PICTURE.width - 80,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      padding: '8px 20px',
+                      borderRadius: 12,
+                      background: 'rgba(0, 0, 0, 0.6)',
+                      color: '#8b93a3',
+                      fontSize: 40,
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    {line}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
         </Placed>
