@@ -37,6 +37,12 @@ import { TabPanel, Tabs } from '../ui/Tabs';
 import { Checkbox, Toggle } from '../ui/Toggle';
 import { Tooltip } from '../ui/Tooltip';
 import { Truncate } from '../ui/Truncate';
+import type { OperatorAction } from '../../../shared/keymap';
+import { KEYMAP, keyText, shortcutText } from '../../../shared/keymap';
+
+/** Simple Mode's keys as its buttons show them, from the keymap itself (only the keymap names a key). */
+const keysOf = (action: OperatorAction): string[] =>
+  KEYMAP.find((b) => b.action === action)?.keys.map((k) => keyText(k, 'darwin')) ?? [];
 
 /* Placeholder words only: never real kirtan or scripture text. */
 const NAMES = {
@@ -142,10 +148,10 @@ function ButtonsSection() {
           Next
         </Button>
         <Button size="xl" variant="secondary" instant icon={BlackOut}>
-          <WordsOverKeys words="Black-out" keys={['B']} />
+          <WordsOverKeys words="Black-out" keys={[shortcutText('toggleBlackout', 'darwin')]} />
         </Button>
         <Button size="xl" variant="live" icon={Stamp}>
-          <WordsOverKeys words="Logo is on" keys={['F12', 'L']} />
+          <WordsOverKeys words="Logo is on" keys={keysOf('toggleLogo')} />
         </Button>
       </Row>
     </Section>
