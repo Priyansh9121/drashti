@@ -9,6 +9,7 @@ import {
   operatorReady,
   outputPages,
   outputReady,
+  testDisplays,
 } from './helpers';
 import { canvasPixels, near } from './pixels';
 
@@ -42,23 +43,22 @@ async function outputFor(app: ElectronApplication, screenId: string): Promise<Pa
 
 /** A key and fill group on the two displays: its fill and key outputs. */
 async function keyFillPair(app: ElectronApplication, win: Page): Promise<{ fill: Page; key: Page }> {
-  const screens = await win.evaluate(async () => {
+  // The main display and the test's pretend one, a copy of it (CI's two), however many this computer has: the
+  // fill's and the key's windows on one physical screen, so their pixels are read alike.
+  const on = (await testDisplays(win)).map((x) => x.id);
+  const screens = await win.evaluate(async (on) => {
     const d = (globalThis as PageGlobals).drashti;
     const made = await d.screens.createGroup('Placeholder switcher');
     if (!made.ok) throw new Error(made.message);
     const group = made.snapshot.groups.find((g) => g.name === 'Placeholder switcher');
     const role = await d.screens.setGroupRole(group?.id ?? '', 'keyfill');
     if (!role.ok) throw new Error(role.message);
-    // The main display and the test's extra one, a copy of it (CI's two), however many this computer has: the
-    // fill's and the key's windows on one physical screen, so their pixels are read alike.
-    const { displays } = made.snapshot;
-    for (const display of [displays.find((x) => x.primary), displays[displays.length - 1]]) {
-      if (!display) throw new Error('no main display');
-      const used = await d.screens.assignDisplay(group?.id ?? '', display.id, { coverOperator: true });
+    for (const id of on) {
+      const used = await d.screens.assignDisplay(group?.id ?? '', id, { coverOperator: true });
       if (!used.ok) throw new Error(used.message);
     }
     return (await d.screens.get()).groups.find((g) => g.id === group?.id)?.screens ?? [];
-  });
+  }, on);
   expect(screens.map((s) => s.feed)).toEqual(['fill', 'key']);
   const fill = await outputFor(app, screens[0]?.id ?? '');
   const key = await outputFor(app, screens[1]?.id ?? '');
