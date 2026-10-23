@@ -255,6 +255,39 @@ describe('the picture-in-picture box in the engine', () => {
       expect(parseEngineCommand({ type: 'placePip', place }).ok).toBe(false);
   });
 
+  it('moved or its look changed while a swap runs, the swap plays on, the box in its new place at once (Session 52)', () => {
+    const { engine, pass } = setup();
+    engine.dispatch(show({ kind: 'slides' }));
+    engine.dispatch({ type: 'swapPip' });
+    const swap = engine.current.layers.pip?.changed;
+    // 100 ms into it (Calm: out 250 ms, then in 250 ms), dragged elsewhere and made bigger: the swap's change kept,
+    // so the main picture's dissolve and the box's pictures carry on; taken as a move, they would cut at once.
+    pass(100);
+    expect(engine.dispatch({ type: 'placePip', place: DRAGGED })).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.pip).toMatchObject({ place: DRAGGED, swapped: true });
+    expect(engine.current.layers.pip?.changed).toEqual(swap);
+    // Its look alone (another motion, a border): likewise.
+    const looked: PipPlace = { ...DRAGGED, motion: 'scale', border: true };
+    engine.dispatch({ type: 'placePip', place: looked });
+    expect(engine.current.layers.pip).toMatchObject({ place: looked, changed: swap });
+    // Once the swap is over on every screen, a move is a move again, from where the box was.
+    pass(500);
+    engine.dispatch({ type: 'placePip', place: REMEMBERED });
+    expect(engine.current.layers.pip?.changed).toMatchObject({ place: looked, swapped: true });
+    expect(engine.current.layers.pip?.changed?.at).toBeGreaterThan(swap?.at ?? 0);
+  });
+
+  it('with a Bold group in the live Look, a swap still running at 550 ms plays on as the box moves', () => {
+    const { engine, pass } = setup({ bold: true });
+    engine.dispatch(show({ kind: 'slides' }));
+    engine.dispatch({ type: 'swapPip' });
+    const swap = engine.current.layers.pip?.changed;
+    // Over on a Calm screen, still running on the Bold group's (600 ms).
+    pass(530);
+    engine.dispatch({ type: 'placePip', place: DRAGGED });
+    expect(engine.current.layers.pip).toMatchObject({ place: DRAGGED, changed: swap });
+  });
+
   it('Take off plays its out from then; taking off nothing changes nothing; its own clear plays the out too', () => {
     const { engine } = setup();
     engine.dispatch(show({ kind: 'slides' }));
