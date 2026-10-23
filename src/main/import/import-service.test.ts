@@ -119,19 +119,37 @@ describe('ImportService', () => {
     expect(w?.killed).toBe(true);
   });
 
-  it('tells each import whether this computer plays HEVC, as known when it starts (Session 51)', async () => {
-    let plays: boolean | null = null;
-    const { service, workers } = setup({ playsHevc: () => plays });
+  it('tells each import whether this computer plays HEVC; one starting before the window has said waits for it (Session 51)', async () => {
+    let tell: (plays: boolean | null) => void = () => undefined;
+    const answer = new Promise<boolean | null>((resolve) => {
+      tell = resolve;
+    });
+    const { service, workers } = setup({ playsHevc: () => answer });
     const first = service.start(['/Placeholder phone.mov']);
-    expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: null });
+    await Promise.resolve();
+    // Not started before the window has said (Session 51 review: HEVC from the first moments went in as it was).
+    expect(workers[0]?.sent).toEqual([]);
+    tell(false);
+    await vi.waitFor(() => {
+      expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', playsHevc: false });
+    });
     workers[0]?.emit({ type: 'finished', run: summary(workers[0].runId) });
     await first;
-    // The window has said since: this computer cannot play it.
-    plays = false;
-    const second = service.start(['/Placeholder phone.mov']);
-    expect(workers[1]?.sent[0]).toMatchObject({ type: 'start', playsHevc: false });
-    workers[1]?.emit({ type: 'finished', run: summary(workers[1].runId) });
-    await second;
+  });
+
+  it('an import stopped while it waits for the answer never starts', async () => {
+    let tell: (plays: boolean | null) => void = () => undefined;
+    const answer = new Promise<boolean | null>((resolve) => {
+      tell = resolve;
+    });
+    const { service, workers } = setup({ playsHevc: () => answer });
+    const run = service.start(['/Placeholder phone.mov']);
+    service.stop();
+    await expect(run).resolves.toEqual({ ok: false, message: 'Drashti is quitting.' });
+    tell(true);
+    await answer;
+    await Promise.resolve();
+    expect(workers[0]?.sent).toEqual([]);
   });
 
   it('runs one import at a time, in order', async () => {
