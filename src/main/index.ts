@@ -2226,6 +2226,8 @@ function start(): void {
   /** After media is deleted or brought back: everything that shows media reads again. */
   const mediaRemovalChanged = () => {
     slides.invalidate();
+    // A deletion undone: the slide up names its background file as missing no more (Session 52).
+    engine.refreshFiles();
     engine.refreshNext();
     libraryChanged(true);
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
@@ -2731,8 +2733,9 @@ function start(): void {
       // An import can change what comes next (a replaced presentation, a filled playlist). It can also find a file
       // the library was missing (Find missing media…, or the same file imported again): the slides are read again,
       // so one whose background it is puts it up from now on (Session 52: while it is missing, the background stays
-      // as it was).
+      // as it was), and the slide up names it as missing no more.
       slides.invalidate();
+      engine.refreshFiles();
       engine.refreshNext();
       libraryChanged(true);
       // It may have loaded a Shastra text (or loaded one again).
@@ -2814,8 +2817,9 @@ function start(): void {
     libraryChanged: () => {
       // What is on the screens keeps playing the original; slides read from now on use the copy. Every presentation's
       // slides are read again (Session 52: not only those it moved), as a copy whose bytes were deleted from the
-      // library before brings that file back for every slide that names it, no longer missing.
+      // library before brings that file back for every slide that names it, no longer missing (the slide up too).
       slides.invalidate();
+      engine.refreshFiles();
       engine.refreshNext();
       libraryChanged(true);
       sendToOperator(IPC.playlists.changed, { at: Date.now() });

@@ -363,7 +363,14 @@ export class ShowEngine {
     return this.atOnce(() => {
       const resolved = this.resolve(command);
       if (!resolved.ok) return resolved;
-      if (!MUSIC_COMMANDS.has(command.type)) return this.apply(resolved.actions, command.type);
+      if (!MUSIC_COMMANDS.has(command.type)) {
+        const done = this.apply(resolved.actions, command.type);
+        if (command.type !== 'back' && command.type !== 'putBack') return done;
+        // The slide they bring back exactly names a file found since as missing no more (Session 52): afterwards, as
+        // bookkeeping, so Back after Back still undoes each Next exactly (the layers it left are those objects).
+        const said = this.refreshFiles();
+        return said.ok && said.changed ? said : done;
+      }
       // An audio playlist: not a change to the slides, so Back and Put it back still do what they would.
       this.bookkeeping = true;
       try {
@@ -567,6 +574,39 @@ export class ShowEngine {
     } finally {
       this.bookkeeping = false;
     }
+  }
+
+  /**
+   * The library's media changed (Session 52: a file found by Find missing media… or imported again, a deletion
+   * undone, a conversion's copy bringing a deleted file back): the slide up names its background file as missing no
+   * more once its cue no longer reads missing, as LIVE's line for a video input goes once Media has it. The
+   * background stays as it was until the slide goes up again. Not a change to the show: what Back and Put it back
+   * would undo stays. Run after Back and Put it back too, for the slide they bring back exactly.
+   */
+  refreshFiles(): CommandResult {
+    const shown = this.state.layers.slide;
+    const now = this.stillMissing(shown, this.state.layers.background);
+    if (now === shown || now === null) return this.unchanged();
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'slide/put', layer: now }]);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  /**
+   * A slide layer as its cue reads now (Session 52): one naming its background file as missing names it no more once
+   * that cue no longer reads missing (found, or brought back, since), its background left as it is. A slide no longer
+   * in the library keeps what it said.
+   */
+  private stillMissing(slide: SlideLayer | null, up: BackgroundLayer | null): SlideLayer | null {
+    if (!slide?.fileMissing) return slide;
+    // The slide itself, by its id, among every slide of its presentation (an arrangement can leave it out).
+    const played = this.source.order(slide.presentationId, null)?.slides.find((s) => s.id === slide.slide.id);
+    if (!played || missingFile(played, up) !== null) return slide;
+    const { fileMissing: _found, ...rest } = slide;
+    return rest;
   }
 
   /**
