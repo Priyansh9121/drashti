@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { stillUrl } from '../../../shared/media';
+import { type VideoClips, videoClip } from '../../../shared/engine/state';
+import { type PlaybackClip, stillUrl } from '../../../shared/media';
 import type {
   MediaElement,
   Outline,
@@ -16,7 +17,7 @@ import { fontFamilyFor } from './fonts';
 import { TranslitSourceContext, useHtmlLang } from './lang';
 import { translitSource } from '../../../shared/tracks';
 import { OBJECT_FIT } from './media-style';
-import { startPlayback } from './playback';
+import { type Playback, startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
 import { engineNow } from './clock';
 import { Looked } from './picture-looks';
@@ -379,15 +380,22 @@ function mediaStyle(el: MediaElement): CSSProperties {
   return { ...frameStyle(el), objectFit: OBJECT_FIT[el.fit], opacity: el.opacity ?? 1 };
 }
 
-/** A video placed on a slide, playing (muted) from when the slide went live, in step on every window. */
+/**
+ * A video placed on a slide, playing (muted) from when the slide went live, in step on every window; between its
+ * file's start and end points when it has them (Session 52), going round between them when it loops, as a
+ * background video does.
+ */
 function SlideVideo({
   el,
   startedAt,
   attempt,
+  clip,
 }: {
   el: MediaElement;
   startedAt: number | undefined;
   attempt: number;
+  /** Its file's start and end points, as the engine stamped them (its layer's clips); undefined: the whole file. */
+  clip: PlaybackClip | undefined;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   // Props and other things without a start time play from when they appear.
@@ -406,18 +414,36 @@ function SlideVideo({
     setFailedWith(null);
     setTries(tries + 1);
   }
+  // Whether it loops and its start and end points (Session 52) are read as they change, without a reload.
+  const loop = el.loop ?? false;
+  const timing = useRef({ loop, clip });
+  useLayoutEffect(() => {
+    timing.current = { loop, clip };
+  });
+  const playback = useRef<Playback | null>(null);
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    return startPlayback(v, {
+    const p = startPlayback(v, {
       mediaId: el.mediaId,
       attempt: attempt + tries,
       startedAt: start,
+      timing: () => timing.current,
       onError: () => {
         setFailedWith(restartsNow.current);
       },
     });
+    playback.current = p;
+    return () => {
+      playback.current = null;
+      p();
+    };
   }, [el.mediaId, attempt, tries, start]);
+  // New points while it plays (the library's changed): it goes where they put it at once, as a background does.
+  const clipKey = `${String(clip?.startMs)}/${String(clip?.endMs)}`;
+  useEffect(() => {
+    playback.current?.resync();
+  }, [clipKey]);
   return (
     <video
       ref={ref}
@@ -427,7 +453,8 @@ function SlideVideo({
       playsInline
       disablePictureInPicture
       preload="auto"
-      loop={el.loop ?? false}
+      // Between start and end points it goes round by playback.ts's loop, not the element's.
+      loop={loop && !clip}
       style={mediaStyle(el)}
     />
   );
@@ -463,7 +490,17 @@ function WindowVideoStill({ mediaId, style }: { mediaId: string; style: CSSPrope
   );
 }
 
-function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMode; startedAt?: number }) {
+function MediaView({
+  el,
+  media,
+  startedAt,
+  clips,
+}: {
+  el: MediaElement;
+  media: MediaMode;
+  startedAt?: number;
+  clips?: VideoClips;
+}) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
   const urlOf = useMediaUrl();
@@ -496,13 +533,22 @@ function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMod
     );
   }
   if (media === 'still') return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} />;
-  return <SlideVideo key={attempt} el={el} startedAt={startedAt} attempt={attempt} />;
+  return (
+    <SlideVideo
+      key={attempt}
+      el={el}
+      startedAt={startedAt}
+      attempt={attempt}
+      clip={videoClip(clips, el.mediaId)}
+    />
+  );
 }
 
 export function ElementView({
   el,
   media = 'live',
   startedAt,
+  clips,
   textHidden = false,
   reveal,
   band,
@@ -511,6 +557,8 @@ export function ElementView({
   media?: MediaMode;
   /** When the slide went live, for its videos. */
   startedAt?: number;
+  /** Its layer's videos' start and end points, by file (the engine's, Session 52): a video plays between them. */
+  clips?: VideoClips;
   /** Words laid out but not drawn (they are drawn apart while a Bold move runs, Session 27). */
   textHidden?: boolean;
   /** Words line by line or word by word, while they are revealed (Session 27). */
@@ -523,7 +571,7 @@ export function ElementView({
   // A timer on a slide (Session 50): live, its digits moving on the screens, still in a thumbnail.
   if (el.kind === 'timer')
     return <TimerElementView el={el} box={timerBoxStyle(el)} animate={media === 'live'} band={band} />;
-  return <MediaView el={el} media={media} startedAt={startedAt} />;
+  return <MediaView el={el} media={media} startedAt={startedAt} clips={clips} />;
 }
 
 /**
@@ -541,6 +589,7 @@ export const SlideView = memo(function SlideView({
   slide,
   media = 'live',
   startedAt,
+  clips,
   text = 'shown',
   reveal,
 }: {
@@ -548,6 +597,8 @@ export const SlideView = memo(function SlideView({
   media?: MediaMode;
   /** When the slide went live (the engine's shownAt), so its videos play in step everywhere. */
   startedAt?: number;
+  /** Its videos' start and end points, by file (the slide layer's, Session 52); left out: whole files. */
+  clips?: VideoClips;
   text?: SlideText;
   /** Its words alone (`only`), line by line or word by word (Session 27). */
   reveal?: Reveal;
@@ -591,6 +642,7 @@ export const SlideView = memo(function SlideView({
               el={el}
               media={media}
               startedAt={startedAt}
+              clips={clips}
               textHidden={text === 'hidden'}
               reveal={text === 'only' ? reveal : undefined}
               band={darken?.kind === 'band' && darkensBehind(el) ? darken.strength : undefined}

@@ -288,6 +288,8 @@ function DrawnSlide({
           <SlideView
             slide={languageView(layer.slide, languages)}
             startedAt={layer.shownAt}
+            // Its videos between their files' start and end points, the engine's (Session 52).
+            clips={layer.clips}
             text={text}
             reveal={reveal}
           />

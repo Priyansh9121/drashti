@@ -1,4 +1,4 @@
-import type { EngineState } from '../../../shared/engine/state';
+import { type EngineState, videoClip } from '../../../shared/engine/state';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 
@@ -58,6 +58,7 @@ export function soundsOf(state: EngineState): Sound[] {
     for (const el of slide.slide.elements) {
       // A video whose sound is turned right down makes none.
       if (el.kind !== 'video' || el.volume === 0) continue;
+      const clip = videoClip(slide.clips, el.mediaId);
       sounds.push({
         // By the slide's id, not its position: a new order for the live slide keeps its sound going.
         key: `slide:${slide.slide.id}/${el.id}@${slide.shownAt}`,
@@ -65,6 +66,8 @@ export function soundsOf(state: EngineState): Sound[] {
         startedAt: slide.shownAt,
         loop: el.loop ?? false,
         volume: el.volume ?? 1,
+        // Between its file's start and end points, as its picture plays (Session 52).
+        ...(clip ? { clip } : {}),
       });
     }
   }
