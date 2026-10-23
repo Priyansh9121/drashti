@@ -98,18 +98,18 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
-      // The hall's picture for a layout's audience box (Session 51), said off while Main's Audience is off.
-      stage: () => ({
-        groupId: 'stage-group',
-        languages: ['gu'],
-        hall: {
-          groupId: 'hall-group',
-          canvasWidth: 1280,
-          canvasHeight: 720,
-          scaling: 'fill',
-          ...(switches.audience ? {} : { off: true }),
+      stage: () => ({ groupId: 'stage-group', languages: ['gu'] }),
+      // The groups the hall's picture is read from (Session 51): a hall with a screen on this computer that is on,
+      // after a group left empty, so Main's Audience switch closes it.
+      hallGroups: () => [
+        { id: 'emptied-group', role: 'audience', screens: [] },
+        {
+          id: 'hall-group',
+          role: 'audience',
+          screens: [{ canvasWidth: 1280, canvasHeight: 720, scaling: 'fill', nodeId: null, enabled: true }],
         },
-      }),
+        { id: 'stage-group', role: 'stage', screens: [] },
+      ],
       hall: () => ({ groupId: 'hall-group' }),
       switches: () => ({ ...switches }),
       looks: () => [
@@ -524,8 +524,12 @@ describe('the network in the main process', () => {
         hall,
       },
     });
+    // Main's Audience off, as its switch has it (the same one a Remote is told of): said off from then.
     switches.audience = false;
     expect(answer()).toMatchObject({ status: 200, body: { hall: { ...hall, off: true } } });
+    switches.audience = true;
+    expect(answer()).toMatchObject({ status: 200, body: { hall } });
+    expect(answer().body).not.toHaveProperty('hall.off');
     // Its pictures are the remote's small previews (the network server serves them, by the same rules), and the
     // remote's own hall stays the remote's.
     expect(DEVICE_OPS.preview).toEqual(['remote', 'stage']);
