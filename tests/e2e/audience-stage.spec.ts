@@ -1,5 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { IPC } from '../../src/shared/ipc';
+import type { StreamStatus } from '../../src/shared/stream';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import { expectFits } from './fit';
 import {
@@ -11,6 +13,7 @@ import {
   operatorPage,
   operatorReady,
   outputPages,
+  outputReady,
   type PageGlobals,
   relaunchApp,
   setUpScreen,
@@ -325,8 +328,8 @@ const pending = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).dr
 
 /**
  * The top bar as laid out now (Session 51, S2-3): its name, every button and the states' panel inside the window,
- * none over another, each button's words fitting, nothing scrolling sideways; and what the states' panel holds (the
- * network's badge, LIVE's or Off's) inside it, in sight.
+ * none over another, each button's words fitting, nothing scrolling sideways; and what the states' panel holds (ON
+ * AIR, REC and No sound, the network's badge, LIVE's or Off's) inside it, in sight.
  */
 async function expectTopBarFits(win: Page, what: string): Promise<void> {
   const problems = await win.evaluate(() => {
@@ -361,7 +364,9 @@ async function expectTopBarFits(win: Page, what: string): Promise<void> {
       }
     });
     const panel = box(states);
-    for (const el of states.querySelectorAll('[data-testid="network-badge"], [data-badge]')) {
+    for (const el of states.querySelectorAll(
+      '[data-testid="on-air"], [data-testid="rec"], [data-testid="no-sound"], [data-testid="network-badge"], [data-badge]',
+    )) {
       const r = box(el);
       if (r.width === 0) out.push(`${name(el)} cannot be seen`);
       else if (r.left < panel.left - 0.5 || r.right > panel.right + 0.5)
@@ -370,6 +375,39 @@ async function expectTopBarFits(win: Page, what: string): Promise<void> {
     return out;
   });
   expect(problems, what).toEqual([]);
+}
+
+/**
+ * ON AIR and REC in the top bar (Session 51, S2-3's review), and No sound when asked, as the stream's state that
+ * the window reads says them: the window alone is told the stream is live (or reconnecting) and recording.
+ * Nothing is started or sent anywhere.
+ */
+async function onAirAndRec(
+  app: ElectronApplication,
+  win: Page,
+  live: 'live' | 'reconnecting',
+  noSound: boolean,
+): Promise<void> {
+  const status = await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
+  const told: StreamStatus = {
+    ...status,
+    live: { ...status.live, state: live },
+    recording: { ...status.recording, state: 'recording' },
+    noSound: noSound
+      ? { since: 0, why: 'quiet', message: 'Placeholder: no sound has reached the stream.' }
+      : null,
+  };
+  await app.evaluate(
+    ({ BrowserWindow }, { channel, payload }) => {
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().includes('index.html'))
+        ?.webContents.send(channel, payload);
+    },
+    { channel: IPC.stream.changed, payload: told },
+  );
+  await expect(win.getByTestId('on-air')).toHaveText(live === 'live' ? 'On air' : 'On air · reconnecting');
+  await expect(win.getByTestId('rec')).toBeVisible();
+  await expect(win.getByTestId('no-sound')).toHaveCount(noSound ? 1 : 0);
 }
 
 test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones and the PINs on: nothing cut off, nothing over another, no sideways scroll', async () => {
@@ -402,12 +440,28 @@ test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones and the PINs o
     await expect(header.getByTestId('switch-audience')).toContainText('On');
     await expect(header.getByTestId('switch-stage')).toContainText('On');
   }
-  // Locked: the operator's chip, the same.
+  // On air and recording too, and reconnecting, or with No sound: still nothing cut off or over another.
+  const streams = [
+    { live: 'live', noSound: false, words: 'on air and recording' },
+    { live: 'reconnecting', noSound: false, words: 'reconnecting and recording' },
+    { live: 'live', noSound: true, words: 'on air and recording, with no sound' },
+  ] as const;
+  for (const [width, height] of sizes)
+    for (const stream of streams) {
+      await win.setViewportSize({ width, height });
+      await onAirAndRec(app, win, stream.live, stream.noSound);
+      await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, ${stream.words}`);
+    }
+  // Locked: the operator's chip, the same, on air and recording.
   await chip.click();
   await expect(chip).toHaveAttribute('data-role', 'operator');
+  await onAirAndRec(app, win, 'live', false);
   for (const [width, height] of sizes) {
     await win.setViewportSize({ width, height });
-    await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, as an operator`);
+    await expectTopBarFits(
+      win,
+      `the top bar at ${String(width)} × ${String(height)}, as an operator, on air`,
+    );
   }
   await app.close();
 });
@@ -546,6 +600,8 @@ test('covering the controls: Mod+1’s question shows on that output too; Esc ca
       (p) => p.url().includes('output.html') && !p.url().includes('identify=') && !p.isClosed(),
       'output',
     );
+    // A real full-screen output draws once its fonts are in and its warm-up is done (up to 8 s on CI's Mac).
+    await outputReady(out);
     await slideUp(win);
     await expect(out.locator('[data-layer="slide"]')).toContainText('Placeholder switch line one');
     const ask = win.getByTestId('screen-switch-ask');
