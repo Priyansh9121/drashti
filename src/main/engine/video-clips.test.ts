@@ -84,6 +84,16 @@ function setup() {
     ],
     [[], [], [BACKDROP]],
   );
+  // Words only, the second slide's cue putting up the backdrop: Back's exact undo takes it down again.
+  source.set(
+    'words',
+    [
+      textSlide('w1', 'Placeholder one'),
+      textSlide('w2', 'Placeholder two'),
+      textSlide('w3', 'Placeholder three'),
+    ],
+    [[], [BACKDROP], []],
+  );
   let clock = 1_000_000;
   const transport = new RecordingTransport();
   const engine = new ShowEngine(source, transport, () => ++clock, undefined, {
@@ -184,6 +194,23 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
     markers['clipped'] = { startMs: 1500, endMs: 4500, markers: [] };
     engine.refreshLive('videos');
     expect(engine.current.layers.slide?.clips).toEqual({ clipped: { startMs: 1500, endMs: 4500 } });
+  });
+
+  it('Back after Back still undoes each Next exactly while a prop with points is up: what is unchanged stays the same', () => {
+    // Its points kept but the prop made anew, Back's layers were new ones each time: a second Back was Previous, and
+    // the backdrop the second slide's cue put up stayed behind the first.
+    const { engine } = setup();
+    engine.dispatch({ type: 'showProp', prop: prop('prop', 'clipped') });
+    engine.dispatch({ type: 'goLive', presentationId: 'words', slideIndex: 0 });
+    const before = engine.current.layers;
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.background).toMatchObject({ mediaId: 'backdrop' });
+    engine.dispatch({ type: 'next' });
+    engine.dispatch({ type: 'back' });
+    engine.dispatch({ type: 'back' });
+    expect(engine.current.layers.slide?.slideIndex).toBe(0);
+    expect(engine.current.layers.background).toBeNull();
+    expect(engine.current.layers).toBe(before);
   });
 
   it('Back and Put it back bring the slide’s and the props’ videos back between the points the library has now', () => {
