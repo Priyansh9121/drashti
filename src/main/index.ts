@@ -3864,6 +3864,11 @@ function start(): void {
         .capturePage()
         .then((image) => {
           if (image.isEmpty()) return;
+          // Taken as its window closed (its screen switched off, say: Session 51), it is not what its display
+          // shows: never sent, so the dashboard never shows it.
+          const state = manager.status().find((st) => st.screenId === screenId)?.state;
+          if (win.isDestroyed() || outputWindows.get(screenId) !== win) return;
+          if (state !== 'showing' && state !== 'stopped') return;
           const jpeg = image.resize({ width: 320, quality: 'good' }).toJPEG(60).toString('base64');
           const thumb: ScreenThumb = {
             screenId,
@@ -4582,7 +4587,8 @@ function start(): void {
   handle(IPC.screenSwitches.asking, (e, which) => ({
     covered: fromOperator(e) ? switchQuestion.asking(which) : false,
   }));
-  // Its answer on that output, as it had the keyboard (a windowed one): the window acts on it.
+  // Its answer on that output, were the output ever to have the keyboard (none does: an output over the controls is
+  // full screen and never takes it, and windowed outputs never cover the controls): the window acts on it.
   handle(IPC.output.switchAnswer, (e, yes) => {
     const screenId = manager.screenIdFor(e.sender.id);
     if (screenId !== undefined) switchQuestion.answer(screenId, yes);
@@ -4898,6 +4904,14 @@ function start(): void {
     log.info(phaseLine('operator window shown'));
   });
   watchdog.watch(operatorWindow.webContents, 'operator');
+  // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
+  // again, or its page stops, the question goes from the outputs too, never left there.
+  operatorWindow.webContents.on('did-start-loading', () => {
+    switchQuestion.asking(null);
+  });
+  operatorWindow.webContents.on('render-process-gone', () => {
+    switchQuestion.asking(null);
+  });
   // The audio player once the operator window has loaded (or after 5 s whatever happens). Created
   // first, Chromium 152 can hand the operator window the audio player's list of sound outputs.
   let audioStarted = false;
