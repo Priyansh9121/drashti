@@ -68,7 +68,7 @@ import {
   viewLive,
 } from './remote-store';
 import { ClockStyleContext } from '../../render/clock-style';
-import { namedBackground } from './named-background';
+import { namedBackground } from '../../render/named-background';
 import { formatClock, validClockStyle } from '../../../../shared/format';
 
 /*
