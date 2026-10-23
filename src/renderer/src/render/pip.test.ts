@@ -8,19 +8,22 @@ import {
   PIP_REST,
   pipDraw,
   pipLength,
-  pipMainMove,
+  pipMainDissolve,
+  pipMainOpacity,
   pipMainPlaces,
-  pipMainPose,
   pipName,
   pipPlaces,
   pipPose,
   pipRect,
+  type PipRun,
   pipRunAt,
   pipRunLater,
   pipShownFor,
   pipShowsHere,
+  type PipSlot,
   samePipRun,
 } from './pip';
+import { transitionFrame } from './transition-frame';
 
 /* The picture-in-picture box on the screens (Session 50): where it sits, how it moves, and what goes where. */
 
@@ -309,7 +312,7 @@ describe('a screen’s run of the box, worked out at every drawing (Session 51)'
   });
 });
 
-describe('the main picture in a swap (Session 51)', () => {
+describe('the main picture in a swap (Session 51; a dissolve since Session 52)', () => {
   const VIDEO = { kind: 'media', mediaId: 'm', media: 'video' } as const;
   /** A box swapped at 30 s, from `from` to `to`. */
   const swapping = (from: boolean, to: boolean, over: Partial<PipLayer> = {}): PipLayer =>
@@ -317,131 +320,177 @@ describe('the main picture in a swap (Session 51)', () => {
   const runAt = (b: PipLayer, t: number, movement: 'calm' | 'bold' = 'calm') =>
     pipRunAt(b, null, movement, 30_000 + t, HD);
 
-  it('moves the picture that changes there, the box’s own (or the slide): in over the one it replaces, or out over the one replacing it', () => {
-    // The slides in the box, swapped: the slide comes in whole over the background; swapped back, it goes out.
-    expect(pipMainMove(runAt(swapping(false, true), 100))).toEqual({ picture: 'slide', way: 'in' });
-    expect(pipMainMove(runAt(swapping(true, false), 100))).toEqual({ picture: 'slide', way: 'out' });
-    // A video in the box: it comes in, in the background's place (under the slide), and goes out again.
-    expect(pipMainMove(runAt(swapping(false, true, { source: VIDEO }), 300))).toEqual({
-      picture: 'source',
-      way: 'in',
+  it('dissolves the picture that changes there into the one replacing it, in the half of the swap the box moves the same way', () => {
+    // The slides in the box, swapped: the background goes as the slide comes in over it, as the box comes in
+    // again (the second half); swapped back, the slide goes from over the background as the box goes out (the
+    // first).
+    expect(pipMainDissolve(runAt(swapping(false, true), 100))).toEqual({
+      going: 'background',
+      coming: 'slide',
+      half: 'second',
     });
-    expect(pipMainMove(runAt(swapping(true, false, { source: VIDEO }), 300))).toEqual({
-      picture: 'source',
-      way: 'out',
+    expect(pipMainDissolve(runAt(swapping(true, false), 100))).toEqual({
+      going: 'slide',
+      coming: 'background',
+      half: 'first',
     });
-    // Coming in, still, moving, going out, or once the swap is over: nothing moves on the main picture.
-    expect(pipMainMove(pipRunAt(box(), null, 'calm', 10_100, HD))).toBeNull();
-    expect(pipMainMove(pipRunAt(box(), null, 'calm', 20_000, HD))).toBeNull();
-    expect(pipMainMove(runAt(swapping(false, true), 500))).toBeNull();
+    // A video in the box: the same in the background's place, under the slide.
+    expect(pipMainDissolve(runAt(swapping(false, true, { source: VIDEO }), 300))).toEqual({
+      going: 'background',
+      coming: 'source',
+      half: 'second',
+    });
+    expect(pipMainDissolve(runAt(swapping(true, false, { source: VIDEO }), 300))).toEqual({
+      going: 'source',
+      coming: 'background',
+      half: 'first',
+    });
+    // Coming in, still, moving, going out, or once the swap is over: nothing dissolves on the main picture.
+    expect(pipMainDissolve(pipRunAt(box(), null, 'calm', 10_100, HD))).toBeNull();
+    expect(pipMainDissolve(pipRunAt(box(), null, 'calm', 20_000, HD))).toBeNull();
+    expect(pipMainDissolve(runAt(swapping(false, true), 500))).toBeNull();
     const moved = box({ changed: { at: 30_000, place: place({ corner: 'top-left' }), swapped: false } });
-    expect(pipMainMove(runAt(moved, 100))).toBeNull();
-    expect(pipMainMove(pipRunAt(null, { layer: box(), at: 30_000 }, 'calm', 30_100, HD))).toBeNull();
+    expect(pipMainDissolve(runAt(moved, 100))).toBeNull();
+    expect(pipMainDissolve(pipRunAt(null, { layer: box(), at: 30_000 }, 'calm', 30_100, HD))).toBeNull();
   });
 
-  it('moves the same as the box at the same moment, by its motion and the Movement, never a cut at the middle', () => {
-    for (const motion of ['fade', 'scale', 'slide'] as const)
-      for (const movement of ['calm', 'bold'] as const)
-        for (const [from, to] of [
-          [false, true],
-          [true, false],
-        ] as const) {
-          const b = swapping(from, to, { place: place({ motion }) });
-          const length = pipLength('swap', motion, movement);
-          const half = length / 2;
-          const way = pipMainMove(runAt(b, 0, movement))?.way;
-          const what = `${motion} ${movement} ${String(from)} to ${String(to)}`;
-          for (const t of [0, 1, half / 3, half - 1, half, half + 1, half + half / 2, length - 1]) {
-            const run = runAt(b, t, movement);
-            const main = pipMainPose(run, 30_000 + t, HD);
-            const shown = pipPose(run, 30_000 + t, HD);
-            // In its half (an in after the middle, an out before it), as the box at that moment: its
-            // opacity, and its scale; elsewhere wholly in or out of the way.
-            const moving = way === 'in' ? t >= half : t < half;
-            if (moving) {
-              expect(main.opacity, `${what} at ${String(t)}`).toBeCloseTo(shown.opacity, 9);
-              expect(main.scaleX, `${what} at ${String(t)}`).toBeCloseTo(shown.scaleX, 9);
-            } else if (way === 'out') expect(main, `${what} at ${String(t)}`).not.toEqual(PIP_REST);
+  /**
+   * The main picture's light at `now` where all its pictures are the same whole picture, drawn as a screen draws
+   * them (Scene.tsx MainSlot): bottom to top over black, each at its opacity, one that adds (plus-lighter) added
+   * light for light, any other over what is under it. 1 is the picture as it was; under 1 it dips.
+   */
+  const lightOf = (slots: readonly PipSlot[], run: PipRun, now: number): number =>
+    slots
+      .filter((s) => s.shown)
+      .reduce((light, s) => {
+        const a = s.dissolve ? pipMainOpacity(run, s.dissolve, now) : 1;
+        return s.adds ? light + a : a + (1 - a) * light;
+      }, 0);
+
+  it('draws every frame of it by opacity alone, the two pictures adding up and never under the old, on the Movement’s curve in the box’s time', () => {
+    for (const [kind, source] of [
+      ['slides', { kind: 'slides' }],
+      ['media', VIDEO],
+    ] as const)
+      for (const motion of ['fade', 'scale', 'slide'] as const)
+        for (const movement of ['calm', 'bold'] as const)
+          for (const to of [true, false]) {
+            const b = swapping(!to, to, { source, place: place({ motion }) });
+            const length = pipLength('swap', motion, movement);
+            const half = length / 2;
+            const what = `${kind} ${motion} ${movement} to ${to ? 'swapped' : 'unswapped'}`;
+            // Swapped, the box's own picture (or the slide) comes in over the background as the box comes in
+            // again; swapped back, it goes from over the background as the box goes out.
+            const own = kind === 'slides' ? 'slide' : 'source';
+            const from = to ? half : 0;
+            let was = -1;
+            for (let t = 0; t <= length; t++) {
+              const now = 30_000 + t;
+              const run = runAt(b, t, movement);
+              const slots = pipMainPlaces(kind, run, to);
+              const at = `${what} at ${String(t)}`;
+              // Never under the old: as whole as the picture was at every moment, never dipping or black.
+              expect(lightOf(slots, run, now), at).toBeCloseTo(1, 12);
+              const dissolving = slots.filter((s) => s.dissolve !== undefined);
+              if (t < from || t >= from + half) {
+                expect(dissolving, at).toEqual([]);
+                continue;
+              }
+              // Through its half: the background and the box's own picture (or the slide), both drawn, one going
+              // and the other coming, the upper added light for light over the other.
+              expect(
+                dissolving.map((s) => [s.picture, s.shown, s.dissolve, s.adds === true]),
+                at,
+              ).toEqual([
+                ['background', true, to ? 'out' : 'in', false],
+                [own, true, to ? 'in' : 'out', true],
+              ]);
+              // Opacity alone, the two adding up to one, on the Movement's curve as a slide's dissolve is.
+              const coming = pipMainOpacity(run, 'in', now);
+              expect(coming + pipMainOpacity(run, 'out', now), at).toBeCloseTo(1, 12);
+              expect(coming, at).toBeCloseTo(
+                transitionFrame('dissolve', (t - from) / half, movement).in.opacity,
+                12,
+              );
+              expect(coming, at).toBeGreaterThanOrEqual(was);
+              was = coming;
+            }
+            // From the old picture whole at its start to the new one whole by its end, never a cut.
+            expect(pipMainOpacity(runAt(b, from, movement), 'in', 30_000 + from), what).toBe(0);
+            expect(was, what).toBeGreaterThan(0.999);
+            // The box keeps its own move meanwhile: out of its place part-way through each half.
+            for (const t of [half / 2, half + half / 2])
+              expect(pipPose(runAt(b, t, movement), 30_000 + t, HD), what).not.toEqual(PIP_REST);
           }
-          // At the middle it is just as it was: wholly away for an in, whole for an out about to leave.
-          const middle = pipMainPose(runAt(b, half - 0.001, movement), 30_000 + half - 0.001, HD);
-          const start = pipMainPose(runAt(b, half, movement), 30_000 + half, HD);
-          if (way === 'in') {
-            expect(start.opacity === 0 || Math.abs(start.x) >= 1920 || Math.abs(start.y) >= 1080, what).toBe(
-              true,
-            );
-          } else {
-            expect(pipMainPose(runAt(b, 0, movement), 30_000, HD), what).toEqual(PIP_REST);
-            expect(
-              middle.opacity < 0.01 || Math.abs(middle.x) > 1900 || Math.abs(middle.y) > 1070,
-              what,
-            ).toBe(true);
-          }
-          // Done: at rest.
-          expect(pipMainPose(runAt(b, length, movement), 30_000 + length, HD), what).toEqual(PIP_REST);
-        }
   });
 
-  it('a slide moves from the box’s corner over the whole screen: a short way fading in Calm, from beyond the edges in Bold', () => {
-    const b = swapping(false, true, { place: place({ motion: 'slide', corner: 'bottom-right' }) });
-    // Calm, a quarter into its in: on its way from the bottom right, faint.
-    const calm = pipMainPose(runAt(b, 250 + 62.5), 30_000 + 250 + 62.5, HD);
-    expect(calm.opacity).toBeGreaterThan(0);
-    expect(calm.opacity).toBeLessThan(0.5);
-    expect(calm.x).toBeGreaterThan(0);
-    expect(calm.x).toBeLessThan(0.12 * 1920);
-    expect(calm.y).toBeGreaterThan(0);
-    // Bold, at the start of its in: just beyond the screen's bottom right corner, whole.
-    expect(pipMainPose(runAt(b, 300, 'bold'), 30_300, HD)).toMatchObject({ opacity: 1, x: 1920, y: 1080 });
-    const topLeft = swapping(false, true, { place: place({ motion: 'slide', corner: 'top-left' }) });
-    expect(pipMainPose(runAt(topLeft, 300, 'bold'), 30_300, HD)).toMatchObject({ x: -1920, y: -1080 });
-  });
-
-  it('draws both pictures through the half in which the main picture moves, the moving one over the other', () => {
+  it('draws both pictures through the half in which the main picture dissolves, the upper added light for light over the other', () => {
     const both = (...pictures: string[]) => pictures.map((picture) => ({ picture, shown: true }));
+    const going = (picture: string, adds = false) => ({
+      picture,
+      shown: true,
+      dissolve: 'out',
+      ...(adds ? { adds } : {}),
+    });
+    const coming = (picture: string, adds = false) => ({
+      picture,
+      shown: true,
+      dissolve: 'in',
+      ...(adds ? { adds } : {}),
+    });
     // Swapped, the background is kept under the main picture, unseen and playing, so a swap back shows it at
     // once, never black under the picture going out while it would load.
     const kept = { picture: 'background', shown: false };
-    // The slides in the box, swapped (an in): before the middle as before, the slide ready unseen; after it,
-    // the background under the slide coming in; then the slide alone, the background kept unseen.
+    // The slides in the box, swapped: before the middle as before, the slide ready unseen; after it, the
+    // background going as the slide comes in over it; then the slide alone, the background kept unseen.
     const slidesIn = swapping(false, true);
     expect(pipMainPlaces('slides', runAt(slidesIn, 100), true)).toEqual([
       { picture: 'background', shown: true },
       { picture: 'slide', shown: false },
     ]);
-    expect(pipMainPlaces('slides', runAt(slidesIn, 300), true)).toEqual(both('background', 'slide'));
+    expect(pipMainPlaces('slides', runAt(slidesIn, 300), true)).toEqual([
+      going('background'),
+      coming('slide', true),
+    ]);
     expect(pipMainPlaces('slides', runAt(slidesIn, 600), true)).toEqual([kept, ...both('slide')]);
-    // Swapped back (an out): both before the middle, the slide going out over the background; then the
+    // Swapped back: before the middle the slide goes from over the background as it comes; then the
     // background alone.
     const slidesOut = swapping(true, false);
-    expect(pipMainPlaces('slides', runAt(slidesOut, 100), false)).toEqual(both('background', 'slide'));
+    expect(pipMainPlaces('slides', runAt(slidesOut, 100), false)).toEqual([
+      coming('background'),
+      going('slide', true),
+    ]);
     expect(pipMainPlaces('slides', runAt(slidesOut, 300), false)).toEqual(both('background'));
-    // A video in the box: the same in the background's place, the slide over both throughout.
+    // A video in the box: the same in the background's place, the slide whole over both throughout.
     const videoIn = swapping(false, true, { source: VIDEO });
     expect(pipMainPlaces('media', runAt(videoIn, 100), true)).toEqual([
       { picture: 'background', shown: true },
       { picture: 'source', shown: false },
       { picture: 'slide', shown: true },
     ]);
-    expect(pipMainPlaces('media', runAt(videoIn, 300), true)).toEqual(both('background', 'source', 'slide'));
+    expect(pipMainPlaces('media', runAt(videoIn, 300), true)).toEqual([
+      going('background'),
+      coming('source', true),
+      ...both('slide'),
+    ]);
     expect(pipMainPlaces('media', runAt(videoIn, 600), true)).toEqual([kept, ...both('source', 'slide')]);
     const videoOut = swapping(true, false, { source: VIDEO });
-    expect(pipMainPlaces('media', runAt(videoOut, 100), false)).toEqual(
-      both('background', 'source', 'slide'),
-    );
+    expect(pipMainPlaces('media', runAt(videoOut, 100), false)).toEqual([
+      coming('background'),
+      going('source', true),
+      ...both('slide'),
+    ]);
     expect(pipMainPlaces('media', runAt(videoOut, 300), false)).toEqual(both('background', 'slide'));
     // No box here, or no run of its own: as pipPlaces has it, the background kept unseen while swapped.
     expect(pipMainPlaces(null, null, false)).toEqual(pipPlaces(null, false, false).main);
     expect(pipMainPlaces('slides', null, false)).toEqual(both('background'));
     expect(pipMainPlaces('slides', null, true)).toEqual([kept, ...both('slide')]);
     expect(pipMainPlaces('window', null, true)).toEqual([kept, ...both('source', 'slide')]);
-    // Swapped and still, and swapping back: the same background all along, never put on the page again.
+    // Swapped and still, and swapping back: the same background all along, never put on the page again, coming
+    // in from the swap's first moment.
     const still = pipRunAt(swapping(false, true, { source: VIDEO }), null, 'calm', 31_000, HD);
     expect(pipMainPlaces('media', still, true)).toEqual([kept, ...both('source', 'slide')]);
-    expect(pipMainPlaces('media', runAt(videoOut, 0), false)[0]).toEqual({
-      picture: 'background',
-      shown: true,
-    });
+    expect(pipMainPlaces('media', runAt(videoOut, 0), false)[0]).toEqual(coming('background'));
   });
 });
 

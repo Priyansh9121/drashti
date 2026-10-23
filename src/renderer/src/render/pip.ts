@@ -5,6 +5,7 @@ import { LOOK_LAYERS } from '../../../shared/looks';
 import { PIP_OUT_MS } from '../../../shared/pip';
 import type { Size } from '../../../shared/scaling';
 import { cubicBezier, EASE, lerp, seg } from './easing';
+import { dissolveCurve } from './transition-frame';
 
 /*
  * The picture-in-picture box on the audience screens (Session 50), worked out as pure functions so every screen
@@ -12,8 +13,9 @@ import { cubicBezier, EASE, lerp, seg } from './easing';
  * from the engine's time (its shownAt, its last change and the pipOff it leaves by), and which pictures go where.
  * The box holds a video input, a picture or video from Media, a window, or the slides (the main picture then
  * shows the background without the slide). Swap puts the box's picture in the background's place and the
- * background in the box; the main picture's own change moves with the box, never a cut (Session 51). Only
- * opacity and transform move, as the lower thirds do (no blur, no filter, no layer).
+ * background in the box; the main picture's own change dissolves in the box's time, never a cut (Session 51 moved
+ * it with the box; Session 52: every picture only dissolves). Only opacity and transform move, as the lower thirds
+ * do (no blur, no filter, no layer): the box's both, the main picture's opacity alone.
  */
 
 /** The box's width as a share of the screen's: Small a quarter, Medium a third, Large two fifths. 16:9 always. */
@@ -278,16 +280,9 @@ export const PIP_REST: PipPose = { opacity: 1, x: 0, y: 0, scaleX: 1, scaleY: 1,
 /**
  * The box out of its place, where its in starts and its out ends: faded; scaled down, a little in Calm and
  * far in Bold; or slid towards its corner, a short way fading in Calm and from beyond the screen's edges in
- * Bold. A dragged box slides from the corner nearest it. `moved`: what moves, the box itself, or (Session 51)
- * the whole screen's main picture in a swap, towards the same corner.
+ * Bold. A dragged box slides from the corner nearest it.
  */
-function awayPose(
-  motion: PipMotion,
-  movement: Movement,
-  place: PipPlace,
-  canvas: Size,
-  moved: PipRect = pipRect(place, canvas),
-): PipPose {
+function awayPose(motion: PipMotion, movement: Movement, place: PipPlace, canvas: Size): PipPose {
   const bold = movement === 'bold';
   if (motion === 'fade') return { ...PIP_REST, opacity: 0 };
   if (motion === 'scale') {
@@ -301,13 +296,13 @@ function awayPose(
     return {
       ...PIP_REST,
       opacity: 0,
-      x: (right ? 1 : -1) * 0.12 * moved.width,
-      y: (bottom ? 1 : -1) * 0.12 * moved.height,
+      x: (right ? 1 : -1) * 0.12 * r.width,
+      y: (bottom ? 1 : -1) * 0.12 * r.height,
     };
   return {
     ...PIP_REST,
-    x: right ? canvas.width - moved.x : -(moved.x + moved.width),
-    y: bottom ? canvas.height - moved.y : -(moved.y + moved.height),
+    x: right ? canvas.width - r.x : -(r.x + r.width),
+    y: bottom ? canvas.height - r.y : -(r.y + r.height),
   };
 }
 
@@ -412,6 +407,13 @@ export interface PipSlot {
   picture: PipPicture;
   /** Drawn now; or (false) ready unseen, for after a swap's middle. */
   shown: boolean;
+  /**
+   * On the main picture through the half of a swap in which it dissolves (Session 52, pipMainPlaces): this
+   * picture coming in or going out (pipMainOpacity).
+   */
+  dissolve?: 'in' | 'out';
+  /** The upper of the two dissolving, added light for light over the other (plus-lighter), so the two add up. */
+  adds?: boolean;
 }
 
 /**
@@ -434,22 +436,26 @@ export function pipPlaces(
   return { main: slots(now.main, later.main), box: slots(now.box, later.box) };
 }
 
-// ---- the main picture in a swap (Session 51) ------------------------------------------------------------------
+// ---- the main picture in a swap (Session 51; a dissolve since Session 52) -------------------------------------
 
 /**
- * What the main picture does in a swap: of what it shows before and after, the one picture that changes (the box's
- * own, or the slide for a box of the slides; never the background, which lies under both) moves with the box, the
- * same move at the same moment, so the main picture never cuts at the middle. Above the picture it replaces, it
- * comes in over that one as the box comes in again (the swap's second half); above the picture replacing it, it
- * goes out over that one as the box goes out (the first half).
+ * What the main picture does in a swap (Session 52): of what it shows before and after, the one picture that
+ * changes (the box's own, or the slide for a box of the slides; never the background, which lies under both) goes
+ * as the one replacing it comes, a dissolve, while the box makes its own move. It dissolves in the half of the
+ * swap in which the box moves the same way: a picture coming over the one it replaces comes in as the box comes in
+ * again (the second half); one going from over the picture replacing it goes as the box goes out (the first).
+ * Only opacity changes, as every picture only dissolves (docs/design.md §40), so a darshan picture stays whole:
+ * none on the main picture shrinks, grows or slides, whatever the box's motion. Session 51 gave it the box's own
+ * move, whole on the screen's black.
  */
-export interface PipMainMove {
-  picture: PipPicture;
-  way: 'in' | 'out';
+export interface PipMainDissolve {
+  going: PipPicture;
+  coming: PipPicture;
+  half: 'first' | 'second';
 }
 
-/** The main picture's move in this run of the box: only while it swaps. */
-export function pipMainMove(run: Pick<PipRun, 'phase' | 'layer' | 'from'>): PipMainMove | null {
+/** The main picture's dissolve in this run of the box: only while it swaps. */
+export function pipMainDissolve(run: Pick<PipRun, 'phase' | 'layer' | 'from'>): PipMainDissolve | null {
   const { layer, from } = run;
   if (run.phase !== 'swap' || !layer || !from) return null;
   const was = pipDraw(layer.source.kind, from.swapped).main;
@@ -457,32 +463,27 @@ export function pipMainMove(run: Pick<PipRun, 'phase' | 'layer' | 'from'>): PipM
   const going = was.find((p) => !will.includes(p));
   const coming = will.find((p) => !was.includes(p));
   if (going === undefined || coming === undefined) return null;
-  return ORDER.indexOf(coming) > ORDER.indexOf(going)
-    ? { picture: coming, way: 'in' }
-    : { picture: going, way: 'out' };
+  return { going, coming, half: ORDER.indexOf(coming) > ORDER.indexOf(going) ? 'second' : 'first' };
 }
 
 /**
- * The main picture's moving picture at `now` (pipMainMove), over the whole screen: as the box comes in or goes
- * out, by its motion and the group's Movement, on the same curve at the same moment; at rest when none moves.
+ * One of the main picture's two pictures at `now` as it dissolves (pipMainPlaces marks them), coming in or going
+ * out over its half of the swap (pipMainDissolve), on the Movement's curve as a slide's dissolve is (Calm on
+ * smoothstep, Bold on its ease in and out: transition-frame.ts dissolveCurve), the two adding up to one at every
+ * moment; whole when nothing dissolves.
  */
-export function pipMainPose(run: PipRun, now: number, canvas: Size): PipPose {
-  const move = pipMainMove(run);
-  const { layer, movement } = run;
-  if (!move || !layer || run.length <= 0) return PIP_REST;
+export function pipMainOpacity(run: PipRun, way: 'in' | 'out', now: number): number {
+  const dissolve = pipMainDissolve(run);
+  if (!dissolve || run.length <= 0) return 1;
   const half = run.length / 2;
-  const t = now - run.start;
-  const screen = { x: 0, y: 0, width: canvas.width, height: canvas.height };
-  const away = awayPose(layer.place.motion, movement, layer.place, canvas, screen);
-  return move.way === 'in'
-    ? mix(away, PIP_REST, seg(t - half, 0, half, easeIn(movement)))
-    : mix(PIP_REST, away, seg(t, 0, half, easeOut(movement)));
+  const e = seg(now, run.start + (dissolve.half === 'second' ? half : 0), half, dissolveCurve(run.movement));
+  return way === 'in' ? e : 1 - e;
 }
 
 /**
  * While a box is up, the main picture keeps the background in its place even where it does not show it (swapped),
  * unseen and playing: a swap back then shows it at once. Put on the page only then, a picture or a video draws
- * nothing until its first frame, and the picture going out over it would move over black meanwhile.
+ * nothing until its first frame, and the picture going from over it would dissolve into black meanwhile.
  */
 const keptBackground = (kind: PipSource['kind'] | null, slots: PipSlot[]): PipSlot[] =>
   kind === null || slots.some((s) => s.picture === 'background')
@@ -492,8 +493,11 @@ const keptBackground = (kind: PipSource['kind'] | null, slots: PipSlot[]): PipSl
 /**
  * The main picture's pictures, bottom to top, at a moment of the box's run (`run`: the box up's own, or null when
  * this screen draws none), the box up `swapped` or not: as pipPlaces has them, the background kept unseen while
- * the box is swapped (keptBackground), but through the half of a swap in which the main picture moves
- * (pipMainMove), what it showed and what it will show alike, the moving one over the other.
+ * the box is swapped (keptBackground), but through the half of a swap in which the main picture dissolves
+ * (pipMainDissolve), what it showed and what it will show alike, the one going and the one coming marked so
+ * (`dissolve`), the upper of the two added light for light over the other (`adds`), as a slide's dissolve adds the
+ * new slide: the two add up to the whole picture at every moment, so it never dips or goes black, with nothing
+ * laid under it, on every screen alike (a key and fill pair's too, where black laid under it would be keyed).
  */
 export function pipMainPlaces(
   kind: PipSource['kind'] | null,
@@ -501,17 +505,22 @@ export function pipMainPlaces(
   swapped: boolean,
 ): PipSlot[] {
   if (!run) return keptBackground(kind, pipPlaces(kind, swapped, swapped).main);
-  const move = pipMainMove(run);
-  // Before the swap's middle it is drawn as it was: an out moves then, an in after it.
+  const dissolve = pipMainDissolve(run);
+  // Before the swap's middle it is drawn as it was: a dissolve in the first half runs then, one in the second after.
   const first = run.swapped !== swapped;
-  if (!move || !run.from || (move.way === 'out') !== first)
+  if (!dissolve || !run.from || (dissolve.half === 'first') !== first)
     return keptBackground(kind, pipPlaces(kind, run.swapped, swapped).main);
   const was = pipDraw(kind, run.from.swapped).main;
   const will = pipDraw(kind, swapped).main;
-  return ORDER.filter((p) => was.includes(p) || will.includes(p)).map((picture) => ({
-    picture,
-    shown: true,
-  }));
+  const { going, coming } = dissolve;
+  const upper = ORDER.indexOf(coming) > ORDER.indexOf(going) ? coming : going;
+  return ORDER.filter((p) => was.includes(p) || will.includes(p)).map((picture): PipSlot => {
+    if (picture !== going && picture !== coming) return { picture, shown: true };
+    const way = picture === coming ? 'in' : 'out';
+    return picture === upper
+      ? { picture, shown: true, dissolve: way, adds: true }
+      : { picture, shown: true, dissolve: way };
+  });
 }
 
 /** A video input and another app's window are this computer's: only its own pages draw them (never a node or a phone). */

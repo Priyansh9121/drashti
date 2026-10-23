@@ -9,8 +9,7 @@ import { engineNow, onClockJump } from './clock';
 import { LiveWindowView } from './LiveWindowView';
 import {
   keptPipRun,
-  PIP_REST,
-  pipMainPose,
+  pipMainOpacity,
   type PipPicture,
   pipPlaces,
   pipPose,
@@ -30,10 +29,10 @@ import { useInputReport, useVideoInput } from './video-input';
  * lower third, messages and the ticker, with a thin border and rounded corners when chosen (a border-radius
  * clipping it and a border over it: no shadow, no filter). It comes in from when it went up, swaps and moves
  * from its last change, and goes out from when it was taken off, each frame worked out from the engine's clock;
- * only its opacity and transform move, and in a swap the main picture's own change moves with it (Session 51,
- * usePipMainMove). Black-out and the logo cover it, as they cover the slide. A video in it
- * plays muted from when it went up; a video input and a window are opened as every picture of them is
- * (render/video-input.ts, render/live-window.ts), video only.
+ * only its opacity and transform move, and in a swap the main picture dissolves in its time (Session 52,
+ * usePipMainDissolve; Session 51 moved it with the box). Black-out and the logo cover it, as they cover the slide.
+ * A video in it plays muted from when it went up; a video input and a window are opened as every picture of them
+ * is (render/video-input.ts, render/live-window.ts), video only.
  */
 
 const FULL: CSSProperties = { position: 'absolute', inset: 0 };
@@ -198,35 +197,41 @@ export function PipBox({
 }
 
 /**
- * The main picture's part in a swap (Session 51, render/pip.ts pipMainPose): the picture there that changes,
- * drawn frame by frame from the engine's clock while its swap runs (`run`; null for a picture that does not move),
- * so it moves as the box does at the same moment; at rest otherwise. The box draws the screen again at the swap's
- * middle and at its end (PipBox), and so this picture's next part.
+ * One of the main picture's two pictures as it dissolves in a swap (Session 52, render/pip.ts pipMainOpacity):
+ * coming in or going out (`way`, as pipMainPlaces marks it; undefined for a picture not dissolving), its opacity
+ * drawn frame by frame from the engine's clock while the box's swap runs (`run`), so it dissolves in the box's
+ * time; whole otherwise. Only its opacity: it never shrinks, grows or slides (Session 51's moved with the box).
+ * The box draws the screen again at the swap's middle and at its end (PipBox), and so this picture's next part.
  */
-export function usePipMainMove(ref: RefObject<HTMLElement | null>, run: PipRun | null, canvas: Size): void {
+export function usePipMainDissolve(
+  ref: RefObject<HTMLElement | null>,
+  run: PipRun | null,
+  way: 'in' | 'out' | undefined,
+  canvas: Size,
+): void {
   const { width, height } = canvas;
+  const dissolving = way === undefined ? null : run;
   // The moment this drawing was worked out for (the run with it, by the screen).
   const drawnAt = engineNow();
   const paint = useCallback(
     (now: number) => {
       const el = ref.current;
       if (!el) return;
-      const pose = run ? pipMainPose(run, now, { width, height }) : PIP_REST;
-      const { transform, transformOrigin } = poseTransform(pose);
-      el.style.opacity = pose.opacity >= 1 ? '' : String(pose.opacity);
-      el.style.transform = transform;
-      el.style.transformOrigin = transform === '' ? '' : transformOrigin;
+      const opacity = dissolving && way ? pipMainOpacity(dissolving, way, now) : 1;
+      el.style.opacity = opacity >= 1 ? '' : String(opacity);
       // How far into the swap it was drawn (ms), for tests (a held clock), as the box says it.
-      const at = run ? Math.round(Math.min(Math.max(0, now - run.start), run.length)) : null;
+      const at = dissolving
+        ? Math.round(Math.min(Math.max(0, now - dissolving.start), dissolving.length))
+        : null;
       if (at === null) el.removeAttribute('data-pip-at');
       else el.setAttribute('data-pip-at', String(at));
     },
-    [ref, run, width, height],
+    [ref, dissolving, way],
   );
-  // Frame by frame while it swaps, started and stopped as each drawing is put on the page.
+  // Frame by frame while it dissolves, started and stopped as each drawing is put on the page.
   useLayoutEffect(() => {
-    if (!run) return;
-    const { start, length } = run;
+    if (!dissolving) return;
+    const { start, length } = dissolving;
     let frame = 0;
     const tick = () => {
       const now = engineNow();
@@ -237,19 +242,19 @@ export function usePipMainMove(ref: RefObject<HTMLElement | null>, run: PipRun |
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [run, paint]);
-  // After every drawing, before it is shown: as at the moment it was worked out for (at rest once it is over).
+  }, [dissolving, paint]);
+  // After every drawing, before it is shown: as at the moment it was worked out for (whole once it is over).
   useLayoutEffect(() => {
     paint(drawnAt);
   });
   // The clock held or set: drawn at once where the time puts it while the swap's run is still the same then.
   useEffect(() => {
-    if (!run) return;
+    if (!dissolving) return;
     return onClockJump(() => {
       const now = engineNow();
-      if (samePipRun(pipRunLater(run, now, { width, height }), run)) paint(now);
+      if (samePipRun(pipRunLater(dissolving, now, { width, height }), dissolving)) paint(now);
     });
-  }, [run, paint, width, height]);
+  }, [dissolving, paint, width, height]);
 }
 
 /**

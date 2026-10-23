@@ -32,16 +32,8 @@ import { ScreenPictures } from './picture-looks';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
 import { useLiveHere } from './live-here';
-import {
-  pipMainMove,
-  pipMainPlaces,
-  type PipPicture,
-  type PipRun,
-  pipShownFor,
-  pipShowsHere,
-  type PipSlot,
-} from './pip';
-import { PipBox, PipSourcePicture, usePipMainMove, usePipRun } from './PipLayerView';
+import { pipMainPlaces, type PipPicture, type PipRun, pipShownFor, pipShowsHere, type PipSlot } from './pip';
+import { PipBox, PipSourcePicture, usePipMainDissolve, usePipRun } from './PipLayerView';
 import { MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
 
 /** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
@@ -376,8 +368,10 @@ function BackgroundPicture({
 /**
  * One of the main picture's pictures (Session 50): always in its own place, so a background or a slide never
  * loads again as the box comes and goes; drawn, or ready unseen while a swap goes out (render/pip.ts pipPlaces).
- * Session 51: in a swap, the one that changes there moves with the box, never a cut at the middle (render/pip.ts
- * pipMainMove), whole on the screen's black (a key and fill pair's on nothing: black there would be keyed).
+ * Session 52: in a swap, the one that changes there dissolves into the one replacing it in the box's time, never
+ * a cut at the middle, the upper of the two added light for light over the other (render/pip.ts pipMainPlaces):
+ * opacity alone, the two adding up to the whole picture at every moment with nothing laid under them, the same on
+ * every screen, a key and fill pair's too. Session 51 moved it with the box, whole on the screen's black.
  */
 function MainSlot({
   slot,
@@ -385,23 +379,25 @@ function MainSlot({
   children,
 }: {
   slot: PipSlot | undefined;
-  /** The box up's run (null when this screen draws none) and the screen it moves over. */
-  swap: { run: PipRun | null; canvas: Size; keyed: boolean };
+  /** The box up's run (null when this screen draws none) and the screen's canvas. */
+  swap: { run: PipRun | null; canvas: Size };
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const moving = slot !== undefined && swap.run !== null && pipMainMove(swap.run)?.picture === slot.picture;
-  usePipMainMove(ref, moving ? swap.run : null, swap.canvas);
+  usePipMainDissolve(ref, swap.run, slot?.dissolve, swap.canvas);
   if (!slot) return null;
   return (
     <div
       ref={ref}
       data-pip-main={slot.picture}
       data-pip-ready={slot.shown ? undefined : ''}
-      data-pip-moving={moving ? '' : undefined}
-      style={{ ...FULL, visibility: slot.shown ? undefined : 'hidden' }}
+      data-pip-dissolve={slot.dissolve}
+      style={{
+        ...FULL,
+        visibility: slot.shown ? undefined : 'hidden',
+        mixBlendMode: slot.adds ? 'plus-lighter' : undefined,
+      }}
     >
-      {moving && !swap.keyed && <div data-pip-base="" style={{ ...FULL, background: '#000000' }} />}
       {children}
     </div>
   );
@@ -483,10 +479,11 @@ export const Scene = memo(function Scene({
   // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
   const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;
   // The main picture as the box up has it; while it swaps, as drawn (they change places at the swap's middle),
-  // the picture that changes there moving with the box (Session 51, render/pip.ts pipMainPlaces).
+  // the picture that changes there dissolving into the one replacing it in the box's time (Session 52,
+  // render/pip.ts pipMainPlaces).
   const upRun = up !== null && run.layer === up ? run : null;
   const main = pipMainPlaces(up?.source.kind ?? null, upRun, up?.swapped ?? false);
-  const swap = { run: upRun, canvas, keyed };
+  const swap = { run: upRun, canvas };
   const slotOf = (picture: PipPicture) => main.find((s) => s.picture === picture);
   /** One of the screen's pictures in the box, at the box's size: the slide there as designed, made small. */
   const inBox = (picture: PipPicture, size: Size): ReactNode => {
