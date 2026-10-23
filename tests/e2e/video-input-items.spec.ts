@@ -17,11 +17,13 @@ import {
  * A video input as a playlist item and as a slide's background cue (Session 51). Chromium's fake camera
  * (DRASHTI_TEST_FAKE_DEVICES: a moving test pattern named "fake_device_0") stands in for the input, named
  * "Placeholder input": never a real camera's picture. An input another computer has and this one does not is an
- * input added, used, then removed from Media: the playlist and the slide still name it.
+ * input added, used, then removed from Media: the playlist and the slide still name it. Renamed in Media (Session
+ * 52), it is "Placeholder camera", and the playlist and the slide name it so.
  */
 
 const FAKE = { DRASHTI_TEST_FAKE_DEVICES: '1' };
 const INPUT = 'Placeholder input';
+const RENAMED = 'Placeholder camera';
 /** Chromium's fake camera, as the computer names it. */
 const DEVICE = 'fake_device_0';
 const LIVE = '[data-testid="live-preview"]';
@@ -297,6 +299,108 @@ test('an input this computer does not have: its item and slide say so plainly, n
   // Next goes on to the next slide, which names none: LIVE says nothing more.
   await dispatch(win, { type: 'next' });
   await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
+  await expect(win.getByTestId('live-input-missing')).toHaveCount(0);
+  await app.close();
+});
+
+test('renaming an input in Media carries its playlist item and the slide naming it to the new name: neither says Not on this computer, Next puts it up by it, and the input up plays on (Session 52)', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ ...FAKE, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win, 'Main Hall', 0);
+  await expect.poll(() => outputPages(app).length).toBe(1);
+  const [hall] = outputPages(app);
+  if (!hall) throw new Error('a screen expected');
+  await addInput(win, INPUT);
+  const opening = await makeWords(win, 'Placeholder opening', 1);
+  const behind = await makeWords(win, 'Placeholder over the input', 2, [INPUT, null]);
+  const sunday = await makePlaylist(win, 'Placeholder Sunday', [
+    { kind: 'presentation', presentationId: opening },
+    { kind: 'input', name: INPUT },
+    { kind: 'presentation', presentationId: behind },
+  ]);
+  const [openingItem, inputItem, behindItem] = sunday.items;
+  await openPlaylist(win, 'Placeholder Sunday');
+  // Up now, from its item.
+  await dispatch(win, { type: 'playItem', playlistId: sunday.id, itemId: inputItem ?? '' });
+  await expect
+    .poll(async () => (await state(win)).layers.background)
+    .toMatchObject({ kind: 'input', name: INPUT });
+  await playsOn(hall);
+  const up = (await state(win)).layers.background;
+  if (up?.kind !== 'input') throw new Error('the input expected up');
+
+  // Renamed in Media: Change on its row, a new name, Save.
+  const sheet = await openLibrary(win);
+  await sheet.getByTestId('library-tab-media').click();
+  const row = sheet.getByTestId('video-input-row').and(sheet.locator(`[data-name="${INPUT}"]`));
+  await row.getByTestId('video-input-change').click();
+  const dialog = win.getByTestId('video-input-dialog');
+  await expect(dialog.getByTestId('video-input-name')).toHaveValue(INPUT);
+  await dialog.getByTestId('video-input-name').fill(RENAMED);
+  await expect(dialog.getByTestId('video-input-save')).toBeEnabled({ timeout: 15_000 });
+  await dialog.getByTestId('video-input-save').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    sheet.getByTestId('video-input-row').and(sheet.locator(`[data-name="${RENAMED}"]`)),
+  ).toBeVisible();
+  // What is on the screens plays on, by its new name: never taken off for it.
+  await expect.poll(async () => (await state(win)).layers.background).toEqual({ ...up, name: RENAMED });
+  await playsOn(hall);
+
+  // Its item takes the new name, on this computer: not Not on this computer, and no card left on the old name.
+  await closeLibrary(win);
+  const cards = win.getByTestId('open-playlist').getByTestId('playlist-item');
+  const card = cards.filter({ hasText: RENAMED });
+  await expect(card).toHaveCount(1);
+  await expect(card.getByTestId('item-what')).toHaveText('Video input');
+  await expect(card.getByTestId('item-input-missing')).toHaveCount(0);
+  await expect(cards.filter({ hasText: INPUT })).toHaveCount(0);
+
+  // The slide naming it takes it too: in the library, and in its thumbnail, on this computer.
+  const cues = await win.evaluate(
+    async (id) =>
+      (await (globalThis as PageGlobals).drashti.library.getPresentation(id))?.groups[0]?.slides[0]?.cues,
+    behind,
+  );
+  expect(cues).toEqual([
+    {
+      kind: 'background',
+      label: '',
+      name: RENAMED,
+      missing: false,
+      unplayable: null,
+      background: { kind: 'input', name: RENAMED },
+    },
+  ]);
+  await (await openLibrary(win)).getByTestId('library-tab-presentations').click();
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Placeholder over the input/ })
+    .click();
+  await closeLibrary(win);
+  const first = win.getByTestId('slide-thumb').first();
+  await expect(first.getByTestId('thumb-input')).toHaveAttribute('data-input', RENAMED);
+  await expect(first.getByTestId('thumb-input')).not.toHaveAttribute('data-missing', 'true');
+
+  // Played through from the opening: Next is the input by its new name, and puts it up with its 1 s fade; then
+  // the slide naming it, with the input carrying on behind it and nothing said missing.
+  await dispatch(win, { type: 'clearAll' });
+  await expect(hall.locator('[data-kind="input"]')).toHaveCount(0);
+  await dispatch(win, { type: 'playItem', playlistId: sunday.id, itemId: openingItem ?? '' });
+  expect((await state(win)).next).toMatchObject({ kind: 'input', itemId: inputItem, name: RENAMED });
+  await dispatch(win, { type: 'next' });
+  await expect
+    .poll(async () => (await state(win)).layers.background)
+    .toMatchObject({ kind: 'input', name: RENAMED, fade: { durationMs: 1000 } });
+  await playsOn(hall);
+  expect((await state(win)).next).toMatchObject({ kind: 'slide', presentationId: behind, input: RENAMED });
+  await dispatch(win, { type: 'next' });
+  await expect
+    .poll(async () => (await state(win)).live.playlist)
+    .toEqual({ playlistId: sunday.id, itemId: behindItem });
+  expect((await state(win)).layers.background).toMatchObject({ kind: 'input', name: RENAMED });
   await expect(win.getByTestId('live-input-missing')).toHaveCount(0);
   await app.close();
 });
