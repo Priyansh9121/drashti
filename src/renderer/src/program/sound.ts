@@ -2,7 +2,7 @@ import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
 import type { DeviceChoice } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
-import { soundsOf } from '../audio/sounds';
+import { soundMoved, soundsOf } from '../audio/sounds';
 import { startPlayback } from '../render/playback';
 import { failureState, findDevice, setSoundState } from './camera';
 import { useProgram } from './program-store';
@@ -131,9 +131,10 @@ export class StreamSound {
     for (const sound of wanted.values()) {
       const current = this.own.get(sound.key);
       if (current) {
-        const jumped = current.sound.seek?.at !== sound.seek?.at;
+        // A jump, or new start or end points: it lands there at once, as the audio player's does (Session 52).
+        const moved = soundMoved(current.sound, sound);
         current.sound = sound;
-        if (jumped) current.resync();
+        if (moved) current.resync();
         current.el.loop = sound.loop && !sound.clip;
         current.gain.gain.value = sound.volume;
         continue;

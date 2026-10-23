@@ -4,7 +4,7 @@ import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { startPlayback } from '../render/playback';
-import { type Sound, soundsOf } from './sounds';
+import { type Sound, soundMoved, soundsOf } from './sounds';
 
 /*
  * The audio player: the one place Drashti makes sound. A hidden window of
@@ -74,9 +74,10 @@ function play(state: EngineState | null): void {
   for (const sound of wanted.values()) {
     const current = players.get(sound.key);
     if (current) {
-      const jumped = current.sound.seek?.at !== sound.seek?.at;
+      // A jump, or new start or end points: it lands there at once, with its picture (Session 52).
+      const moved = soundMoved(current.sound, sound);
       current.sound = sound;
-      if (jumped) current.resync();
+      if (moved) current.resync();
       current.el.loop = sound.loop && !sound.clip;
       if (current.volume !== sound.volume) {
         current.volume = sound.volume;

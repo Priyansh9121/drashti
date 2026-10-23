@@ -619,6 +619,34 @@ describe('a sound or a picture the engine sends somewhere new: a skip or a jump 
     }
   });
 
+  it('a start point moved while it plays: asked at once, a sound lands there by a jump with its picture', () => {
+    // Session 52: a play-once video whose start point moves 0.2 s on while it plays. Every screen asks its picture
+    // (BackgroundMedia.tsx, SlideView.tsx), and now the audio player and the stream ask its sound too (soundMoved,
+    // audio/sounds.ts): each lands there by a jump. Not asked, the sound stayed 0.2 s behind, easing at 2% a second.
+    for (const kind of KINDS) {
+      const v = new FakeMedia(40);
+      const startedAt = Date.now();
+      let clip: PlaybackClip = { startMs: 1000, endMs: null };
+      const playback = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'new-points',
+        startedAt,
+        audible: kind.audible,
+        limits: kind.limits,
+        timing: () => ({ loop: false, clip }),
+      });
+      runFor(v, 2000);
+      clip = { startMs: 1200, endMs: null };
+      playback.resync();
+      runFor(v, 1000);
+      const off = v.currentTime - playbackPosition({ startedAt, loop: false, clip }, 40, Date.now());
+      expect(
+        Math.abs(off),
+        `${kind.what}: ${off.toFixed(3)} s off the clock a second after its start point moved`,
+      ).toBeLessThan(IN_STEP);
+      playback();
+    }
+  });
+
   it('the first jump, aimed again, lands in step: not as far ahead as it landed behind (Session 52)', () => {
     // Its seeks take 0.1 s to land. Aimed by nothing learned yet, the first jump lands a seek's time behind, and that
     // time was learned twice, as the seek's own and as how far off it then played: aimed again, it landed about as
