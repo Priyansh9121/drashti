@@ -2,8 +2,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EngineState, LowerThirdLayer, PipLayer } from '../../shared/engine/state';
-import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
+import type { EngineState, LowerThirdLayer, PipLayer, VideoClips } from '../../shared/engine/state';
+import { ENGINE_STATE_VERSION, initialEngineState, videoClip } from '../../shared/engine/state';
 import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport, textSlide } from '../engine/testing';
 import type { RecoveryFiles } from './live-state';
@@ -394,6 +394,68 @@ describe('restart recovery', () => {
     if (bg?.kind !== 'media' || !heard) throw new Error('not put back');
     expect(playbackPosition(bg, 60, clock.now + 10_000)).toBe(15);
     expect(playbackPosition(heard, 90, clock.now + 10_000)).toBe(80);
+  });
+
+  it('after an unexpected stop, a slide’s, a prop’s and the logo’s videos come back between their start and end points, where they would be by now (Session 52)', async () => {
+    // Since Session 27 (a prop, the logo) and Session 51 (the slide's) they came back where they would be, but over
+    // the whole file: only a background video and the sound played between their points.
+    const markers: Record<string, MediaMarkers> = { clouds: { startMs: 10_000, endMs: 40_000, markers: [] } };
+    const looping = {
+      id: 'placeholder-video',
+      kind: 'video',
+      mediaId: 'clouds',
+      frame: { x: 0, y: 0, width: 640, height: 360 },
+      fit: 'fit',
+      loop: true,
+    } as const;
+    const source = makeSource();
+    source.set('shown', [{ ...textSlide('sv', 'Placeholder words'), elements: [looping] }]);
+    const clock = { now: 1_000_000 };
+    const engine = () =>
+      new ShowEngine(source, new RecordingTransport(), () => clock.now, undefined, {
+        mediaMarkers: (id) => markers[id] ?? null,
+      });
+    const before = engine();
+    before.dispatch({ type: 'goLive', presentationId: 'shown', slideIndex: 0 });
+    before.dispatch({ type: 'showProp', prop: { id: 'p', name: 'Placeholder prop', elements: [looping] } });
+    // The logo's plays once: it holds at its end point.
+    before.dispatch({
+      type: 'showLogo',
+      prop: { id: 'l', name: 'Placeholder logo', elements: [{ ...looping, loop: false }] },
+    });
+    const points = { clouds: { startMs: 10_000, endMs: 40_000 } };
+    const was = {
+      slide: before.current.layers.slide,
+      props: before.current.layers.props,
+      logo: before.current.logo,
+    };
+    expect(was.slide?.clips).toEqual(points);
+    expect(was.props[0]?.clips).toEqual(points);
+    expect(was.logo?.clips).toEqual(points);
+    await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
+    // Drashti stops dead 8 s on, and starts again 2 s later.
+    clock.now += 10_000;
+    const after = engine();
+    const back = toRestore(files);
+    if (!back) throw new Error('nothing to put back');
+    expect(after.restore(back)).toMatchObject({ slide: true, props: 1, logo: true });
+    expect(after.current.layers.slide).toEqual(was.slide);
+    expect(after.current.layers.props).toEqual(was.props);
+    expect(after.current.logo).toEqual(was.logo);
+    // 35 s after they went up, every screen has them where they would be: the slide's and the prop's round their
+    // loop between 0:10 and 0:40 (at 0:15), the logo's held at its end point (0:40).
+    const at = (startedAt: number | undefined, loop: boolean, clips: VideoClips | undefined) =>
+      playbackPosition(
+        { startedAt: startedAt ?? 0, loop, clip: videoClip(clips, 'clouds') },
+        60,
+        clock.now + 25_000,
+      );
+    const slide = after.current.layers.slide;
+    const prop = after.current.layers.props[0];
+    const logo = after.current.logo;
+    expect(at(slide?.shownAt, true, slide?.clips)).toBe(15);
+    expect(at(prop?.shownAt, true, prop?.clips)).toBe(15);
+    expect(at(logo?.shownAt, false, logo?.clips)).toBe(40);
   });
 
   it('puts props, the logo and messages back with the time they went up, so their videos carry on in step (Session 27)', async () => {
