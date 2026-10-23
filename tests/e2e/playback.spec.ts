@@ -198,13 +198,17 @@ test('slide backgrounds play on the background layer of a real output', async ()
   await expect(backgroundOf(output, stillId)).toHaveAttribute('data-state', 'ready');
   await expect(backgroundOf(win.getByTestId('live-preview'), stillId)).toHaveAttribute('data-state', 'ready');
 
-  // A background whose file was never found shows nothing; the preview says why.
+  // A background whose file was never found puts nothing up (Session 52): the picture before stays, on the output
+  // and in the preview, never black, and LIVE says why (until then it went up, failed, and the screens went black).
   await go(5);
-  await expect(backgroundOf(output, goneId)).toHaveAttribute('data-state', 'failed');
-  await expect(backgroundOf(output, stillId)).toHaveCount(0);
   await expect(slideText).toContainText('Placeholder line six');
-  await expect(win.getByTestId('background-failed')).toBeVisible();
-  await expect(output.getByTestId('background-failed')).toHaveCount(0);
+  await expect(backgroundOf(output, goneId)).toHaveCount(0);
+  await expect(backgroundOf(output, stillId)).toHaveAttribute('data-state', 'ready');
+  await expect(backgroundOf(win.getByTestId('live-preview'), stillId)).toHaveAttribute('data-state', 'ready');
+  await expect(win.getByTestId('live-file-missing')).toHaveText(
+    'File missing: “Placeholder gone.png”. The background stays as it was.',
+  );
+  await expect(win.getByTestId('background-failed')).toHaveCount(0);
 
   await app.close();
 });
