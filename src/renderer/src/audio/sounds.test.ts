@@ -74,6 +74,48 @@ describe('the sounds the show makes', () => {
     ]);
   });
 
+  it('plays a slide video’s sound between its file’s start and end points, as its picture plays (Session 52)', () => {
+    const clip = (id: string, mediaId: string, loop?: boolean) =>
+      ({
+        id,
+        kind: 'video',
+        frame: { x: 0, y: 0, width: 10, height: 10 },
+        mediaId,
+        fit: 'fit',
+        ...(loop === undefined ? {} : { loop }),
+      }) as const;
+    const sounds = soundsOf(
+      state({
+        slide: {
+          presentationId: 'p',
+          slideIndex: 0,
+          shownAt: 5000,
+          notes: '',
+          clips: { chorus: { startMs: 2000, endMs: 6000 } },
+          slide: {
+            id: 's',
+            width: 1920,
+            height: 1080,
+            background: null,
+            elements: [clip('v1', 'chorus', true), clip('v2', 'whole')],
+          },
+        },
+      }),
+    );
+    expect(sounds).toEqual([
+      {
+        key: 'slide:s/v1@5000',
+        mediaId: 'chorus',
+        startedAt: 5000,
+        loop: true,
+        volume: 1,
+        clip: { startMs: 2000, endMs: 6000 },
+      },
+      // A file without points: the whole of it, as before.
+      { key: 'slide:s/v2@5000', mediaId: 'whole', startedAt: 5000, loop: false, volume: 1 },
+    ]);
+  });
+
   it('plays the audio layer with its volume and looping', () => {
     expect(
       soundsOf(
