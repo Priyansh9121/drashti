@@ -2,6 +2,17 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.12 (23 Oct 2026)
+
+Swap now dissolves the main picture while the picture-in-picture box moves, so a darshan picture is never shrunk or slid. Renaming a video input in Media takes its playlist items and slides with it, and a slide whose background file is missing keeps the background as it was and says why, instead of going black. Update the node computer the same evening: until it runs this version, as Main does, it says so and its screens keep their last picture. A phone page left open from before needs reloading. Update after a sabha, never on the day of one.
+
+- Picture in picture: during Swap the main picture dissolves from one to the other, never a cut and never black, and only the box scales or slides. Key and fill stay alike at every moment.
+- Video inputs: renaming one in Media (Change) carries every playlist item and slide on this computer that uses it to the new name, and what is on the screens carries on. Give the spare computer's input the same new name, or there they say Not on this computer.
+- A slide whose background file is missing leaves the background as it was. LIVE says "File missing" with the file's name, as it does for a missing video input, and the slide's picture in the grid says Missing. Find missing media… in the import report finds it again.
+- A video on a slide, a prop or the logo plays between its file's start and end points, going round between them when it loops, as a background video does. After an unexpected restart it comes back between them, where it would be.
+- The hall's pictures land in step after a quick Back 15 s, Forward 15 s or Last 10 s, or a marker, as the sound does, and the first jump of any sound or video no longer lands ahead.
+- On a stage screen, the audience picture says Audience off in its bottom left corner, clear of a stage message. With no screen group showing the audience picture, it is black and says so.
+
 ## 1.0.0-alpha.11 (23 Oct 2026)
 
 The keys are now the ones the operators already press: F5 clears the sound and F6 messages (they changed places), F7 clears the ticker and F8 the Masks layer (they changed places), F12 is the logo (L still works), and Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows) turn the Audience and Stage screens off and on. The buttons along the bottom go in the same order, Slide F2 to Masks F8, each showing its key. Zoom works both ways, and the video mixer's program can be on the screens. Update the node computer the same evening: until it runs this version, as Main does, it says so and its screens keep their last picture. A phone page left open from before needs reloading. Update after a sabha, never on the day of one.
