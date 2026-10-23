@@ -209,6 +209,11 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
   );
   const inputName = background ? cueInputName(background) : null;
   const inputHere = useInputNamed(inputName) !== null;
+  // Its picture or video missing (Session 52), as Media marks it: not found at import.
+  const fileMissing =
+    background !== undefined &&
+    background.mediaId !== null &&
+    media.find((m) => m.id === background.mediaId)?.missing === true;
   const sound = slide.cues.find((c) => c.kind === 'audio' && c.mediaId);
   const others = slide.cues.filter((c) => c !== background && c !== sound);
   const nameOf = (cue: EditCue | undefined) => {
@@ -439,6 +444,13 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
           <p className="text-xs text-warning-fg" data-testid="background-input-missing">
             No video input called “{inputName}” is on this computer: here the background stays as it was when
             this slide goes up. On a computer with an input of that name, it goes up there.
+          </p>
+        )}
+        {/* Its file missing (Session 52): the background stays as it was, as for an input not here. */}
+        {fileMissing && (
+          <p className="text-xs text-warning-fg" data-testid="background-file-missing">
+            The file “{nameOf(background)}” is missing: the background stays as it was when this slide goes
+            up.
           </p>
         )}
         {background && inputName === null && (

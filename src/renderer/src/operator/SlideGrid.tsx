@@ -61,9 +61,24 @@ import { StartHere } from './StartHere';
 export const THUMB = { initial: 170, min: 120, max: 400 };
 const isThumbSize = (v: unknown): v is number => typeof v === 'number' && v >= THUMB.min && v <= THUMB.max;
 
-/** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
+/**
+ * The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. Its
+ * file missing (Session 52), the library's Missing in its corner instead: the background stays as it was when the
+ * slide goes up.
+ */
 function CueBackground({ cue, background }: { cue: BackgroundCue; background: MediaBackground }) {
   const { mediaId, media, fit } = background;
+  if (cue.missing)
+    return (
+      <span
+        data-testid="thumb-missing"
+        data-media-id={mediaId}
+        title={`“${cue.name}” is missing: the background stays as it was when this slide goes up`}
+        className="absolute top-1 left-1"
+      >
+        <MissingBadge />
+      </span>
+    );
   return (
     <span data-testid="thumb-background" data-media-id={mediaId} title={cue.name} className="contents">
       <MediaStill mediaId={mediaId} media={media} fit={fit} />

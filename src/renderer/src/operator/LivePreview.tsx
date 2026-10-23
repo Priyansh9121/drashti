@@ -70,6 +70,9 @@ export function LivePreview() {
   // again), and not before the window has read the list.
   const inputMissing = state?.layers.slide?.inputMissing ?? null;
   const stillMissing = useInputNamed(inputMissing) === null && inputMissing !== null;
+  // Its background cue's file was missing as it went up (Session 52), named as the library names it: said while the
+  // slide is up, until its cues run again.
+  const fileMissing = state?.layers.slide?.fileMissing ?? null;
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
   const help = useWhatIsThis('live');
@@ -176,6 +179,12 @@ export function LivePreview() {
       {stillMissing && (
         <p className="text-xs text-warning-fg" data-testid="live-input-missing">
           Video input not on this computer: “{inputMissing}”. The background stays as it was.
+        </p>
+      )}
+      {/* The live slide's background file is missing (Session 52): not found at import, or deleted from the library. */}
+      {fileMissing !== null && (
+        <p className="text-xs text-warning-fg" data-testid="live-file-missing">
+          File missing: “{fileMissing}”. The background stays as it was.
         </p>
       )}
       {lowerThirdShort && (
