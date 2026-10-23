@@ -352,6 +352,37 @@ export async function setUpScreen(win: Page, name = 'Main Hall', displayIndex = 
   );
 }
 
+/** The first pretend display's id (src/main/outputs/electron-outputs.ts, EXTRA_DISPLAY_ID); four at most. */
+const PRETEND_DISPLAY_ID = 900_000_000;
+
+/** A display a test puts a screen on: its id, and its place in Drashti's list (setUpScreen's index). */
+export interface TestDisplay {
+  id: number;
+  index: number;
+}
+
+/**
+ * The displays a test's screens go on (Session 53): the main display, then the test's pretend ones
+ * (DRASHTI_EXTRA_DISPLAYS: copies of the main display, listed after every real one), however many displays
+ * this computer has. CI's computers have the main display alone; another real one here (a second monitor
+ * plugged in) is passed over, so a test counts and chooses displays as it does on CI, and its windows all sit
+ * on one physical screen (on two, the same picture's colours read 1.4–2% apart mid-transition: Session 52).
+ */
+export async function testDisplays(win: Page): Promise<TestDisplay[]> {
+  const displays = await win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.screens.get()).displays.map((d) => ({
+      id: d.id,
+      primary: d.primary,
+    })),
+  );
+  const main = displays.findIndex((d) => d.primary);
+  if (main < 0) throw new Error('no main display');
+  const pretend = displays.flatMap((d, index) =>
+    d.id >= PRETEND_DISPLAY_ID && d.id < PRETEND_DISPLAY_ID + 4 ? [index] : [],
+  );
+  return [main, ...pretend].map((index) => ({ id: displays[index]?.id ?? -1, index }));
+}
+
 /**
  * The library's sheet, opened from the Library button if it is shut (Session 44: the playlists have the
  * whole left column, and the library opens over it).

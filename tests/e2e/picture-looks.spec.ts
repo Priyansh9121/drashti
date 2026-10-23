@@ -15,6 +15,7 @@ import {
   outputPages,
   outputReady,
   setUpScreen,
+  testDisplays,
 } from './helpers';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import { launchMain, launchNode, pairNode } from './nodes';
@@ -106,8 +107,12 @@ async function twoScreens(extra: Record<string, string> = {}) {
   const win = await operatorPage(app);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
-  await setUpScreen(win, 'Main Hall', 0);
-  await setUpScreen(win, 'Side Hall', 1);
+  // The main display and the test's first pretend one (CI's first two), however many this computer has: both
+  // windows on one physical screen, so their pixels are read alike (Session 53).
+  const [main, side] = await testDisplays(win);
+  if (!main || !side) throw new Error('two displays expected');
+  await setUpScreen(win, 'Main Hall', main.index);
+  await setUpScreen(win, 'Side Hall', side.index);
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [one, two] = outputPages(app);
   if (!one || !two) throw new Error('two screens expected');
