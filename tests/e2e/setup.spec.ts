@@ -9,6 +9,7 @@ import {
   operatorReady,
   outputPages,
   setUpScreen,
+  testDisplays,
 } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
@@ -57,19 +58,32 @@ test('on the first start: identify, what each output shows and its languages, a 
   await win.getByTestId('welcome').getByRole('button', { name: 'Set Up Screens…' }).click();
   const wizard = win.getByTestId('setup-wizard');
 
-  // Each display's number across it, for a few seconds.
+  // Each display's number across it, for a few seconds: every display the computer has.
   await expect(wizard.getByTestId('setup-step')).toHaveText('Screens');
-  const displays = wizard.getByTestId('setup-display');
-  await expect(displays).toHaveCount(2);
+  const every = await win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.screens.get()).displays.map((d) => d.id),
+  );
+  await expect(wizard.getByTestId('setup-display')).toHaveCount(every.length);
   await wizard.getByTestId('setup-identify').click();
-  await expect.poll(() => app.windows().filter((w) => w.url().includes('identify=')).length).toBe(2);
+  await expect
+    .poll(() => app.windows().filter((w) => w.url().includes('identify=')).length)
+    .toBe(every.length);
   const numbers = await Promise.all(
     app
       .windows()
       .filter((w) => w.url().includes('identify='))
       .map((w) => w.getByTestId('display-number').getAttribute('data-number')),
   );
-  expect(numbers.sort()).toEqual(['1', '2']);
+  expect(numbers.sort()).toEqual(every.map((_, i) => String(i + 1)));
+  // The test's two (Session 53): the main display and its pretend copy, CI's two, however many this
+  // computer has, their rows in the wizard's order. Any other (a second monitor plugged in, which the wizard
+  // starts as the hall's, the first free one) shows nothing.
+  const [main, copy] = await testDisplays(win);
+  if (!main || !copy) throw new Error('two displays expected');
+  const rowOf = (id: number) => `[data-testid="setup-display"][data-display-id="${String(id)}"]`;
+  for (const id of every.filter((x) => x !== main.id && x !== copy.id))
+    await wizard.locator(rowOf(id)).getByTestId('setup-use-none').click();
+  const displays = wizard.locator(`${rowOf(main.id)}, ${rowOf(copy.id)}`);
 
   // The first output shows the audience picture in Gujarati then transliteration; the second the stage, in Gujarati.
   // One click each (Session 44).
@@ -122,10 +136,10 @@ test('on the first start: identify, what each output shows and its languages, a 
   await wizard.getByTestId('setup-next').click();
   await expect(wizard.getByTestId('setup-summary')).toContainText('PINs: none (roles stay off)');
   await expect(wizard.getByTestId('setup-summary')).toContainText(
-    'Display 1: The audience picture, Gujarati, Transliteration',
+    `Display ${String(main.index + 1)}: The audience picture, Gujarati, Transliteration`,
   );
   await expect(wizard.getByTestId('setup-summary')).toContainText(
-    'Display 2: The stage view (performers), Gujarati',
+    `Display ${String(copy.index + 1)}: The stage view (performers), Gujarati`,
   );
   await expect(wizard.getByTestId('setup-summary')).toContainText('Stream: camera fake_device_0');
   await expect(wizard.getByTestId('setup-summary')).toContainText('the slides, Transliteration');
