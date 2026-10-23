@@ -78,6 +78,7 @@ The old presentation program stays installed and untouched all day. Drashti only
 - [ ] Write down the address the Phones panel shows, and check it is the reserved one.
 - [ ] Pair two or three phones as remotes, and a tablet as a stage display. Phones need Safari 16.4 or later (iOS 16.4) or Chrome on Android.
 - [ ] **A presenter's iPhone and iPad** (`docs/presenter-guide.md`): pair, Add to Home Screen, open it from the Home Screen, search the library for words on a slide, open the presentation, tap a slide (the screens follow), read the notes, and hold the iPad sideways (the notes and Next beside the slides). Try a Windows laptop's browser too if a presenter uses one.
+- [ ] **The phones through a restart**: with a phone's remote and the tablet's stage display open, quit Drashti on Main and start it again. While it is closed, the phone says **Not connected** and the tablet shows its last picture, saying it is not connected; once Drashti is back, both connect again by themselves. Without reloading either page, put a slide up on Main: both show it at once, with what comes next, and the phone's **Next** moves the show on, the tablet following.
 - [ ] Make the announcements poster, print it, and send one test announcement.
 
 ## 6. Roles and PINs (Main, and the node's Main settings)
