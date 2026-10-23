@@ -5,11 +5,11 @@ import { FIT_EVERYWHERE } from '../../shared/shastra-slides';
 import { DEFAULT_THEME } from '../../shared/themes';
 import { openDatabase } from '../db/database';
 import { ShastraRepo } from '../db/shastra';
-import { ShastraService } from './shastra-service';
+import { ShastraService, type ShastraServiceDeps } from './shastra-service';
 
 /* Passages as the engine and the slide grid see them (placeholder texts only). */
 
-function setup() {
+function setup(media?: ShastraServiceDeps['media']) {
   const repo = new ShastraRepo(openDatabase(':memory:'));
   const read = readShastraFile({
     format: 'drashti-shastra',
@@ -35,6 +35,7 @@ function setup() {
     repo,
     theme: () => theme,
     targets: () => targets,
+    ...(media ? { media } : {}),
   });
   return {
     service,
@@ -89,6 +90,43 @@ describe('ShastraService', () => {
     expect(service.order('shastra:pg#3')?.slides.length ?? 0).toBeGreaterThan(englishOnly);
     setTheme({ ...DEFAULT_THEME, background: { kind: 'color', color: '#203040' } });
     expect(service.order('shastra:pg#3')?.slides[0]?.slide.background).toBe('#203040');
+  });
+
+  it('reads its theme’s background file as a slide’s cue does: by its name, missing while it is, and again once it is back (Session 52)', () => {
+    let file: { name: string; missing: boolean; unplayable: string | null } | null = {
+      name: 'Placeholder backdrop.png',
+      missing: true,
+      unplayable: null,
+    };
+    const { service, setTheme } = setup(() => file);
+    const background = { kind: 'media', mediaId: 'bg', media: 'image', fit: 'fill', loop: false } as const;
+    setTheme({ ...DEFAULT_THEME, background });
+    const cues = () => service.order('shastra:pg#1')?.slides[0]?.cues;
+    expect(cues()).toEqual([
+      {
+        kind: 'background',
+        label: '',
+        name: 'Placeholder backdrop.png',
+        missing: true,
+        unplayable: null,
+        background,
+      },
+    ]);
+    // Found again (Find missing media…, a deletion undone): the passage is made again, its file there.
+    file = { ...file, missing: false };
+    expect(cues()).toEqual([
+      {
+        kind: 'background',
+        label: '',
+        name: 'Placeholder backdrop.png',
+        missing: false,
+        unplayable: null,
+        background,
+      },
+    ]);
+    // An id the library has no item of: no background cue, as a slide's (the background stays as it was).
+    file = null;
+    expect(cues()).toEqual([]);
   });
 
   it('resolves a reference to a passage ready to show, or says why not', () => {

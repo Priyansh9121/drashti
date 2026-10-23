@@ -1531,10 +1531,9 @@ function start(): void {
     log.info('Pictures: a live zoom was kept as the picture’s');
     return { ok: true as const };
   });
-  mediaInfo = (mediaId) => {
-    const found = media.kindAndName(mediaId);
-    return found ? { name: found.name, missing: false, unplayable: null } : null;
-  };
+  // A passage's theme background as a slide's cue reads its file (Session 52): by its name, and missing when it was
+  // not found or was deleted (before, a missing file read as there, and went up black).
+  mediaInfo = (mediaId) => media.asCue(mediaId);
   // The guides inside Drashti (Sessions 31–36): beside an installed Drashti, docs/ in the repository.
   const guideFiles = new GuideFiles(
     guidesDir({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
