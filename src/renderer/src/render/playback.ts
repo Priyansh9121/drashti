@@ -96,7 +96,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   let startFrom = 0;
   // How many times in a row it has been aimed again, out of step once it played on.
   let reaims = 0;
-  // A sound the engine has sent somewhere new (Session 51: resync()), not yet checked.
+  // A file the engine has sent somewhere new (Session 51: resync(); pictures too since 52), not yet checked.
   let sent = false;
   const lead = () => seekLead + settleLead;
   // How long a seek takes to land, and a sound to settle, are lengths of time on this computer (each video
@@ -194,8 +194,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const { start, end } = playbackBounds(c.clip, v.duration);
     const point = endPoint(c);
     // An end point is held once the clock gets there, or once the element has (a moment ahead of the
-    // clock, which is near it). Not a sound the engine has just sent back from there (Session 51: a marker
-    // 0.3 s before it was held, silent while the clock played that last stretch): it plays it, from a jump.
+    // clock, which is near it). Not a file the engine has just sent back from there (Session 51: a sound a
+    // marker sent 0.3 s before it was held, silent while the clock played that last stretch; a screen's
+    // picture, frozen, until Session 52): it plays it, from a jump.
     if (
       point !== null &&
       (at >= point - 0.01 ||
@@ -236,7 +237,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       reaims = reaim ? reaims + 1 : 0;
     } else if (moved && !correction.seek && Math.abs(offset) > IN_STEP) {
       // Sent a little way (Session 51), less than the half second that makes a sound jump: it lands there by a
-      // jump too, measured as every landing is, not eased at 2% a second (0.3 s took 15 s).
+      // jump too, measured as every landing is, not eased at 2% a second (0.3 s took 15 s). A picture less than
+      // its quarter of a second alike (Session 52: 0.2 s took 4 s at 5%).
       reaim = true;
     }
     // Aiming ahead past the end of a loop wraps round to its start.
@@ -308,13 +310,16 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       if (hold) clearTimeout(hold);
       wrap = null;
       hold = null;
-      if (audible) {
-        // A sound the engine has sent somewhere new (Session 51: a skip, a jump to a marker) lands there by a
+      if (framed) {
+        // A file the engine has sent somewhere new (Session 51: a skip, a jump to a marker) lands there by a
         // jump, however short (check()), and may be aimed again, as a start and each time round a loop may,
         // whatever the landings before it used up. A landing or a start not yet measured, or a seek still
         // landing, is not measured: from the new place it would seem 15 or 30 s off. On CI's Windows, skips
         // pressed that quickly taught the sound a lead at its 0.5 s cap, and with its re-aims used up just
-        // before, Forward 15 s landed 0.4 s ahead and was eased back at 2% a second. Pictures as before.
+        // before, Forward 15 s landed 0.4 s ahead and was eased back at 2% a second. A screen's picture alike
+        // since Session 52, every screen the same: it landed up to 0.45 s ahead for up to a quarter of a second,
+        // or a seek's time behind, easing back. Before its first frame nothing is aimed again here: its start is
+        // aimed by the clock and measured as a start is (BackgroundMedia.tsx asks as it mounts).
         seekFrom = 0;
         settleFrom = 0;
         startFrom = 0;
