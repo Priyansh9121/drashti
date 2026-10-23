@@ -548,6 +548,66 @@ test('after a crash a slide’s video, its sound and a prop’s video come back 
   await second.app.close();
 });
 
+test('after a crash a video from Media in the picture-in-picture box comes back between its file’s start and end points, where it would be (Session 53)', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-box-points-'));
+  const loop = await makeTestVideo(win, join(dir, 'Placeholder box points loop.webm'), {
+    seconds: 6,
+    hue: 160,
+    width: 64,
+    height: 36,
+  });
+  const [videoId = ''] = await importAndGetIds(win, [loop]);
+  // The file plays between 0:01 and 0:05 wherever it is used.
+  const clip = { startMs: 1000, endMs: 5000 };
+  const set = await win.evaluate(
+    ({ id, clip }) => (globalThis as PageGlobals).drashti.media.setMarkers(id, { ...clip, markers: [] }),
+    { id: videoId, clip },
+  );
+  expect(set.ok).toBe(true);
+  await setUpScreen(win);
+  await outputPage(first.app);
+  // Picture in Picture… sends the same command.
+  const shown = await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'showPip',
+        source: { kind: 'media', mediaId: id },
+      }),
+    videoId,
+  );
+  expect(shown).toMatchObject({ ok: true });
+  /** The box up, as the engine has it. */
+  const boxOf = (page: Page) =>
+    page.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.pip);
+  const before = await boxOf(win);
+  expect(before?.clips).toEqual({ [videoId]: clip });
+  await savedLive(first.userData, (saved) => typeof saved['pip'] === 'object' && saved['pip'] !== null);
+  await letTimePass(win, 2000, 'the box’s video plays on a moment before Drashti stops');
+  await killApp(first.app);
+
+  // Since Session 50 it came back where it would be, but over the whole file.
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
+  await operatorReady(win2);
+  expect(await boxOf(win2)).toMatchObject({
+    source: { kind: 'media', mediaId: videoId, media: 'video' },
+    shownAt: before?.shownAt,
+    clips: { [videoId]: clip },
+  });
+  const output2 = await outputPage(second.app);
+  await nearTheClock(
+    output2,
+    `[data-testid="pip-box"] [data-pip-picture="media"] video[data-media-id="${videoId}"]`,
+    { startedAt: before?.shownAt ?? 0, loop: true, clip },
+    'the box’s video',
+  );
+  await second.app.close();
+});
+
 test('after a crash the first action lands on what recovery put back, never under it (Sessions 31–36)', async () => {
   test.setTimeout(150_000);
   const first = await launchApp();
