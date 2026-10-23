@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, openLibrary, operatorPage, outputPages, setUpScreen } from './helpers';
+import { launchApp, openLibrary, operatorPage, outputPages, setTicked, setUpScreen } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -50,23 +50,23 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   const groups = win.getByTestId('screen-group');
   const hall = groups.nth(0).getByTestId('language-picker');
-  await hall.getByTestId('languages-some').check();
-  await hall.getByRole('checkbox', { name: 'Hindi' }).uncheck();
-  await hall.getByRole('checkbox', { name: 'English' }).uncheck();
+  await setTicked(hall.getByTestId('languages-some'), true);
+  await setTicked(hall.getByRole('checkbox', { name: 'Hindi' }), false);
+  await setTicked(hall.getByRole('checkbox', { name: 'English' }), false);
   await expect(hall.getByTestId('language-row')).toHaveCount(4);
   const stream = groups.nth(1).getByTestId('language-picker');
-  await stream.getByTestId('languages-some').check();
-  await stream.getByRole('checkbox', { name: 'Gujarati' }).uncheck();
-  await stream.getByRole('checkbox', { name: 'Hindi' }).uncheck();
+  await setTicked(stream.getByTestId('languages-some'), true);
+  await setTicked(stream.getByRole('checkbox', { name: 'Gujarati' }), false);
+  await setTicked(stream.getByRole('checkbox', { name: 'Hindi' }), false);
   // Already transliteration then English; put English first, then back.
   await stream.getByRole('button', { name: 'Up: English' }).click();
   await stream.getByRole('button', { name: 'Down: English' }).click();
   // The stage: Gujarati only, and its stage view.
   const stage = groups.nth(2);
   await stage.getByTestId('group-role').selectOption('stage');
-  await stage.getByTestId('languages-some').check();
+  await setTicked(stage.getByTestId('languages-some'), true);
   for (const name of ['Hindi', 'Transliteration', 'English'])
-    await stage.getByTestId('language-picker').getByRole('checkbox', { name }).uncheck();
+    await setTicked(stage.getByTestId('language-picker').getByRole('checkbox', { name }), false);
   // The last one ticked cannot be unticked: a group shows at least one language.
   await expect(
     stage.getByTestId('language-picker').getByRole('checkbox', { name: 'Gujarati' }),
@@ -179,7 +179,7 @@ for (const [width, height] of [
     await win.setViewportSize({ width, height });
     await setUpScreen(win, 'Hall', 0);
     await win.getByRole('button', { name: 'Screens', exact: true }).click();
-    await win.getByTestId('screen-group').first().getByTestId('languages-some').check();
+    await setTicked(win.getByTestId('screen-group').first().getByTestId('languages-some'), true);
     await expectFits(
       win.getByRole('dialog', { name: 'Screens' }),
       `the Screens panel at ${width} x ${height}`,

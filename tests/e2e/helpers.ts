@@ -450,6 +450,19 @@ export async function openMoreTools(page: Page): Promise<void> {
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
 
+/**
+ * Tick a box or choose a radio (`ticked` true), or untick a box, whose state comes back from the main process,
+ * and wait until it shows it (Session 53). Such a box shows what the main process saved (a Look's layers and
+ * languages, what an Events out address gets), so a click changes it only once the save has come back.
+ * Playwright's check() and uncheck() look once, straight after their click, and fail if it has not come back
+ * yet ("Clicking the checkbox did not change its state": screen-languages.spec on CI's Windows, Session 52).
+ * A click on a box already as wanted would change it back, so this clicks only when the box is not.
+ */
+export async function setTicked(box: Locator, ticked: boolean): Promise<void> {
+  if ((await box.isChecked()) !== ticked) await box.click();
+  await expect(box, 'the box shows what the main process saved').toBeChecked({ checked: ticked });
+}
+
 // ---- waits that say what they wait for (Sessions 31–36, TST-6, TST-7) ------------------------------------
 // A test waits for a condition (a locator, expect.poll), never for a while: eslint.config.mjs refuses a raw
 // waitForTimeout or a sleeping setTimeout in tests/ outside this file. Where time itself is what is tested,
