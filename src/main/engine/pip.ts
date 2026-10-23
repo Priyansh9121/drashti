@@ -11,8 +11,8 @@ import { sameData } from './reducer';
  * taken from a page: a video input in this computer's list, a window Show a Window… has just offered (Session
  * 48), a picture or video in Media, or the slides (the slide as designed, made small). A new box goes where the
  * library remembers (src/main/pip/); Swap and moving it keep how it was (`changed`), so every screen animates
- * from there alike; Take off plays its out (`pipOff`). Clear all, Put it back and black-out are the engine's
- * own, as for every layer.
+ * from there alike (moved while a swap runs, it keeps the swap's: Session 52); Take off plays its out (`pipOff`).
+ * Clear all, Put it back and black-out are the engine's own, as for every layer.
  *
  * Swap: `swapped` says which picture is the main one, and the screens draw from it.
  * - The slides in the box: unswapped, the main picture shows the background (with the props, messages and
@@ -115,24 +115,41 @@ const noPip = (doing: string): Refused => ({
 });
 
 /**
+ * A swap still running on any screen at `at` (Session 51): it runs out and in again by each group's Movement
+ * (`movements`: the live Look's), so as long as the slowest group's: 500 ms, 600 ms with a Bold group
+ * (shared/pip.ts pipSwapMs).
+ */
+function swapRunning(was: PipLayer, at: number, movements: readonly Movement[]): boolean {
+  const last = was.changed;
+  return last !== undefined && last.swapped !== was.swapped && at - last.at < pipSwapMs(movements);
+}
+
+/**
  * Swap: the box's picture and the main picture change places (see above), from `at`. Pressed again while a swap
  * still runs on any screen (Session 51), it changes nothing: the box and the main picture would jump back
- * part-way. A swap runs out and in again by each group's Movement (`movements`: the live Look's), so as long as
- * the slowest group's: 500 ms, 600 ms with a Bold group (shared/pip.ts pipSwapMs).
+ * part-way.
  */
 export function swapPip(was: PipLayer | null, at: number, movements: readonly Movement[] = []): PipResolved {
   if (!was) return noPip('swap');
-  const last = was.changed;
-  if (last && last.swapped !== was.swapped && at - last.at < pipSwapMs(movements))
-    return { ok: true, actions: [] };
+  if (swapRunning(was, at, movements)) return { ok: true, actions: [] };
   return { ok: true, actions: [{ type: 'pip/set', layer: changedAt(was, at, { swapped: !was.swapped }) }] };
 }
 
-/** The box moved or resized (a corner, dragged, its size, border, corners or motion), from `at`. */
-export function placePip(was: PipLayer | null, place: PipPlace, at: number): PipResolved {
+/**
+ * The box moved or resized (a corner, dragged, its size, border, corners or motion), from `at`. While a swap still
+ * runs on any screen (Session 52), the swap plays on: the box takes its new place at once and keeps the swap's
+ * `changed`, so the main picture's dissolve and the box's own pictures carry on (taken as a move, both would cut).
+ */
+export function placePip(
+  was: PipLayer | null,
+  place: PipPlace,
+  at: number,
+  movements: readonly Movement[] = [],
+): PipResolved {
   if (!was) return noPip('move');
   if (sameData(was.place, place)) return { ok: true, actions: [] };
-  return { ok: true, actions: [{ type: 'pip/set', layer: changedAt(was, at, { place }) }] };
+  const layer = swapRunning(was, at, movements) ? { ...was, place } : changedAt(was, at, { place });
+  return { ok: true, actions: [{ type: 'pip/set', layer }] };
 }
 
 /** Take off: off the screens, its out from `at`; nothing up, nothing changes. */

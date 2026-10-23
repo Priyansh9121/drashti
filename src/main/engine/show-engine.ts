@@ -36,7 +36,7 @@ import type { EngineTransport } from '../../shared/engine/transport';
 import type { CalendarDay } from '../../shared/calendar';
 import type { IdleState, Quote } from '../../shared/idle';
 import type { BackgroundCue } from '../../shared/library';
-import type { LiveLook } from '../../shared/looks';
+import type { LiveLook, Movement } from '../../shared/looks';
 import { CUT, type SlideElement, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
@@ -906,6 +906,11 @@ export class ShowEngine {
 
   private unchanged(): CommandResult {
     return { ok: true, changed: false, rev: this.revision };
+  }
+
+  /** The live Look's groups' Movements: a swap of the box runs as long as on the slowest's screens (pip.ts). */
+  private pipMovements(): Movement[] {
+    return Object.values(this.state.look.groups).map((g) => g.movement);
   }
 
   /** The order the live presentation plays in by its playlist item (undefined: the presentation's own). */
@@ -1806,13 +1811,10 @@ export class ShowEngine {
         return hidePip(this.state.layers.pip, this.now());
       case 'swapPip':
         // None taken while one still runs on the slowest group's screens (Session 51).
-        return swapPip(
-          this.state.layers.pip,
-          this.now(),
-          Object.values(this.state.look.groups).map((g) => g.movement),
-        );
+        return swapPip(this.state.layers.pip, this.now(), this.pipMovements());
       case 'placePip':
-        return placePip(this.state.layers.pip, command.place, this.now());
+        // While a swap still runs there, it plays on, the box in its new place at once (Session 52).
+        return placePip(this.state.layers.pip, command.place, this.now(), this.pipMovements());
       case 'showInput': {
         // Only an input of this computer's list, looked up here: a page never names a device (Session 50).
         const input = this.options.videoInput?.(command.inputId) ?? null;
