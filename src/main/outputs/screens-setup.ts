@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { closeSync, fsyncSync, openSync, renameSync, rmSync, writeSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { z } from 'zod';
 import type { GroupLook } from '../../shared/looks';
 import { readGroupLook, storedGroupLook } from '../../shared/looks';
@@ -7,7 +8,8 @@ import { idSchema } from '../../shared/model-schema';
 import type { ScreenRole } from '../../shared/screens';
 import { SCALING_MODES } from '../../shared/screens';
 import type { SavedGroup, SavedScreen, SavedScreens } from '../db/screens';
-import { readStateTwice } from '../state-file';
+import { readState, readStateTwice } from '../state-file';
+import { COULD_NOT_GO_BACK } from './keep-screens';
 
 /*
  * The screen setup as Keep these screens? takes it (Session 50), just before and just after each change, so Go
@@ -139,12 +141,26 @@ export function undoChanges(now: ScreensSetup, changes: readonly ScreensChange[]
 
 // ---- the change waiting, on disk (S3-2) -------------------------------------------------------------------
 
-const ROLES = ['audience', 'stage', 'stream', 'keyfill', 'other'] as const satisfies readonly ScreenRole[];
+/** Every role a group can have (the compiler asks for one added later). */
+const ROLES: Record<ScreenRole, true> = {
+  audience: true,
+  stage: true,
+  stream: true,
+  keyfill: true,
+  other: true,
+};
 
 /** A setup as written: a Look's settings as the library stores them (only what differs from the defaults). */
 const setupSchema = z.object({
   groups: z
-    .array(z.object({ id: idSchema, name: z.string().max(500), role: z.enum(ROLES), position: z.number() }))
+    .array(
+      z.object({
+        id: idSchema,
+        name: z.string().max(500),
+        role: z.custom<ScreenRole>((role) => typeof role === 'string' && Object.hasOwn(ROLES, role)),
+        position: z.number(),
+      }),
+    )
     .max(1000),
   screens: z
     .array(
@@ -165,13 +181,16 @@ const setupSchema = z.object({
     .max(1000),
   looks: z.record(idSchema, z.record(idSchema, z.unknown())),
 });
+/** The changes waiting, under an id of their own (each time they are written): the answered mark names it. */
 const waitingSchema = z.object({
   version: z.literal(1),
+  id: idSchema,
   changes: z
     .array(z.object({ before: setupSchema, after: setupSchema }))
     .min(1)
     .max(1000),
 });
+const answeredSchema = z.object({ id: idSchema });
 
 const written = (setup: ScreensSetup) => ({
   groups: setup.groups,
@@ -195,27 +214,31 @@ const read = (raw: z.infer<typeof setupSchema>): ScreensSetup => ({
   ),
 });
 
-/**
- * Keep the changes waiting on disk until they are answered (null: answered, or gone back: removed). Written whole
- * to a file of its own and on the disk itself before it is renamed into place, so a power cut leaves it whole or
- * not at all. Throws when it cannot (the question goes on all the same: keep-screens.ts).
- */
-export function keepWaiting(file: string, changes: readonly ScreensChange[] | null): void {
-  if (changes === null) {
-    rmSync(file, { force: true });
-    return;
+/** The rename on the disk too: its folder synced (not on Windows, which cannot open a folder for it). */
+function syncFolder(folder: string): void {
+  if (process.platform === 'win32') return;
+  try {
+    const fd = openSync(folder, 'r');
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    // The file is in place either way: a folder that cannot be synced leaves the rename to the system.
   }
+}
+
+/**
+ * Written whole to a file of its own, on the disk itself before it is renamed into place, so a power cut leaves
+ * it whole or not at all (`live-state.json` is written the same way, though not synced). Throws when it cannot.
+ */
+function writeWhole(file: string, text: string): void {
   const partial = `${file}.${randomUUID()}.tmp`;
   try {
     const fd = openSync(partial, 'w');
     try {
-      writeSync(
-        fd,
-        JSON.stringify({
-          version: 1,
-          changes: changes.map((c) => ({ before: written(c.before), after: written(c.after) })),
-        }),
-      );
+      writeSync(fd, text);
       fsyncSync(fd);
     } finally {
       closeSync(fd);
@@ -225,25 +248,176 @@ export function keepWaiting(file: string, changes: readonly ScreensChange[] | nu
     rmSync(partial, { force: true });
     throw error;
   }
+  syncFolder(dirname(file));
+}
+
+/** What the last run left in the file, as the next start finds it. */
+export type LeftWaiting =
+  | { kind: 'none' }
+  /** Changes nobody answered: the screens go back. */
+  | { kind: 'waiting'; changes: ScreensChange[] }
+  /** Answered before Drashti stopped, but still there: it could not be removed then, and the mark says so. */
+  | { kind: 'answered' }
+  /** Not what this Drashti writes (damaged, or another version's). */
+  | { kind: 'damaged'; reason: string }
+  /** There, but it cannot be read even a moment later (state-file.ts: locked, say). */
+  | { kind: 'unreadable'; reason: string };
+
+export interface WaitingFileOptions {
+  /** Remove a file (a test stands in a Windows lock). */
+  remove?(path: string): void;
+  /** How long before a file that cannot be read is read once more (state-file.ts; a test gives less). */
+  retryMs?: number;
 }
 
 /**
- * The changes the last run left waiting (it stopped before an answer: a crash, a power cut), taken off the disk:
- * null when none. One that is not what Drashti writes (damaged) is cleared; one that cannot be read even a moment
- * later (state-file.ts: locked, say) is left for the next start. Never throws: a start goes on whatever is there.
+ * The changes waiting for an answer, kept on disk until it comes (`keep-screens.json` in the user-data folder),
+ * so after a crash or a power cut the next start goes back. Each write has an id of its own. Answered, it is
+ * removed; one that cannot be removed then (a file held open for a moment on Windows) is named answered in a mark
+ * beside it (`keep-screens.json.answered`), so the next start never goes back over a change that was kept.
  */
-export function takeWaiting(file: string): ScreensChange[] | null {
-  const found = readStateTwice(file, (raw) => {
-    const waiting = waitingSchema.safeParse(raw);
-    return waiting.success ? waiting.data : null;
-  });
-  if (found.status === 'missing' || found.status === 'unreadable') return null;
-  try {
-    rmSync(file, { force: true });
-  } catch {
-    // Read again at the next start: going back a second time changes nothing.
+export class WaitingFile {
+  /** The id of the changes on disk, as written or read; null for none. */
+  private id: string | null = null;
+  private readonly answered: string;
+
+  constructor(
+    private readonly file: string,
+    private readonly options: WaitingFileOptions = {},
+  ) {
+    this.answered = `${file}.answered`;
   }
-  return found.status === 'ok'
-    ? found.value.changes.map((c) => ({ before: read(c.before), after: read(c.after) }))
-    : null;
+
+  /** Keep these changes waiting (all of them, the first first). Throws when they cannot be written. */
+  keep(changes: readonly ScreensChange[]): void {
+    const id = randomUUID();
+    writeWhole(
+      this.file,
+      JSON.stringify({
+        version: 1,
+        id,
+        changes: changes.map((c) => ({ before: written(c.before), after: written(c.after) })),
+      }),
+    );
+    this.id = id;
+  }
+
+  /**
+   * Nothing waits any more (answered, gone back, or dealt with at the start): removed, or else named answered.
+   * Throws only when neither can be done.
+   */
+  forget(): void {
+    const id = this.id;
+    this.id = null;
+    if (this.remove(this.file)) {
+      this.remove(this.answered);
+      return;
+    }
+    if (id === null) throw new Error('it cannot be removed, and what it holds cannot be read to mark it');
+    writeWhole(this.answered, JSON.stringify({ id }));
+  }
+
+  /** What the last run left (the next start, before the outputs open). */
+  read(): LeftWaiting {
+    const found = readStateTwice(
+      this.file,
+      (raw) => {
+        const waiting = waitingSchema.safeParse(raw);
+        return waiting.success ? waiting.data : null;
+      },
+      this.options.retryMs,
+    );
+    if (found.status === 'missing') return { kind: 'none' };
+    if (found.status === 'unreadable') return { kind: 'unreadable', reason: found.reason };
+    if (found.status === 'invalid') return { kind: 'damaged', reason: found.reason };
+    this.id = found.value.id;
+    const mark = readState(this.answered, (raw) => {
+      const answered = answeredSchema.safeParse(raw);
+      return answered.success ? answered.data : null;
+    });
+    if (mark.status === 'ok' && mark.value.id === found.value.id) return { kind: 'answered' };
+    return {
+      kind: 'waiting',
+      changes: found.value.changes.map((c) => ({ before: read(c.before), after: read(c.after) })),
+    };
+  }
+
+  /** Whether it is gone (or was never there). */
+  private remove(path: string): boolean {
+    try {
+      if (this.options.remove) this.options.remove(path);
+      else rmSync(path, { force: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** What the operator is told when the screens went back at the start. */
+export const WENT_BACK_AFTER_STOP =
+  'Drashti stopped before the change to the screens was kept, so they went back to how they were before it.';
+
+/**
+ * The next start, before the outputs open: changes the last run left unanswered go back (`goBack`, saved only),
+ * and only then are they cleared; one that fails to go back stays for the next start. Answered ones, damaged
+ * ones and those of the library before a restore (`otherLibrary`: a backup restored and in use at this start)
+ * are cleared, nothing going back; one that cannot be read is left. Each is said in the log. Answers what the
+ * operator is told, or null.
+ */
+export function afterStop(
+  waiting: WaitingFile,
+  deps: {
+    goBack(changes: ScreensChange[]): void;
+    otherLibrary: boolean;
+    log(level: 'info' | 'warn', message: string): void;
+  },
+): string | null {
+  const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+  const clear = (level: 'info' | 'warn', said: string) => {
+    try {
+      waiting.forget();
+      deps.log(level, `Keep these screens?: ${said}`);
+    } catch (error) {
+      deps.log('warn', `Keep these screens?: ${said}, but it could not be cleared (${message(error)})`);
+    }
+  };
+  const left = waiting.read();
+  if (left.kind === 'none') return null;
+  if (left.kind === 'unreadable') {
+    deps.log(
+      'warn',
+      `Keep these screens?: a change left waiting cannot be read (${left.reason}); left for the next start`,
+    );
+    return null;
+  }
+  if (left.kind === 'damaged') {
+    clear(
+      'warn',
+      `a change left waiting was not as this Drashti writes it (${left.reason}), so it was dropped`,
+    );
+    return null;
+  }
+  if (left.kind === 'answered') {
+    clear('info', 'a change answered before Drashti stopped was still on disk; cleared');
+    return null;
+  }
+  if (deps.otherLibrary) {
+    clear('info', 'a change left waiting was made to the library before the restore, so it was dropped');
+    return null;
+  }
+  try {
+    deps.goBack(left.changes);
+  } catch (error) {
+    deps.log(
+      'warn',
+      `Keep these screens?: could not go back after Drashti stopped (${message(error)}); left for the next start`,
+    );
+    return COULD_NOT_GO_BACK;
+  }
+  clear(
+    'warn',
+    'Drashti stopped before a change was answered, so the screens went back to how they were before it',
+  );
+  return WENT_BACK_AFTER_STOP;
 }
