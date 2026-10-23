@@ -33,9 +33,12 @@ function setup(options: { access?: CameraAccess } = {}) {
   const refreshed: VideoInput[] = [];
   const lines: string[] = [];
   // Renames carried into the library (Session 52): each with the list's names and how many changes were told as
-  // it ran, and what the library says when it cannot be written.
+  // it ran, and what the library says when it cannot be written. Then the rest of Drashti hearing of it (the
+  // review's fix): how many changes were told as it ran, and what goes wrong there.
   const renames: { from: string; to: string; listed: string[]; told: number }[] = [];
   let libraryRefuses: Error | null = null;
+  const heard: { listed: string[]; told: number }[] = [];
+  let hearingFails: Error | null = null;
   let cleared = 0;
   const waits: { ms: number; run: () => void; cancelled: boolean }[] = [];
   const camera: CameraSystem = {
@@ -72,6 +75,10 @@ function setup(options: { access?: CameraAccess } = {}) {
           told: views.length,
         });
         if (libraryRefuses) throw libraryRefuses;
+        return () => {
+          heard.push({ listed: service?.view().inputs.map((i) => i.name) ?? [], told: views.length });
+          if (hearingFails) throw hearingFails;
+        };
       },
       changed: (view) => views.push(view),
       statusChanged: (status) => statuses.push(status),
@@ -112,6 +119,11 @@ function setup(options: { access?: CameraAccess } = {}) {
     /** The library cannot be written from now on (a full disk, say). */
     refuseRenames: (error: Error) => {
       libraryRefuses = error;
+    },
+    heard,
+    /** The library takes the new name, but telling the rest of Drashti of it goes wrong. */
+    failHearing: (error: Error) => {
+      hearingFails = error;
     },
     up,
     cleared: () => cleared,
@@ -315,6 +327,28 @@ describe('a video input renamed in Media (Session 52)', () => {
     expect(lines.at(-1)).toBe(
       'A renamed video input’s playlist items and slides could not be changed, so it keeps its name: Error: database or disk is full',
     );
+  });
+
+  it('once the library has the new name the rename stands: the rest of Drashti hears of it before the list’s change is told, and a failure there is only logged', () => {
+    const { service, views, refreshed, renames, heard, lines, make, up, failHearing } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    up(one);
+    const told = views.length;
+    failHearing(new Error('the library could not be read again'));
+    expect(service.update(one.id, { name: 'Placeholder camera' })).toMatchObject({ ok: true });
+    // Heard once, after the library's write and before the list's change was told.
+    expect(renames).toHaveLength(1);
+    expect(heard).toEqual([{ listed: ['Placeholder camera'], told }]);
+    expect(lines.at(-1)).toBe(
+      'A renamed video input’s playlist items and slides took its new name, but not everything heard of it: Error: the library could not be read again',
+    );
+    // Never undone: the list, the file, the operator window and the screens all have the new name, as the library does.
+    const renamed = { ...one, name: 'Placeholder camera' };
+    expect(service.get(one.id)).toEqual(renamed);
+    expect(make().view()).toEqual({ inputs: [renamed] });
+    expect(views).toHaveLength(told + 1);
+    expect(views.at(-1)).toEqual({ inputs: [renamed] });
+    expect(refreshed).toEqual([renamed]);
   });
 });
 
