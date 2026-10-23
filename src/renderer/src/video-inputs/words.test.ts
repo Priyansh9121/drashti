@@ -8,6 +8,7 @@ import {
   nameProblem,
   nextInputName,
   refusedWords,
+  RENAMING,
   settingsLabel,
   stoppedInput,
   stoppedWords,
@@ -33,6 +34,12 @@ describe('naming a video input', () => {
     expect(nameProblem(' input 1 ', inputs, null)).toBe('Another video input is called “Input 1”.');
     expect(nameProblem('Input 1', inputs, 'a')).toBeNull();
     expect(nameProblem('Placeholder input', inputs, null)).toBeNull();
+  });
+
+  it('says, changing one, that a new name takes this computer’s playlist items and slides along, and that the spare computer’s input needs it too (Session 53)', () => {
+    expect(RENAMING).toBe(
+      'Renaming it takes this computer’s playlist items and slides that use it to the new name. The spare computer’s input needs the same new name.',
+    );
   });
 });
 

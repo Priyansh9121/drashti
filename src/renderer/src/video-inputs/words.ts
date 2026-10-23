@@ -135,3 +135,11 @@ export const NO_SOUND =
 /** A mixer's program that is Drashti's own picture makes a picture inside itself. */
 export const NOT_ITS_OWN_PICTURE =
   'If the mixer’s program shows Drashti’s own picture, showing it here makes a picture inside itself, over and over: put it up while the mixer shows a camera.';
+
+/**
+ * Changing one (Session 53): what a new name does. This computer's playlist items and slides that name the input
+ * take the new name (Session 52, main/db/input-renames.ts), but another computer finds its own input by the name,
+ * so the spare computer's needs the same one or there they say Not on this computer.
+ */
+export const RENAMING =
+  'Renaming it takes this computer’s playlist items and slides that use it to the new name. The spare computer’s input needs the same new name.';
