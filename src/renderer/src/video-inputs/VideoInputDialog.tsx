@@ -29,6 +29,7 @@ import {
   NO_SOUND,
   NOT_ITS_OWN_PICTURE,
   refusedWords,
+  RENAMING,
   settingsLabel,
 } from './words';
 
@@ -38,7 +39,7 @@ import {
  * inputs, on this computer. Nothing goes up from here: one click on it in Media does that. On a Mac not asked
  * yet, it says why before macOS asks for the camera, and where to turn it on if it was refused; on Windows, it
  * says plainly when the camera privacy setting is off. Changing an input (its name, its input, its fit) is the
- * same dialog.
+ * same dialog, which also says what a new name does (Session 53).
  */
 
 interface Found {
@@ -307,6 +308,10 @@ function InputDialog({ editing, platform }: { editing: VideoInput | null; platfo
           </div>
         )}
         <div className="space-y-1 text-xs text-muted">
+          {/* Changing one, while its Name shows (Session 53): there from the start, not only once a new name is
+              typed, so it is read before a name is chosen, and the dialog (centred) never grows or moves as one is
+              typed. */}
+          {editing && view === 'list' && <p data-testid="video-input-renaming">{RENAMING}</p>}
           <p>{NO_SOUND}</p>
           <p>{NOT_ITS_OWN_PICTURE}</p>
         </div>
