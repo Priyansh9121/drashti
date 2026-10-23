@@ -109,6 +109,21 @@ async function part(page: Page, name: string, parts: Locator[]) {
   await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', clip, animations: 'disabled' });
 }
 
+/**
+ * The bottom of a 1280 x 720 window: the layer bar whole and the status bar under it (Session 51: since the
+ * bar's keys sit under its words, a fixed 64 px cut its words in half).
+ */
+async function barAndStatus(page: Page, name: string) {
+  const bar = await page.getByTestId('layer-bar').boundingBox();
+  const top = Math.floor(bar?.y ?? 720 - 64);
+  await page.screenshot({
+    path: join(folder, `${name}.png`),
+    scale: 'css',
+    clip: { x: 0, y: top, width: 1280, height: 720 - top },
+    animations: 'disabled',
+  });
+}
+
 /** The placeholder sabha running: the kirtan's verse live, a message on the screens and a timer going. */
 async function running(win: Page) {
   const show = await setUpPlaceholderShow(win);
@@ -1488,12 +1503,7 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
   // An import with a problem says so in the status bar, in the warning colour (Session 16).
   await expect(win.getByTestId('import-result').getByLabel('Problems')).toBeVisible();
   await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
-  await win.screenshot({
-    path: join(folder, 'import-problem-status.png'),
-    scale: 'css',
-    clip: { x: 0, y: 720 - 64, width: 1280, height: 64 },
-    animations: 'disabled',
-  });
+  await barAndStatus(win, 'import-problem-status');
   await win.getByTestId('slide-thumb').nth(1).click();
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 3');
   await shot(win, 'pictures-slides');
@@ -1577,12 +1587,7 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(win.getByTestId('link-status')).toBeVisible();
     await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
-    await win.screenshot({
-      path: join(folder, 'import-link-status.png'),
-      scale: 'css',
-      clip: { x: 0, y: 720 - 64, width: 1280, height: 64 },
-      animations: 'disabled',
-    });
+    await barAndStatus(win, 'import-link-status');
     await win.getByTestId('link-status').click();
     await app.evaluate(() => {
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
