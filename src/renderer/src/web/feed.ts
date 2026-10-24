@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { EngineMessage } from '../../../shared/engine/protocol';
+import { ENGINE_STATE_VERSION } from '../../../shared/engine/state';
 import {
   type ByeReason,
   clockOffset,
@@ -11,14 +12,17 @@ import {
 } from '../../../shared/network';
 import { connectEngineSource } from '../engine/engine-store';
 import { setClockOffset } from '../render/clock';
-import { current, forgetPairing } from './device';
+import { current, forgetPairing, paired } from './device';
+import { shouldReload } from './new-version';
 
 /*
  * The state feed, as a phone, tablet or browser follows it: the whole engine
  * state, then each change, over one WebSocket that says who this device is
  * first. It reconnects by itself (sooner when the phone wakes or its Wi-Fi
  * comes back), and keeps this device's clock in step with the engine's: the
- * shortest of several round trips says the most.
+ * shortest of several round trips says the most. After Drashti is updated to
+ * a version whose state this page cannot read, the page loads itself again
+ * (Session 53, new-version.ts).
  */
 
 export type FeedState = 'connecting' | 'online' | 'offline';
@@ -79,6 +83,37 @@ function ping(): void {
   send({ type: 'clock', t0: Date.now() });
 }
 
+/** When this tab last loaded its page again for a new version (Session 53). */
+const RELOADED_KEY = 'drashti.reloadedForVersion';
+/** The same, where the browser keeps nothing for the tab: then at most once on this page load. */
+let reloadedAt: number | null = null;
+
+function lastReload(): number | null {
+  try {
+    const kept = sessionStorage.getItem(RELOADED_KEY);
+    const at = kept === null ? NaN : Number(kept);
+    return Number.isFinite(at) ? at : reloadedAt;
+  } catch {
+    return reloadedAt;
+  }
+}
+
+/**
+ * The feed's engine state is of a version this page's code cannot read: Drashti was updated while it was open
+ * (Session 53). The page loads itself again, the new version's, at most once a minute (new-version.ts says why).
+ */
+function reloadForNewVersion(version: unknown): void {
+  const now = Date.now();
+  if (!shouldReload({ version, pairingKept: paired() !== null, now, last: lastReload() })) return;
+  reloadedAt = now;
+  try {
+    sessionStorage.setItem(RELOADED_KEY, String(now));
+  } catch {
+    // Not kept: at most once on this page load.
+  }
+  location.reload();
+}
+
 function startClock(): void {
   samples = [];
   for (let i = 0; i < 5; i++) setTimeout(ping, i * 150);
@@ -95,6 +130,8 @@ function receive(message: ToDevice): void {
       for (const l of onlineListeners) l();
       return;
     case 'engine':
+      // One this page cannot read means Drashti was updated: its copy would stay the old picture for good.
+      if (message.message.version !== ENGINE_STATE_VERSION) reloadForNewVersion(message.message.version);
       engine?.(message.message);
       return;
     case 'clock': {
