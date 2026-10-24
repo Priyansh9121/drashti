@@ -13,7 +13,7 @@ The old presentation program stays installed and untouched all day. Drashti only
 - [ ] **The OS versions** from the audit reports: the Mac needs macOS 13 (Ventura) or later, the PC 64-bit Windows 10 or 11. If either is older, stop and decide what to do first; do not update a show computer's OS on the day.
 - [ ] **Which computer is Main**, and whether the other is a node or a Main of its own (admin guide, section 1).
 - [ ] **The network**: a cable between the computers if possible, and Main's address reserved in the router by whoever looks after the mandir's network (admin guide, section 8).
-- [ ] **The installers**: the same Drashti version for both computers, and the version before it, on a USB drive.
+- [ ] **The installers**: the same Drashti version for both computers, on a USB drive (the setup kit holds that version only).
 - [ ] **A private or unlisted YouTube stream** ready in YouTube Studio for the stream test (never the mandir's public one).
 - [ ] **Bring**: two USB drives (one stays plugged in for backups), the key card printed from this version (end of `docs/parallel-run.md`; throw away any older card, as **F5** to **F8** and the logo's key have changed), a notebook, the operators' presentation clicker and any MIDI controller.
 
