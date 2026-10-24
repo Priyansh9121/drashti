@@ -33,17 +33,29 @@ function summary(r: Extract<MakeTranslitResult, { ok: true }>): string {
  * changed by hand is never replaced without asking.
  */
 export function MakeTransliteration({ doc }: { doc: PresentationDoc }) {
-  const [style, setStyle] = useState<TranslitStyle>('plain');
+  // The style remembered for next time: null until the main process has said which, each time the dialog
+  // opens, and until then no style can be chosen and nothing made (Session 53). Its answer could come after
+  // a choice and put the old style back, the main process keeping the one chosen, and Make transliteration
+  // could run in Plain with accent marks remembered.
+  const [style, setStyle] = useState<TranslitStyle | null>(null);
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [said, setSaid] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
   const name = useId();
   useEffect(() => {
-    void window.drashti.kirtans.getTranslitStyle().then(setStyle);
+    // This opening's answer only (React asks twice in development).
+    let live = true;
+    void window.drashti.kirtans.getTranslitStyle().then((remembered) => {
+      if (live) setStyle(remembered);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
   const hasWords = doc.kirtan?.tracks.some((l) => l === 'gu' || l === 'hi') ?? false;
 
   const make = async (manual: ManualLines) => {
+    if (style === null) return;
     setBusy(true);
     setSaid(null);
     const r = await window.drashti.kirtans.makeTransliteration(doc.id, style, manual);
@@ -74,7 +86,7 @@ export function MakeTransliteration({ doc }: { doc: PresentationDoc }) {
         Made from each slide’s Gujarati lines (or Hindi), as the words are said. Lines Drashti makes can be
         edited; a line you change is yours, and is kept when it is made again unless you choose to replace it.
       </p>
-      <fieldset className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      <fieldset className="flex flex-wrap gap-x-4 gap-y-1 text-sm" disabled={style === null}>
         <legend className="sr-only">Style</legend>
         {(
           [
@@ -98,7 +110,11 @@ export function MakeTransliteration({ doc }: { doc: PresentationDoc }) {
           </label>
         ))}
       </fieldset>
-      <Button disabled={busy || !hasWords} data-testid="make-translit" onClick={() => void make('ask')}>
+      <Button
+        disabled={busy || !hasWords || style === null}
+        data-testid="make-translit"
+        onClick={() => void make('ask')}
+      >
         Make transliteration
       </Button>
       {!hasWords && <p className="text-xs text-muted">It has no Gujarati or Hindi words to make it from.</p>}
