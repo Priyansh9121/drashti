@@ -18,6 +18,7 @@ import {
   savedLive,
 } from './helpers';
 import { makeTestTone } from './test-media';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
  * A slide's sound cue whose file is missing (Session 53): a presentation imported with its sound not found (on
@@ -25,12 +26,18 @@ import { makeTestTone } from './test-media';
  * for it, so what is playing carries on (the sound of the slide before, an audio playlist's music), and LIVE says
  * which file, in Pro Mode and Simple Mode; it says so again after an unexpected restart; and once the file is found
  * (Find missing media…) it says so no more, and the slide plays it the next time it goes up. Until then the missing
- * file went on the audio layer all the same: nothing was heard, what played stopped, and nothing was said.
+ * file went on the audio layer all the same: nothing was heard, what played stopped, and nothing was said. With its
+ * background's file missing too, LIVE's two lines fit CI's window (1024 × 645) in both modes, with an audio playlist
+ * playing and without: nothing over them, Simple Mode's music strip clear of them, Pro Mode's Next in reach.
  * Generated tones and placeholder names only.
  */
 
 const FILE = 'Placeholder hymn.wav';
 const LINE = `File missing: “${FILE}”. The sound stays as it was.`;
+const BACKDROP = 'Placeholder backdrop.png';
+const BACKDROP_LINE = `File missing: “${BACKDROP}”. The background stays as it was.`;
+/** LIVE's two lines, a slide's background file and its sound file missing. */
+const LINES = ['live-file-missing', 'live-sound-missing'] as const;
 
 const line = (text: string) => ({ text: [{ rtf: cocoaRtf([[text, 80, [255, 255, 255]]]) }] });
 
@@ -54,6 +61,78 @@ async function plays(audio: Page, mediaId: string, startedAt: number | undefined
   await expect(sound).toHaveCount(1);
   await expect(sound).toHaveAttribute('data-key', `audio:${mediaId}@${String(startedAt)}`);
   await expect.poll(() => sound.evaluate((el: HTMLAudioElement) => !el.paused)).toBe(true);
+}
+
+/** An audio playlist of this one track, made and played (in Pro Mode: Simple Mode changes no list); its id. */
+const playMusic = (win: Page, trackId: string) =>
+  win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const list = await d.music.create('Placeholder before sabha');
+    if (!list.ok || !list.id) throw new Error('no audio playlist made');
+    await d.music.addTracks(list.id, [id], null);
+    const played = await d.music.play(list.id, 0);
+    if (!played.ok) throw new Error(played.message);
+    return list.id;
+  }, trackId);
+
+/** Simple Mode, or Pro Mode again (with the word that leaving Simple Mode asks for), the window drawn so. */
+async function switchTo(win: Page, mode: 'simple' | 'pro'): Promise<void> {
+  const done = await win.evaluate(
+    (m) => (globalThis as PageGlobals).drashti.app.setMode(m, m === 'pro' ? 'pro' : undefined),
+    mode,
+  );
+  expect(done.ok).toBe(true);
+  if (mode === 'simple') await expect(win.getByTestId('simple-mode')).toBeVisible();
+  else await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+}
+
+/**
+ * These, by their test ids, as an operator meets them in the window as it is laid out now: each shown whole inside
+ * it, with nothing over it (what is drawn at its middle is it, or inside it), and none overlapping `clearOf` (Simple
+ * Mode's music strip). Waits for the layout to settle, and says what is wrong when it does not.
+ */
+async function expectInWindow(
+  win: Page,
+  ids: readonly string[],
+  clearOf: string | null,
+  what: string,
+): Promise<void> {
+  for (const id of ids) await expect(win.getByTestId(id), `${id}, ${what}`).toBeVisible();
+  const problems = () =>
+    win.evaluate(
+      ({ ids, clearOf }) => {
+        const out: string[] = [];
+        const at = (r: DOMRect) =>
+          `${String(Math.round(r.left))},${String(Math.round(r.top))} to ${String(Math.round(r.right))},${String(Math.round(r.bottom))}`;
+        const away = clearOf === null ? null : document.querySelector(`[data-testid="${clearOf}"]`);
+        if (clearOf !== null && !away) out.push(`there is no ${clearOf}`);
+        const a = away?.getBoundingClientRect();
+        for (const id of ids) {
+          const el = document.querySelector(`[data-testid="${id}"]`);
+          if (!el) {
+            out.push(`there is no ${id}`);
+            continue;
+          }
+          const r = el.getBoundingClientRect();
+          if (r.left < -0.5 || r.top < -0.5 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5)
+            out.push(
+              `${id} (${at(r)}) is not inside the window (${String(innerWidth)} × ${String(innerHeight)})`,
+            );
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          if (!hit || (hit !== el && !el.contains(hit)))
+            out.push(
+              `${id} is under ${hit?.closest('[data-testid]')?.getAttribute('data-testid') ?? hit?.tagName.toLowerCase() ?? 'nothing'}`,
+            );
+          if (a && r.left < a.right && a.left < r.right && r.top < a.bottom && a.top < r.bottom)
+            out.push(`${clearOf ?? ''} (${at(a)}) overlaps ${id} (${at(r)})`);
+        }
+        return out;
+      },
+      { ids, clearOf },
+    );
+  await expect
+    .poll(problems, { message: `${what}, at ${String(CI_WINDOW.width)} × ${String(CI_WINDOW.height)}` })
+    .toEqual([]);
 }
 
 test('a missing file as a slide’s sound: nothing goes up for it, what is playing carries on (a sound, an audio playlist’s music), and LIVE says why in Pro and Simple Mode; again after a restart, and once found it plays', async () => {
@@ -135,25 +214,14 @@ test('a missing file as a slide’s sound: nothing goes up for it, what is playi
   await plays(audio, tuneId, tuneUp?.startedAt);
 
   // Simple Mode's LIVE says why, as Pro Mode's does.
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await switchTo(win, 'simple');
   await expect(win.getByTestId('live-sound-missing')).toHaveText(LINE);
-  const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
-  expect(pro.ok).toBe(true);
-  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  await switchTo(win, 'pro');
 
   // An audio playlist's music plays on under it too, never stopped for it.
   await dispatch(win, { type: 'goLive', presentationId, slideIndex: 2 });
   await expect(win.getByTestId('live-sound-missing')).toHaveCount(0);
-  const listId = await win.evaluate(async (id) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const list = await d.music.create('Placeholder before sabha');
-    if (!list.ok || !list.id) throw new Error('no audio playlist made');
-    await d.music.addTracks(list.id, [id], null);
-    const played = await d.music.play(list.id, 0);
-    if (!played.ok) throw new Error(played.message);
-    return list.id;
-  }, trackId);
+  const listId = await playMusic(win, trackId);
   await expect.poll(async () => (await state(win)).layers.audio?.music?.playlistId).toBe(listId);
   const musicUp = (await state(win)).layers.audio;
   expect(musicUp).toMatchObject({ mediaId: trackId });
@@ -200,4 +268,66 @@ test('a missing file as a slide’s sound: nothing goes up for it, what is playi
   const hymnUp = (await state(win2)).layers.audio;
   await plays(await audioPage(second.app), hymnId, hymnUp?.startedAt);
   await second.app.close();
+});
+
+test('a slide whose background and sound files are both missing: LIVE’s two lines fit CI’s window, 1024 × 645, in Pro and Simple Mode, with an audio playlist playing and without; nothing over them, the music strip clear of them, and Next in reach', async () => {
+  test.setTimeout(150_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-missing-both-'));
+  const track = makeTestTone(join(dir, 'Placeholder music.wav'), { seconds: 300, hz: 330 });
+  const show = join(dir, 'Placeholder Missing Both.pro6');
+  writeFileSync(
+    show,
+    pp6Presentation({
+      uuid: 'E2E-MISSING-BOTH',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [
+            {
+              // Another computer's drive: neither file is found here, nor beside the presentation.
+              background: { path: `/Volumes/Placeholder drive/${BACKDROP}`, kind: 'image' },
+              audio: `/Volumes/Placeholder drive/${FILE}`,
+              ...line('Placeholder over two missing files'),
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const [presentationId = ''] = await importAndGetIds(win, [show, track]);
+  const media = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+  const trackId = media.find((m) => m.name.startsWith('Placeholder music'))?.id ?? '';
+  expect(trackId).not.toBe('');
+
+  // In CI's window, the slide up: LIVE names both files.
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  await expect
+    .poll(async () => (await state(win)).layers.slide)
+    .toMatchObject({ fileMissing: BACKDROP, soundMissing: FILE });
+  await expect(win.getByTestId('live-file-missing')).toHaveText(BACKDROP_LINE);
+  await expect(win.getByTestId('live-sound-missing')).toHaveText(LINE);
+
+  // No audio playlist yet: Pro Mode's two lines, and Next under them; Simple Mode's, with no music strip.
+  await expectInWindow(win, [...LINES, 'show-next'], null, 'Pro Mode, no music');
+  await switchTo(win, 'simple');
+  await expect(win.getByTestId('simple-music')).toHaveCount(0);
+  await expectInWindow(win, LINES, null, 'Simple Mode, no music');
+
+  // An audio playlist playing: Pro Mode again, then Simple Mode, whose music strip says what plays, clear of them.
+  await switchTo(win, 'pro');
+  const listId = await playMusic(win, trackId);
+  await expect.poll(async () => (await state(win)).layers.audio?.music?.playlistId).toBe(listId);
+  await expectInWindow(win, [...LINES, 'show-next'], null, 'Pro Mode, the music playing');
+  await switchTo(win, 'simple');
+  await expect(win.getByTestId('simple-music')).toContainText('Music: Placeholder before sabha');
+  await expect(win.getByTestId('simple-music-pause')).toBeVisible();
+  await expectInWindow(win, LINES, 'simple-music', 'Simple Mode, the music playing');
+  // Both still said, and the music never stopped for the slide's sound.
+  expect((await state(win)).layers.slide).toMatchObject({ fileMissing: BACKDROP, soundMissing: FILE });
+  expect((await state(win)).layers.audio).toMatchObject({ mediaId: trackId, music: { playlistId: listId } });
+  await app.close();
 });
