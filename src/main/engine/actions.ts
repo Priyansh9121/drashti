@@ -47,19 +47,20 @@ export type EngineAction =
       /** How it comes on (a dissolve); left out for a cut. Kept when the same slide is shown again. */
       transition?: Transition;
       /**
-       * Its cues ran (Session 51): the video input its background cue named that this computer has none of, or
-       * null when it named none or the input was there. Left out when its cues did not run (new content for the
-       * slide up, restart recovery): the slide up keeps what it said.
+       * The video input its background cue names that this computer has none of (Session 51), or null when it
+       * names none or the input is here: as its cues found it as it went up, as restart recovery finds it again
+       * (Session 53: its cues still do not run), and, for new content for the slide up (an edit), as the slide up
+       * said. Left out, the slide up keeps what it said.
        */
       inputMissing?: string | null;
       /**
        * The same for its background cue's file (Session 52): its name when it is missing, null when it is there or
-       * the cue names none; left out as above. Restart recovery says it again (its cues still do not run).
+       * the cue names none.
        */
       fileMissing?: string | null;
       /**
        * The same for its sound cue's file (Session 53): its name when it is missing, null when it is there or the
-       * slide has no sound; left out as above. Restart recovery says it again.
+       * slide has no sound.
        */
       soundMissing?: string | null;
       /** Its videos' start and end points as the library has them now (Session 52); left out when none has any. */

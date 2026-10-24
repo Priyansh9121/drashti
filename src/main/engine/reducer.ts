@@ -62,8 +62,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       const current = state.layers.slide;
       const samePlace =
         current !== null && current.presentationId === presentationId && current.slideIndex === slideIndex;
-      // The video input its cue named that is not on this computer (Session 51): as its cues found it now, or,
-      // when they did not run, as the slide up said.
+      // The video input its cue named that is not on this computer (Session 51): as the action says (its cues as they
+      // found it, restart recovery's, an edit's), or, left out, as the slide up said.
       const missing =
         inputMissing === undefined ? (samePlace ? current.inputMissing : undefined) : inputMissing;
       // The same for its background cue's file that is missing (Session 52), and its sound cue's (Session 53).
