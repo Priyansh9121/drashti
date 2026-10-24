@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { LiveFit } from '../../../shared/engine/state';
 import type { VideoInput } from '../../../shared/video-inputs';
 import { inputDeviceNames } from '../render/video-input-state';
@@ -116,6 +116,7 @@ function InputDialog({ editing, platform }: { editing: VideoInput | null; platfo
   const [typed, setTyped] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const renamingId = useId();
   // Whether Drashti may use the cameras, asked afresh as it opens.
   useEffect(() => {
     void readAccess();
@@ -146,6 +147,8 @@ function InputDialog({ editing, platform }: { editing: VideoInput | null; platfo
   const chosen = device !== null && names.includes(device) ? device : null;
   const nameError = nameProblem(name, inputs, editing?.id ?? null);
   const ready = view === 'list' && nameError === null && !saving;
+  // What a new name does (Session 53): said while changing one and its Name shows.
+  const renaming = editing !== null && view === 'list';
   const save = async () => {
     if (!ready || chosen === null) return;
     setSaving(true);
@@ -161,6 +164,7 @@ function InputDialog({ editing, platform }: { editing: VideoInput | null; platfo
       subtitle="A camera or capture input on this computer (a video mixer’s program through its USB output, say), named in Media’s Video inputs. Nothing goes up until you click it there."
       onClose={closeInputDialog}
       closeLabel={editing ? `Close Change “${editing.name}”` : 'Close Add a Video Input'}
+      describedBy={renaming ? renamingId : undefined}
       size="lg"
       testId="video-input-dialog"
       footer={
@@ -309,9 +313,14 @@ function InputDialog({ editing, platform }: { editing: VideoInput | null; platfo
         )}
         <div className="space-y-1 text-xs text-muted">
           {/* Changing one, while its Name shows (Session 53): there from the start, not only once a new name is
-              typed, so it is read before a name is chosen, and the dialog (centred) never grows or moves as one is
-              typed. */}
-          {editing && view === 'list' && <p data-testid="video-input-renaming">{RENAMING}</p>}
+              typed, so it is read before a name is chosen, and it never makes the centred dialog grow or move as
+              one is typed. The dialog's description, so a screen reader says it as the dialog opens (not the
+              Name field's, which Field ties to its error line). */}
+          {renaming && (
+            <p id={renamingId} data-testid="video-input-renaming">
+              {RENAMING}
+            </p>
+          )}
           <p>{NO_SOUND}</p>
           <p>{NOT_ITS_OWN_PICTURE}</p>
         </div>

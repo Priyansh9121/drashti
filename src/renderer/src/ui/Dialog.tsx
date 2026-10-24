@@ -176,7 +176,10 @@ export function Dialog({
   titleWraps?: boolean;
   /** Its body is text only and may scroll: it takes the focus, so the keyboard can scroll it. */
   bodyFocusable?: boolean;
-  /** The id of the text that explains it (alert dialogs). */
+  /**
+   * The id of the text that explains it, said with its title as it opens (alert dialogs; changing a video input,
+   * Session 53).
+   */
   describedBy?: string;
   className?: string;
   /** data-testid on the dialog element (the one with the role). */
