@@ -395,16 +395,18 @@ test('renaming an input in Media carries its playlist item and the slide naming 
   await expect(
     dialog.getByTestId('video-input-device').and(dialog.locator(`[data-name="${DEVICE}"]`)),
   ).toBeVisible({ timeout: 15_000 });
-  // It says what a new name does from the start, before one is typed (Session 53), in a muted line.
+  // It says what a new name does from the start, before one is typed (Session 53), in a muted line: the dialog's
+  // description, so a screen reader says it as the dialog opens.
   const renaming = dialog.getByTestId('video-input-renaming');
   await expect(renaming).toHaveText(RENAMING);
+  await expect(dialog).toHaveAccessibleDescription(RENAMING);
   await settled(win);
   const height = () => dialog.evaluate((d) => d.getBoundingClientRect().height);
   const before = await height();
   await dialog.getByTestId('video-input-name').fill(RENAMED);
   await expect(dialog.getByTestId('video-input-save')).toBeEnabled({ timeout: 15_000 });
-  // The same once the name differs, so the dialog never grows as it is typed; it fits CI's window, the line and
-  // its buttons in reach.
+  // The same once the name differs: the line never makes the dialog grow as a name is typed. It fits CI's window,
+  // the line and its buttons in reach.
   await expect(renaming).toHaveText(RENAMING);
   expect(await height()).toBe(before);
   await expectFits(dialog, 'Change “Placeholder input” at 1024 × 645');
