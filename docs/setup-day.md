@@ -105,10 +105,13 @@ The old presentation program stays installed and untouched all day. Drashti only
 ## 7. The stream (the computer that streams)
 
 - [ ] Stream settings: the key from YouTube Studio (pasted once; Drashti never shows it again), the camera, the mixer's line in (or the video mixer's USB output, which can be the stream's **Sound input** too), **Good** or **Weak internet** from a speed test. Then, in the Stream panel's recording part, **Choose a folder…** for the recordings.
+- [ ] **The stream's card in Screens**: **Screens**, the **YouTube (the stream)** card, **Find cameras and sound inputs**: its picture shows the real camera, and nothing goes on air.
 - [ ] Write down the **Encoder** line the Stream panel shows (a graphics encoder such as VideoToolbox, NVENC, Quick Sync or AMF is best).
-- [ ] **On the Mac that streams**: during the test stream, write down the frames a second the Stream panel shows (it should hold at the profile's 30). CI's Mac, a virtual machine, managed only about 9: a real Mac has never been measured.
+- [ ] **On the Mac that streams**: during the test stream, write down the frames a second the Stream panel shows (it should hold at the profile's 30). CI's Mac, a virtual machine, managed only about 9: a real Mac has never been measured. Once the stream has ended, **Go live…** again at once: it goes on air again as the first time.
 - [ ] **Go live** on the unlisted stream for ten minutes while changing slides and playing a video, and for a minute with **Input 1** up and the stream's **Layout** on **Slides**. In YouTube Studio: the picture (Input 1 as the hall sees it, a slide's words over it), the sound (from the video mixer's USB output, if it is the **Sound input**), the lips in time with the words (else raise **Sound delay**).
+- [ ] **While on air**, on the same unlisted stream: switch between **Camera and words** and **Slides** and back, and YouTube shows each with no break. Unplug the stream's sound input (the mixer's cable into the computer) for a few seconds: **No sound** shows beside **ON AIR**, with a yellow notice; plugged back in, both go by themselves. If there is a drop folder, put a picture in it: it waits, and comes into **Media** once the stream has ended.
 - [ ] End it, open the recording in VLC, and do it all a second time on another day before a real sabha.
+- [ ] **Several platforms**, only if the mandir streams to Facebook too: in **Stream settings**, **Also send to another platform**, with the key of a private Facebook test stream, and the **Several platforms** preset (two platforms need about 14 Mbps of upload: check the speed test). Go live to both private streams: ON AIR says **2 of 2**, and each shows the picture and the sound. Then end it.
 
 ## 8. The checks
 
