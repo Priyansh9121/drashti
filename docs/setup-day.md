@@ -15,7 +15,7 @@ The old presentation program stays installed and untouched all day. Drashti only
 - [ ] **The network**: a cable between the computers if possible, and Main's address reserved in the router by whoever looks after the mandir's network (admin guide, section 8).
 - [ ] **The installers**: the same Drashti version for both computers, and the version before it, on a USB drive.
 - [ ] **A private or unlisted YouTube stream** ready in YouTube Studio for the stream test (never the mandir's public one).
-- [ ] **Bring**: two USB drives (one stays plugged in for backups), the printed key card (end of `docs/parallel-run.md`), a notebook, the operators' presentation clicker and any MIDI controller.
+- [ ] **Bring**: two USB drives (one stays plugged in for backups), the key card printed from this version (end of `docs/parallel-run.md`; throw away any older card, as **F5** to **F8** and the logo's key have changed), a notebook, the operators' presentation clicker and any MIDI controller.
 
 ## 1. Install (both computers)
 
@@ -23,9 +23,11 @@ The old presentation program stays installed and untouched all day. Drashti only
 - [ ] **On the Mac, the first time**: open the `.dmg`. Its window shows the two steps, with an arrow from Drashti to Applications: drag **Drashti** to **Applications**, then open it from Applications. If the Mac says Drashti can't be opened, press **Done**, then in **System Settings**, **Privacy & Security**, press **Open Anyway** beside the message about Drashti, and confirm with the password or Touch ID. **Open Anyway** only shows there after that first try to open Drashti. Once on each Mac.
 - [ ] **For whoever looks after Drashti**, instead of **Open Anyway**: once Drashti is in Applications, run `xattr -dr com.apple.quarantine /Applications/Drashti.app` in **Terminal**, and Drashti opens without the question.
 - [ ] **On the Windows PC, the first time**: open the installer. If Windows says "Windows protected your PC", press **More info**, then **Run anyway**.
+- [ ] **On an Intel Mac**, if the mandir has one (the old program's Mac may be; **About This Mac** shows **Processor**: Intel): install the Intel Mac's file, check Drashti starts, and do the whole rehearsal (section 8) on it too. It has never yet run on a real Intel Mac.
 - [ ] On the first start, choose **Main** on the first computer, and **Node** on the second if it will be one.
-- [ ] Drashti shows its own logo, not a blue atom: in the Dock and Cmd+Tab on a Mac, in the taskbar and the Start menu on Windows. If a Mac still shows an older picture, restart it.
+- [ ] Drashti shows its own logo, not a blue atom: in the Dock and Cmd+Tab on a Mac (on macOS 26 too, if a Mac runs it), in the taskbar, Alt+Tab and the Start menu on Windows. If a Mac still shows an older picture, restart it.
 - [ ] Write down the version on each, from the right of the status bar along the bottom of the window (a node's is in Main's screens dashboard, once it is paired). They must be the same.
+- [ ] **Check for Updates against the real release** (until now only tried against a test server): **Help**, **Check for Updates…**, then **Check now**, with the internet on (on Windows press **Alt** for the menu). It names this version, 1.0.0-alpha.12, and says **It is the newest.**
 - [ ] **On a computer that had an earlier Drashti** (from the parallel-run evenings, or a laptop it was tried on): after this version's first start, the two placeholder presentations, **Language test slides** and **Sample kirtan (placeholder)**, are gone from the library. One that was changed, or used in a playlist, a template or an arti schedule, stays, and the log says why (**Help**, **Save Diagnostics…**). Then make a throwaway presentation (**New…**, a line of placeholder words), open it in the middle, press **⋯** (Presentation actions) beside **Edit slides**, then **Delete…**: Drashti asks first, the middle then says **Nothing chosen yet**, and **Undo** brings the presentation back.
 
 ## 2. Bring in the library (Main)
