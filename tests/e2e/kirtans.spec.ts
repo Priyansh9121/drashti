@@ -12,6 +12,7 @@ import {
   operatorPage,
   operatorReady,
   outputPage,
+  setTicked,
   setUpScreen,
   showExtras,
 } from './helpers';
@@ -285,7 +286,7 @@ test('make transliteration: lines made by Drashti, a line changed by hand kept o
 
   // Made again with accent marks: it asks about the line changed by hand; kept, the other is made again.
   await win.getByTestId('kirtan-button').click();
-  await section.getByTestId('translit-style-iso').check();
+  await setTicked(section.getByTestId('translit-style-iso'), true);
   await section.getByTestId('make-translit').click();
   const ask = win.getByTestId('translit-ask');
   await expect(ask).toContainText('1 transliteration line was changed by hand.');
