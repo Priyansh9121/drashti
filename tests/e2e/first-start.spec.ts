@@ -1,7 +1,5 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import type { DisplayInfo } from '../../src/shared/screens';
-import { displayToOffer } from '../../src/shared/setup';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   chooseMenuItem,
@@ -36,17 +34,14 @@ const engine = (win: Page) =>
   });
 
 /**
- * The display the first start offers for the hall's picture (Session 44's Show on), by the window's own rule
- * (ShowOn.tsx's useDisplayOffer): none on CI's computers, whose one display has the controls; a second monitor
- * plugged in here, free for the hall, is offered (Session 53).
+ * Whether a display is free for the hall's picture, so that the first start offers Show on (Session 44).
+ * Counted here, not taken from Drashti's own rule (displayToOffer), so a wrong offer fails (Session 53):
+ * nothing is set up at a first start and these tests have no pretend displays, so one is free exactly when
+ * Drashti lists more than the controls' own display. Never on CI's computers, which have one; a second
+ * monitor plugged in here is.
  */
-const offered = async (win: Page): Promise<DisplayInfo | null> => {
-  const { snapshot, state } = await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    return { snapshot: await d.screens.get(), state: await d.setup.state() };
-  });
-  return state.offer ? displayToOffer(snapshot, state.controlsDisplayId) : null;
-};
+const displayFree = (win: Page): Promise<boolean> =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.screens.get()).displays.length > 1);
 
 /** The enabled primary buttons in the window, outside dialogs, by their words. */
 const primaries = (win: Page) =>
@@ -81,7 +76,7 @@ test('the lamp lights once, then Set Up Screens… opens the wizard at its Scree
   await expectNoSeriousA11yIssues(win, 'the first start’s welcome');
   // The one primary has the keyboard: Set Up Screens…, or with a display free for the hall (a second monitor
   // plugged in here; CI's computers have none) Show on <it>, Set Up Screens… beside it (show-on.spec.ts).
-  const primary = (await offered(win))
+  const primary = (await displayFree(win))
     ? welcome.getByTestId('show-on')
     : welcome.getByRole('button', { name: 'Set Up Screens…' });
   await expect(primary).toBeFocused();
@@ -130,7 +125,7 @@ test('Skip for now: the empty places lead, step 1’s Import… the one primary;
   // Step 1's Import… the one primary; with a display free for the hall (a second monitor plugged in here; CI's
   // computers have none), the offer under the header has its own Show on, as a notice's next step does
   // (show-on.spec.ts).
-  const free = await offered(win);
+  const free = await displayFree(win);
   expect(await primaries(win)).toEqual(free ? [expect.stringMatching(/^Show on /u), 'Import…'] : ['Import…']);
   await expectNoSeriousA11yIssues(win, 'the window after Skip for now');
   await app.close();
