@@ -63,6 +63,10 @@ test('on the first start: identify, what each output shows and its languages, a 
   const every = await win.evaluate(async () =>
     (await (globalThis as PageGlobals).drashti.screens.get()).displays.map((d) => d.id),
   );
+  // Drashti lists the computer's own displays, as Electron has them, and the test's one pretend copy: a display
+  // listed twice, or one the computer does not have, fails (Session 53).
+  const own = await app.evaluate(({ screen }) => screen.getAllDisplays().length);
+  expect(every).toHaveLength(own + 1);
   await expect(wizard.getByTestId('setup-display')).toHaveCount(every.length);
   await wizard.getByTestId('setup-identify').click();
   await expect
