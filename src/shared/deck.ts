@@ -90,8 +90,11 @@ export interface DeckSlide {
   media: DeckMedia[];
   /** Set in Drashti's editor: its own transition into this slide; left out, the deck's own. */
   drashti?: DeckDrashtiTransition;
-  /** Set in Drashti's editor: its own transition for a step (by index, from 1). */
-  stepTransitions?: Record<number, Transition>;
+  /**
+   * Set in Drashti's editor: its own transition for a step (by index, from 1), over the step's own motion or instead
+   * of it (C2's show: 'instead' goes from the step before's last frame to the step's own, its clip not played).
+   */
+  stepTransitions?: Record<number, DeckDrashtiTransition>;
 }
 
 /** How the deck came in, for the import report and the library. */

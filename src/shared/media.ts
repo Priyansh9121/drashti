@@ -134,6 +134,12 @@ export interface PlaybackSeek {
    * plays it on from there, as a new jump. Left out while it plays.
    */
   paused?: boolean;
+  /**
+   * Not played yet (Session 54, C2): a deck's video or sound before its click, waiting at its start point with its
+   * poster shown (or hidden, when its deck says so). Always paused too; Play or a move from the time bar plays it or
+   * moves it, as any pause, and it is no longer waiting.
+   */
+  waiting?: boolean;
 }
 
 export interface PlaybackClock {

@@ -67,6 +67,10 @@ export interface SavedLive {
     shownAt?: number;
     /** Where the time bar had moved or paused its videos (Session 54): put back, they carry on from there. */
     seeks?: VideoSeeks;
+    /** A deck's slide's step, when it was shown and how far into its clip (Session 54, C2): put back on that step. */
+    step?: number;
+    stepAt?: number;
+    stepFromMs?: number;
   } | null;
   /** The playlist item being played, so Next carries on after the restart. */
   playlist: PlaylistCursor | null;
@@ -118,6 +122,8 @@ const seekSchema: z.ZodType<PlaybackSeek> = z.object({
   at: z.number(),
   toMs: z.number().min(0),
   paused: z.boolean().optional(),
+  // A deck's video or sound not played yet (Session 54, C2).
+  waiting: z.boolean().optional(),
 });
 /** Where the time bar moved or paused a slide's, a prop's, the logo's or the box's videos, by file (Session 54). */
 const seeksSchema: z.ZodType<VideoSeeks> = z.record(idSchema, seekSchema);
@@ -216,6 +222,10 @@ const savedSchema = z.object({
       shownAt: z.number().optional(),
       // Where the time bar left its videos (Session 54); files saved before have none.
       seeks: seeksSchema.optional(),
+      // A deck's slide's step, when it was shown and how far into its clip (Session 54, C2); none for any other.
+      step: z.number().int().min(0).optional(),
+      stepAt: z.number().optional(),
+      stepFromMs: z.number().min(0).optional(),
     })
     .nullable(),
   // Files saved before playlists could be played have none.
@@ -296,6 +306,10 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
             arrangementId: state.live.arrangementId,
             shownAt: slide.shownAt,
             ...(slide.seeks ? { seeks: slide.seeks } : {}),
+            // A deck's slide's step (Session 54, C2).
+            ...(slide.step !== undefined ? { step: slide.step } : {}),
+            ...(slide.stepAt !== undefined ? { stepAt: slide.stepAt } : {}),
+            ...(slide.stepFromMs !== undefined ? { stepFromMs: slide.stepFromMs } : {}),
           }
         : null,
     playlist: state.live.playlist,

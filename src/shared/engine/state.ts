@@ -125,6 +125,20 @@ export interface SlideLayer {
   clips?: VideoClips;
   /** Where the time bar moved or paused its videos (Session 54): see VideoSeeks. Left out when it has not. */
   seeks?: VideoSeeks;
+  /**
+   * A deck's slide shown as it was (Session 54, C2, shared/deck.ts): the step showing, 0 as it comes in, then one per
+   * click. Every screen plays that step's clip from `stepAt`, then holds its last frame or loops its hold. Left out
+   * for any other slide.
+   */
+  step?: number;
+  /** When the step was shown, by the engine's clock (step 0's is the slide's `shownAt`). */
+  stepAt?: number;
+  /**
+   * How far into its clip the step was shown from (ms): left out, from its start. Step 0 come to by a jump, or under
+   * Drashti's own transition instead of the deck's, starts past the deck's own transition (its `transitionMs`); a step
+   * come back to (Back, Previous) starts at its clip's end, its last frame shown at once with no motion.
+   */
+  stepFromMs?: number;
 }
 
 /**
@@ -505,6 +519,11 @@ export type UpNext =
        * as it is when it goes up. Left out otherwise.
        */
       soundMissing?: string;
+      /**
+       * A deck's slide (Session 54, C2): the step Next shows, the slide up's next click or a slide's coming in (0).
+       * The stage's next and a phone show that step's last frame. Left out for any other slide.
+       */
+      step?: number;
       /** The playlist item it starts, when it is in the next item. */
       itemId: string | null;
       /** Its notes, for a presenter's remote (Session 18). */
