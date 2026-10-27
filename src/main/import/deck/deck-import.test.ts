@@ -80,6 +80,8 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           decision?: ConflictChoice;
           /** An FFmpeg that is not there: the stand-in cannot make the movie. */
           noFfmpeg?: boolean;
+          /** The disk's free space, as the deck's bake sees it (the media folder's own is plenty). */
+          freeBytes?: number;
         },
         paths = [deck],
       ) =>
@@ -94,6 +96,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           ffmpeg: options.noFfmpeg ? join(root, 'no-ffmpeg-here') : ffmpeg,
           baker: options.baker,
           converters: options.converters,
+          ...(options.freeBytes === undefined ? {} : { freeBytes: () => options.freeBytes ?? 0 }),
           onAir: (() => {
             let asked = 0;
             const on = options.onAir;
@@ -463,6 +466,22 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
       expect(item?.issues.find((i) => i.code === 'deck-pictures')?.message).toBe(
         'The stream went on air, so Drashti stopped making this deck’s animations (that would slow the stream): its slides came in as pictures, without their animations. Import it again once the stream is off air.',
+      );
+    }, 120_000);
+
+    it('makes no animations with too little free disk space for them, and comes in as pictures saying so', async () => {
+      const t = setup();
+      // 2 GB and 10 MB free: 2 GB is always kept free, and the deck's movie and steps need more than the rest.
+      const summary = await t.run({
+        baker: 'stand-in',
+        converters: 'stand-in',
+        freeBytes: 2 * 1024 ** 3 + 10 * 1024 ** 2,
+      });
+      const item = t.report(summary.id)?.items[0];
+      expect(item?.outcome).toBe('imported');
+      expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
+      expect(item?.issues.find((i) => i.code === 'deck-pictures')?.message).toMatch(
+        /^There is not enough free disk space to make this deck’s animations \(it needs about [\d.]+ [MG]B more than the 2 GB Drashti keeps free\): its slides came in as pictures, without their animations\.$/u,
       );
     }, 120_000);
 

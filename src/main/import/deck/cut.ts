@@ -350,6 +350,14 @@ export class OnAir extends Error {
   }
 }
 
+/** The disk fell under the 2 GB always kept free while the steps were cut: it stops there (C review). */
+export class DiskFull extends Error {
+  constructor() {
+    super('The disk is nearly full');
+    this.name = 'DiskFull';
+  }
+}
+
 /** The files one step was cut into. */
 export interface CutFiles {
   clip: string;
@@ -429,6 +437,8 @@ export async function cutMovie(
     progress?: (done: number, total: number) => void;
     /** Asked before each step: the stream on air or recording stops the cut (Session 50's rule). */
     onAir?: () => Promise<boolean>;
+    /** Asked before each step: the disk under the 2 GB always kept free stops the cut (C review). */
+    full?: () => boolean;
   } = {},
 ): Promise<CutFiles[][]> {
   await mkdir(dir, { recursive: true });
@@ -439,6 +449,7 @@ export async function cutMovie(
     const files: CutFiles[] = [];
     for (const [k, step] of slide.steps.entries()) {
       if (await options.onAir?.()) throw new OnAir();
+      if (options.full?.()) throw new DiskFull();
       const name = `s${String(slide.index + 1).padStart(3, '0')}-${String(k)}`;
       const clip = join(dir, `${name}.mp4`);
       const last = join(dir, `${name}-last.png`);

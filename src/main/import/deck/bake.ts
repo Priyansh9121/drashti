@@ -16,7 +16,17 @@ import {
   withMacSession,
 } from '../deck-converters';
 import { type PptxDeck, readPptxDeck } from '../pictures';
-import { type CutFiles, cutMovie, type CutPlan, measureMotion, OnAir, onPlan, planCuts } from './cut';
+import {
+  type CutFiles,
+  cutMovie,
+  type CutPlan,
+  DiskFull,
+  measureMotion,
+  OnAir,
+  onPlan,
+  planCuts,
+} from './cut';
+import { diskFreeBytes } from '../media-store';
 import { type Baker, keynotePlan, type MoviePlan, plannedLength, powerPointPlan } from './plan';
 import { standInMovie } from './stand-in-baker';
 import { writeTimedCopy } from './timed-copy';
@@ -70,6 +80,8 @@ export interface BakedDeck {
 export type BakeFailure =
   /** On air as it was about to start, or (`during`) gone on air while it was made: stopped there. */
   | { kind: 'on-air'; during?: boolean }
+  /** Too little free space on the disk: `neededBytes` more than the 2 GB always kept free (C review). */
+  | { kind: 'disk'; neededBytes: number }
   | { kind: 'cancelled' }
   | { kind: 'app'; reason: string; message: string; notAllowed?: boolean }
   | { kind: 'off-plan'; cuts: CutPlan }
@@ -97,6 +109,20 @@ export interface BakeOptions extends ConvertOptions {
   progress?: (note: string) => void;
   /** Tests: PowerShell given (a fake), as CI has no Office. */
   runPowerShell?: PowerShellRunner;
+  /** The free space on the disk of a folder (tests give their own). */
+  freeBytes?: (dir: string) => number;
+}
+
+/** Always kept free on the disk, as converting keeps it (Session 50). */
+export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
+
+/**
+ * What making a deck's animations may take on the disk (C review): its timed copy and its own media taken out
+ * (twice the deck), and its movie and its cut steps (about 3 MB a second of movie, the cut steps at the movie's
+ * picture twice over).
+ */
+export function bakeBytes(deckBytes: number, plannedMs: number): number {
+  return 2 * deckBytes + Math.ceil((3_000_000 * plannedMs) / 1000);
 }
 
 /** A movie the app (or the stand-in) made, and what it was made from. */
@@ -552,17 +578,41 @@ export async function bakeDeck(
   const platform = options.platform ?? process.platform;
   // The stream going on air or recording while the app makes the movie stops it there (Session 50's rule): looked
   // at every 2 s, as the app's long steps give no turn to ask between.
+  // Room on the disk first (C review): its movie and steps, besides the 2 GB always kept free; and the disk going
+  // under those 2 GB while it is made stops it, as the stream going on air does.
+  const free = options.freeBytes ?? diskFreeBytes;
+  const deckBytes = await stat(input).then(
+    (s) => s.size,
+    () => 0,
+  );
+  const need = bakeBytes(deckBytes, read ? plannedLength(powerPointPlan(read.slides)) : 0);
+  const short = KEEP_FREE_BYTES + need - free(work);
+  if (short > 0)
+    return {
+      ok: false,
+      why: { kind: 'disk', neededBytes: short },
+      pdf: null,
+      deck: read,
+      deckFile: null,
+      baker,
+    };
   const airing = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, airing.signal]) : airing.signal;
+  const stop = { full: false };
   const watch =
-    options.onAir && baker !== 'stand-in'
+    baker !== 'stand-in'
       ? setInterval(() => {
+          if (free(work) < KEEP_FREE_BYTES) {
+            stop.full = true;
+            airing.abort();
+          }
           void options.onAir?.().then((on) => {
             if (on) airing.abort();
           });
         }, 2000)
       : null;
-  const onAirNow = () => airing.signal.aborted;
+  const onAirNow = () => airing.signal.aborted && !stop.full;
+  const disk: BakeFailure = { kind: 'disk', neededBytes: need };
   let made: Made;
   try {
     const appOptions = { ...options, signal };
@@ -575,6 +625,7 @@ export async function bakeDeck(
             ? await powerPointOnWindows(source, input, read, work, appOptions)
             : await powerPointOnMac(source, input, read, work, appOptions);
   } catch (error) {
+    if (stop.full) return { ok: false, why: disk, pdf: null, deck: read, deckFile: null, baker };
     if (onAirNow())
       return {
         ok: false,
@@ -603,16 +654,18 @@ export async function bakeDeck(
     const why: BakeFailure =
       'kind' in f
         ? f
-        : onAirNow()
-          ? { kind: 'on-air', during: true }
-          : f.cancelled
-            ? { kind: 'cancelled' }
-            : {
-                kind: 'app',
-                reason: f.reason,
-                message: f.message,
-                ...(f.notAllowed ? { notAllowed: true } : {}),
-              };
+        : stop.full
+          ? disk
+          : onAirNow()
+            ? { kind: 'on-air', during: true }
+            : f.cancelled
+              ? { kind: 'cancelled' }
+              : {
+                  kind: 'app',
+                  reason: f.reason,
+                  message: f.message,
+                  ...(f.notAllowed ? { notAllowed: true } : {}),
+                };
     return { ok: false, why, pdf: made.pdf, deck: made.deck, deckFile: made.deckFile, baker };
   }
   const failed = (why: BakeFailure): BakeResult => ({
@@ -639,6 +692,8 @@ export async function bakeDeck(
         options.progress?.(`Cutting step ${String(done)} of ${String(total)}`);
       },
       onAir: options.onAir,
+      // Under the 2 GB always kept free, the cut stops too.
+      full: () => free(work) < KEEP_FREE_BYTES,
     });
     return {
       ok: true,
@@ -657,6 +712,7 @@ export async function bakeDeck(
     };
   } catch (error) {
     if (error instanceof OnAir) return failed({ kind: 'on-air', during: true });
+    if (error instanceof DiskFull) return failed(disk);
     if (options.signal?.aborted) return failed({ kind: 'cancelled' });
     return failed({ kind: 'cut', detail: error instanceof Error ? error.message : String(error) });
   }

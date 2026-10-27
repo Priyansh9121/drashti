@@ -124,6 +124,7 @@ import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
+import { clearDeckLeftovers } from './import/deck/leftovers';
 import { LinkService } from './links/link-service';
 import { libraryProblem } from './library-problem';
 import { parsePlain } from '../shared/plain-parse';
@@ -2648,6 +2649,8 @@ function start(): void {
     },
   });
   leftovers.stopLeft();
+  // A deck's import cut short last time (Session 54, C review): its copies in PowerPoint's folder and its work folders.
+  void clearDeckLeftovers();
   // Tests only (never a packaged Drashti): imports judge media by their headers alone, as before Session 50,
   // and nothing is converted by itself, so a test can try Convert as an operator does.
   const noConvertAtImport = !app.isPackaged && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';

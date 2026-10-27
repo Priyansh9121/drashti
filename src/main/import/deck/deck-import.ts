@@ -5,6 +5,7 @@ import type { ImportIssue } from '../../../shared/import';
 import type { MediaElement, SlideElement } from '../../../shared/model';
 import { tidyNotes } from '../../../shared/pictures';
 import { cutText, plural } from '../../../shared/text';
+import { formatBytes } from '../../../shared/format';
 import { readInfo } from '../../convert/read-info';
 import { nameFromFile } from '../formats/text';
 import type { ParsedCue, ParsedMediaRef, ParsedPresentation } from '../model';
@@ -631,19 +632,21 @@ export function whyPictures(why: BakeFailure, baker: Baker, kept = false): Impor
       ? why.during
         ? `The stream went on air, so Drashti stopped making this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
         : `The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
-      : why.kind === 'off-plan'
-        ? `${app} made the deck’s movie, but ${
-            why.cuts.lengthOff
-              ? `it was ${took(why.cuts.lengths.movieMs)} long where ${took(why.cuts.lengths.plannedMs)} were planned (it did not use the deck’s timings)`
-              : `steps on ${String(why.cuts.offSlides.length)} of its ${String(why.cuts.slides.length)} slides came more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s from their moments`
-          }, so its clicks could not be cut exactly: ${lost}.`
-        : why.kind === 'cut'
-          ? `${app} made the deck’s movie, but it could not be cut into its steps (${why.detail}): ${lost}.`
-          : why.kind === 'nothing'
-            ? `This deck has nothing to show with its animations (${why.detail}).`
-            : why.kind === 'cancelled'
-              ? `Cancelled while its animations were being made: ${lost}.`
-              : `${app} could not make the deck’s movie (${why.reason}): ${lost}.`;
+      : why.kind === 'disk'
+        ? `There is not enough free disk space to make this deck’s animations (it needs about ${formatBytes(why.neededBytes)} more than the 2 GB Drashti keeps free): ${lost}.`
+        : why.kind === 'off-plan'
+          ? `${app} made the deck’s movie, but ${
+              why.cuts.lengthOff
+                ? `it was ${took(why.cuts.lengths.movieMs)} long where ${took(why.cuts.lengths.plannedMs)} were planned (it did not use the deck’s timings)`
+                : `steps on ${String(why.cuts.offSlides.length)} of its ${String(why.cuts.slides.length)} slides came more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s from their moments`
+            }, so its clicks could not be cut exactly: ${lost}.`
+          : why.kind === 'cut'
+            ? `${app} made the deck’s movie, but it could not be cut into its steps (${why.detail}): ${lost}.`
+            : why.kind === 'nothing'
+              ? `This deck has nothing to show with its animations (${why.detail}).`
+              : why.kind === 'cancelled'
+                ? `Cancelled while its animations were being made: ${lost}.`
+                : `${app} could not make the deck’s movie (${why.reason}): ${lost}.`;
   return { severity: 'warning', code: 'deck-pictures', message, fix: null };
 }
 

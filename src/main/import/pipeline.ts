@@ -167,6 +167,8 @@ export interface PipelineContext {
   ffmpeg?: string | null;
   /** Whether the stream is on air or recording now: then no deck's movie is made (Session 50's rule). */
   onAir?: () => Promise<boolean>;
+  /** Free space on a folder's disk, as a deck's bake sees it (tests only; default: the disk's own). */
+  freeBytes?: (dir: string) => number;
 }
 
 type SourceKind = 'text' | 'docx' | 'pp6' | 'pp7' | 'pictures';
@@ -912,6 +914,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             appStarted: ctx.appStarted,
             ended: (pid) => ctx.appEnded?.(pid),
             kept: decided.animate === true,
+            ...(ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {}),
           },
         );
         time('parse', t);
