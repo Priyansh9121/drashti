@@ -151,7 +151,10 @@ lower-case hex.
 | A computer's last seen and totals | written once a minute  |
 | The Sheet as read for checks      | at most 10 seconds old |
 
-The limits are counted in Apps Script's cache (Google may empty it, which only forgets a count).
+The day's requests are counted in the script's settings (`REQUESTS_TODAY`: a day by the list's clock, in
+UTC; in all, and for each Gmail and computer by a short hash), under the script's lock; a request refused is
+never counted, so it stays a few KB. The hour's token tries are counted in Apps Script's cache (Google may
+empty it, which only forgets a count; nothing there lasts past 6 hours).
 
 ## Tokens
 
@@ -201,6 +204,7 @@ does not know stops the computers without ending them. A second row for the same
 | `LINK_KEY`       | Set up… (256 random bits, hex)              | signs the Approve and Reject links             |
 | `SECRET_KEY`     | Set up… (256 random bits, hex)              | each computer's secret comes from it           |
 | `SETUP_TICKET`   | Set up…, for its window only (30 minutes)   | the only way the window's two calls are taken  |
+| `REQUESTS_TODAY` | the list, at each request                   | the day's requests counted (see Limits)        |
 
 Set up… never replaces a key (every Drashti would stop): opened again, it shows the same line. Before it keeps
 them, its window has Google sign, HMAC and hash a test text and checks each against the browser's own. The

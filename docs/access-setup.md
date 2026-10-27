@@ -103,7 +103,7 @@ A token works once, for one computer, and runs out after **3 days**. If yours ru
 - **Reject:** they are told plainly, by email and on their lock screen, and nothing more happens.
 - **In Drashti, View › Access List** (your computer only): add a Gmail, approve, reject, revoke, give access again (a new token), and a note.
 - **In the Sheet:** to stop someone at once, set their **Status** to **revoked** (it is a list to choose from). Their Drashti stops within about 30 seconds, and their computers stay out even if you set **approved** again later: to let them back in, use **Give access again** in Drashti's Access List. Setting **approved** in the Sheet sends no token: use the Approve link or the Access List.
-- **Leave alone:** the **Computers** tab (Google warns you before a change), the hidden columns, and the column headers. Do not add a second row for a Gmail that has one.
+- **Leave alone:** the **Computers** tab (Google warns you before a change), the hidden columns, and the column headers. Do not add a second row for a Gmail that has one. In **Script Properties**, the list keeps its own settings beside your `APPROVER_EMAIL` (`WEB_APP_URL`, the keys, and `REQUESTS_TODAY`, its count of the day's requests): leave them as they are, except as section 13 says.
 - **Never share the Sheet or the script** with anyone: whoever can edit them can let people in.
 - Times in the emails follow the Sheet's time zone (**File › Settings**).
 

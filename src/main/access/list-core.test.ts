@@ -317,6 +317,40 @@ describe('a request', () => {
     expect(c.status(PLACEHOLDER_APPROVER)).toMatchObject({ ok: true, status: 'unknown' });
   });
 
+  it('keeps the day’s limits all day: in the script’s settings, never in the cache (which keeps nothing 6 hours)', () => {
+    const c = mac(31);
+    for (let i = 0; i < 3; i++) expect(c.request(PERSON)).toMatchObject({ ok: true });
+    c.list.cache.clear();
+    c.list.move(7 * HOUR);
+    expect(c.request(PERSON)).toMatchObject({ ok: false, error: 'too-many' });
+    expect(new Computer(c.list, placeholderComputer('mac-31b')).request(PERSON)).toMatchObject({
+      ok: false,
+      error: 'too-many',
+    });
+    const kept = JSON.parse(c.list.properties.get('REQUESTS_TODAY') ?? '{}') as { n?: number };
+    expect(kept.n).toBe(3);
+    // The next day (by the list's clock, UTC): asked again.
+    c.list.move(DAY);
+    expect(c.request(PERSON)).toMatchObject({ ok: true });
+    expect((JSON.parse(c.list.properties.get('REQUESTS_TODAY') ?? '{}') as { n?: number }).n).toBe(1);
+  });
+
+  it('counts only the requests it takes, so its count stays small whoever sends what', () => {
+    const c = mac(32);
+    for (let i = 0; i < 10; i++) c.request(`placeholder.${String(i)}@example.com`);
+    // From this computer, refused: nothing more counted, for any Gmail.
+    for (let i = 10; i < 40; i++)
+      expect(c.request(`placeholder.${String(i)}@example.com`)).toMatchObject({ error: 'too-many' });
+    const kept = JSON.parse(c.list.properties.get('REQUESTS_TODAY') ?? '{}') as {
+      n: number;
+      g: Record<string, number>;
+      c: Record<string, number>;
+    };
+    expect(kept.n).toBe(10);
+    expect(Object.keys(kept.g)).toHaveLength(10);
+    expect(Object.values(kept.c)).toEqual([10]);
+  });
+
   it('is kept even when the day’s emails are used up (mailed: false), so the owner still sees it', () => {
     const c = new Computer(newList({ mailQuota: 0 }), placeholderComputer('mac-quota'));
     expect(c.request(PERSON)).toMatchObject({ ok: true, status: 'requested', mailed: false });
