@@ -123,9 +123,10 @@ function deckStepPage(presentationId: string, s: OrderedSlide, index: number, st
       slideUp(state, presentationId, s) && layer !== undefined && layer !== null && stepOf(layer) === index
     );
   };
+  const named = slideTitle(s);
   return {
     key: `slide:${presentationId}:${String(s.position)}:${s.slide.id}:step:${String(index)}`,
-    title: index === 0 ? slideTitle(s) : `${slideTitle(s)} · click ${String(index)} of ${String(steps - 1)}`,
+    title: index === 0 ? named : `${named} · click ${String(index)} of ${String(steps - 1)}`,
     size: { width: s.slide.slide.width, height: s.slide.slide.height },
     draw: () => <DeckStepDrawn s={s} index={index} />,
     live: stepUp,
