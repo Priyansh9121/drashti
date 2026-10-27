@@ -40,7 +40,7 @@ afterEach(async () => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
-async function start() {
+async function start(options: { policyFirst?: boolean } = {}) {
   dir = mkdtempSync(join(tmpdir(), 'drashti-upload-routes-'));
   mkdirSync(join(dir, 'web'), { recursive: true });
   writeFileSync(join(dir, 'web', 'remote.html'), '<!doctype html><title>remote</title>');
@@ -64,6 +64,8 @@ async function start() {
     },
   };
   server = new NetworkServer(host);
+  // The main process tells the worker before it starts, as it does at each start (network-service.ts).
+  if (options.policyFirst) server.setUploadPolicy(ON);
   const started = await server.start({
     port: 0,
     bind: '127.0.0.1',
@@ -75,7 +77,7 @@ async function start() {
   });
   if (!started.ok) throw new Error(started.message);
   server.setDevices(devices);
-  server.setUploadPolicy(ON);
+  if (!options.policyFirst) server.setUploadPolicy(ON);
   return { port: started.port, requests, arrived, uploadsDir: join(mediaDir, '.phone-uploads') };
 }
 
@@ -224,6 +226,18 @@ describe('files between Drashti and a phone, over the API', () => {
     // A Remote reads the shared playlists through the main process, as it reads a playlist.
     expect((await call(port, '/api/v1/shared', { token: REMOTE_TOKEN })).status).toBe(200);
     expect(requests.map((r) => r.op)).toEqual(['shared']);
+  });
+
+  it('the word on files from phones given before the server starts holds once it has', async () => {
+    const { port } = await start({ policyFirst: true });
+    const listed = await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN });
+    expect(listed.body['adding']).toEqual({ on: true, maxBytes: ON.maxBytes });
+    const begun = await call(port, '/api/v1/uploads', {
+      method: 'POST',
+      token: REMOTE_TOKEN,
+      json: { name: 'Placeholder photo.jpg', size: 1000 },
+    });
+    expect(begun.status).toBe(201);
   });
 
   it('nothing is taken while the switch is off, and the phone reads that it is off', async () => {

@@ -337,6 +337,8 @@ export class NetworkServer {
   private readonly wrongCodes = new WrongCodeLimiter();
   private previews: PreviewMaker | null = null;
   private uploads: Uploads | null = null;
+  /** The last word on files from phones, kept for the uploads a start makes. */
+  private uploadPolicy: UploadPolicy | null = null;
   /** A file's pieces, apart from every other request, so sending one never holds up Next. */
   private readonly pieces = new RateLimiter(10, 20);
   private heartbeat: NodeJS.Timeout | null = null;
@@ -353,6 +355,7 @@ export class NetworkServer {
     this.files = listWebFiles(options.webDir);
     this.previews = new PreviewMaker(options.previewDir, options.ffmpeg);
     this.uploads = uploadsAt(options.uploads, this.host);
+    if (this.uploadPolicy) this.uploads?.setPolicy(this.uploadPolicy);
     const server = createServer((req, res) => {
       this.onRequest(req, res);
     });
@@ -443,6 +446,7 @@ export class NetworkServer {
 
   /** Whether phones may add files now, how large, and whether the stream is on air (Session 54). */
   setUploadPolicy(policy: UploadPolicy): void {
+    this.uploadPolicy = policy;
     this.uploads?.setPolicy(policy);
   }
 
