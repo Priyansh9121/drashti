@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
+import { STOPPED_REFUSAL } from '../../shared/access';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
 import { DEVICE_KINDS, type NetworkStatus, PAIRING_CODE_TTL_MS } from '../../shared/network';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
@@ -20,7 +21,7 @@ import type { FromNetworkWorker, ToNetworkWorker } from './worker/protocol';
 /** A phone's address on the local network (made up). */
 const PHONE = '192.168.1.20';
 
-function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
+function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { now: boolean } } = {}) {
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   const settings = new Map<string, unknown>();
@@ -155,6 +156,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     changed: (s) => statuses.push(s),
     log: () => undefined,
     now: () => now,
+    ...(options.letIn ? { letIn: () => options.letIn?.now ?? false } : {}),
   });
   const fromWorker = (m: FromNetworkWorker) => toMain?.(m);
   return {
@@ -181,12 +183,14 @@ describe('the network in the main process', () => {
     service.resume();
     expect(sent).toEqual([]);
     expect(service.setOn(true)).toMatchObject({ ok: true });
-    // The devices and the state before it listens: a device reconnecting at once is known.
-    expect(sent.map((m) => m.type)).toEqual(['devices', 'engine', 'start']);
-    expect(sent[2]).toMatchObject({ type: 'start', options: { port: 8740 } });
+    // The devices, whether Drashti is let in (Session 54) and the state before it listens: a device reconnecting at
+    // once is known.
+    expect(sent.map((m) => m.type)).toEqual(['devices', 'access', 'engine', 'start']);
+    expect(sent[1]).toEqual({ type: 'access', letIn: true });
+    expect(sent[3]).toMatchObject({ type: 'start', options: { port: 8740 } });
     fromWorker({ type: 'started', result: { ok: true, port: 8740 } });
     expect(service.status().state).toBe('listening');
-    expect(sent.map((m) => m.type)).toEqual(['devices', 'engine', 'start', 'devices', 'engine']);
+    expect(sent.map((m) => m.type)).toEqual(['devices', 'access', 'engine', 'start', 'devices', 'engine']);
     expect(service.setPort(80)).toMatchObject({ ok: false });
   });
 
@@ -619,5 +623,37 @@ describe('full quality and the zoom from a phone (Session 54, D1 and D2)', () =>
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     for (const op of ['media.picture', 'media.original'] as const)
       expect(service.answer({ address: PHONE, deviceId: remote, op, args: {} }).status).toBe(400);
+  });
+});
+
+describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
+  it('refuses every device request and every pairing, and the worker hears at each change', () => {
+    const letIn = { now: true };
+    const { service, sent, commands, fromWorker } = setup({ letIn });
+    service.setOn(true);
+    const offered = service.startPairing('remote', 'Placeholder phone');
+    if (!offered.ok || !offered.status.pairing) throw new Error('no code');
+    const paired = service.pair(offered.status.pairing.code, PHONE);
+    if (!paired.ok) throw new Error(paired.message);
+    const again = service.startPairing('stage', 'Placeholder tablet');
+    if (!again.ok || !again.status.pairing) throw new Error('no code');
+    letIn.now = false;
+    service.accessChanged();
+    expect(sent.filter((m) => m.type === 'access').at(-1)).toEqual({ type: 'access', letIn: false });
+    for (const op of Object.keys(DEVICE_OPS) as DeviceOp[]) {
+      const answer = service.answer({ deviceId: paired.device.id, op, args: {}, address: PHONE });
+      expect(answer, op).toEqual({ status: 503, body: { ok: false, message: STOPPED_REFUSAL } });
+    }
+    expect(commands).toEqual([]);
+    expect(service.pair(again.status.pairing.code, PHONE)).toEqual({
+      ok: false,
+      status: 503,
+      message: STOPPED_REFUSAL,
+    });
+    // A file asked for by the worker (a preview, a picture, an original): none.
+    fromWorker({ type: 'ask', id: 7, question: { kind: 'media', mediaId: 'placeholder-media' } });
+    return Promise.resolve().then(() => {
+      expect(sent.filter((m) => m.type === 'answer').at(-1)).toEqual({ type: 'answer', id: 7, answer: null });
+    });
   });
 });
