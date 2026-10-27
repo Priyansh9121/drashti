@@ -524,6 +524,9 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         if (!made.ok || !made.id) throw new Error('no audio playlist');
         const added = await d.music.addTracks(made.id, [toneId], null);
         if (!added.ok) throw new Error(added.message);
+        // Going round, so it still plays at the last size checked, however long each size takes.
+        const looped = await d.music.setOptions(made.id, { loop: true, shuffle: false });
+        if (!looped.ok) throw new Error(looped.message);
         const played = await d.music.play(made.id, 0);
         if (!played.ok) throw new Error(played.message);
         const idle = await d.idle.saveSettings({
