@@ -1,7 +1,8 @@
 import type { ElectronApplication } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { accessComputer, computerIdOf } from '../../src/main/access/identity';
 import { ACCESS_FILE, AccessStore, storedAccess } from '../../src/main/access/store';
 import type { AccessComputer, AccessGrant } from '../../src/shared/access-protocol';
 import {
@@ -36,6 +37,14 @@ export interface AccessOptions {
   standIn?: AccessStandIn;
   /** This computer's pretend hardware id (a data folder copied to "another computer" starts with another). */
   hardwareId?: string;
+  /** The version this Drashti says it is (a test's DRASHTI_TEST_VERSION); by default the app's own. */
+  version?: string;
+}
+
+/** The version of the Drashti the tests start (an earlier build's, when DRASHTI_E2E_APP_DIR names one). */
+function appVersion(): string {
+  const dir = process.env['DRASHTI_E2E_APP_DIR'] ?? process.cwd();
+  return (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { version: string }).version;
 }
 
 /** A data folder's list and computer, so a restart of it asks the same list as the same computer. */
@@ -125,8 +134,11 @@ export async function letInBeforeStart(
   // Let in when nothing is kept there yet, or when the list it was let in through has been closed. Anything else
   // kept there stays as it is: a data folder copied from "another computer" keeps that computer's access, which the
   // list refuses.
+  // This computer as the Drashti about to start names itself to the list (its host name, version and system), so
+  // the list keeps what a token used in that Drashti would have kept.
+  const computer = accessComputer(computerIdOf(hardwareId), o.version ?? appVersion(), process.platform);
   if (as !== 'locked' && (wasForgotten !== undefined || !existsSync(join(userData, ACCESS_FILE))))
-    letIn(userData, standIn, placeholderComputer(hardwareId), gmailFor(as, standIn), as === 'owner');
+    letIn(userData, standIn, computer, gmailFor(as, standIn), as === 'owner');
   return {
     env: {
       DRASHTI_TEST_ACCESS_URL: standIn.url,

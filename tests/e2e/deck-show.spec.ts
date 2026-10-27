@@ -1,4 +1,5 @@
 import type { ElectronApplication, Page } from '@playwright/test';
+import type { DeckSlide } from '../../src/shared/deck';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
@@ -17,6 +18,7 @@ import {
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
 import {
+  closeLibrary,
   launchApp,
   openLibrary,
   operatorPage,
@@ -116,7 +118,18 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     const stage = await outputFor(app, stageScreen);
     const halls = [one, two];
 
-    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    // Chosen in the library, as an operator chooses it: the keys work on what the slide grid shows (Drashti chooses the
+    // library's first presentation by itself, a placeholder, so Next would put that up), and Next puts it up.
+    await openLibrary(win);
+    await win
+      .getByTestId('presentation-list')
+      .getByTestId('presentation-row')
+      .filter({ hasText: 'Placeholder deck' })
+      .click();
+    await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toBeVisible();
+    await closeLibrary(win);
+    await win.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await state(win)).live.presentationId).toBe(id);
     // Come to by a jump: its coming-in clip past the deck's own transition; then held at its last frame, red.
     expect((await state(win)).layers.slide).toMatchObject({ step: 0, stepFromMs: TRANSITION_MS });
     await allShow(halls, STEP_COLOURS[0].last, 'the first step’s last frame');
@@ -170,6 +183,69 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     await win.keyboard.press('ArrowLeft');
     await expect.poll(async () => (await state(win)).live.slideIndex).toBe(0);
     expect(await step(win)).toBe(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a slide left unticked never shows through the next slide’s own transition: at that slide’s first moments the one before shows, never it (C review)', async () => {
+  test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(180_000);
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const files = await makeDeckFiles(win);
+    const step = (clipId: string, lastId: string) => ({
+      clipId,
+      clipMs: CLIP_MS,
+      transitionMs: TRANSITION_MS,
+      lastId,
+    });
+    const own = { name: 'fade', durationMs: TRANSITION_MS };
+    // Red, then green (left unticked), then the last slide, whose coming-in clip begins on the green slide's last frame
+    // (as a deck's movie is cut), then turns yellow.
+    const decks: DeckSlide[] = [
+      { transition: own, steps: [step(files.clips[0] ?? '', files.lasts[0] ?? '')], media: [] },
+      {
+        transition: own,
+        after: files.lasts[0],
+        steps: [step(files.clips[1] ?? '', files.lasts[1] ?? '')],
+        media: [],
+      },
+      { transition: own, after: files.lasts[1], steps: [step(files.through, files.nextLast)], media: [] },
+    ];
+    const id = await writeDeck(win, 'Placeholder unticked deck', decks, {
+      unticked: [1],
+      transition: { kind: 'dissolve', durationMs: 1000 },
+    });
+    const out = await outputFor(app, await setUpScreen(win, 'Main Hall', 0));
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await allShow([out], STEP_COLOURS[0].last, 'the first slide’s last frame');
+    // Held before the next slide comes on, so it waits at its very start; Next skips the unticked slide.
+    await holdClock(app, Date.now() - 60_000);
+    await dispatch(win, { type: 'next' });
+    const layer = (await state(win)).layers.slide;
+    // Not made after the slide before it in the order played: past its own transition, under the presentation's.
+    expect(layer).toMatchObject({
+      slideIndex: 1,
+      step: 0,
+      stepFromMs: TRANSITION_MS,
+      transition: { kind: 'dissolve', durationMs: 1000 },
+    });
+    const shownAt = layer?.shownAt ?? 0;
+    await holdClock(app, shownAt);
+    await allShow([out], STEP_COLOURS[0].last, 'its first moment: the slide before, whole');
+    for (const ms of [0, 150, 300]) {
+      await holdClock(app, shownAt + ms);
+      const [middle] = await canvasPixels(out, [MIDDLE]);
+      expect(near(middle, [32, 224, 32], 60), `${String(ms)} ms in: the unticked slide’s green`).toBe(false);
+    }
+    await holdClock(app, null);
   } finally {
     await app.close();
   }

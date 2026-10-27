@@ -950,11 +950,16 @@ test('a line’s width and how many items show what is typed: Backspace, then a 
   await editor.getByTestId('stage-layout-duplicate').click();
   await editor.getByTestId('stage-layout-name').fill('Placeholder typed line layout');
   const settings = editor.getByTestId('stage-box-settings');
-  /** Backspace at the end of what the field shows, then these figures: what it shows then, and once it is left. */
+  /**
+   * Backspace over what the field shows, from its end, a press a character ("2.5" takes three: one leaves "2."),
+   * then these figures: what it shows then, and once it is left. Until Part A's review the last Backspace put the
+   * figure before back.
+   */
   const retype = async (field: Locator, figures: string, shown: string, left: string) => {
     await field.focus();
     await field.press('End');
-    await field.press('Backspace');
+    const characters = (await field.inputValue()).length;
+    for (let i = 0; i < characters; i++) await field.press('Backspace');
     await expect(field).toHaveValue('');
     await field.pressSequentially(figures);
     await expect(field).toHaveValue(shown);

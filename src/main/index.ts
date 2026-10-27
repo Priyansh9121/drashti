@@ -1377,10 +1377,10 @@ function start(): void {
         start: () => lookService?.start() ?? NO_LOOK,
       },
       // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
-      refuse: (command) =>
+      refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
-          : simpleNow() && simpleModeRefuses(command)
+          : simpleNow() && simpleModeRefuses(command, state)
             ? SIMPLE_MODE_REFUSAL
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),

@@ -1,4 +1,5 @@
 import type { EngineCommand } from './engine/commands';
+import type { EngineState } from './engine/state';
 
 /*
  * Simple Mode and Pro Mode (PLAN.md section 3). Simple Mode is one screen
@@ -67,12 +68,19 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
 ];
 
 /**
- * Whether Simple Mode refuses an engine command (the engine's refuse option, src/main/index.ts): those listed above,
- * and the time bar's Pause (Session 54's review: Simple Mode shows the bar and moves nothing), but on the audio layer,
- * where an audio playlist's track's Pause is Music's own (Simple Mode's Pause music). The bar's Play is never
- * refused: Simple Mode's LIVE has none, so nothing paused can stay paused there.
+ * Whether Simple Mode refuses an engine command (the engine's refuse option, src/main/index.ts), with the show as it is
+ * (`state`): those listed above, and the time bar's Pause (Session 54's review: Simple Mode shows the bar and moves
+ * nothing), but an audio playlist's track's, which is Music's own (Simple Mode's Pause music). A single sound's is
+ * refused too: Simple Mode's window could never play it on (its bar has no Play, its music strip only knows the
+ * music). The bar's Play is never refused, so nothing paused can stay paused there.
  */
-export function simpleModeRefuses(command: EngineCommand): boolean {
+export function simpleModeRefuses(
+  command: EngineCommand,
+  state: Pick<EngineState, 'layers'> | null,
+): boolean {
   if (SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type)) return true;
-  return command.type === 'pausePlaying' && command.playing.layer !== 'audio';
+  return (
+    command.type === 'pausePlaying' &&
+    (command.playing.layer !== 'audio' || state?.layers.audio?.music === undefined)
+  );
 }

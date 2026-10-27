@@ -360,7 +360,7 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
   await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
   // Simple Mode: the bar and its time left, no elapsed time, no Play or Pause, nothing to move.
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const bg = row(win, 'background');
   const shows = bg.getByRole('progressbar', { name: 'Time of the background video', exact: true });
@@ -482,7 +482,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       // why, and nothing moves; its Play is not, so nothing stays paused (Session 54's review).
       await row.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
-      await win.getByRole('button', { name: 'Simple Mode' }).click();
+      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       const seek = (await backgroundTiming(win)).seek;
       await clickAlong(p, bar, 0.9);

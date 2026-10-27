@@ -26,6 +26,7 @@ import { startPlayback } from './playback';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { SlideMovementContext } from './slide-timers';
 import { transitionFrame } from './transition-frame';
+import { wakeAt } from './wake-at';
 
 /*
  * A deck's slide as the step showing draws it (Session 54, C2; shared/deck-show.ts), in the place of the slide's
@@ -328,16 +329,14 @@ function DeckStepPreview({
       redraw((n) => n + 1);
     });
     if (done) return off;
-    // eslint-disable-next-line no-restricted-syntax -- never decides a frame: asks for a new drawing when the engine's time reaches the step's end (what it shows is worked out from engineNow() above)
-    const t = setTimeout(
-      () => {
-        redraw((n) => n + 1);
-      },
-      Math.max(0, timing.endsAt - engineNow()),
-    );
+    // Drawn again when the engine's time reaches the step's end (what it shows is worked out from engineNow() above),
+    // waiting again if woken a moment early (wake-at.ts): woken early once, a phone kept the clip's still for good.
+    const stop = wakeAt(timing.endsAt, engineNow, () => {
+      redraw((n) => n + 1);
+    });
     return () => {
       off();
-      clearTimeout(t);
+      stop();
     };
   }, [done, timing.endsAt]);
   const meanwhile = timing.index > 0 ? deckStep(deck, timing.index - 1)?.lastId : timing.step.clipId;
@@ -484,16 +483,14 @@ export function useDeckCover(
       redraw((n) => n + 1);
     });
     if (changesAt === null) return off;
-    // eslint-disable-next-line no-restricted-syntax -- never decides a frame: asks for a new drawing when the engine's time reaches the video's start or end (what shows is worked out from engineNow() above)
-    const t = setTimeout(
-      () => {
-        redraw((n) => n + 1);
-      },
-      Math.max(0, changesAt - engineNow()) + 1,
-    );
+    // Drawn again when the engine's time reaches the video's start or end (what shows is worked out from engineNow()
+    // above), waiting again if woken a moment early (wake-at.ts).
+    const stop = wakeAt(changesAt, engineNow, () => {
+      redraw((n) => n + 1);
+    });
     return () => {
       off();
-      clearTimeout(t);
+      stop();
     };
   }, [own, changesAt]);
   if (!deck) return 'none';

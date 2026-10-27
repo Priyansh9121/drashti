@@ -23,6 +23,7 @@ import {
 import { launchMain, launchNode, type MainRun, type NodeRun, pairNode } from './nodes';
 import { makeTestTone, makeTestVideo, setWebmDuration } from './test-media';
 import {
+  audioPage,
   backgroundTiming,
   clickAlong,
   type Copy,
@@ -35,6 +36,7 @@ import {
   slideWithVideo,
   slideWithVideos,
   snapshot,
+  soundTiming,
 } from './time-bar-helpers';
 
 /*
@@ -158,7 +160,7 @@ async function outputFor(app: ElectronApplication, screenId: string): Promise<Pa
   return found;
 }
 
-test('the key and the fill: Pause from the bar holds both feeds where the engine’s pause put them, and Play brings them back in step', async () => {
+test('the key and the fill: a slide’s video (a key and fill pair keys the slide, its props and messages, never the background), Pause from its bar holding both feeds where the engine’s pause put them, and Play bringing them back in step', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
@@ -166,6 +168,11 @@ test('the key and the fill: Pause from the bar holds both feeds where the engine
   const dir = mkdtempSync(join(tmpdir(), 'drashti-time-bar-keyfill-'));
   const file = await makeTestVideo(win, join(dir, 'Placeholder keyed clip.webm'), { seconds: 10, hue: 20 });
   const [mediaId = ''] = await importAndGetIds(win, [file]);
+  // A slide of the video alone: a key and fill group draws slides as lower thirds, a slide's words alone and a slide
+  // of pictures whole (render/SlideLayerView.tsx), and never the background (look-service.ts becameKeyFill).
+  const presentationId = await slideWithVideos(win, dir, 'Placeholder Keyed Video', [mediaId], {
+    alone: true,
+  });
   // A key and fill group on the two displays (as keyfill.spec.ts makes it): its fill's and its key's outputs.
   const on = (await testDisplays(win)).map((x) => x.id);
   const screens = await win.evaluate(async (on) => {
@@ -185,16 +192,24 @@ test('the key and the fill: Pause from the bar holds both feeds where the engine
   const fill = await outputFor(app, screens[0]?.id ?? '');
   const key = await outputFor(app, screens[1]?.id ?? '');
   for (const o of [fill, key]) await outputReady(o);
-  await backgroundVideo(win, mediaId);
-  const copies = backgroundCopies(
-    [
-      { name: 'the fill', page: fill },
-      { name: 'the key', page: key },
-    ],
-    mediaId,
-  );
-  await inStep(copies, () => backgroundTiming(win), 'playing on the fill and the key');
-  await pauseThenPlay(win, copies);
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  const picture = `[data-layer="slide"] video[data-media-id="${mediaId}"]`;
+  const copies: Copy[] = [
+    { name: 'the fill', page: fill, selector: picture },
+    { name: 'the key', page: key, selector: picture },
+  ];
+  const timing = () => slideTiming(win, mediaId, true);
+  await inStep(copies, timing, 'playing on the fill and the key');
+  // Paused from the slide's video's own bar under LIVE: both feeds held where the engine's pause put it.
+  const slideRow = row(win, `slide:${mediaId}`);
+  await expect(slideRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+  await slideRow.getByRole('button', { name: 'Pause' }).click();
+  await expect.poll(async () => (await timing()).seek?.paused).toBe(true);
+  await heldAt(copies, ((await timing()).seek?.toMs ?? 0) / 1000, 'paused from the bar');
+  // Played on: both back in step.
+  await slideRow.getByRole('button', { name: 'Play' }).click();
+  await expect.poll(async () => (await timing()).seek?.paused).toBeUndefined();
+  await inStep(copies, timing, 'played on from the bar');
   await app.close();
 });
 
@@ -384,11 +399,12 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   await expect(rows(win)).toHaveCount(5);
   for (const which of ['background', `slide:${oneId}`, `slide:${twoId}`, 'pip', 'audio'])
     await expect(row(win, which).getByRole('slider')).toBeVisible({ timeout: 15_000 });
-  // The two-hour background paused: its row says so, its time left in hours, minutes and seconds.
+  // The two-hour background paused: its row says so, its time left in hours, minutes and seconds (counted up to
+  // whole seconds, as a countdown is: paused within its first second, -2:00:00).
   await row(win, 'background').getByRole('button', { name: 'Pause' }).click();
   const bg = row(win, 'background');
   await expect(bg.getByTestId('time-bar-paused')).toBeVisible();
-  await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-1:5\d:\d\d$/);
+  await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-[12]:\d\d:\d\d$/);
 
   // Pro Mode: Next and Back where they were, in view; every row whole in the live column (scrolled to).
   expect((await next.boundingBox())?.y, 'Next where it was').toBe(nextAt);
@@ -427,12 +443,73 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   }
 
   // Simple Mode: the same five, each whole under its LIVE picture, its big buttons in view.
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(rows(win)).toHaveCount(5);
   await rowsFit(win, rows(win), 1024, 'Simple Mode');
   const buttons = await win.getByTestId('simple-buttons').boundingBox();
   expect((buttons?.y ?? 9999) + (buttons?.height ?? 0), 'the big buttons in view').toBeLessThanOrEqual(645);
   await expectNoSeriousA11yIssues(win, 'every kind playing at 1024 × 645, Simple Mode');
+  await app.close();
+});
+
+test('in Simple Mode, a phone’s Pause of a sound put up from its Media is refused in words (Simple Mode’s window could never play it on), and its Play still plays on one paused before', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-time-bar-phone-sound-'));
+  const [first = '', second = ''] = await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder first tone.wav'), { seconds: 60, hz: 440 }),
+    makeTestTone(join(dir, 'Placeholder second tone.wav'), { seconds: 60, hz: 550 }),
+  ]);
+  const audio = await audioPage(app);
+  const heard = (mediaId: string): Copy[] => [
+    { name: 'the audio player', page: audio, selector: `audio[data-media-id="${mediaId}"]` },
+  ];
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    /** A tone put up from the phone's Media, as a person would (a sound plays over the rest), then the Show tab. */
+    const putUp = async (name: string, mediaId: string) => {
+      await p.getByTestId('remote-tab-library').click();
+      await p.getByTestId('remote-library-media').click();
+      await p.getByTestId('remote-media-search').fill(name);
+      await p.getByTestId('remote-media-item').filter({ hasText: name }).getByRole('button').first().click();
+      await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(mediaId);
+      await p.getByTestId('remote-tab-show').click();
+    };
+    const phoneRow = p.locator('[data-testid="remote-time-bar-row"][data-playing="audio"]');
+
+    // Pro Mode: the first tone up from the phone's Media, paused from its bar there.
+    await putUp('Placeholder first tone', first);
+    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+    await phoneRow.getByRole('button', { name: 'Pause' }).click();
+    await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
+
+    // Simple Mode: its window shows the bar, paused, with no Play of its own; the phone's Play plays it on.
+    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+    await expect(win.getByTestId('simple-mode')).toBeVisible();
+    await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
+    await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
+    await phoneRow.getByRole('button', { name: 'Play' }).click();
+    await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
+    await inStep(heard(first), () => soundTiming(win), 'played on from the phone in Simple Mode');
+
+    // The second tone, put up from the phone's Media in Simple Mode: its Pause refused in words, and it plays on.
+    await putUp('Placeholder second tone', second);
+    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+    const playing = (await soundTiming(win)).seek;
+    await phoneRow.getByRole('button', { name: 'Pause' }).click();
+    await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
+    expect((await soundTiming(win)).seek).toEqual(playing);
+    await inStep(heard(second), () => soundTiming(win), 'still playing after the refused Pause');
+  } finally {
+    await phone.close();
+  }
   await app.close();
 });
