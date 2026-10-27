@@ -95,10 +95,50 @@ const holdLive = (app: ElectronApplication, at: number | null) =>
   );
 
 /**
- * Wait until the middle of an element on its page (LIVE's picture, a stage box, a phone's picture) is this colour.
- * When it is not, the failure says what was there (C review): the colour, the page's visibility, the deck's step's
- * phase, and each of its layers with its opacity (a clip or hold also its time, how far it has loaded, and whether it
- * plays), so a failed run says why.
+ * The colours at points of a page, and the colour `rgb` as that page draws it, read from the one picture (C review): a
+ * small swatch of it, in the page's top left corner for that picture only. A window colour-managed to its display (the
+ * operator window on a Mac's own screen draws sRGB green 0,96,0 as about 39,94,23 on Display P3; a phone's page) is
+ * then compared with its own drawing of the colour, never with the sRGB numbers, as on CI's sRGB screens.
+ */
+async function withSwatch(
+  page: Page,
+  rgb: readonly number[],
+  points: { x: number; y: number }[],
+): Promise<{ colours: number[][]; swatch: [number, number, number] }> {
+  await page.evaluate(
+    (rgb) => {
+      const swatch = document.createElement('div');
+      swatch.id = 'deck-check-swatch';
+      Object.assign(swatch.style, {
+        position: 'fixed',
+        left: '0px',
+        top: '0px',
+        width: '8px',
+        height: '8px',
+        zIndex: '2147483647',
+        pointerEvents: 'none',
+        background: `rgb(${rgb.join(',')})`,
+      });
+      document.body.append(swatch);
+    },
+    [...rgb],
+  );
+  try {
+    const read = await pixels(page, [...points, { x: 4, y: 4 }]);
+    const s = read[points.length] ?? [];
+    return { colours: read.slice(0, points.length), swatch: [s[0] ?? -999, s[1] ?? -999, s[2] ?? -999] };
+  } finally {
+    await page.evaluate(() => {
+      document.getElementById('deck-check-swatch')?.remove();
+    });
+  }
+}
+
+/**
+ * Wait until the middle of an element on its page (LIVE's picture, a stage box, a phone's picture) is this colour, as
+ * that page draws it (withSwatch). When it is not, the failure says what was there (C review): the colour against the
+ * swatch's, the page's visibility, the deck's step's phase, and each of its layers with its opacity (a clip or hold
+ * also its time, how far it has loaded, and whether it plays), so a failed run says why.
  */
 async function middleShows(page: Page, target: Locator, rgb: readonly number[], what: string): Promise<void> {
   await expect
@@ -106,8 +146,12 @@ async function middleShows(page: Page, target: Locator, rgb: readonly number[], 
       async () => {
         const box = await target.boundingBox();
         if (!box) return 'no box';
-        const [colour] = await pixels(page, [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }]);
-        if (near(colour, [rgb[0] ?? 0, rgb[1] ?? 0, rgb[2] ?? 0])) return 'shows';
+        const middle = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        const {
+          colours: [colour],
+          swatch,
+        } = await withSwatch(page, rgb, [middle]);
+        if (near(colour, swatch)) return 'shows';
         const there = await target.evaluate((el) => {
           const root = el.querySelector<HTMLElement>('[data-deck-step]') ?? el;
           const layers = [...root.children].map((child) => {
@@ -120,7 +164,7 @@ async function middleShows(page: Page, target: Locator, rgb: readonly number[], 
           });
           return `page ${document.visibilityState}, step ${root.dataset['deckPhase'] ?? 'none'}: ${layers.join(' | ')}`;
         });
-        return `${(colour ?? []).join(',')} (${there})`;
+        return `${(colour ?? []).join(',')} against the swatch's ${swatch.join(',')} (${there})`;
       },
       { message: `${what}: what was there`, timeout: 15_000 },
     )
@@ -277,7 +321,10 @@ test('LIVE draws a deck’s click from the engine’s time as the screens do: at
       [300, STEP_COLOURS[1].clip, 'clip'],
       [CLIP_MS + 800, STEP_COLOURS[1].last, 'held'],
     ] as const) {
-      // The test switch reaches the operator window, and LIVE draws that moment.
+      // The test switch reaches the operator window, and LIVE draws that moment. A clip's time is not compared: under
+      // a held clock, a playing video plays on until it is a quarter of a second from the clock, then is aimed back
+      // with its lead (render/playback.ts), on every screen alike, so it reads from the held moment to about half a
+      // second past it (0.46 s at 300 ms, in a run); its colour is the step's throughout.
       expect(await holdLive(app, clickAt + ms), 'LIVE’s clock held').toBe(true);
       await expect(live.locator('[data-deck-step="1"]')).toHaveAttribute('data-deck-phase', phase);
       await middleShows(win, live, colour, `LIVE, ${String(ms)} ms into the click`);
