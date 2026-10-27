@@ -292,3 +292,63 @@ test('with the playlists unread, it says so with Try again, never that there are
   ]);
   await app.close();
 });
+
+test('the playlist chosen last, renamed, is offered under its new name; deleted, the open playlist is, or with none open a new one’s name', async () => {
+  test.setTimeout(240_000);
+  const { app, win } = await open();
+  const [sunday = '', youth = ''] = await newPlaylists(win, ['Placeholder Sunday', 'Placeholder Youth']);
+  const node = (name: string) => win.getByTestId('playlist-node').filter({ hasText: name });
+  const title = win.getByTestId('open-playlist').getByTestId('playlist-title');
+  const dialog = win.getByTestId('link-dialog');
+  const target = win.getByTestId('link-add-to');
+  const close = () => dialog.getByRole('button', { name: 'Close', exact: true }).click();
+
+  // The sound into Youth, chosen from the list: the playlist chosen last from then on.
+  await chooseMenuItem(app, 'import-from-link');
+  await lookAtVideo(win);
+  await target.selectOption(`playlist:${youth}`);
+  await win.getByTestId('link-type-mp3').click();
+  await download(win);
+  await expect.poll(async () => (await view(win)).lastPlaylist).toBe(youth);
+  await close();
+  await node('Placeholder Sunday').click();
+  await expect(title).toHaveText('Placeholder Sunday');
+
+  // Renamed: still offered first, under its new name.
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.playlists.rename(id, 'Placeholder Youth renamed'),
+    youth,
+  );
+  await expect(node('Placeholder Youth renamed')).toBeVisible();
+  await chooseMenuItem(app, 'import-from-link');
+  await win.getByTestId('link-another').click();
+  await lookAtVideo(win);
+  await expect(target).toHaveValue(`playlist:${youth}`);
+  await expect(target.locator('option')).toHaveText([
+    'Placeholder Youth renamed',
+    'Placeholder Sunday (open)',
+    'A new playlist, “Placeholder video”',
+    'No playlist',
+  ]);
+
+  // Deleted: the open playlist to begin with.
+  await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.remove([id]), youth);
+  await expect(target).toHaveValue(`playlist:${sunday}`);
+  await expect(target.locator('option')).toHaveText([
+    'Placeholder Sunday (open)',
+    'A new playlist, “Placeholder video”',
+    'No playlist',
+  ]);
+  // And with no playlist open, a new one, its name asked for.
+  await close();
+  await win.getByTestId('playlist-close').click();
+  await chooseMenuItem(app, 'import-from-link');
+  await expect(target).toHaveValue('new');
+  await expect(win.getByTestId('link-new-playlist')).toHaveValue('Placeholder video');
+  await expectNoSeriousA11yIssues(
+    win,
+    'Import from a Link, the playlist chosen last deleted',
+    '[data-testid="link-dialog"]',
+  );
+  await app.close();
+});
