@@ -19,7 +19,9 @@ import type { Db } from '../db/database';
  * missing, or that Drashti cannot play, are left out. Everything but the
  * first part changes only with the library, so it is kept until then.
  * A picture's sharpened copy (Session 26f), once it is ready, comes right
- * after the picture: one more file, copied as the rest are.
+ * after the picture: one more file, copied as the rest are. A deck's slide
+ * (Session 54, C2) brings its steps' clips, last frames and holds, and its
+ * own videos and their posters, after the slide's own picture.
  */
 
 /** Pictures' sharpened copies, as files a node copies (Session 26f). */
@@ -111,9 +113,14 @@ export class WantedMedia {
          SELECT c.media_id AS id, g.position, s.position, -1 - c.position
            FROM slide_groups g JOIN slides s ON s.group_id = g.id JOIN slide_cues c ON c.slide_id = s.id
           WHERE g.presentation_id = ? AND c.kind IN ('background', 'media') AND c.media_id IS NOT NULL
+         UNION ALL
+         SELECT j.value AS id, g.position, s.position, 1000000 + j.id
+           FROM slide_groups g JOIN slides s ON s.group_id = g.id, json_tree(s.deck) j
+          WHERE g.presentation_id = ? AND s.deck IS NOT NULL AND j.type = 'text'
+            AND j.key IN ('clipId', 'lastId', 'holdId', 'mediaId', 'posterId')
          ORDER BY 2, 3, 4`,
       )
-      .all(presentationId, presentationId) as { id: string | null }[];
+      .all(presentationId, presentationId, presentationId) as { id: string | null }[];
     return rows.flatMap((r) => (typeof r.id === 'string' ? [r.id] : []));
   }
 
