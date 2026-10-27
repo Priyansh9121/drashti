@@ -104,11 +104,12 @@ function deckOf(text: string | null | undefined): { deck?: DeckSlide } {
  * of its own, the rest never the window's. A slide new to the presentation (a deck's slide copied) takes the
  * document's. A slide whose document has none keeps what it has: the editor never takes a deck away.
  */
-function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck: string | null } {
-  const stored = old?.deck ?? null;
-  if (!deck) return { deck: stored };
+function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck?: string | null } {
+  const stored = old?.deck;
+  // Nothing to keep or give: a row read with no deck stays as it was read.
+  if (!deck) return stored === undefined ? {} : { deck: stored };
   const was = deckFromJson(stored);
-  if (!was || stored === null) return { deck: JSON.stringify(deck) };
+  if (!was || stored == null) return { deck: JSON.stringify(deck) };
   if (sameData(was.drashti, deck.drashti) && sameData(was.stepTransitions, deck.stepTransitions))
     return { deck: stored };
   const { drashti: _drashti, stepTransitions: _steps, ...kept } = parseObject(stored);
