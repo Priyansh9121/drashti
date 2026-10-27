@@ -2,7 +2,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { KEYMAP, toAccelerator } from '../shared/keymap';
 import type { ScreenSwitch } from '../shared/screen-switches';
-import { installMenu, type MenuActions } from './menu';
+import { installLockedMenu, installMenu, type MenuActions } from './menu';
 
 /*
  * View › Audience and View › Stage (Session 50): Pro Mode's, ticked while on, each choosing its own switch. They
@@ -176,6 +176,22 @@ describe('File (Session 54, E5)', () => {
     const kinds = Array.isArray(file) ? file.map((i) => i.type ?? 'item') : [];
     expect(kinds.join(' ')).not.toContain('separator separator');
   });
+});
+
+describe('the menu while not let in (Session 54, access by Gmail)', () => {
+  it.each(PLATFORMS)(
+    'has Quit and the editing keys only: no show, no library, no devtools (%s)',
+    (platform) => {
+      on(platform, () => {
+        installLockedMenu();
+      });
+      const roles = items()
+        .map((i) => i.role ?? i.label)
+        .filter(Boolean);
+      expect(roles).toEqual(platform === 'darwin' ? ['appMenu', 'editMenu'] : ['File', 'quit', 'editMenu']);
+      expect(items().some((i) => i.click !== undefined)).toBe(false);
+    },
+  );
 });
 
 // Session 54 (E4): the owner's window onto the access list, on the owner's computer only.

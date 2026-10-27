@@ -97,6 +97,9 @@ export function runNetworkWorker(
       case 'upload-note':
         server.uploadNote(message.id, message.message);
         return;
+      case 'access':
+        server.setLetIn(message.letIn);
+        return;
     }
   };
 }

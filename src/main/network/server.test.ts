@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
+import { STOPPED_REFUSAL } from '../../shared/access';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
@@ -107,6 +108,8 @@ async function start(
   });
   if (!started.ok) throw new Error(started.message);
   server.setDevices(devices);
+  // Let in (Session 54): the main process says so as it starts the server.
+  server.setLetIn(true);
   return { host, port: started.port, server };
 }
 
@@ -733,5 +736,56 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
     expect((await call(port, '/api/v1/zoom', { method: 'POST', headers: bearer(STAGE_TOKEN) })).status).toBe(
       403,
     );
+  });
+});
+
+describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
+  it('refuses every request, those answered here too: pairing, the state, a command, a preview, a picture, an original, a link, an upload', async () => {
+    const started = await start();
+    const { port, host, server: s } = started;
+    const video = join(dir, 'placeholder-clip.mp4');
+    writeFileSync(video, 'Placeholder clip bytes. '.repeat(10));
+    host.mediaSource = (mediaId) =>
+      Promise.resolve(mediaId === 'm-video' ? { path: video, kind: 'video' as const } : null);
+    // A link made while let in: a <video>'s way to the file, without the token.
+    const made = await call(port, '/api/v1/media/m-video/link', { headers: bearer(REMOTE_TOKEN) });
+    expect(made.status).toBe(200);
+    const { url } = JSON.parse(made.body) as { url: string };
+    const asked = host.requests.length;
+    s.setLetIn(false);
+    const json = { 'Content-Type': 'application/json' };
+    const refused = [
+      await call(port, '/api/v1/pair', { method: 'POST', headers: json, body: '{"code":"123456"}' }),
+      await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) }),
+      await call(port, '/api/v1/state', { headers: bearer(STAGE_TOKEN) }),
+      await call(port, '/api/v1/status', { headers: bearer(REMOTE_TOKEN) }),
+      await call(port, '/api/v1/command', {
+        method: 'POST',
+        headers: { ...bearer(REMOTE_TOKEN), ...json },
+        body: '{"type":"next"}',
+      }),
+      await call(port, '/api/v1/media/m-video/preview', { headers: bearer(REMOTE_TOKEN) }),
+      await call(port, '/api/v1/media/m-video/picture?width=640', { headers: bearer(REMOTE_TOKEN) }),
+      await call(port, '/api/v1/media/m-video/original', { headers: bearer(REMOTE_TOKEN) }),
+      await call(port, '/api/v1/media/m-video/link', { headers: bearer(REMOTE_TOKEN) }),
+      await call(port, url),
+      await call(port, '/api/v1/uploads', { headers: bearer(REMOTE_TOKEN) }),
+      await call(port, '/api/v1/uploads', {
+        method: 'POST',
+        headers: { ...bearer(REMOTE_TOKEN), ...json },
+        body: '{"name":"placeholder.jpg","bytes":10}',
+      }),
+    ];
+    for (const r of refused) {
+      expect(r.status).toBe(503);
+      expect(JSON.parse(r.body)).toEqual({ ok: false, message: STOPPED_REFUSAL });
+    }
+    // Nothing reached the main process.
+    expect(host.requests.length).toBe(asked);
+    // The pages themselves still load, to say so.
+    expect((await call(port, '/remote')).status).toBe(200);
+    // Let in again (as a new start would be): as before.
+    s.setLetIn(true);
+    expect((await call(port, '/api/v1/me', { headers: bearer(REMOTE_TOKEN) })).status).toBe(200);
   });
 });

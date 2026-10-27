@@ -47,6 +47,8 @@ async function start() {
     log: () => undefined,
   };
   server = new NetworkServer(host);
+  // Let in (Session 54): the main process says so as it starts the server.
+  server.setLetIn(true);
   const started = await server.start({
     port: 0,
     bind: '127.0.0.1',

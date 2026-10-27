@@ -17,6 +17,7 @@ import {
 } from '../e2e/helpers';
 import { testFfmpeg } from '../e2e/stream-helpers';
 import { makeMedia } from './media';
+import { accessEnvOf } from '../e2e/access';
 
 /*
  * The output windows' memory with DevTools attached and without (Session
@@ -92,6 +93,8 @@ function startPlainly(userData: string): ChildProcess {
     DRASHTI_TEST_NO_WIZARD: '1',
     DRASHTI_TEST_QUIET: '0',
     DRASHTI_ROLE: 'main',
+    // Let in through the stand-in list launchApp let this folder in through (Session 54).
+    ...accessEnvOf(userData),
   });
   return spawn(electron, ['.'], { env, stdio: 'ignore' });
 }

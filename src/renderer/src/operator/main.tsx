@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
 import { App } from './App';
+import { AccessGate } from '../access/AccessGate';
 import { WindowBoundary } from '../ui/WindowBoundary';
 import { reportRenderError } from '../ui/render-errors';
 import { setLiveWindowSize } from '../render/live-window';
@@ -22,7 +23,9 @@ createRoot(root, {
 }).render(
   <StrictMode>
     <WindowBoundary reloadLabel="Reload the operator window">
-      <App />
+      <AccessGate>
+        <App />
+      </AccessGate>
     </WindowBoundary>
   </StrictMode>,
 );

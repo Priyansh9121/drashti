@@ -9,11 +9,23 @@ import type { DrashtiBridge } from '../shared/bridge';
 
 export type BridgeGroup = keyof DrashtiBridge;
 export type BridgePage =
-  'index' | 'output' | 'audio' | 'stream' | 'node' | 'pdf' | 'sharpen' | 'gallery' | 'zoom' | 'access-list';
+  | 'index'
+  | 'output'
+  | 'audio'
+  | 'stream'
+  | 'node'
+  | 'pdf'
+  | 'sharpen'
+  | 'gallery'
+  | 'zoom'
+  | 'lock'
+  | 'access-list';
 
 export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // The operator window: everything but the node's window, the PDF window and the sharpening window.
   index: [
+    // The stop and the countdown (Session 54), over either mode.
+    'access',
     'announcements',
     'app',
     'appearance',
@@ -72,6 +84,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   gallery: ['app', 'guides'],
   // The window for Zoom (Session 48): the stream's picture only.
   zoom: ['app', 'zoom'],
+  // The lock screen (Session 54), before this computer is let in: nothing of the show.
+  lock: ['access', 'app'],
   // The Access List (Session 54, E4): the owner's window onto the access list.
   'access-list': ['accessList', 'app'],
 };

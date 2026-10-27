@@ -255,9 +255,17 @@ function MainSection({ view, setView }: { view: NodeView; setView: (v: NodeView)
           {link.why}
         </Notice>
       )}
-      {view.fromSaved && (
+      {view.fromSaved && !view.stopped && (
         <Notice tone="info" data-testid="node-from-saved">
           Showing the last picture this node kept: Main has not been reached since it started.
+        </Notice>
+      )}
+      {view.stopped && (
+        // A node shows only while its Main is let in (Session 54, access by Gmail).
+        <Notice tone="warning" data-testid="node-stopped" data-why={view.stopped}>
+          {view.stopped === 'main-stopped'
+            ? 'This node’s screens are black: Drashti on Main has stopped, as its access was removed or could not be checked.'
+            : 'This node’s screens are black until it hears from Main, let in: start Drashti on Main, or check the network.'}
         </Notice>
       )}
       <div className="flex flex-wrap gap-2 border-t border-line pt-3">

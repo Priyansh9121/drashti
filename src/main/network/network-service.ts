@@ -8,6 +8,7 @@ import { IPC, type InvokeChannel } from '../../shared/ipc';
 import type { PresentationDoc } from '../../shared/library';
 import type { Lang } from '../../shared/model';
 import { fillMessage, type MessageTemplate, messageItemId } from '../../shared/messages';
+import { STOPPED_REFUSAL } from '../../shared/access';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { idSchema } from '../../shared/model-schema';
 import {
@@ -157,6 +158,11 @@ export interface NetworkDeps {
   changed(status: NetworkStatus): void;
   log(level: 'info' | 'warn', message: string): void;
   now(): number;
+  /**
+   * Whether Drashti is let in (Session 54, access by Gmail): while it is not, every device's request, every pairing
+   * and every file is refused, here and in the worker. Left out (a test): let in.
+   */
+  letIn?: () => boolean;
 }
 
 /**
@@ -357,6 +363,16 @@ export class NetworkService implements EngineTransport {
     this.hint('files');
   }
 
+  private letIn(): boolean {
+    return this.deps.letIn?.() ?? true;
+  }
+
+  /** Drashti let in or stopped (Session 54): the worker hears at once, and an upload on its way stops with it. */
+  accessChanged(): void {
+    this.worker?.send({ type: 'access', letIn: this.letIn() });
+    this.uploadsChanged();
+  }
+
   private pushUploads(): void {
     if (this.deps.files) this.worker?.send({ type: 'uploads', policy: this.deps.files.policy() });
   }
@@ -407,6 +423,7 @@ export class NetworkService implements EngineTransport {
     // (after a restart) is known, never refused as unpaired, and gets the show at once.
     this.pushDevices();
     this.pushUploads();
+    worker.send({ type: 'access', letIn: this.letIn() });
     worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
     worker.send({ type: 'start', options: this.deps.serverOptions(this.port) });
     this.seenWriter ??= setInterval(() => {
@@ -520,6 +537,8 @@ export class NetworkService implements EngineTransport {
     try {
       if (question.kind === 'request') answer = this.answer(question.request);
       else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
+      // No file while Drashti is not let in (Session 54): a preview, a picture, an original, a shared sound.
+      else if (!this.letIn()) answer = null;
       else if (question.kind === 'sound') answer = this.deps.reads.sharedSound(question.mediaId);
       else answer = this.deps.reads.mediaSource(question.mediaId);
     } catch (error) {
@@ -626,6 +645,7 @@ export class NetworkService implements EngineTransport {
 
   /** The device typed (or its QR code carried) this code: a new device, and its token, once. */
   pair(code: string, address: string): PairAnswer {
+    if (!this.letIn()) return { ok: false, status: 503, message: STOPPED_REFUSAL };
     const offer = this.pairing;
     const wrong = {
       ok: false as const,
@@ -717,6 +737,7 @@ export class NetworkService implements EngineTransport {
   // ---- what devices ask for ------------------------------------------------------------------
 
   answer(request: DeviceRequest): DeviceAnswer {
+    if (!this.letIn()) return deny(503, STOPPED_REFUSAL);
     const device = this.deps.devices.get(request.deviceId);
     if (!device) return deny(401, 'This device was removed in Drashti. Pair it again.');
     if (!isDeviceOp(request.op) || !deviceMay(device.kind, request.op))

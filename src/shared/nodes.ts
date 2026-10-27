@@ -163,6 +163,11 @@ export type ToNode =
   | { type: 'reload'; screenId: string }
   /** Try again an output the node's watchdog gave up on (Sessions 31–36): its crash count starts afresh. */
   | { type: 'tryAgain'; screenId: string }
+  /**
+   * Whether Main is let in (Session 54, access by Gmail): sent as the node connects, at each change and every 15 s. A
+   * node shows only while it hears a Main let in: told not, or hearing nothing of it for 2 minutes, its screens go black.
+   */
+  | { type: 'access'; letIn: boolean }
   | { type: 'bye'; reason: NodeByeReason; mainVersion?: string };
 
 /** What each kind of goodbye means, as the node's window says it. */
@@ -241,6 +246,11 @@ export interface NodeView {
   clock: NodeClock | null;
   /** Showing the last picture kept from before: Main has not been reached since this node started. */
   fromSaved: boolean;
+  /**
+   * The screens are black (Session 54, access by Gmail): Main said it is not let in, or no Main let in has been heard
+   * (since this node started, or for 2 minutes). Null (or left out) while they show Main's show.
+   */
+  stopped?: 'main-stopped' | 'not-heard' | null;
   /** Main refused this node for its version: Main's version (to update to), or null. */
   mainVersion: string | null;
   /** Updating this node to Main's version (Session 14). */

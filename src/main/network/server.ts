@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { basename } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { STOPPED_REFUSAL } from '../../shared/access';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
@@ -373,8 +374,18 @@ export class NetworkServer {
   private media: MediaServing | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private lastConnected = '';
+  /**
+   * Whether Drashti is let in (Session 54, access by Gmail), as the main process says: until it says so, and once it
+   * has stopped, every request is refused here, those this process answers itself (a picture, an original, a link,
+   * an upload) as much as those it asks the main process.
+   */
+  private letIn = false;
 
   constructor(private readonly host: ServerHost) {}
+
+  setLetIn(letIn: boolean): void {
+    this.letIn = letIn;
+  }
 
   get listening(): boolean {
     return this.server?.listening ?? false;
@@ -627,6 +638,7 @@ export class NetworkServer {
     address: string,
   ): Promise<void> {
     try {
+      if (!this.letIn) throw new HttpError(503, STOPPED_REFUSAL);
       if (segments.join('/') === 'api/v1/pair') {
         if (req.method !== 'POST') throw new HttpError(405, 'Pair with POST.');
         await this.pair(req, res, address);

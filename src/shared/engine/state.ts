@@ -609,6 +609,12 @@ export interface EngineState {
    * media id: what the time bar shows of each (see VideoFile). Left out before any was up, and null once none is.
    */
   videoFiles?: Record<string, VideoFile> | null;
+  /**
+   * Drashti stopped (Session 54, access by Gmail: revoked, rejected, unknown, or 2 minutes with no answer), and when
+   * by the engine's clock: every screen, node, phone and the stream's picture fades to black from then and shows
+   * nothing after, and the show changes no more. Left out (an older state) or null: not stopped.
+   */
+  stopped?: { at: number } | null;
 }
 
 export function emptyLayers(): Layers {

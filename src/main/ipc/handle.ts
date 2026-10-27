@@ -1,4 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
+import { STOPPED_REFUSAL } from '../../shared/access';
 import type { InvokeChannel, InvokeResult } from '../../shared/ipc';
 import { isAppUrl } from '../windows/navigation';
 import { devServerUrl, rendererDir } from '../windows/renderer';
@@ -10,6 +11,19 @@ import { devServerUrl, rendererDir } from '../windows/renderer';
  * tests read this.
  */
 export const handlerTimes = new Map<string, number>();
+
+/**
+ * Access by Gmail (Session 54): whether a request may run, asked before every one. While this computer is not let
+ * in, only the lock screen's requests and Quit run (and, in a self-test, Drashti's own pages but the operator
+ * window, showing only the self-test's placeholder content): anything else is refused before its handler runs,
+ * whatever page sent it and whatever its devtools typed.
+ */
+let access: ((channel: string, event: IpcMainInvokeEvent) => boolean) | null = null;
+
+/** Set the gate every request passes (null: none, as in the tests that need none). */
+export function gateChannels(mayRun: ((channel: string, event: IpcMainInvokeEvent) => boolean) | null): void {
+  access = mayRun;
+}
 
 /** While `locked()` is true, these channels answer their refusal instead of running (Simple Mode). */
 let lock: { locked: () => boolean; refusals: ReadonlyMap<string, () => unknown> } | null = null;
@@ -74,6 +88,7 @@ export function handle<C extends InvokeChannel>(
     if (!isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })) {
       throw new Error(`Refused ${channel} from ${url || 'an unknown frame'}`);
     }
+    if (access && !access(channel, event)) throw new Error(STOPPED_REFUSAL);
     const refusal = refusalFor(channel);
     if (refusal) return refusal();
     const run = () => {

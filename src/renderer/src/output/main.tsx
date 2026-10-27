@@ -21,6 +21,7 @@ import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
 import { LiveHere } from '../render/live-here';
+import { useStopFade } from '../render/StopFade';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -206,6 +207,8 @@ function Output() {
   // A node's screen (its context carries how far its clock is from Main's; Main's own never does) draws no video
   // input or window in the picture-in-picture box: they are Main's computer's (Session 50). Nor before it knows.
   const liveHere = context !== null && context.clockOffsetMs === undefined;
+  // Drashti stopped (Session 54): black over it all from then, the same on every screen and node.
+  const stop = useStopFade(state?.stopped);
   return (
     <div
       ref={rootRef}
@@ -234,7 +237,7 @@ function Output() {
           />
         </PlacedInParent>
       )}
-      {state && ready && (
+      {state && ready && !stop.black && (
         <SceneBoundary resetKey={rev}>
           {/* Main's way of writing the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */}
           <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
@@ -251,6 +254,7 @@ function Output() {
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
+      {stop.cover}
       {/* Stage screens show no pictures, so they load none ahead: but for a layout's audience picture
           (Session 50), which loads what comes next as the hall's screens do. */}
       {state && (!stage || showsHall(look.stageLayout)) && (
