@@ -299,7 +299,7 @@ function AddWhenImported({ view }: { view: LinkView }) {
           />
         </div>
       )}
-      {target.kind === 'new' && <NewPlaylistName name={target.name} first={playlists.length === 0} />}
+      {target.kind === 'new' && <NewPlaylistName name={target.name} only={playlists.length === 0} />}
     </div>
   );
 }
@@ -308,10 +308,10 @@ function AddWhenImported({ view }: { view: LinkView }) {
  * A new playlist's name (Session 54), asked before the download starts: the playlist is made, and opened, when
  * the download is in. With no playlist at all, it is the only place a download can go.
  */
-function NewPlaylistName({ name, first }: { name: string; first: boolean }) {
+function NewPlaylistName({ name, only }: { name: string; only: boolean }) {
   return (
     <Field
-      label={first ? 'There are no playlists yet: name one for it' : 'The new playlist’s name'}
+      label={only ? 'There are no playlists yet: name one for it' : 'The new playlist’s name'}
       hint="Drashti makes it when the download is in, and opens it."
       error={name.trim() === '' ? 'Name the playlist first: the download goes into it.' : null}
     >
