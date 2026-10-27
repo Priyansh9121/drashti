@@ -198,18 +198,22 @@ export async function slideWithVideo(
   return presentationId;
 }
 
-/** A presentation of one slide with these looping videos side by side over its lower half, under its words. */
+/**
+ * A presentation of one slide with these looping videos side by side over its lower half, under its words; or, with
+ * `alone`, the videos alone (a picture slide, which a lower-third group, a key and fill pair's, draws whole).
+ */
 export async function slideWithVideos(
   win: Page,
   dir: string,
   name: string,
   mediaIds: string[],
+  { alone = false }: { alone?: boolean } = {},
 ): Promise<string> {
   const words = join(dir, `${name}.txt`);
   writeFileSync(words, '[Verse]\nPlaceholder words over the videos\n');
   const [presentationId = ''] = await importAndGetIds(win, [words]);
   await win.evaluate(
-    async ({ presentationId, mediaIds }) => {
+    async ({ presentationId, mediaIds, alone }) => {
       const d = (globalThis as PageGlobals).drashti;
       const opened = await d.library.slidesForEdit(presentationId);
       if (!opened.ok) throw new Error(opened.message);
@@ -224,11 +228,11 @@ export async function slideWithVideos(
         fit: 'fit' as const,
         loop: true,
       }));
-      slide.elements = [...videos, ...slide.elements];
+      slide.elements = alone ? videos : [...videos, ...slide.elements];
       const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
       if (!saved.ok) throw new Error(saved.message);
     },
-    { presentationId, mediaIds },
+    { presentationId, mediaIds, alone },
   );
   return presentationId;
 }
