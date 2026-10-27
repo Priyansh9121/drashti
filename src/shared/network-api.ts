@@ -92,6 +92,11 @@ export const DEVICE_OPS = {
   /** The audio playlists by name (Play starts one: music.play). */
   music: ['remote'],
   /**
+   * Repeat Slides going round (Session 26d), from its first step, a step given, or an item's first step, which the
+   * main process finds as the window does (Session 54, D5 review).
+   */
+  'repeat.start': ['remote'],
+  /**
    * Session 54 (shared/phone-files.ts): the playlists shared with phones, and a shared one's items, to view and
    * play on the device (read-only); and files a phone adds, while the switch is on: its own files and how each
    * stands, a new one, its pieces, and Cancel. Never a Stage or Announcements device.

@@ -1,6 +1,6 @@
 import { useEngine } from '../engine/engine-store';
+import { nextCaption } from '../../../shared/next-caption';
 import { useLibrary } from '../library/library-store';
-import { mediaKindLabel } from '../library/MediaList';
 import { usePlaylists } from '../playlists/playlist-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
@@ -46,23 +46,8 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   // The video input behind the next slide (Session 51): whether this computer has one of its name (counted as there
   // until the list has been read).
   const behind = useInputNamed(next?.kind === 'slide' ? (next.input ?? null) : null) !== null;
-  let caption = 'Nothing after this';
-  if (next?.kind === 'slide')
-    caption = `${itemLabel ?? name ?? 'Presentation'}, slide ${next.slideIndex + 1}${next.itemId ? ' (next item)' : ''}`;
-  // A deck's next click on the slide up (Session 54, C2).
-  if (next?.kind === 'slide' && (next.step ?? 0) > 0) caption += `, click ${String(next.step)}`;
-  if (next?.kind === 'slide' && next.input !== undefined)
-    caption += behind
-      ? `, over the video input “${next.input}”`
-      : `, over the video input “${next.input}”, which is not on this computer: the background stays as it is`;
-  // Its background file missing (Session 52), said as a missing input is.
-  if (next?.kind === 'slide' && next.fileMissing !== undefined)
-    caption += `, over the file “${next.fileMissing}”, which is missing: the background stays as it is`;
-  // Its sound file missing (Session 54), said as its background file is.
-  if (next?.kind === 'slide' && next.soundMissing !== undefined)
-    caption += `, with the sound “${next.soundMissing}”, which is missing: the sound stays as it is`;
-  if (next?.kind === 'media') caption = `${mediaKindLabel[next.media]}: ${next.label}`;
-  if (next?.kind === 'input') caption = `Video input: ${next.name}`;
+  // In words (shared/next-caption.ts), as a phone says it too (Session 54, D5 review).
+  const caption = nextCaption(next, { label: itemLabel ?? name ?? null, inputHere: behind });
   const heading = (
     <h2
       id="next-preview-title"

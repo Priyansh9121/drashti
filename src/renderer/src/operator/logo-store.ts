@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { PropItem } from '../../../shared/engine/state';
-import type { PropInfo } from '../../../shared/props';
+import { NO_LOGO_CHOSEN, type PropInfo } from '../../../shared/props';
 import { useEngine } from '../engine/engine-store';
 import { dispatch, useNotice } from './actions';
 
@@ -53,9 +53,7 @@ export async function toggleLogo(): Promise<void> {
   const { props, logoId } = useLogo.getState();
   const logo = props?.find((p) => p.id === logoId);
   if (!logo) {
-    useNotice.setState({
-      text: 'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.',
-    });
+    useNotice.setState({ text: NO_LOGO_CHOSEN });
     return;
   }
   await dispatch({ type: 'showLogo', prop: asItem(logo) });

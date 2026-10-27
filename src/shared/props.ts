@@ -22,6 +22,13 @@ export type PropFields = Pick<PropInfo, 'name' | 'width' | 'height' | 'elements'
 
 export type PropResult = { ok: true; id: string } | { ok: false; message: string };
 
+/**
+ * Logo pressed with no prop chosen as the logo: what the operator window says, and since Session 54 (D5 review) a
+ * phone too (its Logo stays to be pressed, as the window's does, instead of greyed with no reason).
+ */
+export const NO_LOGO_CHOSEN =
+  'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.';
+
 export const propFieldsSchema: z.ZodType<PropFields> = z
   .object({
     name: z.string().trim().min(1).max(80),

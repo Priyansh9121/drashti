@@ -25,7 +25,7 @@ import {
   setUpScreen,
 } from './helpers';
 import { LOGO, PICTURE, setUpPlaceholderShow, VIDEO } from './placeholder-show';
-import { makeTestTone } from './test-media';
+import { makeTestImage, makeTestTone } from './test-media';
 
 /*
  * The phone as a mirror of the operator window (Session 54, D5): the clears in the desktop's order with its keys'
@@ -85,6 +85,12 @@ const offTheSide = (page: Page) =>
     return [...scrolls, ...past].map((el) => `${el.tagName} ${el.textContent.trim().slice(0, 30)}`);
   });
 
+/** The operator window's own bottom bar, as its buttons read (words and keys), its ? left out (D5 review). */
+const windowClearWords = (win: Page) =>
+  win
+    .locator('[data-testid="layer-bar"] button:not([data-testid^="what-is-this"])')
+    .evaluateAll((buttons) => buttons.map((b) => (b as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
+
 /** The clears' words and keys, in their order on the page. */
 const clearWords = (phone: Page) =>
   phone
@@ -99,7 +105,6 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win);
-    await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
     await setUpScreen(win);
     const output = await outputPage(app);
     const { base } = await networkOn(win);
@@ -123,6 +128,17 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           'Logo F12',
           'Black-out B',
         ]);
+      // No logo chosen yet: the Logo can be pressed all the same, as the window's can, and says why in the window's
+      // words (D5 review: it was greyed with no reason). Then one is chosen.
+      await expect(p.getByTestId('remote-logo')).toBeEnabled();
+      await p.getByTestId('remote-logo').click();
+      await expect(p.getByRole('alert')).toContainText(
+        'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.',
+      );
+      expect((await snapshot(win)).state.logo).toBeNull();
+      await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
+      // Word for word and key for key the window's own bar (D5 review), read from it rather than from a list.
+      expect(await windowClearWords(win)).toEqual(await clearWords(p));
       // Read out as the desktop's are: a layer's clear by its name, the rest by their words and key.
       const actions = p.getByTestId('remote-actions');
       await expect(actions.getByRole('button', { name: 'Clear all F1', exact: true })).toBeDisabled();
@@ -186,6 +202,9 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       // The single-letter keys turned off in Drashti: Black-out names no key, the Logo keeps F12; and back.
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(false));
       await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Logo F12', 'Black-out']);
+      // And still the window's own bar, as its buttons read now.
+      const phoneNow = await clearWords(p);
+      await expect.poll(() => windowClearWords(win)).toEqual(phoneNow);
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(true));
       await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Logo F12', 'Black-out B']);
     } finally {
@@ -201,9 +220,14 @@ test('from a phone, as from the operator window: props, media with its skips, th
   await operatorReady(win);
   const show = await setUpPlaceholderShow(win, { video: true });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-mirror-'));
-  await importAndGetIds(win, [makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 4 })]);
+  await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 4 }),
+    makeTestTone(join(dir, 'Placeholder second tune.wav'), { seconds: 30, hz: 660 }),
+  ]);
   const toneId = await mediaId(win, 'Placeholder tune');
+  const secondToneId = await mediaId(win, 'Placeholder second tune');
   expect(toneId).not.toBe('');
+  expect(secondToneId).not.toBe('');
   await setUpScreen(win);
   const output = await outputPage(app);
   const { base } = await networkOn(win);
@@ -316,32 +340,67 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await expect.poll(async () => (await snapshot(win)).state.idle.startedAt).toBeNull();
 
     // An audio playlist made in Drashti: listed with its tracks, played from the phone, then paused.
-    const music = await win.evaluate(async (id) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const made = await d.music.create('Placeholder tunes');
-      if (!made.ok || !made.id) throw new Error('no audio playlist');
-      const added = await d.music.addTracks(made.id, [id], null);
-      if (!added.ok) throw new Error(added.message);
-      return made.id;
-    }, toneId);
+    const music = await win.evaluate(
+      async (ids) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const made = await d.music.create('Placeholder tunes');
+        if (!made.ok || !made.id) throw new Error('no audio playlist');
+        const added = await d.music.addTracks(made.id, ids, null);
+        if (!added.ok) throw new Error(added.message);
+        return made.id;
+      },
+      [toneId, secondToneId],
+    );
     const tunes = p.getByTestId('remote-music-playlist').filter({ hasText: 'Placeholder tunes' });
-    await expect(tunes).toContainText('1 track');
+    await expect(tunes).toContainText('2 tracks');
     await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
     await expect.poll(async () => (await layers(win)).audio?.music?.playlistId).toBe(music);
     await expect(tunes).toHaveAttribute('data-playing', 'true');
     await expect(p.getByTestId('remote-music').getByRole('button', { name: 'Previous track' })).toBeVisible();
+    // Its second track, paused on its row: Play there goes on with that track where it was, as the window's Play
+    // does, never from the first track again (D5 review).
+    await p.getByTestId('remote-music').getByRole('button', { name: 'Next track' }).click();
+    await expect.poll(async () => (await layers(win)).audio?.music?.index).toBe(1);
+    await tunes.getByRole('button', { name: 'Pause Placeholder tunes' }).click();
+    await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
+    await expect(tunes).toHaveAttribute('data-paused', 'true');
+    await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
+    await expect
+      .poll(async () => {
+        const audio = (await layers(win)).audio;
+        return { index: audio?.music?.index, paused: audio?.pausedAtMs !== undefined };
+      })
+      .toEqual({ index: 1, paused: false });
+    await expect(tunes).not.toHaveAttribute('data-paused');
     await p.getByTestId('remote-music').getByRole('button', { name: 'Pause music' }).click();
     await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
 
-    // Media: the library's pictures, videos and sounds. A picture goes up as the background, the slide taken off.
+    // Next in words beside its picture, as the window's caption says it (D5 review): until then a phone showed only
+    // the next slide's picture, hidden from screen readers.
     await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
+    await p.getByTestId('remote-tab-show').click();
+    await expect(p.getByTestId('remote-next-caption')).toHaveText('Placeholder Kirtan, slide 2');
+
+    // Media: the library's pictures, videos and sounds. A picture goes up as the background, the slide taken off.
     await p.getByTestId('remote-tab-library').click();
     await p.getByTestId('remote-library-media').click();
     await expect(p.getByTestId('remote-library-media')).toHaveAttribute('aria-selected', 'true');
     const picture = p.getByTestId('remote-media-item').filter({ hasText: PICTURE });
     await expect(picture).toContainText('Picture');
     await expectNoSeriousA11yIssues(p, 'Media on a phone');
+    // Media follows the library while it is open (D5 review): a picture imported in Drashti appears, with no reload.
+    const mark = 'Media opened before the import';
+    await p.evaluate((m) => {
+      (globalThis as { e2eMark?: string }).e2eMark = m;
+    }, mark);
+    await importAndGetIds(win, [
+      await makeTestImage(win, join(dir, 'Placeholder new arrival.png'), { color: '#365314' }),
+    ]);
+    await expect(
+      p.getByTestId('remote-media-item').filter({ hasText: 'Placeholder new arrival' }),
+    ).toBeVisible();
+    expect(await p.evaluate(() => (globalThis as { e2eMark?: string }).e2eMark)).toBe(mark);
     await picture.getByRole('button').first().click();
     await expect
       .poll(async () => {
@@ -409,6 +468,8 @@ test('from a phone, as from the operator window: props, media with its skips, th
 /** The sizes the mirror is laid out for: a phone, a tablet upright and a tablet held sideways. */
 const SIZES = [
   { name: 'a phone', width: 375, height: 812, layout: 'phone', mobile: true },
+  // Held sideways, a phone keeps its tabs (D5 review): as wide as a small tablet, far too short for its columns.
+  { name: 'a phone held sideways', width: 844, height: 390, layout: 'phone', mobile: true },
   { name: 'a tablet', width: 768, height: 1024, layout: 'wide', mobile: true },
   { name: 'a tablet held sideways', width: 1024, height: 768, layout: 'landscape', mobile: true },
 ] as const;
@@ -439,13 +500,51 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win, { video: true });
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-mirror-layout-'));
+    await importAndGetIds(win, [makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 120 })]);
+    const toneId = await mediaId(win, 'Placeholder tune');
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
     await win.evaluate((input) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, input), {
       ...NEW_LOWER_THIRD,
       lines: ['Placeholder Speaker', 'Placeholder title', ''],
     });
+    // Everything the phone can have up at once (D5 review): an audio playlist playing (Music's rows), the idle
+    // rotation's pictures (its Start), a video behind Repeat Slides going round (the time bars, the Playing row and
+    // LIVE's own line, "Moves on by itself"), so each is laid out and checked at every size.
+    const repeatId = await win.evaluate(
+      async ({ toneId, pictureId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const made = await d.music.create('Placeholder tunes');
+        if (!made.ok || !made.id) throw new Error('no audio playlist');
+        const added = await d.music.addTracks(made.id, [toneId], null);
+        if (!added.ok) throw new Error(added.message);
+        const played = await d.music.play(made.id, 0);
+        if (!played.ok) throw new Error(played.message);
+        const idle = await d.idle.saveSettings({
+          pictures: [pictureId],
+          secondsEach: 3,
+          quoteOfTheDay: false,
+        });
+        if (!idle.ok) throw new Error('no idle pictures');
+        const repeat = await d.playlists.createRepeat(null);
+        const id = repeat.ok ? (repeat.ids[0] ?? '') : '';
+        await d.playlists.rename(id, 'Placeholder Hall Pictures');
+        await d.playlists.addItems(id, null, [{ kind: 'media', mediaId: pictureId }]);
+        await d.playlists.setRepeat(id, {
+          secondsEach: 600,
+          transition: { kind: 'dissolve', durationMs: 500 },
+        });
+        return id;
+      },
+      { toneId, pictureId: show.pictureMediaId },
+    );
+    await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: show.videoMediaId, media: 'video', fit: 'fit', loop: true },
+    });
+    await dispatch(win, { type: 'startRepeat', playlistId: repeatId, slideIndex: 0 });
+    await expect.poll(async () => (await snapshot(win)).state.autoAdvance).not.toBeNull();
     // Something on every clear's layer it can be: the clears lit, their words at their longest.
-    await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
     await dispatch(win, { type: 'setBlackout', on: true });
     await dispatch(win, {
       type: 'showMessage',
@@ -465,19 +564,31 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         const page = await context.newPage();
         const at = `${size.name} (${String(size.width)} × ${String(size.height)}, ${engine})`;
         try {
-          await pairByQr(
-            page,
-            base,
-            await pairingCode(win, 'remote', `Placeholder ${size.layout}`),
-            '/remote',
-          );
+          await pairByQr(page, base, await pairingCode(win, 'remote', `Placeholder ${size.name}`), '/remote');
           await expect(page.getByTestId('connection')).toHaveText('Connected');
           await expect(page.getByTestId('remote')).toHaveAttribute('data-layout', size.layout);
+          // Where the live column and More are in sight: always beside each other on a tablet; a tab each on a phone.
+          const liveShown = (place: string) =>
+            size.layout !== 'phone' || place === 'remote-tab-show' || place === 'remote-panel-show';
+          const moreShown = (place: string) =>
+            size.layout === 'wide' || place === 'remote-tab-more' || place === 'remote-panel-more';
           for (const place of PLACES[size.layout]) {
             await page.getByTestId(place).click();
             await expect(page.getByTestId(place)).toHaveAttribute('aria-selected', 'true');
             if (place === 'remote-library-media')
               await expect(page.getByTestId('remote-media-item').first()).toBeVisible();
+            // What plays, and LIVE's own line, are there to be checked (D5 review).
+            if (liveShown(place)) {
+              await expect(page.getByTestId('remote-time-bars')).toBeVisible();
+              await expect(page.getByTestId('remote-playing')).toBeVisible();
+              await expect(page.getByTestId('remote-auto-advance')).toBeVisible();
+            }
+            if (moreShown(place)) {
+              await expect(
+                page.getByTestId('remote-music-playlist').filter({ hasText: 'Placeholder tunes' }),
+              ).toHaveAttribute('data-playing', 'true');
+              await expect(page.getByTestId('remote-idle-start')).toBeVisible();
+            }
             await expectNoSeriousA11yIssues(page, `${place} on ${at}`);
             expect.soft(await tooSmall(page), `targets under 44 px: ${place} on ${at}`).toEqual([]);
             expect.soft(await offTheSide(page), `off the side: ${place} on ${at}`).toEqual([]);
@@ -489,8 +600,11 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
             .getByRole('button')
             .evaluateAll((buttons) => buttons.map((b) => Math.round(b.getBoundingClientRect().top)));
           const firstRow = tops.filter((t) => t === tops[0]).length;
-          if (size.layout === 'phone') expect(firstRow, at).toBe(3);
+          if (size.width < 600) expect(firstRow, at).toBe(3);
           else expect(firstRow, at).toBeGreaterThanOrEqual(3);
+          // Back and Next always in reach, a phone held sideways too.
+          await expect(page.getByTestId('remote-next-button')).toBeInViewport();
+          await expect(page.getByTestId('remote-back')).toBeInViewport();
           // Held sideways, More's sections stand in two columns, and Media in a grid of two or more.
           if (size.layout === 'landscape') {
             await page.getByTestId('remote-panel-more').click();
@@ -586,5 +700,82 @@ test('a Stage or Announcements device can read and do none of the mirror’s req
       })
     ).status,
   ).toBe(409);
+  await app.close();
+});
+
+// Session 54, D5 review: a Repeat Slides playlist is never played item by item; it goes round, as the window and
+// Simple Mode start it. Until then a phone's tap on its item, and its Next, played nothing.
+test('Repeat Slides from a phone, as from Simple Mode: Next with nothing up and Start going round start it, an item tapped goes round from it, and Stop (D5 review)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-mirror-repeat-'));
+  const one = await makeTestImage(win, join(dir, 'Placeholder one.png'), { color: '#1d4e89' });
+  const two = await makeTestImage(win, join(dir, 'Placeholder two.png'), { color: '#7c2d12' });
+  const [oneId = '', twoId = ''] = await importAndGetIds(win, [one, two]);
+  const { playlistId, items } = await win.evaluate(
+    async ({ oneId, twoId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.playlists.createRepeat(null);
+      const id = made.ok ? (made.ids[0] ?? '') : '';
+      await d.playlists.rename(id, 'Placeholder Hall Pictures');
+      await d.playlists.addItems(id, null, [
+        { kind: 'media', mediaId: oneId },
+        { kind: 'media', mediaId: twoId },
+      ]);
+      // Long enough that no step moves on by itself while the test looks.
+      await d.playlists.setRepeat(id, { secondsEach: 60, transition: { kind: 'dissolve', durationMs: 500 } });
+      return { playlistId: id, items: (await d.playlists.items(id)).map((i) => i.id) };
+    },
+    { oneId, twoId },
+  );
+  const [firstItem = '', secondItem = ''] = items;
+  /** Which item's step is up, and whether it goes round. */
+  const going = async () => {
+    const { state } = await snapshot(win);
+    return {
+      repeat: state.repeat?.playlistId ?? null,
+      item: state.layers.slide?.slide.id.split('/')[0] ?? null,
+    };
+  };
+  const { base } = await networkOn(win);
+  const phone = await device('webkit');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-playlist').selectOption(playlistId);
+    await expect(p.getByTestId('remote-going-round')).toBeVisible();
+    await expect(p.getByTestId('remote-item')).toHaveCount(2);
+    await expectNoSeriousA11yIssues(p, 'a Repeat Slides playlist on a phone');
+
+    // Next with nothing up starts it going round from its first step, as Simple Mode's Next does.
+    await p.getByTestId('remote-next-button').click();
+    await expect.poll(going).toEqual({ repeat: playlistId, item: firstItem });
+    await expect(p.getByTestId('remote-item').nth(0)).toHaveAttribute('data-live', 'true');
+    await p.getByTestId('remote-going-round-stop').click();
+    await expect.poll(async () => (await going()).repeat).toBeNull();
+
+    // An item tapped goes round from that item's first step, and is marked as the one up.
+    await p.getByTestId('remote-item').nth(1).click();
+    await expect.poll(going).toEqual({ repeat: playlistId, item: secondItem });
+    await expect(p.getByTestId('remote-item').nth(1)).toHaveAttribute('data-live', 'true');
+    await expect(p.getByTestId('remote-item').nth(0)).not.toHaveAttribute('data-live');
+    // Under LIVE on the Show tab: Repeating, with its own Stop (its step stays up).
+    await p.getByTestId('remote-tab-show').click();
+    await expect(p.getByTestId('remote-repeating')).toContainText('Placeholder Hall Pictures');
+    await p.getByTestId('remote-repeat-stop').click();
+    await expect.poll(going).toEqual({ repeat: null, item: secondItem });
+
+    // Start going round: from the first step again.
+    await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-going-round').click();
+    await expect.poll(going).toEqual({ repeat: playlistId, item: firstItem });
+    await expect(p.getByTestId('remote-going-round-stop')).toBeVisible();
+  } finally {
+    await phone.close();
+  }
   await app.close();
 });
