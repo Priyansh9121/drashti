@@ -80,6 +80,18 @@ describe('the PowerPoint script for a deck’s movie', () => {
     expect(at('$pres.CreateVideo(')).toBeLessThan(at('} finally {'));
   });
 
+  it('gives up on a movie that has made no progress for the time given: the same size, and PowerPoint’s processor time up by less than it takes to work (Session 54, C review)', () => {
+    expect(script).toContain('[int]$StallSeconds = 0, [int]$WorkingMs = 500');
+    const wait = script.slice(at('$pres.CreateVideo('), at('} finally {'));
+    // PowerPoint's own processor time, read afresh each time; when it cannot be read, only the time limit counts.
+    expect(wait).toContain('$ppt.Refresh(); $ppt.TotalProcessorTime.TotalMilliseconds');
+    expect(wait).toContain('(Get-Item -LiteralPath $Movie).Length');
+    expect(wait).toContain('$now - $markCpu -ge $WorkingMs');
+    expect(wait).toMatch(
+      /if \(\$StallSeconds -gt 0 -and \$null -ne \$markCpu -and \(\(Get-Date\) - \$moved\)\.TotalSeconds -gt \$StallSeconds\) \{ throw 'PowerPoint made no progress on the movie for a minute\.' \}/u,
+    );
+  });
+
   it('writes down the PowerPoint it started, below normal priority, and quits it only when nothing else is open or shows', () => {
     expect(at('Set-Content -LiteralPath $Started')).toBeLessThan(at('$app.Presentations.Open('));
     expect(script).toContain("PriorityClass = 'BelowNormal'");
@@ -218,7 +230,7 @@ describe('PowerPoint on Windows, with a stand-in for PowerShell', () => {
     };
     const movie = join(work, 'movie.mp4');
     const r = await deckOnWindows(
-      { input: deck, pdf: join(work, 'pictures.pdf'), movie, movieLimitMs: 300_000 },
+      { input: deck, pdf: join(work, 'pictures.pdf'), movie, movieLimitMs: 300_000, stallMs: 60_000 },
       work,
       {
         runPowerShell: fake,
@@ -229,6 +241,8 @@ describe('PowerPoint on Windows, with a stand-in for PowerShell', () => {
     );
     expect(r).toEqual({ ok: true });
     expect(seen[0]?.['LimitSeconds']).toBe('300');
+    // No progress for a minute: given up on (Session 54, C review).
+    expect(seen[0]?.['StallSeconds']).toBe('60');
     expect(seen[0]?.['Pptx']).toBeUndefined();
     expect(Number(seen[0]?.['timeoutMs'])).toBeGreaterThan(300_000);
     expect(started).toEqual([4242, 4343]);
@@ -257,6 +271,24 @@ describe('PowerPoint on Windows, with a stand-in for PowerShell', () => {
     expect(r).toMatchObject({ ok: false, reason: 'it could not make the movie' });
     expect(r.ok ? '' : r.message).toBe('PowerPoint could not make the deck’s movie.');
     expect(log).toEqual(['PowerPoint: failed: PowerPoint could not make the movie.']);
+  });
+
+  it('says so when PowerPoint made no progress on the movie for a minute (Session 54, C review)', async () => {
+    const work = mkdtempSync(join(dir, 'work-'));
+    const fake: PowerShellRunner = (_script, args) => {
+      writeFileSync(named(args)['Started'] ?? '', '');
+      return ran({
+        code: 1,
+        stderr: 'PowerPoint made no progress on the movie for a minute.\nAt line:40 char:7',
+      });
+    };
+    const r = await deckOnWindows({ input: deck, movie: join(work, 'movie.mp4'), stallMs: 60_000 }, work, {
+      runPowerShell: fake,
+    });
+    expect(r).toMatchObject({ ok: false, reason: 'it made no progress on the movie for a minute' });
+    expect(r.ok ? '' : r.message).toBe(
+      'PowerPoint stopped making the deck’s movie: it made no progress for a minute, as when it asks something in a window nobody sees.',
+    );
   });
 
   it('a PowerPoint that does not finish in time is reported, and one cancelled says so', async () => {

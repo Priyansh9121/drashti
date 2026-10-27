@@ -446,8 +446,12 @@ export interface MacSession {
   log(line: string): void;
   /** Open a copy of `file` in the app, made for the purpose, and wait for it while the app answers. */
   open(file: string): Promise<{ ok: true; document: MacDocument } | { ok: false; failed: ConvertFailed }>;
-  /** A few lines to the app, in `with timeout of`, with `argv`. */
-  tell(body: string[], args: string[], seconds: number): Promise<Ran>;
+  /** A few lines to the app, in `with timeout of`, with `argv`; `signal` stops it too (the import's always does). */
+  tell(body: string[], args: string[], seconds: number, signal?: AbortSignal): Promise<Ran>;
+  /** The app's processes now. */
+  pids(): Promise<number[]>;
+  /** What to tell the operator when the app stopped answering, or making progress, while `when`. */
+  stuck(when: string): ConvertFailed;
   /** What to tell the operator when asking the app failed while `when`, trying to `what` ("save it as PDF"). */
   fromError(r: Ran, when: string, what: string): ConvertFailed;
   /** Close a document Drashti opened, never saving it. */
@@ -566,7 +570,8 @@ export async function withMacSession<T>(
       `${name} could not ${what}${detail ? ` (${detail})` : ''}. ${byHand(app.converter)}`,
     );
   };
-  const tell = (body: string[], args: string[], seconds: number) => tellApp(app, body, args, seconds, signal);
+  const tell = (body: string[], args: string[], seconds: number, own?: AbortSignal) =>
+    tellApp(app, body, args, seconds, own && signal ? AbortSignal.any([signal, own]) : (own ?? signal));
 
   const open = async (
     file: string,
@@ -791,7 +796,20 @@ export async function withMacSession<T>(
       // Not answering yet, or gone (it quit while starting, as a first start after an update can).
       await sleep(500, signal);
     }
-    return await use({ converter, name, folder, log, open, tell, fromError, close, hide, signal });
+    return await use({
+      converter,
+      name,
+      folder,
+      log,
+      open,
+      tell,
+      pids: () => pidsOf(app),
+      stuck: silentFail,
+      fromError,
+      close,
+      hide,
+      signal,
+    });
   } finally {
     // ---- leave the app as the operator had it ----------------------------------------------
     clearInterval(watching);
@@ -1140,7 +1158,7 @@ async function powerPointOnWindows(
  * (import/deck/timed-copy.ts), its own timings are used. CI has no Office: the mandir PC tries it for real
  * (assister/session-54-deck-trial.md, "What the mandir PC must try").
  */
-export const POWERPOINT_WINDOWS_BAKE_SCRIPT = `param([Parameter(Mandatory)][string]$In, [string]$Pptx = '', [string]$Pdf = '', [string]$Movie = '', [Parameter(Mandatory)][string]$Started, [int]$LimitSeconds = 3600)
+export const POWERPOINT_WINDOWS_BAKE_SCRIPT = `param([Parameter(Mandatory)][string]$In, [string]$Pptx = '', [string]$Pdf = '', [string]$Movie = '', [Parameter(Mandatory)][string]$Started, [int]$LimitSeconds = 3600, [int]$StallSeconds = 0, [int]$WorkingMs = 500)
 $ErrorActionPreference = 'Stop'
 $before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 $app = New-Object -ComObject PowerPoint.Application
@@ -1159,11 +1177,25 @@ try {
   if ($Movie -ne '') {
     $pres.CreateVideo($Movie, $true, 5, 1080, 30, 85)
     $deadline = (Get-Date).AddSeconds($LimitSeconds)
+    $ppt = @(Get-Process POWERPNT -ErrorAction SilentlyContinue)[0]
+    $cpu = { try { $ppt.Refresh(); $ppt.TotalProcessorTime.TotalMilliseconds } catch { $null } }
+    $markCpu = & $cpu
+    $markSize = -1
+    $moved = Get-Date
     while ($true) {
       $status = $pres.CreateVideoStatus
       if ($status -eq 3) { break }
       if ($status -eq 4) { throw 'PowerPoint could not make the movie.' }
       if ((Get-Date) -gt $deadline) { throw 'PowerPoint did not finish the movie in time.' }
+      $size = -1
+      if (Test-Path -LiteralPath $Movie) { $size = (Get-Item -LiteralPath $Movie).Length }
+      $now = & $cpu
+      if ($size -ne $markSize -or ($null -ne $now -and $null -ne $markCpu -and $now - $markCpu -ge $WorkingMs)) {
+        $markSize = $size
+        $markCpu = $now
+        $moved = Get-Date
+      }
+      if ($StallSeconds -gt 0 -and $null -ne $markCpu -and ((Get-Date) - $moved).TotalSeconds -gt $StallSeconds) { throw 'PowerPoint made no progress on the movie for a minute.' }
       Start-Sleep -Milliseconds 500
     }
   }
@@ -1186,6 +1218,8 @@ export interface WindowsDeckWork {
   movie?: string;
   /** The movie's time limit, once PowerPoint has started on it. */
   movieLimitMs?: number;
+  /** No progress on the movie for this long, and it is given up on (Session 54, C review). */
+  stallMs?: number;
 }
 
 /** Runs PowerShell with a script and its arguments (tests give a fake: CI has no Office). */
@@ -1314,6 +1348,7 @@ export async function deckOnWindows(
   if (job.pptx) args.push('-Pptx', job.pptx);
   if (job.pdf) args.push('-Pdf', job.pdf);
   if (job.movie) args.push('-Movie', job.movie, '-LimitSeconds', String(Math.ceil(movieLimitMs / 1000)));
+  if (job.movie && job.stallMs) args.push('-StallSeconds', String(Math.round(job.stallMs / 1000)));
   try {
     const runner = options.runPowerShell ?? windowsPowerShell;
     const r = await runner(script, args, timeoutMs, options.signal);
@@ -1333,6 +1368,13 @@ export async function deckOnWindows(
       // PowerPoint's own words go to the log only.
       const detail = firstLine(r.stderr);
       if (detail) options.log?.(`PowerPoint: failed: ${detail}`);
+      if (job.movie && detail.includes('made no progress on the movie'))
+        return {
+          ok: false,
+          reason: 'it made no progress on the movie for a minute',
+          message:
+            'PowerPoint stopped making the deck’s movie: it made no progress for a minute, as when it asks something in a window nobody sees.',
+        };
       return {
         ok: false,
         reason: job.movie ? 'it could not make the movie' : 'it could not save it as a .pptx',

@@ -11,7 +11,6 @@ import {
   exists,
   firstLine,
   type MacSession,
-  type PowerShellRunner,
   sleep,
   withMacSession,
 } from '../deck-converters';
@@ -28,6 +27,7 @@ import {
 } from './cut';
 import { diskFreeBytes } from '../media-store';
 import { type Baker, keynotePlan, type MoviePlan, plannedLength, powerPointPlan } from './plan';
+import { macProgress, NO_PROGRESS_MS, noProgress } from './progress';
 import { standInMovie } from './stand-in-baker';
 import { writeTimedCopy } from './timed-copy';
 
@@ -102,13 +102,13 @@ export type BakeResult =
     };
 
 export interface BakeOptions extends ConvertOptions {
+  /** No progress on the movie for this long, and it is given up on (tests make it short). */
+  stallMs?: number;
   ffmpeg: string;
   /** The stream is on air or recording: then nothing is converted (Session 50). */
   onAir?: () => Promise<boolean>;
   /** How far it has got, in a few words. */
   progress?: (note: string) => void;
-  /** Tests: PowerShell given (a fake), as CI has no Office. */
-  runPowerShell?: PowerShellRunner;
   /** The free space on the disk of a folder (tests give their own). */
   freeBytes?: (dir: string) => number;
 }
@@ -468,6 +468,19 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
         return s.fromError(deleted, 'taking out its movies and sounds', 'take out its movies and sounds');
       options.progress?.('Keynote is making the movie');
       const movieInApp = join(inside, 'movie.m4v');
+      // Its export answers only once the movie is made: watched meanwhile, and given up on after a minute with no
+      // progress, neither the movie growing nor Keynote at work (Session 54, C review).
+      const pids = await s.pids();
+      const watching = new AbortController();
+      const stalled = new AbortController();
+      const before = await macProgress(pids, movieInApp);
+      const startedAt = Date.now();
+      void noProgress(() => macProgress(pids, movieInApp), {
+        signal: watching.signal,
+        stallMs: options.stallMs ?? NO_PROGRESS_MS,
+      }).then((r) => {
+        if (r === 'stalled') stalled.abort();
+      });
       const made = await s.tell(
         [
           'export (document id (item 1 of argv)) to (POSIX file (item 2 of argv)) as QuickTime movie with properties {movie format:format1080p}',
@@ -475,7 +488,16 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
         ],
         [doc, movieInApp],
         Math.ceil(movieLimit(limits, plan) / 1000),
+        stalled.signal,
       );
+      watching.abort();
+      if (stalled.signal.aborted && !s.signal?.aborted)
+        return s.stuck('making its movie (no progress for a minute)');
+      const after = await macProgress(pids, movieInApp);
+      if (before.cpuMs !== null && after.cpuMs !== null)
+        s.log(
+          `used ${String(after.cpuMs - before.cpuMs)} ms of processor time making the movie in ${String(Date.now() - startedAt)} ms`,
+        );
       if (made.code !== 0 || !(await written(movieInApp, s.signal)))
         return s.fromError(made, 'making its movie', 'make its movie');
       const movie = join(work, 'movie.m4v');
@@ -536,7 +558,7 @@ async function powerPointOnWindows(
   const movie = join(work, 'movie.mp4');
   options.progress?.('PowerPoint is making the movie');
   const made = await deckOnWindows(
-    { input: timed, pdf, movie, movieLimitMs: movieLimit(limits, plan) },
+    { input: timed, pdf, movie, movieLimitMs: movieLimit(limits, plan), stallMs: NO_PROGRESS_MS },
     work,
     { ...options, slideCount: deck.slides.length },
   );
