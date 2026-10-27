@@ -92,7 +92,7 @@ Claude puts that line into the release of Drashti. Until then, Drashti cannot us
 3. When you have the Drashti with your list built in, open it. On its lock screen, choose **I Have a Token**, and type your approver Gmail and that token.
 4. That computer is then the owner's: it has **View › Access List**, where you see and change everyone.
 
-A token works once, for one computer, and runs out after **3 days**. If yours runs out, or for another computer of your own, choose **Let me in (the owner)…** again: you get a new token (a token not yet used stops working; computers already in stay in). **Never paste a token into the chat.**
+A token works once, for one computer, and runs out after **3 days**. If yours runs out, or for another computer of your own, choose **Let me in (the owner)…** again: you get a new token (a token not yet used stops working; computers already in stay in). Your own Gmail never uses **Request Access** on the lock screen: the list refuses it, and **Let me in** is its way in. **Never paste a token into the chat.**
 
 ---
 
@@ -103,7 +103,7 @@ A token works once, for one computer, and runs out after **3 days**. If yours ru
 - **Reject:** they are told plainly, by email and on their lock screen, and nothing more happens.
 - **In Drashti, View › Access List** (your computer only): add a Gmail, approve, reject, revoke, give access again (a new token), and a note.
 - **In the Sheet:** to stop someone at once, set their **Status** to **revoked** (it is a list to choose from). Their Drashti stops within about 30 seconds, and their computers stay out even if you set **approved** again later: to let them back in, use **Give access again** in Drashti's Access List. Setting **approved** in the Sheet sends no token: use the Approve link or the Access List.
-- **Leave alone:** the **Computers** tab (Google warns you before a change), the hidden columns, and the column headers. Do not add a second row for a Gmail that has one.
+- **Leave alone:** the **Computers** tab (Google warns you before a change), the hidden columns, and the column headers. Do not add a second row for a Gmail that has one. In **Script Properties**, the list keeps its own settings beside your `APPROVER_EMAIL` (`WEB_APP_URL`, the keys, and `REQUESTS_TODAY`, its count of the day's requests): leave them as they are, except as section 13 says.
 - **Never share the Sheet or the script** with anyone: whoever can edit them can let people in.
 - Times in the emails follow the Sheet's time zone (**File › Settings**).
 

@@ -381,6 +381,14 @@ function env_() {
       );
     },
     formatTime: formatTime_,
+    properties: {
+      get: function (key) {
+        return PropertiesService.getScriptProperties().getProperty(key);
+      },
+      set: function (key, value) {
+        PropertiesService.getScriptProperties().setProperty(key, value);
+      },
+    },
     props: function () {
       var p = settings();
       return {

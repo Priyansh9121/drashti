@@ -324,6 +324,8 @@ describe('the list in Apps Script', () => {
       nonce: ask.nonce,
       computerId: computer.id,
     });
+    // The day's requests, counted in the script's settings (the cache keeps nothing 6 hours).
+    expect(JSON.parse(g.props.get('REQUESTS_TODAY') ?? '{}') as unknown).toMatchObject({ n: 1 });
     expect(g.mails).toHaveLength(1);
     expect(g.mails[0]).toMatchObject({ to: PLACEHOLDER_APPROVER, name: 'Drashti access list' });
     expect(g.sheets.find((s) => s.name === 'Access List')?.records()[0]).toMatchObject({
