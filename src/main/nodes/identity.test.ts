@@ -90,7 +90,7 @@ describe('Main’s node identity', () => {
     },
   );
 
-  it('only an admin’s new identity ends the hold', () => {
+  it('only a new identity, made in Screens, ends the hold', () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-identity-'));
     const old = identity();
     writeFileSync(file(), '{}');

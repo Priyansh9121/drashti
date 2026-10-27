@@ -52,8 +52,8 @@ import type { SetupResult } from '../shared/setup';
 import { setupPlanSchema, TEST_CARD_MS } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import {
-  isLeaveWord,
   isOperatorMode,
+  leaveSimpleRefusal,
   SIMPLE_MODE_REFUSAL,
   SIMPLE_MODE_REFUSED_COMMANDS,
   startingMode,
@@ -114,7 +114,6 @@ import {
   handlerTimes,
   handleSync,
   hearHandled,
-  lockAdminChannels,
   lockChannels,
   refusedNow,
   setGiveWay,
@@ -123,9 +122,6 @@ import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
 import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
-import { ROLES_HELD } from '../shared/roles';
-import { RolesService } from './roles/roles-service';
-import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { LinkService } from './links/link-service';
@@ -292,6 +288,7 @@ import { rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
 import { readRole, startingRole, writeRole } from './role';
+import { removeOldRoles } from './old-roles';
 import { startNode } from './node-mode/node-app';
 import { NodeRepo } from './db/nodes';
 import { NodeService } from './nodes/node-service';
@@ -458,8 +455,8 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 // The show's own process first (Session 15): on a two-core PC with no graphics chip, the windows decoding
 // video at the same priority kept the main process (every slide change, and the screens' media) waiting
 // for up to 2 s at a time. It uses little of the processor, so it never holds the screens up by going
-// first. Windows lets a program raise itself this far; macOS lets only the administrator. An admin can set
-// it back to normal on a computer where that suits the screens better (File > Run Ahead of Other Programs;
+// first. Windows lets a program raise itself this far; macOS lets only the administrator. It can be set
+// back to normal on a computer where that suits the screens better (File > Run Ahead of Other Programs;
 // Session 16): the performance check, in a throwaway folder, still reads this computer's choice.
 let mainPriority = readPriority(userDataOverride ?? homeData, sw('DRASHTI_PRIORITY'));
 /** The priority Drashti was started at (the performance check says it: CI's Windows runner starts programs below normal). */
@@ -494,7 +491,7 @@ const appearance = new AppearanceService({
   },
 });
 handleSync(IPC.appearance.now, () => appearance.now());
-/** File > Run Ahead of Other Programs (Windows; an admin's choice for this computer, kept and applied at once). */
+/** File > Run Ahead of Other Programs (Windows; a choice for this computer, kept and applied at once). */
 const priorityItem = (after: (text: string) => void) =>
   process.platform === 'win32'
     ? {
@@ -917,6 +914,12 @@ function boot(): void {
   const journalNote = journalNotice(crashJournal.takeUnshown(), (at) => formatClock(Date.parse(at), null));
   if (journalNote) startNotes.push(journalNote);
   const userData = app.getPath('userData');
+  // Roles and PINs are gone (Session 54, E5): an older Drashti's roles.json and what went with it are removed
+  // before anything else, never read.
+  removeOldRoles(userData, (level, message) => {
+    if (level === 'warn') log.warn(message);
+    else log.info(message);
+  });
   const selfTesting = sw('DRASHTI_SELFTEST') !== undefined;
   const starting = startingRole(userData, sw('DRASHTI_ROLE'), {
     log: (line) => {
@@ -2008,7 +2011,7 @@ function start(): void {
       'Running translated (Rosetta or x64 emulation): the screens draw without a GPU warm-up; the native build is the one to run here',
     );
   // ---- events out (Session 28) ----------------------------------------------------
-  // Nothing goes until an admin adds an address and ticks a kind; no process runs till then.
+  // Nothing goes until an address is added and a kind ticked; no process runs till then.
   const eventsOut = new EventsOut({
     store: new StreamKeyStore(
       join(app.getPath('userData'), 'events-out.json'),
@@ -2441,99 +2444,23 @@ function start(): void {
   });
   const fromAudioPlayer = (event: IpcMainInvokeEvent) => event.sender.id === audioWindow?.webContents.id;
 
-  // ---- roles (Session 14): an admin PIN and an operator PIN, off until an admin sets them ---------
-  // Kept in the data folder (never the library or a backup); every admin request is checked here.
-  const roles = new RolesService({
-    file: join(userDataDir, 'roles.json'),
-    now: Date.now,
-    changed: (view) => {
-      sendToOperator(IPC.roles.changed, view);
-    },
-    log: (level, message) => {
-      if (level === 'warn') log.warn(message);
-      else log.info(message);
-    },
-  });
-  stops.add('roles', () => {
-    roles.dispose();
-  });
-  lockAdminChannels(
-    () => roles.needsAdmin(),
-    adminRefusals(
-      () => audioOutput.status,
-      () => roles.view(),
-    ),
-  );
-  /** A menu item that needs the admin PIN: run now, or once the operator window has the PIN typed. */
-  let pendingAdmin: { run: () => void; until: number } | null = null;
-  const requireAdmin = (what: string, run: () => void) => {
-    if (!roles.needsAdmin()) {
-      run();
-      return;
-    }
-    pendingAdmin = { run, until: Date.now() + 120_000 };
-    sendToOperator(IPC.roles.askAdmin, { what });
-  };
-  handle(IPC.roles.view, () => roles.view());
-  handle(IPC.roles.needsAdmin, () => roles.needsAdmin());
-  handle(IPC.roles.unlock, async (e, pin) => {
-    if (!fromOperator(e))
-      return {
-        ok: false as const,
-        message: 'Only the operator window can unlock admin.',
-        view: roles.view(),
-      };
-    const result = await roles.unlock(pin);
-    // A menu item waiting for the PIN goes ahead now.
-    const waiting = pendingAdmin;
-    pendingAdmin = null;
-    if (result.ok && waiting && Date.now() < waiting.until) setTimeout(waiting.run, 0);
-    return result;
-  });
-  handle(IPC.roles.lock, (e) => (fromOperator(e) ? roles.lock() : roles.view()));
-  const notRolesOperator = () => ({
-    ok: false as const,
-    message: 'Only the operator window can change the PINs.',
-    view: roles.view(),
-  });
-  handle(IPC.roles.setPins, (e, pins) => (fromOperator(e) ? roles.setPins(pins) : notRolesOperator()));
-  handle(IPC.roles.changePin, (e, change) =>
-    fromOperator(e) ? roles.changePin(change) : notRolesOperator(),
-  );
-  handle(IPC.roles.turnOff, (e) => (fromOperator(e) ? roles.turnOff() : notRolesOperator()));
-  handle(IPC.roles.cancelAsk, (e) => {
-    if (fromOperator(e)) pendingAdmin = null;
-    return null;
-  });
-
   // ---- Simple Mode ----------------------------------------------------------------
   // The mode is kept in the library's settings as it changes. Since Session 20 a start after a clean
-  // quit begins in Pro Mode, with roles on too since Session 46 (as the operator, admin locked, with no
-  // PIN asked; until then in Simple Mode, Pro Mode taking a PIN); after an unexpected stop Drashti comes
-  // back in the mode it was in, so the operator carries on (admin locked). The same answer as restart
-  // recovery's: did the last run stop unexpectedly, less than RECOVERY_MAX_AGE_MS ago? A stop longer
-  // ago starts like a clean quit (Session 21).
+  // quit begins in Pro Mode; after an unexpected stop Drashti comes back in the mode it was in, so the
+  // operator carries on. The same answer as restart recovery's: did the last run stop unexpectedly, less
+  // than RECOVERY_MAX_AGE_MS ago? A stop longer ago starts like a clean quit (Session 21). Simple Mode
+  // is a way of working, never a lock (Session 54, E5: roles and PINs are gone).
   const savedMode = settings.get('operatorMode');
   const wasIn: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
-  // Roles held locked (the PIN file could not be read; Sessions 31–36): Simple Mode, even after a crash in Pro.
-  let mode: OperatorMode = roles.held() ? 'simple' : startingMode({ recentStop: startup.recentStop, wasIn });
-  if (roles.held()) startNotice = startNotice ? `${startNotice}\n\n${ROLES_HELD}` : ROLES_HELD;
+  let mode: OperatorMode = startingMode({ recentStop: startup.recentStop, wasIn });
   if (mode !== wasIn) settings.set('operatorMode', mode);
-  if (mode === 'simple')
+  if (mode === 'simple') log.info('Starting in Simple Mode, as before the unexpected stop');
+  else if (wasIn === 'simple')
     log.info(
-      roles.held()
-        ? 'Roles are held locked: starting in Simple Mode'
-        : 'Starting in Simple Mode, as before the unexpected stop',
+      startup.cleanQuit
+        ? 'Starting in Pro Mode after a clean quit'
+        : 'Starting in Pro Mode: the unexpected stop was 3 hours or more ago',
     );
-  else {
-    if (wasIn === 'simple')
-      log.info(
-        startup.cleanQuit
-          ? 'Starting in Pro Mode after a clean quit'
-          : 'Starting in Pro Mode: the unexpected stop was 3 hours or more ago',
-      );
-    if (roles.on()) log.info('Roles are on: starting in Pro Mode as the operator, admin locked');
-  }
   simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
   lockChannels(
@@ -2545,24 +2472,18 @@ function start(): void {
     if (next === mode) return;
     mode = next;
     laterSetting('operatorMode', next);
-    // A volunteer's mode: admin locks at once.
-    if (next === 'simple') roles.lock();
     log.info(next === 'simple' ? 'Switched to Simple Mode' : 'Switched to Pro Mode');
     rebuildMenu();
     sendToOperator(IPC.app.modeChanged, { mode: next });
   };
   handle(IPC.app.getMode, () => mode);
-  handle(IPC.app.setMode, async (e, wanted, word): Promise<ModeResult> => {
+  handle(IPC.app.setMode, (e, wanted, word): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
     if (mode === 'simple' && wanted === 'pro') {
-      // With roles on, leaving Simple Mode takes a PIN (the admin PIN unlocks admin too)...
-      if (roles.on()) {
-        const entered = await roles.enter(typeof word === 'string' ? word : '');
-        if (!entered.ok) return { ok: false, message: entered.message };
-      } else if (!(typeof word === 'string' && isLeaveWord(word)))
-        // ...otherwise the word, typed on purpose.
-        return { ok: false, message: 'Type pro to switch to Pro Mode.' };
+      // The word, typed on purpose; never a PIN (Session 54, E5: roles and PINs are gone).
+      const refusal = leaveSimpleRefusal(word);
+      if (refusal !== null) return { ok: false, message: refusal };
     }
     setMode(wanted);
     return { ok: true, mode };
@@ -2639,7 +2560,7 @@ function start(): void {
   handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
   // ---- the guides inside Drashti (Sessions 31–36) -------------------------------------------------
   // Read from the files beside the app, for the operator window only. Simple Mode is given the operator's
-  // and the presenter's guides: the admin's holds how to reset a forgotten PIN.
+  // and the presenter's guides: the admin's and the setup day's are about setting Drashti up, Pro Mode's.
   handle(IPC.guides.list, (e) =>
     fromOperator(e)
       ? GUIDES.filter((g) => mode === 'pro' || g.simple).map((g) => ({ id: g.id, tab: g.tab }))
@@ -3074,7 +2995,7 @@ function start(): void {
     listChanged('props');
     return { ok: true, id: id.data };
   });
-  // The prop the admin marked as the logo, for Simple Mode's Logo button.
+  // The prop marked as the logo, for Simple Mode's Logo button.
   handle(IPC.props.getLogo, () => {
     const id = settings.get('logoPropId');
     return typeof id === 'string' && props.list().some((p) => p.id === id) ? id : null;
@@ -3194,7 +3115,7 @@ function start(): void {
     if (!fromOperator(e) || !parsed.success) return notMusicOperator;
     return music.play(parsed.data.playlistId, parsed.data.index);
   });
-  // ---- scheduled backups (Session 14): into a folder an admin picks, at their times ----------------
+  // ---- scheduled backups (Session 14): into a folder picked for them, at their times --------------
   let eventsBackupsWas: ScheduledBackupsView | null = null;
   const scheduledBackups = new ScheduledBackups({
     settings,
@@ -3231,7 +3152,7 @@ function start(): void {
   );
   handle(IPC.backups.runNow, (e) => (fromOperator(e) ? scheduledBackups.runNow() : notBackupsOperator));
   handle(IPC.backups.dismiss, () => scheduledBackups.dismiss());
-  // Events out (Session 28): an admin's (the admin lock), Pro Mode's (Simple Mode's lock), the operator window's.
+  // Events out (Session 28): Pro Mode's (Simple Mode's lock), the operator window's.
   const notEventsOperator = {
     ok: false as const,
     message: 'Only the operator window can change events out.',
@@ -3256,7 +3177,7 @@ function start(): void {
     });
     return { ok: true as const, folder: picked.canceled ? null : (picked.filePaths[0] ?? null) };
   });
-  // ---- updates (Session 14): an admin checks, downloads and says to install when Drashti quits ----
+  // ---- updates (Session 14): checked, downloaded and installed when Drashti quits, when asked -----
   const updates = new UpdateService({
     current: appVersion(),
     platform: process.platform,
@@ -3310,7 +3231,7 @@ function start(): void {
     if (fromOperator(e) && file) shell.showItemInFolder(file);
     return null;
   });
-  // ---- Import from a Link (Session 25b): saved in a folder an admin chooses, then the normal import ----
+  // ---- Import from a Link (Session 25b): saved in a folder chosen there, then the normal import ----
   const links = new LinkService({
     children: {
       started: (pid, group) => void leftovers.started(pid, 'yt-dlp', { group }),
@@ -3373,7 +3294,7 @@ function start(): void {
     },
     record: join(userDataDir, 'link-downloads.json'),
     workDir: join(userDataDir, 'Link downloads'),
-    // The admin's highest video quality (Session 25c), kept with the library's settings.
+    // The highest video quality (Session 25c), kept with the library's settings.
     maxHeight: {
       get: () => {
         const height = settings.get('links.maxHeight');
@@ -4656,7 +4577,7 @@ function start(): void {
     return { ok: true as const };
   });
   handle(IPC.screens.removeScreen, (e, id) => (fromOperator(e) ? screens.removeScreen(id) : notAllowed));
-  // Audience and Stage (Session 50): an operator's (not an admin's), in Simple Mode only on.
+  // Audience and Stage (Session 50): anyone's in Pro Mode, in Simple Mode only on.
   handle(IPC.screenSwitches.get, () => screenSwitches.get());
   handle(IPC.screenSwitches.turn, (e, which, on) =>
     fromOperator(e)
@@ -4811,7 +4732,7 @@ function start(): void {
   });
 
   // ---- video inputs (Session 50) ----------------------------------------------------------
-  // Naming them: the operator window, Pro Mode (Simple Mode locks these channels; with roles on, an admin's).
+  // Naming them: the operator window, Pro Mode (Simple Mode locks these channels).
   const notOperatorInputs = {
     ok: false as const,
     message: 'Only the operator window can change the video inputs.',
@@ -4856,16 +4777,13 @@ function start(): void {
   // would take the show's keys).
   const wizardOff = sw('DRASHTI_TEST_NO_WIZARD') === '1' || sw('DRASHTI_SELFTEST') !== undefined;
   handle(IPC.setup.state, () => ({
-    // The wizard by itself on a first start: never for a volunteer either (Session 46: with roles on,
-    // Drashti starts in Pro Mode as the operator, and the wizard's Finish is an admin's).
-    firstRun:
-      mode === 'pro' && !wizardOff && !roles.needsAdmin() && settings.get('setupWizard') === undefined,
-    // The first start's welcome (Session 26g): once per library, before anything was set up; never for
-    // a volunteer (roles on and the admin PIN not typed), never in Simple Mode or on a node.
+    // The wizard by itself on a first start, in Pro Mode (anyone's since Session 54, E5: roles are gone).
+    firstRun: mode === 'pro' && !wizardOff && settings.get('setupWizard') === undefined,
+    // The first start's welcome (Session 26g): once per library, before anything was set up; never in
+    // Simple Mode or on a node.
     welcome:
       mode === 'pro' &&
       !wizardOff &&
-      !roles.needsAdmin() &&
       settings.get('welcome') === undefined &&
       settings.get('setupWizard') === undefined,
     operatorDisplayId: operatorDisplayId(),
@@ -5142,7 +5060,7 @@ function start(): void {
     return answer.response === 1;
   };
 
-  /** File > Use This Computer as a Node…: asks, then restarts as a node (an admin, Pro Mode). */
+  /** File > Use This Computer as a Node…: asks, then restarts as a node (Pro Mode). */
   const useAsNode = () => {
     const box = {
       type: 'question' as const,
@@ -5168,7 +5086,7 @@ function start(): void {
     installMenu(menuActions());
   };
   // ---- View > Show Shastra, Templates and Kirtan Details (Session 26a) -----------------------------
-  // Hidden, not deleted: their code, data and the remote's library stay; an admin brings them back.
+  // Hidden, not deleted: their code, data and the remote's library stay; the same item brings them back.
   const extrasShown = () => settings.get('showExtras') === true;
   const setExtras = (on: boolean) => {
     settings.set('showExtras', on);
@@ -5180,7 +5098,7 @@ function start(): void {
   // ---- View > Show Safe Areas (Sessions 31–36): the slide editor's guides, anyone's to turn on ---------
   const safeAreasShown = () => settings.get('showSafeAreas') === true;
   handle(IPC.app.safeAreas, () => safeAreasShown());
-  // ---- Single-letter keys (Session 37, WCAG 2.1.4): B, ., L and ? act unless an admin turned them off ----
+  // ---- Single-letter keys (Session 37, WCAG 2.1.4): B, ., L and ? act unless they are turned off ----
   // Kept with the library's settings, as the switch in Help › Keyboard Shortcuts… sets them. Off, they do
   // nothing in the window in either mode (no menu item answers a single key); Black-out and the Logo work
   // from their buttons, a MIDI pad and the phone remote as before.
@@ -5262,50 +5180,28 @@ function start(): void {
     mode,
     switchMode,
     setUpScreens: () => {
-      if (mode === 'pro')
-        requireAdmin('change the screens', () => {
-          sendToOperator(IPC.setup.open, { at: Date.now() });
-        });
+      if (mode === 'pro') sendToOperator(IPC.setup.open, { at: Date.now() });
     },
-    // An operator's: no PIN asked (Session 48).
     zoomWindow: () => {
       if (mode === 'pro') zoom.open();
     },
     backUpLibrary: () => {
-      if (mode === 'pro')
-        requireAdmin('back up the library', () => {
-          void backUp(backupUi);
-        });
+      if (mode === 'pro') void backUp(backupUi);
     },
     restoreLibrary: () => {
-      if (mode === 'pro')
-        requireAdmin('restore the library', () => {
-          void restore(backupUi);
-        });
+      if (mode === 'pro') void restore(backupUi);
     },
     importFromLink: () => {
-      if (mode === 'pro')
-        requireAdmin('import from a link', () => {
-          sendToOperator(IPC.links.open, { at: Date.now() });
-        });
-    },
-    rolesAndPins: () => {
-      if (mode === 'pro') sendToOperator(IPC.roles.open, { at: Date.now() });
+      if (mode === 'pro') sendToOperator(IPC.links.open, { at: Date.now() });
     },
     scheduledBackups: () => {
       if (mode === 'pro') sendToOperator(IPC.backups.open, { at: Date.now() });
     },
     eventsOut: () => {
-      if (mode === 'pro')
-        requireAdmin('set up events out', () => {
-          sendToOperator(IPC.events.open, { at: Date.now() });
-        });
+      if (mode === 'pro') sendToOperator(IPC.events.open, { at: Date.now() });
     },
     dropFolder: () => {
-      if (mode === 'pro')
-        requireAdmin('set up the drop folder', () => {
-          sendToOperator(IPC.drop.open, { at: Date.now() });
-        });
+      if (mode === 'pro') sendToOperator(IPC.drop.open, { at: Date.now() });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
@@ -5325,25 +5221,22 @@ function start(): void {
         item && {
           ahead: item.ahead,
           toggle: () => {
-            // The tick follows the setting, not the click, until an admin has said so.
+            // The tick follows the setting, not the click.
             rebuildMenu();
-            if (mode === 'pro') requireAdmin('change how Drashti runs beside other programs', item.toggle);
+            if (mode === 'pro') item.toggle();
           },
         }
       );
     })(),
     useAsNode: () => {
-      if (mode === 'pro') requireAdmin('use this computer as a node', useAsNode);
+      if (mode === 'pro') useAsNode();
     },
     extras: {
       shown: extrasShown(),
       toggle: () => {
-        // The tick follows the setting, not the click, until an admin has said so.
+        // The tick follows the setting, not the click.
         rebuildMenu();
-        if (mode === 'pro')
-          requireAdmin('show or hide Shastra, Templates and Kirtan Details', () => {
-            setExtras(!extrasShown());
-          });
+        if (mode === 'pro') setExtras(!extrasShown());
       },
     },
     safeAreas: {

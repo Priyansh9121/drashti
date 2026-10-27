@@ -86,8 +86,6 @@ import { connectKeepScreens } from './keep-screens-store';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
 import { connectSingleKeys, useSingleKeys } from './single-keys-store';
-import { connectRoles } from '../roles/roles-store';
-import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
 import { EventsOutDialog } from '../events/EventsOutDialog';
 import { DropFolderDialog } from '../drop/DropFolderDialog';
@@ -133,7 +131,6 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectSingleKeys();
     connectMode();
     connectAppearance();
-    connectRoles();
     void startMidi();
     // The window opens settled with what its first data shows (ui/motion.ts).
     void Promise.allSettled([loadLibrary(), loadTree()]).then(firstData);
@@ -429,7 +426,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <MaskEditor />
       <LowerThirdEditor />
       <CalendarDialog />
-      <RolesDialog />
       <BackupsDialog />
       <EventsOutDialog />
       <DropFolderDialog />
@@ -440,7 +436,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <GuidesDialog />
       <MarkersDialog />
       <PictureEditor />
-      <AdminPinDialog />
       {dashboardOpen && (
         <ScreensDashboard
           simple={false}

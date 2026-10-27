@@ -50,7 +50,7 @@ export interface NodeServiceDeps {
    */
   identity():
     { cert: string; key: string; fingerprint: string; id: string; name: string } | { problem: string };
-  /** An admin's choice: a new identity in place of one that could not be read. */
+  /** Screens' choice: a new identity in place of one that could not be read. */
   newIdentity(): void;
   version: string;
   /** How Main writes the time (Sessions 31–36, I18N-8): its nodes' clocks show Main's. */
@@ -116,7 +116,7 @@ export class NodeService implements EngineTransport {
   private worker: LinkWorker | null = null;
   private state: NodesStatus['state'] = 'off';
   private message: string | null = null;
-  /** Main's identity could not be read (Session 23): kept until an admin makes a new one, nodes or not. */
+  /** Main's identity could not be read (Session 23): kept until a new one is made, nodes or not. */
   private identityProblem: string | null = null;
   private boundPort: number | null = null;
   private offer: { code: string; expiresAt: number } | null = null;
@@ -527,7 +527,7 @@ export class NodeService implements EngineTransport {
     return { ok: true, status: this.status() };
   }
 
-  /** An admin's choice (Session 23): a new identity, then the link starts; each node must be paired again. */
+  /** Screens' choice (Session 23): a new identity, then the link starts; each node must be paired again. */
   newIdentity(): NodesResult {
     const identity = this.deps.identity();
     if (!('problem' in identity))
@@ -537,10 +537,7 @@ export class NodeService implements EngineTransport {
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
-    this.deps.log(
-      'info',
-      'Nodes: a new identity was made, as an admin asked; each node must be paired again',
-    );
+    this.deps.log('info', 'Nodes: a new identity was made, as asked; each node must be paired again');
     this.identityProblem = null;
     this.state = 'off';
     this.message = null;

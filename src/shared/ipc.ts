@@ -1,6 +1,5 @@
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
-import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
@@ -145,7 +144,7 @@ export const IPC = {
     safeAreasChanged: 'app:safe-areas-changed',
     /**
      * Single-letter keys (Session 37, WCAG 2.1.4): whether B, ., L and ? act (kept with the library; on unless
-     * an admin turned them off), and turning them on or off (an admin's, never in Simple Mode).
+     * turned off), and turning them on or off (never in Simple Mode).
      */
     singleKeys: 'app:single-keys',
     setSingleKeys: 'app:set-single-keys',
@@ -168,31 +167,7 @@ export const IPC = {
     /** main -> operator: Help > Guides… was chosen (Sessions 31–36), in either mode. */
     showGuides: 'app:show-guides',
   },
-  /**
-   * Roles (Session 14, shared/roles.ts): an admin PIN and an operator PIN.
-   * Setting, changing and removing them are admin requests (with roles on).
-   */
-  roles: {
-    view: 'roles:view',
-    /** Whether an admin request would be refused now (roles on, admin locked). */
-    needsAdmin: 'roles:needs-admin',
-    /** The admin PIN: admin unlocked for a while. */
-    unlock: 'roles:unlock',
-    /** Lock admin now. */
-    lock: 'roles:lock',
-    setPins: 'roles:set-pins',
-    changePin: 'roles:change-pin',
-    turnOff: 'roles:turn-off',
-    /** The operator closed the PIN prompt a menu item opened: that item is not done. */
-    cancelAsk: 'roles:cancel-ask',
-    /** main -> operator: the roles changed (on or off, admin unlocked or locked). */
-    changed: 'roles:changed',
-    /** main -> operator: a menu item needs the admin PIN; ask for it. */
-    askAdmin: 'roles:ask-admin',
-    /** main -> operator: File > Roles and PINs… was chosen. */
-    open: 'roles:open',
-  },
-  /** Scheduled backups (Session 14, shared/backups.ts): changing them, and Back up now, are an admin's. */
+  /** Scheduled backups (Session 14, shared/backups.ts): changing them, and Back up now, are Pro Mode's. */
   backups: {
     view: 'backups:view',
     save: 'backups:save',
@@ -207,7 +182,7 @@ export const IPC = {
     open: 'backups:open',
   },
   /**
-   * Events out (Session 28, shared/events-out.ts): an admin's, in Pro Mode only, every request (a window
+   * Events out (Session 28, shared/events-out.ts): in Pro Mode only, every request (a window
    * sees each address's host, never its path or secret).
    */
   events: {
@@ -221,10 +196,10 @@ export const IPC = {
     test: 'events:test',
     /** main -> operator: how the addresses stand changed. */
     changed: 'events:changed',
-    /** main -> operator: File > Events Out… was chosen (admin unlocked). */
+    /** main -> operator: File > Events Out… was chosen. */
     open: 'events:open',
   },
-  /** The drop folder (Session 28, shared/drop-folder.ts): an admin's, in Pro Mode only. */
+  /** The drop folder (Session 28, shared/drop-folder.ts): in Pro Mode only. */
   drop: {
     view: 'drop:view',
     /** Choose the folder (and turn it on). */
@@ -234,13 +209,13 @@ export const IPC = {
     importAnyway: 'drop:import-anyway',
     /** main -> operator: how the drop folder stands changed. */
     changed: 'drop:changed',
-    /** main -> operator: File > Drop Folder… was chosen (admin unlocked). */
+    /** main -> operator: File > Drop Folder… was chosen. */
     open: 'drop:open',
   },
   /**
-   * Updates (Session 14, shared/updates.ts): looking is anyone's in Pro Mode;
-   * downloading, installing at quit and the daily look are an admin's.
-   * Simple Mode never sees any of it.
+   * Updates (Session 14, shared/updates.ts): looking, downloading, installing
+   * at quit and the daily look are anyone's in Pro Mode. Simple Mode never
+   * sees any of it.
    */
   updates: {
     view: 'updates:view',
@@ -257,9 +232,8 @@ export const IPC = {
     open: 'updates:open',
   },
   /**
-   * Import from a Link (Session 25b, shared/links.ts): an admin's, in Pro
-   * Mode; Simple Mode never sees it. Looking at a link, choosing the folder
-   * and downloading are an admin's; stopping is anyone's in Pro Mode.
+   * Import from a Link (Session 25b, shared/links.ts): anyone's in Pro
+   * Mode; Simple Mode never sees it.
    */
   links: {
     view: 'links:view',
@@ -273,7 +247,7 @@ export const IPC = {
     addWaiting: 'links:add-waiting',
     /** Show where the files were saved (Finder, Explorer). */
     showSaved: 'links:show-saved',
-    /** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */
+    /** The highest video quality, for YouTube and Dropbox (Session 25c). */
     setMaxHeight: 'links:set-max-height',
     /** The playlist a download went into, offered first the next time (Session 54): every person's. */
     setPlaylist: 'links:set-playlist',
@@ -351,7 +325,7 @@ export const IPC = {
     changed: 'library:changed',
     /**
      * View › Show Shastra, Templates and Kirtan Details (Session 26a): whether the operator window shows
-     * them (off to begin with, kept with the library's settings); setting it is an admin's.
+     * them (off to begin with, kept with the library's settings); setting it is Pro Mode's.
      */
     extras: 'library:extras',
     setExtras: 'library:set-extras',
@@ -386,7 +360,7 @@ export const IPC = {
     conversionsChanged: 'media:conversions-changed',
     /**
      * Save as MP4… (Session 26e): where a part saved from a start begins (its keyframe), saving the part
-     * (an admin's), the saves going and ended, stopping one, and showing a saved file in the Finder.
+     * (Pro Mode's), the saves going and ended, stopping one, and showing a saved file in the Finder.
      */
     keyframe: 'media:keyframe',
     saveTrim: 'media:save-trim',
@@ -461,7 +435,7 @@ export const IPC = {
     setTimers: 'playlists:set-timers',
     /** Smart playlists (Session 26c): how following each one's folder goes. */
     smartViews: 'playlists:smart-views',
-    /** A smart playlist from a folder an admin chooses (a dialog). */
+    /** A smart playlist from a folder chosen in a dialog. */
     createSmart: 'playlists:create-smart',
     /** Take a smart playlist's missing items out (their files are gone from the folder). */
     removeMissing: 'playlists:remove-missing',
@@ -723,7 +697,7 @@ export const IPC = {
   videoInputs: {
     /** The named inputs on this computer. */
     list: 'videoinput:list',
-    /** Adding, changing and removing one (operator window only; Pro Mode; an admin's with roles on). */
+    /** Adding, changing and removing one (operator window only; Pro Mode). */
     add: 'videoinput:add',
     update: 'videoinput:update',
     remove: 'videoinput:remove',
@@ -795,7 +769,7 @@ export const IPC = {
     rename: 'nodes:rename',
     /** Remove (unpair) a node: cut off at once, its screens gone. */
     remove: 'nodes:remove',
-    /** An admin makes a new identity for the nodes, in place of one that could not be read (Session 23). */
+    /** A new identity for the nodes, in place of one that could not be read (Session 23). */
     newIdentity: 'nodes:new-identity',
     /** Copy every picture and video to this node ("Get everything ready"), or only the week's. */
     everything: 'nodes:everything',
@@ -927,14 +901,6 @@ export interface InvokeContract {
   };
   [IPC.app.getMode]: { args: []; result: OperatorMode };
   [IPC.app.setMode]: { args: [mode: OperatorMode, word?: string]; result: ModeResult };
-  [IPC.roles.view]: { args: []; result: RolesView };
-  [IPC.roles.needsAdmin]: { args: []; result: boolean };
-  [IPC.roles.unlock]: { args: [pin: string]; result: RolesResult };
-  [IPC.roles.lock]: { args: []; result: RolesView };
-  [IPC.roles.setPins]: { args: [pins: { admin: string; operator: string }]; result: RolesResult };
-  [IPC.roles.changePin]: { args: [change: { role: 'admin' | 'operator'; pin: string }]; result: RolesResult };
-  [IPC.roles.turnOff]: { args: []; result: RolesResult };
-  [IPC.roles.cancelAsk]: { args: []; result: null };
   [IPC.backups.view]: { args: []; result: ScheduledBackupsView };
   [IPC.backups.save]: { args: [schedule: BackupSchedule]; result: BackupsResult };
   [IPC.backups.pickFolder]: { args: []; result: PickFolderResult };
@@ -1328,9 +1294,6 @@ export interface EventContract {
   [IPC.app.progress]: { progress: TaskProgress | null };
   [IPC.app.modeChanged]: { mode: OperatorMode };
   [IPC.app.askLeaveSimple]: { at: number };
-  [IPC.roles.changed]: RolesView;
-  [IPC.roles.askAdmin]: { what: string };
-  [IPC.roles.open]: { at: number };
   [IPC.backups.changed]: ScheduledBackupsView;
   [IPC.backups.open]: { at: number };
   [IPC.events.changed]: EventsOutView;

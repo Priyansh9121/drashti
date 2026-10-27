@@ -15,8 +15,6 @@ import { enterSimpleMode } from './mode-store';
 import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
 import { LiveStatus } from './StatusLine';
-import { RoleChip } from '../roles/RolesDialogs';
-import { useRoles } from '../roles/roles-store';
 import { ScreenSwitchButtons } from './ScreenSwitches';
 import { COUNT_IF_NARROW, HIDDEN_IF_NARROWER, ICON_IF_NARROW, WORDS_IF_NARROW } from './top-bar';
 
@@ -92,9 +90,8 @@ export function Header({
   const phones = useWhatIsThis('phones', { compact: true });
   const announcements = useWhatIsThis('announcements', { compact: true });
   const cards = [stream.card, phones.card, announcements.card].filter(Boolean);
-  // Phones or the PINs on (Session 51, S2-3): below 1680 px wide, some buttons show their icon alone (top-bar.ts).
-  const rolesOn = useRoles((s) => s.view.on);
-  const crowded = useAnnouncementsShown() || rolesOn;
+  // Phones on (Session 51, S2-3): below 1680 px wide, some buttons show their icon alone (top-bar.ts).
+  const crowded = useAnnouncementsShown();
   return (
     <>
       <header
@@ -166,7 +163,6 @@ export function Header({
           </Tooltip>
           {/* Audience and Stage (Session 50): this computer's screens of each kind, off and on. */}
           <ScreenSwitchButtons platform={platform} />
-          <RoleChip compact={crowded} />
           <Tooltip
             content={
               crowded

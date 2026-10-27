@@ -42,7 +42,6 @@ function actions(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {
     backUpLibrary: nothing,
     restoreLibrary: nothing,
     useAsNode: nothing,
-    rolesAndPins: nothing,
     scheduledBackups: nothing,
     eventsOut: nothing,
     dropFolder: nothing,
@@ -152,6 +151,31 @@ describe('View › Audience and Stage (Session 50)', () => {
       expect(item('screen-switch-stage')).toBeUndefined();
     },
   );
+});
+
+// Session 54 (E5): roles and PINs are gone, and their dialog with them; every other File item stays.
+describe('File (Session 54, E5)', () => {
+  it.each(PLATFORMS)('has no Roles and PINs…, and keeps the rest (%s)', (platform) => {
+    on(platform, () => setUp('pro'));
+    const file = built.at(-1)?.find((m) => m.label === 'File')?.submenu;
+    const ids = Array.isArray(file) ? file.map((i) => i.id).filter(Boolean) : [];
+    expect(ids).not.toContain('roles-and-pins');
+    expect(items().filter((i) => /roles|PIN/iu.test(String(i.label)))).toEqual([]);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'import-from-link',
+        'backup-library',
+        'restore-library',
+        'scheduled-backups',
+        'drop-folder',
+        'events-out',
+        'use-as-node',
+      ]),
+    );
+    // Never two separators side by side where the item was.
+    const kinds = Array.isArray(file) ? file.map((i) => i.type ?? 'item') : [];
+    expect(kinds.join(' ')).not.toContain('separator separator');
+  });
 });
 
 function setUp(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {

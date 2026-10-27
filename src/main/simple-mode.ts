@@ -23,7 +23,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.saveSlides,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
-  // The single-letter keys (Session 37): an admin's, from Pro Mode's keys sheet.
+  // The single-letter keys (Session 37): Pro Mode's keys sheet turns them on or off.
   IPC.app.setSingleKeys,
   // The appearance (Sessions 39–40): Simple Mode shows the one chosen, with no switch.
   IPC.appearance.choose,
@@ -207,11 +207,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.links.showSaved,
   IPC.links.setMaxHeight,
   IPC.links.setPlaylist,
-  // Roles (Session 14): Simple Mode sets no PIN and unlocks nothing; leaving it takes a PIN (app:set-mode).
-  IPC.roles.setPins,
-  IPC.roles.changePin,
-  IPC.roles.turnOff,
-  IPC.roles.unlock,
   // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
   IPC.announcements.edit,
   IPC.announcements.approve,

@@ -26,7 +26,7 @@ import { mediaKindOf } from './scan';
  * - A file is taken once its size and time have held still for 5 s (and, on Windows, once nothing else
  *   has it open): one still being copied or downloaded is never taken half-way. Taken again only if it
  *   changes; a file that goes leaves its media in the library.
- * - At most 2 GB a file: a larger one is listed, and an admin can Import anyway.
+ * - At most 2 GB a file: a larger one is listed, and Import anyway brings it in.
  * - While the stream is on air or recording, what held still waits.
  * - The folder is only ever read. In Simple Mode it carries on, with no notice.
  */
@@ -296,7 +296,7 @@ export class DropFolder {
     this.deps.changed(view);
   }
 
-  /** Choose the folder (an admin's), and turn it on. */
+  /** Choose the folder, and turn it on. */
   async setFolder(folder: string): Promise<DropFolderResult> {
     const s = await stat(folder).catch(() => null);
     if (!s?.isDirectory()) return { ok: false, message: 'That folder is not there.' };
@@ -330,7 +330,7 @@ export class DropFolder {
     return { ok: true, view: this.view() };
   }
 
-  /** A file over the size limit, imported because an admin said so. */
+  /** A file over the size limit, imported because Import anyway was pressed. */
   async importAnyway(name: unknown): Promise<DropFolderResult> {
     const { folder, on } = this.saved();
     if (!folder || !on || typeof name !== 'string') return { ok: false, message: 'The drop folder is off.' };
@@ -427,7 +427,7 @@ export class DropFolder {
           found,
           'not-taken',
           null,
-          `Larger than ${sizeText(this.maxBytes)}: an admin can import it anyway.`,
+          `Larger than ${sizeText(this.maxBytes)}: it can be imported anyway.`,
         );
         continue;
       }

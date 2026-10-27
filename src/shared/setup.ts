@@ -44,15 +44,12 @@ export type SetupResult =
 
 /** How the wizard starts: whether this is the first start, and which display holds the controls. */
 export interface SetupState {
-  /**
-   * The wizard opens by itself: a first start, in Pro Mode, never for a volunteer (roles on, the admin PIN
-   * not typed; Session 46, when a start with roles on became Pro Mode).
-   */
+  /** The wizard opens by itself: a first start, in Pro Mode. */
   firstRun: boolean;
   /**
    * The first start's welcome (Session 26g): the lamp lights, then Set up the screens, Try a practice
-   * show first, or Skip for now. Once per library, in Pro Mode, never for a volunteer (roles on, the
-   * admin PIN not typed), and never in tests unless they ask (DRASHTI_TEST_NO_WIZARD).
+   * show first, or Skip for now. Once per library, in Pro Mode, and never in tests unless they ask
+   * (DRASHTI_TEST_NO_WIZARD).
    */
   welcome: boolean;
   /** The display the operator window is on (null when outputs never cover it, as in windowed tests). */

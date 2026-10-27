@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import type { DropFolderView } from '../../../shared/drop-folder';
 
 /*
- * The drop folder in the operator window (Session 28): the dialog, opened by File › Drop Folder… once admin
- * is unlocked. How it stands is asked for only then: every drop folder request is an admin's.
+ * The drop folder in the operator window (Session 28): the dialog, opened by File › Drop Folder…. How it
+ * stands is asked for only then.
  */
 
 export const useDrop = create<{ view: DropFolderView | null; open: boolean }>(() => ({

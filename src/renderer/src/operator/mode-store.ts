@@ -20,8 +20,8 @@ export function connectMode(): void {
     if (useMode.getState().mode === 'simple') useMode.setState({ askingToLeave: true });
   });
   // The window shows nothing until it knows (App), so it must always come to know (Session 38): when the
-  // request fails, Simple Mode, the safe side (only the show's controls, each of which works in either mode,
-  // as when the PIN file cannot be read), until the main process says otherwise.
+  // request fails, Simple Mode, the safe side (only the show's controls, each of which works in either mode),
+  // until the main process says otherwise.
   void window.drashti.app.getMode().then(
     (mode) => {
       useMode.setState({ mode });

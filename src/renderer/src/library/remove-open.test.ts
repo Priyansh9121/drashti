@@ -31,7 +31,7 @@ interface Stored {
 }
 
 let stored: Stored[] = [];
-/** What the next removal answers instead (a refusal: Simple Mode, or roles). */
+/** What the next removal answers instead (a refusal: Simple Mode's). */
 let refuse: RemoveResult | null = null;
 
 const summary = (p: Stored): PresentationSummary => ({
@@ -154,7 +154,7 @@ describe('Delete… in the middle’s menu (Session 50)', () => {
     expect(open()).toMatchObject({ selectedId: null, doc: null, item: null, nothingChosen: true });
   });
 
-  it('keeps it open when the deletion is refused (Simple Mode, or an admin’s with roles)', async () => {
+  it('keeps it open when the deletion is refused (Simple Mode)', async () => {
     refuse = { ok: false, message: 'Nothing was removed.' };
     requestRemovalOfOpen('B', 'Placeholder Bravo');
     await confirmRemoval();

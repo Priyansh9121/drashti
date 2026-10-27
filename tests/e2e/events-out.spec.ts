@@ -4,19 +4,19 @@ import { createServer, type IncomingHttpHeaders, type Server, type ServerRespons
 import type { AddressInfo } from 'node:net';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady, setTicked } from './helpers';
 
 /*
- * Events out (Session 28, decision 20): an admin adds an address on this computer and ticks what it gets;
+ * Events out (Session 28, decision 20): an address on this computer is added, and what it gets ticked;
  * Next reaches it within a second, signed two ways (checked here with node:crypto, apart from Drashti's own
  * code), with ids and kinds only until "Include the words" is ticked; a retry keeps its id; a 410 turns the
- * address off; a receiver that never answers changes neither slide changes nor quitting; Simple Mode and a
- * locked admin cannot open it. The receiver is this test, on 127.0.0.1 (the test guard refuses anywhere
- * else). The secret is made by Drashti as the test runs, and searched for in its files afterwards.
+ * address off; a receiver that never answers changes neither slide changes nor quitting; Simple Mode cannot
+ * open it, and Pro Mode opens it with no PIN (Session 54, E5). The receiver is this test, on 127.0.0.1 (the
+ * test guard refuses anywhere else). The secret is made by Drashti as the test runs, and searched for in its
+ * files afterwards.
  */
 
 const MARKER = 'Zqxeventsmarker';
@@ -265,37 +265,19 @@ test('a receiver that never answers changes neither slide changes nor quitting',
   }
 });
 
-test('Simple Mode and a locked admin cannot open events out, nor read them', async () => {
+test('Simple Mode cannot open events out, nor read them; Pro Mode opens it with no PIN asked (Session 54, E5)', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
-    // Roles on, admin locked.
-    const set = await win.evaluate(() =>
-      (globalThis as PageGlobals).drashti.roles.setPins({ admin: '481526', operator: '937402' }),
-    );
-    expect(set.ok).toBe(true);
-    await win.getByTestId('role-chip').click();
-    await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+    // Pro Mode: the menu opens it at once, and nothing asks for a PIN.
     await chooseMenuItem(app, 'events-out');
-    const prompt = win.getByTestId('admin-pin');
-    await expect(prompt).toBeVisible();
-    await prompt.getByRole('button', { name: 'Cancel' }).click();
-    await holdStill(
-      async () => (await win.getByTestId('events-dialog').count()) === 0,
-      500,
-      'cancelled, the Events out dialog does not open',
-    );
-    await win.evaluate(() => {
-      (globalThis as PageGlobals).drashti.roles.setAdminAsker(() => Promise.resolve(false));
-    });
-    const locked = await win.evaluate(async () => {
-      const d = (globalThis as PageGlobals).drashti;
-      return { view: await d.events.view(), add: await d.events.add('http://127.0.0.1:9/x', false) };
-    });
-    expect(locked.view).toEqual({ available: false, message: ADMIN_REFUSAL, addresses: [] });
-    expect(locked.add).toEqual({ ok: false, message: ADMIN_REFUSAL });
+    const dialog = win.getByTestId('events-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(win.getByRole('dialog')).toHaveCount(1);
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
 
     // Simple Mode: no File menu, and the main process refuses.
     await win.getByRole('button', { name: 'Simple Mode' }).click();
@@ -305,9 +287,12 @@ test('Simple Mode and a locked admin cannot open events out, nor read them', asy
     expect(
       await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('events-out') ?? null),
     ).toBeNull();
-    const simple = await win.evaluate(() => (globalThis as PageGlobals).drashti.events.view());
-    expect(simple.message === SIMPLE_MODE_REFUSAL || simple.message === ADMIN_REFUSAL).toBe(true);
-    expect(simple.addresses).toEqual([]);
+    const simple = await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      return { view: await d.events.view(), add: await d.events.add('http://127.0.0.1:9/x', false) };
+    });
+    expect(simple.view).toEqual({ available: false, message: SIMPLE_MODE_REFUSAL, addresses: [] });
+    expect(simple.add).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   } finally {
     await app.close().catch(() => undefined);
   }

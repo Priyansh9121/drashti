@@ -54,7 +54,7 @@ export async function toggleLogo(): Promise<void> {
   const logo = props?.find((p) => p.id === logoId);
   if (!logo) {
     useNotice.setState({
-      text: 'No logo has been chosen yet. An admin can choose one in Pro Mode: Props, then “Use as the logo”.',
+      text: 'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.',
     });
     return;
   }

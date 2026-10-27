@@ -5,7 +5,7 @@ import { useLibraryTab } from './library-store';
 
 /*
  * View › Show Shastra, Templates and Kirtan Details (Session 26a): off to
- * begin with, an admin's to turn on, kept with the library's settings. While
+ * begin with, anyone's to turn on in Pro Mode, kept with the library's settings. While
  * off, the operator window has no Shastra tab, no Templates beside the
  * playlists and no kirtan filters; their data, the remote's library, and the
  * API that names a passage stay as they were. Search still finds

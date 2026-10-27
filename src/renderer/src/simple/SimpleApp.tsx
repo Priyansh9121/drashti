@@ -7,8 +7,6 @@ import { useEngine } from '../engine/engine-store';
 import { mediaKindIcon, mediaKindLabel } from '../library/MediaList';
 import { openPlaylist, playlistsUnread, usePlaylists } from '../playlists/playlist-store';
 import { PlaylistsUnread } from '../playlists/PlaylistsUnread';
-import { useRoles } from '../roles/roles-store';
-import { PinInput, useWaitText } from '../roles/RolesDialogs';
 import { WordMark } from '../ui/Mark';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -155,7 +153,7 @@ function PlaylistColumn() {
           </Field>
         ) : treeUnread ? null : (
           <EmptyState icon={ListMusic} title="No playlists" compact>
-            An admin makes the sabha’s playlist in Pro Mode.
+            The sabha’s playlist is made in Pro Mode.
           </EmptyState>
         )}
         {itemsUnread && <PlaylistsUnread what="items" size="lg" />}
@@ -251,13 +249,11 @@ function PlaylistColumn() {
 
 /**
  * The way out (Switch to Pro Mode…, at the top right or in the View menu,
- * opens it): typing the word on purpose, or with roles on (Session 14) a PIN:
- * the operator PIN, or the admin PIN, which also unlocks setting up.
+ * opens it): typing the word on purpose. Never a PIN (Session 54, E5: roles
+ * and PINs are gone).
  */
 function LeaveSimpleDialog() {
   const asking = useMode((s) => s.askingToLeave);
-  const rolesOn = useRoles((s) => s.view.on);
-  const wait = useWaitText();
   const [word, setWord] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   if (!asking) return null;
@@ -281,7 +277,7 @@ function LeaveSimpleDialog() {
             type="submit"
             form="leave-simple-form"
             data-testid="leave-simple-switch"
-            disabled={word.trim() === '' || (rolesOn && wait !== null)}
+            disabled={word.trim() === ''}
           >
             Switch to Pro Mode
           </Button>
@@ -295,8 +291,7 @@ function LeaveSimpleDialog() {
           e.preventDefault();
           void leaveSimpleMode(word).then((message) => {
             setProblem(message);
-            // A PIN is never left in the field, right or wrong.
-            if (!message || rolesOn) setWord('');
+            if (!message) setWord('');
           });
         }}
       >
@@ -304,35 +299,17 @@ function LeaveSimpleDialog() {
           Pro Mode can change the library, the playlists, the screens and the sound. It is for whoever looks
           after Drashti. The show on the screens carries on as it is.
         </p>
-        {rolesOn ? (
-          <Field
-            label="Type the operator PIN or the admin PIN"
-            hint="The admin PIN also unlocks setting Drashti up."
-            error={wait ? `Too many wrong PINs. Try again in ${wait}.` : problem}
-          >
-            <PinInput
-              autoFocus
-              data-testid="leave-simple-pin"
-              value={word}
-              onChange={(e) => {
-                setWord(e.target.value);
-                setProblem(null);
-              }}
-            />
-          </Field>
-        ) : (
-          <Field label="Type pro to switch" error={problem}>
-            <TextInput
-              autoFocus
-              value={word}
-              spellCheck={false}
-              autoComplete="off"
-              onChange={(e) => {
-                setWord(e.target.value);
-              }}
-            />
-          </Field>
-        )}
+        <Field label="Type pro to switch" error={problem}>
+          <TextInput
+            autoFocus
+            value={word}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => {
+              setWord(e.target.value);
+            }}
+          />
+        </Field>
       </form>
     </Dialog>
   );
@@ -345,7 +322,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
   const logo = state?.logo ?? null;
   const canPutBack = state?.canPutBack ?? false;
   // Each shows its keys as they act now (Session 51), as the key line names them: none for Black-out, and the
-  // Logo's F12 alone, while an admin has turned B, . and L off.
+  // Logo's F12 alone, while B, . and L are turned off.
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
   const logoKeys = keymap.find((b) => b.action === 'toggleLogo')?.keys.map((k) => keyText(k, platform)) ?? [];
@@ -506,7 +483,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       setMidiHandler(null);
     };
   }, [run]);
-  // Its key line names only keys that act: not B, . or L while an admin has turned them off (Session 37). The
+  // Its key line names only keys that act: not B, . or L while they are turned off (Session 37). The
   // Logo keeps F12 then, as the operators press it (Session 50).
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);

@@ -11,7 +11,7 @@ import { closeDrop, connectDrop, useDrop } from './drop-store';
 /*
  * File › Drop Folder… (Session 28, decision 21): the folder whose pictures, videos and (Session 51) sounds come
  * into the library by themselves, whether it is on, how it stands, and what was not taken and why (a file over
- * 2 GB can be imported anyway). An admin's, in Pro Mode only.
+ * 2 GB can be imported anyway). Pro Mode only.
  */
 
 const pad = (n: number) => String(n).padStart(2, '0');

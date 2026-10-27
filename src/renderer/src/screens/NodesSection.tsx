@@ -176,8 +176,8 @@ function NodeCard({
 }
 
 /**
- * Main's identity for its nodes could not be read (Session 23): nothing follows until an admin makes
- * a new one, after which each node is paired again.
+ * Main's identity for its nodes could not be read (Session 23): nothing follows until a new one is
+ * made here, after which each node is paired again.
  */
 function IdentityHold({ problem }: { problem: string }) {
   const [asking, setAsking] = useState(false);

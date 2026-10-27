@@ -60,7 +60,7 @@ const STEPS: readonly Step[] = [
 export function SimpleFirstRun({ platform }: { platform: string }) {
   const [step, setStep] = useState<number | null>(null);
   const titleId = useId();
-  // Only keys that act: no key for Black-out while an admin has turned B and . off (Session 37).
+  // Only keys that act: no key for Black-out while B and . are turned off (Session 37).
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   // Whether a slide is up: null until the show's state has come.
   const live = useEngine((s) => (s.state === null ? null : s.state.layers.slide !== null));

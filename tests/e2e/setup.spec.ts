@@ -131,14 +131,12 @@ test('on the first start: identify, what each output shows and its languages, a 
   await expectNoSeriousA11yIssues(win, 'the setup wizard, stream');
   await wizard.getByTestId('setup-next').click();
 
-  // Theme, then the summary.
+  // Theme, then the summary (Session 54, E5: no PINs step, roles are gone).
   await expect(wizard.getByTestId('setup-step')).toHaveText('Theme');
   await wizard.getByTestId('setup-theme').first().getByRole('radio').check();
   await wizard.getByTestId('setup-next').click();
-  // PINs (Session 14): none for now, so roles stay off.
-  await expect(wizard.getByTestId('setup-step')).toHaveText('PINs');
-  await wizard.getByTestId('setup-next').click();
-  await expect(wizard.getByTestId('setup-summary')).toContainText('PINs: none (roles stay off)');
+  await expect(wizard.getByTestId('setup-step')).toHaveText('Finish');
+  await expect(wizard.getByTestId('setup-summary')).not.toContainText('PIN');
   await expect(wizard.getByTestId('setup-summary')).toContainText(
     `Display ${String(main.index + 1)}: The audience picture, Gujarati, Transliteration`,
   );
@@ -219,7 +217,7 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
     'data-use',
     'audience',
   );
-  for (const step of ['Screens', 'Sound', 'Stream', 'Theme', 'PINs']) {
+  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-skip').click();
   }
@@ -258,7 +256,7 @@ test('never covers the operator’s display without the confirm step', async () 
   await expect(row).toContainText('The controls are on this display');
   await row.getByTestId('setup-use-audience').click();
   await expect(row).toContainText('Finish asks before it does');
-  for (const step of ['Screens', 'Sound', 'Stream', 'Theme', 'PINs']) {
+  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-next').click();
   }

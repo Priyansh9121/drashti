@@ -176,8 +176,8 @@ describe('keymap', () => {
     expect(actionFor(press('?', { shiftKey: true }), 'darwin')).toBe('showKeys');
   });
 
-  // WCAG 2.1.4 (Session 37): a key of one character with no Cmd, Ctrl or Alt acts on its own, so an admin
-  // can turn them off. A new one must be added here on purpose: the switch names them.
+  // WCAG 2.1.4 (Session 37): a key of one character with no Cmd, Ctrl or Alt acts on its own, so they can
+  // be turned off. A new one must be added here on purpose: the switch names them.
   it('knows its single-letter keys: B, ., L and ?, and only those', () => {
     expect(SINGLE_KEYS).toEqual(['B', '.', 'L', '?']);
   });

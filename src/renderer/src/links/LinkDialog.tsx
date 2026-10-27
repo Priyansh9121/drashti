@@ -50,12 +50,12 @@ import {
 } from './link-store';
 
 /*
- * File › Import from a Link… (Session 25b, Pro Mode, an admin's): which kind
+ * File › Import from a Link… (Session 25b, Pro Mode): which kind
  * of link, the link, what it holds, where to save, Download. The files are
  * saved in that folder (Drashti never moves or deletes them), then imported
  * through the normal import. Closing this never stops a download: the status
  * bar shows it, and a press on that opens this again. YouTube (Session 25c):
- * MP4 or MP3, the quality up to the admin's setting, and the permission tick
+ * MP4 or MP3, the quality up to the highest one set, and the permission tick
  * each time.
  */
 
@@ -342,7 +342,7 @@ const about = (bytes: number | null) => (bytes === null ? '' : `about ${formatBy
 
 /**
  * A YouTube video's choices (Session 25c): MP4 or MP3; for MP4 the qualities it offers, those above the
- * admin's setting shown but not to be picked, with why; and the permission tick, each time.
+ * setting shown but not to be picked, with why; and the permission tick, each time.
  */
 function YouTubeChoices({ video, view }: { video: VideoDetails; view: LinkView }) {
   const choice = useLinks((s) => s.choice);
@@ -447,7 +447,8 @@ function YouTubeChoices({ video, view }: { video: VideoDetails; view: LinkView }
           )}
           {allowed.length === 0 && (
             <p className="text-xs text-warning-fg">
-              Every quality this video offers is above the setting: an admin can raise it, or save the MP3.
+              Every quality this video offers is above the setting: raise Highest video quality, above, or
+              save the MP3.
             </p>
           )}
         </div>
@@ -469,14 +470,14 @@ function YouTubeChoices({ video, view }: { video: VideoDetails; view: LinkView }
 }
 
 /**
- * The admin's highest video quality, for YouTube and Dropbox both (Session 25c): kept with the library's
+ * The highest video quality, for YouTube and Dropbox both (Session 25c): kept with the library's
  * settings. Drashti has no Settings window, so it lives here, as the Updates dialog keeps its daily look.
  */
 function HighestQuality({ view, locked }: { view: LinkView; locked: boolean }) {
   return (
     <Field
       label="Highest video quality"
-      hint="An admin’s setting, for YouTube and Dropbox. A Dropbox video taller than this is imported as a copy this tall (the original stays as it came); a YouTube quality above it cannot be picked."
+      hint="For YouTube and Dropbox. A Dropbox video taller than this is imported as a copy this tall (the original stays as it came); a YouTube quality above it cannot be picked."
     >
       <Select
         data-testid="link-max-height"

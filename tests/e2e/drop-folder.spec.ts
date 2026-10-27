@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DROP_REFUSED_VIEW } from '../../src/shared/drop-folder';
-import { ADMIN_REFUSAL } from '../../src/shared/roles';
+import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
@@ -28,11 +28,12 @@ import {
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 
 /*
- * The drop folder (Session 28, decision 21): an admin chooses a folder; pictures, videos and (Session 51)
+ * The drop folder (Session 28, decision 21): a folder chosen in Pro Mode; pictures, videos and (Session 51)
  * sounds put in it come into Media by themselves, under "From the drop folder", once each has held still
  * for 5 s (the real settle time: no test switch shortens it). The folder is never written to; a file still
  * being written is taken only once whole; nothing comes in while the stream is on air (the on-air test hook
- * stands in for it); Simple Mode carries on quietly; a locked admin and Simple Mode cannot open it.
+ * stands in for it); Simple Mode carries on quietly and cannot open it; in Pro Mode it opens with no PIN
+ * (Session 54, E5: roles are gone).
  * Generated media only.
  */
 
@@ -170,7 +171,7 @@ test('pictures, videos and sounds put in the drop folder come into Media within 
   }
 });
 
-test('a locked admin cannot open the drop folder; in Simple Mode it carries on, with no notice', async () => {
+test('File › Drop Folder… opens in Pro Mode with no PIN asked; in Simple Mode it cannot be opened, and carries on with no notice', async () => {
   test.setTimeout(120_000);
   const drop = mkdtempSync(join(tmpdir(), 'drashti-drop-'));
   const scratch = mkdtempSync(join(tmpdir(), 'drashti-drop-made-'));
@@ -182,33 +183,16 @@ test('a locked admin cannot open the drop folder; in Simple Mode it carries on, 
     const chosen = await win.evaluate(() => (globalThis as PageGlobals).drashti.drop.pickFolder());
     expect(chosen).toMatchObject({ ok: true, view: { folder: drop, on: true } });
 
-    // Roles on, admin locked: the menu asks for the PIN; cancelled, nothing opens, and the main process refuses.
-    const set = await win.evaluate(() =>
-      (globalThis as PageGlobals).drashti.roles.setPins({ admin: '481526', operator: '937402' }),
-    );
-    expect(set.ok).toBe(true);
-    await win.getByTestId('role-chip').click();
-    await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+    // Pro Mode: the menu opens it at once, as it stands, and nothing asks for a PIN (Session 54, E5).
     await chooseMenuItem(app, 'drop-folder');
-    const prompt = win.getByTestId('admin-pin');
-    await expect(prompt).toBeVisible();
-    await prompt.getByRole('button', { name: 'Cancel' }).click();
-    await holdStill(
-      async () => (await win.getByTestId('drop-dialog').count()) === 0,
-      500,
-      'cancelled, the drop folder’s dialog does not open',
-    );
-    await win.evaluate(() => {
-      (globalThis as PageGlobals).drashti.roles.setAdminAsker(() => Promise.resolve(false));
-    });
-    const locked = await win.evaluate(async () => {
-      const d = (globalThis as PageGlobals).drashti;
-      return { view: await d.drop.view(), off: await d.drop.setOn(false) };
-    });
-    expect(locked.view).toEqual(DROP_REFUSED_VIEW);
-    expect(locked.off).toEqual({ ok: false, message: ADMIN_REFUSAL });
+    const dialog = win.getByTestId('drop-dialog');
+    await expect(dialog.getByTestId('drop-folder-path')).toHaveText(drop);
+    await expect(win.getByRole('dialog')).toHaveCount(1);
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
 
-    // Simple Mode: no File menu, and the folder carries on, saying nothing.
+    // Simple Mode: no File menu, the main process refuses to show or change it, and the folder carries on,
+    // saying nothing.
     await win.getByRole('button', { name: 'Simple Mode' }).click();
     await expect
       .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode()))
@@ -216,6 +200,12 @@ test('a locked admin cannot open the drop folder; in Simple Mode it carries on, 
     expect(
       await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('drop-folder') ?? null),
     ).toBeNull();
+    const refused = await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      return { view: await d.drop.view(), off: await d.drop.setOn(false) };
+    });
+    expect(refused.view).toEqual(DROP_REFUSED_VIEW);
+    expect(refused.off).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     await makeTestImage(win, join(scratch, 'Placeholder quiet.png'));
     renameSync(join(scratch, 'Placeholder quiet.png'), join(drop, 'Placeholder quiet.png'));
     await expect.poll(() => fromDrop(win), { timeout: 15_000 }).toEqual(['Placeholder quiet.png']);

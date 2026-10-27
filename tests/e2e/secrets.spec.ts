@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createHash, randomInt } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,16 +8,13 @@ import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobal
 import { filesUnder, findSecrets } from './secrets';
 
 /*
- * The secrets of the local network and of roles (Session 31, SEC-8): a phone's token, the poster link's
- * token, a pairing code and both PINs are kept nowhere Drashti writes: its data folder (library, logs,
- * settings, Chromium's profile), the Diagnostics it saves, or a backup. Drashti keeps only a token's
- * SHA-256 and a PIN's scrypt hash. Every secret here is made at run time and never printed.
+ * The secrets of the local network (Session 31, SEC-8): a phone's token, the poster link's token and a
+ * pairing code are kept nowhere Drashti writes: its data folder (library, logs, settings, Chromium's profile),
+ * the Diagnostics it saves, or a backup. Drashti keeps only a token's SHA-256. Every secret here is made at run
+ * time and never printed. (Roles and their PINs went in Session 54, E5.)
  */
 
-/** A 12-digit PIN, made now. */
-const pin = () => String(100_000_000_000 + randomInt(899_999_999_999));
-
-test('no phone token, poster token, pairing code or PIN is kept in the data folder, the log, Diagnostics or a backup (Session 31, SEC-8)', async () => {
+test('no phone token, poster token or pairing code is kept in the data folder, the log, Diagnostics or a backup (Session 31, SEC-8)', async () => {
   test.setTimeout(120_000);
   const { app, userData } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -42,15 +39,6 @@ test('no phone token, poster token, pairing code or PIN is kept in the data fold
     return r.status.poster.url.split('#k=')[1] ?? '';
   });
   expect(posterToken.length).toBeGreaterThan(20);
-  // Both PINs at their longest; setting them leaves the admin's unlocked for a while (the backup needs it).
-  const admin = pin();
-  let operator = pin();
-  while (operator === admin) operator = pin();
-  const set = await win.evaluate((pins) => (globalThis as PageGlobals).drashti.roles.setPins(pins), {
-    admin,
-    operator,
-  });
-  expect(set.ok).toBe(true);
 
   // Diagnostics and a backup.
   const desktop = mkdtempSync(join(tmpdir(), 'drashti-secrets-desktop-'));
@@ -70,9 +58,8 @@ test('no phone token, poster token, pairing code or PIN is kept in the data fold
   await app.close();
 
   const all = filesUnder(userData, desktop, backups);
-  // The search covers what matters: the log, the library, the roles, the Diagnostics and the backup.
+  // The search covers what matters: the log, the library, the Diagnostics and the backup.
   expect(all.some((f) => f.endsWith('drashti.log'))).toBe(true);
-  expect(all.some((f) => f.endsWith('roles.json'))).toBe(true);
   expect(filesUnder(desktop).length).toBe(1);
   expect(filesUnder(backups).some((f) => f.endsWith('drashti.sqlite'))).toBe(true);
   expect(
@@ -80,8 +67,6 @@ test('no phone token, poster token, pairing code or PIN is kept in the data fold
       { label: 'the phone’s token', value: deviceToken },
       { label: 'the poster link’s token', value: posterToken },
       { label: 'the pairing code', value: code, digits: true },
-      { label: 'the admin PIN', value: admin, digits: true },
-      { label: 'the operator PIN', value: operator, digits: true },
     ]),
   ).toEqual([]);
   // And the search does read the library: the phone's token is kept there as its SHA-256, by design.

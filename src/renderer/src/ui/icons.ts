@@ -26,8 +26,8 @@ export { ArrowLeftRight, PictureInPicture2 } from 'lucide-react';
 export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'lucide-react';
 // Leaving the first start's practice show (Session 26g).
 export { LogOut } from 'lucide-react';
-// Roles and PINs, scheduled backups, updates, music and markers (Session 14).
-export { Bookmark, Download, LockOpen, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
+// Scheduled backups, updates, music and markers (Session 14).
+export { Bookmark, Download, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
 // Last 10 s, towards the end (Session 50; Back 15 s and Forward 15 s turn round, RotateCcw and RotateCw).
 export { ArrowRightToLine } from 'lucide-react';
 // Import from a Link (Session 25b): a link, Dropbox (a cloud) and YouTube (a played video).

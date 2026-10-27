@@ -22,10 +22,10 @@ import type { Emitted } from './sources';
 import type { EventsWorker } from './spawn-worker';
 
 /*
- * Events out in the main process (Session 28, decision 20): the addresses an admin set up, kept encrypted
+ * Events out in the main process (Session 28, decision 20): the addresses set up in it, kept encrypted
  * as stream keys are (their own file; never the library, a backup, the log or a window); the events the
  * show makes, handed to the events worker for each address that ticked their kind; and how each address
- * stands. No address, no worker: nothing runs until an admin adds one and ticks a kind.
+ * stands. No address, no worker: nothing runs until one is added and a kind ticked.
  */
 
 const savedSchema = z.object({
@@ -153,7 +153,7 @@ export class EventsOut {
         const parsed = savedSchema.safeParse(JSON.parse(raw));
         if (parsed.success) this.addresses.set(id, parsed.data);
       } catch {
-        // Unreadable: left out (an admin adds it again).
+        // Unreadable: left out (it is added again in File › Events Out…).
       }
     }
     this.sync();
@@ -247,7 +247,7 @@ export class EventsOut {
     if (refused !== null) return { ok: false, message: refused };
     const id = randomUUID();
     const secret = newSecret();
-    // Nothing is sent until an admin ticks what it gets.
+    // Nothing is sent until what it gets is ticked.
     const kept = this.keep(id, {
       url: parsed.data,
       secret,
@@ -512,7 +512,7 @@ export class EventsOut {
         this.sync();
         this.deps.log('warn', `Events out: ${host} answered 410 (gone); sending to it stopped`);
         this.deps.notice(
-          `Events out: ${host} said it is gone, so Drashti stopped sending to it. An admin can turn it on again in File › Events Out….`,
+          `Events out: ${host} said it is gone, so Drashti stopped sending to it. Turn it on again in File › Events Out….`,
         );
         this.changed();
         return;

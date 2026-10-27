@@ -16,8 +16,8 @@ import { plural } from '../ui/text';
 import { loadTexts, openTexts, useShastra } from './shastra-store';
 
 /*
- * The loaded Shastra texts (Pro Mode; roles come in Session 14): load one
- * (a file an admin prepares from a source BAPS or the mandir has authorised,
+ * The loaded Shastra texts (Pro Mode): load one
+ * (a file prepared from a source BAPS or the mandir has authorised,
  * docs/shastra-format.md), choose the theme each text's passages are drawn
  * with, or remove one.
  */

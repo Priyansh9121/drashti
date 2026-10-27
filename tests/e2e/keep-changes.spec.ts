@@ -247,24 +247,22 @@ test('the theme form in Themes asks before a typed change is lost', async () => 
   await app.close();
 });
 
-test('the setup wizard asks before typed PINs are lost (nothing is set until Finish)', async () => {
+test('the setup wizard closes without asking: nothing typed in it is lost (Session 54, E5: its PINs step went)', async () => {
   const { app, win } = await start();
   await chooseMenuItem(app, 'set-up-screens');
   const wizard = win.getByTestId('setup-wizard');
-  // From the displays (Session 44: where it opens) to the PINs.
+  // From the displays (Session 44: where it opens) through every step to Finish, choosing as it goes.
   for (let step = 0; step < 4; step++) await wizard.getByTestId('setup-next').click();
-  await wizard.getByRole('radio', { name: 'Set an admin PIN and an operator PIN' }).check();
-  await wizard.getByTestId('setup-admin-pin').fill('2468');
-  await win.keyboard.press('Escape');
-  await escKeepsEditing(win, wizard, { save: false });
-  await expect(wizard.getByTestId('setup-admin-pin')).toHaveValue('2468');
+  await expect(wizard.getByTestId('setup-step')).toHaveText('Finish');
   await wizard.getByRole('button', { name: 'Close the setup' }).click();
-  await answer(win, 'Throw them away');
   await expect(wizard).toHaveCount(0);
-  // Nothing was set: opened again, it starts afresh, with no PINs typed.
+  await expect(win.getByTestId('keep-changes')).toHaveCount(0);
+  // Esc the same, from any step.
   await chooseMenuItem(app, 'set-up-screens');
-  for (let step = 0; step < 4; step++) await wizard.getByTestId('setup-next').click();
-  await expect(wizard.getByRole('radio', { name: 'No PINs for now' })).toBeChecked();
+  await wizard.getByTestId('setup-next').click();
+  await win.keyboard.press('Escape');
+  await expect(wizard).toHaveCount(0);
+  await expect(win.getByTestId('keep-changes')).toHaveCount(0);
   await app.close();
 });
 

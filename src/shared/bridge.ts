@@ -36,7 +36,6 @@ import type {
 } from './kirtans';
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
-import type { RolesResult, RolesView } from './roles';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -142,7 +141,7 @@ export interface DrashtiBridge {
     /** View › Show Safe Areas: whether the slide editor draws them. */
     safeAreas(): Promise<boolean>;
     onSafeAreasChanged(listener: (on: boolean) => void): () => void;
-    /** Single-letter keys (Session 37): whether B, ., L and ? act, and turning them on or off (an admin's). */
+    /** Single-letter keys (Session 37): whether B, ., L and ? act, and turning them on or off (Pro Mode). */
     singleKeys(): Promise<boolean>;
     setSingleKeys(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
     onSingleKeysChanged(listener: (on: boolean) => void): () => void;
@@ -153,7 +152,7 @@ export interface DrashtiBridge {
     /** Into Simple Mode at once; back to Pro Mode only with the word typed (operator window only). */
     setMode(mode: OperatorMode, word?: string): Promise<ModeResult>;
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
-    /** View > Switch to Pro Mode… was chosen: ask for the word (or, with roles on, a PIN). */
+    /** View > Switch to Pro Mode… was chosen: ask for the word. */
     onAskLeaveSimple(listener: () => void): () => void;
     /** Help > Keyboard Shortcuts… was chosen (Pro Mode). */
     onShowKeys(listener: () => void): () => void;
@@ -176,7 +175,7 @@ export interface DrashtiBridge {
     /** File > Scheduled Backups… was chosen. */
     onOpen(listener: () => void): () => void;
   };
-  /** Events out (Session 28, operator window; an admin's). */
+  /** Events out (Session 28, operator window; Pro Mode). */
   events: {
     view(): Promise<EventsOutView>;
     add(url: string, allowInternet: boolean): Promise<EventsOutResult>;
@@ -185,10 +184,10 @@ export interface DrashtiBridge {
     rotate(id: string): Promise<EventsOutResult>;
     test(id: string): Promise<{ ok: boolean; message: string }>;
     onChanged(listener: (view: EventsOutView) => void): () => void;
-    /** File > Events Out… was chosen (admin unlocked). */
+    /** File > Events Out… was chosen. */
     onOpen(listener: () => void): () => void;
   };
-  /** The drop folder (Session 28, operator window; an admin's). */
+  /** The drop folder (Session 28, operator window; Pro Mode). */
   drop: {
     view(): Promise<DropFolderView>;
     /** Choose the folder (null: cancelled). */
@@ -196,7 +195,7 @@ export interface DrashtiBridge {
     setOn(on: boolean): Promise<DropFolderResult>;
     importAnyway(name: string): Promise<DropFolderResult>;
     onChanged(listener: (view: DropFolderView) => void): () => void;
-    /** File > Drop Folder… was chosen (admin unlocked). */
+    /** File > Drop Folder… was chosen. */
     onOpen(listener: () => void): () => void;
   };
   /** Audio playlists (Session 14, operator window). */
@@ -243,36 +242,13 @@ export interface DrashtiBridge {
     addWaiting(): Promise<LinkResult>;
     /** Show where the files were saved: an import run's (its report), or the dialog's download (null). */
     showSaved(runId: string | null): Promise<null>;
-    /** The admin's highest video quality, for YouTube and Dropbox (Session 25c): 1080, 1440, 2160 or 4320. */
+    /** The highest video quality, for YouTube and Dropbox (Session 25c): 1080, 1440, 2160 or 4320. */
     setMaxHeight(height: number): Promise<LinkResult>;
     /** The playlist a download went into (Session 54): the dialog offers it first the next time. */
     setPlaylist(playlistId: string): Promise<LinkResult>;
     onChanged(listener: (view: LinkView) => void): () => void;
     /** File > Import from a Link… was chosen. */
     onOpen(listener: () => void): () => void;
-  };
-  /** Roles (Session 14): an admin PIN and an operator PIN (operator window). */
-  roles: {
-    view(): Promise<RolesView>;
-    /** The admin PIN: admin unlocked for a while. */
-    unlock(pin: string): Promise<RolesResult>;
-    lock(): Promise<RolesView>;
-    setPins(pins: { admin: string; operator: string }): Promise<RolesResult>;
-    changePin(change: { role: 'admin' | 'operator'; pin: string }): Promise<RolesResult>;
-    turnOff(): Promise<RolesResult>;
-    /** The operator closed the PIN prompt a menu item opened. */
-    cancelAsk(): Promise<null>;
-    onChanged(listener: (view: RolesView) => void): () => void;
-    /** A menu item needs the admin PIN: ask for it (what it is for, in words). */
-    onAskAdmin(listener: (what: string) => void): () => void;
-    /** File > Roles and PINs… was chosen. */
-    onOpen(listener: () => void): () => void;
-    /**
-     * The page's way to ask for the admin PIN. Before any admin request, the
-     * bridge asks the main process whether admin is locked and, if so, waits
-     * for this (true: unlocked); the main process decides either way.
-     */
-    setAdminAsker(asker: (() => Promise<boolean>) | null): void;
   };
   /** Files dropped on a page. */
   files: {
@@ -325,7 +301,7 @@ export interface DrashtiBridge {
     getDefaultTransition(): Promise<Transition>;
     /** View › Show Shastra, Templates and Kirtan Details (Session 26a): off to begin with. */
     extras(): Promise<boolean>;
-    /** An admin's (the View menu does it too). */
+    /** Pro Mode's (the View menu does it too). */
     setExtras(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
     onExtrasChanged(listener: (on: boolean) => void): () => void;
     setDefaultTransition(
@@ -422,7 +398,7 @@ export interface DrashtiBridge {
     ): Promise<PlaylistResult>;
     /** Smart playlists (Session 26c): how following each one's folder goes. */
     smartViews(): Promise<SmartPlaylistView[]>;
-    /** A smart playlist from a folder an admin chooses in a dialog (none made: no ids). */
+    /** A smart playlist from a folder chosen in a dialog (none made: no ids). */
     createSmart(): Promise<PlaylistResult>;
     /** Take a smart playlist's missing items out (their files are gone from its folder). */
     removeMissing(playlistId: string): Promise<PlaylistResult>;
@@ -647,7 +623,7 @@ export interface DrashtiBridge {
     cancelPairing(): Promise<NodesResult>;
     rename(nodeId: string, name: string): Promise<NodesResult>;
     remove(nodeId: string): Promise<NodesResult>;
-    /** A new identity for the nodes, in place of one that could not be read (admin; Session 23). */
+    /** A new identity for the nodes, in place of one that could not be read (Session 23). */
     newIdentity(): Promise<NodesResult>;
     everything(nodeId: string, on: boolean): Promise<NodesResult>;
     /** Reload one output: on Main (nodeId null) or on a node. */
@@ -759,7 +735,7 @@ export interface DrashtiBridge {
     saveQuote(quoteId: string | null, quote: QuoteFields): Promise<QuoteResult>;
     removeQuote(quoteId: string): Promise<IdleResult>;
   };
-  /** Samvat and tithi: the calendars an admin loaded (through Import), today's entry, removing one (Pro Mode). */
+  /** Samvat and tithi: the calendars loaded (through Import), today's entry, removing one (Pro Mode). */
   calendar: {
     view(): Promise<CalendarView>;
     onChanged(listener: (view: CalendarView) => void): () => void;

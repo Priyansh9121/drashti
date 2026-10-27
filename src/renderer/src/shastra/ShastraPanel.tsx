@@ -265,7 +265,7 @@ export function ShastraPanel({ help }: { help?: ReactNode }) {
           </div>
         ) : loaded && texts.length === 0 ? (
           <EmptyState icon={BookOpen} title="No texts loaded" compact className="flex-1">
-            An admin loads the texts the mandir may show: drag a Shastra text file here, or use Texts….
+            Load the texts the mandir may show: drag a Shastra text file here, or use Texts….
           </EmptyState>
         ) : (
           <ul className="space-y-1" data-testid="shastra-texts-list">

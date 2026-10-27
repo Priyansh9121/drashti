@@ -47,20 +47,18 @@ export interface MenuActions {
   uncoverControls: { accelerator: string | null; run: () => void };
   /** Help > Save diagnostics: one file on the Desktop to send after a problem. */
   saveDiagnostics: () => void;
-  /** File > Import from a Link… (Session 25b, Pro Mode, an admin's): YouTube or Dropbox. */
+  /** File > Import from a Link… (Session 25b, Pro Mode): YouTube or Dropbox. */
   importFromLink: () => void;
   /** File > Back Up Library… and Restore Library…. */
   backUpLibrary: () => void;
   restoreLibrary: () => void;
   /** File > Use This Computer as a Node…: asks, then restarts as a node (Pro Mode only). */
   useAsNode: () => void;
-  /** File > Roles and PINs… (Session 14): the admin PIN and the operator PIN (Pro Mode only). */
-  rolesAndPins: () => void;
   /** File > Scheduled Backups… (Session 14). */
   scheduledBackups: () => void;
-  /** File > Events Out… (Session 28): an admin's. */
+  /** File > Events Out… (Session 28). */
   eventsOut: () => void;
-  /** File > Drop Folder… (Session 28): an admin's. */
+  /** File > Drop Folder… (Session 28). */
   dropFolder: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
@@ -68,10 +66,10 @@ export interface MenuActions {
   keyboardShortcuts: () => void;
   /** Help > Guides… (Sessions 31–36, both modes): the guides inside Drashti. */
   guides: () => void;
-  /** File > Run Ahead of Other Programs (Windows only, Pro Mode, admin; Session 16): null elsewhere. */
+  /** File > Run Ahead of Other Programs (Windows only, Pro Mode; Session 16): null elsewhere. */
   priority: PriorityItem | null;
   /**
-   * View > Show Shastra, Templates and Kirtan Details (Session 26a, Pro Mode, an admin's): ticked when
+   * View > Show Shastra, Templates and Kirtan Details (Session 26a, Pro Mode): ticked when
    * the operator window shows them (off to begin with).
    */
   extras: { shown: boolean; toggle: () => void };
@@ -135,8 +133,6 @@ export function installMenu(actions: MenuActions): void {
               { type: 'separator' },
               { id: 'drop-folder', label: 'Drop Folder…', click: actions.dropFolder },
               { id: 'events-out', label: 'Events Out…', click: actions.eventsOut },
-              { type: 'separator' },
-              { id: 'roles-and-pins', label: 'Roles and PINs…', click: actions.rolesAndPins },
               { type: 'separator' },
               { id: 'use-as-node', label: 'Use This Computer as a Node…', click: actions.useAsNode },
               ...(actions.priority
