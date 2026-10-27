@@ -432,6 +432,16 @@ export class Uploads {
       await this.end(up, 'failed', ADD_FILES_WORDS.notTaken);
       return;
     }
+    // A PowerPoint 97–2003 file may name files anywhere on this computer for PowerPoint to draw or play, and only a
+    // .pptx's links can be made dead ends (import/deck/links.ts): from a phone, a deck comes as .pptx (Session 54).
+    if (what.ext === 'ppt') {
+      this.deps.log(
+        'info',
+        'Files from phones: a PowerPoint 97–2003 file was not taken (a phone sends .pptx)',
+      );
+      await this.end(up, 'failed', ADD_FILES_WORDS.oldPowerPoint);
+      return;
+    }
     const whole = join(this.deps.dir, `${up.id}.${what.ext}`);
     try {
       await rename(up.file, whole);

@@ -241,6 +241,7 @@ export class PhoneFiles {
     if (device?.kind !== 'remote') return refuse('This phone is no longer paired with Drashti.');
     const what = await whatFileIs(file.file);
     if (what?.ext !== file.ext || what.kind !== file.kind) return refuse(ADD_FILES_WORDS.notTaken);
+    if (file.ext === 'ppt') return refuse(ADD_FILES_WORDS.oldPowerPoint);
     try {
       if (DECKS.has(file.kind) && this.deps.onAir()) {
         note(DECK_WAITS);

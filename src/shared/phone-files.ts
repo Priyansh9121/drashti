@@ -105,11 +105,9 @@ export const ADD_ACCEPT = [
   'video/mp4',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.ms-powerpoint',
   'application/vnd.apple.keynote',
   '.pdf',
   '.pptx',
-  '.ppt',
   '.key',
   '.heic',
 ].join(',');
@@ -125,6 +123,8 @@ export const ADD_FILES_WORDS = {
   notTaken:
     'Drashti takes pictures, videos, sounds, PDF, PowerPoint and Keynote files, and this is none of them: each file is checked by what is inside it, not by its name.',
   gone: 'Drashti no longer has this file (it waited too long, or Drashti started again): add it again.',
+  oldPowerPoint:
+    'Drashti takes a PowerPoint file from a phone as .pptx, not the older .ppt: save it as a PowerPoint Presentation (.pptx), then add it again.',
 } as const;
 
 export const tooLargeWords = (maxBytes: number): string =>

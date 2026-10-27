@@ -19,6 +19,7 @@ import { PlaylistRepo } from '../db/playlists';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
 import { UPLOADS_DIR } from '../import/media-store';
+import { compoundFile } from '../import/testing/compound-file';
 import { makeZip } from '../import/testing/zip-writer';
 import { ADD_FILES_SETTING, DECK_WAITS, PhoneFiles } from './phone-files';
 
@@ -276,6 +277,16 @@ describe('a file a phone added', () => {
   it('a renamed file is refused by what is inside it', async () => {
     const file = sent('Placeholder words, named as a picture.', 'Placeholder.jpg');
     expect(await files.arrived(file)).toEqual({ ok: false, message: ADD_FILES_WORDS.notTaken });
+    expect(imported).toEqual([]);
+    expect(existsSync(file.file)).toBe(false);
+  });
+
+  it('a PowerPoint 97–2003 file is never imported from a phone: its links could reach any file here', async () => {
+    const file = sent(compoundFile('PowerPoint Document'), 'Placeholder old deck.ppt', {
+      ext: 'ppt',
+      kind: 'powerpoint',
+    });
+    expect(await files.arrived(file)).toEqual({ ok: false, message: ADD_FILES_WORDS.oldPowerPoint });
     expect(imported).toEqual([]);
     expect(existsSync(file.file)).toBe(false);
   });

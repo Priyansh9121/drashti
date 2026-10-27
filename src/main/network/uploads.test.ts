@@ -20,6 +20,7 @@ import {
   type UploadPolicy,
   type UploadStatus,
 } from '../../shared/phone-files';
+import { compoundFile } from '../import/testing/compound-file';
 import { makeZip } from '../import/testing/zip-writer';
 import { Uploads } from './uploads';
 
@@ -255,6 +256,15 @@ describe('what a phone may add', () => {
     const id = upload(await begin('Placeholder photo.jpg', words.length)).id;
     const last = await uploads.piece(PHONE, id, '0', body(words));
     expect(upload(last)).toMatchObject({ state: 'failed', message: ADD_FILES_WORDS.notTaken });
+    expect(arrived).toEqual([]);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it('a PowerPoint 97–2003 file is refused in words, a phone told to send .pptx, and nothing is kept of it', async () => {
+    const ppt = compoundFile('PowerPoint Document');
+    const id = upload(await begin('Placeholder old deck.ppt', ppt.length)).id;
+    const last = await uploads.piece(PHONE, id, '0', body(ppt));
+    expect(upload(last)).toMatchObject({ state: 'failed', message: ADD_FILES_WORDS.oldPowerPoint });
     expect(arrived).toEqual([]);
     expect(readdirSync(dir)).toEqual([]);
   });
