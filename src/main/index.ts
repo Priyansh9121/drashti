@@ -964,14 +964,27 @@ let behind: BehindTheLock | null = null;
 const accessShut = (): boolean => behind?.shut() ?? false;
 
 async function startMain(selfTest: boolean): Promise<void> {
-  const lock = await prepareTheLock({
-    version: appVersion(),
-    selfTest,
-    background: () => appearance.background(),
-    fromOperator,
-    operatorWindow: () => operatorWindow,
-    open: start,
-  });
+  let lock: BehindTheLock;
+  try {
+    lock = await prepareTheLock({
+      version: appVersion(),
+      selfTest,
+      background: () => appearance.background(),
+      fromOperator,
+      operatorWindow: () => operatorWindow,
+      open: start,
+    });
+  } catch (error) {
+    // Never open without the lock: said plainly, and Drashti quits.
+    log.error('Access: the lock could not be made ready', error);
+    crashJournal.add(errorWords('the access check could not start', error));
+    dialog.showErrorBox(
+      'Drashti could not start',
+      'Drashti could not check this computer’s access, so it does not open. Quit, then start Drashti again.',
+    );
+    app.quit();
+    return;
+  }
   behind = lock;
   stops.add('access', () => {
     lock.service.dispose();
