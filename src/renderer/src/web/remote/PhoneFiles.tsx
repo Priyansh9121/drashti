@@ -109,9 +109,9 @@ function SharedItems({ playlist, list }: { playlist: SharedPlaylist; list: Playl
   );
 }
 
-function SharedFromDrashti({ shared }: { shared: SharedPlaylist[] }) {
+function SharedFromDrashti({ shared }: { shared: SharedPlaylist[] | null }) {
   const open = usePhoneFiles((s) => s.open);
-  const playlist = open ? shared.find((p) => p.id === open.id) : undefined;
+  const playlist = open ? shared?.find((p) => p.id === open.id) : undefined;
   return (
     <section className="space-y-2" aria-labelledby="remote-shared-title" data-testid="remote-shared">
       <h2 id="remote-shared-title" className={HEADING}>
@@ -119,6 +119,15 @@ function SharedFromDrashti({ shared }: { shared: SharedPlaylist[] }) {
       </h2>
       {open && playlist ? (
         <SharedItems playlist={playlist} list={open.items} />
+      ) : shared === null ? (
+        <p role="status" className="text-base text-muted">
+          Loading what is shared…
+        </p>
+      ) : shared.length === 0 ? (
+        <p className="text-base text-muted" data-testid="remote-shared-none">
+          Nothing is shared yet: in Drashti on the computer, right-click a playlist and choose Share with
+          Phones and Tablets.
+        </p>
       ) : (
         <SharedList shared={shared} />
       )}
@@ -260,16 +269,20 @@ function AddToDrashti() {
   );
 }
 
-export function PhoneFiles() {
+/**
+ * Both parts, where there is something to show; `always` (a place of their own, as a choice in the library) shows
+ * each with what to do while it is empty.
+ */
+export function PhoneFiles({ always = false }: { always?: boolean }) {
   const shared = usePhoneFiles((s) => s.shared);
   const adding = usePhoneFiles((s) => s.adding?.on === true);
   const sent = usePhoneFiles((s) => s.sending.length > 0);
   const anyShared = shared !== null && shared.length > 0;
-  if (!anyShared && !adding && !sent) return null;
+  if (!always && !anyShared && !adding && !sent) return null;
   return (
     <div className="space-y-5 pb-2" data-testid="remote-files">
-      {anyShared && <SharedFromDrashti shared={shared} />}
-      {(adding || sent) && <AddToDrashti />}
+      {(always || anyShared) && <SharedFromDrashti shared={shared} />}
+      {(always || adding || sent) && <AddToDrashti />}
       <SharedViewer />
     </div>
   );
