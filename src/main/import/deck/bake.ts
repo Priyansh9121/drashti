@@ -1,5 +1,5 @@
 import { copyFile, stat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { PictureSource } from '../../../shared/pictures';
 import { readInfo } from '../../convert/read-info';
 import {
@@ -395,9 +395,22 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
       const opened = await s.open(input);
       if (!opened.ok) return opened.failed;
       await s.hide();
-      const { doc, slides } = opened.document;
-      const inside = dirname(opened.document.copy);
+      const { doc, slides, copy } = opened.document;
+      const inside = dirname(copy);
       const seconds = Math.ceil((limits.saveMs + limits.perSlideMs * Math.max(slides, 1)) / 1000);
+      // Keynote's copy of a PowerPoint file kept in Drashti's own folder before anything in it changes (Session 54,
+      // C review): once its movies are taken out, macOS would otherwise save it by itself into the operator's Keynote
+      // documents, iCloud Drive's, a copy of every deck imported.
+      if (extname(copy).toLowerCase() !== '.key') {
+        const kept = join(inside, `${basename(copy, extname(copy))}.key`);
+        const saved = await s.tell(
+          ['save (document id (item 1 of argv)) in (POSIX file (item 2 of argv))', 'return ""'],
+          [doc, kept],
+          seconds,
+        );
+        if (saved.code !== 0)
+          s.log(`could not keep its copy in Drashti’s folder: ${firstLine(saved.stderr)}`);
+      }
       // Its own PowerPoint copy: the steps and their lengths as Keynote has them, and the media's files.
       const ownCopy = join(inside, 'keynote.pptx');
       const exported = await s.tell(

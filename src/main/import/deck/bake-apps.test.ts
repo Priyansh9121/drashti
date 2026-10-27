@@ -1,6 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readInfo } from '../../convert/read-info';
@@ -35,6 +43,26 @@ const running = (name: string) => {
     return false;
   }
 };
+
+/**
+ * Keynote's own documents folders, iCloud Drive's and this Mac's: where macOS keeps a document Keynote saved by itself
+ * once it was changed. Never one of Drashti's copies (Session 54, C review: Keynote's copy of a deck, its movies taken
+ * out, was kept there, in iCloud).
+ */
+const KEYNOTE_DOCUMENTS = [
+  join(homedir(), 'Library', 'Mobile Documents', 'com~apple~Keynote', 'Documents'),
+  join(homedir(), 'Library', 'Containers', 'com.apple.iWork.Keynote', 'Data', 'Documents'),
+];
+const drashtiCopies = () =>
+  KEYNOTE_DOCUMENTS.flatMap((folder) => {
+    try {
+      return readdirSync(folder)
+        .filter((f) => f.includes('(Drashti copy'))
+        .map((f) => join(folder, f));
+    } catch {
+      return [];
+    }
+  });
 
 const IDS = { powerpoint: 'com.microsoft.Powerpoint', keynote: 'com.apple.iWork.Keynote' } as const;
 type App = keyof typeof IDS;
@@ -169,7 +197,11 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
       if (to) appendFileSync(join(to, 'log.txt'), `${line}\n`);
     };
 
+    /** Drashti's copies kept in Keynote's documents before (none, as a rule): none is ever added. */
+    let copiesBefore: string[] = [];
+    const newCopies = () => drashtiCopies().filter((f) => !copiesBefore.includes(f));
     beforeAll(() => {
+      copiesBefore = drashtiCopies();
       if (running('Keynote') || running('Microsoft PowerPoint'))
         throw new Error('Quit Keynote and PowerPoint first: this test starts and quits them.');
       writeFileSync(deck, makeTestDeck(TRIAL_SLIDES, makeDeckMedia(ffmpeg, join(dir, 'made'))));
@@ -299,6 +331,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
           [5, false],
         ]);
         expect(running('Keynote')).toBe(false);
+        expect(newCopies()).toEqual([]);
       },
       900_000,
     );
@@ -308,7 +341,17 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
       async () => {
         // A Keynote file, made by Keynote from the trial deck (as the PDF test makes one).
         const key = join(dir, 'Placeholder trial.key');
-        execFileSync('open', ['-g', '-j', '-b', 'com.apple.iWork.Keynote', deck]);
+        // Without Keynote's last windows (as Drashti starts it): with them, it may not open the file at all.
+        execFileSync('open', [
+          '-g',
+          '-j',
+          '-b',
+          'com.apple.iWork.Keynote',
+          deck,
+          '--args',
+          '-ApplePersistenceIgnoreState',
+          'YES',
+        ]);
         execFileSync(
           'osascript',
           [
@@ -359,6 +402,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         ]);
         expect(parsed.groups[0]?.slides[3]?.deck?.media[0]).toMatchObject({ loop: true, volume: 0.8 });
         expect(running('Keynote')).toBe(false);
+        expect(newCopies()).toEqual([]);
       },
       900_000,
     );
@@ -413,6 +457,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
           expect(running('Keynote')).toBe(true);
           // Its work as it was, where it was saved: never saved anywhere else.
           expect(placeholderState('keynote', name)).toMatch(state);
+          expect(newCopies()).toEqual([]);
         } finally {
           await closeAndQuit('keynote', 'Keynote');
         }

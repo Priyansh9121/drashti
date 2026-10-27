@@ -8,6 +8,7 @@ import { tidyNotes } from '../../shared/pictures';
 import { type PptxDeck, type PptxSlide, readPptx, readPptxDeck } from './pictures';
 import { readZipEntries } from './zip';
 import { cutText } from '../../shared/text';
+import { realPlaceAsync } from '../media/contained';
 
 /*
  * Saving a PowerPoint or Keynote file as PDF with the app installed on this
@@ -680,12 +681,34 @@ export async function withMacSession<T>(
     if (at < 0) return;
     opened.splice(at, 1);
     if (!state.answering) return;
+    // Keynote's copy, once changed, may have been saved by macOS itself into the operator's Keynote documents
+    // (iCloud Drive's): where it is, asked first, so that it goes too (Session 54, C review).
+    let keptOutside: string | null = null;
+    if (app.converter === 'keynote') {
+      const kept = await tellApp(
+        app,
+        [
+          'set f to file of document id (item 1 of argv)',
+          'if f is missing value then return ""',
+          'return POSIX path of f',
+        ],
+        [document.doc],
+        10,
+      );
+      const path = kept.code === 0 ? kept.stdout.trim() : '';
+      const place = path === '' ? null : await realPlaceAsync(folder, path);
+      if (place && !place.inside && basename(place.path).startsWith(stem)) keptOutside = place.path;
+    }
     const command =
       app.converter === 'keynote'
         ? 'close (document id (item 1 of argv)) saving no'
         : 'close presentation (item 1 of argv) saving no';
     const closed = await tellApp(app, [command], [document.doc], 10);
     log(closed.code === 0 ? 'closed the copy' : `could not close the copy: ${firstLine(closed.stderr)}`);
+    if (keptOutside) {
+      await rm(keptOutside, { recursive: true, force: true }).catch(() => undefined);
+      log('removed the copy macOS had kept of it in Keynote’s documents');
+    }
   };
 
   const hide = async () => {
