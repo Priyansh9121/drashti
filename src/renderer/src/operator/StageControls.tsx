@@ -46,8 +46,7 @@ export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
 
 /**
  * Edit layout… (Session 26a): the stage layout editor, at the layout the stage screens use now (the
- * live Look's first stage group's), as Screens' Edit stage layouts… opens it. Saving a layout is an
- * admin's, as there.
+ * live Look's first stage group's), as Screens' Edit stage layouts… opens it.
  */
 function EditLayoutButton() {
   const first = useFirstGroupLook('stage');

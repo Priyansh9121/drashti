@@ -17,8 +17,7 @@ import { closeBackups, connectBackups, useBackups } from './backups-store';
 /*
  * File > Scheduled Backups… (Session 14): where they go, on which days and
  * when, how many are kept and whether the media goes too; how the last one
- * went and when the next is. Changing them takes the admin PIN (with roles
- * on); anyone in Pro Mode can look.
+ * went and when the next is. Anyone in Pro Mode can look and change them.
  */
 
 const pad = (n: number) => String(n).padStart(2, '0');

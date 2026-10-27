@@ -650,7 +650,7 @@ export async function addFromLibrary(
 
 /**
  * Files from the Finder or Explorer dropped on a playlist (Session 26a): imported as files dropped
- * anywhere are (the same rules: Pro Mode, an admin's with roles on), then everything the import made
+ * anywhere are (the same rules: Pro Mode), then everything the import made
  * added before the item that was at `at` when they landed (at the end when none), in the order dropped.
  */
 export async function importIntoPlaylist(
@@ -794,7 +794,7 @@ export async function saveRepeatSettings(playlistId: string, settings: RepeatSet
 }
 
 /**
- * + New › Smart Playlist from a Folder… (Session 26c): an admin chooses the folder; the new playlist
+ * + New › Smart Playlist from a Folder… (Session 26c): the folder is chosen in a dialog; the new playlist
  * opens, and fills itself as its files hold still.
  */
 export async function createSmartPlaylist(): Promise<void> {

@@ -11,7 +11,7 @@ import { useKeymapNow, useSingleKeys } from './single-keys-store';
  * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus, in Pro
  * Mode (Simple Mode keeps its key line). Built from KEYMAP and grouped by what the operator is doing
  * (KEY_GROUPS), each key as this computer writes it, so it never drifts from the keys. It holds the
- * switch for the single-letter keys (Session 37, WCAG 2.1.4): an admin's, on to begin with; off, the sheet
+ * switch for the single-letter keys (Session 37, WCAG 2.1.4): on to begin with; off, the sheet
  * says Off beside each key it took away. The keys are the ones the operators already press, and it says so
  * (Session 50).
  */
@@ -76,9 +76,8 @@ export function KeysSheet({ platform }: { platform: string }) {
         />
         {singleOn ? (
           <p className="text-xs text-muted">
-            They act anywhere in this window while no field has the keyboard. An admin can turn them off for
-            someone who works the computer by speech or a switch, so that a word said never blacks out the
-            hall.
+            They act anywhere in this window while no field has the keyboard. Turn them off for someone who
+            works the computer by speech or a switch, so that a word said never blacks out the hall.
           </p>
         ) : (
           <p className="text-xs text-muted" data-testid="keys-single-off">

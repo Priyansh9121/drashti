@@ -49,7 +49,7 @@ export function keyListener(
 
 /**
  * Run operator actions from the keyboard (keyListener says which presses act). B, ., L and ? only while they
- * are on (Session 37: an admin can turn the single-letter keys off).
+ * are on (Session 37: the single-letter keys can be turned off, in the keys sheet).
  */
 export function useKeymap(
   platform: string,

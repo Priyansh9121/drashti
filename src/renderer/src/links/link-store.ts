@@ -187,7 +187,7 @@ export const anotherLink = () => {
 export function chooseAddTo(target: AddTarget): void {
   useLinks.setState({ addTo: target });
 }
-/** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */
+/** The highest video quality, for YouTube and Dropbox (Session 25c). */
 export const setMaxHeight = (height: number) => act(() => window.drashti.links.setMaxHeight(height));
 
 /** A download, unpacking, conversion or import is going on (or waiting). */

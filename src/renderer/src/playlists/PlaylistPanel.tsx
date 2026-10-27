@@ -171,7 +171,7 @@ function PlaylistTree({ platform }: { platform: string }) {
       <div className="flex h-11 shrink-0 items-center gap-1 px-3" data-strip="">
         <ViewTabs />
         {/* + New (Session 26a: words, not just an icon): a playlist, a folder, or a smart playlist
-            following a folder on the computer (Session 26c: an admin's, as importing is). */}
+            following a folder on the computer (Session 26c). */}
         <MenuButton
           label="New"
           title="New playlist or folder"

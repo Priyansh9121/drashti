@@ -153,7 +153,7 @@ function PlaylistColumn() {
           </Field>
         ) : treeUnread ? null : (
           <EmptyState icon={ListMusic} title="No playlists" compact>
-            An admin makes the sabha’s playlist in Pro Mode.
+            The sabha’s playlist is made in Pro Mode.
           </EmptyState>
         )}
         {itemsUnread && <PlaylistsUnread what="items" size="lg" />}
@@ -322,7 +322,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
   const logo = state?.logo ?? null;
   const canPutBack = state?.canPutBack ?? false;
   // Each shows its keys as they act now (Session 51), as the key line names them: none for Black-out, and the
-  // Logo's F12 alone, while an admin has turned B, . and L off.
+  // Logo's F12 alone, while B, . and L are turned off.
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
   const logoKeys = keymap.find((b) => b.action === 'toggleLogo')?.keys.map((k) => keyText(k, platform)) ?? [];
@@ -483,7 +483,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       setMidiHandler(null);
     };
   }, [run]);
-  // Its key line names only keys that act: not B, . or L while an admin has turned them off (Session 37). The
+  // Its key line names only keys that act: not B, . or L while they are turned off (Session 37). The
   // Logo keeps F12 then, as the operators press it (Session 50).
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);

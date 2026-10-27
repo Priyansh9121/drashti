@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId } from 'react';
 import { describeDisplay } from '../../../shared/display-match';
 import { shortcutText } from '../../../shared/keymap';
 import { LANG_NAMES } from '../../../shared/themes';
@@ -8,7 +8,6 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
-import { KeepChangesDialog } from '../ui/KeepChanges';
 import { Field, Select } from '../ui/Field';
 import { Monitor, ScanEye, Volume2 } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
@@ -19,15 +18,13 @@ import type { DeviceChoice } from '../../../shared/stream';
 import { useFirstGroupLook } from '../screens/screens-store';
 import { LAYOUT_SHOWS, LayoutSwitch } from '../stream/LayoutSwitch';
 import { useStream, watchProgram } from '../stream/stream-store';
-import type { OutputChoice, PinChoice, StreamChoice } from './setup-store';
-import { PinInput } from '../roles/RolesDialogs';
+import type { OutputChoice, StreamChoice } from './setup-store';
 import {
   chooseOutput,
   closeSetup,
   finishScreens,
   finishSetup,
   goTo,
-  pinsReady,
   planOf,
   skipStep,
   STEPS,
@@ -371,95 +368,6 @@ function ThemeStep() {
   );
 }
 
-function PinsStep() {
-  const pins = useSetup((s) => s.pins);
-  const rolesOn = useSetup((s) => s.rolesOn);
-  const name = useId();
-  if (rolesOn)
-    return (
-      <Notice tone="info">
-        Roles are on: two PINs are set. Change them, or turn roles off, in File, Roles and PINs.
-      </Notice>
-    );
-  const typed = pins === 'skip' ? null : pins;
-  const set = (patch: Partial<Exclude<PinChoice, 'skip'>>) => {
-    useSetup.setState({
-      pins: { ...(typed ?? { admin: '', adminAgain: '', operator: '', operatorAgain: '' }), ...patch },
-    });
-  };
-  const problem = typed && typed.adminAgain !== '' && typed.operatorAgain !== '' ? pinsReady(typed) : null;
-  return (
-    <div className="space-y-3 text-sm">
-      <p>
-        PINs keep setting up apart from running the show. With two PINs, Drashti starts in Pro Mode as the
-        operator, with no PIN to type; the admin PIN unlocks setting up (screens, the library, schedules,
-        backups), and leaving Simple Mode takes either PIN. Without them, anyone in Pro Mode can change
-        anything.
-      </p>
-      <fieldset className="space-y-1.5">
-        <legend className="sr-only">PINs</legend>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name={name}
-            className="h-4 w-4 accent-primary"
-            checked={typed === null}
-            onChange={() => {
-              useSetup.setState({ pins: 'skip' });
-            }}
-          />
-          No PINs for now
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name={name}
-            data-testid="setup-pins-on"
-            className="h-4 w-4 accent-primary"
-            checked={typed !== null}
-            onChange={() => {
-              set({});
-            }}
-          />
-          Set an admin PIN and an operator PIN
-        </label>
-      </fieldset>
-      {typed && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-4">
-            <Field label="Admin PIN (4 to 12 digits)">
-              <PinInput
-                data-testid="setup-admin-pin"
-                value={typed.admin}
-                onChange={(e) => set({ admin: e.target.value })}
-              />
-            </Field>
-            <Field label="Again">
-              <PinInput value={typed.adminAgain} onChange={(e) => set({ adminAgain: e.target.value })} />
-            </Field>
-          </div>
-          <div className="flex flex-wrap gap-4">
-            <Field label="Operator PIN">
-              <PinInput
-                data-testid="setup-operator-pin"
-                value={typed.operator}
-                onChange={(e) => set({ operator: e.target.value })}
-              />
-            </Field>
-            <Field label="Again">
-              <PinInput
-                value={typed.operatorAgain}
-                onChange={(e) => set({ operatorAgain: e.target.value })}
-              />
-            </Field>
-          </div>
-          {typeof problem === 'string' && <p className="text-danger-fg">{problem}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function FinishStep() {
   const state = useSetup();
   const plan = planOf(state);
@@ -513,10 +421,6 @@ function FinishStep() {
             : `camera ${state.stream.camera?.label ?? 'none'}, sound input ${state.stream.sound?.label ?? 'none'}; ${state.stream.layout === 'slides' ? 'the slides' : 'the camera and words'}, ${state.stream.languages ? state.stream.languages.map((l) => LANG_NAMES[l]).join(', ') : 'every language'}`}
         </li>
         <li>Default theme: {themeName ?? 'stays as it is'}</li>
-        <li>
-          PINs:{' '}
-          {state.rolesOn ? 'roles stay on' : state.pins === 'skip' ? 'none (roles stay off)' : 'two PINs set'}
-        </li>
       </ul>
     </div>
   );
@@ -534,35 +438,17 @@ export function SetupWizard({ platform }: { platform: string }) {
   const problem = useSetup((s) => s.problem);
   const askCover = useSetup((s) => s.askCover);
   const finished = useSetup((s) => s.finished);
-  const pins = useSetup((s) => s.pins);
-  const [asking, setAsking] = useState(false);
-  // A question left from a wizard closed some other way never shows on the next one.
-  const [askedFor, setAskedFor] = useState(open);
-  if (askedFor !== open) {
-    setAskedFor(open);
-    setAsking(false);
-  }
   if (!open) return null;
-  // PINs typed and not set yet (nothing is set until Finish): closing asks before they are lost.
-  const typedPins =
-    finished || pins === 'skip'
-      ? 0
-      : [pins.admin || pins.adminAgain, pins.operator || pins.operatorAgain].filter((p) => p !== '').length;
-  const requestClose = () => {
-    if (typedPins > 0) setAsking(true);
-    else closeSetup();
-  };
   const name = STEPS[step] ?? 'Welcome';
   const last = step === STEPS.length - 1;
-  const skippable =
-    name === 'Screens' || name === 'Sound' || name === 'Stream' || name === 'Theme' || name === 'PINs';
+  const skippable = name === 'Screens' || name === 'Sound' || name === 'Stream' || name === 'Theme';
   return (
     <>
       <Dialog
         title="Set Up Screens"
         subtitle={<StepList step={step} />}
         size="xl"
-        onClose={requestClose}
+        onClose={closeSetup}
         closeLabel="Close the setup"
         testId="setup-wizard"
         bodyClassName="space-y-4"
@@ -583,8 +469,8 @@ export function SetupWizard({ platform }: { platform: string }) {
                   Skip this step
                 </Button>
               )}
-              {/* The displays first (Session 44): Done shows them as chosen; sound, the stream, the theme
-                  and the PINs come after, with More setup. */}
+              {/* The displays first (Session 44): Done shows them as chosen; sound, the stream and the theme
+                  come after, with More setup. */}
               {name === 'Screens' && (
                 <>
                   <Button data-testid="setup-next" disabled={busy} onClick={() => goTo(step + 1)}>
@@ -652,27 +538,11 @@ export function SetupWizard({ platform }: { platform: string }) {
           <StreamStep />
         ) : name === 'Theme' ? (
           <ThemeStep />
-        ) : name === 'PINs' ? (
-          <PinsStep />
         ) : (
           <FinishStep />
         )}
         {problem && <Notice tone="danger">{problem}</Notice>}
       </Dialog>
-      {asking && (
-        <KeepChangesDialog
-          name="the setup"
-          lost={`You typed ${typedPins === 1 ? 'a PIN' : 'two PINs'}, and nothing is set until Finish.`}
-          note="To keep them, choose Keep editing and go on to Finish."
-          onKeepEditing={() => {
-            setAsking(false);
-          }}
-          onThrowAway={() => {
-            setAsking(false);
-            closeSetup();
-          }}
-        />
-      )}
       {askCover && (
         <ConfirmDialog
           title="Cover the Drashti controls?"

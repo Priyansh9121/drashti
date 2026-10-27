@@ -13,10 +13,10 @@ import { useMode } from '../operator/mode-store';
 
 /*
  * Help > Check for Updates… (Session 14, Pro Mode): which version this is,
- * Check now, and for a newer release Download (an admin's), then Install
- * when Drashti quits (an admin's). Drashti never installs by itself and
- * never restarts itself; Simple Mode never sees this. The status bar says
- * when one is available or waiting to install.
+ * Check now, and for a newer release Download, then Install when Drashti
+ * quits. Drashti never installs by itself and never restarts itself; Simple
+ * Mode never sees this. The status bar says when one is available or waiting
+ * to install.
  */
 
 const useUpdates = create<{ view: UpdateView | null; open: boolean }>(() => ({ view: null, open: false }));
@@ -158,8 +158,8 @@ export function UpdatesDialog() {
         />
         <p className="text-xs text-muted">
           Downloads go at a gentle speed and wait while the stream is on air or recording. Nothing installs
-          until Drashti quits, and then only if an admin said so. Output nodes must run the same version as
-          this computer: update them too (each node offers to, when it sees this one changed).
+          until Drashti quits, and then only if you said so. Output nodes must run the same version as this
+          computer: update them too (each node offers to, when it sees this one changed).
         </p>
       </div>
     </Dialog>

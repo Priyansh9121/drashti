@@ -231,3 +231,39 @@ describe('Set Up Screens… and Keep these screens?', () => {
     expect(setup.useSetup.getState()).toMatchObject({ finished: { tested: 2 }, wentBack: false });
   });
 });
+
+// Session 54 (E5): roles and PINs are gone, and the wizard's PINs step with them.
+describe('the setup wizard’s steps (Session 54, E5)', () => {
+  it('has no PINs step: the theme, then Finish', async () => {
+    const { setup } = await fresh();
+    expect(setup.STEPS).toEqual(['Welcome', 'Screens', 'Sound', 'Stream', 'Theme', 'Finish']);
+  });
+
+  it('opens from the setup as it is, asking nothing of roles, with no PINs to set at Finish', async () => {
+    (globalThis as { window?: unknown }).window = {
+      drashti: {
+        setup: {
+          state: () =>
+            Promise.resolve({
+              firstRun: false,
+              welcome: false,
+              operatorDisplayId: null,
+              controlsDisplayId: 1,
+              offer: false,
+            }),
+        },
+        screens: { get: () => Promise.resolve(after) },
+        audio: {
+          getOutput: () => Promise.resolve({ chosen: null, devices: [], state: 'default', checked: true }),
+        },
+        themes: { list: () => Promise.resolve({ themes: [], defaultId: null }) },
+      },
+    };
+    const { setup } = await fresh();
+    await setup.openSetup(1);
+    const opened = setup.useSetup.getState();
+    expect(opened).toMatchObject({ open: true, busy: false, step: 1, problem: null });
+    expect(Object.keys(opened)).not.toContain('pins');
+    expect(Object.keys(opened)).not.toContain('rolesOn');
+  });
+});

@@ -19,7 +19,7 @@ import { closeEventsOut, connectEventsOut, useEventsOut } from './events-store';
 
 /*
  * File › Events Out… (Session 28, decision 20): the addresses Drashti tells what happens in the show, what
- * each gets, and how each stands. An admin's, in Pro Mode only. Nothing is sent until a kind is ticked;
+ * each gets, and how each stands. Pro Mode only. Nothing is sent until a kind is ticked;
  * words only where "Include the words" is ticked; a new secret is shown once, to copy into the receiver.
  */
 
