@@ -488,13 +488,51 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win, { video: true });
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-mirror-layout-'));
+    await importAndGetIds(win, [makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 120 })]);
+    const toneId = await mediaId(win, 'Placeholder tune');
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
     await win.evaluate((input) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, input), {
       ...NEW_LOWER_THIRD,
       lines: ['Placeholder Speaker', 'Placeholder title', ''],
     });
+    // Everything the phone can have up at once (D5 review): an audio playlist playing (Music's rows), the idle
+    // rotation's pictures (its Start), a video behind Repeat Slides going round (the time bars, the Playing row and
+    // LIVE's own line, "Moves on by itself"), so each is laid out and checked at every size.
+    const repeatId = await win.evaluate(
+      async ({ toneId, pictureId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const made = await d.music.create('Placeholder tunes');
+        if (!made.ok || !made.id) throw new Error('no audio playlist');
+        const added = await d.music.addTracks(made.id, [toneId], null);
+        if (!added.ok) throw new Error(added.message);
+        const played = await d.music.play(made.id, 0);
+        if (!played.ok) throw new Error(played.message);
+        const idle = await d.idle.saveSettings({
+          pictures: [pictureId],
+          secondsEach: 3,
+          quoteOfTheDay: false,
+        });
+        if (!idle.ok) throw new Error('no idle pictures');
+        const repeat = await d.playlists.createRepeat(null);
+        const id = repeat.ok ? (repeat.ids[0] ?? '') : '';
+        await d.playlists.rename(id, 'Placeholder Hall Pictures');
+        await d.playlists.addItems(id, null, [{ kind: 'media', mediaId: pictureId }]);
+        await d.playlists.setRepeat(id, {
+          secondsEach: 600,
+          transition: { kind: 'dissolve', durationMs: 500 },
+        });
+        return id;
+      },
+      { toneId, pictureId: show.pictureMediaId },
+    );
+    await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: show.videoMediaId, media: 'video', fit: 'fit', loop: true },
+    });
+    await dispatch(win, { type: 'startRepeat', playlistId: repeatId, slideIndex: 0 });
+    await expect.poll(async () => (await snapshot(win)).state.autoAdvance).not.toBeNull();
     // Something on every clear's layer it can be: the clears lit, their words at their longest.
-    await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
     await dispatch(win, { type: 'setBlackout', on: true });
     await dispatch(win, {
       type: 'showMessage',
@@ -514,19 +552,31 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         const page = await context.newPage();
         const at = `${size.name} (${String(size.width)} × ${String(size.height)}, ${engine})`;
         try {
-          await pairByQr(
-            page,
-            base,
-            await pairingCode(win, 'remote', `Placeholder ${size.layout}`),
-            '/remote',
-          );
+          await pairByQr(page, base, await pairingCode(win, 'remote', `Placeholder ${size.name}`), '/remote');
           await expect(page.getByTestId('connection')).toHaveText('Connected');
           await expect(page.getByTestId('remote')).toHaveAttribute('data-layout', size.layout);
+          // Where the live column and More are in sight: always beside each other on a tablet; a tab each on a phone.
+          const liveShown = (place: string) =>
+            size.layout !== 'phone' || place === 'remote-tab-show' || place === 'remote-panel-show';
+          const moreShown = (place: string) =>
+            size.layout === 'wide' || place === 'remote-tab-more' || place === 'remote-panel-more';
           for (const place of PLACES[size.layout]) {
             await page.getByTestId(place).click();
             await expect(page.getByTestId(place)).toHaveAttribute('aria-selected', 'true');
             if (place === 'remote-library-media')
               await expect(page.getByTestId('remote-media-item').first()).toBeVisible();
+            // What plays, and LIVE's own line, are there to be checked (D5 review).
+            if (liveShown(place)) {
+              await expect(page.getByTestId('remote-time-bars')).toBeVisible();
+              await expect(page.getByTestId('remote-playing')).toBeVisible();
+              await expect(page.getByTestId('remote-auto-advance')).toBeVisible();
+            }
+            if (moreShown(place)) {
+              await expect(
+                page.getByTestId('remote-music-playlist').filter({ hasText: 'Placeholder tunes' }),
+              ).toHaveAttribute('data-playing', 'true');
+              await expect(page.getByTestId('remote-idle-start')).toBeVisible();
+            }
             await expectNoSeriousA11yIssues(page, `${place} on ${at}`);
             expect.soft(await tooSmall(page), `targets under 44 px: ${place} on ${at}`).toEqual([]);
             expect.soft(await offTheSide(page), `off the side: ${place} on ${at}`).toEqual([]);
