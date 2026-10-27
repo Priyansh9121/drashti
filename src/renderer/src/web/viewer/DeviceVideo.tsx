@@ -1,17 +1,20 @@
 import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 import { PreviewsContext } from '../../render/previews';
+import { Button } from '../../ui/Button';
+import { Pause, Play } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
+import { TimeBar } from '../../ui/TimeBar';
 import { api } from '../device';
-import { DeviceTimeBar } from './DeviceTimeBar';
 import { setPageSize } from './viewer-store';
 
 /*
  * A video played on a phone or tablet at its original quality (Session 54, D1): the file itself, streamed in
  * pieces as it plays (HTTP Range, through a link made for this device and this video, as a <video> cannot send the
- * token), with its sound on this device. Play, Pause and the time bar here never touch the screens. The video's
- * frame, at the width the phone draws it, shows until it plays. A link that stops working while the video is open
- * (Drashti started again) is asked for again, once, and the video goes on from where it was.
+ * token), with its sound on this device. Play, Pause and the time bar here never touch the screens: the bar is
+ * Part B's (ui/TimeBar.tsx, at a finger's size, as a phone shows what plays on the screens), moving this video
+ * alone. The video's frame, at the width the phone draws it, shows until it plays. A link that stops working while
+ * the video is open (Drashti started again) is asked for again, once, and the video goes on from where it was.
  */
 
 /** The video on this device now: what its time bar shows. */
@@ -134,10 +137,11 @@ export function DeviceVideoPicture({ mediaId, pageKey }: { mediaId: string; page
   );
 }
 
-/** Under the video: its time bar, and what went wrong if it cannot play. */
+/** Under the video: Play or Pause and its time bar, and what went wrong if it cannot play. */
 export function DeviceVideoControls({ mediaId }: { mediaId: string }) {
   const p = usePlaying();
   const here = p.mediaId === mediaId;
+  const playing = here && p.playing;
   return (
     <div>
       {here && p.problem && (
@@ -145,26 +149,39 @@ export function DeviceVideoControls({ mediaId }: { mediaId: string }) {
           <Notice tone="warning">{p.problem}</Notice>
         </div>
       )}
-      <DeviceTimeBar
-        currentMs={here ? p.atMs : 0}
-        durationMs={here ? p.lengthMs : 0}
-        playing={here && p.playing}
-        disabled={!here || p.el === null}
-        onPlay={() => {
-          void usePlaying
-            .getState()
-            .el?.play()
-            .catch(() => undefined);
-        }}
-        onPause={() => {
-          usePlaying.getState().el?.pause();
-        }}
-        onSeek={(ms) => {
-          const el = usePlaying.getState().el;
-          if (el) el.currentTime = ms / 1000;
-          usePlaying.setState({ atMs: ms });
-        }}
-      />
+      <div
+        className="flex min-w-0 items-center gap-3 border-t border-line bg-panel px-3 py-2"
+        data-testid="viewer-time-bar"
+      >
+        <Button
+          size="lg"
+          className="min-h-12"
+          icon={playing ? Pause : Play}
+          disabled={!here || p.el === null}
+          data-testid="viewer-play"
+          onClick={() => {
+            const el = usePlaying.getState().el;
+            if (playing) el?.pause();
+            else void el?.play().catch(() => undefined);
+          }}
+        >
+          {playing ? 'Pause' : 'Play'}
+        </Button>
+        {/* B's bar, its length dimmed until the video says it; a tap or a drag moves this video only. */}
+        <TimeBar
+          className="min-w-0 flex-1"
+          size="lg"
+          label="The video, on this device only"
+          testId="viewer-track"
+          atMs={here ? p.atMs : 0}
+          durationMs={here && p.lengthMs > 0 ? p.lengthMs : null}
+          onMove={(ms) => {
+            const el = usePlaying.getState().el;
+            if (el) el.currentTime = ms / 1000;
+            usePlaying.setState({ atMs: ms });
+          }}
+        />
+      </div>
     </div>
   );
 }
