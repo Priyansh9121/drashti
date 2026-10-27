@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { constants, getPriority, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { letInBeforeStart } from '../e2e/access';
 import { QUIET } from '../e2e/helpers';
 import { freePort, testFfmpeg } from '../e2e/stream-helpers';
 import { recoveryAgainstBudget } from '../e2e/recovery-figure';
@@ -94,14 +95,28 @@ function startAtNormal<T>(start: () => T): T {
   }
 }
 
-function runPerformanceTest(
+async function runPerformanceTest(
   extra: Record<string, string> = {},
 ): Promise<{ code: number | null; result: PerfResult | null; log: string }> {
   const electron = createRequire(__filename)('electron') as string;
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env))
     if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
-  Object.assign(env, { DRASHTI_SELFTEST: 'performance', DRASHTI_NO_QUIT_CONFIRM: '1' }, extra);
+  // The check runs only on a computer let in (Session 54): here, a folder of the test's own let in through the
+  // stand-in access list on 127.0.0.1, which Drashti reads in place of this computer's own data folder (a test
+  // switch a packaged Drashti never reads).
+  const accessHome = mkdtempSync(join(tmpdir(), 'drashti-perf-access-'));
+  const access = (await letInBeforeStart(accessHome)).env;
+  Object.assign(
+    env,
+    {
+      DRASHTI_SELFTEST: 'performance',
+      DRASHTI_NO_QUIT_CONFIRM: '1',
+      ...access,
+      DRASHTI_TEST_ACCESS_HOME: accessHome,
+    },
+    extra,
+  );
   const load = handicap();
   if (load.what) console.log(load.what);
   return new Promise((resolve) => {

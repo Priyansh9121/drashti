@@ -126,6 +126,21 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
     'command',
     { type: 'skip', layer: 'audio', jump: 'back' },
   ],
+  // Repeat Slides from a phone (Session 54, D5 review): the item's first step, found in the main process.
+  [
+    'POST',
+    '/api/v1/repeat/r-1/start',
+    { itemId: 'item-2', type: 'clearAll' },
+    'repeat.start',
+    { playlistId: 'r-1', itemId: 'item-2' },
+  ],
+  [
+    'POST',
+    '/api/v1/repeat/r-1/start',
+    { slideIndex: 2 },
+    'repeat.start',
+    { playlistId: 'r-1', slideIndex: 2 },
+  ],
   ['POST', '/api/v1/idle/start', undefined, 'command', { type: 'startIdle' }],
   ['POST', '/api/v1/idle/stop', undefined, 'command', { type: 'stopIdle' }],
 ];
@@ -150,7 +165,10 @@ describe('the mirror’s requests (Session 54, D5)', () => {
 
   it('are each in the API’s list, which the documentation is checked against', () => {
     for (const [method, path] of ASKED) {
-      const route = `${method} ${path.split('?')[0] ?? ''}`.replace(/\/(prop-1|m-1|lt-1|t-1)\//u, '/:id/');
+      const route = `${method} ${path.split('?')[0] ?? ''}`.replace(
+        /\/(prop-1|m-1|lt-1|t-1|r-1)\//u,
+        '/:id/',
+      );
       expect(API_ROUTES, route).toContain(route);
     }
   });

@@ -72,6 +72,9 @@ export interface AccessView {
   version: string;
 }
 
+/** How long the screens take to fade to black when Drashti stops (render/StopFade.tsx draws it). */
+export const STOP_FADE_MS = 1000;
+
 /** The stop's one plain message (the brief's own words), for revoked, rejected and unknown alike. */
 export const ACCESS_REMOVED_TEXT = 'Your access to Drashti has been removed';
 

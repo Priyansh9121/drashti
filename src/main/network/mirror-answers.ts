@@ -35,10 +35,23 @@ export interface MirrorReads {
   music(): RemoteMusic[];
   /** How the operator window writes a key, and whether its single-letter keys are on. */
   keys(): RemoteKeys;
+  /**
+   * A Repeat Slides playlist's item's first step (Session 54, D5 review), as the window's Start on an item finds it
+   * (playlists/repeat-actions.ts); null when that playlist has no such item.
+   */
+  repeatStep(playlistId: string, itemId: string): number | null;
 }
 
 export type MirrorOp =
-  'keys' | 'props' | 'prop.show' | 'media' | 'media.show' | 'lowerThirds' | 'lowerThird.show' | 'music';
+  | 'keys'
+  | 'props'
+  | 'prop.show'
+  | 'media'
+  | 'media.show'
+  | 'lowerThirds'
+  | 'lowerThird.show'
+  | 'music'
+  | 'repeat.start';
 
 const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
   status: 200,
@@ -133,5 +146,20 @@ export function mirrorAnswer(
     }
     case 'music':
       return ok({ playlists: reads.music() });
+    case 'repeat.start': {
+      // Going round from its first step, a step given (a script's, Session 26d), or an item's first step (a
+      // phone's tap); an item no longer in it starts from the first, as the window does.
+      const playlistId = named(args['playlistId']);
+      if (playlistId === null) return deny(404, 'There is no such Repeat Slides playlist.');
+      const step = args['slideIndex'];
+      if (
+        step !== undefined &&
+        !(typeof step === 'number' && Number.isInteger(step) && step >= 0 && step <= 100_000)
+      )
+        return deny(400, 'Send a step as a whole number, for example {"slideIndex": 2}.');
+      const itemId = named(args['itemId']);
+      const slideIndex = itemId === null ? (step ?? 0) : (reads.repeatStep(playlistId, itemId) ?? 0);
+      return run({ type: 'startRepeat', playlistId, slideIndex }, 'started Repeat Slides going round');
+    }
   }
 }

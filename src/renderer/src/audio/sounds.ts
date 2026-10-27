@@ -1,6 +1,6 @@
 import { type EngineState, videoClip, videoSeek } from '../../../shared/engine/state';
 import type { DeckMedia } from '../../../shared/deck';
-import { deckMediaOf, stepOf } from '../../../shared/deck-show';
+import { deckMediaOf } from '../../../shared/deck-show';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 
@@ -131,16 +131,19 @@ export function soundsOf(state: EngineState): Sound[] {
         ...(own.fades ? { fades: own.fades } : {}),
       });
     }
-    // Its deck's transition's sound, once, as the slide comes in with that transition: the coming-in step played from
-    // its start (in order, or Drashti's own over it); none when Drashti's comes instead, or after a jump.
+    // Its deck's transition's sound, once, as the slide comes in with that transition (in order, or Drashti's own over
+    // it), from when the engine stamped it: none when Drashti's comes instead, or after a jump. It plays on to its end
+    // under the same key whatever clicks come meanwhile (C review: the first click cut it off).
     const chime = slide.slide.deck?.transition?.soundId;
-    if (chime && stepOf(slide) === 0 && !slide.stepFromMs)
+    const rang = chime ? videoSeek(slide.seeks, chime) : undefined;
+    if (chime && rang && !rang.waiting)
       sounds.push({
         key: `deck-transition:${slide.slide.id}@${slide.shownAt}`,
         mediaId: chime,
         startedAt: slide.shownAt,
         loop: false,
         volume: 1,
+        seek: rang,
       });
   }
   return sounds;

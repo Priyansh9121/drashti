@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useLayoutEffect, useReducer, useRef } from 'react';
+import { STOP_FADE_MS } from '../../../shared/access';
 import { engineNow, onClockJump } from './clock';
 
 /*
@@ -8,9 +9,6 @@ import { engineNow, onClockJump } from './clock';
  * at all (`black`), so no video plays on and no camera or window stays open. The cover goes last in a positioned
  * box that holds the whole picture.
  */
-
-/** How long the screens take to fade to black. */
-export const STOP_FADE_MS = 1000;
 
 export function useStopFade(stopped: { at: number } | null | undefined): {
   black: boolean;

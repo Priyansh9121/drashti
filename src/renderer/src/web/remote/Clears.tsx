@@ -4,7 +4,6 @@ import { api } from '../device';
 import { tap } from '../taps';
 import { type RemoteClear, remoteClears } from './remote-clears';
 import { useMirror } from './mirror-store';
-import { useRemote } from './remote-store';
 
 /*
  * The clears (Session 54, D5): the operator window's bottom bar on the phone, in its order with its keys' names
@@ -53,7 +52,6 @@ const TEST_ID: Partial<Record<RemoteClear['action'], string>> = {
 
 export function Clears({ state }: { state: EngineState | null }) {
   const keys = useMirror((s) => s.keys);
-  const logoMarked = useRemote((s) => s.logo !== null);
   return (
     <div
       role="group"
@@ -62,8 +60,9 @@ export function Clears({ state }: { state: EngineState | null }) {
       data-testid="remote-actions"
     >
       {remoteClears(state, keys).map((c) => {
-        const off =
-          c.layer || c.action === 'clearAll' ? !c.lit : c.action === 'toggleLogo' && !logoMarked && !c.lit;
+        // Dimmed with nothing to clear, as the desktop's. The Logo stays to be pressed with none chosen, as the
+        // window's does, and says why (Session 54, D5 review: it had been greyed with no reason).
+        const off = c.layer !== undefined || c.action === 'clearAll' ? !c.lit : false;
         return (
           <button
             key={c.action}

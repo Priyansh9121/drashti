@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   callBody,
@@ -296,6 +297,60 @@ describe('a request', () => {
     });
   });
 
+  it('naming the owner’s own Gmail is refused, and never demotes the owner’s row (Let me in is its way in)', () => {
+    const c = mac(30);
+    const list = c.list;
+    // No row yet: none is made, and the approver is not emailed.
+    expect(c.request(PLACEHOLDER_APPROVER)).toMatchObject({ ok: false, error: 'owner-row' });
+    expect(row(list, PLACEHOLDER_APPROVER)).toBeUndefined();
+    // Approved, its token run out unused and no computer in: still approved, nothing asked, nobody emailed.
+    core.letOwnerIn(list.env);
+    list.move(3 * DAY + MINUTE);
+    const before = row(list, PLACEHOLDER_APPROVER);
+    const mails = list.mailbox.length;
+    expect(c.request(PLACEHOLDER_APPROVER.toUpperCase(), 'Placeholder Stranger')).toMatchObject({
+      ok: false,
+      error: 'owner-row',
+    });
+    expect(row(list, PLACEHOLDER_APPROVER)).toEqual(before);
+    expect(list.mailbox).toHaveLength(mails);
+    expect(c.status(PLACEHOLDER_APPROVER)).toMatchObject({ ok: true, status: 'unknown' });
+  });
+
+  it('keeps the day’s limits all day: in the script’s settings, never in the cache (which keeps nothing 6 hours)', () => {
+    const c = mac(31);
+    for (let i = 0; i < 3; i++) expect(c.request(PERSON)).toMatchObject({ ok: true });
+    c.list.cache.clear();
+    c.list.move(7 * HOUR);
+    expect(c.request(PERSON)).toMatchObject({ ok: false, error: 'too-many' });
+    expect(new Computer(c.list, placeholderComputer('mac-31b')).request(PERSON)).toMatchObject({
+      ok: false,
+      error: 'too-many',
+    });
+    const kept = JSON.parse(c.list.properties.get('REQUESTS_TODAY') ?? '{}') as { n?: number };
+    expect(kept.n).toBe(3);
+    // The next day (by the list's clock, UTC): asked again.
+    c.list.move(DAY);
+    expect(c.request(PERSON)).toMatchObject({ ok: true });
+    expect((JSON.parse(c.list.properties.get('REQUESTS_TODAY') ?? '{}') as { n?: number }).n).toBe(1);
+  });
+
+  it('counts only the requests it takes, so its count stays small whoever sends what', () => {
+    const c = mac(32);
+    for (let i = 0; i < 10; i++) c.request(`placeholder.${String(i)}@example.com`);
+    // From this computer, refused: nothing more counted, for any Gmail.
+    for (let i = 10; i < 40; i++)
+      expect(c.request(`placeholder.${String(i)}@example.com`)).toMatchObject({ error: 'too-many' });
+    const kept = JSON.parse(c.list.properties.get('REQUESTS_TODAY') ?? '{}') as {
+      n: number;
+      g: Record<string, number>;
+      c: Record<string, number>;
+    };
+    expect(kept.n).toBe(10);
+    expect(Object.keys(kept.g)).toHaveLength(10);
+    expect(Object.values(kept.c)).toEqual([10]);
+  });
+
   it('is kept even when the day’s emails are used up (mailed: false), so the owner still sees it', () => {
     const c = new Computer(newList({ mailQuota: 0 }), placeholderComputer('mac-quota'));
     expect(c.request(PERSON)).toMatchObject({ ok: true, status: 'requested', mailed: false });
@@ -394,16 +449,22 @@ describe('the Approve and Reject links', () => {
     expect(c.list.tokenFor(PERSON)).toBeNull();
   });
 
-  it('never reject the owner’s own row', () => {
-    const c = mac(15);
-    c.request(PLACEHOLDER_APPROVER);
-    expect(
-      core.answerLink(c.list.env, linkParams(c.list.linksFor(PLACEHOLDER_APPROVER)?.reject ?? '')),
-    ).toMatchObject({
+  it('never reject the owner’s own row, even a request on it typed in the Sheet', () => {
+    const list = newList();
+    core.letOwnerIn(list.env);
+    // A request on the owner's row, as only a hand in the Sheet can make one now.
+    const r = '7'.repeat(32);
+    list.sheet.type(PEOPLE, 'Gmail', PLACEHOLDER_APPROVER, 'Request', r);
+    list.sheet.type(PEOPLE, 'Gmail', PLACEHOLDER_APPROVER, 'Request at', new Date(list.t));
+    const x = String(list.t + DAY);
+    const s = createHmac('sha256', Buffer.from(list.props.linkKey, 'utf8'))
+      .update(`drashti-link\nreject\n${r}\n${x}`, 'utf8')
+      .digest('hex');
+    expect(core.answerLink(list.env, { a: 'reject', r, x, s })).toMatchObject({
       kind: 'refused',
       lines: [core.MESSAGES['owner-row']],
     });
-    expect(row(c.list, PLACEHOLDER_APPROVER)?.['Status']).toBe('requested');
+    expect(row(list, PLACEHOLDER_APPROVER)?.['Status']).toBe('approved');
   });
 
   it('say so when the day’s emails are used up, and change nothing', () => {
@@ -700,17 +761,30 @@ describe('a check', () => {
     expect(seen).toBeLessThan(list.t);
   });
 
-  it('allows one counted check a computer every 5 seconds; unsigned calls never use a computer’s up', () => {
+  it('answers a check soon after the last as any other (a quick restart), counting one in 5 seconds', () => {
     const list = newList();
     const c = new Computer(list, placeholderComputer('mac-gap'));
     const grant = approved(list, c);
-    expect(c.check(grant)).toMatchObject({ status: 'in' });
+    list.move(59 * SECOND);
+    expect(c.check(grant, { ...NO_ACTIVITY, shows: 1 })).toMatchObject({ status: 'in', recorded: false });
+    // Drashti quit and started again within 5 s: answered at once, though its minute is up, nothing recorded.
     list.move(2 * SECOND);
-    expect(c.check(grant)).toMatchObject({ ok: false, error: 'too-many' });
+    expect(c.check(grant, { ...NO_ACTIVITY, shows: 2 })).toMatchObject({
+      ok: true,
+      status: 'in',
+      recorded: false,
+    });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PERSON)?.['Shows']).toBe(0);
+    // Someone else, with this computer's id but not its secret: unknown, and never counted.
     list.move(5 * SECOND);
-    // Someone else, with this computer's id but not its secret.
     expect(c.check({ ...grant, secret: '0'.repeat(64) })).toMatchObject({ status: 'unknown' });
-    expect(c.check(grant)).toMatchObject({ status: 'in' });
+    expect(c.check(grant, { ...NO_ACTIVITY, shows: 3 })).toMatchObject({ status: 'in', recorded: true });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PERSON)?.['Shows']).toBe(3);
+    // A revoke is answered at once all the same, however soon the next check comes.
+    const o = new Computer(list, placeholderComputer('mac-gap-owner'));
+    o.owner('revoke', ownerIn(list, o), { target: PERSON });
+    list.move(SECOND);
+    expect(c.check(grant)).toMatchObject({ ok: true, status: 'revoked' });
   });
 
   it('works the same when Google empties the cache at any moment', () => {

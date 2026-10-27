@@ -58,7 +58,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
     engine: {
       dispatch: (c): CommandResult => {
         // As the engine does in Simple Mode (show-engine.ts, refuse).
-        if (options.locked === true && simpleModeRefuses(c))
+        if (options.locked === true && simpleModeRefuses(c, state))
           return { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL };
         commands.push(c);
         return { ok: true, changed: true, rev: commands.length };
@@ -144,6 +144,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
       lowerThirds: () => [],
       music: () => [],
       keys: () => ({ platform: 'darwin', singleKeys: true }),
+      repeatStep: () => null,
     },
     playMusic: () => ({ ok: true as const }),
     announcements: {
@@ -297,20 +298,43 @@ describe('the network in the main process', () => {
   });
 
   it('in Simple Mode, refuses a Remote’s move and Pause in words, and lets its Play through: nothing stays paused (Session 54’s review)', () => {
-    const { service, commands } = setup({ locked: true });
+    const { service, commands, state } = setup({ locked: true });
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const answer = (args: Record<string, unknown>) =>
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args });
+    // A single sound playing (put up from the phone's Media, say): its Pause too, as Simple Mode's window could never
+    // play it on (Session 54's review: until then a phone could pause it there).
+    const sound = {
+      id: 'placeholder-sound',
+      title: 'Placeholder tone',
+      mediaId: 'placeholder-tone',
+      volume: 1,
+      loop: false,
+      startedAt: 1,
+    };
+    state.layers.audio = sound;
     for (const args of [
       { type: 'moveTo', playing: { layer: 'background' }, toMs: 12_000 },
       { type: 'pausePlaying', playing: { layer: 'pip' } },
+      { type: 'pausePlaying', playing: { layer: 'audio' } },
       { type: 'skip', layer: 'background', jump: 'back' },
     ])
       expect(answer(args), JSON.stringify(args)).toMatchObject({
         status: 403,
         body: { ok: false, message: SIMPLE_MODE_REFUSAL },
       });
-    // Play, anything; and the music's Pause, which is Simple Mode's own.
+    // Play, anything; and an audio playlist's track's Pause, which is Simple Mode's own (Pause music).
+    state.layers.audio = {
+      ...sound,
+      music: {
+        playlistId: 'placeholder-list',
+        name: 'Placeholder',
+        tracks: [],
+        index: 0,
+        loop: false,
+        shuffle: false,
+      },
+    };
     const through = [
       { type: 'resumePlaying', playing: { layer: 'background' } },
       { type: 'pausePlaying', playing: { layer: 'audio' } },

@@ -53,6 +53,8 @@ export interface ListEnv {
   sign(text: string): string;
   formatTime(ms: number): string;
   props(): ListProps | null;
+  /** The script's settings (Script Properties), read and written as they are. */
+  properties: { get(key: string): string | null; set(key: string, value: string): void };
   mail: { remaining(): number; send(mail: { to: string; subject: string; body: string }): void };
   lock<T>(fn: () => T): T;
   flush(): void;
@@ -239,6 +241,8 @@ export class MemoryCache {
 
   put(key: string, value: string, seconds: number): void {
     if (key.length > 250) throw new Error('A cache key is at most 250 characters.');
+    // Google's maximum: nothing is kept in its cache longer than 6 hours.
+    if (seconds > 21_600) throw new Error('A cached value lasts at most 21600 seconds (6 hours).');
     if (value.length > 100_000) throw new Error('A cached value is at most 100 KB.');
     this.items.set(key, { value, until: this.now() + seconds * 1000 });
   }
@@ -297,6 +301,8 @@ export class TestList {
   readonly sheet = new MemorySheet();
   readonly cache: MemoryCache;
   readonly mailbox: SentMail[] = [];
+  /** The script's settings beyond the ones props() gives (what the list writes there itself). */
+  readonly properties = new Map<string, string>();
   readonly props: ListProps;
   readonly env: ListEnv;
   t: number;
@@ -330,6 +336,13 @@ export class TestList {
       sign: (text) => sign('sha256', Buffer.from(text, 'utf8'), this.keys.privateKey).toString('base64'),
       formatTime: (ms) => `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`,
       props: () => this.props,
+      properties: {
+        get: (key) => this.properties.get(key) ?? null,
+        set: (key, value) => {
+          if (value.length > 9 * 1024) throw new Error('A script property is at most 9 KB.');
+          this.properties.set(key, value);
+        },
+      },
       mail: {
         remaining: () => this.mailQuota - this.mailbox.length,
         send: (m) => {

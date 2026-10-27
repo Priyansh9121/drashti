@@ -58,8 +58,8 @@ export interface PageMakers<P> {
   picture: (mediaId: string, name: string) => P;
   video: (mediaId: string, name: string) => P;
   sound: (mediaId: string, name: string) => P;
-  /** One slide of a presentation, `name` the item's. */
-  slide: (presentationId: string, name: string, s: OrderedSlide) => P;
+  /** One slide of a presentation, `name` the item's: its page, or a deck's slide's, one for each click (D1). */
+  slide: (presentationId: string, name: string, s: OrderedSlide) => P[];
 }
 
 /** Which page a media item is. */
@@ -83,7 +83,8 @@ export function sharedPages<P>(
     if (item.kind === 'media') pages.push(make[PAGE_OF[item.media]](item.mediaId, item.label));
     const id = slidesOf(item);
     const doc = id === null ? null : docs(id);
-    if (id !== null && doc) for (const s of itemSlides(item, doc)) pages.push(make.slide(id, item.label, s));
+    if (id !== null && doc)
+      for (const s of itemSlides(item, doc)) pages.push(...make.slide(id, item.label, s));
     if (i === tapped && pages.length > first) start = first;
   }
   return start === null ? null : { pages, start };

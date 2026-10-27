@@ -161,7 +161,7 @@ import {
 import { largestAudienceScreen, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
 import { saveRequestSchema } from '../shared/trim';
-import { isRepeatId } from '../shared/repeat';
+import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
   applyPendingRestore,
   backupLibrary,
@@ -320,6 +320,11 @@ const perfTest = sw('DRASHTI_SELFTEST') === 'performance';
 const ffmpegCheck = sw('DRASHTI_SELFTEST') === 'ffmpeg';
 // The restart after a restore, for real (scripts/check-relaunch.mjs; see relaunch-selftest.ts).
 const relaunchTest = sw('DRASHTI_SELFTEST') === 'restore-relaunch';
+/**
+ * Any self-test (Session 54, E review): it puts back no show after a crash, runs no schedule, imports nothing from the
+ * drop folder and shows no announcement: a computer not let in shows only the self-test's own placeholder content.
+ */
+const selfTestRun = sw('DRASHTI_SELFTEST') !== undefined;
 // Tests (and multiple installs) can point Drashti at its own data folder.
 const userDataOverride = sw('DRASHTI_USER_DATA_DIR');
 /** This computer's own data folder, before any override (the performance check reads its settings). */
@@ -979,6 +984,24 @@ async function startMain(selfTest: boolean): Promise<void> {
       fromOperator,
       operatorWindow: () => operatorWindow,
       open: start,
+      // The performance check (Session 54, E review): only on a computer let in, by the access in its own data folder.
+      ...(perfTest
+        ? {
+            performance: {
+              home: homeData,
+              notLetIn: (why: string) => {
+                log.warn(`Access: the performance check does not run: ${why}`);
+                const result = {
+                  passed: false,
+                  checks: [{ name: 'this computer is let in', ok: false, detail: why }],
+                  summary: '',
+                };
+                process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);
+                exitNow(1);
+              },
+            },
+          }
+        : {}),
     });
   } catch (error) {
     // Never open without the lock: said plainly, and Drashti quits.
@@ -1381,10 +1404,10 @@ function start(): void {
         start: () => lookService?.start() ?? NO_LOOK,
       },
       // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
-      refuse: (command) =>
+      refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
-          : simpleNow() && simpleModeRefuses(command)
+          : simpleNow() && simpleModeRefuses(command, state)
             ? SIMPLE_MODE_REFUSAL
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
@@ -2146,9 +2169,10 @@ function start(): void {
   // What the last run left, read once before this run saves anything (Session 20): whether it quit
   // cleanly (which also decides the starting mode) and, if not, its show. A restored library starts
   // with nothing live (the saved state belongs to the library before it).
-  const startup: StartupRecovery = restored.restored
-    ? { cleanQuit: true, recentStop: false, putBack: null, tooOld: null }
-    : startupRecovery(recoveryFiles, { startLookId: lookRepo.firstId() });
+  const startup: StartupRecovery =
+    restored.restored || selfTestRun
+      ? { cleanQuit: true, recentStop: false, putBack: null, tooOld: null }
+      : startupRecovery(recoveryFiles, { startLookId: lookRepo.firstId() });
   const saved = startup.putBack;
   if (saved) {
     const put = engine.restore(saved);
@@ -3215,6 +3239,8 @@ function start(): void {
     ...(testBackupRate ? { bytesPerSecond: testBackupRate } : {}),
   });
   eventsBackupsWas ??= scheduledBackups.view();
+  // A self-test runs no schedule (Session 54).
+  if (selfTestRun) scheduledBackups.dispose();
   stops.add('scheduled backups', () => {
     scheduledBackups.dispose();
   });
@@ -3631,7 +3657,7 @@ function start(): void {
   });
   eventsAnnouncementsWas = announcements.view();
   // What recovery put back carries on until its time; the rest that was showing has ended.
-  announcements.resume();
+  if (!selfTestRun) announcements.resume();
   stops.add('announcements', () => {
     announcements.close();
   });
@@ -3788,6 +3814,10 @@ function start(): void {
       music: () =>
         music.view().playlists.map((p) => ({ id: p.id, name: p.name, trackCount: p.tracks.length })),
       keys: () => ({ platform: process.platform, singleKeys: settings.get('singleLetterKeys') !== false }),
+      // An item's first step in a Repeat Slides playlist (D5 review), as the window's Start on an item finds it.
+      repeatStep: (playlistId, itemId) =>
+        playableDoc(repeatPresentationId(playlistId))?.groups.find((g) => g.id === itemId)?.slides[0]
+          ?.index ?? null,
     },
     playMusic: (who, playlistId) => {
       const played = music.play(playlistId);
@@ -4142,6 +4172,14 @@ function start(): void {
       }
       return reached;
     };
+  // Tests only: LIVE's clock in the operator window held the same way (Session 54, C review), on its own so a test that
+  // holds the screens' clock still sees the controls' time move. Says whether it reached it.
+  if (testClockHold)
+    (globalThis as { drashtiTestHoldLive?: (at: number | null) => boolean }).drashtiTestHoldLive = (at) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return false;
+      operatorWindow.webContents.send(IPC.output.testClock, { at });
+      return true;
+    };
   if (testRenderErrors)
     (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (
       screenId,
@@ -4318,7 +4356,7 @@ function start(): void {
     settleMs: DROP_SETTLE_MS,
     watch: nodeWatch,
   });
-  void dropFolder.start();
+  if (!selfTestRun) void dropFolder.start();
   stops.add('drop folder', () => {
     dropFolder.stop();
   });
@@ -5702,10 +5740,22 @@ function start(): void {
       dropShortcuts: () => {
         globalShortcut.unregisterAll();
       },
+      uncover: () => {
+        const names = screens.uncoverOperator().turnedOff ?? [];
+        log.info(
+          `Access: the stop’s screen uncovered: turned off ${names.length > 0 ? names.join(', ') : 'nothing'}`,
+        );
+        if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.show();
+      },
+      later: (ms, run) => {
+        setTimeout(run, ms);
+      },
       others: [
         { what: 'the window for Zoom', stop: () => zoom.close() },
         { what: 'the drop folder', stop: () => dropFolder.stop() },
         { what: 'downloads', stop: () => links.close() },
+        { what: 'imports', stop: () => imports.stop() },
+        { what: 'conversions', stop: () => conversions.close() },
       ],
       every: (ms, run) => {
         const t = setInterval(run, ms);

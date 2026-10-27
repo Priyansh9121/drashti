@@ -62,6 +62,7 @@ import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
 import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { cutText } from '../../shared/text';
+import { NO_LOGO_CHOSEN } from '../../shared/props';
 import { nfcDeep } from '../../shared/nfc';
 
 /*
@@ -211,6 +212,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   lowerThirds: IPC.lowerThirds.list,
   'lowerThird.show': IPC.engine.command,
   music: IPC.music.view,
+  'repeat.start': IPC.engine.command,
   // Session 54: a shared playlist is read as a playlist is (Simple Mode reads too). Files a phone adds carry on in
   // Simple Mode while the switch is on, as the drop folder's do.
   shared: IPC.playlists.items,
@@ -848,6 +850,7 @@ export class NetworkService implements EngineTransport {
       case 'lowerThirds':
       case 'lowerThird.show':
       case 'music':
+      case 'repeat.start':
         return mirrorAnswer(request.op, args, this.deps.mirror, (command, did) =>
           this.run(command, who, did),
         );
@@ -903,7 +906,8 @@ export class NetworkService implements EngineTransport {
     const on = parsed.data.on ?? this.deps.engine.state().logo === null;
     if (!on) return this.run({ type: 'hideLogo' }, who, 'took the logo down');
     const logo = this.deps.reads.logo();
-    if (!logo) return deny(409, 'No prop is marked as the logo in Drashti (Props, the stamp button).');
+    // In the operator window's own words (Session 54, D5 review).
+    if (!logo) return deny(409, NO_LOGO_CHOSEN);
     return this.run({ type: 'showLogo', prop: logo }, who, 'showed the logo');
   }
 

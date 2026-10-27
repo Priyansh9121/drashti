@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { initialEngineState } from '../../shared/engine/state';
 import type { StreamStatus } from '../../shared/stream';
+import { STOP_FADE_MS } from '../../shared/access';
 import { followAccess, showCounter, streamCounter, TELL_NODES_EVERY_MS } from './effects';
 import { type AccessState, setAccessState } from './gate';
 import type { ActivityKind } from './service';
@@ -26,12 +27,17 @@ afterEach(() => {
 function setup(o: { live?: boolean; recording?: boolean; failing?: string } = {}) {
   const did: string[] = [];
   const told: boolean[] = [];
+  const laterRuns: { ms: number; run: () => void }[] = [];
   let every: (() => void) | null = null;
   const step = (name: string) => () => {
     did.push(name);
     if (o.failing === name) throw new Error(`placeholder: ${name} failed`);
   };
   const stop = followAccess({
+    uncover: step('uncover'),
+    later: (ms, run) => {
+      laterRuns.push({ ms, run });
+    },
     stopShow: step('screens'),
     stream: {
       wanted: () => ({ live: o.live ?? false, recording: o.recording ?? false }),
@@ -54,7 +60,7 @@ function setup(o: { live?: boolean; recording?: boolean; failing?: string } = {}
     },
     log: () => undefined,
   });
-  return { did, told, tick: () => every?.(), stop };
+  return { did, told, tick: () => every?.(), stop, laterRuns };
 }
 
 describe('a stop, once Drashti has opened (Session 54)', () => {
@@ -68,6 +74,16 @@ describe('a stop, once Drashti has opened (Session 54)', () => {
     // Heard again (a later change), nothing more.
     setAccessState(at('stopped'));
     expect(did).toEqual(['screens', 'stream', 'recording', 'menu', 'keys', 'zoom', 'downloads']);
+  });
+
+  it('once the screens have faded, uncovers the operator window: the stop and its Quit never sit under a screen', () => {
+    setAccessState(at('in'));
+    const { did, laterRuns } = setup();
+    setAccessState(at('stopped'));
+    expect(did).not.toContain('uncover');
+    expect(laterRuns.map((l) => l.ms)).toEqual([STOP_FADE_MS]);
+    laterRuns[0]?.run();
+    expect(did.at(-1)).toBe('uncover');
   });
 
   it('ends only what is going: no stream to end, none ended', () => {

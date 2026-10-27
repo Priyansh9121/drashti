@@ -55,7 +55,7 @@ interface ItemRow {
   media_duration: number | null;
   /** In a smart playlist, 1 when its file is gone from the folder (Session 26c). */
   smart_gone: number;
-  /** Added from a phone (Session 54, migration 52): the device's name. */
+  /** Added from a phone (Session 54, migration 48): the device's name. */
   media_device: string | null;
   presentation_device: string | null;
 }
@@ -563,7 +563,7 @@ export class PlaylistRepo {
     return (
       this.db
         .prepare(
-          'SELECT 1 FROM playlists WHERE id = ? AND shared_at IS NOT NULL AND deleted_at IS NULL AND is_template = 0',
+          'SELECT 1 FROM playlists WHERE id = ? AND shared_at IS NOT NULL AND deleted_at IS NULL AND is_template = 0 AND is_folder = 0',
         )
         .get(id) !== undefined
     );

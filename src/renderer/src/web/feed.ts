@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../../shared/engine/state';
 import {
+  BYE_TEXT,
   type ByeReason,
   clockOffset,
   type DeviceKind,
@@ -14,6 +15,7 @@ import { connectEngineSource } from '../engine/engine-store';
 import { setClockOffset } from '../render/clock';
 import { current, forgetPairing, paired } from './device';
 import { shouldReload } from './new-version';
+import { heardLetIn, heardStopped } from './stopped-store';
 
 /*
  * The state feed, as a phone, tablet or browser follows it: the whole engine
@@ -125,6 +127,7 @@ function receive(message: ToDevice): void {
   switch (message.type) {
     case 'welcome':
       attempt = 0;
+      heardLetIn();
       useFeed.setState({ state: 'online', reason: null, device: message.device, retryAt: null });
       startClock();
       for (const l of onlineListeners) l();
@@ -188,12 +191,16 @@ function open(): void {
       unpaired(bye);
       return;
     }
+    // Drashti stopped (Session 54): still paired, the page says so, and it tries again as for any loss.
+    if (bye === 'stopped') heardStopped();
     scheduleReconnect(
       bye === 'network-off'
         ? 'Drashti’s network was turned off.'
         : bye === 'too-slow'
           ? 'The connection was too slow to keep up.'
-          : 'Not connected to Drashti.',
+          : bye === 'stopped'
+            ? BYE_TEXT.stopped
+            : 'Not connected to Drashti.',
     );
   };
 }

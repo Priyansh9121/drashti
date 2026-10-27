@@ -168,6 +168,26 @@ describe('making and keeping pictures for devices (Session 54, D1)', () => {
     expect(await full.get('changes', { path, kind: 'image' }, 7680)).toMatchObject({ original: true });
   });
 
+  it('remembers a file FFmpeg could not make a picture of for a few minutes, never trying it again meanwhile (D1/D2 review)', async () => {
+    const run = fakeRun(0);
+    let clock = 1_000_000;
+    const maker = new RenditionMaker(join(dir, 'sized'), null, { run, now: () => clock });
+    const source = { path: pngFile('broken.png', 4000, 2250), kind: 'image' as const };
+    expect(await maker.get('broken', source, 640)).toBeNull();
+    expect(run.calls).toHaveLength(1);
+    // Every phone drawing it asks again (15 s apart, and more than one): FFmpeg is not run again for it.
+    clock += 15_000;
+    expect(await maker.get('broken', source, 640)).toBeNull();
+    expect(await maker.get('broken', source, 600)).toBeNull();
+    expect(run.calls).toHaveLength(1);
+    // Another step of it is its own try; a few minutes on, this one is tried again.
+    expect(await maker.get('broken', source, 1280)).toBeNull();
+    expect(run.calls).toHaveLength(2);
+    clock += 5 * 60_000;
+    expect(await maker.get('broken', source, 640)).toBeNull();
+    expect(run.calls).toHaveLength(3);
+  });
+
   it('holds the folder to its size, the least recently used going first', async () => {
     const run = fakeRun(400);
     const sized = join(dir, 'sized');

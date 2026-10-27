@@ -17,7 +17,15 @@ import {
 import { AccessClient, type AccessResult, nodeTransport } from './client';
 import { accessState, isLetIn, isOwner, setAccessState } from './gate';
 import type { ComputerIdResult } from './identity';
-import { type AccessAsked, type AccessCalls, AccessService, ASK_EVERY_MS, AskedFile } from './service';
+import {
+  type AccessAsked,
+  type AccessCalls,
+  AccessService,
+  ASK_EVERY_MS,
+  AskedFile,
+  keptAt,
+  performanceAccessFolder,
+} from './service';
 import { ACCESS_FILE, AccessStore, storedAccess } from './store';
 
 /*
@@ -56,11 +64,17 @@ class TestClock {
       const due = this.timers.filter((t) => t.at <= end).sort((a, b) => a.at - b.at)[0];
       if (!due) break;
       this.timers = this.timers.filter((t) => t !== due);
-      this.t = due.at;
+      // A timer due while the computer slept runs late, at the time it wakes.
+      this.t = Math.max(this.t, due.at);
       due.run();
     }
     this.t = end;
     await settle();
+  }
+
+  /** The computer asleep for `ms`: no timer runs, and (as Windows' monotonic clock does) the time still passes. */
+  sleep(ms: number): void {
+    this.t += ms;
   }
 
   get waiting(): number {
@@ -72,7 +86,7 @@ const settle = async () => {
   for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
 };
 
-type Mode = AccessCheckStatus | 'silent' | 'busy';
+type Mode = AccessCheckStatus | 'silent' | 'busy' | 'throw';
 
 /** The list, scripted: what each call answers, and every call made. */
 class ScriptedList implements AccessCalls {
@@ -130,6 +144,8 @@ class ScriptedList implements AccessCalls {
     this.activities.push({ ...activity });
     if (this.hold) await new Promise<void>((resolve) => (this.hold = { release: resolve }));
     if (this.check_ === 'silent') return this.noAnswer();
+    // A call that throws (the data folder could not be written as it was signed): never an answer.
+    if (this.check_ === 'throw') throw new Error('placeholder: the data folder could not be written');
     if (this.check_ === 'busy') return { ok: false, kind: 'refused', error: 'busy', message: '' };
     return { ok: true, value: { status: this.check_, owner: this.owner, recorded: true }, serverTime: 0 };
   }
@@ -180,9 +196,11 @@ function make(
     selfTest?: boolean;
     calls?: AccessCalls | null;
     asked?: AccessAsked;
+    counts?: boolean;
   } = {},
 ): AccessService {
   service = new AccessService({
+    ...(o.counts === undefined ? {} : { counts: o.counts }),
     calls: o.calls === undefined ? list : o.calls,
     kept: store(),
     asked: o.asked ?? new MemoryAsked(),
@@ -575,5 +593,133 @@ describe('against the stand-in list (the list’s own rules)', () => {
     await clock.move(ACCESS_CHECK_EVERY_MS);
     await expect.poll(() => accessState().phase).toBe('stopped');
     expect(accessState().reason).toBe('revoked');
+  });
+});
+
+describe('a call that throws (Session 54, E review: never fail open)', () => {
+  it('while open, is no answer: the countdown, then the stop', async () => {
+    await startedIn();
+    list.check_ = 'throw';
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    expect(accessState().phase).toBe('warning');
+    await clock.move(ACCESS_STOP_AFTER_MS);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'no-answer' });
+  });
+
+  it('at start, is no answer: Drashti does not open, and Try Again is offered', async () => {
+    keep();
+    list.check_ = 'throw';
+    const s = make();
+    s.start();
+    await clock.move(0);
+    expect(accessState()).toMatchObject({ phase: 'locked', reason: 'no-answer' });
+    expect(s.view()).toMatchObject({ canRetry: true, busy: null });
+    list.check_ = 'in';
+    await s.retry();
+    expect(accessState().phase).toBe('in');
+  });
+
+  it('the lock screen’s own calls that throw leave it usable, saying no internet', async () => {
+    const s = make({
+      calls: {
+        request: () => Promise.reject(new Error('placeholder: thrown')),
+        status: list.status.bind(list),
+        redeem: () => Promise.reject(new Error('placeholder: thrown')),
+        check: list.check.bind(list),
+      },
+    });
+    s.start();
+    const asked = await s.requestAccess(PERSON, '');
+    expect(asked).toMatchObject({ busy: null, phase: 'locked' });
+    expect(asked.message?.text).toContain('No internet');
+    const used = await s.redeemToken(PERSON, TOKEN);
+    expect(used).toMatchObject({ busy: null, phase: 'locked' });
+  });
+
+  it('the time a signed call carries: the kept one, or this computer’s when the data folder cannot be written', () => {
+    const said: string[] = [];
+    let fail = false;
+    const at = keptAt(
+      {
+        nextAt: (now) => {
+          if (fail) throw new Error('placeholder: EPERM');
+          return now + 1;
+        },
+      },
+      () => 5000,
+      (line) => said.push(line),
+    );
+    expect(at()).toBe(5001);
+    fail = true;
+    expect(at()).toBe(5000);
+    expect(at()).toBe(5000);
+    // Said once, not at every check.
+    expect(said.length).toBe(1);
+    expect(said[0]).not.toContain('placeholder.user');
+  });
+});
+
+describe('the performance check’s own check (Session 54, E review)', () => {
+  it('lets in as any start does, and counts nothing of its own run into this computer’s totals', async () => {
+    keep(HERE, { minutes: 10, shows: 1, streams: 0, recordings: 0, imports: 0 });
+    const s = make({ counts: false });
+    s.start();
+    await clock.move(0);
+    expect(accessState().phase).toBe('in');
+    s.count('shows', 5);
+    await clock.move(5 * 60_000);
+    const kept = JSON.parse(readFileSync(join(dir, ACCESS_FILE), 'utf8')) as { activity: AccessActivity };
+    expect(kept.activity).toEqual({ minutes: 10, shows: 1, streams: 0, recordings: 0, imports: 0 });
+    expect(list.activities.at(-1)).toEqual({ minutes: 10, shows: 1, streams: 0, recordings: 0, imports: 0 });
+  });
+
+  it('asks with the access kept in this computer’s own data folder; a test’s folder only unpackaged', () => {
+    const home = '/Users/placeholder/Library/Application Support/Drashti';
+    const test = '/tmp/placeholder-let-in';
+    expect(performanceAccessFolder({ packaged: true, home, testFolder: undefined })).toBe(home);
+    expect(performanceAccessFolder({ packaged: true, home, testFolder: test })).toBe(home);
+    expect(performanceAccessFolder({ packaged: false, home, testFolder: undefined })).toBe(home);
+    expect(performanceAccessFolder({ packaged: false, home, testFolder: test })).toBe(test);
+  });
+});
+
+describe('a computer that sleeps (Session 54, E review: Windows counts the time asleep)', () => {
+  const HOUR = 60 * 60_000;
+
+  it('woken with no internet yet: the countdown from 1:45, never a stop for the time it slept', async () => {
+    const s = await startedIn();
+    clock.sleep(HOUR);
+    list.check_ = 'silent';
+    await clock.move(0);
+    expect(accessState().phase).toBe('warning');
+    expect(s.view().stopsInMs).toBe(ACCESS_STOP_AFTER_MS - ACCESS_CHECK_EVERY_MS);
+    // And the list answering once the network is back: let in.
+    list.check_ = 'in';
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    expect(accessState().phase).toBe('in');
+  });
+
+  it('asleep during the countdown: woken, the countdown goes on about where it was, then the stop', async () => {
+    const s = await startedIn();
+    list.check_ = 'silent';
+    await clock.move(ACCESS_CHECK_EVERY_MS * 2);
+    expect(accessState().phase).toBe('warning');
+    const left = s.view().stopsInMs ?? 0;
+    clock.sleep(HOUR);
+    await clock.move(0);
+    expect(accessState().phase).toBe('warning');
+    // When it fell asleep is not known: at most one check's time is counted as awake.
+    const after = s.view().stopsInMs ?? 0;
+    expect(after).toBeLessThanOrEqual(left);
+    expect(after).toBeGreaterThanOrEqual(left - ACCESS_CHECK_EVERY_MS);
+    await clock.move(after);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'no-answer' });
+  });
+
+  it('never stretches the 2 minutes when no timer ran late', async () => {
+    await startedIn();
+    list.check_ = 'silent';
+    await clock.move(ACCESS_STOP_AFTER_MS);
+    expect(accessState().phase).toBe('stopped');
   });
 });

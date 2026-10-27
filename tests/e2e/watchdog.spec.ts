@@ -68,7 +68,7 @@ test('watchdog self-test: operator crash and reload never touch the output or th
     'the reloaded operator window works',
     'the output was never reloaded or redrawn',
     'the audio player (and its sound) was never touched',
-    'Next in the recovered operator window updates the output',
+    'Next once the operator window is back updates the output',
     'while the operator reloads, the output keeps the same frame',
     'the operator window comes back after a reload',
     'the watchdog reloads a crashed output',

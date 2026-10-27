@@ -21,6 +21,7 @@ import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
 import { SCREEN_SWITCHES, type ScreenSwitches, SWITCH_NAMES } from '../../../../shared/screen-switches';
 import { languageView } from '../../../../shared/language-view';
 import { deckSlideAt } from '../../../../shared/deck-show';
+import { nextCaption } from '../../../../shared/next-caption';
 import { SlideView } from '../../render/SlideView';
 import { TimerText } from '../../render/TimerText';
 import { Mark } from '../../ui/Mark';
@@ -81,6 +82,9 @@ import { MusicList } from './MusicList';
 import { Playing } from './Playing';
 import { Props } from './Props';
 import { RemotePlaying } from './RemotePlaying';
+import { isRepeatPlaylist, repeatItemUp, startGoingRound } from './repeat';
+import { RepeatStart } from './RepeatStart';
+import { useLayout } from './layout';
 import { StageScreen } from './StageScreen';
 import { Timers } from './Timers';
 
@@ -110,32 +114,6 @@ import { Timers } from './Timers';
 const CANVAS = { width: 1920, height: 1080 };
 
 const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
-
-/**
- * How the page is laid out: tabs on a phone; on a tablet held upright (or a narrow window), the
- * playlist or the library beside the show; held sideways (or a wide window), the live picture, the
- * notes and Next beside the slides (Session 18).
- */
-type RemoteLayout = 'phone' | 'wide' | 'landscape';
-const WIDE = '(min-width: 768px)';
-const LANDSCAPE = '(min-width: 1000px) and (orientation: landscape)';
-
-function useLayout(): RemoteLayout {
-  const read = (): RemoteLayout =>
-    matchMedia(LANDSCAPE).matches ? 'landscape' : matchMedia(WIDE).matches ? 'wide' : 'phone';
-  const [layout, setLayout] = useState(read);
-  useEffect(() => {
-    const queries = [matchMedia(LANDSCAPE), matchMedia(WIDE)];
-    const on = () => {
-      setLayout(read());
-    };
-    for (const q of queries) q.addEventListener('change', on);
-    return () => {
-      for (const q of queries) q.removeEventListener('change', on);
-    };
-  }, []);
-  return layout;
-}
 
 const itemArrangement = (order: ItemOrder, doc: PresentationDoc): string | null =>
   order.mode === 'all'
@@ -327,13 +305,19 @@ function LivePicture({ state }: { state: EngineState | null }) {
 function NextLine({ state }: { state: EngineState | null }) {
   const next = state?.next ?? null;
   const hallLook = useHallLook(state);
+  // The window's caption, in its words (Session 54, D5 review): the next slide by its item's name (when this phone
+  // shows that playlist) or its presentation's, the next item, a deck's click, a missing file or sound.
+  const label = useRemote((s) =>
+    next?.kind === 'slide'
+      ? ((next.itemId ? s.items?.find((i) => i.id === next.itemId)?.label : undefined) ??
+        (s.doc?.id === next.presentationId ? s.doc.name : undefined) ??
+        s.library.list?.find((p) => p.id === next.presentationId)?.name ??
+        null)
+      : null,
+  );
   return (
     <div className="flex items-center gap-3 text-base" data-testid="remote-next">
       <span className="shrink-0 font-bold tracking-wider text-muted uppercase">Next</span>
-      {!next && <span className="text-muted">Nothing after this</span>}
-      {next?.kind === 'media' && <span className="truncate text-fg">{next.label}</span>}
-      {/* A video input item (Session 51): named; a phone never draws one. */}
-      {next?.kind === 'input' && <span className="truncate text-fg">{`Video input: ${next.name}`}</span>}
       {next?.kind === 'slide' && (
         <div
           className="w-28 shrink-0 overflow-hidden rounded border border-line bg-black"
@@ -352,6 +336,13 @@ function NextLine({ state }: { state: EngineState | null }) {
           </PlacedInParent>
         </div>
       )}
+      {/* A video input item (Session 51) is named; a phone never draws one. */}
+      <span
+        className={cx('min-w-0 flex-1', next ? 'text-fg' : 'text-muted')}
+        data-testid="remote-next-caption"
+      >
+        {nextCaption(next, { label })}
+      </span>
     </div>
   );
 }
@@ -631,6 +622,9 @@ function Playlist() {
   const playlistId = useRemote((s) => s.playlistId);
   const items = useRemote((s) => s.items);
   const live = useEngine((s) => s.state?.live.playlist ?? null);
+  // A Repeat Slides playlist goes round, from the item tapped (Session 54, D5 review); its item up is marked.
+  const repeat = useRemote((s) => isRepeatPlaylist(s.playlists, s.playlistId));
+  const repeatItem = useEngine((s) => repeatItemUp(s.state, playlistId));
   return (
     <section className="space-y-3" aria-labelledby="playlist-title">
       <h2 id="playlist-title" className="text-base font-bold tracking-wider text-muted uppercase">
@@ -659,6 +653,7 @@ function Playlist() {
           Loading the playlists…
         </p>
       )}
+      {repeat && playlistId && <RepeatStart playlistId={playlistId} />}
       <ul className="space-y-1.5" data-testid="remote-items">
         {(items ?? []).map((i) => {
           if (i.kind === 'header')
@@ -667,7 +662,7 @@ function Playlist() {
                 {i.label}
               </li>
             );
-          const isLive = live?.playlistId === playlistId && live.itemId === i.id;
+          const isLive = (live?.playlistId === playlistId && live.itemId === i.id) || repeatItem === i.id;
           const can = playable(i);
           return (
             <li key={i.id} className="flex gap-2">
@@ -678,7 +673,8 @@ function Playlist() {
                 data-live={isLive ? 'true' : undefined}
                 onClick={() => {
                   if (!playlistId) return;
-                  if (i.kind === 'presentation')
+                  if (repeat) void tap(() => startGoingRound(playlistId, i.id));
+                  else if (i.kind === 'presentation')
                     view({
                       presentationId: i.presentationId,
                       item: { playlistId, itemId: i.id, order: i.order },
@@ -1146,8 +1142,11 @@ function next(): Promise<void> {
   return tap(() => {
     const live = useEngine.getState().state?.live;
     const somethingLive = live?.presentationId != null || live?.playlist != null;
-    const { playlistId, items } = useRemote.getState();
+    const { playlistId, items, playlists } = useRemote.getState();
     const first = items?.find(playable);
+    // A Repeat Slides playlist starts going round, as Simple Mode's Next starts it (Session 54, D5 review).
+    if (!somethingLive && playlistId && isRepeatPlaylist(playlists, playlistId))
+      return startGoingRound(playlistId);
     if (!somethingLive && playlistId && first)
       return api<{ rev?: number }>('/api/v1/trigger/item', {
         method: 'POST',

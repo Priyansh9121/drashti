@@ -16,7 +16,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit --composite false -p tsconfig.node.json && tsc --noEmit --composite false -p tsconfig.web.json && tsc --noEmit --composite false -p tsconfig.e2e.json",
-    "lint": "eslint --max-warnings 0 . && prettier --check .",
+    "lint": "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --max-warnings 0 . && prettier --check .",
     "format": "prettier --write .",
     "test": "node scripts/vitest-electron.mjs run",
     "test:watch": "node scripts/vitest-electron.mjs",

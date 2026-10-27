@@ -39,9 +39,27 @@ export function honouredPackaged(name: string, performance: boolean): boolean {
   return ADMIN_SWITCHES.has(name) || (performance && (PERF.test(name) || PERFORMANCE_SWITCHES.has(name)));
 }
 
+/**
+ * The self-tests a packaged Drashti runs (Session 54, E review): any other DRASHTI_SELFTEST is no self-test at all, so
+ * it never starts Drashti as one (locked, yet with its engine taking a self-test's commands).
+ */
+export const PACKAGED_SELF_TESTS: ReadonlySet<string> = new Set([
+  'watchdog',
+  'node-watchdog',
+  'performance',
+  'ffmpeg',
+  'restore-relaunch',
+]);
+
 export function switchesFor(packaged: boolean, env: Readonly<Record<string, string | undefined>>): Switches {
   const performance = env['DRASHTI_SELFTEST'] === 'performance';
-  return (name) => (!packaged || honouredPackaged(name, performance) ? env[name] : undefined);
+  return (name) => {
+    if (packaged && !honouredPackaged(name, performance)) return undefined;
+    const value = env[name];
+    if (packaged && name === 'DRASHTI_SELFTEST' && value !== undefined && !PACKAGED_SELF_TESTS.has(value))
+      return undefined;
+    return value;
+  };
 }
 
 /** Packaged, as Electron decides it: run by anything but Electron's own executable. */

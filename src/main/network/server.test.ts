@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { request } from 'node:http';
+import { type IncomingMessage, request } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -732,14 +732,108 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
       args: { type: 'zoomLive', zoom: 2.5, x: 0.25, y: -0.5 },
     });
     await call(port, '/api/v1/zoom/whole', { method: 'POST', headers: bearer(REMOTE_TOKEN) });
-    expect(host.requests.at(-1)).toMatchObject({ op: 'command', args: { type: 'resetLiveZoom' } });
+    expect(host.requests.at(-1)).toEqual(
+      expect.objectContaining({ op: 'command', args: { type: 'resetLiveZoom' } }),
+    );
     expect((await call(port, '/api/v1/zoom', { method: 'POST', headers: bearer(STAGE_TOKEN) })).status).toBe(
       403,
     );
+    // With the showing the phone zoomed (D1/D2 review): the engine does nothing when another is up by then.
+    const json = { ...bearer(REMOTE_TOKEN), 'Content-Type': 'application/json' };
+    await call(port, '/api/v1/zoom', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ zoom: 2, x: 0, y: 0, showing: 'slide:5000' }),
+    });
+    expect(host.requests.at(-1)?.args).toEqual({
+      type: 'zoomLive',
+      zoom: 2,
+      x: 0,
+      y: 0,
+      showing: 'slide:5000',
+    });
+    await call(port, '/api/v1/zoom/whole', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ showing: 'slide:5000' }),
+    });
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'resetLiveZoom', showing: 'slide:5000' });
   });
 });
 
 describe('while Drashti is not let in (Session 54, access by Gmail)', () => {
+  it('refuses a feed while not let in, and closes every open feed the moment it stops', async () => {
+    const { port, server: s } = await start();
+    s.engine(snapshot(1));
+    // Let in: a phone follows the show.
+    const { ws, messages } = await feed(port);
+    ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN }));
+    await until(() => messages.some((m) => m.type === 'engine'));
+    const closed = new Promise<number>((resolve) => ws.on('close', (code) => resolve(code)));
+    s.setLetIn(false);
+    // Told why, and closed: nothing more of the show reaches it.
+    await until(() => messages.some((m) => m.type === 'bye'));
+    expect(messages.find((m) => m.type === 'bye')).toEqual({ type: 'bye', reason: 'stopped' });
+    expect(await closed).toBe(4000);
+    // A new feed is refused while Drashti is not let in.
+    await expect(feed(port)).rejects.toThrow(/503/u);
+    s.setLetIn(true);
+    const again = await feed(port);
+    again.ws.close();
+  });
+
+  it('cuts off a file still being sent the moment Drashti stops, or its device is removed', async () => {
+    const { port, host, server: s } = await start();
+    // A video's original, far larger than what a connection holds unread.
+    const big = join(dir, 'placeholder-big.mp4');
+    writeFileSync(big, Buffer.alloc(24 * 1024 * 1024, 7));
+    host.mediaSource = (mediaId) =>
+      Promise.resolve(mediaId === 'm-video' ? { path: big, kind: 'video' as const } : null);
+    /** A <video>'s request for the whole file, read slowly (here: not at all until told). */
+    const playing = () => {
+      let answer: IncomingMessage | null = null;
+      const ended = new Promise<{ complete: boolean; got: number }>((resolve) => {
+        const req = request(
+          {
+            host: '127.0.0.1',
+            port,
+            path: '/api/v1/media/m-video/original',
+            headers: { Host: `127.0.0.1:${port}`, ...bearer(REMOTE_TOKEN), Range: 'bytes=0-' },
+          },
+          (res) => {
+            answer = res;
+            res.pause();
+            let got = 0;
+            res.on('data', (c: Buffer) => (got += c.length));
+            res.on('error', () => undefined);
+            res.on('close', () => {
+              resolve({ complete: res.complete, got });
+            });
+          },
+        );
+        req.on('error', () => {
+          resolve({ complete: false, got: -1 });
+        });
+        req.end();
+      });
+      return { ended, started: () => answer !== null, read: () => answer?.resume() };
+    };
+    const first = playing();
+    await until(() => first.started());
+    s.setLetIn(false);
+    first.read();
+    const cut = await first.ended;
+    expect(cut.complete).toBe(false);
+    expect(cut.got).toBeLessThan(24 * 1024 * 1024);
+    // Let in again: a device removed in Drashti has its file cut off too.
+    s.setLetIn(true);
+    const second = playing();
+    await until(() => second.started());
+    s.setDevices(devices.filter((d) => d.id !== 'd-remote'));
+    second.read();
+    expect((await second.ended).complete).toBe(false);
+  });
+
   it('refuses every request, those answered here too: pairing, the state, a command, a preview, a picture, an original, a link, an upload', async () => {
     const started = await start();
     const { port, host, server: s } = started;
