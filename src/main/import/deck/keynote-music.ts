@@ -52,7 +52,7 @@ export function keynoteMusic(
     const theirs = matched ? (original.slides[i]?.deck?.media.filter(isSound) ?? []) : null;
     const ours = d.media.filter(isSound);
     // A .pptx's own, slide by slide, where its sounds and Keynote's match one for one.
-    if (theirs && theirs.length === ours.length) {
+    if (theirs?.length === ours.length) {
       const media = d.media.map((m) => {
         const k = ours.indexOf(m);
         const own = k >= 0 ? theirs[k] : undefined;
