@@ -505,6 +505,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       }
       const id = ctx.media.addMissing(s.ref.originalPath, s.ref.kind, source);
       ids.push(id);
+      // Its points kept for when it is found (Session 54 review: Find missing media… fills the item in, points and
+      // all), where they were thrown away and it played whole.
+      if (s.ref.markers && ctx.media.keepMarkers(id, s.ref.markers)) marked.push(id);
       if (s.issue) issues.push(s.issue);
       issues.push({
         severity: 'warning',
