@@ -52,8 +52,8 @@ import type { SetupResult } from '../shared/setup';
 import { setupPlanSchema, TEST_CARD_MS } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import {
-  isLeaveWord,
   isOperatorMode,
+  leaveSimpleRefusal,
   SIMPLE_MODE_REFUSAL,
   SIMPLE_MODE_REFUSED_COMMANDS,
   startingMode,
@@ -2552,17 +2552,13 @@ function start(): void {
     sendToOperator(IPC.app.modeChanged, { mode: next });
   };
   handle(IPC.app.getMode, () => mode);
-  handle(IPC.app.setMode, async (e, wanted, word): Promise<ModeResult> => {
+  handle(IPC.app.setMode, (e, wanted, word): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
     if (mode === 'simple' && wanted === 'pro') {
-      // With roles on, leaving Simple Mode takes a PIN (the admin PIN unlocks admin too)...
-      if (roles.on()) {
-        const entered = await roles.enter(typeof word === 'string' ? word : '');
-        if (!entered.ok) return { ok: false, message: entered.message };
-      } else if (!(typeof word === 'string' && isLeaveWord(word)))
-        // ...otherwise the word, typed on purpose.
-        return { ok: false, message: 'Type pro to switch to Pro Mode.' };
+      // The word, typed on purpose; never a PIN (Session 54, E5: roles and PINs are gone).
+      const refusal = leaveSimpleRefusal(word);
+      if (refusal !== null) return { ok: false, message: refusal };
     }
     setMode(wanted);
     return { ok: true, mode };

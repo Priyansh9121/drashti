@@ -153,7 +153,7 @@ export interface DrashtiBridge {
     /** Into Simple Mode at once; back to Pro Mode only with the word typed (operator window only). */
     setMode(mode: OperatorMode, word?: string): Promise<ModeResult>;
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
-    /** View > Switch to Pro Mode… was chosen: ask for the word (or, with roles on, a PIN). */
+    /** View > Switch to Pro Mode… was chosen: ask for the word. */
     onAskLeaveSimple(listener: () => void): () => void;
     /** Help > Keyboard Shortcuts… was chosen (Pro Mode). */
     onShowKeys(listener: () => void): () => void;

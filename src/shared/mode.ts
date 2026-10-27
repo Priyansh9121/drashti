@@ -4,7 +4,8 @@
  * change the library, the screens or the sound, and the main process
  * refuses such requests while it is on. Leaving it takes a deliberate step:
  * Switch to Pro Mode… (on Simple Mode's own screen, or in the View menu),
- * then typing the word below.
+ * then typing the word below. Never a PIN (Session 54, E5: roles and PINs
+ * are gone): it is a way of working, not a lock.
  */
 
 export type OperatorMode = 'pro' | 'simple';
@@ -16,6 +17,10 @@ export const LEAVE_SIMPLE_WORD = 'pro';
 
 /** The word was typed (spaces around it and letter case do not matter). */
 export const isLeaveWord = (typed: string): boolean => typed.trim().toLowerCase() === LEAVE_SIMPLE_WORD;
+
+/** Why a request to leave Simple Mode may not go, or null when the word was typed (a PIN is no way out). */
+export const leaveSimpleRefusal = (typed: unknown): string | null =>
+  typeof typed === 'string' && isLeaveWord(typed) ? null : 'Type pro to switch to Pro Mode.';
 
 export type ModeResult = { ok: true; mode: OperatorMode } | { ok: false; message: string };
 
@@ -29,10 +34,8 @@ export const isOperatorMode = (value: unknown): value is OperatorMode =>
 /**
  * The mode Drashti starts in (Session 20). After an unexpected stop less than 3 hours before the start
  * (restart recovery's own limit, RECOVERY_MAX_AGE_MS): the mode it was in, so a volunteer in the middle
- * of a sabha carries on where they were (admin locked, as after every start). Otherwise, after a clean
- * quit or a stop longer ago (Session 21): Pro Mode, with roles on too (Session 46: as the operator, admin
- * locked, with no PIN asked; until then Simple Mode, Pro Mode taking a PIN). Roles held locked (the PIN
- * file could not be read) start in Simple Mode before this is asked (src/main/index.ts).
+ * of a sabha carries on where they were. Otherwise, after a clean quit or a stop longer ago (Session 21):
+ * Pro Mode.
  */
 export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode }): OperatorMode {
   return last.recentStop ? last.wasIn : 'pro';
