@@ -386,6 +386,29 @@ describe('the network server', () => {
 
   // Session 51 (S4-4): a tablet's stage display draws the audience picture box from the same small previews as a
   // remote's live picture, under the same rules (a paired device's token, a media id); an announcements poster none.
+  it('takes the time bar’s move, Pause and Play from a remote as the engine’s commands, and none from a stage display (Session 54)', async () => {
+    const { port, host } = await start();
+    const send = (path: string, token: string, body: unknown) =>
+      call(port, path, {
+        method: 'POST',
+        headers: { ...bearer(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const playing = { layer: 'slide', mediaId: 'placeholder-video' };
+    // Its own words only: a body naming another command is still a move.
+    expect(
+      (await send('/api/v1/playing/move', REMOTE_TOKEN, { playing, toMs: 61_500, type: 'clearAll' })).status,
+    ).toBe(200);
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'moveTo', playing, toMs: 61_500 });
+    await send('/api/v1/playing/pause', REMOTE_TOKEN, { playing });
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'pausePlaying', playing });
+    await send('/api/v1/playing/play', REMOTE_TOKEN, { playing });
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'resumePlaying', playing });
+    const asked = host.requests.length;
+    expect((await send('/api/v1/playing/pause', STAGE_TOKEN, { playing })).status).toBe(403);
+    expect(host.requests).toHaveLength(asked);
+  });
+
   it('gives a stage display the same small previews as a remote, and an announcements poster none', async () => {
     const { port } = await start();
     const preview = (headers: Record<string, string>) =>

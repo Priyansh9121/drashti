@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { device, type Engine, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -11,6 +12,7 @@ import {
   letTimePass,
   operatorPage,
   operatorReady,
+  outputPage,
   outputPages,
   outputReady,
   setUpScreen,
@@ -23,8 +25,8 @@ import { makeTestTone, makeTestVideo } from './test-media';
  * elapsed time and time left, its start and end points and its markers as ticks. In Pro Mode a click or a drag moves
  * it (a drag shows the time under the finger and moves once, on release) and Play and Pause sit beside it: every
  * screen and the audio player land there in step, as a jump to a marker does. Simple Mode shows the bar and its time
- * left and moves nothing. Each fits CI's operator window, 1024 × 645, in both modes. Generated media only, quiet, on
- * displays no wider than 1024.
+ * left and moves nothing. Each fits CI's operator window, 1024 × 645, in both modes. A phone's remote has the same
+ * bar (B2). Generated media only, quiet, on displays no wider than 1024; codes and tokens made at run time.
  */
 
 async function audioPage(app: ElectronApplication): Promise<Page> {
@@ -526,3 +528,98 @@ test('Simple Mode shows the bar and its time left and moves nothing; the bars fi
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Simple Mode');
   await app.close();
 });
+
+for (const engine of ['chromium', 'webkit'] as Engine[]) {
+  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode refuses the move and says so`, async () => {
+    test.setTimeout(180_000);
+    const { app } = await launchApp(NETWORK_ENV);
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-time-bar-phone-'));
+    const file = await makeTestVideo(win, join(dir, 'Placeholder phone clip.webm'), {
+      seconds: 10,
+      hue: 60,
+      tone: 440,
+    });
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    await setUpScreen(win);
+    const hall = await outputPage(app);
+    await outputReady(hall);
+    const audio = await audioPage(app);
+    const copies: Copy[] = [
+      {
+        name: 'the screen',
+        page: hall,
+        selector: `[data-layer="background"] video[data-media-id="${mediaId}"]`,
+      },
+      { name: 'the audio player', page: audio, selector: `audio[data-media-id="${mediaId}"]`, sound: true },
+    ];
+    await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId, media: 'video', fit: 'fill', loop: true },
+    });
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    const phone = await device(engine);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      const playing = p.getByTestId('remote-playing');
+      const row = playing.locator('[data-testid="remote-time-bar-row"][data-playing="background"]');
+      const bar = row.getByRole('slider', { name: 'The background video' });
+      await expect(bar).toBeVisible({ timeout: 15_000 });
+      // A finger's size: the bar and its button 44 px tall at least.
+      for (const target of [bar, row.getByRole('button', { name: 'Pause' })]) {
+        const box = await target.boundingBox();
+        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      }
+      await expect(row.getByTestId('remote-time-bar-left')).toHaveText(/^-\d+:\d\d$/);
+      await expectNoSeriousA11yIssues(p, `the phone’s time bar (${engine})`);
+      const bg = (await snapshot(win)).layers.background;
+      const durationMs = bg?.kind === 'media' ? (bg.durationMs ?? 0) : 0;
+      expect(durationMs).toBeGreaterThan(8000);
+
+      // A tap halfway along: the screen and the audio player land there in step.
+      await clickAlong(p, bar, 0.5);
+      await expect
+        .poll(async () => Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - durationMs * 0.5))
+        .toBeLessThan(durationMs * 0.04);
+      await inStep(copies, () => backgroundTiming(win), 'tapped halfway along on the phone');
+
+      // A drag: the time under the finger shows, and it moves once, as the finger lets go.
+      const box = await bar.boundingBox();
+      if (!box) throw new Error('the bar is not drawn');
+      const seekBefore = (await backgroundTiming(win)).seek;
+      await p.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
+      await p.mouse.down();
+      await p.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2, { steps: 6 });
+      await expect(row.getByTestId('remote-time-bar-under')).toBeVisible();
+      const held = Number(await bar.getAttribute('data-held'));
+      expect((await backgroundTiming(win)).seek).toEqual(seekBefore);
+      await p.mouse.up();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.toMs).toBe(held);
+      await inStep(copies, () => backgroundTiming(win), 'dragged on the phone');
+
+      // Pause and Play, from the phone.
+      await row.getByRole('button', { name: 'Pause' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
+      await heldAt(copies, ((await backgroundTiming(win)).seek?.toMs ?? 0) / 1000, 'paused from the phone');
+      await expect(row).toContainText('Paused');
+      await row.getByRole('button', { name: 'Play' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
+      await inStep(copies, () => backgroundTiming(win), 'played on from the phone');
+
+      // Simple Mode on the computer: the phone's move is refused, and the phone says why; nothing moves.
+      await win.getByRole('button', { name: 'Simple Mode' }).click();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      const seek = (await backgroundTiming(win)).seek;
+      await clickAlong(p, bar, 0.9);
+      await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
+      expect((await backgroundTiming(win)).seek).toEqual(seek);
+    } finally {
+      await phone.close();
+    }
+    await app.close();
+  });
+}

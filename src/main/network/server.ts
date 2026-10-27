@@ -170,6 +170,14 @@ const ROUTES: Route[] = [
     layer: b['layer'] === 'audio' ? 'audio' : 'background',
     markerId: p['id'],
   })),
+  // The time bar (Session 54): what plays moved, paused or played on; the engine checks what `playing` names.
+  route('POST', '/api/v1/playing/move', 'command', (b) => ({
+    type: 'moveTo',
+    playing: b['playing'],
+    toMs: b['toMs'],
+  })),
+  route('POST', '/api/v1/playing/pause', 'command', (b) => ({ type: 'pausePlaying', playing: b['playing'] })),
+  route('POST', '/api/v1/playing/play', 'command', (b) => ({ type: 'resumePlaying', playing: b['playing'] })),
   route('POST', '/api/v1/music/play', 'music.play'),
   route('POST', '/api/v1/music/pause', 'command', command('pauseMusic')),
   route('POST', '/api/v1/music/next', 'command', command('musicNext')),

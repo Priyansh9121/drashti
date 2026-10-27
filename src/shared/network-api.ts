@@ -107,6 +107,10 @@ export const REMOTE_COMMANDS = [
   'stopRepeat',
   // Picture in picture (Session 50): Take off only; setting one up, Swap and moving it are the operator's.
   'hidePip',
+  // The time bar (Session 54): what plays moved, paused or played on, as under LIVE (Simple Mode refuses the move).
+  'moveTo',
+  'pausePlaying',
+  'resumePlaying',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */
