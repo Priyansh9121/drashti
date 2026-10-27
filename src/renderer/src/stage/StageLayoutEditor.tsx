@@ -60,21 +60,26 @@ const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
 const FRAME_NAMES = { x: 'Across', y: 'Down', width: 'Width', height: 'Height' } as const;
 
 /**
- * One of a box's place and size, in pixels. What is typed shows while the field has the keyboard, and the box takes
- * it at once, no smaller than its smallest (typedFrame); leaving the field shows what the box took (Session 53:
- * each figure was taken as it came, so a size begun below the smallest was made the smallest before its next
- * figure).
+ * One of a box's place and size, or its words' size, in pixels. What is typed shows while the field has the
+ * keyboard, and the box takes it at once, no smaller than its smallest (typedFrame); leaving the field shows what
+ * the box took (Session 53: each figure was taken as it came, so a size begun below the smallest was made the
+ * smallest before its next figure; the Text size field until Session 54, G4).
  */
 function FrameField({
   label,
   value,
   min,
+  max,
+  testId,
   onChange,
 }: {
   label: string;
   value: number;
-  /** The smallest it takes (a width or a height): its arrows stop there. */
+  /** The smallest it takes (a width or a height, a text size): its arrows stop there. */
   min?: number;
+  /** The largest it takes (a text size): its arrows stop there. */
+  max?: number;
+  testId?: string;
   onChange: (value: number) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -83,7 +88,9 @@ function FrameField({
       <NumberInput
         value={draft ?? String(value)}
         min={min}
+        max={max}
         unit="px"
+        data-testid={testId}
         onFocus={() => {
           setDraft(String(value));
         }}
@@ -146,19 +153,17 @@ function BoxSettings({ box }: { box: StageBox }) {
         />
       )}
       {box.kind !== 'audience' && box.size !== 'fit' && (
-        <Field label="Text size">
-          <NumberInput
-            value={box.size}
-            min={8}
-            max={600}
-            unit="px"
-            data-testid="stage-box-size"
-            onChange={(e) => {
-              const v = e.target.valueAsNumber;
-              if (Number.isFinite(v)) set({ size: Math.min(600, Math.max(8, Math.round(v))) });
-            }}
-          />
-        </Field>
+        // What is typed shows as typed, the box taking it within 8 to 600 px (Session 54, G4: "4" became 8).
+        <FrameField
+          label="Text size"
+          value={box.size}
+          min={8}
+          max={600}
+          testId="stage-box-size"
+          onChange={(v) => {
+            set({ size: Math.min(600, Math.max(8, Math.round(v))) });
+          }}
+        />
       )}
       {box.kind !== 'audience' && (
         <>

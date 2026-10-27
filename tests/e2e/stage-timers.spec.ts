@@ -787,3 +787,57 @@ test('the Stage panel and the phone start, pause and reset the stage layout’s 
   }
   await app.close();
 });
+
+// Session 54 (G4): the Text size field took each figure as it came, so typing 48 showed 8 at the first figure (its
+// smallest) and then went on from there, never 48.
+test('the Text size field shows what is typed, figure by figure, and the box takes it; its smallest once it is left', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await editor.getByTestId('stage-layout-duplicate').click();
+  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Notes', exact: true }).click();
+  const size = editor.getByTestId('stage-box-settings').getByTestId('stage-box-size');
+  const drawnAt = () =>
+    editor
+      .getByTestId('stage-layout-canvas')
+      .locator('[data-stage-box="notes"]')
+      .evaluate((box) => {
+        const words = box.lastElementChild?.firstElementChild;
+        return words instanceof HTMLElement ? getComputedStyle(words).fontSize : null;
+      });
+  await expect(size).toHaveValue('40');
+  await size.fill('');
+  await size.pressSequentially('4');
+  await expect(size).toHaveValue('4');
+  await size.pressSequentially('8');
+  await expect(size).toHaveValue('48');
+  // The box took it at once.
+  await expect.poll(drawnAt).toBe('48px');
+  await size.blur();
+  await expect(size).toHaveValue('48');
+  // Below its smallest (8 px), left so: its smallest.
+  await size.fill('3');
+  await expect(size).toHaveValue('3');
+  await size.blur();
+  await expect(size).toHaveValue('8');
+  await expect.poll(drawnAt).toBe('8px');
+  // Typed again, figure by figure, and saved: what the field shows.
+  await size.fill('');
+  await size.pressSequentially('120');
+  await size.blur();
+  await expect(size).toHaveValue('120');
+  await editor.getByTestId('stage-layout-name').fill('Placeholder typed size layout');
+  await editor.getByTestId('stage-layout-save').click();
+  await expect(editor.getByTestId('stage-layout-save')).toBeDisabled();
+  const saved = await win.evaluate(
+    async () =>
+      (await (globalThis as PageGlobals).drashti.stageLayouts.list())
+        .find((l) => l.name === 'Placeholder typed size layout')
+        ?.boxes.find((b) => b.kind === 'notes')?.size,
+  );
+  expect(saved).toBe(120);
+  await app.close();
+});
