@@ -312,6 +312,13 @@ test('the stage layout editor and New from a Template fit 1024 × 645 and pass t
   await expect(editor.getByTestId('stage-box-settings')).toBeVisible();
   await expect(editor.getByTestId('stage-layout-canvas')).toBeInViewport();
   await expect(editor.getByTestId('stage-layout-save')).toBeInViewport({ ratio: 1 });
+  // Bold, and the fill's switch after it, each on a line of its own (Session 54's picture had them on one line).
+  const bold = await editor.getByTestId('stage-box-bold').boundingBox();
+  const fill = await editor.getByTestId('stage-box-fill').boundingBox();
+  expect(
+    bold && fill && fill.y >= bold.y + bold.height,
+    'Bold and the fill switch on lines of their own',
+  ).toBe(true);
   await expectNoSeriousA11yIssues(win, 'the stage layout editor at 1024 x 645, a timer box chosen');
   await app.close();
 });
