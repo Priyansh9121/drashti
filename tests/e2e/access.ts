@@ -69,24 +69,53 @@ export async function newStandIn(): Promise<AccessStandIn> {
   return standIn;
 }
 
+/** Each stand-in's clock, to hold still (holdListClock). */
+const clocks = new WeakMap<AccessStandIn, { hold: () => void; release: () => void }>();
+
 /**
  * The list's clock moves as this computer's does (moveListClock moves it further): a check every 15 s is 15 s after
- * the last to the list, as to Google's, so its one-check-in-5-seconds rule is kept, never broken by a clock that
- * stands still.
+ * the last to the list, as to Google's, so its one recorded check in 5 seconds is as it would be there. A test may
+ * hold it still (holdListClock).
  */
 function followTheClock(standIn: AccessStandIn): void {
   const list = standIn.list;
   const base = list.t;
   const started = Date.now();
   let moved = 0;
-  const now = () => base + (Date.now() - started) + moved;
+  let held: number | null = null;
+  const running = () => base + (Date.now() - started) + moved;
+  const now = () => held ?? running();
   Object.defineProperty(list, 't', {
     configurable: true,
     get: now,
     set: (value: number) => {
-      moved += value - now();
+      if (held === null) moved += value - running();
+      else held = value;
     },
   });
+  clocks.set(standIn, {
+    hold: () => {
+      held = now();
+    },
+    release: () => {
+      // It runs on from where it was held.
+      if (held !== null) moved += held - running();
+      held = null;
+    },
+  });
+}
+
+/**
+ * Hold the list's clock still until the answer is called: every call reaches the list at the same moment, as checks
+ * closer together than its 5 seconds do (a Drashti quit and started again at once). moveListClock still moves it.
+ */
+export function holdListClock(standIn: AccessStandIn): () => void {
+  const clock = clocks.get(standIn);
+  if (!clock) throw new Error('That stand-in was not made by newStandIn.');
+  clock.hold();
+  return () => {
+    clock.release();
+  };
 }
 
 /** The newest few stand-ins kept open; an older one is closed (a data folder that used it is let in again). */

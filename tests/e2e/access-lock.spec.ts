@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { ACCESS_ERROR_TEXT } from '../../src/shared/access-protocol';
@@ -13,27 +15,30 @@ import {
   revoke,
 } from './access';
 import { expectFits } from './fit';
-import { launchApp, lockPage, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, lockPage, operatorPage, operatorReady, windowShowing } from './helpers';
 
 /*
  * The lock (Session 54, access by Gmail, E2): Drashti opens to a lock screen until this computer is let in. Request
  * Access with a Gmail makes the row "requested" and emails the approver Approve and Reject; Approve emails the person
  * their one-time token; Reject is told plainly, and nothing more happens; I Have a Token lets this computer in for
  * that Gmail. The links are signed and work once; a token works once, only for its own Gmail, never after a revoke,
- * and runs out after 3 days. Against the stand-in list on 127.0.0.1 (the list's own rules), placeholder addresses
- * only; tokens are never printed.
+ * and runs out after 3 days. No token, secret or Gmail is ever written to Drashti's log. Against the stand-in list on
+ * 127.0.0.1 (the list's own rules), placeholder addresses only; tokens are never printed.
  */
 
 const OTHER = 'other.placeholder@example.com';
 
 /** A Drashti on a computer never let in: the lock window, and nothing else of Drashti. */
-async function locked(
-  o: Parameters<typeof launchApp>[2] = {},
-): Promise<{ app: ElectronApplication; lock: Page; list: Awaited<ReturnType<typeof launchApp>>['access'] }> {
-  const { app, access: list } = await launchApp({}, undefined, { as: 'locked', ...o });
+async function locked(o: Parameters<typeof launchApp>[2] = {}): Promise<{
+  app: ElectronApplication;
+  lock: Page;
+  list: Awaited<ReturnType<typeof launchApp>>['access'];
+  userData: string;
+}> {
+  const { app, access: list, userData } = await launchApp({}, undefined, { as: 'locked', ...o });
   const lock = await lockPage(app);
   await expect(lock.getByTestId('access-lock')).toHaveAttribute('data-phase', 'locked');
-  return { app, lock, list };
+  return { app, lock, list, userData };
 }
 
 /** The Status column of a Gmail's row in the list's Sheet. */
@@ -231,5 +236,92 @@ test('the lock screen fits a small window and says what is wrong on the field it
     await watch.whenClosed;
   } finally {
     if (!watch.closed()) await app.close();
+  }
+});
+
+/** Everything a Drashti has written to its log, every file of it (drashti.log, then drashti.1.log… as it fills). */
+function logOf(userData: string): string {
+  const dir = join(userData, 'logs');
+  return readdirSync(dir)
+    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
+    .map((f) => readFileSync(join(dir, f), 'utf8'))
+    .join('\n');
+}
+
+/** The secret a data folder's access signs each check with, as Drashti keeps it there. */
+const secretOf = (userData: string): string =>
+  (JSON.parse(readFileSync(join(userData, 'access.json'), 'utf8')) as { secret: string }).secret;
+
+test('no token, secret or Gmail ever reaches drashti.log: a token used on the lock screen, then the owner’s edits in the Access List', async () => {
+  test.setTimeout(180_000);
+  const ADDED = 'added.placeholder@example.com';
+  const { app, lock, list, userData } = await locked();
+  let owner: ElectronApplication | null = null;
+  // The data folders whose logs are read: the person's, then the owner's.
+  const folders = [{ whose: 'the person’s', folder: userData }];
+  // Only ever checked for, never printed: a failure names what was found, not its value.
+  const never: { what: string; value: string }[] = [
+    { what: 'the person’s Gmail', value: PLACEHOLDER_PERSON },
+    { what: 'the owner’s Gmail', value: list.approver },
+    { what: 'the Gmail added', value: ADDED },
+  ];
+  try {
+    // A token, typed on the lock screen as the person would.
+    const token = approvedToken(list, PLACEHOLDER_PERSON);
+    never.push({ what: 'the token used', value: token });
+    await useToken(lock, list, PLACEHOLDER_PERSON, token);
+    await operatorReady(await operatorPage(app));
+    never.push({ what: 'the person’s secret', value: secretOf(userData) });
+
+    // The owner's Drashti on the same list: a note, Revoke, Give access again and Add a Gmail in its Access List.
+    const run = await launchApp({}, undefined, { as: 'owner', standIn: list });
+    owner = run.app;
+    folders.push({ whose: 'the owner’s', folder: run.userData });
+    await operatorReady(await operatorPage(run.app));
+    never.push({ what: 'the owner’s secret', value: secretOf(run.userData) });
+    await chooseMenuItem(run.app, 'access-list');
+    const page = await windowShowing(run.app, (p) => p.url().includes('access-list.html'), 'the Access List');
+    await expect(page.getByTestId('access-table')).toBeVisible({ timeout: 30_000 });
+    const row = (gmail: string) => page.locator(`[data-testid="access-row"][data-gmail="${gmail}"]`);
+    await page.getByTestId('access-search').fill(PLACEHOLDER_PERSON);
+    await row(PLACEHOLDER_PERSON).locator('th button').click();
+    await expect(page.getByTestId('access-chosen-gmail')).toHaveText(PLACEHOLDER_PERSON);
+    await page.getByTestId('access-note').click();
+    await page.getByTestId('access-note-text').fill('Placeholder note');
+    await page.getByTestId('access-note-save').click();
+    await expect(row(PLACEHOLDER_PERSON)).toContainText('Placeholder note');
+    await page.getByTestId('access-revoke').click();
+    await page.getByTestId('access-revoke-question').getByRole('button', { name: 'Revoke' }).click();
+    await expect(row(PLACEHOLDER_PERSON)).toHaveAttribute('data-status', 'revoked');
+    await page.getByTestId('access-regrant').click();
+    await expect(row(PLACEHOLDER_PERSON)).toHaveAttribute('data-status', 'approved');
+    never.push({
+      what: 'the token Give access again sent',
+      value: list.list.tokenFor(PLACEHOLDER_PERSON) ?? '',
+    });
+    await page.getByTestId('access-search').fill('');
+    await page.getByTestId('access-add-open').click();
+    await page.getByTestId('access-add-gmail').fill(ADDED);
+    await page.getByTestId('access-add-save').click();
+    await expect(row(ADDED)).toHaveAttribute('data-status', 'approved');
+    never.push({ what: 'the token Add a Gmail sent', value: list.list.tokenFor(ADDED) ?? '' });
+  } finally {
+    await owner?.close();
+    await app.close();
+  }
+  expect(folders.length).toBe(2);
+  for (const { whose, folder } of folders) {
+    const log = logOf(folder).toLowerCase();
+    // The right log, with its access lines (never printed whole).
+    expect(log.includes('access: let in'), `${whose} drashti.log has its access lines`).toBe(true);
+    for (const { what, value } of never) {
+      expect(value.length, what).toBeGreaterThan(8);
+      // As it was given, and as a token may be typed or kept (lower case, without its dashes).
+      const forms = [value, value.replace(/-/gu, '')].map((v) => v.toLowerCase());
+      expect(
+        forms.some((v) => log.includes(v)),
+        `${what} is in ${whose} drashti.log`,
+      ).toBe(false);
+    }
   }
 });

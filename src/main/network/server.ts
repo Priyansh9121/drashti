@@ -386,11 +386,21 @@ export class NetworkServer {
    * an upload) as much as those it asks the main process.
    */
   private letIn = false;
+  /** Answers still being sent (a <video> reading a file's original as it plays), each with the device it is for. */
+  private readonly open = new Map<ServerResponse, string>();
 
   constructor(private readonly host: ServerHost) {}
 
+  /**
+   * Let in, or not (Session 54): not let in, every phone's feed is closed at once (told why) and every answer still
+   * being sent is cut off; a new feed and every request are refused until Drashti is let in again.
+   */
   setLetIn(letIn: boolean): void {
     this.letIn = letIn;
+    if (letIn) return;
+    for (const c of this.clients) this.bye(c, 'stopped');
+    for (const res of this.open.keys()) res.destroy();
+    this.open.clear();
   }
 
   get listening(): boolean {
@@ -487,6 +497,12 @@ export class NetworkServer {
       if (!now) this.bye(c, 'revoked');
       else c.device = now;
     }
+    // A file still being sent to a device removed in Drashti is cut off too.
+    for (const [res, id] of this.open)
+      if (!ids.has(id)) {
+        res.destroy();
+        this.open.delete(res);
+      }
   }
 
   /** A device paired just now: known before its first request arrives. */
@@ -651,6 +667,12 @@ export class NetworkServer {
         return;
       }
       const device = this.authenticate(req) ?? this.linked(req, segments);
+      if (device) {
+        // Kept while it is answered, so a stop or the device's removal can cut it off (a file's original, read as
+        // a video plays, can take minutes).
+        this.open.set(res, device.id);
+        res.once('close', () => this.open.delete(res));
+      }
       if (!device) {
         if (!this.perAddress.take(address)) throw new HttpError(429, 'Too many requests: wait a moment.');
         res.setHeader('WWW-Authenticate', 'Bearer');
@@ -841,6 +863,11 @@ export class NetworkServer {
       refuse(404, 'Not Found');
       return;
     }
+    // No feed while Drashti is not let in (Session 54): nothing of the show reaches a phone.
+    if (!this.letIn) {
+      refuse(503, 'Service Unavailable');
+      return;
+    }
     const address = req.socket.remoteAddress ?? '';
     const fromHere = [...this.clients].filter((c) => c.address === address).length;
     if (!this.wss || this.clients.size >= MAX_CLIENTS || fromHere >= MAX_CLIENTS_PER_ADDRESS) {
@@ -891,6 +918,10 @@ export class NetworkServer {
   }
 
   private onFeedMessage(client: Client, message: FromDevice, hello: NodeJS.Timeout): void {
+    if (!this.letIn) {
+      this.bye(client, 'stopped');
+      return;
+    }
     if (!client.device) {
       if (message.type !== 'hello' || typeof message.token !== 'string' || message.token.length > 200) {
         this.bye(client, 'unauthorized');

@@ -5,8 +5,17 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { ACCESS_REMOVED_TEXT, NO_ANSWER_STOP_TITLE, STOPPED_REFUSAL } from '../../src/shared/access';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { answerAgain, closedWatch, PLACEHOLDER_PERSON, revoke, standInOf, stopAnswering } from './access';
-import { expectFits } from './fit';
+import {
+  answerAgain,
+  closedWatch,
+  holdListClock,
+  newStandIn,
+  PLACEHOLDER_PERSON,
+  revoke,
+  standInOf,
+  stopAnswering,
+} from './access';
+import { clearOfShowControls, expectFits } from './fit';
 import {
   holdStill,
   launchApp,
@@ -22,11 +31,12 @@ import { freePort, rtmpListener, setUpStream, testFfmpeg } from './stream-helper
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
- * Live checks (Session 54, access by Gmail, E3): Drashti checks its access before it opens and while open; revoked,
- * rejected or unknown, everything stops at once in the main process (the controls behind one plain message with
- * only Quit, every request refused whatever page asks, the screens fading to black, the stream and recording ended);
- * with no answer, the countdown, then the same stop; at start with no answer it does not open (Try Again); a data
- * folder copied to another computer does not let that computer in. The stand-in list on 127.0.0.1; checks every 6 s
+ * Live checks (Session 54, access by Gmail, E3): Drashti checks its access before it opens and while open; revoked
+ * (in the Access List or typed into the Sheet), rejected or unknown, everything stops at once in the main process
+ * (the controls behind one plain message with only Quit, every request refused whatever page asks, the screens fading
+ * to black, the stream and recording ended); with no answer, the countdown over Pro and Simple Mode, then the same
+ * stop; at start with no answer it does not open (Try Again), and quit and started again at once it opens at once; a
+ * data folder copied to another computer does not let that computer in. The stand-in list on 127.0.0.1; checks every 6 s
  * and the stop 20 s after the last answer here (test switches a packaged Drashti never reads), so no test waits
  * minutes.
  */
@@ -69,9 +79,9 @@ const tryIt = (win: Page, what: 'command' | 'library' | 'screens') =>
   }, what);
 
 /** The stop's screen, in place of the controls: one message, and Quit, the one button. */
-async function expectStopped(win: Page, title: string): Promise<void> {
+async function expectStopped(win: Page, title: string, timeout = 20_000): Promise<void> {
   const stopped = win.getByTestId('access-stopped');
-  await expect(stopped).toBeVisible({ timeout: 20_000 });
+  await expect(stopped).toBeVisible({ timeout });
   await expect(stopped.getByRole('heading', { level: 1 })).toHaveText(title);
   await expect(win.getByRole('button')).toHaveCount(1);
   await expect(win.getByTestId('access-quit')).toBeFocused();
@@ -111,6 +121,25 @@ test('a revoke while open stops everything at the next check, in the main proces
     expect(menus.length).toBe(2);
     for (const gone of ['View', 'Library', 'Window', 'Diagnostics', 'Help'])
       expect(menus).not.toContain(gone);
+    await quitFromTheStop(watch, win);
+  } finally {
+    if (!watch.closed()) await app.close();
+  }
+});
+
+test('a status typed as revoked into the Sheet itself stops a running Drashti, as Revoke does', async () => {
+  test.setTimeout(150_000);
+  const { app, win, out, access: list } = await showing();
+  const watch = closedWatch(app);
+  try {
+    // The owner types it into the Gmail's Status cell by hand: the list reads its Sheet at most 10 s after, and this
+    // Drashti hears it at its next check after that (every 6 s here).
+    list.list.sheet.type('Access List', 'Gmail', PLACEHOLDER_PERSON, 'Status', 'revoked');
+    await expectStopped(win, ACCESS_REMOVED_TEXT, 40_000);
+    await expect(win.getByTestId('access-stopped')).toHaveAttribute('data-reason', 'revoked');
+    await expect(out.getByTestId('stopped-cover')).toHaveAttribute('data-stopped', 'black', {
+      timeout: 5000,
+    });
     await quitFromTheStop(watch, win);
   } finally {
     if (!watch.closed()) await app.close();
@@ -172,6 +201,41 @@ test('with no answer: the countdown over the controls, gone when the list answer
   }
 });
 
+test('the countdown over Simple Mode, in CI’s window: clear of its big buttons, fitting, passing the accessibility checks, the show going on under it', async () => {
+  test.setTimeout(150_000);
+  // The stop a minute after the last answer here, so the countdown stays up while it is looked at.
+  const { app, win, access: list } = await showing({ DRASHTI_TEST_ACCESS_STOP_MS: '60000' });
+  try {
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    const simple = win.getByTestId('simple-mode');
+    await expect(simple).toBeVisible();
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    stopAnswering(list);
+    const countdown = win.getByTestId('access-countdown');
+    await expect(countdown).toBeVisible({ timeout: 15_000 });
+    await expect(win.getByTestId('access-countdown-line')).toHaveText(
+      /^No internet: Drashti stops in 0:\d\d unless it can check your access$/u,
+    );
+    // Over Simple Mode, which stays: inside the window, never over Next, Back or the other big buttons.
+    await expect(simple).toBeVisible();
+    await expectFits(countdown, 'the countdown over Simple Mode at 1024 × 645');
+    await clearOfShowControls(win, countdown);
+    await expectNoSeriousA11yIssues(win, 'the countdown over Simple Mode at 1024 × 645');
+    // The show goes on under it: Simple Mode's own Black-out button still works.
+    const blackout = simple.getByTestId('simple-blackout');
+    await blackout.click();
+    await expect(blackout).toContainText('Black-out is on');
+    await blackout.click();
+    await expect(blackout).not.toContainText('Black-out is on');
+    // The list answers again: the countdown goes, and Simple Mode is as it was.
+    answerAgain(list);
+    await expect(countdown).toHaveCount(0, { timeout: 15_000 });
+    await expect(simple).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
 test('at start with no answer Drashti does not open: Try Again opens it once the list answers', async () => {
   test.setTimeout(150_000);
   const first = await launchApp(FAST);
@@ -198,6 +262,39 @@ test('at start with no answer Drashti does not open: Try Again opens it once the
     await operatorReady(await operatorPage(app));
   } finally {
     await app.close();
+  }
+});
+
+test('quit and started again at once, Drashti opens at once: a check sooner than 5 s after the last is answered as any other', async () => {
+  test.setTimeout(120_000);
+  // The list's clock held still from before the first start: to the list, the second start's check comes 0 s after
+  // the first's, closer together than the one check in 5 seconds it records.
+  const list = await newStandIn();
+  const release = holdListClock(list);
+  // Each refusal the list gives, as it gives it: none, as a check sooner than 5 s after the last is answered.
+  const refusals: string[] = [];
+  list.tamper = (a) => {
+    const p = JSON.parse(a.payload) as { op?: unknown; ok?: unknown; error?: unknown };
+    if (p.ok !== true) refusals.push(`${String(p.op)}: ${String(p.error)}`);
+    return a;
+  };
+  try {
+    const first = await launchApp({}, undefined, { standIn: list });
+    await operatorReady(await operatorPage(first.app));
+    await first.app.close();
+    const checks = list.calls.filter((c) => c === 'check').length;
+    const { app } = await relaunchApp(first.userData);
+    try {
+      // Let in by its first check: the operator window, with no lock screen asking anything first.
+      await operatorReady(await operatorPage(app));
+      expect(list.calls.filter((c) => c === 'check').length).toBeGreaterThan(checks);
+      expect(refusals).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  } finally {
+    list.tamper = null;
+    release();
   }
 });
 

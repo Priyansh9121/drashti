@@ -11,6 +11,8 @@ import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
 import { api, current, PAGE_OF } from '../device';
+import { isStoppedAnswer } from '../stopped-store';
+import { PHONE_STOPPED_TEXT, PHONE_STOPPED_TITLE } from '../../../../shared/access';
 import { textLang } from '../../render/lang';
 
 /*
@@ -74,12 +76,13 @@ function posterKey(): string | null {
 /** Read once, as the page opens. */
 const FROM_POSTER = posterKey();
 
-type Start = 'checking' | 'ready' | 'poster-gone' | 'unreachable';
+type Start = 'checking' | 'ready' | 'poster-gone' | 'unreachable' | 'stopped';
 
-/** Whether Drashti still knows this key as an Announcements device (or cannot be asked now). */
-async function known(token: string): Promise<'yes' | 'no' | 'unreachable'> {
+/** Whether Drashti still knows this key as an Announcements device (or cannot be asked now, or has stopped). */
+async function known(token: string): Promise<'yes' | 'no' | 'unreachable' | 'stopped'> {
   const r = await api<{ device: { kind: DeviceKind } }>('/api/v1/me', { token });
   if (r.ok) return r.device.kind === 'announcements' ? 'yes' : 'no';
+  if (isStoppedAnswer(r.status, r.message)) return 'stopped';
   return r.status === 401 || r.status === 403 ? 'no' : 'unreachable';
 }
 
@@ -121,8 +124,8 @@ export function AnnouncePage() {
       for (const key of [FROM_POSTER, stored]) {
         if (!key) continue;
         const answer = await known(key);
-        if (answer === 'unreachable') {
-          setStart('unreachable');
+        if (answer === 'unreachable' || answer === 'stopped') {
+          setStart(answer);
           return;
         }
         if (answer === 'yes') {
@@ -195,6 +198,7 @@ export function AnnouncePage() {
     setBusy(false);
     if (!r.ok) {
       if (r.status === 401 && poster) setStart('poster-gone');
+      else if (isStoppedAnswer(r.status, r.message)) setStart('stopped');
       else setProblem(r.message);
       return;
     }
@@ -217,6 +221,17 @@ export function AnnouncePage() {
         <Notice tone="warning">
           Drashti cannot be reached. Check this phone is on the mandir’s Wi-Fi (not mobile data), then open
           the page again.
+        </Notice>
+      </main>
+    );
+
+  // Drashti has stopped (Session 54): said plainly, and nothing to send.
+  if (start === 'stopped')
+    return (
+      <main className="mx-auto flex min-h-full max-w-md flex-col gap-6 px-5 py-8" data-testid="announce-page">
+        <h1 className="text-2xl font-bold text-fg">{PHONE_STOPPED_TITLE}</h1>
+        <Notice tone="warning" data-testid="announce-stopped">
+          {PHONE_STOPPED_TEXT}
         </Notice>
       </main>
     );

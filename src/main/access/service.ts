@@ -81,6 +81,11 @@ export interface AccessServiceOptions {
   /** Run `run` in `ms`; what it returns cancels it. */
   setTimer: (ms: number, run: () => void) => () => void;
   log: (level: 'info' | 'warn', message: string) => void;
+  /**
+   * False for the performance check's own run (Session 54, E review): it is let in as any start is, and adds nothing
+   * to this computer's totals (minutes, shows…).
+   */
+  counts?: boolean;
   /** Tests only (a test switch): checks this often, and the stop this long after the last answer. */
   checkEveryMs?: number;
   stopAfterMs?: number;
@@ -88,6 +93,8 @@ export interface AccessServiceOptions {
 
 /** How often the lock screen asks what became of a request while it waits. */
 export const ASK_EVERY_MS = 30_000;
+/** A timer this late means the computer slept: none runs that late while it is awake. */
+const ASLEEP_MS = 30_000;
 /** A minute let in, added to the totals. */
 const MINUTE_MS = 60_000;
 
@@ -126,6 +133,64 @@ function requestWords(status: AccessRequestStatus, tokenWaiting: boolean): NonNu
 const NO_INTERNET =
   'No internet: Drashti could not reach the access list. Check the connection, then try again.';
 
+/**
+ * A call that throws instead of answering (the data folder could not be written as it was signed, Session 54's E
+ * review): never an answer, so it counts as none, and the countdown and the stop run as with no internet. Nothing
+ * fails open.
+ */
+async function safely<T>(call: () => Promise<AccessResult<T>>): Promise<AccessResult<T>> {
+  try {
+    return await call();
+  } catch (error) {
+    return {
+      ok: false,
+      kind: 'no-answer',
+      reason: 'network',
+      // Its own words, for the log only (why()): a no-answer's detail is never shown.
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * The time a signed call carries: the one kept in the data folder (never at or below the last sent, whatever this
+ * computer's clock does), or, when it cannot be kept (a full disk, a file held by another program), this computer's
+ * clock, which the client keeps rising itself. Said once in the log.
+ */
+export function keptAt(
+  store: { nextAt(now: number): number },
+  now: () => number,
+  log: (line: string) => void,
+): () => number {
+  let said = false;
+  return () => {
+    try {
+      return store.nextAt(now());
+    } catch (error) {
+      if (!said) {
+        said = true;
+        log(
+          `Access: the last check’s time could not be kept in the data folder (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
+      return now();
+    }
+  };
+}
+
+/**
+ * Where the performance check finds this computer's access (Session 54, E review): in this computer's own data
+ * folder, never its throwaway one, so it runs only on a computer let in; in development and the tests, a folder a test
+ * let in (DRASHTI_TEST_ACCESS_HOME), which a packaged Drashti never reads.
+ */
+export function performanceAccessFolder(o: {
+  packaged: boolean;
+  home: string;
+  testFolder: string | undefined;
+}): string {
+  return !o.packaged && o.testFolder !== undefined && o.testFolder !== '' ? o.testFolder : o.home;
+}
+
 /** Why a call came to nothing, for the log (never what was sent). */
 function why(r: Extract<AccessResult<unknown>, { ok: false }>): string {
   return r.kind === 'refused' ? `refused: ${r.error}` : `${r.reason}: ${r.detail}`;
@@ -136,6 +201,9 @@ export class AccessService {
   private activity: AccessActivity = { ...NO_ACTIVITY };
   /** When the list last answered let in (monotonic). */
   private lastAnswer: number | null = null;
+  /** When the next check is due (monotonic), and up to when a sleep has been counted out. */
+  private dueAt = 0;
+  private awake = 0;
   private busy: AccessBusy | null = null;
   private message: Message = null;
   private request: AccessRequestView | null = null;
@@ -232,7 +300,7 @@ export class AccessService {
     this.busy = 'requesting';
     this.message = null;
     this.changed();
-    const r = await calls.request(g, n === '' ? undefined : n);
+    const r = await safely(() => calls.request(g, n === '' ? undefined : n));
     this.busy = null;
     if (this.disposed) return this.view();
     if (r.ok) {
@@ -262,7 +330,7 @@ export class AccessService {
     this.cancel('ask');
     this.busy = 'asking';
     this.changed();
-    const r = await calls.status(asked.gmail);
+    const r = await safely(() => calls.status(asked.gmail));
     this.busy = null;
     if (this.disposed || accessState().phase !== 'locked') return this.view();
     if (r.ok) {
@@ -299,7 +367,7 @@ export class AccessService {
     this.busy = 'redeeming';
     this.message = null;
     this.changed();
-    const r = await calls.redeem(g, token);
+    const r = await safely(() => calls.redeem(g, token));
     this.busy = null;
     if (this.disposed) return this.view();
     if (!r.ok) return this.say(this.failed(r, 'token'));
@@ -344,7 +412,7 @@ export class AccessService {
 
   /** A show, a stream, a recording or an import, added to this computer's totals (sent with each check). */
   count(kind: ActivityKind, n = 1): void {
-    if (!isLetIn() || !this.kept || !(n > 0)) return;
+    if (this.o.counts === false || !isLetIn() || !this.kept || !(n > 0)) return;
     this.add({ [kind]: Math.floor(n) });
   }
 
@@ -365,7 +433,7 @@ export class AccessService {
     this.cancel('retry');
     this.busy = 'checking';
     this.changed();
-    const r = await calls.check(grantOf(kept), this.activity);
+    const r = await safely(() => calls.check(grantOf(kept), this.activity));
     this.busy = null;
     if (this.disposed || isLetIn() || accessState().phase === 'stopped') return;
     if (r.ok) {
@@ -406,6 +474,7 @@ export class AccessService {
 
   private checkIn(ms: number): void {
     this.cancel('check');
+    this.dueAt = this.o.monotonic() + ms;
     this.timers.set(
       'check',
       this.o.setTimer(ms, () => {
@@ -420,8 +489,9 @@ export class AccessService {
     const kept = this.kept;
     const calls = this.o.calls;
     if (!kept || !calls || !this.open()) return;
+    this.wokeAfter(this.dueAt);
     const started = this.o.monotonic();
-    const r = await calls.check(grantOf(kept), this.activity);
+    const r = await safely(() => calls.check(grantOf(kept), this.activity));
     // Stopped meanwhile (the 2 minutes ran out while it waited): nothing it says opens it again.
     if (!this.open()) return;
     if (r.ok) {
@@ -458,16 +528,50 @@ export class AccessService {
       `Access: no answer from the access list (${why(r)}): Drashti stops in ${String(Math.ceil(left / 1000))} s unless it answers`,
     );
     this.set({ phase: 'warning', stopsAt, reason: null });
+    this.armDeadline();
+  }
+
+  /** The stop at the end of the countdown, on time; one asleep for a while counts only the time awake. */
+  private armDeadline(): void {
+    const due = accessState().stopsAt;
+    if (due === null) return;
+    this.cancel('deadline');
     this.timers.set(
       'deadline',
-      this.o.setTimer(left, () => {
+      this.o.setTimer(Math.max(0, due - this.o.monotonic()), () => {
         this.timers.delete('deadline');
-        if (isLetIn() && !this.disposed) {
-          this.o.log('warn', 'Access: no answer from the access list for 2 minutes');
-          this.stop('no-answer');
+        if (!isLetIn() || this.disposed) return;
+        this.wokeAfter(due);
+        // Moved on by a sleep: not yet.
+        if ((accessState().stopsAt ?? 0) > this.o.monotonic()) {
+          this.armDeadline();
+          return;
         }
+        this.o.log('warn', 'Access: no answer from the access list for 2 minutes');
+        this.stop('no-answer');
       }),
     );
+  }
+
+  /**
+   * A timer due at `due` ran this late: the computer slept (Windows' monotonic clock counts on through a sleep, a
+   * Mac's does not). The time asleep is never counted toward the 2 minutes: they go on from the last answer as if
+   * the computer had not slept. Each sleep counted once, whichever timer runs first.
+   */
+  private wokeAfter(due: number): void {
+    const late = this.o.monotonic() - Math.max(due, this.awake);
+    if (late <= ASLEEP_MS || this.lastAnswer === null) return;
+    this.awake = this.o.monotonic();
+    this.lastAnswer += late;
+    this.o.log(
+      'info',
+      `Access: the computer slept ${String(Math.round(late / 1000))} s: that time is not counted`,
+    );
+    const s = accessState();
+    if (s.phase === 'warning' && s.stopsAt !== null) {
+      this.set({ stopsAt: s.stopsAt + late });
+      this.armDeadline();
+    }
   }
 
   /** Everything stops, for good: only Quit works. */
@@ -479,7 +583,7 @@ export class AccessService {
   }
 
   private countMinutes(): void {
-    if (this.timers.has('minute')) return;
+    if (this.o.counts === false || this.timers.has('minute')) return;
     this.timers.set(
       'minute',
       this.o.setTimer(MINUTE_MS, () => {

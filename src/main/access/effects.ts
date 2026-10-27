@@ -1,3 +1,4 @@
+import { STOP_FADE_MS } from '../../shared/access';
 import type { EngineState } from '../../shared/engine/state';
 import type { StreamStatus } from '../../shared/stream';
 import { accessState, isLetIn, onAccessChange } from './gate';
@@ -26,6 +27,10 @@ export interface AccessEffects {
   lockMenu: () => void;
   /** No key works system-wide (the uncover shortcut). */
   dropShortcuts: () => void;
+  /** The operator window uncovered (any screen over it turned off), once the screens have faded to black. */
+  uncover: () => void;
+  /** Run `run` once, in `ms`. */
+  later: (ms: number, run: () => void) => void;
   /** Whatever else goes on by itself (the window for Zoom, the drop folder, downloads), each stopped in turn. */
   others?: readonly { what: string; stop: () => void }[];
   /** Run `run` every `ms`; what it returns stops it. */
@@ -62,6 +67,10 @@ export function followAccess(e: AccessEffects): () => void {
     step('the menu', e.lockMenu);
     step('the keys', e.dropShortcuts);
     for (const other of e.others ?? []) step(other.what, other.stop);
+    // The stop's message and its Quit never sit under a screen covering the controls (its key is gone just above).
+    e.later(STOP_FADE_MS, () => {
+      step('the operator window', e.uncover);
+    });
   };
   const off = onAccessChange((state) => {
     if (state.phase === 'stopped') stopAll();

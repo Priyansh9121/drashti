@@ -79,6 +79,15 @@ describe('switches', () => {
     expect(ADMIN_SWITCHES.size).toBe(9);
   });
 
+  it('packaged, runs only the self-tests it knows: any other name is no self-test at all (Session 54, E review)', () => {
+    for (const known of ['watchdog', 'node-watchdog', 'performance', 'ffmpeg', 'restore-relaunch'])
+      expect(switchesFor(true, { DRASHTI_SELFTEST: known })('DRASHTI_SELFTEST'), known).toBe(known);
+    for (const other of ['x', 'old-library', 'WATCHDOG', ''])
+      expect(switchesFor(true, { DRASHTI_SELFTEST: other })('DRASHTI_SELFTEST'), other).toBeUndefined();
+    // Unpackaged (development, the tests): as given.
+    expect(switchesFor(false, { DRASHTI_SELFTEST: 'old-library' })('DRASHTI_SELFTEST')).toBe('old-library');
+  });
+
   it('packaged as Electron decides it: by the executable, so a helper run as Node decides it the same', () => {
     expect(
       packagedExecutable('/x/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron', 'darwin'),
