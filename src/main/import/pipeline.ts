@@ -559,6 +559,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   interface Decided {
     latest: { id: string; name: string } | null;
     choice: ConflictChoice | null;
+    /**
+     * The same file, imported before as a deck's pictures, coming in again for its animations (Session 54, C
+     * review): if they cannot be made after all, the earlier import is kept as it was.
+     */
+    animate?: boolean;
   }
 
   /**
@@ -582,8 +587,32 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       earlier.find((e) => e.sourceHash === hash) ??
       (earlier.length === 0 ? presentations.findByHash(kind, hash) : null);
     time('lookup', t);
-    // A deck imported as pictures only, which can now come in with its animations (Session 54, C2): in its place.
-    if (same && again?.(same.id)) return { latest: { id: same.id, name: same.name }, choice: 'replace' };
+    // A deck imported as pictures only, which can now come in with its animations (Session 54, C2): asked first, as
+    // a changed file is (C review: replacing it loses what was changed in it since), and only on the answer.
+    if (same && again?.(same.id)) {
+      const decided = ctx.options.decisions?.[where.sourcePath] ?? ctx.options.onConflict ?? 'ask';
+      if (decided === 'ask') {
+        record({
+          ...base,
+          outcome: 'conflict',
+          name: same.name,
+          target: { kind: 'presentation', id: same.id },
+          message: 'It can now come in with its animations: it came in as pictures before.',
+          issues: [
+            {
+              severity: 'warning',
+              code: 'deck-can-animate',
+              message: `${fileName} can now come in with its animations. Replace “${same.name}” with it (what was changed in it since is lost), or keep both?`,
+              fix: { kind: 'choose', sourcePath: where.sourcePath },
+            },
+          ],
+        });
+        remember(where, file, same.id);
+        return null;
+      }
+      if (decided !== 'skip')
+        return { latest: { id: same.id, name: same.name }, choice: decided, animate: true };
+    }
     if (same) {
       record({
         ...base,
@@ -864,11 +893,28 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             refocus: ctx.refocus,
             appStarted: ctx.appStarted,
             ended: (pid) => ctx.appEnded?.(pid),
+            kept: decided.animate === true,
           },
         );
         time('parse', t);
         if (flow.kind === 'baked') {
           await importPresentation(file, where, 'pictures', hash, flow.parsed, decided);
+          return;
+        }
+        // Asked for its animations in place of its pictures, and they could not be made: the earlier import stays,
+        // untouched (Session 54, C review).
+        if (decided.animate && decided.latest) {
+          record({
+            sourcePath: where.sourcePath,
+            format: 'pictures',
+            outcome: 'skipped',
+            name: decided.latest.name,
+            target: { kind: 'presentation', id: decided.latest.id },
+            counts: NO_COUNTS,
+            message: `It could not come in with its animations, so “${decided.latest.name}” was kept as it was.`,
+            issues: flow.issues,
+          });
+          remember(where, file, decided.latest.id);
           return;
         }
         if (flow.cancelled) {

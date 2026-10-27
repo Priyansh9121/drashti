@@ -114,10 +114,16 @@ export async function standInMovie(
   });
   const stop = () => child.kill('SIGKILL');
   signal?.addEventListener('abort', stop);
+  // An FFmpeg that never started, or stopped, takes no more frames: never wait on it.
+  const ffmpegRun = { gone: false };
+  void ended.then(() => {
+    ffmpegRun.gone = true;
+    child.stdin.destroy();
+  });
   try {
     const frame = Buffer.alloc(WIDTH * HEIGHT * 3);
     const before = Buffer.alloc(WIDTH * HEIGHT * 3);
-    for (let n = 0; n < frames && !signal?.aborted; n++) {
+    for (let n = 0; n < frames && !signal?.aborted && !ffmpegRun.gone; n++) {
       const t = (n * 1000) / FPS;
       let i = 0;
       while (i + 1 < starts.length && t >= (starts[i + 1] ?? Infinity)) i++;
@@ -136,7 +142,11 @@ export async function standInMovie(
           before.copy(frame, row + edge * 3, row + edge * 3, row + WIDTH * 3);
         }
       }
-      if (!child.stdin.write(frame)) await new Promise((resolve) => child.stdin.once('drain', resolve));
+      if (!child.stdin.write(frame))
+        await new Promise<void>((resolve) => {
+          child.stdin.once('drain', resolve);
+          child.stdin.once('close', resolve);
+        });
     }
     child.stdin.end();
     const code = await ended;

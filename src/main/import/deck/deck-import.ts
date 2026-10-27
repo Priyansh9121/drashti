@@ -494,9 +494,12 @@ export function bakedIssues(d: {
 }
 
 /** Why a deck came in as pictures, said plainly (the report's first word on it). */
-export function whyPictures(why: BakeFailure, baker: Baker): ImportIssue {
+export function whyPictures(why: BakeFailure, baker: Baker, kept = false): ImportIssue {
   const app = APP[baker];
-  const lost = 'its slides came in as pictures, without their animations';
+  // The deck was imported as pictures before, and asked for again for its animations: that import stays.
+  const lost = kept
+    ? 'the earlier import was kept as it was'
+    : 'its slides came in as pictures, without their animations';
   const message =
     why.kind === 'on-air'
       ? `The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`

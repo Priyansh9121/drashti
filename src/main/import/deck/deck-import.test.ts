@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DeckSlide } from '../../../shared/deck';
+import type { ConflictChoice } from '../../../shared/import';
 import type { PicturesResult } from '../../../shared/pictures';
 import { readInfo } from '../../convert/read-info';
 import { openDatabase } from '../../db/database';
@@ -69,7 +70,15 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const db = openDatabase(join(root, 'drashti.sqlite'));
       const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
       const run = (
-        options: { baker: boolean | 'stand-in'; converters: boolean | 'stand-in'; onAir?: boolean },
+        options: {
+          baker: boolean | 'stand-in';
+          converters: boolean | 'stand-in';
+          onAir?: boolean;
+          /** The operator's answer to an earlier run's question, for the deck. */
+          decision?: ConflictChoice;
+          /** An FFmpeg that is not there: the stand-in cannot make the movie. */
+          noFfmpeg?: boolean;
+        },
         paths = [deck],
       ) =>
         runImport({
@@ -77,10 +86,10 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           media,
           runId: randomUUID(),
           paths,
-          options: {},
+          options: options.decision ? { decisions: { [paths[0] ?? '']: options.decision } } : {},
           progressEveryMs: 0,
           tempDir: root,
-          ffmpeg,
+          ffmpeg: options.noFfmpeg ? join(root, 'no-ffmpeg-here') : ffmpeg,
           baker: options.baker,
           converters: options.converters,
           onAir: () => Promise.resolve(options.onAir === true),
@@ -230,14 +239,51 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         'Its 2 videos came in as real videos where the slides have them, with the time bar under LIVE; they start as their slide goes up.',
       );
 
-      // Imported again where its movie can be made: in place of the pictures, with its animations.
-      const again = await t.run({ baker: 'stand-in', converters: 'stand-in' });
+      // Imported again where its movie can be made: the operator is asked first, as for a changed file (what they
+      // changed in the pictures' slides would go), and nothing changes until they answer.
+      const asked = await t.run({ baker: 'stand-in', converters: 'stand-in' });
+      const question = t.report(asked.id)?.items[0];
+      expect(question?.outcome).toBe('conflict');
+      expect(question?.issues).toEqual([
+        {
+          severity: 'warning',
+          code: 'deck-can-animate',
+          message:
+            'Placeholder trial.pptx can now come in with its animations. Replace “Placeholder trial” with it (what was changed in it since is lost), or keep both?',
+          fix: { kind: 'choose', sourcePath: deck },
+        },
+      ]);
+      expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
+      // Replace, as answered: in place of the pictures, with its animations.
+      const again = await t.run({ baker: 'stand-in', converters: 'stand-in', decision: 'replace' });
       const replaced = t.report(again.id)?.items[0];
       expect(replaced?.outcome).toBe('replaced');
       expect(replaced?.target?.id).toBe(item?.target?.id);
       expect(t.slidesOf(item?.target?.id ?? '').map((s) => s.slide.deck?.steps.length)).toEqual([
         5, 3, 2, 1, 2,
       ]);
+    }, 240_000);
+
+    it('a deck that came in as pictures, answered Replace but whose animations cannot be made, is kept untouched', async () => {
+      const t = setup();
+      const first = await t.run({ baker: false, converters: 'stand-in' });
+      const id = t.report(first.id)?.items[0]?.target?.id ?? '';
+      const before = t.repo.content(id);
+      const again = await t.run({
+        baker: 'stand-in',
+        converters: 'stand-in',
+        decision: 'replace',
+        noFfmpeg: true,
+      });
+      const kept = t.report(again.id)?.items[0];
+      expect(kept?.outcome).toBe('skipped');
+      expect(kept?.target?.id).toBe(id);
+      expect(kept?.message).toBe(
+        'It could not come in with its animations, so “Placeholder trial” was kept as it was.',
+      );
+      expect(kept?.issues.map((i) => i.code)).toEqual(['deck-pictures']);
+      // Untouched: every row as it was.
+      expect(t.repo.content(id)).toEqual(before);
     }, 240_000);
 
     it('as pictures while the stream is on air, saying so', async () => {
