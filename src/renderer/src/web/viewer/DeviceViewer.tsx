@@ -21,7 +21,8 @@ import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
  * zoomed with two fingers on this device only, with the pages before and after it (a presentation looked
  * through). When the page is what the screens show and it is zoomed, a large button at the side puts that zoom
  * on the screens (the engine's live zoom, Session 26e), and Back to Whole undoes it; on anything not live there is
- * neither. Esc or Close goes back to the remote. Mounted once, by the remote (RemoteApp.tsx).
+ * neither. Esc or Close goes back to the remote. Mounted once, by the remote (RemoteApp.tsx). Its bars keep clear of
+ * a phone's notch and rounded corners however it is held (the safe areas, D1/D2 review).
  */
 
 const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
@@ -120,7 +121,7 @@ function Viewer() {
       data-live={live ? 'true' : undefined}
       onKeyDown={onKeyDown}
     >
-      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
+      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
         <div className="min-w-0 flex-1">
           <h2 id="viewer-title" className="truncate text-base font-bold text-fg" data-testid="viewer-title">
             {page.title}
@@ -135,7 +136,7 @@ function Viewer() {
         </Button>
       </header>
       {notice && (
-        <div className="shrink-0 bg-panel px-3 pt-2">
+        <div className="shrink-0 bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-2">
           <Notice tone="warning" onDismiss={() => useTapNotice.setState({ text: null })}>
             {notice}
           </Notice>
@@ -160,7 +161,7 @@ function Viewer() {
         {/* D2: at the side, while this page is what the screens show; never on anything else. */}
         {onScreens && (zoomedHere || screensAt) && (
           <div
-            className="absolute top-1/2 right-2 flex w-40 -translate-y-1/2 flex-col gap-2"
+            className="absolute top-1/2 right-[max(0.5rem,env(safe-area-inset-right))] flex w-40 -translate-y-1/2 flex-col gap-2"
             data-testid="viewer-screens"
           >
             {zoomedHere && (
@@ -196,7 +197,7 @@ function Viewer() {
         )}
       </div>
       {page.below?.()}
-      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center gap-1" role="group" aria-label="Zoom on this device">
           <IconButton
             icon={ZoomOut}

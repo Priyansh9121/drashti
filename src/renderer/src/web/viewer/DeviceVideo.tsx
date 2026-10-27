@@ -199,12 +199,15 @@ export function DeviceVideoControls({ mediaId, what = 'video' }: { mediaId: stri
   return (
     <div>
       {here && p.problem && (
-        <div className="bg-panel px-3 pt-2" data-testid="viewer-video-problem">
+        <div
+          className="bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-2"
+          data-testid="viewer-video-problem"
+        >
           <Notice tone="warning">{p.problem}</Notice>
         </div>
       )}
       <div
-        className="flex min-w-0 items-center gap-3 border-t border-line bg-panel px-3 py-2"
+        className="flex min-w-0 items-center gap-3 border-t border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] py-2"
         data-testid="viewer-time-bar"
       >
         <Button
