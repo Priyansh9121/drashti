@@ -219,6 +219,8 @@ interface MediaShape extends Box {
   volume?: number;
   fadeIn?: number;
   hideIcon?: boolean;
+  /** A sound that plays on across this many slides (Play Across Slides; left out, its own slide). */
+  acrossSlides?: number;
 }
 type Shape = WordsShape | PictureShape | MediaShape;
 const isMedia = (s: Shape): s is MediaShape => s.type === 'video' || s.type === 'audio';
@@ -373,7 +375,10 @@ function timingXml(slide: TestDeckSlide): string {
     .map((s) => {
       const tn = next();
       const repeat = s.loop ? ' repeatCount="indefinite"' : '';
-      const extra = s.type === 'audio' ? ` numSld="1"${s.hideIcon ? ' showWhenStopped="0"' : ''}` : '';
+      const extra =
+        s.type === 'audio'
+          ? ` numSld="${String(s.acrossSlides ?? 1)}"${s.hideIcon ? ' showWhenStopped="0"' : ''}`
+          : '';
       const endCond =
         s.type === 'audio'
           ? '<p:endCondLst><p:cond evt="onStopAudio" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:endCondLst>'

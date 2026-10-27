@@ -15,7 +15,7 @@ import { PresentationRepo } from '../../db/presentations';
 import { ffmpegHere } from '../../testing/ffmpeg-here';
 import { MediaStore } from '../media-store';
 import { runImport } from '../pipeline';
-import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../testing/make-deck';
+import { makeDeckMedia, makeTestDeck, type TestDeckSlide, TRIAL_SLIDES } from '../testing/make-deck';
 
 /*
  * A deck imported "with its animations" (Session 54, C2), end to end in the import: C1's trial deck, its media made
@@ -204,6 +204,60 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const [first, second] = slides.map((s) => s.slide.deck);
       expect(first?.after).toBeUndefined();
       expect(second?.after).toBe(first?.steps.at(-1)?.lastId);
+    }, 240_000);
+
+    it('a sound set to play across slides plays on as its slide’s sound; one started by a click says it stays on its slide', async () => {
+      const t = setup();
+      const tone = {
+        id: 3,
+        type: 'audio' as const,
+        name: 'Long tone',
+        media: 'tone' as const,
+        poster: 'speaker' as const,
+        x: 9_000_000,
+        y: 2_000_000,
+        w: 900_000,
+        h: 900_000,
+        acrossSlides: 3,
+      };
+      const across: TestDeckSlide[] = [
+        {
+          key: 'across-auto',
+          bg: '1B2A4A',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: a sound across slides, by itself.',
+          shapes: [tone],
+          effects: [{ kind: 'play', target: 3, dur: 6000, start: 'after' }],
+        },
+        {
+          key: 'across-click',
+          bg: '0F3D2E',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: a sound across slides, on a click.',
+          shapes: [tone],
+          effects: [{ kind: 'play', target: 3, dur: 6000, start: 'click' }],
+        },
+      ];
+      const file = join(dir, 'Placeholder across.pptx');
+      writeFileSync(file, makeTestDeck(across, makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
+      const item = t.report(summary.id)?.items[0];
+      const [auto, click] = t.slidesOf(item?.target?.id ?? '');
+      // By itself: the slide's sound, which plays on as the next slides go up (never also the deck's own).
+      expect(auto?.cues).toMatchObject([{ kind: 'audio', volume: 1, loop: false }]);
+      expect(auto?.slide.deck?.media).toEqual([]);
+      // On a click: the deck's own, on its slide only, and the report says so.
+      expect(click?.cues).toEqual([]);
+      expect(click?.slide.deck?.media.map((m) => [m.kind, 'step' in m.start ? m.start.step : null])).toEqual([
+        ['audio', 1],
+      ]);
+      const words = item?.issues.map((i) => i.message) ?? [];
+      expect(words).toContain(
+        '1 sound set to play across slides came in as its slide’s sound: it plays on as the next slides go up, until it ends or another sound takes its place.',
+      );
+      expect(words).toContain(
+        '1 sound set to play across slides starts on a click: here it plays on its own slide only.',
+      );
     }, 240_000);
 
     it('as pictures where nothing makes its movie: its videos real videos on their slides, its sound the slide’s', async () => {

@@ -94,6 +94,10 @@ class MediaRefs {
     }
     return mediaRef(i);
   }
+  /** The index a reference made by `ref` points at. */
+  indexOf(ref: string): number {
+    return Number(ref.slice(ref.lastIndexOf(':') + 1));
+  }
 }
 
 /** Keynote's own word on a slide's media (its loop, its volume), matched by kind and the nearest place. */
@@ -202,7 +206,10 @@ export async function bakedPresentation(
   let videos = 0;
   let audios = 0;
   let clicked = 0;
-  let across = 0;
+  /** Sounds set to play across slides: the slide's sound; on their own slide, starting later or a second one. */
+  let acrossCued = 0;
+  let acrossLater = 0;
+  let acrossSecond = 0;
   let advancing = 0;
   let transitionSounds = 0;
   let trimmed = 0;
@@ -249,6 +256,7 @@ export async function bakedPresentation(
         ]
       : [];
     const deckMedia: DeckMedia[] = [];
+    const cues: ParsedCue[] = [];
     const timeline = (cut?.steps[0]?.fromMs ?? 0) + planned.transitionMs + plan.settleMs;
     for (const m of d?.media ?? []) {
       const taken = media.get(m.part ?? m.link ?? '');
@@ -264,6 +272,23 @@ export async function bakedPresentation(
       );
       const loop = told ? told.loop : m.loop;
       const volume = told ? told.volume : m.volume;
+      // A sound set to play across slides (C review): starting with its slide, it is the slide's sound, which plays
+      // on as the next slides go up (Drashti's sound layer); one that starts later stays on its own slide.
+      if (m.kind === 'audio' && m.acrossSlides) {
+        const withSlide = !('clicked' in m.start) && stepOfGroup(d?.groups ?? [], m.start.group) === 0;
+        if (withSlide && cues.length === 0) {
+          cues.push({
+            kind: 'audio',
+            label: m.name,
+            media: refs.indexOf(mediaId),
+            props: { volume: m.muted ? 0 : volume, loop },
+          });
+          acrossCued++;
+          continue;
+        }
+        if (withSlide) acrossSecond++;
+        else acrossLater++;
+      }
       let start: DeckMedia['start'];
       if ('clicked' in m.start) {
         start = { clicked: true };
@@ -291,7 +316,6 @@ export async function bakedPresentation(
         ...(m.acrossSlides ? { acrossSlides: m.acrossSlides } : {}),
         ...(m.hideWhenStopped ? { hideWhenStopped: true } : {}),
       });
-      if (m.acrossSlides) across++;
       if (m.kind === 'video') {
         videos++;
         const element: MediaElement = {
@@ -337,7 +361,7 @@ export async function bakedPresentation(
       background: null,
       enabled: true,
       elements,
-      cues: [],
+      cues,
       deck: deckSlide,
     });
   }
@@ -364,7 +388,9 @@ export async function bakedPresentation(
       videos,
       audios,
       clicked,
-      across,
+      acrossCued,
+      acrossLater,
+      acrossSecond,
       transitionSounds,
       advancing,
       trimmed,
@@ -405,8 +431,10 @@ export function bakedIssues(d: {
   audios: number;
   /** Videos and sounds that start only when clicked on (a trigger in the deck). */
   clicked: number;
-  /** Sounds that play on across slides. */
-  across: number;
+  /** Sounds set to play across slides: as their slide's sound; starting later, or a slide's second, on their own slide. */
+  acrossCued: number;
+  acrossLater: number;
+  acrossSecond: number;
   transitionSounds: number;
   /** Slides that moved on by themselves in the deck. */
   advancing: number;
@@ -438,6 +466,31 @@ export function bakedIssues(d: {
       info(
         'deck-media',
         `Its ${[some(d.videos, 'video'), some(d.audios, 'sound')].filter(Boolean).join(' and ')} came in as real media, played as the deck plays ${d.videos + d.audios === 1 ? 'it' : 'them'} (when ${d.videos + d.audios === 1 ? 'it starts' : 'they start'}, ${d.trimmed > 0 ? 'trims, ' : ''}loop and volume), with the time bar under LIVE.`,
+      ),
+    );
+  if (d.acrossCued > 0)
+    out.push(
+      info(
+        'deck-across-slides',
+        d.acrossCued === 1
+          ? '1 sound set to play across slides came in as its slide’s sound: it plays on as the next slides go up, until it ends or another sound takes its place.'
+          : `${String(d.acrossCued)} sounds set to play across slides came in as their slides’ sounds: each plays on as the next slides go up, until it ends or another sound takes its place.`,
+      ),
+    );
+  if (d.acrossLater > 0)
+    out.push(
+      info(
+        'deck-across-own-slide',
+        d.acrossLater === 1
+          ? '1 sound set to play across slides starts on a click: here it plays on its own slide only.'
+          : `${String(d.acrossLater)} sounds set to play across slides start on a click: here they play on their own slides only.`,
+      ),
+    );
+  if (d.acrossSecond > 0)
+    out.push(
+      info(
+        'deck-across-own-slide',
+        `${plural(d.acrossSecond, 'sound', 'sounds')} set to play across slides ${d.acrossSecond === 1 ? 'plays' : 'play'} on ${d.acrossSecond === 1 ? 'its' : 'their'} own slide only here: ${d.acrossSecond === 1 ? 'its slide has' : 'their slides have'} another sound that plays on.`,
       ),
     );
   if (d.transitionSounds > 0)
