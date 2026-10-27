@@ -92,7 +92,7 @@ Claude puts that line into the release of Drashti. Until then, Drashti cannot us
 3. When you have the Drashti with your list built in, open it. On its lock screen, choose **I Have a Token**, and type your approver Gmail and that token.
 4. That computer is then the owner's: it has **View › Access List**, where you see and change everyone.
 
-A token works once, for one computer, and runs out after **3 days**. If yours runs out, or for another computer of your own, choose **Let me in (the owner)…** again: you get a new token (a token not yet used stops working; computers already in stay in). **Never paste a token into the chat.**
+A token works once, for one computer, and runs out after **3 days**. If yours runs out, or for another computer of your own, choose **Let me in (the owner)…** again: you get a new token (a token not yet used stops working; computers already in stay in). Your own Gmail never uses **Request Access** on the lock screen: the list refuses it, and **Let me in** is its way in. **Never paste a token into the chat.**
 
 ---
 

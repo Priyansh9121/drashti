@@ -88,7 +88,8 @@ var DrashtiAccess = (function () {
     'already-approved': 'This Gmail is already approved.',
     'bad-token': 'That token does not work.',
     'not-owner': 'Only the owner’s computer can do that.',
-    'owner-row': 'The owner’s own row cannot be rejected or revoked.',
+    'owner-row':
+      'The owner’s own row is never asked for, rejected or revoked: the owner’s way in is Drashti › Let me in (the owner)… in the Sheet.',
     'not-found': 'That Gmail is not on the list.',
     'wrong-status': 'That cannot be done to this Gmail as it is now.',
     'mail-limit': 'The list has sent all the emails it may send today; try again tomorrow.',
@@ -995,6 +996,9 @@ var DrashtiAccess = (function () {
   // ---- the calls ----
 
   function request(env, props, call) {
+    // The owner's row is never asked for (nor made "requested" again, whatever anyone sends): the owner's
+    // way in is Let me in, from the Sheet's own menu.
+    if (call.key === ownerKey(props)) throw refusal('owner-row');
     var L = PROTOCOL.limits;
     if (
       !allowed(env, 'rq-gmail', call.key, DAY, L.requestsPerGmailPerDay) ||

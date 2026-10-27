@@ -90,7 +90,8 @@ export const ACCESS_ERROR_TEXT: Record<AccessErrorCode, string> = {
   'bad-token':
     'That token does not work. A token works once, only with the Gmail it was sent to, and runs out after 3 days.',
   'not-owner': 'Only the owner’s computer can do that.',
-  'owner-row': 'The owner’s own Gmail cannot be rejected or revoked.',
+  'owner-row':
+    'That is the owner’s own Gmail: it is never asked for, rejected or revoked. The owner lets a computer in from the access list’s Sheet: Drashti › Let me in (the owner)…, then I Have a Token.',
   'not-found': 'That Gmail is not on the access list.',
   'wrong-status': 'That cannot be done to this Gmail as it is now.',
   'mail-limit': 'The access list has sent all the emails it may send today. Try again tomorrow.',

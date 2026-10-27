@@ -63,7 +63,7 @@ old answer or another computer's answer is never believed. Before the list is se
 
 | op        | adds to the call                   | answers                                                                                  |
 | --------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| `request` | `name` (optional)                  | `{ status: "requested", mailed }`; refused `already-approved`, `too-many`                |
+| `request` | `name` (optional)                  | `{ status: "requested", mailed }`; refused `owner-row`, `already-approved`, `too-many`   |
 | `status`  |                                    | `{ status, tokenWaiting }`: `requested`, `approved`, `rejected`, `revoked`, or `unknown` |
 | `redeem`  | `token`                            | `{ grantId, secret, owner }`; refused `bad-token`, `too-many`                            |
 | `check`   | `grantId`, `at`, `activity`, `mac` | `{ status, owner, recorded }`: `in`, `revoked`, `rejected`, or `unknown`                 |
@@ -73,7 +73,9 @@ old answer or another computer's answer is never believed. Before the list is se
   version, with Approve and Reject links. A row approved with a computer in or a token waiting answers
   `already-approved` (the person uses their token, or the owner gives access again); one approved whose
   token ran out unused is asked for again like any other. `mailed: false` when the day's emails are used
-  up: the row is kept all the same, for the owner to see.
+  up: the row is kept all the same, for the owner to see. The owner's own Gmail is never asked for
+  (`owner-row`, before anything is counted or read), so nobody's request can make the owner's row
+  "requested" again: the owner's way in is Let me in, from the Sheet's menu.
 - **status** answers only the computer that made the request (any other gets `unknown`).
   `tokenWaiting`: approved, and a token sent and not used yet.
 - **redeem** checks, under the script's lock (so two at once cannot both win), that the row is approved and

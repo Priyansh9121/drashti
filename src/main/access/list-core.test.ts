@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   callBody,
@@ -296,6 +297,26 @@ describe('a request', () => {
     });
   });
 
+  it('naming the owner’s own Gmail is refused, and never demotes the owner’s row (Let me in is its way in)', () => {
+    const c = mac(30);
+    const list = c.list;
+    // No row yet: none is made, and the approver is not emailed.
+    expect(c.request(PLACEHOLDER_APPROVER)).toMatchObject({ ok: false, error: 'owner-row' });
+    expect(row(list, PLACEHOLDER_APPROVER)).toBeUndefined();
+    // Approved, its token run out unused and no computer in: still approved, nothing asked, nobody emailed.
+    core.letOwnerIn(list.env);
+    list.move(3 * DAY + MINUTE);
+    const before = row(list, PLACEHOLDER_APPROVER);
+    const mails = list.mailbox.length;
+    expect(c.request(PLACEHOLDER_APPROVER.toUpperCase(), 'Placeholder Stranger')).toMatchObject({
+      ok: false,
+      error: 'owner-row',
+    });
+    expect(row(list, PLACEHOLDER_APPROVER)).toEqual(before);
+    expect(list.mailbox).toHaveLength(mails);
+    expect(c.status(PLACEHOLDER_APPROVER)).toMatchObject({ ok: true, status: 'unknown' });
+  });
+
   it('is kept even when the day’s emails are used up (mailed: false), so the owner still sees it', () => {
     const c = new Computer(newList({ mailQuota: 0 }), placeholderComputer('mac-quota'));
     expect(c.request(PERSON)).toMatchObject({ ok: true, status: 'requested', mailed: false });
@@ -394,16 +415,22 @@ describe('the Approve and Reject links', () => {
     expect(c.list.tokenFor(PERSON)).toBeNull();
   });
 
-  it('never reject the owner’s own row', () => {
-    const c = mac(15);
-    c.request(PLACEHOLDER_APPROVER);
-    expect(
-      core.answerLink(c.list.env, linkParams(c.list.linksFor(PLACEHOLDER_APPROVER)?.reject ?? '')),
-    ).toMatchObject({
+  it('never reject the owner’s own row, even a request on it typed in the Sheet', () => {
+    const list = newList();
+    core.letOwnerIn(list.env);
+    // A request on the owner's row, as only a hand in the Sheet can make one now.
+    const r = '7'.repeat(32);
+    list.sheet.type(PEOPLE, 'Gmail', PLACEHOLDER_APPROVER, 'Request', r);
+    list.sheet.type(PEOPLE, 'Gmail', PLACEHOLDER_APPROVER, 'Request at', new Date(list.t));
+    const x = String(list.t + DAY);
+    const s = createHmac('sha256', Buffer.from(list.props.linkKey, 'utf8'))
+      .update(`drashti-link\nreject\n${r}\n${x}`, 'utf8')
+      .digest('hex');
+    expect(core.answerLink(list.env, { a: 'reject', r, x, s })).toMatchObject({
       kind: 'refused',
       lines: [core.MESSAGES['owner-row']],
     });
-    expect(row(c.list, PLACEHOLDER_APPROVER)?.['Status']).toBe('requested');
+    expect(row(list, PLACEHOLDER_APPROVER)?.['Status']).toBe('approved');
   });
 
   it('say so when the day’s emails are used up, and change nothing', () => {
