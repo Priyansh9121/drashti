@@ -85,7 +85,10 @@ export async function uploadAnswer(
   const id = params['id'] ?? '';
   switch (op) {
     case 'uploads':
-      return { status: 200, body: { ok: true, adding: uploads.adding(), uploads: uploads.list(device) } };
+      return {
+        status: 200,
+        body: { ok: true, adding: await uploads.adding(), uploads: uploads.list(device) },
+      };
     case 'upload':
       return uploads.begin(device, await readBody());
     case 'upload.status':

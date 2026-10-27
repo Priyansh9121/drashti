@@ -269,8 +269,9 @@ export class Uploads {
     }
   }
 
-  /** Whether phones may add files now, and how large, as the phone's page reads it. */
-  adding(): AddFilesView {
+  /** Whether phones may add files now, and how large, as the phone's page reads it (once the folder is ready). */
+  async adding(): Promise<AddFilesView> {
+    await this.starting;
     return { on: this.policy.on && this.ready, maxBytes: this.policy.maxBytes };
   }
 
@@ -454,6 +455,12 @@ export class Uploads {
 
   private checking(up: Upload): boolean {
     return up.state === 'checking';
+  }
+
+  /** What the phone reads while its file waits to be imported (a deck, while the stream is on air). */
+  note(id: string, message: string): void {
+    const up = this.table.get(id);
+    if (up?.state === 'importing') up.message = message;
   }
 
   /** What the main process made of a file it was handed. */
