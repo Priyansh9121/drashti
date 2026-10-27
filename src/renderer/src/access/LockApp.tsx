@@ -120,6 +120,9 @@ export function LockApp() {
                 <form
                   className="space-y-3"
                   data-testid="access-request-form"
+                  // Drashti checks the Gmail itself and says what is wrong on its field, in its own words: the
+                  // browser's own check of an email field would stop the request unsaid, with its own bubble.
+                  noValidate
                   onSubmit={(e) => {
                     e.preventDefault();
                     void act(() => window.drashti.access.request(gmail, name));
@@ -170,6 +173,7 @@ export function LockApp() {
                 <form
                   className="space-y-3"
                   data-testid="access-token-form"
+                  noValidate
                   onSubmit={(e) => {
                     e.preventDefault();
                     void act(() => window.drashti.access.redeem(gmail, token));

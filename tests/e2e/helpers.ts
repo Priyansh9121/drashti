@@ -83,7 +83,8 @@ export async function launchApp(
   access: AccessOptions = {},
 ): Promise<{ app: ElectronApplication; userData: string; access: AccessStandIn }> {
   const userData = userDataDir ?? mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
-  const lock = await letInBeforeStart(userData, access);
+  const version = extraEnv['DRASHTI_TEST_VERSION'];
+  const lock = await letInBeforeStart(userData, version ? { version, ...access } : access);
   const app = await electron.launch({
     // Another build of Drashti can be run instead (an earlier commit's, for audience-pixels.spec.ts).
     args: [process.env['DRASHTI_E2E_APP_DIR'] ?? '.'],
