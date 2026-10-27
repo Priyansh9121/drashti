@@ -230,6 +230,8 @@ export default defineConfig(
       'src/renderer/src/web/stage/**/*.{ts,tsx}',
       'src/shared/idle.ts',
       'src/shared/picture-look.ts',
+      // A stage layout's timer and clock boxes, their colours and flash (Session 54).
+      'src/shared/stage-timer.ts',
     ],
     ignores: ['**/*.test.ts'],
     rules: {
