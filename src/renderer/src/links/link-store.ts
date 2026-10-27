@@ -19,8 +19,9 @@ import { itemsMadeBy } from '../../../shared/import-items';
 import { openReport, useImports } from '../library/import-store';
 import { useNotice } from '../operator/actions';
 import type { AddTarget } from '../playlists/add-made';
-import { addMadeTo, defaultTarget } from '../playlists/add-made';
+import { nameAfter } from '../playlists/add-made';
 import { loadTree, openPlaylist } from '../playlists/playlist-store';
+import { chosenTarget, landInPlaylist } from './link-playlist';
 
 /*
  * Import from a Link in the operator window (Session 25b): the dialog's
@@ -41,7 +42,7 @@ interface LinkStore {
   choice: { type: YouTubeType; height: number | null; permission: boolean };
   /**
    * When it's imported, add it to (Session 26a): chosen before Download; null until the operator picks one,
-   * which means the open playlist when one is open, else no playlist.
+   * which means the playlist a download went into last, else the open one, else a new one (Session 54).
    */
   addTo: AddTarget | null;
 }
@@ -61,17 +62,28 @@ export const useLinks = create<LinkStore>(() => ({
 /** The playlist a download's import goes into, chosen as Download was pressed; done once its import ends. */
 let pendingAdd: AddTarget | null = null;
 
-/** Where the dialog says it will add what is imported. */
-export const addToNow = (s: { addTo: AddTarget | null }): AddTarget => s.addTo ?? defaultTarget();
+/** What a new playlist for a download is called to begin with: what the link holds (a video's title). */
+export const newPlaylistName = (view: LinkView | null): string => nameAfter(view?.look?.name ?? 'Download');
 
-/** The import of a download ended: what it made goes into the playlist chosen for it. */
+/** Where the dialog says it will add what is imported (Session 54: the playlist chosen last, offered first). */
+export const addToNow = (s: { addTo: AddTarget | null; view: LinkView | null }): AddTarget =>
+  chosenTarget(s.addTo, s.view?.lastPlaylist ?? null, newPlaylistName(s.view));
+
+/** A new playlist with no name yet: the download waits until it has one (Session 54). */
+export const unnamed = (target: AddTarget | null): boolean =>
+  target?.kind === 'new' && target.name.trim() === '';
+
+/**
+ * The import of a download ended: what it made goes into the playlist chosen for it, which then opens with the
+ * new item shown and is offered first next time (Session 54).
+ */
 async function addImported(runId: string): Promise<void> {
   const target = pendingAdd;
   pendingAdd = null;
   if (!target || target.kind === 'none') return;
   const report = await window.drashti.library.getImportReport(runId);
   if (!report) return;
-  const name = await addMadeTo(target, itemsMadeBy(report.items, report.paths));
+  const name = await landInPlaylist(target, itemsMadeBy(report.items, report.paths));
   if (name) useNotice.setState({ text: `What the link brought in was added to “${name}”.` });
 }
 
@@ -164,6 +176,8 @@ export async function startDownload(): Promise<boolean> {
   const asked = video ? { ...choice, height: chosenHeight(video, view.maxHeight, choice.height) } : null;
   // A folder makes a playlist of its own (Session 26c): nothing else to add it to.
   const target = view?.look?.shape === 'folder' ? null : addToNow(useLinks.getState());
+  // A new playlist is named before the download starts (Session 54): Download stays off until it is.
+  if (unnamed(target)) return false;
   const ok = await act(() => window.drashti.links.download(asked));
   if (ok) pendingAdd = target;
   const youtube = video !== undefined;

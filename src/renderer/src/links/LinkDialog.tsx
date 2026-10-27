@@ -26,8 +26,9 @@ import { plural } from '../ui/text';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
 import { usePlaylists } from '../playlists/playlist-store';
-import { AddTargetSelect, defaultTarget, nameAfter } from '../playlists/add-made';
+import { AddTargetSelect } from '../playlists/add-made';
 import {
+  addToNow,
   anotherLink,
   choose,
   addWaitingFiles,
@@ -38,11 +39,13 @@ import {
   lastPart,
   linkBusy,
   lookAtLink,
+  newPlaylistName,
   pickSaveFolder,
   seeLinkReport,
   setMaxHeight,
   startDownload,
   stopDownload,
+  unnamed,
   useLinks,
 } from './link-store';
 
@@ -257,12 +260,14 @@ function SaveIn({ view, locked }: { view: LinkView; locked: boolean }) {
 }
 
 /**
- * When it's imported, add it to (Session 26a): the open playlist to begin with (when one is open), another,
- * a new one named after the file or folder, or none. Done when the download's import ends, even with the
- * dialog closed.
+ * When it's imported, add it to (Session 26a): since Session 54 the playlist a download went into last to begin
+ * with (else the open one), another, a new one, or none (last, never to begin with). With no playlist at all,
+ * it asks for a new one's name before the download starts. Done when the download's import ends, even with the
+ * dialog closed; that playlist then opens with the new item shown.
  */
 function AddWhenImported({ view }: { view: LinkView }) {
   const addTo = useLinks((s) => s.addTo);
+  const tree = usePlaylists((s) => s.tree);
   // Read so the default follows the playlist opened meanwhile.
   usePlaylists((s) => s.openId);
   // A folder becomes a playlist of its own (Session 26c), named after it.
@@ -273,21 +278,54 @@ function AddWhenImported({ view }: { view: LinkView }) {
         order: each folder’s videos, then its PowerPoint files, with a header for each folder inside.
       </p>
     );
-  const target = addTo ?? defaultTarget();
+  const target = addToNow({ addTo, view });
+  const playlists = tree.filter((n) => !n.isFolder);
+  const last = playlists.some((n) => n.id === view.lastPlaylist) ? view.lastPlaylist : null;
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-muted" id="link-add-to-label">
-        When it’s imported, add it to:
-      </p>
-      <AddTargetSelect
-        value={target}
-        onChange={chooseAddTo}
-        newName={nameAfter(view.look?.name ?? 'Download')}
-        label="When it’s imported, add it to"
-        noneLabel="No playlist"
-        testId="link-add-to"
-      />
+    <div className="space-y-2">
+      {playlists.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted" id="link-add-to-label">
+            When it’s imported, add it to:
+          </p>
+          <AddTargetSelect
+            value={target}
+            onChange={chooseAddTo}
+            newName={target.kind === 'new' ? target.name : newPlaylistName(view)}
+            label="When it’s imported, add it to"
+            noneLabel="No playlist"
+            first={last}
+            testId="link-add-to"
+          />
+        </div>
+      )}
+      {target.kind === 'new' && <NewPlaylistName name={target.name} first={playlists.length === 0} />}
     </div>
+  );
+}
+
+/**
+ * A new playlist's name (Session 54), asked before the download starts: the playlist is made, and opened, when
+ * the download is in. With no playlist at all, it is the only place a download can go.
+ */
+function NewPlaylistName({ name, first }: { name: string; first: boolean }) {
+  return (
+    <Field
+      label={first ? 'There are no playlists yet: name one for it' : 'The new playlist’s name'}
+      hint="Drashti makes it when the download is in, and opens it."
+      error={name.trim() === '' ? 'Name the playlist first: the download goes into it.' : null}
+    >
+      <TextInput
+        data-testid="link-new-playlist"
+        value={name}
+        maxLength={200}
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(e) => {
+          chooseAddTo({ kind: 'new', name: e.target.value });
+        }}
+      />
+    </Field>
   );
 }
 
@@ -627,7 +665,10 @@ export function LinkDialog({ platform }: { platform: string }) {
   const chosen = useLinks((s) => s.kind);
   const error = useLinks((s) => s.error);
   const choice = useLinks((s) => s.choice);
+  const addTo = useLinks((s) => s.addTo);
   const simple = useMode((s) => s.mode === 'simple');
+  // Read so where the download goes, to begin with, follows the playlists (Session 54).
+  usePlaylists((s) => s.tree);
   useEffect(() => {
     connectLinks();
   }, []);
@@ -642,11 +683,14 @@ export function LinkDialog({ platform }: { platform: string }) {
   const youtubeReady =
     !video ||
     (choice.permission && (choice.type === 'mp3' || video.heights.some((h) => h.height <= view.maxHeight)));
+  // A new playlist for it is named first (Session 54); a folder makes its own.
+  const named = view.look?.shape === 'folder' || !unnamed(addToNow({ addTo, view }));
   const canDownload =
     !busy &&
     view.saved === null &&
     view.look !== null &&
     youtubeReady &&
+    named &&
     (view.phase === 'looked' || view.phase === 'failed' || view.phase === 'stopped');
   return (
     <Dialog

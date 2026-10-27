@@ -12,6 +12,7 @@ import { useEngine } from '../engine/engine-store';
 import { leaveItem, selectPresentation, setLibraryTab, useLibrary } from '../library/library-store';
 import { CannotPlayBadge, mediaKindIcon, mediaProblem } from '../library/MediaList';
 import { useExtras } from '../library/extras-store';
+import { useLandedInView } from '../links/link-playlist';
 import { chooseAddTo, openLinkDialog } from '../links/link-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
@@ -544,6 +545,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       ),
     [items, byFolder, view, shownFolder],
   );
+  // A download from a link, just in (Session 54): its card brought into view, never given the keyboard.
+  useLandedInView(listRef, rows);
   const end: DropSpot = useMemo(() => {
     if (!byFolder) return { at: items.length };
     const at = folderEnd(items, view, shownFolder);
