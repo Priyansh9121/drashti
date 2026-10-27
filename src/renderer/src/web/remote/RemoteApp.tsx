@@ -84,6 +84,7 @@ import { Props } from './Props';
 import { RemotePlaying } from './RemotePlaying';
 import { isRepeatPlaylist, repeatItemUp, startGoingRound } from './repeat';
 import { RepeatStart } from './RepeatStart';
+import { useLayout } from './layout';
 import { StageScreen } from './StageScreen';
 import { Timers } from './Timers';
 
@@ -113,32 +114,6 @@ import { Timers } from './Timers';
 const CANVAS = { width: 1920, height: 1080 };
 
 const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
-
-/**
- * How the page is laid out: tabs on a phone; on a tablet held upright (or a narrow window), the
- * playlist or the library beside the show; held sideways (or a wide window), the live picture, the
- * notes and Next beside the slides (Session 18).
- */
-type RemoteLayout = 'phone' | 'wide' | 'landscape';
-const WIDE = '(min-width: 768px)';
-const LANDSCAPE = '(min-width: 1000px) and (orientation: landscape)';
-
-function useLayout(): RemoteLayout {
-  const read = (): RemoteLayout =>
-    matchMedia(LANDSCAPE).matches ? 'landscape' : matchMedia(WIDE).matches ? 'wide' : 'phone';
-  const [layout, setLayout] = useState(read);
-  useEffect(() => {
-    const queries = [matchMedia(LANDSCAPE), matchMedia(WIDE)];
-    const on = () => {
-      setLayout(read());
-    };
-    for (const q of queries) q.addEventListener('change', on);
-    return () => {
-      for (const q of queries) q.removeEventListener('change', on);
-    };
-  }, []);
-  return layout;
-}
 
 const itemArrangement = (order: ItemOrder, doc: PresentationDoc): string | null =>
   order.mode === 'all'

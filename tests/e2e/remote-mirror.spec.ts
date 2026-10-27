@@ -437,6 +437,8 @@ test('from a phone, as from the operator window: props, media with its skips, th
 /** The sizes the mirror is laid out for: a phone, a tablet upright and a tablet held sideways. */
 const SIZES = [
   { name: 'a phone', width: 375, height: 812, layout: 'phone', mobile: true },
+  // Held sideways, a phone keeps its tabs (D5 review): as wide as a small tablet, far too short for its columns.
+  { name: 'a phone held sideways', width: 844, height: 390, layout: 'phone', mobile: true },
   { name: 'a tablet', width: 768, height: 1024, layout: 'wide', mobile: true },
   { name: 'a tablet held sideways', width: 1024, height: 768, layout: 'landscape', mobile: true },
 ] as const;
@@ -517,8 +519,11 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
             .getByRole('button')
             .evaluateAll((buttons) => buttons.map((b) => Math.round(b.getBoundingClientRect().top)));
           const firstRow = tops.filter((t) => t === tops[0]).length;
-          if (size.layout === 'phone') expect(firstRow, at).toBe(3);
+          if (size.width < 600) expect(firstRow, at).toBe(3);
           else expect(firstRow, at).toBeGreaterThanOrEqual(3);
+          // Back and Next always in reach, a phone held sideways too.
+          await expect(page.getByTestId('remote-next-button')).toBeInViewport();
+          await expect(page.getByTestId('remote-back')).toBeInViewport();
           // Held sideways, More's sections stand in two columns, and Media in a grid of two or more.
           if (size.layout === 'landscape') {
             await page.getByTestId('remote-panel-more').click();
