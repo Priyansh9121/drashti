@@ -53,7 +53,7 @@ import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
 import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
 import { plural } from '../../shared/text';
-import { sw } from '../switches';
+import { sw, swMs } from '../switches';
 import { type ClockStyle, validClockStyle } from '../../shared/format';
 
 /*
@@ -122,6 +122,12 @@ export interface NodeAppHandle {
 /** How often the node reports its health to Main. */
 const HEALTH_EVERY_MS = 2000;
 
+/** Tests only (never a packaged Drashti): a node's 2 minutes without a Main let in, shorter. */
+function testGrace(): { graceMs?: number } {
+  const ms = swMs('DRASHTI_TEST_ACCESS_STOP_MS');
+  return ms === null ? {} : { graceMs: ms };
+}
+
 export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const store = new NodeStore(deps.userData);
   const startNotes = [...deps.startNotes];
@@ -166,6 +172,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     log: (line) => {
       log.info(line);
     },
+    // Tests only (never a packaged Drashti): the 2 minutes shorter, as Main's own (behind-the-lock.ts).
+    ...testGrace(),
   });
   /** Main's state as this node's screens draw it: black over it while no Main let in is heard. */
   const shown = (state: EngineState): EngineState => {
