@@ -28,11 +28,15 @@ const DECK = {
   triggers: 0,
 };
 
-const cuts = (worst: CutPlan['worst'], lostSlides: number[] = []): CutPlan => ({
-  slides: [],
+/** A cut of five slides, `offSlides` off their moments, its movie `movieMs` long where 60 s were planned. */
+const cuts = (offSlides: number[], movieMs = 60_000): CutPlan => ({
+  slides: [0, 1, 2, 3, 4].map((index) => ({ index, steps: [] })),
   offsets: [],
-  lostSlides,
-  worst,
+  lostSlides: [],
+  offSlides,
+  lengthOff: Math.abs(movieMs - 60_000) > 3000,
+  lengths: { movieMs, plannedMs: 60_000 },
+  worst: null,
 });
 
 describe('the report’s words on a deck', () => {
@@ -90,14 +94,11 @@ describe('the report’s words on a deck', () => {
         'The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): its slides came in as pictures, without their animations. Import it again once the stream is off air.',
       fix: null,
     });
-    expect(
-      whyPictures({ kind: 'off-plan', cuts: cuts({ slide: 2, step: 1, offsetMs: -450 }) }, 'powerpoint')
-        .message,
-    ).toBe(
-      'PowerPoint made the deck’s movie, but a step on slide 3 came 0.45 s from its moment (more than 0.2 s), so its clicks could not be cut exactly: its slides came in as pictures, without their animations.',
+    expect(whyPictures({ kind: 'off-plan', cuts: cuts([0, 2, 4]) }, 'powerpoint').message).toBe(
+      'PowerPoint made the deck’s movie, but steps on 3 of its 5 slides came more than 0.2 s from their moments, so its clicks could not be cut exactly: its slides came in as pictures, without their animations.',
     );
-    expect(whyPictures({ kind: 'off-plan', cuts: cuts(null, [4]) }, 'keynote').message).toBe(
-      'Keynote made the deck’s movie, but slide 5 was not where it should be in it, so its clicks could not be cut exactly: its slides came in as pictures, without their animations.',
+    expect(whyPictures({ kind: 'off-plan', cuts: cuts([], 100_000) }, 'powerpoint').message).toBe(
+      'PowerPoint made the deck’s movie, but it was 1 min 40 s long where 1 min 0 s were planned (it did not use the deck’s timings), so its clicks could not be cut exactly: its slides came in as pictures, without their animations.',
     );
     expect(
       whyPictures({ kind: 'app', reason: 'PowerPoint stopped answering', message: '' }, 'powerpoint').message,

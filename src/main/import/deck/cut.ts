@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ffmpegEnv } from '../../stream/worker/ffmpeg-env';
 import type { MoviePlan } from './plan';
-import { HOLD_SETTLE_MS } from './plan';
+import { HOLD_SETTLE_MS, plannedLength } from './plan';
 
 /*
  * Cutting a deck's movie into its steps (Session 54, C2, from C1's cut-clips.mjs and its findings: assister/
@@ -206,15 +206,30 @@ export interface Offset {
 export interface CutPlan {
   slides: SlideCut[];
   offsets: Offset[];
-  /** Shown slides (from 0) whose transition was not found near its planned moment. */
+  /**
+   * Shown slides (from 0) whose transition was not seen near its planned moment (two slides alike): cut by the
+   * plan, which the timed copy keeps (C review).
+   */
   lostSlides: number[];
+  /** Shown slides (from 0) with a step seen more than 0.2 s from its moment: each comes in as its picture. */
+  offSlides: number[];
+  /** The movie is much longer or shorter than planned: it did not play the plan at all. */
+  lengthOff: boolean;
+  /** How long the movie is, and how long it was planned to be (ms). */
+  lengths: { movieMs: number; plannedMs: number };
   /** The step furthest from its plan, as measured (ms), and where. */
   worst: { slide: number; step: number; offsetMs: number } | null;
 }
 
-/** Whether the movie played as planned: every step it could see within 0.2 s, every slide where it should be. */
+/** How far the movie's length may be from the plan's: 2 s, or a twentieth of it. */
+const LENGTH_SLACK_MS = 2000;
+
+/**
+ * Whether the movie played as planned, near enough to cut (Session 54, C review: decided slide by slide): its
+ * length as planned, and no more than half its slides off (those come in as their pictures).
+ */
 export const onPlan = (cut: CutPlan): boolean =>
-  cut.lostSlides.length === 0 && (cut.worst === null || Math.abs(cut.worst.offsetMs) <= MAX_OFFSET_MS);
+  !cut.lengthOff && cut.offSlides.length * 2 <= cut.slides.length;
 
 /** Find each slide and step in the movie by the plan, and where to cut each. */
 export function planCuts(plan: MoviePlan, motion: Motion): CutPlan {
@@ -306,7 +321,23 @@ export function planCuts(plan: MoviePlan, motion: Motion): CutPlan {
     });
     return { index: s.index, steps };
   });
-  return { slides, offsets, lostSlides, worst };
+  const offSlides = [
+    ...new Set(
+      offsets.filter((o) => o.offsetMs !== null && Math.abs(o.offsetMs) > MAX_OFFSET_MS).map((o) => o.slide),
+    ),
+  ].sort((a, b) => a - b);
+  const planned = plannedLength(plan);
+  const lengthOff =
+    motion.durationMs > 0 && Math.abs(motion.durationMs - planned) > Math.max(LENGTH_SLACK_MS, planned / 20);
+  return {
+    slides,
+    offsets,
+    lostSlides,
+    offSlides,
+    lengthOff,
+    lengths: { movieMs: motion.durationMs, plannedMs: planned },
+    worst,
+  };
 }
 
 // ---- cutting -------------------------------------------------------------------------------------------

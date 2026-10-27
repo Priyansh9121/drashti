@@ -234,6 +234,9 @@ export async function bakedPresentation(
   let trimmed = 0;
   /** The last still of the shown slide before, which the movie's next transition starts from. */
   let before: string | null = null;
+  /** Slides whose steps came off their moments: each comes in as its picture (C review). */
+  const off = new Set(cuts.offSlides);
+  const offWords: { slide: number; offsetMs: number }[] = [];
   for (const [i, planned] of plan.slides.entries()) {
     const source = deck.slides[planned.index];
     const d = source?.deck;
@@ -246,9 +249,18 @@ export async function bakedPresentation(
       await rename(from, to);
       return to;
     };
+    // A slide whose steps came off their moments comes in as its picture (C review: slide by slide, never the
+    // whole deck for one slide): its last step's last still, its videos where they sit, its sound as its own.
+    const isOff = off.has(i);
     const deckSteps: DeckStep[] = [];
     for (const [k, f] of made.entries()) {
       const label = `Slide ${String(i + 1)} step ${String(k)}`;
+      if (isOff) {
+        if (k < made.length - 1) continue;
+        const last = refs.ref(await named(f.last, `Slide ${String(i + 1)}`), 'image', `${at}&last`);
+        deckSteps.push({ clipId: last, clipMs: 0, lastId: last });
+        continue;
+      }
       const clip = refs.ref(await named(f.clip, label), 'video', `${at}&step=${String(k)}`);
       const last = refs.ref(await named(f.last, `${label} last`), 'image', `${at}&step=${String(k)}&last`);
       const hold = f.hold
@@ -377,6 +389,24 @@ export async function bakedPresentation(
       media: deckMedia,
     };
     before = deckSteps.at(-1)?.lastId ?? null;
+    if (isOff) {
+      // Its sound that starts with it, as its own sound (one a slide); the rest stays out.
+      const sound = deckMedia.find((m) => m.kind === 'audio' && 'step' in m.start && m.start.step === 0);
+      if (sound && cues.length === 0)
+        cues.push({
+          kind: 'audio',
+          label: '',
+          media: refs.indexOf(sound.mediaId),
+          props: { volume: sound.muted ? 0 : sound.volume, loop: sound.loop },
+        });
+      const worst = Math.max(
+        0,
+        ...cuts.offsets
+          .filter((o) => o.slide === i && o.offsetMs !== null)
+          .map((o) => Math.abs(o.offsetMs ?? 0)),
+      );
+      offWords.push({ slide: i + 1, offsetMs: worst });
+    }
     slides.push({
       label: '',
       notes: tidyNotes(source?.notes ?? ''),
@@ -384,11 +414,17 @@ export async function bakedPresentation(
       enabled: true,
       elements,
       cues,
-      deck: deckSlide,
+      ...(isOff ? {} : { deck: deckSlide }),
     });
   }
   const hidden = deck.slides.length - plan.slides.length;
-  const stepsCount = slides.reduce((n, s) => n + (s.deck.steps.length > 0 ? s.deck.steps.length - 1 : 0), 0);
+  const stepsCount = slides.reduce(
+    (n, s) => n + (s.deck && s.deck.steps.length > 0 ? s.deck.steps.length - 1 : 0),
+    0,
+  );
+  // The furthest step from its moment on the slides cut into steps (those off it came in as pictures).
+  const onSlides = baked.cuts.offsets.filter((o) => o.offsetMs !== null && !off.has(o.slide));
+  const worstOn = onSlides.length > 0 ? Math.max(...onSlides.map((o) => Math.abs(o.offsetMs ?? 0))) : null;
   return {
     name: nameFromFile(basename(fileName)),
     ref: null,
@@ -404,7 +440,8 @@ export async function bakedPresentation(
       bakeMs: baked.bakeMs,
       slides: slides.length,
       clicks: stepsCount,
-      worstMs: baked.cuts.worst ? Math.abs(baked.cuts.worst.offsetMs) : null,
+      worstMs: worstOn,
+      offSlides: offWords,
       hidden,
       withNotes: slides.filter((s) => s.notes !== '').length,
       videos,
@@ -463,6 +500,8 @@ export function bakedIssues(d: {
   trimmed: number;
   /** Effects that ran when a shape was clicked. */
   triggers: number;
+  /** Slides (from 1) that came in as their pictures, a step off its moment by so much (C review). */
+  offSlides?: readonly { slide: number; offsetMs: number }[];
 }): ImportIssue[] {
   const info = (code: string, message: string): ImportIssue => ({
     severity: 'info',
@@ -476,6 +515,18 @@ export function bakedIssues(d: {
       `${APP[d.baker]} made this deck’s movie with its animations in ${took(d.bakeMs)}: ${plural(d.slides, 'slide')} with ${plural(d.clicks, 'click')}. Next and Back step through the clicks as in its slide show, then on to the next slide; each slide’s own transition plays as it comes in.`,
     ),
   ];
+  const offs = d.offSlides ?? [];
+  if (offs.length > 0) {
+    const names = offs.map((o) => String(o.slide));
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+    const furthest = Math.max(...offs.map((o) => o.offsetMs));
+    out.push({
+      severity: 'warning',
+      code: 'deck-slides-pictures',
+      message: `${offs.length === 1 ? `Slide ${list ?? ''} came in as its picture` : `Slides ${list ?? ''} came in as their pictures`}, without ${offs.length === 1 ? 'its' : 'their'} animations: a step came ${(furthest / 1000).toFixed(2)} s from its moment in the movie (more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s), so ${offs.length === 1 ? 'it' : 'they'} could not be cut exactly. Something there may move all the time (an animated picture).`,
+      fix: null,
+    });
+  }
   if (d.worstMs !== null)
     out.push(
       info(
@@ -582,9 +633,9 @@ export function whyPictures(why: BakeFailure, baker: Baker, kept = false): Impor
         : `The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
       : why.kind === 'off-plan'
         ? `${app} made the deck’s movie, but ${
-            why.cuts.lostSlides.length > 0
-              ? `slide ${String((why.cuts.lostSlides[0] ?? 0) + 1)} was not where it should be in it`
-              : `a step on slide ${String((why.cuts.worst?.slide ?? 0) + 1)} came ${(Math.abs(why.cuts.worst?.offsetMs ?? 0) / 1000).toFixed(2)} s from its moment (more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s)`
+            why.cuts.lengthOff
+              ? `it was ${took(why.cuts.lengths.movieMs)} long where ${took(why.cuts.lengths.plannedMs)} were planned (it did not use the deck’s timings)`
+              : `steps on ${String(why.cuts.offSlides.length)} of its ${String(why.cuts.slides.length)} slides came more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s from their moments`
           }, so its clicks could not be cut exactly: ${lost}.`
         : why.kind === 'cut'
           ? `${app} made the deck’s movie, but it could not be cut into its steps (${why.detail}): ${lost}.`
