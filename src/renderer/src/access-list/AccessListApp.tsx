@@ -286,7 +286,10 @@ export function AccessListApp() {
   // Below 640 × 420 (200% zoom in a small window), the window scrolls rather than squeezing the list away.
   return (
     <div className="flex h-full min-h-[420px] min-w-[640px] flex-col bg-ink text-fg">
-      <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line bg-panel px-4 py-2.5">
+      <header
+        className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line bg-panel px-4 py-2.5"
+        data-testid="access-header"
+      >
         <h1 className="text-lg font-bold">Access List</h1>
         <p className="text-sm text-muted" data-testid="access-summary">
           {people === null
@@ -298,7 +301,10 @@ export function AccessListApp() {
         </p>
       </header>
       <main className="flex min-h-0 flex-1 flex-col">
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2">
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2"
+          data-testid="access-toolbar"
+        >
           <span className="relative inline-flex w-56 min-w-40 items-center">
             <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-2 text-muted" />
             <TextInput
