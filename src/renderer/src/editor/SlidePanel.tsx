@@ -227,7 +227,9 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
   const sound = slide.cues.findLast((c) => c.kind === 'audio' && c.mediaId);
   // Its file missing (Session 54), as its background's is said.
   const soundMissing = sound !== undefined && missing(sound.mediaId);
-  const others = slide.cues.filter((c) => c !== background && c !== sound);
+  // What else the slide has, kept as it is by a change here: never another sound or background cue, which a change to
+  // its sound or background takes off with it (setSoundCue, setBackgroundCue: Session 54 review).
+  const others = slide.cues.filter((c) => c.kind !== 'audio' && c.kind !== 'background');
   const nameOf = (cue: EditCue | undefined) => {
     const label = cue?.label ?? '';
     const id = cue?.mediaId ?? null;
@@ -529,7 +531,7 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
           />
         )}
         {others.length > 0 && (
-          <p className="text-xs text-faint">
+          <p className="text-xs text-faint" data-testid="other-cues">
             Also on this slide, kept as they are: {others.map((c) => c.label || c.kind).join(', ')}.
           </p>
         )}

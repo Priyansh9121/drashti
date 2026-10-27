@@ -419,6 +419,8 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
     await expect(editor.getByTestId('sound-cue')).toHaveText(file);
     if (said) await expect(editor.getByTestId('sound-file-missing')).toHaveText(editorSays(file));
     else await expect(editor.getByTestId('sound-file-missing')).toHaveCount(0);
+    // The first of two sounds is never "kept as it is": a change to the sound takes both off (the review).
+    await expect(editor.getByTestId('other-cues')).toHaveCount(0);
     await win.keyboard.press('Escape');
     await expect(editor).toHaveCount(0);
   }
