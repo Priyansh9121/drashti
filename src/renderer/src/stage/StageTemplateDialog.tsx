@@ -7,6 +7,7 @@ import {
   STAGE_TEMPLATE_NAMES,
   STAGE_TEMPLATE_NOTES,
   STAGE_TEMPLATES,
+  stopsAtZeroFor,
   TEMPLATE_LENGTH_MS,
   TEMPLATE_TIME,
   TEMPLATE_TIMER_NAMES,
@@ -29,6 +30,7 @@ import { Field, Select, TextInput } from '../ui/Field';
 import { LayoutTemplate } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
+import { Checkbox } from '../ui/Toggle';
 import { useHallPicture } from './hall-picture';
 import { save, startLayout, useStageLayouts } from './stage-layouts-store';
 
@@ -83,6 +85,8 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
   const [words, setWords] = useState(TIMER_WORDS);
   const [problem, setProblem] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
+  // A countdown in Timers that holds at 0:00, let run on past it for the Countdown (Part A's review): asked.
+  const [runOn, setRunOn] = useState(false);
   const id = useId();
   // The stage groups the layout is chosen for, read if the window has not yet.
   useEffect(() => {
@@ -99,6 +103,8 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
   ].filter((t) => t.kind !== 'clock' && kinds.includes(t.kind));
   const own = fitting.find((t) => t.id === chosenId) ?? fitting[0] ?? null;
   const ownChosen = use === 'own' ? own : null;
+  // The Countdown goes on past 0:00 in the overtime colour: one chosen that holds there never does (said below it).
+  const stopsShort = ownChosen !== null && stopsAtZeroFor(template, ownChosen);
   const timerName = (
     name ??
     freshName(
@@ -138,8 +144,20 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
     if (making) return;
     setProblem(null);
     let timerId: string;
-    if (ownChosen) timerId = ownChosen.id;
-    else {
+    if (ownChosen) {
+      timerId = ownChosen.id;
+      // Let it run on past 0:00, as asked: in Timers too, where it is the same timer.
+      if (stopsShort && runOn) {
+        setMaking(true);
+        const { id: _id, startedAt: _startedAt, elapsedMs: _elapsedMs, ...fields } = ownChosen;
+        const changed = await window.drashti.timers.update(ownChosen.id, { ...fields, allowsOverrun: true });
+        if (!changed.ok) {
+          setMaking(false);
+          setProblem(changed.message);
+          return;
+        }
+      }
+    } else {
       const durationMs = newKind === 'countdown' ? parsed : 0;
       if (durationMs === null || (newKind === 'countdown' && (durationMs <= 0 || durationMs > LONGEST_MS))) {
         setProblem('Write the length as minutes and seconds, for example 5:00.');
@@ -317,7 +335,24 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
                     ))}
                   </Select>
                 </Field>
-              ) : (
+              ) : null}
+              {ownChosen && stopsShort && (
+                <div className="space-y-1" data-testid="stage-template-stops">
+                  <p className="text-xs text-muted">
+                    “{ownChosen.name}” stops at 0:00, so the stage never shows the time past it in the
+                    overtime colour.
+                  </p>
+                  <Checkbox
+                    label="Let it run on past 0:00 (in Timers too)"
+                    checked={runOn}
+                    data-testid="stage-template-run-on"
+                    onChange={(e) => {
+                      setRunOn(e.target.checked);
+                    }}
+                  />
+                </div>
+              )}
+              {ownChosen ? null : (
                 <div className="flex flex-wrap items-end gap-3">
                   {kinds.length > 1 && (
                     <Field label="Kind">
@@ -392,7 +427,7 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
         <Notice tone="info" compact data-testid="stage-template-where">
           {stages > 0
             ? `Made, it is chosen at once for the stage screens in the live Look, “${lookName}”.`
-            : 'No screens are set up for the stage yet: the layout is made, and is chosen for them in Screens once they are.'}
+            : 'No screens are set up for the stage yet: the layout is made; choose it for them in Screens once there are some.'}
         </Notice>
       </div>
     </Dialog>

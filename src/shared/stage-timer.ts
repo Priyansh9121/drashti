@@ -54,25 +54,28 @@ export function stageTimerColor(
   return null;
 }
 
-/** How long a timer box flashes from 0:00. */
+/** How long a timer box flashes, from the first whole second of the engine's clock at or after its 0:00. */
 export const FLASH_FOR_MS = 10_000;
-/** Each step of the flash: the words dimmed for one, whole for the next (one swing of light a second). */
+/** Each step of the flash: the words dimmed on the engine clock's even seconds, whole on its odd ones. */
 export const FLASH_STEP_MS = 1000;
 /** The words' opacity while dimmed. */
 export const FLASH_DIM = 0.25;
 
 /**
- * Whether a flashing timer box's words are dimmed at `now`: for the ten seconds from when a countdown reached
- * 0:00, the first second of every two. Slow, as the flash rules ask (at most three swings of light a second;
- * this makes one, src/shared/stage-timer.test.ts). Never a count-up or a clock, nor a countdown paused (it is
- * then at no moment of its own).
+ * Whether a flashing timer box's words are dimmed at `now`: for ten seconds from the first whole second of the
+ * engine's clock at or after a countdown reached 0:00, on that clock's even seconds (five times, a second each).
+ * Slow, as the flash rules ask (at most three swings of light a second; this makes one). In step with the engine
+ * clock's whole seconds (Part A's review), not each timer's own 0:00, so several timers flash together and the
+ * screen's light changes only as a second begins, however many flash: timed from each 0:00, they flashed out of
+ * step. The first dim second comes within two of 0:00, which the colour when over marks at once. Never a count-up
+ * or a clock, nor a countdown paused (it is then at no moment of its own).
  */
 export function flashDimmed(timer: TimerState | undefined, now: number): boolean {
   if (!timer || !countsDown(timer)) return false;
   const zero = zeroAt(timer, now);
   if (zero === null) return false;
-  const t = now - zero;
-  return t >= 0 && t < FLASH_FOR_MS && Math.floor(t / FLASH_STEP_MS) % 2 === 0;
+  const from = Math.ceil(zero / FLASH_STEP_MS) * FLASH_STEP_MS;
+  return now >= from && now < from + FLASH_FOR_MS && Math.floor(now / FLASH_STEP_MS) % 2 === 0;
 }
 
 /** Each clock style's formatter for each way a clock box writes the time, made once (as format.ts's clocks are). */

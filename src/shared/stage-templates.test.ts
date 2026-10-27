@@ -4,6 +4,7 @@ import {
   freshName,
   STAGE_TEMPLATE_NAMES,
   STAGE_TEMPLATES,
+  stopsAtZeroFor,
   templateBoxes,
   templateTimer,
   templateTimerKinds,
@@ -149,6 +150,16 @@ describe('the stage layout templates', () => {
     for (const t of STAGE_TEMPLATES)
       for (const kind of templateTimerKinds(t))
         expect(timerFieldsSchema.safeParse(templateTimer(t, kind, asked)).success, `${t} ${kind}`).toBe(true);
+  });
+
+  // Part A's review: the Countdown goes on past 0:00 in the overtime colour, which one that holds there never shows.
+  it('know when a countdown chosen in Timers stops short of what the Countdown shows', () => {
+    const held = { kind: 'countdown' as const, allowsOverrun: false };
+    expect(stopsAtZeroFor('countdown', held)).toBe(true);
+    expect(stopsAtZeroFor('countdown', { ...held, allowsOverrun: true })).toBe(false);
+    for (const t of STAGE_TEMPLATES.filter((x) => x !== 'countdown'))
+      expect(stopsAtZeroFor(t, held), t).toBe(false);
+    expect(stopsAtZeroFor('countdown', { kind: 'countup', allowsOverrun: false })).toBe(false);
   });
 
   it('name what they make so that no other has the name', () => {

@@ -264,7 +264,7 @@ A phone or a script may clear a video input and take the box off, and since Sess
 
 **Audience and Stage** (Session 50): `GET /api/v1/hall` answers with `switches`, whether Main's own audience screens (key and fill too) and stage screens are on: `{"audience": true, "stage": false}`. The operator switches them off in Drashti (their displays then show the computer's desktop, while the show carries on) and on again; both are on at every start. No request on this API turns them. The feed's `{"type":"changed","what":"screens"}` says when to read them again.
 
-**The stage screens' timers** (Session 54): `GET /api/v1/hall` also answers with `stageGroupId`, the stage screens' group (the first stage group, or null), whose stage layout in the live Look (engine state, `look.groups`) the remote reads: each timer its timer boxes show by name is listed under "On the stage screens", with what it counts to and Start, Pause and Reset (`POST /api/v1/timers/{id}/start`, as any timer). The feed's `{"type":"changed","what":"screens"}` says when to read it again.
+**The stage screens' timers** (Session 54): `GET /api/v1/hall` also answers with `stageGroupId`, the stage screens' group (the first stage group, or null), whose stage layout in the live Look (engine state, `look.groups`) the remote reads: each timer its timer boxes show by name is listed in the remote's Stage screen section, under the stage message, with what it counts to and Start, Pause and Reset (`POST /api/v1/timers/{id}/start`, as any timer). The feed's `{"type":"changed","what":"screens"}` says when to read it again.
 
 **Session 51** added, within version 12:
 

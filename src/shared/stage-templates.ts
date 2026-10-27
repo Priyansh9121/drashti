@@ -2,7 +2,7 @@ import type { Rect } from './model';
 import type { StageBox, StageBoxKind } from './stage-layouts';
 import { newStageBox, STAGE_HEIGHT, STAGE_WIDTH } from './stage-layouts';
 import { TIMER_WORDS } from './timer-slides';
-import type { TimerFields, TimerKind } from './timers';
+import type { TimerDefinition, TimerFields, TimerKind } from './timers';
 
 /*
  * Ready-made stage layouts (Session 54): the stage layout editor's New from a Template… offers five, each one
@@ -83,6 +83,16 @@ export function templateTimer(
     allowsOverrun: template === 'countdown',
   };
 }
+
+/**
+ * Whether a timer chosen in Timers stops short of what a template shows (Part A's review): the Countdown goes on past
+ * 0:00 in the overtime colour, which a countdown that holds at 0:00 never reaches. The dialog says so, and offers
+ * to let it run on.
+ */
+export const stopsAtZeroFor = (
+  template: StageTemplate,
+  timer: Pick<TimerDefinition, 'kind' | 'allowsOverrun'>,
+): boolean => template === 'countdown' && timer.kind === 'countdown' && !timer.allowsOverrun;
 
 /** A name no other has: the name itself, else with the first number after it that is free ("Countdown 2"). */
 export function freshName(taken: Iterable<string>, base: string): string {
