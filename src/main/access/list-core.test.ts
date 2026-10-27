@@ -761,17 +761,30 @@ describe('a check', () => {
     expect(seen).toBeLessThan(list.t);
   });
 
-  it('allows one counted check a computer every 5 seconds; unsigned calls never use a computer’s up', () => {
+  it('answers a check soon after the last as any other (a quick restart), counting one in 5 seconds', () => {
     const list = newList();
     const c = new Computer(list, placeholderComputer('mac-gap'));
     const grant = approved(list, c);
-    expect(c.check(grant)).toMatchObject({ status: 'in' });
+    list.move(59 * SECOND);
+    expect(c.check(grant, { ...NO_ACTIVITY, shows: 1 })).toMatchObject({ status: 'in', recorded: false });
+    // Drashti quit and started again within 5 s: answered at once, though its minute is up, nothing recorded.
     list.move(2 * SECOND);
-    expect(c.check(grant)).toMatchObject({ ok: false, error: 'too-many' });
+    expect(c.check(grant, { ...NO_ACTIVITY, shows: 2 })).toMatchObject({
+      ok: true,
+      status: 'in',
+      recorded: false,
+    });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PERSON)?.['Shows']).toBe(0);
+    // Someone else, with this computer's id but not its secret: unknown, and never counted.
     list.move(5 * SECOND);
-    // Someone else, with this computer's id but not its secret.
     expect(c.check({ ...grant, secret: '0'.repeat(64) })).toMatchObject({ status: 'unknown' });
-    expect(c.check(grant)).toMatchObject({ status: 'in' });
+    expect(c.check(grant, { ...NO_ACTIVITY, shows: 3 })).toMatchObject({ status: 'in', recorded: true });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PERSON)?.['Shows']).toBe(3);
+    // A revoke is answered at once all the same, however soon the next check comes.
+    const o = new Computer(list, placeholderComputer('mac-gap-owner'));
+    o.owner('revoke', ownerIn(list, o), { target: PERSON });
+    list.move(SECOND);
+    expect(c.check(grant)).toMatchObject({ ok: true, status: 'revoked' });
   });
 
   it('works the same when Google empties the cache at any moment', () => {

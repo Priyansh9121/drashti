@@ -33,7 +33,7 @@ export const ACCESS_LIMITS = {
   /** Tries of a token an hour, for one Gmail and from one computer. */
   redeemsPerGmailPerHour: 10,
   redeemsPerComputerPerHour: 10,
-  /** A computer's checks closer together than this are answered too-many. */
+  /** A computer's checks closer together than this are all answered; only one counts (is recorded). */
   checkGapMs: 5_000,
   /** A computer's last seen, version and activity are written at most this often. */
   recordGapMs: 60_000,

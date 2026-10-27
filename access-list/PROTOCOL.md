@@ -97,8 +97,9 @@ old answer or another computer's answer is never believed. Before the list is se
     answer or a repeated call never counts anything twice.
   - The list writes the computer's last seen, name, version, platform and totals at most once a minute
     (`recorded: true` when it did), and the Gmail's row's sums with them.
-  - A computer's signed checks closer together than 5 seconds are answered `too-many`; only signed ones
-    count, so nobody else can use a computer's up.
+  - A computer's signed checks closer together than 5 seconds are answered as any other (a Drashti quit
+    and started again at once is answered at once), but only one in 5 seconds counts: the others record
+    nothing. Only signed ones count, so nobody else can use a computer's up.
 
 ### The owner's calls
 

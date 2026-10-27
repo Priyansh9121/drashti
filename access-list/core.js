@@ -1161,8 +1161,9 @@ var DrashtiAccess = (function () {
     var data = snapshot(env);
     var g = signedGrant(env, props, data, call);
     if (!g) return { ok: true, status: 'unknown', owner: false, recorded: false };
-    // At most one check a computer every PROTOCOL.limits.checkGapMs counts; only signed ones are counted,
-    // so nobody else can use up a computer's checks.
+    // At most one check a computer every PROTOCOL.limits.checkGapMs counts (is recorded); one sooner (Drashti
+    // quit and started again at once, say) is answered as any other. Only signed ones are counted, so nobody
+    // else can use up a computer's checks.
     var stateKey = cacheKey(env, 'computer', call.computer.id);
     var state;
     try {
@@ -1170,8 +1171,11 @@ var DrashtiAccess = (function () {
     } catch (e) {
       state = {};
     }
-    if (state.lastCheck && state.lastCheck <= now && now - state.lastCheck < PROTOCOL.limits.checkGapMs)
-      throw refusal('too-many');
+    var counted = !(
+      state.lastCheck &&
+      state.lastCheck <= now &&
+      now - state.lastCheck < PROTOCOL.limits.checkGapMs
+    );
     var p = data.byKey[g.key];
     if (p && changedByHand(p)) {
       takeInHandEdits(env, [p.key]);
@@ -1183,6 +1187,7 @@ var DrashtiAccess = (function () {
     var recorded = false;
     var lastRecord = state.lastRecord || g.lastSeen || 0;
     if (
+      counted &&
       s === 'in' &&
       (lastRecord > now || now - lastRecord >= PROTOCOL.limits.recordGapMs) &&
       call.at > g.lastAt
@@ -1204,12 +1209,13 @@ var DrashtiAccess = (function () {
         recorded = true;
       }
     }
-    cachePut(
-      env,
-      stateKey,
-      JSON.stringify({ lastCheck: now, lastRecord: recorded ? now : state.lastRecord || 0 }),
-      600,
-    );
+    if (counted)
+      cachePut(
+        env,
+        stateKey,
+        JSON.stringify({ lastCheck: now, lastRecord: recorded ? now : state.lastRecord || 0 }),
+        600,
+      );
     return { ok: true, status: s, owner: s === 'in' && g.key === ownerKey(props), recorded: recorded };
   }
 
