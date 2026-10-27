@@ -3,13 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { computerName } from '../../src/main/access/identity';
 import { ACCESS_REMOVED_TEXT } from '../../src/shared/access';
+import { platformWord } from '../../src/shared/access-list';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import type { AccessComputer } from '../../src/shared/access-protocol';
 import { callBody, placeholderComputer } from '../access-core';
 import type { AccessStandIn } from '../access-standin';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { PLACEHOLDER_PERSON } from './access';
+import { moveListClock, PLACEHOLDER_PERSON } from './access';
 import { expectFits } from './fit';
 import {
   chooseMenuItem,
@@ -86,6 +88,9 @@ test('the owner’s Access List: every Gmail as the list has it, each edit reach
     const hall = computerOf('access-list-person', 'Placeholder Hall Mac');
     const person = s.grant(PLACEHOLDER_PERSON, hall);
     const activity = { minutes: 125, shows: 3, streams: 2, recordings: 1, imports: 4 };
+    // The list writes a computer's totals at most once a minute, the first a minute after its token was used: its
+    // clock is moved on past that minute, as for a check made a minute later.
+    moveListClock(s, 61_000);
     s.list.handle(JSON.stringify(callBody('check', hall, { at: s.list.t, activity }, person).body));
     // The operator window's page has no way to the Access List's channels at all.
     expect(await win.evaluate(() => 'accessList' in (globalThis as PageGlobals).drashti)).toBe(false);
@@ -197,9 +202,15 @@ test('a revoke in the Access List stops that Gmail’s own Drashti at its next c
 
     const list = await openList(app);
     await choose(list, PLACEHOLDER_PERSON);
-    // Their computer, as its checks name it: this Drashti's own version.
+    // Their computer as their own Drashti's checks name it (its name and version), in place of the one its token
+    // was used from: the list writes those at most once a minute, the first a minute after the token was used, so
+    // its clock is moved on past that minute, and their next check (every 6 s here) brings them.
     const version = await theirs.app.evaluate(({ app: electronApp }) => electronApp.getVersion());
-    await expect(row(list, PLACEHOLDER_PERSON)).toContainText(version);
+    moveListClock(s, 61_000);
+    await expect(row(list, PLACEHOLDER_PERSON)).toContainText(
+      [computerName(), version, platformWord(process.platform)].filter(Boolean).join(' · '),
+      { timeout: 30_000 },
+    );
     await list.getByTestId('access-revoke').click();
     await list.getByTestId('access-revoke-question').getByRole('button', { name: 'Revoke' }).click();
     await expect(row(list, PLACEHOLDER_PERSON)).toHaveAttribute('data-status', 'revoked');
