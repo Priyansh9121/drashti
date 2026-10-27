@@ -1143,3 +1143,59 @@ test('a node’s stage screen and a tablet’s stage page flash a timer at 0:00 
     await main.app.close();
   }
 });
+
+// Part A's review: the layout a template makes goes to every stage group in the live Look, and to no other Look.
+test('New from a Template… gives the layout to every stage group in the live Look, and leaves another Look as it was', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Two stage groups (no screens needed) and a second Look.
+  const { groups, other } = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const ids: string[] = [];
+    for (const name of ['Placeholder stage one', 'Placeholder stage two']) {
+      const made = await d.screens.createGroup(name);
+      if (!made.ok) throw new Error(made.message);
+      const id = made.snapshot.groups.find((g) => g.name === name)?.id ?? '';
+      const role = await d.screens.setGroupRole(id, 'stage');
+      if (!role.ok) throw new Error(role.message);
+      ids.push(id);
+    }
+    const before = new Set((await d.looks.list()).looks.map((l) => l.id));
+    const look = await d.looks.create('Placeholder other Look', null);
+    if (!look.ok) throw new Error(look.message);
+    return { groups: ids, other: look.view.looks.find((l) => !before.has(l.id))?.id ?? '' };
+  });
+  expect(other).not.toBe('');
+  const looks = () => win.evaluate(() => (globalThis as PageGlobals).drashti.looks.list());
+  /** Each stage group's layout in a Look (the live one when none is named). */
+  const layoutsIn = async (lookId?: string) => {
+    const view = await looks();
+    const look = view.looks.find((l) => l.id === (lookId ?? view.liveId));
+    return groups.map((g) => look?.groups[g]?.stageLayoutId ?? null);
+  };
+  expect((await looks()).liveId).not.toBe(other);
+  expect(await layoutsIn()).toEqual([null, null]);
+
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await editor.getByTestId('stage-layout-from-template').click();
+  const dialog = win.getByTestId('stage-template-dialog');
+  await expect(dialog.getByTestId('stage-template-where')).toContainText(
+    'it is chosen at once for the stage screens',
+  );
+  await dialog.getByRole('radio', { name: 'Count up from 0:00', exact: true }).click();
+  await dialog.getByTestId('stage-template-make').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Count up from 0:00');
+
+  // Both stage groups in the live Look have it; the other Look's are as they were.
+  await expect
+    .poll(async () => (await liveLayoutOf(win, groups[0] ?? ''))?.name ?? null)
+    .toBe('Count up from 0:00');
+  const made = (await liveLayoutOf(win, groups[0] ?? ''))?.id ?? '';
+  await expect.poll(() => layoutsIn()).toEqual([made, made]);
+  expect(await layoutsIn(other)).toEqual([null, null]);
+  await app.close();
+});
