@@ -211,6 +211,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   lowerThirds: IPC.lowerThirds.list,
   'lowerThird.show': IPC.engine.command,
   music: IPC.music.view,
+  'repeat.start': IPC.engine.command,
   // Session 54: a shared playlist is read as a playlist is (Simple Mode reads too). Files a phone adds carry on in
   // Simple Mode while the switch is on, as the drop folder's do.
   shared: IPC.playlists.items,
@@ -848,6 +849,7 @@ export class NetworkService implements EngineTransport {
       case 'lowerThirds':
       case 'lowerThird.show':
       case 'music':
+      case 'repeat.start':
         return mirrorAnswer(request.op, args, this.deps.mirror, (command, did) =>
           this.run(command, who, did),
         );

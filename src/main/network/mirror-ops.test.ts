@@ -105,6 +105,11 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       ],
       music: () => [{ id: 'music-1', name: 'Placeholder tunes', trackCount: 3 }],
       keys: () => ({ platform: 'darwin', singleKeys: true }),
+      // A Repeat Slides playlist's items, by their first step (Session 54, D5 review): its second item from step 2.
+      repeatStep: (playlistId, itemId) =>
+        playlistId === 'repeat-1'
+          ? (({ 'item-1': 0, 'item-2': 2 } as Record<string, number>)[itemId] ?? null)
+          : null,
     },
     playMusic: (_who, playlistId) => {
       played.push(playlistId);
@@ -293,6 +298,30 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(commands).toEqual([]);
     for (const type of ['showProp', 'setBackground', 'playAudio', 'setMask', 'showLowerThird', 'swapPip'])
       expect(REMOTE_COMMANDS as readonly string[], type).not.toContain(type);
+  });
+
+  it('starts Repeat Slides going round from its first step, a step given, or an item’s first step (D5 review)', () => {
+    for (const locked of [false, true]) {
+      const { ask, remote, stage, commands } = setup({ locked });
+      const start = (args: Record<string, unknown>) =>
+        ask(remote, 'repeat.start', { playlistId: 'repeat-1', ...args });
+      expect(start({}).status).toBe(200);
+      expect(start({ slideIndex: 3 }).status).toBe(200);
+      // An item tapped on the phone: its first step, as the window's Start on an item finds it.
+      expect(start({ itemId: 'item-2' }).status).toBe(200);
+      // One no longer in it: from the first, as the window does.
+      expect(start({ itemId: 'item-gone' }).status).toBe(200);
+      expect(commands).toEqual([
+        { type: 'startRepeat', playlistId: 'repeat-1', slideIndex: 0 },
+        { type: 'startRepeat', playlistId: 'repeat-1', slideIndex: 3 },
+        { type: 'startRepeat', playlistId: 'repeat-1', slideIndex: 2 },
+        { type: 'startRepeat', playlistId: 'repeat-1', slideIndex: 0 },
+      ]);
+      expect(ask(remote, 'repeat.start', { slideIndex: 1 }).status).toBe(404);
+      expect(ask(stage, 'repeat.start', { playlistId: 'repeat-1' }).status).toBe(403);
+      expect(commands).toHaveLength(4);
+    }
+    expect(DEVICE_OPS['repeat.start']).toEqual(['remote']);
   });
 
   it('plays the audio playlist a phone chose, or on from where it was paused', () => {

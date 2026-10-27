@@ -144,6 +144,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
       lowerThirds: () => [],
       music: () => [],
       keys: () => ({ platform: 'darwin', singleKeys: true }),
+      repeatStep: () => null,
     },
     playMusic: () => ({ ok: true as const }),
     announcements: {

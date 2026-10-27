@@ -229,10 +229,11 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/zoom/whole', 'command', command('resetLiveZoom')),
   // Repeat Slides (Session 26d): a Repeat Slides playlist going round (from a slide of it, if given), and Stop.
   route('POST', '/api/v1/repeat/stop', 'command', command('stopRepeat')),
-  route('POST', '/api/v1/repeat/:id/start', 'command', (b, p) => ({
-    ...b,
-    type: 'startRepeat',
+  // From a phone, an item's id (Session 54, D5 review): the main process finds its first step.
+  route('POST', '/api/v1/repeat/:id/start', 'repeat.start', (b, p) => ({
     playlistId: p['id'],
+    slideIndex: b['slideIndex'],
+    itemId: b['itemId'],
   })),
   route('POST', '/api/v1/blackout', 'command', (b) =>
     typeof b['on'] === 'boolean' ? { type: 'setBlackout', on: b['on'] } : { type: 'toggleBlackout' },

@@ -81,6 +81,8 @@ import { MusicList } from './MusicList';
 import { Playing } from './Playing';
 import { Props } from './Props';
 import { RemotePlaying } from './RemotePlaying';
+import { isRepeatPlaylist, repeatItemUp, startGoingRound } from './repeat';
+import { RepeatStart } from './RepeatStart';
 import { StageScreen } from './StageScreen';
 import { Timers } from './Timers';
 
@@ -631,6 +633,9 @@ function Playlist() {
   const playlistId = useRemote((s) => s.playlistId);
   const items = useRemote((s) => s.items);
   const live = useEngine((s) => s.state?.live.playlist ?? null);
+  // A Repeat Slides playlist goes round, from the item tapped (Session 54, D5 review); its item up is marked.
+  const repeat = useRemote((s) => isRepeatPlaylist(s.playlists, s.playlistId));
+  const repeatItem = useEngine((s) => repeatItemUp(s.state, playlistId));
   return (
     <section className="space-y-3" aria-labelledby="playlist-title">
       <h2 id="playlist-title" className="text-base font-bold tracking-wider text-muted uppercase">
@@ -659,6 +664,7 @@ function Playlist() {
           Loading the playlists…
         </p>
       )}
+      {repeat && playlistId && <RepeatStart playlistId={playlistId} />}
       <ul className="space-y-1.5" data-testid="remote-items">
         {(items ?? []).map((i) => {
           if (i.kind === 'header')
@@ -667,7 +673,7 @@ function Playlist() {
                 {i.label}
               </li>
             );
-          const isLive = live?.playlistId === playlistId && live.itemId === i.id;
+          const isLive = (live?.playlistId === playlistId && live.itemId === i.id) || repeatItem === i.id;
           const can = playable(i);
           return (
             <li key={i.id} className="flex gap-2">
@@ -678,7 +684,8 @@ function Playlist() {
                 data-live={isLive ? 'true' : undefined}
                 onClick={() => {
                   if (!playlistId) return;
-                  if (i.kind === 'presentation')
+                  if (repeat) void tap(() => startGoingRound(playlistId, i.id));
+                  else if (i.kind === 'presentation')
                     view({
                       presentationId: i.presentationId,
                       item: { playlistId, itemId: i.id, order: i.order },
@@ -1146,8 +1153,11 @@ function next(): Promise<void> {
   return tap(() => {
     const live = useEngine.getState().state?.live;
     const somethingLive = live?.presentationId != null || live?.playlist != null;
-    const { playlistId, items } = useRemote.getState();
+    const { playlistId, items, playlists } = useRemote.getState();
     const first = items?.find(playable);
+    // A Repeat Slides playlist starts going round, as Simple Mode's Next starts it (Session 54, D5 review).
+    if (!somethingLive && playlistId && isRepeatPlaylist(playlists, playlistId))
+      return startGoingRound(playlistId);
     if (!somethingLive && playlistId && first)
       return api<{ rev?: number }>('/api/v1/trigger/item', {
         method: 'POST',

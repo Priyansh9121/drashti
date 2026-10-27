@@ -25,7 +25,7 @@ import {
   setUpScreen,
 } from './helpers';
 import { LOGO, PICTURE, setUpPlaceholderShow, VIDEO } from './placeholder-show';
-import { makeTestTone } from './test-media';
+import { makeTestImage, makeTestTone } from './test-media';
 
 /*
  * The phone as a mirror of the operator window (Session 54, D5): the clears in the desktop's order with its keys'
@@ -586,5 +586,82 @@ test('a Stage or Announcements device can read and do none of the mirror’s req
       })
     ).status,
   ).toBe(409);
+  await app.close();
+});
+
+// Session 54, D5 review: a Repeat Slides playlist is never played item by item; it goes round, as the window and
+// Simple Mode start it. Until then a phone's tap on its item, and its Next, played nothing.
+test('Repeat Slides from a phone, as from Simple Mode: Next with nothing up and Start going round start it, an item tapped goes round from it, and Stop (D5 review)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-mirror-repeat-'));
+  const one = await makeTestImage(win, join(dir, 'Placeholder one.png'), { color: '#1d4e89' });
+  const two = await makeTestImage(win, join(dir, 'Placeholder two.png'), { color: '#7c2d12' });
+  const [oneId = '', twoId = ''] = await importAndGetIds(win, [one, two]);
+  const { playlistId, items } = await win.evaluate(
+    async ({ oneId, twoId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.playlists.createRepeat(null);
+      const id = made.ok ? (made.ids[0] ?? '') : '';
+      await d.playlists.rename(id, 'Placeholder Hall Pictures');
+      await d.playlists.addItems(id, null, [
+        { kind: 'media', mediaId: oneId },
+        { kind: 'media', mediaId: twoId },
+      ]);
+      // Long enough that no step moves on by itself while the test looks.
+      await d.playlists.setRepeat(id, { secondsEach: 60, transition: { kind: 'dissolve', durationMs: 500 } });
+      return { playlistId: id, items: (await d.playlists.items(id)).map((i) => i.id) };
+    },
+    { oneId, twoId },
+  );
+  const [firstItem = '', secondItem = ''] = items;
+  /** Which item's step is up, and whether it goes round. */
+  const going = async () => {
+    const { state } = await snapshot(win);
+    return {
+      repeat: state.repeat?.playlistId ?? null,
+      item: state.layers.slide?.slide.id.split('/')[0] ?? null,
+    };
+  };
+  const { base } = await networkOn(win);
+  const phone = await device('webkit');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-playlist').selectOption(playlistId);
+    await expect(p.getByTestId('remote-going-round')).toBeVisible();
+    await expect(p.getByTestId('remote-item')).toHaveCount(2);
+    await expectNoSeriousA11yIssues(p, 'a Repeat Slides playlist on a phone');
+
+    // Next with nothing up starts it going round from its first step, as Simple Mode's Next does.
+    await p.getByTestId('remote-next-button').click();
+    await expect.poll(going).toEqual({ repeat: playlistId, item: firstItem });
+    await expect(p.getByTestId('remote-item').nth(0)).toHaveAttribute('data-live', 'true');
+    await p.getByTestId('remote-going-round-stop').click();
+    await expect.poll(async () => (await going()).repeat).toBeNull();
+
+    // An item tapped goes round from that item's first step, and is marked as the one up.
+    await p.getByTestId('remote-item').nth(1).click();
+    await expect.poll(going).toEqual({ repeat: playlistId, item: secondItem });
+    await expect(p.getByTestId('remote-item').nth(1)).toHaveAttribute('data-live', 'true');
+    await expect(p.getByTestId('remote-item').nth(0)).not.toHaveAttribute('data-live');
+    // Under LIVE on the Show tab: Repeating, with its own Stop (its step stays up).
+    await p.getByTestId('remote-tab-show').click();
+    await expect(p.getByTestId('remote-repeating')).toContainText('Placeholder Hall Pictures');
+    await p.getByTestId('remote-repeat-stop').click();
+    await expect.poll(going).toEqual({ repeat: null, item: secondItem });
+
+    // Start going round: from the first step again.
+    await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-going-round').click();
+    await expect.poll(going).toEqual({ repeat: playlistId, item: firstItem });
+    await expect(p.getByTestId('remote-going-round-stop')).toBeVisible();
+  } finally {
+    await phone.close();
+  }
   await app.close();
 });

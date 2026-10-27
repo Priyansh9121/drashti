@@ -159,7 +159,7 @@ import {
 import { largestAudienceScreen, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
 import { saveRequestSchema } from '../shared/trim';
-import { isRepeatId } from '../shared/repeat';
+import { isRepeatId, repeatPresentationId } from '../shared/repeat';
 import {
   applyPendingRestore,
   backupLibrary,
@@ -3780,6 +3780,10 @@ function start(): void {
       music: () =>
         music.view().playlists.map((p) => ({ id: p.id, name: p.name, trackCount: p.tracks.length })),
       keys: () => ({ platform: process.platform, singleKeys: settings.get('singleLetterKeys') !== false }),
+      // An item's first step in a Repeat Slides playlist (D5 review), as the window's Start on an item finds it.
+      repeatStep: (playlistId, itemId) =>
+        playableDoc(repeatPresentationId(playlistId))?.groups.find((g) => g.id === itemId)?.slides[0]
+          ?.index ?? null,
     },
     playMusic: (who, playlistId) => {
       const played = music.play(playlistId);
