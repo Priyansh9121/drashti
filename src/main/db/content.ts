@@ -33,6 +33,11 @@ export interface SlideRow {
   enabled: number;
   /** The macro it runs when it goes up, or null. */
   macro_id: string | null;
+  /**
+   * What a deck gave a slide made from it with its animations (Session 54, C2: shared/deck.ts), as JSON; null or left
+   * out for any other slide. C2's import keeps it in the slides' `deck` column, which its own migration makes.
+   */
+  deck?: string | null;
 }
 export interface ElementRow {
   id: string;
