@@ -101,10 +101,11 @@ export function parseMotion(stdout: string): MotionFrame[] {
       frames.push(current);
       continue;
     }
-    const avg = /lavfi\.signalstats\.YAVG=(\d+(?:\.\d+)?)/u.exec(line);
-    if (avg && current) current.avg = Number(avg[1]);
-    const max = /lavfi\.signalstats\.YMAX=(\d+(?:\.\d+)?)/u.exec(line);
-    if (max && current) current.max = Number(max[1]);
+    // FFmpeg writes small values with an exponent (9.64506e-05).
+    const avg = /lavfi\.signalstats\.YAVG=([-+\d.eE]+)/u.exec(line);
+    if (avg && current) current.avg = Number(avg[1]) || 0;
+    const max = /lavfi\.signalstats\.YMAX=([-+\d.eE]+)/u.exec(line);
+    if (max && current) current.max = Number(max[1]) || 0;
   }
   return frames;
 }

@@ -309,14 +309,14 @@ const KEYNOTE_MEDIA_SCRIPT = [
   'set res to res & (n as text) & tab & "video" & tab & ((item 1 of p) as text) & tab & ((item 2 of p) as text) & tab & ((width of m) as text) & tab & ((height of m) as text) & tab & ((movie volume of m) as text) & tab & ((repetition method of m) as text) & linefeed',
   'end repeat',
   'repeat with c in audio clips of s',
-  'set line to (n as text) & tab & "audio"',
+  'set entry to (n as text) & tab & "audio"',
   'try',
   'set p to position of c',
-  'set line to line & tab & ((item 1 of p) as text) & tab & ((item 2 of p) as text) & tab & ((width of c) as text) & tab & ((height of c) as text)',
+  'set entry to entry & tab & ((item 1 of p) as text) & tab & ((item 2 of p) as text) & tab & ((width of c) as text) & tab & ((height of c) as text)',
   'on error',
-  'set line to line & tab & "" & tab & "" & tab & "" & tab & ""',
+  'set entry to entry & tab & "" & tab & "" & tab & "" & tab & ""',
   'end try',
-  'set res to res & line & tab & ((clip volume of c) as text) & tab & ((repetition method of c) as text) & linefeed',
+  'set res to res & entry & tab & ((clip volume of c) as text) & tab & ((repetition method of c) as text) & linefeed',
   'end repeat',
   'end repeat',
   'return res',
@@ -366,6 +366,7 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
         };
       // What Keynote says of the movies and sounds, then they go from its copy (never saved).
       const told = await s.tell(KEYNOTE_MEDIA_SCRIPT, [doc], seconds);
+      if (told.code !== 0) s.log(`could not tell its movies and sounds: ${firstLine(told.stderr)}`);
       const keynoteMedia = told.code === 0 ? parseKeynoteMedia(told.stdout) : [];
       const pdfInApp = join(inside, 'pictures.pdf');
       const savedPdf = await s.tell(

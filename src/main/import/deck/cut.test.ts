@@ -130,10 +130,15 @@ describe('reading what FFmpeg says of a movie', () => {
       'frame:1    pts:2       pts_time:0.0666667',
       'lavfi.signalstats.YAVG=4.25',
       'lavfi.signalstats.YMAX=231',
+      // A still frame's tiny difference, as FFmpeg writes it (PowerPoint's movie, measured).
+      'frame:220  pts:4376    pts_time:7.293333',
+      'lavfi.signalstats.YAVG=9.64506e-05',
+      'lavfi.signalstats.YMAX=1',
     ].join('\n');
     expect(parseMotion(out)).toEqual([
       { t: 33, avg: 0, max: 0 },
       { t: 67, avg: 4.25, max: 231 },
+      { t: 7293, avg: 0.0000964506, max: 1 },
     ]);
     const err =
       "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'movie.mov':\n  Duration: 00:01:28.03, start: 0.000000, bitrate: 6043 kb/s\n  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080, 6000 kb/s, 30 fps, 30 tbr, 30k tbn (default)";
