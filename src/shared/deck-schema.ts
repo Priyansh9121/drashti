@@ -1,77 +1,125 @@
 import { z } from 'zod';
-import type { DeckDrashtiTransition, DeckMedia, DeckSlide } from './deck';
-import { MEDIA_ID_PATTERN } from './media';
-import { transitionSchema } from './model-schema';
+import type { DeckSlide } from './deck';
+import { idSchema, transitionSchema } from './model-schema';
 
 /*
- * A deck's slide (Session 54, C2; shared/deck.ts) checked as it crosses into the main process: in the slide editor's
- * document (shared/slide-edit.ts), where Drashti's own transitions on a deck's slide and its clicks are set, and as
- * stored (the slides' `deck` column C2's import keeps). What the editor saves of it is only those transitions
- * (main/library/slides.ts): the rest stays as the import stored it.
+ * A deck's slide as stored (Session 54, C2): a slide's `deck` column (migration 50) holds shared/deck.ts's DeckSlide
+ * as JSON, NULL for every other slide. Read back through this schema, so a value that does not read is a slide
+ * without its deck (its picture, the last step's last frame, still shows), never an error. Fields this Drashti does
+ * not know are kept as they are (a newer Drashti's), as an element's unknown data is (library/slides.ts).
  */
 
-/** A length of time in a deck (ms): never negative, never more than a day. */
+/** A length or a moment in ms: whole, never below 0, at most a day. */
 const ms = z
   .number()
   .int()
   .min(0)
   .max(24 * 3600 * 1000);
-const mediaId = z.string().regex(MEDIA_ID_PATTERN);
-/** A place on the slide, as a fraction of its width or height (a little outside it allowed, as PowerPoint does). */
-const fraction = z.number().min(-1).max(2);
 
-/** Drashti's own transition on a deck's slide or click: over its own, or instead of it. */
-export const deckDrashtiSchema: z.ZodType<DeckDrashtiTransition> = z.object({
-  transition: transitionSchema,
-  mode: z.enum(['over', 'instead']),
+/** A fraction of the slide's width or height (a box may hang off the slide, as PowerPoint lets it). */
+const fraction = z.number().min(-10).max(10);
+
+const stepSchema = z.looseObject({
+  clipId: idSchema,
+  clipMs: ms,
+  transitionMs: ms.optional(),
+  lastId: idSchema,
+  holdId: idSchema.optional(),
+  holdMs: ms.optional(),
 });
 
-const mediaSchema: z.ZodType<DeckMedia> = z.object({
+const startSchema = z.union([
+  z.looseObject({ step: z.number().int().min(0).max(10_000), offsetMs: ms }),
+  z.looseObject({ clicked: z.literal(true) }),
+]);
+
+const mediaSchema = z.looseObject({
   kind: z.enum(['video', 'audio']),
-  mediaId,
-  box: z.object({ x: fraction, y: fraction, w: fraction, h: fraction }),
-  posterId: mediaId.optional(),
+  mediaId: idSchema,
+  box: z.object({ x: fraction, y: fraction, w: fraction.nonnegative(), h: fraction.nonnegative() }),
+  posterId: idSchema.optional(),
   clip: z.object({ startMs: ms, endMs: ms.nullable() }).optional(),
   loop: z.boolean(),
   volume: z.number().min(0).max(1),
   muted: z.boolean().optional(),
   fadeInMs: ms.optional(),
   fadeOutMs: ms.optional(),
-  start: z.union([
-    z.object({ step: z.number().int().min(0).max(10_000), offsetMs: ms }),
-    z.object({ clicked: z.literal(true) }),
-  ]),
+  start: startSchema,
   acrossSlides: z.number().int().min(1).max(10_000).optional(),
   hideWhenStopped: z.boolean().optional(),
 });
 
-export const deckSlideSchema: z.ZodType<DeckSlide> = z.object({
-  transition: z.object({ name: z.string().max(100), durationMs: ms, soundId: mediaId.optional() }).optional(),
+export const deckSlideSchema = z.looseObject({
+  transition: z
+    .looseObject({ name: z.string().min(1).max(200), durationMs: ms, soundId: idSchema.optional() })
+    .optional(),
   deckAdvanceMs: ms.optional(),
-  steps: z
-    .array(
-      z.object({
-        clipId: mediaId,
-        clipMs: ms,
-        transitionMs: ms.optional(),
-        lastId: mediaId,
-        holdId: mediaId.optional(),
-        holdMs: ms.optional(),
-      }),
+  steps: z.array(stepSchema).max(10_000),
+  media: z.array(mediaSchema).max(1000),
+  drashti: z.object({ transition: transitionSchema, mode: z.enum(['over', 'instead']) }).optional(),
+  // Each click's own, over its motion or instead of it (C2's show: the slide editor sets both).
+  stepTransitions: z
+    .record(
+      z.string().regex(/^\d{1,5}$/u),
+      z.object({ transition: transitionSchema, mode: z.enum(['over', 'instead']) }),
     )
-    .max(1000),
-  media: z.array(mediaSchema).max(200),
-  drashti: deckDrashtiSchema.optional(),
-  stepTransitions: z.record(z.string().regex(/^[1-9]\d{0,3}$/u), deckDrashtiSchema).optional(),
+    .optional(),
 });
 
-/** A deck's slide as stored (JSON), or undefined when there is none or it does not read as one. */
-export function deckFromJson(text: string | null | undefined): DeckSlide | undefined {
-  if (!text) return undefined;
+/** A slide's deck as stored, or null for none (and for one that does not read). */
+export function deckFromJson(json: string | null | undefined): DeckSlide | null {
+  if (!json) return null;
   try {
-    const parsed = deckSlideSchema.safeParse(JSON.parse(text));
-    return parsed.success ? parsed.data : undefined;
+    const parsed = deckSlideSchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : null;
   } catch {
-    return undefined;
+    return null;
   }
+}
+
+/** A slide's deck as it is stored: JSON, or null for a slide made from no deck. */
+export function deckToJson(deck: DeckSlide | null | undefined): string | null {
+  return deck ? JSON.stringify(deck) : null;
+}
+
+/** Every media item a deck's slide uses: its steps' clips, last frames and holds, its media and their posters. */
+export function deckMediaIds(deck: DeckSlide): string[] {
+  const ids = new Set<string>();
+  for (const s of deck.steps) {
+    ids.add(s.clipId);
+    ids.add(s.lastId);
+    if (s.holdId) ids.add(s.holdId);
+  }
+  for (const m of deck.media) {
+    ids.add(m.mediaId);
+    if (m.posterId) ids.add(m.posterId);
+  }
+  if (deck.transition?.soundId) ids.add(deck.transition.soundId);
+  return [...ids];
+}
+
+/** The same deck with every media id `swap` gives (an import's references made library ids, or a copy's). */
+export function mapDeckMedia(deck: DeckSlide, swap: (id: string) => string): DeckSlide {
+  return {
+    ...deck,
+    ...(deck.transition
+      ? {
+          transition: {
+            ...deck.transition,
+            ...(deck.transition.soundId ? { soundId: swap(deck.transition.soundId) } : {}),
+          },
+        }
+      : {}),
+    steps: deck.steps.map((s) => ({
+      ...s,
+      clipId: swap(s.clipId),
+      lastId: swap(s.lastId),
+      ...(s.holdId ? { holdId: swap(s.holdId) } : {}),
+    })),
+    media: deck.media.map((m) => ({
+      ...m,
+      mediaId: swap(m.mediaId),
+      ...(m.posterId ? { posterId: swap(m.posterId) } : {}),
+    })),
+  };
 }

@@ -292,7 +292,7 @@ describe('putting edited slides back', () => {
       stepTransitions: { 1: { transition: { kind: 'fade-black', durationMs: 400 }, mode: 'instead' } },
     });
     // The other slide has none to keep; and taken off again, the deck is as the import stored it.
-    expect(saved[1]).not.toHaveProperty('deck');
+    expect(saved[1]?.deck ?? null).toBeNull();
     if (first?.deck) {
       const { drashti: _d, stepTransitions: _s, ...plain } = first.deck;
       first.deck = plain;
