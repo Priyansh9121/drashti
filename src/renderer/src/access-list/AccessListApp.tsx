@@ -202,10 +202,11 @@ export function AccessListApp() {
   // Why the list could not be asked just now, over the list it last gave (with none, said in its place).
   const problem = people === null ? null : (view?.problem ?? null);
 
-  // ⌘F (Ctrl+F) goes to the search.
+  // ⌘F (Ctrl+F) goes to the search, unless a dialog has the keyboard.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       e.preventDefault();
       searchBox.current?.focus();
       searchBox.current?.select();

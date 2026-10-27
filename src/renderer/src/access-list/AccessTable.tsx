@@ -73,7 +73,7 @@ function Line({
     <span
       title={text === '' ? undefined : text}
       className={cx(
-        'block truncate leading-[21px]',
+        'block min-w-0 truncate leading-[21px]',
         tone === 'muted' ? 'text-xs text-muted' : tone === 'faint' ? 'text-xs text-faint' : 'text-fg',
         className,
       )}
