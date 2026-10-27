@@ -98,9 +98,15 @@ describe('a phone’s pictures at the width it draws them (Session 54, D1)', () 
     pass(15_000);
     expect(await loader.load('m1', 1200)).not.toBe(small);
     expect(asked).toEqual(['m1@320', 'm1@1280', 'm1@1280']);
-    // None at all: null, and a second ask meanwhile waits for the same fetch.
+    // None at all: null; every place drawing it is told when to ask again.
     fail.add('m2');
+    let told = 0;
+    const stop = loader.subscribe('m2', () => told++);
     expect(await loader.load('m2', 600)).toBeNull();
+    expect(told).toBe(0);
+    pass(15_000);
+    expect(told).toBe(1);
+    stop();
   });
 
   it('fetches three at a time, and one picture once however many places ask', async () => {

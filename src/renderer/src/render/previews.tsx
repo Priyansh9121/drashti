@@ -119,9 +119,12 @@ export function PreviewPicture({
     sized.observe(el);
     // A phone turned redraws everything at another scale, although each box keeps its own size.
     window.addEventListener('resize', ask);
+    // Asked again when the loader says (a picture not ready before may be had now; a sharper one has come).
+    const stop = loader.subscribe(mediaId, ask);
     return () => {
       sized.disconnect();
       window.removeEventListener('resize', ask);
+      stop();
     };
   }, [seen, loader, el, mediaId, style.objectFit, scale]);
   if (src)

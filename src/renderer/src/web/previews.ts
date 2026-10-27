@@ -87,6 +87,10 @@ export function devicePictures(deps: DevicePictureDeps): PreviewLoader {
     const best = kept.get(mediaId);
     if (!got) {
       retryAt.set(`${mediaId}@${String(step)}`, deps.now() + RETRY_MS);
+      // Every place drawing it is told when it may be asked for again (each asks at its own width then).
+      deps.later(() => {
+        tell(mediaId);
+      }, RETRY_MS);
       return best?.url ?? null;
     }
     // A sharper one came meanwhile (another place asked wider): that one stays.
