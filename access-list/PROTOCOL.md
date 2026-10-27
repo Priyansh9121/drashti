@@ -63,7 +63,7 @@ old answer or another computer's answer is never believed. Before the list is se
 
 | op        | adds to the call                   | answers                                                                                  |
 | --------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| `request` | `name` (optional)                  | `{ status: "requested", mailed }`; refused `already-approved`, `too-many`                |
+| `request` | `name` (optional)                  | `{ status: "requested", mailed }`; refused `owner-row`, `already-approved`, `too-many`   |
 | `status`  |                                    | `{ status, tokenWaiting }`: `requested`, `approved`, `rejected`, `revoked`, or `unknown` |
 | `redeem`  | `token`                            | `{ grantId, secret, owner }`; refused `bad-token`, `too-many`                            |
 | `check`   | `grantId`, `at`, `activity`, `mac` | `{ status, owner, recorded }`: `in`, `revoked`, `rejected`, or `unknown`                 |
@@ -73,7 +73,9 @@ old answer or another computer's answer is never believed. Before the list is se
   version, with Approve and Reject links. A row approved with a computer in or a token waiting answers
   `already-approved` (the person uses their token, or the owner gives access again); one approved whose
   token ran out unused is asked for again like any other. `mailed: false` when the day's emails are used
-  up: the row is kept all the same, for the owner to see.
+  up: the row is kept all the same, for the owner to see. The owner's own Gmail is never asked for
+  (`owner-row`, before anything is counted or read), so nobody's request can make the owner's row
+  "requested" again: the owner's way in is Let me in, from the Sheet's menu.
 - **status** answers only the computer that made the request (any other gets `unknown`).
   `tokenWaiting`: approved, and a token sent and not used yet.
 - **redeem** checks, under the script's lock (so two at once cannot both win), that the row is approved and
@@ -95,8 +97,9 @@ old answer or another computer's answer is never believed. Before the list is se
     answer or a repeated call never counts anything twice.
   - The list writes the computer's last seen, name, version, platform and totals at most once a minute
     (`recorded: true` when it did), and the Gmail's row's sums with them.
-  - A computer's signed checks closer together than 5 seconds are answered `too-many`; only signed ones
-    count, so nobody else can use a computer's up.
+  - A computer's signed checks closer together than 5 seconds are answered as any other (a Drashti quit
+    and started again at once is answered at once), but only one in 5 seconds counts: the others record
+    nothing. Only signed ones count, so nobody else can use a computer's up.
 
 ### The owner's calls
 
@@ -149,7 +152,10 @@ lower-case hex.
 | A computer's last seen and totals | written once a minute  |
 | The Sheet as read for checks      | at most 10 seconds old |
 
-The limits are counted in Apps Script's cache (Google may empty it, which only forgets a count).
+The day's requests are counted in the script's settings (`REQUESTS_TODAY`: a day by the list's clock, in
+UTC; in all, and for each Gmail and computer by a short hash), under the script's lock; a request refused is
+never counted, so it stays a few KB. The hour's token tries are counted in Apps Script's cache (Google may
+empty it, which only forgets a count; nothing there lasts past 6 hours).
 
 ## Tokens
 
@@ -199,6 +205,7 @@ does not know stops the computers without ending them. A second row for the same
 | `LINK_KEY`       | Set up… (256 random bits, hex)              | signs the Approve and Reject links             |
 | `SECRET_KEY`     | Set up… (256 random bits, hex)              | each computer's secret comes from it           |
 | `SETUP_TICKET`   | Set up…, for its window only (30 minutes)   | the only way the window's two calls are taken  |
+| `REQUESTS_TODAY` | the list, at each request                   | the day's requests counted (see Limits)        |
 
 Set up… never replaces a key (every Drashti would stop): opened again, it shows the same line. Before it keeps
 them, its window has Google sign, HMAC and hash a test text and checks each against the browser's own. The

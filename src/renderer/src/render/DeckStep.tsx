@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react';
 import type { DeckMedia, DeckSlide } from '../../../shared/deck';
-import { deckStep, type StepTiming, stepTiming } from '../../../shared/deck-show';
+import { deckStep, type StepTiming, stepTiming, videoShowsFrom } from '../../../shared/deck-show';
 import type { SlideLayer } from '../../../shared/engine/state';
 import type { RenderSlide } from '../../../shared/model';
 import {
@@ -27,6 +27,7 @@ import { PreviewPicture, usePreviewsOnly } from './previews';
 import { SlideMovementContext } from './slide-timers';
 import { transitionFrame } from './transition-frame';
 import { wakeAt } from './wake-at';
+import { type StageStill, stageStill } from './stage-deck';
 
 /*
  * A deck's slide as the step showing draws it (Session 54, C2; shared/deck-show.ts), in the place of the slide's
@@ -159,6 +160,7 @@ function DeckStepLive({
   style,
   fit,
   cuts,
+  underId,
 }: {
   deck: DeckSlide;
   timing: StepTiming;
@@ -166,10 +168,12 @@ function DeckStepLive({
   fit: CSSProperties['objectFit'];
   /** Drashti's own transition into a step drawn as a cut (a stage screen always cuts). */
   cuts: boolean;
+  /** Under the first step's clip until it can be drawn: the still that showed before (a stage screen's, C review). */
+  underId: string | null;
 }) {
   const movement = useContext(SlideMovementContext);
   const { index, step, clipAt, endsAt, still, drashti, shownAt } = timing;
-  const before = index > 0 ? deckStep(deck, index - 1)?.lastId : undefined;
+  const before = index > 0 ? deckStep(deck, index - 1)?.lastId : (underId ?? undefined);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const underRef = useRef<HTMLImageElement | null>(null);
   const clipRef = useRef<HTMLVideoElement | null>(null);
@@ -355,6 +359,7 @@ export function DeckStepView({
   style,
   fit = 'contain',
   cuts = false,
+  underId = null,
 }: {
   deck: DeckSlide;
   timing: StepTiming;
@@ -362,11 +367,13 @@ export function DeckStepView({
   fit?: CSSProperties['objectFit'];
   /** Drashti's own transition into a step drawn as a cut (a stage screen always cuts). */
   cuts?: boolean;
+  /** Under the first step's clip until it can be drawn: the still that showed before (a stage screen's, C review). */
+  underId?: string | null;
 }) {
   return usePreviewsOnly() ? (
     <DeckStepPreview deck={deck} timing={timing} style={style} />
   ) : (
-    <DeckStepLive deck={deck} timing={timing} style={style} fit={fit} cuts={cuts} />
+    <DeckStepLive deck={deck} timing={timing} style={style} fit={fit} cuts={cuts} underId={underId} />
   );
 }
 
@@ -384,10 +391,26 @@ export function StageDeckNow({ layer, testId }: { layer: SlideLayer; testId?: st
     () => stepTiming({ slide, step, stepAt, stepFromMs, shownAt }),
     [slide, step, stepAt, stepFromMs, shownAt],
   );
+  // The still that showed before this slide came (C review): under its first step's clip until that can be drawn,
+  // as the hall's screens and LIVE keep the slide before up, so the stage never shows nothing for a moment.
+  const now = stageStill(
+    null,
+    `${slide.id}@${String(shownAt)}`,
+    timing ? (deckStep(slide.deck, timing.index)?.lastId ?? null) : null,
+  );
+  const [kept, setKept] = useState<StageStill>(now);
+  const next = stageStill(kept, now.key, now.still);
+  if (next !== kept) setKept(next);
   if (!slide.deck || !timing) return null;
   return (
     <div data-testid={testId} data-stage-deck="now" style={STAGE_DECK}>
-      <DeckStepView deck={slide.deck} timing={timing} style={INSET} cuts />
+      <DeckStepView
+        deck={slide.deck}
+        timing={timing}
+        style={INSET}
+        cuts
+        underId={timing.index === 0 ? next.before : null}
+      />
     </div>
   );
 }
@@ -456,9 +479,14 @@ export function useDeckCover(
   deck: DeckMedia | undefined,
   clock: { startedAt: number; loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek },
   durationMs: number | null,
+  /** The step its slide shows (C review): it is hidden outside its entrance and its exit, never its poster. */
+  timing: StepTiming | null = null,
 ): DeckCover {
   const [, redraw] = useState(0);
   const now = engineNow();
+  // Between its entrance and its exit only (C review): from when, by the engine's time; null: not at this step.
+  const shownFrom = deck && timing ? videoShowsFrom(deck, timing) : -Infinity;
+  const offStage = shownFrom === null || shownFrom > now;
   const seek = clock.seek;
   const before = seek?.waiting === true || (seek !== undefined && !seek.paused && seek.at > now);
   const ended =
@@ -468,13 +496,15 @@ export function useDeckCover(
     durationMs !== null &&
     durationMs > 0 &&
     playbackAtMs(clock, durationMs, now) >= playbackSpanMs(clock.clip, durationMs).end;
-  // When it next changes: its start, or (hidden once it ends) its end.
+  // When it next changes: its entrance step's motion over, its start, or (hidden once it ends) its end.
   const changesAt =
-    seek && !seek.paused && seek.at > now
-      ? seek.at
-      : deck?.hideWhenStopped === true && !before && !ended && !clock.loop && durationMs && !seek?.paused
-        ? now + playbackLeftMs(clock, durationMs, now)
-        : null;
+    shownFrom !== null && shownFrom > now
+      ? shownFrom
+      : seek && !seek.paused && seek.at > now
+        ? seek.at
+        : deck?.hideWhenStopped === true && !before && !ended && !clock.loop && durationMs && !seek?.paused
+          ? now + playbackLeftMs(clock, durationMs, now)
+          : null;
   const own = deck !== undefined;
   useEffect(() => {
     // Any other video: nothing here changes how it shows.
@@ -494,6 +524,7 @@ export function useDeckCover(
     };
   }, [own, changesAt]);
   if (!deck) return 'none';
+  if (offStage) return 'hidden';
   if (before) return deck.hideWhenStopped ? 'hidden' : deck.posterId ? 'poster' : 'none';
   return ended ? 'hidden' : 'none';
 }

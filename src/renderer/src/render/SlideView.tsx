@@ -33,7 +33,7 @@ import { standsUpright } from '../../../shared/text-runs';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
-import { deckMediaOf, deckPictureId, type StepTiming } from '../../../shared/deck-show';
+import { deckMediaOf, deckPictureId, type StepTiming, videoShowsFrom } from '../../../shared/deck-show';
 import { DeckStepView, useDeckCover } from './DeckStep';
 
 /**
@@ -396,6 +396,7 @@ function SlideVideo({
   clip,
   seek,
   deck,
+  deckStep,
 }: {
   el: MediaElement;
   startedAt: number | undefined;
@@ -406,6 +407,8 @@ function SlideVideo({
   seek: PlaybackSeek | undefined;
   /** A deck's own video (Session 54, C2): its poster before it plays, hidden while stopped when its deck says. */
   deck?: DeckMedia;
+  /** The step its slide shows (C review): it shows between its entrance and its exit only. */
+  deckStep?: StepTiming | null;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   // Props and other things without a start time play from when they appear.
@@ -460,7 +463,7 @@ function SlideVideo({
   }, [clipKey, seekKey]);
   // A deck's video (Session 54, C2): its length once known, for when it has played to its end.
   const [durationMs, setDurationMs] = useState<number | null>(null);
-  const cover = useDeckCover(deck, { startedAt: start, loop, clip, seek }, durationMs);
+  const cover = useDeckCover(deck, { startedAt: start, loop, clip, seek }, durationMs, deckStep ?? null);
   return (
     <>
       <video
@@ -552,6 +555,7 @@ function MediaView({
   clips,
   seeks,
   deck,
+  deckStep,
 }: {
   el: MediaElement;
   media: MediaMode;
@@ -560,6 +564,8 @@ function MediaView({
   seeks?: VideoSeeks;
   /** A deck's own video (Session 54, C2). */
   deck?: DeckMedia;
+  /** The step its slide shows (C review). */
+  deckStep?: StepTiming | null;
 }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
@@ -572,7 +578,8 @@ function MediaView({
       <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)}>
         {(style, copy) => <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={style} />}
       </Looked>
-    ) : (
+    ) : deck && deckStep && videoShowsFrom(deck, deckStep) === null ? null : (
+      // A deck's video outside its entrance and its exit (C review) shows nothing on a phone either.
       <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />
     );
   if (el.kind === 'image') {
@@ -602,6 +609,7 @@ function MediaView({
       clip={videoClip(clips, el.mediaId)}
       seek={videoSeek(seeks, el.mediaId)}
       deck={deck}
+      deckStep={deckStep}
     />
   );
 }
@@ -616,6 +624,7 @@ export function ElementView({
   reveal,
   band,
   deck,
+  deckStep,
 }: {
   el: SlideElement;
   media?: MediaMode;
@@ -633,13 +642,25 @@ export function ElementView({
   band?: number;
   /** A deck's own video (Session 54, C2): how its deck plays it. */
   deck?: DeckMedia;
+  /** The step its slide shows (C review): a deck's video shows between its entrance and its exit only. */
+  deckStep?: StepTiming | null;
 }) {
   if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} band={band} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
   // A timer on a slide (Session 50): live, its digits moving on the screens, still in a thumbnail.
   if (el.kind === 'timer')
     return <TimerElementView el={el} box={timerBoxStyle(el)} animate={media === 'live'} band={band} />;
-  return <MediaView el={el} media={media} startedAt={startedAt} clips={clips} seeks={seeks} deck={deck} />;
+  return (
+    <MediaView
+      el={el}
+      media={media}
+      startedAt={startedAt}
+      clips={clips}
+      seeks={seeks}
+      deck={deck}
+      deckStep={deckStep}
+    />
+  );
 }
 
 /**
@@ -716,14 +737,20 @@ export const SlideView = memo(function SlideView({
               }}
             />
           ) : null,
-          text === 'only' && el.kind !== 'text' ? null : el.id === deckPicture && deck && step ? (
-            <DeckStepView
+          text === 'only' && el.kind !== 'text' ? null : el.id === deckPicture &&
+            deck &&
+            step &&
+            el.kind === 'image' ? (
+            // The picture's kept look and the live zoom (Session 26e) apply to the step drawn in its place, as to the
+            // picture itself: it is the picture the engine zooms (Session 54, D2 review).
+            <Looked
               key={el.id}
-              deck={deck}
-              timing={step}
-              style={{ ...frameStyle(el), opacity: el.kind === 'image' ? (el.opacity ?? 1) : 1 }}
-              fit={el.kind === 'image' ? OBJECT_FIT[el.fit] : 'contain'}
-            />
+              mediaId={el.mediaId}
+              showing={startedAt === undefined ? null : slideShowing(startedAt)}
+              style={{ ...frameStyle(el), opacity: el.opacity ?? 1, objectFit: OBJECT_FIT[el.fit] }}
+            >
+              {(box) => <DeckStepView deck={deck} timing={step} style={box} fit={OBJECT_FIT[el.fit]} />}
+            </Looked>
           ) : (
             <ElementView
               key={el.id}
@@ -736,6 +763,7 @@ export const SlideView = memo(function SlideView({
               reveal={text === 'only' ? reveal : undefined}
               band={darken?.kind === 'band' && darkensBehind(el) ? darken.strength : undefined}
               deck={deck && el.kind === 'video' ? deckMediaOf(slide, el.mediaId, 'video') : undefined}
+              deckStep={step ?? null}
             />
           ),
         ])}

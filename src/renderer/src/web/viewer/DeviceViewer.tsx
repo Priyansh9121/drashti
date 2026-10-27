@@ -11,8 +11,15 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Tv, X, ZoomIn, ZoomOut
 import { Notice } from '../../ui/Notice';
 import { api } from '../device';
 import { tap, useTapNotice } from '../taps';
-import { type Framing, liveFramingOf, liveZoomFor, maxZoomOver, viewForLive } from './live-zoom';
-import { closeViewer, turnPage, useViewer } from './viewer-store';
+import {
+  type Framing,
+  liveFramingOf,
+  liveZoomFor,
+  phoneZoomTarget,
+  screensFollow,
+  viewForLive,
+} from './live-zoom';
+import { backCloses, closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
 
@@ -21,7 +28,8 @@ import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
  * zoomed with two fingers on this device only, with the pages before and after it (a presentation looked
  * through). When the page is what the screens show and it is zoomed, a large button at the side puts that zoom
  * on the screens (the engine's live zoom, Session 26e), and Back to Whole undoes it; on anything not live there is
- * neither. Esc or Close goes back to the remote. Mounted once, by the remote (RemoteApp.tsx).
+ * neither. Esc or Close goes back to the remote. Mounted once, by the remote (RemoteApp.tsx). Its bars keep clear of
+ * a phone's notch and rounded corners however it is held (the safe areas, D1/D2 review).
  */
 
 const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
@@ -36,7 +44,10 @@ const SETTLE_MS = 200;
 
 export function DeviceViewer() {
   const open = useViewer((s) => s.pages.length > 0);
-  return open ? <Viewer /> : null;
+  // Drashti stopped: what plays here stops at once, and the viewer closes (D1/D2 review).
+  const stopped = useEngine((s) => (s.state?.stopped ?? null) !== null);
+  useEffect(() => closeOnStop(), []);
+  return open && !stopped ? <Viewer /> : null;
 }
 
 function Viewer() {
@@ -46,6 +57,8 @@ function Viewer() {
   const notice = useTapNotice((s) => s.text);
   const root = useRef<HTMLDivElement>(null);
   useFocusTrap(root, closeViewer);
+  // The phone's own Back closes it (D1/D2 review).
+  useEffect(() => backCloses(), []);
   const surface = useRef<HTMLDivElement>(null);
   const screen = useElementSize(surface);
   // The pictures are asked for again, sharper, each time a zoom settles.
@@ -64,7 +77,8 @@ function Viewer() {
   const content = sizes[page.key] ?? page.size;
   const onScreens = page.onScreens?.(state) ?? null;
   const live = onScreens !== null || (page.live?.(state) ?? false);
-  const maxZoom = onScreens ? maxZoomOver(onScreens.kept) : ZOOM.max;
+  // This device zooms to 400 % whatever it shows; the side button only as far as the screens follow (D1/D2 review).
+  const maxZoom = ZOOM.max;
   // The screens' live zoom now (null: as the picture is kept), while this page is what they show.
   const screensAt = onScreens ? liveFramingOf(state) : null;
   // The view starts again for each page, and each new thing on the screens for a page that follows them; until
@@ -87,7 +101,7 @@ function Viewer() {
   };
 
   // D2: this device's zoom as the screens' live zoom, and whether they show it now.
-  const zoomedHere = view.zoom > 1.001;
+  const offerZoom = view.zoom > 1.001 && onScreens !== null && screensFollow(view, onScreens.kept);
   const mine = onScreens ? liveZoomFor(view, onScreens.frame, onScreens.kept) : null;
   const showsThis = mine !== null && screensAt !== null && near(mine, screensAt);
   // Where it is in what is looked through; one page alone says how it zooms.
@@ -117,7 +131,7 @@ function Viewer() {
       data-live={live ? 'true' : undefined}
       onKeyDown={onKeyDown}
     >
-      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
+      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-2">
         <div className="min-w-0 flex-1">
           <h2 id="viewer-title" className="truncate text-base font-bold text-fg" data-testid="viewer-title">
             {page.title}
@@ -132,7 +146,7 @@ function Viewer() {
         </Button>
       </header>
       {notice && (
-        <div className="shrink-0 bg-panel px-3 pt-2">
+        <div className="shrink-0 bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-2">
           <Notice tone="warning" onDismiss={() => useTapNotice.setState({ text: null })}>
             {notice}
           </Notice>
@@ -155,12 +169,12 @@ function Viewer() {
           </ZoomSurface>
         </PictureScaleContext.Provider>
         {/* D2: at the side, while this page is what the screens show; never on anything else. */}
-        {onScreens && (zoomedHere || screensAt) && (
+        {onScreens && (offerZoom || screensAt) && (
           <div
-            className="absolute top-1/2 right-2 flex w-40 -translate-y-1/2 flex-col gap-2"
+            className="absolute top-1/2 right-[max(0.5rem,env(safe-area-inset-right))] flex w-40 -translate-y-1/2 flex-col gap-2"
             data-testid="viewer-screens"
           >
-            {zoomedHere && (
+            {offerZoom && (
               <Button
                 size="lg"
                 variant={showsThis ? 'live' : 'primary'}
@@ -168,7 +182,9 @@ function Viewer() {
                 className="h-auto min-h-16 py-2 text-left whitespace-normal"
                 data-testid="viewer-show-zoom"
                 onClick={() => {
-                  if (mine) void tap(post('/api/v1/zoom', mine));
+                  // With the showing it is for: nothing, should another picture be up by the time it arrives.
+                  const showing = phoneZoomTarget(state)?.showing;
+                  if (mine) void tap(post('/api/v1/zoom', { ...mine, ...(showing ? { showing } : {}) }));
                 }}
               >
                 {showsThis ? 'This zoom is on the screens' : 'Show this zoom on the screens'}
@@ -183,7 +199,8 @@ function Viewer() {
                 onClick={() => {
                   setView(WHOLE);
                   settle();
-                  void tap(post('/api/v1/zoom/whole'));
+                  const showing = phoneZoomTarget(state)?.showing;
+                  void tap(post('/api/v1/zoom/whole', showing ? { showing } : undefined));
                 }}
               >
                 Back to Whole
@@ -193,7 +210,7 @@ function Viewer() {
         )}
       </div>
       {page.below?.()}
-      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-panel px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center gap-1" role="group" aria-label="Zoom on this device">
           <IconButton
             icon={ZoomOut}

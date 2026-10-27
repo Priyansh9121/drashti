@@ -101,6 +101,28 @@ describe('pictures on the screens', () => {
     expect(engine.current.liveZoom).toBeNull();
   });
 
+  it('refuses a zoom sent for a picture no longer up, as a phone says which showing it zoomed (Session 54, D1/D2 review)', () => {
+    const { engine, clock } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    const first = slideShowing(engine.current.layers.slide?.shownAt ?? 0);
+    expect(engine.dispatch({ type: 'zoomLive', zoom: 2, x: 0, y: 0, showing: first })).toMatchObject({
+      ok: true,
+    });
+    clock.now += 1000;
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.liveZoom).toBeNull();
+    // The phone's zoom, sent for the first picture as the operator moved on: the second is never zoomed by it.
+    expect(engine.dispatch({ type: 'zoomLive', zoom: 3, x: 0, y: 0, showing: first })).toMatchObject({
+      ok: false,
+      error: 'no-picture',
+    });
+    expect(engine.dispatch({ type: 'resetLiveZoom', showing: first })).toMatchObject({ ok: false });
+    expect(engine.current.liveZoom).toBeNull();
+    // Without one (LIVE's own buttons, a script), as before.
+    expect(engine.dispatch({ type: 'zoomLive', zoom: 3, x: 0, y: 0 })).toMatchObject({ ok: true });
+    expect(engine.current.liveZoom?.zoom).toBe(3);
+  });
+
   it('ends when its look is kept; Simple Mode never zooms', () => {
     const { engine } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
