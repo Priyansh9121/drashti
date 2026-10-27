@@ -85,6 +85,12 @@ const offTheSide = (page: Page) =>
     return [...scrolls, ...past].map((el) => `${el.tagName} ${el.textContent.trim().slice(0, 30)}`);
   });
 
+/** The operator window's own bottom bar, as its buttons read (words and keys), its ? left out (D5 review). */
+const windowClearWords = (win: Page) =>
+  win
+    .locator('[data-testid="layer-bar"] button:not([data-testid^="what-is-this"])')
+    .evaluateAll((buttons) => buttons.map((b) => (b as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
+
 /** The clears' words and keys, in their order on the page. */
 const clearWords = (phone: Page) =>
   phone
@@ -131,6 +137,8 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       );
       expect((await snapshot(win)).state.logo).toBeNull();
       await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
+      // Word for word and key for key the window's own bar (D5 review), read from it rather than from a list.
+      expect(await windowClearWords(win)).toEqual(await clearWords(p));
       // Read out as the desktop's are: a layer's clear by its name, the rest by their words and key.
       const actions = p.getByTestId('remote-actions');
       await expect(actions.getByRole('button', { name: 'Clear all F1', exact: true })).toBeDisabled();
@@ -194,6 +202,9 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       // The single-letter keys turned off in Drashti: Black-out names no key, the Logo keeps F12; and back.
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(false));
       await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Logo F12', 'Black-out']);
+      // And still the window's own bar, as its buttons read now.
+      const phoneNow = await clearWords(p);
+      await expect.poll(() => windowClearWords(win)).toEqual(phoneNow);
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(true));
       await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Logo F12', 'Black-out B']);
     } finally {
