@@ -129,4 +129,6 @@ export type EngineAction =
   | { type: 'pictures/set'; pictures: Record<string, PictureLook> }
   | { type: 'zoom/set'; liveZoom: LiveZoom | null }
   /** The live Look, every group's settings resolved from the library. */
-  | { type: 'look/set'; look: LiveLook };
+  | { type: 'look/set'; look: LiveLook }
+  /** Drashti stopped (Session 54, access by Gmail): the screens fade to black from `at`. */
+  | { type: 'access/stop'; at: number };

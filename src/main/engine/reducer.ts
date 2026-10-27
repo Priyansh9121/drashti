@@ -316,5 +316,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         : withLayers(state, { ticker: action.ticker });
     case 'look/set':
       return sameData(state.look, action.look) ? state : { ...state, look: action.look };
+    case 'access/stop':
+      return state.stopped ? state : { ...state, stopped: { at: action.at } };
   }
 }

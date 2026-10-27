@@ -575,6 +575,12 @@ export interface EngineState {
    * back.
    */
   pipOff: { layer: PipLayer; at: number } | null;
+  /**
+   * Drashti stopped (Session 54, access by Gmail: revoked, rejected, unknown, or 2 minutes with no answer), and when
+   * by the engine's clock: every screen, node, phone and the stream's picture fades to black from then and shows
+   * nothing after, and the show changes no more. Left out (an older state) or null: not stopped.
+   */
+  stopped?: { at: number } | null;
 }
 
 export function emptyLayers(): Layers {
