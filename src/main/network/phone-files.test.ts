@@ -42,6 +42,7 @@ let notices: string[] = [];
 let changed: string[][] = [];
 let onAir = false;
 let simple = false;
+let letIn = true;
 const reports = new Map<string, ImportItemReport[]>();
 
 const DEVICES: Record<string, { name: string; kind: 'remote' | 'stage' }> = {
@@ -108,6 +109,7 @@ beforeEach(() => {
   changed = [];
   onAir = false;
   simple = false;
+  letIn = true;
   files = new PhoneFiles({
     db,
     settings,
@@ -129,6 +131,7 @@ beforeEach(() => {
     },
     log: () => undefined,
     waitMs: 10,
+    letIn: () => letIn,
   });
   files.setOn(true);
 });
@@ -243,6 +246,20 @@ describe('a file a phone added', () => {
     expect(imported).toEqual([]);
     expect(existsSync(file.file)).toBe(false);
     expect(added()).toEqual([]);
+  });
+
+  it('nothing while Drashti is locked on its computer (the access lock): the worker is told, and a file refused', async () => {
+    letIn = false;
+    expect(files.policy().on).toBe(false);
+    const file = sent(JPEG, 'Placeholder.jpg');
+    expect(await files.arrived(file)).toEqual({
+      ok: false,
+      message: 'Drashti is locked on its computer: add the file again once it is open.',
+    });
+    expect(imported).toEqual([]);
+    expect(existsSync(file.file)).toBe(false);
+    letIn = true;
+    expect(files.policy().on).toBe(true);
   });
 
   it('only from a Remote still paired', async () => {

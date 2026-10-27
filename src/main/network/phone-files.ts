@@ -77,6 +77,11 @@ export interface PhoneFilesDeps {
   maxBytes?: number;
   /** How often a deck waiting for the stream to end looks again (2 s; tests set it shorter). */
   waitMs?: number;
+  /**
+   * Whether this computer is let in (Part E's access lock, access/gate.ts isLetIn): while it is not, nothing comes
+   * from a phone. Left out: always.
+   */
+  letIn?: () => boolean;
 }
 
 const plainWord = (kind: ArrivedFile['kind']) =>
@@ -124,10 +129,14 @@ export class PhoneFiles {
     return { on: this.on, maxBytes: this.deps.maxBytes ?? UPLOAD_MAX_BYTES };
   }
 
-  /** What the network's worker is told. */
+  private letIn(): boolean {
+    return this.deps.letIn?.() ?? true;
+  }
+
+  /** What the network's worker is told (the switch, and Drashti let in). */
   policy(): UploadPolicy {
     return {
-      on: this.on,
+      on: this.on && this.letIn(),
       maxBytes: this.deps.maxBytes ?? UPLOAD_MAX_BYTES,
       reserveBytes: UPLOAD_RESERVE_BYTES,
       slowed: this.deps.onAir(),
@@ -226,6 +235,8 @@ export class PhoneFiles {
       return refuse('Drashti could not keep this file: add it again.');
     }
     if (!this.on) return refuse(ADD_FILES_WORDS.off);
+    if (!this.letIn())
+      return refuse('Drashti is locked on its computer: add the file again once it is open.');
     const device = this.deps.device(file.deviceId);
     if (device?.kind !== 'remote') return refuse('This phone is no longer paired with Drashti.');
     const what = await whatFileIs(file.file);
