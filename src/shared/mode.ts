@@ -42,9 +42,10 @@ export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode })
  * Engine commands Simple Mode refuses, wherever they come from (the window,
  * a phone, the API): Simple Mode keeps the live Look; a picture-in-picture
  * box is set up, swapped and moved in Pro Mode only (Session 50; Take off and
- * Clear all still take one off); and Simple Mode does not choose a video
+ * Clear all still take one off); Simple Mode does not choose a video
  * input (Session 50: Pro Mode's Media puts one up; Simple Mode may clear it,
- * as any background).
+ * as any background); and Simple Mode shows the time bar but never moves it
+ * (Session 54: Pause and Play are not refused, as Music's are not).
  */
 export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'setLook',
@@ -54,4 +55,5 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'swapPip',
   'placePip',
   'showInput',
+  'moveTo',
 ];

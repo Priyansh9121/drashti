@@ -3,6 +3,7 @@ import { CALENDAR_LANGS } from '../calendar';
 import { lowerThirdSchema } from '../lower-thirds';
 import { maskSchema } from '../masks';
 import { hexColorSchema, idSchema, slideElementSchema } from '../model-schema';
+import { playingSchema } from './playing';
 import {
   type AudioChoice,
   type BackgroundChoice,
@@ -222,6 +223,22 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     layer: z.enum(['background', 'audio']),
     jump: z.enum(['back', 'forward', 'last']),
   }),
+  /**
+   * The time bar (Session 54, shared/engine/playing.ts): what plays moved to a point in its file (ms), never past its
+   * start or end points; paused where it is; or played on (from its start point again, once played to its end). Each
+   * lands in step everywhere, as a jump to a marker does. Simple Mode refuses the move: it shows the bar only.
+   */
+  z.object({
+    type: z.literal('moveTo'),
+    playing: playingSchema,
+    toMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 3600 * 1000),
+  }),
+  z.object({ type: z.literal('pausePlaying'), playing: playingSchema }),
+  z.object({ type: z.literal('resumePlaying'), playing: playingSchema }),
   /** A timer up alone, in the Timer only layout, in the slide's place (Session 50: Show on the screens). */
   z.object({ type: z.literal('showTimer'), timerId: id }),
   /** Picture in picture (Session 50): a box up (or its picture changed), taken off, swapped, or moved. */

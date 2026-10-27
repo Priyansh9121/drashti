@@ -123,6 +123,8 @@ export interface SlideLayer {
   soundMissing?: string;
   /** Its videos' start and end points (Session 52): see VideoClips. Left out when none has any. */
   clips?: VideoClips;
+  /** Where the time bar moved or paused its videos (Session 54): see VideoSeeks. Left out when it has not. */
+  seeks?: VideoSeeks;
 }
 
 /**
@@ -137,6 +139,29 @@ export type VideoClips = Record<string, PlaybackClip>;
 /** The points a video of this file plays between, from its layer's `clips` (Session 52); undefined: the whole file. */
 export function videoClip(clips: VideoClips | undefined, mediaId: string): PlaybackClip | undefined {
   return clips && Object.hasOwn(clips, mediaId) ? clips[mediaId] : undefined;
+}
+
+/**
+ * Where the time bar (Session 54) moved a slide's, a prop's, the logo's or the picture-in-picture box's videos, by
+ * media id, playing on from there or paused there: a jump, as a background video's `seek` is, which every screen,
+ * node, key and fill, the stream and the audio player play on from (or wait at) alike. Only the engine stamps them,
+ * as the time bar's moves, Pause and Play come in; a slide, prop or box going up has none.
+ */
+export type VideoSeeks = Record<string, PlaybackSeek>;
+
+/** Where the time bar moved the videos of this file (Session 54), from its layer's `seeks`; undefined: it has not. */
+export function videoSeek(seeks: VideoSeeks | null | undefined, mediaId: string): PlaybackSeek | undefined {
+  return seeks && Object.hasOwn(seeks, mediaId) ? seeks[mediaId] : undefined;
+}
+
+/**
+ * What the time bar (Session 54) shows of a video on the slide up, a prop, the logo or in the box, by media id: its
+ * file's length once known (learned as a screen plays it) and its markers, as the library has them. The background's
+ * and the sound's are on their layers (`durationMs`, `marks`).
+ */
+export interface VideoFile {
+  durationMs?: number;
+  marks?: PlaybackMarker[];
 }
 
 /** The timer a slide layer shows alone (Session 50). */
@@ -311,6 +336,8 @@ export interface PropItem {
   shownAt?: number;
   /** Its videos' start and end points (Session 52): see VideoClips. Left out when none has any. */
   clips?: VideoClips;
+  /** Where the time bar moved or paused its videos (Session 54): see VideoSeeks. Left out when it has not. */
+  seeks?: VideoSeeks;
 }
 
 /**
@@ -432,6 +459,8 @@ export interface PipLayer {
    * them, as a slide's does (see VideoClips). Left out for anything else, and for a file without any.
    */
   clips?: VideoClips;
+  /** Where the time bar moved or paused its video (Session 54): see VideoSeeks. Left out when it has not. */
+  seeks?: VideoSeeks;
 }
 
 export interface Layers {
@@ -570,6 +599,11 @@ export interface EngineState {
    * back.
    */
   pipOff: { layer: PipLayer; at: number } | null;
+  /**
+   * The files of the videos on the slide up, the props, the logo and in the picture-in-picture box (Session 54), by
+   * media id: what the time bar shows of each (see VideoFile). Left out before any was up, and null once none is.
+   */
+  videoFiles?: Record<string, VideoFile> | null;
 }
 
 export function emptyLayers(): Layers {
