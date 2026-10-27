@@ -90,8 +90,8 @@ export interface DeckSlide {
   media: DeckMedia[];
   /** Set in Drashti's editor: its own transition into this slide; left out, the deck's own. */
   drashti?: DeckDrashtiTransition;
-  /** Set in Drashti's editor: its own transition for a step (by index, from 1). */
-  stepTransitions?: Record<number, Transition>;
+  /** Set in Drashti's editor: a step's own transition (by index, from 1), over the deck's own or instead of it. */
+  stepTransitions?: Record<number, DeckDrashtiTransition>;
 }
 
 /** How the deck came in, for the import report and the library. */

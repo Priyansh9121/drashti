@@ -57,7 +57,12 @@ export const deckSlideSchema = z.looseObject({
   steps: z.array(stepSchema).max(10_000),
   media: z.array(mediaSchema).max(1000),
   drashti: z.object({ transition: transitionSchema, mode: z.enum(['over', 'instead']) }).optional(),
-  stepTransitions: z.record(z.string().regex(/^\d{1,5}$/u), transitionSchema).optional(),
+  stepTransitions: z
+    .record(
+      z.string().regex(/^\d{1,5}$/u),
+      z.object({ transition: transitionSchema, mode: z.enum(['over', 'instead']) }),
+    )
+    .optional(),
 });
 
 /** A slide's deck as stored, or null for none (and for one that does not read). */

@@ -119,6 +119,22 @@ describe('a deck’s slide in the library (Session 54, C2)', () => {
     expect(slides[1]?.slide).not.toHaveProperty('deck');
   });
 
+  it('reads back Drashti’s own transitions set on a deck’s slide and on a click, over or instead of the deck’s', () => {
+    const db = openDatabase(':memory:');
+    const repo = new PresentationRepo(db);
+    const own: DeckSlide = {
+      ...DECK,
+      drashti: { transition: { kind: 'dissolve', durationMs: 600 }, mode: 'over' },
+      stepTransitions: { 1: { transition: { kind: 'cut', durationMs: 0 }, mode: 'instead' } },
+    };
+    const id = repo.insert({
+      libraryId: repo.ensureLibrary('Default'),
+      name: 'Placeholder deck',
+      groups: [{ name: '', slides: [{ elements: [picture('click-1-last')], deck: own }] }],
+    });
+    expect(repo.get(id)?.groups[0]?.slides[0]?.slide.deck).toEqual(own);
+  });
+
   it('a stored deck that does not read leaves the slide without one, its picture still there', () => {
     const db = openDatabase(':memory:');
     const repo = new PresentationRepo(db);
