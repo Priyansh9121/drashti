@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -46,6 +46,20 @@ async function deckSlides(win: Page) {
 
 const listMedia = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
 
+/**
+ * The deck's line under one heading of the import report. An import with notes is listed under "Imported with
+ * notes", and again under "Imported", as the report lists every one: the deck imported once has one line under each.
+ */
+function lineUnder(report: Locator, heading: RegExp): Locator {
+  return report
+    .getByTestId('report-section')
+    .filter({ has: report.page().locator('summary', { hasText: heading }) })
+    .getByTestId('report-item')
+    .filter({ hasText: DECK });
+}
+const WITH_NOTES = /Imported with notes \(\d+\)/u;
+const IMPORTED = /Imported \(\d+\)/u;
+
 /** Drop the deck on the library and wait for the import's report. */
 async function importDeck(win: Page, deck: string) {
   await openLibrary(win);
@@ -63,8 +77,10 @@ test('a deck comes in with its animations: each slide its steps, its one picture
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const mediaBefore = (await listMedia(win)).length;
   const report = await importDeck(win, trialDeck());
-  const item = report.getByTestId('report-item').filter({ hasText: DECK });
+  // Imported once: one line under "Imported with notes", and that one again under "Imported".
+  const item = lineUnder(report, WITH_NOTES);
   await expect(item).toHaveAttribute('data-outcome', 'imported');
+  await expect(lineUnder(report, IMPORTED)).toHaveCount(1);
   await expect(item).toContainText(
     /The stand-in made this deck’s movie with its animations in \d+ s: 5 slides with 8 clicks\./u,
   );
@@ -125,8 +141,10 @@ test('where nothing makes its movie, a deck comes in as pictures with its videos
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const report = await importDeck(win, trialDeck());
-  const item = report.getByTestId('report-item').filter({ hasText: DECK });
+  // Imported once: one line under "Imported with notes", and that one again under "Imported".
+  const item = lineUnder(report, WITH_NOTES);
   await expect(item).toHaveAttribute('data-outcome', 'imported');
+  await expect(lineUnder(report, IMPORTED)).toHaveCount(1);
   await expect(item).toContainText('Each of the 5 pages became a slide holding its picture');
   await expect(item).toContainText(
     'Its 2 videos came in as real videos where the slides have them, with the time bar under LIVE; they start as their slide goes up.',
