@@ -352,11 +352,24 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await expect(picture).toHaveAttribute('data-live', 'true');
     await picture.getByTestId('remote-media-take-off').click();
     await expect.poll(async () => (await layers(win)).background).toBeNull();
+    // Look beside it, as a playlist's picture has: D1's viewer on this phone alone, nothing put up.
+    await picture.getByTestId('remote-item-look').click();
+    const viewer = p.getByTestId('viewer');
+    await expect(viewer).toHaveAttribute('data-page', `picture:${show.pictureMediaId}`);
+    await expectNoSeriousA11yIssues(p, 'a picture from Media looked at on a phone');
+    expect((await layers(win)).background).toBeNull();
+    await viewer.getByTestId('viewer-close').click();
+    await expect(viewer).toHaveCount(0);
     // Found by a word of its name; a video goes up the same way, and its skips are under LIVE.
     await p.getByTestId('remote-media-search').fill('clip');
     const video = p.getByTestId('remote-media-item').filter({ hasText: VIDEO });
     await expect(video).toBeVisible();
     await expect(p.getByTestId('remote-media-item')).toHaveCount(1);
+    // Play beside it plays it on this phone alone.
+    await expect(video.getByTestId('remote-item-look')).toHaveAttribute(
+      'aria-label',
+      /^Play “Placeholder clip[^”]*” on this device$/u,
+    );
     await video.getByRole('button').first().click();
     await expect
       .poll(async () => {
@@ -380,6 +393,8 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await p.getByTestId('remote-tab-library').click();
     await p.getByTestId('remote-media-search').fill('tune');
     const tune = p.getByTestId('remote-media-item').filter({ hasText: 'Placeholder tune' });
+    // A sound has neither: a sound plays on a phone only from a playlist shared with phones.
+    await expect(tune.getByTestId('remote-item-look')).toHaveCount(0);
     await tune.getByRole('button').first().click();
     await expect.poll(async () => (await layers(win)).audio?.mediaId).toBe(toneId);
     await expect(tune).toHaveAttribute('data-live', 'true');

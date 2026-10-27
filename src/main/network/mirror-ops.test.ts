@@ -68,6 +68,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       messages: () => [],
       logo: () => null,
       mediaSource: () => null,
+      sharedSound: () => null,
       stage: () => ({ groupId: null, languages: null }),
       hallGroups: () => [],
       hall: () => ({ groupId: null }),

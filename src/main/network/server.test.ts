@@ -676,6 +676,46 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
     expect((await call(port, url)).status).toBe(401);
   });
 
+  it('streams a sound’s own file to a Remote only while a playlist shared with phones has it (D3)', async () => {
+    const { port, host } = await withMedia();
+    const TONE = 'Placeholder tone bytes. '.repeat(20);
+    const tone = join(dir, 'placeholder-tone.wav');
+    writeFileSync(tone, TONE);
+    // The stand-in main process: the sound while its playlist is shared, nothing once it is not.
+    let shared = true;
+    host.sharedSound = (mediaId) => Promise.resolve(mediaId === 'm-sound' && shared ? tone : null);
+    const piece = await call(port, '/api/v1/media/m-sound/original', {
+      headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-9' },
+    });
+    expect(piece.status).toBe(206);
+    expect(piece.body).toBe(TONE.slice(0, 10));
+    expect(piece.headers['content-type']).toBe('audio/wav');
+    // An <audio> cannot send the token either: a link, as a video's.
+    const made = await call(port, '/api/v1/media/m-sound/link', { headers: bearer(REMOTE_TOKEN) });
+    expect(made.status).toBe(200);
+    const { url } = JSON.parse(made.body) as { url: string };
+    const rest = await call(port, url, { headers: { Range: 'bytes=10-' } });
+    expect(rest.status).toBe(206);
+    expect(rest.body).toBe(TONE.slice(10));
+    // Never a Stage or Announcements device's, and never a picture of it.
+    for (const token of [STAGE_TOKEN, ANNOUNCE_TOKEN])
+      expect((await call(port, '/api/v1/media/m-sound/original', { headers: bearer(token) })).status).toBe(
+        403,
+      );
+    expect(
+      (await call(port, '/api/v1/media/m-sound/picture?width=640', { headers: bearer(REMOTE_TOKEN) })).status,
+    ).toBe(404);
+    // Stop Sharing: refused at once, by the token and by the link made while it was shared; no new link.
+    shared = false;
+    expect(
+      (await call(port, '/api/v1/media/m-sound/original', { headers: bearer(REMOTE_TOKEN) })).status,
+    ).toBe(404);
+    expect((await call(port, url)).status).toBe(404);
+    expect((await call(port, '/api/v1/media/m-sound/link', { headers: bearer(REMOTE_TOKEN) })).status).toBe(
+      404,
+    );
+  });
+
   it('puts a phone’s zoom on the screens, and the screens back to whole, as a Remote’s commands (D2)', async () => {
     const { port, host } = await start();
     const zoom = await call(port, '/api/v1/zoom', {

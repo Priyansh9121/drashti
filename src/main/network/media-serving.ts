@@ -11,11 +11,11 @@ import { type Rendition, RenditionMaker } from './renditions';
 /*
  * Full quality for phones and tablets (Session 54, D1), served by the network worker: a picture or a video's
  * frame at the width a device asks for (renditions.ts), and a picture's or video's own file in pieces as it is
- * played (HTTP Range). Files are sent from the disk as they are read, never held whole in memory. A <video>
- * cannot send a device's token, so a device asks for a link to the file first: its address with a ticket signed
- * for that device and that file alone, for MEDIA_LINK_MS, with a key made at each start (no link outlives the
- * run), and refused at once when the device is removed. Only the original takes a link; everything else needs
- * the token, as before.
+ * played (HTTP Range); a sound's too, while a playlist shared with phones has it (D3). Files are sent from the
+ * disk as they are read, never held whole in memory. A <video> or an <audio> cannot send a device's token, so a
+ * device asks for a link to the file first: its address with a ticket signed for that device and that file
+ * alone, for MEDIA_LINK_MS, with a key made at each start (no link outlives the run), and refused at once when
+ * the device is removed. Only the original takes a link; everything else needs the token, as before.
  */
 
 /** A file for a device: where it is, its type, and what names this version of it (its size and time if not given). */
@@ -127,16 +127,23 @@ export class MediaServing {
   private readonly renditions: RenditionMaker;
   readonly links: MediaLinks;
   private readonly sources = new Map<string, { source: PreviewSource; at: number }>();
+  private readonly sound: (mediaId: string) => Promise<string | null>;
 
   constructor(
     previewDir: string,
     ffmpeg: string | null,
     private readonly lookup: (mediaId: string) => Promise<PreviewSource | null>,
-    options: { renditions?: RenditionMaker; links?: MediaLinks } = {},
+    options: {
+      renditions?: RenditionMaker;
+      links?: MediaLinks;
+      /** A sound's file while a playlist shared with phones has it (D3); left out, no sound is ever sent. */
+      sound?: (mediaId: string) => Promise<string | null>;
+    } = {},
   ) {
     // Kept beside the small previews, in a folder of their own.
     this.renditions = options.renditions ?? new RenditionMaker(join(previewDir, 'sized'), ffmpeg);
     this.links = options.links ?? new MediaLinks();
+    this.sound = options.sound ?? (() => Promise.resolve(null));
   }
 
   /** A media item's file and kind, asked of the main process at most every SOURCE_MS while it is fetched. */
@@ -159,9 +166,12 @@ export class MediaServing {
     return this.renditions.get(mediaId, source, asked);
   }
 
-  /** A picture's or video's own file, with its type; null when there is none. */
+  /**
+   * A picture's or video's own file, or a sound's while a playlist shared with phones has it (D3), with its type;
+   * null when there is none. Whether a sound is shared is asked each time, never kept: Stop Sharing ends it at once.
+   */
   async original(mediaId: string): Promise<SentFile | null> {
-    const source = await this.source(mediaId);
-    return source ? { path: source.path, type: contentTypeOf(source.path) } : null;
+    const path = (await this.source(mediaId))?.path ?? (await this.sound(mediaId));
+    return path ? { path, type: contentTypeOf(path) } : null;
   }
 }
