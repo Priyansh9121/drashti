@@ -178,6 +178,48 @@ describe('File (Session 54, E5)', () => {
   });
 });
 
+// Session 54 (E4): the owner's window onto the access list, on the owner's computer only.
+describe('View › Access List… (Session 54, E4)', () => {
+  it.each(PLATFORMS)(
+    'is in Pro Mode’s View menu on the owner’s computer, and opens the Access List (%s)',
+    (platform) => {
+      let opened = 0;
+      on(platform, () => {
+        const made = actions('pro');
+        installMenu({
+          ...made.a,
+          accessList: () => {
+            opened++;
+          },
+        });
+      });
+      const view = built.at(-1)?.find((m) => m.label === 'View')?.submenu;
+      const list = Array.isArray(view) ? view : [];
+      expect(item('access-list')).toMatchObject({ label: 'Access List…' });
+      const click = item('access-list')?.click as (() => void) | undefined;
+      click?.();
+      expect(opened).toBe(1);
+      // After Appearance, with a separator between, never two side by side.
+      const ids = list.map((i) => i.id ?? i.type ?? '');
+      expect(ids.indexOf('access-list')).toBe(ids.indexOf('appearance') + 2);
+      expect(list.map((i) => i.type ?? 'item').join(' ')).not.toContain('separator separator');
+    },
+  );
+
+  it.each(PLATFORMS)('is nowhere on any other computer, nor in Simple Mode (%s)', (platform) => {
+    on(platform, () => setUp('pro'));
+    expect(item('access-list')).toBeUndefined();
+    on(platform, () => {
+      installMenu({ ...actions('pro').a, accessList: null });
+    });
+    expect(item('access-list')).toBeUndefined();
+    on(platform, () => {
+      installMenu({ ...actions('simple').a, accessList: () => undefined });
+    });
+    expect(item('access-list')).toBeUndefined();
+  });
+});
+
 function setUp(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {
   const made = actions(mode, on);
   installMenu(made.a);
