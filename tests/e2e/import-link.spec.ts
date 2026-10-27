@@ -31,6 +31,8 @@ import { makeTestImage } from './test-media';
 
 const ffmpeg = testFfmpeg();
 test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
+/** Cmd on a Mac, Ctrl on Windows: a click with it only marks a playlist's card (a plain one puts a video up). */
+const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 function makeVideo(path: string, size: string): Buffer {
   const r = spawnSync(ffmpeg ?? '', [
@@ -571,7 +573,8 @@ test('Dropbox: a folder link becomes one playlist, folder by folder, with header
   await folder.filter({ hasText: 'Week 1' }).click();
   await folder.filter({ hasText: 'Videos' }).click();
   await expect(items.locator('[data-label]')).toHaveText(['Clip A.mp4', 'Clip b.mp4']);
-  await items.filter({ hasText: 'Clip b.mp4' }).click();
+  // Chosen with Cmd/Ctrl, which only marks it: a plain click puts a video up (Session 54).
+  await items.filter({ hasText: 'Clip b.mp4' }).click({ modifiers: [mod] });
   await win.keyboard.press('Alt+ArrowUp');
   await expect.poll(async () => (await shown()).indexOf('Clip b.mp4')).toBe(8);
   await expect(items.locator('[data-label]')).toHaveText(['Clip b.mp4', 'Clip A.mp4']);

@@ -1784,8 +1784,10 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
     await expect(items).toHaveCount(1, { timeout: 60_000 });
     await expect(folderRows).toHaveCount(1, { timeout: 60_000 });
     await expect(folderRows).toHaveAttribute('data-path', 'Morning');
+    // One click on it puts it up too (Session 54): its card LIVE, as an operator's click leaves it.
     await items.first().click();
     await expect(win.getByTestId('item-view')).toContainText('Placeholder welcome');
+    await expect(items.first()).toHaveAttribute('data-live', 'true');
     await part(win, 'smart-playlist', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
 
     // Repeat Slides going round: LIVE says so, with Stop (Esc).
