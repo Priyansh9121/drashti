@@ -9,6 +9,7 @@ import { type OrderedSlide, playOrder } from '../../../../shared/order';
 import type { ItemOrder, PlaylistItemInfo } from '../../../../shared/playlists';
 import { isRunning } from '../../../../shared/timers';
 import { useEngine } from '../../engine/engine-store';
+import { PhoneStopped } from '../Stopped';
 import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
 import { PreviewPicture, PreviewsContext } from '../../render/previews';
@@ -1351,6 +1352,7 @@ export function RemoteApp() {
       <ClockStyleContext.Provider value={clock}>
         <Layout />
         <DeviceViewer />
+        <PhoneStopped />
       </ClockStyleContext.Provider>
     </PreviewsContext.Provider>
   );

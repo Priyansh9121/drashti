@@ -141,7 +141,7 @@ import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recove
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
-import { installMenu, installNodeMenu } from './menu';
+import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
 import { runPerformanceTest, seedPerfLibrary } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
@@ -301,6 +301,10 @@ import type { NodeOutputStatus, ScreenThumb } from '../shared/nodes';
 import { hostname } from 'node:os';
 import { cutText } from '../shared/text';
 import { mainClockStyle } from './clock-style';
+import { STOPPED_REFUSAL } from '../shared/access';
+import { type BehindTheLock, prepareTheLock } from './access/behind-the-lock';
+import { followAccess, showCounter, streamCounter } from './access/effects';
+import { accessState, isLetIn, onAccessChange } from './access/gate';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -947,7 +951,32 @@ function boot(): void {
   if (!selfTesting && readRole(userData) !== role) writeRole(userData, role);
   log.info(`Starting as ${role === 'node' ? 'a node' : 'Main'}`);
   if (role === 'node') startNodeMode();
-  else start();
+  else void startMain(selfTesting);
+}
+
+/**
+ * Main, behind the lock (Session 54, access by Gmail: access/behind-the-lock.ts): nothing of Drashti opens (its library,
+ * the screens, the stream, the phones, the nodes) until the list says this computer is let in; then it starts as it
+ * always has. A self-test starts at once, its controls locked, and never asks the list.
+ */
+let behind: BehindTheLock | null = null;
+/** Not let in, nor a self-test: nothing may act. */
+const accessShut = (): boolean => behind?.shut() ?? false;
+
+async function startMain(selfTest: boolean): Promise<void> {
+  const lock = await prepareTheLock({
+    version: appVersion(),
+    selfTest,
+    background: () => appearance.background(),
+    fromOperator,
+    operatorWindow: () => operatorWindow,
+    open: start,
+  });
+  behind = lock;
+  stops.add('access', () => {
+    lock.service.dispose();
+  });
+  lock.begin();
 }
 
 /** Drashti as a node: no library, no show controls, no sound (node-mode/node-app.ts). */
@@ -1334,7 +1363,11 @@ function start(): void {
       },
       // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
       refuse: (command) =>
-        simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
+        accessShut()
+          ? STOPPED_REFUSAL
+          : simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type)
+            ? SIMPLE_MODE_REFUSAL
+            : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
@@ -2277,6 +2310,7 @@ function start(): void {
 
   // ---- streaming -------------------------------------------------------------
   let eventsStreamWas: StreamStatus | null = null;
+  const countStreams = streamCounter((kind) => behind?.service.count(kind));
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
     safeStorage,
@@ -2315,6 +2349,8 @@ function start(): void {
     statusChanged: (status) => {
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
+      // Each stream and recording started, counted for the Access List (Session 54): never what.
+      countStreams(status);
       // On air or recording (or getting there): the computer stays awake for the stream too (Session 31).
       sleepGuard.setStreaming(status.live.state !== 'off' || status.recording.state !== 'off');
     },
@@ -2672,6 +2708,8 @@ function start(): void {
       // What it found Drashti's player cannot play is converted by itself (Session 50): one file at a time,
       // a moment after the import, never while the stream is on air or recording.
       if (run) conversions.convertImported(importRepo.report(run.id));
+      // Each import, counted for the Access List (Session 54): never what.
+      if (run) behind?.service.count('imports');
     },
     failRun: (runId, paths, message) => {
       importRepo.failRun(runId, paths, message);
@@ -3596,8 +3634,12 @@ function start(): void {
     },
     // Tests only (never a packaged Drashti): a smaller size limit.
     maxBytes: Number(sw('DRASHTI_TEST_UPLOAD_MAX_BYTES') ?? 0) || undefined,
+    // No file is taken while Drashti is not let in (Session 54).
+    letIn: isLetIn,
   });
   const net = new NetworkService({
+    // Phones and tablets work only while Drashti is let in (Session 54): every request, pairing and file refused.
+    letIn: isLetIn,
     devices: new DeviceRepo(db),
     write: (key, run) => {
       later.write(key, run);
@@ -4926,6 +4968,8 @@ function start(): void {
   const showingCount = () => manager.status().filter((st) => st.state === 'showing').length;
   /** Ask before anything that would black out the screens or end the stream. Returns true when it is fine to quit. */
   const confirmQuit = (): boolean => {
+    // Stopped (Session 54): the screens are black and the stream has ended; Quit is the one thing that works.
+    if (accessState().phase === 'stopped') return true;
     if (!shouldConfirmQuit(showingCount(), quitConfirmed, noQuitConfirm, streaming.inUse())) return true;
     const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
     const options = {
@@ -5128,6 +5172,11 @@ function start(): void {
     app.quit();
   };
   rebuildMenu = () => {
+    // Not let in (a self-test, or stopped, Session 54): Quit and the editing keys only.
+    if (!isLetIn()) {
+      installLockedMenu();
+      return;
+    }
     installMenu(menuActions());
   };
   // ---- View > Show Shastra, Templates and Kirtan Details (Session 26a) -----------------------------
@@ -5547,6 +5596,41 @@ function start(): void {
       );
     });
   }
+
+  // ---- access by Gmail (Session 54): a stop stops everything; Main's nodes and phones hear it ----------------
+  stops.add(
+    'access effects',
+    followAccess({
+      stopShow: () => {
+        engine.stop();
+      },
+      stream: streaming,
+      tellNodes: (letIn) => {
+        nodes.tellAccess(letIn);
+      },
+      lockMenu: () => {
+        rebuildMenu();
+      },
+      dropShortcuts: () => {
+        globalShortcut.unregisterAll();
+      },
+      every: (ms, run) => {
+        const t = setInterval(run, ms);
+        return () => {
+          clearInterval(t);
+        };
+      },
+      log: (message, error) => {
+        if (error === undefined) log.warn(message);
+        else log.error(message, error);
+      },
+    }),
+  );
+  onAccessChange(() => {
+    net.accessChanged();
+  });
+  // Each presentation put up, counted for the Access List: never which.
+  engine.onChange(showCounter((kind) => behind?.service.count(kind)));
 
   // Restore the saved screen assignments, and follow display changes.
   manager.reconcile();

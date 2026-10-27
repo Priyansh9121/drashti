@@ -20,6 +20,7 @@ import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
 import { setLiveWindowSize } from '../render/live-window';
+import { useStopFade } from '../render/StopFade';
 
 /*
  * The stream's page: the Program, drawn off screen at the stream's size.
@@ -109,6 +110,8 @@ function Program() {
   useEffect(() => {
     sound.setOwnSound(context?.mixOwnSound ?? false, state);
   }, [state, context?.mixOwnSound]);
+  // Drashti stopped (Session 54): the stream's picture fades to black with the screens.
+  const stop = useStopFade(state?.stopped);
   return (
     <div
       className="relative h-full w-full bg-black"
@@ -134,7 +137,7 @@ function Program() {
           />
         </PlacedInParent>
       )}
-      {state && ready && context && (
+      {state && ready && context && !stop.black && (
         // The stream's picture: black if it fails as it draws, until the next change (Session 23).
         <SceneBoundary resetKey={rev}>
           {/* Main's way of writing the time (Sessions 31–36, I18N-8), for clocks in messages. */}
@@ -152,6 +155,7 @@ function Program() {
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
+      {stop.cover}
     </div>
   );
 }

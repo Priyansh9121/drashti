@@ -42,6 +42,8 @@ export function soundMoved(was: Sound, now: Sound): boolean {
  * hides pictures, not sound.
  */
 export function soundsOf(state: EngineState): Sound[] {
+  // Drashti stopped (Session 54, access by Gmail): no sound at all, as every screen goes black.
+  if (state.stopped) return [];
   const sounds: Sound[] = [];
   const audio = state.layers.audio;
   // A paused audio playlist makes no sound (it fades out, and starts again where it was).

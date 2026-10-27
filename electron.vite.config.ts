@@ -115,6 +115,8 @@ export default defineConfig({
           sharpen: resolve('src/renderer/sharpen.html'),
           // The window for Zoom: the stream's picture, for Zoom's Share Screen (Session 48).
           zoom: resolve('src/renderer/zoom.html'),
+          // The lock screen, before this computer is let in (Session 54, access by Gmail).
+          lock: resolve('src/renderer/lock.html'),
         },
       },
     },

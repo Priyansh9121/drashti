@@ -223,3 +223,19 @@ describe('a sound the engine sends somewhere new while it plays (Session 52)', (
     expect(soundMoved(playing, { ...playing, volume: 0.5, loop: true })).toBe(false);
   });
 });
+
+describe('Drashti stopped (Session 54, access by Gmail)', () => {
+  it('makes no sound at all: the audio layer, a background video and the slide’s videos stop', () => {
+    const playing = state({
+      audio: {
+        mediaId: 'music',
+        startedAt: 1000,
+        loop: false,
+        volume: 1,
+      } as EngineState['layers']['audio'],
+      background: { kind: 'media', mediaId: 'bg', media: 'video', fit: 'fill', loop: true, startedAt: 1000 },
+    });
+    expect(soundsOf(playing).length).toBe(2);
+    expect(soundsOf({ ...playing, stopped: { at: 2000 } })).toEqual([]);
+  });
+});
