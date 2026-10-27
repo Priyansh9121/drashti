@@ -321,6 +321,39 @@ describe('what a phone may add', () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
+  it('while the stream is on air or recording, pieces are taken at 2 MB a second at most, and the phone hears so', async () => {
+    const waits: number[] = [];
+    await uploads.stop();
+    uploads = new Uploads({
+      dir,
+      mediaDir,
+      freeBytes: () => free,
+      arrived: (file) => {
+        arrived.push(file);
+      },
+      log: () => undefined,
+      wait: (ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      },
+    });
+    await uploads.start();
+    uploads.setPolicy({ ...ON, slowed: true });
+    const bytes = picture(3 * 1024 * 1024);
+    const id = upload(await begin('Placeholder clip.mp4', bytes.length)).id;
+    expect(upload(uploads.status(PHONE, id)).slowed).toBe(true);
+    await uploads.piece(PHONE, id, '0', body(bytes.subarray(0, 1024 * 1024)));
+    await uploads.piece(PHONE, id, String(1024 * 1024), body(bytes.subarray(1024 * 1024)));
+    // At 2 MB a second, a quarter of a second's worth at once: 1 MB waits a quarter of a second more, and 2 MB
+    // more (with no time passing here) another second and more.
+    expect(waits).toHaveLength(2);
+    expect(waits[0]).toBeGreaterThan(240);
+    expect(waits[0]).toBeLessThan(260);
+    expect(waits[1]).toBeGreaterThan(1000);
+    uploads.setPolicy(ON);
+    expect(upload(uploads.status(PHONE, id)).slowed).toBe(false);
+  });
+
   it('a phone sends three at a time at most', async () => {
     for (let n = 0; n < 3; n++) expect((await begin(`Placeholder ${String(n)}.jpg`, 1000)).status).toBe(201);
     expect((await begin('Placeholder 4.jpg', 1000)).status).toBe(429);
