@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { IDLE_WHEN_NAMES, IDLE_WHENS } from '../../../shared/idle';
 import type { GroupLook, LookInfo, LookLayer, SlideStyle } from '../../../shared/looks';
-import { LOOK_LAYER_NAMES, LOOK_LAYERS, MOVEMENT_NAMES, MOVEMENTS } from '../../../shared/looks';
+import {
+  DEFAULT_GROUP_LOOK,
+  LOOK_LAYER_NAMES,
+  LOOK_LAYERS,
+  MOVEMENT_NAMES,
+  MOVEMENTS,
+} from '../../../shared/looks';
 import type { ScreenRole } from '../../../shared/screens';
 import { useEngine } from '../engine/engine-store';
 import { lookAction, useLooks } from '../looks/looks-store';
@@ -13,6 +19,7 @@ import { ArrowDown, ArrowUp, CopyPlus, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { cx } from '../ui/cx';
+import { useSavedSetting } from '../ui/saved-setting';
 import { Checkbox } from '../ui/Toggle';
 import { LanguagePicker } from './LanguagePicker';
 import {
@@ -204,11 +211,23 @@ export function GroupLookSettings({
   const masks = useMasks((s) => s.masks);
   const group = useScreens((s) => s.snapshot?.groups.find((g) => g.id === groupId));
   const settings: GroupLook | undefined = look.groups[groupId];
+  const save = (patch: Partial<GroupLook>) => lookAction(() => looks().setGroup(look.id, groupId, patch));
+  // Its layers and languages as ticked (Session 54): a second tick before the first is saved is made to the first.
+  const [layers, setLayers] = useSavedSetting(
+    `${look.id}:${groupId}:layers`,
+    settings?.layers ?? DEFAULT_GROUP_LOOK.layers,
+    (layers) => save({ layers }),
+  );
+  const [languages, setLanguages] = useSavedSetting(
+    `${look.id}:${groupId}:languages`,
+    settings?.languages ?? null,
+    (languages) => save({ languages }),
+  );
   if (!settings) return null;
-  const set = (patch: Partial<GroupLook>) => void lookAction(() => looks().setGroup(look.id, groupId, patch));
+  const set = (patch: Partial<GroupLook>) => void save(patch);
   const toggle = (layer: LookLayer, on: boolean) => {
-    const next = on ? [...settings.layers, layer] : settings.layers.filter((l) => l !== layer);
-    set({ layers: LOOK_LAYERS.filter((l) => next.includes(l)) });
+    const next = on ? [...layers, layer] : layers.filter((l) => l !== layer);
+    setLayers(LOOK_LAYERS.filter((l) => next.includes(l)));
   };
   const picture = role !== 'stage' && role !== 'stream';
   return (
@@ -227,7 +246,7 @@ export function GroupLookSettings({
                 <Checkbox
                   key={layer}
                   label={LOOK_LAYER_NAMES[layer]}
-                  checked={settings.layers.includes(layer)}
+                  checked={layers.includes(layer)}
                   data-testid={`look-layer-${layer}`}
                   onChange={(e) => {
                     toggle(layer, e.target.checked);
@@ -372,10 +391,8 @@ export function GroupLookSettings({
         label={
           role === 'stream' ? 'A kirtan’s languages on the stream' : 'A kirtan’s languages on these screens'
         }
-        value={settings.languages}
-        onChange={(languages) => {
-          set({ languages });
-        }}
+        value={languages}
+        onChange={setLanguages}
       />
     </div>
   );

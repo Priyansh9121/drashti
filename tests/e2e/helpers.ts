@@ -483,8 +483,9 @@ export async function openMoreTools(page: Page): Promise<void> {
 
 /**
  * Tick a box or choose a radio (`ticked` true), or untick a box, whose state comes back from the main process,
- * and wait until it shows it (Session 53). Such a box shows what the main process saved (a Look's layers and
- * languages, what an Events out address gets), so a click changes it only once the save has come back.
+ * and wait until it shows it (Session 53). Such a box showed what the main process saved (a Look's layers and
+ * languages, what an Events out address gets), so a click changed it only once the save had come back (since
+ * Session 54 those show a click at once, ui/saved-setting.ts; the Kirtan dialog's style still waits).
  * Playwright's check() and uncheck() look once, straight after their click, and fail if it has not come back
  * yet ("Clicking the checkbox did not change its state": screen-languages.spec on CI's Windows, Session 52).
  * A click on a box already as wanted would change it back, so this clicks only when the box is not.
