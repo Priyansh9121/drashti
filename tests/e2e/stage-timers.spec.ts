@@ -665,13 +665,18 @@ test('a timer box’s colours and its flash at 0:00 follow the engine’s time: 
   await app.close();
 });
 
-test('a layout saved before opens as it was, and draws as it did: nothing to save, words no larger than 400 px', async () => {
+test('a layout saved before opens as it was, and draws as it did: nothing to save, words no larger than 400 px, a countdown at 0:00 as before', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   const stageId = await setUpScreen(win, 'Stage', 0);
   const group = await makeStage(win, 'Stage');
+  // A countdown of 1 s that holds at 0:00, for a box of its own (Part A's review: the test drew no timer).
+  const spentId = await makeTimer(win, {
+    ...countdownOf('Placeholder countdown saved before', 1000),
+    allowsOverrun: false,
+  });
   // As Session 53's editor saved them: none of the settings since (fitWhole among them).
   const before: StageBox[] = [
     {
@@ -693,6 +698,16 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
       label: 'TIMERS',
       timerId: null,
     },
+    {
+      id: 'placeholder-old-countdown',
+      kind: 'timer',
+      frame: { x: 960, y: 860, width: 900, height: 200 },
+      size: 96,
+      color: '#fde68a',
+      align: 'right',
+      label: '',
+      timerId: spentId,
+    },
   ];
   const layoutId = await giveLayout(win, group, 'Placeholder layout saved before', before);
   const stage = await outputFor(app, stageId);
@@ -705,6 +720,27 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
     weight: '400',
     line: expect.stringMatching(/^0px /u),
   });
+
+  // Its countdown at 0:00, held where a box that flashes would be dim: the time as Timers writes it, in the box's
+  // own colour, with no colour of its own and no flash.
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
+    spentId,
+  );
+  const spent = (await engineState(win)).timers.find((t) => t.id === spentId);
+  if (spent?.startedAt == null) throw new Error('the countdown did not start');
+  const from = Math.ceil((spent.startedAt + 1000) / 1000) * 1000;
+  const wouldDim = Math.ceil(from / 2000) * 2000 + 500;
+  expect(flashDimmed(spent, wouldDim)).toBe(true);
+  expect(await holdClock(app, wouldDim)).toBeGreaterThan(0);
+  const old = stage.locator('[data-box-id="placeholder-old-countdown"] [data-timer]');
+  await expect(old).toHaveText(formatTimer(spent, wouldDim));
+  await expect(old).toHaveText('0:00');
+  await expect(old).not.toHaveAttribute('data-timer-color');
+  await expect(old).not.toHaveAttribute('data-flash');
+  expect(await old.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(253, 230, 138)');
+  expect(Number(await old.evaluate((el) => getComputedStyle(el).opacity))).toBe(1);
+  await holdClock(app, null);
 
   // In the editor: as it was, nothing to save, its boxes' new settings at what they leave out.
   await win.getByTestId('stage-edit-layout').click();
@@ -719,9 +755,17 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
   await expect(settings.getByTestId('stage-box-fill')).toHaveAttribute('aria-checked', 'false');
   await expect(settings.getByTestId('stage-box-hours')).toHaveValue('computer');
   await expect(settings.getByTestId('stage-box-seconds')).not.toBeChecked();
-  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Timer', exact: true }).click();
-  await expect(settings.getByTestId('stage-box-format')).toHaveValue('auto');
-  await expect(settings.getByTestId('stage-box-flash')).toHaveAttribute('aria-checked', 'false');
+  for (const n of [0, 1]) {
+    await editor
+      .getByTestId('stage-box-list')
+      .getByRole('button', { name: 'Timer', exact: true })
+      .nth(n)
+      .click();
+    await expect(settings.getByTestId('stage-box-format')).toHaveValue('auto');
+    await expect(settings.getByTestId('stage-box-warn')).toHaveAttribute('aria-checked', 'false');
+    await expect(settings.getByTestId('stage-box-over')).toHaveAttribute('aria-checked', 'false');
+    await expect(settings.getByTestId('stage-box-flash')).toHaveAttribute('aria-checked', 'false');
+  }
   await expect(save).toBeDisabled();
   await editor.getByRole('button', { name: 'Close stage layouts' }).click();
   // Kept exactly as it was saved.
