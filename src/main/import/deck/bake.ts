@@ -121,35 +121,48 @@ type Made =
 const movieLimit = (limits: ConvertLimits, plan: MoviePlan) =>
   limits.movieMs + limits.perMovieSecondMs * Math.ceil(plannedLength(plan) / 1000);
 
+/** A movie that has not appeared by then is never coming (C review: PowerPoint asking something nobody sees). */
+export const MOVIE_APPEARS_MS = 120_000;
+/** A movie that has not grown for this long, and does not read as one, has stopped being written. */
+export const MOVIE_STALLS_MS = 60_000;
+
 /**
  * Wait for PowerPoint's movie: its `save as movie` answers at once and the file grows meanwhile. It is done when
  * its size has held for 2 s and it is as long as planned, or its size has held for 10 s and it reads as a movie.
+ * It is given up on when it has not appeared within 2 minutes, or has not grown for a minute without reading as
+ * a movie (Session 54, C review), or at the time limit.
  */
-async function settledMovie(
+export async function settledMovie(
   ffmpeg: string,
   path: string,
   plannedMs: number,
-  limitMs: number,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  const until = Date.now() + limitMs;
+  options: { limitMs: number; appearMs?: number; stallMs?: number; signal?: AbortSignal },
+): Promise<'done' | 'never' | 'stalled' | 'timeout' | 'stopped'> {
+  const { signal } = options;
+  const started = Date.now();
+  const until = started + options.limitMs;
   let last = -1;
   let held = 0;
-  while (Date.now() < until && !signal?.aborted) {
+  let grew = started;
+  while (Date.now() < until) {
+    if (signal?.aborted) return 'stopped';
     const size = await stat(path).then(
       (s) => s.size,
       () => 0,
     );
     held = size > 0 && size === last ? held + 1 : 0;
+    if (size !== last) grew = Date.now();
     last = size;
+    if (size === 0 && Date.now() - started > (options.appearMs ?? MOVIE_APPEARS_MS)) return 'never';
     if (held >= 4 && held % 4 === 0) {
       const info = await readInfo(ffmpeg, path, { timeoutMs: 30_000 });
       const length = info.durationMs ?? 0;
-      if (length >= plannedMs - 1500 || (held >= 20 && length > 0)) return true;
+      if (length >= plannedMs - 1500 || (held >= 20 && length > 0)) return 'done';
     }
+    if (size > 0 && Date.now() - grew > (options.stallMs ?? MOVIE_STALLS_MS)) return 'stalled';
     await sleep(500, signal);
   }
-  return false;
+  return signal?.aborted ? 'stopped' : 'timeout';
 }
 
 /** Wait a moment for a file an app said it wrote. */
@@ -251,8 +264,21 @@ async function powerPointOnMac(
       );
       if (asked.code !== 0) return s.fromError(asked, 'making its movie', 'make its movie');
       const limitMs = movieLimit(limits, plan);
-      if (!(await settledMovie(options.ffmpeg, movieInApp, plannedLength(plan), limitMs, s.signal))) {
-        if (s.signal?.aborted)
+      const waited = await settledMovie(options.ffmpeg, movieInApp, plannedLength(plan), {
+        limitMs,
+        signal: s.signal,
+      });
+      if (waited === 'never' || waited === 'stalled')
+        return {
+          ok: false,
+          reason:
+            waited === 'never'
+              ? 'it had not started writing the movie after 2 minutes'
+              : 'it stopped writing the movie for a minute',
+          message: 'PowerPoint did not make the deck’s movie.',
+        };
+      if (waited !== 'done') {
+        if (waited === 'stopped')
           return { ok: false, reason: 'cancelled', message: 'Cancelled.', cancelled: true };
         return {
           ok: false,
