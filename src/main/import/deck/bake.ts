@@ -224,7 +224,10 @@ async function powerPointOnMac(
         const opened = await s.open(input);
         if (!opened.ok) return opened.failed;
         await s.hide();
-        const inApp = join(dirname(opened.document.copy), 'deck.pptx');
+        // Under the copy's own name, as PowerPoint then calls it: still Drashti's, and closed by that name (Session
+        // 54, C review: as deck.pptx it stayed open, and the PowerPoint Drashti started with it).
+        const { copy } = opened.document;
+        const inApp = join(dirname(copy), `${basename(copy, extname(copy))}.pptx`);
         const saved = await s.tell(
           [
             'save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as Open XML presentation',
@@ -236,6 +239,7 @@ async function powerPointOnMac(
         if (saved.code !== 0) return s.fromError(saved, 'saving it as a .pptx', 'save it as a .pptx');
         if (!(await written(inApp, s.signal)))
           return s.fromError(saved, 'saving it as a .pptx', 'save it as a .pptx');
+        await s.savedAs(opened.document, inApp);
         deckFile = join(work, 'deck.pptx');
         await copyFile(inApp, deckFile);
         await s.close(opened.document);

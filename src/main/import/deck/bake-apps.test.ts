@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readInfo } from '../../convert/read-info';
 import { CONVERT_LIMITS, findConverters, withMacSession } from '../deck-converters';
@@ -268,7 +268,11 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         const made = await withMacSession('powerpoint', deck, dir, CONVERT_LIMITS, { log }, async (s) => {
           const opened = await s.open(deck);
           if (!opened.ok) return opened.failed;
-          const inApp = join(dirname(opened.document.copy), 'old.ppt');
+          // Under the copy's own name, so that it is still Drashti's copy, closed by its new name.
+          const inApp = join(
+            dirname(opened.document.copy),
+            `${basename(opened.document.copy, extname(opened.document.copy))}.ppt`,
+          );
           const r = await s.tell(
             [
               'save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as presentation',
@@ -279,6 +283,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
           );
           for (let i = 0; i < 40 && !existsSync(inApp); i++) await new Promise((w) => setTimeout(w, 250));
           if (r.code === 0 && existsSync(inApp)) copyFileSync(inApp, ppt);
+          await s.savedAs(opened.document, inApp);
           return { ok: true as const };
         });
         expect(made.ok).toBe(true);

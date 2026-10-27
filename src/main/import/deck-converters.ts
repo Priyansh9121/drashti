@@ -457,6 +457,11 @@ export interface MacSession {
   /** Close a document Drashti opened, never saving it. */
   close(document: MacDocument): Promise<void>;
   /**
+   * A document Drashti saved as `file` (Session 54, C review): PowerPoint calls it by its new name from then on,
+   * so it is closed by that name. Keynote's are known by their id.
+   */
+  savedAs(document: MacDocument, file: string): Promise<void>;
+  /**
    * Hide the app (it shows itself when it opens a document), as NSRunningApplication does: no permission is asked
    * for. A Keynote or PowerPoint the operator had open is never hidden.
    */
@@ -716,6 +721,23 @@ export async function withMacSession<T>(
     }
   };
 
+  const savedAs = async (document: MacDocument, file: string) => {
+    if (app.converter !== 'powerpoint') return;
+    const r = await tellApp(
+      app,
+      [
+        'repeat with i from 1 to (count of presentations)',
+        'if (full name of presentation i) is (item 1 of argv) then return name of presentation i',
+        'end repeat',
+        'return ""',
+      ],
+      [file],
+      10,
+    );
+    const now = r.code === 0 ? r.stdout.trim() : '';
+    if (now !== '') document.doc = now;
+  };
+
   const hide = async () => {
     // One the operator had open is theirs: as they left it.
     if (before.length > 0) return;
@@ -807,6 +829,7 @@ export async function withMacSession<T>(
       stuck: silentFail,
       fromError,
       close,
+      savedAs,
       hide,
       signal,
     });
