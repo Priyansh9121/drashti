@@ -1,4 +1,5 @@
 import type { EngineMessage } from './engine/protocol';
+import type { AddFilesView } from './phone-files';
 
 /*
  * The local network (PLAN.md 5.2, Session 10): phones, tablets and browsers
@@ -83,6 +84,8 @@ export interface NetworkStatus {
   pairing: PairingOffer | null;
   /** The poster link just made, shown once (only its hash is kept). */
   poster: { url: string; madeAt: string } | null;
+  /** Whether phones and tablets may add files, and how large (Session 54: "Phones and tablets may add files"). */
+  addFiles?: AddFilesView;
 }
 
 export type NetworkResult = { ok: true; status: NetworkStatus } | { ok: false; message: string };
@@ -100,9 +103,9 @@ export type FromDevice =
   /** The device's copy fell behind (a revision went missing): send the whole state again. */
   | { type: 'resync' };
 
-/** Hints that lists a device shows have changed and should be read again. */
+/** Hints that lists a device shows have changed and should be read again (Session 54: 'files', adding files). */
 export type NetworkChange =
-  'playlists' | 'presentations' | 'messages' | 'timers' | 'props' | 'screens' | 'looks' | 'shastra';
+  'playlists' | 'presentations' | 'messages' | 'timers' | 'props' | 'screens' | 'looks' | 'shastra' | 'files';
 
 /** What the feed sends a device. */
 export type ToDevice =

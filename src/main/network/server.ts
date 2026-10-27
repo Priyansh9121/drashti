@@ -34,6 +34,9 @@ import {
 import { RateLimiter, WrongCodeLimiter } from './limits';
 import { PreviewMaker, type PreviewSource } from './previews';
 import { hashToken } from './tokens';
+import { isPiece, UPLOAD_ROUTES, uploadAnswer, uploadsAt } from './upload-routes';
+import type { Uploads } from './uploads';
+import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/phone-files';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
 
@@ -66,6 +69,8 @@ export interface ServerOptions {
   refuseLoopback?: boolean;
   /** Tests: fewer connections at once than SOCKET_LIMITS. */
   sockets?: { total: number; perAddress: number };
+  /** Files phones add (Session 54): the uploads folder, inside the media folder. None are taken without it. */
+  uploads?: { dir: string; mediaDir: string };
 }
 
 export interface ServerHost {
@@ -82,6 +87,8 @@ export interface ServerHost {
   /** This copy of the engine state fell behind: send a fresh snapshot. */
   resync(): void;
   log(level: 'info' | 'warn', message: string): void;
+  /** A file a phone added has all arrived and is what it should be (Session 54): the main process imports it. */
+  arrived?(file: ArrivedFile): void;
 }
 
 export type StartResult = { ok: true; port: number } | { ok: false; message: string };
@@ -213,6 +220,8 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/messages/:id/hide', 'message.hide', (_b, p) => ({ templateId: p['id'] })),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
+  // Session 54: playlists shared with phones, and files a phone adds (upload-routes.ts).
+  ...UPLOAD_ROUTES.map((r) => route(r.method, r.path, r.op, r.args, r.param)),
 ];
 
 /** Every request the API takes, as "METHOD /path" (docs/api.md documents each; a test checks). */
@@ -327,6 +336,9 @@ export class NetworkServer {
   private readonly feedMessages = new RateLimiter(10, 30);
   private readonly wrongCodes = new WrongCodeLimiter();
   private previews: PreviewMaker | null = null;
+  private uploads: Uploads | null = null;
+  /** A file's pieces, apart from every other request, so sending one never holds up Next. */
+  private readonly pieces = new RateLimiter(10, 20);
   private heartbeat: NodeJS.Timeout | null = null;
   private lastConnected = '';
 
@@ -340,6 +352,7 @@ export class NetworkServer {
     this.options = options;
     this.files = listWebFiles(options.webDir);
     this.previews = new PreviewMaker(options.previewDir, options.ffmpeg);
+    this.uploads = uploadsAt(options.uploads, this.host);
     const server = createServer((req, res) => {
       this.onRequest(req, res);
     });
@@ -393,6 +406,7 @@ export class NetworkServer {
 
   /** Close every connection (telling each device why) and stop listening. */
   stop(reason: ByeReason = 'network-off'): Promise<void> {
+    void this.uploads?.stop();
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
     for (const c of this.clients) this.bye(c, reason);
@@ -413,6 +427,7 @@ export class NetworkServer {
   setDevices(list: readonly DeviceAuth[]): void {
     this.devices = new Map(list.map((d) => [d.tokenHash, d]));
     const ids = new Map(list.map((d) => [d.id, d]));
+    this.uploads?.keepDevices(new Set(ids.keys()));
     for (const c of this.clients) {
       if (!c.device) continue;
       const now = ids.get(c.device.id);
@@ -424,6 +439,16 @@ export class NetworkServer {
   /** A device paired just now: known before its first request arrives. */
   addDevice(device: DeviceAuth): void {
     this.devices.set(device.tokenHash, device);
+  }
+
+  /** Whether phones may add files now, how large, and whether the stream is on air (Session 54). */
+  setUploadPolicy(policy: UploadPolicy): void {
+    this.uploads?.setPolicy(policy);
+  }
+
+  /** What the main process made of a file a phone added. */
+  uploadOutcome(id: string, outcome: ArrivedOutcome): void {
+    this.uploads?.outcome(id, outcome);
   }
 
   /** A message from the engine: kept, and sent on to every device on the feed. */
@@ -575,7 +600,9 @@ export class NetworkServer {
           'This device is not paired with Drashti. Pair it from Drashti’s Network panel.',
         );
       }
-      if (!this.perDevice.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
+      // A file's pieces count apart (Session 54): a phone sending one can still tap Next.
+      const limit = isPiece(req.method, segments) ? this.pieces : this.perDevice;
+      if (!limit.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
       this.host.seen(device.id);
       const found = matchRoute(req.method ?? 'GET', segments);
       if (!found.found)
@@ -601,6 +628,12 @@ export class NetworkServer {
       }
       if (r.op === 'preview') {
         await this.preview(res, params['id'] ?? '');
+        return;
+      }
+      // Files a phone adds (Session 54): taken here, in the network's own process.
+      const upload = await uploadAnswer(this.uploads, r.op, req, device, params, () => readJson(req));
+      if (upload) {
+        this.json(res, upload.status, upload.body);
         return;
       }
       // A POST's JSON body, or a GET's query (strings only).

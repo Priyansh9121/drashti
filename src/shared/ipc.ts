@@ -466,6 +466,8 @@ export const IPC = {
     /** A new Repeat Slides playlist (Session 26d), and its settings (Pro Mode's). */
     createRepeat: 'playlists:create-repeat',
     setRepeat: 'playlists:set-repeat',
+    /** Share a playlist with phones and tablets, or stop (Session 54): Remote devices view it, read-only. */
+    share: 'playlists:share',
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
     /** main -> operator: how following the smart playlists' folders goes changed. */
@@ -768,6 +770,8 @@ export const IPC = {
     revokeDevice: 'network:revoke-device',
     /** A new announcements poster link (the old one stops working). */
     makePoster: 'network:make-poster',
+    /** "Phones and tablets may add files" (Session 54), every person's. */
+    setAddFiles: 'network:set-add-files',
     /** main -> operator: the network's state changed. */
     changed: 'network:changed',
   },
@@ -1041,6 +1045,7 @@ export interface InvokeContract {
   [IPC.playlists.createSmart]: { args: []; result: PlaylistResult };
   [IPC.playlists.removeMissing]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.createRepeat]: { args: [parentId: string | null]; result: PlaylistResult };
+  [IPC.playlists.share]: { args: [playlistId: string, on: boolean]; result: PlaylistResult };
   [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
@@ -1271,6 +1276,7 @@ export interface InvokeContract {
   [IPC.network.renameDevice]: { args: [deviceId: string, name: string]; result: NetworkResult };
   [IPC.network.revokeDevice]: { args: [deviceId: string]; result: NetworkResult };
   [IPC.network.makePoster]: { args: []; result: NetworkResult };
+  [IPC.network.setAddFiles]: { args: [on: boolean]; result: NetworkResult };
   [IPC.announcements.list]: { args: []; result: AnnouncementsView };
   [IPC.announcements.edit]: {
     args: [edit: { id: string; text: string; minutes: number }];

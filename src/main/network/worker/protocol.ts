@@ -1,6 +1,7 @@
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import type { NetworkChange } from '../../../shared/network';
 import type { DeviceAnswer, DeviceAuth, DeviceRequest, PairAnswer } from '../../../shared/network-api';
+import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../../shared/phone-files';
 import type { PreviewSource } from '../previews';
 import type { ServerOptions, StartResult } from '../server';
 
@@ -17,7 +18,10 @@ export type ToNetworkWorker =
   | { type: 'engine'; message: EngineMessage }
   | { type: 'devices'; devices: DeviceAuth[] }
   | { type: 'hint'; what: NetworkChange }
-  | { type: 'answer'; id: number; answer: unknown };
+  | { type: 'answer'; id: number; answer: unknown }
+  /** Files phones add (Session 54): the switch, the limits and on air; and what came of a file handed over. */
+  | { type: 'uploads'; policy: UploadPolicy }
+  | { type: 'upload-outcome'; id: string; outcome: ArrivedOutcome };
 
 export type WorkerQuestion =
   | { kind: 'request'; request: DeviceRequest }
@@ -38,4 +42,6 @@ export type FromNetworkWorker =
   | { type: 'connected'; deviceIds: string[] }
   | { type: 'seen'; deviceId: string }
   | { type: 'resync' }
-  | { type: 'log'; level: 'info' | 'warn'; message: string };
+  | { type: 'log'; level: 'info' | 'warn'; message: string }
+  /** A file a phone added has all arrived and is what it should be (Session 54): the main process imports it. */
+  | { type: 'arrived'; file: ArrivedFile };
