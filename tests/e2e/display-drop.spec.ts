@@ -31,13 +31,18 @@ test('a display that drops for a moment keeps its output: hidden, then back on i
     DRASHTI_TEST_DISPLAY_CHANGES: '1',
   });
   const win = await operatorPage(app);
-  const index = await win.evaluate(async () =>
-    (await (globalThis as PageGlobals).drashti.screens.get()).displays.findIndex(
-      (d) => d.label === 'Extra display 1',
-    ),
-  );
-  expect(index).toBeGreaterThanOrEqual(0);
-  await setUpScreen(win, 'Main Hall', index);
+  // The test's first pretend display, whatever real ones this computer has (Session 54: setUpScreen chooses as
+  // testDisplays does; a second monitor plugged in was Drashti's second display, and took the screen).
+  const screenId = await setUpScreen(win, 'Main Hall', 1);
+  await expect
+    .poll(() =>
+      win.evaluate(async (id) => {
+        const s = await (globalThis as PageGlobals).drashti.screens.get();
+        const on = s.status.find((x) => x.screenId === id)?.displayId;
+        return s.displays.find((d) => d.id === on)?.label ?? null;
+      }, screenId),
+    )
+    .toBe('Extra display 1');
   const output = await outputPage(app);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
