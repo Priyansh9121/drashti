@@ -14,8 +14,8 @@ import { useRemote } from './remote-store';
  * The stage screens' timers on the phone remote (Session 54, Part A3), as the Stage screen panel has them in
  * Drashti: each timer the stage screens' layout shows by name (the live Look's first stage group's, which Drashti
  * names in GET /api/v1/hall), with its time, what it counts to, and Start, Pause and Reset. Nothing for the
- * Standard stage screen, or a layout with no timer chosen in it. StageTimerList is the list alone, for the
- * remote's Stage screen section (D5's, under its message); StageTimers is the list in a section of its own.
+ * Standard stage screen, or a layout with no timer chosen in it. The remote's Stage screen section (D5's) has the
+ * list under its message.
  */
 
 const NO_TIMERS: TimerState[] = [];
@@ -98,18 +98,5 @@ export function StageTimerList() {
         <StageTimerRow key={t.id} timer={t} />
       ))}
     </ul>
-  );
-}
-
-/** The same list in a section of its own, "On the stage screens", or nothing when the layout names none. */
-export function StageTimers() {
-  if (useStageTimers().length === 0) return null;
-  return (
-    <section className="space-y-2" aria-labelledby="stage-timers-title">
-      <h2 id="stage-timers-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        On the stage screens
-      </h2>
-      <StageTimerList />
-    </section>
   );
 }
