@@ -158,7 +158,7 @@ async function outputFor(app: ElectronApplication, screenId: string): Promise<Pa
   return found;
 }
 
-test('the key and the fill: Pause from the bar holds both feeds where the engine’s pause put them, and Play brings them back in step', async () => {
+test('the key and the fill: a slide’s video (a key and fill pair keys the slide, its props and messages, never the background), Pause from its bar holding both feeds where the engine’s pause put them, and Play bringing them back in step', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
@@ -166,6 +166,11 @@ test('the key and the fill: Pause from the bar holds both feeds where the engine
   const dir = mkdtempSync(join(tmpdir(), 'drashti-time-bar-keyfill-'));
   const file = await makeTestVideo(win, join(dir, 'Placeholder keyed clip.webm'), { seconds: 10, hue: 20 });
   const [mediaId = ''] = await importAndGetIds(win, [file]);
+  // A slide of the video alone: a key and fill group draws slides as lower thirds, a slide's words alone and a slide
+  // of pictures whole (render/SlideLayerView.tsx), and never the background (look-service.ts becameKeyFill).
+  const presentationId = await slideWithVideos(win, dir, 'Placeholder Keyed Video', [mediaId], {
+    alone: true,
+  });
   // A key and fill group on the two displays (as keyfill.spec.ts makes it): its fill's and its key's outputs.
   const on = (await testDisplays(win)).map((x) => x.id);
   const screens = await win.evaluate(async (on) => {
@@ -185,16 +190,24 @@ test('the key and the fill: Pause from the bar holds both feeds where the engine
   const fill = await outputFor(app, screens[0]?.id ?? '');
   const key = await outputFor(app, screens[1]?.id ?? '');
   for (const o of [fill, key]) await outputReady(o);
-  await backgroundVideo(win, mediaId);
-  const copies = backgroundCopies(
-    [
-      { name: 'the fill', page: fill },
-      { name: 'the key', page: key },
-    ],
-    mediaId,
-  );
-  await inStep(copies, () => backgroundTiming(win), 'playing on the fill and the key');
-  await pauseThenPlay(win, copies);
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  const picture = `[data-layer="slide"] video[data-media-id="${mediaId}"]`;
+  const copies: Copy[] = [
+    { name: 'the fill', page: fill, selector: picture },
+    { name: 'the key', page: key, selector: picture },
+  ];
+  const timing = () => slideTiming(win, mediaId, true);
+  await inStep(copies, timing, 'playing on the fill and the key');
+  // Paused from the slide's video's own bar under LIVE: both feeds held where the engine's pause put it.
+  const slideRow = row(win, `slide:${mediaId}`);
+  await expect(slideRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+  await slideRow.getByRole('button', { name: 'Pause' }).click();
+  await expect.poll(async () => (await timing()).seek?.paused).toBe(true);
+  await heldAt(copies, ((await timing()).seek?.toMs ?? 0) / 1000, 'paused from the bar');
+  // Played on: both back in step.
+  await slideRow.getByRole('button', { name: 'Play' }).click();
+  await expect.poll(async () => (await timing()).seek?.paused).toBeUndefined();
+  await inStep(copies, timing, 'played on from the bar');
   await app.close();
 });
 
@@ -384,11 +397,12 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   await expect(rows(win)).toHaveCount(5);
   for (const which of ['background', `slide:${oneId}`, `slide:${twoId}`, 'pip', 'audio'])
     await expect(row(win, which).getByRole('slider')).toBeVisible({ timeout: 15_000 });
-  // The two-hour background paused: its row says so, its time left in hours, minutes and seconds.
+  // The two-hour background paused: its row says so, its time left in hours, minutes and seconds (counted up to
+  // whole seconds, as a countdown is: paused within its first second, -2:00:00).
   await row(win, 'background').getByRole('button', { name: 'Pause' }).click();
   const bg = row(win, 'background');
   await expect(bg.getByTestId('time-bar-paused')).toBeVisible();
-  await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-1:5\d:\d\d$/);
+  await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-[12]:\d\d:\d\d$/);
 
   // Pro Mode: Next and Back where they were, in view; every row whole in the live column (scrolled to).
   expect((await next.boundingBox())?.y, 'Next where it was').toBe(nextAt);
@@ -427,7 +441,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   }
 
   // Simple Mode: the same five, each whole under its LIVE picture, its big buttons in view.
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(rows(win)).toHaveCount(5);
   await rowsFit(win, rows(win), 1024, 'Simple Mode');
