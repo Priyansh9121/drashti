@@ -192,6 +192,8 @@ Simple Mode is one screen with big buttons, for running a sabha from its playlis
 8. Nothing in Simple Mode can import, edit, remove, or change themes, screens, the sound or backups, or switch the Look; its time bars show what plays without moving it. It can turn **Audience** or **Stage** back on (**Turn on** in its status bar), never off. If Drashti stops unexpectedly and is started again within 3 hours, it comes back in Simple Mode. After Drashti is quit on purpose (or started 3 hours or more after a stop) it starts in Pro Mode.
 9. To leave it: **Switch to Pro Mode…** at the top right (or **View**, then **Switch to Pro Mode…**), type **pro**, and press **Switch to Pro Mode**. Volunteers should not need to.
 
+![Simple Mode with a slide's video and the music playing: their bars and the time left under the live picture](screenshots/simple-mode-time-bar.png)
+
 Write down anything the volunteer found hard, with what they were trying to do.
 
 ### Updates (for whoever looks after Drashti)

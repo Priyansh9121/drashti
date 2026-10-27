@@ -36,9 +36,13 @@ On a phone, **Show**, **Playlist**, **Library** and **More** along the bottom ch
 
 ![The library, searched for words on a slide](screenshots/phone-remote-search.png)
 
+![The clears on a phone, in the operator's order with their keys: those with something to clear are lit](screenshots/phone-remote-clears.png)
+
 **On an iPad held sideways** (or a laptop): the live picture, your notes, what comes next and the clears are on the left, and the slides are on the right, with the Playlist, the Library and More (in two columns) a tab away above them; Back and Next run along the bottom. Held upright, the iPad shows the playlist or the library beside the show, and More under it.
 
 ![An iPad held sideways: the live picture and notes beside the slides](screenshots/tablet-remote-sideways.png)
+
+![More on an iPad held sideways, in two columns](screenshots/tablet-remote-more.png)
 
 The operator can always change the screens from the computer too; your page follows whatever is up.
 
@@ -48,10 +52,16 @@ The operator can always change the screens from the computer too; your page foll
 - Two fingers zoom in and out (two quick taps too), and one finger moves what you have zoomed; the buttons along the bottom do the same, and step to the page before or after. **Close** goes back. None of this changes the screens.
 - **Show this zoom on the screens**: when the picture you have zoomed into is the one on the screens (a red LIVE at the top), this large button at the side puts your zoom on the screens, and **Back to Whole** shows the whole picture again. On anything not live, neither button is there.
 
+![Looking closer at the picture on the screens, zoomed on the phone, with Show this zoom on the screens at the side](screenshots/phone-viewer-zoom.png)
+
 ## Files between your phone and Drashti
 
 - **Shared from Drashti**, in the **Library**, while the operator shares a playlist with phones (in Drashti, right-click it and choose **Share with Phones and Tablets**): tap the playlist, then a file, to look at it or play it on your phone alone, with the playlist's other files before and after it. Nothing there changes the playlist or the screens.
 - **Add from this Phone…**, in the **Library**, while the operator has turned on **Phones and tablets may add files** (in **Phones** on the Drashti computer): choose pictures, videos, sounds, PDF, PowerPoint or Keynote files, up to 2 GB each. Each goes whole, with a bar showing how much has gone and **Cancel**; if the Wi-Fi drops, it picks up again by itself. Drashti adds it to the playlist **Added from Phones** (and to Media or the library), marked with your phone's name, and your phone says when it is in; a PDF or a deck waits until the stream and recording have ended. It never goes on the screens by itself. On an iPhone, choose a video from **Files** to send it whole: one chosen from the photo library may go as a smaller copy.
+
+![Shared from Drashti: a shared playlist's files, under its headers](screenshots/phone-shared.png)
+
+![Add from this Phone…: a sound on its way, with how much has gone and Cancel](screenshots/phone-add-files.png)
 
 ## If something is not right
 
