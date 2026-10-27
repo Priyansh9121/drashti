@@ -7,6 +7,7 @@ import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { useFirstGroupLanguages } from '../screens/screens-store';
 import { languageView } from '../../../shared/language-view';
+import { deckSlideAt } from '../../../shared/deck-show';
 import { Music } from '../ui/icons';
 import { InputPicture, useSmallPicture } from '../video-inputs/InputPicture';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
@@ -48,6 +49,8 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   let caption = 'Nothing after this';
   if (next?.kind === 'slide')
     caption = `${itemLabel ?? name ?? 'Presentation'}, slide ${next.slideIndex + 1}${next.itemId ? ' (next item)' : ''}`;
+  // A deck's next click on the slide up (Session 54, C2).
+  if (next?.kind === 'slide' && (next.step ?? 0) > 0) caption += `, click ${String(next.step)}`;
   if (next?.kind === 'slide' && next.input !== undefined)
     caption += behind
       ? `, over the video input “${next.input}”`
@@ -92,7 +95,11 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
               />
             )}
             <PlacedInParent content={next.slide} mode="fit" className="absolute inset-0">
-              <SlideView slide={languageView(next.slide, shownAs?.languages ?? null)} media="still" />
+              {/* A deck's slide (Session 54, C2): as the step Next shows ends. */}
+              <SlideView
+                slide={languageView(deckSlideAt(next.slide, next.step ?? 0), shownAs?.languages ?? null)}
+                media="still"
+              />
             </PlacedInParent>
           </>
         )}
