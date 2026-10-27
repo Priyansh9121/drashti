@@ -11,7 +11,14 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Tv, X, ZoomIn, ZoomOut
 import { Notice } from '../../ui/Notice';
 import { api } from '../device';
 import { tap, useTapNotice } from '../taps';
-import { type Framing, liveFramingOf, liveZoomFor, screensFollow, viewForLive } from './live-zoom';
+import {
+  type Framing,
+  liveFramingOf,
+  liveZoomFor,
+  phoneZoomTarget,
+  screensFollow,
+  viewForLive,
+} from './live-zoom';
 import { backCloses, closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
@@ -175,7 +182,9 @@ function Viewer() {
                 className="h-auto min-h-16 py-2 text-left whitespace-normal"
                 data-testid="viewer-show-zoom"
                 onClick={() => {
-                  if (mine) void tap(post('/api/v1/zoom', mine));
+                  // With the showing it is for: nothing, should another picture be up by the time it arrives.
+                  const showing = phoneZoomTarget(state)?.showing;
+                  if (mine) void tap(post('/api/v1/zoom', { ...mine, ...(showing ? { showing } : {}) }));
                 }}
               >
                 {showsThis ? 'This zoom is on the screens' : 'Show this zoom on the screens'}
@@ -190,7 +199,8 @@ function Viewer() {
                 onClick={() => {
                   setView(WHOLE);
                   settle();
-                  void tap(post('/api/v1/zoom/whole'));
+                  const showing = phoneZoomTarget(state)?.showing;
+                  void tap(post('/api/v1/zoom/whole', showing ? { showing } : undefined));
                 }}
               >
                 Back to Whole

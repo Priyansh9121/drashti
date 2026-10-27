@@ -225,8 +225,13 @@ const ROUTES: Route[] = [
     zoom: b['zoom'],
     x: b['x'],
     y: b['y'],
+    // The showing it zoomed (D1/D2 review): nothing when another is up by then.
+    ...(b['showing'] !== undefined ? { showing: b['showing'] } : {}),
   })),
-  route('POST', '/api/v1/zoom/whole', 'command', command('resetLiveZoom')),
+  route('POST', '/api/v1/zoom/whole', 'command', (b) => ({
+    type: 'resetLiveZoom',
+    ...(b['showing'] !== undefined ? { showing: b['showing'] } : {}),
+  })),
   // Repeat Slides (Session 26d): a Repeat Slides playlist going round (from a slide of it, if given), and Stop.
   route('POST', '/api/v1/repeat/stop', 'command', command('stopRepeat')),
   route('POST', '/api/v1/repeat/:id/start', 'command', (b, p) => ({

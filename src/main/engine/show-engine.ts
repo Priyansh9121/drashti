@@ -1911,6 +1911,13 @@ export class ShowEngine {
         const target = this.zoomTarget(this.state);
         if (!target)
           return { ok: false, error: 'no-picture', message: 'No picture is on the screens to zoom.' };
+        // Sent for a showing no longer up (a phone's, as the operator moved on): never this picture's (D1/D2 review).
+        if (command.showing !== undefined && command.showing !== target.showing)
+          return {
+            ok: false,
+            error: 'no-picture',
+            message: 'The picture on the screens has changed since: zoom it again.',
+          };
         const kept = this.options.pictureLook?.(target.mediaId) ?? PLAIN;
         const z = this.state.liveZoom;
         const now = this.now();
