@@ -81,6 +81,11 @@ export interface AccessServiceOptions {
   /** Run `run` in `ms`; what it returns cancels it. */
   setTimer: (ms: number, run: () => void) => () => void;
   log: (level: 'info' | 'warn', message: string) => void;
+  /**
+   * False for the performance check's own run (Session 54, E review): it is let in as any start is, and adds nothing
+   * to this computer's totals (minutes, shows…).
+   */
+  counts?: boolean;
   /** Tests only (a test switch): checks this often, and the stop this long after the last answer. */
   checkEveryMs?: number;
   stopAfterMs?: number;
@@ -168,6 +173,19 @@ export function keptAt(
       return now();
     }
   };
+}
+
+/**
+ * Where the performance check finds this computer's access (Session 54, E review): in this computer's own data
+ * folder, never its throwaway one, so it runs only on a computer let in; in development and the tests, a folder a test
+ * let in (DRASHTI_TEST_ACCESS_HOME), which a packaged Drashti never reads.
+ */
+export function performanceAccessFolder(o: {
+  packaged: boolean;
+  home: string;
+  testFolder: string | undefined;
+}): string {
+  return !o.packaged && o.testFolder !== undefined && o.testFolder !== '' ? o.testFolder : o.home;
 }
 
 /** Why a call came to nothing, for the log (never what was sent). */
@@ -388,7 +406,7 @@ export class AccessService {
 
   /** A show, a stream, a recording or an import, added to this computer's totals (sent with each check). */
   count(kind: ActivityKind, n = 1): void {
-    if (!isLetIn() || !this.kept || !(n > 0)) return;
+    if (this.o.counts === false || !isLetIn() || !this.kept || !(n > 0)) return;
     this.add({ [kind]: Math.floor(n) });
   }
 
@@ -523,7 +541,7 @@ export class AccessService {
   }
 
   private countMinutes(): void {
-    if (this.timers.has('minute')) return;
+    if (this.o.counts === false || this.timers.has('minute')) return;
     this.timers.set(
       'minute',
       this.o.setTimer(MINUTE_MS, () => {

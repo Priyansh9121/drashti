@@ -980,6 +980,24 @@ async function startMain(selfTest: boolean): Promise<void> {
       fromOperator,
       operatorWindow: () => operatorWindow,
       open: start,
+      // The performance check (Session 54, E review): only on a computer let in, by the access in its own data folder.
+      ...(perfTest
+        ? {
+            performance: {
+              home: homeData,
+              notLetIn: (why: string) => {
+                log.warn(`Access: the performance check does not run: ${why}`);
+                const result = {
+                  passed: false,
+                  checks: [{ name: 'this computer is let in', ok: false, detail: why }],
+                  summary: '',
+                };
+                process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);
+                exitNow(1);
+              },
+            },
+          }
+        : {}),
     });
   } catch (error) {
     // Never open without the lock: said plainly, and Drashti quits.

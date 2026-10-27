@@ -2,14 +2,15 @@ import { app, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { gateChannels } from '../ipc/handle';
 import { log } from '../log';
 import { installLockedMenu } from '../menu';
-import { swMs } from '../switches';
+import { LOCK_REASON_TEXT } from '../../shared/access';
+import { sw, swMs } from '../switches';
 import { createLockWindow, registerAccessIpc } from './access-ipc';
 import { AccessClient, accessSwitches, accessTarget } from './client';
 import { electronTransport } from './electron-transport';
 import { isLetIn, onAccessChange } from './gate';
 import { mayRunWhileLocked } from './locked-requests';
 import { accessComputer, computerId } from './identity';
-import { AccessService, AskedFile, keptAt } from './service';
+import { AccessService, AskedFile, keptAt, performanceAccessFolder } from './service';
 import { AccessStore } from './store';
 
 /*
@@ -45,14 +46,34 @@ export async function prepareTheLock(o: {
   operatorWindow: () => BrowserWindow | null;
   /** Drashti opens (index.ts's start). */
   open: () => void;
+  /**
+   * The performance check (Session 54, E review): it runs only on a computer let in. Its access is checked with the
+   * list as any start's is, from this computer's own data folder (`home`), never its throwaway one; and only once let
+   * in does it open and act. Locked, or no answer: `notLetIn` says why, and the check stops.
+   */
+  performance?: { home: string; notLetIn: (why: string) => void };
 }): Promise<BehindTheLock> {
   const userData = app.getPath('userData');
-  const store = new AccessStore(userData);
+  const perfCheck = o.performance;
+  // A self-test asks nothing; the performance check asks as any start does.
+  const selfTest = o.selfTest && !perfCheck;
+  const accessDir = perfCheck
+    ? performanceAccessFolder({
+        packaged: app.isPackaged,
+        home: perfCheck.home,
+        testFolder: sw('DRASHTI_TEST_ACCESS_HOME'),
+      })
+    : userData;
+  const store = new AccessStore(accessDir);
   // Never the keychain at start (E6): the access is a file in the data folder; the computer's id is worked out.
-  const computer = o.selfTest
+  const computer = selfTest
     ? { ok: false as const, reason: 'a self-test asks nothing' }
-    : await computerId({ platform: process.platform, packaged: app.isPackaged, switches: accessSwitches });
-  const target = o.selfTest ? null : accessTarget({ packaged: app.isPackaged, switches: accessSwitches });
+    : await computerId({
+        platform: process.platform,
+        packaged: app.isPackaged,
+        switches: accessSwitches,
+      });
+  const target = selfTest ? null : accessTarget({ packaged: app.isPackaged, switches: accessSwitches });
   let calls: AccessClient | null = null;
   if (target && computer.ok)
     try {
@@ -80,9 +101,11 @@ export async function prepareTheLock(o: {
   const service = new AccessService({
     calls,
     kept: store,
-    asked: new AskedFile(userData),
+    asked: new AskedFile(accessDir),
     computer,
-    selfTest: o.selfTest,
+    selfTest,
+    // The performance check's own run adds nothing to this computer's totals.
+    counts: !perfCheck,
     version: o.version,
     // The monotonic clock: the 2 minutes never follow the computer's clock.
     monotonic: () => performance.now(),
@@ -121,12 +144,36 @@ export async function prepareTheLock(o: {
   installLockedMenu();
 
   const begin = () => {
-    if (o.selfTest) {
+    if (selfTest) {
       service.start();
       o.open();
       return;
     }
+    if (perfCheck) {
+      beginPerformance(perfCheck.notLetIn);
+      return;
+    }
     beginLocked();
+  };
+  /** The performance check: open once let in; locked or no answer, say why and stop (never the lock window). */
+  const beginPerformance = (notLetIn: (why: string) => void) => {
+    let said = false;
+    onAccessChange((state) => {
+      if (opened || said) return;
+      if (state.phase === 'in' || state.phase === 'warning') {
+        opened = true;
+        log.info('Access: let in: the performance check runs');
+        o.open();
+      } else if (state.phase === 'locked') {
+        said = true;
+        notLetIn(
+          state.reason === null
+            ? 'This computer is not let in: let it in first (Request Access, or I Have a Token), then run the performance check again.'
+            : LOCK_REASON_TEXT[state.reason],
+        );
+      }
+    });
+    service.start();
   };
   const beginLocked = () => {
     const showLock = () => {
@@ -163,7 +210,7 @@ export async function prepareTheLock(o: {
     });
     service.start();
   };
-  return { service, client: calls, shut: () => !o.selfTest && !isLetIn(), begin };
+  return { service, client: calls, shut: () => !selfTest && !isLetIn(), begin };
 }
 
 /** Tests only (never a packaged Drashti): each call's time limit, shorter. */

@@ -24,6 +24,7 @@ import {
   ASK_EVERY_MS,
   AskedFile,
   keptAt,
+  performanceAccessFolder,
 } from './service';
 import { ACCESS_FILE, AccessStore, storedAccess } from './store';
 
@@ -189,9 +190,11 @@ function make(
     selfTest?: boolean;
     calls?: AccessCalls | null;
     asked?: AccessAsked;
+    counts?: boolean;
   } = {},
 ): AccessService {
   service = new AccessService({
+    ...(o.counts === undefined ? {} : { counts: o.counts }),
     calls: o.calls === undefined ? list : o.calls,
     kept: store(),
     asked: o.asked ?? new MemoryAsked(),
@@ -647,5 +650,29 @@ describe('a call that throws (Session 54, E review: never fail open)', () => {
     // Said once, not at every check.
     expect(said.length).toBe(1);
     expect(said[0]).not.toContain('placeholder.user');
+  });
+});
+
+describe('the performance check’s own check (Session 54, E review)', () => {
+  it('lets in as any start does, and counts nothing of its own run into this computer’s totals', async () => {
+    keep(HERE, { minutes: 10, shows: 1, streams: 0, recordings: 0, imports: 0 });
+    const s = make({ counts: false });
+    s.start();
+    await clock.move(0);
+    expect(accessState().phase).toBe('in');
+    s.count('shows', 5);
+    await clock.move(5 * 60_000);
+    const kept = JSON.parse(readFileSync(join(dir, ACCESS_FILE), 'utf8')) as { activity: AccessActivity };
+    expect(kept.activity).toEqual({ minutes: 10, shows: 1, streams: 0, recordings: 0, imports: 0 });
+    expect(list.activities.at(-1)).toEqual({ minutes: 10, shows: 1, streams: 0, recordings: 0, imports: 0 });
+  });
+
+  it('asks with the access kept in this computer’s own data folder; a test’s folder only unpackaged', () => {
+    const home = '/Users/placeholder/Library/Application Support/Drashti';
+    const test = '/tmp/placeholder-let-in';
+    expect(performanceAccessFolder({ packaged: true, home, testFolder: undefined })).toBe(home);
+    expect(performanceAccessFolder({ packaged: true, home, testFolder: test })).toBe(home);
+    expect(performanceAccessFolder({ packaged: false, home, testFolder: undefined })).toBe(home);
+    expect(performanceAccessFolder({ packaged: false, home, testFolder: test })).toBe(test);
   });
 });
