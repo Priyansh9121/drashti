@@ -5704,9 +5704,9 @@ function start(): void {
         globalShortcut.unregisterAll();
       },
       uncover: () => {
-        const result = screens.uncoverOperator();
+        const names = screens.uncoverOperator().turnedOff ?? [];
         log.info(
-          `Access: the stop's screen uncovered: turned off ${result.turnedOff?.join(', ') || 'nothing'}`,
+          `Access: the stop's screen uncovered: turned off ${names.length > 0 ? names.join(', ') : 'nothing'}`,
         );
         if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.show();
       },
