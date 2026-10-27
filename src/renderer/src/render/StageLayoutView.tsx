@@ -8,13 +8,13 @@ import { type PlaybackClock, playbackLeftMs } from '../../../shared/media';
 import type { Lang } from '../../../shared/model';
 import type { HallPicture, StageBox, StageLayout, StageVAlign } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
-import { stageClockText } from '../../../shared/stage-timer';
 import { timerDuration } from '../../../shared/timers';
 import { AudienceBox } from './AudienceBox';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
 import { backgroundWords, kindName, screensStateWords, StageText } from './StageView';
 import { textLang } from './lang';
 import { boxFillStyle, boxWordsStyle, fitAgain, fitLargest } from './stage-box-look';
+import { StageClockText } from './StageClockText';
 import { StageTimerText } from './StageTimerText';
 import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
@@ -142,14 +142,15 @@ function BoxContents({
   box,
   state,
   languages,
-  clock,
+  clockStyle,
   now,
   hall,
 }: {
   box: StageBox;
   state: EngineState;
   languages: readonly Lang[] | null;
-  clock: string;
+  /** How the clock box writes the time: Main's way, as the layout is given it. */
+  clockStyle: ClockStyle | null | undefined;
   now: number;
   /**
    * The hall as the page is told it (Session 50): the box of the audience screens' state says when they are off
@@ -182,7 +183,8 @@ function BoxContents({
         </p>
       ) : null;
     case 'clock': {
-      const time = <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{clock}</span>;
+      // Its own way of writing the time (Session 54), redrawn as a timer box is (Part A's review).
+      const time = <StageClockText box={box} style={clockStyle} />;
       if (!box.calendar || !state.calendar) return time;
       const lang = box.lang ?? 'gu';
       return (
@@ -412,8 +414,7 @@ export function StageLayoutView({
                 box={box}
                 state={state}
                 languages={languages}
-                // A clock box's own way of writing the time (Session 54): 12 or 24 hours, the seconds.
-                clock={box.kind === 'clock' ? stageClockText(now, style, box) : clock}
+                clockStyle={style}
                 now={now}
                 hall={hall}
               />
