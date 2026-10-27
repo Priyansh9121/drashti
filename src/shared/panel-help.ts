@@ -23,25 +23,25 @@ export const PANEL_HELP = {
   playlists: {
     title: 'Playlists',
     doc: 'operator',
-    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it, then click its first item: its slides appear in the middle.',
+    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it, then click its first item: a presentation’s slides appear in the middle, and a video, a picture or a sound goes on the screens at once. While a phone or tablet is paired as a remote, right-click a playlist for Share with Phones and Tablets: remotes then show its files under Shared from Drashti until you choose Stop Sharing.',
     guide: "**Open tonight's playlist.**",
   },
   library: {
     title: 'The library',
     doc: 'operator',
-    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in, and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner; right-click a video input, or drag it, to put it in a playlist instead.',
+    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in (From a Link… offers the playlist the last download went into), and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner; right-click a video input, or drag it, to put it in a playlist instead.',
     guide: 'the **Library**',
   },
   slides: {
     title: 'Slides',
     doc: 'operator',
-    text: 'The slides of whatever you clicked, in the order they play. Click a slide to put it on the screens at once, or press Space for the next one. Right-click a slide for New Timer Slide…, and the ⋯ menu beside Edit slides has Delete… for the whole presentation, or Delete from the library… while a playlist item is open.',
+    text: 'The slides of whatever you clicked, in the order they play. Click a slide to put it on the screens at once, or press Space for the next one. Right-click a slide for New Timer Slide…, and the ⋯ menu beside Edit slides has Delete… for the whole presentation, or Delete from the library… while a playlist item is open; in Edit slides, a video can Show the play bar on the screens.',
     guide: '**Starting.**',
   },
   live: {
     title: 'LIVE',
     doc: 'operator',
-    text: 'What the hall sees this moment. Under it, Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, everywhere at once. A picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
+    text: 'What the hall sees this moment. Under it, each video or sound playing has a time bar, with Play or Pause: click it, or drag along it and let go, to move there on every screen at once; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
     guide: 'headed **LIVE**',
   },
   looks: {
@@ -59,7 +59,7 @@ export const PANEL_HELP = {
   stage: {
     title: 'Stage screen',
     doc: 'operator',
-    text: 'What the speaker and the singers see, never the hall. Type a short message for them, such as “Two minutes left”, and send it; its own Clear takes it off. Edit layout… can add the box “The audience picture, live”, to show them what the hall sees, on a stage tablet too; it says Audience off in its bottom left corner while the hall’s screens are switched off, and No audience screens when no group shows the audience picture, as a box of the audience screens’ state does.',
+    text: 'What the speaker and the singers see, never the hall: type a short message for them, such as “Two minutes left”, and send it; its own Clear takes it off. The stage layout’s timers are here too, with Start, Pause and Reset; Edit layout…, then New from a Template…, makes a ready-made timer layout, such as a countdown, and the stage screens show it at once. Edit layout… can also add the box “The audience picture, live”, to show them what the hall sees, on a stage tablet too: it says Audience off in its bottom left corner while the hall’s screens are off, and No audience screens when no group shows that picture, as a box of the audience screens’ state does.',
     guide: '**The stage message.**',
   },
   props: {
@@ -83,13 +83,13 @@ export const PANEL_HELP = {
   timers: {
     title: 'Timers',
     doc: 'operator',
-    text: 'Countdowns and clocks. Press Start, then Show on the screens to put one up alone in the slide’s place; press it again, or Clear slide, to take it off. The stage screens show every running timer by themselves.',
+    text: 'Countdowns and clocks. Press Start, then Show on the screens to put one up alone in the slide’s place; press it again, or Clear slide, to take it off. The stage screens show every running timer by themselves, or, with a layout of their own, the timers in it.',
     guide: '**Timers.**',
   },
   music: {
     title: 'Music',
     doc: 'operator',
-    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play; Back 15 s, Forward 15 s and Last 10 s, small icons in the row with Play and Pause, move in the track playing. A slide with its own sound stops the music.',
+    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play: the time bar shows the track’s time left, and a click or a drag along it moves in the track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). A slide with its own sound stops the music.',
     guide: '**Music before the sabha.**',
   },
   idle: {
@@ -101,7 +101,7 @@ export const PANEL_HELP = {
   playlist: {
     title: 'The open playlist',
     doc: 'operator',
-    text: 'The playlist you opened, its items as cards in the order they play. One click on a video, a picture or a sound puts it on the screens at once, and a click on a presentation shows its slides below; drag a card to move it, or drop files on it to add them. A video input from Media can be an item too: renaming the input in Media renames its items on this computer, and on a computer with no video input of that name, the card says Not on this computer and Next goes past it.',
+    text: 'The playlist you opened, its items as cards in the order they play: drag a card to move it, or drop files on it to add them. One click on a video, a picture or a sound puts it on the screens at once, Alt-click (Option-click on a Mac) only shows it below, and Cmd-click (Ctrl-click on Windows) only marks it; a click on a presentation, a deck or a PDF shows its slides below. A video input from Media can be an item too: renaming the input in Media renames its items on this computer, and on a computer with no video input of that name, the card says Not on this computer and Next goes past it.',
     guide: '**Middle:**',
   },
   controls: {
@@ -125,7 +125,7 @@ export const PANEL_HELP = {
   phones: {
     title: 'Phones',
     doc: 'operator',
-    text: 'Phones and tablets on the mandir’s Wi-Fi, paired as a remote, a stage display or for announcements. Turn on Let paired phones and tablets connect, then check each one says Connected.',
+    text: 'Phones and tablets on the mandir’s Wi-Fi, paired as a remote, a stage display or for announcements: turn on Let paired phones and tablets connect, then check each one says Connected. A playlist shared from its right-click menu (Share with Phones and Tablets) shows on a remote under Shared from Drashti. To let a remote add pictures, videos, sounds and decks with Add from this Phone…, turn on Phones and tablets may add files, off until then: they come into Media and the playlist Added from Phones, never onto the screens by themselves.',
     guide: '**Phones** (if a phone remote or a stage tablet is used)',
   },
   announcements: {
@@ -143,7 +143,7 @@ export const PANEL_HELP = {
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and Back 15 s, Forward 15 s and Last 10 s, small icons in the row with Play and Pause, move in its track. Clear audio along the bottom, or F5, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing.',
     guide: '**Audio.** In the right column',
   },
   tools: {
