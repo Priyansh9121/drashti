@@ -26,6 +26,7 @@ import { plural } from '../ui/text';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
 import { usePlaylists } from '../playlists/playlist-store';
+import { PlaylistsUnread } from '../playlists/PlaylistsUnread';
 import { AddTargetSelect } from '../playlists/add-made';
 import {
   addToNow,
@@ -268,6 +269,8 @@ function SaveIn({ view, locked }: { view: LinkView; locked: boolean }) {
 function AddWhenImported({ view }: { view: LinkView }) {
   const addTo = useLinks((s) => s.addTo);
   const tree = usePlaylists((s) => s.tree);
+  // The playlists could not be read (Session 39): said, with Try again, never "There are no playlists yet".
+  const unread = usePlaylists((s) => s.unread.playlists);
   // Read so the default follows the playlist opened meanwhile.
   usePlaylists((s) => s.openId);
   // A folder becomes a playlist of its own (Session 26c), named after it.
@@ -283,6 +286,7 @@ function AddWhenImported({ view }: { view: LinkView }) {
   const last = playlists.some((n) => n.id === view.lastPlaylist) ? view.lastPlaylist : null;
   return (
     <div className="space-y-2">
+      {unread && <PlaylistsUnread what="playlists" />}
       {playlists.length > 0 && (
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted" id="link-add-to-label">
@@ -299,7 +303,9 @@ function AddWhenImported({ view }: { view: LinkView }) {
           />
         </div>
       )}
-      {target.kind === 'new' && <NewPlaylistName name={target.name} only={playlists.length === 0} />}
+      {target.kind === 'new' && (
+        <NewPlaylistName name={target.name} only={playlists.length === 0 && !unread} />
+      )}
     </div>
   );
 }

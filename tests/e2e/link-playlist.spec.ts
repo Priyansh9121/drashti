@@ -50,7 +50,7 @@ const newPlaylists = (win: Page, names: string[]) =>
   }, names);
 
 /** Drashti with the fake yt-dlp, in CI's window, saving into a folder of the test's own. */
-async function open() {
+async function open(extra: Record<string, string> = {}) {
   const work = mkdtempSync(join(tmpdir(), 'drashti-link-playlist-'));
   const chosen = join(work, 'Chosen folder');
   const { app, userData } = await launchApp({
@@ -61,6 +61,7 @@ async function open() {
       duration: 65,
     }),
     DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+    ...extra,
   });
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -256,5 +257,38 @@ test('a playlist’s own From a Link… is where the next download goes, after A
   await expect.poll(() => labels(win, b)).toEqual(['Placeholder video.mp4']);
   expect(await labels(win, a)).toEqual(['Placeholder video.mp3']);
   await expect.poll(async () => (await view(win)).lastPlaylist).toBe(b);
+  await app.close();
+});
+
+test('with the playlists unread, it says so with Try again, never that there are no playlists, and offers them once read', async () => {
+  test.setTimeout(180_000);
+  // The playlists' read held failing (Session 39's test switch) until the test makes it readable.
+  const { app, win } = await open({ DRASHTI_TEST_UNREADABLE: 'playlists' });
+  const [sunday = ''] = await newPlaylists(win, ['Placeholder Sunday']);
+  expect(sunday).not.toBe('');
+  await chooseMenuItem(app, 'import-from-link');
+  await lookAtVideo(win);
+  const dialog = win.getByTestId('link-dialog');
+  const unread = dialog.getByTestId('playlists-unread');
+  await expect(unread).toBeVisible();
+  await expect(unread).toContainText('Drashti couldn’t read the playlists');
+  await expect(dialog).not.toContainText('There are no playlists yet');
+  await expect(dialog.getByLabel('The new playlist’s name')).toHaveValue('Placeholder video');
+  await expectNoSeriousA11yIssues(
+    win,
+    'Import from a Link with the playlists unread',
+    '[data-testid="link-dialog"]',
+  );
+  // Readable again: Try again, in the dialog, brings them to choose from.
+  await app.evaluate(() => {
+    (globalThis as { drashtiTestReadable?: (name: string) => void }).drashtiTestReadable?.('playlists');
+  });
+  await dialog.getByTestId('playlists-try-again').click();
+  await expect(unread).toHaveCount(0);
+  await expect(win.getByTestId('link-add-to').locator('option')).toHaveText([
+    'Placeholder Sunday',
+    'A new playlist, “Placeholder video”',
+    'No playlist',
+  ]);
   await app.close();
 });
