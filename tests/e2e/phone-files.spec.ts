@@ -5,7 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken, TABLET } from './devices';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 import { KIRTAN, PICTURE, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { makeTestImage, makeTestTone } from './test-media';
 
@@ -428,9 +435,11 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
     await added.click();
     // Its length, once Drashti has read it, between.
     await expect(win.getByTestId('item-what')).toHaveText([/^Sound( · [\d:]+)? · from Placeholder phone$/u]);
-    await win.getByTestId('library-tab-media').click();
+    // Media is in the library's sheet, opened from the Library button (Session 44), shut until then.
+    const sheet = await openLibrary(win);
+    await sheet.getByTestId('library-tab-media').click();
     await expect(
-      win.getByTestId('media-row').filter({ hasText: 'Placeholder tone.wav' }).getByTestId('media-note'),
+      sheet.getByTestId('media-row').filter({ hasText: 'Placeholder tone.wav' }).getByTestId('media-note'),
     ).toHaveText('Audio · from Placeholder phone');
     // Never live by itself.
     const { state } = await snapshot(win);
