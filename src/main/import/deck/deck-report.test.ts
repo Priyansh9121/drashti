@@ -116,6 +116,10 @@ describe('the report’s words on a deck', () => {
       '2 sounds that started on a click, or with a transition, are left out: they need the deck’s animations, which PowerPoint or Keynote makes.',
     ]);
     expect(picturesMediaIssues({ videos: 0, cued: 0, left: 0 })).toEqual([]);
+    // Its pictures not one a slide: nothing to put its videos and sounds on.
+    expect(picturesMediaIssues({ videos: 0, cued: 0, left: 0, unmatched: 3 }).map((i) => i.message)).toEqual([
+      'Its 3 videos and sounds were left out: its pictures could not be matched to its slides one for one (some pages could not be drawn, or the PDF has a different number of pages than it has slides shown).',
+    ]);
     expect(noAppIssue({ media: 0 }).message).toBe(
       'Its slides as pictures, and its animations, clicks and transitions, need PowerPoint (or Keynote on a Mac): import it on a computer with one, or save it as PDF there and import the PDF here.',
     );

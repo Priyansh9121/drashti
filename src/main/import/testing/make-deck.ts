@@ -237,6 +237,8 @@ interface Effect {
   delay?: number;
   start: 'click' | 'with' | 'after';
   repeat?: 'indefinite';
+  /** It repeats until the next click (Repeat: Until Next Click), not until the slide ends. */
+  untilNextClick?: boolean;
   path?: string;
 }
 
@@ -353,7 +355,10 @@ function timingXml(slide: TestDeckSlide): string {
     const cTn = next();
     const grp = presetClass === 'mediacall' ? '' : ' grpId="0"';
     const extra = `${e.repeat ? ' repeatCount="indefinite"' : ''}${e.kind === 'path' ? ' accel="50000" decel="50000"' : ''}`;
-    return `<p:par><p:cTn id="${String(cTn)}" presetID="${presetID}" presetClass="${presetClass}" presetSubtype="${presetSubtype}"${extra} fill="hold"${grp} nodeType="${nodeType(e, first)}"><p:stCondLst><p:cond delay="${String(e.delay ?? 0)}"/></p:stCondLst><p:childTnLst>${behaviours(e)}</p:childTnLst></p:cTn></p:par>`;
+    const untilClick = e.untilNextClick
+      ? '<p:endCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:endCondLst>'
+      : '';
+    return `<p:par><p:cTn id="${String(cTn)}" presetID="${presetID}" presetClass="${presetClass}" presetSubtype="${presetSubtype}"${extra} fill="hold"${grp} nodeType="${nodeType(e, first)}"><p:stCondLst><p:cond delay="${String(e.delay ?? 0)}"/></p:stCondLst>${untilClick}<p:childTnLst>${behaviours(e)}</p:childTnLst></p:cTn></p:par>`;
   };
   const root = next();
   const mainSeq = next();

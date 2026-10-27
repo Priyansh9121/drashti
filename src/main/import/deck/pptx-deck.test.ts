@@ -40,6 +40,7 @@ const group = (
   lengthMs,
   mediaOnly: extra.mediaOnly ?? false,
   repeatsMs: extra.repeatsMs ?? null,
+  untilClickMs: null,
 });
 
 describe('reading a deck’s slides, as C1’s trial wrote them down', () => {
@@ -214,6 +215,55 @@ describe('the movie’s plan', () => {
     ]);
     expect(plan.slides.map((s) => s.advanceMs)).toEqual([15000, 13650, 9700, 5000, 5000]);
     expect(plan.slides.every((s) => s.steps.every((st) => st.holdMs === null))).toBe(true);
+  });
+
+  it('a spin repeating until the next click turns through its own step only: a hold after it, none after the click', async () => {
+    const [, , loop] = TRIAL_SLIDES;
+    if (!loop) throw new Error('no trial slide');
+    const untilClick = join(dir, 'Placeholder until click.pptx');
+    writeFileSync(
+      untilClick,
+      makeTestDeck(
+        [
+          {
+            ...loop,
+            effects: [
+              {
+                kind: 'spin',
+                target: 3,
+                dur: 2000,
+                start: 'with',
+                repeat: 'indefinite',
+                untilNextClick: true,
+              },
+              { kind: 'fade', target: 4, dur: 700, start: 'click' },
+            ],
+          },
+        ],
+        media,
+      ),
+    );
+    const deck = await readPptxDeck(untilClick);
+    expect(deck.slides[0]?.deck?.groups.map((g) => [g.repeatsMs, g.untilClickMs])).toEqual([
+      [null, 2000],
+      [null, null],
+    ]);
+    const plan = powerPointPlan(deck.slides);
+    // One turn held after step 0, as before; it turns until that hold is cut (4.1 s), in whole turns, and the click
+    // comes only once it has stopped, as the click stops it in the show; no hold after the click.
+    expect(plan.slides[0]?.steps.map((s) => s.holdMs)).toEqual([2000, null]);
+    expect(plan.slides[0]?.groups).toEqual([
+      { startMs: 0, endMs: 2000, untilMs: 4100 },
+      { startMs: 6500, endMs: 7200 },
+    ]);
+    expect(plan.slides[0]?.advanceMs).toBe(8000);
+    // The copy turns it whole turns until its hold is cut (4.1 s: three turns), then it stops.
+    const copy = join(dir, 'Placeholder until click timed.pptx');
+    await writeTimedCopy(untilClick, copy, plan);
+    const xml = (await readZipEntries(copy, (n) => n === 'ppt/slides/slide1.xml')).get(
+      'ppt/slides/slide1.xml',
+    );
+    expect(xml?.toString('utf8')).toContain('repeatCount="3000"');
   });
 
   it('plans the 20-slide deck’s movie at about the trial’s length (88 s), a turn longer for each spin', async () => {

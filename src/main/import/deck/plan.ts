@@ -51,8 +51,11 @@ export interface PlannedSlide {
   transitionName: string;
   /** How long its transition takes in the movie (0 for none). */
   transitionMs: number;
-  /** Each of the file's groups (in order): when it starts and ends, from the slide's timeline start. */
-  groups: { startMs: number; endMs: number }[];
+  /**
+   * Each of the file's groups (in order): when it starts and ends, from the slide's timeline start, and (PowerPoint's
+   * timed copy) until when what in it repeats until the next click turns: its hold cut (C review).
+   */
+  groups: { startMs: number; endMs: number; untilMs?: number }[];
   /** Step 0 (coming in), then one per click. */
   steps: PlannedStep[];
   /** From the slide's timeline start to the next slide's transition (the copy's advTm). */
@@ -103,19 +106,36 @@ export function powerPointPlan(slides: readonly PptxSlide[], baker: Baker = 'pow
     const groups = slide.deck?.groups ?? [];
     let at = 0;
     let turn: number | null = null;
-    const times: { startMs: number; endMs: number }[] = [];
+    /** What repeats until the next click, turning at the end of the step before: until when, and one turn. */
+    let toClick: { untilMs: number; turn: number } | null = null;
+    const times: { startMs: number; endMs: number; untilMs?: number }[] = [];
     const holdAfter: (number | null)[] = [];
     for (const [i, g] of groups.entries()) {
       // A first group that needs no click starts with the slide; every other one after the one before, with a
-      // still gap to cut in (and, after something turning for ever, one turn of it as well).
+      // still gap to cut in (and, after something turning for ever, one turn of it as well). After something
+      // turning until the next click, the click comes once it has stopped (whole turns after its hold).
       const wait = turn === null ? GAP_MS : HOLD_SETTLE_MS + turn + GAP_MS;
-      const startMs = i === 0 && !g.byClick ? 0 : at + wait;
-      const endMs = startMs + g.lengthMs;
+      const before: { untilMs: number; turn: number } | null = toClick;
+      const startMs: number =
+        i === 0 && !g.byClick
+          ? 0
+          : before && g.byClick
+            ? Math.max(at + wait, before.untilMs + before.turn + GAP_MS)
+            : at + wait;
+      const endMs: number = startMs + g.lengthMs;
+      if (g.byClick) toClick = null;
       if (g.repeatsMs !== null) turn = Math.max(turn ?? 0, g.repeatsMs);
-      times.push({ startMs, endMs });
-      holdAfter.push(turn);
+      const own: { untilMs: number; turn: number } | null =
+        g.untilClickMs === null
+          ? null
+          : { untilMs: endMs + HOLD_SETTLE_MS + g.untilClickMs, turn: g.untilClickMs };
+      if (own) toClick = own;
+      times.push({ startMs, endMs, ...(own ? { untilMs: own.untilMs } : {}) });
+      holdAfter.push(turn === null && toClick === null ? null : Math.max(turn ?? 0, toClick?.turn ?? 0));
       at = endMs;
     }
+    const last: { untilMs: number; turn: number } | null = toClick;
+    const clickTail = last === null ? 0 : last.untilMs + last.turn - at;
     const transition = slide.deck?.transition;
     // Something turning for ever turns until the last step's hold has been cut (whole turns, so up to one more),
     // then the slide is still for TAIL_MS.
@@ -126,7 +146,12 @@ export function powerPointPlan(slides: readonly PptxSlide[], baker: Baker = 'pow
       transitionMs: transition?.name ? transition.durationMs : 0,
       groups: times,
       steps: stepsOf(groups, times, holdAfter),
-      advanceMs: Math.round(until === null || turn === null ? at + TAIL_MS : until + turn + TAIL_MS),
+      advanceMs: Math.round(
+        Math.max(
+          until === null || turn === null ? at + TAIL_MS : until + turn + TAIL_MS,
+          at + clickTail + TAIL_MS,
+        ),
+      ),
       endlessUntilMs: until === null ? null : Math.round(until),
     });
   }

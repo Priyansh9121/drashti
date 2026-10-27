@@ -73,7 +73,13 @@ import {
   readPptxDeck,
 } from './pictures';
 import { runDeck } from './deck/deck-flow';
-import { addDeckMedia, deckMediaFiles, noAppIssue, picturesMediaIssues } from './deck/deck-import';
+import {
+  addDeckMedia,
+  deckMediaCount,
+  deckMediaFiles,
+  noAppIssue,
+  picturesMediaIssues,
+} from './deck/deck-import';
 import type { Baker } from './deck/plan';
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
@@ -1034,7 +1040,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               ctx.ffmpeg ?? null,
               dirname(deckPath),
             )
-          : { videos: 0, cued: 0, left: 0 };
+          : { videos: 0, cued: 0, left: 0, unmatched: deckRead ? deckMediaCount(deckRead.deck) : 0 };
       const shown = slides?.filter((sl) => !sl.hidden) ?? [];
       parsed.issues = picturesIssues({
         source,

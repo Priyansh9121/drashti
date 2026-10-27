@@ -33,6 +33,8 @@ export interface PptxGroup {
   mediaOnly: boolean;
   /** One turn of an effect in it that repeats until the slide ends (a spin), in ms; null for none. */
   repeatsMs: number | null;
+  /** One turn of an effect in it that repeats until the next click (Session 54, C review), in ms; null for none. */
+  untilClickMs: number | null;
 }
 
 /** When one of the slide's videos or sounds starts. */
@@ -244,12 +246,19 @@ function readGroups(timing: XmlNode | undefined): PptxGroup[] {
       seen.reduce((longest, e) => Math.max(longest, e.atMs + runLength(e.par, true)), 0),
     );
     const endless = seen.filter((e) => kid(e.par, 'p:cTn')?.attrs['repeatCount'] === 'indefinite');
-    const turn = endless.reduce((longest, e) => Math.max(longest, runLength(e.par, true)), 0);
+    // "Until Next Click": an endless repeat that ends at the next click (its end condition), not with the slide.
+    const untilClick = (e: { par: XmlNode }) =>
+      kids(kid(kid(e.par, 'p:cTn'), 'p:endCondLst') ?? NONE).some((c) => c.attrs['evt'] === 'onNext');
+    const turnOf = (list: { par: XmlNode }[]) =>
+      list.reduce((longest, e) => Math.max(longest, runLength(e.par, true)), 0);
+    const toEnd = endless.filter((e) => !untilClick(e));
+    const toClick = endless.filter(untilClick);
     return {
       byClick: waitsForClick(group),
       lengthMs,
       mediaOnly: seen.length === 0,
-      repeatsMs: endless.length > 0 && turn > 0 ? Math.round(turn) : null,
+      repeatsMs: toEnd.length > 0 && turnOf(toEnd) > 0 ? Math.round(turnOf(toEnd)) : null,
+      untilClickMs: toClick.length > 0 && turnOf(toClick) > 0 ? Math.round(turnOf(toClick)) : null,
     };
   });
 }

@@ -594,8 +594,21 @@ export function whyPictures(why: BakeFailure, baker: Baker, kept = false): Impor
 }
 
 /** The report's word on a deck's videos and sounds, brought in beside its pictures. */
-export function picturesMediaIssues(d: { videos: number; cued: number; left: number }): ImportIssue[] {
+export function picturesMediaIssues(d: {
+  videos: number;
+  cued: number;
+  left: number;
+  /** Its videos and sounds that could not be put on their slides (its pictures not one a slide; C review). */
+  unmatched?: number;
+}): ImportIssue[] {
   const out: ImportIssue[] = [];
+  if ((d.unmatched ?? 0) > 0)
+    out.push({
+      severity: 'warning',
+      code: 'deck-media-unmatched',
+      message: `${d.unmatched === 1 ? 'Its video or sound was' : `Its ${String(d.unmatched)} videos and sounds were`} left out: its pictures could not be matched to its slides one for one (some pages could not be drawn, or the PDF has a different number of pages than it has slides shown).`,
+      fix: null,
+    });
   if (d.videos > 0)
     out.push({
       severity: 'info',
@@ -655,10 +668,10 @@ export async function addDeckMedia(
   ffmpeg: string | null,
   /** The deck's own folder: its links are followed only inside it. */
   deckDir: string,
-): Promise<{ videos: number; cued: number; left: number }> {
+): Promise<{ videos: number; cued: number; left: number; unmatched?: number }> {
   const shown = deck.slides.flatMap((s, i) => (s.hidden ? [] : [i]));
   const slides = parsed.groups.flatMap((g) => g.slides);
-  if (slides.length !== shown.length) return { videos: 0, cued: 0, left: 0 };
+  if (slides.length !== shown.length) return { videos: 0, cued: 0, left: 0, unmatched: deckMediaCount(deck) };
   const { media } = await takeMedia(deckFile, deckDir, deck.slides, shown, join(work, 'media'), ffmpeg);
   let videos = 0;
   let cued = 0;
@@ -706,6 +719,11 @@ export async function addDeckMedia(
     }
   });
   return { videos, cued, left };
+}
+
+/** How many videos and sounds the deck's shown slides have. */
+export function deckMediaCount(deck: PptxDeck): number {
+  return deck.slides.reduce((n, s) => n + (s.hidden ? 0 : (s.deck?.media.length ?? 0)), 0);
 }
 
 /** The deck's videos and sounds as files of their own (a computer with neither PowerPoint nor Keynote). */
