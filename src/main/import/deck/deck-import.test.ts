@@ -74,7 +74,8 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         options: {
           baker: boolean | 'stand-in';
           converters: boolean | 'stand-in';
-          onAir?: boolean;
+          /** On air now, or from the nth time it is asked (the stream going on air while the deck is made). */
+          onAir?: boolean | { from: number };
           /** The operator's answer to an earlier run's question, for the deck. */
           decision?: ConflictChoice;
           /** An FFmpeg that is not there: the stand-in cannot make the movie. */
@@ -93,7 +94,11 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           ffmpeg: options.noFfmpeg ? join(root, 'no-ffmpeg-here') : ffmpeg,
           baker: options.baker,
           converters: options.converters,
-          onAir: () => Promise.resolve(options.onAir === true),
+          onAir: (() => {
+            let asked = 0;
+            const on = options.onAir;
+            return () => Promise.resolve(on === true || (typeof on === 'object' && ++asked >= on.from));
+          })(),
           drawPdf: (_pdf, outDir): Promise<PicturesResult> => {
             // The stand-in's PDF has a page per shown slide: five.
             mkdirSync(outDir, { recursive: true });
@@ -440,6 +445,18 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
       expect(item?.issues.find((i) => i.code === 'deck-pictures')?.message).toBe(
         'The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): its slides came in as pictures, without their animations. Import it again once the stream is off air.',
+      );
+    }, 120_000);
+
+    it('stops making its animations when the stream goes on air while its steps are cut, and comes in as pictures', async () => {
+      const t = setup();
+      // Off air as the import looks (twice) and as the movie is made; on air as its steps are cut.
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in', onAir: { from: 4 } });
+      const item = t.report(summary.id)?.items[0];
+      expect(item?.outcome).toBe('imported');
+      expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
+      expect(item?.issues.find((i) => i.code === 'deck-pictures')?.message).toBe(
+        'The stream went on air, so Drashti stopped making this deck’s animations (that would slow the stream): its slides came in as pictures, without their animations. Import it again once the stream is off air.',
       );
     }, 120_000);
 

@@ -16,7 +16,7 @@ import {
   withMacSession,
 } from '../deck-converters';
 import { type PptxDeck, readPptxDeck } from '../pictures';
-import { type CutFiles, cutMovie, type CutPlan, measureMotion, onPlan, planCuts } from './cut';
+import { type CutFiles, cutMovie, type CutPlan, measureMotion, OnAir, onPlan, planCuts } from './cut';
 import { type Baker, keynotePlan, type MoviePlan, plannedLength, powerPointPlan } from './plan';
 import { standInMovie } from './stand-in-baker';
 import { writeTimedCopy } from './timed-copy';
@@ -68,7 +68,8 @@ export interface BakedDeck {
 
 /** Why a deck came in as pictures instead. */
 export type BakeFailure =
-  | { kind: 'on-air' }
+  /** On air as it was about to start, or (`during`) gone on air while it was made: stopped there. */
+  | { kind: 'on-air'; during?: boolean }
   | { kind: 'cancelled' }
   | { kind: 'app'; reason: string; message: string; notAllowed?: boolean }
   | { kind: 'off-plan'; cuts: CutPlan }
@@ -523,17 +524,40 @@ export async function bakeDeck(
   const started = Date.now();
   const { source, input, read, work } = request;
   const platform = options.platform ?? process.platform;
+  // The stream going on air or recording while the app makes the movie stops it there (Session 50's rule): looked
+  // at every 2 s, as the app's long steps give no turn to ask between.
+  const airing = new AbortController();
+  const signal = options.signal ? AbortSignal.any([options.signal, airing.signal]) : airing.signal;
+  const watch =
+    options.onAir && baker !== 'stand-in'
+      ? setInterval(() => {
+          void options.onAir?.().then((on) => {
+            if (on) airing.abort();
+          });
+        }, 2000)
+      : null;
+  const onAirNow = () => airing.signal.aborted;
   let made: Made;
   try {
+    const appOptions = { ...options, signal };
     made =
       baker === 'stand-in'
-        ? await standIn(input, read, work, options)
+        ? await standIn(input, read, work, appOptions)
         : baker === 'keynote'
-          ? await keynoteOnMac(input, work, options)
+          ? await keynoteOnMac(input, work, appOptions)
           : platform === 'win32'
-            ? await powerPointOnWindows(source, input, read, work, options)
-            : await powerPointOnMac(source, input, read, work, options);
+            ? await powerPointOnWindows(source, input, read, work, appOptions)
+            : await powerPointOnMac(source, input, read, work, appOptions);
   } catch (error) {
+    if (onAirNow())
+      return {
+        ok: false,
+        why: { kind: 'on-air', during: true },
+        pdf: null,
+        deck: read,
+        deckFile: null,
+        baker,
+      };
     if (options.signal?.aborted)
       return { ok: false, why: { kind: 'cancelled' }, pdf: null, deck: read, deckFile: null, baker };
     const detail = error instanceof Error ? error.message : String(error);
@@ -545,20 +569,24 @@ export async function bakeDeck(
       deckFile: null,
       baker,
     };
+  } finally {
+    if (watch) clearInterval(watch);
   }
   if (!made.ok) {
     const f = made.failed;
     const why: BakeFailure =
       'kind' in f
         ? f
-        : f.cancelled
-          ? { kind: 'cancelled' }
-          : {
-              kind: 'app',
-              reason: f.reason,
-              message: f.message,
-              ...(f.notAllowed ? { notAllowed: true } : {}),
-            };
+        : onAirNow()
+          ? { kind: 'on-air', during: true }
+          : f.cancelled
+            ? { kind: 'cancelled' }
+            : {
+                kind: 'app',
+                reason: f.reason,
+                message: f.message,
+                ...(f.notAllowed ? { notAllowed: true } : {}),
+              };
     return { ok: false, why, pdf: made.pdf, deck: made.deck, deckFile: made.deckFile, baker };
   }
   const failed = (why: BakeFailure): BakeResult => ({
@@ -584,6 +612,7 @@ export async function bakeDeck(
       progress: (done, total) => {
         options.progress?.(`Cutting step ${String(done)} of ${String(total)}`);
       },
+      onAir: options.onAir,
     });
     return {
       ok: true,
@@ -601,6 +630,7 @@ export async function bakeDeck(
       },
     };
   } catch (error) {
+    if (error instanceof OnAir) return failed({ kind: 'on-air', during: true });
     if (options.signal?.aborted) return failed({ kind: 'cancelled' });
     return failed({ kind: 'cut', detail: error instanceof Error ? error.message : String(error) });
   }

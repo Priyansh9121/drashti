@@ -311,6 +311,14 @@ export function planCuts(plan: MoviePlan, motion: Motion): CutPlan {
 
 // ---- cutting -------------------------------------------------------------------------------------------
 
+/** The stream went on air or recording while the movie was being made or cut: it stops there (Session 50). */
+export class OnAir extends Error {
+  constructor() {
+    super('The stream went on air');
+    this.name = 'OnAir';
+  }
+}
+
 /** The files one step was cut into. */
 export interface CutFiles {
   clip: string;
@@ -385,7 +393,12 @@ export async function cutMovie(
   movie: string,
   cuts: CutPlan,
   dir: string,
-  options: { signal?: AbortSignal; progress?: (done: number, total: number) => void } = {},
+  options: {
+    signal?: AbortSignal;
+    progress?: (done: number, total: number) => void;
+    /** Asked before each step: the stream on air or recording stops the cut (Session 50's rule). */
+    onAir?: () => Promise<boolean>;
+  } = {},
 ): Promise<CutFiles[][]> {
   await mkdir(dir, { recursive: true });
   const total = cuts.slides.reduce((n, s) => n + s.steps.length, 0);
@@ -394,6 +407,7 @@ export async function cutMovie(
   for (const slide of cuts.slides) {
     const files: CutFiles[] = [];
     for (const [k, step] of slide.steps.entries()) {
+      if (await options.onAir?.()) throw new OnAir();
       const name = `s${String(slide.index + 1).padStart(3, '0')}-${String(k)}`;
       const clip = join(dir, `${name}.mp4`);
       const last = join(dir, `${name}-last.png`);

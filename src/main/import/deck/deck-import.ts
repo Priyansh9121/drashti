@@ -574,7 +574,9 @@ export function whyPictures(why: BakeFailure, baker: Baker, kept = false): Impor
     : 'its slides came in as pictures, without their animations';
   const message =
     why.kind === 'on-air'
-      ? `The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
+      ? why.during
+        ? `The stream went on air, so Drashti stopped making this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
+        : `The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
       : why.kind === 'off-plan'
         ? `${app} made the deck’s movie, but ${
             why.cuts.lostSlides.length > 0
