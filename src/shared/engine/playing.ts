@@ -146,9 +146,10 @@ export function playingOf(state: EngineState | null | undefined, ref: PlayingRef
 }
 
 /**
- * Everything playing that has a time bar under LIVE and on a phone, in this order: the background video, the slide's
- * videos (each file once, a deck's too), the picture-in-picture box's video, and the sound or an audio playlist's
- * track. A prop's and the logo's videos can be moved (the API) but have no bar.
+ * Everything playing, each with its time bar under LIVE and on a phone, in this order: the background video, the
+ * slide's videos (each file once, a deck's too), each prop's videos (each file once a prop) and the logo's (Session
+ * 54, the owner's answer of 28 Oct: every video has a bar), the picture-in-picture box's video, and the sound or an
+ * audio playlist's track.
  */
 export function playingNow(state: EngineState | null | undefined): Playing[] {
   if (!state) return [];
@@ -164,6 +165,20 @@ export function playingNow(state: EngineState | null | undefined): Playing[] {
     if (m.kind !== 'audio' || seen.has(m.mediaId)) continue;
     seen.add(m.mediaId);
     refs.push({ layer: 'slide', mediaId: m.mediaId });
+  }
+  for (const prop of state.layers.props) {
+    const own = new Set<string>();
+    for (const el of prop.elements) {
+      if (el.kind !== 'video' || own.has(el.mediaId)) continue;
+      own.add(el.mediaId);
+      refs.push({ layer: 'props', propId: prop.id, mediaId: el.mediaId });
+    }
+  }
+  const logo = new Set<string>();
+  for (const el of state.logo?.elements ?? []) {
+    if (el.kind !== 'video' || logo.has(el.mediaId)) continue;
+    logo.add(el.mediaId);
+    refs.push({ layer: 'logo', mediaId: el.mediaId });
   }
   refs.push({ layer: 'pip' }, { layer: 'audio' });
   return refs.flatMap((ref) => playingOf(state, ref) ?? []);

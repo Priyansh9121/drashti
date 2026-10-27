@@ -13,7 +13,8 @@ import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playin
 
 /*
  * The time bar under LIVE (Session 54): one row for each thing playing, the background video, each video on the slide
- * up (a deck's too), the picture-in-picture box's video, and the sound or an audio playlist's track (in Music too). In
+ * up (a deck's too), each prop's and the logo's (the owner's answer of 28 Oct), the picture-in-picture box's video, and
+ * the sound or an audio playlist's track (in Music too). In
  * Pro Mode it sits under Next and Back, beside the skips and the markers, so they stay where they are however many
  * things play (Session 54's review); in Simple Mode, under the LIVE picture.
  * Each row is its short name and its bar, with its elapsed time and time left, its start and end points and its

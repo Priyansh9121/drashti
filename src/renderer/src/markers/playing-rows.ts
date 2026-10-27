@@ -10,7 +10,10 @@ import { playbackAtMs, playbackSpanMs } from '../../../shared/media';
 /** One thing playing, as a row of the time bar shows it. */
 export interface PlayingRow {
   playing: Playing;
-  /** Which it is, as a page names it for tests: its layer, or "slide:<media id>" for a slide's video. */
+  /**
+   * Which it is, as a page names it for tests: its layer, "slide:<media id>" for a slide's video, "props:<prop id>:<media
+   * id>" for a prop's and "logo:<media id>" for the logo's.
+   */
   which: string;
   /**
    * Its React key: this playing of this file, its layer, its file and when it started (an audio playlist's track by
@@ -19,7 +22,7 @@ export interface PlayingRow {
    * Play (a jump) keeps it.
    */
   key: string;
-  /** Its short name beside the bar: "Background", "Slide video", "Box video", "Sound", "Music". */
+  /** Its short name beside the bar: "Background", "Slide video", "Prop video", "Logo video", "Box video", "Sound", "Music". */
   short: string;
   /**
    * Its name for screen readers, the row's and its bar's: "Time of the background video". Never the name of the row of
@@ -28,21 +31,37 @@ export interface PlayingRow {
   name: string;
 }
 
-/** The rows for everything playing now, in playingNow's order; a slide's second video is "Slide video 2". */
+/**
+ * The rows for everything playing now, in playingNow's order; a slide's second video is "Slide video 2", a second
+ * prop's video "Prop video 2" (Session 54, the owner's answer of 28 Oct: a prop's and the logo's videos have bars too).
+ */
 export function playingRows(state: EngineState | null | undefined): PlayingRow[] {
   const all = playingNow(state);
   const onSlide = all.filter((p) => p.ref.layer === 'slide' && !p.sound).length;
   // A deck's sounds on the slide (Session 54, C2): "Slide sound", "Time of the sound on the slide".
   const sounds = all.filter((p) => p.ref.layer === 'slide' && p.sound).length;
+  // A prop's videos are named by their prop ("Time of video 2 in the prop “Corner”"), each prop counted on its own.
+  const propVideos = all.filter((p) => p.ref.layer === 'props').length;
+  const ofProp = (id: string) => all.filter((p) => p.ref.layer === 'props' && p.ref.propId === id).length;
+  const logoVideos = all.filter((p) => p.ref.layer === 'logo').length;
   let nth = 0;
   let nthSound = 0;
+  let nthProp = 0;
+  let nthLogo = 0;
+  const nthIn = new Map<string, number>();
   return all.map((playing) => {
     const ref = playing.ref;
-    const which = ref.layer === 'slide' ? `slide:${ref.mediaId}` : ref.layer;
+    const which =
+      ref.layer === 'slide' || ref.layer === 'logo'
+        ? `${ref.layer}:${ref.mediaId}`
+        : ref.layer === 'props'
+          ? `props:${ref.propId}:${ref.mediaId}`
+          : ref.layer;
     const music = playing.track ? state?.layers.audio?.music : undefined;
+    // A prop's by its prop too: the same file in two props is two rows, never one drag landing on the other.
     const key = music
       ? `music:${music.playlistId}#${String(music.index)}:${playing.mediaId}`
-      : `${ref.layer}:${playing.mediaId}@${String(playing.clock.startedAt)}`;
+      : `${which.startsWith('props:') ? which : `${ref.layer}:${playing.mediaId}`}@${String(playing.clock.startedAt)}`;
     const named = { playing, which, key };
     switch (ref.layer) {
       case 'background':
@@ -67,6 +86,28 @@ export function playingRows(state: EngineState | null | undefined): PlayingRow[]
           short: `Slide video${number}`,
           name: onSlide > 1 ? `Time of video ${String(nth)} on the slide` : 'Time of the video on the slide',
         };
+      }
+      case 'props': {
+        nthProp++;
+        const prop = state?.layers.props.find((p) => p.id === ref.propId);
+        const inProp = (nthIn.get(ref.propId) ?? 0) + 1;
+        nthIn.set(ref.propId, inProp);
+        const video = ofProp(ref.propId) > 1 ? `video ${String(inProp)}` : 'the video';
+        return {
+          ...named,
+          short: propVideos > 1 ? `Prop video ${String(nthProp)}` : 'Prop video',
+          name: `Time of ${video} in the prop “${prop?.name ?? ''}”`,
+        };
+      }
+      case 'logo': {
+        nthLogo++;
+        return logoVideos > 1
+          ? {
+              ...named,
+              short: `Logo video ${String(nthLogo)}`,
+              name: `Time of video ${String(nthLogo)} in the logo`,
+            }
+          : { ...named, short: 'Logo video', name: 'Time of the logo’s video' };
       }
       case 'pip':
         return { ...named, short: 'Box video', name: 'Time of the video in the picture-in-picture box' };

@@ -548,6 +548,45 @@ describe('restart recovery', () => {
     expect(playbackPosition(bg, 60, now)).toBe(5);
   });
 
+  it('after an unexpected stop, the logo’s video the time bar moved and paused comes back where it waited (Session 54, the owner’s answer of 28 Oct)', async () => {
+    const looping = {
+      id: 'placeholder-logo-video',
+      kind: 'video',
+      mediaId: 'emblem',
+      frame: { x: 0, y: 0, width: 640, height: 360 },
+      fit: 'fit',
+      loop: true,
+    } as const;
+    const source = makeSource();
+    const clock = { now: 1_000_000 };
+    const engine = () =>
+      new ShowEngine(source, new RecordingTransport(), () => clock.now, undefined, {
+        mediaLength: () => 60_000,
+        mediaKind: () => 'video',
+      });
+    const before = engine();
+    before.dispatch({
+      type: 'showLogo',
+      prop: { id: 'logo', name: 'Placeholder logo', elements: [looping] },
+    });
+    clock.now += 5000;
+    // Moved on to 0:20, then paused 2 s later, at 0:22.
+    before.dispatch({ type: 'moveTo', playing: { layer: 'logo', mediaId: 'emblem' }, toMs: 20_000 });
+    clock.now += 2000;
+    before.dispatch({ type: 'pausePlaying', playing: { layer: 'logo', mediaId: 'emblem' } });
+    const was = before.current.logo;
+    expect(was?.seeks).toEqual({ emblem: { at: 1_007_000, toMs: 22_000, paused: true } });
+    await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
+    clock.now += 3000;
+    const after = engine();
+    const back = toRestore(files);
+    if (!back) throw new Error('nothing to put back');
+    expect(after.restore(back)).toMatchObject({ logo: true });
+    expect(after.current.logo).toEqual(was);
+    const seek = after.current.logo?.seeks?.['emblem'];
+    expect(playbackPosition({ startedAt: 0, loop: true, seek }, 60, clock.now)).toBe(22);
+  });
+
   it('puts props, the logo and messages back with the time they went up, so their videos carry on in step (Session 27)', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
