@@ -30,6 +30,24 @@ const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 const tree = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
 const view = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.links.view());
+/** A playlist's items, by name, as kept. */
+const labels = (win: Page, playlistId: string) =>
+  win.evaluate(
+    async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).map((i) => i.label),
+    playlistId,
+  );
+
+/** New playlists, by name; their ids in the same order. */
+const newPlaylists = (win: Page, names: string[]) =>
+  win.evaluate(async (list) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const ids: string[] = [];
+    for (const name of list) {
+      const made = await d.playlists.create(name, null, false);
+      ids.push(made.ok ? (made.ids[0] ?? '') : '');
+    }
+    return ids;
+  }, names);
 
 /** Drashti with the fake yt-dlp, in CI's window, saving into a folder of the test's own. */
 async function open() {
@@ -137,15 +155,7 @@ test('with no playlist, it asks for one’s name before the download, makes it, 
 test('it offers the playlist chosen last first, even with another open; the download lands there, which opens with it shown, and one click puts it up', async () => {
   test.setTimeout(300_000);
   const { app, win, userData } = await open();
-  const [sunday = '', youth = ''] = await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const ids: string[] = [];
-    for (const name of ['Placeholder Sunday', 'Placeholder Youth']) {
-      const made = await d.playlists.create(name, null, false);
-      ids.push(made.ok ? (made.ids[0] ?? '') : '');
-    }
-    return ids;
-  });
+  const [sunday = '', youth = ''] = await newPlaylists(win, ['Placeholder Sunday', 'Placeholder Youth']);
   const node = (name: string) => win.getByTestId('playlist-node').filter({ hasText: name });
   const title = win.getByTestId('open-playlist').getByTestId('playlist-title');
   await node('Placeholder Sunday').click();
@@ -208,4 +218,43 @@ test('it offers the playlist chosen last first, even with another open; the down
     { value: string } | undefined;
   db.close();
   expect(setting?.value).toBe(JSON.stringify(youth));
+});
+
+test('a playlist’s own From a Link… is where the next download goes, after Another link too, though another went in last', async () => {
+  test.setTimeout(300_000);
+  const { app, win } = await open();
+  const [a = '', b = ''] = await newPlaylists(win, ['Placeholder A', 'Placeholder B']);
+  const node = (name: string) => win.getByTestId('playlist-node').filter({ hasText: name });
+  const title = win.getByTestId('open-playlist').getByTestId('playlist-title');
+  await node('Placeholder A').click();
+  await expect(title).toHaveText('Placeholder A');
+
+  // The sound into A, which is the playlist chosen last from then on.
+  await chooseMenuItem(app, 'import-from-link');
+  await lookAtVideo(win);
+  await expect(win.getByTestId('link-add-to')).toHaveValue(`playlist:${a}`);
+  await win.getByTestId('link-type-mp3').click();
+  await download(win);
+  await expect.poll(async () => (await view(win)).lastPlaylist).toBe(a);
+  await win.getByTestId('link-dialog').getByRole('button', { name: 'Close', exact: true }).click();
+
+  // B open, its own From a Link… ("add it at the end of this playlist"): the dialog still shows the last
+  // download, and Another link keeps B, never the playlist chosen last.
+  await node('Placeholder B').click();
+  await expect(title).toHaveText('Placeholder B');
+  await win.getByTestId('playlist-from-link').click();
+  await expect(win.getByTestId('link-saved')).toBeVisible();
+  await win.getByTestId('link-another').click();
+  await lookAtVideo(win);
+  await expect(win.getByTestId('link-add-to')).toHaveValue(`playlist:${b}`);
+  await download(win);
+  await expect(title).toHaveText('Placeholder B', { timeout: 60_000 });
+  await expect(cards(win).filter({ hasText: 'Placeholder video.mp4' })).toHaveAttribute(
+    'data-marked',
+    'true',
+  );
+  await expect.poll(() => labels(win, b)).toEqual(['Placeholder video.mp4']);
+  expect(await labels(win, a)).toEqual(['Placeholder video.mp3']);
+  await expect.poll(async () => (await view(win)).lastPlaylist).toBe(b);
+  await app.close();
 });

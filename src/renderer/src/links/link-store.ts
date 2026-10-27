@@ -193,7 +193,9 @@ export const stopDownload = () => act(() => window.drashti.links.stop());
 /** Add the PDFs and pictures (Session 26c): a folder's waiting files, into its playlist. */
 export const addWaitingFiles = () => act(() => window.drashti.links.addWaiting());
 export const anotherLink = () => {
-  useLinks.setState({ addTo: null });
+  // A playlist chosen stays chosen (a playlist's own From a Link… chooses it, then this is pressed on the last
+  // download's result); no playlist, or a new one (the last download made it), starts afresh (Session 54).
+  useLinks.setState((s) => ({ addTo: s.addTo?.kind === 'playlist' ? s.addTo : null }));
   return act(() => window.drashti.links.reset());
 };
 
