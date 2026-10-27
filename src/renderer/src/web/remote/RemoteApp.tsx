@@ -4,11 +4,10 @@ import type { RemotePresentation } from '../../../../shared/network-api';
 import { KIRTAN_FIELD_NAMES, type SearchHit } from '../../../../shared/search';
 import type { EngineState } from '../../../../shared/engine/state';
 import { backgroundCueOf, type PresentationDoc } from '../../../../shared/library';
-import type { PlaybackMarker } from '../../../../shared/markers';
 import { fieldOf, type MessageTemplate, messageItemId, templateFields } from '../../../../shared/messages';
 import { type OrderedSlide, playOrder } from '../../../../shared/order';
 import type { ItemOrder, PlaylistItemInfo } from '../../../../shared/playlists';
-import { isRunning, type TimerState } from '../../../../shared/timers';
+import { isRunning } from '../../../../shared/timers';
 import { useEngine } from '../../engine/engine-store';
 import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
@@ -28,7 +27,6 @@ import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import {
   AppWindow,
-  BlackOut,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -36,13 +34,10 @@ import {
   FileText,
   ListMusic,
   MonitorOff,
-  Pause,
   PictureInPicture2,
   Play,
   Repeat2,
-  RotateCcw,
   Square,
-  Stamp,
   Timer,
   Tv,
   Video,
@@ -70,6 +65,18 @@ import {
 import { ClockStyleContext } from '../../render/clock-style';
 import { namedBackground } from '../../render/named-background';
 import { formatClock, validClockStyle } from '../../../../shared/format';
+import { Clears } from './Clears';
+import { itemLine } from './item-line';
+import { LibraryPanel } from './LibraryPanel';
+import { LiveLines } from './LiveLines';
+import { MessageFields } from './MessageFields';
+import { startMirror } from './mirror-store';
+import { MoreTools } from './MoreTools';
+import { MusicList } from './MusicList';
+import { Playing } from './Playing';
+import { Props } from './Props';
+import { StageScreen } from './StageScreen';
+import { Timers } from './Timers';
 
 /*
  * The remote for a phone or tablet (a Remote device): what is on the screens
@@ -84,6 +91,14 @@ import { formatClock, validClockStyle } from '../../../../shared/format';
  * a presentation, tap a slide to put it up), the live slide's notes and the
  * next one's under the live picture, and, on a tablet held sideways, the
  * live picture, the notes and Next beside the slides.
+ *
+ * A mirror of the operator window (Session 54, D5): the clears in its order
+ * with its keys' names (Clears.tsx), LIVE's own lines and what is playing
+ * under it, the library's media beside its presentations, and More in the
+ * window's order: Music, the stage screen, messages, timers, props, Looks,
+ * Shastra, the lower thirds and the idle rotation (each in a file of its
+ * own here). Never the screens' setup, video inputs, windows or anything
+ * that changes the library.
  */
 
 const CANVAS = { width: 1920, height: 1080 };
@@ -415,69 +430,6 @@ function Notes({ state }: { state: EngineState | null }) {
   );
 }
 
-function QuickActions({ state }: { state: EngineState | null }) {
-  const logoMarked = useRemote((s) => s.logo !== null);
-  const blackout = state?.blackout ?? false;
-  const logoOn = state?.logo != null;
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="remote-actions">
-      <Button
-        size="lg"
-        className="min-h-12"
-        instant
-        icon={Eraser}
-        disabled={!state?.layers.slide}
-        onClick={() => void tap(post('/api/v1/clear/slide'))}
-      >
-        Clear slide
-      </Button>
-      <Button
-        size="lg"
-        className="min-h-12"
-        instant
-        icon={Eraser}
-        onClick={() => void tap(post('/api/v1/clear/all'))}
-      >
-        Clear all
-      </Button>
-      {/* On, they say so in words as Pro Mode and Simple Mode do ("Black-out is on"), with no aria-pressed
-          besides (Session 26g, PLAN §7); the words may wrap on a narrow phone. */}
-      <Button
-        size="lg"
-        className="min-h-12 px-3 whitespace-normal"
-        instant
-        icon={BlackOut}
-        variant={blackout ? 'live' : 'secondary'}
-        onClick={() => void tap(post('/api/v1/blackout', { on: !blackout }))}
-      >
-        {blackout ? 'Black-out is on' : 'Black-out'}
-      </Button>
-      <Button
-        size="lg"
-        className="min-h-12 px-3 whitespace-normal"
-        instant
-        icon={Stamp}
-        variant={logoOn ? 'live' : 'secondary'}
-        disabled={!logoMarked && !logoOn}
-        onClick={() => void tap(post('/api/v1/logo', { on: !logoOn }))}
-      >
-        {logoOn ? 'Logo is on' : 'Logo'}
-      </Button>
-      <Button
-        size="lg"
-        className="min-h-12"
-        instant
-        icon={RotateCcw}
-        variant={state?.canPutBack ? 'warning' : 'secondary'}
-        disabled={!state?.canPutBack}
-        onClick={() => void tap(post('/api/v1/put-back'))}
-      >
-        Put it back
-      </Button>
-    </div>
-  );
-}
-
 // ---- the shown item's slides -----------------------------------------------------------------
 
 function SlideThumb({
@@ -721,10 +673,10 @@ function Playlist() {
                   isLive ? 'border-live bg-panel-2' : 'border-line bg-panel-2',
                 )}
               >
-                <span className="min-w-0 flex-1 truncate text-fg">{i.label}</span>
-                {i.kind === 'media' && (
-                  <Badge>{i.media === 'image' ? 'Picture' : i.media === 'video' ? 'Video' : 'Sound'}</Badge>
-                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-fg">{i.label}</span>
+                  <span className="block truncate text-muted">{itemLine(i)}</span>
+                </span>
                 {i.kind === 'input' && (
                   <Badge tone={i.missing ? 'warning' : 'neutral'} data-testid="remote-item-input">
                     {i.missing ? 'Not on Drashti’s computer' : 'Video input'}
@@ -939,48 +891,13 @@ function SidePanel() {
         })}
       </div>
       <div role="tabpanel" aria-label={side === 'playlist' ? 'Playlist' : 'Library'}>
-        {side === 'playlist' ? <Playlist /> : <Library />}
+        {side === 'playlist' ? <Playlist /> : <LibraryPanel presentations={<Library />} />}
       </div>
     </div>
   );
 }
 
 // ---- timers and messages -----------------------------------------------------------------------
-
-function TimerRow({ timer }: { timer: TimerState }) {
-  const running = isRunning(timer);
-  return (
-    <li
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2"
-      data-testid="remote-timer"
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-base text-fg">{timer.name}</span>
-        <span className="block font-mono text-2xl text-fg">
-          <TimerText timer={timer} />
-        </span>
-      </span>
-      <Button
-        size="lg"
-        className="min-h-12"
-        icon={running ? Pause : Play}
-        onClick={() =>
-          void tap(post(`/api/v1/timers/${encodeURIComponent(timer.id)}/${running ? 'pause' : 'start'}`))
-        }
-      >
-        {running ? 'Pause' : 'Start'}
-      </Button>
-      <Button
-        size="lg"
-        className="min-h-12"
-        icon={RotateCcw}
-        onClick={() => void tap(post(`/api/v1/timers/${encodeURIComponent(timer.id)}/reset`))}
-      >
-        Reset
-      </Button>
-    </li>
-  );
-}
 
 function MessageRow({ template, shown }: { template: MessageTemplate; shown: boolean }) {
   const fields = templateFields(template.template).filter((n) => fieldOf(template, n).kind === 'text');
@@ -992,6 +909,7 @@ function MessageRow({ template, shown }: { template: MessageTemplate; shown: boo
         {shown && <Badge tone="live">On the screens</Badge>}
       </div>
       <p className="text-base text-muted">{template.template}</p>
+      <MessageFields template={template} />
       {fields.map((name) => (
         <label key={name} className="block space-y-1">
           <span className="block text-base text-muted">{name}</span>
@@ -1012,7 +930,7 @@ function MessageRow({ template, shown }: { template: MessageTemplate; shown: boo
             void tap(post(`/api/v1/messages/${encodeURIComponent(template.id)}/show`, { values }))
           }
         >
-          {shown ? 'Show again' : 'Show'}
+          {shown ? 'Update' : 'Show'}
         </Button>
         {shown && (
           <Button
@@ -1029,7 +947,6 @@ function MessageRow({ template, shown }: { template: MessageTemplate; shown: boo
 }
 
 // Selectors return the state's own arrays, never a fresh one (a fresh one each time would loop).
-const NO_TIMERS: TimerState[] = [];
 const NO_MESSAGES: EngineState['layers']['messages'] = [];
 
 /** The Looks: tapping one makes it live (every screen group changes at once). */
@@ -1082,7 +999,7 @@ function Music() {
           {music.title} <span className="text-muted">({music.music?.name})</span>
         </p>
       )}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {music && !paused ? (
           <Button size="lg" className="flex-1" onClick={() => void tap(post('/api/v1/music/pause'))}>
             Pause music
@@ -1093,45 +1010,17 @@ function Music() {
           </Button>
         )}
         {music && (
+          <Button size="lg" onClick={() => void tap(post('/api/v1/music/previous'))}>
+            Previous track
+          </Button>
+        )}
+        {music && (
           <Button size="lg" onClick={() => void tap(post('/api/v1/music/next'))}>
             Next track
           </Button>
         )}
       </div>
-    </section>
-  );
-}
-
-/** None, as one array (a selector answering a new one each time would never settle). */
-const NO_MARKS: PlaybackMarker[] = [];
-
-/** Markers of the background video or the sound playing (Session 14): a tap jumps there, in step everywhere. */
-function Markers() {
-  const bg = useEngine((s) => {
-    const b = s.state?.layers.background;
-    return b?.kind === 'media' ? (b.marks ?? NO_MARKS) : NO_MARKS;
-  });
-  const audio = useEngine((s) => s.state?.layers.audio?.marks ?? NO_MARKS);
-  if (bg.length === 0 && audio.length === 0) return null;
-  const jump = (layer: 'background' | 'audio', id: string) =>
-    void tap(post(`/api/v1/markers/${encodeURIComponent(id)}/jump`, { layer }));
-  return (
-    <section className="space-y-2" aria-labelledby="markers-title" data-testid="remote-markers">
-      <h2 id="markers-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Jump to a marker
-      </h2>
-      <div className="flex flex-wrap gap-2">
-        {bg.map((m) => (
-          <Button key={`b-${m.id}`} size="lg" onClick={() => jump('background', m.id)}>
-            {m.name}
-          </Button>
-        ))}
-        {audio.map((m) => (
-          <Button key={`a-${m.id}`} size="lg" onClick={() => jump('audio', m.id)}>
-            {m.name} (sound)
-          </Button>
-        ))}
-      </div>
+      <MusicList />
     </section>
   );
 }
@@ -1177,51 +1066,44 @@ function Shastra() {
 }
 
 function TimersAndMessages() {
-  const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const templates = useRemote((s) => s.templates);
   return (
-    <div className="space-y-5">
-      <Looks />
-      <Shastra />
-      <Music />
-      <Markers />
-      <section className="space-y-2" aria-labelledby="timers-title">
-        <h2 id="timers-title" className="text-base font-bold tracking-wider text-muted uppercase">
-          Timers
-        </h2>
-        {timers.length === 0 ? (
-          <p className="text-base text-muted">There are no timers.</p>
-        ) : (
-          <ul className="space-y-2">
-            {timers.map((t) => (
-              <TimerRow key={t.id} timer={t} />
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="space-y-2" aria-labelledby="messages-title">
-        <h2 id="messages-title" className="text-base font-bold tracking-wider text-muted uppercase">
-          Messages
-        </h2>
-        {!templates || templates.length === 0 ? (
-          templates ? (
-            <p className="text-base text-muted">
-              There are no messages yet: they are made in Drashti on the computer, under Messages in Pro Mode.
-            </p>
+    // The operator window's right column in its order (Session 54, D5): Music, the stage screen, messages, timers,
+    // props, the Looks and Shastra, then its More tools; in two columns where a tablet has the width for them.
+    <div className="@container">
+      <div className="@lg:columns-2 @lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid">
+        <Music />
+        <StageScreen />
+        <section className="space-y-2" aria-labelledby="messages-title">
+          <h2 id="messages-title" className="text-base font-bold tracking-wider text-muted uppercase">
+            Messages
+          </h2>
+          {!templates || templates.length === 0 ? (
+            templates ? (
+              <p className="text-base text-muted">
+                There are no messages yet: they are made in Drashti on the computer, under Messages in Pro
+                Mode.
+              </p>
+            ) : (
+              <p role="status" className="text-base text-muted">
+                Loading the messages…
+              </p>
+            )
           ) : (
-            <p role="status" className="text-base text-muted">
-              Loading the messages…
-            </p>
-          )
-        ) : (
-          <ul className="space-y-2">
-            {templates.map((t) => (
-              <MessageRow key={t.id} template={t} shown={shown.some((m) => m.id === messageItemId(t.id))} />
-            ))}
-          </ul>
-        )}
-      </section>
+            <ul className="space-y-2">
+              {templates.map((t) => (
+                <MessageRow key={t.id} template={t} shown={shown.some((m) => m.id === messageItemId(t.id))} />
+              ))}
+            </ul>
+          )}
+        </section>
+        <Timers />
+        <Props />
+        <Looks />
+        <Shastra />
+        <MoreTools />
+      </div>
     </div>
   );
 }
@@ -1347,9 +1229,11 @@ function Layout() {
   const show = (
     <div className="space-y-4">
       <LivePicture state={state} />
+      <LiveLines state={state} />
+      <Playing />
       <Notes state={state} />
       <NextLine state={state} />
-      <QuickActions state={state} />
+      <Clears state={state} />
       <Slides />
     </div>
   );
@@ -1376,9 +1260,11 @@ function Layout() {
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] gap-6 p-4">
           <div className="min-h-0 space-y-4 overflow-y-auto" data-testid="remote-presenter">
             <LivePicture state={state} />
+            <LiveLines state={state} />
+            <Playing />
             <Notes state={state} />
             <NextLine state={state} />
-            <QuickActions state={state} />
+            <Clears state={state} />
           </div>
           <div className="flex min-h-0 flex-col gap-3">
             <TabRow tabs={PANEL_TABS} testId="remote-panel" label="Beside the live picture" />
@@ -1389,7 +1275,7 @@ function Layout() {
             >
               {tab === 'show' && <Slides />}
               {tab === 'playlist' && <Playlist />}
-              {tab === 'library' && <Library />}
+              {tab === 'library' && <LibraryPanel presentations={<Library />} />}
               {tab === 'more' && <TimersAndMessages />}
             </div>
           </div>
@@ -1410,7 +1296,7 @@ function Layout() {
         >
           {tab === 'show' && show}
           {tab === 'playlist' && <Playlist />}
-          {tab === 'library' && <Library />}
+          {tab === 'library' && <LibraryPanel presentations={<Library />} />}
           {tab === 'more' && <TimersAndMessages />}
         </main>
       )}
@@ -1424,6 +1310,7 @@ export function RemoteApp() {
   useEffect(() => {
     void preloadFonts();
     startRemote();
+    startMirror();
     startFeed();
     void loadPlaylists();
   }, []);

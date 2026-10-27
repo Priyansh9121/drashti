@@ -118,11 +118,23 @@ const SIZES = [
   layout: string;
 }[];
 
-/** The remote's tabs, as each layout has them. */
+/** The remote's tabs, as each layout has them, and the library's Media (Session 54, D5) after its library. */
 const TABS_OF = {
-  phone: ['remote-tab-show', 'remote-tab-playlist', 'remote-tab-library', 'remote-tab-more'],
-  wide: ['remote-side-playlist', 'remote-side-library'],
-  landscape: ['remote-panel-show', 'remote-panel-playlist', 'remote-panel-library', 'remote-panel-more'],
+  phone: [
+    'remote-tab-show',
+    'remote-tab-playlist',
+    'remote-tab-library',
+    'remote-library-media',
+    'remote-tab-more',
+  ],
+  wide: ['remote-side-playlist', 'remote-side-library', 'remote-library-media'],
+  landscape: [
+    'remote-panel-show',
+    'remote-panel-playlist',
+    'remote-panel-library',
+    'remote-library-media',
+    'remote-panel-more',
+  ],
 } as const;
 
 for (const engine of ['webkit', 'chromium'] as const satisfies readonly Engine[])

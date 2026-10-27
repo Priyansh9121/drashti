@@ -221,13 +221,14 @@ test('a background loops between its points; a jump to a marker lands in step on
   await expect.poll(async () => (await state()).seek?.toMs).toBe(4000);
   await inStep(await state());
 
-  // And from a phone remote's More tab: a tap jumps there again, in step everywhere.
+  // And from a phone remote, under its live picture as in the window (Session 54, D5: under More until then): a
+  // tap jumps there again, in step everywhere.
   const { base } = await networkOn(win);
   const phone = await device('webkit');
   try {
     await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
-    await phone.page.getByTestId('remote-tab-more').click();
-    const remote = phone.page.getByTestId('remote-markers');
+    await phone.page.getByTestId('remote-tab-show').click();
+    const remote = phone.page.getByTestId('remote-playing');
     await expect(remote).toContainText('Placeholder chorus');
     await expectNoSeriousA11yIssues(phone.page, 'the remote with markers');
     const before = (await state()).seek?.at ?? 0;
