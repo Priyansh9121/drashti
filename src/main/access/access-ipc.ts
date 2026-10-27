@@ -15,13 +15,6 @@ import type { AccessService } from './service';
  * when it is not let in at once. Every request is checked again in the access service.
  */
 
-/** What runs while this computer is not let in. */
-export const OPEN_WHILE_LOCKED: ReadonlySet<string> = new Set<string>([
-  ...Object.values(IPC.access),
-  IPC.app.getInfo,
-  IPC.app.renderError,
-]);
-
 /** Plain text from a page, at most `max` characters, cut between letters (anything else: nothing). */
 const text = (raw: unknown, max: number): string => (typeof raw === 'string' ? cutText(raw, max) : '');
 

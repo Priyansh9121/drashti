@@ -3,10 +3,11 @@ import { gateChannels } from '../ipc/handle';
 import { log } from '../log';
 import { installLockedMenu } from '../menu';
 import { swMs } from '../switches';
-import { createLockWindow, OPEN_WHILE_LOCKED, registerAccessIpc } from './access-ipc';
+import { createLockWindow, registerAccessIpc } from './access-ipc';
 import { AccessClient, accessSwitches, accessTarget } from './client';
 import { electronTransport } from './electron-transport';
 import { isLetIn, onAccessChange } from './gate';
+import { mayRunWhileLocked } from './locked-requests';
 import { accessComputer, computerId } from './identity';
 import { AccessService, AskedFile } from './service';
 import { AccessStore } from './store';
@@ -98,10 +99,15 @@ export async function prepareTheLock(o: {
     },
     windows: () => [lockWindow, o.operatorWindow()],
   });
-  // Every request from a window, from now on: the lock screen's and Quit while not let in; a self-test's own pages
-  // but the operator window, which shows only its placeholder content.
+  // Every request from a window, from now on: while not let in, the lock screen's and Quit, and Drashti's own screens'
+  // reads and reports (locked-requests.ts), never the operator window's.
   gateChannels(
-    (channel, event) => isLetIn() || OPEN_WHILE_LOCKED.has(channel) || (o.selfTest && !o.fromOperator(event)),
+    (channel, event) =>
+      isLetIn() ||
+      mayRunWhileLocked(channel, {
+        url: event.senderFrame?.url ?? '',
+        operatorWindow: o.fromOperator(event),
+      }),
   );
   installLockedMenu();
 
