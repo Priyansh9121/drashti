@@ -716,14 +716,20 @@ export const SlideView = memo(function SlideView({
               }}
             />
           ) : null,
-          text === 'only' && el.kind !== 'text' ? null : el.id === deckPicture && deck && step ? (
-            <DeckStepView
+          text === 'only' && el.kind !== 'text' ? null : el.id === deckPicture &&
+            deck &&
+            step &&
+            el.kind === 'image' ? (
+            // The picture's kept look and the live zoom (Session 26e) apply to the step drawn in its place, as to the
+            // picture itself: it is the picture the engine zooms (Session 54, D2 review).
+            <Looked
               key={el.id}
-              deck={deck}
-              timing={step}
-              style={{ ...frameStyle(el), opacity: el.kind === 'image' ? (el.opacity ?? 1) : 1 }}
-              fit={el.kind === 'image' ? OBJECT_FIT[el.fit] : 'contain'}
-            />
+              mediaId={el.mediaId}
+              showing={startedAt === undefined ? null : slideShowing(startedAt)}
+              style={{ ...frameStyle(el), opacity: el.opacity ?? 1, objectFit: OBJECT_FIT[el.fit] }}
+            >
+              {(box) => <DeckStepView deck={deck} timing={step} style={box} fit={OBJECT_FIT[el.fit]} />}
+            </Looked>
           ) : (
             <ElementView
               key={el.id}

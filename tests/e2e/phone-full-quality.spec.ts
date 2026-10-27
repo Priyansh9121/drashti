@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { ffmpeg as deckFfmpeg, makeDeckFiles, standInDecks, writeDeck } from './deck-stand-in';
 import { device, type Engine, NETWORK_ENV, networkOn, pairByQr, pairingCode, PHONE, TABLET } from './devices';
 import {
   importAndGetIds,
@@ -63,9 +64,9 @@ const showBackground = (win: Page, mediaId: string) =>
   });
 
 /** How a screen draws its background picture's zoom (its transform; none while it is plain). */
-const screenZoom = (output: Page) =>
+const screenZoom = (output: Page, layer: 'background' | 'slide' = 'background') =>
   output
-    .locator('[data-layer="background"] [data-look-picture]')
+    .locator(`[data-layer="${layer}"] [data-look-picture]`)
     .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.transform).join(' '));
 
 /** How many pixels wide the picture a place draws is, as the device has it. */
@@ -348,6 +349,49 @@ test('a video plays on the phone at its original quality, in pieces as it plays,
     expect((await snapshot(win)).layers.background).toBeNull();
     await expectNoSeriousA11yIssues(p, 'the viewer playing a video (chromium)');
     expect.soft(await tooSmall(p), 'targets under 44 px: the viewer playing a video').toEqual([]);
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
+test('a deck’s slide on the screens, zoomed from a phone: the screens zoom the step drawn in its picture’s place, and Back to Whole undoes it (Session 54, D2 review)', async () => {
+  test.skip(deckFfmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(240_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const deckId = await writeDeck(win, 'Placeholder deck', standInDecks(await makeDeckFiles(win)));
+  await setUpScreen(win);
+  const output = await outputPage(app);
+  await outputReady(output);
+  await dispatch(win, { type: 'goLive', presentationId: deckId, slideIndex: 0 });
+  await expect.poll(async () => (await snapshot(win)).layers.slide?.presentationId).toBe(deckId);
+  await expect(output.locator('[data-layer="slide"] [data-deck-step="0"]')).toHaveCount(1);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  await p.setViewportSize({ width: 375, height: 812 });
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // The deck's picture is the slide's own: zoomed on the phone, the side button offers it.
+    await p.getByTestId('remote-look-closer').click();
+    await expect(p.getByTestId('viewer')).toHaveAttribute('data-live', 'true');
+    await pinch(p, 60, 120);
+    const showZoom = p.getByTestId('viewer-show-zoom');
+    await expect(showZoom).toBeVisible();
+    await showZoom.click();
+    await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 0).toBeCloseTo(2, 1);
+    // The step drawn in the picture's place zooms on the screens, as the picture itself would.
+    await expect.poll(() => screenZoom(output, 'slide')).toMatch(/scale\(2(\.\d+)?\)/u);
+    await expect(output.locator('[data-layer="slide"] [data-look-picture] [data-deck-step="0"]')).toHaveCount(
+      1,
+    );
+    await p.getByTestId('viewer-whole').click();
+    await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 1).toBe(1);
+    await expect.poll(() => screenZoom(output, 'slide')).toBe('');
   } finally {
     await phone.close();
   }
