@@ -8,6 +8,18 @@ import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
 import { Monitor, MonitorOff, Music } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
+import type { SlideLayer } from '../../../shared/engine/state';
+import { lastStep, stepOf } from '../../../shared/deck-show';
+
+/** A deck's slide's click, in words, after "slide N of M" (Session 54, C2): "click 1 of 2", "2 clicks to come". */
+export function clickWords(layer: SlideLayer | null | undefined): string {
+  const clicks = lastStep(layer?.slide.deck);
+  if (!layer || clicks === 0) return '';
+  const at = stepOf(layer);
+  return at === 0
+    ? ` · ${String(clicks)} ${clicks === 1 ? 'click' : 'clicks'} to come`
+    : ` · click ${String(at)} of ${String(clicks)}`;
+}
 
 const NO_STATUS: ScreenStatus[] = [];
 
@@ -18,6 +30,8 @@ export function LiveStatus() {
   // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
   const timerAlone = useEngine((s) => s.state?.layers.slide?.timer?.name ?? null);
   const blackout = useEngine((s) => s.state?.blackout ?? false);
+  // A deck's slide's click (Session 54, C2).
+  const click = useEngine((s) => clickWords(s.state?.layers.slide));
   const audio = useEngine((s) => s.state?.layers.audio?.title ?? null);
   const name = useLibrary((s) => s.presentations.find((p) => p.id === live?.presentationId)?.name);
   // A Shastra passage is not in the library's list: its reference instead.
@@ -28,7 +42,7 @@ export function LiveStatus() {
   if (timerAlone !== null) {
     text = `Live: Timer · ${timerAlone}`;
   } else if (live?.presentationId && live.slideIndex !== null) {
-    text = `Live: ${name ?? passage ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? '' : ' (cleared)'}`;
+    text = `Live: ${name ?? passage ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? click : ' (cleared)'}`;
   } else if (live?.playlist) {
     text = `Live: ${itemLabel ?? 'playlist item'}`;
   }

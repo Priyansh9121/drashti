@@ -32,6 +32,9 @@ import { MIN_FIT } from '../../../shared/readable';
 import { standsUpright } from '../../../shared/text-runs';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
+import type { DeckMedia } from '../../../shared/deck';
+import { deckMediaOf, deckPictureId, type StepTiming } from '../../../shared/deck-show';
+import { DeckStepView, useDeckCover } from './DeckStep';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -392,6 +395,7 @@ function SlideVideo({
   attempt,
   clip,
   seek,
+  deck,
 }: {
   el: MediaElement;
   startedAt: number | undefined;
@@ -400,6 +404,8 @@ function SlideVideo({
   clip: PlaybackClip | undefined;
   /** Where the time bar moved it, paused or not (its layer's seeks, Session 54); undefined: never moved. */
   seek: PlaybackSeek | undefined;
+  /** A deck's own video (Session 54, C2): its poster before it plays, hidden while stopped when its deck says. */
+  deck?: DeckMedia;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   // Props and other things without a start time play from when they appear.
@@ -420,7 +426,8 @@ function SlideVideo({
   }
   // Whether it loops, its start and end points (Session 52) and the time bar's moves (Session 54) are read as they
   // change, without a reload.
-  const loop = el.loop ?? false;
+  // A deck's video loops as its deck says (Session 54, C2).
+  const loop = deck ? deck.loop : (el.loop ?? false);
   const timing = useRef({ loop, clip, seek });
   useLayoutEffect(() => {
     timing.current = { loop, clip, seek };
@@ -451,20 +458,30 @@ function SlideVideo({
   useEffect(() => {
     playback.current?.resync();
   }, [clipKey, seekKey]);
+  // A deck's video (Session 54, C2): its length once known, for when it has played to its end.
+  const [durationMs, setDurationMs] = useState<number | null>(null);
+  const cover = useDeckCover(deck, { startedAt: start, loop, clip, seek }, durationMs);
   return (
     <>
       <video
         ref={ref}
         data-element={el.id}
         data-media-id={el.mediaId}
+        data-deck-cover={deck ? cover : undefined}
         muted
         playsInline
         disablePictureInPicture
         preload="auto"
         // Between start and end points it goes round by playback.ts's loop, not the element's.
         loop={loop && !clip}
-        style={mediaStyle(el)}
+        onLoadedMetadata={(e) => {
+          if (deck && Number.isFinite(e.currentTarget.duration))
+            setDurationMs(Math.round(e.currentTarget.duration * 1000));
+        }}
+        style={cover === 'hidden' ? { ...mediaStyle(el), visibility: 'hidden' } : mediaStyle(el)}
       />
+      {/* A deck's video's poster, over it until it plays (Session 54, C2). */}
+      {cover === 'poster' && deck?.posterId && <DeckPoster mediaId={deck.posterId} style={mediaStyle(el)} />}
       {/* Its play bar (Session 54), when the slide editor's setting is ticked: drawn from the same timing. */}
       {el.playBar === true && (
         <PlayBar
@@ -479,6 +496,22 @@ function SlideVideo({
         />
       )}
     </>
+  );
+}
+
+/** A deck's video's poster (Session 54, C2), from this computer's media or, on a node, its copy. */
+function DeckPoster({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+  const attempt = useMediaAttempt(mediaId);
+  const urlOf = useMediaUrl();
+  return (
+    <img
+      key={attempt}
+      data-deck-poster={mediaId}
+      src={urlOf(mediaId, attempt)}
+      alt=""
+      draggable={false}
+      style={style}
+    />
   );
 }
 
@@ -518,12 +551,15 @@ function MediaView({
   startedAt,
   clips,
   seeks,
+  deck,
 }: {
   el: MediaElement;
   media: MediaMode;
   startedAt?: number;
   clips?: VideoClips;
   seeks?: VideoSeeks;
+  /** A deck's own video (Session 54, C2). */
+  deck?: DeckMedia;
 }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
@@ -565,6 +601,7 @@ function MediaView({
       attempt={attempt}
       clip={videoClip(clips, el.mediaId)}
       seek={videoSeek(seeks, el.mediaId)}
+      deck={deck}
     />
   );
 }
@@ -578,6 +615,7 @@ export function ElementView({
   textHidden = false,
   reveal,
   band,
+  deck,
 }: {
   el: SlideElement;
   media?: MediaMode;
@@ -593,13 +631,15 @@ export function ElementView({
   reveal?: Reveal;
   /** A band behind a box's words this dark (Sessions 31–36, SLD-3). */
   band?: number;
+  /** A deck's own video (Session 54, C2): how its deck plays it. */
+  deck?: DeckMedia;
 }) {
   if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} band={band} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
   // A timer on a slide (Session 50): live, its digits moving on the screens, still in a thumbnail.
   if (el.kind === 'timer')
     return <TimerElementView el={el} box={timerBoxStyle(el)} animate={media === 'live'} band={band} />;
-  return <MediaView el={el} media={media} startedAt={startedAt} clips={clips} seeks={seeks} />;
+  return <MediaView el={el} media={media} startedAt={startedAt} clips={clips} seeks={seeks} deck={deck} />;
 }
 
 /**
@@ -621,6 +661,7 @@ export const SlideView = memo(function SlideView({
   seeks,
   text = 'shown',
   reveal,
+  step,
 }: {
   slide: RenderSlide;
   media?: MediaMode;
@@ -633,8 +674,16 @@ export const SlideView = memo(function SlideView({
   text?: SlideText;
   /** Its words alone (`only`), line by line or word by word (Session 27). */
   reveal?: Reveal;
+  /**
+   * A deck's slide on the screens (Session 54, C2): the step showing, drawn in its picture's place as it plays by the
+   * engine's time. Left out (a thumbnail, any other slide), its picture is drawn as it is: the slide whole.
+   */
+  step?: StepTiming | null;
 }) {
   const darken = slide.darken;
+  // The deck's picture, drawn as the step showing (Session 54, C2).
+  const deck = slide.deck;
+  const deckPicture = step && deck && media === 'live' ? deckPictureId(slide) : null;
   // What its transliteration is of (Sessions 31–36, I18N-4), for its words' lang.
   const source = useMemo(() => slide.translitOf ?? translitSource(slide.elements), [slide]);
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (none in the words alone).
@@ -667,7 +716,15 @@ export const SlideView = memo(function SlideView({
               }}
             />
           ) : null,
-          text === 'only' && el.kind !== 'text' ? null : (
+          text === 'only' && el.kind !== 'text' ? null : el.id === deckPicture && deck && step ? (
+            <DeckStepView
+              key={el.id}
+              deck={deck}
+              timing={step}
+              style={{ ...frameStyle(el), opacity: el.kind === 'image' ? (el.opacity ?? 1) : 1 }}
+              fit={el.kind === 'image' ? OBJECT_FIT[el.fit] : 'contain'}
+            />
+          ) : (
             <ElementView
               key={el.id}
               el={el}
@@ -678,6 +735,7 @@ export const SlideView = memo(function SlideView({
               textHidden={text === 'hidden'}
               reveal={text === 'only' ? reveal : undefined}
               band={darken?.kind === 'band' && darkensBehind(el) ? darken.strength : undefined}
+              deck={deck && el.kind === 'video' ? deckMediaOf(slide, el.mediaId, 'video') : undefined}
             />
           ),
         ])}

@@ -39,6 +39,7 @@ import {
   setSoundCue,
 } from './ops';
 import { cutText } from '../../../shared/text';
+import { DeckTransitions } from './DeckTransitions';
 
 /*
  * The slide panel: what the inspector shows when nothing on the slide is
@@ -552,15 +553,25 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
       </Section>
 
       <Section title="Coming on and moving on" testId="timing-section">
-        <TransitionField
-          label="Comes on with"
-          testId="slide-transition"
-          value={slide.transition}
-          noneLabel={`The presentation’s (${describe(doc.transition ?? appDefault ?? CUT)})`}
-          onChange={(transition) => {
-            setSlide({ transition }, `transition:${slide.id}`);
-          }}
-        />
+        {slide.deck ? (
+          // A deck's slide (Session 54, C2): the deck's own transition, Drashti's over or instead of it, and each click's.
+          <DeckTransitions
+            deck={slide.deck}
+            onChange={(deck, coalesce) => {
+              setSlide({ deck }, `${coalesce}:${slide.id}`);
+            }}
+          />
+        ) : (
+          <TransitionField
+            label="Comes on with"
+            testId="slide-transition"
+            value={slide.transition}
+            noneLabel={`The presentation’s (${describe(doc.transition ?? appDefault ?? CUT)})`}
+            onChange={(transition) => {
+              setSlide({ transition }, `transition:${slide.id}`);
+            }}
+          />
+        )}
         <Toggle
           label="Moves on by itself"
           checked={slide.autoAdvanceMs !== null}

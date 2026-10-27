@@ -9,6 +9,8 @@ import {
   transitionSchema,
 } from './model-schema';
 import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
+import type { DeckSlide } from './deck';
+import { deckSlideSchema } from './deck-schema';
 
 /*
  * The slide editor's document (PLAN.md 5.2, Session 7): a presentation's
@@ -76,6 +78,12 @@ export interface EditSlide {
   /** Bottom to top. */
   elements: SlideElement[];
   cues: EditCue[];
+  /**
+   * A slide made from a PowerPoint or Keynote deck with its animations (Session 54, C2): its steps, its own transition
+   * and media, as its import stored them, and Drashti's own transitions on it and its clicks, which the editor sets
+   * (only those are saved from here). Left out for any other slide.
+   */
+  deck?: DeckSlide;
 }
 
 export interface EditGroup {
@@ -188,6 +196,8 @@ const slideSchema: z.ZodType<EditSlide> = z.object({
   macroId: idSchema.nullable().default(null),
   elements: z.array(slideElementSchema).max(500),
   cues: z.array(cueSchema).max(100),
+  // A deck's slide (Session 54, C2); documents saved before have none.
+  deck: deckSlideSchema.optional(),
 });
 
 export const themeSlideSchema: z.ZodType<ThemeSlide> = z.object({

@@ -3,6 +3,7 @@ import type { PlaybackMarker } from '../markers';
 import type { PlaybackClock } from '../media';
 import type { SlideElement } from '../model';
 import { idSchema } from '../model-schema';
+import { deckMediaOf } from '../deck-show';
 import { type EngineState, type VideoClips, videoClip, type VideoSeeks, videoSeek } from './state';
 
 /*
@@ -40,6 +41,8 @@ export interface Playing {
   track: boolean;
   /** Paused: by the time bar's Pause (its seek's `paused`), or a track by Music's (`pausedAtMs`). */
   paused: boolean;
+  /** A deck's sound on the slide up (Session 54, C2), not a video. */
+  sound?: boolean;
 }
 
 const NO_MARKS: readonly PlaybackMarker[] = [];
@@ -113,8 +116,13 @@ export function playingOf(state: EngineState | null | undefined, ref: PlayingRef
     case 'slide': {
       const slide = layers.slide;
       const el = slide ? videoOf(slide.slide.elements, ref.mediaId) : undefined;
-      if (!slide || el?.kind !== 'video') return null;
-      return videoPlaying(state, ref, ref.mediaId, slide.shownAt, el.loop ?? false, slide.clips, slide.seeks);
+      // A deck's own video goes round as its deck says, and a deck's sound has a bar too (Session 54, C2).
+      const own = slide ? deckMediaOf(slide.slide, ref.mediaId) : undefined;
+      const sound = el === undefined && own?.kind === 'audio';
+      if (!slide || (el?.kind !== 'video' && !sound)) return null;
+      const loop = own ? own.loop : el?.kind === 'video' ? (el.loop ?? false) : false;
+      const found = videoPlaying(state, ref, ref.mediaId, slide.shownAt, loop, slide.clips, slide.seeks);
+      return found && sound ? { ...found, sound } : found;
     }
     case 'props': {
       const prop = layers.props.find((p) => p.id === ref.propId);
@@ -151,6 +159,12 @@ export function playingNow(state: EngineState | null | undefined): Playing[] {
     seen.add(el.mediaId);
     refs.push({ layer: 'slide', mediaId: el.mediaId });
   }
+  // A deck's sounds on the slide up (Session 54, C2), each once, after its videos.
+  for (const m of state.layers.slide?.slide.deck?.media ?? []) {
+    if (m.kind !== 'audio' || seen.has(m.mediaId)) continue;
+    seen.add(m.mediaId);
+    refs.push({ layer: 'slide', mediaId: m.mediaId });
+  }
   refs.push({ layer: 'pip' }, { layer: 'audio' });
   return refs.flatMap((ref) => playingOf(state, ref) ?? []);
 }
@@ -162,6 +176,8 @@ export function elementVideos(state: Pick<EngineState, 'layers' | 'logo'>): stri
     for (const el of elements) if (el.kind === 'video') ids.add(el.mediaId);
   };
   add(state.layers.slide?.slide.elements ?? []);
+  // A deck's sounds on the slide up (Session 54, C2): the time bar shows their length and markers too.
+  for (const m of state.layers.slide?.slide.deck?.media ?? []) if (m.kind === 'audio') ids.add(m.mediaId);
   for (const prop of state.layers.props) add(prop.elements);
   add(state.logo?.elements ?? []);
   const box = state.layers.pip?.source;

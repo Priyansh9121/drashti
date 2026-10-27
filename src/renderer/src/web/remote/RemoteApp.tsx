@@ -20,6 +20,7 @@ import { useNow } from '../../render/useNow';
 import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
 import { SCREEN_SWITCHES, type ScreenSwitches, SWITCH_NAMES } from '../../../../shared/screen-switches';
 import { languageView } from '../../../../shared/language-view';
+import { deckSlideAt } from '../../../../shared/deck-show';
 import { SlideView } from '../../render/SlideView';
 import { TimerText } from '../../render/TimerText';
 import { Mark } from '../../ui/Mark';
@@ -344,7 +345,10 @@ function NextLine({ state }: { state: EngineState | null }) {
             mode="fit"
             className="relative aspect-video w-full"
           >
-            <SlideView slide={languageView(next.slide, hallLook.languages)} media="still" />
+            <SlideView
+              slide={languageView(deckSlideAt(next.slide, next.step ?? 0), hallLook.languages)}
+              media="still"
+            />
           </PlacedInParent>
         </div>
       )}

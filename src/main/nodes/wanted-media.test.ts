@@ -310,3 +310,38 @@ describe('the copy rate', () => {
     expect(gate.take(1)).toBeLessThan(wait);
   });
 });
+
+describe('a deck’s slides (Session 54, C2)', () => {
+  it('copies their steps’ clips, last frames and holds, and their videos’ posters, with the presentation', () => {
+    const { db, presentationId } = library();
+    db.prepare(
+      "INSERT INTO media (id, kind, name, path, sha256, bytes) VALUES ('deck-clip', 'video', 'c', ?, ?, 10)",
+    ).run(`${sha(8)}.mp4`, sha(8));
+    db.prepare(
+      "INSERT INTO media (id, kind, name, path, sha256, bytes) VALUES ('deck-last', 'image', 'l', ?, ?, 10)",
+    ).run(`${sha(9)}.png`, sha(9));
+    // As C2's import keeps a deck's slide (its `deck` column, made by its own migration).
+    db.exec('ALTER TABLE slides ADD COLUMN deck TEXT');
+    db.prepare(
+      `UPDATE slides SET deck = ? WHERE group_id IN (SELECT id FROM slide_groups WHERE presentation_id = ?)`,
+    ).run(
+      JSON.stringify({ steps: [{ clipId: 'deck-clip', clipMs: 1000, lastId: 'deck-last' }], media: [] }),
+      presentationId,
+    );
+    const wanted = new WantedMedia(
+      db,
+      () => [],
+      () => Date.parse('2026-10-05T10:00:00Z'),
+    );
+    const state = initialEngineState();
+    state.live.playlist = { playlistId: 'live', itemId: 'live-0' };
+    expect(wanted.list(state, false).map((w) => w.id)).toEqual([
+      'slide-pic',
+      'deck-clip',
+      'deck-last',
+      'live-item',
+      'week-item',
+      'prop-pic',
+    ]);
+  });
+});

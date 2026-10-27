@@ -31,8 +31,11 @@ export interface PlayingRow {
 /** The rows for everything playing now, in playingNow's order; a slide's second video is "Slide video 2". */
 export function playingRows(state: EngineState | null | undefined): PlayingRow[] {
   const all = playingNow(state);
-  const onSlide = all.filter((p) => p.ref.layer === 'slide').length;
+  const onSlide = all.filter((p) => p.ref.layer === 'slide' && !p.sound).length;
+  // A deck's sounds on the slide (Session 54, C2): "Slide sound", "Time of the sound on the slide".
+  const sounds = all.filter((p) => p.ref.layer === 'slide' && p.sound).length;
   let nth = 0;
+  let nthSound = 0;
   return all.map((playing) => {
     const ref = playing.ref;
     const which = ref.layer === 'slide' ? `slide:${ref.mediaId}` : ref.layer;
@@ -45,6 +48,18 @@ export function playingRows(state: EngineState | null | undefined): PlayingRow[]
       case 'background':
         return { ...named, short: 'Background', name: 'Time of the background video' };
       case 'slide': {
+        if (playing.sound) {
+          nthSound++;
+          const soundNumber = sounds > 1 ? ` ${String(nthSound)}` : '';
+          return {
+            ...named,
+            short: `Slide sound${soundNumber}`,
+            name:
+              sounds > 1
+                ? `Time of sound ${String(nthSound)} on the slide`
+                : 'Time of the sound on the slide',
+          };
+        }
         nth++;
         const number = onSlide > 1 ? ` ${String(nth)}` : '';
         return {

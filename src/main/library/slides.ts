@@ -5,6 +5,8 @@ import type { ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/
 import { transitionFromJson, transitionToJson } from '../db/content';
 import { elementFromRow } from '../db/presentations';
 import { darkenFromJson } from '../../shared/model-schema';
+import type { DeckSlide } from '../../shared/deck';
+import { deckFromJson } from '../../shared/deck-schema';
 
 /*
  * The slide editor's document, made from a presentation's stored rows, and
@@ -72,6 +74,8 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
         return el ? [el] : [];
       }),
       cues: (cues.get(s.id) ?? []).map(cueOf),
+      // A deck's slide (Session 54, C2), as its import stored it.
+      ...deckOf(s.deck),
     })),
   }));
   return {
@@ -85,6 +89,38 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       groups,
     },
     unreadable,
+  };
+}
+
+/** A deck's slide as stored, for the editor's document (Session 54, C2); none when it has none, or it does not read. */
+function deckOf(text: string | null | undefined): { deck?: DeckSlide } {
+  const deck = deckFromJson(text);
+  return deck ? { deck } : {};
+}
+
+/**
+ * A deck's slide as stored after an edit (Session 54, C2): exactly as stored while Drashti's transitions on it and its
+ * clicks are as they were; otherwise as stored (whatever it holds, read or not) with the editor's transitions in place
+ * of its own, the rest never the window's. A slide new to the presentation (a deck's slide copied) takes the
+ * document's. A slide whose document has none keeps what it has: the editor never takes a deck away.
+ */
+function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck?: string | null } {
+  const stored = old?.deck;
+  // Nothing to keep or give: a row read with no deck stays as it was read.
+  if (!deck) return stored === undefined ? {} : { deck: stored };
+  const was = deckFromJson(stored);
+  if (!was || stored == null) return { deck: JSON.stringify(deck) };
+  if (sameData(was.drashti, deck.drashti) && sameData(was.stepTransitions, deck.stepTransitions))
+    return { deck: stored };
+  const { drashti: _drashti, stepTransitions: _steps, ...kept } = parseObject(stored);
+  const steps =
+    deck.stepTransitions && Object.keys(deck.stepTransitions).length > 0 ? deck.stepTransitions : null;
+  return {
+    deck: JSON.stringify({
+      ...kept,
+      ...(deck.drashti ? { drashti: deck.drashti } : {}),
+      ...(steps ? { stepTransitions: steps } : {}),
+    }),
   };
 }
 
@@ -212,8 +248,8 @@ export function applySlideEdit(
         auto_advance_ms: s.autoAdvanceMs,
         enabled: s.enabled ? 1 : 0,
         macro_id: s.macroId,
-        // A deck's slide keeps what its deck gave it, as stored (Session 54, C2); a slide made here has none.
-        deck: old?.deck ?? null,
+        // A deck's slide (Session 54, C2): as stored, with Drashti's transitions as the editor set them.
+        ...deckRow(s.deck, old),
       });
       const list: ElementRow[] = s.elements.map((el) => {
         const was = oldElements.get(el.id);

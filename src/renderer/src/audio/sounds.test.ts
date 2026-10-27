@@ -239,3 +239,96 @@ describe('Drashti stopped (Session 54, access by Gmail)', () => {
     expect(soundsOf({ ...playing, stopped: { at: 2000 } })).toEqual([]);
   });
 });
+
+describe('a deck’s videos and sounds (Session 54, C2)', () => {
+  const deckSlide = (step: number, stepFromMs?: number): EngineState['layers']['slide'] => ({
+    presentationId: 'p',
+    slideIndex: 0,
+    shownAt: 5000,
+    notes: '',
+    step,
+    stepAt: 5000,
+    ...(stepFromMs ? { stepFromMs } : {}),
+    clips: { 'deck-sound': { startMs: 1000, endMs: 3000 } },
+    seeks: {
+      'deck-sound': { at: 6000, toMs: 1000 },
+      'deck-video': { at: 5000, toMs: 0, paused: true, waiting: true },
+    },
+    slide: {
+      id: 'deck-slide',
+      width: 1920,
+      height: 1080,
+      background: null,
+      elements: [
+        {
+          id: 'v',
+          kind: 'video',
+          frame: { x: 0, y: 0, width: 10, height: 10 },
+          mediaId: 'deck-video',
+          fit: 'fit',
+          volume: 1,
+        },
+      ],
+      deck: {
+        transition: { name: 'push', durationMs: 500, soundId: 'chime' },
+        steps: [{ clipId: 'c0', clipMs: 1000, lastId: 'l0' }],
+        media: [
+          {
+            kind: 'video',
+            mediaId: 'deck-video',
+            box: { x: 0, y: 0, w: 1, h: 1 },
+            loop: true,
+            volume: 0.5,
+            fadeInMs: 300,
+            start: { clicked: true },
+          },
+          {
+            kind: 'audio',
+            mediaId: 'deck-sound',
+            box: { x: 0, y: 0, w: 0.1, h: 0.1 },
+            loop: false,
+            volume: 0.8,
+            fadeOutMs: 700,
+            start: { step: 0, offsetMs: 1000 },
+          },
+          {
+            kind: 'audio',
+            mediaId: 'muted-sound',
+            box: { x: 0, y: 0, w: 0.1, h: 0.1 },
+            loop: false,
+            volume: 1,
+            muted: true,
+            start: { step: 0, offsetMs: 0 },
+          },
+        ],
+      },
+    },
+  });
+
+  it('play as the deck says: its videos’ volume, loop and fades, its sounds from their click, between its trims', () => {
+    const sounds = soundsOf(state({ slide: deckSlide(0) }));
+    expect(sounds.find((s) => s.mediaId === 'deck-video')).toMatchObject({
+      volume: 0.5,
+      loop: true,
+      fades: { inMs: 300, outMs: 0 },
+      seek: { at: 5000, toMs: 0, paused: true, waiting: true },
+    });
+    expect(sounds.find((s) => s.mediaId === 'deck-sound')).toMatchObject({
+      volume: 0.8,
+      loop: false,
+      clip: { startMs: 1000, endMs: 3000 },
+      seek: { at: 6000, toMs: 1000 },
+      fades: { inMs: 0, outMs: 700 },
+    });
+    // A muted sound makes none.
+    expect(sounds.some((s) => s.mediaId === 'muted-sound')).toBe(false);
+  });
+
+  it('play its transition’s sound as the slide comes in with that transition, never after a jump or once clicked on', () => {
+    const chime = (layer: EngineState['layers']['slide']) =>
+      soundsOf(state({ slide: layer })).find((s) => s.mediaId === 'chime');
+    expect(chime(deckSlide(0))).toMatchObject({ startedAt: 5000, loop: false, volume: 1 });
+    // Come in by a jump (its clip started past the deck's own transition): no chime.
+    expect(chime(deckSlide(0, 500))).toBeUndefined();
+  });
+});

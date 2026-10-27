@@ -39,7 +39,7 @@ import type { CalendarDay } from '../../shared/calendar';
 import type { IdleState, Quote } from '../../shared/idle';
 import { backgroundCueOf, soundCueOf } from '../../shared/library';
 import type { LiveLook, Movement } from '../../shared/looks';
-import { CUT, type SlideElement, type Transition } from '../../shared/model';
+import { CUT, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
 import {
@@ -61,6 +61,16 @@ import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
 import type { PlaybackClip, PlaybackSeek } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
+import {
+  clipLeftMs,
+  type DeckEntry,
+  deckShow,
+  settledStep,
+  stepBack,
+  stepForward,
+  stepsLeft,
+} from './deck-steps';
+import { deckClips, lastStep, stepOf } from '../../shared/deck-show';
 import { reduce, sameData } from './reducer';
 import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
@@ -218,6 +228,13 @@ export interface RestoreRequest {
     shownAt?: number;
     /** Where the time bar had moved or paused its videos (Session 54): they carry on from there. */
     seeks?: VideoSeeks;
+    /**
+     * A deck's slide's step, when it was shown and how far into its clip (Session 54, C2): it comes back on that step,
+     * where it would be by now. Left out by files saved before, and for any other slide.
+     */
+    step?: number;
+    stepAt?: number;
+    stepFromMs?: number;
   } | null;
   /** The playlist item that was playing, so Next carries on from it. */
   playlist?: PlaylistCursor | null;
@@ -436,7 +453,8 @@ export class ShowEngine {
     if (look) actions.push({ type: 'look/set', look });
     const playlist = request.playlist ? this.checkItem(request.playlist) : null;
     if (request.slide) {
-      const { presentationId, slideIndex, arrangementId, shownAt, seeks } = request.slide;
+      const { presentationId, slideIndex, arrangementId, shownAt, seeks, step, stepAt, stepFromMs } =
+        request.slide;
       const order = this.source.order(presentationId, arrangementId);
       const found = order?.slides[slideIndex];
       if (order && found) {
@@ -463,6 +481,16 @@ export class ShowEngine {
             soundMissing: missingSound(found, request.audio ?? null),
             // Its videos where the time bar left them (Session 54), carrying on from there.
             ...(seeks ? { seeks } : {}),
+            // A deck's slide on the step it was at (Session 54, C2), its clip where it would be by now.
+            ...(found.slide.deck && step !== undefined
+              ? {
+                  deck: {
+                    step: Math.min(Math.max(0, step), lastStep(found.slide.deck)),
+                    stepAt: Math.min(stepAt ?? shownAt ?? this.now(), this.now()),
+                    stepFromMs: stepFromMs ?? 0,
+                  },
+                }
+              : {}),
           }),
         );
         slide = true;
@@ -1055,6 +1083,8 @@ export class ShowEngine {
       fileMissing?: string | null;
       soundMissing?: string | null;
       seeks?: VideoSeeks;
+      /** A deck's slide (Session 54, C2): its step, from when, and how far into its clip. */
+      deck?: { step: number; stepAt: number; stepFromMs: number };
     } = {},
   ): EngineAction {
     return {
@@ -1072,9 +1102,29 @@ export class ShowEngine {
       ...(how.fileMissing !== undefined ? { fileMissing: how.fileMissing } : {}),
       ...(how.soundMissing !== undefined ? { soundMissing: how.soundMissing } : {}),
       ...(how.seeks ? { seeks: how.seeks } : {}),
-      // Its videos play between their files' points as the library has them (Session 52), however it goes up.
-      ...this.clipsOf(played.slide.elements),
+      ...(how.deck ? { deck: how.deck } : {}),
+      // Its videos play between their files' points as the library has them (Session 52), however it goes up; a deck's
+      // own videos and sounds between its trims (Session 54, C2).
+      ...this.slideClipsOf(played.slide),
     };
+  }
+
+  /**
+   * Whether a deck's slide at `slideIndex` comes in order (Session 54, C2): the slide up is the one before it in the
+   * same order, a deck's, at its last step, so the deck's own transition in its coming-in clip starts from what the
+   * screens show. Never in Repeat Slides, whose own transition brings every slide.
+   */
+  private inOrder(presentationId: string, slideIndex: number): boolean {
+    const before = this.state.layers.slide;
+    return (
+      repeatPlaylistOf(presentationId) === null &&
+      before !== null &&
+      before.timer === undefined &&
+      before.presentationId === presentationId &&
+      before.slideIndex === slideIndex - 1 &&
+      before.slide.deck !== undefined &&
+      stepOf(before) === lastStep(before.slide.deck)
+    );
   }
 
   /**
@@ -1096,6 +1146,8 @@ export class ShowEngine {
     slideIndex: number,
     arrangementId: string | null | undefined,
     playlist: PlaylistCursor | null,
+    /** How a deck's slide is come to (Session 54, C2): by Next from the slide before, by a jump, or back into it. */
+    entry: DeckEntry = 'jump',
   ): Resolved {
     const order = this.source.order(presentationId, arrangementId);
     if (!order)
@@ -1109,7 +1161,18 @@ export class ShowEngine {
       };
     }
     const at = this.now();
-    const transition = this.transitionFor(order, played);
+    // A deck's slide (Session 54, C2): the step it comes in at, and its transition, the deck's own in its clip or
+    // Drashti's (deck-steps.ts deckShow).
+    const deck = played.slide.deck
+      ? deckShow(
+          played.slide.deck,
+          entry,
+          this.inOrder(presentationId, slideIndex),
+          this.transitionFor(order, played),
+          at,
+        )
+      : null;
+    const transition = deck ? deck.transition : this.transitionFor(order, played);
     // The slide's background and sound go on their layers; a slide without them leaves those layers as they are.
     // A new background comes on with the slide (dissolving with it); the same file carries on. A video input
     // (Session 51) is this computer's input of the name the cue keeps, coming on with its own fixed fade (the same
@@ -1154,6 +1217,12 @@ export class ShowEngine {
         inputMissing,
         fileMissing,
         soundMissing,
+        ...(deck
+          ? {
+              deck: { step: deck.step, stepAt: at, stepFromMs: deck.fromMs },
+              ...(deck.seeks ? { seeks: deck.seeks } : {}),
+            }
+          : {}),
       }),
       ...layers,
     ];
@@ -1225,7 +1294,14 @@ export class ShowEngine {
     const order = this.source.order(item.presentationId, item.arrangementId);
     if (!order || order.slides.length === 0) return null;
     const index = from === 'first' ? 0 : order.slides.length - 1;
-    return this.showSlide(item.presentationId, index, order.arrangementId, cursor);
+    // Back into its last slide: a deck's at its last step (Session 54, C2).
+    return this.showSlide(
+      item.presentationId,
+      index,
+      order.arrangementId,
+      cursor,
+      from === 'last' ? 'back' : 'jump',
+    );
   }
 
   /** The next (or previous) item that can play, stepping over headers, placeholders and anything gone. */
@@ -1349,6 +1425,16 @@ export class ShowEngine {
   }
 
   /**
+   * A slide's videos' points (Session 52), and a deck's own videos' and sounds' trims (Session 54, C2): the engine
+   * stamps the deck's, not the library's, for them.
+   */
+  private slideClipsOf(slide: RenderSlide): { clips?: VideoClips } {
+    const own = deckClips(slide.deck);
+    if (Object.keys(own).length === 0) return this.clipsOf(slide.elements);
+    return { clips: { ...this.clipsOf(slide.elements).clips, ...own } };
+  }
+
+  /**
    * A prop or the logo with its videos' points as the library has them now (Session 52), never a page's: the very
    * prop given while they are the same, as Back knows the layers a Next left by the object itself (made anew, with
    * its keys in another order, a second Back in a row was Previous).
@@ -1362,7 +1448,7 @@ export class ShowEngine {
   /** The slide up with its videos' points as the library has them now (Session 52): the same layer while they are. */
   private slideClips(layer: SlideLayer): SlideLayer {
     const { clips: was, ...rest } = layer;
-    const now = this.clipsOf(layer.slide.elements);
+    const now = this.slideClipsOf(layer.slide);
     return sameData(was, now.clips) ? layer : { ...rest, ...now };
   }
 
@@ -1628,6 +1714,9 @@ export class ShowEngine {
     // Next plays what was cued.
     const cued = delta > 0 ? this.playCue() : null;
     if (cued) return cued;
+    // A deck's slide up goes through its clicks first (Session 54, C2): its next step, or the step before.
+    const clicked = this.deckStep(delta);
+    if (clicked) return clicked;
     const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
     if (presentationId !== null && slideIndex !== null) {
       // Along the order being played: a repeated chorus comes up again.
@@ -1641,13 +1730,58 @@ export class ShowEngine {
         if (delta < 0 && target >= count) target = count - 1;
         // Repeat Slides goes round by hand too: after the last, the first, and before the first, the last.
         if (repeatPlaylistOf(presentationId) !== null && count > 0) target = (target + count) % count;
+        // A deck's slide comes in order from the one before it, or back in at its last step (Session 54, C2).
+        const entry: DeckEntry = delta < 0 ? 'back' : target === slideIndex + 1 ? 'order' : 'jump';
         if (target >= 0 && target < count)
-          return this.showSlide(presentationId, target, order.arrangementId, playlist);
+          return this.showSlide(presentationId, target, order.arrangementId, playlist, entry);
       }
     }
     if (playlist) return this.stepItem(playlist, delta, delta > 0 ? 'first' : 'last');
     if (presentationId === null) return { ok: false, error: 'nothing-live', message: 'Nothing is live yet' };
     return NO_CHANGE;
+  }
+
+  /**
+   * Next or Back on a deck's slide up (Session 54, C2, deck-steps.ts): its next step, or the step before at its last
+   * frame, in the slide's place (the live position stays). Null when it has none that way, or the slide up is not the
+   * live position's (cleared, or a timer shown alone in its place): Next and Back go on to the slides.
+   */
+  private deckStep(delta: 1 | -1): Resolved | null {
+    const layer = this.state.layers.slide;
+    const { presentationId, slideIndex } = this.state.live;
+    if (
+      !layer?.slide.deck ||
+      layer.timer ||
+      layer.presentationId !== presentationId ||
+      layer.slideIndex !== slideIndex
+    )
+      return null;
+    const moved = delta > 0 ? stepForward(layer, this.now()) : stepBack(layer, this.now());
+    return moved ? { ok: true, actions: [{ type: 'slide/put', layer: moved }] } : null;
+  }
+
+  /**
+   * The layers Back puts back (Session 54, C2): a deck's slide staying up shows the step before at its last frame at
+   * once, its videos and sounds going on as they are now but for what the click undone started (deck-steps.ts
+   * stepBack); a deck's slide put back while its step still moved shows its last frame. Back after Back still undoes
+   * each Next exactly, from these.
+   */
+  private backLayers(was: Layers): Layers {
+    const layers = this.withLengths(was);
+    const back = layers.slide;
+    if (!back?.slide.deck) return layers;
+    const now = this.state.layers.slide;
+    const same =
+      now !== null &&
+      now.presentationId === back.presentationId &&
+      now.slideIndex === back.slideIndex &&
+      now.shownAt === back.shownAt;
+    const slide = (same ? stepBack(now, this.now()) : null) ?? settledStep(back, this.now());
+    if (slide === back) return layers;
+    const out = { ...layers, slide };
+    const below = this.steps.at(-1);
+    if (below?.toLayers === was) below.toLayers = out;
+    return out;
   }
 
   /** What Next will show from here: what was cued, else the next slide or item. */
@@ -1656,6 +1790,7 @@ export class ShowEngine {
     cue: CuedNext | null = this.state.cue,
     up: BackgroundLayer | null = this.state.layers.background,
     sound: AudioLayer | null = this.state.layers.audio,
+    layer: SlideLayer | null = this.state.layers.slide,
   ): UpNext | null {
     if (cue) {
       const item = cue.playlist ? this.checkItem(cue.playlist) : null;
@@ -1664,6 +1799,24 @@ export class ShowEngine {
       if (first)
         return this.slideUpNext(cue.presentationId, 0, first, item?.cursor.itemId ?? null, up, sound);
     }
+    // A deck's slide up with clicks to come (Session 54, C2): Next shows its next step.
+    if (
+      layer?.slide.deck &&
+      !layer.timer &&
+      layer.presentationId === live.presentationId &&
+      layer.slideIndex === live.slideIndex &&
+      stepsLeft(layer)
+    )
+      return {
+        kind: 'slide',
+        presentationId: layer.presentationId,
+        slideIndex: layer.slideIndex,
+        slide: layer.slide,
+        background: null,
+        step: stepOf(layer) + 1,
+        itemId: null,
+        notes: layer.notes,
+      };
     if (live.presentationId !== null && live.slideIndex !== null) {
       const order = this.source.order(live.presentationId, live.arrangementId);
       // Repeat Slides comes round to its first slide after its last.
@@ -1727,6 +1880,8 @@ export class ShowEngine {
       ...(missing !== null ? { fileMissing: missing } : {}),
       // Its sound's file missing (Session 54), as its background's: the sound stays as it is when it goes up.
       ...(unheard !== null ? { soundMissing: unheard } : {}),
+      // A deck's slide comes in at its first step (Session 54, C2).
+      ...(played.slide.deck ? { step: 0 } : {}),
       itemId,
       notes: played.notes,
     };
@@ -1786,7 +1941,7 @@ export class ShowEngine {
           this.steps.pop();
           return {
             ok: true,
-            actions: [{ type: 'show/put', live: last.live, layers: this.withLengths(last.layers) }],
+            actions: [{ type: 'show/put', live: last.live, layers: this.backLayers(last.layers) }],
           };
         }
         this.steps = [];
@@ -2078,14 +2233,22 @@ export class ShowEngine {
       next = reduce(next, { type: 'cue/set', cue: null });
     // A new position (or a cue) has a new slide after it, and other items coming up. What Next says of a file missing
     // follows the background and the sound up too (Session 54 review): one carrying a deleted file on goes (cleared,
-    // or music in the sound's place), and the next slide's missing file is said.
+    // or music in the sound's place), and the next slide's missing file is said; and a deck's slide at another step
+    // (Session 54, C2) has its next step.
     const moved = next.live !== prev.live || next.cue !== prev.cue;
     if (
       moved ||
       next.layers.background !== prev.layers.background ||
-      next.layers.audio !== prev.layers.audio
+      next.layers.audio !== prev.layers.audio ||
+      next.layers.slide?.step !== prev.layers.slide?.step
     ) {
-      const upNext = this.upNext(next.live, next.cue, next.layers.background, next.layers.audio);
+      const upNext = this.upNext(
+        next.live,
+        next.cue,
+        next.layers.background,
+        next.layers.audio,
+        next.layers.slide,
+      );
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
     }
     if (moved) next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
@@ -2231,20 +2394,25 @@ export class ShowEngine {
     const played = order?.slides[slide.slideIndex];
     const ms = played?.autoAdvanceMs ?? null;
     if (!order || !played || ms === null || ms <= 0) return null;
+    // A deck's slide with clicks to come goes through them first (Session 54, C2).
     const goesOn =
-      slide.slideIndex + 1 < order.slides.length || (order.loop === true && order.slides.length > 1);
+      stepsLeft(slide) ||
+      slide.slideIndex + 1 < order.slides.length ||
+      (order.loop === true && order.slides.length > 1);
     if (!goesOn) return null;
     const before = prev.layers.slide;
     const same =
       before?.presentationId === slide.presentationId &&
       before.slide.id === slide.slide.id &&
-      before.shownAt === slide.shownAt;
+      before.shownAt === slide.shownAt &&
+      // Each of a deck's steps counts from when it was shown (Session 54, C2).
+      before.stepAt === slide.stepAt;
     const running = next.autoAdvance;
     // Repeat Slides' settings changed take effect from the next slide: this one keeps its count.
     if (same && running && repeating !== null) return running;
-    return same && running
-      ? { startedAt: running.startedAt, durationMs: ms }
-      : { startedAt: this.now(), durationMs: ms };
+    const startedAt = same && running ? running.startedAt : this.now();
+    // A deck's step stays up until its clip is over at least (Session 54, C2), so its motion is never cut short.
+    return { startedAt, durationMs: Math.max(ms, clipLeftMs(slide, startedAt)) };
   }
 
   /** Wait for the count to run out (again when it changed). */
@@ -2275,6 +2443,12 @@ export class ShowEngine {
   private advance(count: { startedAt: number; durationMs: number }): void {
     this.atOnce(() => {
       if (!sameData(this.state.autoAdvance, count)) return;
+      // A deck's slide goes through its clicks first (Session 54, C2).
+      const clicked = this.deckStep(1);
+      if (clicked?.ok) {
+        this.apply(clicked.actions);
+        return;
+      }
       const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
       if (presentationId === null || slideIndex === null) return;
       const order = this.source.order(presentationId, arrangementId);
@@ -2283,7 +2457,13 @@ export class ShowEngine {
         this.apply([{ type: 'advance/set', autoAdvance: null }]);
         return;
       }
-      const shown = this.showSlide(presentationId, target, order.arrangementId, playlist);
+      const shown = this.showSlide(
+        presentationId,
+        target,
+        order.arrangementId,
+        playlist,
+        target === slideIndex + 1 ? 'order' : 'jump',
+      );
       if (shown.ok) this.apply(shown.actions);
     });
   }

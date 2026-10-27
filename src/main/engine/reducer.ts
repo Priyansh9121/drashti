@@ -52,6 +52,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         soundMissing,
         clips,
         seeks: given,
+        deck,
       } = action;
       const live = state.live;
       const sameCursor =
@@ -85,7 +86,15 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       // and how it came on (a dissolve is not run again); and where the time bar left its videos (Session 54).
       const shownAt = samePlace ? current.shownAt : at;
       const came = samePlace ? current.transition : transition;
-      const seeks = given ?? (samePlace ? current.seeks : undefined);
+      // A deck's slide up (Session 54, C2) keeps its step and its media where they are: shown again (a click on the
+      // slide up) or with new content, it never starts again.
+      const stepped = samePlace && current.step !== undefined;
+      const seeks = stepped ? current.seeks : (given ?? (samePlace ? current.seeks : undefined));
+      const step = stepped
+        ? { step: current.step, stepAt: current.stepAt, stepFromMs: current.stepFromMs }
+        : deck
+          ? { step: deck.step, stepAt: deck.stepAt, stepFromMs: deck.stepFromMs }
+          : null;
       return {
         ...state,
         live: sameCursor ? live : { presentationId, slideIndex, slideCount, arrangementId, playlist },
@@ -107,6 +116,9 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
                 ...(unheard ? { soundMissing: unheard } : {}),
                 ...(clips ? { clips } : {}),
                 ...(seeks ? { seeks } : {}),
+                ...(step?.step !== undefined ? { step: step.step } : {}),
+                ...(step?.stepAt !== undefined ? { stepAt: step.stepAt } : {}),
+                ...(step?.stepFromMs ? { stepFromMs: step.stepFromMs } : {}),
               },
             },
       };

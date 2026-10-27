@@ -111,3 +111,34 @@ describe('a timer shown alone on a screen (Session 50)', () => {
     );
   });
 });
+
+describe('a deck’s slide coming in by a cut (Session 54, C2)', () => {
+  it('keeps the slide before up until its clip can be drawn, then cuts; any other slide cuts at once', () => {
+    const a = layer('a', 1000);
+    const shown = nextShowing(none, a, 1000);
+    const deck: SlideLayer = {
+      ...layer('d', 2000),
+      slide: {
+        ...layer('d', 2000).slide,
+        deck: { steps: [{ clipId: 'c0', clipMs: 1000, lastId: 'l0' }], media: [] },
+      },
+      step: 0,
+      stepAt: 2000,
+    };
+    expect(nextShowing(shown, deck, 2010)).toEqual({
+      on: deck,
+      off: a,
+      fade: { kind: 'cut', ms: 1, start: null },
+    });
+    // The first slide up, or one heard of long after it came: just shown.
+    expect(nextShowing(none, deck, 2010)).toEqual({ on: deck, off: null, fade: null });
+    expect(nextShowing(shown, deck, 9000)).toEqual({ on: deck, off: null, fade: null });
+    // Its next step is the same slide: nothing waits, nothing fades.
+    const stepped = nextShowing(
+      { on: deck, off: null, fade: null },
+      { ...deck, step: 1, stepAt: 3000 },
+      3000,
+    );
+    expect(stepped.fade).toBeNull();
+  });
+});

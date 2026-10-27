@@ -1,4 +1,6 @@
 import { type EngineState, videoClip, videoSeek } from '../../../shared/engine/state';
+import type { DeckMedia } from '../../../shared/deck';
+import { deckMediaOf, stepOf } from '../../../shared/deck-show';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 
@@ -17,6 +19,22 @@ export interface Sound {
   /** Start and end points, and a jump to a marker (Session 14). */
   clip?: PlaybackClip;
   seek?: PlaybackSeek;
+  /**
+   * A deck's video or sound (Session 54, C2): it fades in from its start point and out before its end point as its
+   * deck says, by where it plays (ms). Left out: none.
+   */
+  fades?: { inMs: number; outMs: number };
+}
+
+/** How loud a deck's video or sound plays (0 when muted), and its fades. */
+function deckSound(m: DeckMedia | undefined): { volume?: number; fades?: Sound['fades'] } {
+  if (!m) return {};
+  const inMs = Math.max(0, m.fadeInMs ?? 0);
+  const outMs = Math.max(0, m.fadeOutMs ?? 0);
+  return {
+    volume: m.muted ? 0 : Math.min(1, Math.max(0, m.volume)),
+    ...(inMs > 0 || outMs > 0 ? { fades: { inMs, outMs } } : {}),
+  };
 }
 
 /**
@@ -74,8 +92,12 @@ export function soundsOf(state: EngineState): Sound[] {
   const slide = state.layers.slide;
   if (slide) {
     for (const el of slide.slide.elements) {
+      if (el.kind !== 'video') continue;
+      // A deck's own video (Session 54, C2): as loud as its deck says, its loop and fades its deck's.
+      const own = deckSound(deckMediaOf(slide.slide, el.mediaId, 'video'));
+      const volume = own.volume ?? el.volume ?? 1;
       // A video whose sound is turned right down makes none.
-      if (el.kind !== 'video' || el.volume === 0) continue;
+      if (volume === 0) continue;
       const clip = videoClip(slide.clips, el.mediaId);
       const seek = videoSeek(slide.seeks, el.mediaId);
       sounds.push({
@@ -83,14 +105,43 @@ export function soundsOf(state: EngineState): Sound[] {
         key: `slide:${slide.slide.id}/${el.id}@${slide.shownAt}`,
         mediaId: el.mediaId,
         startedAt: slide.shownAt,
-        loop: el.loop ?? false,
-        volume: el.volume ?? 1,
+        loop: deckMediaOf(slide.slide, el.mediaId, 'video')?.loop ?? el.loop ?? false,
+        volume,
         // Between its file's start and end points, as its picture plays (Session 52), from where the time bar left it
         // (Session 54).
         ...(clip ? { clip } : {}),
         ...(seek ? { seek } : {}),
+        ...(own.fades ? { fades: own.fades } : {}),
       });
     }
+    // A deck's sounds (Session 54, C2): each from its click, as the engine stamps it, between its deck's trims.
+    for (const m of slide.slide.deck?.media ?? []) {
+      const own = deckSound(m);
+      if (m.kind !== 'audio' || own.volume === 0) continue;
+      const clip = videoClip(slide.clips, m.mediaId);
+      const seek = videoSeek(slide.seeks, m.mediaId);
+      sounds.push({
+        key: `deck:${slide.slide.id}/${m.mediaId}@${slide.shownAt}`,
+        mediaId: m.mediaId,
+        startedAt: slide.shownAt,
+        loop: m.loop,
+        volume: own.volume ?? 1,
+        ...(clip ? { clip } : {}),
+        ...(seek ? { seek } : {}),
+        ...(own.fades ? { fades: own.fades } : {}),
+      });
+    }
+    // Its deck's transition's sound, once, as the slide comes in with that transition: the coming-in step played from
+    // its start (in order, or Drashti's own over it); none when Drashti's comes instead, or after a jump.
+    const chime = slide.slide.deck?.transition?.soundId;
+    if (chime && stepOf(slide) === 0 && !slide.stepFromMs)
+      sounds.push({
+        key: `deck-transition:${slide.slide.id}@${slide.shownAt}`,
+        mediaId: chime,
+        startedAt: slide.shownAt,
+        loop: false,
+        volume: 1,
+      });
   }
   return sounds;
 }

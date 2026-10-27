@@ -72,6 +72,11 @@ export type EngineAction =
        * for it) keeps its own, and a slide going up has none.
        */
       seeks?: VideoSeeks;
+      /**
+       * A deck's slide (Session 54, C2): the step it shows, from when, and how far into its clip (deck-steps.ts). Left
+       * out, the slide up (new content for it) keeps its own, and any other slide has none.
+       */
+      deck?: { step: number; stepAt: number; stepFromMs: number };
     }
   /**
    * A slide up in the slide's place that is no presentation's (Session 50: a timer shown alone), or the slide up as

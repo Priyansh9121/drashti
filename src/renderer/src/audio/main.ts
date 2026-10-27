@@ -1,7 +1,7 @@
 import type { AudioDevice } from '../../../shared/audio';
 import { resolveOutput } from '../../../shared/audio';
 import type { EngineState } from '../../../shared/engine/state';
-import { SOUND_LIMITS } from '../../../shared/media';
+import { playbackSpanMs, SOUND_LIMITS } from '../../../shared/media';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { startPlayback } from '../render/playback';
 import { type Sound, soundMoved, soundsOf } from './sounds';
@@ -48,6 +48,23 @@ function fadeTo(player: Player, to: number, ms: number, done?: () => void): void
   }, 25);
 }
 
+/**
+ * How loud a deck's video or sound is where it plays now (Session 54, C2): its own volume, faded in from its start
+ * point and out before its end point as its deck says, by where the element is (which the engine's time keeps it at).
+ */
+function fadedVolume(player: Player): number {
+  const f = player.sound.fades;
+  const el = player.el;
+  if (!f || !Number.isFinite(el.duration) || el.duration <= 0) return player.volume;
+  const { start, end } = playbackSpanMs(player.sound.clip, el.duration * 1000);
+  const at = el.currentTime * 1000;
+  const k = Math.min(1, f.inMs > 0 ? (at - start) / f.inMs : 1, f.outMs > 0 ? (end - at) / f.outMs : 1);
+  return Math.max(0, Math.min(1, player.volume * k));
+}
+
+/** How often a deck's fades are applied (ms). */
+const DECK_FADE_MS = 50;
+
 /** Players fading out after they stopped (still sounding for a moment). */
 const fadingOut = new Set<Player>();
 
@@ -87,7 +104,7 @@ function play(state: EngineState | null): void {
     }
     const el = document.createElement('audio');
     el.loop = sound.loop && !sound.clip;
-    el.volume = sound.fadeInMs ? 0 : sound.volume;
+    el.volume = sound.fadeInMs || sound.fades?.inMs ? 0 : sound.volume;
     el.preload = 'auto';
     el.dataset['key'] = sound.key;
     el.dataset['mediaId'] = sound.mediaId;
@@ -118,7 +135,16 @@ function play(state: EngineState | null): void {
           }
         : {}),
     });
-    player.stop = playback;
+    // A deck's fades (Session 54, C2), by where it plays, while it plays.
+    const deckFade = sound.fades
+      ? setInterval(() => {
+          if (!player.fade) player.el.volume = fadedVolume(player);
+        }, DECK_FADE_MS)
+      : null;
+    player.stop = () => {
+      if (deckFade) clearInterval(deckFade);
+      playback();
+    };
     player.resync = playback.resync;
     players.set(sound.key, player);
   }

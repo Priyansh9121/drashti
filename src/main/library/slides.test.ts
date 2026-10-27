@@ -251,6 +251,55 @@ describe('putting edited slides back', () => {
     expect(shown?.[1]).not.toHaveProperty('darken');
   });
 
+  it('keeps a deck’s slide as its import stored it, saving only Drashti’s transitions on it and its clicks (Session 54, C2)', () => {
+    const { repo, id } = stored();
+    const before = repo.content(id);
+    if (!before) throw new Error('missing');
+    // As C2's import keeps it (its own column): a deck's steps and media, and something a newer Drashti wrote.
+    const deck = {
+      transition: { name: 'push', durationMs: 500 },
+      steps: [
+        { clipId: 'clip0', clipMs: 1000, transitionMs: 500, lastId: 'last0' },
+        { clipId: 'clip1', clipMs: 800, lastId: 'last1' },
+      ],
+      media: [],
+      future: 'kept',
+    };
+    const storedDeck = JSON.stringify(deck);
+    const rows: ContentRows = {
+      ...before,
+      slides: before.slides.map((r, i) => (i === 0 ? { ...r, deck: storedDeck } : r)),
+    };
+    const { doc } = editDocOf(rows, 'Placeholder edit');
+    const [first, second] = slidesOf(doc);
+    expect(first?.deck?.steps.map((st) => st.clipId)).toEqual(['clip0', 'clip1']);
+    expect(second).not.toHaveProperty('deck');
+    // Unchanged: stored exactly as it was.
+    expect(applySlideEdit(rows, asSaved(doc)).slides[0]?.deck).toBe(storedDeck);
+    // Drashti's own over the deck's, and a click's instead of its own; a step the window changed is not taken.
+    if (first?.deck) {
+      first.deck = {
+        ...first.deck,
+        drashti: { transition: { kind: 'dissolve', durationMs: 700 }, mode: 'over' },
+        stepTransitions: { 1: { transition: { kind: 'fade-black', durationMs: 400 }, mode: 'instead' } },
+        steps: [{ clipId: 'elsewhere', clipMs: 5, lastId: 'elsewhere' }],
+      };
+    }
+    const saved = applySlideEdit(rows, asSaved(doc)).slides;
+    expect(JSON.parse(saved[0]?.deck ?? 'null')).toEqual({
+      ...deck,
+      drashti: { transition: { kind: 'dissolve', durationMs: 700 }, mode: 'over' },
+      stepTransitions: { 1: { transition: { kind: 'fade-black', durationMs: 400 }, mode: 'instead' } },
+    });
+    // The other slide has none to keep; and taken off again, the deck is as the import stored it.
+    expect(saved[1]?.deck ?? null).toBeNull();
+    if (first?.deck) {
+      const { drashti: _d, stepTransitions: _s, ...plain } = first.deck;
+      first.deck = plain;
+    }
+    expect(JSON.parse(applySlideEdit(rows, asSaved(doc)).slides[0]?.deck ?? 'null')).toEqual(deck);
+  });
+
   it('keeps data it does not know, and elements it cannot read in their place', () => {
     const { repo, id } = stored();
     const before = repo.content(id);
