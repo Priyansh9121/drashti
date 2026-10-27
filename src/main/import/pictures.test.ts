@@ -61,10 +61,17 @@ describe('a PowerPoint file read for its slides', () => {
         { color: '14532D', text: 'Placeholder three', animated: true },
       ]),
     );
-    expect(await readPptx(file)).toEqual([
+    const slides = await readPptx(file);
+    expect(slides).toMatchObject([
       { hidden: false, notes: 'Placeholder note one\nSecond line', animated: false },
       { hidden: true, notes: 'Hidden placeholder note', animated: false },
       { hidden: false, notes: '', animated: true },
+    ]);
+    // What each slide does (Session 54, C2): the fade is one click's work.
+    expect(slides.map((s) => s.deck?.groups)).toEqual([
+      [],
+      [],
+      [{ byClick: true, lengthMs: 500, mediaOnly: false, repeatsMs: null }],
     ]);
   });
 

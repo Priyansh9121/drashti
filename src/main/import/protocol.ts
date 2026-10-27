@@ -25,6 +25,11 @@ export interface StartMessage {
    */
   converters?: boolean | 'stand-in';
   /**
+   * Whether a PowerPoint or Keynote deck comes in with its animations where PowerPoint or Keynote can make them
+   * (Session 54, C2; tests can say no), or 'stand-in': tests only, a stand-in makes the movie (deck/stand-in-baker.ts).
+   */
+  baker?: boolean | 'stand-in';
+  /**
    * The bundled FFmpeg (Session 50): each video and sound is read with it at import, and what Drashti's
    * player cannot play is marked to be converted by itself. Null or left out where it is missing.
    */
@@ -48,6 +53,13 @@ export interface DrawnMessage {
   result: PicturesResult;
 }
 
+/** Whether the stream is on air or recording now (Session 54, C2), for its 'ask-on-air' of this id. */
+export interface OnAirMessage {
+  type: 'on-air';
+  requestId: string;
+  onAir: boolean;
+}
+
 /**
  * The main process is about to write to the library (an operator's edit; Session 16): the import
  * gives way between files, answering 'gave-way' with its group committed, and waits for 'go-on'.
@@ -63,12 +75,15 @@ export interface GoOnMessage {
   id: string;
 }
 
-export type ToWorker = StartMessage | CancelMessage | DrawnMessage | GiveWayMessage | GoOnMessage;
+export type ToWorker =
+  StartMessage | CancelMessage | DrawnMessage | GiveWayMessage | GoOnMessage | OnAirMessage;
 
 export type FromWorker =
   | { type: 'progress'; progress: ImportProgress }
   /** Draw this PDF's pages as pictures into `outDir` (Session 15); the answer comes as 'drawn'. */
   | { type: 'draw-pdf'; requestId: string; pdf: string; outDir: string }
+  /** Is the stream on air or recording (Session 54, C2: no deck's movie is made then)? The answer comes as 'on-air'. */
+  | { type: 'ask-on-air'; requestId: string }
   | { type: 'wrote'; runId: string; presentationId: string; replaced: boolean }
   /** Files the import gave start and end points or markers (Session 54), once their group is committed. */
   | { type: 'marked'; runId: string; mediaIds: string[] }

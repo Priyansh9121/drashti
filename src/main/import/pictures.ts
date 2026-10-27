@@ -8,6 +8,7 @@ import type { ParsedPresentation } from './model';
 import { mediaRef } from './model';
 import { parseXml, type XmlNode } from './xml';
 import { readZipEntries } from './zip';
+import { type PptxDeckSlide, readDeckSlide, type SlideRel, type SlideSize } from './deck/pptx-deck';
 
 /*
  * PDF, PowerPoint and Keynote as pictures (Session 15), in the import
@@ -17,6 +18,8 @@ import { readZipEntries } from './zip';
  * presentation: one slide per page, the page's picture full frame, its
  * speaker notes as the slide's notes. A .pptx's notes, and which of its
  * slides are hidden or have animations, are read from the file itself.
+ *
+ * Session 54 (C2): what each slide does is read too (./deck/pptx-deck.ts), for a deck shown as it was.
  */
 
 // ---- a PowerPoint file's own slides --------------------------------------------------------------
@@ -28,6 +31,18 @@ export interface PptxSlide {
   notes: string;
   /** It has animations (entrances, exits, emphasis, motion), which a picture cannot show. */
   animated: boolean;
+  /**
+   * What it does (Session 54, C2): its transition, its click groups and its videos and sounds. Left out where the
+   * slides were told by an app rather than read from a file.
+   */
+  deck?: PptxDeckSlide;
+}
+
+/** A .pptx's slides and their size (Session 54, C2). */
+export interface PptxDeck {
+  /** The slides' size in EMU (16:9 is 12192000 × 6858000). */
+  size: SlideSize;
+  slides: PptxSlide[];
 }
 
 const ANIMATIONS = new Set([
@@ -49,19 +64,25 @@ function descendants(node: XmlNode, test: (n: XmlNode) => boolean, out: XmlNode[
   return out;
 }
 
-/** A relationships file's targets by id, resolved against the folder of the part they belong to. */
-function relationships(
-  xml: Buffer | undefined,
-  folder: string,
-): Map<string, { type: string; target: string }> {
-  const out = new Map<string, { type: string; target: string }>();
+/**
+ * A relationships file's targets by id, resolved against the folder of the part they belong to. A link outside
+ * the file (TargetMode External: a linked video) is kept as it is written only when `external` asks for it.
+ */
+function relationships(xml: Buffer | undefined, folder: string, external = false): Map<string, SlideRel> {
+  const out = new Map<string, SlideRel>();
   if (!xml) return out;
   for (const r of descendants(parseXml(xml.toString('utf8')), (n) => n.name === 'Relationship')) {
     const id = r.attrs['Id'];
     const target = r.attrs['Target'];
-    if (!id || !target || r.attrs['TargetMode'] === 'External') continue;
-    const path = target.startsWith('/') ? target.slice(1) : posix.normalize(posix.join(folder, target));
-    out.set(id, { type: r.attrs['Type'] ?? '', target: path });
+    if (!id || !target) continue;
+    const outside = r.attrs['TargetMode'] === 'External';
+    if (outside && !external) continue;
+    const path = outside
+      ? target
+      : target.startsWith('/')
+        ? target.slice(1)
+        : posix.normalize(posix.join(folder, target));
+    out.set(id, { type: r.attrs['Type'] ?? '', target: path, external: outside });
   }
   return out;
 }
@@ -95,6 +116,17 @@ function notesOf(xml: Buffer | undefined): string {
  * file (a damaged one, or an old .ppt renamed).
  */
 export async function readPptx(path: string): Promise<PptxSlide[]> {
+  return (await readPptxDeck(path)).slides;
+}
+
+/** 16:9 in EMU, PowerPoint's own size for a new deck: for a file that does not say. */
+const WIDE: SlideSize = { cx: 12_192_000, cy: 6_858_000 };
+
+/**
+ * A .pptx's slides, as readPptx reads them, each with what it does (Session 54, C2: its transition, its click
+ * groups and its videos and sounds), and the slides' size.
+ */
+export async function readPptxDeck(path: string): Promise<PptxDeck> {
   const parts = await readZipEntries(
     path,
     (name) =>
@@ -106,16 +138,22 @@ export async function readPptx(path: string): Promise<PptxSlide[]> {
   const presentation = parts.get('ppt/presentation.xml');
   if (!presentation) throw new Error('This is not a PowerPoint (.pptx) file.');
   const rels = relationships(parts.get('ppt/_rels/presentation.xml.rels'), 'ppt');
-  const order = descendants(parseXml(presentation.toString('utf8')), (n) => n.name === 'p:sldId')
+  const pres = parseXml(presentation.toString('utf8'));
+  const order = descendants(pres, (n) => n.name === 'p:sldId')
     .map((n) => rels.get(n.attrs['r:id'] ?? '')?.target)
     .filter((t): t is string => t !== undefined);
-  return order.map((slidePath) => {
+  const sldSz = descendants(pres, (n) => n.name === 'p:sldSz')[0];
+  const cx = Number(sldSz?.attrs['cx']);
+  const cy = Number(sldSz?.attrs['cy']);
+  const size = cx > 0 && cy > 0 ? { cx, cy } : WIDE;
+  const slides = order.map((slidePath): PptxSlide => {
     const xml = parts.get(slidePath);
     const root = xml ? parseXml(xml.toString('utf8')) : null;
     const name = posix.basename(slidePath);
     const slideRels = relationships(
       parts.get(posix.join(posix.dirname(slidePath), '_rels', `${name}.rels`)),
       posix.dirname(slidePath),
+      true,
     );
     const notesPath = [...slideRels.values()].find((r) => r.type.endsWith('/notesSlide'))?.target;
     const timing = root ? descendants(root, (n) => n.name === 'p:timing') : [];
@@ -123,8 +161,12 @@ export async function readPptx(path: string): Promise<PptxSlide[]> {
       hidden: root?.attrs['show'] === '0',
       notes: notesPath ? notesOf(parts.get(notesPath)) : '',
       animated: timing.some((t) => descendants(t, (n) => ANIMATIONS.has(n.name)).length > 0),
+      deck: root
+        ? readDeckSlide(root, slideRels, size)
+        : { transition: null, groups: [], media: [], triggers: 0 },
     };
   });
+  return { size, slides };
 }
 
 /**

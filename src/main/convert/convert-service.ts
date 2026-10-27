@@ -143,6 +143,8 @@ const movedSchema = z.object({
   themes: z.array(z.string()),
   // Audio playlists' tracks (Session 14), kept so Undo moves them back too.
   tracks: z.array(z.string()).optional(),
+  // A deck's slides whose own videos and sounds moved (Session 54, C2).
+  decks: z.array(z.string()).optional(),
 });
 
 const KIND_OF: Record<ConvertTarget, MediaRow['kind']> = {

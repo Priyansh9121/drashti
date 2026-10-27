@@ -62,12 +62,22 @@ import {
   noConverterMessage,
 } from './deck-converters';
 import { standInPdf } from './stand-in-converter';
-import { notesForPages, picturesIssues, picturesPresentation, type PptxSlide } from './pictures';
+import {
+  notesForPages,
+  picturesIssues,
+  picturesPresentation,
+  type PptxDeck,
+  type PptxSlide,
+} from './pictures';
+import { runDeck } from './deck/deck-flow';
+import { addDeckMedia, deckMediaFiles, noAppIssue, picturesMediaIssues } from './deck/deck-import';
+import type { Baker } from './deck/plan';
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
 import { readabilityCounts, REFERENCE_LINES } from '../../shared/readable';
 import { standsUpright } from '../../shared/text-runs';
 import { nfc, nfcDeep, nfcElement } from '../../shared/nfc';
+import { mapDeckMedia } from '../../shared/deck-schema';
 
 /*
  * One import run (PLAN.md 4.4): find the files, read each into the
@@ -138,6 +148,16 @@ export interface PipelineContext {
    * 'stand-in' (tests only: ./stand-in-converter.ts saves PowerPoint files as PDF in their place).
    */
   converters?: boolean | 'stand-in';
+  /**
+   * Whether a PowerPoint or Keynote deck comes in with its animations where PowerPoint or Keynote can make its
+   * movie (Session 54, C2; default yes), or 'stand-in' (tests only: ./deck/stand-in-baker.ts makes it). It needs
+   * `ffmpeg`, which cuts the movie.
+   */
+  baker?: boolean | 'stand-in';
+  /** The bundled FFmpeg (Session 50), where it is there. */
+  ffmpeg?: string | null;
+  /** Whether the stream is on air or recording now: then no deck's movie is made (Session 50's rule). */
+  onAir?: () => Promise<boolean>;
 }
 
 type SourceKind = 'text' | 'docx' | 'pp6' | 'pp7' | 'pictures';
@@ -329,6 +349,8 @@ export function toNewPresentation(
         })),
         transition: s.transition ?? null,
         autoAdvanceMs: s.autoAdvanceMs ?? null,
+        // A deck's slide (Session 54, C2): its references made the library's media ids.
+        ...(s.deck ? { deck: mapDeckMedia(s.deck, (ref) => media(ref) ?? ref) } : {}),
       })),
     })),
     arrangements: parsed.arrangements.map((a) => ({ ...a, name: nfc(a.name) })),
@@ -516,7 +538,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         fix: { kind: 'relink-media', mediaId: id },
       });
     }
-    if (marked.length > 0)
+    // A deck's trims are its own XML's, said with the deck (Session 54, C2).
+    if (marked.length > 0 && kind !== 'pictures')
       issues.push({
         severity: 'info',
         code: 'markers-read',
@@ -548,6 +571,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     kind: SourceKind,
     ref: string | null,
     hash: string,
+    /** The same file imported before is imported again all the same (a deck that can now have its animations). */
+    again?: (id: string) => boolean,
   ): Decided | null => {
     const fileName = basename(file.path);
     const base = { sourcePath: where.sourcePath, format: reportFormat(kind), counts: NO_COUNTS };
@@ -557,6 +582,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       earlier.find((e) => e.sourceHash === hash) ??
       (earlier.length === 0 ? presentations.findByHash(kind, hash) : null);
     time('lookup', t);
+    // A deck imported as pictures only, which can now come in with its animations (Session 54, C2): in its place.
+    if (same && again?.(same.id)) return { latest: { id: same.id, name: same.name }, choice: 'replace' };
     if (same) {
       record({
         ...base,
@@ -727,8 +754,26 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   };
 
   /**
+   * A deck's own videos and sounds as media of their own, where nothing here can make its pictures (Session 54,
+   * C2): taken out of it, each imported as a dropped file is (in the Media list, with the time bar). Returns how many.
+   */
+  const importDeckMedia = async (deck: { deck: PptxDeck; file: string }, where: Where, work: string) => {
+    const files = await deckMediaFiles(deck.file, deck.deck, join(work, 'deck-media'));
+    for (const path of files) {
+      const s = await stat(path);
+      await importMedia(
+        { path, size: s.size, format: 'media' },
+        { ...where, sourcePath: `${where.sourcePath}${BUNDLE_SEP}${basename(path)}` },
+      );
+    }
+    return files.length;
+  };
+
+  /**
    * A PDF, PowerPoint or Keynote file as pictures (Session 15): saved as PDF by Keynote or PowerPoint
-   * when it is not one, its pages drawn by the main process, then one slide per page.
+   * when it is not one, its pages drawn by the main process, then one slide per page. Session 54 (C2): a
+   * PowerPoint or Keynote file comes in with its animations where PowerPoint or Keynote can make them
+   * (./deck/deck-flow.ts), else as pictures with its own videos and sounds.
    */
   const importPictures = async (file: ScannedFile, where: Where) => {
     const fileName = basename(file.path);
@@ -758,8 +803,27 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     let t = performance.now();
     const hash = await fileSha256(file.path);
     time('read', t);
-    // Unchanged since it was imported, or waiting for the operator's choice: nothing to draw.
-    const decided = decideEarlier(file, where, 'pictures', null, hash);
+    // What can make a deck's movie here (Session 54, C2): PowerPoint first for its own files, then Keynote.
+    const bakers: Baker[] =
+      source === 'pdf' || ctx.baker === false || !ctx.ffmpeg
+        ? []
+        : ctx.baker === 'stand-in'
+          ? source === 'pptx'
+            ? ['stand-in']
+            : []
+          : convertersFor(source, process.platform, await findConverters());
+    const onAir = ctx.onAir ?? (() => Promise.resolve(false));
+    const canBake = bakers.length > 0 && !(await onAir());
+    // Unchanged since it was imported, or waiting for the operator's choice: nothing to draw. A deck that came in
+    // as pictures only comes in again in its place, with its animations, where they can be made now.
+    const decided = decideEarlier(
+      file,
+      where,
+      'pictures',
+      null,
+      hash,
+      (id) => canBake && !presentations.hasDeckSlides(id),
+    );
     if (!decided) return;
     const work = await mkdtemp(join(ctx.tempDir ?? tmpdir(), 'drashti-pictures-'));
     try {
@@ -767,6 +831,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       let converter: Converter | null = null;
       let firstTried: { converter: Converter; reason: string } | null = null;
       let slides: PptxSlide[] | null = null;
+      /** The deck as read, for its videos and sounds beside its pictures (Session 54, C2), and why no animations. */
+      let deckRead: { deck: PptxDeck; file: string } | null = null;
+      const deckIssues: ImportIssue[] = [];
       if (source !== 'pdf') {
         // A plainly damaged file never reaches Keynote or PowerPoint, which would ask about it in a
         // window nobody sees and stop answering (Session 16).
@@ -776,16 +843,69 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           return;
         }
         slides = checked.slides;
+        // With its animations where PowerPoint or Keynote can make its movie (Session 54, C2).
+        t = performance.now();
+        const flow = await runDeck(
+          {
+            source,
+            file: file.path,
+            fileName,
+            sourcePath: where.sourcePath,
+            read: checked.deck,
+            work,
+            bakers,
+          },
+          {
+            ffmpeg: ctx.ffmpeg ?? '',
+            onAir,
+            signal: ctx.signal,
+            slideCount: slides?.length,
+            log: ctx.log && ((line) => ctx.log?.(`Deck: ${line}`)),
+            refocus: ctx.refocus,
+            appStarted: ctx.appStarted,
+            ended: (pid) => ctx.appEnded?.(pid),
+          },
+        );
+        time('parse', t);
+        if (flow.kind === 'baked') {
+          await importPresentation(file, where, 'pictures', hash, flow.parsed, decided);
+          return;
+        }
+        if (flow.cancelled) {
+          fail('pictures-cancelled', 'Cancelled while its animations were being made.');
+          return;
+        }
+        deckIssues.push(...flow.issues);
+        if (flow.deck && flow.deckFile) deckRead = { deck: flow.deck, file: flow.deckFile };
+        // A Keynote file's or an old .ppt's notes, from the .pptx made of it as it was tried.
+        if (!slides && flow.deck) slides = flow.deck.slides;
+        // The pictures the app saved while it tried: no need to ask it again.
+        if (flow.pdf) {
+          pdf = flow.pdf;
+          converter = flow.converter;
+        }
         const apps =
-          ctx.converters === false || ctx.converters === 'stand-in'
+          flow.pdf || ctx.converters === false || ctx.converters === 'stand-in'
             ? []
             : convertersFor(source, process.platform, await findConverters());
-        if (ctx.converters === 'stand-in' && source === 'pptx') {
+        if (flow.pdf) {
+          // Saved already.
+        } else if (ctx.converters === 'stand-in' && source === 'pptx') {
           // Tests only: saved as PDF as PowerPoint would (Session 26a, so CI can make decks).
           pdf = await standInPdf(file.path, slides, work);
           converter = 'powerpoint';
         } else if (apps.length === 0) {
-          fail('pictures-no-converter', noConverterMessage(source));
+          // Nothing here makes pictures of it: its own videos and sounds come in as media all the same.
+          const brought = deckRead ? await importDeckMedia(deckRead, where, work) : 0;
+          failed(where, 'pictures', fileName, noConverterMessage(source), [
+            {
+              severity: 'error',
+              code: 'pictures-no-converter',
+              message: noConverterMessage(source),
+              fix: null,
+            },
+            noAppIssue({ media: brought }),
+          ]);
           return;
         }
         const failures: { converter: Converter; message: string; reason: string }[] = [];
@@ -844,6 +964,18 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         ...m,
         sourcePath: `${where.sourcePath}#page=${String((drawn.pages[i]?.index ?? i) + 1)}`,
       }));
+      // The deck's own videos on its pictures' slides, and a sound that starts with its slide (Session 54, C2).
+      const added =
+        deckRead && drawn.pages.length === drawn.total
+          ? await addDeckMedia(
+              parsed,
+              deckRead.deck,
+              deckRead.file,
+              where.sourcePath,
+              work,
+              ctx.ffmpeg ?? null,
+            )
+          : { videos: 0, cued: 0, left: 0 };
       const shown = slides?.filter((sl) => !sl.hidden) ?? [];
       parsed.issues = picturesIssues({
         source,
@@ -860,6 +992,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         animated: shown.filter((sl) => sl.animated).length,
         notesUnmatched: slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
       });
+      parsed.issues.splice(1, 0, ...deckIssues, ...picturesMediaIssues(added));
       await importPresentation(file, where, 'pictures', hash, parsed, decided);
     } finally {
       await rm(work, { recursive: true, force: true });

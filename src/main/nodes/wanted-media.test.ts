@@ -145,6 +145,87 @@ describe('what a node copies', () => {
   });
 });
 
+describe('a deck’s slide (Session 54, C2)', () => {
+  it('brings its steps’ clips, last frames and holds, and its own videos and posters, after its picture; never its sound', () => {
+    const db = openDatabase(':memory:');
+    const files = ['last-0', 'last-1', 'poster', 'clip-0', 'clip-1', 'hold-1', 'video'];
+    files.forEach((id, n) =>
+      db
+        .prepare('INSERT INTO media (id, kind, name, path, sha256, bytes) VALUES (?, ?, ?, ?, ?, 10)')
+        .run(
+          id,
+          id.startsWith('clip') || id.startsWith('hold') || id === 'video' ? 'video' : 'image',
+          id,
+          `${sha(n + 1)}.${id.startsWith('clip') || id.startsWith('hold') || id === 'video' ? 'mp4' : 'png'}`,
+          sha(n + 1),
+        ),
+    );
+    db.prepare(
+      "INSERT INTO media (id, kind, name, path, sha256, bytes) VALUES ('tone', 'audio', 'tone', 'tone.m4a', ?, 10)",
+    ).run(sha(9));
+    const presentations = new PresentationRepo(db);
+    const presentationId = presentations.insert({
+      libraryId: presentations.ensureLibrary('Default'),
+      name: 'Placeholder deck',
+      groups: [
+        {
+          name: '',
+          slides: [
+            {
+              elements: [
+                {
+                  id: 'picture',
+                  kind: 'image',
+                  frame: { x: 0, y: 0, width: 1920, height: 1080 },
+                  mediaId: 'last-1',
+                  fit: 'fit',
+                },
+              ],
+              deck: {
+                steps: [
+                  { clipId: 'clip-0', clipMs: 900, lastId: 'last-0' },
+                  { clipId: 'clip-1', clipMs: 900, lastId: 'last-1', holdId: 'hold-1', holdMs: 2000 },
+                ],
+                media: [
+                  {
+                    kind: 'video',
+                    mediaId: 'video',
+                    box: { x: 0, y: 0, w: 1, h: 1 },
+                    posterId: 'poster',
+                    loop: false,
+                    volume: 1,
+                    start: { step: 1, offsetMs: 0 },
+                  },
+                  {
+                    kind: 'audio',
+                    mediaId: 'tone',
+                    box: { x: 0, y: 0, w: 0.1, h: 0.1 },
+                    loop: false,
+                    volume: 1,
+                    start: { step: 0, offsetMs: 0 },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    db.prepare('INSERT INTO playlists (id, name) VALUES (?, ?)').run('live', 'live');
+    db.prepare(
+      "INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, label) VALUES ('i', 'live', 0, 'presentation', ?, 'x')",
+    ).run(presentationId);
+    const state = initialEngineState();
+    state.live.playlist = { playlistId: 'live', itemId: 'i' };
+    const ids = new WantedMedia(db).list(state, false).map((w) => w.id);
+    expect(ids).toEqual(
+      ['last-1', 'clip-0', 'last-0', 'clip-1', 'last-1', 'hold-1', 'video', 'poster'].filter(
+        (id, i, all) => all.indexOf(id) === i,
+      ),
+    );
+  });
+});
+
 describe('a picture’s sharpened copy (Session 26f)', () => {
   it('comes right after the picture once it is ready, and is served from where the copies are', () => {
     const { db } = library();

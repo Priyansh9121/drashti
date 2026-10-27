@@ -22,6 +22,8 @@ export interface ZipEntry {
   isDirectory: boolean;
   /** Its Unix file mode, when a Mac or Linux zip recorded one (a symbolic link is 0o120000). */
   unixMode: number | null;
+  /** Its CRC-32, as the central directory gives it (Session 54: an entry copied as it is into another zip). */
+  crc: number;
 }
 
 export class ZipError extends Error {
@@ -102,6 +104,7 @@ async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
     const madeBy = cd.readUInt16LE(p + 4);
     const flags = cd.readUInt16LE(p + 8);
     const method = cd.readUInt16LE(p + 10);
+    const crc = cd.readUInt32LE(p + 16);
     let compressedSize = cd.readUInt32LE(p + 20);
     let size = cd.readUInt32LE(p + 24);
     const nameLength = cd.readUInt16LE(p + 28);
@@ -140,6 +143,7 @@ async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
       isDirectory: name.endsWith('/'),
       // Made on Unix (3): the mode is in the external attributes' high half.
       unixMode: madeBy >> 8 === 3 ? external >>> 16 : null,
+      crc,
     });
     p += 46 + nameLength + extraLength + commentLength;
   }

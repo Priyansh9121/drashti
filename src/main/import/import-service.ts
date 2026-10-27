@@ -47,6 +47,11 @@ export interface ImportServiceDeps {
   onFinished(run: ImportRunSummary | null): void;
   /** Record a run as failed (its worker died or could not start). */
   failRun(runId: string, paths: string[], message: string): void;
+  /**
+   * Whether the stream is on air or recording now (Session 54, C2): a deck's movie is never made then, as nothing
+   * is converted (Session 50). Left out: never.
+   */
+  onAir?(): boolean;
   /** Draw a PDF's pages as pictures for the worker (Session 15): it cannot open the window that draws. */
   drawPdf?(pdf: string, outDir: string, signal: AbortSignal): Promise<PicturesResult>;
   log(level: 'info' | 'warn', message: string): void;
@@ -263,6 +268,14 @@ export class ImportService {
             });
           break;
         }
+        case 'ask-on-air':
+          if (!settled)
+            worker.postMessage({
+              type: 'on-air',
+              requestId: m.requestId,
+              onAir: this.deps.onAir?.() ?? false,
+            });
+          break;
         case 'finished':
           this.deps.log(
             'info',
