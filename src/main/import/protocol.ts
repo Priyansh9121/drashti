@@ -70,6 +70,8 @@ export type FromWorker =
   /** Draw this PDF's pages as pictures into `outDir` (Session 15); the answer comes as 'drawn'. */
   | { type: 'draw-pdf'; requestId: string; pdf: string; outDir: string }
   | { type: 'wrote'; runId: string; presentationId: string; replaced: boolean }
+  /** Files the import gave start and end points or markers (Session 54), once their group is committed. */
+  | { type: 'marked'; runId: string; mediaIds: string[] }
   | { type: 'finished'; run: ImportRunSummary; timings?: ImportTimings }
   /** A line for Drashti's log (Keynote and PowerPoint's steps, Session 16). */
   | { type: 'log'; level: 'info' | 'warn'; message: string }

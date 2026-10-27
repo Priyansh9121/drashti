@@ -159,6 +159,9 @@ async function start(message: StartMessage): Promise<void> {
             onWrote: (wrote) => {
               post({ type: 'wrote', runId: message.runId, ...wrote });
             },
+            onMarked: (mediaIds) => {
+              post({ type: 'marked', runId: message.runId, mediaIds });
+            },
           });
     result = { type: 'finished', run, ...(message.job === 'import' ? { timings } : {}) };
   } catch (error) {

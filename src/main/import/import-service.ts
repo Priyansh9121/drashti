@@ -38,6 +38,11 @@ export interface ImportServiceDeps {
   playsHevc?(): Promise<boolean | null>;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
+  /**
+   * Files the import gave start and end points or markers they had none of (Session 54), as each group is
+   * committed: what is up playing them moves to them at once.
+   */
+  onMarked?(mediaIds: string[]): void;
   /** After every run, with its summary when it finished. */
   onFinished(run: ImportRunSummary | null): void;
   /** Record a run as failed (its worker died or could not start). */
@@ -243,6 +248,9 @@ export class ImportService {
           break;
         case 'wrote':
           this.deps.onWrote({ presentationId: m.presentationId, replaced: m.replaced });
+          break;
+        case 'marked':
+          this.deps.onMarked?.(m.mediaIds);
           break;
         case 'draw-pdf': {
           const drawn = this.deps.drawPdf
