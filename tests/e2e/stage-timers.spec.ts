@@ -900,3 +900,46 @@ test('a line’s width and how many items show what is typed: Backspace, then a 
   expect(saved?.find((b) => b.kind === 'upcoming')?.count).toBe(3);
   await app.close();
 });
+
+// Part A's review: the Countdown goes on past 0:00 in the overtime colour, so it says when a countdown chosen in Timers
+// holds at 0:00 instead, and lets it run on when asked.
+test('New from a Template… says when a countdown chosen in Timers stops at 0:00, and lets it run on past it when asked', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const held = await makeTimer(win, {
+    name: 'Placeholder held countdown',
+    kind: 'countdown',
+    durationMs: 120_000,
+    targetTime: null,
+    allowsOverrun: false,
+  });
+
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await editor.getByTestId('stage-layout-from-template').click();
+  const dialog = win.getByTestId('stage-template-dialog');
+  await dialog.getByRole('radio', { name: 'Countdown', exact: true }).click();
+  await dialog.getByTestId('stage-template-own-timer').click();
+  await expect(dialog.getByTestId('stage-template-own-timer')).toBeChecked();
+  // It holds at 0:00: said under the choice, with the choice to let it run on.
+  await expect(dialog.getByTestId('stage-template-stops')).toContainText(
+    '“Placeholder held countdown” stops at 0:00',
+  );
+  const runOn = dialog.getByTestId('stage-template-run-on');
+  await runOn.click();
+  await expect(runOn).toBeChecked();
+  // Another template has nothing to say of it.
+  await dialog.getByRole('radio', { name: 'Timer only', exact: true }).click();
+  await expect(dialog.getByTestId('stage-template-stops')).toHaveCount(0);
+  await dialog.getByRole('radio', { name: 'Countdown', exact: true }).click();
+  await expect(runOn).toBeChecked();
+  await dialog.getByTestId('stage-template-make').click();
+  await expect(dialog).toHaveCount(0);
+  // Let run on past 0:00, in Timers too: the same timer, nothing else of it changed.
+  await expect
+    .poll(async () => (await timersNow(win)).find((t) => t.id === held))
+    .toMatchObject({ name: 'Placeholder held countdown', durationMs: 120_000, allowsOverrun: true });
+  await app.close();
+});
