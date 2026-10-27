@@ -14,7 +14,7 @@ import {
 import { readZipEntries } from '../zip';
 import { keynotePlan, plannedLength, powerPointPlan } from './plan';
 import { stepOfGroup, stepsOf } from './pptx-deck';
-import { writeTimedCopy } from './timed-copy';
+import { usingTimings, writeTimedCopy } from './timed-copy';
 
 /*
  * A deck shown as it was (Session 54, C2): C1's trial deck (assister/session-54-deck-trial.md) read from its own
@@ -282,6 +282,16 @@ describe('the timed copy', () => {
     const [was, now] = await Promise.all([others(trial), others(copy)]);
     expect([...now.keys()].sort()).toEqual([...was.keys()].sort());
     for (const [name, bytes] of was) expect(now.get(name)?.equals(bytes), name).toBe(true);
+  });
+
+  it('uses the slides’ timings where the deck’s slide show was set not to', () => {
+    expect(
+      usingTimings(
+        '<p:presentationPr><p:showPr loop="1" useTimings="0" showNarration="1"/></p:presentationPr>',
+      ),
+    ).toBe('<p:presentationPr><p:showPr loop="1" showNarration="1"/></p:presentationPr>');
+    const using = '<p:showPr useTimings="1"><p:present/></p:showPr>';
+    expect(usingTimings(using)).toBe(using);
   });
 
   it('keeps each slide’s words and shapes byte for byte: only its timing and transition change', async () => {

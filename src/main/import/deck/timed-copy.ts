@@ -28,7 +28,8 @@ import { copyZipReplacing } from './zip-copy';
  *   transition's sound too: Drashti plays them as real media, from the deck's own XML;
  * - shape triggers (interactive sequences) are left out: a click on a shape is never a Next.
  *
- * Hidden slides are left as they are (no movie shows them).
+ * Hidden slides are left as they are (no movie shows them). A deck set not to use its timings in its slide show
+ * (Set Up Slide Show, useTimings="0") uses them in the copy, or the advance times would be no one's.
  */
 
 const MAIN_SEQ = 'mainSeq';
@@ -219,6 +220,14 @@ export function timedSlideXml(xml: string, plan: PlannedSlide): string {
   return writeTree(root);
 }
 
+/** Where a deck keeps how its slide show runs (p:showPr): its show properties, or (older files) the presentation. */
+const SHOW_PARTS = ['ppt/presProps.xml', 'ppt/presentation.xml'];
+
+/** A part's slide show set to use the slides' timings (its useTimings="0" or "false" taken out). */
+export function usingTimings(xml: string): string {
+  return xml.replace(/(<p:showPr\b[^>]*?)\s+useTimings=(["'])(?:0|false)\2/gu, '$1');
+}
+
 /** Write the timed copy of `deck` to `copy`, its shown slides by `plan` (PowerPoint's, ./plan.ts). */
 export async function writeTimedCopy(deck: string, copy: string, plan: MoviePlan): Promise<void> {
   const order = await slideParts(deck);
@@ -227,12 +236,21 @@ export async function writeTimedCopy(deck: string, copy: string, plan: MoviePlan
     const part = order[s.index];
     if (part) wanted.set(part, s);
   }
-  const parts = await readZipEntries(deck, (name) => wanted.has(name), 64 * 1024 * 1024);
+  const parts = await readZipEntries(
+    deck,
+    (name) => wanted.has(name) || SHOW_PARTS.includes(name),
+    64 * 1024 * 1024,
+  );
   const replace = new Map<string, Buffer>();
   for (const [part, slide] of wanted) {
     const xml = parts.get(part);
     if (!xml) throw new Error(`The deck has no ${part}`);
     replace.set(part, Buffer.from(timedSlideXml(xml.toString('utf8'), slide), 'utf8'));
+  }
+  for (const part of SHOW_PARTS) {
+    const xml = parts.get(part)?.toString('utf8');
+    const timed = xml ? usingTimings(xml) : null;
+    if (timed !== null && timed !== xml) replace.set(part, Buffer.from(timed, 'utf8'));
   }
   await copyZipReplacing(deck, copy, replace);
 }
