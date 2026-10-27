@@ -56,6 +56,28 @@ export function keyTarget(key: string, atMs: number, span: BarSpan): number | nu
   return null;
 }
 
+/** A key press as the bar reads it. */
+export interface BarKey {
+  key: string;
+  /** The key held down, the system sending it again. */
+  repeat: boolean;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}
+
+/**
+ * What a key press on the bar does: null for a key it leaves to the window (one it does not use, or with Cmd, Ctrl or
+ * Alt); else it is the bar's (the show's keys never hear it), moving to `to`, or nowhere (null) while the key is held
+ * down (one move a press, never one for each repeat: Session 54's review) or already there.
+ */
+export function keyPress(press: BarKey, atMs: number, span: BarSpan): { to: number | null } | null {
+  if (press.altKey || press.ctrlKey || press.metaKey) return null;
+  const to = keyTarget(press.key, atMs, span);
+  if (to === null) return null;
+  return { to: press.repeat || to === atMs ? null : to };
+}
+
 /** How long is left to the end point (ms), never less than none. */
 export const leftMs = (atMs: number, span: BarSpan): number => Math.max(0, span.endMs - atMs);
 

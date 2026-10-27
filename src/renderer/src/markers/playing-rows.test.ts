@@ -75,13 +75,16 @@ const everything = state(
 describe('the time bar’s rows', () => {
   it('are, in order: the background video, the slide’s videos (each file once), the box’s video, then the sound or the music', () => {
     const rows = playingRows(everything);
-    expect(rows.map((r) => [r.key, r.short, r.name])).toEqual([
-      ['background', 'Background', 'The background video'],
-      ['slide:a', 'Slide video 1', 'Video 1 on the slide'],
-      ['slide:b', 'Slide video 2', 'Video 2 on the slide'],
-      ['pip', 'Box video', 'The video in the picture-in-picture box'],
-      ['audio', 'Music', 'The music playing'],
+    expect(rows.map((r) => [r.which, r.short, r.name])).toEqual([
+      ['background', 'Background', 'Time of the background video'],
+      ['slide:a', 'Slide video 1', 'Time of video 1 on the slide'],
+      ['slide:b', 'Slide video 2', 'Time of video 2 on the slide'],
+      ['pip', 'Box video', 'Time of the video in the picture-in-picture box'],
+      ['audio', 'Music', 'Time of the music playing'],
     ]);
+    // Never the names of the rows of skips and markers beside them (LIVE's, Session 50; a phone's, D5): a screen
+    // reader tells them apart (Session 54's review).
+    for (const r of rows) expect(['The background video', 'The sound playing']).not.toContain(r.name);
     // A picture, a colour, the slides in the box and a sound with no file have none; nothing up, none at all.
     expect(playingRows(initialEngineState())).toEqual([]);
     expect(
@@ -103,8 +106,38 @@ describe('the time bar’s rows', () => {
     };
     expect(playingRows(state({ audio: sound }))[0]).toMatchObject({
       short: 'Sound',
-      name: 'The sound playing',
+      name: 'Time of the sound playing',
     });
+  });
+
+  it('are each kept for one playing of one file: another file, another showing or another track is a new row, so a drag held on one never lands on the next (Session 54’s review)', () => {
+    expect(playingRows(everything).map((r) => r.key)).toEqual([
+      'background:bg@0',
+      'slide:a@1000',
+      'slide:b@1000',
+      'pip:boxed@2000',
+      'music:pl#0:tune',
+    ]);
+    const audio = everything.layers.audio;
+    if (!audio?.music) throw new Error('no music');
+    const keyOf = (a: typeof audio) => playingRows(state({ audio: a })).at(-1)?.key;
+    // The next track: a new row. The same track played on after a pause (a new start time): the same row.
+    const next = { ...audio, mediaId: 'tune-2', startedAt: 90_000, music: { ...audio.music, index: 1 } };
+    expect(keyOf(next)).toBe('music:pl#1:tune-2');
+    const { pausedAtMs: _paused, ...playingOn } = audio;
+    expect(keyOf({ ...playingOn, startedAt: 70_000 })).toBe(keyOf(audio));
+    // A single sound: by its file and when it started; its own pause and Play (a jump) keep it.
+    const sound = {
+      id: 'x',
+      title: 'Placeholder sound',
+      mediaId: 'tone',
+      volume: 1,
+      loop: false,
+      startedAt: 9,
+    };
+    expect(keyOf(sound)).toBe('audio:tone@9');
+    expect(keyOf({ ...sound, seek: { at: 50, toMs: 20, paused: true } })).toBe('audio:tone@9');
+    expect(keyOf({ ...sound, startedAt: 99 })).toBe('audio:tone@99');
   });
 
   it('are where every screen has them: between their points, paused where they wait, and held at an end point', () => {

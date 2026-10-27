@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
-import type { ElectronApplication, Locator, Page } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import type { Locator, Page } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -20,6 +20,21 @@ import {
 } from './helpers';
 import { holdClock } from './placeholder-slides';
 import { makeTestTone, makeTestVideo } from './test-media';
+import {
+  audioPage,
+  backgroundTiming,
+  boxTiming,
+  clickAlong,
+  type Copy,
+  dispatch,
+  heldAt,
+  inStep,
+  row,
+  slideTiming,
+  slideWithVideo,
+  snapshot,
+  soundTiming,
+} from './time-bar-helpers';
 
 /*
  * The time bar (Session 54): under LIVE, one row for each thing playing (the background video, a video on the slide,
@@ -30,181 +45,6 @@ import { makeTestTone, makeTestVideo } from './test-media';
  * left and moves nothing. Each fits CI's operator window, 1024 × 645, in both modes. A phone's remote has the same
  * bar (B2). Generated media only, quiet, on displays no wider than 1024; codes and tokens made at run time.
  */
-
-async function audioPage(app: ElectronApplication): Promise<Page> {
-  await expect.poll(() => app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
-  const page = app.windows().find((w) => w.url().includes('audio.html'));
-  if (!page) throw new Error('no audio player');
-  return page;
-}
-
-/** How a file plays, as the engine has it: from when, looping or not, between which points, from which move. */
-interface Timing {
-  startedAt: number;
-  loop: boolean;
-  clip?: { startMs: number; endMs: number | null };
-  seek?: { at: number; toMs: number; paused?: boolean };
-}
-
-const snapshot = (win: Page) =>
-  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
-
-const dispatch = (win: Page, command: Record<string, unknown>) =>
-  win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
-
-/** The background video's timing. */
-async function backgroundTiming(win: Page): Promise<Timing> {
-  const bg = (await snapshot(win)).layers.background;
-  if (bg?.kind !== 'media') throw new Error('no background video');
-  return { startedAt: bg.startedAt, loop: bg.loop, clip: bg.clip, seek: bg.seek };
-}
-
-/** A video on the slide up's timing, by its file. */
-async function slideTiming(win: Page, mediaId: string, loop: boolean): Promise<Timing> {
-  const slide = (await snapshot(win)).layers.slide;
-  if (!slide) throw new Error('no slide');
-  return { startedAt: slide.shownAt, loop, clip: slide.clips?.[mediaId], seek: slide.seeks?.[mediaId] };
-}
-
-/** The picture-in-picture box's video's timing (it always goes round). */
-async function boxTiming(win: Page, mediaId: string): Promise<Timing> {
-  const box = (await snapshot(win)).layers.pip;
-  if (!box) throw new Error('no box');
-  return { startedAt: box.shownAt, loop: true, clip: box.clips?.[mediaId], seek: box.seeks?.[mediaId] };
-}
-
-/** The sound's timing. */
-async function soundTiming(win: Page): Promise<Timing> {
-  const a = (await snapshot(win)).layers.audio;
-  if (!a) throw new Error('no sound');
-  return { startedAt: a.startedAt, loop: a.loop, clip: a.clip, seek: a.seek };
-}
-
-/**
- * How far a window's copy is from where the clock says (seconds, + ahead), the median of a few samples, as every
- * screen works it out (shared/media.ts playbackPosition); null while it is not there, has no length yet or is not
- * playing.
- */
-function offsetOf(page: Page, selector: string, t: Timing): Promise<number | null> {
-  return page.evaluate(
-    async ({ selector, t }) => {
-      const samples: number[] = [];
-      for (let i = 0; i < 7; i++) {
-        const v = document.querySelector<HTMLMediaElement>(selector);
-        if (!v || !Number.isFinite(v.duration) || v.paused) return null;
-        const start = Math.min(v.duration, (t.clip?.startMs ?? 0) / 1000);
-        const end = Math.min(v.duration, (t.clip?.endMs ?? v.duration * 1000) / 1000);
-        const span = end - start;
-        const from = t.seek ? Math.min(end, Math.max(start, t.seek.toMs / 1000)) : start;
-        const elapsed = (Date.now() - (t.seek ? t.seek.at : t.startedAt)) / 1000;
-        const expected =
-          t.loop && span > 0 ? start + ((from - start + elapsed) % span) : Math.min(from + elapsed, end);
-        const off = v.currentTime - expected;
-        samples.push(t.loop && span > 0 ? ((((off + span / 2) % span) + span) % span) - span / 2 : off);
-        // eslint-disable-next-line no-restricted-syntax -- in the page: samples 60 ms apart while it plays
-        await new Promise((resolve) => setTimeout(resolve, 60));
-      }
-      samples.sort((a, b) => a - b);
-      return samples[3] ?? null;
-    },
-    { selector, t },
-  );
-}
-
-const FRAME = 1 / 30;
-/** The sound near the screens (as markers.spec.ts allows a jump: within what broadcasters accept). */
-const SOUND_MARGIN = 0.15;
-
-interface Copy {
-  name: string;
-  page: Page;
-  selector: string;
-  /** The audio player's copy: near the screens rather than within two frames of them. */
-  sound?: boolean;
-}
-
-/** Wait until every copy is near the clock, the screens within two frames of each other, the sound near them. */
-async function inStep(copies: Copy[], timing: () => Promise<Timing>, what: string): Promise<void> {
-  const end = Date.now() + 15_000;
-  const seen: string[] = [];
-  for (;;) {
-    const t = await timing();
-    const offsets = await Promise.all(copies.map((c) => offsetOf(c.page, c.selector, t)));
-    seen.push(
-      offsets.map((o, i) => `${copies[i]?.name ?? ''} ${o === null ? 'none' : o.toFixed(3)}`).join(', '),
-    );
-    // Every copy there and near the clock; then the screens' offsets and the sound's.
-    const near = offsets.every((o) => o !== null && Math.abs(o) < 0.25);
-    const screens = offsets.filter((o, i): o is number => o !== null && copies[i]?.sound !== true);
-    const heard = offsets.filter((o, i): o is number => o !== null && copies[i]?.sound === true);
-    const together = screens.length === 0 || Math.max(...screens) - Math.min(...screens) < 2 * FRAME;
-    const middle = screens.length > 0 ? screens.reduce((x, y) => x + y, 0) / screens.length : null;
-    const sound = middle === null || heard.every((o) => Math.abs(o - middle) < SOUND_MARGIN);
-    if (near && together && sound) return;
-    if (Date.now() > end) throw new Error(`${what}: not in step after 15 s. Each look:\n${seen.join('\n')}`);
-  }
-}
-
-/** Every copy paused where the engine's pause put it, within a frame. */
-async function heldAt(copies: Copy[], seconds: number, what: string): Promise<void> {
-  for (const c of copies)
-    await expect
-      .poll(
-        () =>
-          c.page.evaluate(
-            ({ selector, seconds }) => {
-              const v = document.querySelector<HTMLMediaElement>(selector);
-              return v !== null && v.paused && Math.abs(v.currentTime - seconds) < 1 / 30;
-            },
-            { selector: c.selector, seconds },
-          ),
-        { message: `${what}: ${c.name} paused at ${seconds.toFixed(2)} s` },
-      )
-      .toBe(true);
-}
-
-/** A row of the time bar under LIVE, by what it plays ("background", "slide:<media id>", "pip", "audio"). */
-const row = (win: Page, playing: string): Locator =>
-  win.locator(`[data-testid="time-bar-row"][data-playing="${playing}"]`);
-
-/** Click the bar `fraction` of the way along its width, in the middle of its height. */
-async function clickAlong(win: Page, bar: Locator, fraction: number): Promise<void> {
-  const box = await bar.boundingBox();
-  if (!box) throw new Error('the bar is not drawn');
-  await win.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
-}
-
-/**
- * A presentation of one slide with a looping video on it (not a background: it goes and comes with the slide), under
- * its words; or, `onTop`, over them in the slide's top right quarter, where the slide editor finds it by a click.
- */
-async function slideWithVideo(win: Page, dir: string, mediaId: string, onTop = false): Promise<string> {
-  const words = join(dir, onTop ? 'Placeholder Play Bar.txt' : 'Placeholder Time Bar.txt');
-  writeFileSync(words, '[Verse]\nPlaceholder words over a video\n');
-  const [presentationId = ''] = await importAndGetIds(win, [words]);
-  await win.evaluate(
-    async ({ presentationId, mediaId, onTop }) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const opened = await d.library.slidesForEdit(presentationId);
-      if (!opened.ok) throw new Error(opened.message);
-      const slide = opened.doc.groups[0]?.slides[0];
-      if (!slide) throw new Error('The presentation has no slide.');
-      const video = {
-        id: 'placeholder-slide-video',
-        kind: 'video' as const,
-        mediaId,
-        frame: onTop ? { x: 960, y: 0, width: 960, height: 540 } : { x: 0, y: 0, width: 1920, height: 1080 },
-        fit: 'fit' as const,
-        loop: true,
-      };
-      slide.elements = onTop ? [...slide.elements, video] : [video, ...slide.elements];
-      const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
-      if (!saved.ok) throw new Error(saved.message);
-    },
-    { presentationId, mediaId, onTop },
-  );
-  return presentationId;
-}
 
 test('the background video: a click on its bar moves it in step on two screens and the audio player; a drag shows the time under the finger and moves once, on release; Pause holds every copy where it is and Play plays them on', async () => {
   test.setTimeout(180_000);
@@ -247,7 +87,7 @@ test('the background video: a click on its bar moves it in step on two screens a
   });
   // Its row under LIVE: a slider once its length is known, with Pause before it and its marker as a tick.
   const bg = row(win, 'background');
-  const bar = bg.getByRole('slider', { name: 'The background video' });
+  const bar = bg.getByRole('slider', { name: 'Time of the background video', exact: true });
   await expect(bar).toBeVisible({ timeout: 15_000 });
   await expect(bg.getByRole('button', { name: 'Pause' })).toBeEnabled();
   await expect(bg.locator('[data-marker="m1"]')).toHaveCount(1);
@@ -352,7 +192,7 @@ test('a video on the slide and the picture-in-picture box’s video: each row mo
     },
   ];
   const slideRow = row(win, `slide:${slideVideo}`);
-  const slideBar = slideRow.getByRole('slider', { name: 'The video on the slide' });
+  const slideBar = slideRow.getByRole('slider', { name: 'Time of the video on the slide', exact: true });
   await expect(slideBar).toBeVisible({ timeout: 15_000 });
   const slideLength = (await snapshot(win)).videoFiles?.[slideVideo]?.durationMs ?? 0;
   expect(slideLength).toBeGreaterThan(10_000);
@@ -379,7 +219,10 @@ test('a video on the slide and the picture-in-picture box’s video: each row mo
     { name: 'the second screen', page: b, selector: boxPicture },
   ];
   const boxRow = row(win, 'pip');
-  const boxBar = boxRow.getByRole('slider', { name: 'The video in the picture-in-picture box' });
+  const boxBar = boxRow.getByRole('slider', {
+    name: 'Time of the video in the picture-in-picture box',
+    exact: true,
+  });
   await expect(boxBar).toBeVisible({ timeout: 15_000 });
   const boxLength = (await snapshot(win)).videoFiles?.[boxVideo]?.durationMs ?? 0;
   expect(boxLength).toBeGreaterThan(8000);
@@ -421,7 +264,7 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
     audio: { id: 'placeholder-sound', title: 'Placeholder sound', mediaId: long, volume: 1, loop: false },
   });
   const soundRow = row(win, 'audio');
-  const soundBar = soundRow.getByRole('slider', { name: 'The sound playing' });
+  const soundBar = soundRow.getByRole('slider', { name: 'Time of the sound playing', exact: true });
   await expect(soundBar).toBeVisible({ timeout: 15_000 });
   await clickAlong(win, soundBar, 0.5);
   await expect
@@ -447,9 +290,13 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
   );
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id, 0), listId);
   await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(one);
-  const musicBar = win.getByTestId('music-panel').getByRole('slider', { name: 'The track playing' });
+  const musicBar = win
+    .getByTestId('music-panel')
+    .getByRole('slider', { name: 'Time of the track playing', exact: true });
   await expect(musicBar).toBeVisible({ timeout: 15_000 });
-  await expect(row(win, 'audio').getByRole('slider', { name: 'The music playing' })).toBeVisible();
+  await expect(
+    row(win, 'audio').getByRole('slider', { name: 'Time of the music playing', exact: true }),
+  ).toBeVisible();
   await clickAlong(win, musicBar, 0.5);
   await expect
     .poll(async () => Math.abs(((await soundTiming(win)).seek?.toMs ?? 0) - 10_000))
@@ -463,7 +310,7 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
   await app.close();
 });
 
-test('Simple Mode shows the bar and its time left and moves nothing; the bars fit 1024 × 645 in both modes', async () => {
+test('Simple Mode shows the bar and its time left and moves nothing (no move, no skip, no Pause but the music’s; Play always); the bars fit 1024 × 645 in both modes', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -484,7 +331,7 @@ test('Simple Mode shows the bar and its time left and moves nothing; the bars fi
     type: 'playAudio',
     audio: { id: 'placeholder-sound', title: 'Placeholder sound', mediaId: tone, volume: 1, loop: false },
   });
-  /** Each row whole inside the window and its column, nothing past their edges, Next still in view. */
+  /** Each row whole inside the window and its column, nothing past their edges, Next (Pro Mode's, over the bars) in view. */
   const fits = async (mode: string, next: Locator) => {
     const rows = win.getByTestId('time-bar-row');
     await expect(rows).toHaveCount(2);
@@ -500,7 +347,7 @@ test('Simple Mode shows the bar and its time left and moves nothing; the bars fi
     }
     const shown = await next.boundingBox();
     if (!shown) throw new Error(`${mode}: Next is not drawn`);
-    expect(shown.y + shown.height, `${mode}: Next in view under the bars`).toBeLessThanOrEqual(645);
+    expect(shown.y + shown.height, `${mode}: Next in view, the bars under it`).toBeLessThanOrEqual(645);
   };
 
   // Pro Mode: the bars move, with Pause before each.
@@ -508,12 +355,15 @@ test('Simple Mode shows the bar and its time left and moves nothing; the bars fi
   await expect(row(win, 'audio').getByRole('slider')).toBeVisible({ timeout: 15_000 });
   await fits('Pro Mode', win.getByTestId('show-next'));
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Pro Mode');
+  // The sound paused in Pro Mode: Simple Mode can play it on (it has no Play of its own), never pause it again.
+  await row(win, 'audio').getByRole('button', { name: 'Pause' }).click();
+  await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
   // Simple Mode: the bar and its time left, no elapsed time, no Play or Pause, nothing to move.
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const bg = row(win, 'background');
-  const shows = bg.getByRole('progressbar', { name: 'The background video' });
+  const shows = bg.getByRole('progressbar', { name: 'Time of the background video', exact: true });
   await expect(shows).toBeVisible();
   await expect(bg.getByRole('slider')).toHaveCount(0);
   await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-\d+:\d\d$/);
@@ -525,15 +375,30 @@ test('Simple Mode shows the bar and its time left and moves nothing; the bars fi
   await clickAlong(win, shows, 0.8);
   await letTimePass(win, 500, 'a click on Simple Mode’s bar moves nothing');
   expect((await backgroundTiming(win)).seek).toEqual(seek);
-  // The engine refuses a move in Simple Mode, from the window, a phone or the API alike.
-  const refused = await dispatch(win, { type: 'moveTo', playing: { layer: 'background' }, toMs: 1000 });
-  expect(refused).toMatchObject({ ok: false, error: 'forbidden' });
+  // The engine refuses a move in Simple Mode, from the window, a phone or the API alike, and so Back 15 s and the
+  // rest, and the bar's Pause; never Play, so nothing paused stays so (Session 54's review).
+  for (const command of [
+    { type: 'moveTo', playing: { layer: 'background' }, toMs: 1000 },
+    { type: 'skip', layer: 'background', jump: 'back' },
+    { type: 'pausePlaying', playing: { layer: 'background' } },
+  ])
+    expect(await dispatch(win, command), JSON.stringify(command)).toMatchObject({
+      ok: false,
+      error: 'forbidden',
+    });
+  expect((await backgroundTiming(win)).seek).toEqual(seek);
+  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
+  expect(await dispatch(win, { type: 'resumePlaying', playing: { layer: 'audio' } })).toMatchObject({
+    ok: true,
+  });
+  await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
+  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toHaveCount(0);
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Simple Mode');
   await app.close();
 });
 
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
-  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode refuses the move and says so`, async () => {
+  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode refuses the move and the Pause and says so, never the Play`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -570,7 +435,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       const playing = p.getByTestId('remote-time-bars');
       const row = playing.locator('[data-testid="remote-time-bar-row"][data-playing="background"]');
-      const bar = row.getByRole('slider', { name: 'The background video' });
+      const bar = row.getByRole('slider', { name: 'Time of the background video', exact: true });
       await expect(bar).toBeVisible({ timeout: 15_000 });
       // A finger's size: the bar and its button 44 px tall at least.
       for (const target of [bar, row.getByRole('button', { name: 'Pause' })]) {
@@ -613,13 +478,23 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
       await inStep(copies, () => backgroundTiming(win), 'played on from the phone');
 
-      // Simple Mode on the computer: the phone's move is refused, and the phone says why; nothing moves.
+      // Simple Mode on the computer, the video left paused: the phone's move and Pause are refused, the phone saying
+      // why, and nothing moves; its Play is not, so nothing stays paused (Session 54's review).
+      await row.getByRole('button', { name: 'Pause' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
       await win.getByRole('button', { name: 'Simple Mode' }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       const seek = (await backgroundTiming(win)).seek;
       await clickAlong(p, bar, 0.9);
       await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
       expect((await backgroundTiming(win)).seek).toEqual(seek);
+      await row.getByRole('button', { name: 'Play' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
+      await inStep(copies, () => backgroundTiming(win), 'played on from the phone in Simple Mode');
+      const playedOn = (await backgroundTiming(win)).seek;
+      await row.getByRole('button', { name: 'Pause' }).click();
+      await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
+      expect((await backgroundTiming(win)).seek).toEqual(playedOn);
     } finally {
       await phone.close();
     }

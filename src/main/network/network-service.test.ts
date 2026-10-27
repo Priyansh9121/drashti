@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
-import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
+import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import { DEVICE_KINDS, type NetworkStatus, PAIRING_CODE_TTL_MS } from '../../shared/network';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
@@ -57,7 +57,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     engine: {
       dispatch: (c): CommandResult => {
         // As the engine does in Simple Mode (show-engine.ts, refuse).
-        if (options.locked === true && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type))
+        if (options.locked === true && simpleModeRefuses(c))
           return { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL };
         commands.push(c);
         return { ok: true, changed: true, rev: commands.length };
@@ -288,6 +288,29 @@ describe('the network in the main process', () => {
     expect(send({ type: 'moveTo', playing: { layer: 'slide' }, toMs: 1000 })).toBe(400);
     expect(send({ type: 'moveTo', playing: { layer: 'background' }, toMs: -5 })).toBe(400);
     expect(commands).toHaveLength(3);
+  });
+
+  it('in Simple Mode, refuses a Remote’s move and Pause in words, and lets its Play through: nothing stays paused (Session 54’s review)', () => {
+    const { service, commands } = setup({ locked: true });
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const answer = (args: Record<string, unknown>) =>
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args });
+    for (const args of [
+      { type: 'moveTo', playing: { layer: 'background' }, toMs: 12_000 },
+      { type: 'pausePlaying', playing: { layer: 'pip' } },
+      { type: 'skip', layer: 'background', jump: 'back' },
+    ])
+      expect(answer(args), JSON.stringify(args)).toMatchObject({
+        status: 403,
+        body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+      });
+    // Play, anything; and the music's Pause, which is Simple Mode's own.
+    const through = [
+      { type: 'resumePlaying', playing: { layer: 'background' } },
+      { type: 'pausePlaying', playing: { layer: 'audio' } },
+    ];
+    for (const args of through) expect(answer(args).status, JSON.stringify(args)).toBe(200);
+    expect(commands).toEqual(through);
   });
 
   it('lets each kind of device do only its own things, and a Remote only run the show', () => {

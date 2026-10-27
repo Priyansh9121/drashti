@@ -1,3 +1,5 @@
+import type { EngineCommand } from './engine/commands';
+
 /*
  * Simple Mode and Pro Mode (PLAN.md section 3). Simple Mode is one screen
  * with big buttons for running a sabha from a playlist; nothing in it can
@@ -47,8 +49,10 @@ export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode })
  * box is set up, swapped and moved in Pro Mode only (Session 50; Take off and
  * Clear all still take one off); Simple Mode does not choose a video
  * input (Session 50: Pro Mode's Media puts one up; Simple Mode may clear it,
- * as any background); and Simple Mode shows the time bar but never moves it
- * (Session 54: Pause and Play are not refused, as Music's are not).
+ * as any background); and Simple Mode shows the time bar but never moves what
+ * plays (Session 54): neither the bar's move nor Back 15 s, Forward 15 s and
+ * Last 10 s. The bar's Pause is refused too, but on the audio layer
+ * (simpleModeRefuses), and its Play never is.
  */
 export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'setLook',
@@ -59,4 +63,16 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'placePip',
   'showInput',
   'moveTo',
+  'skip',
 ];
+
+/**
+ * Whether Simple Mode refuses an engine command (the engine's refuse option, src/main/index.ts): those listed above,
+ * and the time bar's Pause (Session 54's review: Simple Mode shows the bar and moves nothing), but on the audio layer,
+ * where an audio playlist's track's Pause is Music's own (Simple Mode's Pause music). The bar's Play is never
+ * refused: Simple Mode's LIVE has none, so nothing paused can stay paused there.
+ */
+export function simpleModeRefuses(command: EngineCommand): boolean {
+  if (SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type)) return true;
+  return command.type === 'pausePlaying' && command.playing.layer !== 'audio';
+}
