@@ -6,17 +6,20 @@ import {
   audienceOffSize,
   fittedSize,
   hallView,
+  inStep,
   NO_AUDIENCE,
   noAudienceLine,
   PICTURE,
+  unseenSize,
   WORDS_CORNER,
 } from './audience-picture';
 
 /*
  * What a stage layout's audience picture box draws (Session 50): the hall's group, as its own screens do; with
  * Audience off, the same picture, said off (Session 51) in its bottom left corner (Session 52), never below the
- * stage's smallest words while it fits (Session 53); with no audience group at all, black and one short line saying
- * so, never every layer (Session 52).
+ * stage's smallest words while it fits (Session 53), nor are the muted lines under it naming what a node or a tablet
+ * cannot draw (Session 54); with no audience group at all, black and one short line saying so, never every layer
+ * (Session 52).
  */
 
 const look: LiveLook = {
@@ -114,6 +117,30 @@ describe('the audience picture box', () => {
       { width: 8, height: 8 },
     ])
       expect(audienceOffSize(box).size).toBe(noAudienceLine(box).size);
+  });
+
+  // Session 54 (Session 53's question 4): drawn on the picture at 40 px, a node's or a tablet's line naming a video
+  // input or a window was a sixth of that (6.7 px) in a box a sixth of the stage each way.
+  it('wants the muted lines naming what a page cannot draw as large as on the whole stage’s picture, never below the stage’s smallest words', () => {
+    // The whole stage: 40 px on the picture, as built; half each way: 30 px, where on the picture it was 20.
+    expect(unseenSize({ width: 1920, height: 1080 })).toBe(40);
+    expect(unseenSize({ width: 960, height: 540 })).toBe(30);
+    // The layout editor's smallest box, a strip and a box saved smaller: 30 px on the stage, then fitted.
+    expect(unseenSize({ width: 320, height: 180 })).toBe(30);
+    expect(unseenSize({ width: 1920, height: 270 })).toBe(30);
+    expect(unseenSize({ width: 96, height: 54 })).toBe(30);
+    // Between: as on the picture, scaled with it.
+    expect(unseenSize({ width: 1600, height: 900 })).toBeCloseTo(33.33, 2);
+  });
+
+  it('keeps the muted lines at their size while Audience off fits as wanted, and brings them down with it when it must', () => {
+    // Audience off as wanted (to the whole pixel): the lines as wanted, never a fraction under 30 px with it.
+    expect(inStep(64, 64, 40)).toBe(40);
+    expect(inStep(33, 33.33, 30)).toBe(30);
+    expect(inStep(30, 30, 30)).toBe(30);
+    // Audience off brought down to fit a box saved smaller: the lines come down in step with it.
+    expect(inStep(16, 32, 30)).toBe(15);
+    expect(inStep(10, 30, 30)).toBe(10);
   });
 
   it('brings the line down only as far as it must to fit the box, never below 8 px', () => {

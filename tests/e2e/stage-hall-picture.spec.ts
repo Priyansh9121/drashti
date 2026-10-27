@@ -32,7 +32,9 @@ import { makeTestImage } from './test-media';
  * this computer's stage screen (read in a small box, inside a tiny one), a tablet's and a node's. Since Session 53
  * Audience off keeps to 30 px at least while it fits, read in a box as small as the layout editor makes one, and
  * the box of the audience screens' state says there are none too: on this computer's stage screen, a node's and a
- * tablet's. Placeholder words and generated media only. Quiet: outputs as windows, nothing wider than 1024 assumed.
+ * tablet's. Since Session 54 a tablet's muted line naming a window it cannot draw keeps to 30 px at least too, in
+ * that box, under Audience off and alone. Placeholder words and generated media only. Quiet: outputs as windows,
+ * nothing wider than 1024 assumed.
  */
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -402,6 +404,41 @@ const audienceOffOn = (box: Locator) =>
     };
   });
 
+/**
+ * The box's first muted line naming what a page cannot draw (Session 54), as the page draws it, as audienceOffOn
+ * reads Audience off: the box's size and the line's in stage canvas pixels, its words, whether the picture is drawn
+ * fitted to the box's size yet, whether the line lies wholly inside the picture, and whether it sits in its bottom
+ * left.
+ */
+const unseenOn = (box: Locator) =>
+  box
+    .getByTestId('stage-audience-unseen')
+    .first()
+    .evaluate((line) => {
+      const area = line.closest<HTMLElement>('[data-testid="stage-audience"]');
+      const picture = line.closest<HTMLElement>('[data-hall-picture]');
+      if (!area || !picture) return null;
+      const a = area.getBoundingClientRect();
+      const p = picture.getBoundingClientRect();
+      const r = line.getBoundingClientRect();
+      const stage = (p.width / picture.offsetWidth) * (area.clientWidth / a.width);
+      const near = (x: number, y: number) => Math.abs(x - y) <= 1;
+      return {
+        box: `${String(area.clientWidth)}x${String(area.clientHeight)}`,
+        text: line.textContent,
+        size: Math.round(parseFloat(getComputedStyle(line).fontSize) * stage * 10) / 10,
+        fitted:
+          (near(p.width, a.width) && p.height <= a.height + 1) ||
+          (near(p.height, a.height) && p.width <= a.width + 1),
+        inside:
+          r.left >= p.left - 0.5 &&
+          r.top >= p.top - 0.5 &&
+          r.right <= p.right + 0.5 &&
+          r.bottom <= p.bottom + 0.5,
+        bottomLeft: r.left - p.left < p.width / 4 && p.bottom - r.bottom < p.height / 4,
+      };
+    });
+
 test('with Audience off the stage box keeps the hall’s picture and says “Audience off” in its bottom left corner, clear of the stage message, at 30 px at least in a small box', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp(OUTPUTS);
@@ -738,7 +775,7 @@ test('on a node with no audience screen, the stage box draws Main’s hall as th
   }
 });
 
-test('a tablet’s box names a window it cannot draw, and the box of the audience screens says when they are off, and when there are none', async () => {
+test('a tablet’s box names a window it cannot draw, at 30 px at least in a small box, and the box of the audience screens says when they are off, and when there are none', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...NETWORK_ENV, ...OUTPUTS, DRASHTI_TEST_WINDOW_STANDIN: '1' });
   const win = await operatorPage(app);
@@ -746,12 +783,13 @@ test('a tablet’s box names a window it cannot draw, and the box of the audienc
   await setUpScreen(win, 'Main Hall', 0);
   const { hallGroup, stageGroup } = await stageWithHallPicture(win, true);
   // The picture, with the box of the audience screens' state under it.
+  const stateUnder: StageBox = {
+    ...newStageBox('screensState', 'placeholder-state-box'),
+    frame: { x: 0, y: 920, width: 1920, height: 120 },
+  };
   const boxes = [
     { ...newStageBox('audience', 'placeholder-hall-box'), frame: { x: 0, y: 0, width: 1920, height: 900 } },
-    {
-      ...newStageBox('screensState', 'placeholder-state-box'),
-      frame: { x: 0, y: 920, width: 1920, height: 120 },
-    },
+    stateUnder,
   ];
   await win.evaluate(
     async ({ boxes, stageGroup }) => {
@@ -798,6 +836,32 @@ test('a tablet’s box names a window it cannot draw, and the box of the audienc
     await expect(box.getByTestId('stage-audience-unseen')).toHaveText(`A window: ${MEETING}`);
     await audience(win, true);
     await expect(screensState).toHaveText('Audience screens showing');
+    await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
+
+    // In a box as small as the layout editor makes one (Session 54): the window's name keeps to 30 px at least, as
+    // Audience off does, where at 40 px on the picture it was a sixth of that; alone, and under Audience off, each
+    // wholly inside the picture, the name in its bottom left (Audience off above it).
+    const small = {
+      ...newStageBox('audience', 'placeholder-hall-box'),
+      frame: { x: 800, y: 450, ...AUDIENCE_BOX_MIN },
+    };
+    await giveLayout(win, stageGroup, [small, stateUnder]);
+    const named = {
+      box: '320x180',
+      text: `A window: ${MEETING}`,
+      fitted: true,
+      inside: true,
+      bottomLeft: true,
+    };
+    await expect.poll(() => unseenOn(box)).toMatchObject(named);
+    expect((await unseenOn(box))?.size).toBeGreaterThanOrEqual(30);
+    await audience(win, false);
+    await expect(box.getByTestId('stage-audience-off')).toHaveText('Audience off');
+    await expect.poll(() => unseenOn(box)).toMatchObject(named);
+    expect((await unseenOn(box))?.size).toBeGreaterThanOrEqual(30);
+    expect(await audienceOffOn(box)).toMatchObject({ box: '320x180', fitted: true, inside: true });
+    expect((await audienceOffOn(box))?.size).toBeGreaterThanOrEqual(30);
+    await audience(win, true);
     await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
 
     // No audience group at all (Session 53): the box of the audience screens' state says so, as the picture's does.
