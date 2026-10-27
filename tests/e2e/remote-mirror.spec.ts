@@ -389,6 +389,18 @@ test('from a phone, as from the operator window: props, media with its skips, th
     const picture = p.getByTestId('remote-media-item').filter({ hasText: PICTURE });
     await expect(picture).toContainText('Picture');
     await expectNoSeriousA11yIssues(p, 'Media on a phone');
+    // Media follows the library while it is open (D5 review): a picture imported in Drashti appears, with no reload.
+    const mark = 'Media opened before the import';
+    await p.evaluate((m) => {
+      (globalThis as { e2eMark?: string }).e2eMark = m;
+    }, mark);
+    await importAndGetIds(win, [
+      await makeTestImage(win, join(dir, 'Placeholder new arrival.png'), { color: '#365314' }),
+    ]);
+    await expect(
+      p.getByTestId('remote-media-item').filter({ hasText: 'Placeholder new arrival' }),
+    ).toBeVisible();
+    expect(await p.evaluate(() => (globalThis as { e2eMark?: string }).e2eMark)).toBe(mark);
     await picture.getByRole('button').first().click();
     await expect
       .poll(async () => {
