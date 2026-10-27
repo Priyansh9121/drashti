@@ -6,6 +6,7 @@ import { formatTimer, type TimerFields } from '../../src/shared/timers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import {
+  holdStill,
   launchApp,
   operatorPage,
   operatorReady,
@@ -564,15 +565,28 @@ test('a timer box’s colours and its flash at 0:00 follow the engine’s time: 
   const stageId = await setUpScreen(win, 'Stage', 0);
   const group = await makeStage(win, 'Stage');
   const timerId = await makeTimer(win, countdownOf('Placeholder flashing countdown', 60_000));
+  // And a countdown of 2 s that holds at 0:00, to be paused while it flashes.
+  const shortId = await makeTimer(win, {
+    ...countdownOf('Placeholder short countdown', 2000),
+    allowsOverrun: false,
+  });
   await giveLayout(win, group, 'Placeholder flash layout', [
     {
       ...newStageBox('timer', 'placeholder-flash'),
       timerId,
-      frame: { x: 48, y: 48, width: 1824, height: 984 },
+      frame: { x: 48, y: 48, width: 1824, height: 480 },
       size: 'fit',
       color: '#ffffff',
       warn: { color: '#f5a524', fromMs: 30_000 },
       overColor: '#ef4444',
+      flash: true,
+    },
+    {
+      ...newStageBox('timer', 'placeholder-short'),
+      timerId: shortId,
+      frame: { x: 48, y: 552, width: 1824, height: 480 },
+      size: 'fit',
+      color: '#ffffff',
       flash: true,
     },
   ]);
@@ -590,7 +604,7 @@ test('a timer box’s colours and its flash at 0:00 follow the engine’s time: 
   // its even seconds, for ten seconds.
   const from = Math.ceil(zeroAt / 1000) * 1000;
   const firstDim = Math.ceil(from / 2000) * 2000;
-  const time = stage.locator('[data-stage-box="timer"] [data-timer]');
+  const time = stage.locator('[data-box-id="placeholder-flash"] [data-timer]');
   /** The timer at a moment of the engine's time, held on every output: its time, its colour, dim or not. */
   const at = async (ms: number, color: string | null, dim: boolean) => {
     expect(flashDimmed(timer, ms), `the flash's rule ${String(ms - zeroAt)} ms from 0:00`).toBe(dim);
@@ -615,13 +629,39 @@ test('a timer box’s colours and its flash at 0:00 follow the engine’s time: 
   await at(from + 10_000, '#ef4444', false);
   await at(from + 10_500, '#ef4444', false);
   await at(zeroAt + 60_000, '#ef4444', false);
-  // Paused, it never flashes.
+  // Paused inside its ten seconds, a countdown never flashes (Part A's review): the 2 s one, on the engine's own time.
   await holdClock(app, null);
+  const short = stage.locator('[data-box-id="placeholder-short"] [data-timer]');
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
+    shortId,
+  );
+  const shortTimer = (await engineState(win)).timers.find((t) => t.id === shortId);
+  if (shortTimer?.startedAt == null) throw new Error('the short countdown did not start');
+  // At 0:00, flashing: dim within its first two seconds there.
+  await expect(short).toHaveText('0:00', { timeout: 10_000 });
+  await expect(short).toHaveAttribute('data-flash', 'dim', { timeout: 10_000 });
   await win.evaluate(
     (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'pauseTimer', timerId: id }),
-    timerId,
+    shortId,
   );
-  await expect(time).not.toHaveAttribute('data-flash');
+  await expect
+    .poll(async () => (await engineState(win)).timers.find((t) => t.id === shortId)?.startedAt)
+    .toBeNull();
+  await expect(short).not.toHaveAttribute('data-flash');
+  await expect(short).toHaveText('0:00');
+  await holdStill(
+    async () => (await short.getAttribute('data-flash')) === null,
+    3000,
+    'a countdown paused at 0:00 never flashes',
+  );
+  // Held at a moment its flash would be dim, had it gone on: still not.
+  const shortFrom = Math.ceil((shortTimer.startedAt + 2000) / 1000) * 1000;
+  const wouldDim = Math.ceil(shortFrom / 2000) * 2000 + 4500;
+  expect(flashDimmed(shortTimer, wouldDim)).toBe(true);
+  expect(await holdClock(app, wouldDim)).toBeGreaterThan(0);
+  await expect(short).toHaveText('0:00');
+  await expect(short).not.toHaveAttribute('data-flash');
   await app.close();
 });
 
