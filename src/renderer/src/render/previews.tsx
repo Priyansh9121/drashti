@@ -67,7 +67,16 @@ export function drawnWidth(
  * A media item's picture filling its box: grey until it is on the screen and has loaded, then at the width it is
  * drawn on this screen, sharper as it is drawn bigger.
  */
-export function PreviewPicture({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+export function PreviewPicture({
+  mediaId,
+  style,
+  onSize,
+}: {
+  mediaId: string;
+  style: CSSProperties;
+  /** Told the picture's own size once it has loaded (a phone's viewer takes its shape, Session 54). */
+  onSize?: (natural: { width: number; height: number }) => void;
+}) {
   const loader = useContext(PreviewsContext);
   const scale = useContext(PictureScaleContext);
   // The sharpest there is, whichever place asked for it: every place drawing the picture is told when it comes.
@@ -125,7 +134,9 @@ export function PreviewPicture({ mediaId, style }: { mediaId: string; style: CSS
         data-media-id={mediaId}
         data-preview="shown"
         onLoad={(e) => {
-          loader?.measured(mediaId, src, e.currentTarget.naturalWidth);
+          const { naturalWidth, naturalHeight } = e.currentTarget;
+          loader?.measured(mediaId, src, naturalWidth);
+          if (naturalWidth > 0 && naturalHeight > 0) onSize?.({ width: naturalWidth, height: naturalHeight });
         }}
         style={style}
       />
