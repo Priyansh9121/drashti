@@ -61,6 +61,7 @@ import { openPictureEditor } from '../pictures/PictureEditor';
 import { RepeatBar } from './RepeatBar';
 import { FolderCrumbs } from './PlaylistFolders';
 import { PlaylistsUnread } from './PlaylistsUnread';
+import { clickCard } from './one-click';
 import {
   addFromLibrary,
   addHeader,
@@ -73,7 +74,6 @@ import {
   moveItemBy,
   moveItems,
   newFromTemplate,
-  pickItem,
   removeMarkedItems,
   removeMissingItems,
   renameHeader,
@@ -923,10 +923,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                       : `Not found: ${item.label}. Drag a presentation here to replace it.`
                 }
                 onClick={(e) => {
-                  const mods = { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey };
-                  // A plain click shows the item in the slide grid; with Cmd/Ctrl or Shift it only marks.
-                  if (mods.toggle || mods.range) clickItem(item.id, mods);
-                  else void pickItem(item);
+                  // One click puts a video, a picture or a sound up (Session 54), Enter too; a presentation
+                  // shows its slides in the middle; with Cmd/Ctrl or Shift it only marks.
+                  clickCard(item, e, platform);
                 }}
                 onDoubleClick={() => {
                   if (item.kind === 'header') startRenaming(item.id);
