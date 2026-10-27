@@ -8,6 +8,7 @@ import { cx } from '../../ui/cx';
 import { Eraser, Image, Music, Video } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
+import { LookAtMedia } from '../viewer/LookCloser';
 import { loadMedia, useMirror } from './mirror-store';
 
 /*
@@ -15,7 +16,8 @@ import { loadMedia, useMirror } from './mirror-store';
  * sheet lists them, by name, 100 at a time, found by a word of their names. One tap puts one up: a picture or a
  * video as the background, the slide taken off, as a playlist's picture item goes up; a sound plays over the rest.
  * The one up says so, with Take off (the background's or the sound's clear). A missing file, or one Drashti cannot
- * play as it is, says so and is not offered. Adding one to a playlist, its markers and converting it stay in Drashti;
+ * play as it is, says so and is not offered. Beside a picture or a video, D1's Look or Play opens it on this device
+ * alone, as a playlist's row has it. Adding one to a playlist, its markers and converting it stay in Drashti;
  * the video inputs listed with Media there are that computer's own. D4's Add from this Phone… goes at the top
  * (LibraryPanel.tsx), while Drashti takes files from phones.
  */
@@ -96,6 +98,8 @@ function MediaRow({ m, up }: { m: RemoteMedia; up: 'background' | 'audio' | null
           Take off
         </Button>
       )}
+      {/* Session 54 (D1): a picture looked at, or a video played, on this device only. */}
+      {m.kind !== 'audio' && !m.missing && <LookAtMedia mediaId={m.id} media={m.kind} name={m.name} />}
     </li>
   );
 }
