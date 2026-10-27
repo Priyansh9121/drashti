@@ -14,7 +14,7 @@ export function PhoneStopped() {
     <div
       role="alert"
       data-testid="phone-stopped"
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-ink px-5 py-8"
+      className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-ink px-5 py-8"
     >
       <div className="max-w-md space-y-4 text-center">
         <p className="flex items-center justify-center gap-2.5 text-base font-bold tracking-wide text-muted">
