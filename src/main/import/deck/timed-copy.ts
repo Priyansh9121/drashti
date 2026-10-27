@@ -145,17 +145,19 @@ function chainTiming(timing: TreeElement, plan: PlannedSlide): boolean {
         const delay = Number(attrOf(cond, 'delay'));
         const at = Math.round(start + (Number.isFinite(delay) ? delay : 0));
         setAttr(cond, 'delay', at);
-        // What repeats until the slide ends turns until the plan's last hold is cut, then stops (whole turns).
-        if (plan.endlessUntilMs !== null)
-          for (const effect of effects) {
-            const tn = cTnOf(effect);
-            if (!tn || attrOf(tn, 'repeatCount') !== 'indefinite') continue;
-            const own = Number(attrOf(firstCond(tn), 'delay'));
-            const from = at + (Number.isFinite(own) ? own : 0);
-            const turn = turnOf(effect);
-            if (turn > 0)
-              setAttr(tn, 'repeatCount', Math.max(1, Math.ceil((plan.endlessUntilMs - from) / turn)) * 1000);
-          }
+        // What repeats until the slide ends turns until the plan's last hold is cut, then stops (whole turns); what
+        // repeats until the next click, until its own step's hold is cut (C review: the click stops it in the show).
+        for (const effect of effects) {
+          const tn = cTnOf(effect);
+          if (!tn || attrOf(tn, 'repeatCount') !== 'indefinite') continue;
+          const toClick = elementsOf(childOf(tn, 'p:endCondLst')).some((c) => attrOf(c, 'evt') === 'onNext');
+          const until = toClick ? plan.groups[i]?.untilMs : plan.endlessUntilMs;
+          if (until === undefined || until === null) continue;
+          const own = Number(attrOf(firstCond(tn), 'delay'));
+          const from = at + (Number.isFinite(own) ? own : 0);
+          const turn = turnOf(effect);
+          if (turn > 0) setAttr(tn, 'repeatCount', Math.max(1, Math.ceil((until - from) / turn)) * 1000);
+        }
         merged.push(sub);
       }
       // The first effect of a former click now runs on after the one before.

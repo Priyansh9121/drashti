@@ -52,6 +52,11 @@ export interface ImportServiceDeps {
    * is converted (Session 50). Left out: never.
    */
   onAir?(): boolean;
+  /**
+   * Whether a deck comes in with its animations (Session 54, C review: File › Decks With Their Animations on This
+   * Computer), asked as each import starts so a change counts from the next; left out, the worker's own `baker`.
+   */
+  baker?(): boolean | 'stand-in';
   /** Draw a PDF's pages as pictures for the worker (Session 15): it cannot open the window that draws. */
   drawPdf?(pdf: string, outDir: string, signal: AbortSignal): Promise<PicturesResult>;
   log(level: 'info' | 'warn', message: string): void;
@@ -323,6 +328,7 @@ export class ImportService {
         options: job.options,
         ...(job.mediaIds ? { mediaIds: job.mediaIds } : {}),
         ...this.deps.worker,
+        ...(this.deps.baker ? { baker: this.deps.baker() } : {}),
         ...(playsHevc === undefined ? {} : { playsHevc }),
       });
     };

@@ -17,7 +17,7 @@ afterEach(() => {
 const FFMPEG = '/Applications/Drashti.app/Contents/Resources/ffmpeg/ffmpeg';
 
 /** A record whose system is a table the test sets: what is running, and what was stopped. */
-function setUp(running: Map<number, ProcessFacts>, ownPid = 1) {
+function setUp(running: Map<number, ProcessFacts>, ownPid = 1, showing: number[] = []) {
   dir = mkdtempSync(join(tmpdir(), 'drashti-leftovers-'));
   const stopped: number[] = [];
   const asked: number[][] = [];
@@ -40,6 +40,10 @@ function setUp(running: Map<number, ProcessFacts>, ownPid = 1) {
       running.delete(e.pid);
     },
     alive: (pid) => running.has(pid),
+    showsWindow: (pids) => {
+      asked.push([...pids]);
+      return new Set(pids.filter((p) => showing.includes(p)));
+    },
     ownPid,
     log: (_level, message) => said.push(message),
   });
@@ -82,6 +86,32 @@ describe('programs left running by the last run', () => {
     expect(leftovers.stopLeft()).toBe(0);
     expect(stopped).toEqual([]);
     expect(said).toEqual([]);
+    expect(leftovers.entries()).toEqual([]);
+  });
+
+  it('never stops a PowerPoint or Keynote left running that shows a window: someone is using it now (Session 54, C review)', async () => {
+    const POWERPOINT = '/Applications/Microsoft PowerPoint.app/Contents/MacOS/Microsoft PowerPoint';
+    const KEYNOTE = '/Applications/Keynote.app/Contents/MacOS/Keynote';
+    const running = new Map([
+      [4800, { startedAt: 1_000, path: POWERPOINT }],
+      [4900, { startedAt: 1_000, path: KEYNOTE }],
+      [5000, { startedAt: 1_000, path: FFMPEG }],
+    ]);
+    const { leftovers, stopped, said, asked } = setUp(running, 1, [4800]);
+    await leftovers.started(4800, 'PowerPoint');
+    await leftovers.started(4900, 'Keynote');
+    await leftovers.started(5000, 'conversion');
+    asked.length = 0;
+    expect(leftovers.stopLeft()).toBe(2);
+    expect(stopped).toEqual([4900, 5000]);
+    // Only the apps are asked about their windows.
+    expect(asked).toEqual([
+      [4800, 4900, 5000],
+      [4800, 4900],
+    ]);
+    expect(said).toContain(
+      'Left PowerPoint, left running by the last run, as it was: it shows a window, so someone is using it (process 4800)',
+    );
     expect(leftovers.entries()).toEqual([]);
   });
 

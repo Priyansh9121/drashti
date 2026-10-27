@@ -1,5 +1,5 @@
 import { mkdtemp } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ImportIssue } from '../../../shared/import';
 import type { PictureSource } from '../../../shared/pictures';
 import type { Converter } from '../deck-converters';
@@ -55,6 +55,8 @@ export async function runDeck(
   request: DeckFlowRequest,
   options: BakeOptions & {
     onAir: () => Promise<boolean>;
+    /** The deck came in as pictures before: if its animations cannot be made, that import is kept as it was. */
+    kept?: boolean;
     /** Keynote or PowerPoint started by Drashti itself (Session 31: the leftovers record). */
     appStarted?: (pid: number, app: 'PowerPoint' | 'Keynote') => void;
   },
@@ -72,7 +74,7 @@ export async function runDeck(
   const first = bakers[0];
   if (!first) return pictures(null, []);
   // Never while the stream is on air or recording (Session 50's rule for converting).
-  if (await options.onAir()) return pictures(null, [whyPictures({ kind: 'on-air' }, first)]);
+  if (await options.onAir()) return pictures(null, [whyPictures({ kind: 'on-air' }, first, options.kept)]);
   const tried: { baker: Baker; reason: string }[] = [];
   let last: Extract<BakeResult, { ok: false }> | null = null;
   for (const baker of bakers) {
@@ -92,6 +94,7 @@ export async function runDeck(
         result.baked,
         work,
         options.ffmpeg,
+        dirname(file),
       );
       const before = tried[0];
       if (before)
@@ -108,5 +111,5 @@ export async function runDeck(
     if (result.why.kind !== 'app') break;
     tried.push({ baker, reason: result.why.reason });
   }
-  return pictures(last, last ? [whyPictures(last.why, last.baker)] : []);
+  return pictures(last, last ? [whyPictures(last.why, last.baker, options.kept)] : []);
 }

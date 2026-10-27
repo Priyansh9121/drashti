@@ -75,6 +75,21 @@ function setup(overrides: Partial<ImportServiceDeps> = {}) {
 }
 
 describe('ImportService', () => {
+  it('tells each import, as it starts, whether decks come with their animations on this computer (Session 54, C review)', () => {
+    let on = false;
+    const { service, workers } = setup({ baker: () => on });
+    void service.start(['/deck.pptx']);
+    expect(workers[0]?.sent[0]).toMatchObject({ type: 'start', baker: false });
+    const first = workers[0];
+    first?.emit({
+      type: 'finished',
+      run: { id: first.runId, status: 'done', totals: emptyTotals() } as unknown as ImportRunSummary,
+    });
+    on = true;
+    void service.start(['/deck.pptx']);
+    expect(workers[1]?.sent[0]).toMatchObject({ type: 'start', baker: true });
+  });
+
   it('runs an import in a worker and passes its messages on', async () => {
     const { service, mocks, workers } = setup();
     const done = service.start(['/lyrics'], { onConflict: 'skip' });

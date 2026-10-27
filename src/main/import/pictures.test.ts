@@ -71,7 +71,7 @@ describe('a PowerPoint file read for its slides', () => {
     expect(slides.map((s) => s.deck?.groups)).toEqual([
       [],
       [],
-      [{ byClick: true, lengthMs: 500, mediaOnly: false, repeatsMs: null }],
+      [{ byClick: true, lengthMs: 500, mediaOnly: false, repeatsMs: null, untilClickMs: null }],
     ]);
   });
 

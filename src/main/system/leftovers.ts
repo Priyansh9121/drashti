@@ -15,7 +15,8 @@ import { powershellEnv, powershellPath, runPowerShell } from './powershell';
  * again, each written down that is still running, with that id, start time and program all the same, is
  * stopped and the log says so. A process that only has the id (the system gave it to another program since)
  * is never touched, and neither is an operator's own PowerPoint: only one Drashti started is ever written
- * down, and only until its deck is saved.
+ * down, and only until its deck is saved. One Drashti started that shows a window now is someone's, and is left as
+ * it is (Session 54, C review).
  */
 
 export type ChildKind = 'conversion' | 'yt-dlp' | 'PowerPoint' | 'Keynote';
@@ -186,6 +187,56 @@ export function processFactsNow(
   return facts;
 }
 
+/**
+ * Which of these PowerPoint or Keynote processes shows a window now (Session 54, C review): someone is using it, so
+ * it is never stopped, whatever of Drashti's is in it. On a Mac, one not hidden (Drashti hides the app it starts,
+ * and a file opened in it or a click on it in the Dock shows it); on Windows, one with a main window (.NET's
+ * MainWindowHandle: Drashti opens its copies without one). When it cannot be told, every one is taken to show one.
+ */
+export function showsWindowNow(
+  pids: readonly number[],
+  platform: NodeJS.Platform = process.platform,
+): Set<number> {
+  const ids = pids.filter((p) => Number.isInteger(p) && p > 0);
+  if (ids.length === 0 || (platform !== 'darwin' && platform !== 'win32')) return new Set();
+  let out: string | null;
+  try {
+    out =
+      platform === 'win32'
+        ? execFileSync(
+            powershellPath(),
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-ExecutionPolicy',
+              'Bypass',
+              '-Command',
+              `@(Get-Process -Id ${ids.join(',')} -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | ForEach-Object { $_.Id }) -join ','`,
+            ],
+            { timeout: 20_000, windowsHide: true, env: powershellEnv(), encoding: 'utf8' },
+          )
+        : execFileSync(
+            'osascript',
+            [
+              '-l',
+              'JavaScript',
+              '-e',
+              `ObjC.import('AppKit'); ${JSON.stringify(ids)}.filter(function (p) { var a = $.NSRunningApplication.runningApplicationWithProcessIdentifier(p); return !a.isNil() && !a.hidden; }).join(',')`,
+            ],
+            { timeout: 20_000, encoding: 'utf8' },
+          );
+  } catch {
+    out = null;
+  }
+  if (out === null) return new Set(ids);
+  return new Set(
+    out
+      .split(',')
+      .map((p) => Number(p.trim()))
+      .filter((p) => ids.includes(p)),
+  );
+}
+
 /** Stop a process (with the processes it started, where the system allows), at once. */
 export function stopProcess(entry: ChildEntry, platform: NodeJS.Platform = process.platform): void {
   if (platform === 'win32') {
@@ -228,6 +279,8 @@ export interface LeftoversDeps {
   factsNow?(pids: readonly number[]): Map<number, ProcessFacts>;
   stop?(entry: ChildEntry): void;
   alive?(pid: number): boolean;
+  /** Which of these PowerPoint or Keynote processes shows a window now (the start-up sweep): never stopped. */
+  showsWindow?(pids: readonly number[]): Set<number>;
   /** This Drashti's own process id: never stopped. */
   ownPid?: number;
   log(level: 'info' | 'warn', message: string): void;
@@ -310,7 +363,17 @@ export class Leftovers {
     if (children.length === 0) return 0;
     const facts = (this.deps.factsNow ?? processFactsNow)(children.map((e) => e.pid));
     const own = this.deps.ownPid ?? process.pid;
-    const stopping = children.filter((e) => e.pid !== own && isTheOne(e, facts.get(e.pid)));
+    const left = children.filter((e) => e.pid !== own && isTheOne(e, facts.get(e.pid)));
+    // A PowerPoint or Keynote that shows a window is someone's now (Session 54, C review): left as it is.
+    const apps = left.filter((e) => e.what === 'PowerPoint' || e.what === 'Keynote').map((e) => e.pid);
+    const shown = apps.length > 0 ? (this.deps.showsWindow ?? showsWindowNow)(apps) : new Set<number>();
+    for (const entry of left)
+      if (shown.has(entry.pid))
+        this.deps.log(
+          'warn',
+          `Left ${entry.what}, left running by the last run, as it was: it shows a window, so someone is using it (process ${String(entry.pid)})`,
+        );
+    const stopping = left.filter((e) => !shown.has(e.pid));
     for (const entry of stopping) {
       (this.deps.stop ?? stopProcess)(entry);
       this.deps.log(

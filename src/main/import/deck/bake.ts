@@ -1,5 +1,5 @@
 import { copyFile, stat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { PictureSource } from '../../../shared/pictures';
 import { readInfo } from '../../convert/read-info';
 import {
@@ -11,13 +11,23 @@ import {
   exists,
   firstLine,
   type MacSession,
-  type PowerShellRunner,
   sleep,
   withMacSession,
 } from '../deck-converters';
 import { type PptxDeck, readPptxDeck } from '../pictures';
-import { type CutFiles, cutMovie, type CutPlan, measureMotion, onPlan, planCuts } from './cut';
+import {
+  type CutFiles,
+  cutMovie,
+  type CutPlan,
+  DiskFull,
+  measureMotion,
+  OnAir,
+  onPlan,
+  planCuts,
+} from './cut';
+import { diskFreeBytes } from '../media-store';
 import { type Baker, keynotePlan, type MoviePlan, plannedLength, powerPointPlan } from './plan';
+import { macProgress, NO_PROGRESS_MS, noProgress } from './progress';
 import { standInMovie } from './stand-in-baker';
 import { writeTimedCopy } from './timed-copy';
 
@@ -68,7 +78,10 @@ export interface BakedDeck {
 
 /** Why a deck came in as pictures instead. */
 export type BakeFailure =
-  | { kind: 'on-air' }
+  /** On air as it was about to start, or (`during`) gone on air while it was made: stopped there. */
+  | { kind: 'on-air'; during?: boolean }
+  /** Too little free space on the disk: `neededBytes` more than the 2 GB always kept free (C review). */
+  | { kind: 'disk'; neededBytes: number }
   | { kind: 'cancelled' }
   | { kind: 'app'; reason: string; message: string; notAllowed?: boolean }
   | { kind: 'off-plan'; cuts: CutPlan }
@@ -89,13 +102,27 @@ export type BakeResult =
     };
 
 export interface BakeOptions extends ConvertOptions {
+  /** No progress on the movie for this long, and it is given up on (tests make it short). */
+  stallMs?: number;
   ffmpeg: string;
   /** The stream is on air or recording: then nothing is converted (Session 50). */
   onAir?: () => Promise<boolean>;
   /** How far it has got, in a few words. */
   progress?: (note: string) => void;
-  /** Tests: PowerShell given (a fake), as CI has no Office. */
-  runPowerShell?: PowerShellRunner;
+  /** The free space on the disk of a folder (tests give their own). */
+  freeBytes?: (dir: string) => number;
+}
+
+/** Always kept free on the disk, as converting keeps it (Session 50). */
+export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
+
+/**
+ * What making a deck's animations may take on the disk (C review): its timed copy and its own media taken out
+ * (twice the deck), and its movie and its cut steps (about 3 MB a second of movie, the cut steps at the movie's
+ * picture twice over).
+ */
+export function bakeBytes(deckBytes: number, plannedMs: number): number {
+  return 2 * deckBytes + Math.ceil((3_000_000 * plannedMs) / 1000);
 }
 
 /** A movie the app (or the stand-in) made, and what it was made from. */
@@ -120,35 +147,48 @@ type Made =
 const movieLimit = (limits: ConvertLimits, plan: MoviePlan) =>
   limits.movieMs + limits.perMovieSecondMs * Math.ceil(plannedLength(plan) / 1000);
 
+/** A movie that has not appeared by then is never coming (C review: PowerPoint asking something nobody sees). */
+export const MOVIE_APPEARS_MS = 120_000;
+/** A movie that has not grown for this long, and does not read as one, has stopped being written. */
+export const MOVIE_STALLS_MS = 60_000;
+
 /**
  * Wait for PowerPoint's movie: its `save as movie` answers at once and the file grows meanwhile. It is done when
  * its size has held for 2 s and it is as long as planned, or its size has held for 10 s and it reads as a movie.
+ * It is given up on when it has not appeared within 2 minutes, or has not grown for a minute without reading as
+ * a movie (Session 54, C review), or at the time limit.
  */
-async function settledMovie(
+export async function settledMovie(
   ffmpeg: string,
   path: string,
   plannedMs: number,
-  limitMs: number,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  const until = Date.now() + limitMs;
+  options: { limitMs: number; appearMs?: number; stallMs?: number; signal?: AbortSignal },
+): Promise<'done' | 'never' | 'stalled' | 'timeout' | 'stopped'> {
+  const { signal } = options;
+  const started = Date.now();
+  const until = started + options.limitMs;
   let last = -1;
   let held = 0;
-  while (Date.now() < until && !signal?.aborted) {
+  let grew = started;
+  while (Date.now() < until) {
+    if (signal?.aborted) return 'stopped';
     const size = await stat(path).then(
       (s) => s.size,
       () => 0,
     );
     held = size > 0 && size === last ? held + 1 : 0;
+    if (size !== last) grew = Date.now();
     last = size;
+    if (size === 0 && Date.now() - started > (options.appearMs ?? MOVIE_APPEARS_MS)) return 'never';
     if (held >= 4 && held % 4 === 0) {
       const info = await readInfo(ffmpeg, path, { timeoutMs: 30_000 });
       const length = info.durationMs ?? 0;
-      if (length >= plannedMs - 1500 || (held >= 20 && length > 0)) return true;
+      if (length >= plannedMs - 1500 || (held >= 20 && length > 0)) return 'done';
     }
+    if (size > 0 && Date.now() - grew > (options.stallMs ?? MOVIE_STALLS_MS)) return 'stalled';
     await sleep(500, signal);
   }
-  return false;
+  return signal?.aborted ? 'stopped' : 'timeout';
 }
 
 /** Wait a moment for a file an app said it wrote. */
@@ -184,7 +224,10 @@ async function powerPointOnMac(
         const opened = await s.open(input);
         if (!opened.ok) return opened.failed;
         await s.hide();
-        const inApp = join(dirname(opened.document.copy), 'deck.pptx');
+        // Under the copy's own name, as PowerPoint then calls it: still Drashti's, and closed by that name (Session
+        // 54, C review: as deck.pptx it stayed open, and the PowerPoint Drashti started with it).
+        const { copy } = opened.document;
+        const inApp = join(dirname(copy), `${basename(copy, extname(copy))}.pptx`);
         const saved = await s.tell(
           [
             'save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as Open XML presentation',
@@ -196,6 +239,7 @@ async function powerPointOnMac(
         if (saved.code !== 0) return s.fromError(saved, 'saving it as a .pptx', 'save it as a .pptx');
         if (!(await written(inApp, s.signal)))
           return s.fromError(saved, 'saving it as a .pptx', 'save it as a .pptx');
+        await s.savedAs(opened.document, inApp);
         deckFile = join(work, 'deck.pptx');
         await copyFile(inApp, deckFile);
         await s.close(opened.document);
@@ -250,8 +294,21 @@ async function powerPointOnMac(
       );
       if (asked.code !== 0) return s.fromError(asked, 'making its movie', 'make its movie');
       const limitMs = movieLimit(limits, plan);
-      if (!(await settledMovie(options.ffmpeg, movieInApp, plannedLength(plan), limitMs, s.signal))) {
-        if (s.signal?.aborted)
+      const waited = await settledMovie(options.ffmpeg, movieInApp, plannedLength(plan), {
+        limitMs,
+        signal: s.signal,
+      });
+      if (waited === 'never' || waited === 'stalled')
+        return {
+          ok: false,
+          reason:
+            waited === 'never'
+              ? 'it had not started writing the movie after 2 minutes'
+              : 'it stopped writing the movie for a minute',
+          message: 'PowerPoint did not make the deck’s movie.',
+        };
+      if (waited !== 'done') {
+        if (waited === 'stopped')
           return { ok: false, reason: 'cancelled', message: 'Cancelled.', cancelled: true };
         return {
           ok: false,
@@ -342,9 +399,22 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
       const opened = await s.open(input);
       if (!opened.ok) return opened.failed;
       await s.hide();
-      const { doc, slides } = opened.document;
-      const inside = dirname(opened.document.copy);
+      const { doc, slides, copy } = opened.document;
+      const inside = dirname(copy);
       const seconds = Math.ceil((limits.saveMs + limits.perSlideMs * Math.max(slides, 1)) / 1000);
+      // Keynote's copy of a PowerPoint file kept in Drashti's own folder before anything in it changes (Session 54,
+      // C review): once its movies are taken out, macOS would otherwise save it by itself into the operator's Keynote
+      // documents, iCloud Drive's, a copy of every deck imported.
+      if (extname(copy).toLowerCase() !== '.key') {
+        const kept = join(inside, `${basename(copy, extname(copy))}.key`);
+        const saved = await s.tell(
+          ['save (document id (item 1 of argv)) in (POSIX file (item 2 of argv))', 'return ""'],
+          [doc, kept],
+          seconds,
+        );
+        if (saved.code !== 0)
+          s.log(`could not keep its copy in Drashti’s folder: ${firstLine(saved.stderr)}`);
+      }
       // Its own PowerPoint copy: the steps and their lengths as Keynote has them, and the media's files.
       const ownCopy = join(inside, 'keynote.pptx');
       const exported = await s.tell(
@@ -402,6 +472,19 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
         return s.fromError(deleted, 'taking out its movies and sounds', 'take out its movies and sounds');
       options.progress?.('Keynote is making the movie');
       const movieInApp = join(inside, 'movie.m4v');
+      // Its export answers only once the movie is made: watched meanwhile, and given up on after a minute with no
+      // progress, neither the movie growing nor Keynote at work (Session 54, C review).
+      const pids = await s.pids();
+      const watching = new AbortController();
+      const stalled = new AbortController();
+      const before = await macProgress(pids, movieInApp);
+      const startedAt = Date.now();
+      void noProgress(() => macProgress(pids, movieInApp), {
+        signal: watching.signal,
+        stallMs: options.stallMs ?? NO_PROGRESS_MS,
+      }).then((r) => {
+        if (r === 'stalled') stalled.abort();
+      });
       const made = await s.tell(
         [
           'export (document id (item 1 of argv)) to (POSIX file (item 2 of argv)) as QuickTime movie with properties {movie format:format1080p}',
@@ -409,7 +492,16 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
         ],
         [doc, movieInApp],
         Math.ceil(movieLimit(limits, plan) / 1000),
+        stalled.signal,
       );
+      watching.abort();
+      if (stalled.signal.aborted && !s.signal?.aborted)
+        return s.stuck('making its movie (no progress for a minute)');
+      const after = await macProgress(pids, movieInApp);
+      if (before.cpuMs !== null && after.cpuMs !== null)
+        s.log(
+          `used ${String(after.cpuMs - before.cpuMs)} ms of processor time making the movie in ${String(Date.now() - startedAt)} ms`,
+        );
       if (made.code !== 0 || !(await written(movieInApp, s.signal)))
         return s.fromError(made, 'making its movie', 'make its movie');
       const movie = join(work, 'movie.m4v');
@@ -470,7 +562,7 @@ async function powerPointOnWindows(
   const movie = join(work, 'movie.mp4');
   options.progress?.('PowerPoint is making the movie');
   const made = await deckOnWindows(
-    { input: timed, pdf, movie, movieLimitMs: movieLimit(limits, plan) },
+    { input: timed, pdf, movie, movieLimitMs: movieLimit(limits, plan), stallMs: NO_PROGRESS_MS },
     work,
     { ...options, slideCount: deck.slides.length },
   );
@@ -523,17 +615,65 @@ export async function bakeDeck(
   const started = Date.now();
   const { source, input, read, work } = request;
   const platform = options.platform ?? process.platform;
+  // The stream going on air or recording while the app makes the movie stops it there (Session 50's rule): looked
+  // at every 2 s, as the app's long steps give no turn to ask between.
+  // Room on the disk first (C review): its movie and steps, besides the 2 GB always kept free; and the disk going
+  // under those 2 GB while it is made stops it, as the stream going on air does.
+  const free = options.freeBytes ?? diskFreeBytes;
+  const deckBytes = await stat(input).then(
+    (s) => s.size,
+    () => 0,
+  );
+  const need = bakeBytes(deckBytes, read ? plannedLength(powerPointPlan(read.slides)) : 0);
+  const short = KEEP_FREE_BYTES + need - free(work);
+  if (short > 0)
+    return {
+      ok: false,
+      why: { kind: 'disk', neededBytes: short },
+      pdf: null,
+      deck: read,
+      deckFile: null,
+      baker,
+    };
+  const airing = new AbortController();
+  const signal = options.signal ? AbortSignal.any([options.signal, airing.signal]) : airing.signal;
+  const stop = { full: false };
+  const watch =
+    baker !== 'stand-in'
+      ? setInterval(() => {
+          if (free(work) < KEEP_FREE_BYTES) {
+            stop.full = true;
+            airing.abort();
+          }
+          void options.onAir?.().then((on) => {
+            if (on) airing.abort();
+          });
+        }, 2000)
+      : null;
+  const onAirNow = () => airing.signal.aborted && !stop.full;
+  const disk: BakeFailure = { kind: 'disk', neededBytes: need };
   let made: Made;
   try {
+    const appOptions = { ...options, signal };
     made =
       baker === 'stand-in'
-        ? await standIn(input, read, work, options)
+        ? await standIn(input, read, work, appOptions)
         : baker === 'keynote'
-          ? await keynoteOnMac(input, work, options)
+          ? await keynoteOnMac(input, work, appOptions)
           : platform === 'win32'
-            ? await powerPointOnWindows(source, input, read, work, options)
-            : await powerPointOnMac(source, input, read, work, options);
+            ? await powerPointOnWindows(source, input, read, work, appOptions)
+            : await powerPointOnMac(source, input, read, work, appOptions);
   } catch (error) {
+    if (stop.full) return { ok: false, why: disk, pdf: null, deck: read, deckFile: null, baker };
+    if (onAirNow())
+      return {
+        ok: false,
+        why: { kind: 'on-air', during: true },
+        pdf: null,
+        deck: read,
+        deckFile: null,
+        baker,
+      };
     if (options.signal?.aborted)
       return { ok: false, why: { kind: 'cancelled' }, pdf: null, deck: read, deckFile: null, baker };
     const detail = error instanceof Error ? error.message : String(error);
@@ -545,20 +685,26 @@ export async function bakeDeck(
       deckFile: null,
       baker,
     };
+  } finally {
+    if (watch) clearInterval(watch);
   }
   if (!made.ok) {
     const f = made.failed;
     const why: BakeFailure =
       'kind' in f
         ? f
-        : f.cancelled
-          ? { kind: 'cancelled' }
-          : {
-              kind: 'app',
-              reason: f.reason,
-              message: f.message,
-              ...(f.notAllowed ? { notAllowed: true } : {}),
-            };
+        : stop.full
+          ? disk
+          : onAirNow()
+            ? { kind: 'on-air', during: true }
+            : f.cancelled
+              ? { kind: 'cancelled' }
+              : {
+                  kind: 'app',
+                  reason: f.reason,
+                  message: f.message,
+                  ...(f.notAllowed ? { notAllowed: true } : {}),
+                };
     return { ok: false, why, pdf: made.pdf, deck: made.deck, deckFile: made.deckFile, baker };
   }
   const failed = (why: BakeFailure): BakeResult => ({
@@ -584,6 +730,9 @@ export async function bakeDeck(
       progress: (done, total) => {
         options.progress?.(`Cutting step ${String(done)} of ${String(total)}`);
       },
+      onAir: options.onAir,
+      // Under the 2 GB always kept free, the cut stops too.
+      full: () => free(work) < KEEP_FREE_BYTES,
     });
     return {
       ok: true,
@@ -601,6 +750,8 @@ export async function bakeDeck(
       },
     };
   } catch (error) {
+    if (error instanceof OnAir) return failed({ kind: 'on-air', during: true });
+    if (error instanceof DiskFull) return failed(disk);
     if (options.signal?.aborted) return failed({ kind: 'cancelled' });
     return failed({ kind: 'cut', detail: error instanceof Error ? error.message : String(error) });
   }

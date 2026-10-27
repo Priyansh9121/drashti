@@ -1,16 +1,19 @@
 import { mkdir, rename } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import type { DeckMedia, DeckSlide, DeckStep } from '../../../shared/deck';
 import type { ImportIssue } from '../../../shared/import';
 import type { MediaElement, SlideElement } from '../../../shared/model';
 import { tidyNotes } from '../../../shared/pictures';
 import { cutText, plural } from '../../../shared/text';
+import { formatBytes } from '../../../shared/format';
 import { readInfo } from '../../convert/read-info';
 import { nameFromFile } from '../formats/text';
 import type { ParsedCue, ParsedMediaRef, ParsedPresentation } from '../model';
 import { mediaRef } from '../model';
 import type { PptxDeck, PptxSlide } from '../pictures';
 import { withZip, writeEntry } from '../zip';
+import { fileNameOf, pathFromReference } from '../media-resolver';
+import { realPlaceAsync } from '../../media/contained';
 import type { BakedDeck, BakeFailure, KeynoteMedia } from './bake';
 import { MAX_OFFSET_MS } from './cut';
 import type { Baker } from './plan';
@@ -94,6 +97,10 @@ class MediaRefs {
     }
     return mediaRef(i);
   }
+  /** The index a reference made by `ref` points at. */
+  indexOf(ref: string): number {
+    return Number(ref.slice(ref.lastIndexOf(':') + 1));
+  }
 }
 
 /** Keynote's own word on a slide's media (its loop, its volume), matched by kind and the nearest place. */
@@ -116,8 +123,22 @@ function keynoteFor(media: PptxMedia, slide: number, told: readonly KeynoteMedia
 }
 
 /** Every video and sound of the deck's shown slides, taken out of it (or found where it links to). */
+/**
+ * Where a deck's linked video or sound is taken from (Session 54, C review): the file it names only when that
+ * really is inside the deck's own folder; otherwise a file of its name beside the deck, or nothing. A deck from a
+ * phone (or anywhere) never brings in a file from elsewhere on this computer by naming it.
+ */
+export async function followLink(link: string, deckDir: string): Promise<string> {
+  const named = pathFromReference(link);
+  const full = isAbsolute(named) ? named : resolve(deckDir, named);
+  const place = await realPlaceAsync(deckDir, full);
+  return place?.inside ? place.path : join(deckDir, fileNameOf(link));
+}
+
 async function takeMedia(
   deckFile: string,
+  /** The deck's own folder (the operator's file's, not a copy's): links are followed only inside it. */
+  deckDir: string,
   slides: readonly PptxSlide[],
   shown: readonly number[],
   dir: string,
@@ -147,7 +168,7 @@ async function takeMedia(
     for (const m of slides[index]?.deck?.media ?? []) {
       const key = m.part ?? m.link ?? '';
       if (key === '' || media.has(key)) continue;
-      const path = m.part ? taken.get(m.part) : m.link;
+      const path = m.part ? taken.get(m.part) : m.link ? await followLink(m.link, deckDir) : undefined;
       if (!path) continue;
       const info = m.part && ffmpeg ? await readInfo(ffmpeg, path).catch(() => null) : null;
       media.set(key, { path, durationMs: info?.durationMs ?? null });
@@ -183,6 +204,8 @@ export async function bakedPresentation(
   baked: BakedDeck,
   work: string,
   ffmpeg: string | null,
+  /** The deck's own folder: its links are followed only inside it. */
+  deckDir: string,
 ): Promise<ParsedPresentation> {
   const { deck, plan, cuts, files } = baked;
   const width = baked.movie.width > 0 ? baked.movie.width : 1920;
@@ -190,6 +213,7 @@ export async function bakedPresentation(
   const shown = plan.slides.map((s) => s.index);
   const { media, posters, sounds } = await takeMedia(
     baked.deckFile,
+    deckDir,
     deck.slides,
     shown,
     join(work, 'media'),
@@ -202,10 +226,18 @@ export async function bakedPresentation(
   let videos = 0;
   let audios = 0;
   let clicked = 0;
-  let across = 0;
+  /** Sounds set to play across slides: the slide's sound; on their own slide, starting later or a second one. */
+  let acrossCued = 0;
+  let acrossLater = 0;
+  let acrossSecond = 0;
   let advancing = 0;
   let transitionSounds = 0;
   let trimmed = 0;
+  /** The last still of the shown slide before, which the movie's next transition starts from. */
+  let before: string | null = null;
+  /** Slides whose steps came off their moments: each comes in as its picture (C review). */
+  const off = new Set(cuts.offSlides);
+  const offWords: { slide: number; offsetMs: number }[] = [];
   for (const [i, planned] of plan.slides.entries()) {
     const source = deck.slides[planned.index];
     const d = source?.deck;
@@ -218,9 +250,18 @@ export async function bakedPresentation(
       await rename(from, to);
       return to;
     };
+    // A slide whose steps came off their moments comes in as its picture (C review: slide by slide, never the
+    // whole deck for one slide): its last step's last still, its videos where they sit, its sound as its own.
+    const isOff = off.has(i);
     const deckSteps: DeckStep[] = [];
     for (const [k, f] of made.entries()) {
       const label = `Slide ${String(i + 1)} step ${String(k)}`;
+      if (isOff) {
+        if (k < made.length - 1) continue;
+        const last = refs.ref(await named(f.last, `Slide ${String(i + 1)}`), 'image', `${at}&last`);
+        deckSteps.push({ clipId: last, clipMs: 0, lastId: last });
+        continue;
+      }
       const clip = refs.ref(await named(f.clip, label), 'video', `${at}&step=${String(k)}`);
       const last = refs.ref(await named(f.last, `${label} last`), 'image', `${at}&step=${String(k)}&last`);
       const hold = f.hold
@@ -247,6 +288,7 @@ export async function bakedPresentation(
         ]
       : [];
     const deckMedia: DeckMedia[] = [];
+    const cues: ParsedCue[] = [];
     const timeline = (cut?.steps[0]?.fromMs ?? 0) + planned.transitionMs + plan.settleMs;
     for (const m of d?.media ?? []) {
       const taken = media.get(m.part ?? m.link ?? '');
@@ -262,6 +304,23 @@ export async function bakedPresentation(
       );
       const loop = told ? told.loop : m.loop;
       const volume = told ? told.volume : m.volume;
+      // A sound set to play across slides (C review): starting with its slide, it is the slide's sound, which plays
+      // on as the next slides go up (Drashti's sound layer); one that starts later stays on its own slide.
+      if (m.kind === 'audio' && m.acrossSlides) {
+        const withSlide = !('clicked' in m.start) && stepOfGroup(d?.groups ?? [], m.start.group) === 0;
+        if (withSlide && cues.length === 0) {
+          cues.push({
+            kind: 'audio',
+            label: m.name,
+            media: refs.indexOf(mediaId),
+            props: { volume: m.muted ? 0 : volume, loop },
+          });
+          acrossCued++;
+          continue;
+        }
+        if (withSlide) acrossSecond++;
+        else acrossLater++;
+      }
       let start: DeckMedia['start'];
       if ('clicked' in m.start) {
         start = { clicked: true };
@@ -288,8 +347,10 @@ export async function bakedPresentation(
         start,
         ...(m.acrossSlides ? { acrossSlides: m.acrossSlides } : {}),
         ...(m.hideWhenStopped ? { hideWhenStopped: true } : {}),
+        // Shown only from its entrance and until its exit, where the deck animates it in or out (C review).
+        ...(m.enterGroup !== null ? { enterStep: stepOfGroup(d?.groups ?? [], m.enterGroup) } : {}),
+        ...(m.exitGroup !== null ? { exitStep: stepOfGroup(d?.groups ?? [], m.exitGroup) } : {}),
       });
-      if (m.acrossSlides) across++;
       if (m.kind === 'video') {
         videos++;
         const element: MediaElement = {
@@ -322,21 +383,49 @@ export async function bakedPresentation(
           }
         : {}),
       ...(t?.advanceMs ? { deckAdvanceMs: t.advanceMs } : {}),
+      // Its step-0 clip was made after the shown slide before it (Session 54, C review): the show plays the deck's
+      // own transition only where that slide's last still is what is up.
+      ...(before ? { after: before } : {}),
       steps: deckSteps,
       media: deckMedia,
     };
+    before = deckSteps.at(-1)?.lastId ?? null;
+    if (isOff) {
+      // Its sound that starts with it, as its own sound (one a slide); the rest stays out.
+      const sound = deckMedia.find((m) => m.kind === 'audio' && 'step' in m.start && m.start.step === 0);
+      if (sound && cues.length === 0)
+        cues.push({
+          kind: 'audio',
+          label: '',
+          media: refs.indexOf(sound.mediaId),
+          props: { volume: sound.muted ? 0 : sound.volume, loop: sound.loop },
+        });
+      const worst = Math.max(
+        0,
+        ...cuts.offsets
+          .filter((o) => o.slide === i && o.offsetMs !== null)
+          .map((o) => Math.abs(o.offsetMs ?? 0)),
+      );
+      offWords.push({ slide: i + 1, offsetMs: worst });
+    }
     slides.push({
       label: '',
       notes: tidyNotes(source?.notes ?? ''),
       background: null,
       enabled: true,
       elements,
-      cues: [],
-      deck: deckSlide,
+      cues,
+      ...(isOff ? {} : { deck: deckSlide }),
     });
   }
   const hidden = deck.slides.length - plan.slides.length;
-  const stepsCount = slides.reduce((n, s) => n + (s.deck.steps.length > 0 ? s.deck.steps.length - 1 : 0), 0);
+  const stepsCount = slides.reduce(
+    (n, s) => n + (s.deck && s.deck.steps.length > 0 ? s.deck.steps.length - 1 : 0),
+    0,
+  );
+  // The furthest step from its moment on the slides cut into steps (those off it came in as pictures).
+  const onSlides = baked.cuts.offsets.filter((o) => o.offsetMs !== null && !off.has(o.slide));
+  const worstOn = onSlides.length > 0 ? Math.max(...onSlides.map((o) => Math.abs(o.offsetMs ?? 0))) : null;
   return {
     name: nameFromFile(basename(fileName)),
     ref: null,
@@ -352,13 +441,16 @@ export async function bakedPresentation(
       bakeMs: baked.bakeMs,
       slides: slides.length,
       clicks: stepsCount,
-      worstMs: baked.cuts.worst ? Math.abs(baked.cuts.worst.offsetMs) : null,
+      worstMs: worstOn,
+      offSlides: offWords,
       hidden,
       withNotes: slides.filter((s) => s.notes !== '').length,
       videos,
       audios,
       clicked,
-      across,
+      acrossCued,
+      acrossLater,
+      acrossSecond,
       transitionSounds,
       advancing,
       trimmed,
@@ -399,14 +491,18 @@ export function bakedIssues(d: {
   audios: number;
   /** Videos and sounds that start only when clicked on (a trigger in the deck). */
   clicked: number;
-  /** Sounds that play on across slides. */
-  across: number;
+  /** Sounds set to play across slides: as their slide's sound; starting later, or a slide's second, on their own slide. */
+  acrossCued: number;
+  acrossLater: number;
+  acrossSecond: number;
   transitionSounds: number;
   /** Slides that moved on by themselves in the deck. */
   advancing: number;
   trimmed: number;
   /** Effects that ran when a shape was clicked. */
   triggers: number;
+  /** Slides (from 1) that came in as their pictures, a step off its moment by so much (C review). */
+  offSlides?: readonly { slide: number; offsetMs: number }[];
 }): ImportIssue[] {
   const info = (code: string, message: string): ImportIssue => ({
     severity: 'info',
@@ -420,6 +516,18 @@ export function bakedIssues(d: {
       `${APP[d.baker]} made this deck’s movie with its animations in ${took(d.bakeMs)}: ${plural(d.slides, 'slide')} with ${plural(d.clicks, 'click')}. Next and Back step through the clicks as in its slide show, then on to the next slide; each slide’s own transition plays as it comes in.`,
     ),
   ];
+  const offs = d.offSlides ?? [];
+  if (offs.length > 0) {
+    const names = offs.map((o) => String(o.slide));
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+    const furthest = Math.max(...offs.map((o) => o.offsetMs));
+    out.push({
+      severity: 'warning',
+      code: 'deck-slides-pictures',
+      message: `${offs.length === 1 ? `Slide ${list ?? ''} came in as its picture` : `Slides ${list ?? ''} came in as their pictures`}, without ${offs.length === 1 ? 'its' : 'their'} animations: a step came ${(furthest / 1000).toFixed(2)} s from its moment in the movie (more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s), so ${offs.length === 1 ? 'it' : 'they'} could not be cut exactly. Something there may move all the time (an animated picture).`,
+      fix: null,
+    });
+  }
   if (d.worstMs !== null)
     out.push(
       info(
@@ -432,6 +540,31 @@ export function bakedIssues(d: {
       info(
         'deck-media',
         `Its ${[some(d.videos, 'video'), some(d.audios, 'sound')].filter(Boolean).join(' and ')} came in as real media, played as the deck plays ${d.videos + d.audios === 1 ? 'it' : 'them'} (when ${d.videos + d.audios === 1 ? 'it starts' : 'they start'}, ${d.trimmed > 0 ? 'trims, ' : ''}loop and volume), with the time bar under LIVE.`,
+      ),
+    );
+  if (d.acrossCued > 0)
+    out.push(
+      info(
+        'deck-across-slides',
+        d.acrossCued === 1
+          ? '1 sound set to play across slides came in as its slide’s sound: it plays on as the next slides go up, until it ends or another sound takes its place.'
+          : `${String(d.acrossCued)} sounds set to play across slides came in as their slides’ sounds: each plays on as the next slides go up, until it ends or another sound takes its place.`,
+      ),
+    );
+  if (d.acrossLater > 0)
+    out.push(
+      info(
+        'deck-across-own-slide',
+        d.acrossLater === 1
+          ? '1 sound set to play across slides starts on a click: here it plays on its own slide only.'
+          : `${String(d.acrossLater)} sounds set to play across slides start on a click: here they play on their own slides only.`,
+      ),
+    );
+  if (d.acrossSecond > 0)
+    out.push(
+      info(
+        'deck-across-own-slide',
+        `${plural(d.acrossSecond, 'sound', 'sounds')} set to play across slides ${d.acrossSecond === 1 ? 'plays' : 'play'} on ${d.acrossSecond === 1 ? 'its' : 'their'} own slide only here: ${d.acrossSecond === 1 ? 'its slide has' : 'their slides have'} another sound that plays on.`,
       ),
     );
   if (d.transitionSounds > 0)
@@ -488,31 +621,51 @@ export function bakedIssues(d: {
 }
 
 /** Why a deck came in as pictures, said plainly (the report's first word on it). */
-export function whyPictures(why: BakeFailure, baker: Baker): ImportIssue {
+export function whyPictures(why: BakeFailure, baker: Baker, kept = false): ImportIssue {
   const app = APP[baker];
-  const lost = 'its slides came in as pictures, without their animations';
+  // The deck was imported as pictures before, and asked for again for its animations: that import stays.
+  const lost = kept
+    ? 'the earlier import was kept as it was'
+    : 'its slides came in as pictures, without their animations';
   const message =
     why.kind === 'on-air'
-      ? `The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
-      : why.kind === 'off-plan'
-        ? `${app} made the deck’s movie, but ${
-            why.cuts.lostSlides.length > 0
-              ? `slide ${String((why.cuts.lostSlides[0] ?? 0) + 1)} was not where it should be in it`
-              : `a step on slide ${String((why.cuts.worst?.slide ?? 0) + 1)} came ${(Math.abs(why.cuts.worst?.offsetMs ?? 0) / 1000).toFixed(2)} s from its moment (more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s)`
-          }, so its clicks could not be cut exactly: ${lost}.`
-        : why.kind === 'cut'
-          ? `${app} made the deck’s movie, but it could not be cut into its steps (${why.detail}): ${lost}.`
-          : why.kind === 'nothing'
-            ? `This deck has nothing to show with its animations (${why.detail}).`
-            : why.kind === 'cancelled'
-              ? `Cancelled while its animations were being made: ${lost}.`
-              : `${app} could not make the deck’s movie (${why.reason}): ${lost}.`;
+      ? why.during
+        ? `The stream went on air, so Drashti stopped making this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
+        : `The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): ${lost}. Import it again once the stream is off air.`
+      : why.kind === 'disk'
+        ? `There is not enough free disk space to make this deck’s animations (it needs about ${formatBytes(why.neededBytes)} more than the 2 GB Drashti keeps free): ${lost}.`
+        : why.kind === 'off-plan'
+          ? `${app} made the deck’s movie, but ${
+              why.cuts.lengthOff
+                ? `it was ${took(why.cuts.lengths.movieMs)} long where ${took(why.cuts.lengths.plannedMs)} were planned (it did not use the deck’s timings)`
+                : `steps on ${String(why.cuts.offSlides.length)} of its ${String(why.cuts.slides.length)} slides came more than ${(MAX_OFFSET_MS / 1000).toFixed(1)} s from their moments`
+            }, so its clicks could not be cut exactly: ${lost}.`
+          : why.kind === 'cut'
+            ? `${app} made the deck’s movie, but it could not be cut into its steps (${why.detail}): ${lost}.`
+            : why.kind === 'nothing'
+              ? `This deck has nothing to show with its animations (${why.detail}).`
+              : why.kind === 'cancelled'
+                ? `Cancelled while its animations were being made: ${lost}.`
+                : `${app} could not make the deck’s movie (${why.reason}): ${lost}.`;
   return { severity: 'warning', code: 'deck-pictures', message, fix: null };
 }
 
 /** The report's word on a deck's videos and sounds, brought in beside its pictures. */
-export function picturesMediaIssues(d: { videos: number; cued: number; left: number }): ImportIssue[] {
+export function picturesMediaIssues(d: {
+  videos: number;
+  cued: number;
+  left: number;
+  /** Its videos and sounds that could not be put on their slides (its pictures not one a slide; C review). */
+  unmatched?: number;
+}): ImportIssue[] {
   const out: ImportIssue[] = [];
+  if ((d.unmatched ?? 0) > 0)
+    out.push({
+      severity: 'warning',
+      code: 'deck-media-unmatched',
+      message: `${d.unmatched === 1 ? 'Its video or sound was' : `Its ${String(d.unmatched)} videos and sounds were`} left out: its pictures could not be matched to its slides one for one (some pages could not be drawn, or the PDF has a different number of pages than it has slides shown).`,
+      fix: null,
+    });
   if (d.videos > 0)
     out.push({
       severity: 'info',
@@ -570,11 +723,13 @@ export async function addDeckMedia(
   sourcePath: string,
   work: string,
   ffmpeg: string | null,
-): Promise<{ videos: number; cued: number; left: number }> {
+  /** The deck's own folder: its links are followed only inside it. */
+  deckDir: string,
+): Promise<{ videos: number; cued: number; left: number; unmatched?: number }> {
   const shown = deck.slides.flatMap((s, i) => (s.hidden ? [] : [i]));
   const slides = parsed.groups.flatMap((g) => g.slides);
-  if (slides.length !== shown.length) return { videos: 0, cued: 0, left: 0 };
-  const { media } = await takeMedia(deckFile, deck.slides, shown, join(work, 'media'), ffmpeg);
+  if (slides.length !== shown.length) return { videos: 0, cued: 0, left: 0, unmatched: deckMediaCount(deck) };
+  const { media } = await takeMedia(deckFile, deckDir, deck.slides, shown, join(work, 'media'), ffmpeg);
   let videos = 0;
   let cued = 0;
   let left = 0;
@@ -623,9 +778,15 @@ export async function addDeckMedia(
   return { videos, cued, left };
 }
 
+/** How many videos and sounds the deck's shown slides have. */
+export function deckMediaCount(deck: PptxDeck): number {
+  return deck.slides.reduce((n, s) => n + (s.hidden ? 0 : (s.deck?.media.length ?? 0)), 0);
+}
+
 /** The deck's videos and sounds as files of their own (a computer with neither PowerPoint nor Keynote). */
 export async function deckMediaFiles(deckFile: string, deck: PptxDeck, dir: string): Promise<string[]> {
   const shown = deck.slides.flatMap((s, i) => (s.hidden ? [] : [i]));
-  const { media } = await takeMedia(deckFile, deck.slides, shown, dir, null);
+  // Taken out of the deck only: a link is never followed here.
+  const { media } = await takeMedia(deckFile, dir, deck.slides, shown, dir, null);
   return [...media.values()].map((m) => m.path).filter((p) => dirname(p) === dir);
 }

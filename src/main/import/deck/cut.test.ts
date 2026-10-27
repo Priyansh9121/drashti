@@ -207,9 +207,11 @@ describe('cutting a movie into its steps', () => {
     expect(cuts.offsets.find((o) => o.slide === 2 && o.step === 1)?.offsetMs).toBeNull();
   });
 
-  it('a step 0.3 s off its plan sends the deck back to pictures; one 0.1 s off is cut at its own moment', () => {
+  it('a step 0.3 s off its plan sends its own slide back to its picture, not the deck; one 0.1 s off is cut at its own moment', () => {
     const late = planCuts(PLAN, motionOf(PLAN, { '0:2': 300 }));
-    expect(onPlan(late)).toBe(false);
+    // Its slide alone (C review: an animated picture there must not send the whole deck to pictures).
+    expect(late.offSlides).toEqual([0]);
+    expect(onPlan(late)).toBe(true);
     expect(late.worst).toMatchObject({ slide: 0, step: 2 });
     expect(Math.abs((late.worst?.offsetMs ?? 0) - 300)).toBeLessThanOrEqual(FRAME);
     expect(Math.abs(late.worst?.offsetMs ?? 0)).toBeGreaterThan(MAX_OFFSET_MS);
@@ -221,9 +223,26 @@ describe('cutting a movie into its steps', () => {
     expect((early.slides[0]?.steps[1]?.fromMs ?? 0) <= timeline + 300 - LEAD_MS + FRAME).toBe(true);
   });
 
-  it('a slide whose transition is nowhere near its moment sends the deck back to pictures', () => {
+  it('a slide whose transition cannot be seen (two slides alike) is cut by the plan, which the timed copy keeps', () => {
     const cuts = planCuts(PLAN, motionOf(PLAN, {}, [2]));
     expect(cuts.lostSlides).toEqual([2]);
-    expect(onPlan(cuts)).toBe(false);
+    expect(cuts.offSlides).toEqual([]);
+    expect(onPlan(cuts)).toBe(true);
+  });
+
+  it('a movie much longer or shorter than its plan, or with most slides off, sends the whole deck back to pictures', () => {
+    const motion = motionOf(PLAN);
+    // PowerPoint ignoring the copy's timings (5 s a slide, say): a movie of quite another length.
+    const longer = planCuts(PLAN, { ...motion, durationMs: motion.durationMs + 10_000 });
+    expect(longer.lengthOff).toBe(true);
+    expect(onPlan(longer)).toBe(false);
+    expect(planCuts(PLAN, { ...motion, durationMs: motion.durationMs + 500 }).lengthOff).toBe(false);
+    // Two of three slides off: the movie did not play the plan.
+    const first = PLAN.slides[0];
+    if (!first) throw new Error('no slide');
+    const three: MoviePlan = { ...PLAN, slides: [0, 1, 2].map((index) => ({ ...first, index })) };
+    const most = planCuts(three, motionOf(three, { '0:1': 400, '1:2': -400 }));
+    expect(most.offSlides).toEqual([0, 1]);
+    expect(onPlan(most)).toBe(false);
   });
 });

@@ -1,7 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { basename, dirname, extname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readInfo } from '../../convert/read-info';
 import { CONVERT_LIMITS, findConverters, withMacSession } from '../deck-converters';
@@ -36,6 +44,147 @@ const running = (name: string) => {
   }
 };
 
+/**
+ * Keynote's own documents folders, iCloud Drive's and this Mac's: where macOS keeps a document Keynote saved by itself
+ * once it was changed. Never one of Drashti's copies (Session 54, C review: Keynote's copy of a deck, its movies taken
+ * out, was kept there, in iCloud).
+ */
+const KEYNOTE_DOCUMENTS = [
+  join(homedir(), 'Library', 'Mobile Documents', 'com~apple~Keynote', 'Documents'),
+  join(homedir(), 'Library', 'Containers', 'com.apple.iWork.Keynote', 'Data', 'Documents'),
+];
+const drashtiCopies = () =>
+  KEYNOTE_DOCUMENTS.flatMap((folder) => {
+    try {
+      return readdirSync(folder)
+        .filter((f) => f.includes('(Drashti copy'))
+        .map((f) => join(folder, f));
+    } catch {
+      return [];
+    }
+  });
+
+const IDS = { powerpoint: 'com.microsoft.Powerpoint', keynote: 'com.apple.iWork.Keynote' } as const;
+type App = keyof typeof IDS;
+
+/** Lines of AppleScript to the app, with argv; what it returned. */
+function tell(app: App, lines: string[], args: string[] = []): string {
+  return execFileSync(
+    'osascript',
+    [
+      ...['on run argv', `tell application id "${IDS[app]}"`, ...lines, 'end tell', 'end run'].flatMap(
+        (l) => ['-e', l],
+      ),
+      ...args,
+    ],
+    { encoding: 'utf8', timeout: 120_000 },
+  ).trim();
+}
+
+/**
+ * The operator's work in progress (Session 54, C review): in PowerPoint, a new presentation with a placeholder title,
+ * never saved; in Keynote, the placeholder deck `from` opened as a double-click opens it (starting Keynote), saved
+ * into the test's own folder (macOS would otherwise keep it in iCloud Drive by itself once changed), then a slide
+ * added. Its name.
+ */
+function placeholder(app: App, from: string, dir: string): string {
+  if (app === 'powerpoint')
+    return tell(app, [
+      'set p to make new presentation',
+      'set s to make new slide at end of p with properties {layout:slide layout title only}',
+      'set content of text range of text frame of shape 1 of s to "Placeholder work in progress"',
+      'return name of p',
+    ]);
+  const file = join(dir, 'Placeholder work.pptx');
+  copyFileSync(from, file);
+  execFileSync('open', ['-g', '-j', '-b', IDS[app], file, '--args', '-ApplePersistenceIgnoreState', 'YES']);
+  return tell(
+    app,
+    [
+      'repeat 600 times',
+      'if (count of documents) > 0 then exit repeat',
+      'delay 0.1',
+      'end repeat',
+      'set d to document 1',
+      'save d in (POSIX file (item 1 of argv))',
+      'tell d to make new slide',
+      'return name of d',
+    ],
+    [join(dir, 'Placeholder work.key')],
+  );
+}
+
+/** The placeholder as the app has it (open, saved or not, where), and how many documents are open. */
+function placeholderState(app: App, name: string): string {
+  return app === 'powerpoint'
+    ? tell(
+        app,
+        [
+          'set found to "gone"',
+          'repeat with i from 1 to (count of presentations)',
+          'set p to presentation i',
+          'if (name of p) is (item 1 of argv) then',
+          'set pth to ""',
+          'try',
+          'set pth to path of p',
+          'end try',
+          'set found to "open, saved " & ((saved of p) as text) & ", path “" & pth & "”"',
+          'end if',
+          'end repeat',
+          'return found & ", " & ((count of presentations) as text) & " open"',
+        ],
+        [name],
+      )
+    : tell(
+        app,
+        [
+          'set found to "gone"',
+          'repeat with i from 1 to (count of documents)',
+          'set d to document i',
+          'if (name of d) is (item 1 of argv) then',
+          'set f to file of d',
+          'set pth to "none"',
+          'if f is not missing value then set pth to POSIX path of f',
+          'set found to "open, " & ((count of slides of d) as text) & " slides, file " & pth',
+          'end if',
+          'end repeat',
+          'return found & ", " & ((count of documents) as text) & " open"',
+        ],
+        [name],
+      );
+}
+
+/** Start the app as the operator would have it open (hidden here), and wait for it to answer. */
+async function startApp(app: App): Promise<void> {
+  execFileSync('open', ['-g', '-j', '-b', IDS[app], '--args', '-ApplePersistenceIgnoreState', 'YES']);
+  for (let i = 0; i < 240; i++) {
+    try {
+      tell(app, ['return version']);
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+  throw new Error(`${app} did not start`);
+}
+
+/** Close everything open in the app unsaved, and quit it, as the test found it (not running). */
+async function closeAndQuit(app: App, process: string): Promise<void> {
+  const docs = app === 'powerpoint' ? 'presentations' : 'documents';
+  const one = app === 'powerpoint' ? 'presentation' : 'document';
+  try {
+    tell(app, [
+      `repeat with i from (count of ${docs}) to 1 by -1`,
+      `close ${one} i saving no`,
+      'end repeat',
+      'quit saving no',
+    ]);
+  } catch {
+    // Quitting answers late at times: it is waited for below.
+  }
+  for (let i = 0; i < 80 && running(process); i++) await new Promise((r) => setTimeout(r, 250));
+}
+
 describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoint))(
   'a deck made into its steps by this Mac’s PowerPoint and Keynote, for real',
   () => {
@@ -48,7 +197,11 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
       if (to) appendFileSync(join(to, 'log.txt'), `${line}\n`);
     };
 
+    /** Drashti's copies kept in Keynote's documents before (none, as a rule): none is ever added. */
+    let copiesBefore: string[] = [];
+    const newCopies = () => drashtiCopies().filter((f) => !copiesBefore.includes(f));
     beforeAll(() => {
+      copiesBefore = drashtiCopies();
       if (running('Keynote') || running('Microsoft PowerPoint'))
         throw new Error('Quit Keynote and PowerPoint first: this test starts and quits them.');
       writeFileSync(deck, makeTestDeck(TRIAL_SLIDES, makeDeckMedia(ffmpeg, join(dir, 'made'))));
@@ -98,7 +251,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         // The pictures too, should the movie not do.
         expect(result.pdf && existsSync(result.pdf)).toBe(true);
         // Its videos and sounds as real media, from the deck.
-        const parsed = await bakedPresentation('Placeholder trial.pptx', deck, baked, work, ffmpeg);
+        const parsed = await bakedPresentation('Placeholder trial.pptx', deck, baked, work, ffmpeg, dir);
         expect(parsed.groups[0]?.slides.map((s) => s.deck?.media.length)).toEqual([0, 0, 0, 1, 2]);
         expect(parsed.groups[0]?.slides[3]?.deck?.media[0]?.clip).toEqual({ startMs: 1000, endMs: 4000 });
         // Drashti started it: it is quit.
@@ -115,7 +268,11 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         const made = await withMacSession('powerpoint', deck, dir, CONVERT_LIMITS, { log }, async (s) => {
           const opened = await s.open(deck);
           if (!opened.ok) return opened.failed;
-          const inApp = join(dirname(opened.document.copy), 'old.ppt');
+          // Under the copy's own name, so that it is still Drashti's copy, closed by its new name.
+          const inApp = join(
+            dirname(opened.document.copy),
+            `${basename(opened.document.copy, extname(opened.document.copy))}.ppt`,
+          );
           const r = await s.tell(
             [
               'save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as presentation',
@@ -126,6 +283,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
           );
           for (let i = 0; i < 40 && !existsSync(inApp); i++) await new Promise((w) => setTimeout(w, 250));
           if (r.code === 0 && existsSync(inApp)) copyFileSync(inApp, ppt);
+          await s.savedAs(opened.document, inApp);
           return { ok: true as const };
         });
         expect(made.ok).toBe(true);
@@ -178,6 +336,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
           [5, false],
         ]);
         expect(running('Keynote')).toBe(false);
+        expect(newCopies()).toEqual([]);
       },
       900_000,
     );
@@ -187,7 +346,17 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
       async () => {
         // A Keynote file, made by Keynote from the trial deck (as the PDF test makes one).
         const key = join(dir, 'Placeholder trial.key');
-        execFileSync('open', ['-g', '-j', '-b', 'com.apple.iWork.Keynote', deck]);
+        // Without Keynote's last windows (as Drashti starts it): with them, it may not open the file at all.
+        execFileSync('open', [
+          '-g',
+          '-j',
+          '-b',
+          'com.apple.iWork.Keynote',
+          deck,
+          '--args',
+          '-ApplePersistenceIgnoreState',
+          'YES',
+        ]);
         execFileSync(
           'osascript',
           [
@@ -227,7 +396,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         expect(baked.plan.slides).toHaveLength(5);
         for (const o of baked.cuts.offsets.filter((x) => x.offsetMs !== null))
           expect(Math.abs(o.offsetMs ?? 0)).toBeLessThanOrEqual(200);
-        const parsed = await bakedPresentation('Placeholder trial.key', key, baked, work, ffmpeg);
+        const parsed = await bakedPresentation('Placeholder trial.key', key, baked, work, ffmpeg, dir);
         // Its videos and sound, from Keynote's own copy, with Keynote's loop and volume.
         expect(parsed.groups[0]?.slides.map((s) => s.deck?.media.map((m) => m.kind))).toEqual([
           [],
@@ -238,6 +407,112 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         ]);
         expect(parsed.groups[0]?.slides[3]?.deck?.media[0]).toMatchObject({ loop: true, volume: 0.8 });
         expect(running('Keynote')).toBe(false);
+        expect(newCopies()).toEqual([]);
+      },
+      900_000,
+    );
+
+    // ---- the operator's own work in the app (Session 54, C review) ----------------------------------------------
+
+    it.skipIf(!has.powerpoint)(
+      'PowerPoint already open on an unsaved placeholder presentation: the deck is made in it, and it is left open, the placeholder open and unsaved',
+      async () => {
+        expect(running('Microsoft PowerPoint')).toBe(false);
+        await startApp('powerpoint');
+        const name = placeholder('powerpoint', deck, dir);
+        try {
+          expect(placeholderState('powerpoint', name)).toBe('open, saved false, path “”, 1 open');
+          const work = mkdtempSync(join(dir, 'powerpoint-open-'));
+          const result = await bakeDeck(
+            'powerpoint',
+            { source: 'pptx', input: deck, read: await readPptxDeck(deck), work },
+            { ffmpeg, log },
+          );
+          if (!result.ok) log(`PowerPoint (already open): ${JSON.stringify(result.why)}`);
+          expect(result.ok).toBe(true);
+          expect(running('Microsoft PowerPoint')).toBe(true);
+          // Drashti's copy closed; the placeholder as it was.
+          expect(placeholderState('powerpoint', name)).toBe('open, saved false, path “”, 1 open');
+        } finally {
+          await closeAndQuit('powerpoint', 'Microsoft PowerPoint');
+        }
+        expect(running('Microsoft PowerPoint')).toBe(false);
+      },
+      900_000,
+    );
+
+    it.skipIf(!has.keynote)(
+      'Keynote already open on an unsaved placeholder document: the deck is made in it, and it is left open, the placeholder open and unsaved',
+      async () => {
+        expect(running('Keynote')).toBe(false);
+        // Keynote started with it, as by a double-click.
+        const name = placeholder('keynote', deck, dir);
+        // The trial deck's 6 slides and the one added.
+        const state = /^open, 7 slides, file \/.*\/Placeholder work\.key\/?, 1 open$/u;
+        try {
+          expect(placeholderState('keynote', name)).toMatch(state);
+          const work = mkdtempSync(join(dir, 'keynote-open-'));
+          const result = await bakeDeck(
+            'keynote',
+            { source: 'pptx', input: deck, read: null, work },
+            { ffmpeg, log },
+          );
+          if (!result.ok) log(`Keynote (already open): ${JSON.stringify(result.why)}`);
+          expect(result.ok).toBe(true);
+          expect(running('Keynote')).toBe(true);
+          // Its work as it was, where it was saved: never saved anywhere else.
+          expect(placeholderState('keynote', name)).toMatch(state);
+          expect(newCopies()).toEqual([]);
+        } finally {
+          await closeAndQuit('keynote', 'Keynote');
+        }
+        expect(running('Keynote')).toBe(false);
+      },
+      900_000,
+    );
+
+    it.skipIf(!has.powerpoint)(
+      'PowerPoint Drashti started, with a placeholder presentation opened in it while the movie is made: left open, the placeholder open and unsaved',
+      async () => {
+        expect(running('Microsoft PowerPoint')).toBe(false);
+        const lines: string[] = [];
+        let name = '';
+        const meanwhile: { opened?: Promise<void> } = {};
+        const work = mkdtempSync(join(dir, 'powerpoint-meanwhile-'));
+        try {
+          const result = await bakeDeck(
+            'powerpoint',
+            { source: 'pptx', input: deck, read: await readPptxDeck(deck), work },
+            {
+              ffmpeg,
+              log: (line) => {
+                lines.push(line);
+                log(line);
+              },
+              // As the movie is being made, the operator opens PowerPoint from the Dock and starts something.
+              progress: (what) => {
+                if (what === 'PowerPoint is making the movie' && !meanwhile.opened)
+                  meanwhile.opened = Promise.resolve().then(() => {
+                    name = placeholder('powerpoint', deck, dir);
+                  });
+              },
+            },
+          );
+          await meanwhile.opened;
+          if (!result.ok) log(`PowerPoint (opened meanwhile): ${JSON.stringify(result.why)}`);
+          expect(name).not.toBe('');
+          expect(running('Microsoft PowerPoint')).toBe(true);
+          expect(placeholderState('powerpoint', name)).toBe('open, saved false, path “”, 1 open');
+          // Seen while it answered, or as it was to be quit: either way never quit.
+          expect(
+            lines.some((l) =>
+              /something else is open in it|the operator opened something in it meanwhile/u.test(l),
+            ),
+          ).toBe(true);
+        } finally {
+          await closeAndQuit('powerpoint', 'Microsoft PowerPoint');
+        }
+        expect(running('Microsoft PowerPoint')).toBe(false);
       },
       900_000,
     );

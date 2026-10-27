@@ -33,6 +33,8 @@ export interface PptxGroup {
   mediaOnly: boolean;
   /** One turn of an effect in it that repeats until the slide ends (a spin), in ms; null for none. */
   repeatsMs: number | null;
+  /** One turn of an effect in it that repeats until the next click (Session 54, C review), in ms; null for none. */
+  untilClickMs: number | null;
 }
 
 /** When one of the slide's videos or sounds starts. */
@@ -69,6 +71,10 @@ export interface PptxMedia {
   acrossSlides: number | null;
   /** Hidden while it is not playing (showWhenStopped="0"). */
   hideWhenStopped: boolean;
+  /** The group of its first entrance animation, before which it is not there (C review); null for none. */
+  enterGroup: number | null;
+  /** The group of its first exit animation, from which it is gone; null for none. */
+  exitGroup: number | null;
 }
 
 export interface PptxDeckSlide {
@@ -244,12 +250,19 @@ function readGroups(timing: XmlNode | undefined): PptxGroup[] {
       seen.reduce((longest, e) => Math.max(longest, e.atMs + runLength(e.par, true)), 0),
     );
     const endless = seen.filter((e) => kid(e.par, 'p:cTn')?.attrs['repeatCount'] === 'indefinite');
-    const turn = endless.reduce((longest, e) => Math.max(longest, runLength(e.par, true)), 0);
+    // "Until Next Click": an endless repeat that ends at the next click (its end condition), not with the slide.
+    const untilClick = (e: { par: XmlNode }) =>
+      kids(kid(kid(e.par, 'p:cTn'), 'p:endCondLst') ?? NONE).some((c) => c.attrs['evt'] === 'onNext');
+    const turnOf = (list: { par: XmlNode }[]) =>
+      list.reduce((longest, e) => Math.max(longest, runLength(e.par, true)), 0);
+    const toEnd = endless.filter((e) => !untilClick(e));
+    const toClick = endless.filter(untilClick);
     return {
       byClick: waitsForClick(group),
       lengthMs,
       mediaOnly: seen.length === 0,
-      repeatsMs: endless.length > 0 && turn > 0 ? Math.round(turn) : null,
+      repeatsMs: toEnd.length > 0 && turnOf(toEnd) > 0 ? Math.round(turnOf(toEnd)) : null,
+      untilClickMs: toClick.length > 0 && turnOf(toClick) > 0 ? Math.round(turnOf(toClick)) : null,
     };
   });
 }
@@ -317,6 +330,23 @@ function mediaNodeFor(timing: XmlNode | undefined, shapeId: string): XmlNode | u
   );
 }
 
+/** The groups of a shape's first entrance and first exit in the main sequence (C review), null where it has none. */
+function comesAndGoes(
+  groups: readonly XmlNode[],
+  shapeId: string,
+): { enter: number | null; exit: number | null } {
+  let enter: number | null = null;
+  let exit: number | null = null;
+  for (const [g, group] of groups.entries())
+    for (const e of effectsOf(group)) {
+      if (targetOf(e.par) !== shapeId) continue;
+      const kind = kid(e.par, 'p:cTn')?.attrs['presetClass'];
+      if (kind === 'entr') enter ??= g;
+      if (kind === 'exit') exit ??= g;
+    }
+  return { enter, exit };
+}
+
 /** When a shape's video or sound starts: at an effect in the main sequence, by a trigger, or by its play button. */
 function startOf(groups: readonly XmlNode[], shapeId: string): PptxMediaStart {
   for (const [g, group] of groups.entries()) {
@@ -366,6 +396,7 @@ function readMedia(
     const vol = num(node?.attrs['vol']);
     const numSld = num(node?.attrs['numSld']);
     const box = place ?? { x: 0, y: 0, w: size.cx, h: size.cy };
+    const comes = comesAndGoes(groups, shapeId);
     out.push({
       kind,
       shapeId,
@@ -384,6 +415,8 @@ function readMedia(
       start: startOf(groups, shapeId),
       acrossSlides: numSld !== null && numSld > 1 ? Math.round(numSld) : null,
       hideWhenStopped: node?.attrs['showWhenStopped'] === '0' || node?.attrs['showWhenStopped'] === 'false',
+      enterGroup: comes.enter,
+      exitGroup: comes.exit,
     });
   }
   return out;

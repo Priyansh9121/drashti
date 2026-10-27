@@ -1,10 +1,12 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DeckSlide } from '../../../shared/deck';
+import type { ConflictChoice } from '../../../shared/import';
 import type { PicturesResult } from '../../../shared/pictures';
 import { readInfo } from '../../convert/read-info';
 import { openDatabase } from '../../db/database';
@@ -12,9 +14,9 @@ import { ImportRepo } from '../../db/imports';
 import { MediaRepo } from '../../db/media';
 import { PresentationRepo } from '../../db/presentations';
 import { ffmpegHere } from '../../testing/ffmpeg-here';
-import { MediaStore } from '../media-store';
+import { MediaStore, UPLOADS_DIR } from '../media-store';
 import { runImport } from '../pipeline';
-import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../testing/make-deck';
+import { makeDeckMedia, makeTestDeck, type TestDeckSlide, TRIAL_SLIDES } from '../testing/make-deck';
 
 /*
  * A deck imported "with its animations" (Session 54, C2), end to end in the import: C1's trial deck, its media made
@@ -69,7 +71,18 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const db = openDatabase(join(root, 'drashti.sqlite'));
       const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
       const run = (
-        options: { baker: boolean | 'stand-in'; converters: boolean | 'stand-in'; onAir?: boolean },
+        options: {
+          baker: boolean | 'stand-in';
+          converters: boolean | 'stand-in';
+          /** On air now, or from the nth time it is asked (the stream going on air while the deck is made). */
+          onAir?: boolean | { from: number };
+          /** The operator's answer to an earlier run's question, for the deck. */
+          decision?: ConflictChoice;
+          /** An FFmpeg that is not there: the stand-in cannot make the movie. */
+          noFfmpeg?: boolean;
+          /** The disk's free space, as the deck's bake sees it (the media folder's own is plenty). */
+          freeBytes?: number;
+        },
         paths = [deck],
       ) =>
         runImport({
@@ -77,13 +90,18 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           media,
           runId: randomUUID(),
           paths,
-          options: {},
+          options: options.decision ? { decisions: { [paths[0] ?? '']: options.decision } } : {},
           progressEveryMs: 0,
           tempDir: root,
-          ffmpeg,
+          ffmpeg: options.noFfmpeg ? join(root, 'no-ffmpeg-here') : ffmpeg,
           baker: options.baker,
           converters: options.converters,
-          onAir: () => Promise.resolve(options.onAir === true),
+          ...(options.freeBytes === undefined ? {} : { freeBytes: () => options.freeBytes ?? 0 }),
+          onAir: (() => {
+            let asked = 0;
+            const on = options.onAir;
+            return () => Promise.resolve(on === true || (typeof on === 'object' && ++asked >= on.from));
+          })(),
           drawPdf: (_pdf, outDir): Promise<PicturesResult> => {
             // The stand-in's PDF has a page per shown slide: five.
             mkdirSync(outDir, { recursive: true });
@@ -117,6 +135,11 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         expect(picture).toMatchObject({ kind: 'image', frame: { x: 0, y: 0, width: 320, height: 180 } });
         expect(picture?.kind === 'image' ? picture.mediaId : '').toBe(s.slide.deck?.steps.at(-1)?.lastId);
       }
+      // Each slide but the first was made after the one before it: its step-0 clip starts on that one's last still.
+      expect(decks.map((d) => d.after)).toEqual([
+        undefined,
+        ...decks.slice(0, -1).map((d) => d.steps.at(-1)?.lastId),
+      ]);
       // The deck's own transitions, with their lengths; the chime as real sound.
       expect(decks.map((d) => [d.transition?.name, d.transition?.durationMs])).toEqual([
         ['p:fade', 700],
@@ -130,6 +153,12 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       // The spin's slide holds one turn after each step.
       expect(decks[2]?.steps.map((s) => s.holdMs)).toEqual([2000, 2000]);
       expect(decks[2]?.steps.every((s) => s.holdId)).toBe(true);
+      // Shown from the slide's start to its end: no entrance or exit of their own.
+      expect(decks.flatMap((d) => d.media.map((m) => [m.enterStep, m.exitStep]))).toEqual([
+        [undefined, undefined],
+        [undefined, undefined],
+        [undefined, undefined],
+      ]);
       // The trimmed, looping video at 80 %, starting by itself after its slide's transition (1 s, and PowerPoint's 60 ms).
       const [auto] = decks[3]?.media ?? [];
       expect(auto).toMatchObject({
@@ -178,6 +207,165 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(t.report(again.id)?.items[0]?.outcome).toBe('skipped');
     }, 240_000);
 
+    it('a slide after a hidden one was made after the shown slide before it', async () => {
+      const t = setup();
+      const [build, chain, , , , hidden] = TRIAL_SLIDES;
+      if (!build || !chain || !hidden) throw new Error('no trial slides');
+      const skipping = join(dir, 'Placeholder skipping.pptx');
+      writeFileSync(skipping, makeTestDeck([build, hidden, chain], makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [skipping]);
+      const slides = t.slidesOf(t.report(summary.id)?.items[0]?.target?.id ?? '');
+      expect(slides).toHaveLength(2);
+      const [first, second] = slides.map((s) => s.slide.deck);
+      expect(first?.after).toBeUndefined();
+      expect(second?.after).toBe(first?.steps.at(-1)?.lastId);
+    }, 240_000);
+
+    it('a sound set to play across slides plays on as its slide’s sound; one started by a click says it stays on its slide', async () => {
+      const t = setup();
+      const tone = {
+        id: 3,
+        type: 'audio' as const,
+        name: 'Long tone',
+        media: 'tone' as const,
+        poster: 'speaker' as const,
+        x: 9_000_000,
+        y: 2_000_000,
+        w: 900_000,
+        h: 900_000,
+        acrossSlides: 3,
+      };
+      const across: TestDeckSlide[] = [
+        {
+          key: 'across-auto',
+          bg: '1B2A4A',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: a sound across slides, by itself.',
+          shapes: [tone],
+          effects: [{ kind: 'play', target: 3, dur: 6000, start: 'after' }],
+        },
+        {
+          key: 'across-click',
+          bg: '0F3D2E',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: a sound across slides, on a click.',
+          shapes: [tone],
+          effects: [{ kind: 'play', target: 3, dur: 6000, start: 'click' }],
+        },
+      ];
+      const file = join(dir, 'Placeholder across.pptx');
+      writeFileSync(file, makeTestDeck(across, makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
+      const item = t.report(summary.id)?.items[0];
+      const [auto, click] = t.slidesOf(item?.target?.id ?? '');
+      // By itself: the slide's sound, which plays on as the next slides go up (never also the deck's own).
+      expect(auto?.cues).toMatchObject([{ kind: 'audio', volume: 1, loop: false }]);
+      expect(auto?.slide.deck?.media).toEqual([]);
+      // On a click: the deck's own, on its slide only, and the report says so.
+      expect(click?.cues).toEqual([]);
+      expect(click?.slide.deck?.media.map((m) => [m.kind, 'step' in m.start ? m.start.step : null])).toEqual([
+        ['audio', 1],
+      ]);
+      const words = item?.issues.map((i) => i.message) ?? [];
+      expect(words).toContain(
+        '1 sound set to play across slides came in as its slide’s sound: it plays on as the next slides go up, until it ends or another sound takes its place.',
+      );
+      expect(words).toContain(
+        '1 sound set to play across slides starts on a click: here it plays on its own slide only.',
+      );
+    }, 240_000);
+
+    it('follows a linked video only inside the deck’s own folder: a link out of it (a phone’s crafted deck) is refused', async () => {
+      const t = setup();
+      const made = makeDeckMedia(ffmpeg, join(dir, 'made'));
+      // A private video elsewhere on this computer, and another beside the deck.
+      const elsewhere = join(dir, 'elsewhere');
+      const folder = join(dir, 'deck folder');
+      mkdirSync(elsewhere, { recursive: true });
+      mkdirSync(folder, { recursive: true });
+      const secret = join(elsewhere, 'Private clip.mp4');
+      writeFileSync(secret, made.clip1);
+      writeFileSync(join(folder, 'Beside clip.mp4'), made.clip2);
+      const video = (id: number, name: string, link: string) => ({
+        id,
+        type: 'video' as const,
+        name,
+        media: 'clip1' as const,
+        poster: 'poster1' as const,
+        x: 1_000_000,
+        y: 1_000_000,
+        w: 4_000_000,
+        h: 2_250_000,
+        link,
+      });
+      const linked: TestDeckSlide[] = [
+        {
+          key: 'linked',
+          bg: '1B2A4A',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: two linked videos.',
+          shapes: [
+            video(3, 'Out clip', pathToFileURL(secret).href),
+            video(4, 'In clip', 'Beside%20clip.mp4'),
+          ],
+          effects: [],
+        },
+      ];
+      const file = join(folder, 'Placeholder linked.pptx');
+      writeFileSync(file, makeTestDeck(linked, made));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
+      const item = t.report(summary.id)?.items[0];
+      const [slide] = t.slidesOf(item?.target?.id ?? '');
+      const files = new MediaRepo(t.db);
+      const [out, inside] = slide?.slide.deck?.media ?? [];
+      // The video beside the deck came in; the one elsewhere never did: missing, its bytes never copied.
+      expect(files.kindAndFile(inside?.mediaId ?? '')).toMatchObject({ kind: 'video', missing: false });
+      expect(files.kindAndFile(out?.mediaId ?? '')).toMatchObject({ missing: true });
+      const sha = createHash('sha256').update(made.clip1).digest('hex');
+      expect(t.db.prepare('SELECT COUNT(*) AS n FROM media WHERE sha256 = ?').get(sha)).toEqual({ n: 0 });
+      expect(item?.issues.map((i) => i.code)).toContain('missing-media');
+    }, 240_000);
+
+    it('a deck a phone sent follows no link at all, not even to a file beside it in the phones’ folder', async () => {
+      const t = setup();
+      const made = makeDeckMedia(ffmpeg, join(dir, 'made'));
+      // What phones send waits in the media folder's own folder: another phone's video there, and the deck.
+      const uploads = join(t.mediaDir, UPLOADS_DIR);
+      mkdirSync(uploads, { recursive: true });
+      writeFileSync(join(uploads, 'Another phone clip.mp4'), made.clip1);
+      const sent: TestDeckSlide[] = [
+        {
+          key: 'sent',
+          bg: '1B2A4A',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: a linked video.',
+          shapes: [
+            {
+              id: 3,
+              type: 'video',
+              name: 'Linked clip',
+              media: 'clip1',
+              poster: 'poster1',
+              x: 1_000_000,
+              y: 1_000_000,
+              w: 4_000_000,
+              h: 2_250_000,
+              link: 'Another%20phone%20clip.mp4',
+            },
+          ],
+          effects: [],
+        },
+      ];
+      const file = join(uploads, 'upload-1.pptx');
+      writeFileSync(file, makeTestDeck(sent, made));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
+      const [slide] = t.slidesOf(t.report(summary.id)?.items[0]?.target?.id ?? '');
+      const [linked] = slide?.slide.deck?.media ?? [];
+      expect(new MediaRepo(t.db).kindAndFile(linked?.mediaId ?? '')).toMatchObject({ missing: true });
+      const sha = createHash('sha256').update(made.clip1).digest('hex');
+      expect(t.db.prepare('SELECT COUNT(*) AS n FROM media WHERE sha256 = ?').get(sha)).toEqual({ n: 0 });
+    }, 240_000);
+
     it('as pictures where nothing makes its movie: its videos real videos on their slides, its sound the slide’s', async () => {
       const t = setup();
       const summary = await t.run({ baker: false, converters: 'stand-in' });
@@ -211,14 +399,51 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         'Its 2 videos came in as real videos where the slides have them, with the time bar under LIVE; they start as their slide goes up.',
       );
 
-      // Imported again where its movie can be made: in place of the pictures, with its animations.
-      const again = await t.run({ baker: 'stand-in', converters: 'stand-in' });
+      // Imported again where its movie can be made: the operator is asked first, as for a changed file (what they
+      // changed in the pictures' slides would go), and nothing changes until they answer.
+      const asked = await t.run({ baker: 'stand-in', converters: 'stand-in' });
+      const question = t.report(asked.id)?.items[0];
+      expect(question?.outcome).toBe('conflict');
+      expect(question?.issues).toEqual([
+        {
+          severity: 'warning',
+          code: 'deck-can-animate',
+          message:
+            'Placeholder trial.pptx can now come in with its animations. Replace “Placeholder trial” with it (what was changed in it since is lost), or keep both?',
+          fix: { kind: 'choose', sourcePath: deck },
+        },
+      ]);
+      expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
+      // Replace, as answered: in place of the pictures, with its animations.
+      const again = await t.run({ baker: 'stand-in', converters: 'stand-in', decision: 'replace' });
       const replaced = t.report(again.id)?.items[0];
       expect(replaced?.outcome).toBe('replaced');
       expect(replaced?.target?.id).toBe(item?.target?.id);
       expect(t.slidesOf(item?.target?.id ?? '').map((s) => s.slide.deck?.steps.length)).toEqual([
         5, 3, 2, 1, 2,
       ]);
+    }, 240_000);
+
+    it('a deck that came in as pictures, answered Replace but whose animations cannot be made, is kept untouched', async () => {
+      const t = setup();
+      const first = await t.run({ baker: false, converters: 'stand-in' });
+      const id = t.report(first.id)?.items[0]?.target?.id ?? '';
+      const before = t.repo.content(id);
+      const again = await t.run({
+        baker: 'stand-in',
+        converters: 'stand-in',
+        decision: 'replace',
+        noFfmpeg: true,
+      });
+      const kept = t.report(again.id)?.items[0];
+      expect(kept?.outcome).toBe('skipped');
+      expect(kept?.target?.id).toBe(id);
+      expect(kept?.message).toBe(
+        'It could not come in with its animations, so “Placeholder trial” was kept as it was: import it again once the reason below is put right.',
+      );
+      expect(kept?.issues.map((i) => i.code)).toEqual(['deck-pictures']);
+      // Untouched: every row as it was.
+      expect(t.repo.content(id)).toEqual(before);
     }, 240_000);
 
     it('as pictures while the stream is on air, saying so', async () => {
@@ -229,6 +454,34 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
       expect(item?.issues.find((i) => i.code === 'deck-pictures')?.message).toBe(
         'The stream was on air, so Drashti did not make this deck’s animations (that would slow the stream): its slides came in as pictures, without their animations. Import it again once the stream is off air.',
+      );
+    }, 120_000);
+
+    it('stops making its animations when the stream goes on air while its steps are cut, and comes in as pictures', async () => {
+      const t = setup();
+      // Off air as the import looks (twice) and as the movie is made; on air as its steps are cut.
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in', onAir: { from: 4 } });
+      const item = t.report(summary.id)?.items[0];
+      expect(item?.outcome).toBe('imported');
+      expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
+      expect(item?.issues.find((i) => i.code === 'deck-pictures')?.message).toBe(
+        'The stream went on air, so Drashti stopped making this deck’s animations (that would slow the stream): its slides came in as pictures, without their animations. Import it again once the stream is off air.',
+      );
+    }, 120_000);
+
+    it('makes no animations with too little free disk space for them, and comes in as pictures saying so', async () => {
+      const t = setup();
+      // 2 GB and 10 MB free: 2 GB is always kept free, and the deck's movie and steps need more than the rest.
+      const summary = await t.run({
+        baker: 'stand-in',
+        converters: 'stand-in',
+        freeBytes: 2 * 1024 ** 3 + 10 * 1024 ** 2,
+      });
+      const item = t.report(summary.id)?.items[0];
+      expect(item?.outcome).toBe('imported');
+      expect(t.slidesOf(item?.target?.id ?? '').every((s) => !s.slide.deck)).toBe(true);
+      expect(item?.issues.find((i) => i.code === 'deck-pictures')?.message).toMatch(
+        /^There is not enough free disk space to make this deck’s animations \(it needs about [\d.]+ [MG]B more than the 2 GB Drashti keeps free\): its slides came in as pictures, without their animations\.$/u,
       );
     }, 120_000);
 

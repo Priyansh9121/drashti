@@ -113,6 +113,7 @@ export function mapDeckMedia(deck: DeckSlide, swap: (id: string) => string): Dec
           },
         }
       : {}),
+    ...(deck.after ? { after: swap(deck.after) } : {}),
     steps: deck.steps.map((s) => ({
       ...s,
       clipId: swap(s.clipId),

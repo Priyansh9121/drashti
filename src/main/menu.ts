@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from 'electron';
+import { DECK_ANIMATIONS_LABEL } from './import/deck/deck-setting';
 import { Menu } from 'electron';
 import type { OperatorAction } from '../shared/keymap';
 import { KEYMAP, toAccelerator } from '../shared/keymap';
@@ -74,6 +75,11 @@ export interface MenuActions {
   /** File > Run Ahead of Other Programs (Windows only, Pro Mode; Session 16): null elsewhere. */
   priority: PriorityItem | null;
   /**
+   * File > Decks With Their Animations on This Computer (Session 54, C review): ticked when a deck comes in with
+   * its animations here; left out where there is no such choice.
+   */
+  deckAnimations?: { on: boolean; toggle: () => void } | null;
+  /**
    * View > Show Shastra, Templates and Kirtan Details (Session 26a, Pro Mode): ticked when
    * the operator window shows them (off to begin with).
    */
@@ -137,6 +143,17 @@ export function installMenu(actions: MenuActions): void {
               { id: 'scheduled-backups', label: 'Scheduled Backups…', click: actions.scheduledBackups },
               { type: 'separator' },
               { id: 'drop-folder', label: 'Drop Folder…', click: actions.dropFolder },
+              ...(actions.deckAnimations
+                ? [
+                    {
+                      id: 'deck-animations',
+                      label: DECK_ANIMATIONS_LABEL,
+                      type: 'checkbox',
+                      checked: actions.deckAnimations.on,
+                      click: actions.deckAnimations.toggle,
+                    } as MenuItemConstructorOptions,
+                  ]
+                : []),
               { id: 'events-out', label: 'Events Out…', click: actions.eventsOut },
               { type: 'separator' },
               { id: 'use-as-node', label: 'Use This Computer as a Node…', click: actions.useAsNode },
