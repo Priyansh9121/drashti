@@ -126,6 +126,12 @@ export interface AudioCue {
   /** 0 to 1. */
   volume: number;
   loop: boolean;
+  /**
+   * It plays on across this many slides of its presentation, its own the first (Session 54: a deck's sound set to
+   * play across slides, its deck come in as pictures), then stops; left out, until it ends or another sound takes
+   * its place.
+   */
+  acrossSlides?: number;
 }
 
 /** What a slide does on the other layers when it goes live. Cues Drashti does not run yet stay in the library. */

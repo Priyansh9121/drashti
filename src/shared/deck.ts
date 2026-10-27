@@ -58,8 +58,14 @@ export interface DeckMedia {
   fadeInMs?: number;
   fadeOutMs?: number;
   start: DeckMediaStart;
-  /** It plays on across this many slides (PowerPoint's numSld); left out, its own slide only. */
+  /**
+   * It plays on across this many slides (PowerPoint's numSld; 999 for Play Across Slides), its own the first; left
+   * out, its own slide only. A sound that starts with its slide or at a click so plays on the audio layer (Session
+   * 54, main/engine/across-slides.ts); one only a click on it starts stays on its slide.
+   */
   acrossSlides?: number;
+  /** Its shape's name in the deck (Session 54): a sound set to play across slides goes by it on LIVE's line. */
+  name?: string;
   /** Hidden while it is not playing (a sound's icon, PowerPoint's showWhenStopped="0"). */
   hideWhenStopped?: boolean;
   /** The step it appears at, by its entrance animation (Session 54, C review); left out, from step 0. */

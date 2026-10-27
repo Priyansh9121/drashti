@@ -342,4 +342,44 @@ describe('a deck’s videos and sounds (Session 54, C2)', () => {
     // Come in by a jump (its clip started past the deck's own transition): the engine stamps none, so no chime.
     expect(chime(deckSlide(0, 500))).toBeUndefined();
   });
+
+  it('play one set to play across slides from the audio layer, with its fades, never also as its slide’s own (Session 54)', () => {
+    const layer = deckSlide(0);
+    if (!layer?.slide.deck) throw new Error('no deck');
+    const across = {
+      kind: 'audio' as const,
+      mediaId: 'music',
+      box: { x: 0, y: 0, w: 0.1, h: 0.1 },
+      loop: true,
+      volume: 1,
+      start: { step: 0, offsetMs: 0 },
+      acrossSlides: 999,
+    };
+    const slide = { ...layer, slide: { ...layer.slide, deck: { ...layer.slide.deck, media: [across] } } };
+    const sounds = soundsOf(
+      state({
+        slide,
+        audio: {
+          id: 'across:music',
+          title: 'Placeholder music',
+          mediaId: 'music',
+          volume: 0.7,
+          loop: true,
+          startedAt: 4000,
+          across: { presentationId: 'p', lastIndex: 998 },
+          fades: { inMs: 500, outMs: 0 },
+        },
+      }),
+    );
+    expect(sounds.filter((s) => s.mediaId === 'music')).toEqual([
+      {
+        key: 'audio:music@4000',
+        mediaId: 'music',
+        startedAt: 4000,
+        loop: true,
+        volume: 0.7,
+        fades: { inMs: 500, outMs: 0 },
+      },
+    ]);
+  });
 });

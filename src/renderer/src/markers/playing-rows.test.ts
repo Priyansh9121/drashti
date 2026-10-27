@@ -211,4 +211,48 @@ describe('a deck’s sounds on the slide (Session 54, C2)', () => {
       ['slide:deck-sound', 'Slide sound', 'Time of the sound on the slide'],
     ]);
   });
+
+  it('one set to play across slides is the sound playing, its row the Sound’s, never also the slide’s (Session 54)', () => {
+    const across = {
+      kind: 'audio' as const,
+      mediaId: 'music',
+      box: { x: 0, y: 0, w: 0.1, h: 0.1 },
+      loop: true,
+      volume: 1,
+      start: { step: 0, offsetMs: 0 },
+      acrossSlides: 3,
+    };
+    const s = state(
+      {
+        slide: {
+          presentationId: 'p',
+          slideIndex: 0,
+          shownAt: 1000,
+          notes: '',
+          slide: {
+            id: 'deck-slide',
+            width: 1920,
+            height: 1080,
+            background: null,
+            elements: [],
+            deck: { steps: [{ clipId: 'c0', clipMs: 1000, lastId: 'l0' }], media: [across] },
+          },
+        },
+        audio: {
+          id: 'across:music',
+          title: 'Placeholder music',
+          mediaId: 'music',
+          volume: 1,
+          loop: true,
+          startedAt: 1000,
+          durationMs: 90_000,
+          across: { presentationId: 'p', lastIndex: 2 },
+        },
+      },
+      { videoFiles: { music: { durationMs: 90_000 } } },
+    );
+    expect(playingRows(s).map((r) => [r.which, r.short, r.name])).toEqual([
+      ['audio', 'Sound', 'Time of the sound playing'],
+    ]);
+  });
 });

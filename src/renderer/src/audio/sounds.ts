@@ -1,6 +1,6 @@
 import { type EngineState, videoClip, videoSeek } from '../../../shared/engine/state';
 import type { DeckMedia } from '../../../shared/deck';
-import { deckMediaOf } from '../../../shared/deck-show';
+import { deckMediaOf, playsAcross } from '../../../shared/deck-show';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 
@@ -75,6 +75,8 @@ export function soundsOf(state: EngineState): Sound[] {
       ...(audio.music ? { fadeInMs: MUSIC_FADE_IN_MS, fadeOutMs: MUSIC_FADE_OUT_MS } : {}),
       ...(audio.clip ? { clip: audio.clip } : {}),
       ...(audio.seek ? { seek: audio.seek } : {}),
+      // A deck's sound set to play across slides (Session 54): its deck's fades.
+      ...(audio.fades ? { fades: audio.fades } : {}),
     });
   }
   const bg = state.layers.background;
@@ -114,10 +116,11 @@ export function soundsOf(state: EngineState): Sound[] {
         ...(own.fades ? { fades: own.fades } : {}),
       });
     }
-    // A deck's sounds (Session 54, C2): each from its click, as the engine stamps it, between its deck's trims.
+    // A deck's sounds (Session 54, C2): each from its click, as the engine stamps it, between its deck's trims. One
+    // set to play across slides plays on the audio layer instead, never as its slide's.
     for (const m of slide.slide.deck?.media ?? []) {
       const own = deckSound(m);
-      if (m.kind !== 'audio' || own.volume === 0) continue;
+      if (m.kind !== 'audio' || own.volume === 0 || playsAcross(m)) continue;
       const clip = videoClip(slide.clips, m.mediaId);
       const seek = videoSeek(slide.seeks, m.mediaId);
       sounds.push({

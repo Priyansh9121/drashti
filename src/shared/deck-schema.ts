@@ -46,6 +46,7 @@ const mediaSchema = z.looseObject({
   fadeOutMs: ms.optional(),
   start: startSchema,
   acrossSlides: z.number().int().min(1).max(10_000).optional(),
+  name: z.string().max(300).optional(),
   hideWhenStopped: z.boolean().optional(),
   enterStep: z.number().int().min(0).max(10_000).optional(),
   exitStep: z.number().int().min(0).max(10_000).optional(),

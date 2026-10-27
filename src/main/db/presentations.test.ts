@@ -436,6 +436,27 @@ describe('slide cues', () => {
       unplayable: null,
     });
   });
+
+  it('reads a sound set to play across slides (Session 54: a deck that came in as pictures), and nothing else as one', () => {
+    const audio = {
+      slide_id: 's',
+      kind: 'audio',
+      label: 'Placeholder music',
+      props: '{}',
+      media_id: 'm',
+      media_name: 'Placeholder music.m4a',
+      media_kind: 'audio',
+      media_missing: 0,
+    };
+    expect(cueFromRow({ ...audio, props: '{"volume":1,"loop":true,"acrossSlides":999}' })).toMatchObject({
+      kind: 'audio',
+      loop: true,
+      acrossSlides: 999,
+    });
+    expect(cueFromRow({ ...audio, props: '{"acrossSlides":2}' })).toMatchObject({ acrossSlides: 2 });
+    for (const bad of ['1', '0', '2.5', '"3"', '20000', 'null', 'true'])
+      expect(cueFromRow({ ...audio, props: `{"acrossSlides":${bad}}` })).not.toHaveProperty('acrossSlides');
+  });
 });
 
 describe('what the slide editor adds', () => {

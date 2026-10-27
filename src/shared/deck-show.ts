@@ -113,6 +113,14 @@ export function videoShowsFrom(m: DeckMedia, timing: StepTiming): number | null 
   return timing.endsAt;
 }
 
+/**
+ * A deck's sound set to play across slides that starts with its slide or at a click (Session 54): it plays on the
+ * audio layer across its slides (main/engine/across-slides.ts), never among its slide's own sounds, its time bar the
+ * sound's. One only a click on it starts (a trigger) stays on its slide, waiting for the time bar's Play.
+ */
+export const playsAcross = (m: DeckMedia): boolean =>
+  m.kind === 'audio' && (m.acrossSlides ?? 1) > 1 && 'step' in m.start;
+
 /** The deck's own entry for one of its videos or sounds, by its file. */
 export function deckMediaOf(
   slide: RenderSlide,
