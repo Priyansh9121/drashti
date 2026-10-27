@@ -100,6 +100,17 @@ export const STAGE_BOX_LABELS: Record<StageBoxKind, string> = {
 
 export type StageAlign = 'left' | 'center' | 'right';
 
+/** Where a box's contents sit up and down (Session 54). */
+export type StageVAlign = 'top' | 'middle' | 'bottom';
+export const STAGE_VALIGNS = ['top', 'middle', 'bottom'] as const satisfies readonly StageVAlign[];
+
+/**
+ * How a timer box writes the time (Session 54): as needed (5:00, then 1:05:00 from an hour), always minutes and
+ * seconds (65:00), or always hours too (0:05:00).
+ */
+export type StageTimerFormat = 'auto' | 'mss' | 'hmmss';
+export const STAGE_TIMER_FORMATS = ['auto', 'mss', 'hmmss'] as const satisfies readonly StageTimerFormat[];
+
 export interface StageBox {
   id: string;
   kind: StageBoxKind;
@@ -121,6 +132,37 @@ export interface StageBox {
   calendar?: boolean;
   /** A Samvat box, or a clock box with the date: in Gujarati or English. */
   lang?: CalendarLang;
+  // ---- Session 54 (Part A2): each left out of a box saved before, which draws as it did ----
+  /** Up and down in the box: at the top (as before, left out), in the middle or at the bottom. */
+  valign?: StageVAlign;
+  /**
+   * Its words as large as the box holds, when they fit it (`size` 'fit'). Left out (a box made before): no larger
+   * than 400 px, as before, so a layout saved before draws as it did.
+   */
+  fitWhole?: boolean;
+  /** Bold words; left out, as its kind draws them. */
+  bold?: boolean;
+  /**
+   * A fill behind the whole box, rounded: its colour, and how see-through it is (0 solid to 1 clear), so a timer
+   * over the audience picture stays readable. Left out: none.
+   */
+  fill?: { color: string; seeThrough: number };
+  /** A line round the letters: its colour, and its width in canvas pixels. Left out: none. */
+  outline?: { color: string; width: number };
+  /** Drashti's soft shadow under the words. Left out: none. */
+  shadow?: boolean;
+  /** A timer box: how it writes the time. Left out: as needed. */
+  format?: StageTimerFormat;
+  /** A timer box counting down: another colour from this much left (ms), until 0:00. Left out: none. */
+  warn?: { color: string; fromMs: number };
+  /** A timer box counting down: its colour at 0:00 and past it. Left out: its own. */
+  overColor?: string;
+  /** A timer box counting down: it flashes at 0:00, slowly (shared/stage-timer.ts). Left out: no. */
+  flash?: boolean;
+  /** A clock box: 12 or 24 hours. Left out: as Drashti's computer writes the time. */
+  hours?: 12 | 24;
+  /** A clock box: the seconds too. Left out: no. */
+  seconds?: boolean;
 }
 
 export interface StageLayout {
@@ -136,6 +178,9 @@ export type StageLayoutResult =
   { ok: true; layouts: StageLayout[]; id: string } | { ok: false; message: string };
 
 export const MAX_STAGE_BOXES = 40;
+
+/** The widest line round a box's letters (canvas pixels, Session 54). */
+export const MAX_OUTLINE = 40;
 
 export const stageBoxSchema: z.ZodType<StageBox> = z.object({
   id: idSchema,
@@ -167,6 +212,27 @@ export const stageBoxSchema: z.ZodType<StageBox> = z.object({
   count: z.number().int().min(1).max(8).optional(),
   calendar: z.boolean().optional(),
   lang: z.enum(CALENDAR_LANGS).optional(),
+  valign: z.enum(STAGE_VALIGNS).optional(),
+  fitWhole: z.boolean().optional(),
+  bold: z.boolean().optional(),
+  fill: z.object({ color: hexColorSchema, seeThrough: z.number().min(0).max(1) }).optional(),
+  outline: z.object({ color: hexColorSchema, width: z.number().min(0.5).max(MAX_OUTLINE) }).optional(),
+  shadow: z.boolean().optional(),
+  format: z.enum(STAGE_TIMER_FORMATS).optional(),
+  warn: z
+    .object({
+      color: hexColorSchema,
+      fromMs: z
+        .number()
+        .int()
+        .min(1000)
+        .max(24 * 3600 * 1000),
+    })
+    .optional(),
+  overColor: hexColorSchema.optional(),
+  flash: z.boolean().optional(),
+  hours: z.union([z.literal(12), z.literal(24)]).optional(),
+  seconds: z.boolean().optional(),
 });
 
 /** What a layout keeps in the library (its id and name are columns of their own). */
@@ -217,6 +283,8 @@ export function newStageBox(kind: StageBoxKind, id: string): StageBox {
     ...(kind === 'text' ? { text: 'Placeholder words' } : {}),
     ...(kind === 'upcoming' ? { count: 4 } : {}),
     ...(kind === 'samvat' ? { lang: 'gu' as const } : {}),
+    // Its words as large as the box holds, when they fit it (Session 54); the audience picture has none.
+    ...(picture ? {} : { fitWhole: true }),
   };
 }
 
@@ -255,6 +323,27 @@ export function standardAsBoxes(newId: () => string): StageLayout['boxes'] {
  */
 export function withBoxAdded(boxes: readonly StageBox[], box: StageBox): StageBox[] {
   return box.kind === 'audience' ? [box, ...boxes] : [...boxes, box];
+}
+
+/** Which way a box goes among the others (Session 54): in front of them all, behind them all, or one step. */
+export type BoxOrder = 'front' | 'forward' | 'backward' | 'back';
+
+/**
+ * A layout's boxes (bottom to top) with one brought to the front or one step forward, or sent to the back or
+ * one step backward (Session 54), as the slide editor's Arrange does; as they were when it is there already.
+ */
+export function arrangeBoxes(boxes: readonly StageBox[], id: string, how: BoxOrder): StageBox[] {
+  const at = boxes.findIndex((b) => b.id === id);
+  const box = boxes[at];
+  if (!box) return [...boxes];
+  const rest = boxes.filter((b) => b.id !== id);
+  const to =
+    how === 'front'
+      ? rest.length
+      : how === 'back'
+        ? 0
+        : Math.max(0, Math.min(rest.length, at + (how === 'forward' ? 1 : -1)));
+  return [...rest.slice(0, to), box, ...rest.slice(to)];
 }
 
 /** The smallest the layout editor makes a box each way (canvas pixels): as small as a layout keeps one. */

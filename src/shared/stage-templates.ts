@@ -97,10 +97,15 @@ const EDGE = 48;
 const WHOLE: Rect = { x: EDGE, y: EDGE, width: STAGE_WIDTH - 2 * EDGE, height: STAGE_HEIGHT - 2 * EDGE };
 /** A corner box's width and height, over the audience picture. */
 const CORNER = { width: 760, height: 220 };
+/** Behind a box over the audience picture (Session 54, A2): black, 40% see-through, so it stays readable. */
+const OVER_PICTURE = { fill: { color: '#000000', seeThrough: 0.4 } };
+/** The Countdown's warning from 1:00 left (the amber a slide's Timer turns in its last minute) and its overtime red. */
+const COUNTDOWN_COLOURS = { warn: { color: '#f5a524', fromMs: 60_000 }, overColor: '#ef4444' };
 
 /**
- * A template's boxes on the 1920 x 1080 stage (bottom to top), around this timer: the timer as large as fits, in
- * white, in the middle; above a countdown to a time, `words` ("Starting in" when left empty).
+ * A template's boxes on the 1920 x 1080 stage (bottom to top), around this timer: the timer bold, in white, in the
+ * middle, as large as its box holds; above a countdown to a time, `words` ("Starting in" when left empty); over
+ * the audience picture, the timer and the clock on a see-through black.
  */
 export function templateBoxes(
   template: StageTemplate,
@@ -115,12 +120,21 @@ export function templateBoxes(
     ...extra,
   });
   const timer = (frame: Rect, extra: Partial<StageBox> = {}) =>
-    box('timer', frame, { timerId, size: 'fit', color: '#ffffff', align: 'center', ...extra });
+    box('timer', frame, {
+      timerId,
+      size: 'fit',
+      color: '#ffffff',
+      align: 'center',
+      valign: 'middle',
+      bold: true,
+      ...extra,
+    });
   switch (template) {
     case 'timer':
-    case 'countdown':
     case 'countUp':
       return [timer(WHOLE)];
+    case 'countdown':
+      return [timer(WHOLE, COUNTDOWN_COLOURS)];
     case 'countdownTo':
       return [
         box(
@@ -131,6 +145,7 @@ export function templateBoxes(
             size: 'fit',
             color: '#ffffff',
             align: 'center',
+            valign: 'bottom',
           },
         ),
         timer({ x: EDGE, y: 312, width: WHOLE.width, height: STAGE_HEIGHT - 312 - EDGE }),
@@ -138,11 +153,11 @@ export function templateBoxes(
     case 'overAudience':
       return [
         box('audience', { x: 0, y: 0, width: STAGE_WIDTH, height: STAGE_HEIGHT }),
-        timer({ x: EDGE, y: EDGE, ...CORNER }, { align: 'left' }),
+        timer({ x: EDGE, y: EDGE, ...CORNER }, { align: 'left', ...OVER_PICTURE }),
         box(
           'clock',
           { x: STAGE_WIDTH - EDGE - CORNER.width, y: EDGE, ...CORNER },
-          { size: 'fit', color: '#ffffff', align: 'right' },
+          { size: 'fit', color: '#ffffff', align: 'right', valign: 'middle', bold: true, ...OVER_PICTURE },
         ),
       ];
   }

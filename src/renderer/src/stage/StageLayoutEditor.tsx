@@ -12,6 +12,7 @@ import {
   typedFrame,
 } from '../../../shared/stage-layouts';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
+import { countsDown } from '../../../shared/timers';
 import { BoxCanvas } from '../boxes/BoxCanvas';
 import { useEngine } from '../engine/engine-store';
 import { StageLayoutView } from '../render/StageLayoutView';
@@ -29,6 +30,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { useHallPicture } from './hall-picture';
+import { BoxLookFields, BoxOrderButtons, ClockBoxFields, TimerBoxFields } from './StageBoxFields';
 import { StageTemplateDialog } from './StageTemplateDialog';
 import {
   addBox,
@@ -100,6 +102,8 @@ function FrameField({
 
 function BoxSettings({ box }: { box: StageBox }) {
   const timers = useEngine((s) => s.state?.timers);
+  // A timer box's timer: every running timer (none chosen) or one no longer in Timers counts as counting down.
+  const chosenTimer = box.timerId ? timers?.find((t) => t.id === box.timerId) : undefined;
   const set = (patch: Partial<StageBox>) => {
     change((e) => ({ ...e, boxes: e.boxes.map((b) => (b.id === box.id ? { ...b, ...patch } : b)) }));
   };
@@ -120,6 +124,8 @@ function BoxSettings({ box }: { box: StageBox }) {
           />
         ))}
       </div>
+      {/* Which box is over which (Session 54): boxes may overlap. */}
+      <BoxOrderButtons box={box} />
       {box.kind === 'audience' ? (
         // The hall's picture (Session 50): no words of its own, so no size, colour or alignment.
         <p className="text-xs text-muted" data-testid="stage-box-audience-note">
@@ -134,7 +140,8 @@ function BoxSettings({ box }: { box: StageBox }) {
           checked={box.size === 'fit'}
           data-testid="stage-box-fit"
           onChange={(e) => {
-            set({ size: e.target.checked ? 'fit' : 56 });
+            // Fitted, as large as the box holds (Session 54: a box saved before keeps to 400 px until then).
+            set(e.target.checked ? { size: 'fit', fitWhole: true } : { size: 56 });
           }}
         />
       )}
@@ -180,6 +187,8 @@ function BoxSettings({ box }: { box: StageBox }) {
               ))}
             </Select>
           </Field>
+          {/* Up and down, bold, a fill, a line round the letters and a shadow (Session 54). */}
+          <BoxLookFields box={box} />
         </>
       )}
       <Field label="Label above it" hint="Leave empty for none.">
@@ -209,6 +218,11 @@ function BoxSettings({ box }: { box: StageBox }) {
           </Select>
         </Field>
       )}
+      {box.kind === 'timer' && (
+        // Its way of writing the time, its colours and its flash (Session 54).
+        <TimerBoxFields box={box} countsDown={chosenTimer === undefined || countsDown(chosenTimer)} />
+      )}
+      {box.kind === 'clock' && <ClockBoxFields box={box} />}
       {box.kind === 'clock' && (
         <Checkbox
           label="Today’s Samvat date under the time"
@@ -425,7 +439,7 @@ export function StageLayoutEditor() {
               />
             )
           }
-          label="The stage layout. Tab chooses the next box, the arrow keys move it (Shift for ten pixels)."
+          label="The stage layout. Tab chooses the next box, the arrow keys move it (Shift for ten pixels), and with Alt or Option they make it larger or smaller."
           testId="stage-layout-canvas"
         />
       ) : (

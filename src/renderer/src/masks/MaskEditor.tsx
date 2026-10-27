@@ -330,7 +330,7 @@ export function MaskEditor() {
             />
           </div>
         }
-        label="The mask. Tab chooses the next shape, the arrow keys move it (Shift for ten pixels)."
+        label="The mask. Tab chooses the next shape, the arrow keys move it (Shift for ten pixels), and with Alt or Option they make it larger or smaller."
         testId="mask-canvas"
       />
 

@@ -81,6 +81,31 @@ describe('the stage layout templates', () => {
     expect(clock?.align).toBe('right');
   });
 
+  it('draw the time bold, in the middle, as large as its box holds; the Countdown in its warning and over colours', () => {
+    for (const t of STAGE_TEMPLATES) {
+      const timer = templateBoxes(t, 'placeholder-timer', ids()).find((b) => b.kind === 'timer');
+      expect(timer, t).toMatchObject({ bold: true, valign: 'middle', fitWhole: true });
+      if (t !== 'countdown') expect(timer, t).not.toHaveProperty('overColor');
+    }
+    expect(templateBoxes('countdown', 'placeholder-timer', ids())[0]).toMatchObject({
+      warn: { color: '#f5a524', fromMs: 60_000 },
+      overColor: '#ef4444',
+    });
+    // The words above a countdown to a time sit just above it.
+    expect(templateBoxes('countdownTo', 'placeholder-timer', ids())[0]).toMatchObject({ valign: 'bottom' });
+  });
+
+  it('fill the timer and the clock over the audience picture, see-through, so they stay readable', () => {
+    const [hall, timer, clock] = templateBoxes('overAudience', 'placeholder-timer', ids());
+    expect(hall).not.toHaveProperty('fill');
+    for (const box of [timer, clock])
+      expect(box, box?.kind).toMatchObject({
+        fill: { color: '#000000', seeThrough: 0.4 },
+        bold: true,
+        valign: 'middle',
+      });
+  });
+
   it('count with their own kind of timer, or one the operator chooses (never a clock)', () => {
     expect(templateTimerKinds('countdownTo')).toEqual(['countdown_to_time']);
     expect(templateTimerKinds('countdown')).toEqual(['countdown']);

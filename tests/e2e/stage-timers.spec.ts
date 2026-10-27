@@ -1,22 +1,34 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import type { StageLayout } from '../../src/shared/stage-layouts';
+import { newStageBox, type StageBox, type StageLayout } from '../../src/shared/stage-layouts';
+import { FLASH_DIM } from '../../src/shared/stage-timer';
+import type { TimerFields } from '../../src/shared/timers';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { device, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import {
   launchApp,
   operatorPage,
   operatorReady,
+  outputPage,
   outputPages,
+  outputReady,
   type PageGlobals,
   setUpScreen,
 } from './helpers';
+import { launchMain, launchNode, pairNode } from './nodes';
+import { holdClock } from './placeholder-slides';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
  * Stage timer layouts (Session 54). The stage layout editor's New from a Template… makes each of five ready-made
  * layouts with the timer it needs (a new one, with the length or the time of day asked, or one already in
  * Timers), shows it in the editor and chooses it at once for the stage screens in the live Look. The editor and
- * the dialog fit CI's window, 1024 × 645, and pass the accessibility checks. Placeholder timers and words only;
+ * the dialog fit CI's window, 1024 × 645, and pass the accessibility checks. Boxes may overlap, and Bring to the
+ * front, Send to the back and one step either way set which is over which; Alt with the arrows resizes. A box's
+ * own settings (a see-through fill, bold, a line round the letters, a shadow, up and down; a timer's format,
+ * warning colour, colour when over and flash; a clock's 24 hours and seconds) draw alike on this computer's stage
+ * screen, a node's, a tablet's stage page, the Stage panel's preview and the editor; the flash and the colours
+ * follow the engine's time; a layout saved before opens and draws as it was. Placeholder timers and words only;
  * quiet; outputs as windows; nothing wider than 1024 assumed.
  */
 
@@ -69,6 +81,77 @@ const liveLayoutOf = (win: Page, groupId: string): Promise<StageLayout | null> =
     const id = looks.looks.find((l) => l.id === looks.liveId)?.groups[groupId]?.stageLayoutId ?? null;
     return id === null ? null : ((await d.stageLayouts.list()).find((l) => l.id === id) ?? null);
   }, groupId);
+
+/** A timer in Timers, made through the bridge; its id. */
+const makeTimer = (win: Page, fields: TimerFields) =>
+  win.evaluate(async (fields) => {
+    const made = await (globalThis as PageGlobals).drashti.timers.create(fields);
+    if (!made.ok) throw new Error(made.message);
+    return made.id;
+  }, fields);
+
+/** Save a stage layout of these boxes and give it, in the live Look, to the stage group; the layout's id. */
+const giveLayout = (win: Page, stageGroup: string, name: string, boxes: StageBox[]) =>
+  win.evaluate(
+    async ({ stageGroup, name, boxes }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const saved = await d.stageLayouts.save(null, { name, background: '#000000', boxes });
+      if (!saved.ok) throw new Error(saved.message);
+      const set = await d.looks.setGroup((await d.looks.list()).liveId, stageGroup, {
+        stageLayoutId: saved.id,
+      });
+      if (!set.ok) throw new Error(set.message);
+      return saved.id;
+    },
+    { stageGroup, name, boxes },
+  );
+
+/** Which box of a stage layout on a page is over this point of the 1920 x 1080 canvas: its id. */
+const topBoxAt = (scope: Page | Locator, x: number, y: number) =>
+  scope
+    .getByTestId('stage-layout')
+    .first()
+    .evaluate(
+      (layout, at) => {
+        const r = layout.getBoundingClientRect();
+        const scale = r.width / 1920;
+        const hit = document.elementFromPoint(r.left + at.x * scale, r.top + at.y * scale);
+        return hit?.closest<HTMLElement>('[data-stage-box]')?.dataset['boxId'] ?? null;
+      },
+      { x, y },
+    );
+
+/**
+ * How each box of a stage layout draws on a page, bottom to top: its fill and corners, its words' weight, line
+ * round the letters, shadow and place up and down, how large they were fitted, and a timer's time and colour.
+ */
+const looksOn = (scope: Page | Locator) =>
+  scope
+    .getByTestId('stage-layout')
+    .first()
+    .evaluate((layout) =>
+      [...layout.querySelectorAll<HTMLElement>('[data-stage-box]')].map((b) => {
+        // The box's words: after its label, the part that is sized (and fitted), and its words inside it.
+        const sized = b.lastElementChild instanceof HTMLElement ? b.lastElementChild : null;
+        const words = sized?.firstElementChild instanceof HTMLElement ? sized.firstElementChild : null;
+        const timer = b.querySelector<HTMLElement>('[data-timer]');
+        const box = getComputedStyle(b);
+        const w = words ? getComputedStyle(words) : null;
+        return {
+          kind: b.dataset['stageBox'],
+          fill: box.backgroundColor,
+          corners: box.borderTopLeftRadius,
+          weight: w?.fontWeight ?? null,
+          line: w ? `${w.webkitTextStrokeWidth} ${w.webkitTextStrokeColor}` : null,
+          shadow: w ? w.textShadow !== 'none' : null,
+          upDown: sized ? getComputedStyle(sized).justifyContent : null,
+          fitted: Number(sized?.getAttribute('data-fit-size') ?? NaN),
+          text: (words?.innerText ?? '').replace(/\s+/gu, ' ').trim(),
+          timerColor: timer?.dataset['timerColor'] ?? null,
+          color: timer ? getComputedStyle(timer).color : null,
+        };
+      }),
+    );
 
 /** The kinds of the boxes a stage page draws, bottom to top. */
 const boxKinds = (page: Page) =>
@@ -227,5 +310,371 @@ test('the stage layout editor and New from a Template fit 1024 × 645 and pass t
   await expect(editor.getByTestId('stage-layout-canvas')).toBeInViewport();
   await expect(editor.getByTestId('stage-layout-save')).toBeInViewport({ ratio: 1 });
   await expectNoSeriousA11yIssues(win, 'the stage layout editor at 1024 x 645, a timer box chosen');
+  await app.close();
+});
+
+/** A fixed text box of placeholder words at this place across, 800 x 400 from 340 down. */
+const textAt = (id: string, words: string, x: number): StageBox => ({
+  ...newStageBox('text', id),
+  text: words,
+  frame: { x, y: 340, width: 800, height: 400 },
+  size: 64,
+});
+
+test('boxes may overlap; Bring to the front, Send to the back and one step set which is over which, on the stage too; Alt with the arrows resizes', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const stageId = await setUpScreen(win, 'Stage', 0);
+  const group = await makeStage(win, 'Stage');
+  // Three boxes, each over the one before; the middle of the stage is under all three.
+  await giveLayout(win, group, 'Placeholder overlap layout', [
+    textAt('placeholder-a', 'Placeholder A', 400),
+    textAt('placeholder-b', 'Placeholder B', 600),
+    textAt('placeholder-c', 'Placeholder C', 800),
+  ]);
+  const stage = await outputFor(app, stageId);
+  await expect(stage.getByTestId('stage-layout')).toBeVisible();
+  await expect.poll(() => topBoxAt(stage, 1000, 540)).toBe('placeholder-c');
+
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Placeholder overlap layout');
+  const list = editor.getByTestId('stage-box-list').getByRole('button');
+  const order = async () =>
+    (await list.allTextContents()).map((t) => t.replace('Fixed text: Placeholder ', ''));
+  await editor
+    .getByTestId('stage-box-list')
+    .getByRole('button', { name: 'Fixed text: Placeholder A' })
+    .click();
+  const settings = editor.getByTestId('stage-box-settings');
+  const arrange = async (label: string, then: string[]) => {
+    await settings.getByRole('button', { name: label, exact: true }).click();
+    await expect.poll(order).toEqual(then);
+  };
+  await arrange('Bring to the front', ['B', 'C', 'A']);
+  await arrange('Send backward', ['B', 'A', 'C']);
+  await arrange('Send to the back', ['A', 'B', 'C']);
+  await arrange('Bring forward', ['B', 'A', 'C']);
+  await arrange('Bring to the front', ['B', 'C', 'A']);
+  // The canvas draws them so: A over the others where all three are.
+  await expect
+    .poll(() => topBoxAt(editor.getByTestId('stage-layout-canvas'), 1000, 540))
+    .toBe('placeholder-a');
+
+  // Alt with the arrows: larger and smaller (Shift: ten pixels); the arrows alone still move it.
+  const field = (name: string) => settings.getByRole('spinbutton', { name, exact: true });
+  const canvas = editor.getByTestId('stage-layout-canvas-stage');
+  await canvas.focus();
+  await win.keyboard.press('Alt+ArrowRight');
+  await expect(field('Width')).toHaveValue('801');
+  await win.keyboard.press('Alt+Shift+ArrowLeft');
+  await expect(field('Width')).toHaveValue('791');
+  await win.keyboard.press('Alt+ArrowDown');
+  await expect(field('Height')).toHaveValue('401');
+  await win.keyboard.press('Alt+ArrowUp');
+  await expect(field('Height')).toHaveValue('400');
+  await expect(field('Across')).toHaveValue('400');
+  await win.keyboard.press('ArrowRight');
+  await expect(field('Across')).toHaveValue('401');
+  await expect(field('Width')).toHaveValue('791');
+
+  // Saved, overlapping as they are: the stage screen draws A over the others.
+  await editor.getByTestId('stage-layout-save').click();
+  await expect(editor.getByTestId('stage-layout-save')).toBeDisabled();
+  await expect.poll(() => topBoxAt(stage, 1000, 540)).toBe('placeholder-a');
+  const saved = await liveLayoutOf(win, group);
+  expect(saved?.boxes.map((b) => b.id)).toEqual(['placeholder-b', 'placeholder-c', 'placeholder-a']);
+  expect(saved?.boxes[2]?.frame).toEqual({ x: 401, y: 340, width: 791, height: 400 });
+  await app.close();
+});
+
+/** A countdown of this length, not started: the same time on every page whatever the moment. */
+const countdownOf = (name: string, durationMs: number): TimerFields => ({
+  name,
+  kind: 'countdown',
+  durationMs,
+  targetTime: null,
+  allowsOverrun: true,
+});
+
+/** The settings a box can have, on a timer box, a timer box at 0:00 and a clock box (24 hours, the seconds). */
+function settingsLayout(longId: string, zeroId: string): StageBox[] {
+  return [
+    {
+      ...newStageBox('timer', 'placeholder-long'),
+      timerId: longId,
+      frame: { x: 48, y: 48, width: 1100, height: 400 },
+      size: 'fit',
+      color: '#ffffff',
+      align: 'center',
+      label: 'PLACEHOLDER TIMER',
+      valign: 'middle',
+      bold: true,
+      fill: { color: '#203040', seeThrough: 0.25 },
+      outline: { color: '#101010', width: 3 },
+      shadow: true,
+      format: 'mss',
+      // Two hours: a 65-minute countdown is in its warning already.
+      warn: { color: '#f5a524', fromMs: 2 * 3600 * 1000 },
+    },
+    {
+      ...newStageBox('timer', 'placeholder-zero'),
+      timerId: zeroId,
+      frame: { x: 48, y: 500, width: 1100, height: 300 },
+      size: 120,
+      format: 'hmmss',
+      overColor: '#ef4444',
+      valign: 'bottom',
+    },
+    {
+      ...newStageBox('clock', 'placeholder-clock'),
+      frame: { x: 1200, y: 48, width: 672, height: 200 },
+      size: 'fit',
+      hours: 24,
+      seconds: true,
+      shadow: true,
+    },
+  ];
+}
+
+/** What a page draws of the settings layout, with the clock's time as its shape (pages read it at moments apart). */
+async function settingsOn(scope: Page | Locator) {
+  const looks = await looksOn(scope);
+  for (const l of looks)
+    if (l.kind === 'clock') expect(l.text, 'the clock: 24 hours, the seconds').toMatch(/^\d\d:\d\d:\d\d$/u);
+  return looks.map(({ fitted, ...l }) => ({ ...l, text: l.kind === 'clock' ? '00:00:00' : l.text, fitted }));
+}
+
+test('a box’s settings draw alike on this computer’s stage screen, a node’s, a tablet’s stage page, the Stage panel’s preview and the editor', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  const tablet = await device('chromium', TABLET);
+  try {
+    const nodeId = await pairNode(main, node);
+    const stageId = await setUpScreen(main.win, 'Stage', 0);
+    const group = await makeStage(main.win, 'Stage');
+    const long = await makeTimer(main.win, countdownOf('Placeholder long countdown', 65 * 60_000));
+    const zero = await makeTimer(main.win, countdownOf('Placeholder spent countdown', 0));
+    await giveLayout(main.win, group, 'Placeholder settings layout', settingsLayout(long, zero));
+    // The node's second (pretend) display in the same stage group.
+    await expect
+      .poll(async () =>
+        main.win.evaluate(
+          async (id) =>
+            (
+              (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === id)
+                ?.displays ?? []
+            ).length,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    const assigned = await main.win.evaluate(
+      async ({ group, nodeId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const displays = (await d.screens.get()).nodes.find((n) => n.id === nodeId)?.displays ?? [];
+        return d.screens.assignNodeDisplay(group, nodeId, displays[1]?.id ?? -1);
+      },
+      { group, nodeId },
+    );
+    expect(assigned.ok).toBe(true);
+    const here = await outputFor(main.app, stageId);
+    const nodeStage = await outputPage(node.app);
+    await outputReady(here);
+    await outputReady(nodeStage);
+    await expect(nodeStage.getByTestId('stage-layout')).toBeVisible();
+
+    // This computer's stage screen: each setting as set.
+    await expect(here.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
+    const drawn = await settingsOn(here);
+    expect(drawn.map((l) => l.kind)).toEqual(['timer', 'timer', 'clock']);
+    const [timer, spent, clock] = drawn;
+    expect(timer).toMatchObject({
+      fill: 'rgba(32, 48, 64, 0.75)',
+      corners: '16px',
+      weight: '700',
+      line: '6px rgb(16, 16, 16)',
+      shadow: true,
+      upDown: 'center',
+      // m:ss, in its warning colour.
+      text: '65:00',
+      timerColor: '#f5a524',
+      color: 'rgb(245, 165, 36)',
+    });
+    // As large as its box holds: past the 400 px a box saved before keeps to.
+    expect(timer?.fitted).toBeGreaterThan(200);
+    expect(spent).toMatchObject({
+      fill: 'rgba(0, 0, 0, 0)',
+      weight: '400',
+      shadow: false,
+      upDown: 'flex-end',
+      text: '0:00:00',
+      timerColor: '#ef4444',
+      color: 'rgb(239, 68, 68)',
+    });
+    expect(clock).toMatchObject({ shadow: true, weight: '400' });
+
+    // The same on the node's stage screen.
+    const same = (other: Awaited<ReturnType<typeof settingsOn>>, where: string) => {
+      expect(
+        other.map(({ fitted: _f, ...l }) => l),
+        where,
+      ).toEqual(drawn.map(({ fitted: _f, ...l }) => l));
+      other.forEach((l, i) => {
+        const at = drawn[i]?.fitted ?? NaN;
+        if (Number.isNaN(at)) expect(l.fitted, `${where} ${String(l.kind)}`).toBeNaN();
+        else expect(Math.abs(l.fitted - at), `${where} ${String(l.kind)} fitted`).toBeLessThanOrEqual(2);
+      });
+    };
+    await expect(nodeStage.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
+    same(await settingsOn(nodeStage), 'a node’s stage screen');
+
+    // A tablet's stage page.
+    const { base } = await networkOn(main.win);
+    const code = await pairingCode(main.win, 'stage', 'Placeholder tablet');
+    await pairByQr(tablet.page, base, code, '/stage');
+    await expect(tablet.page.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
+    same(await settingsOn(tablet.page), 'a tablet’s stage page');
+
+    // The Stage panel's preview, and the editor's canvas.
+    const preview = main.win.getByTestId('stage-preview');
+    await expect(preview.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
+    same(await settingsOn(preview), 'the Stage panel’s preview');
+    await main.win.getByTestId('stage-edit-layout').click();
+    const canvas = main.win.getByTestId('stage-layout-canvas');
+    await expect(canvas.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
+    same(await settingsOn(canvas), 'the stage layout editor');
+  } finally {
+    await tablet.close();
+    await node.app.close();
+    await main.app.close();
+  }
+});
+
+test('a timer box’s colours and its flash at 0:00 follow the engine’s time: dim a second, bright a second, for ten seconds', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const stageId = await setUpScreen(win, 'Stage', 0);
+  const group = await makeStage(win, 'Stage');
+  const timerId = await makeTimer(win, countdownOf('Placeholder flashing countdown', 60_000));
+  await giveLayout(win, group, 'Placeholder flash layout', [
+    {
+      ...newStageBox('timer', 'placeholder-flash'),
+      timerId,
+      frame: { x: 48, y: 48, width: 1824, height: 984 },
+      size: 'fit',
+      color: '#ffffff',
+      warn: { color: '#f5a524', fromMs: 30_000 },
+      overColor: '#ef4444',
+      flash: true,
+    },
+  ]);
+  const stage = await outputFor(app, stageId);
+  await outputReady(stage);
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
+    timerId,
+  );
+  const startedAt = (await engineState(win)).timers.find((t) => t.id === timerId)?.startedAt ?? null;
+  if (startedAt === null) throw new Error('the countdown did not start');
+  const zeroAt = startedAt + 60_000;
+  const time = stage.locator('[data-stage-box="timer"] [data-timer]');
+  /** The timer at a moment of the engine's time, held on every output. */
+  const at = async (ms: number, text: string, color: string | null, dim: boolean) => {
+    expect(await holdClock(app, ms)).toBeGreaterThan(0);
+    await expect(time).toHaveText(text);
+    if (color === null) await expect(time).not.toHaveAttribute('data-timer-color');
+    else await expect(time).toHaveAttribute('data-timer-color', color);
+    if (dim) await expect(time).toHaveAttribute('data-flash', 'dim');
+    else await expect(time).not.toHaveAttribute('data-flash');
+    expect(Number(await time.evaluate((el) => getComputedStyle(el).opacity))).toBe(dim ? FLASH_DIM : 1);
+  };
+  await at(startedAt + 10_000, '0:50', null, false);
+  await at(startedAt + 35_000, '0:25', '#f5a524', false);
+  await at(zeroAt, '0:00', '#ef4444', true);
+  await at(zeroAt + 999, '0:00', '#ef4444', true);
+  await at(zeroAt + 1000, '-0:01', '#ef4444', false);
+  await at(zeroAt + 2500, '-0:02', '#ef4444', true);
+  await at(zeroAt + 9500, '-0:09', '#ef4444', false);
+  await at(zeroAt + 8500, '-0:08', '#ef4444', true);
+  // Ten seconds on, it stays bright.
+  await at(zeroAt + 10_000, '-0:10', '#ef4444', false);
+  await at(zeroAt + 60_000, '-1:00', '#ef4444', false);
+  // Paused, it never flashes.
+  await holdClock(app, null);
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'pauseTimer', timerId: id }),
+    timerId,
+  );
+  await expect(time).not.toHaveAttribute('data-flash');
+  await app.close();
+});
+
+test('a layout saved before opens as it was, and draws as it did: nothing to save, words no larger than 400 px', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const stageId = await setUpScreen(win, 'Stage', 0);
+  const group = await makeStage(win, 'Stage');
+  // As Session 53's editor saved them: none of the settings since (fitWhole among them).
+  const before: StageBox[] = [
+    {
+      id: 'placeholder-clock',
+      kind: 'clock',
+      frame: { x: 48, y: 48, width: 1824, height: 984 },
+      size: 'fit',
+      color: '#ffffff',
+      align: 'center',
+      label: '',
+    },
+    {
+      id: 'placeholder-timer',
+      kind: 'timer',
+      frame: { x: 48, y: 860, width: 900, height: 200 },
+      size: 96,
+      color: '#fde68a',
+      align: 'left',
+      label: 'TIMERS',
+      timerId: null,
+    },
+  ];
+  const layoutId = await giveLayout(win, group, 'Placeholder layout saved before', before);
+  const stage = await outputFor(app, stageId);
+  await expect(stage.getByTestId('stage-layout')).toHaveAttribute('data-layout', layoutId);
+  await expect.poll(async () => (await looksOn(stage))[0]?.fitted ?? NaN).toBe(400);
+  const [clock, timers] = await looksOn(stage);
+  expect(clock).toMatchObject({ fill: 'rgba(0, 0, 0, 0)', weight: '400', shadow: false, upDown: 'normal' });
+  expect(timers).toMatchObject({
+    fill: 'rgba(0, 0, 0, 0)',
+    weight: '400',
+    line: expect.stringMatching(/^0px /u),
+  });
+
+  // In the editor: as it was, nothing to save, its boxes' new settings at what they leave out.
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Placeholder layout saved before');
+  const save = editor.getByTestId('stage-layout-save');
+  await expect(save).toBeDisabled();
+  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Clock', exact: true }).click();
+  const settings = editor.getByTestId('stage-box-settings');
+  await expect(settings.getByTestId('stage-box-valign')).toHaveValue('top');
+  await expect(settings.getByTestId('stage-box-bold')).not.toBeChecked();
+  await expect(settings.getByTestId('stage-box-fill')).toHaveAttribute('aria-checked', 'false');
+  await expect(settings.getByTestId('stage-box-hours')).toHaveValue('computer');
+  await expect(settings.getByTestId('stage-box-seconds')).not.toBeChecked();
+  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Timer', exact: true }).click();
+  await expect(settings.getByTestId('stage-box-format')).toHaveValue('auto');
+  await expect(settings.getByTestId('stage-box-flash')).toHaveAttribute('aria-checked', 'false');
+  await expect(save).toBeDisabled();
+  await editor.getByRole('button', { name: 'Close stage layouts' }).click();
+  // Kept exactly as it was saved.
+  expect((await liveLayoutOf(win, group))?.boxes).toEqual(before);
   await app.close();
 });
