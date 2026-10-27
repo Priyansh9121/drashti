@@ -67,7 +67,7 @@ export const DEVICE_OPS = {
   'media.picture': ['remote', 'stage'],
   /**
    * A picture's or video's own file, in pieces as it plays (HTTP Range), and a link to it a <video> can play
-   * (Session 54, D1); never a sound's, as previews never were.
+   * (Session 54, D1); a sound's only while a playlist shared with phones has it (D3), never another sound's.
    */
   'media.original': ['remote'],
   /** Send an announcement for the operator to approve. */

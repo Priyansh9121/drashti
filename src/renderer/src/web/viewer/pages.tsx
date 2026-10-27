@@ -10,15 +10,16 @@ import { PreviewPicture } from '../../render/previews';
 import { Scene } from '../../render/Scene';
 import { SlideView } from '../../render/SlideView';
 import { useRemote } from '../remote/remote-store';
-import { DeviceVideoControls, DeviceVideoPicture } from './DeviceVideo';
+import { DeviceSound, DeviceVideoControls, DeviceVideoPicture, SOUND_PAGE } from './DeviceVideo';
 import { frameInCanvas, frameInSlide, frameOfBackground, keptFraming, zoomTargetOf } from './live-zoom';
 import { setPageSize, useViewer, type ViewerPage } from './viewer-store';
 
 /*
  * The pages a phone or tablet looks at (Session 54, D1): what the screens show now, a presentation's slides in
- * their order (a PDF's or a deck's pages among them), a picture and a video. Each says how it is drawn, and (D2)
- * when it is what the screens show and where the picture the live zoom zooms is in it. Pictures are drawn as the
- * phones draw them (render/previews.tsx): at the size they are drawn, sharper as they are zoomed.
+ * their order (a PDF's or a deck's pages among them), a picture and a video; and (D3) a sound of a playlist
+ * shared with phones. Each says how it is drawn, and (D2) when it is what the screens show and where the picture
+ * the live zoom zooms is in it. Pictures are drawn as the phones draw them (render/previews.tsx): at the size they
+ * are drawn, sharper as they are zoomed.
  */
 
 /** The hall's picture as the remote draws it (the screens' canvas). */
@@ -166,5 +167,18 @@ export function videoPage(mediaId: string, name: string): ViewerPage {
     draw: () => <DeviceVideoPicture mediaId={mediaId} pageKey={key} />,
     live: (state) => backgroundIs(state, mediaId),
     below: () => <DeviceVideoControls mediaId={mediaId} />,
+  };
+}
+
+/** A sound of a playlist shared with phones (D3), played on this device at its own quality with its time bar. */
+export function soundPage(mediaId: string, name: string): ViewerPage {
+  return {
+    key: `sound:${mediaId}`,
+    title: name,
+    size: SOUND_PAGE,
+    draw: () => <DeviceSound mediaId={mediaId} name={name} />,
+    // LIVE while Drashti plays it in the hall.
+    live: (state) => state?.layers.audio?.mediaId === mediaId,
+    below: () => <DeviceVideoControls mediaId={mediaId} what="sound" />,
   };
 }

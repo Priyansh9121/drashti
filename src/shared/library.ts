@@ -147,6 +147,26 @@ export function soundCueOf(cues: readonly SlideCue[]): AudioCue | null {
   return cues.findLast((c): c is AudioCue => c.kind === 'audio') ?? null;
 }
 
+/**
+ * A file's name as a presentation's slides have it, by its media id (Session 54 review): the name a background's or a
+ * sound's cue gives it, deleted from the library or not (Media's list leaves a deleted one out); null when no cue
+ * names it.
+ */
+export function fileNameIn(doc: PresentationDoc, mediaId: string): string | null {
+  for (const group of doc.groups)
+    for (const slide of group.slides)
+      for (const cue of slide.cues) {
+        const id =
+          cue.kind === 'audio'
+            ? cue.mediaId
+            : cue.background.kind === 'media'
+              ? cue.background.mediaId
+              : null;
+        if (id === mediaId) return cue.name;
+      }
+  return null;
+}
+
 export interface SlideInfo {
   id: string;
   /** Position in the presentation's slide order (what the engine calls slideIndex). */

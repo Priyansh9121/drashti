@@ -53,7 +53,11 @@ function useLowerThirdShort(state: EngineState | null): { shown: number; total: 
   return total > LOWER_THIRD_MAX_LINES ? { shown: LOWER_THIRD_MAX_LINES, total } : null;
 }
 
-export function LivePreview() {
+/**
+ * `bars`: the time bar for what plays under the picture (Session 54), as Simple Mode has it. Pro Mode draws it under
+ * Next and Back instead (operator/App.tsx), so they never move when something starts playing (Session 54's review).
+ */
+export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // The show, or the practice show while it is on (Session 26g: drawn here, never on a screen).
   const state = useShowState();
   const lowerThirdShort = useLowerThirdShort(state);
@@ -167,8 +171,8 @@ export function LivePreview() {
         {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
       </div>
       <PipLiveStrip />
-      {/* The time bar for what plays (Session 54): Pro Mode moves it, Simple Mode shows it. */}
-      <PlayingBars />
+      {/* The time bar for what plays (Session 54), in Simple Mode: it shows it, and moves nothing. */}
+      {bars && <PlayingBars />}
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
           As “{shownAs.name}” shows it: {shownAs.languages.map((l) => LANG_NAMES[l]).join(', ')}

@@ -569,6 +569,24 @@ export class PlaylistRepo {
     );
   }
 
+  /**
+   * Whether a playlist shared with phones has this media item now (Session 54, D3), as the phones list them: a
+   * Remote may then play a sound of it on the device, and never a sound no shared playlist has.
+   */
+  isSharedMedia(mediaId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM playlist_items
+            WHERE playlist_id IN (SELECT id FROM playlists
+                                   WHERE shared_at IS NOT NULL AND deleted_at IS NULL AND is_folder = 0 AND is_template = 0)
+              AND media_id = ? AND kind = 'media' AND deleted_at IS NULL
+            LIMIT 1`,
+        )
+        .get(mediaId) !== undefined
+    );
+  }
+
   /** Whether a playlist is a sabha template. */
   isTemplate(id: string): boolean {
     const row = this.db.prepare('SELECT is_template FROM playlists WHERE id = ?').get(id) as

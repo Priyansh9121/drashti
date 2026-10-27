@@ -3,7 +3,7 @@ import type { CommandResult, EngineCommand } from '../../shared/engine/commands'
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import type { InvokeChannel } from '../../shared/ipc';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
-import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
+import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import type { RemoteMedia } from '../../shared/network-mirror';
 import { openDatabase } from '../db/database';
@@ -51,7 +51,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     localName: () => null,
     engine: {
       dispatch: (c): CommandResult => {
-        if (options.locked === true && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type))
+        if (options.locked === true && simpleModeRefuses(c))
           return { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL };
         commands.push(c);
         return { ok: true, changed: true, rev: commands.length };
@@ -68,6 +68,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       messages: () => [],
       logo: () => null,
       mediaSource: () => null,
+      sharedSound: () => null,
       stage: () => ({ groupId: null, languages: null }),
       hallGroups: () => [],
       hall: () => ({ groupId: null }),
@@ -254,9 +255,12 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         { type: 'startIdle' },
         { type: 'stopIdle' },
       ];
-      // In Simple Mode too: running the show, as its window does.
-      for (const args of sent) expect(ask(remote, 'command', args).status, JSON.stringify(args)).toBe(200);
-      expect(commands).toEqual(sent);
+      // In Simple Mode too: running the show, as its window does; but Back 15 s and the rest, which move what plays,
+      // are Pro Mode's (Session 54's review: Simple Mode shows the time bar and moves nothing).
+      const refused = (args: Record<string, unknown>) => locked && args['type'] === 'skip';
+      for (const args of sent)
+        expect(ask(remote, 'command', args).status, JSON.stringify(args)).toBe(refused(args) ? 403 : 200);
+      expect(commands).toEqual(sent.filter((args) => !refused(args)));
     }
   });
 

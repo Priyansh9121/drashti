@@ -290,7 +290,7 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
     await app.close();
   });
 
-test('a video plays on the phone at its original quality, in pieces as it plays, and never on the screens (Session 54, D1)', async () => {
+test('a video plays on the phone at its original quality, in pieces as it plays, B’s time bar moving it there alone, never on the screens (Session 54, D1)', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -323,6 +323,20 @@ test('a video plays on the phone at its original quality, in pieces as it plays,
     expect(pieces).toContain(206);
     // Its time bar here; nothing of it on the screens.
     await expect(p.getByTestId('viewer-time-bar')).toBeVisible();
+    expect((await snapshot(win)).layers.background).toBeNull();
+    // The bar is B's, at a finger's size: the time gone before it and the time left after it. Once the clip has
+    // played to its end, a tap three quarters along moves it there, on this phone only.
+    const track = p.getByTestId('viewer-track');
+    await expect(track).toHaveAttribute('role', 'slider');
+    await expect(p.getByTestId('viewer-track-left')).toHaveText(/^-\d+:\d{2}$/u);
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.ended), { timeout: 20_000 }).toBe(true);
+    await expect(p.getByTestId('viewer-play')).toHaveText('Play');
+    const box = await track.boundingBox();
+    if (!box) throw new Error('The time bar has no box');
+    await track.click({ position: { x: box.width * 0.75, y: box.height / 2 } });
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(1.2);
+    expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeLessThan(1.8);
+    await expect(p.getByTestId('viewer-track-elapsed')).toHaveText('0:01');
     expect((await snapshot(win)).layers.background).toBeNull();
     await expectNoSeriousA11yIssues(p, 'the viewer playing a video (chromium)');
     expect.soft(await tooSmall(p), 'targets under 44 px: the viewer playing a video').toEqual([]);

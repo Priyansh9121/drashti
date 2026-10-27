@@ -8,7 +8,7 @@ import type { MusicRun, PipLayer, PropItem } from '../../shared/engine/state';
 import type { MediaMarkers } from '../../shared/markers';
 import { playbackAtMs } from '../../shared/media';
 import type { MediaElement, RenderSlide } from '../../shared/model';
-import { SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
+import { simpleModeRefuses } from '../../shared/mode';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
@@ -255,9 +255,12 @@ describe('the time bar’s move (Session 54)', () => {
       parseEngineCommand({ type: 'resumePlaying', playing: { layer: 'props', propId: 'p', mediaId: 'v' } })
         .ok,
     ).toBe(true);
-    expect(SIMPLE_MODE_REFUSED_COMMANDS).toContain('moveTo');
-    expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('pausePlaying');
-    expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('resumePlaying');
+    // Simple Mode shows the bar only (the lead's reading, Session 54's review): no move, no Pause but a track's, and
+    // Play always, so nothing stays paused there.
+    expect(simpleModeRefuses({ type: 'moveTo', playing: { layer: 'background' }, toMs: 1 })).toBe(true);
+    expect(simpleModeRefuses({ type: 'pausePlaying', playing: { layer: 'pip' } })).toBe(true);
+    expect(simpleModeRefuses({ type: 'pausePlaying', playing: { layer: 'audio' } })).toBe(false);
+    expect(simpleModeRefuses({ type: 'resumePlaying', playing: { layer: 'pip' } })).toBe(false);
   });
 });
 
