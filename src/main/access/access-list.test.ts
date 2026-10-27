@@ -315,6 +315,20 @@ describe('each edit', () => {
       'approve two.placeholder@example.com',
       'list',
     ]);
+
+    // A Gmail approved already: said as the owner needs it, nothing approved.
+    r.made.length = 0;
+    r.calls.add = () =>
+      Promise.resolve({
+        ok: false,
+        kind: 'refused',
+        error: 'already-approved',
+        message: 'The list’s own words',
+      });
+    const again = await r.list.add({ gmail: PERSON, name: '', note: '', approve: true });
+    expect(again).toMatchObject({ ok: false });
+    expect(again.message).toContain('give access again');
+    expect(r.made).toEqual(['list']);
   });
 
   it('never revokes or rejects the owner’s own Gmail, however it is typed, and never calls the list for it', async () => {

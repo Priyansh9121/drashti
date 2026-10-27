@@ -112,11 +112,18 @@ interface Outcome {
   why: string;
 }
 
-/** A call's answer as an edit's outcome: its words when done; the list's refusal or no answer, in words. */
-function outcome<T>(result: OwnerResult<T>, done: (value: T) => string): Outcome {
+/**
+ * A call's answer as an edit's outcome: its words when done; the list's refusal (in the edit's own words where
+ * it has some) or no answer, in words.
+ */
+function outcome<T>(
+  result: OwnerResult<T>,
+  done: (value: T) => string,
+  refused: Partial<Record<AccessErrorCode, string>> = {},
+): Outcome {
   if (result.ok) return { ok: true, message: done(result.value), why: '' };
   return result.kind === 'refused'
-    ? { ok: false, message: ownerErrorText(result.error), why: result.error }
+    ? { ok: false, message: refused[result.error] ?? ownerErrorText(result.error), why: result.error }
     : { ok: false, message: EDIT_NO_ANSWER_TEXT, why: 'no answer' };
 }
 
@@ -195,10 +202,16 @@ export class AccessList {
     return this.edit('added a Gmail', async (calls) => {
       const added = await calls.add(gmail, { ...(name ? { name } : {}), ...(note ? { note } : {}) });
       if (!added.ok || !fields.approve)
-        return outcome(added, (v) =>
-          v.mailed
-            ? `Added ${gmail} as requested: approve it here, or with the Approve link the list has emailed you.`
-            : `Added ${gmail} as requested. The access list could not email you its links today: approve it here.`,
+        return outcome(
+          added,
+          (v) =>
+            v.mailed
+              ? `Added ${gmail} as requested: approve it here, or with the Approve link the list has emailed you.`
+              : `Added ${gmail} as requested. The access list could not email you its links today: approve it here.`,
+          {
+            'already-approved':
+              'That Gmail is on the list and approved already: choose it in the list to give access again.',
+          },
         );
       const approved = await calls.approve(gmail);
       if (approved.ok)
