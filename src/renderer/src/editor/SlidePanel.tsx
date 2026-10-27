@@ -11,7 +11,8 @@ import {
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { DARKEN_STRENGTHS } from '../../../shared/model';
 import { cueInputName, slidesOf } from '../../../shared/slide-edit';
-import { useMedia } from '../library/library-store';
+import { fileNameIn } from '../../../shared/library';
+import { useLibrary, useMedia } from '../library/library-store';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -199,6 +200,10 @@ function useDefaultTransition(): [Transition | null, (t: Transition) => void] {
 export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
   const group = doc.groups.find((g) => g.slides.some((s) => s.id === slide.id));
   const media = useMedia((s) => s.media);
+  // Media's list once read (the editor reads it as it opens), and the library's own copy of this presentation while
+  // the library shows it: the names of files the list leaves out (Session 54 review).
+  const mediaRead = useMedia((s) => s.loaded);
+  const libraryCopy = useLibrary((s) => (s.doc?.id === doc.presentationId ? s.doc : null));
   const [picking, setPicking] = useState<'background' | 'sound' | null>(null);
   const [askLook, setAskLook] = useState(false);
   const [appDefault, setAppDefault] = useDefaultTransition();
@@ -210,23 +215,26 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
   );
   const inputName = background ? cueInputName(background) : null;
   const inputHere = useInputNamed(inputName) !== null;
-  // Its picture or video missing (Session 52), as Media marks it: not found at import.
-  const fileMissing =
-    background !== undefined &&
-    background.mediaId !== null &&
-    media.find((m) => m.id === background.mediaId)?.missing === true;
+  // A file missing, as the slide going up has it: not found at import, as Media marks it (Session 52), or deleted from
+  // the library, which Media's list leaves out (Session 54 review), once that list has been read.
+  const missing = (mediaId: string | null) => {
+    if (mediaId === null || !mediaRead) return false;
+    return media.find((m) => m.id === mediaId)?.missing ?? true;
+  };
+  // Its picture or video missing (Session 52).
+  const fileMissing = background !== undefined && missing(background.mediaId);
   // Its sound: the last, when it has more than one (Session 54), as the slide going up plays.
   const sound = slide.cues.findLast((c) => c.kind === 'audio' && c.mediaId);
   // Its file missing (Session 54), as its background's is said.
-  const soundMissing =
-    sound !== undefined &&
-    sound.mediaId !== null &&
-    media.find((m) => m.id === sound.mediaId)?.missing === true;
+  const soundMissing = sound !== undefined && missing(sound.mediaId);
   const others = slide.cues.filter((c) => c !== background && c !== sound);
   const nameOf = (cue: EditCue | undefined) => {
     const label = cue?.label ?? '';
+    const id = cue?.mediaId ?? null;
     return (
-      media.find((m) => m.id === cue?.mediaId)?.name ?? (label !== '' ? label : 'A file from the library')
+      media.find((m) => m.id === id)?.name ??
+      (libraryCopy && id !== null ? fileNameIn(libraryCopy, id) : null) ??
+      (label !== '' ? label : 'A file from the library')
     );
   };
 
