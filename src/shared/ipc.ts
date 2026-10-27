@@ -19,6 +19,7 @@ import type {
   ShastraTextInfo,
   ShastraTree,
 } from './shastra';
+import type { AccessView } from './access';
 import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
@@ -887,6 +888,25 @@ export const IPC = {
     list: 'guides:list',
     read: 'guides:read',
   },
+  /**
+   * Access by Gmail (Session 54, E2 and E3): the lock screen and the stop, the only requests that run while this
+   * computer is not let in (with Quit). The main process decides everything (src/main/access/service.ts).
+   */
+  access: {
+    view: 'access:view',
+    /** main -> the lock screen and the operator window: the view changed. */
+    changed: 'access:changed',
+    /** Request Access: a Gmail (and a name), the approver emailed. */
+    request: 'access:request',
+    /** What became of the request made from this computer. */
+    status: 'access:status',
+    /** I Have a Token: a Gmail and the token from its email. */
+    redeem: 'access:redeem',
+    /** Try Again: the access kept here, checked again. */
+    retry: 'access:retry',
+    /** Quit, the one button that always works. */
+    quit: 'access:quit',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
@@ -910,6 +930,12 @@ export interface InvokeContract {
   [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };
   [IPC.guides.read]: { args: [id: GuideId]; result: GuideRead };
+  [IPC.access.view]: { args: []; result: AccessView };
+  [IPC.access.request]: { args: [gmail: string, name: string]; result: AccessView };
+  [IPC.access.status]: { args: []; result: AccessView };
+  [IPC.access.redeem]: { args: [gmail: string, token: string]; result: AccessView };
+  [IPC.access.retry]: { args: []; result: AccessView };
+  [IPC.access.quit]: { args: []; result: null };
   [IPC.app.getInfo]: { args: []; result: AppInfo };
   [IPC.app.renderError]: { args: [report: RenderErrorReport]; result: null };
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
@@ -1381,6 +1407,7 @@ export interface EventContract {
   [IPC.nodes.changed]: NodesStatus;
   [IPC.nodes.thumbs]: ScreenThumb[];
   [IPC.node.changed]: NodeView;
+  [IPC.access.changed]: AccessView;
 }
 
 export type InvokeChannel = keyof InvokeContract;

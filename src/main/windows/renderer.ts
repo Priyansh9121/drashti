@@ -3,7 +3,17 @@ import { join } from 'node:path';
 import { sw } from '../switches';
 
 export type RendererPage =
-  'index' | 'output' | 'audio' | 'gallery' | 'stream' | 'node' | 'pdf' | 'sharpen' | 'zoom' | 'access-list';
+  | 'index'
+  | 'output'
+  | 'audio'
+  | 'gallery'
+  | 'stream'
+  | 'node'
+  | 'pdf'
+  | 'sharpen'
+  | 'zoom'
+  | 'lock'
+  | 'access-list';
 
 export const rendererDir = (): string => join(__dirname, '../renderer');
 export const devServerUrl = (): string | undefined =>

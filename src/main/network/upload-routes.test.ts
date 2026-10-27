@@ -64,6 +64,8 @@ async function start(options: { policyFirst?: boolean } = {}) {
     },
   };
   server = new NetworkServer(host);
+  // Let in (Session 54): the main process says so as it starts the server.
+  server.setLetIn(true);
   // The main process tells the worker before it starts, as it does at each start (network-service.ts).
   if (options.policyFirst) server.setUploadPolicy(ON);
   const started = await server.start({

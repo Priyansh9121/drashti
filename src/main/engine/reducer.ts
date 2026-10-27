@@ -323,5 +323,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return sameData(state.videoFiles ?? null, action.files)
         ? state
         : { ...state, videoFiles: action.files };
+    case 'access/stop':
+      return state.stopped ? state : { ...state, stopped: { at: action.at } };
   }
 }

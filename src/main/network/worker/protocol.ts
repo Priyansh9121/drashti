@@ -23,7 +23,9 @@ export type ToNetworkWorker =
   | { type: 'uploads'; policy: UploadPolicy }
   | { type: 'upload-outcome'; id: string; outcome: ArrivedOutcome }
   /** What the phone reads while its file waits to be imported (a deck, while the stream is on air). */
-  | { type: 'upload-note'; id: string; message: string };
+  | { type: 'upload-note'; id: string; message: string }
+  /** Whether Drashti is let in (Session 54): every request is refused while it is not. */
+  | { type: 'access'; letIn: boolean };
 
 export type WorkerQuestion =
   | { kind: 'request'; request: DeviceRequest }

@@ -11,6 +11,8 @@ import { onListsChanged, onOnline, startFeed, useFeed } from '../feed';
 import { networkPreviews } from '../previews';
 import { ClockStyleContext } from '../../render/clock-style';
 import { type ClockStyle, validClockStyle } from '../../../../shared/format';
+import { useStopFade } from '../../render/StopFade';
+import { PhoneStopped } from '../Stopped';
 
 /*
  * The stage display in a browser (a Stage device: a tablet on the stage, a
@@ -72,9 +74,11 @@ export function StageDisplay() {
     };
   }, []);
   const canFullscreen = typeof document.documentElement.requestFullscreen === 'function';
+  // Drashti stopped (Session 54): black, as its stage screens go, and said plainly (PhoneStopped).
+  const stop = useStopFade(state?.stopped);
   return (
     <div className="relative h-dvh w-full bg-black" data-testid="stage-display" data-connection={feed}>
-      {state && fonts ? (
+      {state && fonts && !stop.black ? (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
           {/* Drashti's way of writing the time (Sessions 31–36, I18N-8), its timers' clocks too. */}
           <ClockStyleContext.Provider value={clockStyle}>
@@ -88,6 +92,8 @@ export function StageDisplay() {
           Connecting to Drashti…
         </p>
       )}
+      {stop.cover}
+      <PhoneStopped />
       {feed !== 'online' && state && (
         <p
           role="status"

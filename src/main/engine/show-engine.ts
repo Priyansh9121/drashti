@@ -1,3 +1,4 @@
+import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
 import type { CommandResult, EngineCommand, EngineCommandType } from '../../shared/engine/commands';
 import { diffState } from '../../shared/engine/patch';
@@ -374,6 +375,8 @@ export class ShowEngine {
   }
 
   dispatch(command: EngineCommand): CommandResult {
+    // Drashti stopped (Session 54, access by Gmail): nothing changes the show any more.
+    if (this.state.stopped) return { ok: false, error: 'forbidden', message: STOPPED_REFUSAL };
     const refused = this.options.refuse?.(command) ?? null;
     if (refused !== null) return { ok: false, error: 'forbidden', message: refused };
     // A Next sent with the revision it saw, the show having moved since (Sessions 31–36, TST-11), or seen in another
@@ -2045,6 +2048,8 @@ export class ShowEngine {
 
   private applyAt(actions: readonly EngineAction[], cause: EngineCommandType | null): CommandResult {
     const prev = this.state;
+    // Stopped (Session 54): nothing made in here (a slide moving on by itself, a refresh) changes it either.
+    if (prev.stopped) return this.unchanged();
     let next = actions.reduce(reduce, prev);
     // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the
     // slide cleared ends it (Stop and Esc leave its slide up).
@@ -2343,6 +2348,18 @@ export class ShowEngine {
       const moved = this.step(1);
       if (moved.ok) this.apply(moved.actions);
     });
+  }
+
+  /**
+   * Access by Gmail (Session 54): Drashti has stopped. Every screen, node, phone and the stream's picture fades to
+   * black from now, by the engine's clock, and nothing changes the show after: no command, nothing moving on by
+   * itself. For good: only Quit ends it.
+   */
+  stop(): CommandResult {
+    if (this.state.stopped) return this.unchanged();
+    const done = this.apply([{ type: 'access/stop', at: this.now() }]);
+    this.dispose();
+    return done;
   }
 
   /** Stop waiting (the engine is going away: tests, and quitting). */

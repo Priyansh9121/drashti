@@ -138,4 +138,6 @@ export type EngineAction =
   /** The live Look, every group's settings resolved from the library. */
   | { type: 'look/set'; look: LiveLook }
   /** What the time bar shows of the videos on the slide up, the props, the logo and the box (Session 54); null: none. */
-  | { type: 'videoFiles/set'; files: Record<string, VideoFile> | null };
+  | { type: 'videoFiles/set'; files: Record<string, VideoFile> | null }
+  /** Drashti stopped (Session 54, access by Gmail): the screens fade to black from `at`. */
+  | { type: 'access/stop'; at: number };

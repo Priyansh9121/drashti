@@ -5,6 +5,8 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DrashtiBridge } from '../../src/shared/bridge';
+import type { AccessStandIn } from '../access-standin';
+import { type AccessOptions, letInBeforeStart } from './access';
 import type { EngineState } from '../../src/shared/engine/state';
 
 /** Globals inside our pages, for code passed to page.evaluate(). */
@@ -76,8 +78,12 @@ export const NO_PLACEHOLDERS = { DRASHTI_TEST_SEED_PLACEHOLDERS: '' } as const;
 export async function launchApp(
   extraEnv: Record<string, string> = {},
   userDataDir?: string,
-): Promise<{ app: ElectronApplication; userData: string }> {
+  // Let in through a stand-in list before it starts (Session 54, tests/e2e/access.ts): as the placeholder person
+  // unless a spec says otherwise (locked, the owner, another Gmail), on that data folder's own list.
+  access: AccessOptions = {},
+): Promise<{ app: ElectronApplication; userData: string; access: AccessStandIn }> {
   const userData = userDataDir ?? mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
+  const lock = await letInBeforeStart(userData, access);
   const app = await electron.launch({
     // Another build of Drashti can be run instead (an earlier commit's, for audience-pixels.spec.ts).
     args: [process.env['DRASHTI_E2E_APP_DIR'] ?? '.'],
@@ -95,12 +101,14 @@ export async function launchApp(
       // Crash files go into the test's own output folder (Session 39), which Playwright keeps only when the
       // test fails (playwright.config.ts, preserveOutput), so a failed run's report carries them.
       ...crashFilesHere(),
+      // The stand-in list and this computer's pretend hardware id (Session 54).
+      ...lock.env,
       ...extraEnv,
     }),
   });
   sayIfItStops(app);
   sayIfQuittingIsSlow(app, userData);
-  return { app, userData };
+  return { app, userData, access: lock.standIn };
 }
 
 /** The running test's own folder for crash files, or nothing outside a test. */
@@ -223,6 +231,11 @@ export function operatorPage(app: ElectronApplication): Promise<Page> {
   return windowShowing(app, (p) => p.url().includes('index.html'), 'operator');
 }
 
+/** The lock window's page (Session 54, access by Gmail): Drashti on a computer not let in, before it opens. */
+export function lockPage(app: ElectronApplication): Promise<Page> {
+  return windowShowing(app, (p) => p.url().includes('lock.html'), 'lock');
+}
+
 /**
  * Wait until the operator window's page is up and listening to the main process: the status bar
  * shows the version once it is. A notice sent before then (a backup asked for from the menu the
@@ -298,10 +311,11 @@ export async function killMainOnly(app: ElectronApplication): Promise<void> {
 export async function relaunchApp(
   userDataDir: string,
   extraEnv: Record<string, string> = {},
+  access: AccessOptions = {},
 ): ReturnType<typeof launchApp> {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await launchApp(extraEnv, userDataDir);
+      return await launchApp(extraEnv, userDataDir, access);
     } catch (error) {
       if (attempt >= 5) throw error;
       await new Promise((resolve) => setTimeout(resolve, 1000));
