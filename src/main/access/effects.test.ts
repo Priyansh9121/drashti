@@ -41,6 +41,10 @@ function setup(o: { live?: boolean; recording?: boolean; failing?: string } = {}
     tellNodes: (letIn) => told.push(letIn),
     lockMenu: step('menu'),
     dropShortcuts: step('keys'),
+    others: [
+      { what: 'zoom', stop: step('zoom') },
+      { what: 'downloads', stop: step('downloads') },
+    ],
     every: (ms, run) => {
       expect(ms).toBe(TELL_NODES_EVERY_MS);
       every = run;
@@ -54,30 +58,30 @@ function setup(o: { live?: boolean; recording?: boolean; failing?: string } = {}
 }
 
 describe('a stop, once Drashti has opened (Session 54)', () => {
-  it('stops everything at once, once: the screens, the stream and the recording, the nodes, the menu and the keys', () => {
+  it('stops everything at once, once: the screens, the stream and the recording, the nodes, the menu, the keys and the rest', () => {
     setAccessState(at('in'));
     const { did, told } = setup({ live: true, recording: true });
     expect(told).toEqual([true]);
     setAccessState(at('stopped'));
-    expect(did).toEqual(['screens', 'stream', 'recording', 'menu', 'keys']);
+    expect(did).toEqual(['screens', 'stream', 'recording', 'menu', 'keys', 'zoom', 'downloads']);
     expect(told).toEqual([true, false]);
     // Heard again (a later change), nothing more.
     setAccessState(at('stopped'));
-    expect(did).toEqual(['screens', 'stream', 'recording', 'menu', 'keys']);
+    expect(did).toEqual(['screens', 'stream', 'recording', 'menu', 'keys', 'zoom', 'downloads']);
   });
 
   it('ends only what is going: no stream to end, none ended', () => {
     setAccessState(at('in'));
     const { did } = setup();
     setAccessState(at('stopped'));
-    expect(did).toEqual(['screens', 'menu', 'keys']);
+    expect(did).toEqual(['screens', 'menu', 'keys', 'zoom', 'downloads']);
   });
 
   it('goes on with the rest when one step fails', () => {
     setAccessState(at('in'));
     const { did, told } = setup({ live: true, failing: 'screens' });
     setAccessState(at('stopped'));
-    expect(did).toEqual(['screens', 'stream', 'menu', 'keys']);
+    expect(did).toEqual(['screens', 'stream', 'menu', 'keys', 'zoom', 'downloads']);
     expect(told.at(-1)).toBe(false);
   });
 

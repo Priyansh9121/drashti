@@ -5614,6 +5614,11 @@ function start(): void {
       dropShortcuts: () => {
         globalShortcut.unregisterAll();
       },
+      others: [
+        { what: 'the window for Zoom', stop: () => zoom.close() },
+        { what: 'the drop folder', stop: () => dropFolder.stop() },
+        { what: 'downloads', stop: () => links.close() },
+      ],
       every: (ms, run) => {
         const t = setInterval(run, ms);
         return () => {

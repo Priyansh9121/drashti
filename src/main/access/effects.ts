@@ -26,6 +26,8 @@ export interface AccessEffects {
   lockMenu: () => void;
   /** No key works system-wide (the uncover shortcut). */
   dropShortcuts: () => void;
+  /** Whatever else goes on by itself (the window for Zoom, the drop folder, downloads), each stopped in turn. */
+  others?: readonly { what: string; stop: () => void }[];
   /** Run `run` every `ms`; what it returns stops it. */
   every: (ms: number, run: () => void) => () => void;
   log: (message: string, error?: unknown) => void;
@@ -59,6 +61,7 @@ export function followAccess(e: AccessEffects): () => void {
     });
     step('the menu', e.lockMenu);
     step('the keys', e.dropShortcuts);
+    for (const other of e.others ?? []) step(other.what, other.stop);
   };
   const off = onAccessChange((state) => {
     if (state.phase === 'stopped') stopAll();
