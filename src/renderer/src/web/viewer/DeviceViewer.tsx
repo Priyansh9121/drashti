@@ -31,7 +31,7 @@ const near = (a: Framing, b: Framing) =>
 
 /** The zoom buttons' step: half as big again, or back. */
 const STEP = 1.5;
-/** A zoom has settled once its short glide has (ZoomSurface's 150 ms): each picture then measures its new size. */
+/** A zoom has settled once its short glide has (ZoomSurface's, --dur-hover): each picture then measures its size. */
 const SETTLE_MS = 200;
 
 export function DeviceViewer() {

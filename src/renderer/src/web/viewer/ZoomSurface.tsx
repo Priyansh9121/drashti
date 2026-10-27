@@ -207,7 +207,8 @@ export function ZoomSurface({
           data-a11y-picture
           className={cx(
             'absolute top-0 left-0 origin-top-left',
-            !moving && 'motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out',
+            // The buttons' and keys' zooms glide (the interface's own short transition); fingers move it at once.
+            !moving && 'motion-safe:transition-transform',
           )}
           style={{
             width: content.width,
