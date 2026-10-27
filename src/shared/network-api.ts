@@ -62,6 +62,23 @@ export const DEVICE_OPS = {
   announce: ['announcements'],
   /** What became of an announcement this device sent. */
   announcement: ['announcements'],
+  // The mirror of the operator window (Session 54, D5: shared/network-mirror.ts), read and put up, never changed.
+  /** The keys the operator window answers now, so the phone's clears name them. */
+  keys: ['remote'],
+  /** The library's props by name, the logo marked. */
+  props: ['remote'],
+  /** Put a prop up by its id (the main process reads it from the library). */
+  'prop.show': ['remote'],
+  /** The library's pictures, videos and sounds by name, a page at a time. */
+  media: ['remote'],
+  /** Put one up by its id: a picture or video as the background (the slide taken off), a sound played. */
+  'media.show': ['remote'],
+  /** The lower thirds. */
+  lowerThirds: ['remote'],
+  /** Put a lower third up by its id. */
+  'lowerThird.show': ['remote'],
+  /** The audio playlists by name (Play starts one: music.play). */
+  music: ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;
@@ -74,8 +91,9 @@ export const deviceMay = (kind: DeviceKind, op: DeviceOp): boolean =>
 /**
  * The engine commands a Remote may send: running the show, as the operator
  * window does, and switching the Look. Not setting backgrounds, sounds,
- * props, masks or the stage message, and never anything that changes the
- * library.
+ * props or masks from what it sends (a prop, a picture or a sound goes up by
+ * its id, read from the library: DEVICE_OPS), and never anything that
+ * changes the library. Since Session 54 (D5) the stage message too.
  */
 export const REMOTE_COMMANDS = [
   'goLive',
@@ -107,6 +125,16 @@ export const REMOTE_COMMANDS = [
   'stopRepeat',
   // Picture in picture (Session 50): Take off only; setting one up, Swap and moving it are the operator's.
   'hidePip',
+  // The mirror of the operator window (Session 54, D5): a prop and a lower third taken off, a timer alone on the
+  // screens, the stage message, Back 15 s, Forward 15 s and Last 10 s, and the idle rotation started and stopped.
+  'hideProp',
+  'hideLowerThird',
+  'showTimer',
+  'setStageMessage',
+  'clearStageMessage',
+  'skip',
+  'startIdle',
+  'stopIdle',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */

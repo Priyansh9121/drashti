@@ -24,7 +24,8 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
 
 /** What each kind of device is for, as the operator reads it when pairing one. */
 export const DEVICE_KIND_HELP: Record<DeviceKind, string> = {
-  remote: 'Runs the show: Next and Back, slides, clears, black-out, logo, timers and messages.',
+  remote:
+    'Runs the show: Next and Back, slides, the clears, media, props, timers, messages and the stage message.',
   stage: 'Watches only: shows what a stage screen shows.',
   announcements: 'Sends announcements for the operator to approve; nothing else.',
 };
@@ -100,9 +101,22 @@ export type FromDevice =
   /** The device's copy fell behind (a revision went missing): send the whole state again. */
   | { type: 'resync' };
 
-/** Hints that lists a device shows have changed and should be read again. */
+/**
+ * Hints that lists a device shows have changed and should be read again; since Session 54 (D5) the lower thirds,
+ * the audio playlists, and the keys the operator window answers (the single-letter keys turned off or on).
+ */
 export type NetworkChange =
-  'playlists' | 'presentations' | 'messages' | 'timers' | 'props' | 'screens' | 'looks' | 'shastra';
+  | 'playlists'
+  | 'presentations'
+  | 'messages'
+  | 'timers'
+  | 'props'
+  | 'screens'
+  | 'looks'
+  | 'shastra'
+  | 'lowerThirds'
+  | 'music'
+  | 'keys';
 
 /** What the feed sends a device. */
 export type ToDevice =

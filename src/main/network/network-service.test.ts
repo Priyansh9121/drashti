@@ -133,6 +133,15 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
               message: `No loaded text is called “${reference.split(' ')[0] ?? ''}”. The texts are: PG.`,
             },
     },
+    // The mirror's reads (Session 54, D5): mirror-ops.test.ts checks them.
+    mirror: {
+      props: () => [],
+      prop: () => null,
+      media: () => [],
+      lowerThirds: () => [],
+      music: () => [],
+      keys: () => ({ platform: 'darwin', singleKeys: true }),
+    },
     playMusic: () => ({ ok: true as const }),
     announcements: {
       submit: (device, address, input) => {
@@ -278,9 +287,9 @@ describe('the network in the main process', () => {
       service.answer({ address: PHONE, deviceId: stage, op: 'command', args: { type: 'next' } }).status,
     ).toBe(403);
     expect(service.answer({ address: PHONE, deviceId: poster, op: 'playlists', args: {} }).status).toBe(403);
-    // Not running the show: refused, though the engine would take it from the operator window.
+    // Not running the show: refused, though the engine would take it from the operator window. (The stage message
+    // is a Remote's since Session 54, D5: mirror-ops.test.ts.)
     for (const args of [
-      { type: 'setStageMessage', text: 'Placeholder' },
       { type: 'setBackground', background: { kind: 'color', color: '#000000' } },
       { type: 'showProp', prop: { id: 'p', name: 'Placeholder', elements: [] } },
     ])
