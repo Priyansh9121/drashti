@@ -272,6 +272,24 @@ describe('the network in the main process', () => {
       expect(REMOTE_COMMANDS as readonly string[]).not.toContain(type);
   });
 
+  it('lets a Remote move, pause and play on what plays, as the time bar under LIVE does (Session 54)', () => {
+    const { service, commands } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const send = (args: Record<string, unknown>) =>
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status;
+    const sent = [
+      { type: 'moveTo', playing: { layer: 'background' }, toMs: 12_000 },
+      { type: 'pausePlaying', playing: { layer: 'pip' } },
+      { type: 'resumePlaying', playing: { layer: 'slide', mediaId: 'placeholder-video' } },
+    ];
+    for (const args of sent) expect(send(args), JSON.stringify(args)).toBe(200);
+    expect(commands).toEqual(sent);
+    // Named wrongly, or a point before the file's start: refused before the engine hears of it.
+    expect(send({ type: 'moveTo', playing: { layer: 'slide' }, toMs: 1000 })).toBe(400);
+    expect(send({ type: 'moveTo', playing: { layer: 'background' }, toMs: -5 })).toBe(400);
+    expect(commands).toHaveLength(3);
+  });
+
   it('lets each kind of device do only its own things, and a Remote only run the show', () => {
     const { service, commands } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;

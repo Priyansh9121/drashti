@@ -129,6 +129,11 @@ export interface PlaybackClip {
 export interface PlaybackSeek {
   at: number;
   toMs: number;
+  /**
+   * Paused there from `at` (Session 54: the time bar's Pause): it waits at `toMs`, on every screen alike, until Play
+   * plays it on from there, as a new jump. Left out while it plays.
+   */
+  paused?: boolean;
 }
 
 export interface PlaybackClock {
@@ -153,15 +158,15 @@ export function playbackBounds(
  * Where a playback that started at `startedAt` (ms since the epoch) is at
  * `now`, in seconds: looping files wrap (between their start and end points,
  * when they have them), others stop at the end; after a jump, it goes on from
- * where the jump took it. Files that do not say how long they are start from
- * the top.
+ * where the jump took it (paused there, Session 54, it waits). Files that do not
+ * say how long they are start from the top.
  */
 export function playbackPosition(playback: PlaybackClock, duration: number, now: number): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
   const { start, end } = playbackBounds(playback.clip, duration);
   const seek = playback.seek;
   const from = seek ? Math.min(end, Math.max(start, seek.toMs / 1000)) : start;
-  const elapsed = Math.max(0, (now - (seek ? seek.at : playback.startedAt)) / 1000);
+  const elapsed = seek?.paused ? 0 : Math.max(0, (now - (seek ? seek.at : playback.startedAt)) / 1000);
   const span = end - start;
   if (playback.loop && span > 0) return start + ((from - start + elapsed) % span);
   return Math.min(from + elapsed, end);
@@ -180,7 +185,8 @@ export function playbackSpanMs(
 
 /**
  * Where a file is at `now`, in ms into it (Session 50), as playbackPosition has it on every screen; an audio
- * playlist's track that is paused (`pausedAtMs`, played since its start point) waits where it is.
+ * playlist's track that is paused (`pausedAtMs`, played since its start point) waits where it is, as anything paused
+ * by the time bar (Session 54, its seek's `paused`) does.
  */
 export function playbackAtMs(
   playback: PlaybackClock & { pausedAtMs?: number },
@@ -195,7 +201,7 @@ export function playbackAtMs(
   if (playback.pausedAtMs !== undefined) return at(Math.max(0, playback.pausedAtMs));
   const seek = playback.seek;
   const from = seek ? Math.min(end, Math.max(start, seek.toMs)) : start;
-  return at(from - start + Math.max(0, now - (seek ? seek.at : playback.startedAt)));
+  return at(from - start + (seek?.paused ? 0 : Math.max(0, now - (seek ? seek.at : playback.startedAt))));
 }
 
 /** How long a file has left at `now` (ms, Session 50): to its end point, or to the end of this time round. */

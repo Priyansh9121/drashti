@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type VideoClips, videoClip } from '../../../shared/engine/state';
-import { type PlaybackClip, stillUrl } from '../../../shared/media';
+import { type VideoClips, videoClip, type VideoSeeks, videoSeek } from '../../../shared/engine/state';
+import { type PlaybackClip, type PlaybackSeek, stillUrl } from '../../../shared/media';
 import type {
   MediaElement,
   Outline,
@@ -31,6 +31,7 @@ import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
 import { standsUpright } from '../../../shared/text-runs';
 import { TimerElementView } from './TimerElementView';
+import { PlayBar } from './PlayBar';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -383,19 +384,22 @@ function mediaStyle(el: MediaElement): CSSProperties {
 /**
  * A video placed on a slide, playing (muted) from when the slide went live, in step on every window; between its
  * file's start and end points when it has them (Session 52), going round between them when it loops, as a
- * background video does.
+ * background video does; from where the time bar moved it, or waiting where it paused it (Session 54).
  */
 function SlideVideo({
   el,
   startedAt,
   attempt,
   clip,
+  seek,
 }: {
   el: MediaElement;
   startedAt: number | undefined;
   attempt: number;
   /** Its file's start and end points, as the engine stamped them (its layer's clips); undefined: the whole file. */
   clip: PlaybackClip | undefined;
+  /** Where the time bar moved it, paused or not (its layer's seeks, Session 54); undefined: never moved. */
+  seek: PlaybackSeek | undefined;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   // Props and other things without a start time play from when they appear.
@@ -414,11 +418,12 @@ function SlideVideo({
     setFailedWith(null);
     setTries(tries + 1);
   }
-  // Whether it loops and its start and end points (Session 52) are read as they change, without a reload.
+  // Whether it loops, its start and end points (Session 52) and the time bar's moves (Session 54) are read as they
+  // change, without a reload.
   const loop = el.loop ?? false;
-  const timing = useRef({ loop, clip });
+  const timing = useRef({ loop, clip, seek });
   useLayoutEffect(() => {
-    timing.current = { loop, clip };
+    timing.current = { loop, clip, seek };
   });
   const playback = useRef<Playback | null>(null);
   useEffect(() => {
@@ -439,24 +444,41 @@ function SlideVideo({
       p();
     };
   }, [el.mediaId, attempt, tries, start]);
-  // New points while it plays (the library's changed): it goes where they put it at once, as a background does.
+  // New points while it plays (the library's changed), or the time bar's move, Pause or Play (Session 54): it goes
+  // where they put it at once, as a background does, landing in step on every screen.
   const clipKey = `${String(clip?.startMs)}/${String(clip?.endMs)}`;
+  const seekKey = `${String(seek?.at)}/${String(seek?.toMs)}/${String(seek?.paused)}`;
   useEffect(() => {
     playback.current?.resync();
-  }, [clipKey]);
+  }, [clipKey, seekKey]);
   return (
-    <video
-      ref={ref}
-      data-element={el.id}
-      data-media-id={el.mediaId}
-      muted
-      playsInline
-      disablePictureInPicture
-      preload="auto"
-      // Between start and end points it goes round by playback.ts's loop, not the element's.
-      loop={loop && !clip}
-      style={mediaStyle(el)}
-    />
+    <>
+      <video
+        ref={ref}
+        data-element={el.id}
+        data-media-id={el.mediaId}
+        muted
+        playsInline
+        disablePictureInPicture
+        preload="auto"
+        // Between start and end points it goes round by playback.ts's loop, not the element's.
+        loop={loop && !clip}
+        style={mediaStyle(el)}
+      />
+      {/* Its play bar (Session 54), when the slide editor's setting is ticked: drawn from the same timing. */}
+      {el.playBar === true && (
+        <PlayBar
+          frame={frameStyle(el)}
+          height={el.frame.height}
+          opacity={el.opacity ?? 1}
+          video={ref}
+          startedAt={start}
+          loop={loop}
+          clip={clip}
+          seek={seek}
+        />
+      )}
+    </>
   );
 }
 
@@ -495,11 +517,13 @@ function MediaView({
   media,
   startedAt,
   clips,
+  seeks,
 }: {
   el: MediaElement;
   media: MediaMode;
   startedAt?: number;
   clips?: VideoClips;
+  seeks?: VideoSeeks;
 }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
@@ -540,6 +564,7 @@ function MediaView({
       startedAt={startedAt}
       attempt={attempt}
       clip={videoClip(clips, el.mediaId)}
+      seek={videoSeek(seeks, el.mediaId)}
     />
   );
 }
@@ -549,6 +574,7 @@ export function ElementView({
   media = 'live',
   startedAt,
   clips,
+  seeks,
   textHidden = false,
   reveal,
   band,
@@ -559,6 +585,8 @@ export function ElementView({
   startedAt?: number;
   /** Its layer's videos' start and end points, by file (the engine's, Session 52): a video plays between them. */
   clips?: VideoClips;
+  /** Where the time bar moved or paused its layer's videos, by file (the engine's, Session 54). */
+  seeks?: VideoSeeks;
   /** Words laid out but not drawn (they are drawn apart while a Bold move runs, Session 27). */
   textHidden?: boolean;
   /** Words line by line or word by word, while they are revealed (Session 27). */
@@ -571,7 +599,7 @@ export function ElementView({
   // A timer on a slide (Session 50): live, its digits moving on the screens, still in a thumbnail.
   if (el.kind === 'timer')
     return <TimerElementView el={el} box={timerBoxStyle(el)} animate={media === 'live'} band={band} />;
-  return <MediaView el={el} media={media} startedAt={startedAt} clips={clips} />;
+  return <MediaView el={el} media={media} startedAt={startedAt} clips={clips} seeks={seeks} />;
 }
 
 /**
@@ -590,6 +618,7 @@ export const SlideView = memo(function SlideView({
   media = 'live',
   startedAt,
   clips,
+  seeks,
   text = 'shown',
   reveal,
 }: {
@@ -599,6 +628,8 @@ export const SlideView = memo(function SlideView({
   startedAt?: number;
   /** Its videos' start and end points, by file (the slide layer's, Session 52); left out: whole files. */
   clips?: VideoClips;
+  /** Where the time bar moved or paused its videos, by file (the slide layer's, Session 54). */
+  seeks?: VideoSeeks;
   text?: SlideText;
   /** Its words alone (`only`), line by line or word by word (Session 27). */
   reveal?: Reveal;
@@ -643,6 +674,7 @@ export const SlideView = memo(function SlideView({
               media={media}
               startedAt={startedAt}
               clips={clips}
+              seeks={seeks}
               textHidden={text === 'hidden'}
               reveal={text === 'only' ? reveal : undefined}
               band={darken?.kind === 'band' && darkensBehind(el) ? darken.strength : undefined}

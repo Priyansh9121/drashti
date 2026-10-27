@@ -135,6 +135,10 @@ export const REMOTE_COMMANDS = [
   'skip',
   'startIdle',
   'stopIdle',
+  // The time bar (Session 54): what plays moved, paused or played on, as under LIVE (Simple Mode refuses the move).
+  'moveTo',
+  'pausePlaying',
+  'resumePlaying',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */

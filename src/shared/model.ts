@@ -179,6 +179,11 @@ export interface MediaElement extends ElementBase {
   opacity?: number;
   /** Videos: how loud its sound plays (0 to 1, 0 for none); left out for full. */
   volume?: number;
+  /**
+   * Videos (Session 54): the screens draw a thin bar along its bottom with its time and a play or pause mark, from the
+   * engine's time, as a deck's video shows in a slideshow. Left out (off) unless ticked in the slide editor.
+   */
+  playBar?: boolean;
 }
 
 /** What a countdown on a slide does at zero (Session 50): holds at 0:00, or the next slide comes on. */

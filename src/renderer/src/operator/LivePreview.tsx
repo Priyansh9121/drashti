@@ -23,6 +23,7 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { PipDragHandle, PipLiveStrip } from './PipLive';
+import { PlayingBars } from '../markers/PlayingBars';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
 
 /**
@@ -166,6 +167,8 @@ export function LivePreview() {
         {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
       </div>
       <PipLiveStrip />
+      {/* The time bar for what plays (Session 54): Pro Mode moves it, Simple Mode shows it. */}
+      <PlayingBars />
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
           As “{shownAs.name}” shows it: {shownAs.languages.map((l) => LANG_NAMES[l]).join(', ')}

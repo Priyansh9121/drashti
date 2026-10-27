@@ -173,6 +173,14 @@ const ROUTES: Route[] = [
   })),
   // With an audio playlist chosen on a phone (Session 54, D5), or on from where it was paused.
   route('POST', '/api/v1/music/play', 'music.play', (b) => ({ playlistId: b['playlistId'] })),
+  // The time bar (Session 54): what plays moved, paused or played on; the engine checks what `playing` names.
+  route('POST', '/api/v1/playing/move', 'command', (b) => ({
+    type: 'moveTo',
+    playing: b['playing'],
+    toMs: b['toMs'],
+  })),
+  route('POST', '/api/v1/playing/pause', 'command', (b) => ({ type: 'pausePlaying', playing: b['playing'] })),
+  route('POST', '/api/v1/playing/play', 'command', (b) => ({ type: 'resumePlaying', playing: b['playing'] })),
   route('POST', '/api/v1/music/pause', 'command', command('pauseMusic')),
   route('POST', '/api/v1/music/next', 'command', command('musicNext')),
   route('POST', '/api/v1/music/previous', 'command', command('musicPrevious')),

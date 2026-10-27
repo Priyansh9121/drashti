@@ -51,6 +51,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         fileMissing,
         soundMissing,
         clips,
+        seeks: given,
       } = action;
       const live = state.live;
       const sameCursor =
@@ -81,9 +82,10 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         sameData(current.clips, clips);
       if (sameCursor && sameSlide) return state;
       // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on,
-      // and how it came on (a dissolve is not run again).
+      // and how it came on (a dissolve is not run again); and where the time bar left its videos (Session 54).
       const shownAt = samePlace ? current.shownAt : at;
       const came = samePlace ? current.transition : transition;
+      const seeks = given ?? (samePlace ? current.seeks : undefined);
       return {
         ...state,
         live: sameCursor ? live : { presentationId, slideIndex, slideCount, arrangementId, playlist },
@@ -104,6 +106,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
                 ...(gone ? { fileMissing: gone } : {}),
                 ...(unheard ? { soundMissing: unheard } : {}),
                 ...(clips ? { clips } : {}),
+                ...(seeks ? { seeks } : {}),
               },
             },
       };
@@ -316,5 +319,9 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         : withLayers(state, { ticker: action.ticker });
     case 'look/set':
       return sameData(state.look, action.look) ? state : { ...state, look: action.look };
+    case 'videoFiles/set':
+      return sameData(state.videoFiles ?? null, action.files)
+        ? state
+        : { ...state, videoFiles: action.files };
   }
 }
