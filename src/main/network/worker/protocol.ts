@@ -21,7 +21,9 @@ export type ToNetworkWorker =
   | { type: 'answer'; id: number; answer: unknown }
   /** Files phones add (Session 54): the switch, the limits and on air; and what came of a file handed over. */
   | { type: 'uploads'; policy: UploadPolicy }
-  | { type: 'upload-outcome'; id: string; outcome: ArrivedOutcome };
+  | { type: 'upload-outcome'; id: string; outcome: ArrivedOutcome }
+  /** What the phone reads while its file waits to be imported (a deck, while the stream is on air). */
+  | { type: 'upload-note'; id: string; message: string };
 
 export type WorkerQuestion =
   | { kind: 'request'; request: DeviceRequest }

@@ -45,6 +45,11 @@ export const ADD_FILES_SETTING = 'network.addFiles';
 const ADDED_PLAYLIST_SETTING = 'network.addedFromPhones';
 /** How often to look whether the stream went on or off air. */
 const WATCH_MS = 2000;
+/** What a deck waits for while the stream is on air or recording, as the phone reads it. */
+export const DECK_WAITS =
+  'Waiting for the stream to end: Drashti brings a PDF, PowerPoint or Keynote file in once it has (a deck is never converted on air).';
+/** Kinds Drashti converts at import (Keynote or PowerPoint makes a PDF, pdf.js draws its pages): never on air. */
+const DECKS = new Set<ArrivedFile['kind']>(['pdf', 'powerpoint', 'keynote']);
 
 export interface PhoneFilesDeps {
   db: Db;
@@ -70,6 +75,8 @@ export interface PhoneFilesDeps {
   log(level: 'info' | 'warn', message: string): void;
   /** The largest file a phone may add (2 GB; tests set less). */
   maxBytes?: number;
+  /** How often a deck waiting for the stream to end looks again (2 s; tests set it shorter). */
+  waitMs?: number;
 }
 
 const plainWord = (kind: ArrivedFile['kind']) =>
@@ -186,11 +193,29 @@ export class PhoneFiles {
     return { id, name };
   }
 
+  /** Until the stream is off air and not recording (at once when it is). */
+  private offAir(): Promise<void> {
+    if (!this.deps.onAir()) return Promise.resolve();
+    return new Promise((resolve) => {
+      const look = setInterval(() => {
+        if (this.deps.onAir()) return;
+        clearInterval(look);
+        resolve();
+      }, this.deps.waitMs ?? WATCH_MS);
+    });
+  }
+
   /**
    * A file a phone sent has all arrived: checked again, imported, named, marked and added to its playlist. What
-   * came of it, for the phone. The file sent is removed in every case, once it is known to be Drashti's own.
+   * came of it, for the phone. The file sent is removed in every case, once it is known to be Drashti's own. A deck
+   * (a PDF, PowerPoint or Keynote file), which the import converts, waits while the stream is on air or recording
+   * (Session 50's rule), the phone told why (`note`); a picture, video or sound comes in at once, as a dropped one
+   * does (what of it Drashti cannot play is converted afterwards, off air).
    */
-  async arrived(file: ArrivedFile): Promise<ArrivedOutcome> {
+  async arrived(
+    file: ArrivedFile,
+    note: (message: string) => void = () => undefined,
+  ): Promise<ArrivedOutcome> {
     const ours = await this.ours(file);
     const refuse = async (message: string): Promise<ArrivedOutcome> => {
       if (ours) await rm(file.file, { force: true }).catch(() => undefined);
@@ -206,6 +231,10 @@ export class PhoneFiles {
     const what = await whatFileIs(file.file);
     if (what?.ext !== file.ext || what.kind !== file.kind) return refuse(ADD_FILES_WORDS.notTaken);
     try {
+      if (DECKS.has(file.kind) && this.deps.onAir()) {
+        note(DECK_WAITS);
+        await this.offAir();
+      }
       return await this.importArrived(file, device.name);
     } finally {
       await rm(file.file, { force: true }).catch(() => undefined);

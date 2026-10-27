@@ -140,7 +140,8 @@ export interface NetworkDeps {
     policy(): UploadPolicy;
     shared(): SharedPlaylist[];
     sharedItems(playlistId: string): PlaylistItemInfo[] | null;
-    arrived(file: ArrivedFile): Promise<ArrivedOutcome>;
+    /** `note`: what the phone reads meanwhile (a deck waiting for the stream to end). */
+    arrived(file: ArrivedFile, note: (message: string) => void): Promise<ArrivedOutcome>;
   };
   /** Whether Simple Mode refuses this window channel now (the same table the windows' requests go through). */
   refused(channel: InvokeChannel): boolean;
@@ -479,7 +480,9 @@ export class NetworkService implements EngineTransport {
     let outcome: ArrivedOutcome;
     try {
       outcome = this.deps.files
-        ? await this.deps.files.arrived(file)
+        ? await this.deps.files.arrived(file, (message) => {
+            if (this.worker === worker) worker.send({ type: 'upload-note', id: file.id, message });
+          })
         : { ok: false, message: 'Drashti cannot take files from phones here.' };
     } catch (error) {
       this.deps.log('warn', `Network: a file from a phone could not be added (${(error as Error).message})`);

@@ -92,6 +92,9 @@ export function runNetworkWorker(
       case 'upload-outcome':
         server.uploadOutcome(message.id, message.outcome);
         return;
+      case 'upload-note':
+        server.uploadNote(message.id, message.message);
+        return;
     }
   };
 }

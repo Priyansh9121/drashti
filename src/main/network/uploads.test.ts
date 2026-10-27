@@ -330,6 +330,12 @@ describe('what a phone may add', () => {
   it('what the main process made of it is what the phone hears', async () => {
     const id = upload(await begin('Placeholder photo.jpg', 2000)).id;
     await uploads.piece(PHONE, id, '0', body(picture(2000)));
+    // While it waits to be imported (a deck, on air), the phone reads why.
+    uploads.note(id, 'Placeholder: waiting for the stream to end.');
+    expect(upload(uploads.status(PHONE, id))).toMatchObject({
+      state: 'importing',
+      message: 'Placeholder: waiting for the stream to end.',
+    });
     uploads.outcome(id, { ok: true, message: 'Added to Drashti.' });
     expect(upload(uploads.status(PHONE, id))).toMatchObject({ state: 'added', message: 'Added to Drashti.' });
     const listed = uploads.list(PHONE);

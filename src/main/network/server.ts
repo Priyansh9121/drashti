@@ -450,9 +450,13 @@ export class NetworkServer {
     this.uploads?.setPolicy(policy);
   }
 
-  /** What the main process made of a file a phone added. */
+  /** What the main process made of a file a phone added, and what the phone reads while it waits. */
   uploadOutcome(id: string, outcome: ArrivedOutcome): void {
     this.uploads?.outcome(id, outcome);
+  }
+
+  uploadNote(id: string, message: string): void {
+    this.uploads?.note(id, message);
   }
 
   /** A message from the engine: kept, and sent on to every device on the feed. */

@@ -138,7 +138,8 @@ function sendingWords(s: Sending): string {
     case 'checking':
       return 'All of it sent: Drashti is checking it…';
     case 'importing':
-      return 'Drashti is adding it…';
+      // A deck waiting for the stream to end says so.
+      return s.message ?? 'Drashti is adding it…';
     case 'added':
       return s.message ?? 'Added to Drashti.';
     case 'failed':

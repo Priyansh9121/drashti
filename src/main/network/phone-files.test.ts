@@ -20,7 +20,7 @@ import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
 import { UPLOADS_DIR } from '../import/media-store';
 import { makeZip } from '../import/testing/zip-writer';
-import { ADD_FILES_SETTING, PhoneFiles } from './phone-files';
+import { ADD_FILES_SETTING, DECK_WAITS, PhoneFiles } from './phone-files';
 
 /*
  * Files a phone added, as the main process takes them once all of one has arrived (Session 54, D4): checked
@@ -128,6 +128,7 @@ beforeEach(() => {
       changed.push(ids);
     },
     log: () => undefined,
+    waitMs: 10,
   });
   files.setOn(true);
 });
@@ -214,6 +215,24 @@ describe('a file a phone added', () => {
     });
     expect(changed).toHaveLength(1);
     expect(changed[0]).toHaveLength(1);
+  });
+
+  it('a deck sent while the stream is on air waits until it ends, the phone told why; a picture comes in at once', async () => {
+    onAir = true;
+    await files.arrived(sent(JPEG, 'Placeholder on air.jpg'));
+    expect(imported).toHaveLength(1);
+    const pptx = makeZip([{ name: 'ppt/presentation.xml', data: '<p:presentation/>' }]);
+    const notes: string[] = [];
+    const deck = files.arrived(
+      sent(pptx, 'Placeholder deck.pptx', { ext: 'pptx', kind: 'powerpoint' }),
+      (m) => notes.push(m),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(notes).toEqual([DECK_WAITS]);
+    expect(imported).toHaveLength(1);
+    onAir = false;
+    expect(await deck).toMatchObject({ ok: true });
+    expect(imported).toHaveLength(2);
   });
 
   it('nothing while the switch is off: refused, never imported, and the file sent removed', async () => {
