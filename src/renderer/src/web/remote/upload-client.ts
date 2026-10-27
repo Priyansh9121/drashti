@@ -66,8 +66,8 @@ const RETRY_MS = [1000, 2000, 4000, 8000, 15_000];
 const FAST_MS = 1000;
 const SLOW_MS = 4000;
 
-/** Not refused, only not answered: the Wi-Fi, Drashti busy or starting again, or a piece cut short. */
-const tryAgain = (status: number) => status === 0 || status === 400 || status === 429 || status === 503;
+/** Not refused, only not answered: the Wi-Fi, or Drashti busy or starting again. */
+const tryAgain = (status: number) => status === 0 || status === 429 || status === 503;
 
 const pause = (ms: number) =>
   new Promise<void>((resolve) => {
@@ -127,6 +127,10 @@ export function sendFile(
   };
 
   const run = async (): Promise<Sending> => {
+    if (file.size === 0) {
+      show({ state: 'failed', message: 'This file is empty.' });
+      return view;
+    }
     // Begun: Drashti makes room for it (the size limit and the free space said in words when there is none).
     let begun: Awaited<ReturnType<Transport['begin']>>;
     for (let tries = 0; ; tries++) {
@@ -179,7 +183,9 @@ export function sendFile(
         from(answer.upload);
         continue;
       }
-      if (!tryAgain(answer.status)) {
+      // A piece cut short on its way (Drashti says how much it has with it) is tried again, as a dropped one is.
+      const cutShort = answer.status === 400 && answer.upload !== undefined;
+      if (!tryAgain(answer.status) && !cutShort) {
         show({ state: 'failed', message: answer.message });
         return view;
       }

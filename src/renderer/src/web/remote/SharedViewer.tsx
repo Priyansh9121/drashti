@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { backgroundCueOf, type PresentationDoc } from '../../../../shared/library';
 import { playOrder } from '../../../../shared/order';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
@@ -134,7 +135,11 @@ export function SharedViewer() {
   if (!viewing) return null;
   const item = viewing.items[viewing.index];
   if (!item) return null;
-  return <Viewer item={item} index={viewing.index} count={viewing.items.length} />;
+  // Over the whole page, wherever the list it was opened from is (a tablet's side column).
+  return createPortal(
+    <Viewer item={item} index={viewing.index} count={viewing.items.length} />,
+    document.body,
+  );
 }
 
 function Viewer({ item, index, count }: { item: PlaylistItemInfo; index: number; count: number }) {

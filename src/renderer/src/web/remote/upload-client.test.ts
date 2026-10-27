@@ -140,6 +140,31 @@ describe('a file sent from a phone', () => {
     expect(t.cancelled).toEqual(['u1']);
   });
 
+  it('a request Drashti cannot take is said at once, never sent again and again; an empty file is never sent', async () => {
+    const t = standIn(300 * KB);
+    let begun = 0;
+    t.begin = () => {
+      begun++;
+      // Were it sent again, Drashti would say something else.
+      return Promise.resolve(
+        begun === 1
+          ? { ok: false as const, status: 400, message: 'Say the file’s name and how large it is.' }
+          : { ok: false as const, status: 403, message: 'Asked again.' },
+      );
+    };
+    expect(await sendFile(file(300 * KB), t, 'f1', () => undefined, clock(500)).done).toMatchObject({
+      state: 'failed',
+      message: 'Say the file’s name and how large it is.',
+    });
+    expect(begun).toBe(1);
+    const empty = standIn(0);
+    expect(await sendFile(file(0), empty, 'f2', () => undefined, clock(500)).done).toMatchObject({
+      state: 'failed',
+      message: 'This file is empty.',
+    });
+    expect(empty.pieces).toEqual([]);
+  });
+
   it('a refusal is said in Drashti’s own words; a file Drashti forgot is said so', async () => {
     const tooLarge = standIn(5 * MB, {
       ok: false,

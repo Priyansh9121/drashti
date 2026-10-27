@@ -98,6 +98,11 @@ export const ADD_ACCEPT = [
   'image/*',
   'video/*',
   'audio/*',
+  // Named too, so a phone hands over an iPhone's photo or video as it is rather than a copy made "compatible".
+  'image/heic',
+  'image/heif',
+  'video/quicktime',
+  'video/mp4',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'application/vnd.ms-powerpoint',
