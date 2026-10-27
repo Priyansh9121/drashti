@@ -371,4 +371,33 @@ describe('playlists shared with phones', () => {
     const template = playlists.create('Placeholder template', null, false, true) ?? '';
     expect(playlists.setShared(template, true)).toBe(false);
   });
+
+  it('let a phone play a sound of theirs, and only while a shared playlist has it (D3)', () => {
+    const sunday = playlists.create('Placeholder Sunday', null, false) ?? '';
+    const other = playlists.create('Placeholder other', null, false) ?? '';
+    for (const id of ['tone', 'chime'])
+      db.prepare(
+        `INSERT INTO media (id, kind, name, path) VALUES ('${id}', 'audio', 'Placeholder ${id}.wav', 'ab/${id}.wav')`,
+      ).run();
+    playlists.addItems(sunday, null, [{ kind: 'media', mediaId: 'tone' }]);
+    playlists.addItems(other, null, [{ kind: 'media', mediaId: 'chime' }]);
+    expect(playlists.isSharedMedia('tone')).toBe(false);
+    playlists.setShared(sunday, true);
+    expect(playlists.isSharedMedia('tone')).toBe(true);
+    // In a playlist that is not shared, or in none.
+    expect(playlists.isSharedMedia('chime')).toBe(false);
+    expect(playlists.isSharedMedia('nothing')).toBe(false);
+    // Its item removed (and brought back), the playlist deleted (and brought back), then no longer shared.
+    const item = playlists.itemsOf(sunday)[0]?.id ?? '';
+    playlists.removeItems([item]);
+    expect(playlists.isSharedMedia('tone')).toBe(false);
+    playlists.restoreItems([item]);
+    expect(playlists.isSharedMedia('tone')).toBe(true);
+    playlists.remove([sunday]);
+    expect(playlists.isSharedMedia('tone')).toBe(false);
+    playlists.restore([sunday]);
+    expect(playlists.isSharedMedia('tone')).toBe(true);
+    playlists.setShared(sunday, false);
+    expect(playlists.isSharedMedia('tone')).toBe(false);
+  });
 });

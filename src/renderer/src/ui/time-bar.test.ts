@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barFraction, barSpan, keyTarget, leftText, timeAt, timeWords } from './time-bar';
+import { barFraction, barSpan, keyPress, keyTarget, leftText, timeAt, timeWords } from './time-bar';
 
 /* The time bar's arithmetic (Session 54): the bar is the whole file, and every move keeps between its points. */
 
@@ -41,6 +41,25 @@ describe('the time bar', () => {
     expect(keyTarget('Home', 60_000, span)).toBe(10_000);
     expect(keyTarget('End', 60_000, span)).toBe(80_000);
     for (const key of ['Space', 'Enter', 'a', 'Escape']) expect(keyTarget(key, 60_000, span)).toBeNull();
+  });
+
+  it('takes its keys, each press one move; a key held down moves nothing more, and a key with Cmd, Ctrl or Alt is left alone (Session 54’s review)', () => {
+    const press = (key: string, more: Partial<Parameters<typeof keyPress>[0]> = {}) =>
+      keyPress({ key, repeat: false, altKey: false, ctrlKey: false, metaKey: false, ...more }, 30_000, span);
+    expect(press('ArrowRight')).toEqual({ to: 35_000 });
+    expect(press('End')).toEqual({ to: 80_000 });
+    // Held down: each repeat is the bar's (the show's keys never hear it) but moves nothing.
+    expect(press('ArrowRight', { repeat: true })).toEqual({ to: null });
+    expect(press('PageUp', { repeat: true })).toEqual({ to: null });
+    // Already there: taken, no move.
+    expect(
+      keyPress({ key: 'Home', repeat: false, altKey: false, ctrlKey: false, metaKey: false }, 10_000, span),
+    ).toEqual({ to: null });
+    // Not the bar's: left to the window (the show's keys, the menus).
+    expect(press('Space')).toBeNull();
+    expect(press('ArrowRight', { metaKey: true })).toBeNull();
+    expect(press('ArrowLeft', { altKey: true })).toBeNull();
+    expect(press('ArrowLeft', { ctrlKey: true })).toBeNull();
   });
 
   it('writes the time left to the end point as a countdown does, and says its time in whole seconds', () => {

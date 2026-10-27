@@ -92,8 +92,9 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
 const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
   text: new Set(['text', 'lang', 'style', 'runs', 'opacity', 'everyScreen']),
   shape: new Set(['shape', 'fill', 'cornerRadius', 'opacity', 'outline']),
-  image: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume']),
-  video: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume']),
+  // A video's play bar on the screens (Session 54): known, so unticking it in the editor takes it away.
+  image: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar']),
+  video: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar']),
   // A timer on a slide (Session 50).
   timer: new Set(['timerId', 'style', 'lastMinute', 'atZero', 'opacity']),
 };

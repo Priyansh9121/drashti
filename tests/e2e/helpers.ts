@@ -499,7 +499,9 @@ export async function openMoreTools(page: Page): Promise<void> {
  */
 export async function setTicked(box: Locator, ticked: boolean): Promise<void> {
   if ((await box.isChecked()) !== ticked) await box.click();
-  await expect(box, 'the box shows what the main process saved').toBeChecked({ checked: ticked });
+  await expect(box, ticked ? 'the box shows it ticked' : 'the box shows it unticked').toBeChecked({
+    checked: ticked,
+  });
 }
 
 // ---- waits that say what they wait for (Sessions 31–36, TST-6, TST-7) ------------------------------------

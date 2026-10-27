@@ -83,6 +83,8 @@ export interface ServerHost {
   pair(code: string, address: string): Promise<PairAnswer>;
   /** A media item's file and kind, for a preview; null when there is none. */
   mediaSource(mediaId: string): Promise<PreviewSource | null>;
+  /** A sound's file while a playlist shared with phones has it (Session 54, D3); null otherwise, or left out. */
+  sharedSound?(mediaId: string): Promise<string | null>;
   /** The devices with the feed open now. */
   connected(deviceIds: string[]): void;
   /** A device asked for something (its "last seen"). */
@@ -384,7 +386,9 @@ export class NetworkServer {
     this.previews = new PreviewMaker(options.previewDir, options.ffmpeg);
     this.uploads = uploadsAt(options.uploads, this.host);
     if (this.uploadPolicy) this.uploads?.setPolicy(this.uploadPolicy);
-    this.media = new MediaServing(options.previewDir, options.ffmpeg, (id) => this.host.mediaSource(id));
+    this.media = new MediaServing(options.previewDir, options.ffmpeg, (id) => this.host.mediaSource(id), {
+      sound: (id) => this.host.sharedSound?.(id) ?? Promise.resolve(null),
+    });
     const server = createServer((req, res) => {
       this.onRequest(req, res);
     });
@@ -753,7 +757,7 @@ export class NetworkServer {
     if (!media || !MEDIA_ID_PATTERN.test(mediaId)) throw new HttpError(404, 'There is no such media item.');
     const what = segments[4];
     if (what === 'link') {
-      if (!(await media.source(mediaId))) throw new HttpError(404, 'There is no such media item.');
+      if (!(await media.original(mediaId))) throw new HttpError(404, 'There is no such media item.');
       const { ticket, until } = media.links.make(device.id, mediaId);
       this.json(res, 200, {
         ok: true,

@@ -11,9 +11,10 @@ import { makeTestVideo } from './test-media';
 /*
  * Start and end points an import gives a file (Session 54, Session 53's question 10): a presentation from the older
  * app whose background video has in and out points, imported while that video (in the library already, with no
- * points of its own) is up as the background, on the slide up, as a prop and in the picture-in-picture box. Each
- * moves to them at once, as for points saved while it plays (Session 52; the box's, Session 53), and none goes up
- * again: until now each played the whole file until it went up again. A generated video, placeholder names only.
+ * points of its own) is up as the background, on the slide up, as a prop and in the picture-in-picture box, and (the
+ * review) as the sound playing, as a slide's sound can be a video's, and as the logo. Each moves to them at once, as
+ * for points saved while it plays (Session 52; the box's, Session 53), and none goes up again: until now each played
+ * the whole file until it went up again. A generated video, placeholder names only.
  */
 
 const PLACE: PipPlace = {
@@ -40,7 +41,7 @@ async function dispatch(win: Page, command: EngineCommand): Promise<void> {
   expect(done.ok, `${command.type} was refused`).toBe(true);
 }
 
-test('points an import gives a video move it at once wherever it is up: the background, the slide up, a prop and the box, none put up again', async () => {
+test('points an import gives a video move it at once wherever it is up: the background, the slide up, a prop, the box, the sound and the logo, none put up again', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -90,6 +91,34 @@ test('points an import gives a video move it at once wherever it is up: the back
     },
   });
   await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: clip }, place: PLACE });
+  // Its sound too, silent here (a slide's sound can be a video's), and the logo.
+  await dispatch(win, {
+    type: 'playAudio',
+    audio: {
+      id: 'placeholder-points-sound',
+      title: 'Placeholder points sound',
+      mediaId: clip,
+      volume: 0,
+      loop: true,
+    },
+  });
+  await dispatch(win, {
+    type: 'showLogo',
+    prop: {
+      id: 'placeholder-points-logo',
+      name: 'Placeholder points logo',
+      elements: [
+        {
+          id: 'placeholder-points-logo-video',
+          kind: 'video',
+          mediaId: clip,
+          frame: { x: 640, y: 360, width: 640, height: 360 },
+          fit: 'fit',
+          loop: true,
+        },
+      ],
+    },
+  });
   const before = await state(win);
   expect(before.layers.slide).toMatchObject({ presentationId, slideIndex: 0 });
   expect(before.layers.slide?.slide.elements.some((e) => e.kind === 'video' && e.mediaId === clip)).toBe(
@@ -100,6 +129,10 @@ test('points an import gives a video move it at once wherever it is up: the back
   expect(before.layers.background).not.toHaveProperty('clip');
   expect(before.layers.props[0]).not.toHaveProperty('clips');
   expect(before.layers.pip).not.toHaveProperty('clips');
+  expect(before.layers.audio).toMatchObject({ mediaId: clip });
+  expect(before.layers.audio).not.toHaveProperty('clip');
+  expect(before.logo).toMatchObject({ id: 'placeholder-points-logo' });
+  expect(before.logo).not.toHaveProperty('clips');
 
   // Another presentation, whose background is the same video between 0:02 and 0:06: the file takes those points.
   const marked = join(dir, 'Placeholder Marked Backdrop.pro6');
@@ -143,6 +176,12 @@ test('points an import gives a video move it at once wherever it is up: the back
     clips: { [clip]: CLIP },
   });
   expect(after.layers.pip).toMatchObject({ shownAt: before.layers.pip?.shownAt, clips: { [clip]: CLIP } });
+  expect(after.layers.audio).toMatchObject({
+    mediaId: clip,
+    startedAt: before.layers.audio?.startedAt,
+    clip: CLIP,
+  });
+  expect(after.logo).toMatchObject({ shownAt: before.logo?.shownAt, clips: { [clip]: CLIP } });
   expect(after.live).toEqual(before.live);
   await app.close();
 });

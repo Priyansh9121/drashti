@@ -55,7 +55,7 @@ import {
   isOperatorMode,
   leaveSimpleRefusal,
   SIMPLE_MODE_REFUSAL,
-  SIMPLE_MODE_REFUSED_COMMANDS,
+  simpleModeRefuses,
   startingMode,
 } from '../shared/mode';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
@@ -286,6 +286,7 @@ import { startPerfDevices } from './network/perf-devices';
 import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
 import { previewSource } from './network/preview-source';
+import { sharedSoundFile } from './network/shared-sound';
 import { rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
@@ -1334,8 +1335,7 @@ function start(): void {
         start: () => lookService?.start() ?? NO_LOOK,
       },
       // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
-      refuse: (command) =>
-        simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
+      refuse: (command) => (simpleNow() && simpleModeRefuses(command) ? SIMPLE_MODE_REFUSAL : null),
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
@@ -3669,6 +3669,13 @@ function start(): void {
             const found = media.file(id);
             return found && !found.missing ? sharpened.relativePath(found.sha256, step) : null;
           },
+        }),
+      // A sound plays on a phone only while a playlist shared with phones has it (Session 54, D3).
+      sharedSound: (mediaId) =>
+        sharedSoundFile(mediaId, {
+          mediaDir,
+          kindAndFile: (id) => media.kindAndFile(id),
+          shared: (id) => playlists.isSharedMedia(id),
         }),
       stage: () => {
         const groupId = screenRepo.firstGroup('stage');

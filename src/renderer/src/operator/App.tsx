@@ -93,6 +93,7 @@ import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { LinkDialog } from '../links/LinkDialog';
 import { KeysSheet, showKeysSheet } from './KeysSheet';
 import { MarkerJumps, MarkersDialog } from '../markers/MarkersDialog';
+import { PlayingBars } from '../markers/PlayingBars';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
@@ -345,6 +346,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
             <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
               <LivePreview />
               <NextBack platform={platform} run={run} />
+              {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
+              <PlayingBars className="px-3 pt-2" />
               <MarkerJumps />
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
                 tools folded away. */}

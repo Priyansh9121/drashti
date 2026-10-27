@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { ShapeElement, TextElement } from '../../shared/model';
+import type { MediaElement, ShapeElement, TextElement } from '../../shared/model';
 import type { EditDoc } from '../../shared/slide-edit';
 import { editDocSchema, slidesOf } from '../../shared/slide-edit';
 import type { ContentRows } from '../db/content';
@@ -270,6 +270,45 @@ describe('putting edited slides back', () => {
         .sort((a, b) => a.position - b.position)
         .map((e) => e.id),
     ).toEqual([box.id, 'odd', first?.elements[1]?.id]);
+  });
+
+  it('unticks a video’s play bar on the screens: a setting Drashti knows is never kept as unknown data (Session 54)', () => {
+    const db = openDatabase(':memory:');
+    const repo = new PresentationRepo(db);
+    const libraryId = repo.ensureLibrary('Default');
+    const video: MediaElement = {
+      id: 'v',
+      kind: 'video',
+      mediaId: 'placeholder-media',
+      frame: { x: 0, y: 0, width: 640, height: 360 },
+      fit: 'fit',
+      playBar: true,
+    };
+    const id = repo.insert({
+      libraryId,
+      name: 'Placeholder play bar',
+      groups: [{ name: 'Verse', slides: [{ elements: [video] }] }],
+    });
+    const before = repo.content(id);
+    if (!before) throw new Error('missing');
+    const { doc } = editDocOf(before, 'Placeholder play bar');
+    const shown = slidesOf(doc)[0]?.elements[0] as MediaElement;
+    expect(shown.playBar).toBe(true);
+    // Unticked in the slide editor: its stored data has no play bar, and the screens draw none.
+    delete shown.playBar;
+    const after = applySlideEdit(before, asSaved(doc));
+    const row = after.elements.find((e) => e.id === shown.id);
+    expect(JSON.parse(row?.props ?? '{}')).not.toHaveProperty('playBar');
+    repo.setContent(after);
+    expect(repo.get(id)?.groups[0]?.slides[0]?.slide.elements[0]).not.toHaveProperty('playBar');
+    // Ticked again: kept.
+    const again = repo.content(id);
+    if (!again) throw new Error('missing');
+    const next = editDocOf(again, 'Placeholder play bar').doc;
+    const el = slidesOf(next)[0]?.elements[0] as MediaElement;
+    el.playBar = true;
+    repo.setContent(applySlideEdit(again, asSaved(next)));
+    expect(repo.get(id)?.groups[0]?.slides[0]?.slide.elements[0]).toMatchObject({ playBar: true });
   });
 
   it('gives new things ids of its own, and keeps arrangements to the groups that are left', () => {
