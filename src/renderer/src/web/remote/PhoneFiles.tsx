@@ -159,8 +159,8 @@ function sendingWords(s: Sending): string {
 }
 
 /** What a screen reader hears of it: only when its state changes, never each byte. */
-function heardWords(s: Sending): string {
-  return s.state === 'receiving' ? `Sending ${s.name}` : `${s.name}: ${sendingWords(s)}`;
+function heardWords(file: Sending): string {
+  return file.state === 'receiving' ? `Sending ${file.name}` : `${file.name}: ${sendingWords(file)}`;
 }
 
 function SendingRow({ s }: { s: Sending }) {
