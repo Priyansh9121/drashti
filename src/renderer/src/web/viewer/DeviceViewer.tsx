@@ -12,7 +12,7 @@ import { Notice } from '../../ui/Notice';
 import { api } from '../device';
 import { tap, useTapNotice } from '../taps';
 import { type Framing, liveFramingOf, liveZoomFor, maxZoomOver, viewForLive } from './live-zoom';
-import { closeViewer, turnPage, useViewer } from './viewer-store';
+import { closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
 
@@ -36,7 +36,10 @@ const SETTLE_MS = 200;
 
 export function DeviceViewer() {
   const open = useViewer((s) => s.pages.length > 0);
-  return open ? <Viewer /> : null;
+  // Drashti stopped: what plays here stops at once, and the viewer closes (D1/D2 review).
+  const stopped = useEngine((s) => (s.state?.stopped ?? null) !== null);
+  useEffect(() => closeOnStop(), []);
+  return open && !stopped ? <Viewer /> : null;
 }
 
 function Viewer() {

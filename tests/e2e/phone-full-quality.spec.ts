@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { PLACEHOLDER_PERSON, revoke, standInOf } from './access';
 import { ffmpeg as deckFfmpeg, makeDeckFiles, standInDecks, writeDeck } from './deck-stand-in';
 import { device, type Engine, NETWORK_ENV, networkOn, pairByQr, pairingCode, PHONE, TABLET } from './devices';
 import {
@@ -459,6 +460,47 @@ test('a deck looked through on a phone plays each click’s motion once and hold
     // Nothing of it on the screens.
     expect((await snapshot(win)).layers.slide).toBeNull();
     await expectNoSeriousA11yIssues(p, 'the viewer looking through a deck (chromium)');
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
+test('a video playing on the phone stops, and the viewer closes, the moment Drashti stops (Session 54, D1/D2 review)', async () => {
+  test.setTimeout(240_000);
+  // Drashti's checks of the access list every 6 s, so a revoke stops it soon (access-devices.spec.ts).
+  const { app, userData } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_TEST_ACCESS_CHECK_MS: '6000',
+    DRASHTI_TEST_ACCESS_STOP_MS: '20000',
+    DRASHTI_TEST_ACCESS_TIMEOUT_MS: '2000',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const show = await setUpPlaceholderShow(win, { video: true });
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-playlist').selectOption(show.playlistId);
+    await p
+      .getByTestId('remote-items')
+      .locator('li')
+      .filter({ hasText: VIDEO })
+      .getByTestId('remote-item-look')
+      .click();
+    const video = p.getByTestId('viewer-video');
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(1);
+    await p.getByTestId('viewer-play').click();
+    // Drashti stops: the phone's page says so, and nothing goes on playing under it.
+    revoke(standInOf(userData), PLACEHOLDER_PERSON);
+    await expect(p.getByTestId('phone-stopped')).toBeVisible({ timeout: 30_000 });
+    await expect(p.getByTestId('viewer')).toHaveCount(0);
+    await expect(p.locator('video, audio')).toHaveCount(0);
   } finally {
     await phone.close();
   }

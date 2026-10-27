@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { create } from 'zustand';
 import type { EngineState } from '../../../../shared/engine/state';
+import { useEngine } from '../../engine/engine-store';
 import type { Framing, ZoomFrame } from './live-zoom';
 import type { Size } from './zoom-math';
 
@@ -64,6 +65,18 @@ export function openViewer(pages: ViewerPage[], index = 0, of: string | null = n
 
 export function closeViewer(): void {
   useViewer.setState({ pages: [], index: 0, of: null, sizes: {}, movedBy: 0 });
+}
+
+/**
+ * Closed the moment its Drashti stops (Session 54, access by Gmail; D1/D2 review): a video or a sound playing on this
+ * device stops with it, under the page saying why (PhoneStopped). Returns how to stop watching.
+ */
+export function closeOnStop(): () => void {
+  return useEngine.subscribe((s, before) => {
+    const stopped = (s.state?.stopped ?? null) !== null;
+    if (stopped && (before.state?.stopped ?? null) === null && useViewer.getState().pages.length > 0)
+      closeViewer();
+  });
 }
 
 /** The page before or after, on this device only. */
