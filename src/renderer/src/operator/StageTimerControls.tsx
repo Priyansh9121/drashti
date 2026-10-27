@@ -39,7 +39,8 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
         </span>
       </div>
       <div className="mt-1 flex items-center gap-1">
-        <span className="min-w-0 flex-1 truncate text-xs text-muted" data-testid="stage-timer-counts">
+        {/* Wrapped, never cut, in the narrowest right column (300 px). */}
+        <span className="min-w-0 flex-1 text-xs text-muted" data-testid="stage-timer-counts">
           {words}
         </span>
         {running ? (

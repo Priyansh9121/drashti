@@ -28,8 +28,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * own settings (a see-through fill, bold, a line round the letters, a shadow, up and down; a timer's format,
  * warning colour, colour when over and flash; a clock's 24 hours and seconds) draw alike on this computer's stage
  * screen, a node's, a tablet's stage page, the Stage panel's preview and the editor; the flash and the colours
- * follow the engine's time; a layout saved before opens and draws as it was. Placeholder timers and words only;
- * quiet; outputs as windows; nothing wider than 1024 assumed.
+ * follow the engine's time; a layout saved before opens and draws as it was. The Stage screen panel and the phone
+ * remote (Chrome's engine and Safari's) start, pause and reset the timers the layout shows, saying what each
+ * counts to. The Text size field shows what is typed (G4). Placeholder timers and words only; quiet; outputs as
+ * windows; nothing wider than 1024 assumed.
  */
 
 /** The engine's state, as the operator window has it. */

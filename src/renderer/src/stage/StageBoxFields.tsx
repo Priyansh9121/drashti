@@ -172,7 +172,7 @@ export function BoxLookFields({ box }: { box: StageBox }) {
               }}
             />
           </Field>
-          <Field label="Width">
+          <Field label="Line width">
             <NumberInput
               value={outline.width}
               min={0.5}
@@ -262,7 +262,7 @@ export function TimerBoxFields({ box, countsDown }: { box: StageBox; countsDown:
         </Select>
       </Field>
       <div className="space-y-2 border-t border-line pt-2" role="group" aria-labelledby={note}>
-        <p id={note} className="text-xs text-faint" data-testid="stage-box-countdown-note">
+        <p id={note} className="text-xs text-muted" data-testid="stage-box-countdown-note">
           {countsDown
             ? 'For a countdown:'
             : 'For a countdown (this timer does not count down, so these change nothing):'}
