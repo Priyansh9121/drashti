@@ -1,7 +1,8 @@
 // The release gate (Session 30, Q6). Before a release is published: its tag must be new; its commit must be
 // origin/main; a CI run from a push of that very commit must have passed every app job (a manual quick run
-// never counts); and every file must match SHA256SUMS.txt and the update manifest's sha512 and size. A dry
-// run reports what it finds and goes on; a publish stops at any failure.
+// never counts); every file must match SHA256SUMS.txt and the update manifest's sha512 and size; and (Session
+// 54) the access list's address and public key built in must be real, never placeholders. A dry run reports what
+// it finds and goes on; a publish stops at any failure.
 //
 //   node scripts/release-gate.mjs --dir release-files --sha <commit> --repo <owner/repo> [--report]
 //
@@ -23,6 +24,33 @@ export const APP_JOBS = [
 const JOB_NAMES = ['macOS', 'Windows', 'Windows in Black'];
 
 const short = (sha) => String(sha).slice(0, 7);
+
+/** A web app's address as Apps Script makes one, and the start and end of an RSA 2048 key as SPKI in base64. */
+const LIST_URL =
+  /^https:\/\/script\.google\.com\/(?:a\/macros\/[a-z0-9.-]+|macros)\/s\/[A-Za-z0-9_-]{10,200}\/exec$/u;
+const SPKI_START = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA';
+
+/**
+ * The access list Drashti asks (Session 54, src/shared/access-config.ts, given as its text): its address and public
+ * key must be the owner's real ones, never placeholders, or every Drashti it reached would stay locked: a release is
+ * never made without the lock, nor with a lock nobody can open. The same rules as accessConfigReal.
+ */
+export function accessCheck(configText) {
+  const url = /ACCESS_LIST_URL\s*=\s*'([^']*)'/u.exec(configText)?.[1] ?? '';
+  const key = /ACCESS_LIST_PUBLIC_KEY\s*=\s*'([^']*)'/u.exec(configText)?.[1] ?? '';
+  const urlOk = LIST_URL.test(url) && !url.toUpperCase().includes('PLACEHOLDER');
+  const keyOk =
+    key.length === 392 &&
+    key.startsWith(SPKI_START) &&
+    key.endsWith('IDAQAB') &&
+    /^[A-Za-z0-9+/]+$/u.test(key);
+  if (urlOk && keyOk) return { ok: true, line: 'The access list’s address and public key are built in.' };
+  const missing = urlOk ? 'public key is' : keyOk ? 'address is' : 'address and public key are';
+  return {
+    ok: false,
+    line: `The access list’s ${missing} not built in (src/shared/access-config.ts): put in the line the owner’s Set up… shows.`,
+  };
+}
 
 /** `git ls-remote --tags origin refs/tags/v<version>`: nothing there, or the tag. */
 export function tagCheck(lsRemote, version) {
@@ -162,6 +190,7 @@ async function main() {
     ).jobs;
   results.push(ciCheck(runs, jobsOf, sha));
   results.push(...(await filesCheck(dir)));
+  results.push(accessCheck(readFileSync('src/shared/access-config.ts', 'utf8')));
   const failed = results.filter((r) => !r.ok);
   process.stdout.write(`The release gate for Drashti ${version} (${short(sha)}):\n`);
   for (const r of results) process.stdout.write(`  ${r.ok ? 'passed' : 'FAILED'}  ${r.line}\n`);

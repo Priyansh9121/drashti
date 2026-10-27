@@ -11,3 +11,4 @@ export function ciCheck(
   sha: string,
 ): GateResult;
 export function filesCheck(dir: string): Promise<GateResult[]>;
+export function accessCheck(configText: string): GateResult;
