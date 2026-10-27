@@ -54,6 +54,8 @@ test('phones and tablets stop with their Drashti: every request refused, files t
     // The phone's page says plainly that Drashti has stopped.
     await expect(phone.page.getByTestId('phone-stopped')).toBeVisible({ timeout: 10_000 });
     await expect(phone.page.getByTestId('phone-stopped')).toContainText('Drashti has stopped');
+    // Its feed was closed for it, and a new one is refused: nothing of the show reaches it any more.
+    await expect(phone.page.getByTestId('connection')).not.toHaveAttribute('data-state', 'online');
     await expectNoSeriousA11yIssues(phone.page, 'a phone’s page once Drashti has stopped');
     // Every request refused, with the same plain words: the network's own answers (a picture, an original, a link
     // made before, an upload) as much as those it asks Drashti for, and pairing.
