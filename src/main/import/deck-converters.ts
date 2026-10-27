@@ -1013,7 +1013,7 @@ async function quitIfIdle(
  * started runs below normal priority, and its process id is written down so
  * Drashti can stop it if it stops answering, while it shows no window.
  */
-export const POWERPOINT_WINDOWS_SCRIPT = `param([Parameter(Mandatory)][string]$In, [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Notes, [Parameter(Mandatory)][string]$Started)
+export const POWERPOINT_WINDOWS_SCRIPT = `param([Parameter(Mandatory)][string]$In, [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Notes, [Parameter(Mandatory)][string]$Started, [string]$Settings = '')
 $ErrorActionPreference = 'Stop'
 $before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 $app = New-Object -ComObject PowerPoint.Application
@@ -1021,8 +1021,9 @@ $ours = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | Where-Object { $b
 Set-Content -LiteralPath $Started -Value ($ours -join ',') -Encoding ASCII
 foreach ($id in $ours) { try { (Get-Process -Id $id).PriorityClass = 'BelowNormal' } catch {} }
 $alerts = $app.DisplayAlerts
-try { $app.DisplayAlerts = 1 } catch {}
 $security = $app.AutomationSecurity
+if ($Settings -ne '') { Set-Content -LiteralPath $Settings -Value "$([int]$alerts),$([int]$security)" -Encoding ASCII }
+try { $app.DisplayAlerts = 1 } catch {}
 $pres = $null
 try {
   $app.AutomationSecurity = 3
@@ -1095,6 +1096,7 @@ async function powerPointOnWindows(
   const script = join(work, 'powerpoint.ps1');
   const notesFile = join(work, 'notes.json');
   const startedFile = join(work, 'started.txt');
+  const settingsFile = join(work, 'powerpoint-settings.txt');
   // A copy made for the purpose: the operator may have the file itself open in PowerPoint.
   const copy = join(work, `Drashti copy${input.toLowerCase().endsWith('.ppt') ? '.ppt' : '.pptx'}`);
   await copyFile(input, copy);
@@ -1104,7 +1106,7 @@ async function powerPointOnWindows(
     limits.startMs + limits.saveMs + limits.perSlideMs * Math.max(options.slideCount ?? 100, 1);
   const r = await runner(
     script,
-    ['-In', copy, '-Out', pdf, '-Notes', notesFile, '-Started', startedFile],
+    ['-In', copy, '-Out', pdf, '-Notes', notesFile, '-Started', startedFile, '-Settings', settingsFile],
     timeoutMs,
     signal,
   );
@@ -1112,11 +1114,12 @@ async function powerPointOnWindows(
     // Stop the PowerPoint Drashti started, which is stuck, while it shows no window; one the operator had open stays.
     const ids = await readFile(startedFile, 'ascii').then(idsIn, () => []);
     const left = await stopStuckPowerPoint(ids, work, runner, options.log);
+    const back = await putBackIfRunning(ids, left, settingsFile, copy, work, runner, options.log);
     if (r.aborted) return cancelled();
     return {
       ok: false,
       reason: 'PowerPoint stopped answering',
-      message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)} ${byHand('powerpoint')}`,
+      message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)}${notBackWords(back)} ${byHand('powerpoint')}`,
     };
   }
   if (r.code !== 0 || !exists(pdf)) {
@@ -1158,7 +1161,7 @@ async function powerPointOnWindows(
  * (import/deck/timed-copy.ts), its own timings are used. CI has no Office: the mandir PC tries it for real
  * (assister/session-54-deck-trial.md, "What the mandir PC must try").
  */
-export const POWERPOINT_WINDOWS_BAKE_SCRIPT = `param([Parameter(Mandatory)][string]$In, [string]$Pptx = '', [string]$Pdf = '', [string]$Movie = '', [Parameter(Mandatory)][string]$Started, [int]$LimitSeconds = 3600, [int]$StallSeconds = 0, [int]$WorkingMs = 500)
+export const POWERPOINT_WINDOWS_BAKE_SCRIPT = `param([Parameter(Mandatory)][string]$In, [string]$Pptx = '', [string]$Pdf = '', [string]$Movie = '', [Parameter(Mandatory)][string]$Started, [int]$LimitSeconds = 3600, [int]$StallSeconds = 0, [int]$WorkingMs = 500, [string]$Settings = '')
 $ErrorActionPreference = 'Stop'
 $before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 $app = New-Object -ComObject PowerPoint.Application
@@ -1166,8 +1169,9 @@ $ours = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | Where-Object { $b
 Set-Content -LiteralPath $Started -Value ($ours -join ',') -Encoding ASCII
 foreach ($id in $ours) { try { (Get-Process -Id $id).PriorityClass = 'BelowNormal' } catch {} }
 $alerts = $app.DisplayAlerts
-try { $app.DisplayAlerts = 1 } catch {}
 $security = $app.AutomationSecurity
+if ($Settings -ne '') { Set-Content -LiteralPath $Settings -Value "$([int]$alerts),$([int]$security)" -Encoding ASCII }
+try { $app.DisplayAlerts = 1 } catch {}
 $pres = $null
 try {
   $app.AutomationSecurity = 3
@@ -1279,6 +1283,61 @@ async function stopStuckPowerPoint(
   return shown;
 }
 
+/**
+ * Put PowerPoint's own settings back (Session 54, C review): its alerts and macro security, which a script turns
+ * off while it works and puts back in its finally, which never runs when the script is stopped. They were written
+ * down before they were changed; the PowerPoint running now (never one started for this) has Drashti's copy closed
+ * and them put back.
+ */
+export const POWERPOINT_WINDOWS_PUT_BACK_SCRIPT = `param([Parameter(Mandatory)][string]$Settings, [string]$Copy = '')
+$ErrorActionPreference = 'Stop'
+$said = @((Get-Content -LiteralPath $Settings -Raw).Trim() -split ',')
+$app = [System.Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')
+try {
+  if ($Copy -ne '') {
+    foreach ($p in @($app.Presentations)) { try { if ($p.FullName -eq $Copy) { $p.Close() } } catch {} }
+  }
+  $app.DisplayAlerts = [int]$said[0]
+  $app.AutomationSecurity = [int]$said[1]
+  Write-Output 'put back'
+} finally {
+  [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($app)
+}
+`;
+
+/**
+ * After a script that was stopped: where PowerPoint still runs (the operator's own, which it was given, or one it
+ * started and left open as it shows a window) and its settings were changed, put them back. Whether they are as
+ * they were (true when nothing was changed, or that PowerPoint is gone).
+ */
+async function putBackIfRunning(
+  ids: number[],
+  left: number[],
+  settings: string,
+  copy: string,
+  work: string,
+  runner: PowerShellRunner,
+  log?: (line: string) => void,
+): Promise<boolean> {
+  if (!exists(settings) || (ids.length > 0 && left.length === 0)) return true;
+  const script = join(work, 'powerpoint-put-back.ps1');
+  await writeFile(script, POWERPOINT_WINDOWS_PUT_BACK_SCRIPT);
+  const r = await runner(script, ['-Settings', settings, '-Copy', copy], 30_000);
+  const back = r.code === 0 && r.stdout.includes('put back');
+  log?.(
+    back
+      ? 'PowerPoint: its alerts and macro settings put back as they were'
+      : `PowerPoint: its alerts and macro settings could not be put back: ${firstLine(r.stderr) || 'no answer'}`,
+  );
+  return back;
+}
+
+/** What the operator is told of settings that could not be put back. */
+const notBackWords = (back: boolean) =>
+  back
+    ? ''
+    : ' Its alerts and macro settings, turned off while it worked, could not be put back: quit PowerPoint and open it again.';
+
 /** What the operator is told of a stuck PowerPoint left open. */
 const leftOpenWords = (left: number[]) =>
   left.length > 0
@@ -1317,6 +1376,7 @@ export async function deckOnWindows(
 ): Promise<{ ok: true } | ConvertFailed> {
   const limits = options.limits ?? CONVERT_LIMITS;
   const startedFile = join(work, `started-${String(Date.now())}.txt`);
+  const settingsFile = join(work, `powerpoint-settings-${String(Date.now())}.txt`);
   const script = join(work, 'powerpoint-deck.ps1');
   // A copy made for the purpose: the operator may have the file itself open in PowerPoint.
   const copy = join(
@@ -1344,7 +1404,7 @@ export async function deckOnWindows(
       () => undefined,
     );
   const poll = setInterval(() => void look(), 500);
-  const args = ['-In', copy, '-Started', startedFile];
+  const args = ['-In', copy, '-Started', startedFile, '-Settings', settingsFile];
   if (job.pptx) args.push('-Pptx', job.pptx);
   if (job.pdf) args.push('-Pdf', job.pdf);
   if (job.movie) args.push('-Movie', job.movie, '-LimitSeconds', String(Math.ceil(movieLimitMs / 1000)));
@@ -1356,11 +1416,12 @@ export async function deckOnWindows(
     if (r.timedOut || r.aborted) {
       // Stop the PowerPoint Drashti started, which is stuck, while it shows no window; one the operator had open stays.
       const left = await stopStuckPowerPoint([...ours], work, runner, options.log);
+      const back = await putBackIfRunning([...ours], left, settingsFile, copy, work, runner, options.log);
       if (r.aborted) return cancelled();
       return {
         ok: false,
         reason: 'PowerPoint stopped answering',
-        message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)}`,
+        message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)}${notBackWords(back)}`,
       };
     }
     const missing = [job.pptx, job.movie].find((f) => f !== undefined && !exists(f));

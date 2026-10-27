@@ -7,6 +7,7 @@ import {
   convertToPdf,
   deckOnWindows,
   POWERPOINT_WINDOWS_BAKE_SCRIPT,
+  POWERPOINT_WINDOWS_PUT_BACK_SCRIPT,
   POWERPOINT_WINDOWS_SCRIPT,
   POWERPOINT_WINDOWS_SHOWN_SCRIPT,
   type PowerShellRunner,
@@ -324,5 +325,129 @@ describe('PowerPoint on Windows, with a stand-in for PowerShell', () => {
     expect(asked[0]?.['In']).toMatch(/\.ppt$/u);
     expect(asked[0]?.['Movie']).toBeUndefined();
     expect(r).toMatchObject({ ok: false, reason: 'it could not save it as a .pptx' });
+  });
+});
+
+describe('PowerPoint’s own settings, put back even when its script was stopped (Session 54, C review)', () => {
+  const deck = join(dir, 'Placeholder settings deck.pptx');
+  writeFileSync(deck, 'placeholder deck bytes');
+
+  it('each script writes its alerts and macro settings down, as numbers, before it changes them', () => {
+    for (const script of [POWERPOINT_WINDOWS_BAKE_SCRIPT, POWERPOINT_WINDOWS_SCRIPT]) {
+      const at = (text: string) => script.indexOf(text);
+      const written = at(
+        `if ($Settings -ne '') { Set-Content -LiteralPath $Settings -Value "$([int]$alerts),$([int]$security)" -Encoding ASCII }`,
+      );
+      expect(written).toBeGreaterThan(at('$security = $app.AutomationSecurity'));
+      expect(written).toBeLessThan(at('try { $app.DisplayAlerts = 1 } catch {}'));
+      expect(written).toBeLessThan(at('$app.AutomationSecurity = 3'));
+      expect(script).toContain("[string]$Settings = ''");
+    }
+  });
+
+  it('the put-back script finds the PowerPoint running, closes Drashti’s copy in it, and puts both back', () => {
+    const script = POWERPOINT_WINDOWS_PUT_BACK_SCRIPT;
+    expect(script).toContain(
+      "[System.Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')",
+    );
+    expect(script).toContain('if ($p.FullName -eq $Copy) { $p.Close() }');
+    expect(script).toContain('$app.DisplayAlerts = [int]$said[0]');
+    expect(script).toContain('$app.AutomationSecurity = [int]$said[1]');
+    // Never one it would start: GetActiveObject, never New-Object.
+    expect(script).not.toContain('New-Object');
+  });
+
+  /** PowerShell as a stuck script leaves it: its settings written down (or not), `ids` started, nothing shown. */
+  function stuckAfterChanging(
+    script: string,
+    options: { ids?: number[]; settings?: string; putBack?: Ran },
+    asked: Record<string, string>[],
+  ): PowerShellRunner {
+    return (file, args) => {
+      const text = readFileSync(file, 'utf8');
+      const a = named(args);
+      if (text === script) {
+        writeFileSync(a['Started'] ?? '', (options.ids ?? []).join(','));
+        if (options.settings !== undefined) writeFileSync(a['Settings'] ?? '', options.settings);
+        return ran({ code: null, timedOut: true });
+      }
+      if (text === POWERPOINT_WINDOWS_SHOWN_SCRIPT) return ran({ stdout: '' });
+      if (text === POWERPOINT_WINDOWS_PUT_BACK_SCRIPT) {
+        asked.push({ ...a, settings: readFileSync(a['Settings'] ?? '', 'utf8') });
+        return options.putBack ? Promise.resolve(options.putBack) : ran({ stdout: 'put back\r\n' });
+      }
+      return ran();
+    };
+  }
+
+  it('the operator’s own PowerPoint: its settings put back as they were, and Drashti’s copy closed in it', async () => {
+    const work = mkdtempSync(join(dir, 'work-'));
+    const asked: Record<string, string>[] = [];
+    const log: string[] = [];
+    const r = await deckOnWindows({ input: deck, movie: join(work, 'movie.mp4') }, work, {
+      runPowerShell: stuckAfterChanging(POWERPOINT_WINDOWS_BAKE_SCRIPT, { settings: '2,1' }, asked),
+      log: (line) => log.push(line),
+    });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.['settings']).toBe('2,1');
+    expect(asked[0]?.['Copy']).toMatch(/Drashti copy \d+\.pptx$/u);
+    expect(r).toMatchObject({ ok: false, reason: 'PowerPoint stopped answering' });
+    expect(r.ok ? '' : r.message).not.toContain('could not be put back');
+    expect(log).toContain('PowerPoint: its alerts and macro settings put back as they were');
+  });
+
+  it('says so when they cannot be put back: PowerPoint opened again puts them back', async () => {
+    const work = mkdtempSync(join(dir, 'work-'));
+    const asked: Record<string, string>[] = [];
+    const r = await deckOnWindows({ input: deck, movie: join(work, 'movie.mp4') }, work, {
+      runPowerShell: stuckAfterChanging(
+        POWERPOINT_WINDOWS_BAKE_SCRIPT,
+        {
+          settings: '2,1',
+          putBack: {
+            code: 1,
+            stdout: '',
+            stderr: 'Call was rejected by callee.',
+            timedOut: false,
+            aborted: false,
+          },
+        },
+        asked,
+      ),
+    });
+    expect(asked).toHaveLength(1);
+    expect(r.ok ? '' : r.message).toContain(
+      'Its alerts and macro settings, turned off while it worked, could not be put back: quit PowerPoint and open it again.',
+    );
+  });
+
+  it('saving as PDF: the same', async () => {
+    const work = mkdtempSync(join(dir, 'work-'));
+    const asked: Record<string, string>[] = [];
+    const r = await convertToPdf('powerpoint', deck, work, {
+      platform: 'win32',
+      runPowerShell: stuckAfterChanging(POWERPOINT_WINDOWS_SCRIPT, { settings: '1,2' }, asked),
+    });
+    expect(asked.map((a) => a['settings'])).toEqual(['1,2']);
+    expect(r).toMatchObject({ ok: false, reason: 'PowerPoint stopped answering' });
+  });
+
+  it('nothing to put back when the script stopped before it changed them, or when the PowerPoint Drashti started was stopped', async () => {
+    const asked: Record<string, string>[] = [];
+    const work = mkdtempSync(join(dir, 'work-'));
+    await deckOnWindows({ input: deck, movie: join(work, 'movie.mp4') }, work, {
+      runPowerShell: stuckAfterChanging(POWERPOINT_WINDOWS_BAKE_SCRIPT, {}, asked),
+    });
+    const ours = standInPowerPoint();
+    const work2 = mkdtempSync(join(dir, 'work-'));
+    await deckOnWindows({ input: deck, movie: join(work2, 'movie.mp4') }, work2, {
+      runPowerShell: stuckAfterChanging(
+        POWERPOINT_WINDOWS_BAKE_SCRIPT,
+        { ids: [ours.pid], settings: '2,1' },
+        asked,
+      ),
+    });
+    expect(await ours.ended()).toBe(true);
+    expect(asked).toEqual([]);
   });
 });
