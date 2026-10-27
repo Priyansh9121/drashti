@@ -427,7 +427,7 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
         <Notice tone="info" compact data-testid="stage-template-where">
           {stages > 0
             ? `Made, it is chosen at once for the stage screens in the live Look, “${lookName}”.`
-            : 'No screens are set up for the stage yet: the layout is made, and is chosen for them in Screens once they are.'}
+            : 'No screens are set up for the stage yet: the layout is made; choose it for them in Screens once there are some.'}
         </Notice>
       </div>
     </Dialog>
