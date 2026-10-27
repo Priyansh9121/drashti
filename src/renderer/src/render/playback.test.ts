@@ -721,3 +721,76 @@ describe('a sound or a picture the engine sends somewhere new: a skip or a jump 
     s.stop();
   });
 });
+
+describe('the time bar’s Pause and Play, and its moves (Session 54)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-10-06T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** In step: within two frames (at 30 a second) of the clock. */
+  const IN_STEP = 2 / 30;
+
+  for (const kind of [
+    { what: 'a picture', audible: false, limits: PICTURE_LIMITS, loop: false },
+    { what: 'a sound', audible: true, limits: SOUND_LIMITS, loop: false },
+    { what: 'a looping picture', audible: false, limits: PICTURE_LIMITS, loop: true },
+  ]) {
+    it(`${kind.what} paused waits where the pause put it, moved while paused waits at its new point, and played on goes on from there in step`, () => {
+      const v = new FakeMedia(12);
+      const timing: { seek?: PlaybackSeek } = {};
+      const startedAt = Date.now();
+      const playback = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'paused',
+        startedAt,
+        audible: kind.audible,
+        limits: kind.limits,
+        timing: () => ({ loop: kind.loop, ...timing }),
+      });
+      const clock = () => playbackPosition({ startedAt, loop: kind.loop, ...timing }, 12, Date.now());
+      runFor(v, 3000);
+      // Paused 3 s in: held there, frame after frame, however long it waits.
+      timing.seek = { at: Date.now(), toMs: 3000, paused: true };
+      playback.resync();
+      runFor(v, 100);
+      expect(v.paused, kind.what).toBe(true);
+      expect(Math.abs(v.currentTime - 3), kind.what).toBeLessThanOrEqual(FRAME);
+      runFor(v, 15_000);
+      expect(v.paused, `${kind.what}: still paused 15 s on, past its end`).toBe(true);
+      expect(Math.abs(v.currentTime - 3), kind.what).toBeLessThanOrEqual(FRAME);
+      // Moved while paused: it waits at its new point.
+      timing.seek = { at: Date.now(), toMs: 7500, paused: true };
+      playback.resync();
+      runFor(v, 300);
+      expect(v.paused, kind.what).toBe(true);
+      expect(Math.abs(v.currentTime - 7.5), kind.what).toBeLessThanOrEqual(FRAME);
+      // Played on: from there, in step with the clock.
+      timing.seek = { at: Date.now(), toMs: 7500 };
+      playback.resync();
+      runFor(v, 600);
+      expect(v.paused, kind.what).toBe(false);
+      expect(Math.abs(v.currentTime - clock()), `${kind.what}: off the clock`).toBeLessThan(IN_STEP);
+      playback();
+    });
+  }
+
+  it('a file that joins paused (a screen opened, or put back after a restart) shows where it waits and never plays', () => {
+    const v = new FakeMedia(30);
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'joined',
+      startedAt: Date.now() - 60_000,
+      timing: () => ({ loop: true, seek: { at: Date.now() - 20_000, toMs: 9000, paused: true } }),
+    });
+    runFor(v, 2000);
+    expect(v.paused).toBe(true);
+    expect(Math.abs(v.currentTime - 9)).toBeLessThanOrEqual(FRAME);
+    stop();
+  });
+});

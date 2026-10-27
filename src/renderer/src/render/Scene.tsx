@@ -300,7 +300,13 @@ export function PropsLayer({
                 {/* Its videos play from when it went up, in step on every screen (Session 27), between their files'
                     start and end points (Session 52). */}
                 {prop.elements.map((el) => (
-                  <ElementView key={el.id} el={el} startedAt={prop.shownAt} clips={prop.clips} />
+                  <ElementView
+                    key={el.id}
+                    el={el}
+                    startedAt={prop.shownAt}
+                    clips={prop.clips}
+                    seeks={prop.seeks}
+                  />
                 ))}
               </div>
             </Placed>
@@ -509,7 +515,13 @@ export const Scene = memo(function Scene({
     const box = boxRun?.layer;
     // A video in it between its file's start and end points, the engine's (Session 53).
     return box ? (
-      <PipSourcePicture source={box.source} shownAt={box.shownAt} clips={box.clips} size={size} />
+      <PipSourcePicture
+        source={box.source}
+        shownAt={box.shownAt}
+        clips={box.clips}
+        seeks={box.seeks}
+        size={size}
+      />
     ) : null;
   };
   return (
@@ -543,6 +555,7 @@ export const Scene = memo(function Scene({
                       source={up.source}
                       shownAt={up.shownAt}
                       clips={up.clips}
+                      seeks={up.seeks}
                       size={canvas}
                     />
                   )}
@@ -620,6 +633,7 @@ export const Scene = memo(function Scene({
                           el={el}
                           startedAt={state.logo?.shownAt}
                           clips={state.logo?.clips}
+                          seeks={state.logo?.seeks}
                         />
                       ))}
                     </div>
