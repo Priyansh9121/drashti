@@ -142,7 +142,7 @@ export function shownFileName(raw: unknown, fallback: string): string {
   const cleaned = nfc(raw)
     // Control characters, the marks that turn text around (a name that reads as another), and the separators of
     // folders on any system. The joiners Gujarati and Hindi words need stay.
-    .replace(/[\p{Cc}‪-‮⁦-⁩\\/]+/gu, ' ')
+    .replace(/[\p{Cc}\u202a-\u202e\u2066-\u2069\\/]+/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
   // Dots in front would read as a hidden file's name, or as the way out of a folder.
