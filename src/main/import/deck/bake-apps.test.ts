@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -43,6 +43,9 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
     const deck = join(dir, 'Placeholder trial.pptx');
     const log = (line: string) => {
       console.log(line);
+      // Kept with the movies, where DRASHTI_KEEP_BAKE names a folder.
+      const to = process.env['DRASHTI_KEEP_BAKE'];
+      if (to) appendFileSync(join(to, 'log.txt'), `${line}\n`);
     };
 
     beforeAll(() => {
@@ -130,6 +133,66 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
           [4, true],
           [5, false],
         ]);
+        expect(running('Keynote')).toBe(false);
+      },
+      900_000,
+    );
+
+    it.skipIf(!has.keynote)(
+      'Keynote: a Keynote file of its own, its steps from its own PowerPoint copy, its videos and sound out of that copy',
+      async () => {
+        // A Keynote file, made by Keynote from the trial deck (as the PDF test makes one).
+        const key = join(dir, 'Placeholder trial.key');
+        execFileSync('open', ['-g', '-j', '-b', 'com.apple.iWork.Keynote', deck]);
+        execFileSync(
+          'osascript',
+          [
+            ...[
+              'on run argv',
+              'tell application id "com.apple.iWork.Keynote"',
+              'repeat 300 times',
+              'if (count of documents) > 0 then exit repeat',
+              'delay 0.1',
+              'end repeat',
+              'set d to document 1',
+              'save d in (POSIX file (item 1 of argv))',
+              'close d saving no',
+              'quit',
+              'end tell',
+              'end run',
+            ].flatMap((l) => ['-e', l]),
+            key,
+          ],
+          { timeout: 120_000 },
+        );
+        for (let i = 0; i < 60 && running('Keynote'); i++) await new Promise((r) => setTimeout(r, 250));
+        const work = mkdtempSync(join(dir, 'keynote-key-'));
+        const result = await bakeDeck(
+          'keynote',
+          { source: 'key', input: key, read: null, work },
+          { ffmpeg, log },
+        );
+        keep(work, 'keynote-key');
+        if (!result.ok) log(`Keynote (.key): ${JSON.stringify(result.why)}`);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const { baked } = result;
+        log(
+          `Keynote (.key): ${String(baked.bakeMs)} ms; movie ${String(baked.movie.durationMs)} ms; offsets ${JSON.stringify(baked.cuts.offsets)}`,
+        );
+        expect(baked.plan.slides).toHaveLength(5);
+        for (const o of baked.cuts.offsets.filter((x) => x.offsetMs !== null))
+          expect(Math.abs(o.offsetMs ?? 0)).toBeLessThanOrEqual(200);
+        const parsed = await bakedPresentation('Placeholder trial.key', key, baked, work, ffmpeg);
+        // Its videos and sound, from Keynote's own copy, with Keynote's loop and volume.
+        expect(parsed.groups[0]?.slides.map((s) => s.deck?.media.map((m) => m.kind))).toEqual([
+          [],
+          [],
+          [],
+          ['video'],
+          expect.arrayContaining(['video', 'audio']),
+        ]);
+        expect(parsed.groups[0]?.slides[3]?.deck?.media[0]).toMatchObject({ loop: true, volume: 0.8 });
         expect(running('Keynote')).toBe(false);
       },
       900_000,
