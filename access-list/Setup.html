@@ -1,0 +1,250 @@
+<!doctype html>
+<!--
+  Drashti › Set up… (Session 54, E1): the window that makes the list's keys in the owner's own browser
+  (WebCrypto), checks that Google signs as Drashti checks, keeps them in the script's settings (once: they
+  are never replaced), and shows the ONE line to send: the web app's address and the public key. The
+  private key goes only to the script's settings, never on the screen. The ticket is this window's alone
+  (Code.js's checkTicket_).
+-->
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        font:
+          15px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        color: #1f1f1f;
+      }
+      main {
+        padding: 0.25rem 0.5rem 1rem;
+      }
+      label {
+        display: block;
+        margin-top: 1rem;
+        font-weight: 600;
+      }
+      input,
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        margin-top: 0.4rem;
+        padding: 0.5rem;
+        font:
+          14px/1.4 ui-monospace,
+          Menlo,
+          Consolas,
+          monospace;
+        border: 1px solid #8a8a8a;
+        border-radius: 6px;
+      }
+      textarea {
+        overflow-wrap: anywhere;
+      }
+      button {
+        min-height: 40px;
+        margin-top: 1rem;
+        padding: 0.4rem 1.2rem;
+        font: inherit;
+        font-weight: 600;
+        color: #fff;
+        background: #8a3b12;
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      .approver {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="setup" data-ticket="<?= ticket ?>" data-line="<?= line ?>" data-url="<?= url ?>">
+      <section id="ask">
+        <p class="approver">
+          Your approver Gmail, from the script’s settings: <strong><?= approver ?></strong>
+        </p>
+        <p>
+          If that is not right, close this window, change APPROVER_EMAIL in Project Settings › Script
+          Properties, then choose Drashti › Set up… again.
+        </p>
+        <label for="url">The web app’s address</label>
+        <p>
+          From Deploy › Manage deployments: the Web app URL. It starts https://script.google.com/ and ends
+          /exec.
+        </p>
+        <input id="url" type="url" spellcheck="false" autocomplete="off" />
+        <button id="make" type="button">Make the keys</button>
+        <p id="status" role="status"></p>
+      </section>
+      <section id="done" hidden>
+        <p><strong>Done.</strong> Copy this one line into the chat:</p>
+        <textarea id="line" readonly rows="7" aria-label="The line to send"></textarea>
+        <button id="copy" type="button">Copy the line</button>
+        <p id="copied" role="status"></p>
+        <p>
+          It holds the web app’s address and the public key; neither is a secret. The private key stays in the
+          script’s settings, in your account.
+        </p>
+      </section>
+    </main>
+    <script>
+      (function () {
+        var main = document.getElementById('setup');
+        var ticket = main.dataset.ticket;
+        var make = document.getElementById('make');
+        var URL_SHAPE =
+          /^https:\/\/script\.google\.com\/(?:a\/macros\/[a-z0-9.-]+|macros)\/s\/[A-Za-z0-9_-]{10,200}\/exec$/;
+        var LABEL = 'PRIVATE' + ' KEY';
+
+        function say(text) {
+          document.getElementById('status').textContent = text;
+        }
+
+        function call(name, args) {
+          return new Promise(function (resolve, reject) {
+            var run = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+            run[name].apply(run, args);
+          });
+        }
+
+        function base64(buffer) {
+          var bytes = new Uint8Array(buffer);
+          var text = '';
+          for (var i = 0; i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
+          return btoa(text);
+        }
+
+        function hex(buffer) {
+          return Array.from(new Uint8Array(buffer), function (b) {
+            return ('0' + b.toString(16)).slice(-2);
+          }).join('');
+        }
+
+        function randomHex(n) {
+          var bytes = new Uint8Array(n);
+          crypto.getRandomValues(bytes);
+          return hex(bytes);
+        }
+
+        function pem(der) {
+          var lines = base64(der)
+            .match(/.{1,64}/g)
+            .join('\n');
+          return '-----BEGIN ' + LABEL + '-----\n' + lines + '\n-----END ' + LABEL + '-----\n';
+        }
+
+        function showLine(line) {
+          document.getElementById('ask').hidden = true;
+          document.getElementById('done').hidden = false;
+          var box = document.getElementById('line');
+          box.value = line;
+          document.getElementById('copy').addEventListener('click', function () {
+            box.focus();
+            box.select();
+            var copied = document.getElementById('copied');
+            var keys = /Mac/.test(navigator.platform) ? 'Command-C' : 'Ctrl+C';
+            if (navigator.clipboard && navigator.clipboard.writeText)
+              navigator.clipboard.writeText(line).then(
+                function () {
+                  copied.textContent = 'Copied.';
+                },
+                function () {
+                  copied.textContent = 'The line is selected: press ' + keys + ' to copy it.';
+                },
+              );
+            else copied.textContent = 'The line is selected: press ' + keys + ' to copy it.';
+          });
+        }
+
+        async function makeKeys() {
+          var url = document.getElementById('url').value.trim();
+          if (!URL_SHAPE.test(url)) {
+            say(
+              'That is not the web app’s address: copy it from Deploy › Manage deployments. It ends /exec.',
+            );
+            return;
+          }
+          make.disabled = true;
+          try {
+            say('Making the keys…');
+            var pair = await crypto.subtle.generateKey(
+              {
+                name: 'RSASSA-PKCS1-v1_5',
+                modulusLength: 2048,
+                publicExponent: new Uint8Array([1, 0, 1]),
+                hash: 'SHA-256',
+              },
+              true,
+              ['sign', 'verify'],
+            );
+            var privatePem = pem(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
+            var publicKey = base64(await crypto.subtle.exportKey('spki', pair.publicKey));
+            say('Checking that Google signs as Drashti checks…');
+            var text = 'Drashti access list check ' + randomHex(16);
+            var hmacKey = randomHex(32);
+            var got = await call('drashtiTestKeys', [
+              ticket,
+              { privatePem: privatePem, text: text, hmacKey: hmacKey },
+            ]);
+            var bytes = new TextEncoder().encode(text);
+            var signature = Uint8Array.from(atob(got.rsa), function (c) {
+              return c.charCodeAt(0);
+            });
+            var hmac = await crypto.subtle.importKey(
+              'raw',
+              new TextEncoder().encode(hmacKey),
+              { name: 'HMAC', hash: 'SHA-256' },
+              false,
+              ['sign'],
+            );
+            var wrong = [];
+            if (!(await crypto.subtle.verify('RSASSA-PKCS1-v1_5', pair.publicKey, signature, bytes)))
+              wrong.push('signature');
+            if (hex(await crypto.subtle.sign('HMAC', hmac, bytes)) !== got.hmac) wrong.push('HMAC');
+            if (hex(await crypto.subtle.digest('SHA-256', bytes)) !== got.sha256) wrong.push('SHA-256');
+            if (wrong.length > 0) {
+              say(
+                'Google’s ' +
+                  wrong.join(', ') +
+                  ' did not match this browser’s. Nothing was kept. Send this message in the chat.',
+              );
+              make.disabled = false;
+              return;
+            }
+            say('Keeping the keys…');
+            var saved = await call('drashtiSaveSetup', [
+              ticket,
+              {
+                url: url,
+                privatePem: privatePem,
+                publicKey: publicKey,
+                linkKey: randomHex(32),
+                secretKey: randomHex(32),
+              },
+            ]);
+            showLine(saved.line);
+          } catch (e) {
+            say('Not done: ' + (e && e.message ? e.message : String(e)));
+            make.disabled = false;
+          }
+        }
+
+        if (main.dataset.line) {
+          showLine(main.dataset.line);
+          return;
+        }
+        document.getElementById('url').value = main.dataset.url;
+        make.addEventListener('click', makeKeys);
+      })();
+    </script>
+  </body>
+</html>

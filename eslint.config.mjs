@@ -172,6 +172,7 @@ export default defineConfig(
             ],
             ['src/main/import/rtf/rtf.ts', '.slice(0, dash)', 'a font’s name before its dash'],
             ['src/shared/translit.ts', 'line.slice(0, at)', 'a line up to the letter made a capital'],
+            ['src/shared/access-protocol.ts', 'a.slice(0, at)', 'an email address up to its @'],
             [
               'src/main/import/formats/docx.ts',
               'run.text.slice(0, run.text.length - cut)',
@@ -273,6 +274,30 @@ export default defineConfig(
   {
     files: ['src/main/**', 'src/preload/**', 'tests/**', 'scripts/**', 'tools/**', '*.config.*'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // The access list (Session 54, E1): Apps Script runs its files as scripts in one global scope, Google's
+    // services its globals; core.js runs in Node too (module.exports). What Apps Script calls by name
+    // (doGet, doPost, the Sheet's menu) is never called here, so only local names must be used.
+    files: ['access-list/**/*.js'],
+    languageOptions: { sourceType: 'script', globals: { module: 'readonly', console: 'readonly' } },
+    rules: { 'no-unused-vars': ['error', { vars: 'local', caughtErrors: 'none' }] },
+  },
+  {
+    files: ['access-list/Code.js'],
+    languageOptions: {
+      globals: {
+        DrashtiAccess: 'readonly',
+        CacheService: 'readonly',
+        ContentService: 'readonly',
+        HtmlService: 'readonly',
+        LockService: 'readonly',
+        MailApp: 'readonly',
+        PropertiesService: 'readonly',
+        SpreadsheetApp: 'readonly',
+        Utilities: 'readonly',
+      },
+    },
   },
   {
     // End-to-end tests wait for a condition, never for a while (Sessions 31–36, TST-6, TST-7): where time

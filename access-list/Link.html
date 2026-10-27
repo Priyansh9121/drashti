@@ -1,0 +1,123 @@
+<!doctype html>
+<!--
+  The page an Approve or Reject link opens (Session 54, E1): what the link is for, and ONE button. Opening
+  it changes nothing (an email scanner following the link does no harm); pressing the button asks the list
+  (answerLink in Code.js, which checks the link's signature again). Every text from the list is put in with
+  the template's escaping printer.
+-->
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        font:
+          17px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        color: #1f1f1f;
+        background: #f6f4ef;
+      }
+      main {
+        max-width: 34rem;
+        margin: 0 auto;
+        padding: 1.5rem 1rem 3rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      p {
+        overflow-wrap: anywhere;
+      }
+      button {
+        min-height: 48px;
+        min-width: 10rem;
+        padding: 0.6rem 1.4rem;
+        font: inherit;
+        font-weight: 600;
+        color: #fff;
+        background: #8a3b12;
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      button:focus-visible {
+        outline: 3px solid #1f1f1f;
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="page"
+      data-kind="<?= page.kind ?>"
+      data-a="<?= page.params ? page.params.a : '' ?>"
+      data-r="<?= page.params ? page.params.r : '' ?>"
+      data-x="<?= page.params ? page.params.x : '' ?>"
+      data-s="<?= page.params ? page.params.s : '' ?>"
+    >
+      <h1 id="title"><?= page.title ?></h1>
+      <div id="lines">
+        <? for (var i = 0; i < page.lines.length; i++) { ?>
+        <p><?= page.lines[i] ?></p>
+        <? } ?>
+      </div>
+      <? if (page.button) { ?>
+      <button id="go" type="button"><?= page.button ?></button>
+      <? } ?>
+      <p id="wait" role="status"></p>
+    </main>
+    <script>
+      (function () {
+        var main = document.getElementById('page');
+        var go = document.getElementById('go');
+        var wait = document.getElementById('wait');
+        if (!go) return;
+
+        function show(result, keepButton) {
+          wait.textContent = '';
+          document.getElementById('title').textContent = result.title;
+          var lines = document.getElementById('lines');
+          lines.textContent = '';
+          (result.lines || []).forEach(function (line) {
+            var p = document.createElement('p');
+            p.textContent = line;
+            lines.appendChild(p);
+          });
+          if (keepButton) go.disabled = false;
+          else go.remove();
+        }
+
+        go.addEventListener('click', function () {
+          // Pressed once: never twice.
+          go.disabled = true;
+          wait.textContent = 'One moment…';
+          google.script.run
+            .withSuccessHandler(function (result) {
+              show(result, false);
+            })
+            .withFailureHandler(function () {
+              show(
+                {
+                  title: 'Not done',
+                  lines: [
+                    'The list could not be reached. Try again, or answer in Drashti on your own computer: View › Access List.',
+                  ],
+                },
+                true,
+              );
+            })
+            .answerLink({ a: main.dataset.a, r: main.dataset.r, x: main.dataset.x, s: main.dataset.s });
+        });
+      })();
+    </script>
+  </body>
+</html>
