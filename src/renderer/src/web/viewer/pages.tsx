@@ -4,9 +4,9 @@ import type { EngineState } from '../../../../shared/engine/state';
 import { backgroundCueOf } from '../../../../shared/library';
 import { groupLookIn } from '../../../../shared/looks';
 import type { OrderedSlide } from '../../../../shared/order';
-import { PLAIN } from '../../../../shared/picture-look';
 import { useEngine } from '../../engine/engine-store';
-import { ScreenPictures } from '../../render/picture-looks';
+import { OBJECT_FIT } from '../../render/media-style';
+import { Looked, ScreenPictures } from '../../render/picture-looks';
 import { PreviewPicture } from '../../render/previews';
 import { Scene } from '../../render/Scene';
 import { SlideView } from '../../render/SlideView';
@@ -177,12 +177,41 @@ const backgroundIs = (state: EngineState | null, mediaId: string): boolean => {
 
 /** A picture filling its page, which takes the picture's own shape once it has loaded. */
 function PictureDrawn({ mediaId, pageKey }: { mediaId: string; pageKey: string }) {
+  const bg = useEngine((st) => st.state?.layers.background ?? null);
+  const pictures = useEngine((st) => st.state?.pictures);
+  const own = useViewer((v) => v.sizes[pageKey] ?? null);
+  const screen = useMemo(() => ({ pictures: pictures ?? {}, liveZoom: null }), [pictures]);
+  const onSize = (natural: { width: number; height: number }) => {
+    setPageSize(pageKey, { width: 1920, height: Math.round((1920 * natural.height) / natural.width) });
+  };
+  // The background on the screens, its shape known: drawn as they draw it (D1/D2 review), its kept look over their
+  // frame (the canvas, the picture fitted into it, here over the picture's own shape), never the live zoom, so this
+  // device's own zoom is the whole difference. Anything else: the picture as it is.
+  if (bg?.kind === 'media' && bg.media === 'image' && bg.mediaId === mediaId && own) {
+    const f = frameOfBackground(bg.fit, own, CANVAS);
+    return (
+      <ScreenPictures.Provider value={screen}>
+        <Looked
+          mediaId={mediaId}
+          showing={null}
+          style={{
+            position: 'absolute',
+            left: `${String(f.x * 100)}%`,
+            top: `${String(f.y * 100)}%`,
+            width: `${String(f.width * 100)}%`,
+            height: `${String(f.height * 100)}%`,
+            objectFit: OBJECT_FIT[bg.fit],
+          }}
+        >
+          {(style) => <PreviewPicture mediaId={mediaId} onSize={onSize} style={style} />}
+        </Looked>
+      </ScreenPictures.Provider>
+    );
+  }
   return (
     <PreviewPicture
       mediaId={mediaId}
-      onSize={(natural) => {
-        setPageSize(pageKey, { width: 1920, height: Math.round((1920 * natural.height) / natural.width) });
-      }}
+      onSize={onSize}
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
     />
   );
@@ -197,8 +226,8 @@ export function picturePage(mediaId: string, name: string): ViewerPage {
     size: { width: 1920, height: 1080 },
     draw: () => <PictureDrawn mediaId={mediaId} pageKey={key} />,
     live: (state) => backgroundIs(state, mediaId),
-    // The background on the screens: their frame (the canvas, the picture fitted into it) over its own shape. The
-    // picture is drawn here as it is (no kept look), so the phone's zoom is the screens' whole zoom.
+    // The background on the screens: their frame (the canvas, the picture fitted into it) over its own shape, the
+    // picture drawn with its kept look as they draw it (D1/D2 review), so this device's zoom adds to that.
     onScreens: (state) => {
       const bg = state?.layers.background;
       // Up alone: with a slide over it, the slide's own picture is the one the phone may zoom (D2 review).
@@ -211,7 +240,7 @@ export function picturePage(mediaId: string, name: string): ViewerPage {
       )
         return null;
       const own = useViewer.getState().sizes[key] ?? { width: 1920, height: 1080 };
-      return { frame: frameOfBackground(bg.fit, own, CANVAS), kept: PLAIN };
+      return { frame: frameOfBackground(bg.fit, own, CANVAS), kept: keptFraming(state, mediaId) };
     },
   };
 }

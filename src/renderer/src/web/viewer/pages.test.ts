@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { DeckSlide } from '../../../../shared/deck';
 import { type EngineState, initialEngineState } from '../../../../shared/engine/state';
 import type { OrderedSlide } from '../../../../shared/order';
-import { presentationPages, slidePages } from './pages';
+import { PLAIN } from '../../../../shared/picture-look';
+import { picturePage, presentationPages, slidePages } from './pages';
 
 /*
  * A deck looked through on a phone (Session 54, D1/D2 review): one page for each of a deck slide's steps, in order,
@@ -93,5 +94,32 @@ describe('a deck looked through on a phone (Session 54, D1/D2 review)', () => {
     expect(pages.map((p) => p.live?.(state) ?? false)).toEqual([false, true, false]);
     expect(pages.map((p) => (p.onScreens?.(state) ?? null) !== null)).toEqual([false, true, false]);
     expect(pages.map((p) => p.live?.(up(2)) ?? false)).toEqual([false, false, true]);
+  });
+});
+
+describe('a picture looked at on a phone while it is the background (Session 54, D1/D2 review)', () => {
+  it('is drawn with its kept look, which the screens’ zoom then starts from', () => {
+    const state = initialEngineState();
+    const up: EngineState = {
+      ...state,
+      layers: {
+        ...state.layers,
+        background: {
+          kind: 'media',
+          mediaId: 'm-backdrop',
+          media: 'image',
+          fit: 'fit',
+          loop: false,
+          startedAt: 7000,
+        },
+      },
+      pictures: { 'm-backdrop': { ...PLAIN, zoom: 1.5, x: 0.1 } },
+    };
+    expect(picturePage('m-backdrop', 'Placeholder backdrop').onScreens?.(up)?.kept).toEqual({
+      zoom: 1.5,
+      x: 0.1,
+      y: 0,
+    });
+    expect(picturePage('m-other', 'Placeholder other').onScreens?.(up) ?? null).toBeNull();
   });
 });
