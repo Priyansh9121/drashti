@@ -148,7 +148,8 @@ export function stepPhase(
 ): StepPhase {
   if (!timing.still && now < timing.endsAt && timing.drashti?.mode !== 'instead' && !ready.clipFailed)
     return 'clip';
-  return timing.step.holdId && ready.hold ? 'hold' : 'held';
+  // The hold goes round from the clip's end (with Drashti's transition instead, the last frame shows until then).
+  return timing.step.holdId && ready.hold && now >= timing.endsAt ? 'hold' : 'held';
 }
 
 function DeckStepLive({
