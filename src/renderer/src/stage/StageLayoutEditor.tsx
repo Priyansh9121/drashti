@@ -12,6 +12,7 @@ import {
   typedFrame,
 } from '../../../shared/stage-layouts';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
+import { countsDown } from '../../../shared/timers';
 import { BoxCanvas } from '../boxes/BoxCanvas';
 import { useEngine } from '../engine/engine-store';
 import { StageLayoutView } from '../render/StageLayoutView';
@@ -24,11 +25,13 @@ import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
 import { plural } from '../ui/text';
 import { ColorInput, Field, NumberInput, Select, Textarea, TextInput } from '../ui/Field';
-import { CopyPlus, Plus, Trash2 } from '../ui/icons';
+import { CopyPlus, LayoutTemplate, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { useHallPicture } from './hall-picture';
+import { BoxLookFields, BoxOrderButtons, ClockBoxFields, TimerBoxFields } from './StageBoxFields';
+import { StageTemplateDialog } from './StageTemplateDialog';
 import {
   addBox,
   change,
@@ -48,7 +51,8 @@ import {
  * layouts on the left (Standard, built in, first), the one shown in the
  * middle with what the stage shows now, and the chosen box's settings on the
  * right. Changes are kept until Save; a stage group whose live Look uses the
- * layout shows them then.
+ * layout shows them then. New from a Template… (Session 54) makes a ready-made
+ * layout and its timer, and chooses it for the stage screens at once.
  */
 
 const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
@@ -56,21 +60,26 @@ const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
 const FRAME_NAMES = { x: 'Across', y: 'Down', width: 'Width', height: 'Height' } as const;
 
 /**
- * One of a box's place and size, in pixels. What is typed shows while the field has the keyboard, and the box takes
- * it at once, no smaller than its smallest (typedFrame); leaving the field shows what the box took (Session 53:
- * each figure was taken as it came, so a size begun below the smallest was made the smallest before its next
- * figure).
+ * One of a box's place and size, or its words' size, in pixels. What is typed shows while the field has the
+ * keyboard, and the box takes it at once, no smaller than its smallest (typedFrame); leaving the field shows what
+ * the box took (Session 53: each figure was taken as it came, so a size begun below the smallest was made the
+ * smallest before its next figure; the Text size field until Session 54, G4).
  */
 function FrameField({
   label,
   value,
   min,
+  max,
+  testId,
   onChange,
 }: {
   label: string;
   value: number;
-  /** The smallest it takes (a width or a height): its arrows stop there. */
+  /** The smallest it takes (a width or a height, a text size): its arrows stop there. */
   min?: number;
+  /** The largest it takes (a text size): its arrows stop there. */
+  max?: number;
+  testId?: string;
   onChange: (value: number) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -79,7 +88,9 @@ function FrameField({
       <NumberInput
         value={draft ?? String(value)}
         min={min}
+        max={max}
         unit="px"
+        data-testid={testId}
         onFocus={() => {
           setDraft(String(value));
         }}
@@ -98,6 +109,8 @@ function FrameField({
 
 function BoxSettings({ box }: { box: StageBox }) {
   const timers = useEngine((s) => s.state?.timers);
+  // A timer box's timer: every running timer (none chosen) or one no longer in Timers counts as counting down.
+  const chosenTimer = box.timerId ? timers?.find((t) => t.id === box.timerId) : undefined;
   const set = (patch: Partial<StageBox>) => {
     change((e) => ({ ...e, boxes: e.boxes.map((b) => (b.id === box.id ? { ...b, ...patch } : b)) }));
   };
@@ -118,6 +131,8 @@ function BoxSettings({ box }: { box: StageBox }) {
           />
         ))}
       </div>
+      {/* Which box is over which (Session 54): boxes may overlap. */}
+      <BoxOrderButtons box={box} />
       {box.kind === 'audience' ? (
         // The hall's picture (Session 50): no words of its own, so no size, colour or alignment.
         <p className="text-xs text-muted" data-testid="stage-box-audience-note">
@@ -132,24 +147,23 @@ function BoxSettings({ box }: { box: StageBox }) {
           checked={box.size === 'fit'}
           data-testid="stage-box-fit"
           onChange={(e) => {
-            set({ size: e.target.checked ? 'fit' : 56 });
+            // Fitted, as large as the box holds (Session 54: a box saved before keeps to 400 px until then).
+            set(e.target.checked ? { size: 'fit', fitWhole: true } : { size: 56 });
           }}
         />
       )}
       {box.kind !== 'audience' && box.size !== 'fit' && (
-        <Field label="Text size">
-          <NumberInput
-            value={box.size}
-            min={8}
-            max={600}
-            unit="px"
-            data-testid="stage-box-size"
-            onChange={(e) => {
-              const v = e.target.valueAsNumber;
-              if (Number.isFinite(v)) set({ size: Math.min(600, Math.max(8, Math.round(v))) });
-            }}
-          />
-        </Field>
+        // What is typed shows as typed, the box taking it within 8 to 600 px (Session 54, G4: "4" became 8).
+        <FrameField
+          label="Text size"
+          value={box.size}
+          min={8}
+          max={600}
+          testId="stage-box-size"
+          onChange={(v) => {
+            set({ size: Math.min(600, Math.max(8, Math.round(v))) });
+          }}
+        />
       )}
       {box.kind !== 'audience' && (
         <>
@@ -178,6 +192,8 @@ function BoxSettings({ box }: { box: StageBox }) {
               ))}
             </Select>
           </Field>
+          {/* Up and down, bold, a fill, a line round the letters and a shadow (Session 54). */}
+          <BoxLookFields box={box} />
         </>
       )}
       <Field label="Label above it" hint="Leave empty for none.">
@@ -207,6 +223,11 @@ function BoxSettings({ box }: { box: StageBox }) {
           </Select>
         </Field>
       )}
+      {box.kind === 'timer' && (
+        // Its way of writing the time, its colours and its flash (Session 54).
+        <TimerBoxFields box={box} countsDown={chosenTimer === undefined || countsDown(chosenTimer)} />
+      )}
+      {box.kind === 'clock' && <ClockBoxFields box={box} />}
       {box.kind === 'clock' && (
         <Checkbox
           label="Today’s Samvat date under the time"
@@ -292,9 +313,11 @@ export function StageLayoutEditor() {
   // The audience picture box's picture (Session 50): the hall's, as the stage screens are told it.
   const hall = useHallPicture();
   const [kind, setKind] = useState<StageBoxKind>('current');
-  const [ask, setAsk] = useState<null | { why: 'switch'; to: string } | { why: 'close' } | { why: 'remove' }>(
-    null,
-  );
+  const [ask, setAsk] = useState<
+    null | { why: 'switch'; to: string } | { why: 'close' } | { why: 'remove' } | { why: 'template' }
+  >(null);
+  // New from a Template… (Session 54): its dialog, over the editor.
+  const [templates, setTemplates] = useState(false);
   if (!s.open) return null;
   const e = s.editing;
   const dirty = isDirty(s);
@@ -384,6 +407,16 @@ export function StageLayoutEditor() {
         <Button icon={CopyPlus} onClick={duplicate} data-testid="stage-layout-duplicate">
           {e ? 'Duplicate' : 'Duplicate Standard'}
         </Button>
+        <Button
+          icon={LayoutTemplate}
+          data-testid="stage-layout-from-template"
+          onClick={() => {
+            if (dirty) setAsk({ why: 'template' });
+            else setTemplates(true);
+          }}
+        >
+          New from a Template…
+        </Button>
       </nav>
 
       {e ? (
@@ -411,7 +444,7 @@ export function StageLayoutEditor() {
               />
             )
           }
-          label="The stage layout. Tab chooses the next box, the arrow keys move it (Shift for ten pixels)."
+          label="The stage layout. Tab chooses the next box, the arrow keys move it (Shift for ten pixels), and with Alt or Option they make it larger or smaller."
           testId="stage-layout-canvas"
         />
       ) : (
@@ -553,6 +586,7 @@ export function StageLayoutEditor() {
             void save().then((ok) => {
               if (!ok) return;
               if (was.why === 'close') closeStageLayouts();
+              else if (was.why === 'template') setTemplates(true);
               else show(was.to);
             });
           }}
@@ -560,7 +594,17 @@ export function StageLayoutEditor() {
             const was = ask;
             setAsk(null);
             if (was.why === 'close') closeStageLayouts();
-            else show(was.to);
+            else if (was.why === 'template') {
+              show(e?.id ?? STANDARD);
+              setTemplates(true);
+            } else show(was.to);
+          }}
+        />
+      )}
+      {templates && (
+        <StageTemplateDialog
+          onClose={() => {
+            setTemplates(false);
           }}
         />
       )}

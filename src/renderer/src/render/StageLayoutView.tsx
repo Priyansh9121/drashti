@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { QUOTE_LANGS } from '../../../shared/idle';
@@ -6,14 +6,16 @@ import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import { type PlaybackClock, playbackLeftMs } from '../../../shared/media';
 import type { Lang } from '../../../shared/model';
-import type { HallPicture, StageBox, StageLayout } from '../../../shared/stage-layouts';
+import type { HallPicture, StageBox, StageLayout, StageVAlign } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
+import { stageClockText } from '../../../shared/stage-timer';
 import { timerDuration } from '../../../shared/timers';
 import { AudienceBox } from './AudienceBox';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
 import { backgroundWords, kindName, screensStateWords, StageText } from './StageView';
 import { textLang } from './lang';
-import { TimerText } from './TimerText';
+import { boxFillStyle, boxWordsStyle, fitAgain, fitLargest } from './stage-box-look';
+import { StageTimerText } from './StageTimerText';
 import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
@@ -27,15 +29,33 @@ import { type ClockStyle, formatClock } from '../../../shared/format';
  * picture box (Session 50, AudienceBox): the hall's own picture.
  */
 
-/** The largest font size a box tries when it fits its words (canvas pixels). */
-const FIT_MAX = 400;
+/** The smallest font size a box tries when it fits its words (canvas pixels); the largest is its own (fitLargest). */
 const FIT_MIN = 8;
+
+/** Where a box's contents sit up and down (Session 54): at the top, as before, unless it says otherwise. */
+const VALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end' } as const;
 
 /**
  * A box's contents at its size, or (size 'fit') as large as fits: the largest
- * font size at which the contents fit the box, found by measuring.
+ * font size at which the contents fit the box, found by measuring, up to `max`.
+ * Since Session 54 at the top, in the middle or at the bottom, and in the box's
+ * own look (`words`: bold, an outline, a shadow).
  */
-function Sized({ size, children, again }: { size: number | 'fit'; children: ReactNode; again: unknown }) {
+function Sized({
+  size,
+  children,
+  again,
+  max,
+  valign,
+  words,
+}: {
+  size: number | 'fit';
+  children: ReactNode;
+  again: unknown;
+  max: number;
+  valign: StageVAlign | undefined;
+  words: CSSProperties;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [fonts, setFonts] = useState(0);
@@ -58,7 +78,7 @@ function Sized({ size, children, again }: { size: number | 'fit'; children: Reac
       return w.offsetHeight <= b.clientHeight + 0.5 && w.scrollWidth <= b.clientWidth + 0.5;
     };
     let lo = FIT_MIN;
-    let hi = Math.min(FIT_MAX, Math.max(FIT_MIN, b.clientHeight));
+    let hi = Math.min(max, Math.max(FIT_MIN, b.clientHeight));
     if (fits(hi)) lo = hi;
     else
       for (let i = 0; i < 14; i++) {
@@ -68,10 +88,14 @@ function Sized({ size, children, again }: { size: number | 'fit'; children: Reac
       }
     w.style.fontSize = `${Math.floor(lo)}px`;
     b.setAttribute('data-fit-size', String(Math.floor(lo)));
-  }, [size, again, fonts]);
+  }, [size, again, fonts, max]);
+  const placed =
+    valign === undefined || valign === 'top'
+      ? {}
+      : { display: 'flex', flexDirection: 'column' as const, justifyContent: VALIGN[valign] };
   return (
-    <div ref={box} style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      <div ref={inner} style={size === 'fit' ? undefined : { fontSize: size }}>
+    <div ref={box} style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', ...placed }}>
+      <div ref={inner} style={size === 'fit' ? words : { ...words, fontSize: size }}>
         {children}
       </div>
     </div>
@@ -203,11 +227,12 @@ function BoxContents({
       );
     }
     case 'timer': {
+      // In the box's format, colours and flash (Session 54): as TimerText drew it, for a box with none.
       if (box.timerId) {
         const timer = state.timers.find((t) => t.id === box.timerId);
         return (
           <span style={{ whiteSpace: 'nowrap' }}>
-            <TimerText timer={timer} />
+            <StageTimerText box={box} timer={timer} />
           </span>
         );
       }
@@ -222,7 +247,7 @@ function BoxContents({
                 {t.name}
                 {t.startedAt === null ? ' (paused)' : ''}
               </span>
-              <TimerText timer={t} />
+              <StageTimerText box={box} timer={t} />
             </div>
           ))}
         </div>
@@ -328,7 +353,8 @@ export function StageLayoutView({
   const now = useNow(250);
   // Main's way of writing the time (Sessions 31–36, I18N-8): given, or the page's.
   const pageStyle = useContext(ClockStyleContext);
-  const clock = formatClock(now, clockStyle ?? pageStyle);
+  const style = clockStyle ?? pageStyle;
+  const clock = formatClock(now, style);
   return (
     <div
       data-testid="stage-layout"
@@ -366,6 +392,8 @@ export function StageLayoutView({
                   fontFamily: fontFamilyFor(null, null),
                   textAlign: box.align,
                   lineHeight: 1.25,
+                  // Its fill, as see-through as set (Session 54).
+                  ...boxFillStyle(box),
                 }),
           }}
         >
@@ -375,13 +403,17 @@ export function StageLayoutView({
           ) : (
             <Sized
               size={box.size}
-              again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state, hall))}`}
+              again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state, hall))}|${fitAgain(box, state, now, style)}`}
+              max={fitLargest(box)}
+              valign={box.valign}
+              words={boxWordsStyle(box)}
             >
               <BoxContents
                 box={box}
                 state={state}
                 languages={languages}
-                clock={clock}
+                // A clock box's own way of writing the time (Session 54): 12 or 24 hours, the seconds.
+                clock={box.kind === 'clock' ? stageClockText(now, style, box) : clock}
                 now={now}
                 hall={hall}
               />

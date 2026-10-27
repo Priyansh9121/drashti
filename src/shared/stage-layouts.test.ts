@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ScalingMode } from './screens';
-import type { StageLayout } from './stage-layouts';
+import type { StageBox, StageLayout } from './stage-layouts';
 import {
+  arrangeBoxes,
   hallPicture,
   hallPictureOfScreens,
   hallPictureSchema,
@@ -279,5 +280,93 @@ describe('the hall’s picture', () => {
       'hall',
     ])
       expect(hallPictureSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+  });
+});
+
+// Session 54 (Part A2): every box's own fill, weight, outline, shadow and place up and down; a timer box's format,
+// warning, colour when over and flash; a clock box's hours and seconds. All left out of a layout saved before.
+describe('a box’s own settings', () => {
+  /** A box as Session 53's editor made it: none of the settings since. */
+  const before: StageBox = {
+    id: 'placeholder-clock',
+    kind: 'clock',
+    frame: { x: 1162, y: 186, width: 710, height: 130 },
+    size: 'fit',
+    color: '#ffffff',
+    align: 'right',
+    label: '',
+  };
+
+  it('are none in a layout saved before, which reads exactly as it was', () => {
+    const def = {
+      background: '#000000',
+      boxes: [before, { ...before, id: 'timer', kind: 'timer', timerId: null }],
+    };
+    expect(stageLayoutDefinitionSchema.parse(JSON.parse(JSON.stringify(def)))).toEqual(def);
+  });
+
+  it('are kept in a stored layout', () => {
+    const timer: StageBox = {
+      ...before,
+      id: 'placeholder-timer',
+      kind: 'timer',
+      timerId: 'placeholder-countdown',
+      valign: 'middle',
+      fitWhole: true,
+      bold: true,
+      fill: { color: '#000000', seeThrough: 0.4 },
+      outline: { color: '#101010', width: 3 },
+      shadow: true,
+      format: 'hmmss',
+      warn: { color: '#f5a524', fromMs: 60_000 },
+      overColor: '#ef4444',
+      flash: true,
+    };
+    const clock: StageBox = { ...before, hours: 24, seconds: true, valign: 'bottom' };
+    const def = { background: '#000000', boxes: [timer, clock] };
+    expect(stageLayoutDefinitionSchema.parse(JSON.parse(JSON.stringify(def)))).toEqual(def);
+  });
+
+  it('are refused when they cannot be drawn', () => {
+    for (const bad of [
+      { valign: 'centre' },
+      { fitWhole: 'yes' },
+      { fill: { color: 'black', seeThrough: 0.5 } },
+      { fill: { color: '#000000', seeThrough: 1.5 } },
+      { outline: { color: '#000000', width: 0 } },
+      { outline: { color: '#000000', width: 500 } },
+      { format: 'seconds' },
+      { warn: { color: '#f5a524', fromMs: -1 } },
+      { overColor: 'red' },
+      { flash: 1 },
+      { hours: 13 },
+      { seconds: 'on' },
+    ])
+      expect(stageBoxSchema.safeParse({ ...before, ...bad }).success, JSON.stringify(bad)).toBe(false);
+  });
+
+  it('make a new box’s words as large as its box holds when they fit; one saved before keeps to 400 px', () => {
+    for (const kind of STAGE_BOX_KINDS.filter((k) => k !== 'audience'))
+      expect(newStageBox(kind, kind).fitWhole, kind).toBe(true);
+    expect(newStageBox('audience', 'hall')).not.toHaveProperty('fitWhole');
+    expect(before).not.toHaveProperty('fitWhole');
+  });
+
+  it('put a box in front of the others or behind them, all the way or one step (bottom to top)', () => {
+    const boxes = ['a', 'b', 'c', 'd'].map((id) => ({ ...before, id }));
+    const order = (how: Parameters<typeof arrangeBoxes>[2], id: string) =>
+      arrangeBoxes(boxes, id, how)
+        .map((b) => b.id)
+        .join('');
+    expect(order('front', 'b')).toBe('acdb');
+    expect(order('back', 'c')).toBe('cabd');
+    expect(order('forward', 'b')).toBe('acbd');
+    expect(order('backward', 'c')).toBe('acbd');
+    // Already there: as it was.
+    expect(order('front', 'd')).toBe('abcd');
+    expect(order('forward', 'd')).toBe('abcd');
+    expect(order('back', 'a')).toBe('abcd');
+    expect(order('backward', 'a')).toBe('abcd');
+    expect(order('front', 'placeholder-none')).toBe('abcd');
   });
 });

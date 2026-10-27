@@ -17,8 +17,9 @@ import { useElementSize } from '../render/useElementSize';
  * drag to move it (snapping to the canvas's edges and middle and to the
  * other boxes; Alt places freely), drag a handle to resize it (no smaller
  * than its own smallest, Session 53). From the keyboard: Tab chooses the
- * next box, the arrows move it (Shift: ten pixels); sizes are typed in the
- * editor's fields.
+ * next box, the arrows move it (Shift: ten pixels), and with Alt (Option on
+ * a Mac) they resize it, right and down larger, left and up smaller (Session
+ * 54); sizes are typed in the editor's fields too.
  */
 
 export interface CanvasBox {
@@ -205,6 +206,24 @@ export function BoxCanvas({
       ArrowDown: { x: 0, y: step },
     };
     const arrow = arrows[e.key];
+    // With Alt (Option on a Mac), larger or smaller (Session 54): never smaller than its smallest, and one saved
+    // smaller than that (Session 53) only larger.
+    if (arrow && chosen && e.altKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      const least = chosen.min ?? { width: minSize, height: minSize };
+      const sized = (now: number, by: number, min: number) =>
+        by < 0 ? Math.max(Math.min(now, min), now + by) : now + by;
+      onChange(
+        chosen.id,
+        {
+          ...chosen.frame,
+          width: sized(chosen.frame.width, arrow.x, least.width),
+          height: sized(chosen.frame.height, arrow.y, least.height),
+        },
+        true,
+      );
+      return;
+    }
     if (arrow && chosen && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       onChange(

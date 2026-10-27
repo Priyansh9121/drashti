@@ -5,6 +5,7 @@ import { Button } from '../../ui/Button';
 import { Eraser } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
+import { StageTimerList } from './StageTimers';
 
 /*
  * The stage screen (Session 54, D5), as the operator window's Stage screen panel has it: a message for the
@@ -68,6 +69,7 @@ export function StageScreen() {
           </Button>
         </div>
       )}
+      <StageTimerList />
     </section>
   );
 }

@@ -346,9 +346,14 @@ describe('the network in the main process', () => {
       body: { groupId: 'stage-group', languages: ['gu'] },
     });
     // The hall's group and Main's clock, for a Remote's picture and time (Sessions 31–36); not a stage display's.
+    // And the stage screens' group, whose layout's timers a Remote starts, pauses and resets (Session 54).
     expect(service.answer({ address: PHONE, deviceId: remote, op: 'hall', args: {} })).toMatchObject({
       status: 200,
-      body: { groupId: 'hall-group', clock: { locale: 'en-GB', timeZone: 'Europe/London' } },
+      body: {
+        groupId: 'hall-group',
+        clock: { locale: 'en-GB', timeZone: 'Europe/London' },
+        stageGroupId: 'stage-group',
+      },
     });
     expect(service.answer({ address: PHONE, deviceId: stage, op: 'hall', args: {} }).status).toBe(403);
     // Shastra: a Remote lists the texts and puts up a reference; nonsense is refused with why.

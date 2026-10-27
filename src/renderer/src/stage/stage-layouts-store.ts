@@ -114,6 +114,12 @@ export function duplicate(): void {
   useStageLayouts.setState({ shownId: '', editing, saved: null, boxId: null, problem: null });
 }
 
+/** A new layout of these boxes on black, not saved yet, shown as Duplicate's is (New from a Template…, Session 54). */
+export function startLayout(name: string, boxes: StageBox[]): void {
+  const editing: Editing = { id: null, name, background: '#000000', boxes };
+  useStageLayouts.setState({ shownId: '', editing, saved: null, boxId: null, problem: null });
+}
+
 export function change(fn: (e: Editing) => Editing): void {
   const s = useStageLayouts.getState();
   if (s.editing) useStageLayouts.setState({ editing: fn(s.editing) });
