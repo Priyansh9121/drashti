@@ -3,8 +3,9 @@ import type { Installer } from '../update/installer';
 import { UpdateService } from '../update/update-service';
 import { join } from 'node:path';
 import { EngineMirror } from '../../shared/engine/mirror';
+import { MainAccess } from './main-access';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
-import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
+import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
 import { copyMediaId, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
 import { sharpenStep } from '../../shared/picture-look';
@@ -148,11 +149,34 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   /** What to add to this computer's own clock (as the windows read it) to get Main's engine clock. */
   const outputOffset = () => deps.clockSkewMs + offsetMs;
   const engineNow = () => Date.now() + outputOffset();
+  // A node shows only while it hears a Main let in (Session 54, access by Gmail: main-access.ts): until then, when
+  // told it is not, and 2 minutes after it last heard one, its screens are black, the stop drawn over Main's state.
+  const mainAccess = new MainAccess({
+    engineNow,
+    setTimer: (ms, run) => {
+      const t = setTimeout(run, ms);
+      return () => {
+        clearTimeout(t);
+      };
+    },
+    changed: () => {
+      transport.broadcast(snapshot());
+      viewChanged();
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  /** Main's state as this node's screens draw it: black over it while no Main let in is heard. */
+  const shown = (state: EngineState): EngineState => {
+    const stop = mainAccess.stop;
+    return stop && !state.stopped ? { ...state, stopped: stop } : state;
+  };
   const snapshot = (): EngineSnapshotMessage => ({
     kind: 'snapshot',
     version: ENGINE_STATE_VERSION,
     rev: mirror.rev,
-    state: mirror.state ?? initialEngineState(),
+    state: shown(mirror.state ?? initialEngineState()),
     sentAt: engineNow(),
     ...(mirror.session !== undefined ? { session: mirror.session } : {}),
   });
@@ -490,7 +514,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         if (result === 'applied') {
           heartbeat.changed(mirror.rev);
           fromSaved = false;
-          transport.broadcast(message.message);
+          // A whole state from Main keeps the black over it while no Main let in is heard (Session 54).
+          const m = message.message;
+          transport.broadcast(m.kind === 'snapshot' ? { ...m, state: shown(m.state) } : m);
           saver.update(snapshot(), offsetMs);
           cache.kick();
         } else if (result === 'resync') client?.send({ type: 'resync' });
@@ -528,6 +554,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         }
         return;
       }
+      case 'access':
+        mainAccess.heard(message.letIn);
+        return;
       case 'tryAgain': {
         // Try again on Main's dashboard or its notice (Sessions 31–36): an output given up on, tried again
         // now by the node's watchdog, its count of crashes starting afresh.
@@ -681,6 +710,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
       clock,
       fromSaved,
+      stopped: mainAccess.stopped,
       mainVersion: link.state === 'refused' ? mainVersion : null,
       update: updates.view(),
       notice,
@@ -854,6 +884,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   nodeWindow.on('closed', () => {
     nodeWindow = null;
     app.quit();
+  });
+  deps.atQuit('Main’s access', () => {
+    mainAccess.dispose();
   });
   deps.atQuit('the link to Main', () => {
     if (healthTimer) clearInterval(healthTimer);

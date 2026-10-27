@@ -122,6 +122,11 @@ export class NodeService implements EngineTransport {
   private offer: { code: string; expiresAt: number } | null = null;
   private offerTimer: NodeJS.Timeout | null = null;
   private readonly live = new Map<string, Live>();
+  /**
+   * Whether Main is let in (Session 54, access by Gmail), as the access service last said: told to every node at each
+   * change and every 15 s, and to each node as it connects. Until then, and once Drashti has stopped: no.
+   */
+  private letIn = false;
   private readonly sentWanted = new Map<string, string>();
   private wantedTimer: NodeJS.Timeout | null = null;
   private watching = false;
@@ -278,11 +283,13 @@ export class NodeService implements EngineTransport {
         this.changed();
         return;
       case 'ask':
+        // Not let in (Session 54): no node is paired and no file is copied.
         if (m.question.kind === 'paired') {
-          const node = this.paired(m.question.node);
+          const node = this.letIn ? this.paired(m.question.node) : null;
           worker.send({ type: 'answer', id: m.id, answer: node });
         } else {
-          worker.send({ type: 'answer', id: m.id, answer: this.deps.mediaFile(m.question.mediaId) });
+          const file = this.letIn ? this.deps.mediaFile(m.question.mediaId) : null;
+          worker.send({ type: 'answer', id: m.id, answer: file });
         }
         return;
       case 'online': {
@@ -295,6 +302,8 @@ export class NodeService implements EngineTransport {
         l.refused = null;
         this.unsaved.set(m.nodeId, { at, address: m.address, version: m.version });
         this.deps.log('info', `Nodes: ${this.label(m.nodeId)} connected`);
+        // Whether Main is let in, at once: a node shows only while it is (Session 54).
+        worker.send({ type: 'to-node', nodeId: m.nodeId, message: { type: 'access', letIn: this.letIn } });
         this.pushWanted(true);
         this.changed();
         this.deps.screensChanged();
@@ -639,6 +648,16 @@ export class NodeService implements EngineTransport {
         label: display ? `${index}: ${display.label || `Display ${index}`}` : '',
       },
     });
+  }
+
+  /**
+   * Main let in, or not (Session 54, access by Gmail): every node connected hears it now. A node shows only while it
+   * hears a Main let in: told not, or hearing nothing of it for 2 minutes, its screens go black.
+   */
+  tellAccess(letIn: boolean): void {
+    this.letIn = letIn;
+    for (const [nodeId, l] of this.live)
+      if (l.online) this.worker?.send({ type: 'to-node', nodeId, message: { type: 'access', letIn } });
   }
 
   reload(nodeId: string, screenId: string): NodesResult {
