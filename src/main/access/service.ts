@@ -146,7 +146,8 @@ async function safely<T>(call: () => Promise<AccessResult<T>>): Promise<AccessRe
       ok: false,
       kind: 'no-answer',
       reason: 'network',
-      detail: `the call did not go (${error instanceof Error ? error.message : String(error)})`,
+      // Its own words, for the log only (why()): a no-answer's detail is never shown.
+      detail: error instanceof Error ? error.message : String(error),
     };
   }
 }
@@ -169,7 +170,7 @@ export function keptAt(
       if (!said) {
         said = true;
         log(
-          `Access: the last check's time could not be kept in the data folder (${error instanceof Error ? error.message : String(error)})`,
+          `Access: the last check’s time could not be kept in the data folder (${error instanceof Error ? error.message : String(error)})`,
         );
       }
       return now();

@@ -5714,7 +5714,7 @@ function start(): void {
       uncover: () => {
         const names = screens.uncoverOperator().turnedOff ?? [];
         log.info(
-          `Access: the stop's screen uncovered: turned off ${names.length > 0 ? names.join(', ') : 'nothing'}`,
+          `Access: the stop’s screen uncovered: turned off ${names.length > 0 ? names.join(', ') : 'nothing'}`,
         );
         if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.show();
       },
