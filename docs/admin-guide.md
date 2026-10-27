@@ -65,6 +65,8 @@ Section 2 of `docs/parallel-run.md` has the same steps for the volunteers.
 
 **Who may open Drashti.** Since alpha.13, Drashti opens only on a computer let in with a Gmail that the **owner** has approved. The owner is whoever approves access: the access list is a Google Sheet in their own Google account, with a small program behind it that answers every Drashti and sends the emails. Drashti **needs the internet** to ask the list, as it starts and then every 15 seconds while it runs. It tells the list this computer's name, its Drashti's version, how long it has been used and how many shows, streams, recordings and imports it has had: counts only, never words, names of files or pictures. A node needs no Gmail of its own (below).
 
+**One Gmail per computer.** Each computer is let in once, under one Gmail. A mandir computer is let in under the Gmail the owner chooses for it, and everyone who works at it works under that Gmail; an operator's own computer (a laptop to prepare at home, say) is let in under the operator's own Gmail.
+
 **Letting a computer in.** On a computer not let in yet, a window opens before anything else: **Let this computer in**. (While the check at start takes more than a second, the same window says "Checking this computer's access…".)
 
 1. **Request Access**: type **Your Gmail** and, if you like, **Your name (optional)**, so the owner knows who asks, then press **Request Access**. The owner gets an email with an **Approve** and a **Reject** link: each opens a page with one button (nothing happens until it is pressed), and works once, for 7 days. The window asks every 30 seconds what came of the request (**Check Again** asks at once).
