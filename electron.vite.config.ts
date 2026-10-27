@@ -115,6 +115,8 @@ export default defineConfig({
           sharpen: resolve('src/renderer/sharpen.html'),
           // The window for Zoom: the stream's picture, for Zoom's Share Screen (Session 48).
           zoom: resolve('src/renderer/zoom.html'),
+          // View › Access List… (Session 54, E4): the owner's window onto the access list.
+          'access-list': resolve('src/renderer/access-list.html'),
         },
       },
     },

@@ -22,6 +22,8 @@ export { Captions } from 'lucide-react';
 export { AppWindow, ScreenShare } from 'lucide-react';
 // Picture in picture (Session 50): the box on the screens, and its Swap.
 export { ArrowLeftRight, PictureInPicture2 } from 'lucide-react';
+// The Access List (Session 54, E4): the Gmails let in, adding one, and its columns' sorting.
+export { ArrowUpDown, UserPlus, Users } from 'lucide-react';
 // Shastra texts, the arti, the calendar and the idle rotation (Session 12).
 export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'lucide-react';
 // Leaving the first start's practice show (Session 26g).

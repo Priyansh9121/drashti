@@ -91,6 +91,7 @@ import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
 import type { ZoomProgram } from './zoom';
+import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
 import type {
   CameraAccess,
   VideoInputFields,
@@ -730,6 +731,25 @@ export const IPC = {
     /** main -> the window for Zoom: the stream's picture is ready again (or gone). */
     programChanged: 'zoom:program-changed',
   },
+  /** View › Access List… (Session 54, E4): the owner's window onto the access list; that window only, the owner's only. */
+  accessList: {
+    /** Every Gmail on the list as it last answered, when, and why it could not be asked. */
+    view: 'accesslist:view',
+    /** Ask the list again now. */
+    refresh: 'accesslist:refresh',
+    /** The owner's edits, each sent to the list at once (Revoke asked first, in the window). */
+    add: 'accesslist:add',
+    approve: 'accesslist:approve',
+    reject: 'accesslist:reject',
+    revoke: 'accesslist:revoke',
+    /** Give access again: a new token by email. */
+    regrant: 'accesslist:regrant',
+    note: 'accesslist:note',
+    /** The rows shown (by Gmail, in their order) saved as a CSV file where the owner chooses. */
+    exportCsv: 'accesslist:export-csv',
+    /** main -> the Access List: the list answered (or could not be asked). */
+    changed: 'accesslist:changed',
+  },
   network: {
     /** The local network's state: on or off, its addresses, the paired devices (operator window only). */
     status: 'network:status',
@@ -1232,6 +1252,15 @@ export interface InvokeContract {
   [IPC.pip.savePlace]: { args: [place: PipPlace]; result: PipSettingsResult };
   [IPC.zoom.open]: { args: []; result: null };
   [IPC.zoom.program]: { args: []; result: ZoomProgram | null };
+  [IPC.accessList.view]: { args: []; result: AccessListView };
+  [IPC.accessList.refresh]: { args: []; result: AccessListView };
+  [IPC.accessList.add]: { args: [fields: AccessListAdd]; result: AccessListResult };
+  [IPC.accessList.approve]: { args: [gmail: string]; result: AccessListResult };
+  [IPC.accessList.reject]: { args: [gmail: string]; result: AccessListResult };
+  [IPC.accessList.revoke]: { args: [gmail: string]; result: AccessListResult };
+  [IPC.accessList.regrant]: { args: [gmail: string]; result: AccessListResult };
+  [IPC.accessList.note]: { args: [gmail: string, note: string]; result: AccessListResult };
+  [IPC.accessList.exportCsv]: { args: [gmails: string[]]; result: AccessListSaved };
   [IPC.network.status]: { args: []; result: NetworkStatus };
   [IPC.network.setOn]: { args: [on: boolean]; result: NetworkResult };
   [IPC.network.setPort]: { args: [port: number]; result: NetworkResult };
@@ -1340,6 +1369,7 @@ export interface EventContract {
   [IPC.output.keepQuestion]: PendingScreens | null;
   [IPC.output.switchQuestion]: { which: ScreenSwitch | null };
   [IPC.zoom.programChanged]: ZoomProgram | null;
+  [IPC.accessList.changed]: AccessListView;
   [IPC.network.changed]: NetworkStatus;
   [IPC.announcements.changed]: AnnouncementsView;
   [IPC.nodes.changed]: NodesStatus;

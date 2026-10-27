@@ -63,6 +63,7 @@ import type {
 } from './stream';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
 import type { ZoomProgram } from './zoom';
+import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
 import type {
   CameraAccess,
   VideoInputFields,
@@ -601,6 +602,20 @@ export interface DrashtiBridge {
     /** The window for Zoom's page: the stream's picture as it stands (null: not ready). */
     program(): Promise<ZoomProgram | null>;
     onProgram(listener: (program: ZoomProgram | null) => void): () => void;
+  };
+  /** View › Access List… (Session 54, E4): the owner's window onto the access list (that window only). */
+  accessList: {
+    view(): Promise<AccessListView>;
+    refresh(): Promise<AccessListView>;
+    add(fields: AccessListAdd): Promise<AccessListResult>;
+    approve(gmail: string): Promise<AccessListResult>;
+    reject(gmail: string): Promise<AccessListResult>;
+    revoke(gmail: string): Promise<AccessListResult>;
+    regrant(gmail: string): Promise<AccessListResult>;
+    note(gmail: string, note: string): Promise<AccessListResult>;
+    /** The rows shown, by Gmail in their order, saved as a CSV where the owner chooses. */
+    exportCsv(gmails: string[]): Promise<AccessListSaved>;
+    onChanged(listener: (view: AccessListView) => void): () => void;
   };
   /** The local network: phones and tablets on the mandir's Wi-Fi (operator window only). */
   network: {

@@ -447,6 +447,18 @@ const bridge: DrashtiBridge = {
     program: () => invoke(IPC.zoom.program),
     onProgram: (listener) => on(IPC.zoom.programChanged, listener),
   },
+  accessList: {
+    view: () => invoke(IPC.accessList.view),
+    refresh: () => invoke(IPC.accessList.refresh),
+    add: (fields) => invoke(IPC.accessList.add, fields),
+    approve: (gmail) => invoke(IPC.accessList.approve, gmail),
+    reject: (gmail) => invoke(IPC.accessList.reject, gmail),
+    revoke: (gmail) => invoke(IPC.accessList.revoke, gmail),
+    regrant: (gmail) => invoke(IPC.accessList.regrant, gmail),
+    note: (gmail, note) => invoke(IPC.accessList.note, gmail, note),
+    exportCsv: (gmails) => invoke(IPC.accessList.exportCsv, gmails),
+    onChanged: (listener) => on(IPC.accessList.changed, listener),
+  },
   setup: {
     state: () => invoke(IPC.setup.state),
     setSeen: () => invoke(IPC.setup.setSeen),
@@ -600,7 +612,7 @@ contextBridge.exposeInMainWorld('drashti', bridgeFor(bridge, pageOf(here)));
  * so no frame shows another colour; then every change, at once. The audience screens, the stream's page and
  * the stage display never take one (body.output keeps its own colours).
  */
-const OWN_WINDOWS: readonly (string | null)[] = ['index', 'gallery', 'node'];
+const OWN_WINDOWS: readonly (string | null)[] = ['index', 'gallery', 'node', 'access-list'];
 /** The page's document and MutationObserver, as far as this needs them (the preload has no DOM types). */
 const dom = globalThis as unknown as {
   document: { documentElement: AppearanceRoot | null };
