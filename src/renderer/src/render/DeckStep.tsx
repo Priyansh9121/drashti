@@ -476,7 +476,10 @@ export function useDeckCover(
       : deck?.hideWhenStopped === true && !before && !ended && !clock.loop && durationMs && !seek?.paused
         ? now + playbackLeftMs(clock, durationMs, now)
         : null;
+  const own = deck !== undefined;
   useEffect(() => {
+    // Any other video: nothing here changes how it shows.
+    if (!own) return;
     const off = onClockJump(() => {
       redraw((n) => n + 1);
     });
@@ -492,7 +495,7 @@ export function useDeckCover(
       off();
       clearTimeout(t);
     };
-  }, [changesAt]);
+  }, [own, changesAt]);
   if (!deck) return 'none';
   if (before) return deck.hideWhenStopped ? 'hidden' : deck.posterId ? 'poster' : 'none';
   return ended ? 'hidden' : 'none';
