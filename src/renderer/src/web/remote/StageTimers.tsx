@@ -14,7 +14,8 @@ import { useRemote } from './remote-store';
  * The stage screens' timers on the phone remote (Session 54, Part A3), as the Stage screen panel has them in
  * Drashti: each timer the stage screens' layout shows by name (the live Look's first stage group's, which Drashti
  * names in GET /api/v1/hall), with its time, what it counts to, and Start, Pause and Reset. Nothing for the
- * Standard stage screen, or a layout with no timer chosen in it.
+ * Standard stage screen, or a layout with no timer chosen in it. StageTimerList is the list alone, for the
+ * remote's Stage screen section (D5's, under its message); StageTimers is the list in a section of its own.
  */
 
 const NO_TIMERS: TimerState[] = [];
@@ -79,23 +80,36 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
   );
 }
 
-export function StageTimers() {
+/** The stage layout's timers shown now, each once, in its order: none for the Standard stage screen. */
+function useStageTimers(): TimerState[] {
   const groupId = useRemote((s) => s.hall?.stageGroupId ?? null);
   const layout = useEngine((s) => (groupId ? s.state?.look.groups[groupId]?.stageLayout : null) ?? null);
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
-  const ids = layoutTimerIds(layout);
-  const shown = ids.flatMap((id) => timers.filter((t) => t.id === id));
+  return layoutTimerIds(layout).flatMap((id) => timers.filter((t) => t.id === id));
+}
+
+/** The stage layout's timers as a list, or nothing when it names none. */
+export function StageTimerList() {
+  const shown = useStageTimers();
   if (shown.length === 0) return null;
   return (
-    <section className="space-y-2" aria-labelledby="stage-timers-title" data-testid="remote-stage-timers">
+    <ul className="space-y-2" aria-label="The stage screens’ timers" data-testid="remote-stage-timers">
+      {shown.map((t) => (
+        <StageTimerRow key={t.id} timer={t} />
+      ))}
+    </ul>
+  );
+}
+
+/** The same list in a section of its own, "On the stage screens", or nothing when the layout names none. */
+export function StageTimers() {
+  if (useStageTimers().length === 0) return null;
+  return (
+    <section className="space-y-2" aria-labelledby="stage-timers-title">
       <h2 id="stage-timers-title" className="text-base font-bold tracking-wider text-muted uppercase">
         On the stage screens
       </h2>
-      <ul className="space-y-2">
-        {shown.map((t) => (
-          <StageTimerRow key={t.id} timer={t} />
-        ))}
-      </ul>
+      <StageTimerList />
     </section>
   );
 }

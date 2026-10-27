@@ -759,8 +759,10 @@ test('the Stage panel and the phone start, pause and reset the stage layout’s 
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await p.getByTestId('remote-tab-more').click();
+      // The stage screens' timers: in the More tab, with the stage screen's other controls.
       const section = p.getByTestId('remote-stage-timers');
-      await expect(section.getByRole('heading', { name: 'On the stage screens' })).toBeVisible();
+      await expect(section).toBeVisible();
+      await expect(p.getByRole('list', { name: 'The stage screens’ timers' })).toBeVisible();
       const timers = section.getByTestId('remote-stage-timer');
       await expect(timers).toHaveCount(2);
       const one = timers.first();
