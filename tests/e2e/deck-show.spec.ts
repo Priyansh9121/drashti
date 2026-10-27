@@ -376,6 +376,50 @@ test('a deck’s video starts at its click with the time bar under LIVE, and its
   }
 });
 
+test('a deck’s video shows only between its entrance and its exit: hidden before and after, never its poster, and in place once its entrance’s motion is over (C review)', async () => {
+  test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(180_000);
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const files = await makeDeckFiles(win);
+    // It comes in at the first click (and starts then), and goes at the second.
+    const entering = { ...deckVideo(files, { step: 1, offsetMs: 0 }), enterStep: 1, exitStep: 2 };
+    const id = await writeDeck(
+      win,
+      'Placeholder entering deck',
+      standInDecks(files, { first: { media: [entering] } }),
+    );
+    const out = await outputFor(app, await setUpScreen(win, 'Main Hall', 0));
+    const video = out.locator(`video[data-media-id="${files.video}"]`);
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await expect(video).toHaveAttribute('data-deck-cover', 'hidden');
+    await expect(out.locator(`[data-deck-poster="${files.poster}"]`)).toHaveCount(0);
+    // Its entrance: hidden while the click's clip brings its poster in, in place once that is over.
+    await dispatch(win, { type: 'next' });
+    const at = await stepAt(win);
+    await holdClock(app, at + 300);
+    await expect(video).toHaveAttribute('data-deck-cover', 'hidden');
+    await holdClock(app, at + CLIP_MS + 100);
+    await expect(video).toHaveAttribute('data-deck-cover', 'none');
+    await expect(video).toBeVisible();
+    await holdClock(app, null);
+    // Its exit: hidden from the click that takes it away; come back to by Back, in place at once.
+    await dispatch(win, { type: 'next' });
+    await expect(video).toHaveAttribute('data-deck-cover', 'hidden');
+    await dispatch(win, { type: 'previous' });
+    expect(await step(win)).toBe(1);
+    await expect(video).toHaveAttribute('data-deck-cover', 'none');
+  } finally {
+    await app.close();
+  }
+});
+
 test('a phone steps through a deck’s clicks with Next and Back, its live picture showing the step, and passes axe', async () => {
   test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
   test.setTimeout(180_000);

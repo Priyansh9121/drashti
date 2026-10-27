@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react';
 import type { DeckMedia, DeckSlide } from '../../../shared/deck';
-import { deckStep, type StepTiming, stepTiming } from '../../../shared/deck-show';
+import { deckStep, type StepTiming, stepTiming, videoShowsFrom } from '../../../shared/deck-show';
 import type { SlideLayer } from '../../../shared/engine/state';
 import type { RenderSlide } from '../../../shared/model';
 import {
@@ -456,9 +456,14 @@ export function useDeckCover(
   deck: DeckMedia | undefined,
   clock: { startedAt: number; loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek },
   durationMs: number | null,
+  /** The step its slide shows (C review): it is hidden outside its entrance and its exit, never its poster. */
+  timing: StepTiming | null = null,
 ): DeckCover {
   const [, redraw] = useState(0);
   const now = engineNow();
+  // Between its entrance and its exit only (C review): from when, by the engine's time; null: not at this step.
+  const shownFrom = deck && timing ? videoShowsFrom(deck, timing) : -Infinity;
+  const offStage = shownFrom === null || shownFrom > now;
   const seek = clock.seek;
   const before = seek?.waiting === true || (seek !== undefined && !seek.paused && seek.at > now);
   const ended =
@@ -468,13 +473,15 @@ export function useDeckCover(
     durationMs !== null &&
     durationMs > 0 &&
     playbackAtMs(clock, durationMs, now) >= playbackSpanMs(clock.clip, durationMs).end;
-  // When it next changes: its start, or (hidden once it ends) its end.
+  // When it next changes: its entrance step's motion over, its start, or (hidden once it ends) its end.
   const changesAt =
-    seek && !seek.paused && seek.at > now
-      ? seek.at
-      : deck?.hideWhenStopped === true && !before && !ended && !clock.loop && durationMs && !seek?.paused
-        ? now + playbackLeftMs(clock, durationMs, now)
-        : null;
+    shownFrom !== null && shownFrom > now
+      ? shownFrom
+      : seek && !seek.paused && seek.at > now
+        ? seek.at
+        : deck?.hideWhenStopped === true && !before && !ended && !clock.loop && durationMs && !seek?.paused
+          ? now + playbackLeftMs(clock, durationMs, now)
+          : null;
   const own = deck !== undefined;
   useEffect(() => {
     // Any other video: nothing here changes how it shows.
@@ -494,6 +501,7 @@ export function useDeckCover(
     };
   }, [own, changesAt]);
   if (!deck) return 'none';
+  if (offStage) return 'hidden';
   if (before) return deck.hideWhenStopped ? 'hidden' : deck.posterId ? 'poster' : 'none';
   return ended ? 'hidden' : 'none';
 }
