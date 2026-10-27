@@ -874,6 +874,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         }
         deckIssues.push(...flow.issues);
         if (flow.deck && flow.deckFile) deckRead = { deck: flow.deck, file: flow.deckFile };
+        // A Keynote file's or an old .ppt's notes, from the .pptx made of it as it was tried.
+        if (!slides && flow.deck) slides = flow.deck.slides;
         // The pictures the app saved while it tried: no need to ask it again.
         if (flow.pdf) {
           pdf = flow.pdf;
