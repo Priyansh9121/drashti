@@ -20,10 +20,10 @@ const realKey = () =>
 const URL = 'https://script.google.com/macros/s/AKfycbMadeUpDeploymentId0123456789_-x/exec';
 
 describe('the access list’s address and key', () => {
-  it('are placeholders now, and say so', () => {
-    expect(ACCESS_LIST_URL).toContain('PLACEHOLDER');
-    expect(ACCESS_LIST_PUBLIC_KEY).toContain('PLACEHOLDER');
-    expect(accessConfigReal()).toBe(false);
+  it('are placeholders until the owner’s list is put in for the release, and never half of each', () => {
+    const placeholders =
+      ACCESS_LIST_URL.includes('PLACEHOLDER') && ACCESS_LIST_PUBLIC_KEY.includes('PLACEHOLDER');
+    expect(placeholders !== accessConfigReal()).toBe(true);
   });
 
   it('are real only as Apps Script and Set up… make them', () => {
@@ -51,6 +51,8 @@ describe('the access list’s address and key', () => {
     expect(parseSetupLine(` ${URL}#key=${key} `)).toEqual({ url: URL, publicKey: key });
     expect(parseSetupLine(`${URL} #key=${key}`)).toBeNull();
     expect(parseSetupLine(URL)).toBeNull();
-    expect(parseSetupLine(`${ACCESS_LIST_URL}#key=${key}`)).toBeNull();
+    // The placeholder address, as it is built in until the release, is never one.
+    const placeholder = 'https://script.google.com/macros/s/PLACEHOLDER-WEB-APP-ADDRESS/exec';
+    expect(parseSetupLine(`${placeholder}#key=${key}`)).toBeNull();
   });
 });

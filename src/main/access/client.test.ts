@@ -2,6 +2,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PLACEHOLDER_APPROVER, placeholderComputer, TestList } from '../../../tests/access-core';
 import { accessStandIn, type AccessStandIn } from '../../../tests/access-standin';
+import { ACCESS_LIST_PUBLIC_KEY, ACCESS_LIST_URL, accessConfigReal } from '../../shared/access-config';
 import { NO_ACTIVITY } from '../../shared/access-protocol';
 import { switchesFor } from '../switches';
 import {
@@ -373,12 +374,16 @@ describe('where Drashti asks', () => {
       publicKey: key,
       local: true,
     });
-    // Packaged: the switches are never read, and the placeholders built in are no list to ask.
-    expect(accessTarget({ packaged: true, switches: switchesFor(true, env) })).toBeNull();
+    // Packaged: the switches are never read, and the list built in is the one asked (placeholders are no list to
+    // ask: none until the owner's is put in for the release).
+    const builtIn = accessConfigReal()
+      ? { url: ACCESS_LIST_URL, publicKey: ACCESS_LIST_PUBLIC_KEY, local: false }
+      : null;
+    expect(accessTarget({ packaged: true, switches: switchesFor(true, env) })).toEqual(builtIn);
     expect(
       accessTarget({ packaged: true, switches: (name) => (env as Record<string, string>)[name] }),
-    ).toBeNull();
-    expect(accessTarget({ packaged: false, switches: switchesFor(false, {}) })).toBeNull();
+    ).toEqual(builtIn);
+    expect(accessTarget({ packaged: false, switches: switchesFor(false, {}) })).toEqual(builtIn);
     for (const url of [
       'http://192.0.2.1:4567/x',
       'http://localhost:4567/x',
