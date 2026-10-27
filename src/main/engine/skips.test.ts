@@ -308,8 +308,8 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     expect(background(engine)?.seek?.toMs).toBe(10_000);
   });
 
-  it('come from the operator window only: a phone remote cannot send them, and only these three exist', () => {
-    expect(REMOTE_COMMANDS as readonly string[]).not.toContain('skip');
+  it('come from the operator window and, since Session 54, a phone remote’s LIVE (D5), and only these three exist', () => {
+    expect(REMOTE_COMMANDS as readonly string[]).toContain('skip');
     expect(parseEngineCommand({ type: 'skip', layer: 'audio', jump: 'last' }).ok).toBe(true);
     expect(parseEngineCommand({ type: 'skip', layer: 'audio', jump: 'next' }).ok).toBe(false);
     expect(parseEngineCommand({ type: 'skip', layer: 'slide', jump: 'back' }).ok).toBe(false);

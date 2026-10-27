@@ -95,7 +95,7 @@ export const ACCESS_ERROR_TEXT: Record<AccessErrorCode, string> = {
   'wrong-status': 'That cannot be done to this Gmail as it is now.',
   'mail-limit': 'The access list has sent all the emails it may send today. Try again tomorrow.',
   'mail-failed': 'The access list could not send the email. Try again later.',
-  server: 'Something went wrong in the access list. Try again in a moment.',
+  server: 'The access list could not answer just now. Try again in a moment.',
 };
 
 /** A computer as each call names it. `id` is the computer id (src/main/access/identity.ts). */
