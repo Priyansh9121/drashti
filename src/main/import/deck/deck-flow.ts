@@ -1,5 +1,5 @@
 import { mkdtemp } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ImportIssue } from '../../../shared/import';
 import type { PictureSource } from '../../../shared/pictures';
 import type { Converter } from '../deck-converters';
@@ -94,6 +94,7 @@ export async function runDeck(
         result.baked,
         work,
         options.ffmpeg,
+        dirname(file),
       );
       const before = tried[0];
       if (before)

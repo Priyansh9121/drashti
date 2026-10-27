@@ -161,11 +161,11 @@ const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships
 const REL_MEDIA = 'http://schemas.microsoft.com/office/2007/relationships/media';
 const esc = (t: string) =>
   t.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;');
-const rels = (list: { id: string; type: string; target: string }[]) =>
+const rels = (list: { id: string; type: string; target: string; external?: boolean }[]) =>
   `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${list
     .map(
       (r) =>
-        `<Relationship Id="${r.id}" Type="${r.type.startsWith('http') ? r.type : `${REL}/${r.type}`}" Target="${r.target}"/>`,
+        `<Relationship Id="${r.id}" Type="${r.type.startsWith('http') ? r.type : `${REL}/${r.type}`}" Target="${esc(r.target)}"${r.external ? ' TargetMode="External"' : ''}/>`,
     )
     .join('')}</Relationships>`;
 const GROUP = '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>';
@@ -221,6 +221,8 @@ interface MediaShape extends Box {
   hideIcon?: boolean;
   /** A sound that plays on across this many slides (Play Across Slides; left out, its own slide). */
   acrossSlides?: number;
+  /** Linked, not embedded: the path or file URL the deck names (TargetMode="External"), its poster still inside. */
+  link?: string;
 }
 type Shape = WordsShape | PictureShape | MediaShape;
 const isMedia = (s: Shape): s is MediaShape => s.type === 'video' || s.type === 'audio';
@@ -262,7 +264,11 @@ const para = (p: Run) =>
 const xfrm = (s: Box) =>
   `<a:xfrm><a:off x="${String(Math.round(s.x))}" y="${String(Math.round(s.y))}"/><a:ext cx="${String(Math.round(s.w))}" cy="${String(Math.round(s.h))}"/></a:xfrm>`;
 
-function shapeXml(shape: Shape, relOf: (key: MediaKey, kind: string) => string): string {
+function shapeXml(
+  shape: Shape,
+  relOf: (key: MediaKey, kind: string) => string,
+  linkOf: (target: string, kind: string) => string,
+): string {
   if (isWords(shape)) {
     const fill = shape.fill ? `<a:solidFill><a:srgbClr val="${shape.fill}"/></a:solidFill>` : '<a:noFill/>';
     const body = shape.paras
@@ -272,12 +278,15 @@ function shapeXml(shape: Shape, relOf: (key: MediaKey, kind: string) => string):
   }
   if (!isMedia(shape))
     return `<p:pic><p:nvPicPr><p:cNvPr id="${String(shape.id)}" name="${esc(shape.name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${relOf(shape.media, 'image')}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(shape)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
-  const link = relOf(shape.media, shape.type);
-  const embed = relOf(shape.media, 'media');
+  const link = shape.link ? linkOf(shape.link, shape.type) : relOf(shape.media, shape.type);
+  const embed = shape.link ? null : relOf(shape.media, 'media');
   const poster = relOf(shape.poster, 'image');
   const trim = shape.trim ? `<p14:trim st="${String(shape.trim.st)}" end="${String(shape.trim.end)}"/>` : '';
   const fade = shape.fadeIn ? `<p14:fade in="${String(shape.fadeIn)}"/>` : '';
-  return `<p:pic><p:nvPicPr><p:cNvPr id="${String(shape.id)}" name="${esc(shape.name)}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr><a:${shape.type}File r:link="${link}"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media xmlns:p14="${P14}" r:embed="${embed}">${fade}${trim}</p14:media></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="${poster}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(shape)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+  const p14 = embed
+    ? `<p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media xmlns:p14="${P14}" r:embed="${embed}">${fade}${trim}</p14:media></p:ext></p:extLst>`
+    : '';
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${String(shape.id)}" name="${esc(shape.name)}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr><a:${shape.type}File r:link="${link}"/>${p14}</p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="${poster}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(shape)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 }
 
 /** The slide's timing: click groups, each a chain of sub-groups ("with" or "after previous"). */
@@ -723,10 +732,15 @@ export function makeTestDeck(slides: readonly TestDeckSlide[], media: DeckMediaF
   };
   slides.forEach((slide, k) => {
     const n = String(k + 1);
-    const slideRels = [
+    const slideRels: { id: string; type: string; target: string; external?: boolean }[] = [
       { id: 'rId1', type: 'slideLayout', target: '../slideLayouts/slideLayout1.xml' },
       { id: 'rId2', type: 'notesSlide', target: `../notesSlides/notesSlide${n}.xml` },
     ];
+    const linkOf = (target: string, kind: string) => {
+      const id = `rId${String(slideRels.length + 1)}`;
+      slideRels.push({ id, type: kind, target, external: true });
+      return id;
+    };
     const relOf = (key: MediaKey, kind: string) => {
       const target = `../media/${partFor(key)}`;
       const type = kind === 'media' ? REL_MEDIA : kind;
@@ -736,7 +750,7 @@ export function makeTestDeck(slides: readonly TestDeckSlide[], media: DeckMediaF
       slideRels.push({ id, type, target });
       return id;
     };
-    const tree = slide.shapes.map((s) => shapeXml(s, relOf)).join('');
+    const tree = slide.shapes.map((s) => shapeXml(s, relOf, linkOf)).join('');
     const transition = transitionXml(slide.transition, relOf);
     const timing = timingXml(slide);
     const xml = `${XML}<p:sld ${NS}${slide.hidden ? ' show="0"' : ''}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${slide.bg}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GROUP}${tree}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${transition}${timing}</p:sld>`;

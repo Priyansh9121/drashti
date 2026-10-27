@@ -98,7 +98,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         // The pictures too, should the movie not do.
         expect(result.pdf && existsSync(result.pdf)).toBe(true);
         // Its videos and sounds as real media, from the deck.
-        const parsed = await bakedPresentation('Placeholder trial.pptx', deck, baked, work, ffmpeg);
+        const parsed = await bakedPresentation('Placeholder trial.pptx', deck, baked, work, ffmpeg, dir);
         expect(parsed.groups[0]?.slides.map((s) => s.deck?.media.length)).toEqual([0, 0, 0, 1, 2]);
         expect(parsed.groups[0]?.slides[3]?.deck?.media[0]?.clip).toEqual({ startMs: 1000, endMs: 4000 });
         // Drashti started it: it is quit.
@@ -227,7 +227,7 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         expect(baked.plan.slides).toHaveLength(5);
         for (const o of baked.cuts.offsets.filter((x) => x.offsetMs !== null))
           expect(Math.abs(o.offsetMs ?? 0)).toBeLessThanOrEqual(200);
-        const parsed = await bakedPresentation('Placeholder trial.key', key, baked, work, ffmpeg);
+        const parsed = await bakedPresentation('Placeholder trial.key', key, baked, work, ffmpeg, dir);
         // Its videos and sound, from Keynote's own copy, with Keynote's loop and volume.
         expect(parsed.groups[0]?.slides.map((s) => s.deck?.media.map((m) => m.kind))).toEqual([
           [],

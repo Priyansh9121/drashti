@@ -1,5 +1,5 @@
 import { mkdir, rename } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import type { DeckMedia, DeckSlide, DeckStep } from '../../../shared/deck';
 import type { ImportIssue } from '../../../shared/import';
 import type { MediaElement, SlideElement } from '../../../shared/model';
@@ -11,6 +11,8 @@ import type { ParsedCue, ParsedMediaRef, ParsedPresentation } from '../model';
 import { mediaRef } from '../model';
 import type { PptxDeck, PptxSlide } from '../pictures';
 import { withZip, writeEntry } from '../zip';
+import { fileNameOf, pathFromReference } from '../media-resolver';
+import { realPlaceAsync } from '../../media/contained';
 import type { BakedDeck, BakeFailure, KeynoteMedia } from './bake';
 import { MAX_OFFSET_MS } from './cut';
 import type { Baker } from './plan';
@@ -120,8 +122,22 @@ function keynoteFor(media: PptxMedia, slide: number, told: readonly KeynoteMedia
 }
 
 /** Every video and sound of the deck's shown slides, taken out of it (or found where it links to). */
+/**
+ * Where a deck's linked video or sound is taken from (Session 54, C review): the file it names only when that
+ * really is inside the deck's own folder; otherwise a file of its name beside the deck, or nothing. A deck from a
+ * phone (or anywhere) never brings in a file from elsewhere on this computer by naming it.
+ */
+export async function followLink(link: string, deckDir: string): Promise<string> {
+  const named = pathFromReference(link);
+  const full = isAbsolute(named) ? named : resolve(deckDir, named);
+  const place = await realPlaceAsync(deckDir, full);
+  return place?.inside ? place.path : join(deckDir, fileNameOf(link));
+}
+
 async function takeMedia(
   deckFile: string,
+  /** The deck's own folder (the operator's file's, not a copy's): links are followed only inside it. */
+  deckDir: string,
   slides: readonly PptxSlide[],
   shown: readonly number[],
   dir: string,
@@ -151,7 +167,7 @@ async function takeMedia(
     for (const m of slides[index]?.deck?.media ?? []) {
       const key = m.part ?? m.link ?? '';
       if (key === '' || media.has(key)) continue;
-      const path = m.part ? taken.get(m.part) : m.link;
+      const path = m.part ? taken.get(m.part) : m.link ? await followLink(m.link, deckDir) : undefined;
       if (!path) continue;
       const info = m.part && ffmpeg ? await readInfo(ffmpeg, path).catch(() => null) : null;
       media.set(key, { path, durationMs: info?.durationMs ?? null });
@@ -187,6 +203,8 @@ export async function bakedPresentation(
   baked: BakedDeck,
   work: string,
   ffmpeg: string | null,
+  /** The deck's own folder: its links are followed only inside it. */
+  deckDir: string,
 ): Promise<ParsedPresentation> {
   const { deck, plan, cuts, files } = baked;
   const width = baked.movie.width > 0 ? baked.movie.width : 1920;
@@ -194,6 +212,7 @@ export async function bakedPresentation(
   const shown = plan.slides.map((s) => s.index);
   const { media, posters, sounds } = await takeMedia(
     baked.deckFile,
+    deckDir,
     deck.slides,
     shown,
     join(work, 'media'),
@@ -632,11 +651,13 @@ export async function addDeckMedia(
   sourcePath: string,
   work: string,
   ffmpeg: string | null,
+  /** The deck's own folder: its links are followed only inside it. */
+  deckDir: string,
 ): Promise<{ videos: number; cued: number; left: number }> {
   const shown = deck.slides.flatMap((s, i) => (s.hidden ? [] : [i]));
   const slides = parsed.groups.flatMap((g) => g.slides);
   if (slides.length !== shown.length) return { videos: 0, cued: 0, left: 0 };
-  const { media } = await takeMedia(deckFile, deck.slides, shown, join(work, 'media'), ffmpeg);
+  const { media } = await takeMedia(deckFile, deckDir, deck.slides, shown, join(work, 'media'), ffmpeg);
   let videos = 0;
   let cued = 0;
   let left = 0;
@@ -688,6 +709,7 @@ export async function addDeckMedia(
 /** The deck's videos and sounds as files of their own (a computer with neither PowerPoint nor Keynote). */
 export async function deckMediaFiles(deckFile: string, deck: PptxDeck, dir: string): Promise<string[]> {
   const shown = deck.slides.flatMap((s, i) => (s.hidden ? [] : [i]));
-  const { media } = await takeMedia(deckFile, deck.slides, shown, dir, null);
+  // Taken out of the deck only: a link is never followed here.
+  const { media } = await takeMedia(deckFile, dir, deck.slides, shown, dir, null);
   return [...media.values()].map((m) => m.path).filter((p) => dirname(p) === dir);
 }

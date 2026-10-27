@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { formatBytes } from '../../shared/format';
 import type {
   ConflictChoice,
@@ -29,7 +29,9 @@ import { parsePp6 } from './formats/pp6';
 import { parsePp7, type Pp7Kind, pp7KindOf } from './formats/pp7';
 import { readDocx } from './formats/docx';
 import { parseLyricsText } from './formats/text';
-import { diskFreeBytes, type MediaStore, sha256File, type StagedMedia } from './media-store';
+import { diskFreeBytes, type MediaStore, sha256File, type StagedMedia, UPLOADS_DIR } from './media-store';
+import { isInside } from '../media/contained';
+import { withoutOutsideLinks } from './deck/links';
 import { fileNameOf, pathFromReference, resolveMedia } from './media-resolver';
 import type {
   ParsedMediaRef,
@@ -68,6 +70,7 @@ import {
   picturesPresentation,
   type PptxDeck,
   type PptxSlide,
+  readPptxDeck,
 } from './pictures';
 import { runDeck } from './deck/deck-flow';
 import { addDeckMedia, deckMediaFiles, noAppIssue, picturesMediaIssues } from './deck/deck-import';
@@ -857,6 +860,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const work = await mkdtemp(join(ctx.tempDir ?? tmpdir(), 'drashti-pictures-'));
     try {
       let pdf = file.path;
+      /** The deck as PowerPoint, Keynote and Drashti read it: the file, or a phone's copy with dead links. */
+      let deckPath = file.path;
       let converter: Converter | null = null;
       let firstTried: { converter: Converter; reason: string } | null = null;
       let slides: PptxSlide[] | null = null;
@@ -872,15 +877,22 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           return;
         }
         slides = checked.slides;
+        // A deck a phone sent (Session 54, C review): its links to files outside it are dead ends in the copy that
+        // PowerPoint, Keynote and Drashti read, so nothing else of this computer's comes in through it.
+        let read = checked.deck;
+        if (source === 'pptx' && isInside(resolve(ctx.media.dir, UPLOADS_DIR), resolve(file.path))) {
+          deckPath = join(work, basename(file.path));
+          if ((await withoutOutsideLinks(file.path, deckPath)) > 0) read = await readPptxDeck(deckPath);
+        }
         // With its animations where PowerPoint or Keynote can make its movie (Session 54, C2).
         t = performance.now();
         const flow = await runDeck(
           {
             source,
-            file: file.path,
+            file: deckPath,
             fileName,
             sourcePath: where.sourcePath,
-            read: checked.deck,
+            read,
             work,
             bakers,
           },
@@ -938,7 +950,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           // Saved already.
         } else if (ctx.converters === 'stand-in' && source === 'pptx') {
           // Tests only: saved as PDF as PowerPoint would (Session 26a, so CI can make decks).
-          pdf = await standInPdf(file.path, slides, work);
+          pdf = await standInPdf(deckPath, slides, work);
           converter = 'powerpoint';
         } else if (apps.length === 0) {
           // Nothing here makes pictures of it: its own videos and sounds come in as media all the same.
@@ -957,7 +969,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         const failures: { converter: Converter; message: string; reason: string }[] = [];
         for (const app of apps) {
           t = performance.now();
-          const converted = await convertToPdf(app, file.path, work, {
+          const converted = await convertToPdf(app, deckPath, work, {
             signal: ctx.signal,
             slideCount: slides?.length,
             log: ctx.log && ((line) => ctx.log?.(`Saving as PDF: ${line}`)),
@@ -1020,6 +1032,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               where.sourcePath,
               work,
               ctx.ffmpeg ?? null,
+              dirname(deckPath),
             )
           : { videos: 0, cued: 0, left: 0 };
       const shown = slides?.filter((sl) => !sl.hidden) ?? [];

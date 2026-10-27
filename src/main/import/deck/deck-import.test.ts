@@ -1,7 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DeckSlide } from '../../../shared/deck';
@@ -13,7 +14,7 @@ import { ImportRepo } from '../../db/imports';
 import { MediaRepo } from '../../db/media';
 import { PresentationRepo } from '../../db/presentations';
 import { ffmpegHere } from '../../testing/ffmpeg-here';
-import { MediaStore } from '../media-store';
+import { MediaStore, UPLOADS_DIR } from '../media-store';
 import { runImport } from '../pipeline';
 import { makeDeckMedia, makeTestDeck, type TestDeckSlide, TRIAL_SLIDES } from '../testing/make-deck';
 
@@ -258,6 +259,97 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(words).toContain(
         '1 sound set to play across slides starts on a click: here it plays on its own slide only.',
       );
+    }, 240_000);
+
+    it('follows a linked video only inside the deck’s own folder: a link out of it (a phone’s crafted deck) is refused', async () => {
+      const t = setup();
+      const made = makeDeckMedia(ffmpeg, join(dir, 'made'));
+      // A private video elsewhere on this computer, and another beside the deck.
+      const elsewhere = join(dir, 'elsewhere');
+      const folder = join(dir, 'deck folder');
+      mkdirSync(elsewhere, { recursive: true });
+      mkdirSync(folder, { recursive: true });
+      const secret = join(elsewhere, 'Private clip.mp4');
+      writeFileSync(secret, made.clip1);
+      writeFileSync(join(folder, 'Beside clip.mp4'), made.clip2);
+      const video = (id: number, name: string, link: string) => ({
+        id,
+        type: 'video' as const,
+        name,
+        media: 'clip1' as const,
+        poster: 'poster1' as const,
+        x: 1_000_000,
+        y: 1_000_000,
+        w: 4_000_000,
+        h: 2_250_000,
+        link,
+      });
+      const linked: TestDeckSlide[] = [
+        {
+          key: 'linked',
+          bg: '1B2A4A',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: two linked videos.',
+          shapes: [
+            video(3, 'Out clip', pathToFileURL(secret).href),
+            video(4, 'In clip', 'Beside%20clip.mp4'),
+          ],
+          effects: [],
+        },
+      ];
+      const file = join(folder, 'Placeholder linked.pptx');
+      writeFileSync(file, makeTestDeck(linked, made));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
+      const item = t.report(summary.id)?.items[0];
+      const [slide] = t.slidesOf(item?.target?.id ?? '');
+      const files = new MediaRepo(t.db);
+      const [out, inside] = slide?.slide.deck?.media ?? [];
+      // The video beside the deck came in; the one elsewhere never did: missing, its bytes never copied.
+      expect(files.kindAndFile(inside?.mediaId ?? '')).toMatchObject({ kind: 'video', missing: false });
+      expect(files.kindAndFile(out?.mediaId ?? '')).toMatchObject({ missing: true });
+      const sha = createHash('sha256').update(made.clip1).digest('hex');
+      expect(t.db.prepare('SELECT COUNT(*) AS n FROM media WHERE sha256 = ?').get(sha)).toEqual({ n: 0 });
+      expect(item?.issues.map((i) => i.code)).toContain('missing-media');
+    }, 240_000);
+
+    it('a deck a phone sent follows no link at all, not even to a file beside it in the phones’ folder', async () => {
+      const t = setup();
+      const made = makeDeckMedia(ffmpeg, join(dir, 'made'));
+      // What phones send waits in the media folder's own folder: another phone's video there, and the deck.
+      const uploads = join(t.mediaDir, UPLOADS_DIR);
+      mkdirSync(uploads, { recursive: true });
+      writeFileSync(join(uploads, 'Another phone clip.mp4'), made.clip1);
+      const sent: TestDeckSlide[] = [
+        {
+          key: 'sent',
+          bg: '1B2A4A',
+          transition: { kind: 'fade', dur: 500 },
+          notes: 'Placeholder notes: a linked video.',
+          shapes: [
+            {
+              id: 3,
+              type: 'video',
+              name: 'Linked clip',
+              media: 'clip1',
+              poster: 'poster1',
+              x: 1_000_000,
+              y: 1_000_000,
+              w: 4_000_000,
+              h: 2_250_000,
+              link: 'Another%20phone%20clip.mp4',
+            },
+          ],
+          effects: [],
+        },
+      ];
+      const file = join(uploads, 'upload-1.pptx');
+      writeFileSync(file, makeTestDeck(sent, made));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
+      const [slide] = t.slidesOf(t.report(summary.id)?.items[0]?.target?.id ?? '');
+      const [linked] = slide?.slide.deck?.media ?? [];
+      expect(new MediaRepo(t.db).kindAndFile(linked?.mediaId ?? '')).toMatchObject({ missing: true });
+      const sha = createHash('sha256').update(made.clip1).digest('hex');
+      expect(t.db.prepare('SELECT COUNT(*) AS n FROM media WHERE sha256 = ?').get(sha)).toEqual({ n: 0 });
     }, 240_000);
 
     it('as pictures where nothing makes its movie: its videos real videos on their slides, its sound the slide’s', async () => {
