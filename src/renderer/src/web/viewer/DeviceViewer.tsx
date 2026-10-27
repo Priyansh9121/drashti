@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Tv, X, ZoomIn, ZoomOut
 import { Notice } from '../../ui/Notice';
 import { api } from '../device';
 import { tap, useTapNotice } from '../taps';
-import { type Framing, liveFramingOf, liveZoomFor, maxZoomOver, viewForLive } from './live-zoom';
+import { type Framing, liveFramingOf, liveZoomFor, screensFollow, viewForLive } from './live-zoom';
 import { backCloses, closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
@@ -70,7 +70,8 @@ function Viewer() {
   const content = sizes[page.key] ?? page.size;
   const onScreens = page.onScreens?.(state) ?? null;
   const live = onScreens !== null || (page.live?.(state) ?? false);
-  const maxZoom = onScreens ? maxZoomOver(onScreens.kept) : ZOOM.max;
+  // This device zooms to 400 % whatever it shows; the side button only as far as the screens follow (D1/D2 review).
+  const maxZoom = ZOOM.max;
   // The screens' live zoom now (null: as the picture is kept), while this page is what they show.
   const screensAt = onScreens ? liveFramingOf(state) : null;
   // The view starts again for each page, and each new thing on the screens for a page that follows them; until
@@ -93,7 +94,7 @@ function Viewer() {
   };
 
   // D2: this device's zoom as the screens' live zoom, and whether they show it now.
-  const zoomedHere = view.zoom > 1.001;
+  const offerZoom = view.zoom > 1.001 && onScreens !== null && screensFollow(view, onScreens.kept);
   const mine = onScreens ? liveZoomFor(view, onScreens.frame, onScreens.kept) : null;
   const showsThis = mine !== null && screensAt !== null && near(mine, screensAt);
   // Where it is in what is looked through; one page alone says how it zooms.
@@ -161,12 +162,12 @@ function Viewer() {
           </ZoomSurface>
         </PictureScaleContext.Provider>
         {/* D2: at the side, while this page is what the screens show; never on anything else. */}
-        {onScreens && (zoomedHere || screensAt) && (
+        {onScreens && (offerZoom || screensAt) && (
           <div
             className="absolute top-1/2 right-[max(0.5rem,env(safe-area-inset-right))] flex w-40 -translate-y-1/2 flex-col gap-2"
             data-testid="viewer-screens"
           >
-            {zoomedHere && (
+            {offerZoom && (
               <Button
                 size="lg"
                 variant={showsThis ? 'live' : 'primary'}

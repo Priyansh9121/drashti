@@ -110,8 +110,14 @@ export function viewForLive(z: Framing, frame: ZoomFrame, kept: Framing): View {
   };
 }
 
-/** The most a phone zooms a picture it can show on the screens: so far that the screens can follow it (400 %). */
+/** How far the screens can follow a phone's zoom of a picture kept zoomed so: to their own 400 % in all. */
 export const maxZoomOver = (kept: Framing): number => Math.max(1, ZOOM.max / (kept.zoom > 0 ? kept.zoom : 1));
+
+/**
+ * Whether the screens can show this view as it is (D1/D2 review): a phone zooms to 400 % of what it draws whatever
+ * the picture's kept look, and the side button is offered only as far as the screens can follow it.
+ */
+export const screensFollow = (view: View, kept: Framing): boolean => view.zoom <= maxZoomOver(kept) + 1e-6;
 
 /**
  * The live zoom's picture's frame in the hall's picture as a phone draws it (the canvas, the slide fitted into it,

@@ -11,6 +11,7 @@ import {
   liveZoomFor,
   maxZoomOver,
   phoneZoomTarget,
+  screensFollow,
   viewForLive,
   zoomTargetOf,
 } from './live-zoom';
@@ -162,6 +163,15 @@ describe('a phone’s zoom put on the screens (Session 54, D2)', () => {
     expect(view.cx).toBeCloseTo(0.6);
     expect(maxZoomOver(kept)).toBeCloseTo(4 / 1.5);
     expect(maxZoomOver(PLAIN)).toBe(4);
+  });
+
+  it('is offered only as far as the screens can follow, the phone zooming on past it (D1/D2 review)', () => {
+    const kept = { zoom: 1.5, x: 0, y: 0 };
+    // 2 × 1.5 = 3: the screens follow; 3 × 1.5 = 4.5: past their 400 %, so the button is not offered.
+    expect(screensFollow({ zoom: 2, cx: 0.5, cy: 0.5 }, kept)).toBe(true);
+    expect(screensFollow({ zoom: 3, cx: 0.5, cy: 0.5 }, kept)).toBe(false);
+    expect(screensFollow({ zoom: 4, cx: 0.5, cy: 0.5 }, PLAIN)).toBe(true);
+    expect(screensFollow({ zoom: 4.01, cx: 0.5, cy: 0.5 }, PLAIN)).toBe(false);
   });
 
   it('says the screens are zoomed only while their live zoom is away from how the picture is kept', () => {
