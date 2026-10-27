@@ -117,6 +117,11 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
         expect(picture).toMatchObject({ kind: 'image', frame: { x: 0, y: 0, width: 320, height: 180 } });
         expect(picture?.kind === 'image' ? picture.mediaId : '').toBe(s.slide.deck?.steps.at(-1)?.lastId);
       }
+      // Each slide but the first was made after the one before it: its step-0 clip starts on that one's last still.
+      expect(decks.map((d) => d.after)).toEqual([
+        undefined,
+        ...decks.slice(0, -1).map((d) => d.steps.at(-1)?.lastId),
+      ]);
       // The deck's own transitions, with their lengths; the chime as real sound.
       expect(decks.map((d) => [d.transition?.name, d.transition?.durationMs])).toEqual([
         ['p:fade', 700],
@@ -176,6 +181,20 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       // Imported again, unchanged: it is in the library already, with its animations.
       const again = await t.run({ baker: 'stand-in', converters: 'stand-in' });
       expect(t.report(again.id)?.items[0]?.outcome).toBe('skipped');
+    }, 240_000);
+
+    it('a slide after a hidden one was made after the shown slide before it', async () => {
+      const t = setup();
+      const [build, chain, , , , hidden] = TRIAL_SLIDES;
+      if (!build || !chain || !hidden) throw new Error('no trial slides');
+      const skipping = join(dir, 'Placeholder skipping.pptx');
+      writeFileSync(skipping, makeTestDeck([build, hidden, chain], makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [skipping]);
+      const slides = t.slidesOf(t.report(summary.id)?.items[0]?.target?.id ?? '');
+      expect(slides).toHaveLength(2);
+      const [first, second] = slides.map((s) => s.slide.deck);
+      expect(first?.after).toBeUndefined();
+      expect(second?.after).toBe(first?.steps.at(-1)?.lastId);
     }, 240_000);
 
     it('as pictures where nothing makes its movie: its videos real videos on their slides, its sound the slide’s', async () => {

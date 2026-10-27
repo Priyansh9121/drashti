@@ -47,6 +47,8 @@ const mediaSchema = z.looseObject({
   start: startSchema,
   acrossSlides: z.number().int().min(1).max(10_000).optional(),
   hideWhenStopped: z.boolean().optional(),
+  enterStep: z.number().int().min(0).max(10_000).optional(),
+  exitStep: z.number().int().min(0).max(10_000).optional(),
 });
 
 export const deckSlideSchema = z.looseObject({
@@ -54,6 +56,7 @@ export const deckSlideSchema = z.looseObject({
     .looseObject({ name: z.string().min(1).max(200), durationMs: ms, soundId: idSchema.optional() })
     .optional(),
   deckAdvanceMs: ms.optional(),
+  after: idSchema.optional(),
   steps: z.array(stepSchema).max(10_000),
   media: z.array(mediaSchema).max(1000),
   drashti: z.object({ transition: transitionSchema, mode: z.enum(['over', 'instead']) }).optional(),
@@ -110,6 +113,7 @@ export function mapDeckMedia(deck: DeckSlide, swap: (id: string) => string): Dec
           },
         }
       : {}),
+    ...(deck.after ? { after: swap(deck.after) } : {}),
     steps: deck.steps.map((s) => ({
       ...s,
       clipId: swap(s.clipId),

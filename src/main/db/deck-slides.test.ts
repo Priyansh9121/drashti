@@ -126,6 +126,9 @@ describe('a deck’s slide in the library (Session 54, C2)', () => {
       ...DECK,
       drashti: { transition: { kind: 'dissolve', durationMs: 600 }, mode: 'over' },
       stepTransitions: { 1: { transition: { kind: 'cut', durationMs: 0 }, mode: 'instead' } },
+      // Made after the slide before (Session 54, C review); its video shown at step 1 only (in at 1, out at 2).
+      after: 'last-before',
+      media: DECK.media.map((m, i) => (i === 0 ? { ...m, enterStep: 1, exitStep: 2 } : m)),
     };
     const id = repo.insert({
       libraryId: repo.ensureLibrary('Default'),

@@ -206,6 +206,8 @@ export async function bakedPresentation(
   let advancing = 0;
   let transitionSounds = 0;
   let trimmed = 0;
+  /** The last still of the shown slide before, which the movie's next transition starts from. */
+  let before: string | null = null;
   for (const [i, planned] of plan.slides.entries()) {
     const source = deck.slides[planned.index];
     const d = source?.deck;
@@ -322,9 +324,13 @@ export async function bakedPresentation(
           }
         : {}),
       ...(t?.advanceMs ? { deckAdvanceMs: t.advanceMs } : {}),
+      // Its step-0 clip was made after the shown slide before it (Session 54, C review): the show plays the deck's
+      // own transition only where that slide's last still is what is up.
+      ...(before ? { after: before } : {}),
       steps: deckSteps,
       media: deckMedia,
     };
+    before = deckSteps.at(-1)?.lastId ?? null;
     slides.push({
       label: '',
       notes: tidyNotes(source?.notes ?? ''),
