@@ -58,8 +58,10 @@ export function DeviceVideoPicture({ mediaId, pageKey }: { mediaId: string; page
   }, [loader, mediaId]);
   useEffect(() => {
     let live = true;
-    usePlaying.setState({ mediaId, el: null, playing: false, atMs: 0, lengthMs: 0, problem: null });
+    // The element is there already (refs are set before effects run): this video's time bar works from now.
+    usePlaying.setState({ mediaId, el: video.current, playing: false, atMs: 0, lengthMs: 0, problem: null });
     askedAgain.current = false;
+    resumeAt.current = null;
     void linkTo(mediaId).then((got) => {
       if (!live) return;
       if ('url' in got) setUrl(got.url);

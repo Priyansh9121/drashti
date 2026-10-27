@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { ZOOM } from '../../../../shared/picture-look';
 import { useEngine } from '../../engine/engine-store';
@@ -150,7 +150,8 @@ function Viewer() {
             onView={setView}
             onSettle={settle}
           >
-            {drawn}
+            {/* Each page its own: a video looked at stops as another page comes. */}
+            <Fragment key={page.key}>{drawn}</Fragment>
           </ZoomSurface>
         </PictureScaleContext.Provider>
         {/* D2: at the side, while this page is what the screens show; never on anything else. */}
