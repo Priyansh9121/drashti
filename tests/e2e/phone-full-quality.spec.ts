@@ -506,3 +506,37 @@ test('a video playing on the phone stops, and the viewer closes, the moment Dras
   }
   await app.close();
 });
+
+test('the phone’s own Back closes the viewer and leaves the remote, and Close leaves no entry behind (Session 54, D1/D2 review)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-look-closer').click();
+    await expect(p.getByTestId('viewer')).toBeVisible();
+    // Android's back gesture, an iPhone's edge swipe: the browser's Back.
+    await p.evaluate(() => {
+      history.back();
+    });
+    await expect(p.getByTestId('viewer')).toHaveCount(0);
+    await expect(p).toHaveURL(/\/remote$/u);
+    await expect(p.getByTestId('remote')).toBeVisible();
+    // Closed with Close: its entry taken off, so the phone's Back would leave the remote no sooner than before.
+    await p.getByTestId('remote-look-closer').click();
+    await expect(p.getByTestId('viewer')).toBeVisible();
+    await p.getByTestId('viewer-close').click();
+    await expect(p.getByTestId('viewer')).toHaveCount(0);
+    await expect.poll(() => p.evaluate(() => history.state as unknown)).toBeNull();
+    await expect(p).toHaveURL(/\/remote$/u);
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});

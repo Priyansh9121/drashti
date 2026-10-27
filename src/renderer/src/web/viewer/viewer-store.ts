@@ -79,6 +79,39 @@ export function closeOnStop(): () => void {
   });
 }
 
+/** A page's history, as much of it as the viewer uses (the window's own, or the tests'). */
+export interface PageHistory {
+  history: { readonly state: unknown; pushState(state: unknown, unused: string): void; back(): void };
+  addEventListener(type: 'popstate', listener: (e: { state: unknown }) => void): void;
+  removeEventListener(type: 'popstate', listener: (e: { state: unknown }) => void): void;
+}
+
+let entries = 0;
+
+/** An entry the viewer put in the page's history. */
+const viewerEntry = (state: unknown): boolean =>
+  typeof state === 'object' && state !== null && 'drashtiViewer' in state;
+
+/**
+ * While the viewer is open, the phone's own Back (Android's back button or gesture, an iPhone's edge swipe) closes
+ * it, as it closes a picture shown full screen in any app, and the remote stays (D1/D2 review): an entry of its own
+ * in the page's history. Closed another way, the entry is taken back off. Returns that.
+ */
+export function backCloses(page: PageHistory = window): () => void {
+  entries += 1;
+  page.history.pushState({ drashtiViewer: entries }, '');
+  const onPop = (e: { state: unknown }) => {
+    // Landed on another viewer's entry (a Back left over from one closed just before this opened): still open.
+    if (viewerEntry(e.state)) return;
+    closeViewer();
+  };
+  page.addEventListener('popstate', onPop);
+  return () => {
+    page.removeEventListener('popstate', onPop);
+    if (viewerEntry(page.history.state)) page.history.back();
+  };
+}
+
 /** The page before or after, on this device only. */
 export function turnPage(by: number): void {
   const { pages, index } = useViewer.getState();

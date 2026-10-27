@@ -12,7 +12,7 @@ import { Notice } from '../../ui/Notice';
 import { api } from '../device';
 import { tap, useTapNotice } from '../taps';
 import { type Framing, liveFramingOf, liveZoomFor, maxZoomOver, viewForLive } from './live-zoom';
-import { closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
+import { backCloses, closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
 
@@ -50,6 +50,8 @@ function Viewer() {
   const notice = useTapNotice((s) => s.text);
   const root = useRef<HTMLDivElement>(null);
   useFocusTrap(root, closeViewer);
+  // The phone's own Back closes it (D1/D2 review).
+  useEffect(() => backCloses(), []);
   const surface = useRef<HTMLDivElement>(null);
   const screen = useElementSize(surface);
   // The pictures are asked for again, sharper, each time a zoom settles.
