@@ -72,6 +72,8 @@ export async function prepareTheLock(o: {
         platform: process.platform,
         packaged: app.isPackaged,
         switches: accessSwitches,
+        // Windows' own folder, where reg.exe is (its MachineGuid), wherever Windows is installed.
+        systemRoot: process.env['SystemRoot'],
       });
   const target = selfTest ? null : accessTarget({ packaged: app.isPackaged, switches: accessSwitches });
   let calls: AccessClient | null = null;
