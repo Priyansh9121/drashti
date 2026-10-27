@@ -5,6 +5,8 @@ import type { EngineState } from '../../shared/engine/state';
 import type { MediaWant } from '../../shared/nodes';
 import { MEDIA_EXT_PATTERN } from '../../shared/nodes';
 import { mediaInState } from '../../shared/node-media';
+import { deckPictures } from '../../shared/deck-show';
+import type { DeckSlide } from '../../shared/deck';
 import type { Db } from '../db/database';
 
 /*
@@ -101,6 +103,34 @@ export class WantedMedia {
     return place?.inside ? { path: place.path, sha256: want.sha256, bytes: want.bytes, ext: want.ext } : null;
   }
 
+  /** Whether this library's slides keep what a deck gave them (the `deck` column of C2's import, Session 54). */
+  private decks: boolean | null = null;
+
+  /**
+   * A deck's slides' steps' clips, last frames and holds, and its videos' posters (Session 54, C2), slide by slide: a
+   * node copies them ahead with the rest of the presentation, so a click plays at once there too.
+   */
+  private deckMedia(presentationId: string): string[] {
+    this.decks ??=
+      this.db.prepare("SELECT 1 AS found FROM pragma_table_info('slides') WHERE name = 'deck'").get() !==
+      undefined;
+    if (!this.decks) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT s.deck AS deck FROM slide_groups g JOIN slides s ON s.group_id = g.id
+          WHERE g.presentation_id = ? AND s.deck IS NOT NULL ORDER BY g.position, s.position`,
+      )
+      .all(presentationId) as { deck: string | null }[];
+    return rows.flatMap((r) => {
+      try {
+        return deckPictures(JSON.parse(r.deck ?? 'null') as DeckSlide).filter((id) => typeof id === 'string');
+      } catch {
+        // Not JSON: nothing to copy.
+        return [];
+      }
+    });
+  }
+
   private presentation(presentationId: string): string[] {
     const rows = this.db
       .prepare(
@@ -114,7 +144,10 @@ export class WantedMedia {
          ORDER BY 2, 3, 4`,
       )
       .all(presentationId, presentationId) as { id: string | null }[];
-    return rows.flatMap((r) => (typeof r.id === 'string' ? [r.id] : []));
+    return [
+      ...rows.flatMap((r) => (typeof r.id === 'string' ? [r.id] : [])),
+      ...this.deckMedia(presentationId),
+    ];
   }
 
   private playlist(playlistId: string): string[] {

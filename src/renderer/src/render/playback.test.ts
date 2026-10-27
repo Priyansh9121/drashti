@@ -794,3 +794,64 @@ describe('the time bar’s Pause and Play, and its moves (Session 54)', () => {
     stop();
   });
 });
+
+describe('a start still to come (Session 54, C2)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-10-27T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** In step: within two frames (at 30 a second) of the clock. */
+  const IN_STEP = 2 / 30;
+
+  for (const kind of [
+    {
+      what: 'a deck’s video starting 1.4 s after its click',
+      audible: false,
+      limits: PICTURE_LIMITS,
+      seek: true,
+    },
+    {
+      what: 'a deck’s sound starting 1.4 s after its click',
+      audible: true,
+      limits: SOUND_LIMITS,
+      seek: true,
+    },
+    { what: 'a step’s hold starting as its clip ends', audible: false, limits: PICTURE_LIMITS, seek: false },
+  ]) {
+    it(`${kind.what} waits at its point until then, then plays from there in step at once`, () => {
+      const v = new FakeMedia(8);
+      const startsAt = Date.now() + 1400;
+      const seek: PlaybackSeek | undefined = kind.seek ? { at: startsAt, toMs: 2000 } : undefined;
+      const playback = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'later',
+        startedAt: kind.seek ? Date.now() - 5000 : startsAt,
+        audible: kind.audible,
+        limits: kind.limits,
+        timing: () => ({ loop: false, ...(seek ? { seek } : {}) }),
+      });
+      const from = kind.seek ? 2 : 0;
+      // Never ahead of its start meanwhile: it waits there, paused.
+      const furthest = runFor(v, 1390);
+      expect(furthest, kind.what).toBeLessThanOrEqual(from + FRAME);
+      expect(v.paused, kind.what).toBe(true);
+      // Just after its start it plays, from its point, in step: not a quarter-second check later.
+      runFor(v, 110);
+      expect(v.paused, kind.what).toBe(false);
+      const clock = () => from + (Date.now() - startsAt) / 1000;
+      expect(Math.abs(v.currentTime - clock()), `${kind.what}: off the clock`).toBeLessThan(IN_STEP);
+      runFor(v, 1000);
+      expect(Math.abs(v.currentTime - clock()), `${kind.what}: off the clock a second on`).toBeLessThan(
+        IN_STEP,
+      );
+      playback();
+    });
+  }
+});

@@ -142,3 +142,40 @@ describe('the time bar’s rows', () => {
     });
   });
 });
+
+describe('a deck’s sounds on the slide (Session 54, C2)', () => {
+  it('have a row of their own after its videos, named as sounds', () => {
+    const s = state({
+      slide: {
+        presentationId: 'p',
+        slideIndex: 0,
+        shownAt: 1000,
+        notes: '',
+        slide: {
+          id: 'deck-slide',
+          width: 1920,
+          height: 1080,
+          background: null,
+          elements: [video('v', 'deck-video')],
+          deck: {
+            steps: [{ clipId: 'c0', clipMs: 1000, lastId: 'l0' }],
+            media: [
+              {
+                kind: 'audio',
+                mediaId: 'deck-sound',
+                box: { x: 0, y: 0, w: 0.1, h: 0.1 },
+                loop: false,
+                volume: 1,
+                start: { step: 0, offsetMs: 0 },
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(playingRows(s).map((r) => [r.key, r.short, r.name])).toEqual([
+      ['slide:deck-video', 'Slide video', 'The video on the slide'],
+      ['slide:deck-sound', 'Slide sound', 'The sound on the slide'],
+    ]);
+  });
+});

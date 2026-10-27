@@ -2,6 +2,7 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
+import { StageDeckNext, StageDeckNow } from './DeckStep';
 import type { Lang, RenderSlide, TextElement, TimerElement } from '../../../shared/model';
 import type { HallPicture } from '../../../shared/stage-layouts';
 import type { TimerState } from '../../../shared/timers';
@@ -292,17 +293,22 @@ export function StageView({
               Timer: {slide.timer.name}
             </p>
           )}
-          <StageFit testId="stage-current">
-            {slide ? (
-              <StageText
-                slide={languageView(slide.slide, languages)}
-                size={sizeFor(languageView(slide.slide, languages), 92)}
-                timers={state.timers}
-              />
-            ) : (
-              <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>{backgroundWords(background)}</p>
-            )}
-          </StageFit>
+          {/* A deck's slide (Session 54, C2): its step, as the hall's screens show it. */}
+          {slide?.slide.deck ? (
+            <StageDeckNow layer={slide} testId="stage-current" />
+          ) : (
+            <StageFit testId="stage-current">
+              {slide ? (
+                <StageText
+                  slide={languageView(slide.slide, languages)}
+                  size={sizeFor(languageView(slide.slide, languages), 92)}
+                  timers={state.timers}
+                />
+              ) : (
+                <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>{backgroundWords(background)}</p>
+              )}
+            </StageFit>
+          )}
           {slide && slide.notes.trim() !== '' && (
             <div
               data-testid="stage-notes"
@@ -354,25 +360,30 @@ export function StageView({
               </div>
             ))}
           <p style={label}>NEXT</p>
-          <StageFit testId="stage-next">
-            {next?.kind === 'slide' ? (
-              <StageText
-                slide={languageView(next.slide, languages)}
-                size={sizeFor(languageView(next.slide, languages), 56)}
-                dim
-                timers={state.timers}
-              />
-            ) : next?.kind === 'media' ? (
-              <p
-                style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}
-              >{`${kindName[next.media]}: ${next.label}`}</p>
-            ) : next?.kind === 'input' ? (
-              // A video input item (Session 51): named, as a stage screen never draws it.
-              <p style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}>{`Video input: ${next.name}`}</p>
-            ) : (
-              <p style={{ fontSize: 48, color: '#6b7280', margin: 0 }}>End</p>
-            )}
-          </StageFit>
+          {/* A deck's next step, or its slide coming in (Session 54, C2): that step's last frame. */}
+          {next?.kind === 'slide' && next.slide.deck ? (
+            <StageDeckNext slide={next.slide} step={next.step ?? 0} testId="stage-next" />
+          ) : (
+            <StageFit testId="stage-next">
+              {next?.kind === 'slide' ? (
+                <StageText
+                  slide={languageView(next.slide, languages)}
+                  size={sizeFor(languageView(next.slide, languages), 56)}
+                  dim
+                  timers={state.timers}
+                />
+              ) : next?.kind === 'media' ? (
+                <p
+                  style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}
+                >{`${kindName[next.media]}: ${next.label}`}</p>
+              ) : next?.kind === 'input' ? (
+                // A video input item (Session 51): named, as a stage screen never draws it.
+                <p style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}>{`Video input: ${next.name}`}</p>
+              ) : (
+                <p style={{ fontSize: 48, color: '#6b7280', margin: 0 }}>End</p>
+              )}
+            </StageFit>
+          )}
         </aside>
       </div>
     </div>

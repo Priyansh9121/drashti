@@ -16,6 +16,7 @@ import { backgroundWords, kindName, screensStateWords, StageText } from './Stage
 import { textLang } from './lang';
 import { boxFillStyle, boxWordsStyle, fitAgain, fitLargest } from './stage-box-look';
 import { StageTimerText } from './StageTimerText';
+import { StageDeckNext, StageDeckNow } from './DeckStep';
 import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
@@ -400,6 +401,12 @@ export function StageLayoutView({
           {box.label !== '' && <BoxLabel label={box.label} />}
           {box.kind === 'audience' ? (
             <AudienceBox state={state} hall={hall} />
+          ) : box.kind === 'current' && state.layers.slide?.slide.deck ? (
+            // A deck's slide (Session 54, C2): its step, as the hall's screens show it, fitted in the box.
+            <StageDeckNow layer={state.layers.slide} />
+          ) : box.kind === 'next' && state.next?.kind === 'slide' && state.next.slide.deck ? (
+            // A deck's next step, or its slide coming in: that step's last frame.
+            <StageDeckNext slide={state.next.slide} step={state.next.step ?? 0} />
           ) : (
             <Sized
               size={box.size}

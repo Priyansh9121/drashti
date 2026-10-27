@@ -1,4 +1,5 @@
 import type { UpNext } from './state';
+import { deckStep, stepMedia } from '../deck-show';
 
 /** An image or video an output loads before it is needed. */
 export interface PreloadMedia {
@@ -20,5 +21,7 @@ export function mediaToPreload(next: UpNext | null): PreloadMedia[] {
   if (next.background) found.set(next.background.mediaId, next.background.media);
   for (const el of next.slide.elements)
     if (el.kind === 'image' || el.kind === 'video') found.set(el.mediaId, el.kind);
+  // A deck's step Next shows (Session 54, C2): its clip, last frame and hold, so it starts at once.
+  for (const m of stepMedia(deckStep(next.slide.deck, next.step ?? 0))) found.set(m.mediaId, m.media);
   return [...found].map(([mediaId, media]) => ({ mediaId, media }));
 }

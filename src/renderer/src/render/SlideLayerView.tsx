@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
@@ -14,6 +14,7 @@ import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
 import { SlideMovementContext, SlideTimersContext } from './slide-timers';
 import { linesReveal, type UnitFrame, wordsReveal } from './reveal';
+import { stepTiming } from '../../../shared/deck-show';
 import {
   takesTime,
   transitionFrame,
@@ -83,8 +84,20 @@ export function nextShowing(
       off: prev.fade?.start === null ? prev.off : prev.on,
       fade: { kind: t.kind, ms: t.durationMs, start: null },
     };
+  // A deck's slide coming in by a cut (Session 54, C2: in order, its deck's own transition in its clip, which begins
+  // on the slide before's last frame) keeps the slide before up until its clip can be drawn, as a transition waits for
+  // a slide's pictures, then cuts: never a moment of nothing between them.
+  if (layer.slide.deck && prev.on && now < layer.shownAt + MEDIA_WAIT_MS)
+    return {
+      on: layer,
+      off: prev.fade?.start === null ? prev.off : prev.on,
+      fade: { kind: 'cut', ms: 1, start: null },
+    };
   return { on: layer, off: null, fade: null };
 }
+
+/** The longest the fade waits for a slide's media before it starts anyway. */
+const MEDIA_WAIT_MS = 3000;
 
 /** How far a fade is (0 to 1) at `now`. */
 export const fadeAt = (fade: { ms: number; start: number }, now: number): number =>
@@ -173,9 +186,6 @@ function paintLayers(els: Layers, how: Paint, p: number): void {
     if (move === 'lines' || move === 'words') paintUnits(els, how, p);
   }
 }
-
-/** The longest the fade waits for a slide's media before it starts anyway. */
-const MEDIA_WAIT_MS = 3000;
 
 /**
  * Whether every picture and video in `root` can be drawn now; else a promise for when it can, or for
@@ -275,6 +285,12 @@ function DrawnSlide({
   movement: Movement;
   timers: readonly TimerState[] | undefined;
 }) {
+  // A deck's slide (Session 54, C2): the step showing, drawn in its picture's place from the engine's time.
+  const { slide, step: index, stepAt, stepFromMs, shownAt } = layer;
+  const step = useMemo(
+    () => stepTiming({ slide, step: index, stepAt, stepFromMs, shownAt }),
+    [slide, index, stepAt, stepFromMs, shownAt],
+  );
   if (slides === 'lowerThird') {
     const lines = lowerThird(layer.slide, languages);
     // Its words are drawn apart, by the Look's moving lower third (render/LowerThird.tsx, Session 27).
@@ -294,6 +310,7 @@ function DrawnSlide({
             seeks={layer.seeks}
             text={text}
             reveal={reveal}
+            step={step}
           />
         </Placed>
       </SlideTimersContext.Provider>
@@ -408,9 +425,14 @@ export function SlideLayerView({
   }, [start, ms, kind, movement, moveNow, width, height, scaleIn, scaleOut]);
 
   // After every render, before it is painted: where the transition is now (the frames between renders set
-  // it too).
+  // it too). A deck's slide coming in by a cut (Session 54, C2) shows nothing of itself until it starts.
   const fading = fade !== null;
   useLayoutEffect(() => {
+    if (kind === 'cut' && start === null && fading) {
+      if (inRef.current) inRef.current.style.opacity = '0';
+      if (outRef.current) outRef.current.style.opacity = '';
+      return;
+    }
     paintLayers(
       {
         in: inRef.current,

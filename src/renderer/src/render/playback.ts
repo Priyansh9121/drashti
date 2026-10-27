@@ -79,7 +79,31 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   const clock = () => {
     const t = options.timing?.();
     if (t?.clip && v.loop) v.loop = false;
-    return { startedAt, loop: t ? t.loop : v.loop, clip: t?.clip, seek: t?.seek };
+    return { startedAt, loop: t ? t.loop : v.loop, clip: t?.clip, seek: later(t?.seek, t?.clip) };
+  };
+  // A start still to come (Session 54, C2): a deck's video or sound a moment after its click, a step's hold once its
+  // clip is over. It waits at its point, paused, every screen alike, until the engine's time gets there, and is
+  // checked again just then (until then it played at once, and was pulled back at every check).
+  let starting: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  const later = (
+    seek: PlaybackSeek | undefined,
+    clip: PlaybackClip | undefined,
+  ): PlaybackSeek | undefined => {
+    const at = seek ? seek.at : startedAt;
+    if (seek?.paused || at <= engineNow()) return seek;
+    if (starting?.at !== at) {
+      if (starting) clearTimeout(starting.timer);
+      // eslint-disable-next-line no-restricted-syntax -- never decides a frame: asks for a check when the engine's time reaches its start (check() plays it from where the clock says)
+      const timer = setTimeout(
+        () => {
+          starting = null;
+          check();
+        },
+        Math.max(0, at - engineNow()),
+      );
+      starting = { at, timer };
+    }
+    return { at, toMs: seek ? seek.toMs : (clip?.startMs ?? 0), paused: true };
   };
   let wrap: ReturnType<typeof setTimeout> | null = null;
   let hold: ReturnType<typeof setTimeout> | null = null;
@@ -309,6 +333,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   v.src = mediaUrl(mediaId, attempt);
   const stop = () => {
     clearInterval(timer);
+    if (starting) clearTimeout(starting.timer);
     if (wrap) clearTimeout(wrap);
     if (hold) clearTimeout(hold);
     v.removeEventListener('loadedmetadata', onMetadata);
