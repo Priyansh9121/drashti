@@ -126,6 +126,8 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     // Next with the key: the first click, on both screens, LIVE and the stage; the stage's next is the click after.
     await win.keyboard.press('ArrowRight');
     await expect.poll(() => step(win)).toBe(1);
+    // LIVE says which click is up.
+    await expect(win.getByTestId('live-text')).toContainText('slide 1 of 2 · click 1 of 2');
     await heldAt([app], win, halls, 300, STEP_COLOURS[1].clip);
     await heldAt([app], win, halls, CLIP_MS + 800, STEP_COLOURS[1].last);
     await holdClock(app, null);
