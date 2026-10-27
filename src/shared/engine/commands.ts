@@ -131,8 +131,13 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     zoom: z.number().min(1).max(4),
     x: z.number().min(-1.5).max(1.5),
     y: z.number().min(-1.5).max(1.5),
+    /**
+     * A phone's says which showing of the picture it zoomed (Session 54, D1/D2 review): when another is up by the time
+     * it arrives, it does nothing, as a Next sent with an old revision; LIVE's own, and a script's without it, act.
+     */
+    showing: z.string().min(1).max(128).optional(),
   }),
-  z.object({ type: z.literal('resetLiveZoom') }),
+  z.object({ type: z.literal('resetLiveZoom'), showing: z.string().min(1).max(128).optional() }),
   /**
    * Next. A phone's or the API's carries the revision it saw (Sessions 31–36, TST-11): when the show has moved
    * since, it does nothing (changed: false), so two people pressing Next at once move one slide. The operator's

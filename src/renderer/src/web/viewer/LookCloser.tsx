@@ -1,7 +1,9 @@
+import { stepOf } from '../../../../shared/deck-show';
 import type { OrderedSlide } from '../../../../shared/order';
+import { useEngine } from '../../engine/engine-store';
 import { Button, IconButton } from '../../ui/Button';
 import { GalleryHorizontalEnd, Play, ZoomIn } from '../../ui/icons';
-import { picturePage, screensPage, slidePage, videoPage } from './pages';
+import { picturePage, presentationPages, screensPage, videoPage } from './pages';
 import { openViewer } from './viewer-store';
 
 /*
@@ -38,7 +40,10 @@ export function LookOverlay() {
   );
 }
 
-/** Over a presentation's slides: looked through on this device, from the one on the screens or the one found. */
+/**
+ * Over a presentation's slides: looked through on this device, from the one on the screens (at the click the screens
+ * show, a deck's) or the one found; a deck's slide a page for each click (D1/D2 review).
+ */
 export function LookThrough({
   presentationId,
   name,
@@ -58,14 +63,10 @@ export function LookThrough({
       data-testid="remote-look-through"
       disabled={slides.length === 0}
       onClick={() => {
-        openViewer(
-          slides.map((s) => slidePage(presentationId, s)),
-          Math.max(
-            0,
-            slides.findIndex((s) => s.position === from),
-          ),
-          name,
-        );
+        const up = useEngine.getState().state?.layers.slide;
+        const step = up?.presentationId === presentationId && up.slideIndex === from ? stepOf(up) : null;
+        const { pages, start } = presentationPages(presentationId, slides, from, step);
+        openViewer(pages, start, name);
       }}
     >
       Look through

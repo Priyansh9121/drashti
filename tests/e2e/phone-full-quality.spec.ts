@@ -4,6 +4,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { PLACEHOLDER_PERSON, revoke, standInOf } from './access';
+import { ffmpeg as deckFfmpeg, makeDeckFiles, standInDecks, writeDeck } from './deck-stand-in';
 import { device, type Engine, NETWORK_ENV, networkOn, pairByQr, pairingCode, PHONE, TABLET } from './devices';
 import {
   importAndGetIds,
@@ -63,9 +65,9 @@ const showBackground = (win: Page, mediaId: string) =>
   });
 
 /** How a screen draws its background picture's zoom (its transform; none while it is plain). */
-const screenZoom = (output: Page) =>
+const screenZoom = (output: Page, layer: 'background' | 'slide' = 'background') =>
   output
-    .locator('[data-layer="background"] [data-look-picture]')
+    .locator(`[data-layer="${layer}"] [data-look-picture]`)
     .evaluateAll((els) => els.map((el) => (el as HTMLElement).style.transform).join(' '));
 
 /** How many pixels wide the picture a place draws is, as the device has it. */
@@ -250,6 +252,22 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       await expect(showZoom).toHaveText('This zoom is on the screens');
       await expect(showZoom).toHaveAttribute('data-variant', 'live');
 
+      // Moved on the phone (the arrow keys, a tenth of its screen each, at 200 %: a twentieth of the picture), the
+      // screens take where it went: two to the right, a tenth of the picture, so the screens move it a fifth left.
+      await surface.focus();
+      await p.keyboard.press('ArrowRight');
+      await p.keyboard.press('ArrowRight');
+      await expect(showZoom).toHaveText('Show this zoom on the screens');
+      await showZoom.click();
+      await expect.poll(async () => (await snapshot(win)).liveZoom?.x ?? 0).toBeCloseTo(-0.2, 2);
+      expect((await snapshot(win)).liveZoom?.y ?? 1).toBeCloseTo(0, 3);
+      await expect
+        .poll(async () => {
+          const m = /translate\((-?[\d.]+)%, (-?[\d.]+)%\) scale\(([\d.]+)\)/u.exec(await screenZoom(output));
+          return m ? [Number(m[1]).toFixed(1), Number(m[2]).toFixed(1), Number(m[3]).toFixed(1)] : null;
+        })
+        .toEqual(['-20.0', '0.0', '2.0']);
+
       // Back to Whole: the screens glide back to the picture as kept, and the phone to the whole of it.
       await p.getByTestId('viewer-whole').click();
       await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 1).toBe(1);
@@ -269,14 +287,16 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       await expect(p.getByTestId('viewer-screens')).toHaveCount(0);
       await p.getByTestId('viewer-close').click();
 
-      // Its second slide on the screens, over the picture: looked through from there, zoomed, the button is back
-      // (the picture behind the slide is the one the screens zoom); on the slide after it, it is not.
+      // A kirtan's slide of words on the screens, over the picture: looked through from there it is the one live,
+      // but the screens would zoom the picture behind its words, which the phone does not show as the picture: no
+      // button (D2 review), on its page, the next or the hall's picture while those words are up.
       await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 1 });
       await expect.poll(async () => (await snapshot(win)).layers.slide?.slideIndex).toBe(1);
       await p.getByTestId('remote-look-through').click();
       await expect(p.getByTestId('viewer')).toHaveAttribute('data-live', 'true');
       await p.getByTestId('viewer-zoom-in').click();
-      await expect(p.getByTestId('viewer-show-zoom')).toBeVisible();
+      await expect(p.getByTestId('viewer-zoom-level')).toHaveText('150%');
+      await expect(p.getByTestId('viewer-show-zoom')).toHaveCount(0);
       await p.getByTestId('viewer-next').click();
       await expect(p.getByTestId('viewer')).not.toHaveAttribute('data-live', 'true');
       await p.getByTestId('viewer-zoom-in').click();
@@ -284,6 +304,12 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       // Turning pages on the phone never moved the screens.
       expect((await snapshot(win)).layers.slide?.slideIndex).toBe(1);
       await expectNoSeriousA11yIssues(p, `the viewer looking through a presentation (${engine})`);
+      await p.getByTestId('viewer-close').click();
+      await p.getByTestId('remote-look-closer').click();
+      await expect(p.getByTestId('viewer')).toHaveAttribute('data-live', 'true');
+      await p.getByTestId('viewer-zoom-in').click();
+      await expect(p.getByTestId('viewer-show-zoom')).toHaveCount(0);
+      expect((await snapshot(win)).liveZoom?.zoom ?? 1).toBe(1);
     } finally {
       await phone.close();
     }
@@ -340,6 +366,191 @@ test('a video plays on the phone at its original quality, in pieces as it plays,
     expect((await snapshot(win)).layers.background).toBeNull();
     await expectNoSeriousA11yIssues(p, 'the viewer playing a video (chromium)');
     expect.soft(await tooSmall(p), 'targets under 44 px: the viewer playing a video').toEqual([]);
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
+test('a deck’s slide on the screens, zoomed from a phone: the screens zoom the step drawn in its picture’s place, and Back to Whole undoes it (Session 54, D2 review)', async () => {
+  test.skip(deckFfmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(240_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const deckId = await writeDeck(win, 'Placeholder deck', standInDecks(await makeDeckFiles(win)));
+  await setUpScreen(win);
+  const output = await outputPage(app);
+  await outputReady(output);
+  await dispatch(win, { type: 'goLive', presentationId: deckId, slideIndex: 0 });
+  await expect.poll(async () => (await snapshot(win)).layers.slide?.presentationId).toBe(deckId);
+  await expect(output.locator('[data-layer="slide"] [data-deck-step="0"]')).toHaveCount(1);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  await p.setViewportSize({ width: 375, height: 812 });
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // The deck's picture is the slide's own: zoomed on the phone, the side button offers it.
+    await p.getByTestId('remote-look-closer').click();
+    await expect(p.getByTestId('viewer')).toHaveAttribute('data-live', 'true');
+    await pinch(p, 60, 120);
+    const showZoom = p.getByTestId('viewer-show-zoom');
+    await expect(showZoom).toBeVisible();
+    await showZoom.click();
+    await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 0).toBeCloseTo(2, 1);
+    // The step drawn in the picture's place zooms on the screens, as the picture itself would.
+    await expect.poll(() => screenZoom(output, 'slide')).toMatch(/scale\(2(\.\d+)?\)/u);
+    await expect(output.locator('[data-layer="slide"] [data-look-picture] [data-deck-step="0"]')).toHaveCount(
+      1,
+    );
+    await p.getByTestId('viewer-whole').click();
+    await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 1).toBe(1);
+    await expect.poll(() => screenZoom(output, 'slide')).toBe('');
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
+test('a deck looked through on a phone plays each click’s motion once and holds its last frame, Next and Previous going click by click, on the phone only (Session 54, D1/D2 review)', async () => {
+  test.skip(deckFfmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(240_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const files = await makeDeckFiles(win);
+  await writeDeck(win, 'Placeholder deck', standInDecks(files));
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  await p.setViewportSize({ width: 375, height: 812 });
+  const asked: string[] = [];
+  p.on('request', (r) => {
+    const url = new URL(r.url());
+    if (url.pathname.startsWith('/api/v1/media/')) asked.push(url.pathname);
+  });
+  const links = (clip: string) => asked.filter((path) => path === `/api/v1/media/${clip}/link`).length;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-library').click();
+    await p.getByTestId('remote-library-item').filter({ hasText: 'Placeholder deck' }).click();
+    await p.getByTestId('remote-look-through').click();
+    const viewer = p.getByTestId('viewer');
+    const step = p.getByTestId('viewer-deck-step');
+    // Three clicks' pages for the first slide, one for the second.
+    await expect(viewer).toHaveAttribute('data-page', /:step:0$/u);
+    await expect(p.locator('#viewer-place')).toContainText('1 of 4');
+    // The slide coming in: its motion asked for through a link made for this phone (it plays where this browser
+    // plays its kind of video), then its last frame held, at the width the phone draws it.
+    await expect.poll(() => links(files.clips[0] ?? '')).toBe(1);
+    await expect(step).toHaveAttribute('data-phase', 'held', { timeout: 20_000 });
+    await expect(step.locator(`img[data-media-id="${files.lasts[0] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    // Next: the first click, its own motion, then its own last frame.
+    await p.getByTestId('viewer-next').click();
+    await expect(viewer).toHaveAttribute('data-page', /:step:1$/u);
+    await expect(p.getByTestId('viewer-title')).toContainText('click 1 of 2');
+    await expect.poll(() => links(files.clips[1] ?? '')).toBe(1);
+    await expect(step).toHaveAttribute('data-phase', 'held', { timeout: 20_000 });
+    await expect(step.locator(`img[data-media-id="${files.lasts[1] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    // Previous: the slide coming in again, still at its last frame, as Back shows a step; its motion not asked again.
+    await p.getByTestId('viewer-previous').click();
+    await expect(viewer).toHaveAttribute('data-page', /:step:0$/u);
+    await expect(step).toHaveAttribute('data-phase', 'held');
+    await expect(step.locator(`img[data-media-id="${files.lasts[0] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    expect(links(files.clips[0] ?? '')).toBe(1);
+    // Past the first slide's last click: the second slide's coming in.
+    for (let i = 0; i < 3; i++) await p.getByTestId('viewer-next').click();
+    await expect(p.locator('#viewer-place')).toContainText('4 of 4');
+    await expect.poll(() => links(files.nextClip)).toBe(1);
+    // Nothing of it on the screens.
+    expect((await snapshot(win)).layers.slide).toBeNull();
+    await expectNoSeriousA11yIssues(p, 'the viewer looking through a deck (chromium)');
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
+test('a video playing on the phone stops, and the viewer closes, the moment Drashti stops (Session 54, D1/D2 review)', async () => {
+  test.setTimeout(240_000);
+  // Drashti's checks of the access list every 6 s, so a revoke stops it soon (access-devices.spec.ts).
+  const { app, userData } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_TEST_ACCESS_CHECK_MS: '6000',
+    DRASHTI_TEST_ACCESS_STOP_MS: '20000',
+    DRASHTI_TEST_ACCESS_TIMEOUT_MS: '2000',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const show = await setUpPlaceholderShow(win, { video: true });
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-playlist').selectOption(show.playlistId);
+    await p
+      .getByTestId('remote-items')
+      .locator('li')
+      .filter({ hasText: VIDEO })
+      .getByTestId('remote-item-look')
+      .click();
+    const video = p.getByTestId('viewer-video');
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(1);
+    await p.getByTestId('viewer-play').click();
+    // Drashti stops: the phone's page says so, and nothing goes on playing under it.
+    revoke(standInOf(userData), PLACEHOLDER_PERSON);
+    await expect(p.getByTestId('phone-stopped')).toBeVisible({ timeout: 30_000 });
+    await expect(p.getByTestId('viewer')).toHaveCount(0);
+    await expect(p.locator('video, audio')).toHaveCount(0);
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
+test('the phone’s own Back closes the viewer and leaves the remote, and Close leaves no entry behind (Session 54, D1/D2 review)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-look-closer').click();
+    await expect(p.getByTestId('viewer')).toBeVisible();
+    // Android's back gesture, an iPhone's edge swipe: the browser's Back.
+    await p.evaluate(() => {
+      history.back();
+    });
+    await expect(p.getByTestId('viewer')).toHaveCount(0);
+    await expect(p).toHaveURL(/\/remote$/u);
+    await expect(p.getByTestId('remote')).toBeVisible();
+    // Closed with Close: its entry taken off, so the phone's Back would leave the remote no sooner than before.
+    await p.getByTestId('remote-look-closer').click();
+    await expect(p.getByTestId('viewer')).toBeVisible();
+    await p.getByTestId('viewer-close').click();
+    await expect(p.getByTestId('viewer')).toHaveCount(0);
+    await expect.poll(() => p.evaluate(() => history.state as unknown)).toBeNull();
+    await expect(p).toHaveURL(/\/remote$/u);
   } finally {
     await phone.close();
   }
