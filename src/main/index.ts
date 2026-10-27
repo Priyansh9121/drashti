@@ -5717,6 +5717,8 @@ function start(): void {
         { what: 'the window for Zoom', stop: () => zoom.close() },
         { what: 'the drop folder', stop: () => dropFolder.stop() },
         { what: 'downloads', stop: () => links.close() },
+        { what: 'imports', stop: () => imports.stop() },
+        { what: 'conversions', stop: () => conversions.close() },
       ],
       every: (ms, run) => {
         const t = setInterval(run, ms);
