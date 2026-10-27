@@ -6,6 +6,7 @@ import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import type { RemoteMedia } from '../../shared/network-mirror';
+import { NO_LOGO_CHOSEN } from '../../shared/props';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { SIMPLE_MODE_LOCKED } from '../simple-mode';
@@ -322,6 +323,18 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       expect(commands).toHaveLength(4);
     }
     expect(DEVICE_OPS['repeat.start']).toEqual(['remote']);
+  });
+
+  it('says why a phone’s Logo shows nothing with no logo chosen, in the window’s own words (D5 review)', () => {
+    const { ask, remote, commands } = setup();
+    expect(ask(remote, 'logo.set', { on: true })).toEqual({
+      status: 409,
+      body: { ok: false, message: NO_LOGO_CHOSEN },
+    });
+    expect(NO_LOGO_CHOSEN).toBe(
+      'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.',
+    );
+    expect(commands).toEqual([]);
   });
 
   it('plays the audio playlist a phone chose, or on from where it was paused', () => {

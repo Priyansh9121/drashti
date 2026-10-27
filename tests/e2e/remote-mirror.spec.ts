@@ -99,7 +99,6 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win);
-    await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
     await setUpScreen(win);
     const output = await outputPage(app);
     const { base } = await networkOn(win);
@@ -123,6 +122,15 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           'Logo F12',
           'Black-out B',
         ]);
+      // No logo chosen yet: the Logo can be pressed all the same, as the window's can, and says why in the window's
+      // words (D5 review: it was greyed with no reason). Then one is chosen.
+      await expect(p.getByTestId('remote-logo')).toBeEnabled();
+      await p.getByTestId('remote-logo').click();
+      await expect(p.getByRole('alert')).toContainText(
+        'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.',
+      );
+      expect((await snapshot(win)).state.logo).toBeNull();
+      await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
       // Read out as the desktop's are: a layer's clear by its name, the rest by their words and key.
       const actions = p.getByTestId('remote-actions');
       await expect(actions.getByRole('button', { name: 'Clear all F1', exact: true })).toBeDisabled();

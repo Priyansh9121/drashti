@@ -62,6 +62,7 @@ import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
 import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { cutText } from '../../shared/text';
+import { NO_LOGO_CHOSEN } from '../../shared/props';
 import { nfcDeep } from '../../shared/nfc';
 
 /*
@@ -905,7 +906,8 @@ export class NetworkService implements EngineTransport {
     const on = parsed.data.on ?? this.deps.engine.state().logo === null;
     if (!on) return this.run({ type: 'hideLogo' }, who, 'took the logo down');
     const logo = this.deps.reads.logo();
-    if (!logo) return deny(409, 'No prop is marked as the logo in Drashti (Props, the stamp button).');
+    // In the operator window's own words (Session 54, D5 review).
+    if (!logo) return deny(409, NO_LOGO_CHOSEN);
     return this.run({ type: 'showLogo', prop: logo }, who, 'showed the logo');
   }
 
