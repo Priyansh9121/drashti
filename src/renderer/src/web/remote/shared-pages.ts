@@ -19,9 +19,9 @@ const VIEWER_PAGES: PageMakers<ViewerPage> = {
   picture: picturePage,
   video: videoPage,
   sound: soundPage,
-  slide: (presentationId, name, s) => ({
-    ...slidePage(presentationId, s),
-    title: `${name} · ${slideTitle(s)}`,
+  slide: (presentationId, name, slide) => ({
+    ...slidePage(presentationId, slide),
+    title: `${name} · ${slideTitle(slide)}`,
   }),
 };
 
