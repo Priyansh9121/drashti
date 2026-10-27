@@ -372,3 +372,18 @@ export function installNodeMenu(actions: NodeMenuActions): void {
   }
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+/**
+ * The menu while this computer is not let in, or after Drashti has stopped (Session 54, access by Gmail): Quit, and
+ * the editing keys the lock screen's fields need. Nothing else: no show, no library, no window of tools, no devtools.
+ */
+export function installLockedMenu(): void {
+  const isMac = process.platform === 'darwin';
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [{ role: 'appMenu' } as MenuItemConstructorOptions]
+      : [{ label: 'File', submenu: [{ role: 'quit' }] } as MenuItemConstructorOptions]),
+    { role: 'editMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}

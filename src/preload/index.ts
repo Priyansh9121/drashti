@@ -588,6 +588,15 @@ const bridge: DrashtiBridge = {
     next: () => invoke(IPC.sharpen.next),
     made: (key, bytes) => invoke(IPC.sharpen.made, key, bytes),
   },
+  access: {
+    view: () => invoke(IPC.access.view),
+    onChanged: (listener) => on(IPC.access.changed, listener),
+    request: (gmail, name) => invoke(IPC.access.request, gmail, name),
+    status: () => invoke(IPC.access.status),
+    redeem: (gmail, token) => invoke(IPC.access.redeem, gmail, token),
+    retry: () => invoke(IPC.access.retry),
+    quit: () => invoke(IPC.access.quit),
+  },
 };
 
 // Each page gets only its own groups of the bridge (Sessions 31–36, ARCH-7; page-groups.ts), known by its address.
@@ -600,7 +609,7 @@ contextBridge.exposeInMainWorld('drashti', bridgeFor(bridge, pageOf(here)));
  * so no frame shows another colour; then every change, at once. The audience screens, the stream's page and
  * the stage display never take one (body.output keeps its own colours).
  */
-const OWN_WINDOWS: readonly (string | null)[] = ['index', 'gallery', 'node'];
+const OWN_WINDOWS: readonly (string | null)[] = ['index', 'gallery', 'node', 'lock'];
 /** The page's document and MutationObserver, as far as this needs them (the preload has no DOM types). */
 const dom = globalThis as unknown as {
   document: { documentElement: AppearanceRoot | null };

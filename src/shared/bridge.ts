@@ -11,6 +11,7 @@ import type {
   ShastraTextInfo,
   ShastraTree,
 } from './shastra';
+import type { AccessView } from './access';
 import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
@@ -838,5 +839,18 @@ export interface DrashtiBridge {
     next(): Promise<SharpenJobView | null>;
     /** The copy as made (null: it could not be). False: not this window's to make. */
     made(key: string, bytes: Uint8Array | null): Promise<boolean>;
+  };
+  /**
+   * Access by Gmail (Session 54): the lock screen, the stop and the countdown. Each answers the view as it is
+   * after; what came of it is in the view's message.
+   */
+  access: {
+    view(): Promise<AccessView>;
+    onChanged(listener: (view: AccessView) => void): () => void;
+    request(gmail: string, name: string): Promise<AccessView>;
+    status(): Promise<AccessView>;
+    redeem(gmail: string, token: string): Promise<AccessView>;
+    retry(): Promise<AccessView>;
+    quit(): Promise<null>;
   };
 }
