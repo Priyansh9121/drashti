@@ -740,6 +740,21 @@ export class PresentationRepo {
     }));
   }
 
+  /**
+   * Whether any of a presentation's slides was made from a deck with its animations (Session 54, C2): a deck
+   * imported as pictures has none, and is imported again with them where this computer can now make them.
+   */
+  hasDeckSlides(id: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM slides s JOIN slide_groups g ON g.id = s.group_id
+            WHERE g.presentation_id = ? AND s.deck IS NOT NULL LIMIT 1`,
+        )
+        .get(id) !== undefined
+    );
+  }
+
   /** A presentation imported from a file with exactly these bytes (from anywhere). */
   findByHash(kind: ImportSource['kind'], hash: string): ImportedMatch | null {
     const r = this.db

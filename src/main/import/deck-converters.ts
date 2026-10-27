@@ -2,10 +2,10 @@ import { spawn } from 'node:child_process';
 import { constants as fsConstants, existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { PictureSource } from '../../shared/pictures';
 import { tidyNotes } from '../../shared/pictures';
-import { type PptxSlide, readPptx } from './pictures';
+import { type PptxDeck, type PptxSlide, readPptx, readPptxDeck } from './pictures';
 import { readZipEntries } from './zip';
 import { cutText } from '../../shared/text';
 
@@ -62,7 +62,7 @@ export function noConverterMessage(source: PictureSource): string {
     : 'This computer has no Keynote or PowerPoint to turn this file into pictures. Open it in PowerPoint (File > Save As, PDF) or Keynote (File > Export To > PDF…), then import the PDF.';
 }
 
-const exists = (path: string) => {
+export const exists = (path: string) => {
   try {
     return existsSync(path);
   } catch {
@@ -109,14 +109,16 @@ const OLE_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe
 export async function checkDeck(
   source: PictureSource,
   path: string,
-): Promise<{ ok: true; slides: PptxSlide[] | null } | { ok: false; message: string }> {
+): Promise<{ ok: true; slides: PptxSlide[] | null; deck: PptxDeck | null } | { ok: false; message: string }> {
   const damaged = (detail: string) => ({
     ok: false as const,
     message: `This file looks damaged (${detail}). If it opens in ${source === 'key' ? 'Keynote' : 'PowerPoint'}, save it again there (or save it as PDF) and import that.`,
   });
   if (source === 'pptx') {
     try {
-      return { ok: true, slides: await readPptx(path) };
+      // What each slide does is read too (Session 54, C2), for the deck shown as it was.
+      const deck = await readPptxDeck(path);
+      return { ok: true, slides: deck.slides, deck };
     } catch (error) {
       return damaged(error instanceof Error ? error.message.replace(/\.$/u, '') : String(error));
     }
@@ -134,7 +136,7 @@ export async function checkDeck(
       return damaged(error instanceof Error ? error.message : String(error));
     }
     return head.equals(OLE_SIGNATURE)
-      ? { ok: true, slides: null }
+      ? { ok: true, slides: null, deck: null }
       : damaged('it is not a PowerPoint 97–2003 file');
   }
   if (source === 'key') {
@@ -143,17 +145,19 @@ export async function checkDeck(
         path,
         (name) => name === 'Index/Document.iwa' || name === 'index.apxl' || name === 'index.apxl.gz',
       );
-      return parts.size > 0 ? { ok: true, slides: null } : damaged('it has no Keynote document inside');
+      return parts.size > 0
+        ? { ok: true, slides: null, deck: null }
+        : damaged('it has no Keynote document inside');
     } catch (error) {
       return damaged(error instanceof Error ? error.message.replace(/\.$/u, '') : String(error));
     }
   }
-  return { ok: true, slides: null };
+  return { ok: true, slides: null, deck: null };
 }
 
 // ---- running things ----------------------------------------------------------------------------
 
-interface Ran {
+export interface Ran {
   code: number | null;
   stdout: string;
   stderr: string;
@@ -164,7 +168,7 @@ interface Ran {
 }
 
 /** Run a program, giving up after `timeoutMs` or when `signal` says to stop. */
-function run(
+export function run(
   command: string,
   args: string[],
   timeoutMs: number,
@@ -206,7 +210,7 @@ function run(
   });
 }
 
-const sleep = (ms: number, signal?: AbortSignal) =>
+export const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve) => {
     const timer = setTimeout(done, ms);
     function done() {
@@ -217,7 +221,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener('abort', done);
   });
 
-const firstLine = (text: string) =>
+export const firstLine = (text: string) =>
   cutText(
     text
       .split('\n')
@@ -243,6 +247,12 @@ export interface ConvertLimits {
   /** For saving as PDF: this, and `perSlideMs` for each slide. */
   saveMs: number;
   perSlideMs: number;
+  /**
+   * For a deck's movie (Session 54, C2): this, and `perMovieSecondMs` for each second of movie planned. PowerPoint
+   * for Mac took 16 s for 88 s of movie on a quiet Mac, and 25 times as long with every core busy.
+   */
+  movieMs: number;
+  perMovieSecondMs: number;
 }
 
 export const CONVERT_LIMITS: ConvertLimits = {
@@ -253,6 +263,8 @@ export const CONVERT_LIMITS: ConvertLimits = {
   silentMs: 45_000,
   saveMs: 60_000,
   perSlideMs: 3_000,
+  movieMs: 120_000,
+  perMovieSecondMs: 6_000,
 };
 
 /** A Keynote file is also saved as PowerPoint to count its builds, unless it is bigger than this. */
@@ -300,7 +312,7 @@ export interface ConvertOptions {
   ended?: (pid: number) => void;
 }
 
-const appName = (converter: Converter) => (converter === 'keynote' ? 'Keynote' : 'PowerPoint');
+export const appName = (converter: Converter) => (converter === 'keynote' ? 'Keynote' : 'PowerPoint');
 
 /** How to do it by hand, after anything goes wrong. */
 const byHand = (converter: Converter) =>
@@ -308,7 +320,7 @@ const byHand = (converter: Converter) =>
     ? 'Open it in Keynote and choose File > Export To > PDF…, then import the PDF.'
     : 'Open it in PowerPoint and choose File > Save As, PDF, then import the PDF.';
 
-const cancelled = (): Converted => ({
+const cancelled = (): ConvertFailed => ({
   ok: false,
   message: 'Cancelled.',
   reason: 'cancelled',
@@ -324,7 +336,7 @@ export async function convertToPdf(
 ): Promise<Converted> {
   const platform = options.platform ?? process.platform;
   const limits = options.limits ?? CONVERT_LIMITS;
-  if (platform === 'darwin') return convertOnMac(MAC_APPS[converter], input, work, limits, options);
+  if (platform === 'darwin') return convertOnMac(converter, input, work, limits, options);
   if (platform === 'win32' && converter === 'powerpoint')
     return convertOnWindows(input, work, limits, options);
   return { ok: false, message: byHand(converter), reason: `no ${appName(converter)} here` };
@@ -405,21 +417,88 @@ function notAllowedMessage(converter: Converter): string {
   return `Drashti is not allowed to use ${appName(converter)}. In System Settings, Privacy & Security, Automation, allow Drashti to control ${name}, then import the file again.`;
 }
 
-async function convertOnMac(
-  app: MacApp,
-  input: string,
+/** A document Drashti opened in the app (a copy made for the purpose): as the app knows it, and its copy. */
+export interface MacDocument {
+  /** Keynote's document id, or PowerPoint's presentation name. */
+  doc: string;
+  /** Its slides, as the app counted them. */
+  slides: number;
+  /** The copy the app opened. */
+  copy: string;
+}
+
+/** A conversion that failed, with what to tell the operator. */
+export type ConvertFailed = Extract<Converted, { ok: false }>;
+
+/**
+ * Keynote or PowerPoint on a Mac, started (or found running) and answering, for one file's work (Session 54, C2:
+ * the PDF, and a deck's movie): documents opened and closed in it, and at the end the app left as the operator
+ * had it.
+ */
+export interface MacSession {
+  converter: Converter;
+  name: string;
+  /** Where the app may read and write (PowerPoint for Mac only in its own folders). */
+  folder: string;
+  log(line: string): void;
+  /** Open a copy of `file` in the app, made for the purpose, and wait for it while the app answers. */
+  open(file: string): Promise<{ ok: true; document: MacDocument } | { ok: false; failed: ConvertFailed }>;
+  /** A few lines to the app, in `with timeout of`, with `argv`. */
+  tell(body: string[], args: string[], seconds: number): Promise<Ran>;
+  /** What to tell the operator when asking the app failed while `when`, trying to `what` ("save it as PDF"). */
+  fromError(r: Ran, when: string, what: string): ConvertFailed;
+  /** Close a document Drashti opened, never saving it. */
+  close(document: MacDocument): Promise<void>;
+  /**
+   * Hide the app (it shows itself when it opens a document), as NSRunningApplication does: no permission is asked
+   * for. A Keynote or PowerPoint the operator had open is never hidden.
+   */
+  hide(): Promise<void>;
+  signal: AbortSignal | undefined;
+}
+
+/** Hide another app by its bundle id (JavaScript for Automation's bridge to AppKit; no Apple event, no question). */
+function hideApp(id: string): Promise<Ran> {
+  return run(
+    'osascript',
+    [
+      '-l',
+      'JavaScript',
+      '-e',
+      `ObjC.import('AppKit'); var a = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(${JSON.stringify(id)}); var hidden = a.count > 0 ? a.objectAtIndex(0).hide : false; String(hidden)`,
+    ],
+    10_000,
+  );
+}
+
+/** The copy's extension: the file's own kind. */
+const copyExt = (file: string) =>
+  file.toLowerCase().endsWith('.ppt') ? '.ppt' : file.toLowerCase().endsWith('.key') ? '.key' : '.pptx';
+
+/**
+ * Start Keynote or PowerPoint as it should be (hidden, without reopening the operator's last documents) or find it
+ * running, give it to `use`, and afterwards close what Drashti opened in it and quit it when Drashti started it
+ * and nothing of the operator's is open in it. `label` names the copies (the operator's file's name).
+ */
+export async function withMacSession<T>(
+  converter: Converter,
+  label: string,
   work: string,
   limits: ConvertLimits,
   options: ConvertOptions,
-): Promise<Converted> {
+  use: (session: MacSession) => Promise<T | ConvertFailed>,
+): Promise<T | ConvertFailed> {
+  const app = MAC_APPS[converter];
   const { signal } = options;
-  const name = appName(app.converter);
+  const name = appName(converter);
   const started = Date.now();
   const log = (line: string) => options.log?.(`${name} +${String(Date.now() - started)} ms: ${line}`);
   /** The app's processes before: none means Drashti starts it, and quits it afterwards. */
   const before = await pidsOf(app);
   /** The app in front before: an app that comes to the front meanwhile is showing the operator something. */
   const frontBefore = await frontApp();
+  /** `answering` is false once the app has stopped answering (it is asking a question nobody sees). */
+  const state = { answering: true, tookFront: false };
   /**
    * Whether the app has the front, taken from whatever had it (Drashti, as a rule). For Keynote
    * that is a question about the file in front of the operator: given a file as a double-click
@@ -433,10 +512,8 @@ async function convertOnMac(
     if (now) state.tookFront = true;
     return now;
   };
-  /** `answering` is false once the app has stopped answering (it is asking a question nobody sees). */
-  const state = { answering: true, tookFront: false };
-  /** The open document, as the app knows it, once found. */
-  let doc: string | null = null;
+  /** The documents Drashti opened, still open. */
+  const opened: MacDocument[] = [];
   /** The app's processes, when Drashti started it. */
   let ours: number[] = [];
   // PowerPoint for Mac may only read and write in its own folders: work there.
@@ -444,19 +521,20 @@ async function convertOnMac(
     app.converter === 'powerpoint'
       ? join(homedir(), 'Library', 'Group Containers', 'UBF8T346G9.Office', 'Drashti')
       : work;
-  let inside: string | null = null;
+  const insides: string[] = [];
   /**
-   * The name the copy is opened under: the file's own (the app may show it in a
+   * The name the copies are opened under: the file's own (the app may show it in a
    * question), and a number no document of the operator's has.
    */
-  const stem = `${cutText(basename(input, extname(input)), 60)} (Drashti copy ${String(1000 + Math.floor(Math.random() * 9000))})`;
+  const stem = `${cutText(basename(label, extname(label)), 60)} (Drashti copy ${String(1000 + Math.floor(Math.random() * 9000))})`;
+  let copies = 0;
 
-  const fail = (reason: string, message: string, extra: { notAllowed?: boolean } = {}): Converted => {
+  const fail = (reason: string, message: string, extra: { notAllowed?: boolean } = {}): ConvertFailed => {
     log(`failed: ${reason}`);
     return { ok: false, reason, message, ...extra };
   };
   /** Why the app stopped answering, and what became of it. */
-  const silentFail = (when: string): Converted => {
+  const silentFail = (when: string): ConvertFailed => {
     state.answering = false;
     return fail(
       `${name} stopped answering`,
@@ -467,7 +545,7 @@ async function convertOnMac(
       } ${byHand(app.converter)}`,
     );
   };
-  const fromError = (r: Ran, when: string): Converted => {
+  const fromError = (r: Ran, when: string, what: string): ConvertFailed => {
     if (r.aborted) return cancelled();
     const n = errorNumber(r.stderr);
     if (n === NOT_ALLOWED)
@@ -475,9 +553,142 @@ async function convertOnMac(
     if (r.timedOut || n === TIMED_OUT) return silentFail(when);
     const detail = firstLine(r.stderr);
     return fail(
-      `${name} could not save it as PDF`,
-      `${name} could not save it as PDF${detail ? ` (${detail})` : ''}. ${byHand(app.converter)}`,
+      `${name} could not ${what}`,
+      `${name} could not ${what}${detail ? ` (${detail})` : ''}. ${byHand(app.converter)}`,
     );
+  };
+  const tell = (body: string[], args: string[], seconds: number) => tellApp(app, body, args, seconds, signal);
+
+  const open = async (
+    file: string,
+  ): Promise<{ ok: true; document: MacDocument } | { ok: false; failed: ConvertFailed }> => {
+    // ---- open a copy of the file, made for the purpose -----------------------------------
+    await mkdir(folder, { recursive: true });
+    const inside = await mkdtemp(join(folder, 'convert-'));
+    insides.push(inside);
+    const copyName = copies === 0 ? stem : `${stem} ${String(copies + 1)}`;
+    copies++;
+    const copy = join(inside, `${copyName}${copyExt(file)}`);
+    // A clone where the disk can (no copying on APFS), a copy otherwise.
+    await copyFile(file, copy, fsConstants.COPYFILE_FICLONE);
+    // Keynote is given the copy the way a double-click gives it (through LaunchServices): asked by
+    // AppleScript instead, its sandbox often could not read a .pptx ("not found"), and it said so
+    // in a window nobody saw. PowerPoint reads its own folder either way.
+    const asked =
+      app.converter === 'keynote'
+        ? await run(
+            'open',
+            ['-g', '-j', '-b', app.id, copy, '--args', '-ApplePersistenceIgnoreState', 'YES'],
+            30_000,
+            signal,
+          )
+        : await appleScript(
+            [
+              'on run argv',
+              `tell application id "${app.id}"`,
+              'ignoring application responses',
+              'open (POSIX file (item 1 of argv))',
+              'end ignoring',
+              'end tell',
+              'end run',
+            ],
+            [copy],
+            20_000,
+            signal,
+          );
+    if (asked.code !== 0) return { ok: false, failed: fromError(asked, 'opening the file', 'open it') };
+    log('asked to open the copy');
+
+    // ---- wait for it to be open, while the app answers ------------------------------------
+    const find =
+      app.converter === 'keynote'
+        ? [
+            'repeat with d in documents',
+            'if (name of d) starts with (item 1 of argv) then return (id of d) & linefeed & ((count of slides of d) as text)',
+            'end repeat',
+            'return ""',
+          ]
+        : [
+            'repeat with i from 1 to (count of presentations)',
+            'if (full name of presentation i) is (item 2 of argv) then return (name of presentation i) & linefeed & ((count of slides of presentation i) as text)',
+            'end repeat',
+            'return ""',
+          ];
+    const mb = (await stat(file)).size / (1024 * 1024);
+    const openLimit = Math.min(limits.openMaxMs, limits.openMs + limits.openPerMbMs * mb);
+    // Only time while the app answers counts against the limit: one that is busy or slow to start
+    // is waited for (up to `silentMs` without an answer).
+    let answeringFor = 0;
+    let lastAnswer = Date.now();
+    let answeredLast = true;
+    let slides = options.slideCount ?? 0;
+    for (;;) {
+      const r = await tellApp(app, find, [copyName, copy], 5, signal);
+      if (r.aborted) return { ok: false, failed: cancelled() };
+      if (r.code === 0) {
+        if (answeredLast) answeringFor += Date.now() - lastAnswer;
+        answeredLast = true;
+        lastAnswer = Date.now();
+        const [found, count] = r.stdout.trim().split('\n');
+        if (found) {
+          slides = Number(count) || slides;
+          log(`open, ${String(slides)} slides`);
+          const document = { doc: found, slides, copy };
+          opened.push(document);
+          return { ok: true, document };
+        }
+      } else {
+        answeredLast = false;
+        const n = errorNumber(r.stderr);
+        if (n === NOT_ALLOWED || (n !== null && GONE.has(n)) || !(r.timedOut || n === TIMED_OUT))
+          return { ok: false, failed: fromError(r, 'opening the file', 'open it') };
+      }
+      if (Date.now() - lastAnswer > limits.silentMs)
+        return { ok: false, failed: silentFail('opening the file') };
+      if ((await tookFront()) && app.converter === 'keynote') {
+        log('came to the front instead of opening it');
+        return {
+          ok: false,
+          failed: fail(
+            `${name} could not open it`,
+            `${name} could not open the file and showed a message about it: it may be damaged. ${
+              before.length === 0
+                ? `Drashti closed ${name}, which it had started.`
+                : `${name} was already open, so Drashti left it as it is: look at ${name} and answer it.`
+            } ${byHand(app.converter)}`,
+          ),
+        };
+      }
+      if (answeringFor > openLimit)
+        return {
+          ok: false,
+          failed: fail(
+            `${name} did not open it`,
+            `${name} did not open the file: it may be damaged, or ${name} may be asking about it in a window behind Drashti. ${byHand(app.converter)}`,
+          ),
+        };
+      await sleep(500, signal);
+    }
+  };
+
+  const close = async (document: MacDocument) => {
+    const at = opened.indexOf(document);
+    if (at < 0) return;
+    opened.splice(at, 1);
+    if (!state.answering) return;
+    const command =
+      app.converter === 'keynote'
+        ? 'close (document id (item 1 of argv)) saving no'
+        : 'close presentation (item 1 of argv) saving no';
+    const closed = await tellApp(app, [command], [document.doc], 10);
+    log(closed.code === 0 ? 'closed the copy' : `could not close the copy: ${firstLine(closed.stderr)}`);
+  };
+
+  const hide = async () => {
+    // One the operator had open is theirs: as they left it.
+    if (before.length > 0) return;
+    const r = await hideApp(app.id);
+    log(r.code === 0 ? 'hidden' : `could not hide it: ${firstLine(r.stderr)}`);
   };
 
   try {
@@ -522,7 +733,7 @@ async function convertOnMac(
         break;
       }
       const n = errorNumber(r.stderr);
-      if (n === NOT_ALLOWED) return fromError(r, 'starting');
+      if (n === NOT_ALLOWED) return fromError(r, 'starting', 'start');
       if (Date.now() > deadline)
         return fail(
           `${name} did not answer`,
@@ -531,120 +742,49 @@ async function convertOnMac(
       // Not answering yet, or gone (it quit while starting, as a first start after an update can).
       await sleep(500, signal);
     }
-
-    // ---- open a copy of the file, made for the purpose -----------------------------------
-    await mkdir(folder, { recursive: true });
-    inside = await mkdtemp(join(folder, 'convert-'));
-    const ext = input.toLowerCase().endsWith('.ppt')
-      ? '.ppt'
-      : input.toLowerCase().endsWith('.key')
-        ? '.key'
-        : '.pptx';
-    const copy = join(inside, `${stem}${ext}`);
-    // A clone where the disk can (no copying on APFS), a copy otherwise.
-    await copyFile(input, copy, fsConstants.COPYFILE_FICLONE);
-    // Keynote is given the copy the way a double-click gives it (through LaunchServices): asked by
-    // AppleScript instead, its sandbox often could not read a .pptx ("not found"), and it said so
-    // in a window nobody saw. PowerPoint reads its own folder either way.
-    const opened =
-      app.converter === 'keynote'
-        ? await run(
-            'open',
-            ['-g', '-j', '-b', app.id, copy, '--args', '-ApplePersistenceIgnoreState', 'YES'],
-            30_000,
-            signal,
-          )
-        : await appleScript(
-            [
-              'on run argv',
-              `tell application id "${app.id}"`,
-              'ignoring application responses',
-              'open (POSIX file (item 1 of argv))',
-              'end ignoring',
-              'end tell',
-              'end run',
-            ],
-            [copy],
-            20_000,
-            signal,
-          );
-    if (opened.code !== 0) return fromError(opened, 'opening the file');
-    log('asked to open the copy');
-
-    // ---- wait for it to be open, while the app answers ------------------------------------
-    const find =
-      app.converter === 'keynote'
-        ? [
-            'repeat with d in documents',
-            'if (name of d) starts with (item 1 of argv) then return (id of d) & linefeed & ((count of slides of d) as text)',
-            'end repeat',
-            'return ""',
-          ]
-        : [
-            'repeat with i from 1 to (count of presentations)',
-            'if (full name of presentation i) is (item 2 of argv) then return (name of presentation i) & linefeed & ((count of slides of presentation i) as text)',
-            'end repeat',
-            'return ""',
-          ];
-    const mb = (await stat(input)).size / (1024 * 1024);
-    const openLimit = Math.min(limits.openMaxMs, limits.openMs + limits.openPerMbMs * mb);
-    // Only time while the app answers counts against the limit: one that is busy or slow to start
-    // is waited for (up to `silentMs` without an answer).
-    let answeringFor = 0;
-    let lastAnswer = Date.now();
-    let answeredLast = true;
-    let slides = options.slideCount ?? 0;
-    for (;;) {
-      const r = await tellApp(app, find, [stem, copy], 5, signal);
-      if (r.aborted) return cancelled();
-      if (r.code === 0) {
-        if (answeredLast) answeringFor += Date.now() - lastAnswer;
-        answeredLast = true;
-        lastAnswer = Date.now();
-        const [found, count] = r.stdout.trim().split('\n');
-        if (found) {
-          doc = found;
-          slides = Number(count) || slides;
-          log(`open, ${String(slides)} slides`);
-          break;
-        }
-      } else {
-        answeredLast = false;
-        const n = errorNumber(r.stderr);
-        if (n === NOT_ALLOWED || (n !== null && GONE.has(n)) || !(r.timedOut || n === TIMED_OUT))
-          return fromError(r, 'opening the file');
-      }
-      if (Date.now() - lastAnswer > limits.silentMs) return silentFail('opening the file');
-      if ((await tookFront()) && app.converter === 'keynote') {
-        log('came to the front instead of opening it');
-        return fail(
-          `${name} could not open it`,
-          `${name} could not open the file and showed a message about it: it may be damaged. ${
-            before.length === 0
-              ? `Drashti closed ${name}, which it had started.`
-              : `${name} was already open, so Drashti left it as it is: look at ${name} and answer it.`
-          } ${byHand(app.converter)}`,
-        );
-      }
-      if (answeringFor > openLimit)
-        return fail(
-          `${name} did not open it`,
-          `${name} did not open the file: it may be damaged, or ${name} may be asking about it in a window behind Drashti. ${byHand(app.converter)}`,
-        );
-      await sleep(500, signal);
+    return await use({ converter, name, folder, log, open, tell, fromError, close, hide, signal });
+  } finally {
+    // ---- leave the app as the operator had it ----------------------------------------------
+    for (const document of [...opened]) await close(document);
+    if (before.length === 0) await quitIfIdle(app, before, stem, state.answering, log);
+    else log('left open, as the operator had it');
+    // Quit, stopped, or left open for something the operator opened in it: no longer Drashti's own.
+    for (const pid of ours) options.ended?.(pid);
+    // The app took the front from Drashti: give the operator's window the keys back.
+    if (!state.tookFront && frontBefore?.pid === process.ppid) await tookFront();
+    if (state.tookFront && frontBefore?.pid === process.ppid) {
+      log('Drashti back in front');
+      options.refocus?.();
     }
+    for (const inside of insides) await rm(inside, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function convertOnMac(
+  converter: Converter,
+  input: string,
+  work: string,
+  limits: ConvertLimits,
+  options: ConvertOptions,
+): Promise<Converted> {
+  return withMacSession(converter, input, work, limits, options, async (session): Promise<Converted> => {
+    const opened = await session.open(input);
+    if (!opened.ok) return opened.failed;
+    const { doc, slides, copy } = opened.document;
+    const inside = dirname(copy);
+    const ext = copyExt(input);
+    const name = session.name;
 
     // ---- save it as PDF (and a Keynote file as PowerPoint too, for its builds) -------------
     const pdf = join(work, 'pictures.pdf');
     const inApp = join(inside, 'pictures.pdf');
     const pptx = join(inside, 'builds.pptx');
     const wantBuilds =
-      app.converter === 'keynote' && ext === '.key' && (await stat(input)).size <= BUILDS_MAX_BYTES;
+      converter === 'keynote' && ext === '.key' && (await stat(input)).size <= BUILDS_MAX_BYTES;
     const seconds = Math.ceil((limits.saveMs + limits.perSlideMs * Math.max(slides, 1)) / 1000);
     const saved =
-      app.converter === 'keynote'
-        ? await tellApp(
-            app,
+      converter === 'keynote'
+        ? await session.tell(
             [
               'set d to document id (item 1 of argv)',
               'export d to (POSIX file (item 2 of argv)) as PDF with properties {PDF image quality:Best, skipped slides:false}',
@@ -662,33 +802,31 @@ async function convertOnMac(
             ],
             [doc, inApp, wantBuilds ? pptx : ''],
             seconds,
-            signal,
           )
-        : await tellApp(
-            app,
+        : await session.tell(
             [
               'save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as PDF',
               'return ""',
             ],
             [doc, inApp],
             seconds,
-            signal,
           );
-    if (saved.code !== 0) return fromError(saved, 'saving it as PDF');
+    if (saved.code !== 0) return session.fromError(saved, 'saving it as PDF', 'save it as PDF');
     // PowerPoint can say it saved and write nothing (a file it could not draw): give it a moment.
-    for (let i = 0; i < 20 && !exists(inApp); i++) await sleep(250, signal);
-    if (signal?.aborted) return cancelled();
+    for (let i = 0; i < 20 && !exists(inApp); i++) await sleep(250, session.signal);
+    if (session.signal?.aborted) return cancelled();
     if (!exists(inApp))
-      return fail(
-        `${name} could not save it as PDF`,
-        `${name} could not save it as PDF. ${byHand(app.converter)}`,
-      );
+      return {
+        ok: false,
+        reason: `${name} could not save it as PDF`,
+        message: `${name} could not save it as PDF. ${byHand(converter)}`,
+      };
     await copyFile(inApp, pdf);
-    log('saved as PDF');
+    session.log('saved as PDF');
 
     let fileSlides: PptxSlide[] | null = null;
     let shownOnly = false;
-    if (app.converter === 'keynote') {
+    if (converter === 'keynote') {
       if (wantBuilds && exists(pptx)) {
         try {
           fileSlides = await readPptx(pptx);
@@ -705,28 +843,7 @@ async function convertOnMac(
       }
     }
     return { ok: true, pdf, slides: fileSlides, shownOnly };
-  } finally {
-    // ---- leave the app as the operator had it ----------------------------------------------
-    if (doc !== null && state.answering) {
-      const close =
-        app.converter === 'keynote'
-          ? 'close (document id (item 1 of argv)) saving no'
-          : 'close presentation (item 1 of argv) saving no';
-      const closed = await tellApp(app, [close], [doc], 10);
-      log(closed.code === 0 ? 'closed the copy' : `could not close the copy: ${firstLine(closed.stderr)}`);
-    }
-    if (before.length === 0) await quitIfIdle(app, before, stem, state.answering, log);
-    else log('left open, as the operator had it');
-    // Quit, stopped, or left open for something the operator opened in it: no longer Drashti's own.
-    for (const pid of ours) options.ended?.(pid);
-    // The app took the front from Drashti: give the operator's window the keys back.
-    if (!state.tookFront && frontBefore?.pid === process.ppid) await tookFront();
-    if (state.tookFront && frontBefore?.pid === process.ppid) {
-      log('Drashti back in front');
-      options.refocus?.();
-    }
-    if (inside) await rm(inside, { recursive: true, force: true }).catch(() => undefined);
-  }
+  });
 }
 
 /**
@@ -970,4 +1087,176 @@ async function powerPointOnWindows(
     // No notes to be had: the pictures come without them.
   }
   return { ok: true, pdf, slides, shownOnly: false };
+}
+
+// ---- a deck's movie on Windows (Session 54, C2) ---------------------------------------------------
+
+/**
+ * PowerPoint on Windows working on a deck for its movie, in the PDF script's way (its questions and macros off,
+ * the PowerPoint Drashti started below normal priority, written down, and quit when nothing else is open): an old
+ * .ppt saved as a .pptx (`Presentation.SaveAs` with 24, ppSaveAsOpenXMLPresentation); the pictures saved as PDF
+ * (32), should the movie not do; and the movie, by `Presentation.CreateVideo(FileName, UseTimingsAndNarrations,
+ * DefaultSlideDuration, VertResolution, FramesPerSecond, Quality)`, which works in the background:
+ * `Presentation.CreateVideoStatus` is read every half second until it is done (3, ppMediaTaskStatusDone) or has
+ * failed (4, ppMediaTaskStatusFailed); 1 is in progress and 2 queued (Microsoft's PowerPoint VBA reference:
+ * Presentation.CreateVideo, Presentation.CreateVideoStatus, PpMediaTaskStatus). Given the timed copy
+ * (import/deck/timed-copy.ts), its own timings are used. CI has no Office: the mandir PC tries it for real
+ * (assister/session-54-deck-trial.md, "What the mandir PC must try").
+ */
+export const POWERPOINT_WINDOWS_BAKE_SCRIPT = `param([Parameter(Mandatory)][string]$In, [string]$Pptx = '', [string]$Pdf = '', [string]$Movie = '', [Parameter(Mandatory)][string]$Started, [int]$LimitSeconds = 3600)
+$ErrorActionPreference = 'Stop'
+$before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+$app = New-Object -ComObject PowerPoint.Application
+$ours = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | Where-Object { $before -notcontains $_.Id } | ForEach-Object { $_.Id })
+Set-Content -LiteralPath $Started -Value ($ours -join ',') -Encoding ASCII
+foreach ($id in $ours) { try { (Get-Process -Id $id).PriorityClass = 'BelowNormal' } catch {} }
+$alerts = $app.DisplayAlerts
+try { $app.DisplayAlerts = 1 } catch {}
+$security = $app.AutomationSecurity
+$pres = $null
+try {
+  $app.AutomationSecurity = 3
+  $pres = $app.Presentations.Open($In, -1, 0, 0)
+  if ($Pptx -ne '') { $pres.SaveAs($Pptx, 24) }
+  if ($Pdf -ne '') { try { $pres.SaveAs($Pdf, 32) } catch {} }
+  if ($Movie -ne '') {
+    $pres.CreateVideo($Movie, $true, 5, 1080, 30, 85)
+    $deadline = (Get-Date).AddSeconds($LimitSeconds)
+    while ($true) {
+      $status = $pres.CreateVideoStatus
+      if ($status -eq 3) { break }
+      if ($status -eq 4) { throw 'PowerPoint could not make the movie.' }
+      if ((Get-Date) -gt $deadline) { throw 'PowerPoint did not finish the movie in time.' }
+      Start-Sleep -Milliseconds 500
+    }
+  }
+} finally {
+  if ($pres) { try { $pres.Close() } catch {} }
+  try { $app.DisplayAlerts = $alerts } catch {}
+  try { $app.AutomationSecurity = $security } catch {}
+  if ($ours.Count -gt 0 -and $app.Presentations.Count -eq 0) { $app.Quit() }
+  [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($app)
+}
+`;
+
+/** What PowerPoint on Windows is asked to make of a deck: any of a .pptx, a PDF and a movie. */
+export interface WindowsDeckWork {
+  /** The file PowerPoint opens (a copy is made of it first). */
+  input: string;
+  pptx?: string;
+  pdf?: string;
+  movie?: string;
+  /** The movie's time limit, once PowerPoint has started on it. */
+  movieLimitMs?: number;
+}
+
+/** Runs PowerShell with a script and its arguments (tests give a fake: CI has no Office). */
+export type PowerShellRunner = (
+  script: string,
+  args: string[],
+  timeoutMs: number,
+  signal?: AbortSignal,
+) => Promise<Ran>;
+
+/** Windows PowerShell by its full path, with no PSModulePath from whatever started Drashti. */
+const windowsPowerShell: PowerShellRunner = (script, args, timeoutMs, signal) => {
+  const env = { ...process.env };
+  delete env['PSModulePath'];
+  const powershell = join(
+    process.env['SystemRoot'] ?? 'C:\\Windows',
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  );
+  return run(
+    powershell,
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, ...args],
+    timeoutMs,
+    signal,
+    env,
+  );
+};
+
+/**
+ * PowerPoint on Windows making what `job` asks of a deck in `work` (Session 54, C2), with the PowerPoint Drashti
+ * started told as the script writes it down and stopped when it does not finish in time. Resolves with what it
+ * made, or why not.
+ */
+export async function deckOnWindows(
+  job: WindowsDeckWork,
+  work: string,
+  options: ConvertOptions & { runPowerShell?: PowerShellRunner } = {},
+): Promise<{ ok: true } | ConvertFailed> {
+  const limits = options.limits ?? CONVERT_LIMITS;
+  const startedFile = join(work, `started-${String(Date.now())}.txt`);
+  const script = join(work, 'powerpoint-deck.ps1');
+  // A copy made for the purpose: the operator may have the file itself open in PowerPoint.
+  const copy = join(
+    work,
+    `Drashti copy ${String(Date.now())}${job.input.toLowerCase().endsWith('.ppt') ? '.ppt' : '.pptx'}`,
+  );
+  await copyFile(job.input, copy);
+  await writeFile(script, POWERPOINT_WINDOWS_BAKE_SCRIPT);
+  const movieLimitMs = job.movie ? (job.movieLimitMs ?? limits.movieMs) : 0;
+  const timeoutMs =
+    limits.startMs +
+    limits.saveMs +
+    limits.perSlideMs * Math.max(options.slideCount ?? 100, 1) +
+    movieLimitMs;
+  const ours = new Set<number>();
+  const look = () =>
+    readFile(startedFile, 'ascii').then(
+      (text) => {
+        for (const id of idsIn(text))
+          if (!ours.has(id)) {
+            ours.add(id);
+            options.started?.(id);
+          }
+      },
+      () => undefined,
+    );
+  const poll = setInterval(() => void look(), 500);
+  const args = ['-In', copy, '-Started', startedFile];
+  if (job.pptx) args.push('-Pptx', job.pptx);
+  if (job.pdf) args.push('-Pdf', job.pdf);
+  if (job.movie) args.push('-Movie', job.movie, '-LimitSeconds', String(Math.ceil(movieLimitMs / 1000)));
+  try {
+    const r = await (options.runPowerShell ?? windowsPowerShell)(script, args, timeoutMs, options.signal);
+    await look();
+    if (r.timedOut || r.aborted) {
+      // Stop the PowerPoint Drashti started, which is stuck; one the operator had open stays.
+      for (const id of ours) {
+        try {
+          process.kill(id);
+        } catch {
+          // Already gone.
+        }
+      }
+      if (r.aborted) return cancelled();
+      return {
+        ok: false,
+        reason: 'PowerPoint stopped answering',
+        message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.`,
+      };
+    }
+    const missing = [job.pptx, job.movie].find((f) => f !== undefined && !exists(f));
+    if (r.code !== 0 || missing) {
+      // PowerPoint's own words go to the log only.
+      const detail = firstLine(r.stderr);
+      if (detail) options.log?.(`PowerPoint: failed: ${detail}`);
+      return {
+        ok: false,
+        reason: job.movie ? 'it could not make the movie' : 'it could not save it as a .pptx',
+        message: job.movie
+          ? 'PowerPoint could not make the deck’s movie.'
+          : 'PowerPoint could not save it as a .pptx.',
+      };
+    }
+    return { ok: true };
+  } finally {
+    clearInterval(poll);
+    for (const id of ours) options.ended?.(id);
+    await rm(copy, { force: true }).catch(() => undefined);
+  }
 }

@@ -1,3 +1,4 @@
+import type { DeckSlide } from '../../shared/deck';
 import type { ImportIssue } from '../../shared/import';
 import type { SlideElement, Transition } from '../../shared/model';
 import type { MediaMarkers } from '../../shared/markers';
@@ -41,6 +42,11 @@ export interface ParsedSlide {
   transition?: Transition | null;
   /** Moves on by itself after this long, when the file says so. */
   autoAdvanceMs?: number | null;
+  /**
+   * A deck's slide with its animations (Session 54, C2): its steps and real media, every media id a `media-ref:`
+   * into the presentation's media until the pipeline has stored them.
+   */
+  deck?: DeckSlide;
 }
 
 export interface ParsedGroup {

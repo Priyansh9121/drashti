@@ -2627,6 +2627,15 @@ function start(): void {
           : sw('DRASHTI_TEST_DECK_CONVERTER') === '1'
             ? 'stand-in'
             : true,
+      // A deck with its animations (Session 54, C2). Tests only (never a packaged Drashti): a stand-in makes its movie,
+      // or (with the stand-ins or no converter above) no deck's movie is made, as on a computer with no app for it.
+      baker: app.isPackaged
+        ? true
+        : sw('DRASHTI_TEST_DECK_BAKER') === '1'
+          ? 'stand-in'
+          : sw('DRASHTI_TEST_NO_CONVERTER') === '1' || sw('DRASHTI_TEST_DECK_CONVERTER') === '1'
+            ? false
+            : true,
       // Every video and sound read with the bundled FFmpeg at import (Session 50): what Drashti's player
       // cannot play is converted by itself once the import ends (onFinished, below).
       ffmpeg: noConvertAtImport
@@ -2641,6 +2650,8 @@ function start(): void {
           }),
     },
     drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
+    // No deck's movie is made while the stream is on air or recording (Session 54, C2; Session 50's rule).
+    onAir: () => streaming.inUse() || testOnAir,
     playsHevc: () => hevc.wait(),
     onProgress: (progress) => {
       sendToOperator(IPC.library.importProgress, progress);

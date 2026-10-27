@@ -77,6 +77,15 @@ const way = {
   },
 };
 
+/** The main process's answers on whether the stream is on air or recording (Session 54, C2), by request. */
+const airing = new Map<string, (onAir: boolean) => void>();
+const onAir = (): Promise<boolean> =>
+  new Promise((resolve) => {
+    const requestId = randomUUID();
+    airing.set(requestId, resolve);
+    post({ type: 'ask-on-air', requestId });
+  });
+
 /** PDFs the main process is drawing for this import (Session 15), by request. */
 const drawing = new Map<string, (result: PicturesResult) => void>();
 const drawPdf = (pdf: string, outDir: string): Promise<PicturesResult> =>
@@ -156,6 +165,10 @@ async function start(message: StartMessage): Promise<void> {
               post({ type: 'app-ended', pid });
             },
             converters: message.converters ?? true,
+            // A deck with its animations (Session 54, C2): FFmpeg cuts its movie, never while on air.
+            baker: message.baker ?? true,
+            ffmpeg,
+            onAir,
             onWrote: (wrote) => {
               post({ type: 'wrote', runId: message.runId, ...wrote });
             },
@@ -195,6 +208,9 @@ port.on('message', (event) => {
     // A write that went ahead before the import gave way needs it no more.
     wayWanted.delete(message.id);
     goOn?.(message.id);
+  } else if (message.type === 'on-air') {
+    airing.get(message.requestId)?.(message.onAir);
+    airing.delete(message.requestId);
   } else if (message.type === 'drawn') {
     drawing.get(message.requestId)?.(message.result);
     drawing.delete(message.requestId);
