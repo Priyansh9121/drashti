@@ -17,7 +17,14 @@ import {
 import { AccessClient, type AccessResult, nodeTransport } from './client';
 import { accessState, isLetIn, isOwner, setAccessState } from './gate';
 import type { ComputerIdResult } from './identity';
-import { type AccessAsked, type AccessCalls, AccessService, ASK_EVERY_MS, AskedFile } from './service';
+import {
+  type AccessAsked,
+  type AccessCalls,
+  AccessService,
+  ASK_EVERY_MS,
+  AskedFile,
+  keptAt,
+} from './service';
 import { ACCESS_FILE, AccessStore, storedAccess } from './store';
 
 /*
@@ -72,7 +79,7 @@ const settle = async () => {
   for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
 };
 
-type Mode = AccessCheckStatus | 'silent' | 'busy';
+type Mode = AccessCheckStatus | 'silent' | 'busy' | 'throw';
 
 /** The list, scripted: what each call answers, and every call made. */
 class ScriptedList implements AccessCalls {
@@ -130,6 +137,8 @@ class ScriptedList implements AccessCalls {
     this.activities.push({ ...activity });
     if (this.hold) await new Promise<void>((resolve) => (this.hold = { release: resolve }));
     if (this.check_ === 'silent') return this.noAnswer();
+    // A call that throws (the data folder could not be written as it was signed): never an answer.
+    if (this.check_ === 'throw') throw new Error('placeholder: the data folder could not be written');
     if (this.check_ === 'busy') return { ok: false, kind: 'refused', error: 'busy', message: '' };
     return { ok: true, value: { status: this.check_, owner: this.owner, recorded: true }, serverTime: 0 };
   }
@@ -575,5 +584,68 @@ describe('against the stand-in list (the list’s own rules)', () => {
     await clock.move(ACCESS_CHECK_EVERY_MS);
     await expect.poll(() => accessState().phase).toBe('stopped');
     expect(accessState().reason).toBe('revoked');
+  });
+});
+
+describe('a call that throws (Session 54, E review: never fail open)', () => {
+  it('while open, is no answer: the countdown, then the stop', async () => {
+    await startedIn();
+    list.check_ = 'throw';
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    expect(accessState().phase).toBe('warning');
+    await clock.move(ACCESS_STOP_AFTER_MS);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'no-answer' });
+  });
+
+  it('at start, is no answer: Drashti does not open, and Try Again is offered', async () => {
+    keep();
+    list.check_ = 'throw';
+    const s = make();
+    s.start();
+    await clock.move(0);
+    expect(accessState()).toMatchObject({ phase: 'locked', reason: 'no-answer' });
+    expect(s.view()).toMatchObject({ canRetry: true, busy: null });
+    list.check_ = 'in';
+    await s.retry();
+    expect(accessState().phase).toBe('in');
+  });
+
+  it('the lock screen’s own calls that throw leave it usable, saying no internet', async () => {
+    const s = make({
+      calls: {
+        request: () => Promise.reject(new Error('placeholder: thrown')),
+        status: list.status.bind(list),
+        redeem: () => Promise.reject(new Error('placeholder: thrown')),
+        check: list.check.bind(list),
+      },
+    });
+    s.start();
+    const asked = await s.requestAccess(PERSON, '');
+    expect(asked).toMatchObject({ busy: null, phase: 'locked' });
+    expect(asked.message?.text).toContain('No internet');
+    const used = await s.redeemToken(PERSON, TOKEN);
+    expect(used).toMatchObject({ busy: null, phase: 'locked' });
+  });
+
+  it('the time a signed call carries: the kept one, or this computer’s when the data folder cannot be written', () => {
+    const said: string[] = [];
+    let fail = false;
+    const at = keptAt(
+      {
+        nextAt: (now) => {
+          if (fail) throw new Error('placeholder: EPERM');
+          return now + 1;
+        },
+      },
+      () => 5000,
+      (line) => said.push(line),
+    );
+    expect(at()).toBe(5001);
+    fail = true;
+    expect(at()).toBe(5000);
+    expect(at()).toBe(5000);
+    // Said once, not at every check.
+    expect(said.length).toBe(1);
+    expect(said[0]).not.toContain('placeholder.user');
   });
 });

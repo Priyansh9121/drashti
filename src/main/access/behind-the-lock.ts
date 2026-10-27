@@ -9,7 +9,7 @@ import { electronTransport } from './electron-transport';
 import { isLetIn, onAccessChange } from './gate';
 import { mayRunWhileLocked } from './locked-requests';
 import { accessComputer, computerId } from './identity';
-import { AccessService, AskedFile } from './service';
+import { AccessService, AskedFile, keptAt } from './service';
 import { AccessStore } from './store';
 
 /*
@@ -62,8 +62,15 @@ export async function prepareTheLock(o: {
         local: target.local,
         computer: accessComputer(computer.id, o.version, process.platform),
         transport: electronTransport,
-        // Never at or below the last one sent, whatever this computer's clock does (kept in the data folder).
-        at: () => store.nextAt(Date.now()),
+        // Never at or below the last one sent, whatever this computer's clock does (kept in the data folder); this
+        // computer's clock when it cannot be kept, never a call that fails to go.
+        at: keptAt(
+          store,
+          () => Date.now(),
+          (line) => {
+            log.warn(line);
+          },
+        ),
         ...timeout(),
       });
     } catch (error) {

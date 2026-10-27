@@ -126,6 +126,50 @@ function requestWords(status: AccessRequestStatus, tokenWaiting: boolean): NonNu
 const NO_INTERNET =
   'No internet: Drashti could not reach the access list. Check the connection, then try again.';
 
+/**
+ * A call that throws instead of answering (the data folder could not be written as it was signed, Session 54's E
+ * review): never an answer, so it counts as none, and the countdown and the stop run as with no internet. Nothing
+ * fails open.
+ */
+async function safely<T>(call: () => Promise<AccessResult<T>>): Promise<AccessResult<T>> {
+  try {
+    return await call();
+  } catch (error) {
+    return {
+      ok: false,
+      kind: 'no-answer',
+      reason: 'network',
+      detail: `the call did not go (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
+}
+
+/**
+ * The time a signed call carries: the one kept in the data folder (never at or below the last sent, whatever this
+ * computer's clock does), or, when it cannot be kept (a full disk, a file held by another program), this computer's
+ * clock, which the client keeps rising itself. Said once in the log.
+ */
+export function keptAt(
+  store: { nextAt(now: number): number },
+  now: () => number,
+  log: (line: string) => void,
+): () => number {
+  let said = false;
+  return () => {
+    try {
+      return store.nextAt(now());
+    } catch (error) {
+      if (!said) {
+        said = true;
+        log(
+          `Access: the last check's time could not be kept in the data folder (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
+      return now();
+    }
+  };
+}
+
 /** Why a call came to nothing, for the log (never what was sent). */
 function why(r: Extract<AccessResult<unknown>, { ok: false }>): string {
   return r.kind === 'refused' ? `refused: ${r.error}` : `${r.reason}: ${r.detail}`;
@@ -232,7 +276,7 @@ export class AccessService {
     this.busy = 'requesting';
     this.message = null;
     this.changed();
-    const r = await calls.request(g, n === '' ? undefined : n);
+    const r = await safely(() => calls.request(g, n === '' ? undefined : n));
     this.busy = null;
     if (this.disposed) return this.view();
     if (r.ok) {
@@ -262,7 +306,7 @@ export class AccessService {
     this.cancel('ask');
     this.busy = 'asking';
     this.changed();
-    const r = await calls.status(asked.gmail);
+    const r = await safely(() => calls.status(asked.gmail));
     this.busy = null;
     if (this.disposed || accessState().phase !== 'locked') return this.view();
     if (r.ok) {
@@ -299,7 +343,7 @@ export class AccessService {
     this.busy = 'redeeming';
     this.message = null;
     this.changed();
-    const r = await calls.redeem(g, token);
+    const r = await safely(() => calls.redeem(g, token));
     this.busy = null;
     if (this.disposed) return this.view();
     if (!r.ok) return this.say(this.failed(r, 'token'));
@@ -365,7 +409,7 @@ export class AccessService {
     this.cancel('retry');
     this.busy = 'checking';
     this.changed();
-    const r = await calls.check(grantOf(kept), this.activity);
+    const r = await safely(() => calls.check(grantOf(kept), this.activity));
     this.busy = null;
     if (this.disposed || isLetIn() || accessState().phase === 'stopped') return;
     if (r.ok) {
@@ -421,7 +465,7 @@ export class AccessService {
     const calls = this.o.calls;
     if (!kept || !calls || !this.open()) return;
     const started = this.o.monotonic();
-    const r = await calls.check(grantOf(kept), this.activity);
+    const r = await safely(() => calls.check(grantOf(kept), this.activity));
     // Stopped meanwhile (the 2 minutes ran out while it waited): nothing it says opens it again.
     if (!this.open()) return;
     if (r.ok) {
