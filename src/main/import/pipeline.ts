@@ -932,7 +932,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             name: decided.latest.name,
             target: { kind: 'presentation', id: decided.latest.id },
             counts: NO_COUNTS,
-            message: `It could not come in with its animations, so “${decided.latest.name}” was kept as it was.`,
+            message: `It could not come in with its animations, so “${decided.latest.name}” was kept as it was: import it again once the reason below is put right.`,
             issues: flow.issues,
           });
           remember(where, file, decided.latest.id);

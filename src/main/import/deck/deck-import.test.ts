@@ -439,7 +439,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(kept?.outcome).toBe('skipped');
       expect(kept?.target?.id).toBe(id);
       expect(kept?.message).toBe(
-        'It could not come in with its animations, so “Placeholder trial” was kept as it was.',
+        'It could not come in with its animations, so “Placeholder trial” was kept as it was: import it again once the reason below is put right.',
       );
       expect(kept?.issues.map((i) => i.code)).toEqual(['deck-pictures']);
       // Untouched: every row as it was.
