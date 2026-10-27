@@ -202,7 +202,12 @@ async function powerPointOnMac(
         deck = await readPptxDeck(deckFile);
         s.log('saved as a .pptx');
       }
-      if (!deck || !deckFile) return { ok: false, reason: 'no deck', message: 'The deck could not be read.' };
+      if (!deck || !deckFile)
+        return {
+          ok: false,
+          reason: 'no deck',
+          message: 'The deck could not be read: save it again in PowerPoint or Keynote and import that.',
+        };
       const plan = powerPointPlan(deck.slides);
       if (plan.slides.length === 0)
         return {
@@ -442,7 +447,10 @@ async function powerPointOnWindows(
   if (!deck || !deckFile)
     return {
       ok: false,
-      failed: { kind: 'nothing', detail: 'the deck could not be read' },
+      failed: {
+        kind: 'nothing',
+        detail: 'the deck could not be read: save it again in PowerPoint or Keynote and import that',
+      },
       pdf: null,
       deck,
       deckFile,

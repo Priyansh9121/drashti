@@ -25,6 +25,8 @@ const LOCK_WINDOW_AFTER_MS = 1000;
 
 export interface BehindTheLock {
   service: AccessService;
+  /** The list's calls (null with no list to ask): the owner's are made with it too (the Access List, E4). */
+  client: AccessClient | null;
   /** Not let in, nor a self-test: nothing may act (the engine's commands, the phones). */
   shut(): boolean;
   /** Check, and open once let in (a self-test opens at once, its controls locked). */
@@ -154,7 +156,7 @@ export async function prepareTheLock(o: {
     });
     service.start();
   };
-  return { service, shut: () => !o.selfTest && !isLetIn(), begin };
+  return { service, client: calls, shut: () => !o.selfTest && !isLetIn(), begin };
 }
 
 /** Tests only (never a packaged Drashti): each call's time limit, shorter. */

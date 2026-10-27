@@ -320,8 +320,7 @@ describe('a deck’s slides (Session 54, C2)', () => {
     db.prepare(
       "INSERT INTO media (id, kind, name, path, sha256, bytes) VALUES ('deck-last', 'image', 'l', ?, ?, 10)",
     ).run(`${sha(9)}.png`, sha(9));
-    // As C2's import keeps a deck's slide (its `deck` column, made by its own migration).
-    db.exec('ALTER TABLE slides ADD COLUMN deck TEXT');
+    // As C2's import keeps a deck's slide (its `deck` column, migration 49).
     db.prepare(
       `UPDATE slides SET deck = ? WHERE group_id IN (SELECT id FROM slide_groups WHERE presentation_id = ?)`,
     ).run(
