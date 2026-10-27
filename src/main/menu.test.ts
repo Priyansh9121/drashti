@@ -178,6 +178,27 @@ describe('File (Session 54, E5)', () => {
   });
 });
 
+describe('File › Decks With Their Animations on This Computer (Session 54, C review)', () => {
+  it.each(PLATFORMS)('is a tick that shows the setting and changes it (%s)', (platform) => {
+    const toggled: boolean[] = [];
+    on(platform, () => {
+      const made = actions('pro');
+      installMenu({
+        ...made.a,
+        deckAnimations: { on: platform === 'darwin', toggle: () => toggled.push(true) },
+      });
+    });
+    const tick = item('deck-animations');
+    expect(tick).toMatchObject({
+      label: 'Decks With Their Animations on This Computer',
+      type: 'checkbox',
+      checked: platform === 'darwin',
+    });
+    (tick?.click as (() => void) | undefined)?.();
+    expect(toggled).toEqual([true]);
+  });
+});
+
 describe('the menu while not let in (Session 54, access by Gmail)', () => {
   it.each(PLATFORMS)(
     'has Quit and the editing keys only: no show, no library, no devtools (%s)',

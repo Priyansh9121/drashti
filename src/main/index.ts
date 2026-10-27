@@ -125,6 +125,7 @@ import { LaterWrites } from './db/later-writes';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { clearDeckLeftovers } from './import/deck/leftovers';
+import { readDeckAnimations, writeDeckAnimations } from './import/deck/deck-setting';
 import { LinkService } from './links/link-service';
 import { libraryProblem } from './library-problem';
 import { parsePlain } from '../shared/plain-parse';
@@ -467,6 +468,8 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 // back to normal on a computer where that suits the screens better (File > Run Ahead of Other Programs;
 // Session 16): the performance check, in a throwaway folder, still reads this computer's choice.
 let mainPriority = readPriority(userDataOverride ?? homeData, sw('DRASHTI_PRIORITY'));
+/** File › Decks With Their Animations on This Computer (Session 54, C review): kept for this computer. */
+let deckAnimations = readDeckAnimations(userDataOverride ?? homeData, process.platform);
 /** The priority Drashti was started at (the performance check says it: CI's Windows runner starts programs below normal). */
 const startedPriority = describePriority();
 /** Set it (again), and say what it is now: Chromium's start can change it after the first time. */
@@ -2682,15 +2685,6 @@ function start(): void {
           : sw('DRASHTI_TEST_DECK_CONVERTER') === '1'
             ? 'stand-in'
             : true,
-      // A deck with its animations (Session 54, C2). Tests only (never a packaged Drashti): a stand-in makes its movie,
-      // or (with the stand-ins or no converter above) no deck's movie is made, as on a computer with no app for it.
-      baker: app.isPackaged
-        ? true
-        : sw('DRASHTI_TEST_DECK_BAKER') === '1'
-          ? 'stand-in'
-          : sw('DRASHTI_TEST_NO_CONVERTER') === '1' || sw('DRASHTI_TEST_DECK_CONVERTER') === '1'
-            ? false
-            : true,
       // Every video and sound read with the bundled FFmpeg at import (Session 50): what Drashti's player
       // cannot play is converted by itself once the import ends (onFinished, below).
       ffmpeg: noConvertAtImport
@@ -2705,6 +2699,17 @@ function start(): void {
           }),
     },
     drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
+    // A deck with its animations where this computer's setting says so (Session 54, C2 and its review). Tests only
+    // (never a packaged Drashti): a stand-in makes its movie, or (with the stand-ins or no converter above) no
+    // deck's movie is made, as on a computer with no app for it.
+    baker: () =>
+      app.isPackaged
+        ? deckAnimations
+        : sw('DRASHTI_TEST_DECK_BAKER') === '1'
+          ? 'stand-in'
+          : sw('DRASHTI_TEST_NO_CONVERTER') === '1' || sw('DRASHTI_TEST_DECK_CONVERTER') === '1'
+            ? false
+            : deckAnimations,
     // No deck's movie is made while the stream is on air or recording (Session 54, C2; Session 50's rule).
     onAir: () => streaming.inUse() || testOnAir,
     playsHevc: () => hevc.wait(),
@@ -5390,6 +5395,23 @@ function start(): void {
     })(),
     useAsNode: () => {
       if (mode === 'pro') useAsNode();
+    },
+    deckAnimations: {
+      on: deckAnimations,
+      toggle: () => {
+        // The tick follows the setting, not the click.
+        if (mode === 'pro') {
+          deckAnimations = !deckAnimations;
+          writeDeckAnimations(app.getPath('userData'), deckAnimations);
+          log.info(`Decks with their animations on this computer: ${deckAnimations ? 'on' : 'off'}`);
+          sendToOperator(IPC.app.notice, {
+            text: deckAnimations
+              ? 'A PowerPoint or Keynote deck now comes in with its animations on this computer, where PowerPoint or Keynote can make them.'
+              : 'A PowerPoint or Keynote deck now comes in as pictures on this computer, with its videos as real videos.',
+          });
+        }
+        rebuildMenu();
+      },
     },
     extras: {
       shown: extrasShown(),
