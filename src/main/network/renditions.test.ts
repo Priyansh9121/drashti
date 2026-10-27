@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PICTURE_WIDTHS, pictureStep } from '../../shared/device-pictures';
 import { ffmpegHere } from '../testing/ffmpeg-here';
 import { readPictureInfo } from './picture-info';
-import { renditionArgs, RenditionMaker, type RenditionRun } from './renditions';
+import { renditionArgs, RenditionMaker, type RenditionRun, RENDITIONS_KEEP_FREE_BYTES } from './renditions';
 
 /*
  * Pictures for phones and tablets at the width they draw them (Session 54, D1): the steps, the file itself where
@@ -159,6 +159,13 @@ describe('making and keeping pictures for devices (Session 54, D1)', () => {
     expect(await none.get('changes', { path, kind: 'image' }, 7680)).toMatchObject({ original: true });
     // A file that is not there.
     expect(await none.get('gone', { path: join(dir, 'media', 'gone.png'), kind: 'image' }, 640)).toBeNull();
+    // A disk with less than 2 GB free: nothing made (the phone keeps what it has), the file itself still given.
+    const full = new RenditionMaker(join(dir, 'sized-4'), null, {
+      run: fakeRun(),
+      freeBytes: () => Promise.resolve(RENDITIONS_KEEP_FREE_BYTES - 1),
+    });
+    expect(await full.get('changes', { path, kind: 'image' }, 640)).toBeNull();
+    expect(await full.get('changes', { path, kind: 'image' }, 7680)).toMatchObject({ original: true });
   });
 
   it('holds the folder to its size, the least recently used going first', async () => {

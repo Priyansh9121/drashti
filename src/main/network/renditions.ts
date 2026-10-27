@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, statfs, utimes } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import { pictureStep } from '../../shared/device-pictures';
@@ -25,6 +25,8 @@ export interface Rendition {
 
 /** At most this much is kept, all the steps of all the pictures together. */
 export const RENDITIONS_MAX_BYTES = 400 * 1024 * 1024;
+/** Nothing is made while the disk has less than this free (as recordings, backups and downloads keep). */
+export const RENDITIONS_KEEP_FREE_BYTES = 2 * 1024 ** 3;
 /** One picture's step is never more than this (FFmpeg's quality setting keeps them far smaller). */
 export const RENDITION_MAX_BYTES = 64 * 1024 * 1024;
 const QUEUE_MAX = 30;
@@ -39,6 +41,17 @@ export interface RenditionOptions {
   run?: RenditionRun;
   /** When a step was last used (the tests' own clock). */
   now?: () => number;
+  /** The free bytes on the folder's disk, or null when not known (the tests' own disk). */
+  freeBytes?: (dir: string) => Promise<number | null>;
+}
+
+async function freeBytesOf(dir: string): Promise<number | null> {
+  try {
+    const s = await statfs(dir);
+    return s.bavail * s.bsize;
+  } catch {
+    return null;
+  }
 }
 
 /** FFmpeg's arguments for one step of a picture or a video's frame: never wider than the file, turned as shown. */
@@ -97,6 +110,7 @@ export class RenditionMaker {
   private readonly run: RenditionRun | null;
   private readonly maxBytes: number;
   private readonly now: () => number;
+  private readonly freeBytes: (dir: string) => Promise<number | null>;
 
   constructor(
     private readonly dir: string,
@@ -106,6 +120,7 @@ export class RenditionMaker {
     this.run = options.run ?? (ffmpeg ? runFfmpeg(ffmpeg) : null);
     this.maxBytes = options.maxBytes ?? RENDITIONS_MAX_BYTES;
     this.now = options.now ?? (() => Date.now());
+    this.freeBytes = options.freeBytes ?? freeBytesOf;
   }
 
   /**
@@ -201,6 +216,9 @@ export class RenditionMaker {
 
   private async make(run: RenditionRun, source: PreviewSource, step: number, name: string): Promise<boolean> {
     await mkdir(this.dir, { recursive: true });
+    // A nearly full disk is kept for the show: the phone keeps the picture it has.
+    const free = await this.freeBytes(this.dir);
+    if (free !== null && free < RENDITIONS_KEEP_FREE_BYTES) return false;
     const file = join(this.dir, name);
     const tmp = file.replace(/\.(jpg|png)$/u, '.part.$1');
     const ok = await run(renditionArgs(source, step, tmp));
