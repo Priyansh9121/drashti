@@ -60,6 +60,8 @@ export interface PlaylistNode {
    * from a link. The operator window shows it a folder at a time (shared/playlist-folders.ts).
    */
   fromFolder?: true;
+  /** Shared with phones and tablets (Session 54): Remote devices list it under "Shared from Drashti". */
+  shared?: true;
 }
 
 /** The order a playlist item plays its presentation in. */
@@ -111,6 +113,8 @@ export type PlaylistItemInfo =
       deck?: boolean;
       /** In a smart playlist: its file is gone from the folder (Session 26c). */
       gone?: boolean;
+      /** Added from a phone (Session 54): the device's name. */
+      fromDevice?: string;
     }
   | {
       id: string;
@@ -127,6 +131,8 @@ export type PlaylistItemInfo =
       durationMs?: number | null;
       /** In a smart playlist: its file is gone from the folder (Session 26c). */
       gone?: boolean;
+      /** Added from a phone (Session 54): the device's name. */
+      fromDevice?: string;
     }
   | { id: string; kind: 'header'; label: string; color: string | null }
   /**
@@ -175,6 +181,8 @@ export interface MediaSummary {
   convertedTo: string | null;
   /** Taken from the drop folder (Session 28): Media's "From the drop folder" filter. */
   fromDrop?: true;
+  /** Added from a phone (Session 54): the device's name, on its row. */
+  fromDevice?: string;
 }
 
 export type PlaylistResult = { ok: true; ids: string[] } | { ok: false; message: string };

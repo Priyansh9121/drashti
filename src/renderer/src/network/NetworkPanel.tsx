@@ -19,6 +19,7 @@ import { SectionTitle } from '../ui/Panel';
 import { Toggle } from '../ui/Toggle';
 import { useNow } from '../render/useNow';
 import { closeNetwork, networkAction, useNetwork } from './network-store';
+import { AddFilesSection } from './AddFilesSection';
 import { QrCode } from './QrCode';
 
 /*
@@ -377,6 +378,7 @@ export function NetworkPanel() {
           <OnOff status={status} />
           <Pairing status={status} />
           <Devices status={status} />
+          <AddFilesSection status={status} />
           <Poster status={status} />
           <p className="text-xs text-faint">
             If a phone cannot connect: it must be on the same Wi-Fi as this computer. The first time the

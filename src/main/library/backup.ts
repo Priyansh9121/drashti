@@ -21,7 +21,7 @@ import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { fileStamp } from '../../shared/format';
 import type { Db } from '../db/database';
-import { CONVERTING_DIR } from '../import/media-store';
+import { CONVERTING_DIR, UPLOADS_DIR } from '../import/media-store';
 import { SHARPENED_DIR } from '../media/sharpened';
 
 /*
@@ -116,9 +116,10 @@ const errorCode = (error: unknown): string | undefined =>
 
 /**
  * A media folder's folders that a backup leaves out: conversions going on (not the library's yet) and
- * pictures' sharpened copies (Session 26f: made again from the pictures after a restore).
+ * pictures' sharpened copies (Session 26f: made again from the pictures after a restore), and (Session 54) files
+ * phones are sending.
  */
-const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR]);
+const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR, UPLOADS_DIR]);
 
 /**
  * The files in a folder and below (regular files only, symbolic links not followed), with their sizes.

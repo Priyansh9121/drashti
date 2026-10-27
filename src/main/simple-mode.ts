@@ -144,6 +144,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.network.renameDevice,
   IPC.network.revokeDevice,
   IPC.network.makePoster,
+  // Session 54: whether phones may add files, and which playlists they see, are Pro Mode's.
+  IPC.network.setAddFiles,
+  IPC.playlists.share,
   // Output nodes (Session 13): Simple Mode sees the dashboard and Identify, and changes nothing:
   // no pairing, removing, renaming, assigning, copying everything or reloading an output.
   IPC.nodes.startPairing,

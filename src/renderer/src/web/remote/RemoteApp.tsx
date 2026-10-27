@@ -49,6 +49,8 @@ import { startFeed, useFeed } from '../feed';
 import { ConnectionChip } from '../Connection';
 import { networkPreviews } from '../previews';
 import { tap, useTapNotice } from '../taps';
+import { PhoneFiles } from './PhoneFiles';
+import { startPhoneFiles } from './phone-files-store';
 import {
   loadLibrary,
   loadPlaylists,
@@ -770,6 +772,8 @@ function Library() {
   const searching = library.query !== '';
   return (
     <section className="space-y-3" aria-labelledby="library-title" data-testid="remote-library">
+      {/* Session 54: Shared from Drashti, and Add from this Phone… (PhoneFiles.tsx). */}
+      <PhoneFiles />
       <h2 id="library-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Library
       </h2>
@@ -1315,6 +1319,7 @@ export function RemoteApp() {
     void preloadFonts();
     startRemote();
     startMirror();
+    startPhoneFiles();
     startFeed();
     void loadPlaylists();
   }, []);

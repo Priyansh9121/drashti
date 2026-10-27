@@ -152,6 +152,8 @@ function MediaNote({ m, job }: { m: MediaSummary; job: ConversionJob | undefined
   return (
     <span className={`${line} text-muted`} data-testid="media-note">
       {mediaKindLabel[m.kind]}
+      {/* Added from a phone (Session 54): the device's name. */}
+      {m.fromDevice !== undefined && ` · from ${m.fromDevice}`}
     </span>
   );
 }
