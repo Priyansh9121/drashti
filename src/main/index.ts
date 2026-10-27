@@ -288,6 +288,7 @@ import { rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
 import { readRole, startingRole, writeRole } from './role';
+import { removeOldRoles } from './old-roles';
 import { startNode } from './node-mode/node-app';
 import { NodeRepo } from './db/nodes';
 import { NodeService } from './nodes/node-service';
@@ -913,6 +914,12 @@ function boot(): void {
   const journalNote = journalNotice(crashJournal.takeUnshown(), (at) => formatClock(Date.parse(at), null));
   if (journalNote) startNotes.push(journalNote);
   const userData = app.getPath('userData');
+  // Roles and PINs are gone (Session 54, E5): an older Drashti's roles.json and what went with it are removed
+  // before anything else, never read.
+  removeOldRoles(userData, (level, message) => {
+    if (level === 'warn') log.warn(message);
+    else log.info(message);
+  });
   const selfTesting = sw('DRASHTI_SELFTEST') !== undefined;
   const starting = startingRole(userData, sw('DRASHTI_ROLE'), {
     log: (line) => {
