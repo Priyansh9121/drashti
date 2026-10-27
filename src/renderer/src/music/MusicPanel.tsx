@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatDuration } from '../../../shared/format';
-import { playbackLeftMs } from '../../../shared/media';
 import type { MusicPlaylist } from '../../../shared/music';
 import { useEngine } from '../engine/engine-store';
 import { SkipButtons } from '../markers/SkipButtons';
+import { TrackBar } from '../markers/PlayingBars';
 import { skipsOf } from '../markers/skips';
 import { connectConversions, jobFor, useConvert } from '../library/convert-store';
 import { jobBusy } from '../library/converting';
 import { loadMedia, useMedia } from '../library/library-store';
-import { useNow } from '../render/useNow';
-import { engineNow } from '../render/clock';
 import { Button, IconButton } from '../ui/Button';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { TextInput } from '../ui/Field';
@@ -82,18 +80,6 @@ function CannotPlay({ mediaId }: { mediaId: string }) {
   );
 }
 
-/**
- * "2:31 left" for the track playing (paused: where it is), to its end point and from where it jumped to (a
- * marker, Back 15 s, Forward 15 s or Last 10 s: Session 50); it ticks only while it shows.
- */
-function TimeLeft() {
-  const a = useMusicPlaying();
-  useNow(1000);
-  if (!a?.durationMs) return null;
-  const left = playbackLeftMs(a, a.durationMs, engineNow());
-  return <span className="shrink-0 text-muted tabular-nums">{`${formatDuration(left)} left`}</span>;
-}
-
 /** `nested`: inside a panel group (Session 26a: Audio, More tools). */
 export function MusicPanel({
   nested = false,
@@ -127,9 +113,10 @@ export function MusicPanel({
         <p className="flex items-center gap-1.5 text-xs" role="status" data-testid="music-now">
           {paused ? <Pause size={12} aria-hidden="true" /> : <Play size={12} aria-hidden="true" />}
           <Truncate text={`${paused ? 'Paused: ' : ''}${playing.title}`} className="min-w-0 flex-1" />
-          <TimeLeft />
         </p>
       )}
+      {/* The track's time bar (Session 54), its elapsed time and time left: a click or a drag moves it. */}
+      {playing && <TrackBar />}
       {!shown ? (
         <AudioDrop playlistId={null} className="rounded-md border border-dashed border-line-strong px-3 py-3">
           <p className="text-xs text-muted" data-testid="music-empty">
