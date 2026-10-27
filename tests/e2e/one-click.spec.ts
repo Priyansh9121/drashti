@@ -16,6 +16,7 @@ import {
   operatorPage,
   operatorReady,
 } from './helpers';
+import { mouseDrag } from './mouse-drag';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -253,5 +254,27 @@ test('a double click on the card under the chosen one never lands on its Up or D
   await doubleClickLow(PICTURE);
   await expect.poll(async () => (await up(win)).background).toBe(ids[PICTURE]);
   await holdStill(kept, 1500, 'a double click’s second click never moves the picture');
+  await app.close();
+});
+
+test('dragging a video’s or a picture’s card moves it and puts nothing up', async () => {
+  test.setTimeout(180_000);
+  const { app, win, playlistId, items } = await start();
+  const nothingUp = { item: null, background: null, startedAt: null, sound: null };
+  // The picture to the top, over the video; then the video under the sound.
+  await mouseDrag(win, card(win, PICTURE), card(win, VIDEO), 'top');
+  await expect
+    .poll(() => order(win, playlistId))
+    .toEqual([PICTURE, VIDEO, SOUND, PDF, DECK].map((name) => items[name]));
+  expect(await up(win)).toEqual(nothingUp);
+  await mouseDrag(win, card(win, VIDEO), card(win, SOUND), 'bottom');
+  await expect
+    .poll(() => order(win, playlistId))
+    .toEqual([PICTURE, SOUND, VIDEO, PDF, DECK].map((name) => items[name]));
+  await holdStill(
+    async () => JSON.stringify(await up(win)) === JSON.stringify(nothingUp),
+    1000,
+    'a drag puts nothing up',
+  );
   await app.close();
 });
