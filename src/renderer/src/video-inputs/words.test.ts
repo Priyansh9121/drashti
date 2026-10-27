@@ -36,9 +36,10 @@ describe('naming a video input', () => {
     expect(nameProblem('Placeholder input', inputs, null)).toBeNull();
   });
 
-  it('says, changing one, that a new name takes this computer’s playlist items and slides along, and that the spare computer’s input needs it too (Session 53)', () => {
+  // Session 54 (question 2): "the spare computer’s" read oddly when renaming on the spare, as both run as Main.
+  it('says, changing one, that a new name takes this computer’s playlist items and slides along, and that the other computer’s input needs it too (Session 53)', () => {
     expect(RENAMING).toBe(
-      'Renaming it takes this computer’s playlist items and slides that use it to the new name. The spare computer’s input needs the same new name.',
+      'Renaming it takes this computer’s playlist items and slides that use it to the new name. The other computer’s input needs the same new name.',
     );
   });
 });
