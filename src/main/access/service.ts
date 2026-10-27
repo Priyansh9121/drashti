@@ -93,6 +93,8 @@ export interface AccessServiceOptions {
 
 /** How often the lock screen asks what became of a request while it waits. */
 export const ASK_EVERY_MS = 30_000;
+/** A timer this late means the computer slept: none runs that late while it is awake. */
+const ASLEEP_MS = 30_000;
 /** A minute let in, added to the totals. */
 const MINUTE_MS = 60_000;
 
@@ -198,6 +200,9 @@ export class AccessService {
   private activity: AccessActivity = { ...NO_ACTIVITY };
   /** When the list last answered let in (monotonic). */
   private lastAnswer: number | null = null;
+  /** When the next check is due (monotonic), and up to when a sleep has been counted out. */
+  private dueAt = 0;
+  private awake = 0;
   private busy: AccessBusy | null = null;
   private message: Message = null;
   private request: AccessRequestView | null = null;
@@ -468,6 +473,7 @@ export class AccessService {
 
   private checkIn(ms: number): void {
     this.cancel('check');
+    this.dueAt = this.o.monotonic() + ms;
     this.timers.set(
       'check',
       this.o.setTimer(ms, () => {
@@ -482,6 +488,7 @@ export class AccessService {
     const kept = this.kept;
     const calls = this.o.calls;
     if (!kept || !calls || !this.open()) return;
+    this.wokeAfter(this.dueAt);
     const started = this.o.monotonic();
     const r = await safely(() => calls.check(grantOf(kept), this.activity));
     // Stopped meanwhile (the 2 minutes ran out while it waited): nothing it says opens it again.
@@ -520,16 +527,50 @@ export class AccessService {
       `Access: no answer from the access list (${why(r)}): Drashti stops in ${String(Math.ceil(left / 1000))} s unless it answers`,
     );
     this.set({ phase: 'warning', stopsAt, reason: null });
+    this.armDeadline();
+  }
+
+  /** The stop at the end of the countdown, on time; one asleep for a while counts only the time awake. */
+  private armDeadline(): void {
+    const due = accessState().stopsAt;
+    if (due === null) return;
+    this.cancel('deadline');
     this.timers.set(
       'deadline',
-      this.o.setTimer(left, () => {
+      this.o.setTimer(Math.max(0, due - this.o.monotonic()), () => {
         this.timers.delete('deadline');
-        if (isLetIn() && !this.disposed) {
-          this.o.log('warn', 'Access: no answer from the access list for 2 minutes');
-          this.stop('no-answer');
+        if (!isLetIn() || this.disposed) return;
+        this.wokeAfter(due);
+        // Moved on by a sleep: not yet.
+        if ((accessState().stopsAt ?? 0) > this.o.monotonic()) {
+          this.armDeadline();
+          return;
         }
+        this.o.log('warn', 'Access: no answer from the access list for 2 minutes');
+        this.stop('no-answer');
       }),
     );
+  }
+
+  /**
+   * A timer due at `due` ran this late: the computer slept (Windows' monotonic clock counts on through a sleep, a
+   * Mac's does not). The time asleep is never counted toward the 2 minutes: they go on from the last answer as if
+   * the computer had not slept. Each sleep counted once, whichever timer runs first.
+   */
+  private wokeAfter(due: number): void {
+    const late = this.o.monotonic() - Math.max(due, this.awake);
+    if (late <= ASLEEP_MS || this.lastAnswer === null) return;
+    this.awake = this.o.monotonic();
+    this.lastAnswer += late;
+    this.o.log(
+      'info',
+      `Access: the computer slept ${String(Math.round(late / 1000))} s: that time is not counted`,
+    );
+    const s = accessState();
+    if (s.phase === 'warning' && s.stopsAt !== null) {
+      this.set({ stopsAt: s.stopsAt + late });
+      this.armDeadline();
+    }
   }
 
   /** Everything stops, for good: only Quit works. */
