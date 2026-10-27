@@ -51,6 +51,8 @@ import { networkPreviews } from '../previews';
 import { tap, useTapNotice } from '../taps';
 import { PhoneFiles } from './PhoneFiles';
 import { startPhoneFiles } from './phone-files-store';
+import { DeviceViewer } from '../viewer/DeviceViewer';
+import { LookAtMedia, LookCloser, LookOverlay, LookThrough } from '../viewer/LookCloser';
 import {
   loadLibrary,
   loadPlaylists,
@@ -188,10 +190,12 @@ function LivePicture({ state }: { state: EngineState | null }) {
         ) : up ? (
           <LiveBadge />
         ) : null}
+        {/* Session 54 (D1, D2): larger, sharp and zoomed on this device; its zoom put on the screens. */}
+        <LookCloser />
       </div>
       <div
         className={cx(
-          'overflow-hidden rounded-lg border-2 bg-black',
+          'relative overflow-hidden rounded-lg border-2 bg-black',
           up && !state?.blackout ? 'border-live' : 'border-line-strong',
         )}
         data-testid="remote-live"
@@ -201,6 +205,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
         <PlacedInParent content={CANVAS} mode="fit" className="relative aspect-video w-full">
           {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
         </PlacedInParent>
+        <LookOverlay />
       </div>
       {/* Audience or Stage off on Main's computer (Session 50): said, with no button (the operator turns it on). */}
       {switchedOff && (
@@ -555,6 +560,17 @@ function Slides() {
             On the screens
           </Button>
         )}
+        {/* Session 54 (D1): its slides (a deck's or a PDF's pages) one by one on this device, sharp and zoomed. */}
+        <LookThrough
+          presentationId={doc.id}
+          name={doc.name}
+          slides={order.slides}
+          from={
+            isLiveItem && shownIndex !== null
+              ? shownIndex
+              : (order.slides.find((s) => s.slide.id === focusSlideId)?.position ?? 0)
+          }
+        />
         {item && !isLiveItem && (
           <Button
             size="lg"
@@ -650,7 +666,7 @@ function Playlist() {
           const isLive = live?.playlistId === playlistId && live.itemId === i.id;
           const can = playable(i);
           return (
-            <li key={i.id}>
+            <li key={i.id} className="flex gap-2">
               <button
                 type="button"
                 disabled={!can}
@@ -688,6 +704,10 @@ function Playlist() {
                 {i.kind === 'placeholder' && <Badge tone="warning">Empty</Badge>}
                 {isLive && <LiveBadge />}
               </button>
+              {/* Session 54 (D1): a picture looked at, or a video played, on this device only. */}
+              {i.kind === 'media' && i.media !== 'audio' && !i.missing && (
+                <LookAtMedia mediaId={i.mediaId} media={i.media} name={i.label} />
+              )}
             </li>
           );
         })}
@@ -1330,6 +1350,7 @@ export function RemoteApp() {
     <PreviewsContext.Provider value={previews}>
       <ClockStyleContext.Provider value={clock}>
         <Layout />
+        <DeviceViewer />
       </ClockStyleContext.Provider>
     </PreviewsContext.Provider>
   );

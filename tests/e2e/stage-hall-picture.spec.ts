@@ -25,7 +25,7 @@ import { makeTestImage } from './test-media';
  * (Chromium's fake camera: DRASHTI_TEST_FAKE_DEVICES, never a real one), another app's window (Session 48's
  * stand-in: DRASHTI_TEST_WINDOW_STANDIN) and a picture-in-picture box show under it as on the hall's screen; with
  * Audience off it keeps the picture and says so in a corner, and the box of the audience screens' state says off;
- * a tablet draws it from small previews, as the phone remote's picture does, naming a window it cannot draw; a
+ * a tablet draws it from its pictures, as the phone remote's picture does, naming a window it cannot draw; a
  * node with no audience screen of its own draws Main's hall as the live Look sets it, never every layer. Since
  * Session 52 it says Audience off in the picture's bottom left corner, where a stage message along the top never
  * covers it, and with no audience group at all it is black and says so in one short line, never every layer: on
@@ -635,7 +635,7 @@ test('with no audience group at all the stage box is black and says so in one sh
   await app.close();
 });
 
-test('a tablet’s stage page draws the box from small previews, as the remote’s live picture does, and says Audience off and no audience screens', async () => {
+test('a tablet’s stage page draws the box from pictures at the width it draws them, as the remote’s live picture does, and says Audience off and no audience screens', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...NETWORK_ENV, ...OUTPUTS });
   const win = await operatorPage(app);
@@ -664,14 +664,15 @@ test('a tablet’s stage page draws the box from small previews, as the remote�
     await pairByQr(tablet.page, base, code, '/stage');
     const box = tablet.page.locator(BOX);
     await expect(box.getByTestId('stage-audience')).toHaveAttribute('data-hall-group', hallGroup);
-    // The picture's small preview, as the phone remote's live picture draws it: never the file itself.
+    // The picture at the width the tablet draws it (Session 54, D1; its small preview before), as the phone
+    // remote's live picture draws it: never a file in pieces.
     await expect(box.locator(`img[data-preview="shown"][data-media-id^="${pictureId}"]`)).toHaveCount(1, {
       timeout: 30_000,
     });
-    expect(loads.some((p) => p.startsWith(`/api/v1/media/${pictureId}`) && p.endsWith('/preview'))).toBe(
+    expect(loads.some((p) => p.startsWith(`/api/v1/media/${pictureId}`) && p.endsWith('/picture'))).toBe(
       true,
     );
-    expect(loads.filter((p) => p.includes('/media/') && !p.endsWith('/preview'))).toEqual([]);
+    expect(loads.filter((p) => p.includes('/media/') && !p.endsWith('/picture'))).toEqual([]);
 
     // Audience off on Drashti's computer: said in the box's corner, the picture kept.
     await audience(win, false);

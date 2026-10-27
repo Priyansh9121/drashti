@@ -189,6 +189,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'message.show': IPC.engine.command,
   'message.hide': IPC.engine.command,
   preview: null,
+  // Full quality (Session 54, D1): looking, as a preview is.
+  'media.picture': null,
+  'media.original': null,
   announce: null,
   announcement: null,
   // The mirror (Session 54, D5): the window's own reads, and what goes up as the window puts it up.
@@ -844,6 +847,8 @@ export class NetworkService implements EngineTransport {
       case 'upload.status':
       case 'upload.piece':
       case 'upload.cancel':
+      case 'media.picture':
+      case 'media.original':
         return deny(400, 'The network server answers that itself.');
     }
   }

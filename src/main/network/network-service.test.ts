@@ -580,3 +580,44 @@ describe('the network in the main process', () => {
     expect(Object.values(OP_CHANNEL)).not.toContain(IPC.screenSwitches.turn);
   });
 });
+
+describe('full quality and the zoom from a phone (Session 54, D1 and D2)', () => {
+  it('lets a Remote put its zoom on the screens and back to whole, and Simple Mode refuse both, as in the window', () => {
+    const { service, commands } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const send = (args: unknown) => service.answer({ address: PHONE, deviceId: remote, op: 'command', args });
+    expect(send({ type: 'zoomLive', zoom: 2, x: 0.25, y: 0 }).status).toBe(200);
+    expect(send({ type: 'resetLiveZoom' }).status).toBe(200);
+    expect(commands).toEqual([{ type: 'zoomLive', zoom: 2, x: 0.25, y: 0 }, { type: 'resetLiveZoom' }]);
+    // Within the live zoom's own limits (100 to 400 %).
+    expect(send({ type: 'zoomLive', zoom: 9, x: 0, y: 0 }).status).toBe(400);
+    expect(send({ type: 'zoomLive' }).status).toBe(400);
+    const simple = setup({ locked: true });
+    const phone = simple.service.pairForCheck('remote', 'Placeholder phone').id;
+    for (const args of [{ type: 'zoomLive', zoom: 2, x: 0, y: 0 }, { type: 'resetLiveZoom' }])
+      expect(simple.service.answer({ address: PHONE, deviceId: phone, op: 'command', args })).toEqual({
+        status: 403,
+        body: { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL },
+      });
+    expect(simple.commands).toEqual([]);
+    // A Stage device never zooms the screens.
+    const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
+    expect(
+      service.answer({ address: PHONE, deviceId: stage, op: 'command', args: { type: 'resetLiveZoom' } })
+        .status,
+    ).toBe(403);
+  });
+
+  it('leaves a picture at a width and a file’s original to the network server, by the previews’ rules', () => {
+    // A picture: what a preview was, for a Remote and a Stage device's picture box; a file in pieces: a Remote's.
+    expect(DEVICE_OPS['media.picture']).toEqual(DEVICE_OPS.preview);
+    expect(DEVICE_OPS['media.original']).toEqual(['remote']);
+    // Looking is no change: Simple Mode lets it be, as it does previews.
+    expect(OP_CHANNEL['media.picture']).toBeNull();
+    expect(OP_CHANNEL['media.original']).toBeNull();
+    const { service } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    for (const op of ['media.picture', 'media.original'] as const)
+      expect(service.answer({ address: PHONE, deviceId: remote, op, args: {} }).status).toBe(400);
+  });
+});

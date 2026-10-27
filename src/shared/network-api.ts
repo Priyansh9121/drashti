@@ -60,6 +60,16 @@ export const DEVICE_OPS = {
    * and a stage display's audience picture box (Session 51).
    */
   preview: ['remote', 'stage'],
+  /**
+   * Full quality (Session 54, D1): a picture, or a video's frame, at the width the device draws it, up to the
+   * original (`GET /api/v1/media/{id}/picture?width=…`): a Stage device's picture box, as its previews were.
+   */
+  'media.picture': ['remote', 'stage'],
+  /**
+   * A picture's or video's own file, in pieces as it plays (HTTP Range), and a link to it a <video> can play
+   * (Session 54, D1); never a sound's, as previews never were.
+   */
+  'media.original': ['remote'],
   /** Send an announcement for the operator to approve. */
   announce: ['announcements'],
   /** What became of an announcement this device sent. */
@@ -153,6 +163,10 @@ export const REMOTE_COMMANDS = [
   'moveTo',
   'pausePlaying',
   'resumePlaying',
+  // The live zoom (Session 54, D2): the zoom of the picture a phone looks at, put on the screens, and Back to Whole
+  // (Simple Mode refuses both, as in the window).
+  'zoomLive',
+  'resetLiveZoom',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */
