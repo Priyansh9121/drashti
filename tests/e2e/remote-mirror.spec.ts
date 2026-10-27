@@ -201,9 +201,14 @@ test('from a phone, as from the operator window: props, media with its skips, th
   await operatorReady(win);
   const show = await setUpPlaceholderShow(win, { video: true });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-mirror-'));
-  await importAndGetIds(win, [makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 4 })]);
+  await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 4 }),
+    makeTestTone(join(dir, 'Placeholder second tune.wav'), { seconds: 30, hz: 660 }),
+  ]);
   const toneId = await mediaId(win, 'Placeholder tune');
+  const secondToneId = await mediaId(win, 'Placeholder second tune');
   expect(toneId).not.toBe('');
+  expect(secondToneId).not.toBe('');
   await setUpScreen(win);
   const output = await outputPage(app);
   const { base } = await networkOn(win);
@@ -316,20 +321,38 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await expect.poll(async () => (await snapshot(win)).state.idle.startedAt).toBeNull();
 
     // An audio playlist made in Drashti: listed with its tracks, played from the phone, then paused.
-    const music = await win.evaluate(async (id) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const made = await d.music.create('Placeholder tunes');
-      if (!made.ok || !made.id) throw new Error('no audio playlist');
-      const added = await d.music.addTracks(made.id, [id], null);
-      if (!added.ok) throw new Error(added.message);
-      return made.id;
-    }, toneId);
+    const music = await win.evaluate(
+      async (ids) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const made = await d.music.create('Placeholder tunes');
+        if (!made.ok || !made.id) throw new Error('no audio playlist');
+        const added = await d.music.addTracks(made.id, ids, null);
+        if (!added.ok) throw new Error(added.message);
+        return made.id;
+      },
+      [toneId, secondToneId],
+    );
     const tunes = p.getByTestId('remote-music-playlist').filter({ hasText: 'Placeholder tunes' });
-    await expect(tunes).toContainText('1 track');
+    await expect(tunes).toContainText('2 tracks');
     await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
     await expect.poll(async () => (await layers(win)).audio?.music?.playlistId).toBe(music);
     await expect(tunes).toHaveAttribute('data-playing', 'true');
     await expect(p.getByTestId('remote-music').getByRole('button', { name: 'Previous track' })).toBeVisible();
+    // Its second track, paused on its row: Play there goes on with that track where it was, as the window's Play
+    // does, never from the first track again (D5 review).
+    await p.getByTestId('remote-music').getByRole('button', { name: 'Next track' }).click();
+    await expect.poll(async () => (await layers(win)).audio?.music?.index).toBe(1);
+    await tunes.getByRole('button', { name: 'Pause Placeholder tunes' }).click();
+    await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
+    await expect(tunes).toHaveAttribute('data-paused', 'true');
+    await tunes.getByRole('button', { name: 'Play Placeholder tunes' }).click();
+    await expect
+      .poll(async () => {
+        const audio = (await layers(win)).audio;
+        return { index: audio?.music?.index, paused: audio?.pausedAtMs !== undefined };
+      })
+      .toEqual({ index: 1, paused: false });
+    await expect(tunes).not.toHaveAttribute('data-paused');
     await p.getByTestId('remote-music').getByRole('button', { name: 'Pause music' }).click();
     await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
