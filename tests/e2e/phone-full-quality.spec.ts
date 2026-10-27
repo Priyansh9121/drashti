@@ -252,6 +252,22 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       await expect(showZoom).toHaveText('This zoom is on the screens');
       await expect(showZoom).toHaveAttribute('data-variant', 'live');
 
+      // Moved on the phone (the arrow keys, a tenth of its screen each, at 200 %: a twentieth of the picture), the
+      // screens take where it went: two to the right, a tenth of the picture, so the screens move it a fifth left.
+      await surface.focus();
+      await p.keyboard.press('ArrowRight');
+      await p.keyboard.press('ArrowRight');
+      await expect(showZoom).toHaveText('Show this zoom on the screens');
+      await showZoom.click();
+      await expect.poll(async () => (await snapshot(win)).liveZoom?.x ?? 0).toBeCloseTo(-0.2, 2);
+      expect((await snapshot(win)).liveZoom?.y ?? 1).toBeCloseTo(0, 3);
+      await expect
+        .poll(async () => {
+          const m = /translate\((-?[\d.]+)%, (-?[\d.]+)%\) scale\(([\d.]+)\)/u.exec(await screenZoom(output));
+          return m ? [Number(m[1]).toFixed(1), Number(m[2]).toFixed(1), Number(m[3]).toFixed(1)] : null;
+        })
+        .toEqual(['-20.0', '0.0', '2.0']);
+
       // Back to Whole: the screens glide back to the picture as kept, and the phone to the whole of it.
       await p.getByTestId('viewer-whole').click();
       await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 1).toBe(1);
