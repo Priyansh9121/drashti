@@ -53,6 +53,7 @@ async function up(win: Page) {
 interface Show {
   app: ElectronApplication;
   win: Page;
+  playlistId: string;
   /** The playlist's items, by name, and the files and presentations they play. */
   items: Record<string, string>;
   ids: Record<string, string>;
@@ -108,16 +109,17 @@ async function start(): Promise<Show> {
         { kind: 'presentation', presentationId: adding.deckId },
       ]);
       if (!added.ok) throw new Error(added.message);
-      return added.ids;
+      return { playlistId: list.ids[0] ?? '', ids: added.ids };
     },
     { video, picture, sound, pdfId, deckId },
   );
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder one click' }).click();
   await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(5);
-  const [videoItem = '', pictureItem = '', soundItem = '', pdfItem = '', deckItem = ''] = made;
+  const [videoItem = '', pictureItem = '', soundItem = '', pdfItem = '', deckItem = ''] = made.ids;
   return {
     app,
     win,
+    playlistId: made.playlistId,
     items: {
       [VIDEO]: videoItem,
       [PICTURE]: pictureItem,
@@ -131,6 +133,13 @@ async function start(): Promise<Show> {
 
 const card = (win: Page, name: string) =>
   win.getByTestId('open-playlist').getByTestId('playlist-item').filter({ hasText: name });
+
+/** The playlist's items in their order, as kept. */
+const order = (win: Page, playlistId: string) =>
+  win.evaluate(
+    async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).map((i) => i.id),
+    playlistId,
+  );
 
 test('one click on a playlist’s video, picture or sound puts it up at once; a double click once, never from the start again; Enter the same', async () => {
   test.setTimeout(180_000);
@@ -215,5 +224,34 @@ test('Simple Mode keeps its Next: it starts the playlist and goes on through it,
   await win.keyboard.press('ArrowRight');
   await expect.poll(async () => (await up(win)).item).toBe(items[PICTURE]);
   await expectNoSeriousA11yIssues(win, 'Simple Mode, a picture up from the playlist');
+  await app.close();
+});
+
+test('a double click on the card under the chosen one never lands on its Up or Down: the running order stays', async () => {
+  test.setTimeout(180_000);
+  const { app, win, playlistId, items, ids } = await start();
+  const before = [VIDEO, PICTURE, SOUND, PDF, DECK].map((name) => items[name]);
+  const kept = async () => JSON.stringify(await order(win, playlistId)) === JSON.stringify(before);
+  /** A double click near a card's bottom right corner, where Up and Down come under it once it is chosen. */
+  const doubleClickLow = async (name: string) => {
+    const box = await card(win, name).boundingBox();
+    if (!box) throw new Error(`the card of ${name} is not in view`);
+    await card(win, name).dblclick({ position: { x: box.width - 24, y: box.height - 6 } });
+  };
+
+  // The sound chosen (only marked, with Cmd/Ctrl): its Up and Down under it, over the PDF's card.
+  await card(win, SOUND).click({ modifiers: [mod] });
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-item-moves')).toBeVisible();
+  // The first click chooses the PDF: the sound's Up and Down go, the PDF's card moves up under the pointer and
+  // its own come under it, where the second click lands. Its slides open in the middle; nothing moves.
+  await doubleClickLow(PDF);
+  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', ids[PDF] ?? '');
+  await holdStill(kept, 1500, 'a double click’s second click never moves the PDF');
+
+  // The same over the picture, under the video chosen: up once, and nothing moves.
+  await card(win, VIDEO).click({ modifiers: [mod] });
+  await doubleClickLow(PICTURE);
+  await expect.poll(async () => (await up(win)).background).toBe(ids[PICTURE]);
+  await holdStill(kept, 1500, 'a double click’s second click never moves the picture');
   await app.close();
 });
