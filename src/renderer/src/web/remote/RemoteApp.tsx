@@ -54,6 +54,7 @@ import { startFeed, useFeed } from '../feed';
 import { ConnectionChip } from '../Connection';
 import { networkPreviews } from '../previews';
 import { tap, useTapNotice } from '../taps';
+import { StageTimers } from './StageTimers';
 import {
   loadLibrary,
   loadPlaylists,
@@ -1186,6 +1187,8 @@ function TimersAndMessages() {
       <Shastra />
       <Music />
       <Markers />
+      {/* The stage screens' timers, with Start, Pause and Reset, as the Stage screen panel has them (Session 54). */}
+      <StageTimers />
       <section className="space-y-2" aria-labelledby="timers-title">
         <h2 id="timers-title" className="text-base font-bold tracking-wider text-muted uppercase">
           Timers

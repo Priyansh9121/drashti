@@ -4,7 +4,7 @@ import { newStageBox, type StageBox, type StageLayout } from '../../src/shared/s
 import { FLASH_DIM } from '../../src/shared/stage-timer';
 import type { TimerFields } from '../../src/shared/timers';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { device, networkOn, pairByQr, pairingCode, TABLET } from './devices';
+import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import {
   launchApp,
   operatorPage,
@@ -676,5 +676,114 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
   await editor.getByRole('button', { name: 'Close stage layouts' }).click();
   // Kept exactly as it was saved.
   expect((await liveLayoutOf(win, group))?.boxes).toEqual(before);
+  await app.close();
+});
+
+test('the Stage panel and the phone start, pause and reset the stage layout’s timers, and say what each counts to', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // A stage group (no screen needed: the panel and the phone follow its layout in the live Look).
+  const group = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.screens.createGroup('Stage');
+    if (!made.ok) throw new Error(made.message);
+    const id = made.snapshot.groups.find((g) => g.name === 'Stage')?.id ?? '';
+    const role = await d.screens.setGroupRole(id, 'stage');
+    if (!role.ok) throw new Error(role.message);
+    return id;
+  });
+  const countdown = await makeTimer(win, countdownOf('Placeholder stage countdown', 5 * 60_000));
+  const toTime = await makeTimer(win, {
+    name: 'Placeholder start time',
+    kind: 'countdown_to_time',
+    durationMs: 0,
+    targetTime: '19:30',
+    allowsOverrun: false,
+  });
+  await makeTimer(win, countdownOf('Placeholder timer not on the stage', 60_000));
+  // The countdown twice, every running timer (no one timer to run), and the countdown to a time.
+  await giveLayout(win, group, 'Placeholder stage timers', [
+    { ...newStageBox('timer', 'placeholder-countdown-box'), timerId: countdown },
+    { ...newStageBox('timer', 'placeholder-every-box'), timerId: null },
+    { ...newStageBox('timer', 'placeholder-time-box'), timerId: toTime },
+    { ...newStageBox('timer', 'placeholder-again-box'), timerId: countdown },
+  ]);
+  const timerOf = async (id: string) => (await engineState(win)).timers.find((t) => t.id === id);
+  const startedAt = async () => (await timerOf(countdown))?.startedAt ?? null;
+  const elapsed = async () => (await timerOf(countdown))?.elapsedMs ?? -1;
+  /** The countdown at 5:00 again, stopped, between the checks. */
+  const resetAll = () =>
+    win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'resetTimer', timerId: id }),
+      countdown,
+    );
+
+  // The Stage screen panel: the two timers the layout names, each once, in its order, with what each counts to.
+  const panel = win.getByTestId('stage-message-control');
+  const rows = panel.getByTestId('stage-timer-row');
+  await expect(rows).toHaveCount(2);
+  const first = rows.first();
+  await expect(first).toHaveAttribute('data-timer-id', countdown);
+  await expect(first).toContainText('Placeholder stage countdown');
+  await expect(first.getByTestId('stage-timer-counts')).toHaveText('Counts down from 5:00');
+  await expect(first.getByTestId('stage-timer-value')).toHaveText('5:00');
+  const second = rows.nth(1);
+  await expect(second).toHaveAttribute('data-timer-id', toTime);
+  await expect(second.getByTestId('stage-timer-counts')).toHaveText(
+    /^Counts down to (19:30|7:30\s?[ap]\.?m\.?)$/iu,
+  );
+  // A countdown to a time counts by the clock: it has no Reset, as in Timers.
+  await expect(second.getByRole('button', { name: 'Reset' })).toHaveCount(0);
+  await first.getByRole('button', { name: 'Start' }).click();
+  await expect.poll(startedAt).not.toBeNull();
+  await expect(first).toHaveAttribute('data-running', 'true');
+  await first.getByRole('button', { name: 'Pause' }).click();
+  await expect.poll(startedAt).toBeNull();
+  await expect(first).not.toHaveAttribute('data-running');
+  await first.getByRole('button', { name: 'Reset' }).click();
+  await expect.poll(elapsed).toBe(0);
+  await expect(first.getByTestId('stage-timer-value')).toHaveText('5:00');
+
+  // The phone remote, Chrome's engine and Safari's: the same timers, under "On the stage screens".
+  const { base } = await networkOn(win);
+  for (const engine of ['chromium', 'webkit'] as const) {
+    await resetAll();
+    const code = await pairingCode(win, 'remote', `Placeholder phone ${engine}`);
+    const phone = await device(engine);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      await p.getByTestId('remote-tab-more').click();
+      const section = p.getByTestId('remote-stage-timers');
+      await expect(section.getByRole('heading', { name: 'On the stage screens' })).toBeVisible();
+      const timers = section.getByTestId('remote-stage-timer');
+      await expect(timers).toHaveCount(2);
+      const one = timers.first();
+      await expect(one).toHaveAttribute('data-timer-id', countdown);
+      await expect(one).toContainText('Counts down from 5:00');
+      await expect(one.getByTestId('remote-stage-timer-value')).toHaveText('5:00');
+      await expect(timers.nth(1)).toContainText(/Counts down to (19:30|7:30\s?[ap]\.?m\.?)/iu);
+      await one.getByRole('button', { name: 'Start' }).click();
+      await expect.poll(startedAt).not.toBeNull();
+      await one.getByRole('button', { name: 'Pause' }).click();
+      await expect.poll(startedAt).toBeNull();
+      await one.getByRole('button', { name: 'Reset' }).click();
+      await expect.poll(elapsed).toBe(0);
+      // Every target 44 px or more; the accessibility checks on a phone and on a tablet.
+      for (const button of await section.getByRole('button').all())
+        expect((await button.boundingBox())?.height ?? 0, engine).toBeGreaterThanOrEqual(44);
+      await p.setViewportSize({ width: 375, height: 812 });
+      await expect(section).toBeVisible();
+      await expectNoSeriousA11yIssues(p, `the remote’s stage timers at 375 x 812 (${engine})`);
+      await p.setViewportSize({ width: 768, height: 1024 });
+      await expect(p.getByTestId('remote-stage-timers')).toBeVisible();
+      await expectNoSeriousA11yIssues(p, `the remote’s stage timers at 768 x 1024 (${engine})`);
+    } finally {
+      await phone.close();
+    }
+  }
   await app.close();
 });

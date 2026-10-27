@@ -1,6 +1,6 @@
 import { type ClockStyle, formatClock, formatDuration } from './format';
-import type { StageBox, StageTimerFormat } from './stage-layouts';
-import { countsDown, formatTimer, type TimerState, timerValue, zeroAt } from './timers';
+import type { StageBox, StageLayout, StageTimerFormat } from './stage-layouts';
+import { countsDown, formatTimer, timerDuration, type TimerState, timerValue, zeroAt } from './timers';
 
 /*
  * A stage layout's timer and clock boxes as they draw (Session 54), as pure functions of the box, the timer and
@@ -108,4 +108,42 @@ export function stageClockText(
     clockFormats.set(key, format);
   }
   return format.format(ms);
+}
+
+// ---- the stage screens' timers, run from the Stage panel and the phone (Session 54, Part A3) ----------------
+
+/**
+ * The timers a stage layout's timer boxes show by name, each once, in the layout's order: what the Stage panel and
+ * the phone start, pause and reset. None for the Standard stage screen, nor for a box of every running timer.
+ */
+export function layoutTimerIds(layout: Pick<StageLayout, 'boxes'> | null | undefined): string[] {
+  const ids: string[] = [];
+  for (const box of layout?.boxes ?? [])
+    if (box.kind === 'timer' && box.timerId && !ids.includes(box.timerId)) ids.push(box.timerId);
+  return ids;
+}
+
+/**
+ * What a timer counts to or from, in words: "Counts down to 7:30 pm" (the time of day as the clock style writes
+ * it, whatever the time zone: it is the time set), "Counts down from 5:00", "Counts up from 0:00"; null for a clock
+ * or a countdown to no time.
+ */
+export function countsToWords(timer: TimerState, style: ClockStyle | null | undefined): string | null {
+  switch (timer.kind) {
+    case 'countdown':
+      return `Counts down from ${timerDuration(timer.durationMs, false)}`;
+    case 'countup':
+      return 'Counts up from 0:00';
+    case 'countdown_to_time': {
+      const m = timer.targetTime === null ? null : /^(\d{1,2}):(\d{2})$/u.exec(timer.targetTime);
+      if (!m) return null;
+      // The time set, on a day of its own in UTC: written in the style's language (or this computer's), never
+      // moved by a time zone.
+      const at = Date.UTC(2000, 0, 1, Number(m[1]), Number(m[2]));
+      const locale = style?.locale ?? Intl.DateTimeFormat().resolvedOptions().locale;
+      return `Counts down to ${formatClock(at, { locale, timeZone: 'UTC' })}`;
+    }
+    case 'clock':
+      return null;
+  }
 }

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import type { StageLayout } from '../../../shared/stage-layouts';
 import type { StageTemplate, TemplateTimerKind } from '../../../shared/stage-templates';
@@ -21,7 +21,7 @@ import { useEngine } from '../engine/engine-store';
 import { lookAction, useLooks } from '../looks/looks-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageLayoutView } from '../render/StageLayoutView';
-import { useScreens } from '../screens/screens-store';
+import { connectScreens, useScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
@@ -84,6 +84,10 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const id = useId();
+  // The stage groups the layout is chosen for, read if the window has not yet.
+  useEffect(() => {
+    connectScreens();
+  }, []);
 
   const kinds = templateTimerKinds(template);
   // The new timer's kind: the template's own, or the one chosen (Timer only, and over the audience).

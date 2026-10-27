@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { swings } from './flash';
 import { type ClockStyle, formatClock } from './format';
+import { newStageBox } from './stage-layouts';
 import {
+  countsToWords,
   durationAs,
   FLASH_DIM,
   FLASH_FOR_MS,
   flashDimmed,
+  layoutTimerIds,
   stageClockText,
   stageTimerColor,
   stageTimerText,
@@ -151,5 +154,42 @@ describe('a clock box', () => {
     expect(stageClockText(at, UTC, { seconds: true })).toMatch(/^19:05:09$|^7:05:09\s?pm$/iu);
     // In the clock style's own time zone, as every screen writes Main's time.
     expect(stageClockText(at, { locale: 'en-GB', timeZone: 'Asia/Kolkata' }, { hours: 24 })).toBe('00:35');
+  });
+});
+
+// Session 54 (Part A3): the Stage panel and the phone run the timers the stage screens' layout shows.
+describe('the stage screens’ timers', () => {
+  it('are those the layout’s timer boxes show by name, each once, in the layout’s order', () => {
+    const timer = (id: string, timerId: string | null) => ({ ...newStageBox('timer', id), timerId });
+    expect(layoutTimerIds(null)).toEqual([]);
+    expect(layoutTimerIds(undefined)).toEqual([]);
+    expect(
+      layoutTimerIds({
+        boxes: [
+          newStageBox('audience', 'hall'),
+          timer('a', 'second'),
+          timer('b', null),
+          newStageBox('clock', 'clock'),
+          timer('c', 'first'),
+          timer('d', 'second'),
+        ],
+      }),
+    ).toEqual(['second', 'first']);
+    // Every running timer is no one timer to run.
+    expect(layoutTimerIds({ boxes: [timer('b', null)] })).toEqual([]);
+  });
+
+  it('say what each counts to, in Drashti’s computer’s way of writing the time', () => {
+    expect(countsToWords(countdown, UTC)).toBe('Counts down from 5:00');
+    expect(countsToWords({ ...countdown, kind: 'countup' }, UTC)).toBe('Counts up from 0:00');
+    const to = { ...countdown, kind: 'countdown_to_time' as const, targetTime: '19:30' };
+    // As Drashti's computer writes the time: en-GB in 24 hours, en-US in 12.
+    expect(countsToWords(to, UTC)).toBe('Counts down to 19:30');
+    expect(countsToWords(to, { locale: 'en-US', timeZone: 'Asia/Kolkata' })).toMatch(
+      /^Counts down to 7:30\s?PM$/u,
+    );
+    expect(countsToWords(to, { locale: 'de-DE', timeZone: 'UTC' })).toBe('Counts down to 19:30');
+    expect(countsToWords({ ...to, targetTime: null }, UTC)).toBeNull();
+    expect(countsToWords({ ...countdown, kind: 'clock' }, UTC)).toBeNull();
   });
 });

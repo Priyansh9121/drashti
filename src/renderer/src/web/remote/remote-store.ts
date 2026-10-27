@@ -69,6 +69,8 @@ interface RemoteView {
     groupId: string | null;
     clock: { locale: string; timeZone: string };
     switches: ScreenSwitches;
+    /** The stage screens' group, whose layout's timers the remote runs (Session 54); null for none. */
+    stageGroupId: string | null;
   } | null;
 }
 
@@ -200,10 +202,16 @@ async function loadHall(): Promise<void> {
     groupId: string | null;
     clock: { locale: string; timeZone: string };
     switches?: ScreenSwitches;
+    stageGroupId?: string | null;
   }>('/api/v1/hall');
   if (r.ok)
     useRemote.setState({
-      hall: { groupId: r.groupId, clock: r.clock, switches: r.switches ?? { ...ALL_ON } },
+      hall: {
+        groupId: r.groupId,
+        clock: r.clock,
+        switches: r.switches ?? { ...ALL_ON },
+        stageGroupId: r.stageGroupId ?? null,
+      },
     });
 }
 

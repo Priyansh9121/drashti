@@ -656,6 +656,8 @@ export class NetworkService implements EngineTransport {
           groupId: this.deps.reads.hall().groupId,
           clock: this.deps.reads.clockStyle(),
           switches: this.deps.reads.switches(),
+          // The stage screens' group (Session 54): a Remote runs the timers of its layout in the live Look.
+          stageGroupId: this.deps.reads.stage().groupId,
         });
       case 'looks':
         return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });

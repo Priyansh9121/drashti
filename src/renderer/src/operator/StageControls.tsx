@@ -13,6 +13,7 @@ import { openStageLayouts, STANDARD } from '../stage/stage-layouts-store';
 import { Panel } from '../ui/Panel';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
+import { StageTimerControls } from './StageTimerControls';
 
 /** What the stage screens show the performers, small (also on the Stage screen's card in Screens). */
 export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
@@ -83,6 +84,8 @@ export function StageMessageControl() {
         <StagePreview />
         <EditLayoutButton />
       </div>
+      {/* The stage layout's timers, with Start, Pause and Reset (Session 54). */}
+      <StageTimerControls />
       <form
         className="flex gap-2"
         onSubmit={(e) => {
