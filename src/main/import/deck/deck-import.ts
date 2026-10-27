@@ -334,6 +334,9 @@ export async function bakedPresentation(
         start,
         ...(m.acrossSlides ? { acrossSlides: m.acrossSlides } : {}),
         ...(m.hideWhenStopped ? { hideWhenStopped: true } : {}),
+        // Shown only from its entrance and until its exit, where the deck animates it in or out (C review).
+        ...(m.enterGroup !== null ? { enterStep: stepOfGroup(d?.groups ?? [], m.enterGroup) } : {}),
+        ...(m.exitGroup !== null ? { exitStep: stepOfGroup(d?.groups ?? [], m.exitGroup) } : {}),
       });
       if (m.kind === 'video') {
         videos++;

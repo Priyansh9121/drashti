@@ -217,6 +217,38 @@ describe('the movie’s plan', () => {
     expect(plan.slides.every((s) => s.steps.every((st) => st.holdMs === null))).toBe(true);
   });
 
+  it('reads when a video comes in by its entrance and leaves by its exit, as steps', async () => {
+    const [, , , video] = TRIAL_SLIDES;
+    if (!video) throw new Error('no trial slide');
+    const enters = join(dir, 'Placeholder video enters.pptx');
+    writeFileSync(
+      enters,
+      makeTestDeck(
+        [
+          {
+            ...video,
+            effects: [
+              { kind: 'fade', target: 3, dur: 500, start: 'click' },
+              { kind: 'play', target: 3, dur: 3000, start: 'after' },
+              { kind: 'exit-fade', target: 3, dur: 500, start: 'click' },
+            ],
+          },
+        ],
+        media,
+      ),
+    );
+    const deck = await readPptxDeck(enters);
+    const [m] = deck.slides[0]?.deck?.media ?? [];
+    expect([m?.enterGroup, m?.exitGroup]).toEqual([0, 1]);
+    expect([
+      stepOfGroup(deck.slides[0]?.deck?.groups ?? [], 0),
+      stepOfGroup(deck.slides[0]?.deck?.groups ?? [], 1),
+    ]).toEqual([1, 2]);
+    // The trial's own videos have neither: shown from the slide's start to its end.
+    const trialDeck = await readPptxDeck(trial);
+    expect(trialDeck.slides[3]?.deck?.media.map((x) => [x.enterGroup, x.exitGroup])).toEqual([[null, null]]);
+  });
+
   it('a spin repeating until the next click turns through its own step only: a hold after it, none after the click', async () => {
     const [, , loop] = TRIAL_SLIDES;
     if (!loop) throw new Error('no trial slide');

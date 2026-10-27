@@ -150,6 +150,12 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       // The spin's slide holds one turn after each step.
       expect(decks[2]?.steps.map((s) => s.holdMs)).toEqual([2000, 2000]);
       expect(decks[2]?.steps.every((s) => s.holdId)).toBe(true);
+      // Shown from the slide's start to its end: no entrance or exit of their own.
+      expect(decks.flatMap((d) => d.media.map((m) => [m.enterStep, m.exitStep]))).toEqual([
+        [undefined, undefined],
+        [undefined, undefined],
+        [undefined, undefined],
+      ]);
       // The trimmed, looping video at 80 %, starting by itself after its slide's transition (1 s, and PowerPoint's 60 ms).
       const [auto] = decks[3]?.media ?? [];
       expect(auto).toMatchObject({
