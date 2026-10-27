@@ -133,7 +133,7 @@ export type ToDevice =
   /** The connection is ending, and why (the device was revoked, the network turned off...). */
   | { type: 'bye'; reason: ByeReason };
 
-export type ByeReason = 'unauthorized' | 'revoked' | 'network-off' | 'too-slow' | 'not-allowed';
+export type ByeReason = 'unauthorized' | 'revoked' | 'network-off' | 'too-slow' | 'not-allowed' | 'stopped';
 
 export const BYE_TEXT: Record<ByeReason, string> = {
   unauthorized: 'This device is not paired with Drashti (or its pairing was removed). Pair it again.',
@@ -141,6 +141,8 @@ export const BYE_TEXT: Record<ByeReason, string> = {
   'network-off': 'Drashti’s network was turned off.',
   'too-slow': 'The connection was too slow to keep up. Connecting again…',
   'not-allowed': 'This device cannot show the state.',
+  // Session 54 (access by Gmail): Drashti stopped, or not let in yet. The device stays paired.
+  stopped: 'Drashti has stopped on its computer: nothing works here until it is let in again.',
 };
 
 /**
