@@ -18,6 +18,8 @@ export interface Moved {
   themes: string[];
   /** Audio playlists' tracks (Session 14; left out by conversions made before). */
   tracks?: string[];
+  /** Deck slides whose own videos and sounds moved (Session 54, C2; left out by conversions made before). */
+  decks?: string[];
 }
 
 export const NOTHING_MOVED: Moved = {
@@ -28,6 +30,7 @@ export const NOTHING_MOVED: Moved = {
   props: [],
   themes: [],
   tracks: [],
+  decks: [],
 };
 
 /**
@@ -105,6 +108,36 @@ function swapJson(
   return done;
 }
 
+/**
+ * A deck's slides whose own videos and sounds name `from` (Session 54, C2: shared/deck.ts's DeckMedia), with it
+ * swapped for `to`; written, and their ids returned. The steps' clips and pictures are Drashti's own, never converted.
+ */
+function swapDecks(db: Db, from: string, to: string, only?: readonly string[]): string[] {
+  const rows = db
+    .prepare('SELECT id, deck FROM slides WHERE deck IS NOT NULL AND instr(deck, ?) > 0')
+    .all(from) as {
+    id: string;
+    deck: string;
+  }[];
+  const write = db.prepare('UPDATE slides SET deck = ? WHERE id = ?');
+  const done: string[] = [];
+  for (const row of rows) {
+    if (only && !only.includes(row.id)) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.deck);
+    } catch {
+      continue;
+    }
+    if (typeof parsed !== 'object' || parsed === null || !('media' in parsed)) continue;
+    const media = swapIds(parsed.media, from, to);
+    if (!media.changed) continue;
+    write.run(JSON.stringify({ ...parsed, media: media.value }), row.id);
+    done.push(row.id);
+  }
+  return done;
+}
+
 /** Point everything that uses `from` at `to` (one transaction); returns what moved. */
 export function moveMedia(db: Db, from: string, to: string): Moved {
   return db.transaction((): Moved => {
@@ -128,7 +161,8 @@ export function moveMedia(db: Db, from: string, to: string): Moved {
     for (const id of elements) element.run(to, id);
     const props = swapJson(db, 'props', from, to);
     const themes = swapJson(db, 'themes', from, to);
-    return { cues, items, kirtans, elements, props, themes, tracks };
+    const decks = swapDecks(db, from, to);
+    return { cues, items, kirtans, elements, props, themes, tracks, decks };
   })();
 }
 
@@ -152,6 +186,7 @@ export function moveBack(db: Db, moved: Moved, from: string, to: string): void {
     );
     swapJson(db, 'props', to, from, moved.props);
     swapJson(db, 'themes', to, from, moved.themes);
+    swapDecks(db, to, from, moved.decks ?? []);
   })();
 }
 
@@ -174,5 +209,9 @@ export function presentationsMoved(db: Db, moved: Moved): string[] {
     if (p) out.add(p);
   }
   for (const id of moved.kirtans) out.add(id);
+  for (const id of moved.decks ?? []) {
+    const p = of.get(id) as { id: string } | undefined;
+    if (p) out.add(p.id);
+  }
   return [...out];
 }

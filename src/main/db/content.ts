@@ -33,6 +33,11 @@ export interface SlideRow {
   enabled: number;
   /** The macro it runs when it goes up, or null. */
   macro_id: string | null;
+  /**
+   * What a deck's slide carries (Session 54, C2; migration 50) as JSON (shared/deck-schema.ts), or null for any other
+   * slide. Left out (a slide made here, new) is null.
+   */
+  deck?: string | null;
 }
 export interface ElementRow {
   id: string;
@@ -131,7 +136,8 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
     .all(presentationId) as GroupRow[];
   const slides = db
     .prepare(
-      `SELECT s.id, s.group_id, s.position, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.enabled, s.macro_id
+      `SELECT s.id, s.group_id, s.position, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.enabled, s.macro_id,
+              s.deck
          FROM slides s JOIN slide_groups g ON g.id = s.group_id
         WHERE g.presentation_id = ? ORDER BY g.position, g.rowid, s.position, s.rowid`,
     )
@@ -227,8 +233,8 @@ export function writeContent(db: Db, rows: ContentRows): void {
   );
   for (const g of rows.groups) group.run(g.id, id, g.name, g.color, g.position);
   const slide = db.prepare(
-    `INSERT INTO slides (id, group_id, position, label, notes, background, darken, transition, auto_advance_ms, enabled, macro_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO slides (id, group_id, position, label, notes, background, darken, transition, auto_advance_ms, enabled, macro_id, deck)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const s of rows.slides)
     slide.run(
@@ -243,6 +249,7 @@ export function writeContent(db: Db, rows: ContentRows): void {
       s.auto_advance_ms,
       s.enabled,
       s.macro_id,
+      s.deck ?? null,
     );
   const element = db.prepare(
     `INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, rotation, props)

@@ -50,6 +50,7 @@ describe('moving everything to the converted file', () => {
       props: ['pr'],
       themes: ['th'],
       tracks: [],
+      decks: [],
     });
     expect(uses(db, 'old')).toEqual([0, 0, 0, 0, 0, 0]);
     expect(uses(db, 'new')).toEqual([1, 1, 1, 1, 1, 1]);
@@ -102,5 +103,50 @@ describe('a converted sound in an audio playlist (Session 14)', () => {
     expect(order()).toEqual(['other', 'new']);
     moveBack(db, moved, 'old', 'new');
     expect(order()).toEqual(['other', 'old']);
+  });
+});
+
+describe('a converted video of a deck shown as it was (Session 54, C2)', () => {
+  it('moves the deck’s own video to the copy, never its steps’ clips, and back with Undo', () => {
+    const db = openDatabase(':memory:');
+    const deck = {
+      steps: [{ clipId: 'clip', clipMs: 900, lastId: 'last' }],
+      media: [
+        {
+          kind: 'video',
+          mediaId: 'old',
+          box: { x: 0.1, y: 0.1, w: 0.5, h: 0.5 },
+          posterId: 'poster',
+          loop: true,
+          volume: 0.8,
+          start: { step: 0, offsetMs: 0 },
+        },
+      ],
+    };
+    db.prepare(
+      `INSERT INTO media (id, kind, name, path) VALUES ('old', 'video', 'Placeholder.wmv', 'aa/old.wmv'),
+         ('new', 'video', 'Placeholder.mp4', 'bb/new.mp4')`,
+    ).run();
+    db.exec(`
+      INSERT INTO libraries (id, name) VALUES ('lib', 'Default');
+      INSERT INTO presentations (id, library_id, name) VALUES ('p1', 'lib', 'Placeholder deck');
+      INSERT INTO slide_groups (id, presentation_id, name, position) VALUES ('g1', 'p1', '', 0);
+    `);
+    db.prepare("INSERT INTO slides (id, group_id, position, deck) VALUES ('s1', 'g1', 0, ?)").run(
+      JSON.stringify(deck),
+    );
+    db.prepare("INSERT INTO slides (id, group_id, position) VALUES ('s2', 'g1', 1)").run();
+    const stored = () =>
+      JSON.parse((db.prepare("SELECT deck FROM slides WHERE id = 's1'").get() as { deck: string }).deck) as {
+        steps: unknown;
+        media: { mediaId: string; posterId: string }[];
+      };
+    const moved = moveMedia(db, 'old', 'new');
+    expect(moved.decks).toEqual(['s1']);
+    expect(stored().media.map((m) => [m.mediaId, m.posterId])).toEqual([['new', 'poster']]);
+    expect(stored().steps).toEqual(deck.steps);
+    expect(presentationsMoved(db, moved)).toEqual(['p1']);
+    moveBack(db, moved, 'old', 'new');
+    expect(stored()).toEqual(deck);
   });
 });

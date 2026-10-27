@@ -211,6 +211,8 @@ export function applySlideEdit(
         auto_advance_ms: s.autoAdvanceMs,
         enabled: s.enabled ? 1 : 0,
         macro_id: s.macroId,
+        // A deck's slide keeps what its deck gave it, as stored (Session 54, C2); a slide made here has none.
+        deck: old?.deck ?? null,
       });
       const list: ElementRow[] = s.elements.map((el) => {
         const was = oldElements.get(el.id);

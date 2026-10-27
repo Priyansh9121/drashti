@@ -14,6 +14,8 @@ import type { KirtanDetails } from '../../shared/kirtans';
 import { occasionsFrom } from '../../shared/kirtans';
 import { type Lang, LANGS, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
 import { darkenFromJson, slideElementSchema } from '../../shared/model-schema';
+import type { DeckSlide } from '../../shared/deck';
+import { deckFromJson, deckToJson } from '../../shared/deck-schema';
 import { cueInputName } from '../../shared/slide-edit';
 import { langsOf } from '../../shared/tracks';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
@@ -174,6 +176,8 @@ export interface NewSlide {
   transition?: Transition | null;
   /** Moves on by itself after this long; left out or null to wait for the operator. */
   autoAdvanceMs?: number | null;
+  /** Made from a deck with its animations (Session 54, C2; migration 50): its steps and real media. */
+  deck?: DeckSlide | null;
 }
 
 export interface NewSlideCue {
@@ -327,7 +331,8 @@ export class PresentationRepo {
       .all(id) as { id: string; name: string; color: string | null }[];
     const slides = this.db
       .prepare(
-        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.macro_id
+        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.macro_id,
+                s.deck
            FROM slides s JOIN slide_groups g ON g.id = s.group_id
           WHERE g.presentation_id = ? AND s.enabled = 1
           ORDER BY g.position, g.rowid, s.position, s.rowid`,
@@ -342,6 +347,7 @@ export class PresentationRepo {
       transition: string | null;
       auto_advance_ms: number | null;
       macro_id: string | null;
+      deck: string | null;
     }[];
     const elements = this.db
       .prepare(
@@ -392,6 +398,8 @@ export class PresentationRepo {
     );
     slides.forEach((s, index) => {
       const darken = darkenFromJson(s.darken);
+      // A deck's slide (Session 54, C2): left out for every other slide, as darkening is.
+      const deck = deckFromJson(s.deck);
       const slide: RenderSlide = {
         id: s.id,
         width: p.width,
@@ -400,6 +408,7 @@ export class PresentationRepo {
         // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
         ...(darken ? { darken } : {}),
         elements: bySlide.get(s.id) ?? [],
+        ...(deck ? { deck } : {}),
       };
       const info: SlideInfo = {
         id: s.id,
@@ -591,6 +600,10 @@ export class PresentationRepo {
       `INSERT INTO slides (id, group_id, position, label, notes, background, transition, auto_advance_ms, enabled)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
+    // A deck's slides (Session 54, C2): only then is the column named, so a library made by an older migration
+    // (the tests' own) still takes every other presentation.
+    const anyDeck = input.groups.some((g) => g.slides.some((sl) => sl.deck));
+    const setDeck = anyDeck ? db.prepare('UPDATE slides SET deck = ? WHERE id = ?') : null;
     const insertElement = db.prepare(
       'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, rotation, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
@@ -615,6 +628,7 @@ export class PresentationRepo {
           slide.autoAdvanceMs ?? null,
           slide.enabled === false ? 0 : 1,
         );
+        if (setDeck && slide.deck) setDeck.run(deckToJson(slide.deck), slideId);
         slide.elements.forEach((element, ei) => {
           const { id: _id, kind, frame, rotation, ...props } = element;
           insertElement.run(
