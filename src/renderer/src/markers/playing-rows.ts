@@ -10,7 +10,14 @@ import { playbackAtMs, playbackSpanMs } from '../../../shared/media';
 /** One thing playing, as a row of the time bar shows it. */
 export interface PlayingRow {
   playing: Playing;
-  /** A stable key: its layer, and its file for a slide's video. */
+  /** Which it is, as a page names it for tests: its layer, or "slide:<media id>" for a slide's video. */
+  which: string;
+  /**
+   * Its React key: this playing of this file, its layer, its file and when it started (an audio playlist's track by
+   * its place in the list), so another file, another showing of it or the next track is a row drawn anew, and a drag
+   * held on the one that went is let go of, never landing on the one that came (Session 54's review). A move, Pause or
+   * Play (a jump) keeps it.
+   */
   key: string;
   /** Its short name beside the bar: "Background", "Slide video", "Box video", "Sound", "Music". */
   short: string;
@@ -28,33 +35,32 @@ export function playingRows(state: EngineState | null | undefined): PlayingRow[]
   let nth = 0;
   return all.map((playing) => {
     const ref = playing.ref;
-    const key = ref.layer === 'slide' ? `slide:${ref.mediaId}` : ref.layer;
+    const which = ref.layer === 'slide' ? `slide:${ref.mediaId}` : ref.layer;
+    const music = playing.track ? state?.layers.audio?.music : undefined;
+    const key = music
+      ? `music:${music.playlistId}#${String(music.index)}:${playing.mediaId}`
+      : `${ref.layer}:${playing.mediaId}@${String(playing.clock.startedAt)}`;
+    const named = { playing, which, key };
     switch (ref.layer) {
       case 'background':
-        return { playing, key, short: 'Background', name: 'Time of the background video' };
+        return { ...named, short: 'Background', name: 'Time of the background video' };
       case 'slide': {
         nth++;
-        const which = onSlide > 1 ? ` ${String(nth)}` : '';
+        const number = onSlide > 1 ? ` ${String(nth)}` : '';
         return {
-          playing,
-          key,
-          short: `Slide video${which}`,
+          ...named,
+          short: `Slide video${number}`,
           name: onSlide > 1 ? `Time of video ${String(nth)} on the slide` : 'Time of the video on the slide',
         };
       }
       case 'pip':
-        return {
-          playing,
-          key,
-          short: 'Box video',
-          name: 'Time of the video in the picture-in-picture box',
-        };
+        return { ...named, short: 'Box video', name: 'Time of the video in the picture-in-picture box' };
       case 'audio':
         return playing.track
-          ? { playing, key, short: 'Music', name: 'Time of the music playing' }
-          : { playing, key, short: 'Sound', name: 'Time of the sound playing' };
+          ? { ...named, short: 'Music', name: 'Time of the music playing' }
+          : { ...named, short: 'Sound', name: 'Time of the sound playing' };
       default:
-        return { playing, key, short: 'Video', name: 'Time of the video playing' };
+        return { ...named, short: 'Video', name: 'Time of the video playing' };
     }
   });
 }

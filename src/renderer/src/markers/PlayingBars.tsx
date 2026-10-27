@@ -8,7 +8,6 @@ import { Badge } from '../ui/Badge';
 import { IconButton } from '../ui/Button';
 import { Pause, Play } from '../ui/icons';
 import { TimeBar } from '../ui/TimeBar';
-import { playingOf } from '../../../shared/engine/playing';
 import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playingRows } from './playing-rows';
 
 /*
@@ -49,7 +48,7 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
       aria-label={row.name}
       className="flex min-w-0 items-center gap-1.5"
       data-testid="time-bar-row"
-      data-playing={row.key}
+      data-playing={row.which}
       data-paused={playing.paused ? 'true' : undefined}
     >
       {pro &&
@@ -99,23 +98,22 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
  */
 export function TrackBar() {
   const state = useEngine((s) => s.state);
-  const track = useMemo(() => {
-    const playing = playingOf(state, { layer: 'audio' });
-    return playing?.track ? playing : null;
-  }, [state]);
+  // The track as its row under LIVE has it, keyed alike: the next track is a bar drawn anew (Session 54's review).
+  const track = useMemo(() => playingRows(state).find((r) => r.playing.track) ?? null, [state]);
   const now = useNow(250);
   if (!track) return null;
-  const bar = barNow(track, now);
+  const bar = barNow(track.playing, now);
   return (
     <TimeBar
+      key={track.key}
       label="Time of the track playing"
       testId="music-time-bar"
       atMs={bar.atMs}
       durationMs={bar.durationMs}
       startMs={bar.startMs}
       endMs={bar.endMs}
-      markers={track.marks}
-      onMove={(ms) => void dispatch(moveCommand(track.ref, ms))}
+      markers={track.playing.marks}
+      onMove={(ms) => void dispatch(moveCommand(track.playing.ref, ms))}
     />
   );
 }

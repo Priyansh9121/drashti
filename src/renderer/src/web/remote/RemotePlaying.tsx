@@ -47,7 +47,7 @@ function Row({ row }: { row: PlayingRow }) {
       aria-label={row.name}
       className="space-y-1"
       data-testid="remote-time-bar-row"
-      data-playing={row.key}
+      data-playing={row.which}
       data-paused={playing.paused ? 'true' : undefined}
     >
       <p className="truncate text-base">
