@@ -11,7 +11,7 @@ import { Scene } from '../../render/Scene';
 import { SlideView } from '../../render/SlideView';
 import { useRemote } from '../remote/remote-store';
 import { DeviceSound, DeviceVideoControls, DeviceVideoPicture, SOUND_PAGE } from './DeviceVideo';
-import { frameInCanvas, frameInSlide, frameOfBackground, keptFraming, zoomTargetOf } from './live-zoom';
+import { frameInCanvas, frameInSlide, frameOfBackground, keptFraming, phoneZoomTarget } from './live-zoom';
 import { setPageSize, useViewer, type ViewerPage } from './viewer-store';
 
 /*
@@ -51,7 +51,7 @@ export function screensPage(): ViewerPage {
     showing: showingNow,
     live: (state) => state !== null && (state.layers.slide !== null || state.layers.background !== null),
     onScreens: (state) => {
-      const target = zoomTargetOf(state);
+      const target = phoneZoomTarget(state);
       const frame = frameInCanvas(state, CANVAS);
       return target && frame ? { frame, kept: keptFraming(state, target.mediaId) } : null;
     },
@@ -104,7 +104,8 @@ export function slidePage(presentationId: string, s: OrderedSlide): ViewerPage {
     live: (state) => slideUp(state, presentationId, s),
     onScreens: (state) => {
       if (!slideUp(state, presentationId, s)) return null;
-      const target = zoomTargetOf(state);
+      // Its own picture only: never the background behind a slide of words (D2 review).
+      const target = phoneZoomTarget(state);
       const frame = frameInSlide(state);
       return target && frame ? { frame, kept: keptFraming(state, target.mediaId) } : null;
     },
@@ -143,7 +144,8 @@ export function picturePage(mediaId: string, name: string): ViewerPage {
     // picture is drawn here as it is (no kept look), so the phone's zoom is the screens' whole zoom.
     onScreens: (state) => {
       const bg = state?.layers.background;
-      const target = zoomTargetOf(state);
+      // Up alone: with a slide over it, the slide's own picture is the one the phone may zoom (D2 review).
+      const target = phoneZoomTarget(state);
       if (
         bg?.kind !== 'media' ||
         bg.media !== 'image' ||

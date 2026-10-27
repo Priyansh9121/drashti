@@ -43,6 +43,19 @@ export function zoomTargetOf(state: EngineState | null): { mediaId: string; show
   return null;
 }
 
+/**
+ * The picture a phone may zoom on the screens (Session 54, D2 review): the slide's own picture, or the background
+ * picture while no slide is up. Never the background behind a slide of words: the engine would zoom it, but neither
+ * the slide's page nor the hall's picture on the phone shows it as the picture zoomed, so the side button would
+ * change what the phone does not show.
+ */
+export function phoneZoomTarget(state: EngineState | null): { mediaId: string; showing: string } | null {
+  const target = zoomTargetOf(state);
+  const slide = state?.layers.slide;
+  if (!target || (slide && target.showing !== slideShowing(slide.shownAt))) return null;
+  return target;
+}
+
 /** How the picture on the screens is kept (its look's zoom and place): what the phone draws, unzoomed. */
 export function keptFraming(state: EngineState | null, mediaId: string): Framing {
   const look = state?.pictures[mediaId] ?? PLAIN;
@@ -102,12 +115,14 @@ export const maxZoomOver = (kept: Framing): number => Math.max(1, ZOOM.max / (ke
 
 /**
  * The live zoom's picture's frame in the hall's picture as a phone draws it (the canvas, the slide fitted into it,
- * as the remote's live picture does): the slide's picture's own box, or the whole canvas for the background.
+ * as the remote's live picture does): the slide's picture's own box, or the whole canvas for the background up
+ * alone; null when the phone may zoom neither (phoneZoomTarget).
  */
 export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFrame | null {
-  const target = zoomTargetOf(state);
+  const target = phoneZoomTarget(state);
   const slide = state?.layers.slide;
-  if (!target || !slide || target.showing !== slideShowing(slide.shownAt)) return target ? FULL_FRAME : null;
+  if (!target) return null;
+  if (!slide) return FULL_FRAME;
   const element = slide.slide.elements.find((e) => e.kind === 'image');
   if (!element || canvas.width <= 0 || canvas.height <= 0) return null;
   const p = placeContent({ width: slide.slide.width, height: slide.slide.height }, canvas, 'fit');
@@ -120,13 +135,14 @@ export function frameInCanvas(state: EngineState | null, canvas: Size): ZoomFram
 }
 
 /**
- * The same in a slide a phone draws on its own (looked through, Session 54): the slide's picture's own box, or the
- * whole slide for the background behind it.
+ * The same in a slide a phone draws on its own (looked through, Session 54): the slide's picture's own box (with no
+ * slide up, the whole of it); null when the phone may zoom neither (phoneZoomTarget).
  */
 export function frameInSlide(state: EngineState | null): ZoomFrame | null {
-  const target = zoomTargetOf(state);
+  const target = phoneZoomTarget(state);
   const slide = state?.layers.slide;
-  if (!target || !slide || target.showing !== slideShowing(slide.shownAt)) return target ? FULL_FRAME : null;
+  if (!target) return null;
+  if (!slide) return FULL_FRAME;
   const element = slide.slide.elements.find((e) => e.kind === 'image');
   const { width, height } = slide.slide;
   if (!element || width <= 0 || height <= 0) return null;

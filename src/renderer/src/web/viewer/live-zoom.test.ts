@@ -10,6 +10,7 @@ import {
   liveFramingOf,
   liveZoomFor,
   maxZoomOver,
+  phoneZoomTarget,
   viewForLive,
   zoomTargetOf,
 } from './live-zoom';
@@ -90,6 +91,26 @@ describe('the picture the screens zoom (Session 54, D2)', () => {
     if (!slide) throw new Error('no slide');
     slide.slide = { ...slide.slide, width: 1440, height: 1080 };
     expect(frameInCanvas(narrow, CANVAS)?.x).toBeCloseTo(240 / 1920);
+  });
+
+  it('is never the background behind a slide of words, which the phone does not show as the screens’ picture', () => {
+    // A slide of words up over the background picture: the engine would zoom the background, which neither the
+    // slide's page nor the hall's picture on the phone shows as the picture zoomed: no frame, so no button.
+    const words = withBackground();
+    words.layers.slide = {
+      presentationId: 'p1',
+      slideIndex: 0,
+      shownAt: 9000,
+      notes: '',
+      slide: { id: 's-words', width: 1920, height: 1080, background: null, elements: [] },
+    };
+    expect(zoomTargetOf(words)?.mediaId).toBe('m-bg');
+    expect(phoneZoomTarget(words)).toBeNull();
+    expect(frameInCanvas(words, CANVAS)).toBeNull();
+    expect(frameInSlide(words)).toBeNull();
+    // The background alone, or the slide's own picture: the phone may zoom it.
+    expect(phoneZoomTarget(withBackground())?.mediaId).toBe('m-bg');
+    expect(phoneZoomTarget(withSlidePicture())?.mediaId).toBe('m-page');
   });
 
   it('frames a picture shown in its own shape as the screens fit it into theirs', () => {

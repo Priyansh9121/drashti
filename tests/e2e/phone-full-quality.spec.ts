@@ -269,14 +269,16 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       await expect(p.getByTestId('viewer-screens')).toHaveCount(0);
       await p.getByTestId('viewer-close').click();
 
-      // Its second slide on the screens, over the picture: looked through from there, zoomed, the button is back
-      // (the picture behind the slide is the one the screens zoom); on the slide after it, it is not.
+      // A kirtan's slide of words on the screens, over the picture: looked through from there it is the one live,
+      // but the screens would zoom the picture behind its words, which the phone does not show as the picture: no
+      // button (D2 review), on its page, the next or the hall's picture while those words are up.
       await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 1 });
       await expect.poll(async () => (await snapshot(win)).layers.slide?.slideIndex).toBe(1);
       await p.getByTestId('remote-look-through').click();
       await expect(p.getByTestId('viewer')).toHaveAttribute('data-live', 'true');
       await p.getByTestId('viewer-zoom-in').click();
-      await expect(p.getByTestId('viewer-show-zoom')).toBeVisible();
+      await expect(p.getByTestId('viewer-zoom-level')).toHaveText('150%');
+      await expect(p.getByTestId('viewer-show-zoom')).toHaveCount(0);
       await p.getByTestId('viewer-next').click();
       await expect(p.getByTestId('viewer')).not.toHaveAttribute('data-live', 'true');
       await p.getByTestId('viewer-zoom-in').click();
@@ -284,6 +286,12 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       // Turning pages on the phone never moved the screens.
       expect((await snapshot(win)).layers.slide?.slideIndex).toBe(1);
       await expectNoSeriousA11yIssues(p, `the viewer looking through a presentation (${engine})`);
+      await p.getByTestId('viewer-close').click();
+      await p.getByTestId('remote-look-closer').click();
+      await expect(p.getByTestId('viewer')).toHaveAttribute('data-live', 'true');
+      await p.getByTestId('viewer-zoom-in').click();
+      await expect(p.getByTestId('viewer-show-zoom')).toHaveCount(0);
+      expect((await snapshot(win)).liveZoom?.zoom ?? 1).toBe(1);
     } finally {
       await phone.close();
     }
