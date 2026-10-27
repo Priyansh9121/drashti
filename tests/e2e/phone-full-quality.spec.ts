@@ -309,6 +309,7 @@ test('a video plays on the phone at its original quality, in pieces as it plays,
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await p.getByTestId('remote-tab-playlist').click();
+    await p.getByTestId('remote-playlist').selectOption(show.playlistId);
     const row = p.getByTestId('remote-items').locator('li').filter({ hasText: VIDEO });
     await row.getByTestId('remote-item-look').click();
     const video = p.getByTestId('viewer-video');
