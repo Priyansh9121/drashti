@@ -521,6 +521,9 @@ describe('Drashti’s installers', () => {
       "- '!node_modules/better-sqlite3/{deps,src,build}/**'",
       "- '!node_modules/better-sqlite3/prebuilds/linux*'",
     ]);
-    expect(yml).not.toMatch(/access-list|tests\//u);
+    // The guides' pictures are named for the windows they show: screenshots/access-list.png is the Access List's.
+    const withoutPictures = yml.replace(/^ *- screenshots\/[a-z0-9-]+\.png\n/gmu, '');
+    expect(withoutPictures).toContain('from: docs');
+    expect(withoutPictures).not.toMatch(/access-list|tests\//u);
   });
 });
