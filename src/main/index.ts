@@ -55,7 +55,7 @@ import {
   isOperatorMode,
   leaveSimpleRefusal,
   SIMPLE_MODE_REFUSAL,
-  SIMPLE_MODE_REFUSED_COMMANDS,
+  simpleModeRefuses,
   startingMode,
 } from '../shared/mode';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
@@ -1333,8 +1333,7 @@ function start(): void {
         start: () => lookService?.start() ?? NO_LOOK,
       },
       // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
-      refuse: (command) =>
-        simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
+      refuse: (command) => (simpleNow() && simpleModeRefuses(command) ? SIMPLE_MODE_REFUSAL : null),
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,

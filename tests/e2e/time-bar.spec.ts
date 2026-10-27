@@ -463,7 +463,7 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
   await app.close();
 });
 
-test('Simple Mode shows the bar and its time left and moves nothing; the bars fit 1024 × 645 in both modes', async () => {
+test('Simple Mode shows the bar and its time left and moves nothing (no move, no skip, no Pause but the music’s; Play always); the bars fit 1024 × 645 in both modes', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -508,6 +508,9 @@ test('Simple Mode shows the bar and its time left and moves nothing; the bars fi
   await expect(row(win, 'audio').getByRole('slider')).toBeVisible({ timeout: 15_000 });
   await fits('Pro Mode', win.getByTestId('show-next'));
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Pro Mode');
+  // The sound paused in Pro Mode: Simple Mode can play it on (it has no Play of its own), never pause it again.
+  await row(win, 'audio').getByRole('button', { name: 'Pause' }).click();
+  await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
   // Simple Mode: the bar and its time left, no elapsed time, no Play or Pause, nothing to move.
   await win.getByRole('button', { name: 'Simple Mode' }).click();
@@ -525,15 +528,30 @@ test('Simple Mode shows the bar and its time left and moves nothing; the bars fi
   await clickAlong(win, shows, 0.8);
   await letTimePass(win, 500, 'a click on Simple Mode’s bar moves nothing');
   expect((await backgroundTiming(win)).seek).toEqual(seek);
-  // The engine refuses a move in Simple Mode, from the window, a phone or the API alike.
-  const refused = await dispatch(win, { type: 'moveTo', playing: { layer: 'background' }, toMs: 1000 });
-  expect(refused).toMatchObject({ ok: false, error: 'forbidden' });
+  // The engine refuses a move in Simple Mode, from the window, a phone or the API alike, and so Back 15 s and the
+  // rest, and the bar's Pause; never Play, so nothing paused stays so (Session 54's review).
+  for (const command of [
+    { type: 'moveTo', playing: { layer: 'background' }, toMs: 1000 },
+    { type: 'skip', layer: 'background', jump: 'back' },
+    { type: 'pausePlaying', playing: { layer: 'background' } },
+  ])
+    expect(await dispatch(win, command), JSON.stringify(command)).toMatchObject({
+      ok: false,
+      error: 'forbidden',
+    });
+  expect((await backgroundTiming(win)).seek).toEqual(seek);
+  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
+  expect(await dispatch(win, { type: 'resumePlaying', playing: { layer: 'audio' } })).toMatchObject({
+    ok: true,
+  });
+  await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
+  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toHaveCount(0);
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Simple Mode');
   await app.close();
 });
 
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
-  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode refuses the move and says so`, async () => {
+  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode refuses the move and the Pause and says so, never the Play`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -613,13 +631,23 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
       await inStep(copies, () => backgroundTiming(win), 'played on from the phone');
 
-      // Simple Mode on the computer: the phone's move is refused, and the phone says why; nothing moves.
+      // Simple Mode on the computer, the video left paused: the phone's move and Pause are refused, the phone saying
+      // why, and nothing moves; its Play is not, so nothing stays paused (Session 54's review).
+      await row.getByRole('button', { name: 'Pause' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
       await win.getByRole('button', { name: 'Simple Mode' }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       const seek = (await backgroundTiming(win)).seek;
       await clickAlong(p, bar, 0.9);
       await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
       expect((await backgroundTiming(win)).seek).toEqual(seek);
+      await row.getByRole('button', { name: 'Play' }).click();
+      await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
+      await inStep(copies, () => backgroundTiming(win), 'played on from the phone in Simple Mode');
+      const playedOn = (await backgroundTiming(win)).seek;
+      await row.getByRole('button', { name: 'Pause' }).click();
+      await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
+      expect((await backgroundTiming(win)).seek).toEqual(playedOn);
     } finally {
       await phone.close();
     }
