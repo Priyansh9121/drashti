@@ -62,8 +62,15 @@ export const useLinks = create<LinkStore>(() => ({
 /** The playlist a download's import goes into, chosen as Download was pressed; done once its import ends. */
 let pendingAdd: AddTarget | null = null;
 
-/** What a new playlist for a download is called to begin with: what the link holds (a video's title). */
-export const newPlaylistName = (view: LinkView | null): string => nameAfter(view?.look?.name ?? 'Download');
+/**
+ * What a new playlist for a download is called to begin with: a video's title as it is ("Vol. 2" and "1/3" are
+ * part of a title, never a file's extension or folder), else the file's name without its extension.
+ */
+export function newPlaylistName(view: LinkView | null): string {
+  const look = view?.look;
+  if (look?.shape === 'video') return look.name.trim();
+  return nameAfter(look?.name ?? 'Download');
+}
 
 /** Where the dialog says it will add what is imported (Session 54: the playlist chosen last, offered first). */
 export const addToNow = (s: { addTo: AddTarget | null; view: LinkView | null }): AddTarget =>

@@ -6,7 +6,15 @@ import { useLibrary } from '../library/library-store';
 import { useMode } from '../operator/mode-store';
 import { usePlaylists } from '../playlists/playlist-store';
 import { chosenTarget, landInPlaylist, linkTarget, useLanded } from './link-playlist';
-import { addToNow, anotherLink, chooseAddTo, connectLinks, startDownload, useLinks } from './link-store';
+import {
+  addToNow,
+  anotherLink,
+  chooseAddTo,
+  connectLinks,
+  newPlaylistName,
+  startDownload,
+  useLinks,
+} from './link-store';
 
 /*
  * Where a download from a link goes (Session 54, F1): the playlist chosen last, offered first; with none, a new
@@ -194,6 +202,22 @@ describe('where a download from a link goes, to begin with', () => {
       kind: 'playlist',
       id: 'youth',
     });
+  });
+});
+
+describe('a new playlist’s name, to begin with', () => {
+  it('is a video’s title as it is (trimmed), and a file’s name without its extension', () => {
+    const video = (name: string): LinkView => ({ ...VIEW, look: { shape: 'video', name, size: null } });
+    expect(newPlaylistName(video('Placeholder Kirtan Vol. 2'))).toBe('Placeholder Kirtan Vol. 2');
+    expect(newPlaylistName(video('Placeholder Bhajan 1/3'))).toBe('Placeholder Bhajan 1/3');
+    expect(newPlaylistName(video('  Placeholder video  '))).toBe('Placeholder video');
+    const file: LinkView = {
+      ...VIEW,
+      kind: 'dropbox',
+      look: { shape: 'file', name: 'Placeholder clip.mp4', size: 1000 },
+    };
+    expect(newPlaylistName(file)).toBe('Placeholder clip');
+    expect(newPlaylistName(null)).toBe('Download');
   });
 });
 
