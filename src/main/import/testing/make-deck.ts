@@ -260,22 +260,22 @@ const para = (p: Run) =>
 const xfrm = (s: Box) =>
   `<a:xfrm><a:off x="${String(Math.round(s.x))}" y="${String(Math.round(s.y))}"/><a:ext cx="${String(Math.round(s.w))}" cy="${String(Math.round(s.h))}"/></a:xfrm>`;
 
-function shapeXml(s: Shape, relOf: (key: MediaKey, kind: string) => string): string {
-  if (isWords(s)) {
-    const fill = s.fill ? `<a:solidFill><a:srgbClr val="${s.fill}"/></a:solidFill>` : '<a:noFill/>';
-    const body = s.paras
-      ? `<p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="${s.anchor ?? 't'}"><a:normAutofit/></a:bodyPr><a:lstStyle/>${s.paras.map(para).join('')}</p:txBody>`
+function shapeXml(shape: Shape, relOf: (key: MediaKey, kind: string) => string): string {
+  if (isWords(shape)) {
+    const fill = shape.fill ? `<a:solidFill><a:srgbClr val="${shape.fill}"/></a:solidFill>` : '<a:noFill/>';
+    const body = shape.paras
+      ? `<p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="${shape.anchor ?? 't'}"><a:normAutofit/></a:bodyPr><a:lstStyle/>${shape.paras.map(para).join('')}</p:txBody>`
       : '';
-    return `<p:sp><p:nvSpPr><p:cNvPr id="${String(s.id)}" name="${esc(s.name)}"/><p:cNvSpPr${s.type === 'text' ? ' txBox="1"' : ''}/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(s)}<a:prstGeom prst="${s.geom ?? 'rect'}"><a:avLst/></a:prstGeom>${fill}</p:spPr>${body}</p:sp>`;
+    return `<p:sp><p:nvSpPr><p:cNvPr id="${String(shape.id)}" name="${esc(shape.name)}"/><p:cNvSpPr${shape.type === 'text' ? ' txBox="1"' : ''}/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(shape)}<a:prstGeom prst="${shape.geom ?? 'rect'}"><a:avLst/></a:prstGeom>${fill}</p:spPr>${body}</p:sp>`;
   }
-  if (!isMedia(s))
-    return `<p:pic><p:nvPicPr><p:cNvPr id="${String(s.id)}" name="${esc(s.name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${relOf(s.media, 'image')}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(s)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
-  const link = relOf(s.media, s.type);
-  const embed = relOf(s.media, 'media');
-  const poster = relOf(s.poster, 'image');
-  const trim = s.trim ? `<p14:trim st="${String(s.trim.st)}" end="${String(s.trim.end)}"/>` : '';
-  const fade = s.fadeIn ? `<p14:fade in="${String(s.fadeIn)}"/>` : '';
-  return `<p:pic><p:nvPicPr><p:cNvPr id="${String(s.id)}" name="${esc(s.name)}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr><a:${s.type}File r:link="${link}"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media xmlns:p14="${P14}" r:embed="${embed}">${fade}${trim}</p14:media></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="${poster}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(s)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+  if (!isMedia(shape))
+    return `<p:pic><p:nvPicPr><p:cNvPr id="${String(shape.id)}" name="${esc(shape.name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${relOf(shape.media, 'image')}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(shape)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+  const link = relOf(shape.media, shape.type);
+  const embed = relOf(shape.media, 'media');
+  const poster = relOf(shape.poster, 'image');
+  const trim = shape.trim ? `<p14:trim st="${String(shape.trim.st)}" end="${String(shape.trim.end)}"/>` : '';
+  const fade = shape.fadeIn ? `<p14:fade in="${String(shape.fadeIn)}"/>` : '';
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${String(shape.id)}" name="${esc(shape.name)}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr><a:${shape.type}File r:link="${link}"/><p:extLst><p:ext uri="{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}"><p14:media xmlns:p14="${P14}" r:embed="${embed}">${fade}${trim}</p14:media></p:ext></p:extLst></p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="${poster}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(shape)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 }
 
 /** The slide's timing: click groups, each a chain of sub-groups ("with" or "after previous"). */

@@ -13,7 +13,6 @@ const windows = vi.hoisted(() => ({ opened: 0, closed: 0 }));
 vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/placeholder' },
   dialog: {},
-  net: {},
 }));
 vi.mock('../ipc/handle', () => ({ handle: () => undefined }));
 vi.mock('./access-list-window', () => ({
@@ -57,8 +56,6 @@ async function start() {
   const { startAccessList } = await import('./access-list-main');
   const menu = { built: 0 };
   const control = startAccessList({
-    userData: '/placeholder/data',
-    version: '1.0.0-alpha.13',
     workArea: () => ({ x: 0, y: 0, width: 1024, height: 645 }),
     background: () => '#000000',
     track: () => undefined,
@@ -66,6 +63,8 @@ async function start() {
       menu.built++;
     },
     log: () => undefined,
+    client: () => Promise.resolve(null),
+    grant: () => null,
   });
   const set = (o: Partial<AccessState>) => {
     setAccessState(state(o));
