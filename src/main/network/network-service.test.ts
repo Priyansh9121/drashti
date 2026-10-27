@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
@@ -98,6 +98,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
+      // A sound a playlist shared with phones has (Session 54, D3): its file, for a phone to play.
+      sharedSound: (mediaId) => (mediaId === 'm-shared-sound' ? '/placeholder/Media/ab/tone.wav' : null),
       stage: () => ({ groupId: 'stage-group', languages: ['gu'] }),
       // The groups the hall's picture is read from (Session 51): a hall with a screen on this computer that is on,
       // after a group left empty, so Main's Audience switch closes it.
@@ -619,5 +621,23 @@ describe('full quality and the zoom from a phone (Session 54, D1 and D2)', () =>
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     for (const op of ['media.picture', 'media.original'] as const)
       expect(service.answer({ address: PHONE, deviceId: remote, op, args: {} }).status).toBe(400);
+  });
+
+  it('tells the worker a sound’s file only from the shared playlists, and a picture’s or video’s as before (D3)', async () => {
+    const { service, sent, fromWorker } = setup();
+    service.setOn(true);
+    fromWorker({ type: 'started', result: { ok: true, port: 8740 } });
+    fromWorker({ type: 'ask', id: 41, question: { kind: 'sound', mediaId: 'm-shared-sound' } });
+    fromWorker({ type: 'ask', id: 42, question: { kind: 'sound', mediaId: 'm-other-sound' } });
+    fromWorker({ type: 'ask', id: 43, question: { kind: 'media', mediaId: 'm-shared-sound' } });
+    const answers = () => sent.filter((m) => m.type === 'answer');
+    await vi.waitFor(() => {
+      expect(answers()).toHaveLength(3);
+    });
+    expect(answers()).toEqual([
+      { type: 'answer', id: 41, answer: '/placeholder/Media/ab/tone.wav' },
+      { type: 'answer', id: 42, answer: null },
+      { type: 'answer', id: 43, answer: null },
+    ]);
   });
 });

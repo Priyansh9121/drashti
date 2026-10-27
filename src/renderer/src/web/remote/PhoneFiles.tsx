@@ -12,16 +12,18 @@ import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import { ChevronLeft, ImagePlus } from '../../ui/icons';
 import { Progress } from '../../ui/Progress';
-import { addFiles, cancelSending, openShared, usePhoneFiles, viewItem } from './phone-files-store';
-import { itemWord, SharedViewer, viewable } from './SharedViewer';
+import { addFiles, cancelSending, openShared, usePhoneFiles } from './phone-files-store';
+import { itemWord, viewable } from './shared-files';
+import { lookAtShared } from './shared-pages';
 import type { Sending } from './upload-client';
 
 /*
  * Files between Drashti and this phone, in the remote's Library (Session 54, D3 and D4):
  *
  * - Shared from Drashti: the playlists the operator shared with phones, a folder playlist with its folders as its
- *   headers. Tapping a file looks at it on this device (SharedViewer.tsx); nothing here changes the playlist or
- *   puts anything on the screens.
+ *   headers. Tapping a file opens it on this device in D1's viewer, the playlist's other files before and after it
+ *   (shared-pages.ts): pictures, videos and sounds at their own quality, a presentation's slides one by one.
+ *   Nothing here changes the playlist.
  * - Add to Drashti: while Drashti takes files from phones, "Add from this Phone…" picks pictures, videos, sounds,
  *   PDF, PowerPoint or Keynote files from the phone's photos or files; each is sent whole, with how far it has got,
  *   Cancel, and picking up again by itself after the Wi-Fi drops. Drashti says what became of it.
@@ -55,6 +57,8 @@ function SharedList({ shared }: { shared: SharedPlaylist[] }) {
 
 function SharedItems({ playlist, list }: { playlist: SharedPlaylist; list: PlaylistItemInfo[] | null }) {
   const files = (list ?? []).filter(viewable);
+  const opening = usePhoneFiles((s) => s.opening);
+  const notOpened = usePhoneFiles((s) => s.notOpened);
   return (
     <div className="space-y-2">
       <Button
@@ -69,6 +73,12 @@ function SharedItems({ playlist, list }: { playlist: SharedPlaylist; list: Playl
       <h3 className="truncate text-base font-bold text-fg" data-testid="remote-shared-name">
         {playlist.name}
       </h3>
+      {/* A file being opened (its presentations read first), or one Drashti could not give. */}
+      {(opening !== null || notOpened !== null) && (
+        <p role="status" className="text-base text-muted" data-testid="remote-shared-status">
+          {notOpened === null ? 'Opening…' : `Drashti could not open “${notOpened}”.`}
+        </p>
+      )}
       {list === null ? (
         <p role="status" className="text-base text-muted">
           Opening…
@@ -91,14 +101,13 @@ function SharedItems({ playlist, list }: { playlist: SharedPlaylist; list: Playl
                 <button
                   type="button"
                   disabled={!viewable(i)}
+                  aria-busy={opening === i.id}
                   data-testid="remote-shared-item"
-                  onClick={() => {
-                    viewItem(files, files.indexOf(i));
-                  }}
+                  onClick={() => void lookAtShared(playlist, files, files.indexOf(i))}
                   className="flex min-h-12 w-full items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2 text-left disabled:opacity-50"
                 >
                   <span className="min-w-0 flex-1 truncate text-base text-fg">{i.label}</span>
-                  <Badge>{itemWord(i)}</Badge>
+                  <Badge>{opening === i.id ? 'Opening…' : itemWord(i)}</Badge>
                 </button>
               </li>
             ),
@@ -283,7 +292,6 @@ export function PhoneFiles({ always = false }: { always?: boolean }) {
     <div className="space-y-5 pb-2" data-testid="remote-files">
       {(always || anyShared) && <SharedFromDrashti shared={shared} />}
       {(always || adding || sent) && <AddToDrashti />}
-      <SharedViewer />
     </div>
   );
 }
