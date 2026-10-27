@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readInfo } from '../../convert/read-info';
-import { findConverters } from '../deck-converters';
+import { CONVERT_LIMITS, findConverters, withMacSession } from '../deck-converters';
 import { readPptxDeck } from '../pictures';
 import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../testing/make-deck';
 import { ffmpegHere } from '../../testing/ffmpeg-here';
@@ -102,6 +102,50 @@ describe.skipIf(!wanted || !ffmpegHere(ffmpeg) || !(has.keynote || has.powerpoin
         expect(parsed.groups[0]?.slides.map((s) => s.deck?.media.length)).toEqual([0, 0, 0, 1, 2]);
         expect(parsed.groups[0]?.slides[3]?.deck?.media[0]?.clip).toEqual({ startMs: 1000, endMs: 4000 });
         // Drashti started it: it is quit.
+        expect(running('Microsoft PowerPoint')).toBe(false);
+      },
+      900_000,
+    );
+
+    it.skipIf(!has.powerpoint)(
+      'PowerPoint: an old .ppt saved as a .pptx first, then made into its steps',
+      async () => {
+        // An old .ppt, saved by PowerPoint itself from the trial deck (through Drashti's own way with it).
+        const ppt = join(dir, 'Placeholder trial.ppt');
+        const made = await withMacSession('powerpoint', deck, dir, CONVERT_LIMITS, { log }, async (s) => {
+          const opened = await s.open(deck);
+          if (!opened.ok) return opened.failed;
+          const inApp = join(dirname(opened.document.copy), 'old.ppt');
+          const r = await s.tell(
+            [
+              'save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as presentation',
+              'return ""',
+            ],
+            [opened.document.doc, inApp],
+            120,
+          );
+          for (let i = 0; i < 40 && !existsSync(inApp); i++) await new Promise((w) => setTimeout(w, 250));
+          if (r.code === 0 && existsSync(inApp)) copyFileSync(inApp, ppt);
+          return { ok: true as const };
+        });
+        expect(made.ok).toBe(true);
+        expect(existsSync(ppt)).toBe(true);
+        const work = mkdtempSync(join(dir, 'powerpoint-ppt-'));
+        const result = await bakeDeck(
+          'powerpoint',
+          { source: 'ppt', input: ppt, read: null, work },
+          { ffmpeg, log },
+        );
+        if (!result.ok) log(`PowerPoint (.ppt): ${JSON.stringify(result.why)}`);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        log(
+          `PowerPoint (.ppt): ${String(result.baked.bakeMs)} ms; offsets ${JSON.stringify(result.baked.cuts.offsets)}`,
+        );
+        // A .ppt cannot hold an MP4 started on a click (PowerPoint 97–2003 had no such thing): that click is gone.
+        expect(result.baked.files.map((f) => f.length).slice(0, 4)).toEqual([5, 3, 2, 1]);
+        for (const o of result.baked.cuts.offsets.filter((x) => x.offsetMs !== null))
+          expect(Math.abs(o.offsetMs ?? 0)).toBeLessThanOrEqual(200);
         expect(running('Microsoft PowerPoint')).toBe(false);
       },
       900_000,
