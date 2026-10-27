@@ -131,6 +131,10 @@ export async function letInBeforeStart(
       DRASHTI_TEST_ACCESS_URL: standIn.url,
       DRASHTI_TEST_ACCESS_KEY: standIn.publicKey,
       DRASHTI_TEST_HARDWARE_ID: hardwareId,
+      // The stand-in answers from this test's own process: a test busy in it for a while (a long synchronous
+      // step) must never stop a Drashti it is not testing the stop of. 10 minutes, where the specs about the
+      // stop give their own.
+      DRASHTI_TEST_ACCESS_STOP_MS: String(10 * 60_000),
     },
     standIn,
     hardwareId,
@@ -158,6 +162,7 @@ export function accessEnvOf(userData: string): Record<string, string> {
     DRASHTI_TEST_ACCESS_URL: k.standIn.url,
     DRASHTI_TEST_ACCESS_KEY: k.standIn.publicKey,
     DRASHTI_TEST_HARDWARE_ID: k.hardwareId,
+    DRASHTI_TEST_ACCESS_STOP_MS: String(10 * 60_000),
   };
 }
 
