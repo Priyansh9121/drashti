@@ -310,6 +310,8 @@ export interface ConvertOptions {
    */
   started?: (pid: number) => void;
   ended?: (pid: number) => void;
+  /** Windows: runs PowerShell (tests give a stand-in: CI has no Office). */
+  runPowerShell?: PowerShellRunner;
 }
 
 export const appName = (converter: Converter) => (converter === 'keynote' ? 'Keynote' : 'PowerPoint');
@@ -497,8 +499,11 @@ export async function withMacSession<T>(
   const before = await pidsOf(app);
   /** The app in front before: an app that comes to the front meanwhile is showing the operator something. */
   const frontBefore = await frontApp();
-  /** `answering` is false once the app has stopped answering (it is asking a question nobody sees). */
-  const state = { answering: true, tookFront: false };
+  /**
+   * `answering` is false once the app has stopped answering (it is asking a question nobody sees). `othersSeen`:
+   * something not Drashti's copy was seen open in it (Session 54, C review), so it is never quit or stopped.
+   */
+  const state = { answering: true, tookFront: false, othersSeen: false };
   /**
    * Whether the app has the front, taken from whatever had it (Drashti, as a rule). For Keynote
    * that is a question about the file in front of the operator: given a file as a double-click
@@ -533,16 +538,19 @@ export async function withMacSession<T>(
     log(`failed: ${reason}`);
     return { ok: false, reason, message, ...extra };
   };
+  /** What becomes of the app afterwards, as the operator is told it. */
+  const leftAs = () =>
+    before.length > 0
+      ? `${name} was already open, so Drashti left it as it is: look at ${name} and answer it.`
+      : state.othersSeen
+        ? `Something else was opened in ${name} meanwhile, so Drashti left it open: look at ${name} and answer it.`
+        : `Drashti closed ${name}, which it had started.`;
   /** Why the app stopped answering, and what became of it. */
   const silentFail = (when: string): ConvertFailed => {
     state.answering = false;
     return fail(
       `${name} stopped answering`,
-      `${name} stopped answering while ${when}: it may be asking a question about this file in a window behind Drashti. ${
-        before.length === 0
-          ? `Drashti closed ${name}, which it had started.`
-          : `${name} was already open, so Drashti left it as it is: look at ${name} and answer it.`
-      } ${byHand(app.converter)}`,
+      `${name} stopped answering while ${when}: it may be asking a question about this file in a window behind Drashti. ${leftAs()} ${byHand(app.converter)}`,
     );
   };
   const fromError = (r: Ran, when: string, what: string): ConvertFailed => {
@@ -651,11 +659,7 @@ export async function withMacSession<T>(
           ok: false,
           failed: fail(
             `${name} could not open it`,
-            `${name} could not open the file and showed a message about it: it may be damaged. ${
-              before.length === 0
-                ? `Drashti closed ${name}, which it had started.`
-                : `${name} was already open, so Drashti left it as it is: look at ${name} and answer it.`
-            } ${byHand(app.converter)}`,
+            `${name} could not open the file and showed a message about it: it may be damaged. ${leftAs()} ${byHand(app.converter)}`,
           ),
         };
       }
@@ -690,6 +694,27 @@ export async function withMacSession<T>(
     const r = await hideApp(app.id);
     log(r.code === 0 ? 'hidden' : `could not hide it: ${firstLine(r.stderr)}`);
   };
+
+  /**
+   * Whether something not Drashti's copy is open in the app Drashti started (Session 54, C review): the operator
+   * opened the app from the Dock, or a file of theirs, which macOS gives the app already running. Looked for every
+   * few seconds while it answers, so that one which then stops answering is never stopped with their work in it.
+   */
+  let looking = false;
+  const lookForOthers = async () => {
+    if (looking || !state.answering || state.othersSeen) return;
+    looking = true;
+    try {
+      const r = await tellApp(app, [...othersIn(app), 'return others as text'], [stem], 3);
+      if (r.code === 0 && Number(r.stdout.trim()) > 0) {
+        state.othersSeen = true;
+        log('something else is open in it: it is the operator’s now, never quit or stopped by Drashti');
+      }
+    } finally {
+      looking = false;
+    }
+  };
+  let watching: ReturnType<typeof setInterval> | undefined;
 
   try {
     // ---- start the app, hidden, without reopening anything --------------------------------
@@ -729,6 +754,7 @@ export async function withMacSession<T>(
         if (before.length === 0) {
           ours = await pidsOf(app);
           for (const pid of ours) options.started?.(pid);
+          watching = setInterval(() => void lookForOthers(), OTHERS_EVERY_MS);
         }
         break;
       }
@@ -745,9 +771,11 @@ export async function withMacSession<T>(
     return await use({ converter, name, folder, log, open, tell, fromError, close, hide, signal });
   } finally {
     // ---- leave the app as the operator had it ----------------------------------------------
+    clearInterval(watching);
     for (const document of [...opened]) await close(document);
-    if (before.length === 0) await quitIfIdle(app, before, stem, state.answering, log);
-    else log('left open, as the operator had it');
+    if (before.length > 0) log('left open, as the operator had it');
+    else if (state.othersSeen) log('left open: something else was opened in it meanwhile');
+    else await quitIfIdle(app, before, stem, state.answering, log);
     // Quit, stopped, or left open for something the operator opened in it: no longer Drashti's own.
     for (const pid of ours) options.ended?.(pid);
     // The app took the front from Drashti: give the operator's window the keys back.
@@ -846,10 +874,31 @@ async function convertOnMac(
   });
 }
 
+/** How often an app Drashti started is asked whether something else is open in it (Session 54, C review). */
+const OTHERS_EVERY_MS = 5000;
+
+/**
+ * AppleScript that counts, as `others`, the documents open in the app that are not Drashti's copies (whose names
+ * start with argv's first item). By number: PowerPoint cannot say the name of `d` in `repeat with d in
+ * presentations` (-2763), so the old way of asking failed whenever something else was open, and Drashti then
+ * stopped it (C review: found by the real-app test).
+ */
+function othersIn(app: MacApp): string[] {
+  const [docs, one] =
+    app.converter === 'keynote' ? ['documents', 'document'] : ['presentations', 'presentation'];
+  return [
+    'set others to 0',
+    `repeat with i from 1 to (count of ${docs})`,
+    `if not ((name of ${one} i) starts with (item 1 of argv)) then set others to others + 1`,
+    'end repeat',
+  ];
+}
+
 /**
  * Quit an app Drashti started (it was not running before), unless something
  * besides Drashti's copy is open in it; stop it if it does not answer, or
- * does not quit (a question nobody sees can hold it up).
+ * does not quit (a question nobody sees can hold it up). One something else
+ * was seen open in meanwhile never comes here (Session 54, C review).
  */
 async function quitIfIdle(
   app: MacApp,
@@ -861,17 +910,9 @@ async function quitIfIdle(
   const running = await pidsOf(app);
   if (running.length === 0) return;
   if (answering) {
-    const docs = app.converter === 'keynote' ? 'documents' : 'presentations';
     const r = await tellApp(
       app,
-      [
-        'set others to 0',
-        `repeat with d in ${docs}`,
-        'if not ((name of d) starts with (item 1 of argv)) then set others to others + 1',
-        'end repeat',
-        'if others is 0 then quit saving no',
-        'return others as text',
-      ],
+      [...othersIn(app), 'if others is 0 then quit saving no', 'return others as text'],
       [stem],
       10,
     );
@@ -886,10 +927,16 @@ async function quitIfIdle(
         log('quit');
         return;
       }
+      log('did not quit when asked');
+    } else {
+      const n = errorNumber(r.stderr);
+      // It answered, but what is open in it could not be told (Session 54, C review): never stopped then.
+      if (!(r.timedOut || n === TIMED_OUT || (n !== null && GONE.has(n)))) {
+        log(`left open: what is open in it could not be told (${firstLine(r.stderr)})`);
+        return;
+      }
+      log(`did not answer when asked to quit: ${firstLine(r.stderr)}`);
     }
-    log(
-      r.code === 0 ? 'did not quit when asked' : `did not answer when asked to quit: ${firstLine(r.stderr)}`,
-    );
   }
   // It does not answer (a question nobody sees): stop the copy Drashti started.
   const ours = running.filter((p) => !before.includes(p));
@@ -920,9 +967,10 @@ async function quitIfIdle(
  * Sessions 31–36, SEC-13: if that cannot be set, the deck is not opened),
  * save as PDF (32 is ppSaveAsPDF), note every slide's notes and whether
  * it is hidden, close, and quit PowerPoint only if Drashti started it and
- * nothing else is open. A PowerPoint Drashti started runs below normal
- * priority, and its process id is written down so Drashti can stop it if it
- * stops answering.
+ * nothing else is open or shows (Session 54, C review: a window, which the copy
+ * opened without one never has, is the operator's). A PowerPoint Drashti
+ * started runs below normal priority, and its process id is written down so
+ * Drashti can stop it if it stops answering, while it shows no window.
  */
 export const POWERPOINT_WINDOWS_SCRIPT = `param([Parameter(Mandatory)][string]$In, [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Notes, [Parameter(Mandatory)][string]$Started)
 $ErrorActionPreference = 'Stop'
@@ -950,7 +998,8 @@ try {
   if ($pres) { try { $pres.Close() } catch {} }
   try { $app.DisplayAlerts = $alerts } catch {}
   try { $app.AutomationSecurity = $security } catch {}
-  if ($ours.Count -gt 0 -and $app.Presentations.Count -eq 0) { $app.Quit() }
+  $shown = @($ours | Where-Object { $p = Get-Process -Id $_ -ErrorAction SilentlyContinue; $p -and $p.MainWindowHandle -ne [IntPtr]::Zero })
+  if ($ours.Count -gt 0 -and $app.Presentations.Count -eq 0 -and $shown.Count -eq 0) { $app.Quit() }
   [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($app)
 }
 `;
@@ -1009,59 +1058,24 @@ async function powerPointOnWindows(
   const copy = join(work, `Drashti copy${input.toLowerCase().endsWith('.ppt') ? '.ppt' : '.pptx'}`);
   await copyFile(input, copy);
   await writeFile(script, POWERPOINT_WINDOWS_SCRIPT);
-  // Windows PowerShell by its full path, with no PSModulePath from whatever started Drashti.
-  const env = { ...process.env };
-  delete env['PSModulePath'];
-  const powershell = join(
-    process.env['SystemRoot'] ?? 'C:\\Windows',
-    'System32',
-    'WindowsPowerShell',
-    'v1.0',
-    'powershell.exe',
-  );
+  const runner = options.runPowerShell ?? windowsPowerShell;
   const timeoutMs =
     limits.startMs + limits.saveMs + limits.perSlideMs * Math.max(options.slideCount ?? 100, 1);
-  const r = await run(
-    powershell,
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      script,
-      '-In',
-      copy,
-      '-Out',
-      pdf,
-      '-Notes',
-      notesFile,
-      '-Started',
-      startedFile,
-    ],
+  const r = await runner(
+    script,
+    ['-In', copy, '-Out', pdf, '-Notes', notesFile, '-Started', startedFile],
     timeoutMs,
     signal,
-    env,
   );
   if (r.timedOut || r.aborted) {
-    // Stop the PowerPoint Drashti started, which is stuck; one the operator had open stays.
-    try {
-      const ids = idsIn(await readFile(startedFile, 'ascii'));
-      for (const id of ids) {
-        try {
-          process.kill(id);
-        } catch {
-          // Already gone.
-        }
-      }
-    } catch {
-      // PowerPoint never started.
-    }
+    // Stop the PowerPoint Drashti started, which is stuck, while it shows no window; one the operator had open stays.
+    const ids = await readFile(startedFile, 'ascii').then(idsIn, () => []);
+    const left = await stopStuckPowerPoint(ids, work, runner, options.log);
     if (r.aborted) return cancelled();
     return {
       ok: false,
       reason: 'PowerPoint stopped answering',
-      message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes. ${byHand('powerpoint')}`,
+      message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)} ${byHand('powerpoint')}`,
     };
   }
   if (r.code !== 0 || !exists(pdf)) {
@@ -1134,7 +1148,8 @@ try {
   if ($pres) { try { $pres.Close() } catch {} }
   try { $app.DisplayAlerts = $alerts } catch {}
   try { $app.AutomationSecurity = $security } catch {}
-  if ($ours.Count -gt 0 -and $app.Presentations.Count -eq 0) { $app.Quit() }
+  $shown = @($ours | Where-Object { $p = Get-Process -Id $_ -ErrorAction SilentlyContinue; $p -and $p.MainWindowHandle -ne [IntPtr]::Zero })
+  if ($ours.Count -gt 0 -and $app.Presentations.Count -eq 0 -and $shown.Count -eq 0) { $app.Quit() }
   [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($app)
 }
 `;
@@ -1157,6 +1172,61 @@ export type PowerShellRunner = (
   timeoutMs: number,
   signal?: AbortSignal,
 ) => Promise<Ran>;
+
+/**
+ * Which of these PowerPoint processes shows a window (Session 54, C review): .NET's MainWindowHandle, a visible
+ * window no other window owns. A copy Drashti opened has none (WithWindow msoFalse), and a question PowerPoint asks
+ * about it belongs to its hidden window; so one that shows is the operator's doing: PowerPoint opened from the Start
+ * menu, or a file of theirs, which Windows gives the PowerPoint already running.
+ */
+export const POWERPOINT_WINDOWS_SHOWN_SCRIPT = `param([Parameter(Mandatory)][string]$Ids)
+$shown = @()
+foreach ($id in ($Ids -split ',')) {
+  $p = Get-Process -Id ([int]$id) -ErrorAction SilentlyContinue
+  if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) { $shown += [int]$id }
+}
+Write-Output ($shown -join ',')
+`;
+
+/**
+ * Stop the PowerPoint Drashti started that did not finish (it is stuck), but never one that shows a window: that
+ * is the operator's now, with whatever they opened in it. Returns those left open; when it cannot be told, every
+ * one is left.
+ */
+async function stopStuckPowerPoint(
+  ids: number[],
+  work: string,
+  runner: PowerShellRunner,
+  log?: (line: string) => void,
+): Promise<number[]> {
+  if (ids.length === 0) return [];
+  const script = join(work, 'powerpoint-windows.ps1');
+  await writeFile(script, POWERPOINT_WINDOWS_SHOWN_SCRIPT);
+  const r = await runner(script, ['-Ids', ids.join(',')], 30_000);
+  const known = r.code === 0 && !r.timedOut && !r.aborted;
+  const shown = known ? idsIn(r.stdout.trim()) : ids;
+  for (const id of ids) {
+    if (shown.includes(id)) continue;
+    try {
+      process.kill(id);
+    } catch {
+      // Already gone.
+    }
+  }
+  if (shown.length > 0)
+    log?.(
+      known
+        ? `PowerPoint: left open, as it shows a window (${shown.map(String).join(', ')})`
+        : `PowerPoint: left open, as it could not be told whether it shows a window: ${firstLine(r.stderr)}`,
+    );
+  return shown;
+}
+
+/** What the operator is told of a stuck PowerPoint left open. */
+const leftOpenWords = (left: number[]) =>
+  left.length > 0
+    ? ' PowerPoint shows a window now (opened meanwhile), so Drashti left it open: look at PowerPoint.'
+    : '';
 
 /** Windows PowerShell by its full path, with no PSModulePath from whatever started Drashti. */
 const windowsPowerShell: PowerShellRunner = (script, args, timeoutMs, signal) => {
@@ -1186,7 +1256,7 @@ const windowsPowerShell: PowerShellRunner = (script, args, timeoutMs, signal) =>
 export async function deckOnWindows(
   job: WindowsDeckWork,
   work: string,
-  options: ConvertOptions & { runPowerShell?: PowerShellRunner } = {},
+  options: ConvertOptions = {},
 ): Promise<{ ok: true } | ConvertFailed> {
   const limits = options.limits ?? CONVERT_LIMITS;
   const startedFile = join(work, `started-${String(Date.now())}.txt`);
@@ -1222,22 +1292,17 @@ export async function deckOnWindows(
   if (job.pdf) args.push('-Pdf', job.pdf);
   if (job.movie) args.push('-Movie', job.movie, '-LimitSeconds', String(Math.ceil(movieLimitMs / 1000)));
   try {
-    const r = await (options.runPowerShell ?? windowsPowerShell)(script, args, timeoutMs, options.signal);
+    const runner = options.runPowerShell ?? windowsPowerShell;
+    const r = await runner(script, args, timeoutMs, options.signal);
     await look();
     if (r.timedOut || r.aborted) {
-      // Stop the PowerPoint Drashti started, which is stuck; one the operator had open stays.
-      for (const id of ours) {
-        try {
-          process.kill(id);
-        } catch {
-          // Already gone.
-        }
-      }
+      // Stop the PowerPoint Drashti started, which is stuck, while it shows no window; one the operator had open stays.
+      const left = await stopStuckPowerPoint([...ours], work, runner, options.log);
       if (r.aborted) return cancelled();
       return {
         ok: false,
         reason: 'PowerPoint stopped answering',
-        message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.`,
+        message: `PowerPoint did not finish within ${String(Math.round(timeoutMs / 60_000))} minutes.${leftOpenWords(left)}`,
       };
     }
     const missing = [job.pptx, job.movie].find((f) => f !== undefined && !exists(f));
