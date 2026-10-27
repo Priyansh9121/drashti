@@ -14,6 +14,7 @@ import { Dialog } from '../ui/Dialog';
 import { Field, TextInput } from '../ui/Field';
 import { Copy, Lock } from '../ui/icons';
 import { Notice } from '../ui/Notice';
+import { useSavedSetting } from '../ui/saved-setting';
 import { Checkbox } from '../ui/Toggle';
 import { closeEventsOut, connectEventsOut, useEventsOut } from './events-store';
 
@@ -84,15 +85,21 @@ function Address({
   onResult: (r: Promise<EventsOutResult> | EventsOutResult, note: string) => void;
 }) {
   const [testing, setTesting] = useState<string | null>(null);
-  const kinds = new Set(a.kinds);
-  const words = new Set(a.words);
+  // What it gets, as ticked (Session 54): a second tick before the first is saved is made to the first.
+  const update = (patch: { kinds: EventKind[] } | { words: EventKind[] }) => {
+    const answer = window.drashti.events.update(a.id, patch);
+    onResult(answer, '');
+    return answer;
+  };
+  const [kindsTicked, setKinds] = useSavedSetting(`${a.id}:kinds`, a.kinds, (kinds) => update({ kinds }));
+  const [wordsTicked, setWords] = useSavedSetting(`${a.id}:words`, a.words, (words) => update({ words }));
+  const kinds = new Set(kindsTicked);
+  const words = new Set(wordsTicked);
   const tick = (kind: EventKind, on: boolean) => {
-    const next = on ? [...kinds, kind] : [...kinds].filter((k) => k !== kind);
-    onResult(window.drashti.events.update(a.id, { kinds: next }), '');
+    setKinds(on ? [...kinds, kind] : [...kinds].filter((k) => k !== kind));
   };
   const tickWords = (kind: EventKind, on: boolean) => {
-    const next = on ? [...words, kind] : [...words].filter((k) => k !== kind);
-    onResult(window.drashti.events.update(a.id, { words: next }), '');
+    setWords(on ? [...words, kind] : [...words].filter((k) => k !== kind));
   };
   return (
     <li
@@ -107,7 +114,7 @@ function Address({
         {a.allowInternet && <Badge tone="warning">On the internet</Badge>}
         {a.off ? (
           <Badge tone="danger">Off</Badge>
-        ) : a.kinds.length > 0 ? (
+        ) : kinds.size > 0 ? (
           <Badge tone="success">On</Badge>
         ) : (
           <Badge>Nothing ticked</Badge>

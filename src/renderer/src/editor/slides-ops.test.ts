@@ -99,6 +99,36 @@ describe('slides and groups', () => {
     expect(cueSettings(sound)).toEqual({ volume: 0.5, loop: true });
     expect(setSoundCue(setBackgroundCue(withSound, null), null).cues).toEqual(s.cues);
   });
+
+  // Session 54 (Session 53's question 3): the editor shows a slide's last sound cue, the one that plays; a change
+  // made there kept the first's id, label and settings, so the slide went on naming the first.
+  it('changes a slide with two sound cues (an import can give it two) as the last, the one shown and played', () => {
+    const s: EditSlide = {
+      ...slide('s'),
+      cues: [
+        {
+          id: 'a1',
+          kind: 'audio',
+          label: 'Placeholder first',
+          mediaId: 'one',
+          props: '{"volume":0.2,"fade":1}',
+        },
+        {
+          id: 'a2',
+          kind: 'audio',
+          label: 'Placeholder last',
+          mediaId: 'two',
+          props: '{"volume":0.9,"fade":2}',
+        },
+      ],
+    };
+    const changed = setSoundCue(s, { id: 'two', volume: 0.4, loop: false });
+    expect(changed.cues).toHaveLength(1);
+    const [only] = changed.cues;
+    if (!only) throw new Error('no cue');
+    expect(only).toMatchObject({ id: 'a2', kind: 'audio', label: 'Placeholder last', mediaId: 'two' });
+    expect(cueSettings(only)).toEqual({ volume: 0.4, loop: false, fade: 2 });
+  });
 });
 
 describe('one slide’s look for every slide', () => {

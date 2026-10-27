@@ -12,7 +12,8 @@ import type { HallPicture } from '../../../shared/stage-layouts';
  * differently from the hall's screens. With Audience off (Session 51) it keeps that picture, the one the hall
  * comes back to, and says the hall's screens are off in its bottom left corner (Session 52: in the top left, a
  * stage message along the top covered it), so the performers are not misled: in words never below the stage's
- * smallest while they fit (Session 53). With no audience group at all (Session 52) there is no hall's picture to
+ * smallest while they fit (Session 53), as the muted lines under it are (Session 54), naming a video input or a
+ * window a node or a tablet cannot draw. With no audience group at all (Session 52) there is no hall's picture to
  * draw: the box is black and says so in one short line, where it drew every layer, a picture no hall's screen
  * shows.
  */
@@ -40,9 +41,11 @@ export const WORDS_CORNER = { left: 40, bottom: 40 } as const;
  * (Session 53); the line with no audience group matches it.
  */
 const WORDS_SIZE = 64;
+/** The muted lines' size on the picture (40 px) in a box the size of the stage (Session 51), under Audience off. */
+const UNSEEN_SIZE = 40;
 /**
- * The stage's smallest words (a box's label, 30 px): Audience off (Session 53) and the line with no audience group
- * are never drawn smaller while they fit.
+ * The stage's smallest words (a box's label, 30 px): Audience off (Session 53), the line with no audience group and
+ * the muted lines naming what a page cannot draw (Session 54) are never drawn smaller while they fit.
  */
 const LINE_MIN = 30;
 /** As small as a layout's box fitting its words goes (StageLayoutView's FIT_MIN): a box smaller still cuts it. */
@@ -114,6 +117,25 @@ export function noAudienceLine(box: Size): { size: number; inset: number } {
 export function audienceOffSize(box: Size): { size: number; scale: number } {
   const scale = pictureScale(box);
   return { size: wantedAt(scale), scale };
+}
+
+/**
+ * The muted lines naming what a node or a tablet cannot draw (a video input, a window: render/named-background.ts)
+ * in a box of this size (Session 54), before they are fitted with Audience off: as large as on the whole stage's
+ * picture (40 px), never below the stage's smallest words, as Audience off. Until then they were 40 px on the
+ * picture in any box: 6.7 px in a box a sixth of the stage each way.
+ */
+export function unseenSize(box: Size): number {
+  return Math.max(LINE_MIN, UNSEEN_SIZE * pictureScale(box));
+}
+
+/**
+ * The muted lines' size (stage canvas pixels) with the words they go with (Audience off, or the first line) fitted
+ * at `px` where `lead` was wanted (Session 54): the lines' own wanted size while those fit as wanted (fittedSize
+ * gives the whole pixel below it), else brought down in step with them.
+ */
+export function inStep(px: number, lead: number, wanted: number): number {
+  return px >= Math.floor(lead) ? wanted : (px * wanted) / lead;
 }
 
 /**

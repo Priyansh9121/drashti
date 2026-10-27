@@ -24,8 +24,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * "Placeholder input": never a real camera's picture. An input another computer has and this one does not is an
  * input added, used, then removed from Media: the playlist and the slide still name it (and LIVE names it again after
  * an unexpected restart, Session 53). Renamed in Media (Session 52), it is "Placeholder camera", and the playlist and
- * the slide name it so; its Change dialog says they will, and that the spare computer's input needs the new name too
- * (Session 53).
+ * the slide name it so; its Change dialog says they will, and that the other computer's input needs the new name too
+ * (Session 53; "the other computer's" since Session 54).
  */
 
 const FAKE = { DRASHTI_TEST_FAKE_DEVICES: '1' };
@@ -36,7 +36,7 @@ const DEVICE = 'fake_device_0';
 const LIVE = '[data-testid="live-preview"]';
 /** What changing an input says a new name does (Session 53). */
 const RENAMING =
-  'Renaming it takes this computer’s playlist items and slides that use it to the new name. The spare computer’s input needs the same new name.';
+  'Renaming it takes this computer’s playlist items and slides that use it to the new name. The other computer’s input needs the same new name.';
 const COLOUR = { kind: 'color', color: '#203040' } as const;
 /** LIVE's line for a slide naming an input this computer does not have. */
 const INPUT_LINE = `Video input not on this computer: “${INPUT}”. The background stays as it was.`;

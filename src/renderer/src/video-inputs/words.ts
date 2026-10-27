@@ -139,7 +139,8 @@ export const NOT_ITS_OWN_PICTURE =
 /**
  * Changing one (Session 53): what a new name does. This computer's playlist items and slides that name the input
  * take the new name (Session 52, main/db/input-renames.ts), but another computer finds its own input by the name,
- * so the spare computer's needs the same one or there they say Not on this computer.
+ * so the other computer's needs the same one or there they say Not on this computer. "The other computer’s" since
+ * Session 54: "the spare computer’s" read oddly when renaming on the spare, as both run as Main.
  */
 export const RENAMING =
-  'Renaming it takes this computer’s playlist items and slides that use it to the new name. The spare computer’s input needs the same new name.';
+  'Renaming it takes this computer’s playlist items and slides that use it to the new name. The other computer’s input needs the same new name.';

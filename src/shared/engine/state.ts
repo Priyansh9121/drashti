@@ -471,6 +471,11 @@ export type UpNext =
        * it goes up. Left out otherwise.
        */
       fileMissing?: string;
+      /**
+       * The file its sound cue names is missing (Session 54), by its name, as for its background's: the sound stays
+       * as it is when it goes up. Left out otherwise.
+       */
+      soundMissing?: string;
       /** The playlist item it starts, when it is in the next item. */
       itemId: string | null;
       /** Its notes, for a presenter's remote (Session 18). */

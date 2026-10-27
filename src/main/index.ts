@@ -2729,6 +2729,11 @@ function start(): void {
       if (replaced) slides.invalidate(presentationId);
       libraryChanged();
     },
+    // Points an import gave a file (Session 54): what is up playing it moves to them at once, as for points saved
+    // while it plays (Markers), never only once it goes up again.
+    onMarked: (mediaIds) => {
+      for (const mediaId of mediaIds) engine.refreshMarkers(mediaId);
+    },
     onFinished: (run) => {
       // An import can change what comes next (a replaced presentation, a filled playlist). It can also find a file
       // the library was missing (Find missing media…, or the same file imported again): the slides are read again,

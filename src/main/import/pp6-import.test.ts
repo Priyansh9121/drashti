@@ -55,7 +55,11 @@ function setup() {
     writeFileSync(full, content);
     return full;
   };
-  const run = async (paths: string[], options: ImportOptions = {}) => {
+  const run = async (
+    paths: string[],
+    options: ImportOptions = {},
+    onMarked?: (mediaIds: string[]) => void,
+  ) => {
     const summary = await runImport({
       db,
       media,
@@ -64,6 +68,7 @@ function setup() {
       options,
       tempDir: temp,
       progressEveryMs: 0,
+      ...(onMarked ? { onMarked } : {}),
     });
     return { summary, report: new ImportRepo(db).report(summary.id) };
   };
@@ -477,5 +482,49 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
     expect(item?.issues.find((i) => i.code === 'markers-read')?.message).toContain('not yet checked');
     const row = t.db.prepare("SELECT id FROM media WHERE name = 'Marked Loop.mov'").get() as { id: string };
     expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 2000, endMs: 6500, markers: [] });
+  });
+
+  // Session 54 (Session 53's question 10): a background, a slide, a prop or the box playing a file an import gave
+  // points to moved to them only when it went up again; the main process now hears which, to move it at once.
+  it('say which files an import gave points they had none of, once their group is committed, never one with its own', async () => {
+    const t = setup();
+    const loop = t.write('Media/Marked Loop.mov', 'placeholder video');
+    const marked = (uuid: string, points: { in: number; out: number }) =>
+      pp6Presentation({
+        uuid,
+        groups: [
+          {
+            name: 'Verse',
+            slides: [
+              {
+                background: {
+                  path: loop,
+                  kind: 'video',
+                  loop: true,
+                  points: { timeScale: 600, ...points, end: 6000 },
+                },
+                text: [],
+              },
+            ],
+          },
+        ],
+      });
+    const told: string[][] = [];
+    const tell = (mediaIds: string[]) => told.push(mediaIds);
+    // The video in the library first, with no points: as one put up from Media before the presentation came in.
+    await t.run([loop], {}, tell);
+    const row = t.db.prepare("SELECT id FROM media WHERE name = 'Marked Loop.mov'").get() as { id: string };
+    expect(new MediaRepo(t.db).markersOf(row.id)).toBeNull();
+    expect(told).toEqual([]);
+    // A presentation playing it between points: they are the file's now, and its id is told.
+    t.write('Placeholder Marked.pro6', marked('P6-MARKED-1', { in: 1200, out: 3900 }));
+    await t.run([join(t.source, 'Placeholder Marked.pro6')], {}, tell);
+    expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 2000, endMs: 6500 });
+    expect(told).toEqual([[row.id]]);
+    // Another with other points: the file keeps its own, and nothing is told.
+    t.write('Placeholder Marked Again.pro6', marked('P6-MARKED-2', { in: 600, out: 1800 }));
+    await t.run([join(t.source, 'Placeholder Marked Again.pro6')], {}, tell);
+    expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 2000, endMs: 6500 });
+    expect(told).toEqual([[row.id]]);
   });
 });

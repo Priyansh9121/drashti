@@ -560,6 +560,71 @@ describe('a slide’s sound cue whose file is missing (Session 53)', () => {
   });
 });
 
+// Session 54 (Session 53's question 3): Simple Mode's Next named a missing background file, never a missing sound.
+describe('what Next shows of a slide’s sound file that is missing (Session 54)', () => {
+  it('names it, as it names a missing background file; never a sound that is there, nor for a slide with none', () => {
+    const { engine } = sounds();
+    // The slide after this one names the missing hymn.
+    engine.dispatch(goLive('sounds', 1));
+    expect(engine.current.next).toMatchObject({
+      kind: 'slide',
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    // Up, it says so (LIVE); and Next goes on to a slide whose sound is there, naming none.
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.slide).toMatchObject({
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+    expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 3 });
+    expect(engine.current.next).not.toHaveProperty('soundMissing');
+    // Nor for a slide with no sound.
+    engine.dispatch(goLive('sounds', 0));
+    expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 1 });
+    expect(engine.current.next).not.toHaveProperty('soundMissing');
+  });
+
+  it('names it no more once it is found, as the library reads it there', () => {
+    const { engine, setSounds } = sounds();
+    engine.dispatch(goLive('sounds', 1));
+    expect(engine.current.next).toMatchObject({ slideIndex: 2, soundMissing: 'Placeholder hymn.wav' });
+    // Find missing media…: the library reads it there, and what comes next is read again.
+    setSounds([[TUNE], [], [HYMN_FOUND], [BELL]]);
+    engine.refreshNext();
+    expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 2 });
+    expect(engine.current.next).not.toHaveProperty('soundMissing');
+  });
+
+  it('names no sound that is the one playing, and reads a slide with two sound cues by the last, the one that plays', () => {
+    const { engine, source, setSounds } = sounds();
+    engine.dispatch(goLive('sounds', 0));
+    // Deleted from the library while it plays (it plays on): the slide after, naming it, carries it on.
+    const deleted = { ...TUNE, missing: true };
+    setSounds([[deleted], [deleted], [HYMN], [BELL]]);
+    engine.refreshNext();
+    expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 1 });
+    expect(engine.current.next).not.toHaveProperty('soundMissing');
+    // Two sound cues (an import can give a slide two): the last is there, so nothing is named...
+    source.set(
+      'twice',
+      [textSlide('w1', 'One'), textSlide('w2', 'Two'), textSlide('w3', 'Three')],
+      [[], [HYMN, BELL], [BELL, HYMN]],
+    );
+    engine.dispatch(goLive('twice', 0));
+    expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 1 });
+    expect(engine.current.next).not.toHaveProperty('soundMissing');
+    // ...and the last is missing: it is named, the first never playing instead.
+    engine.dispatch({ type: 'next' });
+    expect(engine.current.layers.audio).toMatchObject({ mediaId: 'bell' });
+    expect(engine.current.next).toMatchObject({
+      kind: 'slide',
+      slideIndex: 2,
+      soundMissing: 'Placeholder hymn.wav',
+    });
+  });
+});
+
 describe('a playlist item whose file is missing (unchanged)', () => {
   it('says so, and Next goes past it', () => {
     const { engine } = show();

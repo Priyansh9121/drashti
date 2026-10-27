@@ -333,29 +333,35 @@ export async function outputReady(page: Page): Promise<void> {
 /**
  * Create a screen group on a display through the bridge (covering the
  * operator window if it is there; a test needs the output). Returns the new screen's id.
+ * The display is the test's (Session 54), as testDisplays chooses them: 0 the main display, 1 the test's first
+ * pretend one (DRASHTI_EXTRA_DISPLAYS), 2 its second. Until then it was the display at that place in Drashti's list,
+ * so a second monitor plugged in took a test's second screen (Session 53's question 7).
  */
 export async function setUpScreen(win: Page, name = 'Main Hall', displayIndex = 0): Promise<string> {
+  const displayId = (await testDisplays(win))[displayIndex]?.id ?? -1;
   return win.evaluate(
-    async ({ name, displayIndex }) => {
+    async ({ name, displayId }) => {
       const d = (globalThis as PageGlobals).drashti;
       const created = await d.screens.createGroup(name);
       if (!created.ok) throw new Error(created.message);
       const group = created.snapshot.groups.find((g) => g.name === name);
-      const displayId = created.snapshot.displays[displayIndex]?.id ?? -1;
       const assigned = await d.screens.assignDisplay(group?.id ?? '', displayId, { coverOperator: true });
       if (!assigned.ok) throw new Error(assigned.message);
       // Keep these screens? (Session 50), in a test that asks it: kept, as a test needs the output.
       if ((await d.screens.pending()) !== null) await d.screens.keep();
       return assigned.snapshot.groups.find((g) => g.name === name)?.screens[0]?.id ?? '';
     },
-    { name, displayIndex },
+    { name, displayId },
   );
 }
 
 /** The first pretend display's id (src/main/outputs/electron-outputs.ts, EXTRA_DISPLAY_ID); four at most. */
 const PRETEND_DISPLAY_ID = 900_000_000;
 
-/** A display a test puts a screen on: its id, and its place in Drashti's list (setUpScreen's index). */
+/**
+ * A display a test puts a screen on: its id, and its place in Drashti's list (the setup wizard's Display numbers).
+ * Its place among the test's displays, not this, is setUpScreen's index (Session 54).
+ */
 export interface TestDisplay {
   id: number;
   index: number;
@@ -367,6 +373,7 @@ export interface TestDisplay {
  * this computer has. CI's computers have the main display alone; another real one here (a second monitor
  * plugged in) is passed over, so a test counts and chooses displays as it does on CI, and its windows all sit
  * on one physical screen (on two, the same picture's colours read 1.4–2% apart mid-transition: Session 52).
+ * setUpScreen chooses from these too (Session 54).
  */
 export async function testDisplays(win: Page): Promise<TestDisplay[]> {
   const displays = await win.evaluate(async () =>
@@ -483,8 +490,9 @@ export async function openMoreTools(page: Page): Promise<void> {
 
 /**
  * Tick a box or choose a radio (`ticked` true), or untick a box, whose state comes back from the main process,
- * and wait until it shows it (Session 53). Such a box shows what the main process saved (a Look's layers and
- * languages, what an Events out address gets), so a click changes it only once the save has come back.
+ * and wait until it shows it (Session 53). Such a box showed what the main process saved (a Look's layers and
+ * languages, what an Events out address gets), so a click changed it only once the save had come back (since
+ * Session 54 those show a click at once, ui/saved-setting.ts; the Kirtan dialog's style still waits).
  * Playwright's check() and uncheck() look once, straight after their click, and fail if it has not come back
  * yet ("Clicking the checkbox did not change its state": screen-languages.spec on CI's Windows, Session 52).
  * A click on a box already as wanted would change it back, so this clicks only when the box is not.

@@ -7,9 +7,11 @@ import {
   audienceOffSize,
   fittedSize,
   hallView,
+  inStep,
   NO_AUDIENCE,
   noAudienceLine,
   PICTURE,
+  unseenSize,
   WORDS_CORNER,
 } from './audience-picture';
 import { fontFamilyFor } from './fonts';
@@ -39,7 +41,8 @@ import { useElementSize } from './useElementSize';
  * picture does: pictures and videos as small previews (render/previews.tsx, given by the page), and no video
  * input or window, which are on Drashti's computer. There, and on a node, the box names a video input or a window
  * the hall's picture holds, in a small muted line under "Audience off", in the phone remote's words
- * (render/named-background.ts), so the performers see why it is black there.
+ * (render/named-background.ts), so the performers see why it is black there: never below the stage's smallest
+ * words while it fits (Session 54), as Audience off.
  *
  * With no audience group at all (Session 52) there is no hall's picture: the box is black, and says so in one
  * short plain line in its bottom left corner, where it drew every layer. Until a page is told the hall (a
@@ -137,30 +140,41 @@ const ROOM: Size = {
 /**
  * Over the picture, in its bottom left corner, scaled with it (Session 52): Audience off, the status bar's words on
  * its warning amber, and under them what this page cannot draw, muted. Audience off is as large as on the whole
- * stage's picture but never below the stage's smallest words (Session 53, audienceOffSize), measured as the line
- * with no audience group is (fittedSize): on its one line, with what is under it, inside the picture 40 px in from
- * its edges, coming down only as far as it must. Its padding and corners go with its size, as they were at 64 px.
+ * stage's picture but never below the stage's smallest words (Session 53, audienceOffSize), and so are the muted
+ * lines (Session 54, unseenSize; until then 40 px on the picture in any box), measured as the line with no audience
+ * group is (fittedSize): each on its one line, inside the picture 40 px in from its edges, coming down only as far
+ * as they must, the muted lines in step with Audience off (inStep; by the lines themselves without it). Their padding
+ * and corners go with their size, as they were at 64 px and 40 px.
  */
 function PictureWords({ box, off, unseen }: { box: Size; off: boolean; unseen: readonly string[] }) {
   const words = useRef<HTMLDivElement>(null);
   const said = useRef<HTMLParagraphElement>(null);
   const { size, scale } = audienceOffSize(box);
+  const lineSize = unseenSize(box);
   const fonts = useFontsLoaded();
   const lines = unseen.join('\n');
   useLayoutEffect(() => {
     const w = words.current;
+    if (!w) return;
     const p = said.current;
-    if (!w || !p) return;
+    const muted = [...w.querySelectorAll<HTMLElement>('[data-unseen-line]')];
+    const lead = p ? size : lineSize;
     // Sizes tried in the stage's pixels, set on the picture, each of whose pixels is `scale` of one.
-    const fitted = fittedSize(size, (px) => {
-      p.style.fontSize = `${px / scale}px`;
+    const place = (px: number) => {
+      if (p) p.style.fontSize = `${px / scale}px`;
+      for (const line of muted) line.style.fontSize = `${inStep(px, lead, lineSize) / scale}px`;
+    };
+    const fitted = fittedSize(lead, (px) => {
+      place(px);
       return (
-        w.offsetHeight <= ROOM.height + 0.5 && Math.max(p.offsetWidth, p.scrollWidth) <= ROOM.width + 0.5
+        w.offsetHeight <= ROOM.height + 0.5 &&
+        (!p || Math.max(p.offsetWidth, p.scrollWidth) <= ROOM.width + 0.5)
       );
     });
-    p.style.fontSize = `${fitted / scale}px`;
-    p.setAttribute('data-fit-size', String(fitted));
-  }, [size, scale, off, lines, fonts]);
+    place(fitted);
+    p?.setAttribute('data-fit-size', String(fitted));
+    for (const line of muted) line.setAttribute('data-fit-size', String(inStep(fitted, lead, lineSize)));
+  }, [size, scale, lineSize, off, lines, fonts]);
   return (
     <div
       ref={words}
@@ -197,17 +211,18 @@ function PictureWords({ box, off, unseen }: { box: Size; off: boolean; unseen: r
         <p
           key={line}
           data-testid="stage-audience-unseen"
+          data-unseen-line=""
           lang={textLang(line)}
           style={{
             margin: 0,
             maxWidth: ROOM.width,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            padding: '8px 20px',
-            borderRadius: 12,
+            // 8 px and 20 px, and 12 px corners, at 40 px (Session 54: they go with its size).
+            padding: '0.2em 0.5em',
+            borderRadius: '0.3em',
             background: 'rgba(0, 0, 0, 0.6)',
             color: '#8b93a3',
-            fontSize: 40,
             lineHeight: 1.25,
           }}
         >

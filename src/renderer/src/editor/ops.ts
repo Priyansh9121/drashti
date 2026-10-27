@@ -567,12 +567,15 @@ export function setBackgroundCue(
   });
 }
 
-/** The slide's sound (a cue on the audio layer), or none. */
+/**
+ * The slide's sound (a cue on the audio layer), or none. Of two (an import can give a slide two), the last is the
+ * one kept and changed (Session 54), as the editor shows it and the slide plays it.
+ */
 export function setSoundCue(
   slide: EditSlide,
   sound: { id: string; volume: number; loop: boolean } | null,
 ): EditSlide {
-  const old = slide.cues.find((c) => c.kind === 'audio');
+  const old = slide.cues.findLast((c) => c.kind === 'audio');
   const others = slide.cues.filter((c) => c.kind !== 'audio');
   if (!sound) return { ...slide, cues: others };
   const props = { ...(old ? cueSettings(old) : {}), volume: sound.volume, loop: sound.loop };

@@ -119,6 +119,19 @@ describe('ImportService', () => {
     expect(w?.killed).toBe(true);
   });
 
+  // Session 54 (Session 53's question 10): what is up playing a file the import gave points to moves at once.
+  it('passes on which files the import gave start and end points, as each group is committed', async () => {
+    const onMarked = vi.fn<NonNullable<ImportServiceDeps['onMarked']>>();
+    const { service, workers } = setup({ onMarked });
+    const done = service.start(['/presentations'], {});
+    const w = workers[0];
+    w?.emit({ type: 'marked', runId: w.runId, mediaIds: ['m1', 'm2'] });
+    expect(onMarked).toHaveBeenCalledWith(['m1', 'm2']);
+    w?.emit({ type: 'finished', run: summary(w.runId) });
+    await expect(done).resolves.toMatchObject({ ok: true });
+    expect(onMarked).toHaveBeenCalledTimes(1);
+  });
+
   it('tells each import whether this computer plays HEVC; one starting before the window has said waits for it (Session 51)', async () => {
     let tell: (plays: boolean | null) => void = () => undefined;
     const answer = new Promise<boolean | null>((resolve) => {

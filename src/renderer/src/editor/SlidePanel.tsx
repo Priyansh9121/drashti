@@ -215,7 +215,13 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
     background !== undefined &&
     background.mediaId !== null &&
     media.find((m) => m.id === background.mediaId)?.missing === true;
-  const sound = slide.cues.find((c) => c.kind === 'audio' && c.mediaId);
+  // Its sound: the last, when it has more than one (Session 54), as the slide going up plays.
+  const sound = slide.cues.findLast((c) => c.kind === 'audio' && c.mediaId);
+  // Its file missing (Session 54), as its background's is said.
+  const soundMissing =
+    sound !== undefined &&
+    sound.mediaId !== null &&
+    media.find((m) => m.id === sound.mediaId)?.missing === true;
   const others = slide.cues.filter((c) => c !== background && c !== sound);
   const nameOf = (cue: EditCue | undefined) => {
     const label = cue?.label ?? '';
@@ -496,6 +502,12 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
             </Button>
           )}
         </div>
+        {/* Its file missing (Session 54): what is playing carries on, as LIVE says. */}
+        {soundMissing && (
+          <p className="text-xs text-warning-fg" data-testid="sound-file-missing">
+            The file “{nameOf(sound)}” is missing: the sound stays as it was when this slide goes up.
+          </p>
+        )}
         {sound && (
           <SoundSettings
             cue={sound}

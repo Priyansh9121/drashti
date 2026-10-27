@@ -102,6 +102,11 @@ export interface PipelineContext {
   onProgress?: (progress: ImportProgress) => void;
   /** After each presentation is committed. */
   onWrote?: (wrote: { presentationId: string; replaced: boolean }) => void;
+  /**
+   * After a group is committed in which this import gave files start and end points or markers they had none of
+   * (Session 54), by media id: what is up playing them moves to them at once, as for points saved while it plays.
+   */
+  onMarked?: (mediaIds: string[]) => void;
   isCancelled?: () => boolean;
   /** Says when the run is cancelled, to stop work in the middle of a file (Keynote or PowerPoint saving one). */
   signal?: AbortSignal;
@@ -475,11 +480,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     return out;
   };
 
-  /** The library rows for staged media (inside a group): ids by reference, and what is missing. */
+  /**
+   * The library rows for staged media (inside a group): ids by reference, what is missing, and the files given
+   * points or markers they had none of (Session 54), told once the group is committed (`told`).
+   */
   const storeMedia = (staged: readonly Staged[], kind: SourceKind) => {
     const ids: string[] = [];
     const issues: ImportIssue[] = [];
-    let marked = 0;
+    const marked: string[] = [];
     for (const s of staged) {
       // A page drawn from a document is a picture Drashti made, from that page.
       const source = {
@@ -489,7 +497,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       if (s.staged) {
         const stored = ctx.media.addStaged(s.staged, source);
         ids.push(stored.mediaId);
-        if (s.ref.markers && ctx.media.keepMarkers(stored.mediaId, s.ref.markers)) marked++;
+        if (s.ref.markers && ctx.media.keepMarkers(stored.mediaId, s.ref.markers))
+          marked.push(stored.mediaId);
         // What cannot play: converted by itself (Session 50), or offered for Convert.
         issues.push(...playIssues(s.staged.name, stored));
         continue;
@@ -504,14 +513,18 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         fix: { kind: 'relink-media', mediaId: id },
       });
     }
-    if (marked > 0)
+    if (marked.length > 0)
       issues.push({
         severity: 'info',
         code: 'markers-read',
-        message: `Start and end points or markers were read for ${plural(marked, 'video or sound', 'videos or sounds')}. The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item’s Markers).`,
+        message: `Start and end points or markers were read for ${plural(marked.length, 'video or sound', 'videos or sounds')}. The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item’s Markers).`,
         fix: null,
       });
-    return { ids, issues, count: ids.length };
+    return { ids, issues, count: ids.length, marked };
+  };
+  /** Files given points (storeMedia's `marked`), told once their group is committed (Session 54). */
+  const told = (marked: readonly string[]) => {
+    if (marked.length > 0) ctx.onMarked?.([...marked]);
   };
 
   // ---- presentations ----------------------------------------------------------------
@@ -687,12 +700,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         }
         imports.addItem(ctx.runId, at, item);
         time('write', started);
-        return { item, wrote };
+        return { item, wrote, marked: media.marked };
       },
       {
-        committed: ({ item, wrote }) => {
+        committed: ({ item, wrote, marked }) => {
           addToTotals(totals, item);
           ctx.onWrote?.(wrote);
+          told(marked);
         },
         failed: (error) => {
           failed(
@@ -1025,11 +1039,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         };
         imports.addItem(ctx.runId, at, item);
         time('write', started);
-        return item;
+        return { item, marked: media.marked };
       },
       {
-        committed: (item) => {
+        committed: ({ item, marked }) => {
           addToTotals(totals, item);
+          told(marked);
         },
         failed: (error) => {
           failed(
@@ -1100,11 +1115,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         };
         imports.addItem(ctx.runId, at, item);
         time('write', started);
-        return item;
+        return { item, marked: media.marked };
       },
       {
-        committed: (item) => {
+        committed: ({ item, marked }) => {
           addToTotals(totals, item);
+          told(marked);
         },
         failed: (error) => {
           failed(where, kind, name, `Could not write these props: ${errorText(error)}`, [], at);

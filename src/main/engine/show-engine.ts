@@ -1627,12 +1627,14 @@ export class ShowEngine {
     live: LiveCursor,
     cue: CuedNext | null = this.state.cue,
     up: BackgroundLayer | null = this.state.layers.background,
+    sound: AudioLayer | null = this.state.layers.audio,
   ): UpNext | null {
     if (cue) {
       const item = cue.playlist ? this.checkItem(cue.playlist) : null;
       const arrangement = item?.item.kind === 'presentation' ? item.item.arrangementId : undefined;
       const first = this.source.order(cue.presentationId, arrangement)?.slides[0];
-      if (first) return this.slideUpNext(cue.presentationId, 0, first, item?.cursor.itemId ?? null, up);
+      if (first)
+        return this.slideUpNext(cue.presentationId, 0, first, item?.cursor.itemId ?? null, up, sound);
     }
     if (live.presentationId !== null && live.slideIndex !== null) {
       const order = this.source.order(live.presentationId, live.arrangementId);
@@ -1643,7 +1645,7 @@ export class ShowEngine {
           : live.slideIndex + 1;
       const following = order?.slides[index];
       if (following && index !== live.slideIndex)
-        return this.slideUpNext(live.presentationId, index, following, null, up);
+        return this.slideUpNext(live.presentationId, index, following, null, up, sound);
     }
     const at = live.playlist ? this.checkItem(live.playlist) : null;
     if (!at) return null;
@@ -1664,7 +1666,7 @@ export class ShowEngine {
       }
       if (item.kind === 'presentation') {
         const first = this.source.order(item.presentationId, item.arrangementId)?.slides[0];
-        if (first) return this.slideUpNext(item.presentationId, 0, first, item.id, up);
+        if (first) return this.slideUpNext(item.presentationId, 0, first, item.id, up, sound);
       }
     }
     return null;
@@ -1677,11 +1679,14 @@ export class ShowEngine {
     itemId: string | null,
     /** The background up, as the change being made leaves it: a file deleted while it is up is never named missing. */
     up: BackgroundLayer | null,
+    /** The sound playing, as the change leaves it (Session 54): the same for a sound file deleted while it plays. */
+    sound: AudioLayer | null,
   ): UpNext {
     // The cue it plays: its last background cue (Session 52), as the slide going up does.
     const cue = backgroundCueOf(played.cues);
     const bg = cue?.background;
     const missing = missingFile(played, up);
+    const unheard = missingSound(played, sound);
     return {
       kind: 'slide',
       presentationId,
@@ -1692,6 +1697,8 @@ export class ShowEngine {
       ...(bg?.kind === 'input' ? { input: bg.name } : {}),
       // Its file missing (Session 52), by its name: the background stays as it is when it goes up.
       ...(missing !== null ? { fileMissing: missing } : {}),
+      // Its sound's file missing (Session 54), as its background's: the sound stays as it is when it goes up.
+      ...(unheard !== null ? { soundMissing: unheard } : {}),
       itemId,
       notes: played.notes,
     };
@@ -2029,7 +2036,7 @@ export class ShowEngine {
       next = reduce(next, { type: 'cue/set', cue: null });
     // A new position (or a cue) has a new slide after it, and other items coming up.
     if (next.live !== prev.live || next.cue !== prev.cue) {
-      const upNext = this.upNext(next.live, next.cue, next.layers.background);
+      const upNext = this.upNext(next.live, next.cue, next.layers.background, next.layers.audio);
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
       next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
     }
