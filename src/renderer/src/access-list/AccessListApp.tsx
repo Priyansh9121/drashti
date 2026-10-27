@@ -283,8 +283,9 @@ export function AccessListApp() {
       />
     );
 
+  // Below 640 × 420 (200% zoom in a small window), the window scrolls rather than squeezing the list away.
   return (
-    <div className="flex h-full min-h-0 flex-col bg-ink text-fg">
+    <div className="flex h-full min-h-[420px] min-w-[640px] flex-col bg-ink text-fg">
       <header className="flex shrink-0 flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line bg-panel px-4 py-2.5">
         <h1 className="text-lg font-bold">Access List</h1>
         <p className="text-sm text-muted" data-testid="access-summary">
