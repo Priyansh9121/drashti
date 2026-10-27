@@ -238,7 +238,7 @@ export class AccessService {
     if (r.ok) {
       this.o.log('info', 'Access: access was asked for from this computer');
       this.request = { gmail: g, status: 'requested', tokenWaiting: false };
-      this.o.asked.write(g);
+      this.remember(g);
       this.message = r.value.mailed
         ? {
             tone: 'success',
@@ -270,7 +270,7 @@ export class AccessService {
       this.message = requestWords(r.value.status, r.value.tokenWaiting);
       if (r.value.status === 'requested') this.askLater();
       // Told once, plainly: nothing more happens.
-      if (r.value.status === 'rejected' || r.value.status === 'unknown') this.o.asked.write(null);
+      if (r.value.status === 'rejected' || r.value.status === 'unknown') this.remember(null);
       if (r.value.status === 'rejected')
         this.o.log('info', 'Access: the request from this computer was rejected');
     } else {
@@ -322,7 +322,7 @@ export class AccessService {
     this.kept = kept;
     this.activity = { ...NO_ACTIVITY };
     this.request = null;
-    this.o.asked.write(null);
+    this.remember(null);
     this.message = null;
     this.set({ gmail: g, reason: null });
     await this.checkToOpen();
@@ -522,6 +522,18 @@ export class AccessService {
     if (gmail === null || !gmailShaped(gmail)) return;
     this.request = { gmail, status: 'requested', tokenWaiting: false };
     void this.checkRequest();
+  }
+
+  /** The Gmail asked for, kept for the next start (or forgotten); a file that cannot be written only forgets it. */
+  private remember(gmail: string | null): void {
+    try {
+      this.o.asked.write(gmail);
+    } catch (error) {
+      this.o.log(
+        'warn',
+        `Access: the request could not be kept in the data folder (${(error as Error).message})`,
+      );
+    }
   }
 
   private askLater(): void {

@@ -90,7 +90,7 @@ export function LockApp() {
             {reasonLine(view)}
           </Notice>
         )}
-        {view.canRetry && (
+        {view.canRetry && (view.reason === 'no-answer' || view.reason === 'unknown') && (
           <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="primary"
