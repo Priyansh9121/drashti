@@ -3139,6 +3139,8 @@ function start(): void {
     engine: { state: () => engine.current, dispatch: (command) => engine.dispatch(command) },
     changed: (view) => {
       sendToOperator(IPC.music.changed, view);
+      // A phone lists them too (Session 54, D5).
+      network?.hint('music');
     },
     log: (message) => {
       log.info(message);
@@ -3513,6 +3515,8 @@ function start(): void {
   lowerThirds.purge();
   const lowerThirdsChanged = () => {
     sendToOperator(IPC.lowerThirds.changed, lowerThirds.list());
+    // A phone lists them too (Session 54, D5).
+    network?.hint('lowerThirds');
   };
   const notLowerThirdOperator = {
     ok: false as const,
@@ -3704,8 +3708,33 @@ function start(): void {
       looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
       clockStyle: mainClockStyle,
     },
-    playMusic: (who) => {
-      const played = music.play(null);
+    // The phone as a mirror of the operator window (Session 54, D5): read as the window reads them, never changed.
+    mirror: {
+      props: () => {
+        const logoId = settings.get('logoPropId');
+        return props
+          .list()
+          .map((p) => ({ id: p.id, name: p.name, imported: p.imported, logo: p.id === logoId }));
+      },
+      prop: (id) => {
+        const prop = props.list().find((p) => p.id === id);
+        return prop ? asPropItem(prop) : null;
+      },
+      media: () =>
+        media.list().map((m) => ({
+          id: m.id,
+          name: m.name,
+          kind: m.kind,
+          missing: m.missing,
+          unplayable: m.unplayable,
+        })),
+      lowerThirds: () => lowerThirds.list(),
+      music: () =>
+        music.view().playlists.map((p) => ({ id: p.id, name: p.name, trackCount: p.tracks.length })),
+      keys: () => ({ platform: process.platform, singleKeys: settings.get('singleLetterKeys') !== false }),
+    },
+    playMusic: (who, playlistId) => {
+      const played = music.play(playlistId);
       if (played.ok) log.info(`Music: ${who} played it`);
       return played.ok ? { ok: true as const } : { ok: false as const, message: played.message };
     },
@@ -5197,6 +5226,8 @@ function start(): void {
     settings.set('singleLetterKeys', on);
     log.info(`Keys: the single-letter keys (${SINGLE_KEYS_TEXT}) ${on ? 'on' : 'off'}`);
     sendToOperator(IPC.app.singleKeysChanged, { on });
+    // A phone's clears name the keys as the window's buttons do (Session 54, D5).
+    network.hint('keys');
     return { ok: true as const, on };
   });
   handle(IPC.library.setExtras, (e, on) => {

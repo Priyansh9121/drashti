@@ -186,16 +186,16 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await actions.getByRole('button', { name: 'Put it back' }).click();
       await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
 
-      // Black-out and the logo, on and off.
+      // Black-out and the logo, on and off, each with its key's name as on the desktop (Session 54, D5).
       // On, each says so in words, as Pro Mode and Simple Mode do (Session 26g), with no aria-pressed.
-      await actions.getByRole('button', { name: 'Black-out', exact: true }).click();
+      await actions.getByRole('button', { name: 'Black-out B', exact: true }).click();
       await expect(output.getByTestId('blackout')).toBeVisible();
       const on = actions.getByRole('button', { name: 'Black-out is on' });
       await expect(on).toBeVisible();
       await expect(on).not.toHaveAttribute('aria-pressed');
       await on.click();
       await expect(output.getByTestId('blackout')).toHaveCount(0);
-      await actions.getByRole('button', { name: 'Logo', exact: true }).click();
+      await actions.getByRole('button', { name: 'Logo F12', exact: true }).click();
       await expect(output.getByTestId('logo')).toContainText('Placeholder Mandir Logo');
       await expect(actions.getByRole('button', { name: 'Logo is on' })).toBeVisible();
       await actions.getByRole('button', { name: 'Logo is on' }).click();

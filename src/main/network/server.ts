@@ -36,6 +36,7 @@ import { PreviewMaker, type PreviewSource } from './previews';
 import { hashToken } from './tokens';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
+import { mirrorRoutes } from './mirror-routes';
 
 /*
  * Drashti's network server: HTTP and WebSocket on one port. It runs in a
@@ -170,7 +171,8 @@ const ROUTES: Route[] = [
     layer: b['layer'] === 'audio' ? 'audio' : 'background',
     markerId: p['id'],
   })),
-  route('POST', '/api/v1/music/play', 'music.play'),
+  // With an audio playlist chosen on a phone (Session 54, D5), or on from where it was paused.
+  route('POST', '/api/v1/music/play', 'music.play', (b) => ({ playlistId: b['playlistId'] })),
   route('POST', '/api/v1/music/pause', 'command', command('pauseMusic')),
   route('POST', '/api/v1/music/next', 'command', command('musicNext')),
   route('POST', '/api/v1/music/previous', 'command', command('musicPrevious')),
@@ -211,6 +213,8 @@ const ROUTES: Route[] = [
     values: b['values'],
   })),
   route('POST', '/api/v1/messages/:id/hide', 'message.hide', (_b, p) => ({ templateId: p['id'] })),
+  // The phone as a mirror of the operator window (Session 54, D5).
+  ...mirrorRoutes(route),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
 ];

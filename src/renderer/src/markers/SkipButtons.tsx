@@ -8,8 +8,8 @@ import type { SkipsShown } from './skips';
  * the background video and a single sound under the live picture, and for an audio playlist's track in the
  * row with its Play and Pause (Session 51). Each is a jump, as to a marker, in step on every screen, the nodes
  * and the stream (the engine's skip, which keeps to the file's start and end points). Dimmed until Drashti
- * knows how long the file is, a moment after it starts. Simple Mode, the phone remote and the keys have none
- * (not asked).
+ * knows how long the file is, a moment after it starts. Simple Mode and the keys have none (not asked); the phone
+ * remote has them under its live picture since Session 54 (D5: web/remote/Playing.tsx).
  */
 
 const SKIPS: { jump: 'back' | 'forward' | 'last'; label: string; icon: Icon }[] = [

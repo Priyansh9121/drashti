@@ -52,6 +52,7 @@ import type { ServerOptions } from './server';
 import { hashToken, newPairingCode, newToken } from './tokens';
 import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
+import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { cutText } from '../../shared/text';
 import { nfcDeep } from '../../shared/nfc';
 
@@ -119,8 +120,13 @@ export interface NetworkDeps {
     state(): EngineState;
   };
   reads: NetworkReads;
-  /** Play the audio playlist (music-service.ts): on from a pause, or the one played last. */
-  playMusic(who: string): { ok: true } | { ok: false; message: string };
+  /** What a phone reads to mirror the operator window (Session 54, D5: mirror-answers.ts). */
+  mirror: MirrorReads;
+  /**
+   * Play the audio playlist (music-service.ts): the one a phone chose (Session 54, D5), or on from a pause, or the
+   * one played last.
+   */
+  playMusic(who: string, playlistId: string | null): { ok: true } | { ok: false; message: string };
   /** Announcements from phones (announcement-service.ts). */
   announcements: {
     submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer;
@@ -168,6 +174,15 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   preview: null,
   announce: null,
   announcement: null,
+  // The mirror (Session 54, D5): the window's own reads, and what goes up as the window puts it up.
+  keys: IPC.app.singleKeys,
+  props: IPC.props.list,
+  'prop.show': IPC.engine.command,
+  media: IPC.library.listMedia,
+  'media.show': IPC.engine.command,
+  lowerThirds: IPC.lowerThirds.list,
+  'lowerThird.show': IPC.engine.command,
+  music: IPC.music.view,
 };
 
 const ON_SETTING = 'network.on';
@@ -676,7 +691,11 @@ export class NetworkService implements EngineTransport {
           : shown;
       }
       case 'music.play': {
-        const played = this.deps.playMusic(who);
+        // An audio playlist a phone chose (Session 54, D5), or none: on from where it was paused.
+        const chosen = args['playlistId'] ?? null;
+        const playlistId = chosen === null ? null : idSchema.safeParse(chosen).data;
+        if (playlistId === undefined) return deny(400, 'Which audio playlist?');
+        const played = this.deps.playMusic(who, playlistId);
         return played.ok ? ok({ playing: true }) : deny(409, played.message);
       }
       case 'playlists':
@@ -725,6 +744,17 @@ export class NetworkService implements EngineTransport {
           'took a message off',
         );
       }
+      case 'keys':
+      case 'props':
+      case 'prop.show':
+      case 'media':
+      case 'media.show':
+      case 'lowerThirds':
+      case 'lowerThird.show':
+      case 'music':
+        return mirrorAnswer(request.op, args, this.deps.mirror, (command, did) =>
+          this.run(command, who, did),
+        );
       case 'announce':
         return this.deps.announcements.submit(device, request.address, args);
       case 'announcement':
