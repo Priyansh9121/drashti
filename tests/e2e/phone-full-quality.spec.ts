@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -77,6 +77,14 @@ const naturalWidth = (page: Page, within: string, mediaId: string) =>
     .first()
     .evaluate((img: HTMLImageElement) => img.naturalWidth)
     .catch(() => 0);
+
+/** Whether a button's words run outside it, or it runs off the page. */
+const wordsSpillOut = (button: Locator) =>
+  button.evaluate(
+    (el) =>
+      el.scrollWidth > el.clientWidth + 1 ||
+      el.getBoundingClientRect().right > document.documentElement.clientWidth + 1,
+  );
 
 /** Every visible control under 44 × 44 CSS pixels (as phone-pages.spec.ts measures them). */
 const tooSmall = (page: Page) =>
@@ -199,6 +207,11 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
         expect((await snapshot(win)).liveZoom).toBeNull();
         // Its buttons, the side's among them (the picture is the one live): axe, and 44 px each.
         await expect(p.getByTestId('viewer-show-zoom')).toBeVisible();
+        // Its words inside it, on as many lines as they need (the picture of Session 54 showed them cut off).
+        expect(
+          await wordsSpillOut(p.getByTestId('viewer-show-zoom')),
+          `the side button's words at ${at}`,
+        ).toBe(false);
         await expectNoSeriousA11yIssues(p, `the viewer, zoomed, at ${at}`);
         expect.soft(await tooSmall(p), `targets under 44 px: the viewer at ${at}`).toEqual([]);
         await p.getByTestId('viewer-close').click();

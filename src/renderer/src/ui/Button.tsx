@@ -51,7 +51,7 @@ const squareSizes: Record<ButtonSize, string> = {
 };
 
 const base =
-  'inline-flex shrink-0 select-none items-center justify-center border whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100';
+  'inline-flex shrink-0 select-none items-center justify-center border disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100';
 /** The primary and the strong secondary speak up: bold words. Every other button is medium. */
 const weight = (variant: ButtonVariant) =>
   variant === 'primary' || variant === 'strong' ? 'font-bold' : 'font-medium';
@@ -63,7 +63,7 @@ const fade = 'transition-[background-color,border-color,color,box-shadow,filter]
 
 /** The class names of a button, for the odd element that must look like one. */
 export function buttonClass(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md'): string {
-  return cx(base, fade, weight(variant), variants[variant], sizes[size]);
+  return cx(base, 'whitespace-nowrap', fade, weight(variant), variants[variant], sizes[size]);
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -77,6 +77,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   kbd?: string;
   /** A show control: its state (on, lit) changes at once, with no colour fade. */
   instant?: boolean;
+  /**
+   * Its words may go onto more lines, for a narrow button with long words (a phone's side button); one line otherwise.
+   * A class name cannot do it: whitespace-normal and the button's own whitespace-nowrap would both apply.
+   */
+  wrap?: boolean;
   ref?: Ref<HTMLButtonElement>;
   children?: ReactNode;
 }
@@ -88,6 +93,7 @@ export function Button({
   iconEnd: IconAfter,
   kbd,
   instant = false,
+  wrap = false,
   className,
   children,
   type = 'button',
@@ -97,7 +103,15 @@ export function Button({
   return (
     <button
       type={type}
-      className={cx(base, !instant && fade, weight(variant), variants[variant], sizes[size], className)}
+      className={cx(
+        base,
+        wrap ? 'whitespace-normal' : 'whitespace-nowrap',
+        !instant && fade,
+        weight(variant),
+        variants[variant],
+        sizes[size],
+        className,
+      )}
       data-show-control={instant ? '' : undefined}
       data-variant={variant}
       {...props}
@@ -141,7 +155,16 @@ export function IconButton({
         type={type}
         aria-label={label}
         data-variant={variant}
-        className={cx(base, fade, weight(variant), variants[variant], squareSizes[size], 'px-0', className)}
+        className={cx(
+          base,
+          'whitespace-nowrap',
+          fade,
+          weight(variant),
+          variants[variant],
+          squareSizes[size],
+          'px-0',
+          className,
+        )}
         {...props}
       >
         <IconShape size={iconSizes[size]} aria-hidden="true" />

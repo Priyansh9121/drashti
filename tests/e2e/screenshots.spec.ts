@@ -447,6 +447,8 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
     });
   await shot(win, 'screens-languages');
   await win.getByRole('button', { name: 'Close screens' }).click();
+  // The pointer off the button now under it (Simple Mode's), whose tip would cover LIVE.
+  await win.mouse.move(640, 690);
   await shot(win, 'operator-kirtan-languages');
 
   // Templates, a playlist made from one, and filling a slot: in the playlists' column, under the library's

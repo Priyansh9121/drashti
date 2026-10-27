@@ -179,7 +179,8 @@ function Viewer() {
                 size="lg"
                 variant={showsThis ? 'live' : 'primary'}
                 icon={Tv}
-                className="h-auto min-h-16 py-2 text-left whitespace-normal"
+                wrap
+                className="h-auto min-h-16 py-2 text-left"
                 data-testid="viewer-show-zoom"
                 onClick={() => {
                   // With the showing it is for: nothing, should another picture be up by the time it arrives.
@@ -194,7 +195,8 @@ function Viewer() {
               <Button
                 size="lg"
                 icon={Minimize2}
-                className="h-auto min-h-12 py-2 text-left whitespace-normal"
+                wrap
+                className="h-auto min-h-12 py-2 text-left"
                 data-testid="viewer-whole"
                 onClick={() => {
                   setView(WHOLE);

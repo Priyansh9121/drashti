@@ -101,15 +101,18 @@ export function BoxLookFields({ box }: { box: StageBox }) {
           ))}
         </Select>
       </Field>
-      <Checkbox
-        label="Bold"
-        checked={box.bold === true}
-        data-testid="stage-box-bold"
-        onChange={(e) => {
-          const on = e.target.checked;
-          changeBox(box.id, (b) => (on ? { ...b, bold: true } : without(b, 'bold')));
-        }}
-      />
+      {/* A line of its own: the switch after it would otherwise sit on the same line, as if Bold's. */}
+      <div>
+        <Checkbox
+          label="Bold"
+          checked={box.bold === true}
+          data-testid="stage-box-bold"
+          onChange={(e) => {
+            const on = e.target.checked;
+            changeBox(box.id, (b) => (on ? { ...b, bold: true } : without(b, 'bold')));
+          }}
+        />
+      </div>
       <Toggle
         label="A fill behind it"
         checked={fill !== undefined}
