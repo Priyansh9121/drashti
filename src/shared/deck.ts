@@ -62,6 +62,10 @@ export interface DeckMedia {
   acrossSlides?: number;
   /** Hidden while it is not playing (a sound's icon, PowerPoint's showWhenStopped="0"). */
   hideWhenStopped?: boolean;
+  /** The step it appears at, by its entrance animation (Session 54, C review); left out, from step 0. */
+  enterStep?: number;
+  /** The step it leaves at, by its exit animation; left out, it never leaves. */
+  exitStep?: number;
 }
 
 /** The deck's own transition into a slide. */
@@ -85,6 +89,11 @@ export interface DeckSlide {
   transition?: DeckTransition;
   /** The deck's own "after N s", kept for the report only: Drashti moves on by itself only when told to. */
   deckAdvanceMs?: number;
+  /**
+   * The last still of the slide this one's step-0 clip was made after (the lastId of the deck's previous shown
+   * slide's last step; Session 54, C review); left out for the first slide and a deck made before.
+   */
+  after?: string;
   /** Step 0 (coming in), then one per click; at least one. */
   steps: DeckStep[];
   media: DeckMedia[];

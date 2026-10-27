@@ -1400,10 +1400,10 @@ function start(): void {
         start: () => lookService?.start() ?? NO_LOOK,
       },
       // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
-      refuse: (command) =>
+      refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
-          : simpleNow() && simpleModeRefuses(command)
+          : simpleNow() && simpleModeRefuses(command, state)
             ? SIMPLE_MODE_REFUSAL
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
@@ -4159,6 +4159,14 @@ function start(): void {
         reached++;
       }
       return reached;
+    };
+  // Tests only: LIVE's clock in the operator window held the same way (Session 54, C review), on its own so a test that
+  // holds the screens' clock still sees the controls' time move. Says whether it reached it.
+  if (testClockHold)
+    (globalThis as { drashtiTestHoldLive?: (at: number | null) => boolean }).drashtiTestHoldLive = (at) => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return false;
+      operatorWindow.webContents.send(IPC.output.testClock, { at });
+      return true;
     };
   if (testRenderErrors)
     (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (

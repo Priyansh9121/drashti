@@ -54,7 +54,8 @@ const WHAT = {
 
 type What = keyof typeof WHAT;
 
-async function linkTo(mediaId: string): Promise<{ url: string } | { problem: string }> {
+/** A link to a media file's original that a <video> or an <audio> plays (D1), or what stopped it. */
+export async function linkTo(mediaId: string): Promise<{ url: string } | { problem: string }> {
   const r = await api<{ url: string }>(`/api/v1/media/${encodeURIComponent(mediaId)}/link`);
   return r.ok ? { url: r.url } : { problem: r.message };
 }
@@ -198,12 +199,15 @@ export function DeviceVideoControls({ mediaId, what = 'video' }: { mediaId: stri
   return (
     <div>
       {here && p.problem && (
-        <div className="bg-panel px-3 pt-2" data-testid="viewer-video-problem">
+        <div
+          className="bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] pt-2"
+          data-testid="viewer-video-problem"
+        >
           <Notice tone="warning">{p.problem}</Notice>
         </div>
       )}
       <div
-        className="flex min-w-0 items-center gap-3 border-t border-line bg-panel px-3 py-2"
+        className="flex min-w-0 items-center gap-3 border-t border-line bg-panel pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] py-2"
         data-testid="viewer-time-bar"
       >
         <Button

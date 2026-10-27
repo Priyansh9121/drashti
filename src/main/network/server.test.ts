@@ -732,10 +732,32 @@ describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
       args: { type: 'zoomLive', zoom: 2.5, x: 0.25, y: -0.5 },
     });
     await call(port, '/api/v1/zoom/whole', { method: 'POST', headers: bearer(REMOTE_TOKEN) });
-    expect(host.requests.at(-1)).toMatchObject({ op: 'command', args: { type: 'resetLiveZoom' } });
+    expect(host.requests.at(-1)).toEqual(
+      expect.objectContaining({ op: 'command', args: { type: 'resetLiveZoom' } }),
+    );
     expect((await call(port, '/api/v1/zoom', { method: 'POST', headers: bearer(STAGE_TOKEN) })).status).toBe(
       403,
     );
+    // With the showing the phone zoomed (D1/D2 review): the engine does nothing when another is up by then.
+    const json = { ...bearer(REMOTE_TOKEN), 'Content-Type': 'application/json' };
+    await call(port, '/api/v1/zoom', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ zoom: 2, x: 0, y: 0, showing: 'slide:5000' }),
+    });
+    expect(host.requests.at(-1)?.args).toEqual({
+      type: 'zoomLive',
+      zoom: 2,
+      x: 0,
+      y: 0,
+      showing: 'slide:5000',
+    });
+    await call(port, '/api/v1/zoom/whole', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ showing: 'slide:5000' }),
+    });
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'resetLiveZoom', showing: 'slide:5000' });
   });
 });
 

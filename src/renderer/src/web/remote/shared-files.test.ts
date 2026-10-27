@@ -75,7 +75,7 @@ const WORDS: PageMakers<string> = {
   picture: (id, name) => `picture ${id} ${name}`,
   video: (id, name) => `video ${id} ${name}`,
   sound: (id, name) => `sound ${id} ${name}`,
-  slide: (id, name, s) => `slide ${id} ${name} ${String(s.position)} ${s.slide.id}`,
+  slide: (id, name, s) => [`slide ${id} ${name} ${String(s.position)} ${s.slide.id}`],
 };
 
 const docs = (id: string) => (id === 'kirtan' ? KIRTAN : null);

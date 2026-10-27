@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AudioOutputStatus } from '../shared/audio';
 import { allChannels, IPC } from '../shared/ipc';
+import { initialEngineState } from '../shared/engine/state';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../shared/mode';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
 
@@ -78,6 +79,27 @@ describe('Simple Mode locks', () => {
   });
 
   it('shows the time bar but moves nothing: the move, the skips and Pause are refused, Play never is, and a track’s Pause is Music’s own (Session 54)', () => {
+    // What plays on the audio layer: an audio playlist's track, or a single sound (put up from a phone's Media, say).
+    const none = initialEngineState();
+    const track = {
+      id: 'music:placeholder-list',
+      title: 'Placeholder track',
+      mediaId: 'placeholder-tune',
+      volume: 1,
+      loop: false,
+      startedAt: 1,
+      music: {
+        playlistId: 'placeholder-list',
+        name: 'Placeholder',
+        tracks: [],
+        index: 0,
+        loop: false,
+        shuffle: false,
+      },
+    };
+    const music = { ...none, layers: { ...none.layers, audio: track } };
+    const { music: _list, ...single } = track;
+    const sound = { ...none, layers: { ...none.layers, audio: { ...single, id: 'placeholder-sound' } } };
     const everything = [
       { layer: 'background' },
       { layer: 'slide', mediaId: 'placeholder-video' },
@@ -86,22 +108,30 @@ describe('Simple Mode locks', () => {
       { layer: 'pip' },
       { layer: 'audio' },
     ] as const;
+    for (const state of [music, sound, none])
+      for (const playing of everything) {
+        expect(simpleModeRefuses({ type: 'moveTo', playing, toMs: 1000 }, state), playing.layer).toBe(true);
+        // Paused, it can always be played on: Simple Mode's LIVE has no Play, so nothing stays stuck.
+        expect(simpleModeRefuses({ type: 'resumePlaying', playing }, state), playing.layer).toBe(false);
+      }
+    // Pause is refused, but on an audio playlist's track, where it is Music's own (Simple Mode's Pause music). A
+    // single sound's is refused too (Session 54's review): Simple Mode's window could never play it on.
     for (const playing of everything) {
-      expect(simpleModeRefuses({ type: 'moveTo', playing, toMs: 1000 }), playing.layer).toBe(true);
-      // Paused, it can always be played on: Simple Mode's LIVE has no Play, so nothing stays stuck.
-      expect(simpleModeRefuses({ type: 'resumePlaying', playing }), playing.layer).toBe(false);
-      // Pause is refused, but on the audio layer, where a track's is Music's own (Simple Mode's Pause music).
-      expect(simpleModeRefuses({ type: 'pausePlaying', playing }), playing.layer).toBe(
+      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, music), playing.layer).toBe(
         playing.layer !== 'audio',
       );
+      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, sound), playing.layer).toBe(true);
+      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, none), playing.layer).toBe(true);
     }
-    expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump: 'back' })).toBe(true);
+    expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump: 'back' }, music)).toBe(true);
     // As before: a marker jump and Music's own buttons are not refused; switching the Look is.
-    expect(simpleModeRefuses({ type: 'jumpToMarker', layer: 'background', markerId: 'm1' })).toBe(false);
-    expect(simpleModeRefuses({ type: 'pauseMusic' })).toBe(false);
-    expect(simpleModeRefuses({ type: 'resumeMusic' })).toBe(false);
-    expect(simpleModeRefuses({ type: 'setLook', lookId: 'placeholder-look' })).toBe(true);
-    expect(simpleModeRefuses({ type: 'next' })).toBe(false);
+    expect(simpleModeRefuses({ type: 'jumpToMarker', layer: 'background', markerId: 'm1' }, sound)).toBe(
+      false,
+    );
+    expect(simpleModeRefuses({ type: 'pauseMusic' }, music)).toBe(false);
+    expect(simpleModeRefuses({ type: 'resumeMusic' }, music)).toBe(false);
+    expect(simpleModeRefuses({ type: 'setLook', lookId: 'placeholder-look' }, none)).toBe(true);
+    expect(simpleModeRefuses({ type: 'next' }, none)).toBe(false);
   });
 
   it('every Session 12 request that changes something', () => {

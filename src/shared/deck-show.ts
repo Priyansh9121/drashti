@@ -98,6 +98,21 @@ export function deckSlideAt(slide: RenderSlide, index: number): RenderSlide {
   };
 }
 
+/**
+ * From when one of a deck's videos shows on its slide at the step up, by the engine's time (C review): between its
+ * entrance and its exit (shown at steps from `enterStep`, left out 0, until `exitStep`, left out never). At its
+ * entrance step, once that step's motion is over (its poster comes in on the step's clip); with no entrance, once the
+ * deck's own transition into the slide is; come back to (Back), at once. Null when it does not show at this step: it
+ * is hidden there, never its poster.
+ */
+export function videoShowsFrom(m: DeckMedia, timing: StepTiming): number | null {
+  const enter = m.enterStep ?? 0;
+  if (timing.index < enter || timing.index >= (m.exitStep ?? Infinity)) return null;
+  if (timing.index > enter || timing.still) return -Infinity;
+  if (m.enterStep === undefined) return timing.clipAt + Math.max(0, timing.step.transitionMs ?? 0);
+  return timing.endsAt;
+}
+
 /** The deck's own entry for one of its videos or sounds, by its file. */
 export function deckMediaOf(
   slide: RenderSlide,

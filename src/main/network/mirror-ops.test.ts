@@ -51,7 +51,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     localName: () => null,
     engine: {
       dispatch: (c): CommandResult => {
-        if (options.locked === true && simpleModeRefuses(c))
+        if (options.locked === true && simpleModeRefuses(c, state))
           return { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL };
         commands.push(c);
         return { ok: true, changed: true, rev: commands.length };

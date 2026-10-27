@@ -71,6 +71,7 @@ import {
   stepsLeft,
 } from './deck-steps';
 import { deckClips, lastStep, stepOf } from '../../shared/deck-show';
+import type { DeckSlide } from '../../shared/deck';
 import { reduce, sameData } from './reducer';
 import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
@@ -177,9 +178,10 @@ export interface EngineOptions {
   looks?: LookSource;
   /**
    * Why a command is refused now, or null to run it: Simple Mode refuses
-   * switching the Look, from the window, a phone or the API alike.
+   * switching the Look, from the window, a phone or the API alike; and, by
+   * what plays (`state`, Session 54), the time bar's Pause of a single sound.
    */
-  refuse?: (command: EngineCommand) => string | null;
+  refuse?: (command: EngineCommand, state: EngineState) => string | null;
   /** A media file's length in ms, when the library knows it (learned from playing it). */
   mediaLength?: (mediaId: string) => number | null;
   /** A video's or sound's start and end points and markers (Session 14), when it has any. */
@@ -394,7 +396,7 @@ export class ShowEngine {
   dispatch(command: EngineCommand): CommandResult {
     // Drashti stopped (Session 54, access by Gmail): nothing changes the show any more.
     if (this.state.stopped) return { ok: false, error: 'forbidden', message: STOPPED_REFUSAL };
-    const refused = this.options.refuse?.(command) ?? null;
+    const refused = this.options.refuse?.(command, this.state) ?? null;
     if (refused !== null) return { ok: false, error: 'forbidden', message: refused };
     // A Next sent with the revision it saw, the show having moved since (Sessions 31–36, TST-11), or seen in another
     // run of the engine (Session 53: a page's copy from before Drashti restarted, whatever the number): nothing.
@@ -1112,9 +1114,12 @@ export class ShowEngine {
   /**
    * Whether a deck's slide at `slideIndex` comes in order (Session 54, C2): the slide up is the one before it in the
    * same order, a deck's, at its last step, so the deck's own transition in its coming-in clip starts from what the
-   * screens show. Never in Repeat Slides, whose own transition brings every slide.
+   * screens show. Never in Repeat Slides, whose own transition brings every slide. And (C review) only when that slide
+   * is the very one its clip was made after (`after`, its last still): the order played leaves out an unticked slide,
+   * and a slide deleted or moved leaves a clip that begins on another's frame, which would show on every screen, node,
+   * the stream and key and fill through its transition. One that does not say comes in past its own transition.
    */
-  private inOrder(presentationId: string, slideIndex: number): boolean {
+  private inOrder(presentationId: string, slideIndex: number, deck: DeckSlide): boolean {
     const before = this.state.layers.slide;
     return (
       repeatPlaylistOf(presentationId) === null &&
@@ -1123,7 +1128,9 @@ export class ShowEngine {
       before.presentationId === presentationId &&
       before.slideIndex === slideIndex - 1 &&
       before.slide.deck !== undefined &&
-      stepOf(before) === lastStep(before.slide.deck)
+      stepOf(before) === lastStep(before.slide.deck) &&
+      deck.after !== undefined &&
+      before.slide.deck.steps.at(-1)?.lastId === deck.after
     );
   }
 
@@ -1167,7 +1174,7 @@ export class ShowEngine {
       ? deckShow(
           played.slide.deck,
           entry,
-          this.inOrder(presentationId, slideIndex),
+          this.inOrder(presentationId, slideIndex, played.slide.deck),
           this.transitionFor(order, played),
           at,
         )
@@ -1911,6 +1918,13 @@ export class ShowEngine {
         const target = this.zoomTarget(this.state);
         if (!target)
           return { ok: false, error: 'no-picture', message: 'No picture is on the screens to zoom.' };
+        // Sent for a showing no longer up (a phone's, as the operator moved on): never this picture's (D1/D2 review).
+        if (command.showing !== undefined && command.showing !== target.showing)
+          return {
+            ok: false,
+            error: 'no-picture',
+            message: 'The picture on the screens has changed since: zoom it again.',
+          };
         const kept = this.options.pictureLook?.(target.mediaId) ?? PLAIN;
         const z = this.state.liveZoom;
         const now = this.now();

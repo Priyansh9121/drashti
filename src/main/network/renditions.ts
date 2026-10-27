@@ -31,6 +31,11 @@ export const RENDITIONS_KEEP_FREE_BYTES = 2 * 1024 ** 3;
 export const RENDITION_MAX_BYTES = 64 * 1024 * 1024;
 const QUEUE_MAX = 30;
 const TIMEOUT_MS = 30_000;
+/**
+ * A step FFmpeg could not make (a file it cannot read, a disk nearly full) is not tried again for this long: every
+ * phone drawing it asks again every 15 s (D1/D2 review).
+ */
+export const FAILED_MS = 5 * 60_000;
 
 /** How a picture is made: FFmpeg with these arguments, true when it made the file (a seam for the tests). */
 export type RenditionRun = (args: string[]) => Promise<boolean>;
@@ -107,6 +112,8 @@ export class RenditionMaker {
   /** What the folder holds, by name: read once, then kept as files are made, used and let go. */
   private kept: Map<string, { bytes: number; at: number }> | null = null;
   private readonly infos = new Map<string, Promise<PictureInfo | null>>();
+  /** Steps not made, by name, and until when they are not tried again. */
+  private readonly failed = new Map<string, number>();
   private readonly run: RenditionRun | null;
   private readonly maxBytes: number;
   private readonly now: () => number;
@@ -148,10 +155,16 @@ export class RenditionMaker {
     const already = this.pending.get(name);
     if (already) return already;
     const run = this.run;
-    if (!run || this.queue.length >= QUEUE_MAX) return null;
+    if (!run || this.queue.length >= QUEUE_MAX || (this.failed.get(name) ?? 0) > this.now()) return null;
     const job = new Promise<Rendition | null>((resolve) => {
       this.queue.push(async () => {
-        resolve((await this.make(run, source, step, name)) ? made : null);
+        const ok = await this.make(run, source, step, name);
+        if (ok) this.failed.delete(name);
+        else {
+          if (this.failed.size > 1000) this.failed.clear();
+          this.failed.set(name, this.now() + FAILED_MS);
+        }
+        resolve(ok ? made : null);
       });
       void this.drain();
     }).finally(() => this.pending.delete(name));

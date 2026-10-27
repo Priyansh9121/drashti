@@ -10,6 +10,8 @@ import {
   liveFramingOf,
   liveZoomFor,
   maxZoomOver,
+  phoneZoomTarget,
+  screensFollow,
   viewForLive,
   zoomTargetOf,
 } from './live-zoom';
@@ -92,6 +94,26 @@ describe('the picture the screens zoom (Session 54, D2)', () => {
     expect(frameInCanvas(narrow, CANVAS)?.x).toBeCloseTo(240 / 1920);
   });
 
+  it('is never the background behind a slide of words, which the phone does not show as the screens’ picture', () => {
+    // A slide of words up over the background picture: the engine would zoom the background, which neither the
+    // slide's page nor the hall's picture on the phone shows as the picture zoomed: no frame, so no button.
+    const words = withBackground();
+    words.layers.slide = {
+      presentationId: 'p1',
+      slideIndex: 0,
+      shownAt: 9000,
+      notes: '',
+      slide: { id: 's-words', width: 1920, height: 1080, background: null, elements: [] },
+    };
+    expect(zoomTargetOf(words)?.mediaId).toBe('m-bg');
+    expect(phoneZoomTarget(words)).toBeNull();
+    expect(frameInCanvas(words, CANVAS)).toBeNull();
+    expect(frameInSlide(words)).toBeNull();
+    // The background alone, or the slide's own picture: the phone may zoom it.
+    expect(phoneZoomTarget(withBackground())?.mediaId).toBe('m-bg');
+    expect(phoneZoomTarget(withSlidePicture())?.mediaId).toBe('m-page');
+  });
+
   it('frames a picture shown in its own shape as the screens fit it into theirs', () => {
     // A 4:3 picture fitted whole into 16:9: the screens' frame reaches past its sides.
     const square = { width: 1600, height: 1200 };
@@ -141,6 +163,15 @@ describe('a phone’s zoom put on the screens (Session 54, D2)', () => {
     expect(view.cx).toBeCloseTo(0.6);
     expect(maxZoomOver(kept)).toBeCloseTo(4 / 1.5);
     expect(maxZoomOver(PLAIN)).toBe(4);
+  });
+
+  it('is offered only as far as the screens can follow, the phone zooming on past it (D1/D2 review)', () => {
+    const kept = { zoom: 1.5, x: 0, y: 0 };
+    // 2 × 1.5 = 3: the screens follow; 3 × 1.5 = 4.5: past their 400 %, so the button is not offered.
+    expect(screensFollow({ zoom: 2, cx: 0.5, cy: 0.5 }, kept)).toBe(true);
+    expect(screensFollow({ zoom: 3, cx: 0.5, cy: 0.5 }, kept)).toBe(false);
+    expect(screensFollow({ zoom: 4, cx: 0.5, cy: 0.5 }, PLAIN)).toBe(true);
+    expect(screensFollow({ zoom: 4.01, cx: 0.5, cy: 0.5 }, PLAIN)).toBe(false);
   });
 
   it('says the screens are zoomed only while their live zoom is away from how the picture is kept', () => {

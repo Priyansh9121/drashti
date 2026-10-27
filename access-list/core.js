@@ -17,6 +17,7 @@
  *   sign(text)                  RSA-SHA-256 (PKCS#1 v1.5) with the signing key, over UTF-8, base64
  *   formatTime(ms)              a time for an email or a page, in the Sheet's time zone
  *   props()                     { approverEmail, webAppUrl, linkKey, secretKey, hasSigningKey }
+ *   properties.get(key), properties.set(key, value)   the script's settings, read and written as they are
  *   mail.remaining()            emails the account may still send today
  *   mail.send({ to, subject, body })
  *   lock(fn)                    fn under the script's lock (throws when it cannot be had in time)
@@ -88,7 +89,8 @@ var DrashtiAccess = (function () {
     'already-approved': 'This Gmail is already approved.',
     'bad-token': 'That token does not work.',
     'not-owner': 'Only the owner’s computer can do that.',
-    'owner-row': 'The owner’s own row cannot be rejected or revoked.',
+    'owner-row':
+      'The owner’s own row is never asked for, rejected or revoked: the owner’s way in is Drashti › Let me in (the owner)… in the Sheet.',
     'not-found': 'That Gmail is not on the list.',
     'wrong-status': 'That cannot be done to this Gmail as it is now.',
     'mail-limit': 'The list has sent all the emails it may send today; try again tomorrow.',
@@ -388,12 +390,63 @@ var DrashtiAccess = (function () {
     return kind + ':' + env.sha256Hex(String(id)).slice(0, 32);
   }
 
-  /** One more try in this window for `id`; false when it already had `max`. */
+  /**
+   * One more try in this window for `id`; false when it already had `max`. Counted in the cache, so only for
+   * windows of an hour (Google keeps nothing in it past 6 hours; the day's requests are counted in the
+   * script's settings: countRequest).
+   */
   function allowed(env, kind, id, windowMs, max) {
     var key = cacheKey(env, kind, id) + ':' + Math.floor(env.now() / windowMs);
     var n = Number(cacheGet(env, key)) || 0;
     if (n >= max) return false;
-    cachePut(env, key, String(n + 1), Math.ceil(windowMs / 1000) + 60);
+    cachePut(env, key, String(n + 1), Math.min(Math.ceil(windowMs / 1000) + 60, 6 * 60 * 60));
+    return true;
+  }
+
+  /**
+   * The day's requests (a day by the list's clock, UTC), kept in the script's settings as REQUESTS_TODAY:
+   * how many in all, and for each Gmail and computer (by a short hash). One request more, or false when one
+   * of PROTOCOL.limits' day limits is reached; a request refused is never counted, so it stays a few KB
+   * whoever sends what. Under the script's lock (read, then written).
+   */
+  var REQUESTS_TODAY = 'REQUESTS_TODAY';
+
+  function countRequest(env, call) {
+    var L = PROTOCOL.limits;
+    var day = Math.floor(env.now() / DAY);
+    var kept;
+    try {
+      kept = JSON.parse(env.properties.get(REQUESTS_TODAY) || 'null');
+    } catch (e) {
+      kept = null;
+    }
+    if (
+      !isObject(kept) ||
+      kept.d !== day ||
+      !isObject(kept.g) ||
+      !isObject(kept.c) ||
+      typeof kept.n !== 'number'
+    )
+      kept = { d: day, n: 0, g: {}, c: {} };
+    var g = env.sha256Hex('gmail:' + call.key).slice(0, 16);
+    var c = env.sha256Hex('computer:' + call.computer.id).slice(0, 16);
+    var forGmail = hasOwn(kept.g, g) ? Number(kept.g[g]) || 0 : 0;
+    var forComputer = hasOwn(kept.c, c) ? Number(kept.c[c]) || 0 : 0;
+    if (
+      forGmail >= L.requestsPerGmailPerDay ||
+      forComputer >= L.requestsPerComputerPerDay ||
+      kept.n >= L.requestsPerDay
+    )
+      return false;
+    kept.g[g] = forGmail + 1;
+    kept.c[c] = forComputer + 1;
+    kept.n += 1;
+    try {
+      env.properties.set(REQUESTS_TODAY, JSON.stringify(kept));
+    } catch (e) {
+      if (env.log)
+        env.log('The day’s requests could not be counted: ' + String(e && e.message ? e.message : e));
+    }
     return true;
   }
 
@@ -995,14 +1048,11 @@ var DrashtiAccess = (function () {
   // ---- the calls ----
 
   function request(env, props, call) {
-    var L = PROTOCOL.limits;
-    if (
-      !allowed(env, 'rq-gmail', call.key, DAY, L.requestsPerGmailPerDay) ||
-      !allowed(env, 'rq-computer', call.computer.id, DAY, L.requestsPerComputerPerDay) ||
-      !allowed(env, 'rq-all', 'all', DAY, L.requestsPerDay)
-    )
-      throw refusal('too-many');
+    // The owner's row is never asked for (nor made "requested" again, whatever anyone sends): the owner's
+    // way in is Let me in, from the Sheet's own menu.
+    if (call.key === ownerKey(props)) throw refusal('owner-row');
     var person = withLock(env, function () {
+      if (!countRequest(env, call)) throw refusal('too-many');
       var data = load(env);
       var p = data.byKey[call.key];
       if (p && changedByHand(p)) takeInHandEdit(env, data, p);
@@ -1111,8 +1161,9 @@ var DrashtiAccess = (function () {
     var data = snapshot(env);
     var g = signedGrant(env, props, data, call);
     if (!g) return { ok: true, status: 'unknown', owner: false, recorded: false };
-    // At most one check a computer every PROTOCOL.limits.checkGapMs counts; only signed ones are counted,
-    // so nobody else can use up a computer's checks.
+    // At most one check a computer every PROTOCOL.limits.checkGapMs counts (is recorded); one sooner (Drashti
+    // quit and started again at once, say) is answered as any other. Only signed ones are counted, so nobody
+    // else can use up a computer's checks.
     var stateKey = cacheKey(env, 'computer', call.computer.id);
     var state;
     try {
@@ -1120,8 +1171,11 @@ var DrashtiAccess = (function () {
     } catch (e) {
       state = {};
     }
-    if (state.lastCheck && state.lastCheck <= now && now - state.lastCheck < PROTOCOL.limits.checkGapMs)
-      throw refusal('too-many');
+    var counted = !(
+      state.lastCheck &&
+      state.lastCheck <= now &&
+      now - state.lastCheck < PROTOCOL.limits.checkGapMs
+    );
     var p = data.byKey[g.key];
     if (p && changedByHand(p)) {
       takeInHandEdits(env, [p.key]);
@@ -1133,6 +1187,7 @@ var DrashtiAccess = (function () {
     var recorded = false;
     var lastRecord = state.lastRecord || g.lastSeen || 0;
     if (
+      counted &&
       s === 'in' &&
       (lastRecord > now || now - lastRecord >= PROTOCOL.limits.recordGapMs) &&
       call.at > g.lastAt
@@ -1154,12 +1209,13 @@ var DrashtiAccess = (function () {
         recorded = true;
       }
     }
-    cachePut(
-      env,
-      stateKey,
-      JSON.stringify({ lastCheck: now, lastRecord: recorded ? now : state.lastRecord || 0 }),
-      600,
-    );
+    if (counted)
+      cachePut(
+        env,
+        stateKey,
+        JSON.stringify({ lastCheck: now, lastRecord: recorded ? now : state.lastRecord || 0 }),
+        600,
+      );
     return { ok: true, status: s, owner: s === 'in' && g.key === ownerKey(props), recorded: recorded };
   }
 
