@@ -559,12 +559,23 @@ describe('the network in the main process', () => {
   });
 
   it('refuses over the network exactly what Simple Mode refuses in the window', () => {
-    // Each network action is the window request that does the same thing, so it gets the same answer: none
-    // is locked, as in the window (Session 44: running a macro was the one, and Macros are gone).
-    for (const op of Object.keys(DEVICE_OPS) as DeviceOp[]) {
+    // Each network action is the window request that does the same thing, so it gets the same answer: the only
+    // ones locked are the screens' setup, which a phone changes as Screens does since Session 54 (the phone as a
+    // full Drashti), refused in Simple Mode as in the window (Session 44: running a macro was one, and Macros are
+    // gone).
+    const locked = (Object.keys(DEVICE_OPS) as DeviceOp[]).filter((op) => {
       const channel = OP_CHANNEL[op];
-      if (channel) expect(SIMPLE_MODE_LOCKED.includes(channel), op).toBe(false);
-    }
+      return channel !== null && SIMPLE_MODE_LOCKED.includes(channel);
+    });
+    expect(locked).toEqual([
+      'screens.addGroup',
+      'screens.renameGroup',
+      'screens.groupRole',
+      'screens.deleteGroup',
+      'screens.useDisplay',
+      'screens.change',
+      'screens.remove',
+    ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });
     const remote = simple.service.pairForCheck('remote', 'Placeholder phone').id;
@@ -621,16 +632,18 @@ describe('the network in the main process', () => {
     expect(service.answer({ address: PHONE, deviceId: stage, op: 'hall', args: {} }).status).toBe(403);
   });
 
-  it('tells a Remote which of Main’s screens are off, with the hall, and gives no way to turn them (Session 50)', () => {
+  it('tells a Remote which of Main’s screens are off, with the hall (Session 50), and turns them only as the window’s own request does (Session 54)', () => {
     const { service, switches } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const hall = () => service.answer({ address: PHONE, deviceId: remote, op: 'hall', args: {} });
     expect(hall()).toMatchObject({ status: 200, body: { switches: { audience: true, stage: true } } });
     switches.audience = false;
     expect(hall()).toMatchObject({ status: 200, body: { switches: { audience: false, stage: true } } });
-    // Nothing a device can ask for turns them: no op of its own, and none reaches the window's request.
-    expect(Object.keys(DEVICE_OPS).filter((op) => /switch/iu.test(op))).toEqual([]);
-    expect(Object.values(OP_CHANNEL)).not.toContain(IPC.screenSwitches.turn);
+    // Since Session 54 (the phone as a full Drashti) one op turns them, a Remote's only, as the window's own
+    // request (desktop-ops.test.ts has the rest).
+    expect(Object.keys(DEVICE_OPS).filter((op) => /switch/iu.test(op))).toEqual(['switch']);
+    expect(DEVICE_OPS.switch).toEqual(['remote']);
+    expect(OP_CHANNEL.switch).toBe(IPC.screenSwitches.turn);
   });
 });
 

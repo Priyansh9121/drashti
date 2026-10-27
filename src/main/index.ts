@@ -210,6 +210,7 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
+import { coverBox } from './network/desktop-consent';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
@@ -1822,6 +1823,8 @@ function start(): void {
       eventsOut.emit(screenEvents(eventsScreensWas, screensNow));
       eventsScreensWas = screensNow;
       if (pageAlive(operatorWindow)) sendToPage(operatorWindow, IPC.screens.changed, screens.snapshot());
+      // And a phone setting them up (Session 54).
+      net.hint('setup');
       for (const [screenId, win] of outputWindows) {
         const context = contextFor(screenId);
         if (context) sendToPage(win, IPC.output.context, context);
@@ -1950,6 +1953,8 @@ function start(): void {
     snapshot: () => screens.snapshot(),
     changed: (pending) => {
       sendToPage(operatorWindow, IPC.screens.pendingChanged, pending);
+      // A phone that set up the screens answers it too (Session 54).
+      net.hint('setup');
       const covering = new Set(pending?.coversControls ? coveringNow() : []);
       for (const [screenId, win] of outputWindows)
         sendToPage(win, IPC.output.keepQuestion, covering.has(screenId) ? pending : null);
@@ -3828,6 +3833,40 @@ function start(): void {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),
     },
+    // The phone as a full Drashti (Session 54): the computer's screens and Audience and Stage, as the window's own
+    // requests change them; covering the controls is asked in the computer's own box, never taken from a phone.
+    desktop: {
+      screens: {
+        snapshot: () => screens.snapshot(),
+        controlsDisplayId: () => operatorDisplayId(),
+        createGroup: (name) => screenChanges.createGroup(name),
+        renameGroup: (id, name) => screenChanges.renameGroup(id, name),
+        setGroupRole: (id, role) => screenChanges.setGroupRole(id, role),
+        deleteGroup: (id) => screenChanges.deleteGroup(id),
+        assignDisplay: (groupId, displayId, options) =>
+          screenChanges.assignDisplay(groupId, displayId, options),
+        updateScreen: (id, patch, options) => screenChanges.updateScreen(id, patch, options),
+        removeScreen: (id) => screenChanges.removeScreen(id),
+        identify: () => {
+          screenChanges.identify();
+        },
+        pending: () => keepScreens.current(),
+        keep: () => keepScreens.keep(),
+        goBack: () => keepScreens.goBack(),
+      },
+      switches: {
+        get: () => screenSwitches.get(),
+        asksFirst: (which) => screenSwitches.asksFirst(which),
+        turn: (which, on) => screenSwitches.turn(which, on),
+      },
+      simple: () => simpleNow(),
+      confirmCover: async (question) => {
+        const box = coverBox(question, process.platform);
+        const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
+        const answer = parent ? await dialog.showMessageBox(parent, box) : await dialog.showMessageBox(box);
+        return answer.response === 1;
+      },
+    },
     files: phoneFiles,
     refused: (channel) => refusedNow(channel),
     changed: (status) => {
@@ -4673,15 +4712,50 @@ function start(): void {
       });
     return screens.snapshot();
   });
-  handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
-  handle(IPC.screens.setGroupRole, (e, id, role) => {
-    if (!fromOperator(e)) return notAllowed;
-    // Shows (Session 51, S3-3): another picture on the group's displays asks Keep these screens? too.
-    const result = keepScreens.change(() => screens.setGroupRole(id, role));
-    // A stage display in a browser shows the stage group's languages.
-    net.hint('screens');
-    return result;
-  });
+  // The screens' changes, as the window's requests and a phone's make them alike (Session 54: the phone as a full
+  // Drashti, network/desktop-answers.ts). Only the window's own request ever says it agreed to cover the controls.
+  const screenChanges = {
+    createGroup: (name: unknown) => screens.createGroup(name),
+    setGroupRole: (id: unknown, role: unknown) => {
+      // Shows (Session 51, S3-3): another picture on the group's displays asks Keep these screens? too.
+      const result = keepScreens.change(() => screens.setGroupRole(id, role));
+      // A stage display in a browser shows the stage group's languages.
+      net.hint('screens');
+      return result;
+    },
+    renameGroup: (id: unknown, name: unknown) => screens.renameGroup(id, name),
+    deleteGroup: (id: unknown) => {
+      const result = screens.deleteGroup(id);
+      streaming.contextChanged();
+      // A stage display in a browser follows the first stage group: it may be another now.
+      net.hint('screens');
+      return result;
+    },
+    // Use this display and On (Session 50): a change that puts an output on a display asks Keep these screens?; so
+    // does a key and fill pair's Sends (Session 51, S3-3: the key is another picture), through updateScreen.
+    assignDisplay: (groupId: unknown, displayId: unknown, options?: unknown) =>
+      keepScreens.change(() => screens.assignDisplay(groupId, displayId, options)),
+    updateScreen: (id: unknown, patch: unknown, options?: unknown) =>
+      keepScreens.change(() => screens.updateScreen(id, patch, options)),
+    removeScreen: (id: unknown) => screens.removeScreen(id),
+    identify: () => {
+      for (const [screenId, win] of outputWindows) {
+        const s = screenRepo.screen(screenId);
+        if (s) {
+          sendToPage(win, IPC.output.identify, {
+            name: s.name,
+            groupName: screenRepo.groupName(s.groupId) ?? '',
+          });
+        }
+      }
+    },
+  };
+  handle(IPC.screens.createGroup, (e, name) =>
+    fromOperator(e) ? screenChanges.createGroup(name) : notAllowed,
+  );
+  handle(IPC.screens.setGroupRole, (e, id, role) =>
+    fromOperator(e) ? screenChanges.setGroupRole(id, role) : notAllowed,
+  );
   handle(IPC.screens.setGroupLanguages, (e, id, languages) => {
     if (!fromOperator(e)) return notAllowed;
     const result = screens.setGroupLanguages(id, languages);
@@ -4691,25 +4765,14 @@ function start(): void {
     return result;
   });
   handle(IPC.screens.renameGroup, (e, id, name) =>
-    fromOperator(e) ? screens.renameGroup(id, name) : notAllowed,
+    fromOperator(e) ? screenChanges.renameGroup(id, name) : notAllowed,
   );
-  handle(IPC.screens.deleteGroup, (e, id) => {
-    if (!fromOperator(e)) return notAllowed;
-    const result = screens.deleteGroup(id);
-    streaming.contextChanged();
-    // A stage display in a browser follows the first stage group: it may be another now.
-    net.hint('screens');
-    return result;
-  });
-  // Use this display and On (Session 50): a change that puts an output on a display asks Keep these screens?; so
-  // does a key and fill pair's Sends (Session 51, S3-3: the key is another picture), through updateScreen.
+  handle(IPC.screens.deleteGroup, (e, id) => (fromOperator(e) ? screenChanges.deleteGroup(id) : notAllowed));
   handle(IPC.screens.assignDisplay, (e, groupId, displayId, options) =>
-    fromOperator(e)
-      ? keepScreens.change(() => screens.assignDisplay(groupId, displayId, options))
-      : notAllowed,
+    fromOperator(e) ? screenChanges.assignDisplay(groupId, displayId, options) : notAllowed,
   );
   handle(IPC.screens.updateScreen, (e, id, patch, options) =>
-    fromOperator(e) ? keepScreens.change(() => screens.updateScreen(id, patch, options)) : notAllowed,
+    fromOperator(e) ? screenChanges.updateScreen(id, patch, options) : notAllowed,
   );
   handle(IPC.screens.uncoverOperator, (e) => {
     if (!fromOperator(e)) return notAllowed;
@@ -4742,7 +4805,9 @@ function start(): void {
     watchdog.retryNow(win.webContents, 'Try again');
     return { ok: true as const };
   });
-  handle(IPC.screens.removeScreen, (e, id) => (fromOperator(e) ? screens.removeScreen(id) : notAllowed));
+  handle(IPC.screens.removeScreen, (e, id) =>
+    fromOperator(e) ? screenChanges.removeScreen(id) : notAllowed,
+  );
   // Audience and Stage (Session 50): anyone's in Pro Mode, in Simple Mode only on.
   handle(IPC.screenSwitches.get, () => screenSwitches.get());
   handle(IPC.screenSwitches.turn, (e, which, on) =>
@@ -4786,16 +4851,7 @@ function start(): void {
     return null;
   });
   handle(IPC.screens.identify, (e) => {
-    if (!fromOperator(e)) return null;
-    for (const [screenId, win] of outputWindows) {
-      const s = screenRepo.screen(screenId);
-      if (s) {
-        sendToPage(win, IPC.output.identify, {
-          name: s.name,
-          groupName: screenRepo.groupName(s.groupId) ?? '',
-        });
-      }
-    }
+    if (fromOperator(e)) screenChanges.identify();
     return null;
   });
   // ---- streaming (operator window; the stream's page for its own calls) ---------------

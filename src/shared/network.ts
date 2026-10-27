@@ -121,7 +121,12 @@ export type NetworkChange =
   | 'lowerThirds'
   | 'music'
   | 'keys'
-  | 'files';
+  | 'files'
+  /**
+   * The phone as a full Drashti (Session 54): the screens' setup, Keep these screens? or a phone's ask to cover the
+   * controls changed; a Remote that set them up reads them again (never a Stage device: its 'screens' says enough).
+   */
+  | 'setup';
 
 /** What the feed sends a device. */
 export type ToDevice =

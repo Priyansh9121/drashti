@@ -4,10 +4,11 @@ import type { DeviceKind } from './network';
  * What a paired device may ask for, by kind. The network server checks the
  * kind first; the main process checks it again (and the device itself, and
  * Simple Mode) before anything runs. A device never changes the library,
- * the screens, the sound, the stream, conversions, imports, backups, the
- * network's settings or Simple Mode: none of those are here. (Session 54: a
- * Remote adds a file of its own while "Phones and tablets may add files" is
- * on, imported as a dropped file is, and never live by itself.)
+ * the sound, the stream, conversions, imports, backups, the network's
+ * settings or Simple Mode: none of those are here. (Session 54: a Remote adds
+ * a file of its own while "Phones and tablets may add files" is on, imported
+ * as a dropped file is, and never live by itself; and, the phone as a full
+ * Drashti, sets up the computer's screens as Screens does, below.)
  */
 export const DEVICE_OPS = {
   /** Who this device is. */
@@ -108,6 +109,24 @@ export const DEVICE_OPS = {
   'upload.status': ['remote'],
   'upload.piece': ['remote'],
   'upload.cancel': ['remote'],
+  /**
+   * The phone as a full Drashti (Session 54, the owner's item 3: shared/network-desktop.ts): the computer's own
+   * screens set up as Screens does (its displays chosen by their ids), Keep these screens? answered, and Audience
+   * and Stage turned. Each as the window's own request does it, Simple Mode's refusals too; an output a phone would
+   * put over the controls is asked of the computer itself. Never a Stage or Announcements device.
+   */
+  screens: ['remote'],
+  'screens.addGroup': ['remote'],
+  'screens.renameGroup': ['remote'],
+  'screens.groupRole': ['remote'],
+  'screens.deleteGroup': ['remote'],
+  'screens.useDisplay': ['remote'],
+  'screens.change': ['remote'],
+  'screens.remove': ['remote'],
+  'screens.keep': ['remote'],
+  'screens.goBack': ['remote'],
+  'screens.identify': ['remote'],
+  switch: ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;
