@@ -158,8 +158,8 @@ test('a folder playlist shows a folder at a time: its own items in the middle, i
   // Next follows the whole playlist; moving into another folder's part, the middle shows that folder.
   const item = (name: string) =>
     win.getByTestId('open-playlist').getByTestId('playlist-item').filter({ hasText: name });
+  // One click puts the video up (Session 54).
   await item('Opening.mp4').click();
-  await win.getByTestId('item-media').click();
   await expect(item('Opening.mp4')).toHaveAttribute('data-live', 'true');
   const next = win.getByTestId('show-next');
   await next.click();

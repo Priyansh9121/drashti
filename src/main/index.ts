@@ -3378,6 +3378,16 @@ function start(): void {
         settings.set('links.maxHeight', height);
       },
     },
+    // The playlist the last download went into (Session 54), offered first: kept with the library, everyone's.
+    lastPlaylist: {
+      get: () => {
+        const id = settings.get('links.playlist');
+        return typeof id === 'string' ? id : null;
+      },
+      set: (id) => {
+        settings.set('links.playlist', id);
+      },
+    },
     // A Dropbox video taller than that: Drashti's own conversion makes a copy that tall first (it waits
     // while on air).
     fitVideo: (path, outDir, maxHeight, report) =>
@@ -3441,6 +3451,7 @@ function start(): void {
   handle(IPC.links.setMaxHeight, (e, height) =>
     fromOperator(e) ? links.setMaxHeight(height) : notLinksOperator,
   );
+  handle(IPC.links.setPlaylist, (e, id) => (fromOperator(e) ? links.setPlaylist(id) : notLinksOperator));
   handle(IPC.links.showSaved, (e, runId) => {
     const saved = links.savedPath(typeof runId === 'string' ? runId : null);
     if (fromOperator(e) && saved) shell.showItemInFolder(saved);

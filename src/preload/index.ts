@@ -182,6 +182,7 @@ const bridge: DrashtiBridge = {
     addWaiting: () => invoke(IPC.links.addWaiting),
     showSaved: (runId) => invoke(IPC.links.showSaved, runId),
     setMaxHeight: (height) => invoke(IPC.links.setMaxHeight, height),
+    setPlaylist: (playlistId) => invoke(IPC.links.setPlaylist, playlistId),
     onChanged: (listener) => on(IPC.links.changed, listener),
     onOpen: (listener) =>
       on(IPC.links.open, () => {

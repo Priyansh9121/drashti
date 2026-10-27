@@ -275,6 +275,8 @@ export const IPC = {
     showSaved: 'links:show-saved',
     /** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */
     setMaxHeight: 'links:set-max-height',
+    /** The playlist a download went into, offered first the next time (Session 54): every person's. */
+    setPlaylist: 'links:set-playlist',
     /** main -> operator: how the download stands changed. */
     changed: 'links:changed',
     /** main -> operator: File > Import from a Link… was chosen. */
@@ -981,6 +983,7 @@ export interface InvokeContract {
   [IPC.links.addWaiting]: { args: []; result: LinkResult };
   [IPC.links.showSaved]: { args: [runId: string | null]; result: null };
   [IPC.links.setMaxHeight]: { args: [height: number]; result: LinkResult };
+  [IPC.links.setPlaylist]: { args: [playlistId: string]; result: LinkResult };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };

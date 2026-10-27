@@ -101,7 +101,7 @@ export const PANEL_HELP = {
   playlist: {
     title: 'The open playlist',
     doc: 'operator',
-    text: 'The playlist you opened, its items as cards in the order they play. Click an item to see its slides below it, drag a card to move it, or drop files on it to add them. A video input from Media can be an item too: renaming the input in Media renames its items on this computer, and on a computer with no video input of that name, the card says Not on this computer and Next goes past it.',
+    text: 'The playlist you opened, its items as cards in the order they play. One click on a video, a picture or a sound puts it on the screens at once, and a click on a presentation shows its slides below; drag a card to move it, or drop files on it to add them. A video input from Media can be an item too: renaming the input in Media renames its items on this computer, and on a computer with no video input of that name, the card says Not on this computer and Next goes past it.',
     guide: '**Middle:**',
   },
   controls: {

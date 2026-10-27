@@ -107,9 +107,9 @@ test('show controls, thumbnails and the live picture never move, in Pro Mode and
     .getByTestId('playlist-node')
     .filter({ hasText: /^Placeholder motion/u })
     .click();
+  // One click on its card puts it up (Session 54): the middle's picture of it is live.
   await win.getByTestId('playlist-item').first().click();
   const card = win.getByTestId('item-media');
-  await card.click();
   await expect(card).toHaveAttribute('aria-current', 'true');
   // The picture's card, live, its border and glow red: still.
   await card.hover();
