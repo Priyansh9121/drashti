@@ -14,6 +14,7 @@ const noAnswer: { [K in keyof WorkerAnswers]: WorkerAnswers[K] } = {
   request: { status: 503, body: { ok: false, message: 'Drashti is busy: try again.' } },
   pair: { ok: false, status: 503, message: 'Drashti is busy: try again.' },
   media: null,
+  sound: null,
 };
 
 /** Start the worker's server; returns what to do with each message from the main process. */
@@ -42,6 +43,7 @@ export function runNetworkWorker(
     request: (request) => ask({ kind: 'request', request }),
     pair: (code, address) => ask({ kind: 'pair', code, address }),
     mediaSource: (mediaId) => ask({ kind: 'media', mediaId }),
+    sharedSound: (mediaId) => ask({ kind: 'sound', mediaId }),
     connected: (deviceIds) => {
       send({ type: 'connected', deviceIds });
     },

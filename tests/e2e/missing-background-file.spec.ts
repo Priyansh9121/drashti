@@ -100,6 +100,11 @@ test('a missing file behind a slide: the background stays as it was, never black
   const thumbs = win.getByTestId('slide-thumb');
   await expect(thumbs.nth(1).getByTestId('thumb-missing')).toHaveText('Missing');
   await expect(thumbs.nth(0).getByTestId('thumb-missing')).toHaveCount(0);
+  // And in its name, so a screen reader says it too (Session 54 review).
+  await expect(thumbs.nth(1)).toHaveAccessibleName(
+    /, its background file “Placeholder backdrop\.png” is missing$/u,
+  );
+  await expect(thumbs.nth(0)).not.toHaveAccessibleName(/is missing/u);
 
   // Up: the background stays the colour on the screens, and LIVE says why.
   await thumbs.nth(0).click();

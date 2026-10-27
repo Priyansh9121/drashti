@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import type { PlaylistItemInfo, PlaylistNode } from '../../../shared/playlists';
 import { useLibrary } from '../library/library-store';
-import { clickCard, type CardClick } from './one-click';
+import { clickCard, JUST_SHOWN_MS, meantPress, type CardClick } from './one-click';
 import { usePlaylists } from './playlist-store';
 
 /*
@@ -207,5 +207,19 @@ describe('one click on a playlist’s card', () => {
     clickCard(sound, click({ detail: 0 }), 'darwin');
     expect(usePlaylists.getState().marked).toEqual(['sound']);
     expect(putUp()).toEqual([]);
+  });
+});
+
+describe('Up and Down under the chosen card (Session 54’s review)', () => {
+  it('take a click only once they have been there a moment, so a double click’s second never moves anything', () => {
+    // A double click on the card below the chosen one: its second click lands on the Up or Down that has just
+    // appeared under it.
+    expect(meantPress(2, 1000, 1100)).toBe(false);
+    expect(meantPress(1, 1000, 1000 + JUST_SHOWN_MS - 1)).toBe(false);
+    // There a moment: every click counts, a quick run of them too.
+    expect(meantPress(1, 1000, 1000 + JUST_SHOWN_MS)).toBe(true);
+    expect(meantPress(3, 1000, 2000)).toBe(true);
+    // From the keyboard (Enter or Space on it: a click with no count), at once.
+    expect(meantPress(0, 1000, 1000)).toBe(true);
   });
 });

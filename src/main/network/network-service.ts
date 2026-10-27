@@ -88,6 +88,8 @@ export interface NetworkReads {
   logo(): PropItem | null;
   /** A media item's file and kind for a preview (pictures and videos only). */
   mediaSource(mediaId: string): PreviewSource | null;
+  /** A sound's file while a playlist shared with phones has it (Session 54, D3), for a phone to play; else null. */
+  sharedSound(mediaId: string): string | null;
   /**
    * The stage display's group (the first stage group, or null when there is
    * none) and its languages in the live Look (null: all of them).
@@ -535,12 +537,14 @@ export class NetworkService implements EngineTransport {
     try {
       if (question.kind === 'request') answer = this.answer(question.request);
       else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
-      // No file while Drashti is not let in (Session 54): a preview, a picture, an original.
-      else answer = this.letIn() ? this.deps.reads.mediaSource(question.mediaId) : null;
+      // No file while Drashti is not let in (Session 54): a preview, a picture, an original, a shared sound.
+      else if (!this.letIn()) answer = null;
+      else if (question.kind === 'sound') answer = this.deps.reads.sharedSound(question.mediaId);
+      else answer = this.deps.reads.mediaSource(question.mediaId);
     } catch (error) {
       this.deps.log('warn', `Network: a request failed (${(error as Error).message})`);
       answer =
-        question.kind === 'media'
+        question.kind === 'media' || question.kind === 'sound'
           ? null
           : question.kind === 'pair'
             ? { ok: false, status: 500, message: COULD_NOT }

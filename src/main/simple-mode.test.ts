@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AudioOutputStatus } from '../shared/audio';
 import { allChannels, IPC } from '../shared/ipc';
-import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../shared/mode';
+import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../shared/mode';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
 
 describe('Simple Mode locks', () => {
@@ -62,8 +62,8 @@ describe('Simple Mode locks', () => {
     // Switching the Look is an engine command: the engine refuses it (from anywhere) in Simple Mode, as it
     // does zooming the live picture (Session 26e, Pro Mode's), setting up, swapping or moving a
     // picture-in-picture box (Session 50; taking one off is not refused), choosing a video input (Session 50:
-    // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the time bar's move (Session
-    // 54: Simple Mode shows the bar only).
+    // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the time bar's move and the
+    // skips (Session 54: Simple Mode shows the bar only).
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual([
       'setLook',
       'zoomLive',
@@ -73,7 +73,35 @@ describe('Simple Mode locks', () => {
       'placePip',
       'showInput',
       'moveTo',
+      'skip',
     ]);
+  });
+
+  it('shows the time bar but moves nothing: the move, the skips and Pause are refused, Play never is, and a track’s Pause is Music’s own (Session 54)', () => {
+    const everything = [
+      { layer: 'background' },
+      { layer: 'slide', mediaId: 'placeholder-video' },
+      { layer: 'props', propId: 'placeholder-prop', mediaId: 'placeholder-video' },
+      { layer: 'logo', mediaId: 'placeholder-video' },
+      { layer: 'pip' },
+      { layer: 'audio' },
+    ] as const;
+    for (const playing of everything) {
+      expect(simpleModeRefuses({ type: 'moveTo', playing, toMs: 1000 }), playing.layer).toBe(true);
+      // Paused, it can always be played on: Simple Mode's LIVE has no Play, so nothing stays stuck.
+      expect(simpleModeRefuses({ type: 'resumePlaying', playing }), playing.layer).toBe(false);
+      // Pause is refused, but on the audio layer, where a track's is Music's own (Simple Mode's Pause music).
+      expect(simpleModeRefuses({ type: 'pausePlaying', playing }), playing.layer).toBe(
+        playing.layer !== 'audio',
+      );
+    }
+    expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump: 'back' })).toBe(true);
+    // As before: a marker jump and Music's own buttons are not refused; switching the Look is.
+    expect(simpleModeRefuses({ type: 'jumpToMarker', layer: 'background', markerId: 'm1' })).toBe(false);
+    expect(simpleModeRefuses({ type: 'pauseMusic' })).toBe(false);
+    expect(simpleModeRefuses({ type: 'resumeMusic' })).toBe(false);
+    expect(simpleModeRefuses({ type: 'setLook', lookId: 'placeholder-look' })).toBe(true);
+    expect(simpleModeRefuses({ type: 'next' })).toBe(false);
   });
 
   it('every Session 12 request that changes something', () => {
@@ -113,6 +141,26 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.library.pickImportPaths)?.()).toEqual([]);
     expect(answers.get(IPC.audio.setOutput)?.()).toBe(status);
     expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length);
+  });
+
+  it('the Access List’s edits, answered in their own shape; reading the list and saving its CSV are not (Session 54, E4)', () => {
+    for (const channel of [
+      IPC.accessList.add,
+      IPC.accessList.approve,
+      IPC.accessList.reject,
+      IPC.accessList.revoke,
+      IPC.accessList.regrant,
+      IPC.accessList.note,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(answers.get(channel)?.(), channel).toEqual({
+        ok: false,
+        message: SIMPLE_MODE_REFUSAL,
+        view: { people: null, updatedAt: null, problem: null },
+      });
+    }
+    for (const channel of [IPC.accessList.view, IPC.accessList.refresh, IPC.accessList.exportCsv])
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
   });
 
   it('every Session 13 request that changes something: pairing, removing, assigning, reloading; the dashboard still opens', () => {

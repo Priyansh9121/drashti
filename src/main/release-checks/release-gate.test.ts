@@ -1,9 +1,17 @@
 import { createHash } from 'node:crypto';
-import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { APP_JOBS, ciCheck, filesCheck, mainCheck, tagCheck } from '../../../scripts/release-gate.mjs';
+import {
+  accessCheck,
+  APP_JOBS,
+  ciCheck,
+  filesCheck,
+  mainCheck,
+  tagCheck,
+} from '../../../scripts/release-gate.mjs';
+import { accessConfigReal } from '../../shared/access-config';
 
 /*
  * The release gate (Session 30 step 5), on canned answers from git and GitHub: the tag new, the commit
@@ -105,5 +113,46 @@ describe('the release gate', () => {
     const lines = (await filesCheck(dir)).map((r) => r.line);
     expect(lines).toContain('drashti-update.json does not match its SHA-256 in SHA256SUMS.txt.');
     expect(lines).toContain('drashti-update.json cannot be read (not JSON).');
+  });
+});
+
+describe('the release gate and the access list (Session 54)', () => {
+  // Shaped as Set up… makes them, never a real list's: a made-up address and a key of one letter.
+  const url = 'https://script.google.com/macros/s/PretendWebAppAddress_0123456789/exec';
+  const key = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA${'A'.repeat(342)}IDAQAB`;
+  const config = (u: string, k: string) =>
+    `export const ACCESS_LIST_URL = '${u}';\nexport const ACCESS_LIST_PUBLIC_KEY = '${k}';\n`;
+
+  it('refuses the placeholders the repository holds until the owner sends the line', () => {
+    const today = readFileSync(join(__dirname, '../../shared/access-config.ts'), 'utf8');
+    expect(accessCheck(today)).toMatchObject({ ok: accessConfigReal() });
+    expect(
+      accessCheck(config('https://script.google.com/macros/s/PLACEHOLDER-WEB-APP-ADDRESS/exec', 'x')),
+    ).toEqual({
+      ok: false,
+      line: 'The access list’s address and public key are not built in (src/shared/access-config.ts): put in the line the owner’s Set up… shows.',
+    });
+  });
+
+  it('passes a real-shaped address and key, and names the one that is missing', () => {
+    expect(accessCheck(config(url, key))).toEqual({
+      ok: true,
+      line: 'The access list’s address and public key are built in.',
+    });
+    expect(accessCheck(config(url, 'PLACEHOLDER-PUBLIC-KEY')).line).toContain('public key is not built in');
+    expect(accessCheck(config('https://example.com/exec', key)).line).toContain('address is not built in');
+  });
+
+  it('agrees with accessConfigReal, which Drashti itself asks', () => {
+    const urls = [
+      url,
+      'https://script.google.com/a/macros/example.org/s/PretendWebAppAddress_0123456789/exec',
+      'http://script.google.com/macros/s/PretendWebAppAddress_0123456789/exec',
+      'https://script.google.com/macros/s/short/exec',
+      'https://script.google.com/macros/s/PLACEHOLDER-WEB-APP-ADDRESS/exec',
+    ];
+    const keys = [key, key.slice(1), `${key.slice(0, -6)}IDAQAC`, 'PLACEHOLDER-PUBLIC-KEY'];
+    for (const u of urls)
+      for (const k of keys) expect(accessCheck(config(u, k)).ok).toBe(accessConfigReal(u, k));
   });
 });

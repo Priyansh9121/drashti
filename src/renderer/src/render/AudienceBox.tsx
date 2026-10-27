@@ -142,9 +142,11 @@ const ROOM: Size = {
  * its warning amber, and under them what this page cannot draw, muted. Audience off is as large as on the whole
  * stage's picture but never below the stage's smallest words (Session 53, audienceOffSize), and so are the muted
  * lines (Session 54, unseenSize; until then 40 px on the picture in any box), measured as the line with no audience
- * group is (fittedSize): each on its one line, inside the picture 40 px in from its edges, coming down only as far
- * as they must, the muted lines in step with Audience off (inStep; by the lines themselves without it). Their padding
- * and corners go with their size, as they were at 64 px and 40 px.
+ * group is (fittedSize): inside the picture 40 px in from its edges, coming down only as far as they must, the muted
+ * lines in step with Audience off (inStep; by the lines themselves without it). Audience off keeps to its one line;
+ * the muted lines wrap, never cut (Session 54 review: at 30 px, "Picture in picture: Input 1" was cut to "Picture
+ * in picture:…", the name lost), so they come down only when, wrapped, they do not fit. Their padding and corners go
+ * with their size, as they were at 64 px and 40 px.
  */
 function PictureWords({ box, off, unseen }: { box: Size; off: boolean; unseen: readonly string[] }) {
   const words = useRef<HTMLDivElement>(null);
@@ -216,8 +218,9 @@ function PictureWords({ box, off, unseen }: { box: Size; off: boolean; unseen: r
           style={{
             margin: 0,
             maxWidth: ROOM.width,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            // Wrapped at the picture's edge, a long name anywhere in it: never cut (Session 54 review).
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere',
             // 8 px and 20 px, and 12 px corners, at 40 px (Session 54: they go with its size).
             padding: '0.2em 0.5em',
             borderRadius: '0.3em',

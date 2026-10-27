@@ -1,6 +1,6 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, DragEvent } from 'react';
+import type { CSSProperties, DragEvent, MouseEvent } from 'react';
 import { create } from 'zustand';
 import { formatDuration } from '../../../shared/format';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
@@ -62,7 +62,7 @@ import { openPictureEditor } from '../pictures/PictureEditor';
 import { RepeatBar } from './RepeatBar';
 import { FolderCrumbs } from './PlaylistFolders';
 import { PlaylistsUnread } from './PlaylistsUnread';
-import { clickCard } from './one-click';
+import { clickCard, meantPress } from './one-click';
 import {
   addFromLibrary,
   addHeader,
@@ -478,6 +478,15 @@ function MoveButtons({
   hidden: boolean;
   onMove: (step: -1 | 1, on: 'up' | 'down') => void;
 }) {
+  // When these appeared: a click on them straight after is a double click's second, on the card they came
+  // under (Session 54's review), and moves nothing.
+  const shownAt = useRef(0);
+  useLayoutEffect(() => {
+    shownAt.current = performance.now();
+  }, []);
+  const press = (e: MouseEvent, step: -1 | 1, on: 'up' | 'down') => {
+    if (meantPress(e.detail, shownAt.current, performance.now())) onMove(step, on);
+  };
   return (
     <span
       role="group"
@@ -491,7 +500,9 @@ function MoveButtons({
         data-move="up"
         disabled={first}
         title="Up a place (Alt+↑)"
-        onClick={() => onMove(-1, 'up')}
+        onClick={(e) => {
+          press(e, -1, 'up');
+        }}
       >
         Up
       </Button>
@@ -501,7 +512,9 @@ function MoveButtons({
         data-move="down"
         disabled={last}
         title="Down a place (Alt+↓)"
-        onClick={() => onMove(1, 'down')}
+        onClick={(e) => {
+          press(e, 1, 'down');
+        }}
       >
         Down
       </Button>

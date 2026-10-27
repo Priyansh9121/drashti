@@ -625,6 +625,54 @@ describe('what Next shows of a slide’s sound file that is missing (Session 54)
   });
 });
 
+// Session 54 review: what Next said of a file deleted while it played stayed as it was when the show last moved, so a
+// sound or background cleared since (or music in the sound's place) left the next slide's missing file unsaid.
+describe('what Next says of a missing file follows what is up (Session 54 review)', () => {
+  it('names the next slide’s sound once the sound that carried it on goes: cleared, or music in its place', () => {
+    const deleted = { ...TUNE, missing: true };
+    for (const takeOff of [
+      { type: 'clearLayer', layer: 'audio' },
+      { type: 'playMusic', music: MUSIC, index: 0 },
+    ] as const satisfies readonly EngineCommand[]) {
+      const { engine, setSounds } = sounds();
+      engine.dispatch(goLive('sounds', 0));
+      // Deleted while it plays: the slide after, naming it, carries it on, so nothing is said of it.
+      setSounds([[deleted], [deleted], [HYMN], [BELL]]);
+      engine.refreshNext();
+      expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 1 });
+      expect(engine.current.next).not.toHaveProperty('soundMissing');
+      // It goes: the slide after would put nothing up for it, and says so.
+      engine.dispatch(takeOff);
+      expect(engine.current.layers.audio?.mediaId ?? null).not.toBe('tune');
+      expect(engine.current.next).toMatchObject({
+        kind: 'slide',
+        slideIndex: 1,
+        soundMissing: 'Placeholder tune.wav',
+      });
+    }
+  });
+
+  it('names the next slide’s background file once the background that carried it on goes: cleared, or another in its place', () => {
+    const deleted = { ...LOOP, missing: true };
+    for (const takeOff of [
+      { type: 'clearLayer', layer: 'background' },
+      { type: 'setBackground', background: { kind: 'color', color: '#203040' } },
+    ] as const satisfies readonly EngineCommand[]) {
+      const { engine, source } = show();
+      source.set('loops', [textSlide('l1', 'One'), textSlide('l2', 'Two')], [[LOOP], [deleted]]);
+      engine.dispatch(goLive('loops', 0));
+      expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 1 });
+      expect(engine.current.next).not.toHaveProperty('fileMissing');
+      engine.dispatch(takeOff);
+      expect(engine.current.next).toMatchObject({
+        kind: 'slide',
+        slideIndex: 1,
+        fileMissing: 'Placeholder loop.mp4',
+      });
+    }
+  });
+});
+
 describe('a playlist item whose file is missing (unchanged)', () => {
   it('says so, and Next goes past it', () => {
     const { engine } = show();

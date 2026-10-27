@@ -17,8 +17,11 @@ import { onListsChanged, onOnline } from '../feed';
  * the library: each is put up and taken off (mirror-actions.ts).
  */
 
-/** What the library shows: its presentations, or its pictures, videos and sounds (the window's library sheet). */
-export type LibraryKind = 'presentations' | 'media';
+/**
+ * What the library shows: its presentations, or its pictures, videos and sounds (the window's library sheet); or,
+ * while a playlist is shared with phones, Shared from Drashti (D3, library-kinds.ts).
+ */
+export type LibraryKind = 'presentations' | 'media' | 'shared';
 
 /** The library's media as the phone has read it: by name, a page at a time, or found by words. */
 export interface MirrorMedia {

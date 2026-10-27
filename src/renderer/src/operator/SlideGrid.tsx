@@ -151,6 +151,25 @@ function ThumbSound({ cue, live }: { cue: AudioCue; live: boolean }) {
   );
 }
 
+/**
+ * A slide's sound whose file is missing (Session 54 review), in its picture's bottom left corner: the word, as a
+ * missing background's badge has it in the top left, with the sound's mark.
+ */
+function SoundMissingBadge({ cue }: { cue: AudioCue }) {
+  return (
+    <span
+      data-testid="thumb-sound-missing"
+      data-media-id={cue.mediaId}
+      title={`“${cue.name}” is missing: the sound stays as it was when this slide goes up`}
+      className="absolute bottom-1 left-1"
+    >
+      <Badge tone="warning" icon={Music}>
+        Missing
+      </Badge>
+    </span>
+  );
+}
+
 const Thumb = memo(function Thumb({
   presentationId,
   presentationName,
@@ -198,6 +217,9 @@ const Thumb = memo(function Thumb({
   const inputName = behind?.kind === 'input' ? behind.name : null;
   // The sound cue it plays: its last, when it has more than one (Session 54), as the slide going up does.
   const sound = soundCueOf(info.cues);
+  // Its background's file or its sound's missing, said in its name too (Session 54 review), as its marks show them.
+  const fileGone = background?.missing === true && behind?.kind === 'media' ? background.name : null;
+  const soundGone = sound?.missing === true ? sound.name : null;
   // A slide with a picture on it (a deck's page, say): its right-click offers the Picture editor (Session 26e).
   const picture = info.slide.elements.find((e) => e.kind === 'image');
   const [menu, setMenu] = useState<MenuPlace | null>(null);
@@ -242,7 +264,7 @@ const Thumb = memo(function Thumb({
         data-slide-id={info.id}
         data-found={found ? 'true' : undefined}
         aria-current={live ? 'true' : undefined}
-        aria-label={`Slide ${position + 1}${group.name ? `, ${group.name}` : ''}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}${over ? ', words run past a box' : ''}`}
+        aria-label={`Slide ${position + 1}${group.name ? `, ${group.name}` : ''}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}${over ? ', words run past a box' : ''}${fileGone !== null ? `, its background file “${fileGone}” is missing` : ''}${soundGone !== null ? `, its sound file “${soundGone}” is missing` : ''}`}
         onClick={() => void goLive(presentationId, position, arrangementId, playlist)}
         // A double-click opens the slide editor at this slide (the first click put it live); a passage's
         // slides are made from its text, so they have no editor.
@@ -274,6 +296,7 @@ const Thumb = memo(function Thumb({
             </OversetWatch>
           </PlacedInParent>
           {over && <OversetMark />}
+          {sound?.missing === true && <SoundMissingBadge cue={sound} />}
         </span>
         <span
           className={cx(

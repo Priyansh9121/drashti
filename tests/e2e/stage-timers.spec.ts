@@ -1,11 +1,12 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { newStageBox, type StageBox, type StageLayout } from '../../src/shared/stage-layouts';
-import { FLASH_DIM } from '../../src/shared/stage-timer';
-import type { TimerFields } from '../../src/shared/timers';
+import { FLASH_DIM, flashDimmed } from '../../src/shared/stage-timer';
+import { formatTimer, type TimerFields } from '../../src/shared/timers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import {
+  holdStill,
   launchApp,
   operatorPage,
   operatorReady,
@@ -556,7 +557,7 @@ test('a box’s settings draw alike on this computer’s stage screen, a node’
   }
 });
 
-test('a timer box’s colours and its flash at 0:00 follow the engine’s time: dim a second, bright a second, for ten seconds', async () => {
+test('a timer box’s colours and its flash at 0:00 follow the engine’s time: dim a second, bright a second, for ten seconds, on the clock’s whole seconds', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
@@ -564,15 +565,28 @@ test('a timer box’s colours and its flash at 0:00 follow the engine’s time: 
   const stageId = await setUpScreen(win, 'Stage', 0);
   const group = await makeStage(win, 'Stage');
   const timerId = await makeTimer(win, countdownOf('Placeholder flashing countdown', 60_000));
+  // And a countdown of 2 s that holds at 0:00, to be paused while it flashes.
+  const shortId = await makeTimer(win, {
+    ...countdownOf('Placeholder short countdown', 2000),
+    allowsOverrun: false,
+  });
   await giveLayout(win, group, 'Placeholder flash layout', [
     {
       ...newStageBox('timer', 'placeholder-flash'),
       timerId,
-      frame: { x: 48, y: 48, width: 1824, height: 984 },
+      frame: { x: 48, y: 48, width: 1824, height: 480 },
       size: 'fit',
       color: '#ffffff',
       warn: { color: '#f5a524', fromMs: 30_000 },
       overColor: '#ef4444',
+      flash: true,
+    },
+    {
+      ...newStageBox('timer', 'placeholder-short'),
+      timerId: shortId,
+      frame: { x: 48, y: 552, width: 1824, height: 480 },
+      size: 'fit',
+      color: '#ffffff',
       flash: true,
     },
   ]);
@@ -582,48 +596,87 @@ test('a timer box’s colours and its flash at 0:00 follow the engine’s time: 
     (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
     timerId,
   );
-  const startedAt = (await engineState(win)).timers.find((t) => t.id === timerId)?.startedAt ?? null;
-  if (startedAt === null) throw new Error('the countdown did not start');
+  const timer = (await engineState(win)).timers.find((t) => t.id === timerId);
+  const startedAt = timer?.startedAt ?? null;
+  if (!timer || startedAt === null) throw new Error('the countdown did not start');
   const zeroAt = startedAt + 60_000;
-  const time = stage.locator('[data-stage-box="timer"] [data-timer]');
-  /** The timer at a moment of the engine's time, held on every output. */
-  const at = async (ms: number, text: string, color: string | null, dim: boolean) => {
+  // The flash keeps to the engine clock's whole seconds (Part A's review): from the first at or after 0:00, dim on
+  // its even seconds, for ten seconds.
+  const from = Math.ceil(zeroAt / 1000) * 1000;
+  const firstDim = Math.ceil(from / 2000) * 2000;
+  const time = stage.locator('[data-box-id="placeholder-flash"] [data-timer]');
+  /** The timer at a moment of the engine's time, held on every output: its time, its colour, dim or not. */
+  const at = async (ms: number, color: string | null, dim: boolean) => {
+    expect(flashDimmed(timer, ms), `the flash's rule ${String(ms - zeroAt)} ms from 0:00`).toBe(dim);
     expect(await holdClock(app, ms)).toBeGreaterThan(0);
-    await expect(time).toHaveText(text);
+    await expect(time).toHaveText(formatTimer(timer, ms));
     if (color === null) await expect(time).not.toHaveAttribute('data-timer-color');
     else await expect(time).toHaveAttribute('data-timer-color', color);
     if (dim) await expect(time).toHaveAttribute('data-flash', 'dim');
     else await expect(time).not.toHaveAttribute('data-flash');
     expect(Number(await time.evaluate((el) => getComputedStyle(el).opacity))).toBe(dim ? FLASH_DIM : 1);
   };
-  await at(startedAt + 10_000, '0:50', null, false);
-  await at(startedAt + 35_000, '0:25', '#f5a524', false);
-  await at(zeroAt, '0:00', '#ef4444', true);
-  await at(zeroAt + 999, '0:00', '#ef4444', true);
-  await at(zeroAt + 1000, '-0:01', '#ef4444', false);
-  await at(zeroAt + 2500, '-0:02', '#ef4444', true);
-  await at(zeroAt + 9500, '-0:09', '#ef4444', false);
-  await at(zeroAt + 8500, '-0:08', '#ef4444', true);
-  // Ten seconds on, it stays bright.
-  await at(zeroAt + 10_000, '-0:10', '#ef4444', false);
-  await at(zeroAt + 60_000, '-1:00', '#ef4444', false);
-  // Paused, it never flashes.
+  // 0:50 in its own colour; 0:25 in the warning's.
+  await at(startedAt + 10_000, null, false);
+  await at(startedAt + 35_000, '#f5a524', false);
+  // 0:00 in the colour when over, dim only if it fell on an even whole second; then a second dim, a second bright.
+  await at(zeroAt, '#ef4444', zeroAt === firstDim);
+  await at(firstDim + 500, '#ef4444', true);
+  await at(firstDim + 1500, '#ef4444', false);
+  await at(firstDim + 2500, '#ef4444', true);
+  await at(firstDim + 6500, '#ef4444', true);
+  // Ten seconds from the first whole second, it stays bright.
+  await at(from + 10_000, '#ef4444', false);
+  await at(from + 10_500, '#ef4444', false);
+  await at(zeroAt + 60_000, '#ef4444', false);
+  // Paused inside its ten seconds, a countdown never flashes (Part A's review): the 2 s one, on the engine's own time.
   await holdClock(app, null);
+  const short = stage.locator('[data-box-id="placeholder-short"] [data-timer]');
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
+    shortId,
+  );
+  const shortTimer = (await engineState(win)).timers.find((t) => t.id === shortId);
+  if (shortTimer?.startedAt == null) throw new Error('the short countdown did not start');
+  // At 0:00, flashing: dim within its first two seconds there.
+  await expect(short).toHaveText('0:00', { timeout: 10_000 });
+  await expect(short).toHaveAttribute('data-flash', 'dim', { timeout: 10_000 });
   await win.evaluate(
     (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'pauseTimer', timerId: id }),
-    timerId,
+    shortId,
   );
-  await expect(time).not.toHaveAttribute('data-flash');
+  await expect
+    .poll(async () => (await engineState(win)).timers.find((t) => t.id === shortId)?.startedAt)
+    .toBeNull();
+  await expect(short).not.toHaveAttribute('data-flash');
+  await expect(short).toHaveText('0:00');
+  await holdStill(
+    async () => (await short.getAttribute('data-flash')) === null,
+    3000,
+    'a countdown paused at 0:00 never flashes',
+  );
+  // Held at a moment its flash would be dim, had it gone on: still not.
+  const shortFrom = Math.ceil((shortTimer.startedAt + 2000) / 1000) * 1000;
+  const wouldDim = Math.ceil(shortFrom / 2000) * 2000 + 4500;
+  expect(flashDimmed(shortTimer, wouldDim)).toBe(true);
+  expect(await holdClock(app, wouldDim)).toBeGreaterThan(0);
+  await expect(short).toHaveText('0:00');
+  await expect(short).not.toHaveAttribute('data-flash');
   await app.close();
 });
 
-test('a layout saved before opens as it was, and draws as it did: nothing to save, words no larger than 400 px', async () => {
+test('a layout saved before opens as it was, and draws as it did: nothing to save, words no larger than 400 px, a countdown at 0:00 as before', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   const stageId = await setUpScreen(win, 'Stage', 0);
   const group = await makeStage(win, 'Stage');
+  // A countdown of 1 s that holds at 0:00, for a box of its own (Part A's review: the test drew no timer).
+  const spentId = await makeTimer(win, {
+    ...countdownOf('Placeholder countdown saved before', 1000),
+    allowsOverrun: false,
+  });
   // As Session 53's editor saved them: none of the settings since (fitWhole among them).
   const before: StageBox[] = [
     {
@@ -645,6 +698,16 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
       label: 'TIMERS',
       timerId: null,
     },
+    {
+      id: 'placeholder-old-countdown',
+      kind: 'timer',
+      frame: { x: 960, y: 860, width: 900, height: 200 },
+      size: 96,
+      color: '#fde68a',
+      align: 'right',
+      label: '',
+      timerId: spentId,
+    },
   ];
   const layoutId = await giveLayout(win, group, 'Placeholder layout saved before', before);
   const stage = await outputFor(app, stageId);
@@ -657,6 +720,27 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
     weight: '400',
     line: expect.stringMatching(/^0px /u),
   });
+
+  // Its countdown at 0:00, held where a box that flashes would be dim: the time as Timers writes it, in the box's
+  // own colour, with no colour of its own and no flash.
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
+    spentId,
+  );
+  const spent = (await engineState(win)).timers.find((t) => t.id === spentId);
+  if (spent?.startedAt == null) throw new Error('the countdown did not start');
+  const from = Math.ceil((spent.startedAt + 1000) / 1000) * 1000;
+  const wouldDim = Math.ceil(from / 2000) * 2000 + 500;
+  expect(flashDimmed(spent, wouldDim)).toBe(true);
+  expect(await holdClock(app, wouldDim)).toBeGreaterThan(0);
+  const old = stage.locator('[data-box-id="placeholder-old-countdown"] [data-timer]');
+  await expect(old).toHaveText(formatTimer(spent, wouldDim));
+  await expect(old).toHaveText('0:00');
+  await expect(old).not.toHaveAttribute('data-timer-color');
+  await expect(old).not.toHaveAttribute('data-flash');
+  expect(await old.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(253, 230, 138)');
+  expect(Number(await old.evaluate((el) => getComputedStyle(el).opacity))).toBe(1);
+  await holdClock(app, null);
 
   // In the editor: as it was, nothing to save, its boxes' new settings at what they leave out.
   await win.getByTestId('stage-edit-layout').click();
@@ -671,9 +755,17 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
   await expect(settings.getByTestId('stage-box-fill')).toHaveAttribute('aria-checked', 'false');
   await expect(settings.getByTestId('stage-box-hours')).toHaveValue('computer');
   await expect(settings.getByTestId('stage-box-seconds')).not.toBeChecked();
-  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Timer', exact: true }).click();
-  await expect(settings.getByTestId('stage-box-format')).toHaveValue('auto');
-  await expect(settings.getByTestId('stage-box-flash')).toHaveAttribute('aria-checked', 'false');
+  for (const n of [0, 1]) {
+    await editor
+      .getByTestId('stage-box-list')
+      .getByRole('button', { name: 'Timer', exact: true })
+      .nth(n)
+      .click();
+    await expect(settings.getByTestId('stage-box-format')).toHaveValue('auto');
+    await expect(settings.getByTestId('stage-box-warn')).toHaveAttribute('aria-checked', 'false');
+    await expect(settings.getByTestId('stage-box-over')).toHaveAttribute('aria-checked', 'false');
+    await expect(settings.getByTestId('stage-box-flash')).toHaveAttribute('aria-checked', 'false');
+  }
   await expect(save).toBeDisabled();
   await editor.getByRole('button', { name: 'Close stage layouts' }).click();
   // Kept exactly as it was saved.
@@ -843,5 +935,267 @@ test('the Text size field shows what is typed, figure by figure, and the box tak
         ?.boxes.find((b) => b.kind === 'notes')?.size,
   );
   expect(saved).toBe(120);
+  await app.close();
+});
+
+// Session 54 (Part A's review): a line's width and how many items a box of the playlist's next items shows took each
+// figure as it came, as the Text size field did (G4): Backspace then 8 gave 38, the 3 put back between the two.
+test('a line’s width and how many items show what is typed: Backspace, then a figure, gives that figure', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await editor.getByTestId('stage-layout-duplicate').click();
+  await editor.getByTestId('stage-layout-name').fill('Placeholder typed line layout');
+  const settings = editor.getByTestId('stage-box-settings');
+  /** Backspace at the end of what the field shows, then these figures: what it shows then, and once it is left. */
+  const retype = async (field: Locator, figures: string, shown: string, left: string) => {
+    await field.focus();
+    await field.press('End');
+    await field.press('Backspace');
+    await expect(field).toHaveValue('');
+    await field.pressSequentially(figures);
+    await expect(field).toHaveValue(shown);
+    await field.blur();
+    await expect(field).toHaveValue(left);
+  };
+
+  // A line round the clock's letters: 3 px to begin with; typed 8, then 2.5.
+  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Clock', exact: true }).click();
+  await settings.getByTestId('stage-box-outline').click();
+  await expect(settings.getByTestId('stage-box-outline')).toHaveAttribute('aria-checked', 'true');
+  const width = settings.getByTestId('stage-box-outline-width');
+  await expect(width).toHaveValue('3');
+  await retype(width, '8', '8', '8');
+  await retype(width, '2.5', '2.5', '2.5');
+  // Wider than the widest (40 px), once it is left: the widest.
+  await retype(width, '95', '95', '40');
+
+  // The playlist's next items: 4 to begin with; typed 3.
+  await editor.getByTestId('stage-box-kind').selectOption('upcoming');
+  await editor.getByTestId('stage-box-add').click();
+  const count = settings.getByRole('spinbutton', { name: 'How many items' });
+  await expect(count).toHaveValue('4');
+  await retype(count, '3', '3', '3');
+
+  await editor.getByTestId('stage-layout-save').click();
+  await expect(editor.getByTestId('stage-layout-save')).toBeDisabled();
+  const saved = await win.evaluate(
+    async () =>
+      (await (globalThis as PageGlobals).drashti.stageLayouts.list()).find(
+        (l) => l.name === 'Placeholder typed line layout',
+      )?.boxes,
+  );
+  expect(saved?.find((b) => b.kind === 'clock')?.outline).toEqual({ color: '#000000', width: 40 });
+  expect(saved?.find((b) => b.kind === 'upcoming')?.count).toBe(3);
+  await app.close();
+});
+
+// Part A's review: the Countdown goes on past 0:00 in the overtime colour, so it says when a countdown chosen in Timers
+// holds at 0:00 instead, and lets it run on when asked.
+test('New from a Template… says when a countdown chosen in Timers stops at 0:00, and lets it run on past it when asked', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const held = await makeTimer(win, {
+    name: 'Placeholder held countdown',
+    kind: 'countdown',
+    durationMs: 120_000,
+    targetTime: null,
+    allowsOverrun: false,
+  });
+
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await editor.getByTestId('stage-layout-from-template').click();
+  const dialog = win.getByTestId('stage-template-dialog');
+  await dialog.getByRole('radio', { name: 'Countdown', exact: true }).click();
+  await dialog.getByTestId('stage-template-own-timer').click();
+  await expect(dialog.getByTestId('stage-template-own-timer')).toBeChecked();
+  // It holds at 0:00: said under the choice, with the choice to let it run on.
+  await expect(dialog.getByTestId('stage-template-stops')).toContainText(
+    '“Placeholder held countdown” stops at 0:00',
+  );
+  const runOn = dialog.getByTestId('stage-template-run-on');
+  await runOn.click();
+  await expect(runOn).toBeChecked();
+  // Another template has nothing to say of it.
+  await dialog.getByRole('radio', { name: 'Timer only', exact: true }).click();
+  await expect(dialog.getByTestId('stage-template-stops')).toHaveCount(0);
+  await dialog.getByRole('radio', { name: 'Countdown', exact: true }).click();
+  await expect(runOn).toBeChecked();
+  await dialog.getByTestId('stage-template-make').click();
+  await expect(dialog).toHaveCount(0);
+  // Let run on past 0:00, in Timers too: the same timer, nothing else of it changed.
+  await expect
+    .poll(async () => (await timersNow(win)).find((t) => t.id === held))
+    .toMatchObject({ name: 'Placeholder held countdown', durationMs: 120_000, allowsOverrun: true });
+  await app.close();
+});
+
+// Part A's review: the flash and the colour when over, on a node's stage screen (its clock held) and a tablet's
+// stage page (its own clock, kept in step with the engine's), as on this computer's.
+test('a node’s stage screen and a tablet’s stage page flash a timer at 0:00 and draw it in its colour when over, as this computer’s does', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const node = await launchNode({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const tablet = await device('chromium', TABLET);
+  try {
+    const nodeId = await pairNode(main, node);
+    const stageId = await setUpScreen(main.win, 'Stage', 0);
+    const group = await makeStage(main.win, 'Stage');
+    // A countdown of 2 s that runs on past 0:00, flashing there, in its colour when over.
+    const timerId = await makeTimer(main.win, countdownOf('Placeholder node countdown', 2000));
+    await giveLayout(main.win, group, 'Placeholder node flash layout', [
+      {
+        ...newStageBox('timer', 'placeholder-node-flash'),
+        timerId,
+        frame: { x: 48, y: 48, width: 1824, height: 984 },
+        size: 'fit',
+        color: '#ffffff',
+        overColor: '#ef4444',
+        flash: true,
+      },
+    ]);
+    // The node's second (pretend) display in the same stage group.
+    await expect
+      .poll(async () =>
+        main.win.evaluate(
+          async (id) =>
+            (
+              (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === id)
+                ?.displays ?? []
+            ).length,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    const assigned = await main.win.evaluate(
+      async ({ group, nodeId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const displays = (await d.screens.get()).nodes.find((n) => n.id === nodeId)?.displays ?? [];
+        return d.screens.assignNodeDisplay(group, nodeId, displays[1]?.id ?? -1);
+      },
+      { group, nodeId },
+    );
+    expect(assigned.ok).toBe(true);
+    const here = await outputFor(main.app, stageId);
+    const nodeStage = await outputPage(node.app);
+    await outputReady(here);
+    await outputReady(nodeStage);
+    const { base } = await networkOn(main.win);
+    const code = await pairingCode(main.win, 'stage', 'Placeholder tablet');
+    await pairByQr(tablet.page, base, code, '/stage');
+    await expect(tablet.page.getByTestId('stage-layout')).toBeVisible();
+    const timeOn = (page: Page) => page.locator('[data-stage-box="timer"] [data-timer]');
+    await expect(timeOn(tablet.page)).toHaveText('0:02');
+
+    await main.win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
+      timerId,
+    );
+    const timer = (await engineState(main.win)).timers.find((t) => t.id === timerId);
+    const startedAt = timer?.startedAt ?? null;
+    if (!timer || startedAt === null) throw new Error('the countdown did not start');
+    // From the first whole second at or after 0:00, dim on the engine clock's even seconds.
+    const from = Math.ceil((startedAt + 2000) / 1000) * 1000;
+    const firstDim = Math.ceil(from / 2000) * 2000;
+
+    // The tablet first, on its own clock in step with the engine's (the moments below are held): in its colour
+    // when over at 0:00, dim and bright in turn while it flashes, then bright for good once its ten seconds are over.
+    const onTablet = timeOn(tablet.page);
+    await expect(onTablet).toHaveAttribute('data-timer-color', '#ef4444', { timeout: 15_000 });
+    await expect(onTablet).toHaveAttribute('data-flash', 'dim', { timeout: 15_000 });
+    await expect(onTablet).not.toHaveAttribute('data-flash', { timeout: 5000 });
+    await expect(onTablet).toHaveAttribute('data-flash', 'dim', { timeout: 5000 });
+    await expect(onTablet).toHaveText(/^-0:(1[2-9]|[2-5]\d)$/u, { timeout: 20_000 });
+    await expect(onTablet).not.toHaveAttribute('data-flash');
+    await expect(onTablet).toHaveAttribute('data-timer-color', '#ef4444');
+
+    // The node's stage screen and this computer's, held at one moment of the engine's time: dim, then bright.
+    for (const [ms, dim] of [
+      [firstDim + 2500, true],
+      [firstDim + 3500, false],
+    ] as const) {
+      expect(flashDimmed(timer, ms), `the flash's rule at ${String(ms - from)} ms`).toBe(dim);
+      expect(await holdClock(node.app, ms), 'the node’s outputs held').toBeGreaterThan(0);
+      expect(await holdClock(main.app, ms), 'this computer’s outputs held').toBeGreaterThan(0);
+      for (const [page, where] of [
+        [nodeStage, 'a node’s stage screen'],
+        [here, 'this computer’s stage screen'],
+      ] as const) {
+        const time = timeOn(page);
+        await expect(time, where).toHaveText(formatTimer(timer, ms));
+        await expect(time, where).toHaveAttribute('data-timer-color', '#ef4444');
+        await expect
+          .poll(() => time.evaluate((el) => getComputedStyle(el).color), where)
+          .toBe('rgb(239, 68, 68)');
+        if (dim) await expect(time, where).toHaveAttribute('data-flash', 'dim');
+        else await expect(time, where).not.toHaveAttribute('data-flash');
+      }
+    }
+  } finally {
+    await tablet.close();
+    await node.app.close();
+    await main.app.close();
+  }
+});
+
+// Part A's review: the layout a template makes goes to every stage group in the live Look, and to no other Look.
+test('New from a Template… gives the layout to every stage group in the live Look, and leaves another Look as it was', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Two stage groups (no screens needed) and a second Look.
+  const { groups, other } = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const ids: string[] = [];
+    for (const name of ['Placeholder stage one', 'Placeholder stage two']) {
+      const made = await d.screens.createGroup(name);
+      if (!made.ok) throw new Error(made.message);
+      const id = made.snapshot.groups.find((g) => g.name === name)?.id ?? '';
+      const role = await d.screens.setGroupRole(id, 'stage');
+      if (!role.ok) throw new Error(role.message);
+      ids.push(id);
+    }
+    const before = new Set((await d.looks.list()).looks.map((l) => l.id));
+    const look = await d.looks.create('Placeholder other Look', null);
+    if (!look.ok) throw new Error(look.message);
+    return { groups: ids, other: look.view.looks.find((l) => !before.has(l.id))?.id ?? '' };
+  });
+  expect(other).not.toBe('');
+  const looks = () => win.evaluate(() => (globalThis as PageGlobals).drashti.looks.list());
+  /** Each stage group's layout in a Look (the live one when none is named). */
+  const layoutsIn = async (lookId?: string) => {
+    const view = await looks();
+    const look = view.looks.find((l) => l.id === (lookId ?? view.liveId));
+    return groups.map((g) => look?.groups[g]?.stageLayoutId ?? null);
+  };
+  expect((await looks()).liveId).not.toBe(other);
+  expect(await layoutsIn()).toEqual([null, null]);
+
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await editor.getByTestId('stage-layout-from-template').click();
+  const dialog = win.getByTestId('stage-template-dialog');
+  await expect(dialog.getByTestId('stage-template-where')).toContainText(
+    'it is chosen at once for the stage screens',
+  );
+  await dialog.getByRole('radio', { name: 'Count up from 0:00', exact: true }).click();
+  await dialog.getByTestId('stage-template-make').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Count up from 0:00');
+
+  // Both stage groups in the live Look have it; the other Look's are as they were.
+  await expect
+    .poll(async () => (await liveLayoutOf(win, groups[0] ?? ''))?.name ?? null)
+    .toBe('Count up from 0:00');
+  const made = (await liveLayoutOf(win, groups[0] ?? ''))?.id ?? '';
+  await expect.poll(() => layoutsIn()).toEqual([made, made]);
+  expect(await layoutsIn(other)).toEqual([null, null]);
   await app.close();
 });

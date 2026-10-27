@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { STOPPED_REFUSAL } from '../../shared/access';
-import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
+import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import { DEVICE_KINDS, type NetworkStatus, PAIRING_CODE_TTL_MS } from '../../shared/network';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
@@ -58,7 +58,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
     engine: {
       dispatch: (c): CommandResult => {
         // As the engine does in Simple Mode (show-engine.ts, refuse).
-        if (options.locked === true && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type))
+        if (options.locked === true && simpleModeRefuses(c))
           return { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL };
         commands.push(c);
         return { ok: true, changed: true, rev: commands.length };
@@ -99,6 +99,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
+      // A sound a playlist shared with phones has (Session 54, D3): its file, for a phone to play.
+      sharedSound: (mediaId) => (mediaId === 'm-shared-sound' ? '/placeholder/Media/ab/tone.wav' : null),
       stage: () => ({ groupId: 'stage-group', languages: ['gu'] }),
       // The groups the hall's picture is read from (Session 51): a hall with a screen on this computer that is on,
       // after a group left empty, so Main's Audience switch closes it.
@@ -292,6 +294,29 @@ describe('the network in the main process', () => {
     expect(send({ type: 'moveTo', playing: { layer: 'slide' }, toMs: 1000 })).toBe(400);
     expect(send({ type: 'moveTo', playing: { layer: 'background' }, toMs: -5 })).toBe(400);
     expect(commands).toHaveLength(3);
+  });
+
+  it('in Simple Mode, refuses a Remote’s move and Pause in words, and lets its Play through: nothing stays paused (Session 54’s review)', () => {
+    const { service, commands } = setup({ locked: true });
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const answer = (args: Record<string, unknown>) =>
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args });
+    for (const args of [
+      { type: 'moveTo', playing: { layer: 'background' }, toMs: 12_000 },
+      { type: 'pausePlaying', playing: { layer: 'pip' } },
+      { type: 'skip', layer: 'background', jump: 'back' },
+    ])
+      expect(answer(args), JSON.stringify(args)).toMatchObject({
+        status: 403,
+        body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+      });
+    // Play, anything; and the music's Pause, which is Simple Mode's own.
+    const through = [
+      { type: 'resumePlaying', playing: { layer: 'background' } },
+      { type: 'pausePlaying', playing: { layer: 'audio' } },
+    ];
+    for (const args of through) expect(answer(args).status, JSON.stringify(args)).toBe(200);
+    expect(commands).toEqual(through);
   });
 
   it('lets each kind of device do only its own things, and a Remote only run the show', () => {
@@ -623,6 +648,24 @@ describe('full quality and the zoom from a phone (Session 54, D1 and D2)', () =>
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     for (const op of ['media.picture', 'media.original'] as const)
       expect(service.answer({ address: PHONE, deviceId: remote, op, args: {} }).status).toBe(400);
+  });
+
+  it('tells the worker a sound’s file only from the shared playlists, and a picture’s or video’s as before (D3)', async () => {
+    const { service, sent, fromWorker } = setup();
+    service.setOn(true);
+    fromWorker({ type: 'started', result: { ok: true, port: 8740 } });
+    fromWorker({ type: 'ask', id: 41, question: { kind: 'sound', mediaId: 'm-shared-sound' } });
+    fromWorker({ type: 'ask', id: 42, question: { kind: 'sound', mediaId: 'm-other-sound' } });
+    fromWorker({ type: 'ask', id: 43, question: { kind: 'media', mediaId: 'm-shared-sound' } });
+    const answers = () => sent.filter((m) => m.type === 'answer');
+    await vi.waitFor(() => {
+      expect(answers()).toHaveLength(3);
+    });
+    expect(answers()).toEqual([
+      { type: 'answer', id: 41, answer: '/placeholder/Media/ab/tone.wav' },
+      { type: 'answer', id: 42, answer: null },
+      { type: 'answer', id: 43, answer: null },
+    ]);
   });
 });
 

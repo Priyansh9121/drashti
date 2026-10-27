@@ -398,6 +398,14 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
   const lastMissing = thumbs.nth(3).getByTestId('thumb-audio');
   await expect(lastMissing).toHaveAttribute('data-missing', 'true');
   await expect(lastMissing).toHaveAttribute('title', thumbSays(FILE));
+  // In words, as a missing background's badge has it, and in its name (the review): a screen reader says it too.
+  const spoken = /, its sound file “Placeholder hymn\.wav” is missing$/u;
+  for (const index of [1, 3]) {
+    await expect(thumbs.nth(index).getByTestId('thumb-sound-missing')).toHaveText('Missing');
+    await expect(thumbs.nth(index)).toHaveAccessibleName(spoken);
+  }
+  await expect(thumbs.nth(2).getByTestId('thumb-sound-missing')).toHaveCount(0);
+  await expect(thumbs.nth(2)).not.toHaveAccessibleName(/is missing/u);
 
   // The slide editor names the sound it shows, the last, and says when its file is missing (a double-click on a
   // thumbnail opens it at that slide; with nothing changed, Esc closes it).
@@ -411,6 +419,8 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
     await expect(editor.getByTestId('sound-cue')).toHaveText(file);
     if (said) await expect(editor.getByTestId('sound-file-missing')).toHaveText(editorSays(file));
     else await expect(editor.getByTestId('sound-file-missing')).toHaveCount(0);
+    // The first of two sounds is never "kept as it is": a change to the sound takes both off (the review).
+    await expect(editor.getByTestId('other-cues')).toHaveCount(0);
     await win.keyboard.press('Escape');
     await expect(editor).toHaveCount(0);
   }
@@ -435,5 +445,25 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
   });
   await expect(win.getByTestId('live-sound-missing')).toHaveText(LINE);
   await switchTo(win, 'pro');
+
+  // The tune deleted from the library (Media's Delete, which Undo brings back): the slide whose last sound it is says
+  // it is missing, as one not found at import does, in its thumbnail and in the slide editor, by the file's name (the
+  // review: the editor said nothing, Media's list leaving a deleted file out).
+  const tuneId = (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).find(
+    (m) => m.name === 'Placeholder tune.wav',
+  )?.id;
+  expect(tuneId).toBeDefined();
+  const removed = await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.media.remove([id]),
+    tuneId ?? '',
+  );
+  expect(removed.ok).toBe(true);
+  await expect(thumbs.nth(2).getByTestId('thumb-sound-missing')).toHaveText('Missing');
+  await expect(thumbs.nth(2)).toHaveAccessibleName(/, its sound file “Placeholder tune\.wav” is missing$/u);
+  await thumbs.nth(2).dblclick();
+  await expect(editor.getByTestId('sound-cue')).toHaveText('Placeholder tune.wav');
+  await expect(editor.getByTestId('sound-file-missing')).toHaveText(editorSays('Placeholder tune.wav'));
+  await win.keyboard.press('Escape');
+  await expect(editor).toHaveCount(0);
   await app.close();
 });

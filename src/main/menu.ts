@@ -38,6 +38,11 @@ export interface MenuActions {
   setUpScreens: () => void;
   /** View > Window for Zoom… (Session 48): the stream's picture in a window Zoom can share (Pro Mode only). */
   zoomWindow: () => void;
+  /**
+   * View › Access List… (Session 54, E4): the owner's window onto the access list, Pro Mode's, on the owner's
+   * computer only (null, or left out, everywhere else).
+   */
+  accessList?: (() => void) | null;
   reloadOperator: () => void;
   /** Edit > Undo: the operator page decides (typing in a field, or the last removal). */
   undo: { accelerator: string | null; run: () => void };
@@ -246,6 +251,12 @@ export function installMenu(actions: MenuActions): void {
                   { id: 'appearance-window', label: 'Appearance…', click: actions.appearance.open },
                 ],
               } as MenuItemConstructorOptions,
+              ...(actions.accessList
+                ? [
+                    { type: 'separator' } as MenuItemConstructorOptions,
+                    { id: 'access-list', label: 'Access List…', click: actions.accessList },
+                  ]
+                : []),
             ]),
         { type: 'separator' },
         {

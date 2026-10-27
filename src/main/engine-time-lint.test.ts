@@ -43,6 +43,8 @@ describe('the engine-time rule (lint)', () => {
       'src/renderer/src/web/stage/StageDisplay.tsx',
       'src/shared/idle.ts',
       'src/shared/picture-look.ts',
+      // A stage layout's timer and clock boxes, flash and colours (Session 54, Part A's review).
+      'src/shared/stage-timer.ts',
     ])
       expect(await refused(file, '  return Date.now();'), file).toHaveLength(1);
     expect(await refused('src/renderer/src/operator/LivePreview.tsx', '  return Date.now();')).toHaveLength(

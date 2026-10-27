@@ -26,6 +26,7 @@ const ENTRIES: Record<BridgePage, string> = {
   gallery: 'gallery/main.tsx',
   zoom: 'zoom/main.tsx',
   lock: 'access/main.tsx',
+  'access-list': 'access-list/main.tsx',
 };
 
 const IMPORT =

@@ -544,7 +544,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         >
           <div className="flex shrink-0 items-start gap-2">
             <div className="min-w-0 flex-[3]">
-              <LivePreview />
+              <LivePreview bars />
             </div>
             <div className="min-w-0 flex-[2]">
               <NextPreview stacked />

@@ -55,7 +55,7 @@ import {
   isOperatorMode,
   leaveSimpleRefusal,
   SIMPLE_MODE_REFUSAL,
-  SIMPLE_MODE_REFUSED_COMMANDS,
+  simpleModeRefuses,
   startingMode,
 } from '../shared/mode';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
@@ -255,6 +255,7 @@ import { PipPlaces } from './pip/pip-places';
 import { VideoInputsService } from './video-inputs/video-inputs-service';
 import { electronCamera } from './video-inputs/electron-camera';
 import { ZoomWindow } from './stream/zoom-window';
+import { startAccessList } from './access/access-list-main';
 import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/placeholder';
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
@@ -285,6 +286,7 @@ import { startPerfDevices } from './network/perf-devices';
 import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
 import { previewSource } from './network/preview-source';
+import { sharedSoundFile } from './network/shared-sound';
 import { rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
@@ -1378,7 +1380,7 @@ function start(): void {
       refuse: (command) =>
         accessShut()
           ? STOPPED_REFUSAL
-          : simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type)
+          : simpleNow() && simpleModeRefuses(command)
             ? SIMPLE_MODE_REFUSAL
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
@@ -3724,6 +3726,13 @@ function start(): void {
             return found && !found.missing ? sharpened.relativePath(found.sha256, step) : null;
           },
         }),
+      // A sound plays on a phone only while a playlist shared with phones has it (Session 54, D3).
+      sharedSound: (mediaId) =>
+        sharedSoundFile(mediaId, {
+          mediaDir,
+          kindAndFile: (id) => media.kindAndFile(id),
+          shared: (id) => playlists.isSharedMedia(id),
+        }),
       stage: () => {
         const groupId = screenRepo.firstGroup('stage');
         return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
@@ -5184,6 +5193,29 @@ function start(): void {
     if (!noRelaunch) app.relaunch();
     app.quit();
   };
+  // ---- View › Access List… (Session 54, E4): the owner's computer only --------------------------------
+  const accessList = startAccessList({
+    userData: userDataDir,
+    version: appVersion(),
+    workArea: () =>
+      (operatorWindow && !operatorWindow.isDestroyed()
+        ? electronScreen.getDisplayMatching(operatorWindow.getBounds())
+        : electronScreen.getPrimaryDisplay()
+      ).workArea,
+    background: () => appearance.background(),
+    track: (win) => {
+      appearance.track(win);
+    },
+    ownerChanged: () => {
+      rebuildMenu();
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  stops.add('Access List', () => {
+    accessList.close();
+  });
   rebuildMenu = () => {
     // Not let in (a self-test, or stopped, Session 54): Quit and the editing keys only.
     if (!isLetIn()) {
@@ -5292,6 +5324,12 @@ function start(): void {
     zoomWindow: () => {
       if (mode === 'pro') zoom.open();
     },
+    accessList:
+      mode === 'pro' && accessList.offered()
+        ? () => {
+            accessList.open();
+          }
+        : null,
     backUpLibrary: () => {
       if (mode === 'pro') void backUp(backupUi);
     },

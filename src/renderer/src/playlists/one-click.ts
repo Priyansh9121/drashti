@@ -65,3 +65,19 @@ export function clickCard(item: PlaylistItemInfo, click: CardClick, platform: st
   if (does === 'go' && openId) void playItem(openId, item.id);
   void pickItem(item);
 }
+
+/**
+ * How long the chosen card's Up and Down take no click after they appear (Session 54's review). A double click on
+ * the card below the chosen one chooses it with its first click: the chosen one's Up and Down go, this card moves
+ * up under the pointer, and its own Up and Down appear under it, where the second click lands. It would change
+ * the running order, mid-show.
+ */
+export const JUST_SHOWN_MS = 500;
+
+/**
+ * Whether a press on a button that appeared at `shownAt` is meant (`detail`: the click's count, as `CardClick`'s):
+ * from the keyboard at once (a click with no count), and a click once it has been there a moment.
+ */
+export function meantPress(detail: number, shownAt: number, now: number): boolean {
+  return detail === 0 || now - shownAt >= JUST_SHOWN_MS;
+}

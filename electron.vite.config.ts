@@ -117,6 +117,8 @@ export default defineConfig({
           zoom: resolve('src/renderer/zoom.html'),
           // The lock screen, before this computer is let in (Session 54, access by Gmail).
           lock: resolve('src/renderer/lock.html'),
+          // View › Access List… (Session 54, E4): the owner's window onto the access list.
+          'access-list': resolve('src/renderer/access-list.html'),
         },
       },
     },

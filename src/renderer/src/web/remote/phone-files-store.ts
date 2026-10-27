@@ -3,14 +3,17 @@ import type { AddFilesView, SharedPlaylist } from '../../../../shared/phone-file
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { api } from '../device';
 import { onListsChanged, onOnline } from '../feed';
+import { closeViewer, useViewer, type ViewerPage } from '../viewer/viewer-store';
+import { useMirror } from './mirror-store';
 import { type Sending, sendFile } from './upload-client';
 import { deviceTransport } from './upload-transport';
 
 /*
  * Files between Drashti and this phone, as the remote shows them (Session 54, D3 and D4): the playlists Drashti
- * shares with phones ("Shared from Drashti"), the one opened and the item looked at on this device; whether Drashti
- * takes files from phones now; and the files this page is sending, one after another. Read again when Drashti says
- * the playlists or adding files changed, and when the feed comes back.
+ * shares with phones ("Shared from Drashti"), the one opened and the file being opened in D1's viewer (which closes
+ * once its playlist is no longer shared); whether Drashti takes files from phones now; and the files this page is
+ * sending, one after another. Read again when Drashti says the playlists or adding files changed, and when the feed
+ * comes back.
  */
 
 interface PhoneFilesView {
@@ -22,8 +25,10 @@ interface PhoneFilesView {
   adding: AddFilesView | null;
   /** The files this page is sending or has sent, newest first. */
   sending: Sending[];
-  /** An item of the open playlist looked at on this device, full size: the items it steps through, and which. */
-  viewing: { items: PlaylistItemInfo[]; index: number } | null;
+  /** The item of the open playlist being opened on this device (its presentations read first), by its id. */
+  opening: string | null;
+  /** The item that could not be opened (its presentation gone), by its label: said under the list. */
+  notOpened: string | null;
 }
 
 export const usePhoneFiles = create<PhoneFilesView>(() => ({
@@ -31,8 +36,24 @@ export const usePhoneFiles = create<PhoneFilesView>(() => ({
   open: null,
   adding: null,
   sending: [],
-  viewing: null,
+  opening: null,
+  notOpened: null,
 }));
+
+/** The shared playlist whose files D1's viewer was opened with, and those pages. */
+let looking: { playlistId: string; pages: readonly ViewerPage[] } | null = null;
+
+/** D1's viewer shows this shared playlist's files now (shared-pages.ts). */
+export function lookingAt(playlistId: string, pages: readonly ViewerPage[]): void {
+  looking = { playlistId, pages };
+}
+
+/** A playlist no longer shared: its files close on this device, if the viewer still shows them. */
+function stopLooking(playlistId: string): void {
+  if (looking?.playlistId !== playlistId) return;
+  if (useViewer.getState().pages === looking.pages) closeViewer();
+  looking = null;
+}
 
 /** At most this many files' rows are kept on the page (the newest). */
 const ROWS = 20;
@@ -41,41 +62,39 @@ export async function loadShared(): Promise<void> {
   const r = await api<{ playlists: SharedPlaylist[] }>('/api/v1/shared');
   if (!r.ok) return;
   usePhoneFiles.setState({ shared: r.playlists });
+  // Nothing shared: the library's Shared from Drashti goes, back to Presentations, never chosen again by itself.
+  if (r.playlists.length === 0 && useMirror.getState().libraryKind === 'shared')
+    useMirror.setState({ libraryKind: 'presentations' });
+  // Its files looked at here close once it is no longer shared.
+  const lookedAt = looking?.playlistId;
+  if (lookedAt !== undefined && !r.playlists.some((p) => p.id === lookedAt)) stopLooking(lookedAt);
   const open = usePhoneFiles.getState().open;
   if (!open) return;
   // The one open is read again; no longer shared, it closes.
   if (r.playlists.some((p) => p.id === open.id)) void openShared(open.id);
-  else usePhoneFiles.setState({ open: null, viewing: null });
+  else usePhoneFiles.setState({ open: null, opening: null, notOpened: null });
 }
 
 /** Show a shared playlist's items (or, with null, the shared playlists again). */
 export async function openShared(id: string | null): Promise<void> {
   if (id === null) {
-    usePhoneFiles.setState({ open: null });
+    usePhoneFiles.setState({ open: null, opening: null, notOpened: null });
     return;
   }
   const was = usePhoneFiles.getState().open;
-  usePhoneFiles.setState({ open: { id, items: was?.id === id ? was.items : null } });
+  // Another playlist: what was being opened, or could not be, was the one before's.
+  usePhoneFiles.setState(
+    was?.id === id
+      ? { open: { id, items: was.items } }
+      : { open: { id, items: null }, opening: null, notOpened: null },
+  );
   const r = await api<{ items: PlaylistItemInfo[] }>(`/api/v1/shared/${encodeURIComponent(id)}/items`);
   if (usePhoneFiles.getState().open?.id !== id) return;
   if (r.ok) usePhoneFiles.setState({ open: { id, items: r.items } });
-  else if (r.status === 404) usePhoneFiles.setState({ open: null, viewing: null });
-}
-
-/** Look at an item on this device, full size; stepping goes through `items`. */
-export function viewItem(items: PlaylistItemInfo[], index: number): void {
-  usePhoneFiles.setState({ viewing: { items, index } });
-}
-
-export function stepViewer(by: number): void {
-  const v = usePhoneFiles.getState().viewing;
-  if (!v) return;
-  const index = Math.min(v.items.length - 1, Math.max(0, v.index + by));
-  usePhoneFiles.setState({ viewing: { ...v, index } });
-}
-
-export function closeViewer(): void {
-  usePhoneFiles.setState({ viewing: null });
+  else if (r.status === 404) {
+    usePhoneFiles.setState({ open: null, opening: null, notOpened: null });
+    stopLooking(id);
+  }
 }
 
 async function loadAdding(): Promise<void> {

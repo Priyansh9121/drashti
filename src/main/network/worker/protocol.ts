@@ -30,13 +30,16 @@ export type ToNetworkWorker =
 export type WorkerQuestion =
   | { kind: 'request'; request: DeviceRequest }
   | { kind: 'pair'; code: string; address: string }
-  | { kind: 'media'; mediaId: string };
+  | { kind: 'media'; mediaId: string }
+  /** A sound's file for a phone to play (Session 54, D3): only while a playlist shared with phones has it. */
+  | { kind: 'sound'; mediaId: string };
 
 /** The answer each question gets. */
 export interface WorkerAnswers {
   request: DeviceAnswer;
   pair: PairAnswer;
   media: PreviewSource | null;
+  sound: string | null;
 }
 
 export type FromNetworkWorker =
