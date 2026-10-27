@@ -991,3 +991,111 @@ test('New from a Template… says when a countdown chosen in Timers stops at 0:0
     .toMatchObject({ name: 'Placeholder held countdown', durationMs: 120_000, allowsOverrun: true });
   await app.close();
 });
+
+// Part A's review: the flash and the colour when over, on a node's stage screen (its clock held) and a tablet's
+// stage page (its own clock, kept in step with the engine's), as on this computer's.
+test('a node’s stage screen and a tablet’s stage page flash a timer at 0:00 and draw it in its colour when over, as this computer’s does', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const node = await launchNode({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const tablet = await device('chromium', TABLET);
+  try {
+    const nodeId = await pairNode(main, node);
+    const stageId = await setUpScreen(main.win, 'Stage', 0);
+    const group = await makeStage(main.win, 'Stage');
+    // A countdown of 2 s that runs on past 0:00, flashing there, in its colour when over.
+    const timerId = await makeTimer(main.win, countdownOf('Placeholder node countdown', 2000));
+    await giveLayout(main.win, group, 'Placeholder node flash layout', [
+      {
+        ...newStageBox('timer', 'placeholder-node-flash'),
+        timerId,
+        frame: { x: 48, y: 48, width: 1824, height: 984 },
+        size: 'fit',
+        color: '#ffffff',
+        overColor: '#ef4444',
+        flash: true,
+      },
+    ]);
+    // The node's second (pretend) display in the same stage group.
+    await expect
+      .poll(async () =>
+        main.win.evaluate(
+          async (id) =>
+            (
+              (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === id)
+                ?.displays ?? []
+            ).length,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    const assigned = await main.win.evaluate(
+      async ({ group, nodeId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const displays = (await d.screens.get()).nodes.find((n) => n.id === nodeId)?.displays ?? [];
+        return d.screens.assignNodeDisplay(group, nodeId, displays[1]?.id ?? -1);
+      },
+      { group, nodeId },
+    );
+    expect(assigned.ok).toBe(true);
+    const here = await outputFor(main.app, stageId);
+    const nodeStage = await outputPage(node.app);
+    await outputReady(here);
+    await outputReady(nodeStage);
+    const { base } = await networkOn(main.win);
+    const code = await pairingCode(main.win, 'stage', 'Placeholder tablet');
+    await pairByQr(tablet.page, base, code, '/stage');
+    await expect(tablet.page.getByTestId('stage-layout')).toBeVisible();
+    const timeOn = (page: Page) => page.locator('[data-stage-box="timer"] [data-timer]');
+    await expect(timeOn(tablet.page)).toHaveText('0:02');
+
+    await main.win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
+      timerId,
+    );
+    const timer = (await engineState(main.win)).timers.find((t) => t.id === timerId);
+    const startedAt = timer?.startedAt ?? null;
+    if (!timer || startedAt === null) throw new Error('the countdown did not start');
+    // From the first whole second at or after 0:00, dim on the engine clock's even seconds.
+    const from = Math.ceil((startedAt + 2000) / 1000) * 1000;
+    const firstDim = Math.ceil(from / 2000) * 2000;
+
+    // The tablet first, on its own clock in step with the engine's (the moments below are held): in its colour
+    // when over at 0:00, dim and bright in turn while it flashes, then bright for good once its ten seconds are over.
+    const onTablet = timeOn(tablet.page);
+    await expect(onTablet).toHaveAttribute('data-timer-color', '#ef4444', { timeout: 15_000 });
+    await expect(onTablet).toHaveAttribute('data-flash', 'dim', { timeout: 15_000 });
+    await expect(onTablet).not.toHaveAttribute('data-flash', { timeout: 5000 });
+    await expect(onTablet).toHaveAttribute('data-flash', 'dim', { timeout: 5000 });
+    await expect(onTablet).toHaveText(/^-0:(1[2-9]|[2-5]\d)$/u, { timeout: 20_000 });
+    await expect(onTablet).not.toHaveAttribute('data-flash');
+    await expect(onTablet).toHaveAttribute('data-timer-color', '#ef4444');
+
+    // The node's stage screen and this computer's, held at one moment of the engine's time: dim, then bright.
+    for (const [ms, dim] of [
+      [firstDim + 2500, true],
+      [firstDim + 3500, false],
+    ] as const) {
+      expect(flashDimmed(timer, ms), `the flash's rule at ${String(ms - from)} ms`).toBe(dim);
+      expect(await holdClock(node.app, ms), 'the node’s outputs held').toBeGreaterThan(0);
+      expect(await holdClock(main.app, ms), 'this computer’s outputs held').toBeGreaterThan(0);
+      for (const [page, where] of [
+        [nodeStage, 'a node’s stage screen'],
+        [here, 'this computer’s stage screen'],
+      ] as const) {
+        const time = timeOn(page);
+        await expect(time, where).toHaveText(formatTimer(timer, ms));
+        await expect(time, where).toHaveAttribute('data-timer-color', '#ef4444');
+        await expect
+          .poll(() => time.evaluate((el) => getComputedStyle(el).color), where)
+          .toBe('rgb(239, 68, 68)');
+        if (dim) await expect(time, where).toHaveAttribute('data-flash', 'dim');
+        else await expect(time, where).not.toHaveAttribute('data-flash');
+      }
+    }
+  } finally {
+    await tablet.close();
+    await node.app.close();
+    await main.app.close();
+  }
+});
