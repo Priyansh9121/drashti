@@ -3,6 +3,7 @@ import type { InvokeChannel } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
 import { DROP_REFUSED_VIEW } from '../shared/drop-folder';
 import { SIMPLE_MODE_REFUSAL } from '../shared/mode';
+import { NO_VIEW } from '../shared/access-list';
 
 /*
  * What Simple Mode locks. Every request that would change the library, the
@@ -16,6 +17,16 @@ import { SIMPLE_MODE_REFUSAL } from '../shared/mode';
  */
 
 const refused = () => ({ ok: false as const, message: SIMPLE_MODE_REFUSAL });
+
+/** The Access List's edits (Session 54, E4). */
+const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
+  IPC.accessList.add,
+  IPC.accessList.approve,
+  IPC.accessList.reject,
+  IPC.accessList.revoke,
+  IPC.accessList.regrant,
+  IPC.accessList.note,
+];
 
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.saveWords,
@@ -217,6 +228,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.liveWindow.show,
   IPC.liveWindow.access,
   IPC.zoom.open,
+  // The Access List's edits (Session 54, E4): Pro Mode's, as every change; reading it and saving its CSV are not.
+  ...ACCESS_LIST_EDITS,
   // Video inputs and picture in picture (Session 50) are set up in Pro Mode; the Audience and Stage switches and
   // Keep or Go back are not locked (Simple Mode may turn screens on, and go back).
   IPC.videoInputs.add,
@@ -234,6 +247,8 @@ export function simpleModeRefusals(sound: () => AudioOutputStatus): Map<InvokeCh
   answers.set(IPC.events.view, () => ({ available: false, message: SIMPLE_MODE_REFUSAL, addresses: [] }));
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
+  // The Access List's: what happened, with no list (its window keeps the one it shows).
+  for (const c of ACCESS_LIST_EDITS) answers.set(c, () => ({ ...refused(), view: NO_VIEW }));
   answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: SIMPLE_MODE_REFUSAL }));
   answers.set(IPC.liveWindow.access, () => null);
   answers.set(IPC.zoom.open, () => null);

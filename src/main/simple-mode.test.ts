@@ -113,6 +113,26 @@ describe('Simple Mode locks', () => {
     expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length);
   });
 
+  it('the Access List’s edits, answered in their own shape; reading the list and saving its CSV are not (Session 54, E4)', () => {
+    for (const channel of [
+      IPC.accessList.add,
+      IPC.accessList.approve,
+      IPC.accessList.reject,
+      IPC.accessList.revoke,
+      IPC.accessList.regrant,
+      IPC.accessList.note,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(answers.get(channel)?.(), channel).toEqual({
+        ok: false,
+        message: SIMPLE_MODE_REFUSAL,
+        view: { people: null, updatedAt: null, problem: null },
+      });
+    }
+    for (const channel of [IPC.accessList.view, IPC.accessList.refresh, IPC.accessList.exportCsv])
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+  });
+
   it('every Session 13 request that changes something: pairing, removing, assigning, reloading; the dashboard still opens', () => {
     for (const channel of [
       IPC.nodes.startPairing,
