@@ -528,6 +528,59 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
     expect(told).toEqual([[row.id]]);
   });
 
+  // Session 54 review: told once, as its group is committed, never again for the playlist naming the same file.
+  it('say a file given points once, in an import of a playlist with its presentation and the file as an item too', async () => {
+    const t = setup();
+    const loop = t.write('Media/Marked Loop.mov', 'placeholder video');
+    t.write(
+      'Placeholder Marked.pro6',
+      pp6Presentation({
+        uuid: 'P6-PLAYLIST-MARKED',
+        groups: [
+          {
+            name: 'Verse',
+            slides: [
+              {
+                background: {
+                  path: loop,
+                  kind: 'video',
+                  loop: true,
+                  points: { timeScale: 600, in: 1200, out: 3900, end: 6000 },
+                },
+                text: [],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    t.write(
+      'Default.pro6pl',
+      pp6Playlist([
+        {
+          name: 'Sunday',
+          entries: [
+            {
+              document: '/Users/mandir/Documents/ProPresenter6/Placeholder Marked.pro6',
+              name: 'Placeholder Marked',
+            },
+            { media: loop, name: 'Marked Loop' },
+          ],
+        },
+      ]),
+    );
+    const told: string[][] = [];
+    await t.run([t.source], {}, (mediaIds) => told.push(mediaIds));
+    const row = t.db.prepare("SELECT id FROM media WHERE name = 'Marked Loop.mov'").get() as { id: string };
+    expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 2000, endMs: 6500 });
+    expect(told).toEqual([[row.id]]);
+    // The playlist's item is that same file.
+    const sunday = t.playlists.list().find((p) => p.name === 'Sunday');
+    expect(t.playlists.items(sunday?.id ?? '')).toContainEqual(
+      expect.objectContaining({ kind: 'media', mediaId: row.id }),
+    );
+  });
+
   // Session 54 review: points read for a file not found at import were thrown away, so once found (Find missing
   // media…) it played whole.
   it('are kept for a file not found at import, and still there once it is found', async () => {
