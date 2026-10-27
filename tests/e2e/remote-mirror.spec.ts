@@ -503,6 +503,12 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const dir = mkdtempSync(join(tmpdir(), 'drashti-mirror-layout-'));
     await importAndGetIds(win, [makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 120 })]);
     const toneId = await mediaId(win, 'Placeholder tune');
+    // Repeat Slides counts down only with somewhere to go, a step after the one up (show-engine.ts countFor): two
+    // pictures, as a hall's Repeat Slides has. With one, it stays up with no count, and no "Moves on by itself".
+    const [secondPictureId = ''] = await importAndGetIds(win, [
+      await makeTestImage(win, join(dir, 'Placeholder second backdrop.png'), { color: '#7c2d12' }),
+    ]);
+    expect(secondPictureId).not.toBe('');
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
     await win.evaluate((input) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, input), {
       ...NEW_LOWER_THIRD,
@@ -512,12 +518,15 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     // rotation's pictures (its Start), a video behind Repeat Slides going round (the time bars, the Playing row and
     // LIVE's own line, "Moves on by itself"), so each is laid out and checked at every size.
     const repeatId = await win.evaluate(
-      async ({ toneId, pictureId }) => {
+      async ({ toneId, pictureId, secondPictureId }) => {
         const d = (globalThis as PageGlobals).drashti;
         const made = await d.music.create('Placeholder tunes');
         if (!made.ok || !made.id) throw new Error('no audio playlist');
         const added = await d.music.addTracks(made.id, [toneId], null);
         if (!added.ok) throw new Error(added.message);
+        // Going round, so it still plays at the last size checked, however long each size takes.
+        const looped = await d.music.setOptions(made.id, { loop: true, shuffle: false });
+        if (!looped.ok) throw new Error(looped.message);
         const played = await d.music.play(made.id, 0);
         if (!played.ok) throw new Error(played.message);
         const idle = await d.idle.saveSettings({
@@ -526,17 +535,25 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           quoteOfTheDay: false,
         });
         if (!idle.ok) throw new Error('no idle pictures');
+        // Each step of the set-up says why, should it fail, rather than leave a later wait to time out.
         const repeat = await d.playlists.createRepeat(null);
-        const id = repeat.ok ? (repeat.ids[0] ?? '') : '';
-        await d.playlists.rename(id, 'Placeholder Hall Pictures');
-        await d.playlists.addItems(id, null, [{ kind: 'media', mediaId: pictureId }]);
-        await d.playlists.setRepeat(id, {
+        if (!repeat.ok) throw new Error(repeat.message);
+        const id = repeat.ids[0] ?? '';
+        const renamed = await d.playlists.rename(id, 'Placeholder Hall Pictures');
+        if (!renamed.ok) throw new Error(renamed.message);
+        const items = await d.playlists.addItems(id, null, [
+          { kind: 'media', mediaId: pictureId },
+          { kind: 'media', mediaId: secondPictureId },
+        ]);
+        if (!items.ok) throw new Error(items.message);
+        const set = await d.playlists.setRepeat(id, {
           secondsEach: 600,
           transition: { kind: 'dissolve', durationMs: 500 },
         });
+        if (!set.ok) throw new Error(set.message);
         return id;
       },
-      { toneId, pictureId: show.pictureMediaId },
+      { toneId, pictureId: show.pictureMediaId, secondPictureId },
     );
     await dispatch(win, {
       type: 'setBackground',
