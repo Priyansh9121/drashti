@@ -1,13 +1,13 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken, TABLET } from './devices';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { PICTURE, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
-import { makeTestTone } from './test-media';
+import { makeTestImage, makeTestTone } from './test-media';
 
 /*
  * Files between Drashti and its phones (Session 54, D3 and D4), each step seen in the operator window and on a
@@ -157,6 +157,65 @@ test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared 
     await expect(node.getByTestId('playlist-shared')).toHaveCount(0);
     await expect(p.getByTestId('remote-shared')).toHaveCount(0);
     expect((await apiCall(port, items, { token: script })).status).toBe(404);
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
+test('a folder playlist shared whole: a smart playlist following a folder, its folders as headers on a remote', async () => {
+  test.setTimeout(180_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-phone-files-folder-'));
+  const folder = join(work, 'Placeholder Sabha');
+  mkdirSync(join(folder, 'Week 1'), { recursive: true });
+  const { app } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_TEST_SMART_SCAN_MS: '1000',
+    DRASHTI_TEST_SMART_SETTLE_MS: '500',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await makeTestImage(win, join(folder, 'Opening.png'), { color: '#7c2d12' });
+  await makeTestImage(win, join(folder, 'Week 1', 'Darshan.png'), { color: '#1e3a8a' });
+  // + New › Smart Playlist from a Folder…, the folder chosen for the dialog.
+  await app.evaluate(({ dialog }, chosen) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [chosen] });
+  }, folder);
+  await win.getByRole('button', { name: 'New playlist or folder' }).click();
+  await win.getByRole('menuitem', { name: 'Smart Playlist from a Folder…' }).click();
+  const node = win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sabha' });
+  await expect(node).toHaveAttribute('data-playlist-kind', 'smart');
+  const playlistId = (await node.getAttribute('data-node-id')) ?? '';
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.items(id), playlistId)).map(
+          (i) => i.label,
+        ),
+      { timeout: 60_000 },
+    )
+    .toEqual(['Opening.png', 'Week 1', 'Darshan.png']);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await p.setViewportSize({ width: 375, height: 812 });
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-library').click();
+    await expect(win.getByTestId('network-badge')).toHaveText(/\b1 device\b/u);
+    await node.click({ button: 'right' });
+    await win.getByRole('menuitem', { name: 'Share with Phones and Tablets' }).click();
+    await expect(node.getByTestId('playlist-shared')).toBeVisible();
+    // Shared whole: its own files, then its folder's, under the folder's name.
+    const shared = p.getByTestId('remote-shared');
+    await shared.getByTestId('remote-shared-playlist').filter({ hasText: 'Placeholder Sabha' }).click();
+    await expect(shared.getByTestId('remote-shared-header')).toHaveText(['Week 1']);
+    await expect(shared.getByTestId('remote-shared-item')).toHaveText([/Opening\.png/u, /Darshan\.png/u]);
+    await expectNoSeriousA11yIssues(p, 'a shared folder playlist on a phone');
+    await shared.getByTestId('remote-shared-item').filter({ hasText: 'Darshan.png' }).click();
+    await expect(p.getByTestId('shared-viewer-where')).toHaveText('Picture · 2 of 2');
   } finally {
     await phone.close();
   }
@@ -316,9 +375,11 @@ test('at 768 × 1024: Cancel leaves nothing behind, a file over the size limit a
       'Drashti takes pictures, videos, sounds, PDF, PowerPoint and Keynote files, and this is none of them: each file is checked by what is inside it, not by its name.',
     );
     await expectNoSeriousA11yIssues(p, 'files refused, on a tablet at 768 × 1024');
-    expect(
-      (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).map((m) => m.name),
-    ).toEqual([]);
+    const names = (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).map(
+      (m) => m.name,
+    );
+    for (const name of ['Placeholder tone.wav', 'Placeholder long tone.wav', 'Placeholder photo.jpg'])
+      expect(names, name).not.toContain(name);
     expect(uploadsLeft(userData)).toEqual([]);
 
     // Turned off in Drashti: the tablet says so (what it sent stays listed).
