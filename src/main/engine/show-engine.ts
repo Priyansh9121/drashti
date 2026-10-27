@@ -177,9 +177,10 @@ export interface EngineOptions {
   looks?: LookSource;
   /**
    * Why a command is refused now, or null to run it: Simple Mode refuses
-   * switching the Look, from the window, a phone or the API alike.
+   * switching the Look, from the window, a phone or the API alike; and, by
+   * what plays (`state`, Session 54), the time bar's Pause of a single sound.
    */
-  refuse?: (command: EngineCommand) => string | null;
+  refuse?: (command: EngineCommand, state: EngineState) => string | null;
   /** A media file's length in ms, when the library knows it (learned from playing it). */
   mediaLength?: (mediaId: string) => number | null;
   /** A video's or sound's start and end points and markers (Session 14), when it has any. */
@@ -394,7 +395,7 @@ export class ShowEngine {
   dispatch(command: EngineCommand): CommandResult {
     // Drashti stopped (Session 54, access by Gmail): nothing changes the show any more.
     if (this.state.stopped) return { ok: false, error: 'forbidden', message: STOPPED_REFUSAL };
-    const refused = this.options.refuse?.(command) ?? null;
+    const refused = this.options.refuse?.(command, this.state) ?? null;
     if (refused !== null) return { ok: false, error: 'forbidden', message: refused };
     // A Next sent with the revision it saw, the show having moved since (Sessions 31–36, TST-11), or seen in another
     // run of the engine (Session 53: a page's copy from before Drashti restarted, whatever the number): nothing.

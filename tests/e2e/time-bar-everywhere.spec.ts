@@ -23,6 +23,7 @@ import {
 import { launchMain, launchNode, type MainRun, type NodeRun, pairNode } from './nodes';
 import { makeTestTone, makeTestVideo, setWebmDuration } from './test-media';
 import {
+  audioPage,
   backgroundTiming,
   clickAlong,
   type Copy,
@@ -35,6 +36,7 @@ import {
   slideWithVideo,
   slideWithVideos,
   snapshot,
+  soundTiming,
 } from './time-bar-helpers';
 
 /*
@@ -448,5 +450,66 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   const buttons = await win.getByTestId('simple-buttons').boundingBox();
   expect((buttons?.y ?? 9999) + (buttons?.height ?? 0), 'the big buttons in view').toBeLessThanOrEqual(645);
   await expectNoSeriousA11yIssues(win, 'every kind playing at 1024 × 645, Simple Mode');
+  await app.close();
+});
+
+test('in Simple Mode, a phone’s Pause of a sound put up from its Media is refused in words (Simple Mode’s window could never play it on), and its Play still plays on one paused before', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-time-bar-phone-sound-'));
+  const [first = '', second = ''] = await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder first tone.wav'), { seconds: 60, hz: 440 }),
+    makeTestTone(join(dir, 'Placeholder second tone.wav'), { seconds: 60, hz: 550 }),
+  ]);
+  const audio = await audioPage(app);
+  const heard = (mediaId: string): Copy[] => [
+    { name: 'the audio player', page: audio, selector: `audio[data-media-id="${mediaId}"]` },
+  ];
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    /** A tone put up from the phone's Media, as a person would (a sound plays over the rest), then the Show tab. */
+    const putUp = async (name: string, mediaId: string) => {
+      await p.getByTestId('remote-tab-library').click();
+      await p.getByTestId('remote-library-media').click();
+      await p.getByTestId('remote-media-search').fill(name);
+      await p.getByTestId('remote-media-item').filter({ hasText: name }).getByRole('button').first().click();
+      await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(mediaId);
+      await p.getByTestId('remote-tab-show').click();
+    };
+    const phoneRow = p.locator('[data-testid="remote-time-bar-row"][data-playing="audio"]');
+
+    // Pro Mode: the first tone up from the phone's Media, paused from its bar there.
+    await putUp('Placeholder first tone', first);
+    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+    await phoneRow.getByRole('button', { name: 'Pause' }).click();
+    await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
+
+    // Simple Mode: its window shows the bar, paused, with no Play of its own; the phone's Play plays it on.
+    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+    await expect(win.getByTestId('simple-mode')).toBeVisible();
+    await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
+    await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
+    await phoneRow.getByRole('button', { name: 'Play' }).click();
+    await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
+    await inStep(heard(first), () => soundTiming(win), 'played on from the phone in Simple Mode');
+
+    // The second tone, put up from the phone's Media in Simple Mode: its Pause refused in words, and it plays on.
+    await putUp('Placeholder second tone', second);
+    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+    const playing = (await soundTiming(win)).seek;
+    await phoneRow.getByRole('button', { name: 'Pause' }).click();
+    await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
+    expect((await soundTiming(win)).seek).toEqual(playing);
+    await inStep(heard(second), () => soundTiming(win), 'still playing after the refused Pause');
+  } finally {
+    await phone.close();
+  }
   await app.close();
 });
