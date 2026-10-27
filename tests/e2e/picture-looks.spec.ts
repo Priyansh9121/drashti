@@ -620,7 +620,7 @@ test('a sharpened copy is made at the size the hall’s screen draws it, as the 
   await app.close();
 });
 
-test('a phone draws a sharpened picture from a small preview of its copy, with no filter', async () => {
+test('a phone draws a sharpened picture from its copy at the width it draws it, with no filter', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -652,7 +652,8 @@ test('a phone draws a sharpened picture from a small preview of its copy, with n
   try {
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    // The live picture: the copy's preview, with the rest of its look, and no SVG filter.
+    // The live picture: the copy at the width the phone draws it (Session 54, D1; its small preview before), with
+    // the rest of its look, and no SVG filter.
     const copyId = `${pictureId}_s50`;
     const looked = p.getByTestId('remote-live').locator(`[data-look-picture][data-sharpened="${copyId}"]`);
     await expect(looked.locator(`img[data-preview="shown"][data-media-id="${copyId}"]`)).toHaveCount(1, {
@@ -660,9 +661,9 @@ test('a phone draws a sharpened picture from a small preview of its copy, with n
     });
     expect(await looked.evaluate((el) => (el as HTMLElement).style.filter)).toBe('brightness(1.1)');
     expect((await sharpening(p)).svg).toBe(0);
-    expect(loads).toContain(`/api/v1/media/${copyId}/preview`);
-    // Never a whole file, the copy's or the picture's.
-    expect(loads.filter((path) => path.includes('/media/') && !path.endsWith('/preview'))).toEqual([]);
+    expect(loads).toContain(`/api/v1/media/${copyId}/picture`);
+    // Only pictures, never a file in pieces (a video's, played on the phone), the copy's or the picture's.
+    expect(loads.filter((path) => path.includes('/media/') && !path.endsWith('/picture'))).toEqual([]);
   } finally {
     await phone.close();
   }

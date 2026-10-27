@@ -117,8 +117,9 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('remote-back')).toBeInViewport();
       await expectNoSeriousA11yIssues(p, `the remote at 375 x 667 (${engine})`);
 
-      // The phone only ever gets small previews of media, never a file.
-      expect(loads.filter((path) => path.includes('/media/') && !path.endsWith('/preview'))).toEqual([]);
+      // The phone only ever gets pictures of media, at the width it draws them (Session 54, D1; small previews
+      // before), never a file in pieces: nothing here plays a video on the phone.
+      expect(loads.filter((path) => path.includes('/media/') && !path.endsWith('/picture'))).toEqual([]);
     } finally {
       await phone.close();
     }
