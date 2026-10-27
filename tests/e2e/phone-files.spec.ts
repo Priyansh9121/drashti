@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -220,6 +220,7 @@ test('a folder playlist shared whole: a smart playlist following a folder, its f
     await phone.close();
   }
   await app.close();
+  rmSync(work, { recursive: true, force: true });
 });
 
 test('a file added from a phone at 375 × 812: off until the switch is on, sent with a progress bar, picking up again after the connection drops, then in Added from Phones and Media with the phone’s name, never live', async () => {
@@ -303,6 +304,7 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
     expect(state.layers.background).toBeNull();
   } finally {
     await phone.close();
+    rmSync(dir, { recursive: true, force: true });
   }
   await app.close();
 });
@@ -388,6 +390,7 @@ test('at 768 × 1024: Cancel leaves nothing behind, a file over the size limit a
     await expect(p.getByTestId('remote-add-button')).toHaveCount(0);
   } finally {
     await tablet.close();
+    rmSync(dir, { recursive: true, force: true });
   }
   await app.close();
 });
