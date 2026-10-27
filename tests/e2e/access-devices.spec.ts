@@ -77,7 +77,7 @@ test('phones and tablets stop with their Drashti: every request refused, files t
       expect(r).toEqual({ status: 503, json: { ok: false, message: STOPPED_REFUSAL } });
   } finally {
     await phone.close();
-    if (main.app.process().exitCode === null) await main.app.close();
+    await main.app.close();
   }
 });
 
@@ -137,7 +137,7 @@ test('a node stops with its Main: its screens fade to black, and its window says
     await expect(node.page.getByTestId('node-stopped')).toHaveAttribute('data-why', 'main-stopped');
   } finally {
     await node.app.close();
-    if (main.app.process().exitCode === null) await main.app.close();
+    await main.app.close();
   }
 });
 

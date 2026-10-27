@@ -4,6 +4,7 @@ import { ACCESS_ERROR_TEXT } from '../../src/shared/access-protocol';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   approvedToken,
+  closedWatch,
   moveListClock,
   openLink,
   ownerCall,
@@ -211,6 +212,7 @@ test('a token works once, only for its own Gmail, never after a revoke, runs out
 
 test('the lock screen fits a small window and says what is wrong on the field it is about', async () => {
   const { app, lock } = await locked();
+  const watch = closedWatch(app);
   try {
     await lock.setViewportSize({ width: 480, height: 420 });
     await lock.getByTestId('access-gmail').fill('not an address');
@@ -226,8 +228,8 @@ test('the lock screen fits a small window and says what is wrong on the field it
     await expect(lock.getByTestId('access-token')).toHaveAttribute('aria-invalid', 'true');
     // Quit works.
     await lock.getByTestId('access-quit').click();
-    await expect.poll(() => app.process().exitCode, { timeout: 20_000 }).toBe(0);
+    await watch.whenClosed;
   } finally {
-    if (app.process().exitCode === null) await app.close();
+    if (!watch.closed()) await app.close();
   }
 });

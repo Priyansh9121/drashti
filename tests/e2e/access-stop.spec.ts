@@ -1,11 +1,11 @@
 import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { ACCESS_REMOVED_TEXT, NO_ANSWER_STOP_TITLE, STOPPED_REFUSAL } from '../../src/shared/access';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { answerAgain, PLACEHOLDER_PERSON, revoke, standInOf, stopAnswering } from './access';
+import { answerAgain, closedWatch, PLACEHOLDER_PERSON, revoke, standInOf, stopAnswering } from './access';
 import { expectFits } from './fit';
 import {
   holdStill,
@@ -80,14 +80,15 @@ async function expectStopped(win: Page, title: string): Promise<void> {
 }
 
 /** Quit, the one thing that works: Drashti quits at once, asking nothing. */
-async function quitFromTheStop(app: ElectronApplication, win: Page): Promise<void> {
+async function quitFromTheStop(watch: ReturnType<typeof closedWatch>, win: Page): Promise<void> {
   await win.getByTestId('access-quit').click();
-  await expect.poll(() => app.process().exitCode, { timeout: 20_000 }).toBe(0);
+  await watch.whenClosed;
 }
 
 test('a revoke while open stops everything at the next check, in the main process, and only Quit works', async () => {
   test.setTimeout(150_000);
   const { app, win, out, access: list } = await showing();
+  const watch = closedWatch(app);
   try {
     // Before: the controls answer.
     expect(await tryIt(win, 'library')).not.toContain(STOPPED_REFUSAL);
@@ -110,15 +111,16 @@ test('a revoke while open stops everything at the next check, in the main proces
     expect(menus.length).toBe(2);
     for (const gone of ['View', 'Library', 'Window', 'Diagnostics', 'Help'])
       expect(menus).not.toContain(gone);
-    await quitFromTheStop(app, win);
+    await quitFromTheStop(watch, win);
   } finally {
-    if (app.process().exitCode === null) await app.close();
+    if (!watch.closed()) await app.close();
   }
 });
 
 test('the stop in Simple Mode, in CI’s window: one message and Quit, fitting, passing the accessibility checks', async () => {
   test.setTimeout(120_000);
   const { app, win, access: list } = await showing();
+  const watch = closedWatch(app);
   try {
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(win.getByTestId('simple-mode')).toBeVisible();
@@ -128,15 +130,16 @@ test('the stop in Simple Mode, in CI’s window: one message and Quit, fitting, 
     await expect(win.getByTestId('simple-mode')).toHaveCount(0);
     await expectFits(win.getByTestId('access-stopped'), 'the stop at 1024 × 645');
     await expectNoSeriousA11yIssues(win, 'the stop at 1024 × 645');
-    await quitFromTheStop(app, win);
+    await quitFromTheStop(watch, win);
   } finally {
-    if (app.process().exitCode === null) await app.close();
+    if (!watch.closed()) await app.close();
   }
 });
 
 test('with no answer: the countdown over the controls, gone when the list answers, then the stop 2 minutes after the last answer', async () => {
   test.setTimeout(150_000);
   const { app, win, access: list } = await showing();
+  const watch = closedWatch(app);
   try {
     await sizeOperatorWindow(app, win, CI_WINDOW);
     stopAnswering(list);
@@ -163,9 +166,9 @@ test('with no answer: the countdown over the controls, gone when the list answer
       8000,
       'the list answering again opens nothing',
     );
-    await quitFromTheStop(app, win);
+    await quitFromTheStop(watch, win);
   } finally {
-    if (app.process().exitCode === null) await app.close();
+    if (!watch.closed()) await app.close();
   }
 });
 
@@ -234,6 +237,7 @@ test('a revoke ends the stream and the recording at once', async () => {
   // FFmpeg on this computer stands in for YouTube; the stream's key is made up (stream-helpers.ts).
   const farEnd = rtmpListener(ffmpeg ?? '', port, join(dir, 'received.flv'));
   const { app, userData, access: list } = await launchApp({ ...FAST, DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const watch = closedWatch(app);
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -259,9 +263,9 @@ test('a revoke ends the stream and the recording at once', async () => {
     await expect
       .poll(() => farEnd.exitCode !== null || farEnd.signalCode !== null, { timeout: 30_000 })
       .toBe(true);
-    await quitFromTheStop(app, win);
+    await quitFromTheStop(watch, win);
   } finally {
     farEnd.kill('SIGKILL');
-    if (app.process().exitCode === null) await app.close();
+    if (!watch.closed()) await app.close();
   }
 });

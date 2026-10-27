@@ -1,3 +1,4 @@
+import type { ElectronApplication } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -258,4 +259,16 @@ export async function pressLink(link: string): Promise<LinkSays> {
   const form = new URL('/macros/s/stand-in/link', u.origin);
   const res = await fetch(form, { method: 'POST', body: new URLSearchParams(u.searchParams) });
   return linkSays(await res.text());
+}
+
+/** Whether a Drashti has closed (Quit on its lock or stop screen), as Playwright saw it, on Mac and Windows alike. */
+export function closedWatch(app: ElectronApplication): { closed: () => boolean; whenClosed: Promise<void> } {
+  let closed = false;
+  const whenClosed = new Promise<void>((resolve) => {
+    app.once('close', () => {
+      closed = true;
+      resolve();
+    });
+  });
+  return { closed: () => closed, whenClosed };
 }
