@@ -5,10 +5,12 @@ import type { MenuEntry, MenuPlace } from '../ui/Menu';
 import { Menu, MenuButton, menuPlace } from '../ui/Menu';
 import type { MediaBackground, PlaylistCursor } from '../../../shared/engine/state';
 import {
+  type AudioCue,
   backgroundCueOf,
   type BackgroundCue,
   type PresentationDoc,
   type SlideInfo,
+  soundCueOf,
 } from '../../../shared/library';
 import { type OrderedSlide, playOrder } from '../../../shared/order';
 import type { ItemOrder } from '../../../shared/playlists';
@@ -125,6 +127,30 @@ function ThumbInput({ name, live }: { name: string; live: boolean }) {
   );
 }
 
+/**
+ * The sound a slide plays, in its caption. Its file missing (Session 54), marked as a video input not here is (the
+ * sound then stays as it was when the slide goes up, as LIVE says), and named so, as a missing background is.
+ */
+function ThumbSound({ cue, live }: { cue: AudioCue; live: boolean }) {
+  const Mark = cue.missing ? AlertTriangle : Music;
+  return (
+    <span
+      className={cx('flex min-w-0 items-center gap-1', cue.missing && !live && 'text-warning-fg')}
+      data-testid="thumb-audio"
+      data-media-id={cue.mediaId}
+      data-missing={cue.missing ? 'true' : undefined}
+      title={
+        cue.missing
+          ? `“${cue.name}” is missing: the sound stays as it was when this slide goes up`
+          : `Plays ${cue.name}`
+      }
+    >
+      <Mark size={12} aria-hidden="true" className="shrink-0" />
+      <span className="truncate">{cue.label || cue.name}</span>
+    </span>
+  );
+}
+
 const Thumb = memo(function Thumb({
   presentationId,
   presentationName,
@@ -170,7 +196,8 @@ const Thumb = memo(function Thumb({
   // Its picture or video behind it, or a video input by name (Session 51), named in its caption.
   const behind = background?.background;
   const inputName = behind?.kind === 'input' ? behind.name : null;
-  const sound = info.cues.find((c) => c.kind === 'audio');
+  // The sound cue it plays: its last, when it has more than one (Session 54), as the slide going up does.
+  const sound = soundCueOf(info.cues);
   // A slide with a picture on it (a deck's page, say): its right-click offers the Picture editor (Session 26e).
   const picture = info.slide.elements.find((e) => e.kind === 'image');
   const [menu, setMenu] = useState<MenuPlace | null>(null);
@@ -275,16 +302,7 @@ const Thumb = memo(function Thumb({
             <span className="flex-1" />
           )}
           {inputName !== null && <ThumbInput name={inputName} live={live} />}
-          {sound && (
-            <span
-              className="flex min-w-0 items-center gap-1"
-              data-testid="thumb-audio"
-              title={`Plays ${sound.name}`}
-            >
-              <Music size={12} aria-hidden="true" className="shrink-0" />
-              <span className="truncate">{sound.label || sound.name}</span>
-            </span>
-          )}
+          {sound && <ThumbSound cue={sound} live={live} />}
           {live && <span className="font-bold tracking-wide">LIVE</span>}
         </span>
       </button>

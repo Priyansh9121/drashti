@@ -28,12 +28,24 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * (Find missing media…) it says so no more, and the slide plays it the next time it goes up. Until then the missing
  * file went on the audio layer all the same: nothing was heard, what played stopped, and nothing was said. With its
  * background's file missing too, LIVE's two lines fit CI's window (1024 × 645) in both modes, with an audio playlist
- * playing and without: nothing over them, Simple Mode's music strip clear of them, Pro Mode's Next in reach.
+ * playing and without: nothing over them, Simple Mode's music strip clear of them, Pro Mode's Next in reach. Since
+ * Session 54 the slide's thumbnail, the slide editor and Simple Mode's picture of what is next name a missing sound
+ * too, as they name a missing background file, each by the slide's last sound cue, the one that plays (an import
+ * can give a slide two); and Simple Mode's Next, naming both files, fits CI's window with LIVE's two lines.
  * Generated tones and placeholder names only.
  */
 
 const FILE = 'Placeholder hymn.wav';
 const LINE = `File missing: “${FILE}”. The sound stays as it was.`;
+/** A slide's first sound of two, missing too (Session 54). */
+const INTRO = 'Placeholder intro.wav';
+/** What a slide's thumbnail says of its sound whose file is missing (Session 54), as of a missing background. */
+const thumbSays = (file: string) => `“${file}” is missing: the sound stays as it was when this slide goes up`;
+/** What the slide editor says of it (Session 54), as of a missing background. */
+const editorSays = (file: string) =>
+  `The file “${file}” is missing: the sound stays as it was when this slide goes up.`;
+/** What Simple Mode's picture of what is next adds for it (Session 54), as for a missing background. */
+const nextSays = (file: string) => `, with the sound “${file}”, which is missing: the sound stays as it is`;
 const BACKDROP = 'Placeholder backdrop.png';
 const BACKDROP_LINE = `File missing: “${BACKDROP}”. The background stays as it was.`;
 /** LIVE's two lines, a slide's background file and its sound file missing. */
@@ -282,14 +294,15 @@ test('a slide whose background and sound files are both missing: LIVE’s two li
       groups: [
         {
           name: 'Verse',
-          slides: [
-            {
+          // Two such slides: with the first up, Simple Mode's Next names both files of the second (Session 54).
+          slides: ['Placeholder over two missing files', 'Placeholder over two missing files again'].map(
+            (words) => ({
               // Another computer's drive: neither file is found here, nor beside the presentation.
-              background: { path: `/Volumes/Placeholder drive/${BACKDROP}`, kind: 'image' },
+              background: { path: `/Volumes/Placeholder drive/${BACKDROP}`, kind: 'image' as const },
               audio: `/Volumes/Placeholder drive/${FILE}`,
-              ...line('Placeholder over two missing files'),
-            },
-          ],
+              ...line(words),
+            }),
+          ),
         },
       ],
     }),
@@ -311,11 +324,15 @@ test('a slide whose background and sound files are both missing: LIVE’s two li
   await expect(win.getByTestId('live-file-missing')).toHaveText(BACKDROP_LINE);
   await expect(win.getByTestId('live-sound-missing')).toHaveText(LINE);
 
-  // No audio playlist yet: Pro Mode's two lines, and Next under them; Simple Mode's, with no music strip.
+  // No audio playlist yet: Pro Mode's two lines, and Next under them; Simple Mode's, with no music strip, and its
+  // picture of what is next naming both files of the slide after (Session 54).
   await expectInWindow(win, [...LINES, 'show-next'], null, 'Pro Mode, no music');
   await switchTo(win, 'simple');
   await expect(win.getByTestId('simple-music')).toHaveCount(0);
-  await expectInWindow(win, LINES, null, 'Simple Mode, no music');
+  await expect(win.getByTestId('next-caption')).toHaveText(
+    `Placeholder Missing Both, slide 2, over the file “${BACKDROP}”, which is missing: the background stays as it is${nextSays(FILE)}`,
+  );
+  await expectInWindow(win, [...LINES, 'next-caption'], null, 'Simple Mode, no music');
 
   // An audio playlist playing: Pro Mode again, then Simple Mode, whose music strip says what plays, clear of them.
   await switchTo(win, 'pro');
@@ -325,9 +342,98 @@ test('a slide whose background and sound files are both missing: LIVE’s two li
   await switchTo(win, 'simple');
   await expect(win.getByTestId('simple-music')).toContainText('Music: Placeholder before sabha');
   await expect(win.getByTestId('simple-music-pause')).toBeVisible();
-  await expectInWindow(win, LINES, 'simple-music', 'Simple Mode, the music playing');
+  await expectInWindow(win, [...LINES, 'next-caption'], 'simple-music', 'Simple Mode, the music playing');
   // Both still said, and the music never stopped for the slide's sound.
   expect((await state(win)).layers.slide).toMatchObject({ fileMissing: BACKDROP, soundMissing: FILE });
   expect((await state(win)).layers.audio).toMatchObject({ mediaId: trackId, music: { playlistId: listId } });
+  await app.close();
+});
+
+test('a slide’s missing sound is named in its thumbnail, the slide editor and Simple Mode’s Next, as a missing background file is; of two sounds, by the last, the one that plays (Session 54)', async () => {
+  test.setTimeout(150_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-missing-sound-named-'));
+  const tune = makeTestTone(join(dir, 'Placeholder tune.wav'), { seconds: 30, hz: 440 });
+  const show = join(dir, 'Placeholder Named Sounds.pro6');
+  writeFileSync(
+    show,
+    pp6Presentation({
+      uuid: 'E2E-MISSING-SOUND-NAMED',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [
+            line('Placeholder before'),
+            // Another computer's drive: not found here, nor beside the presentation.
+            { audio: `/Volumes/Placeholder drive/${FILE}`, ...line('Placeholder over the missing sound') },
+            // Two sounds (an import can give a slide two): the last plays, here the one that is there...
+            { audio: [`/Volumes/Placeholder drive/${INTRO}`, tune], ...line('Placeholder over two sounds') },
+            // ...and here the one that is missing.
+            { audio: [tune, `/Volumes/Placeholder drive/${FILE}`], ...line('Placeholder over two again') },
+          ],
+        },
+      ],
+    }),
+  );
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const [presentationId = ''] = await importAndGetIds(win, [show]);
+  await (await openLibrary(win)).getByTestId('library-tab-presentations').click();
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Placeholder Named Sounds/ })
+    .click();
+  await closeLibrary(win);
+  const thumbs = win.getByTestId('slide-thumb');
+
+  // The thumbnails: a missing sound marked and named, as a missing background is; of two sounds, the last.
+  await expect(thumbs).toHaveCount(4);
+  await expect(thumbs.nth(0).getByTestId('thumb-audio')).toHaveCount(0);
+  const missing = thumbs.nth(1).getByTestId('thumb-audio');
+  await expect(missing).toHaveAttribute('data-missing', 'true');
+  await expect(missing).toHaveAttribute('title', thumbSays(FILE));
+  const lastThere = thumbs.nth(2).getByTestId('thumb-audio');
+  await expect(lastThere).toHaveAttribute('title', 'Plays Placeholder tune.wav');
+  await expect(lastThere).not.toHaveAttribute('data-missing');
+  const lastMissing = thumbs.nth(3).getByTestId('thumb-audio');
+  await expect(lastMissing).toHaveAttribute('data-missing', 'true');
+  await expect(lastMissing).toHaveAttribute('title', thumbSays(FILE));
+
+  // The slide editor names the sound it shows, the last, and says when its file is missing (a double-click on a
+  // thumbnail opens it at that slide; with nothing changed, Esc closes it).
+  const editor = win.getByTestId('slide-editor');
+  for (const [index, file, said] of [
+    [1, FILE, true],
+    [2, 'Placeholder tune.wav', false],
+    [3, FILE, true],
+  ] as const) {
+    await thumbs.nth(index).dblclick();
+    await expect(editor.getByTestId('sound-cue')).toHaveText(file);
+    if (said) await expect(editor.getByTestId('sound-file-missing')).toHaveText(editorSays(file));
+    else await expect(editor.getByTestId('sound-file-missing')).toHaveCount(0);
+    await win.keyboard.press('Escape');
+    await expect(editor).toHaveCount(0);
+  }
+
+  // Simple Mode: its picture of what is next names a missing sound before it goes up; of two sounds, the last.
+  await switchTo(win, 'simple');
+  const caption = win.getByTestId('next-caption');
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  await expect(caption).toHaveText(`Placeholder Named Sounds, slide 2${nextSays(FILE)}`);
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 1 });
+  await expect(caption).toHaveText('Placeholder Named Sounds, slide 3');
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 2 });
+  await expect.poll(async () => (await state(win)).layers.audio?.mediaId).toBeTruthy();
+  await expect(caption).toHaveText(`Placeholder Named Sounds, slide 4${nextSays(FILE)}`);
+  // Next puts it up: the tune plays on, and LIVE says why.
+  const tuneUp = (await state(win)).layers.audio;
+  await win.getByTestId('simple-buttons').getByRole('button', { name: /^Next/u }).click();
+  await expect.poll(async () => (await state(win)).live.slideIndex).toBe(3);
+  expect((await state(win)).layers.audio).toMatchObject({
+    mediaId: tuneUp?.mediaId,
+    startedAt: tuneUp?.startedAt,
+  });
+  await expect(win.getByTestId('live-sound-missing')).toHaveText(LINE);
+  await switchTo(win, 'pro');
   await app.close();
 });
