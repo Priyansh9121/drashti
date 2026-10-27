@@ -245,6 +245,8 @@ export interface DrashtiBridge {
     showSaved(runId: string | null): Promise<null>;
     /** The admin's highest video quality, for YouTube and Dropbox (Session 25c): 1080, 1440, 2160 or 4320. */
     setMaxHeight(height: number): Promise<LinkResult>;
+    /** The playlist a download went into (Session 54): the dialog offers it first the next time. */
+    setPlaylist(playlistId: string): Promise<LinkResult>;
     onChanged(listener: (view: LinkView) => void): () => void;
     /** File > Import from a Link… was chosen. */
     onOpen(listener: () => void): () => void;

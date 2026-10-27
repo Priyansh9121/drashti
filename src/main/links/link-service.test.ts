@@ -791,3 +791,45 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     expect(r.ok ? '' : r.message).toBe('Drashti’s copy of yt-dlp or Deno is missing.');
   });
 });
+
+describe('the playlist a download went into last (Session 54, F1)', () => {
+  it('is kept with the library’s settings and said in the view, so the dialog offers it first', async () => {
+    const saved: { id: string | null } = { id: 'placeholder-playlist-before' };
+    const h = await harness({
+      lastPlaylist: {
+        get: () => saved.id,
+        set: (id) => {
+          saved.id = id;
+        },
+      },
+    });
+    expect(h.service.view().lastPlaylist).toBe('placeholder-playlist-before');
+    expect(h.service.setPlaylist('placeholder-playlist-after').ok).toBe(true);
+    expect(saved.id).toBe('placeholder-playlist-after');
+    expect(h.service.view().lastPlaylist).toBe('placeholder-playlist-after');
+    expect(h.views.at(-1)?.lastPlaylist).toBe('placeholder-playlist-after');
+    // Another link keeps it.
+    expect(h.service.reset().ok).toBe(true);
+    expect(h.service.view().lastPlaylist).toBe('placeholder-playlist-after');
+    // Only a playlist's id is kept.
+    for (const wrong of [null, 7, '', 'x'.repeat(201)]) expect(h.service.setPlaylist(wrong).ok).toBe(false);
+    expect(saved.id).toBe('placeholder-playlist-after');
+  });
+
+  it('is none until a download goes into one', async () => {
+    const h = await harness();
+    expect(h.service.view().lastPlaylist).toBeNull();
+  });
+
+  it('is every person’s in Pro Mode, and refused in Simple Mode, as the rest of Import from a Link is', () => {
+    expect(SIMPLE_MODE_LOCKED).toContain(IPC.links.setPlaylist);
+    let simple = true;
+    lockChannels(
+      () => simple,
+      simpleModeRefusals(() => ({ chosen: null, devices: [], state: 'default' as const, checked: true })),
+    );
+    expect(refusalFor(IPC.links.setPlaylist)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    simple = false;
+    expect(refusedNow(IPC.links.setPlaylist)).toBe(false);
+  });
+});

@@ -263,6 +263,11 @@ export interface LinkView {
   waiting: string[];
   /** How many of those the button added, once it has. */
   waitingAdded: number | null;
+  /**
+   * The playlist the last download went into (Session 54, F1), which the dialog offers first; null before any.
+   * Kept with the library's settings, as every person's.
+   */
+  lastPlaylist: string | null;
 }
 
 /** A refusal from Simple Mode or the admin lock carries no view; the service's own refusals do. */

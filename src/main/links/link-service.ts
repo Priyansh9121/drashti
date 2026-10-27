@@ -79,6 +79,8 @@ export interface LinkServiceDeps {
   workDir: string;
   /** The admin's highest video quality (Session 25c), kept with the library's settings. */
   maxHeight: { get(): LinkHeight; set(height: LinkHeight): void };
+  /** The playlist the last download went into (Session 54, F1), kept with the library's settings. */
+  lastPlaylist?: { get(): string | null; set(id: string): void };
   /**
    * Make a video taller than `maxHeight` a copy that tall in `outDir` (Drashti's own conversion: it waits
    * while the stream is on air or recording); `copy` null: it is that tall or less already. Reports why
@@ -163,6 +165,7 @@ export class LinkService {
       waitingAdded: null,
       maxHeight: deps.maxHeight.get(),
       choice: null,
+      lastPlaylist: deps.lastPlaylist?.get() ?? null,
     };
   }
 
@@ -506,6 +509,21 @@ export class LinkService {
       this.deps.maxHeight.set(height);
       this.deps.log('info', `Links: the highest video quality is now ${heightLabel(height)}`);
       this.set({ maxHeight: height });
+    }
+    return this.answer();
+  }
+
+  // ---- the playlist a download goes into (every person's) -------------------------
+
+  /**
+   * The playlist a download's import went into (Session 54, F1): the dialog offers it first the next time. The
+   * window adds what the import made, so it says which playlist that was; only an id is kept.
+   */
+  setPlaylist(id: unknown): LinkResult {
+    if (typeof id !== 'string' || id === '' || id.length > 200) return this.refuse('That is not a playlist.');
+    if (id !== this.state.lastPlaylist) {
+      this.deps.lastPlaylist?.set(id);
+      this.set({ lastPlaylist: id });
     }
     return this.answer();
   }
