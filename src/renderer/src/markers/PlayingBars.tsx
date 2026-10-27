@@ -7,12 +7,15 @@ import { useNow } from '../render/useNow';
 import { Badge } from '../ui/Badge';
 import { IconButton } from '../ui/Button';
 import { Pause, Play } from '../ui/icons';
+import { cx } from '../ui/cx';
 import { TimeBar } from '../ui/TimeBar';
 import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playingRows } from './playing-rows';
 
 /*
  * The time bar under LIVE (Session 54): one row for each thing playing, the background video, each video on the slide
- * up (a deck's too), the picture-in-picture box's video, and the sound or an audio playlist's track (in Music too).
+ * up (a deck's too), the picture-in-picture box's video, and the sound or an audio playlist's track (in Music too). In
+ * Pro Mode it sits under Next and Back, beside the skips and the markers, so they stay where they are however many
+ * things play (Session 54's review); in Simple Mode, under the LIVE picture.
  * Each row is its short name and its bar, with its elapsed time and time left, its start and end points and its
  * markers as ticks. In Pro Mode a click or a drag moves it (once, on release) and Play or Pause sits before it; every
  * screen, node, the stream, key and fill and the audio player land there in step, as a jump to a marker does (the
@@ -20,14 +23,15 @@ import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playin
  * The practice show has none.
  */
 
-export function PlayingBars() {
+/** `className`: its place's own spacing (under Next and Back in Pro Mode; none under Simple Mode's LIVE picture). */
+export function PlayingBars({ className }: { className?: string } = {}) {
   const state = useEngine((s) => s.state);
   const practising = usePractice((s) => s.on);
   const pro = useMode((s) => s.mode) === 'pro';
   const rows = useMemo(() => playingRows(state), [state]);
   if (practising || rows.length === 0) return null;
   return (
-    <div className="space-y-0.5" data-testid="time-bars">
+    <div className={cx('space-y-0.5', className)} data-testid="time-bars">
       {rows.map((row) => (
         <Row key={row.key} row={row} pro={pro} />
       ))}
