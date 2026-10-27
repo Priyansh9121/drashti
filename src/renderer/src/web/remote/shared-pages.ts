@@ -1,7 +1,7 @@
 import type { PresentationDoc } from '../../../../shared/library';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { api } from '../device';
-import { picturePage, slidePage, slideTitle, soundPage, videoPage } from '../viewer/pages';
+import { picturePage, slidePages, soundPage, videoPage } from '../viewer/pages';
 import { openViewer, type ViewerPage } from '../viewer/viewer-store';
 import { lookingAt, usePhoneFiles } from './phone-files-store';
 import { type PageMakers, sharedPages, slidesToRead } from './shared-files';
@@ -19,10 +19,9 @@ const VIEWER_PAGES: PageMakers<ViewerPage> = {
   picture: picturePage,
   video: videoPage,
   sound: soundPage,
-  slide: (presentationId, name, slide) => ({
-    ...slidePage(presentationId, slide),
-    title: `${name} · ${slideTitle(slide)}`,
-  }),
+  // A deck's slide a page for each click (D1/D2 review), each named with its presentation.
+  slide: (presentationId, name, slide) =>
+    slidePages(presentationId, slide).map((page) => ({ ...page, title: `${name} · ${page.title}` })),
 };
 
 /** A presentation (or a Shastra passage) for its slides; null when Drashti could not give it. */

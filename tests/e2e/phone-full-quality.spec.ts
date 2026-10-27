@@ -397,3 +397,70 @@ test('a deck’s slide on the screens, zoomed from a phone: the screens zoom the
   }
   await app.close();
 });
+
+test('a deck looked through on a phone plays each click’s motion once and holds its last frame, Next and Previous going click by click, on the phone only (Session 54, D1/D2 review)', async () => {
+  test.skip(deckFfmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(240_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const files = await makeDeckFiles(win);
+  await writeDeck(win, 'Placeholder deck', standInDecks(files));
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  await p.setViewportSize({ width: 375, height: 812 });
+  const asked: string[] = [];
+  p.on('request', (r) => {
+    const url = new URL(r.url());
+    if (url.pathname.startsWith('/api/v1/media/')) asked.push(url.pathname);
+  });
+  const links = (clip: string) => asked.filter((path) => path === `/api/v1/media/${clip}/link`).length;
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-library').click();
+    await p.getByTestId('remote-library-item').filter({ hasText: 'Placeholder deck' }).click();
+    await p.getByTestId('remote-look-through').click();
+    const viewer = p.getByTestId('viewer');
+    const step = p.getByTestId('viewer-deck-step');
+    // Three clicks' pages for the first slide, one for the second.
+    await expect(viewer).toHaveAttribute('data-page', /:step:0$/u);
+    await expect(p.locator('#viewer-place')).toContainText('1 of 4');
+    // The slide coming in: its motion asked for through a link made for this phone (it plays where this browser
+    // plays its kind of video), then its last frame held, at the width the phone draws it.
+    await expect.poll(() => links(files.clips[0] ?? '')).toBe(1);
+    await expect(step).toHaveAttribute('data-phase', 'held', { timeout: 20_000 });
+    await expect(step.locator(`img[data-media-id="${files.lasts[0] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    // Next: the first click, its own motion, then its own last frame.
+    await p.getByTestId('viewer-next').click();
+    await expect(viewer).toHaveAttribute('data-page', /:step:1$/u);
+    await expect(p.getByTestId('viewer-title')).toContainText('click 1 of 2');
+    await expect.poll(() => links(files.clips[1] ?? '')).toBe(1);
+    await expect(step).toHaveAttribute('data-phase', 'held', { timeout: 20_000 });
+    await expect(step.locator(`img[data-media-id="${files.lasts[1] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    // Previous: the slide coming in again, still at its last frame, as Back shows a step; its motion not asked again.
+    await p.getByTestId('viewer-previous').click();
+    await expect(viewer).toHaveAttribute('data-page', /:step:0$/u);
+    await expect(step).toHaveAttribute('data-phase', 'held');
+    await expect(step.locator(`img[data-media-id="${files.lasts[0] ?? ''}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    expect(links(files.clips[0] ?? '')).toBe(1);
+    // Past the first slide's last click: the second slide's coming in.
+    for (let i = 0; i < 3; i++) await p.getByTestId('viewer-next').click();
+    await expect(p.locator('#viewer-place')).toContainText('4 of 4');
+    await expect.poll(() => links(files.nextClip)).toBe(1);
+    // Nothing of it on the screens.
+    expect((await snapshot(win)).layers.slide).toBeNull();
+    await expectNoSeriousA11yIssues(p, 'the viewer looking through a deck (chromium)');
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});

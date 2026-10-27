@@ -54,7 +54,8 @@ const WHAT = {
 
 type What = keyof typeof WHAT;
 
-async function linkTo(mediaId: string): Promise<{ url: string } | { problem: string }> {
+/** A link to a media file's original that a <video> or an <audio> plays (D1), or what stopped it. */
+export async function linkTo(mediaId: string): Promise<{ url: string } | { problem: string }> {
   const r = await api<{ url: string }>(`/api/v1/media/${encodeURIComponent(mediaId)}/link`);
   return r.ok ? { url: r.url } : { problem: r.message };
 }

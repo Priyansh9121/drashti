@@ -44,25 +44,33 @@ interface Viewer {
   of: string | null;
   /** The pages' own sizes, as their pictures and videos load. */
   sizes: Record<string, Size>;
+  /** How the page shown was come to: opened (0), or turned to by Next (1) or Previous (-1): a deck's step shows still. */
+  movedBy: number;
 }
 
-export const useViewer = create<Viewer>(() => ({ pages: [], index: 0, of: null, sizes: {} }));
+export const useViewer = create<Viewer>(() => ({ pages: [], index: 0, of: null, sizes: {}, movedBy: 0 }));
 
 /** Look at these pages, from this one, full screen on this device. */
 export function openViewer(pages: ViewerPage[], index = 0, of: string | null = null): void {
   if (pages.length === 0) return;
-  useViewer.setState({ pages, index: Math.min(Math.max(0, index), pages.length - 1), of, sizes: {} });
+  useViewer.setState({
+    pages,
+    index: Math.min(Math.max(0, index), pages.length - 1),
+    of,
+    sizes: {},
+    movedBy: 0,
+  });
 }
 
 export function closeViewer(): void {
-  useViewer.setState({ pages: [], index: 0, of: null, sizes: {} });
+  useViewer.setState({ pages: [], index: 0, of: null, sizes: {}, movedBy: 0 });
 }
 
 /** The page before or after, on this device only. */
 export function turnPage(by: number): void {
   const { pages, index } = useViewer.getState();
   const to = index + by;
-  if (to >= 0 && to < pages.length) useViewer.setState({ index: to });
+  if (to >= 0 && to < pages.length) useViewer.setState({ index: to, movedBy: Math.sign(by) });
 }
 
 /** A page's own size, once its picture or video says it. */

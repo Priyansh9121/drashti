@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { stepOf } from '../../../../shared/deck-show';
 import type { EngineState } from '../../../../shared/engine/state';
 import { backgroundCueOf } from '../../../../shared/library';
 import { groupLookIn } from '../../../../shared/looks';
@@ -10,6 +11,7 @@ import { PreviewPicture } from '../../render/previews';
 import { Scene } from '../../render/Scene';
 import { SlideView } from '../../render/SlideView';
 import { useRemote } from '../remote/remote-store';
+import { DeckStepDrawn } from './DeckStepPage';
 import { DeviceSound, DeviceVideoControls, DeviceVideoPicture, SOUND_PAGE } from './DeviceVideo';
 import { frameInCanvas, frameInSlide, frameOfBackground, keptFraming, phoneZoomTarget } from './live-zoom';
 import { setPageSize, useViewer, type ViewerPage } from './viewer-store';
@@ -110,6 +112,60 @@ export function slidePage(presentationId: string, s: OrderedSlide): ViewerPage {
       return target && frame ? { frame, kept: keptFraming(state, target.mediaId) } : null;
     },
   };
+}
+
+/** A deck's slide (Session 54, C2), one step of it: its motion played once on this device, then its last frame. */
+function deckStepPage(presentationId: string, s: OrderedSlide, index: number, steps: number): ViewerPage {
+  // The screens show this slide at this step: what LIVE calls its click (step 0 is the slide coming in).
+  const stepUp = (state: EngineState | null) => {
+    const layer = state?.layers.slide;
+    return (
+      slideUp(state, presentationId, s) && layer !== undefined && layer !== null && stepOf(layer) === index
+    );
+  };
+  return {
+    key: `slide:${presentationId}:${String(s.position)}:${s.slide.id}:step:${String(index)}`,
+    title: index === 0 ? slideTitle(s) : `${slideTitle(s)} · click ${String(index)} of ${String(steps - 1)}`,
+    size: { width: s.slide.slide.width, height: s.slide.slide.height },
+    draw: () => <DeckStepDrawn s={s} index={index} />,
+    live: stepUp,
+    onScreens: (state) => {
+      if (!stepUp(state)) return null;
+      const target = phoneZoomTarget(state);
+      const frame = frameInSlide(state);
+      return target && frame ? { frame, kept: keptFraming(state, target.mediaId) } : null;
+    },
+  };
+}
+
+/**
+ * A slide looked through on this device: its page, or a deck's slide's pages, one for each step (D1/D2 review), so
+ * Next and Previous go click by click as the deck does.
+ */
+export function slidePages(presentationId: string, s: OrderedSlide): ViewerPage[] {
+  const steps = s.slide.slide.deck?.steps.length ?? 0;
+  if (steps === 0) return [slidePage(presentationId, s)];
+  return Array.from({ length: steps }, (_, index) => deckStepPage(presentationId, s, index, steps));
+}
+
+/**
+ * A presentation's slides as the pages looked through, and the page to start at: the slide at `from` in the order,
+ * at `step` (the click the screens show of it) where it is a deck's, else its first page.
+ */
+export function presentationPages(
+  presentationId: string,
+  slides: readonly OrderedSlide[],
+  from: number,
+  step: number | null,
+): { pages: ViewerPage[]; start: number } {
+  const pages: ViewerPage[] = [];
+  let start = 0;
+  for (const s of slides) {
+    const own = slidePages(presentationId, s);
+    if (s.position === from) start = pages.length + Math.min(Math.max(0, step ?? 0), own.length - 1);
+    pages.push(...own);
+  }
+  return { pages, start };
 }
 
 /** Whether the screens' background is this picture or video now. */
