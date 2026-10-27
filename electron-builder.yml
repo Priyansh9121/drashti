@@ -22,7 +22,6 @@ extraResources:
       - presenter-guide.md
       - admin-guide.md
       - setup-day.md
-      - screenshots/admin-pin.png
       - screenshots/appearance-window.png
       - screenshots/calendar-dialog.png
       - screenshots/dropbox-playlist.png
@@ -49,7 +48,6 @@ extraResources:
       - screenshots/playlist-up-down.png
       - screenshots/practice-show.png
       - screenshots/repeat-slides-1280x720.png
-      - screenshots/roles-dialog.png
       - screenshots/scheduled-backups.png
       - screenshots/screen-stopped-notice.png
       - screenshots/screens-cards.png
