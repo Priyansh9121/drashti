@@ -337,6 +337,11 @@ export class AccessService {
     return this.view();
   }
 
+  /** This computer's way in while it is let in: the owner's calls are signed with it (the Access List, E4). */
+  grant(): AccessGrant | null {
+    return isLetIn() && this.kept ? grantOf(this.kept) : null;
+  }
+
   /** A show, a stream, a recording or an import, added to this computer's totals (sent with each check). */
   count(kind: ActivityKind, n = 1): void {
     if (!isLetIn() || !this.kept || !(n > 0)) return;

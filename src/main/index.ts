@@ -5206,8 +5206,6 @@ function start(): void {
   };
   // ---- View › Access List… (Session 54, E4): the owner's computer only --------------------------------
   const accessList = startAccessList({
-    userData: userDataDir,
-    version: appVersion(),
     workArea: () =>
       (operatorWindow && !operatorWindow.isDestroyed()
         ? electronScreen.getDisplayMatching(operatorWindow.getBounds())
@@ -5223,6 +5221,9 @@ function start(): void {
     log: (line) => {
       log.info(line);
     },
+    // The lock's own client and way in: one client for every call to the list.
+    client: () => Promise.resolve(behind?.client ?? null),
+    grant: () => behind?.service.grant() ?? null,
   });
   stops.add('Access List', () => {
     accessList.close();
