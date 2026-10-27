@@ -327,7 +327,8 @@ export function TimerBoxFields({ box, countsDown }: { box: StageBox; countsDown:
         />
         {box.flash === true && (
           <p className="pl-2 text-xs text-muted">
-            Slowly, a second dim and a second bright, for {String(FLASH_FOR_MS / 1000)} seconds from 0:00.
+            Slowly, a second dim and a second bright, for {String(FLASH_FOR_MS / 1000)} seconds from 0:00, in
+            step with any other timer flashing.
           </p>
         )}
       </div>

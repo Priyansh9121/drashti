@@ -107,7 +107,7 @@ describe('a timer box’s flash at 0:00', () => {
   const running = { ...countdown, startedAt: 0 };
   const zero = 5 * 60_000;
 
-  it('dims the words the first second of every two, for ten seconds from 0:00', () => {
+  it('dims the words the first second of every two, for ten seconds from a 0:00 on a whole second', () => {
     expect(flashDimmed(running, zero - 1)).toBe(false);
     expect(flashDimmed(running, zero)).toBe(true);
     expect(flashDimmed(running, zero + 999)).toBe(true);
@@ -139,6 +139,41 @@ describe('a timer box’s flash at 0:00', () => {
     const found = swings(series, 60);
     expect(found.legs).toBe(10);
     expect(found.worst).toBeLessThanOrEqual(1);
+  });
+
+  // Part A's review: timed from each timer's own 0:00, two timers flashed out of step, and the screen's light swung
+  // at each one's changes: twice a second, and more with more timers.
+  it('keeps to the engine clock’s whole seconds: from the first after 0:00, dim on its even seconds', () => {
+    // 0:00 at 300.4 s: nothing until 301 s (odd, bright); dim from 302 s.
+    const late = { ...countdown, startedAt: 400 };
+    expect(flashDimmed(late, 300_400)).toBe(false);
+    expect(flashDimmed(late, 300_500)).toBe(false);
+    expect(flashDimmed(late, 301_500)).toBe(false);
+    expect(flashDimmed(late, 302_000)).toBe(true);
+    expect(flashDimmed(late, 302_999)).toBe(true);
+    expect(flashDimmed(late, 303_000)).toBe(false);
+    // Ten seconds from 301 s: dim at 310 s still, then never.
+    expect(flashDimmed(late, 310_500)).toBe(true);
+    expect(flashDimmed(late, 311_000)).toBe(false);
+    expect(flashDimmed(late, 312_500)).toBe(false);
+  });
+
+  it('flashes several timers together, so the screen’s light swings once a second at most however many flash', () => {
+    // Three countdowns at 0:00 a few tenths of a second apart, each over a fifth of the screen.
+    const timers = [0, 400, 700].map((ms) => ({ ...countdown, startedAt: ms }));
+    const series: number[] = [];
+    for (let i = -120; i < 16 * 60; i++) {
+      const at = zero + (i * 1000) / 60;
+      series.push(timers.reduce((light, t) => light + 0.2 * (flashDimmed(t, at) ? FLASH_DIM : 1), 0));
+    }
+    expect(swings(series, 60).worst).toBeLessThanOrEqual(1);
+    // The light changes only as a whole second of the engine's clock begins, every timer at once.
+    const changes = series.flatMap((light, i) => (i > 0 && light !== series[i - 1] ? [i] : []));
+    expect(changes.length).toBeGreaterThan(0);
+    for (const i of changes)
+      expect(((zero + (i * 1000) / 60) % 1000) * 60, `sample ${String(i)}`).toBeLessThan(1000);
+    // Dim together: at 302.5 s all three are.
+    expect(timers.map((t) => flashDimmed(t, 302_500))).toEqual([true, true, true]);
   });
 });
 

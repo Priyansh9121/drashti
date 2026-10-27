@@ -1,8 +1,8 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { newStageBox, type StageBox, type StageLayout } from '../../src/shared/stage-layouts';
-import { FLASH_DIM } from '../../src/shared/stage-timer';
-import type { TimerFields } from '../../src/shared/timers';
+import { FLASH_DIM, flashDimmed } from '../../src/shared/stage-timer';
+import { formatTimer, type TimerFields } from '../../src/shared/timers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import {
@@ -556,7 +556,7 @@ test('a box’s settings draw alike on this computer’s stage screen, a node’
   }
 });
 
-test('a timer box’s colours and its flash at 0:00 follow the engine’s time: dim a second, bright a second, for ten seconds', async () => {
+test('a timer box’s colours and its flash at 0:00 follow the engine’s time: dim a second, bright a second, for ten seconds, on the clock’s whole seconds', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
@@ -582,31 +582,39 @@ test('a timer box’s colours and its flash at 0:00 follow the engine’s time: 
     (id) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'startTimer', timerId: id }),
     timerId,
   );
-  const startedAt = (await engineState(win)).timers.find((t) => t.id === timerId)?.startedAt ?? null;
-  if (startedAt === null) throw new Error('the countdown did not start');
+  const timer = (await engineState(win)).timers.find((t) => t.id === timerId);
+  const startedAt = timer?.startedAt ?? null;
+  if (!timer || startedAt === null) throw new Error('the countdown did not start');
   const zeroAt = startedAt + 60_000;
+  // The flash keeps to the engine clock's whole seconds (Part A's review): from the first at or after 0:00, dim on
+  // its even seconds, for ten seconds.
+  const from = Math.ceil(zeroAt / 1000) * 1000;
+  const firstDim = Math.ceil(from / 2000) * 2000;
   const time = stage.locator('[data-stage-box="timer"] [data-timer]');
-  /** The timer at a moment of the engine's time, held on every output. */
-  const at = async (ms: number, text: string, color: string | null, dim: boolean) => {
+  /** The timer at a moment of the engine's time, held on every output: its time, its colour, dim or not. */
+  const at = async (ms: number, color: string | null, dim: boolean) => {
+    expect(flashDimmed(timer, ms), `the flash's rule ${String(ms - zeroAt)} ms from 0:00`).toBe(dim);
     expect(await holdClock(app, ms)).toBeGreaterThan(0);
-    await expect(time).toHaveText(text);
+    await expect(time).toHaveText(formatTimer(timer, ms));
     if (color === null) await expect(time).not.toHaveAttribute('data-timer-color');
     else await expect(time).toHaveAttribute('data-timer-color', color);
     if (dim) await expect(time).toHaveAttribute('data-flash', 'dim');
     else await expect(time).not.toHaveAttribute('data-flash');
     expect(Number(await time.evaluate((el) => getComputedStyle(el).opacity))).toBe(dim ? FLASH_DIM : 1);
   };
-  await at(startedAt + 10_000, '0:50', null, false);
-  await at(startedAt + 35_000, '0:25', '#f5a524', false);
-  await at(zeroAt, '0:00', '#ef4444', true);
-  await at(zeroAt + 999, '0:00', '#ef4444', true);
-  await at(zeroAt + 1000, '-0:01', '#ef4444', false);
-  await at(zeroAt + 2500, '-0:02', '#ef4444', true);
-  await at(zeroAt + 9500, '-0:09', '#ef4444', false);
-  await at(zeroAt + 8500, '-0:08', '#ef4444', true);
-  // Ten seconds on, it stays bright.
-  await at(zeroAt + 10_000, '-0:10', '#ef4444', false);
-  await at(zeroAt + 60_000, '-1:00', '#ef4444', false);
+  // 0:50 in its own colour; 0:25 in the warning's.
+  await at(startedAt + 10_000, null, false);
+  await at(startedAt + 35_000, '#f5a524', false);
+  // 0:00 in the colour when over, dim only if it fell on an even whole second; then a second dim, a second bright.
+  await at(zeroAt, '#ef4444', zeroAt === firstDim);
+  await at(firstDim + 500, '#ef4444', true);
+  await at(firstDim + 1500, '#ef4444', false);
+  await at(firstDim + 2500, '#ef4444', true);
+  await at(firstDim + 6500, '#ef4444', true);
+  // Ten seconds from the first whole second, it stays bright.
+  await at(from + 10_000, '#ef4444', false);
+  await at(from + 10_500, '#ef4444', false);
+  await at(zeroAt + 60_000, '#ef4444', false);
   // Paused, it never flashes.
   await holdClock(app, null);
   await win.evaluate(
