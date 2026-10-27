@@ -357,8 +357,13 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).not.toBeUndefined();
     await dispatch(win, { type: 'clearLayer', layer: 'audio' });
 
-    // Media: the library's pictures, videos and sounds. A picture goes up as the background, the slide taken off.
+    // Next in words beside its picture, as the window's caption says it (D5 review): until then a phone showed only
+    // the next slide's picture, hidden from screen readers.
     await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
+    await p.getByTestId('remote-tab-show').click();
+    await expect(p.getByTestId('remote-next-caption')).toHaveText('Placeholder Kirtan, slide 2');
+
+    // Media: the library's pictures, videos and sounds. A picture goes up as the background, the slide taken off.
     await p.getByTestId('remote-tab-library').click();
     await p.getByTestId('remote-library-media').click();
     await expect(p.getByTestId('remote-library-media')).toHaveAttribute('aria-selected', 'true');

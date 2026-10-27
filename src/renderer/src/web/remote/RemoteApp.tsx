@@ -21,6 +21,7 @@ import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
 import { SCREEN_SWITCHES, type ScreenSwitches, SWITCH_NAMES } from '../../../../shared/screen-switches';
 import { languageView } from '../../../../shared/language-view';
 import { deckSlideAt } from '../../../../shared/deck-show';
+import { nextCaption } from '../../../../shared/next-caption';
 import { SlideView } from '../../render/SlideView';
 import { TimerText } from '../../render/TimerText';
 import { Mark } from '../../ui/Mark';
@@ -329,13 +330,19 @@ function LivePicture({ state }: { state: EngineState | null }) {
 function NextLine({ state }: { state: EngineState | null }) {
   const next = state?.next ?? null;
   const hallLook = useHallLook(state);
+  // The window's caption, in its words (Session 54, D5 review): the next slide by its item's name (when this phone
+  // shows that playlist) or its presentation's, the next item, a deck's click, a missing file or sound.
+  const label = useRemote((s) =>
+    next?.kind === 'slide'
+      ? ((next.itemId ? s.items?.find((i) => i.id === next.itemId)?.label : undefined) ??
+        (s.doc?.id === next.presentationId ? s.doc.name : undefined) ??
+        s.library.list?.find((p) => p.id === next.presentationId)?.name ??
+        null)
+      : null,
+  );
   return (
     <div className="flex items-center gap-3 text-base" data-testid="remote-next">
       <span className="shrink-0 font-bold tracking-wider text-muted uppercase">Next</span>
-      {!next && <span className="text-muted">Nothing after this</span>}
-      {next?.kind === 'media' && <span className="truncate text-fg">{next.label}</span>}
-      {/* A video input item (Session 51): named; a phone never draws one. */}
-      {next?.kind === 'input' && <span className="truncate text-fg">{`Video input: ${next.name}`}</span>}
       {next?.kind === 'slide' && (
         <div
           className="w-28 shrink-0 overflow-hidden rounded border border-line bg-black"
@@ -354,6 +361,13 @@ function NextLine({ state }: { state: EngineState | null }) {
           </PlacedInParent>
         </div>
       )}
+      {/* A video input item (Session 51) is named; a phone never draws one. */}
+      <span
+        className={cx('min-w-0 flex-1', next ? 'text-fg' : 'text-muted')}
+        data-testid="remote-next-caption"
+      >
+        {nextCaption(next, { label })}
+      </span>
     </div>
   );
 }
