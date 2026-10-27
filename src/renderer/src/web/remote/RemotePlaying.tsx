@@ -10,10 +10,11 @@ import { api } from '../device';
 import { tap } from '../taps';
 
 /*
- * The time bar on a phone or tablet (Session 54), under the live picture: the same rows as under LIVE in Drashti
- * (markers/playing-rows.ts), each with its elapsed time and time left, its start and end points and its markers as
- * ticks, at a finger's size (44 px), with Play or Pause beside it. A tap or a drag moves it (once, as the finger lets
- * go), in step on every screen, as the operator's does; when Drashti is in Simple Mode it says the move is refused.
+ * The time bar on a phone or tablet (Session 54, B2), right under the live picture, above what plays' skips and
+ * markers (D5's Playing): the same rows as under LIVE in Drashti (markers/playing-rows.ts), each named and with its
+ * elapsed time and time left, its start and end points and its markers as ticks, at a finger's size (44 px), with
+ * Play or Pause beside it. A tap or a drag moves it (once, as the finger lets go), in step on every screen, as the
+ * operator's does; when Drashti is in Simple Mode it says the move is refused.
  */
 
 const send = (path: string, body: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
@@ -23,15 +24,13 @@ const move = (playing: PlayingRef, toMs: number) => void tap(send('/api/v1/playi
 export function RemotePlaying({ state }: { state: EngineState | null }) {
   const rows = useMemo(() => playingRows(state), [state]);
   if (rows.length === 0) return null;
+  // Each row a group named for what it plays; the "Playing" heading is the skips' and markers' below (D5).
   return (
-    <section className="space-y-3" aria-labelledby="remote-playing-title" data-testid="remote-playing">
-      <h2 id="remote-playing-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Playing
-      </h2>
+    <div className="space-y-3" data-testid="remote-time-bars">
       {rows.map((row) => (
         <Row key={row.key} row={row} />
       ))}
-    </section>
+    </div>
   );
 }
 

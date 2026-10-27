@@ -568,7 +568,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
-      const playing = p.getByTestId('remote-playing');
+      const playing = p.getByTestId('remote-time-bars');
       const row = playing.locator('[data-testid="remote-time-bar-row"][data-playing="background"]');
       const bar = row.getByRole('slider', { name: 'The background video' });
       await expect(bar).toBeVisible({ timeout: 15_000 });
