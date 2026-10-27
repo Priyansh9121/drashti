@@ -234,6 +234,10 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
         <span className="block truncate text-xs text-muted" data-testid="item-what">
           {kindWord(item)}
           {size ? ` · ${size}` : ''}
+          {/* Added from a phone (Session 54): the device's name. */}
+          {(item.kind === 'media' || item.kind === 'presentation') && item.fromDevice !== undefined
+            ? ` · from ${item.fromDevice}`
+            : ''}
         </span>
         {item.kind === 'presentation' &&
           (item.presentationName === null ? (
