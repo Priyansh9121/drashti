@@ -23,7 +23,7 @@ import {
   type AccessPerson,
   type AccessRequestStatus,
 } from '../../shared/access-protocol';
-import type { Switches } from '../switches';
+import { sw, type SwitchName, type Switches } from '../switches';
 
 /*
  * Drashti's side of the access list (Session 54, E1): every call the list in the owner's Google account takes
@@ -452,6 +452,23 @@ export interface AccessTarget {
   publicKey: string;
   /** The stand-in on http://127.0.0.1 (the test switches). */
   local: boolean;
+}
+
+/**
+ * The access test switches as this process reads them, through switches.ts (which a packaged Drashti answers with
+ * none of them): what the access service gives `accessTarget` and `computerId` as their `switches`.
+ */
+export function accessSwitches(name: SwitchName): string | undefined {
+  switch (name) {
+    case 'DRASHTI_TEST_ACCESS_URL':
+      return sw('DRASHTI_TEST_ACCESS_URL');
+    case 'DRASHTI_TEST_ACCESS_KEY':
+      return sw('DRASHTI_TEST_ACCESS_KEY');
+    case 'DRASHTI_TEST_HARDWARE_ID':
+      return sw('DRASHTI_TEST_HARDWARE_ID');
+    default:
+      return undefined;
+  }
 }
 
 /**
