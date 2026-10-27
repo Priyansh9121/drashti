@@ -845,3 +845,58 @@ test('the Text size field shows what is typed, figure by figure, and the box tak
   expect(saved).toBe(120);
   await app.close();
 });
+
+// Session 54 (Part A's review): a line's width and how many items a box of the playlist's next items shows took each
+// figure as it came, as the Text size field did (G4): Backspace then 8 gave 38, the 3 put back between the two.
+test('a line’s width and how many items show what is typed: Backspace, then a figure, gives that figure', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await editor.getByTestId('stage-layout-duplicate').click();
+  await editor.getByTestId('stage-layout-name').fill('Placeholder typed line layout');
+  const settings = editor.getByTestId('stage-box-settings');
+  /** Backspace at the end of what the field shows, then these figures: what it shows then, and once it is left. */
+  const retype = async (field: Locator, figures: string, shown: string, left: string) => {
+    await field.focus();
+    await field.press('End');
+    await field.press('Backspace');
+    await expect(field).toHaveValue('');
+    await field.pressSequentially(figures);
+    await expect(field).toHaveValue(shown);
+    await field.blur();
+    await expect(field).toHaveValue(left);
+  };
+
+  // A line round the clock's letters: 3 px to begin with; typed 8, then 2.5.
+  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Clock', exact: true }).click();
+  await settings.getByTestId('stage-box-outline').click();
+  await expect(settings.getByTestId('stage-box-outline')).toHaveAttribute('aria-checked', 'true');
+  const width = settings.getByTestId('stage-box-outline-width');
+  await expect(width).toHaveValue('3');
+  await retype(width, '8', '8', '8');
+  await retype(width, '2.5', '2.5', '2.5');
+  // Wider than the widest (40 px), once it is left: the widest.
+  await retype(width, '95', '95', '40');
+
+  // The playlist's next items: 4 to begin with; typed 3.
+  await editor.getByTestId('stage-box-kind').selectOption('upcoming');
+  await editor.getByTestId('stage-box-add').click();
+  const count = settings.getByRole('spinbutton', { name: 'How many items' });
+  await expect(count).toHaveValue('4');
+  await retype(count, '3', '3', '3');
+
+  await editor.getByTestId('stage-layout-save').click();
+  await expect(editor.getByTestId('stage-layout-save')).toBeDisabled();
+  const saved = await win.evaluate(
+    async () =>
+      (await (globalThis as PageGlobals).drashti.stageLayouts.list()).find(
+        (l) => l.name === 'Placeholder typed line layout',
+      )?.boxes,
+  );
+  expect(saved?.find((b) => b.kind === 'clock')?.outline).toEqual({ color: '#000000', width: 40 });
+  expect(saved?.find((b) => b.kind === 'upcoming')?.count).toBe(3);
+  await app.close();
+});

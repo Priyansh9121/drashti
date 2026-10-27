@@ -4,10 +4,11 @@ import { arrangeBoxes, MAX_OUTLINE, STAGE_TIMER_FORMATS, STAGE_VALIGNS } from '.
 import { FLASH_FOR_MS } from '../../../shared/stage-timer';
 import { parseDuration, timerDuration } from '../../../shared/timers';
 import { IconButton } from '../ui/Button';
-import { ColorInput, Field, NumberInput, Select, Slider, TextInput } from '../ui/Field';
+import { ColorInput, Field, Select, Slider, TextInput } from '../ui/Field';
 import { ArrowDown, ArrowUp, BringToFront, SendToBack } from '../ui/icons';
 import { Checkbox, Toggle } from '../ui/Toggle';
 import { change } from './stage-layouts-store';
+import { TypedNumberField } from './TypedNumberField';
 
 /*
  * A stage layout box's own settings in the layout editor (Session 54, Part A2), beside its place, size, colour and
@@ -172,22 +173,20 @@ export function BoxLookFields({ box }: { box: StageBox }) {
               }}
             />
           </Field>
-          <Field label="Line width">
-            <NumberInput
-              value={outline.width}
-              min={0.5}
-              max={MAX_OUTLINE}
-              step={0.5}
-              unit="px"
-              data-testid="stage-box-outline-width"
-              onChange={(e) => {
-                const v = e.target.valueAsNumber;
-                if (!Number.isFinite(v)) return;
-                const width = Math.min(MAX_OUTLINE, Math.max(0.5, Math.round(v * 2) / 2));
-                changeBox(box.id, (b) => ({ ...b, outline: { color: OUTLINE_COLOR, ...b.outline, width } }));
-              }}
-            />
-          </Field>
+          {/* As typed, the box taking it in half pixels (Part A's review: Backspace then 8 gave 38). */}
+          <TypedNumberField
+            label="Line width"
+            value={outline.width}
+            min={0.5}
+            max={MAX_OUTLINE}
+            step={0.5}
+            unit="px"
+            testId="stage-box-outline-width"
+            onChange={(v) => {
+              const width = Math.min(MAX_OUTLINE, Math.max(0.5, Math.round(v * 2) / 2));
+              changeBox(box.id, (b) => ({ ...b, outline: { color: OUTLINE_COLOR, ...b.outline, width } }));
+            }}
+          />
         </div>
       )}
       <Checkbox

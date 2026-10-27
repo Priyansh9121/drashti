@@ -24,7 +24,7 @@ import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
 import { plural } from '../ui/text';
-import { ColorInput, Field, NumberInput, Select, Textarea, TextInput } from '../ui/Field';
+import { ColorInput, Field, Select, Textarea, TextInput } from '../ui/Field';
 import { CopyPlus, LayoutTemplate, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
@@ -32,6 +32,7 @@ import { Checkbox } from '../ui/Toggle';
 import { useHallPicture } from './hall-picture';
 import { BoxLookFields, BoxOrderButtons, ClockBoxFields, TimerBoxFields } from './StageBoxFields';
 import { StageTemplateDialog } from './StageTemplateDialog';
+import { TypedNumberField } from './TypedNumberField';
 import {
   addBox,
   change,
@@ -59,54 +60,6 @@ const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
 
 const FRAME_NAMES = { x: 'Across', y: 'Down', width: 'Width', height: 'Height' } as const;
 
-/**
- * One of a box's place and size, or its words' size, in pixels. What is typed shows while the field has the
- * keyboard, and the box takes it at once, no smaller than its smallest (typedFrame); leaving the field shows what
- * the box took (Session 53: each figure was taken as it came, so a size begun below the smallest was made the
- * smallest before its next figure; the Text size field until Session 54, G4).
- */
-function FrameField({
-  label,
-  value,
-  min,
-  max,
-  testId,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  /** The smallest it takes (a width or a height, a text size): its arrows stop there. */
-  min?: number;
-  /** The largest it takes (a text size): its arrows stop there. */
-  max?: number;
-  testId?: string;
-  onChange: (value: number) => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  return (
-    <Field label={label}>
-      <NumberInput
-        value={draft ?? String(value)}
-        min={min}
-        max={max}
-        unit="px"
-        data-testid={testId}
-        onFocus={() => {
-          setDraft(String(value));
-        }}
-        onBlur={() => {
-          setDraft(null);
-        }}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          const v = e.target.valueAsNumber;
-          if (Number.isFinite(v)) onChange(v);
-        }}
-      />
-    </Field>
-  );
-}
-
 function BoxSettings({ box }: { box: StageBox }) {
   const timers = useEngine((s) => s.state?.timers);
   // A timer box's timer: every running timer (none chosen) or one no longer in Timers counts as counting down.
@@ -120,11 +73,12 @@ function BoxSettings({ box }: { box: StageBox }) {
       <p className="text-sm font-medium">{STAGE_BOX_NAMES[box.kind]}</p>
       <div className="grid grid-cols-2 gap-2">
         {(['x', 'y', 'width', 'height'] as const).map((key) => (
-          <FrameField
+          <TypedNumberField
             key={key}
             label={FRAME_NAMES[key]}
             value={box.frame[key]}
             min={key === 'width' || key === 'height' ? smallest[key] : undefined}
+            unit="px"
             onChange={(value) => {
               set({ frame: typedFrame(box, key, value) });
             }}
@@ -154,11 +108,12 @@ function BoxSettings({ box }: { box: StageBox }) {
       )}
       {box.kind !== 'audience' && box.size !== 'fit' && (
         // What is typed shows as typed, the box taking it within 8 to 600 px (Session 54, G4: "4" became 8).
-        <FrameField
+        <TypedNumberField
           label="Text size"
           value={box.size}
           min={8}
           max={600}
+          unit="px"
           testId="stage-box-size"
           onChange={(v) => {
             set({ size: Math.min(600, Math.max(8, Math.round(v))) });
@@ -279,17 +234,16 @@ function BoxSettings({ box }: { box: StageBox }) {
         </Field>
       )}
       {box.kind === 'upcoming' && (
-        <Field label="How many items">
-          <NumberInput
-            value={box.count ?? 4}
-            min={1}
-            max={8}
-            onChange={(e) => {
-              const v = e.target.valueAsNumber;
-              if (Number.isFinite(v)) set({ count: Math.min(8, Math.max(1, Math.round(v))) });
-            }}
-          />
-        </Field>
+        // As typed, the box taking 1 to 8 (Session 54, Part A's review: Backspace then 3 gave 8).
+        <TypedNumberField
+          label="How many items"
+          value={box.count ?? 4}
+          min={1}
+          max={8}
+          onChange={(v) => {
+            set({ count: Math.min(8, Math.max(1, Math.round(v))) });
+          }}
+        />
       )}
       <Button
         variant="danger"
