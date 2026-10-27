@@ -46,6 +46,7 @@ import { up as contentRev } from './migrations/044-content-rev';
 import { up as lowerThirds } from './migrations/045-lower-thirds';
 import { up as timerElements } from './migrations/046-timer-elements';
 import { up as inputItems } from './migrations/047-input-items';
+import { up as phoneFiles } from './migrations/048-phone-files';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -112,6 +113,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 45, name: 'lower thirds', up: lowerThirds },
   { version: 46, name: 'timers on slides', up: timerElements },
   { version: 47, name: 'video inputs in playlists', up: inputItems },
+  { version: 48, name: 'files between Drashti and its phones', up: phoneFiles },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

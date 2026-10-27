@@ -27,8 +27,8 @@ export interface PlaybackOptions {
   /**
    * How it plays now (Session 14), read at every check so a change lands
    * without loading the file again: whether it loops, its start and end
-   * points, and a jump to a marker. Left out: the element's own loop, the
-   * whole file.
+   * points, and a jump to a marker (or the time bar's move, paused or not:
+   * Session 54). Left out: the element's own loop, the whole file.
    */
   timing?: () => { loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek };
 }
@@ -144,9 +144,11 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       v.addEventListener('seeked', whenFrame, { once: true });
       v.currentTime = at;
     } else whenFrame();
-    // A file that has already played to its end (or end point) holds its last frame.
+    // A file that has already played to its end (or end point) holds its last frame, and one the time bar has paused
+    // (Session 54) waits where it is: neither plays.
     const c = clock();
-    if (c.loop || at < playbackBounds(c.clip, v.duration).end) void v.play().catch(() => undefined);
+    if (!c.seek?.paused && (c.loop || at < playbackBounds(c.clip, v.duration).end))
+      void v.play().catch(() => undefined);
   };
   /** Played once, an end point before the file's own end (seconds); null when it loops or plays to the end. */
   const endPoint = (c: ReturnType<typeof clock>): number | null => {
@@ -195,6 +197,14 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     sent = false;
     const c = clock();
     const at = playbackPosition(c, v.duration, engineNow());
+    // Paused by the time bar (Session 54): held where it waits, exactly, as at an end point, every screen and the
+    // audio player alike, until Play sends it on from there (a jump, landing as every jump does).
+    if (c.seek?.paused) {
+      if (wrap) clearTimeout(wrap);
+      wrap = null;
+      holdAt(at);
+      return;
+    }
     const { start, end } = playbackBounds(c.clip, v.duration);
     const point = endPoint(c);
     // An end point is held once the clock gets there, or once the element has (a moment ahead of the
@@ -272,7 +282,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
             const round = clock();
             const bounds = playbackBounds(round.clip, v.duration);
             const length = bounds.end - bounds.start;
-            if (!round.loop || length <= 0) return;
+            if (!round.loop || length <= 0 || round.seek?.paused) return;
             const there = playbackPosition(round, v.duration, engineNow());
             // A new time round may be aimed again as a start may: whatever the landings before it used up
             // (CI's Mac: a sound landed 0.2 s off just after two aimed again, and was left to its 2%).

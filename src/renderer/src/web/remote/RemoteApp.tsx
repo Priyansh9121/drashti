@@ -49,6 +49,10 @@ import { startFeed, useFeed } from '../feed';
 import { ConnectionChip } from '../Connection';
 import { networkPreviews } from '../previews';
 import { tap, useTapNotice } from '../taps';
+import { PhoneFiles } from './PhoneFiles';
+import { startPhoneFiles } from './phone-files-store';
+import { DeviceViewer } from '../viewer/DeviceViewer';
+import { LookAtMedia, LookCloser, LookOverlay, LookThrough } from '../viewer/LookCloser';
 import {
   loadLibrary,
   loadPlaylists,
@@ -75,6 +79,7 @@ import { MoreTools } from './MoreTools';
 import { MusicList } from './MusicList';
 import { Playing } from './Playing';
 import { Props } from './Props';
+import { RemotePlaying } from './RemotePlaying';
 import { StageScreen } from './StageScreen';
 import { Timers } from './Timers';
 
@@ -185,10 +190,12 @@ function LivePicture({ state }: { state: EngineState | null }) {
         ) : up ? (
           <LiveBadge />
         ) : null}
+        {/* Session 54 (D1, D2): larger, sharp and zoomed on this device; its zoom put on the screens. */}
+        <LookCloser />
       </div>
       <div
         className={cx(
-          'overflow-hidden rounded-lg border-2 bg-black',
+          'relative overflow-hidden rounded-lg border-2 bg-black',
           up && !state?.blackout ? 'border-live' : 'border-line-strong',
         )}
         data-testid="remote-live"
@@ -198,6 +205,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
         <PlacedInParent content={CANVAS} mode="fit" className="relative aspect-video w-full">
           {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
         </PlacedInParent>
+        <LookOverlay />
       </div>
       {/* Audience or Stage off on Main's computer (Session 50): said, with no button (the operator turns it on). */}
       {switchedOff && (
@@ -552,6 +560,17 @@ function Slides() {
             On the screens
           </Button>
         )}
+        {/* Session 54 (D1): its slides (a deck's or a PDF's pages) one by one on this device, sharp and zoomed. */}
+        <LookThrough
+          presentationId={doc.id}
+          name={doc.name}
+          slides={order.slides}
+          from={
+            isLiveItem && shownIndex !== null
+              ? shownIndex
+              : (order.slides.find((s) => s.slide.id === focusSlideId)?.position ?? 0)
+          }
+        />
         {item && !isLiveItem && (
           <Button
             size="lg"
@@ -647,7 +666,7 @@ function Playlist() {
           const isLive = live?.playlistId === playlistId && live.itemId === i.id;
           const can = playable(i);
           return (
-            <li key={i.id}>
+            <li key={i.id} className="flex gap-2">
               <button
                 type="button"
                 disabled={!can}
@@ -685,6 +704,10 @@ function Playlist() {
                 {i.kind === 'placeholder' && <Badge tone="warning">Empty</Badge>}
                 {isLive && <LiveBadge />}
               </button>
+              {/* Session 54 (D1): a picture looked at, or a video played, on this device only. */}
+              {i.kind === 'media' && i.media !== 'audio' && !i.missing && (
+                <LookAtMedia mediaId={i.mediaId} media={i.media} name={i.label} />
+              )}
             </li>
           );
         })}
@@ -769,6 +792,8 @@ function Library() {
   const searching = library.query !== '';
   return (
     <section className="space-y-3" aria-labelledby="library-title" data-testid="remote-library">
+      {/* Session 54: Shared from Drashti, and Add from this Phone… (PhoneFiles.tsx). */}
+      <PhoneFiles />
       <h2 id="library-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Library
       </h2>
@@ -1229,6 +1254,8 @@ function Layout() {
   const show = (
     <div className="space-y-4">
       <LivePicture state={state} />
+      {/* The time bar for what plays (Session 54), as under LIVE in Drashti. */}
+      <RemotePlaying state={state} />
       <LiveLines state={state} />
       <Playing />
       <Notes state={state} />
@@ -1260,6 +1287,7 @@ function Layout() {
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] gap-6 p-4">
           <div className="min-h-0 space-y-4 overflow-y-auto" data-testid="remote-presenter">
             <LivePicture state={state} />
+            <RemotePlaying state={state} />
             <LiveLines state={state} />
             <Playing />
             <Notes state={state} />
@@ -1311,6 +1339,7 @@ export function RemoteApp() {
     void preloadFonts();
     startRemote();
     startMirror();
+    startPhoneFiles();
     startFeed();
     void loadPlaylists();
   }, []);
@@ -1321,6 +1350,7 @@ export function RemoteApp() {
     <PreviewsContext.Provider value={previews}>
       <ClockStyleContext.Provider value={clock}>
         <Layout />
+        <DeviceViewer />
       </ClockStyleContext.Provider>
     </PreviewsContext.Provider>
   );

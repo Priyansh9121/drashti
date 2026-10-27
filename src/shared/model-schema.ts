@@ -134,6 +134,8 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       loop: z.boolean().optional(),
       opacity: num.min(0).max(1).optional(),
       volume: num.min(0).max(1).optional(),
+      // A video's play bar on the screens (Session 54), off unless ticked.
+      playBar: z.boolean().optional(),
     }),
   ),
   // A timer on a slide (Session 50): which timer, its look as words, its last minute and its zero.

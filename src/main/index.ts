@@ -269,7 +269,7 @@ import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-to
 import { spawnStreamWorker } from './stream/stream-worker';
 import { ConvertService, readInfo } from './convert/convert-service';
 import { askPlaysHevc, HevcAnswer } from './convert/plays-hevc';
-import { diskFreeBytes } from './import/media-store';
+import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
@@ -277,6 +277,7 @@ import { FanoutTransport, type EngineTransport } from '../shared/engine/transpor
 import type { EngineState, PropItem } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
+import { PhoneFiles } from './network/phone-files';
 import { AnnouncementService } from './network/announcement-service';
 import { AnnouncementRepo } from './db/announcements';
 import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-worker';
@@ -3562,6 +3563,40 @@ function start(): void {
   stops.add('announcements', () => {
     announcements.close();
   });
+  // Files between Drashti and its phones (Session 54): playlists shared with them, and files a phone adds, sent into
+  // the media folder's uploads folder and imported as a dropped file is (network/phone-files.ts).
+  const phoneDevices = new DeviceRepo(db);
+  const phoneFiles = new PhoneFiles({
+    db: libraryDb,
+    settings,
+    playlists,
+    presentations,
+    search,
+    device: (id) => phoneDevices.get(id),
+    mediaDir,
+    dir: join(mediaDir, UPLOADS_DIR),
+    importFiles: async (paths) => {
+      const result = await imports.start(paths, {});
+      return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
+    },
+    report: (runId) => importRepo.report(runId),
+    onAir: () => streaming.inUse() || testOnAir,
+    simpleMode: () => mode === 'simple',
+    notice: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    changed: (renamed) => {
+      for (const id of renamed) slides.invalidate(id);
+      libraryChanged(true);
+      playlistsChanged();
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    // Tests only (never a packaged Drashti): a smaller size limit.
+    maxBytes: Number(sw('DRASHTI_TEST_UPLOAD_MAX_BYTES') ?? 0) || undefined,
+  });
   const net = new NetworkService({
     devices: new DeviceRepo(db),
     write: (key, run) => {
@@ -3589,6 +3624,7 @@ function start(): void {
       previewDir: join(app.getPath('userData'), 'Network', 'previews'),
       localName: localName(),
       refuseLoopback: networkRefuseLoopback,
+      uploads: { dir: join(mediaDir, UPLOADS_DIR), mediaDir },
     }),
     localName: () => localName(),
     engine: {
@@ -3679,6 +3715,7 @@ function start(): void {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),
     },
+    files: phoneFiles,
     refused: (channel) => refusedNow(channel),
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
@@ -3692,6 +3729,13 @@ function start(): void {
   network = net;
   net.resume();
   stops.add('network', () => net.close());
+  // On air or off, the phones' pieces come slower or at full speed again (Session 54).
+  phoneFiles.watch(() => {
+    net.uploadsChanged();
+  });
+  stops.add('files from phones', () => {
+    phoneFiles.close();
+  });
 
   // ---- output nodes (Session 13) ----------------------------------------------------------------
   const nodeRepo = new NodeRepo(db);
@@ -4048,6 +4092,7 @@ function start(): void {
   );
   handle(IPC.network.revokeDevice, (e, id) => (fromOperator(e) ? net.revokeDevice(id) : notNetworkOperator));
   handle(IPC.network.makePoster, (e) => (fromOperator(e) ? net.makePoster() : notNetworkOperator));
+  handle(IPC.network.setAddFiles, (e, on) => (fromOperator(e) ? net.setAddFiles(on) : notNetworkOperator));
   const notQueueOperator = {
     ok: false as const,
     message: 'Only the operator window can decide on announcements.',

@@ -31,6 +31,7 @@ import {
   type UpcomingItem,
   type UpNext,
   type VideoClips,
+  type VideoSeeks,
   type WindowBackground,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
@@ -59,6 +60,7 @@ import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from '
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
 import type { PlaybackClip, PlaybackSeek } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
+import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
 import { reduce, sameData } from './reducer';
 import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
@@ -122,6 +124,10 @@ const MUSIC_COMMANDS: ReadonlySet<string> = new Set([
   // (Session 50).
   'jumpToMarker',
   'skip',
+  // The time bar's move, Pause and Play (Session 54), whatever they move.
+  'moveTo',
+  'pausePlaying',
+  'resumePlaying',
   'playMusic',
   'pauseMusic',
   'resumeMusic',
@@ -210,6 +216,8 @@ export interface RestoreRequest {
     slideIndex: number;
     arrangementId?: string | null;
     shownAt?: number;
+    /** Where the time bar had moved or paused its videos (Session 54): they carry on from there. */
+    seeks?: VideoSeeks;
   } | null;
   /** The playlist item that was playing, so Next carries on from it. */
   playlist?: PlaylistCursor | null;
@@ -428,7 +436,7 @@ export class ShowEngine {
     if (look) actions.push({ type: 'look/set', look });
     const playlist = request.playlist ? this.checkItem(request.playlist) : null;
     if (request.slide) {
-      const { presentationId, slideIndex, arrangementId, shownAt } = request.slide;
+      const { presentationId, slideIndex, arrangementId, shownAt, seeks } = request.slide;
       const order = this.source.order(presentationId, arrangementId);
       const found = order?.slides[slideIndex];
       if (order && found) {
@@ -453,6 +461,8 @@ export class ShowEngine {
             inputMissing,
             fileMissing: missingFile(found, request.background),
             soundMissing: missingSound(found, request.audio ?? null),
+            // Its videos where the time bar left them (Session 54), carrying on from there.
+            ...(seeks ? { seeks } : {}),
           }),
         );
         slide = true;
@@ -903,6 +913,9 @@ export class ShowEngine {
     const audio = this.state.layers.audio;
     if (audio?.mediaId === mediaId && audio.durationMs !== durationMs)
       actions.push({ type: 'audio/set', audio: { ...audio, durationMs } });
+    // A video on the slide up, a prop, the logo or in the box (Session 54): the time bar's length.
+    const files = learnedFiles(this.state, mediaId, durationMs);
+    if (files) actions.push({ type: 'videoFiles/set', files });
     if (actions.length === 0) return this.unchanged();
     // Not a change to the show: what Back and Put it back can undo stays (pointing at the layers as they are now).
     this.bookkeeping = true;
@@ -966,6 +979,8 @@ export class ShowEngine {
    * so undoing a Next moves the slides, not what plays.
    */
   private withJumps(layers: Layers): Layers {
+    // The box's and the props' videos where the time bar left them (Session 54).
+    layers = keepMoves(layers, this.state.layers);
     const keep = <T extends { mediaId: string | null; startedAt: number; seek?: PlaybackSeek }>(
       was: T,
       is: T | null,
@@ -1039,6 +1054,7 @@ export class ShowEngine {
       inputMissing?: string | null;
       fileMissing?: string | null;
       soundMissing?: string | null;
+      seeks?: VideoSeeks;
     } = {},
   ): EngineAction {
     return {
@@ -1055,6 +1071,7 @@ export class ShowEngine {
       ...(how.inputMissing !== undefined ? { inputMissing: how.inputMissing } : {}),
       ...(how.fileMissing !== undefined ? { fileMissing: how.fileMissing } : {}),
       ...(how.soundMissing !== undefined ? { soundMissing: how.soundMissing } : {}),
+      ...(how.seeks ? { seeks: how.seeks } : {}),
       // Its videos play between their files' points as the library has them (Session 52), however it goes up.
       ...this.clipsOf(played.slide.elements),
     };
@@ -1497,9 +1514,13 @@ export class ShowEngine {
       const to = skipFrom(bg, jump, now);
       if (!to) return noLength;
       if (to.toMs === to.atMs) return NO_CHANGE;
+      // Paused by the time bar (Session 54), it waits at its new point.
+      const held = bg.seek?.paused ? { paused: true } : {};
       return {
         ok: true,
-        actions: [{ type: 'background/set', background: { ...bg, seek: { at: now, toMs: to.toMs } } }],
+        actions: [
+          { type: 'background/set', background: { ...bg, seek: { at: now, toMs: to.toMs, ...held } } },
+        ],
       };
     }
     const a = this.state.layers.audio;
@@ -1518,7 +1539,11 @@ export class ShowEngine {
     }
     if (next) return { ok: true, actions: [next] };
     if (to.toMs === to.atMs) return NO_CHANGE;
-    return { ok: true, actions: [{ type: 'audio/set', audio: { ...a, seek: { at: now, toMs: to.toMs } } }] };
+    const held = a.seek?.paused ? { paused: true } : {};
+    return {
+      ok: true,
+      actions: [{ type: 'audio/set', audio: { ...a, seek: { at: now, toMs: to.toMs, ...held } } }],
+    };
   }
 
   /** The audio layer for a choice: as with backgrounds, the file already playing carries on. */
@@ -1935,6 +1960,18 @@ export class ShowEngine {
       }
       case 'skip':
         return this.skip(command.layer, command.jump);
+      // The time bar (Session 54, playing.ts): what plays moved, paused or played on, in step everywhere. An audio
+      // playlist's track pauses and plays on as Music's own Pause and Play do.
+      case 'moveTo':
+      case 'pausePlaying':
+      case 'resumePlaying': {
+        const track = this.musicNow();
+        if (track && command.playing.layer === 'audio' && command.type !== 'moveTo')
+          return this.resolve({ type: command.type === 'pausePlaying' ? 'pauseMusic' : 'resumeMusic' });
+        return resolvePlaying(this.state, command, this.now(), {
+          nextTrack: (at) => (track ? this.musicStep(track, 1, at) : { type: 'layer/clear', layer: 'audio' }),
+        });
+      }
       case 'setMusicLoop': {
         const a = this.musicNow();
         if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
@@ -2054,6 +2091,12 @@ export class ShowEngine {
     const audio = this.caughtUp(next.layers.audio);
     if (audio !== next.layers.audio)
       next = reduce(next, audio ? { type: 'audio/set', audio } : { type: 'layer/clear', layer: 'audio' });
+    // What the time bar shows of the slide's, the props', the logo's and the box's videos (Session 54).
+    const files = videoFilesFor(next, {
+      lengthOf: (id) => this.options.mediaLength?.(id) ?? null,
+      markersOf: (id) => this.options.mediaMarkers?.(id) ?? null,
+    });
+    if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
     // The pictures on the screens and coming next carry their looks (Session 26e).
     if (
       next.layers !== prev.layers ||

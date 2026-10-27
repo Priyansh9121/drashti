@@ -83,6 +83,17 @@ export function registerPlaylistIpc({
     if (fromOperator(e) && id.success) opened(id.data);
     return null;
   });
+  // Shared with phones and tablets, or not (Session 54): a playlist (a folder playlist too), never a folder of
+  // playlists or a template. The phones hear of it as of any change to the playlists.
+  handle(IPC.playlists.share, (e, playlistId, on) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(playlistId);
+      if (!id.success || typeof on !== 'boolean') return failed('Share it, or stop sharing it?');
+      return repo.setShared(id.data, on)
+        ? { ok: true, ids: [id.data] }
+        : failed('Only a playlist can be shared with phones and tablets.');
+    }),
+  );
   handle(IPC.playlists.create, (e, name, parentId, isFolder) =>
     change(e, () => {
       const n = playlistNameSchema.safeParse(name);

@@ -30,7 +30,7 @@ export class MediaRepo {
     return (
       this.db
         .prepare(
-          `SELECT m.id, m.name, m.kind, m.missing, m.playable, m.format, m.dropped_at,
+          `SELECT m.id, m.name, m.kind, m.missing, m.playable, m.format, m.dropped_at, m.from_device,
                   (SELECT c.name FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
                     WHERE mc.original_id = m.id AND mc.undone_at IS NULL AND c.deleted_at IS NULL
                     ORDER BY mc.created_at DESC LIMIT 1) AS converted_to
@@ -44,6 +44,7 @@ export class MediaRepo {
         playable: number | null;
         format: string | null;
         dropped_at: string | null;
+        from_device: string | null;
         converted_to: string | null;
       }[]
     ).map((r) => ({
@@ -55,6 +56,8 @@ export class MediaRepo {
       format: r.format,
       convertedTo: r.converted_to,
       ...(r.dropped_at === null ? {} : { fromDrop: true as const }),
+      // Added from a phone (Session 54): the device's name.
+      ...(r.from_device === null ? {} : { fromDevice: r.from_device }),
     }));
   }
 

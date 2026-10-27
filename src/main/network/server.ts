@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { basename } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { EngineMirror } from '../../shared/engine/mirror';
@@ -32,8 +33,12 @@ import {
   originAllowed,
 } from './addresses';
 import { RateLimiter, WrongCodeLimiter } from './limits';
+import { MediaServing, sendFile } from './media-serving';
 import { PreviewMaker, type PreviewSource } from './previews';
 import { hashToken } from './tokens';
+import { isPiece, UPLOAD_ROUTES, uploadAnswer, uploadsAt } from './upload-routes';
+import type { Uploads } from './uploads';
+import type { ArrivedFile, ArrivedOutcome, UploadPolicy } from '../../shared/phone-files';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 import { COULD_NOT } from './messages';
 import { mirrorRoutes } from './mirror-routes';
@@ -67,6 +72,8 @@ export interface ServerOptions {
   refuseLoopback?: boolean;
   /** Tests: fewer connections at once than SOCKET_LIMITS. */
   sockets?: { total: number; perAddress: number };
+  /** Files phones add (Session 54): the uploads folder, inside the media folder. None are taken without it. */
+  uploads?: { dir: string; mediaDir: string };
 }
 
 export interface ServerHost {
@@ -83,6 +90,8 @@ export interface ServerHost {
   /** This copy of the engine state fell behind: send a fresh snapshot. */
   resync(): void;
   log(level: 'info' | 'warn', message: string): void;
+  /** A file a phone added has all arrived and is what it should be (Session 54): the main process imports it. */
+  arrived?(file: ArrivedFile): void;
 }
 
 export type StartResult = { ok: true; port: number } | { ok: false; message: string };
@@ -164,6 +173,11 @@ const ROUTES: Route[] = [
   route('GET', '/api/v1/timers', 'timers'),
   route('GET', '/api/v1/logo', 'logo'),
   route('GET', '/api/v1/media/:id/preview', 'preview', (_b, p) => ({ mediaId: p['id'] })),
+  // Full quality (Session 54, D1): a picture at the width the device draws it, up to the original; a picture's or
+  // video's own file in pieces as it plays (HTTP Range), and a link to it that a <video> can play.
+  route('GET', '/api/v1/media/:id/picture', 'media.picture'),
+  route('GET', '/api/v1/media/:id/original', 'media.original'),
+  route('GET', '/api/v1/media/:id/link', 'media.original'),
   route('GET', '/api/v1/looks', 'looks'),
   route('POST', '/api/v1/looks/:id/live', 'command', (_b, p) => ({ type: 'setLook', lookId: p['id'] })),
   route('POST', '/api/v1/markers/:id/jump', 'command', (b, p) => ({
@@ -173,6 +187,14 @@ const ROUTES: Route[] = [
   })),
   // With an audio playlist chosen on a phone (Session 54, D5), or on from where it was paused.
   route('POST', '/api/v1/music/play', 'music.play', (b) => ({ playlistId: b['playlistId'] })),
+  // The time bar (Session 54): what plays moved, paused or played on; the engine checks what `playing` names.
+  route('POST', '/api/v1/playing/move', 'command', (b) => ({
+    type: 'moveTo',
+    playing: b['playing'],
+    toMs: b['toMs'],
+  })),
+  route('POST', '/api/v1/playing/pause', 'command', (b) => ({ type: 'pausePlaying', playing: b['playing'] })),
+  route('POST', '/api/v1/playing/play', 'command', (b) => ({ type: 'resumePlaying', playing: b['playing'] })),
   route('POST', '/api/v1/music/pause', 'command', command('pauseMusic')),
   route('POST', '/api/v1/music/next', 'command', command('musicNext')),
   route('POST', '/api/v1/music/previous', 'command', command('musicPrevious')),
@@ -194,6 +216,14 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/clear/all', 'command', command('clearAll')),
   route('POST', '/api/v1/clear/:id', 'command', (_b, p) => ({ type: 'clearLayer', layer: p['id'] })),
   route('POST', '/api/v1/put-back', 'command', command('putBack')),
+  // The live zoom from a phone (Session 54, D2): the zoom of the picture it looks at, and Back to Whole.
+  route('POST', '/api/v1/zoom', 'command', (b) => ({
+    type: 'zoomLive',
+    zoom: b['zoom'],
+    x: b['x'],
+    y: b['y'],
+  })),
+  route('POST', '/api/v1/zoom/whole', 'command', command('resetLiveZoom')),
   // Repeat Slides (Session 26d): a Repeat Slides playlist going round (from a slide of it, if given), and Stop.
   route('POST', '/api/v1/repeat/stop', 'command', command('stopRepeat')),
   route('POST', '/api/v1/repeat/:id/start', 'command', (b, p) => ({
@@ -217,6 +247,8 @@ const ROUTES: Route[] = [
   ...mirrorRoutes(route),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
+  // Session 54: playlists shared with phones, and files a phone adds (upload-routes.ts).
+  ...UPLOAD_ROUTES.map((r) => route(r.method, r.path, r.op, r.args, r.param)),
 ];
 
 /** Every request the API takes, as "METHOD /path" (docs/api.md documents each; a test checks). */
@@ -331,6 +363,12 @@ export class NetworkServer {
   private readonly feedMessages = new RateLimiter(10, 30);
   private readonly wrongCodes = new WrongCodeLimiter();
   private previews: PreviewMaker | null = null;
+  private uploads: Uploads | null = null;
+  /** The last word on files from phones, kept for the uploads a start makes. */
+  private uploadPolicy: UploadPolicy | null = null;
+  /** A file's pieces, apart from every other request, so sending one never holds up Next. */
+  private readonly pieces = new RateLimiter(10, 20);
+  private media: MediaServing | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private lastConnected = '';
 
@@ -344,6 +382,9 @@ export class NetworkServer {
     this.options = options;
     this.files = listWebFiles(options.webDir);
     this.previews = new PreviewMaker(options.previewDir, options.ffmpeg);
+    this.uploads = uploadsAt(options.uploads, this.host);
+    if (this.uploadPolicy) this.uploads?.setPolicy(this.uploadPolicy);
+    this.media = new MediaServing(options.previewDir, options.ffmpeg, (id) => this.host.mediaSource(id));
     const server = createServer((req, res) => {
       this.onRequest(req, res);
     });
@@ -397,6 +438,7 @@ export class NetworkServer {
 
   /** Close every connection (telling each device why) and stop listening. */
   stop(reason: ByeReason = 'network-off'): Promise<void> {
+    void this.uploads?.stop();
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = null;
     for (const c of this.clients) this.bye(c, reason);
@@ -417,6 +459,7 @@ export class NetworkServer {
   setDevices(list: readonly DeviceAuth[]): void {
     this.devices = new Map(list.map((d) => [d.tokenHash, d]));
     const ids = new Map(list.map((d) => [d.id, d]));
+    this.uploads?.keepDevices(new Set(ids.keys()));
     for (const c of this.clients) {
       if (!c.device) continue;
       const now = ids.get(c.device.id);
@@ -428,6 +471,21 @@ export class NetworkServer {
   /** A device paired just now: known before its first request arrives. */
   addDevice(device: DeviceAuth): void {
     this.devices.set(device.tokenHash, device);
+  }
+
+  /** Whether phones may add files now, how large, and whether the stream is on air (Session 54). */
+  setUploadPolicy(policy: UploadPolicy): void {
+    this.uploadPolicy = policy;
+    this.uploads?.setPolicy(policy);
+  }
+
+  /** What the main process made of a file a phone added, and what the phone reads while it waits. */
+  uploadOutcome(id: string, outcome: ArrivedOutcome): void {
+    this.uploads?.outcome(id, outcome);
+  }
+
+  uploadNote(id: string, message: string): void {
+    this.uploads?.note(id, message);
   }
 
   /** A message from the engine: kept, and sent on to every device on the feed. */
@@ -570,7 +628,7 @@ export class NetworkServer {
         await this.pair(req, res, address);
         return;
       }
-      const device = this.authenticate(req);
+      const device = this.authenticate(req) ?? this.linked(req, segments);
       if (!device) {
         if (!this.perAddress.take(address)) throw new HttpError(429, 'Too many requests: wait a moment.');
         res.setHeader('WWW-Authenticate', 'Bearer');
@@ -579,7 +637,9 @@ export class NetworkServer {
           'This device is not paired with Drashti. Pair it from Drashti’s Network panel.',
         );
       }
-      if (!this.perDevice.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
+      // A file's pieces count apart (Session 54): a phone sending one can still tap Next.
+      const limit = isPiece(req.method, segments) ? this.pieces : this.perDevice;
+      if (!limit.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
       this.host.seen(device.id);
       const found = matchRoute(req.method ?? 'GET', segments);
       if (!found.found)
@@ -605,6 +665,16 @@ export class NetworkServer {
       }
       if (r.op === 'preview') {
         await this.preview(res, params['id'] ?? '');
+        return;
+      }
+      // Files a phone adds (Session 54): taken here, in the network's own process.
+      const upload = await uploadAnswer(this.uploads, r.op, req, device, params, () => readJson(req));
+      if (upload) {
+        this.json(res, upload.status, upload.body);
+        return;
+      }
+      if (r.op === 'media.picture' || r.op === 'media.original') {
+        await this.fullQuality(req, res, segments, params['id'] ?? '', device);
         return;
       }
       // A POST's JSON body, or a GET's query (strings only).
@@ -657,6 +727,63 @@ export class NetworkServer {
     const stream = createReadStream(file);
     stream.on('error', () => res.destroy());
     stream.pipe(res);
+  }
+
+  /**
+   * A <video>'s request for a file's original (Session 54, D1), which cannot carry the token: the device its link
+   * was made for, while that device is paired and the link is for this file and still works.
+   */
+  private linked(req: IncomingMessage, segments: readonly string[]): DeviceAuth | null {
+    if (segments.length !== 5 || segments[4] !== 'original' || req.headers.authorization !== undefined)
+      return null;
+    const ticket = apiQuery(req.url ?? '')['link'];
+    const deviceId = ticket && this.media ? this.media.links.check(ticket, segments[3] ?? '') : null;
+    return deviceId ? ([...this.devices.values()].find((d) => d.id === deviceId) ?? null) : null;
+  }
+
+  /** Full quality (Session 54, D1): a picture at a width, a file's original in pieces, or a link to it. */
+  private async fullQuality(
+    req: IncomingMessage,
+    res: ServerResponse,
+    segments: readonly string[],
+    mediaId: string,
+    device: DeviceAuth,
+  ): Promise<void> {
+    const media = this.media;
+    if (!media || !MEDIA_ID_PATTERN.test(mediaId)) throw new HttpError(404, 'There is no such media item.');
+    const what = segments[4];
+    if (what === 'link') {
+      if (!(await media.source(mediaId))) throw new HttpError(404, 'There is no such media item.');
+      const { ticket, until } = media.links.make(device.id, mediaId);
+      this.json(res, 200, {
+        ok: true,
+        url: `/api/v1/media/${encodeURIComponent(mediaId)}/original?link=${ticket}`,
+        until: new Date(until).toISOString(),
+      });
+      return;
+    }
+    if (what === 'picture') {
+      const picture = await media.picture(mediaId, apiQuery(req.url ?? '')['width']);
+      if (picture === 'none') throw new HttpError(404, 'There is no such media item.');
+      const sent =
+        picture !== null &&
+        (await sendFile(
+          req,
+          res,
+          // A step made smaller is named by its file (the picture's version and step); the original by its own.
+          {
+            path: picture.file,
+            type: picture.type,
+            ...(picture.original ? {} : { tag: basename(picture.file) }),
+          },
+          SECURITY_HEADERS,
+        ));
+      if (!sent) throw new HttpError(503, 'That picture is not ready yet: try again in a moment.');
+      return;
+    }
+    const original = await media.original(mediaId);
+    if (!original || !(await sendFile(req, res, original, SECURITY_HEADERS)))
+      throw new HttpError(404, 'There is no such media item.');
   }
 
   private json(res: ServerResponse, status: number, body: unknown): void {

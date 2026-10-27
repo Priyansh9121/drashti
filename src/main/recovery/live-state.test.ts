@@ -490,6 +490,64 @@ describe('restart recovery', () => {
     ).toBe(15);
   });
 
+  it('after an unexpected stop, what the time bar moved and paused comes back where it would be by now (Session 54)', async () => {
+    const looping = {
+      id: 'placeholder-video',
+      kind: 'video',
+      mediaId: 'clouds',
+      frame: { x: 0, y: 0, width: 640, height: 360 },
+      fit: 'fit',
+      loop: true,
+    } as const;
+    const source = makeSource();
+    source.set('shown', [{ ...textSlide('sv', 'Placeholder words'), elements: [looping] }]);
+    const clock = { now: 1_000_000 };
+    const engine = () =>
+      new ShowEngine(source, new RecordingTransport(), () => clock.now, undefined, {
+        mediaLength: () => 60_000,
+        mediaKind: () => 'video',
+      });
+    const before = engine();
+    before.dispatch({ type: 'goLive', presentationId: 'shown', slideIndex: 0 });
+    before.dispatch({ type: 'showProp', prop: { id: 'p', name: 'Placeholder prop', elements: [looping] } });
+    before.dispatch({ type: 'showPip', source: { kind: 'media', mediaId: 'tide' } });
+    before.dispatch({
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: 'waves', media: 'video', fit: 'fill', loop: false },
+    });
+    clock.now += 5000;
+    // The slide's video moved on to 0:30, the prop's paused 5 s in, the box's moved to 0:12, the background paused.
+    before.dispatch({ type: 'moveTo', playing: { layer: 'slide', mediaId: 'clouds' }, toMs: 30_000 });
+    before.dispatch({ type: 'pausePlaying', playing: { layer: 'props', propId: 'p', mediaId: 'clouds' } });
+    before.dispatch({ type: 'moveTo', playing: { layer: 'pip' }, toMs: 12_000 });
+    before.dispatch({ type: 'pausePlaying', playing: { layer: 'background' } });
+    const was = before.current.layers;
+    expect(was.slide?.seeks).toEqual({ clouds: { at: 1_005_000, toMs: 30_000 } });
+    expect(was.props[0]?.seeks).toEqual({ clouds: { at: 1_005_000, toMs: 5000, paused: true } });
+    await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
+    // Drashti stops dead, and starts again 3 s later.
+    clock.now += 3000;
+    const after = engine();
+    const back = toRestore(files);
+    if (!back) throw new Error('nothing to put back');
+    expect(after.restore(back)).toMatchObject({ slide: true, background: true, props: 1, pip: true });
+    expect(after.current.layers.slide).toEqual(was.slide);
+    expect(after.current.layers.props).toEqual(was.props);
+    expect(after.current.layers.pip).toEqual(was.pip);
+    expect(after.current.layers.background).toEqual(was.background);
+    // Where each is by now, on every screen: moved ones played on from their move, paused ones waiting.
+    const now = clock.now;
+    const slide = after.current.layers.slide;
+    const prop = after.current.layers.props[0];
+    const box = after.current.layers.pip;
+    const bg = after.current.layers.background;
+    expect(playbackPosition({ startedAt: 0, loop: true, seek: slide?.seeks?.['clouds'] }, 60, now)).toBe(33);
+    expect(playbackPosition({ startedAt: 0, loop: true, seek: prop?.seeks?.['clouds'] }, 60, now)).toBe(5);
+    expect(playbackPosition({ startedAt: 0, loop: true, seek: box?.seeks?.['tide'] }, 60, now)).toBe(15);
+    if (bg?.kind !== 'media') throw new Error('no background');
+    expect(playbackPosition(bg, 60, now)).toBe(5);
+  });
+
   it('puts props, the logo and messages back with the time they went up, so their videos carry on in step (Session 27)', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const writer = new LiveStateWriter(files, { throttleMs: 10 });

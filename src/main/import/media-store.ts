@@ -84,6 +84,9 @@ const GiB = 1024 ** 3;
 /** In the media folder: the part-files of conversions going on (src/main/convert), not library content. */
 export const CONVERTING_DIR = '.converting';
 
+/** In the media folder: files phones are sending (Session 54, network/uploads.ts), not library content. */
+export const UPLOADS_DIR = '.phone-uploads';
+
 /** The media.playable column: 1, 0, or NULL when not sure. */
 const playableValue = (probe: MediaProbe): number | null =>
   probe.playable === null ? null : probe.playable ? 1 : 0;

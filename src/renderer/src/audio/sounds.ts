@@ -1,4 +1,4 @@
-import { type EngineState, videoClip } from '../../../shared/engine/state';
+import { type EngineState, videoClip, videoSeek } from '../../../shared/engine/state';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 
@@ -37,7 +37,8 @@ export function soundMoved(was: Sound, now: Sound): boolean {
 /**
  * Every sound the show should be making now: the audio layer, the
  * background video's sound, and the sound of videos on the live slide, each
- * from when it started (so it is in step with the pictures). Black-out
+ * from when it started (so it is in step with the pictures), and from where
+ * the time bar moved it, or waiting where it paused it (Session 54). Black-out
  * hides pictures, not sound.
  */
 export function soundsOf(state: EngineState): Sound[] {
@@ -74,6 +75,7 @@ export function soundsOf(state: EngineState): Sound[] {
       // A video whose sound is turned right down makes none.
       if (el.kind !== 'video' || el.volume === 0) continue;
       const clip = videoClip(slide.clips, el.mediaId);
+      const seek = videoSeek(slide.seeks, el.mediaId);
       sounds.push({
         // By the slide's id, not its position: a new order for the live slide keeps its sound going.
         key: `slide:${slide.slide.id}/${el.id}@${slide.shownAt}`,
@@ -81,8 +83,10 @@ export function soundsOf(state: EngineState): Sound[] {
         startedAt: slide.shownAt,
         loop: el.loop ?? false,
         volume: el.volume ?? 1,
-        // Between its file's start and end points, as its picture plays (Session 52).
+        // Between its file's start and end points, as its picture plays (Session 52), from where the time bar left it
+        // (Session 54).
         ...(clip ? { clip } : {}),
+        ...(seek ? { seek } : {}),
       });
     }
   }

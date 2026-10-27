@@ -24,6 +24,8 @@ import type {
   UpcomingItem,
   UpNext,
   VideoClips,
+  VideoFile,
+  VideoSeeks,
 } from '../../shared/engine/state';
 
 /**
@@ -65,6 +67,11 @@ export type EngineAction =
       soundMissing?: string | null;
       /** Its videos' start and end points as the library has them now (Session 52); left out when none has any. */
       clips?: VideoClips;
+      /**
+       * Where the time bar had moved its videos (Session 54): restart recovery's. Left out, the slide up (new content
+       * for it) keeps its own, and a slide going up has none.
+       */
+      seeks?: VideoSeeks;
     }
   /**
    * A slide up in the slide's place that is no presentation's (Session 50: a timer shown alone), or the slide up as
@@ -130,5 +137,7 @@ export type EngineAction =
   | { type: 'zoom/set'; liveZoom: LiveZoom | null }
   /** The live Look, every group's settings resolved from the library. */
   | { type: 'look/set'; look: LiveLook }
+  /** What the time bar shows of the videos on the slide up, the props, the logo and the box (Session 54); null: none. */
+  | { type: 'videoFiles/set'; files: Record<string, VideoFile> | null }
   /** Drashti stopped (Session 54, access by Gmail): the screens fade to black from `at`. */
   | { type: 'access/stop'; at: number };

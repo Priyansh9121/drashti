@@ -1,4 +1,5 @@
 import type { EngineMessage } from './engine/protocol';
+import type { AddFilesView } from './phone-files';
 
 /*
  * The local network (PLAN.md 5.2, Session 10): phones, tablets and browsers
@@ -84,6 +85,8 @@ export interface NetworkStatus {
   pairing: PairingOffer | null;
   /** The poster link just made, shown once (only its hash is kept). */
   poster: { url: string; madeAt: string } | null;
+  /** Whether phones and tablets may add files, and how large (Session 54: "Phones and tablets may add files"). */
+  addFiles?: AddFilesView;
 }
 
 export type NetworkResult = { ok: true; status: NetworkStatus } | { ok: false; message: string };
@@ -102,8 +105,9 @@ export type FromDevice =
   | { type: 'resync' };
 
 /**
- * Hints that lists a device shows have changed and should be read again; since Session 54 (D5) the lower thirds,
- * the audio playlists, and the keys the operator window answers (the single-letter keys turned off or on).
+ * Hints that lists a device shows have changed and should be read again; since Session 54 the lower thirds, the
+ * audio playlists, and the keys the operator window answers (D5: the single-letter keys turned off or on), and
+ * 'files', a phone's added files (D4).
  */
 export type NetworkChange =
   | 'playlists'
@@ -116,7 +120,8 @@ export type NetworkChange =
   | 'shastra'
   | 'lowerThirds'
   | 'music'
-  | 'keys';
+  | 'keys'
+  | 'files';
 
 /** What the feed sends a device. */
 export type ToDevice =

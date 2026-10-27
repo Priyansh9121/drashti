@@ -259,6 +259,7 @@ const bridge: DrashtiBridge = {
     removeMissing: (playlistId) => invoke(IPC.playlists.removeMissing, playlistId),
     createRepeat: (parentId) => invoke(IPC.playlists.createRepeat, parentId),
     setRepeat: (playlistId, settings) => invoke(IPC.playlists.setRepeat, playlistId, settings),
+    share: (playlistId, on) => invoke(IPC.playlists.share, playlistId, on),
     onChanged: (listener) =>
       on(IPC.playlists.changed, () => {
         listener();
@@ -356,6 +357,7 @@ const bridge: DrashtiBridge = {
     renameDevice: (deviceId, name) => invoke(IPC.network.renameDevice, deviceId, name),
     revokeDevice: (deviceId) => invoke(IPC.network.revokeDevice, deviceId),
     makePoster: () => invoke(IPC.network.makePoster),
+    setAddFiles: (on) => invoke(IPC.network.setAddFiles, on),
   },
   nodes: {
     status: () => invoke(IPC.nodes.status),

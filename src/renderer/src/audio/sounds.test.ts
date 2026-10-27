@@ -116,6 +116,39 @@ describe('the sounds the show makes', () => {
     ]);
   });
 
+  it('plays a slide video’s sound from where the time bar moved it, and waits where it paused it, as its picture does (Session 54)', () => {
+    const video = (id: string, mediaId: string) =>
+      ({ id, kind: 'video', frame: { x: 0, y: 0, width: 10, height: 10 }, mediaId, fit: 'fit' }) as const;
+    const sounds = soundsOf(
+      state({
+        slide: {
+          presentationId: 'p',
+          slideIndex: 0,
+          shownAt: 5000,
+          notes: '',
+          seeks: { moved: { at: 8000, toMs: 30_000 }, held: { at: 9000, toMs: 4000, paused: true } },
+          slide: {
+            id: 's',
+            width: 1920,
+            height: 1080,
+            background: null,
+            elements: [video('v1', 'moved'), video('v2', 'held'), video('v3', 'whole')],
+          },
+        },
+      }),
+    );
+    expect(sounds.map((s) => [s.mediaId, s.seek])).toEqual([
+      ['moved', { at: 8000, toMs: 30_000 }],
+      ['held', { at: 9000, toMs: 4000, paused: true }],
+      ['whole', undefined],
+    ]);
+    // The same playback (its key), checked again at once as each move or pause comes.
+    expect(sounds[0]?.key).toBe('slide:s/v1@5000');
+    const [moved] = sounds;
+    if (moved)
+      expect(soundMoved(moved, { ...moved, seek: { at: 9500, toMs: 30_000, paused: true } })).toBe(true);
+  });
+
   it('plays the audio layer with its volume and looping', () => {
     expect(
       soundsOf(

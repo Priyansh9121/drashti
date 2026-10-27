@@ -39,6 +39,13 @@ import {
   type RemotePresentation,
 } from '../../shared/network-api';
 import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import type {
+  AddFilesView,
+  ArrivedFile,
+  ArrivedOutcome,
+  SharedPlaylist,
+  UploadPolicy,
+} from '../../shared/phone-files';
 import type { ScreenSwitches } from '../../shared/screen-switches';
 import type { SearchResult } from '../../shared/search';
 import type { PassageResult } from '../../shared/shastra';
@@ -132,6 +139,16 @@ export interface NetworkDeps {
     submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer;
     statusFor(device: { id: string }, args: unknown): DeviceAnswer;
   };
+  /** Files between Drashti and its phones (Session 54, phone-files.ts): shared playlists, and files phones add. */
+  files?: {
+    view(): AddFilesView;
+    setOn(on: boolean): void;
+    policy(): UploadPolicy;
+    shared(): SharedPlaylist[];
+    sharedItems(playlistId: string): PlaylistItemInfo[] | null;
+    /** `note`: what the phone reads meanwhile (a deck waiting for the stream to end). */
+    arrived(file: ArrivedFile, note: (message: string) => void): Promise<ArrivedOutcome>;
+  };
   /** Whether Simple Mode refuses this window channel now (the same table the windows' requests go through). */
   refused(channel: InvokeChannel): boolean;
   /** The status changed: the operator window is told. */
@@ -172,6 +189,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'message.show': IPC.engine.command,
   'message.hide': IPC.engine.command,
   preview: null,
+  // Full quality (Session 54, D1): looking, as a preview is.
+  'media.picture': null,
+  'media.original': null,
   announce: null,
   announcement: null,
   // The mirror (Session 54, D5): the window's own reads, and what goes up as the window puts it up.
@@ -183,6 +203,15 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   lowerThirds: IPC.lowerThirds.list,
   'lowerThird.show': IPC.engine.command,
   music: IPC.music.view,
+  // Session 54: a shared playlist is read as a playlist is (Simple Mode reads too). Files a phone adds carry on in
+  // Simple Mode while the switch is on, as the drop folder's do.
+  shared: IPC.playlists.items,
+  'shared.items': IPC.playlists.items,
+  uploads: null,
+  upload: null,
+  'upload.status': null,
+  'upload.piece': null,
+  'upload.cancel': null,
 };
 
 const ON_SETTING = 'network.on';
@@ -291,6 +320,7 @@ export class NetworkService implements EngineTransport {
       devices,
       pairing,
       poster: this.poster,
+      ...(this.deps.files ? { addFiles: this.deps.files.view() } : {}),
     };
   }
 
@@ -308,6 +338,25 @@ export class NetworkService implements EngineTransport {
     else void this.stopServer();
     this.changed();
     return { ok: true, status: this.status() };
+  }
+
+  /** "Phones and tablets may add files" (Session 54): every person's. Turned off, what is coming stops. */
+  setAddFiles(raw: unknown): NetworkResult {
+    if (typeof raw !== 'boolean' || !this.deps.files) return { ok: false, message: 'On or off?' };
+    this.deps.files.setOn(raw);
+    this.uploadsChanged();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  /** The switch, or the stream on or off air, changed: the worker is told, and the phones read it again. */
+  uploadsChanged(): void {
+    this.pushUploads();
+    this.hint('files');
+  }
+
+  private pushUploads(): void {
+    if (this.deps.files) this.worker?.send({ type: 'uploads', policy: this.deps.files.policy() });
   }
 
   setPort(raw: unknown): NetworkResult {
@@ -355,6 +404,7 @@ export class NetworkService implements EngineTransport {
     // The paired devices and the show first: a device that reconnects the moment the server listens
     // (after a restart) is known, never refused as unpaired, and gets the show at once.
     this.pushDevices();
+    this.pushUploads();
     worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
     worker.send({ type: 'start', options: this.deps.serverOptions(this.port) });
     this.seenWriter ??= setInterval(() => {
@@ -400,6 +450,7 @@ export class NetworkService implements EngineTransport {
           this.message = null;
           // Again, in case either changed while it started.
           this.pushDevices();
+          this.pushUploads();
           worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
           this.deps.log('info', `Network: listening on port ${m.result.port}`);
         } else {
@@ -434,9 +485,28 @@ export class NetworkService implements EngineTransport {
       case 'log':
         this.deps.log(m.level, `Network: ${m.message}`);
         return;
+      case 'arrived':
+        void this.arrived(worker, m.file);
+        return;
       case 'stopped':
         return;
     }
+  }
+
+  /** A file a phone added has all arrived (Session 54): imported, and what came of it told to the phone. */
+  private async arrived(worker: NetworkWorker, file: ArrivedFile): Promise<void> {
+    let outcome: ArrivedOutcome;
+    try {
+      outcome = this.deps.files
+        ? await this.deps.files.arrived(file, (message) => {
+            if (this.worker === worker) worker.send({ type: 'upload-note', id: file.id, message });
+          })
+        : { ok: false, message: 'Drashti cannot take files from phones here.' };
+    } catch (error) {
+      this.deps.log('warn', `Network: a file from a phone could not be added (${(error as Error).message})`);
+      outcome = { ok: false, message: COULD_NOT };
+    }
+    if (this.worker === worker) worker.send({ type: 'upload-outcome', id: file.id, outcome });
   }
 
   private async ask(
@@ -761,9 +831,24 @@ export class NetworkService implements EngineTransport {
         return this.deps.announcements.submit(device, request.address, args);
       case 'announcement':
         return this.deps.announcements.statusFor(device, args);
+      // Session 54: the playlists shared with phones, read-only.
+      case 'shared':
+        return ok({ playlists: this.deps.files?.shared() ?? [] });
+      case 'shared.items': {
+        const id = idSchema.safeParse(args['playlistId']);
+        const items = id.success ? (this.deps.files?.sharedItems(id.data) ?? null) : null;
+        return items ? ok({ items }) : deny(404, 'That playlist is not shared with phones.');
+      }
       case 'me':
       case 'state':
       case 'preview':
+      case 'uploads':
+      case 'upload':
+      case 'upload.status':
+      case 'upload.piece':
+      case 'upload.cancel':
+      case 'media.picture':
+      case 'media.original':
         return deny(400, 'The network server answers that itself.');
     }
   }

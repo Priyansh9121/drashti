@@ -68,6 +68,25 @@ describe('playback position', () => {
     expect(playbackLeftMs({ startedAt: 0, loop: false }, 10_000, 99_000)).toBe(0);
   });
 
+  it('waits where a pause put it, whatever the time, inside the points; played on, it goes on from there (Session 54)', () => {
+    const clip = { startMs: 2000, endMs: 6000 };
+    const paused = { at: 10_000, toMs: 5000, paused: true };
+    for (const loop of [false, true]) {
+      expect(playbackPosition({ startedAt: 0, loop, clip, seek: paused }, 10, 10_000)).toBe(5);
+      expect(playbackPosition({ startedAt: 0, loop, clip, seek: paused }, 10, 99_000)).toBe(5);
+      expect(playbackAtMs({ startedAt: 0, loop, clip, seek: paused }, 10_000, 99_000)).toBe(5000);
+      expect(playbackLeftMs({ startedAt: 0, loop, clip, seek: paused }, 10_000, 99_000)).toBe(1000);
+    }
+    // Paused past its end point: at the end point (or, going round, its start), never past it.
+    const late = { at: 10_000, toMs: 9000, paused: true };
+    expect(playbackPosition({ startedAt: 0, loop: false, clip, seek: late }, 10, 50_000)).toBe(6);
+    expect(playbackAtMs({ startedAt: 0, loop: true, clip, seek: late }, 10_000, 50_000)).toBe(2000);
+    // Played on: a new jump from where it waited.
+    const played = { at: 20_000, toMs: 5000 };
+    expect(playbackPosition({ startedAt: 0, loop: true, clip, seek: played }, 10, 20_500)).toBe(5.5);
+    expect(playbackAtMs({ startedAt: 0, loop: false, clip, seek: played }, 10_000, 30_000)).toBe(6000);
+  });
+
   it('writes and reads marker times', () => {
     expect(markerTime(65_300)).toBe('1:05.3');
     expect(parseMarkerTime('1:05.3')).toBe(65_300);

@@ -171,6 +171,44 @@ describe('elementFromRow', () => {
     expect(elementFromRow({ ...row, props: 'not json' })).toBeNull();
   });
 
+  it('keeps a video’s play bar on the screens (Session 54), off unless ticked: no new column, the props JSON', () => {
+    const row = { id: 'v', slide_id: 's', kind: 'video', x: 0, y: 0, width: 640, height: 360 };
+    expect(elementFromRow({ ...row, props: '{"mediaId":"m1","fit":"fit","playBar":true}' })).toMatchObject({
+      kind: 'video',
+      mediaId: 'm1',
+      playBar: true,
+    });
+    expect(elementFromRow({ ...row, props: '{"mediaId":"m1","fit":"fit"}' })).not.toHaveProperty('playBar');
+    // Stored and read back with its slide.
+    const id = repo.insert({
+      libraryId,
+      name: 'Placeholder play bar',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [
+            {
+              elements: [
+                {
+                  id: 'pv',
+                  kind: 'video',
+                  mediaId: 'm1',
+                  frame: { x: 0, y: 0, width: 640, height: 360 },
+                  fit: 'fit',
+                  playBar: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(repo.get(id)?.groups[0]?.slides[0]?.slide.elements[0]).toMatchObject({
+      kind: 'video',
+      playBar: true,
+    });
+  });
+
   it('stores arrangements, notes and disabled slides; a disabled slide is not shown', () => {
     const id = repo.insert({
       libraryId,

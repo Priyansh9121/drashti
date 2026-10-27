@@ -37,6 +37,7 @@ import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSele
 import { droppedPaths, hasFiles } from './drag';
 import { startRepeat, stopRepeat } from './repeat-actions';
 import { PlaylistsUnread } from './PlaylistsUnread';
+import { SharedMark, shareEntries } from './share-with-phones';
 import { useEngine } from '../engine/engine-store';
 import { droppedItems, fromLibrary, isRemoveKey, RenameField } from './playlist-shared';
 import {
@@ -91,8 +92,14 @@ function nodeMenu(node: PlaylistNode): MenuEntry[] {
     separatorBefore: true,
     onSelect: () => requestRemoveNode(node.id),
   };
+  // Shared with phones and tablets, or not (Session 54).
   if (!node.isFolder)
-    return [{ label: 'Open', icon: ListMusic, onSelect: () => void openPlaylist(node.id) }, rename, remove];
+    return [
+      { label: 'Open', icon: ListMusic, onSelect: () => void openPlaylist(node.id) },
+      ...shareEntries(node),
+      rename,
+      remove,
+    ];
   return [
     { label: 'New playlist here', icon: ListPlus, onSelect: () => void createNode(false, node.id) },
     { label: 'New folder here', icon: FolderPlus, onSelect: () => void createNode(true, node.id) },
@@ -348,6 +355,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                   <Truncate text={node.name} className={cx('flex-1', node.isFolder && 'font-medium')} />
                   {node.kind === 'smart' && <span className="sr-only">, a smart playlist</span>}
                   {node.kind === 'repeat' && <span className="sr-only">, Repeat Slides</span>}
+                  {node.shared && <SharedMark />}
                   {node.parentId !== null && (
                     <span className="sr-only">, in {nameOf.get(node.parentId) ?? 'a folder'}</span>
                   )}

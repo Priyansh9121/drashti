@@ -55,6 +55,9 @@ interface ItemRow {
   media_duration: number | null;
   /** In a smart playlist, 1 when its file is gone from the folder (Session 26c). */
   smart_gone: number;
+  /** Added from a phone (Session 54, migration 52): the device's name. */
+  media_device: string | null;
+  presentation_device: string | null;
 }
 
 /** Stored timer cues; none when they do not read. */
@@ -126,6 +129,7 @@ function itemInfo(
         slideCount: r.presentation_slides ?? 0,
         deck: r.presentation_source === 'pictures',
         ...(r.smart_gone === 1 ? { gone: true } : {}),
+        ...(r.presentation_device === null ? {} : { fromDevice: r.presentation_device }),
       };
     }
     case 'media':
@@ -140,6 +144,7 @@ function itemInfo(
         timers: cuesOf(r.timers),
         durationMs: r.media_duration !== null && r.media_duration > 0 ? r.media_duration : null,
         ...(r.smart_gone === 1 ? { gone: true } : {}),
+        ...(r.media_device === null ? {} : { fromDevice: r.media_device }),
       };
     case 'header':
       return { id: r.id, kind: 'header', label: r.label, color: r.color };
@@ -366,7 +371,7 @@ export class PlaylistRepo {
     const fromFolder = templates ? new Set<string>() : this.fromFolderIds();
     const rows = this.db
       .prepare(
-        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind, p.settings,
+        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind, p.settings, p.shared_at,
                 (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id AND i.deleted_at IS NULL) AS item_count,
                 (SELECT COUNT(*) FROM playlist_items i
                   WHERE i.playlist_id = p.id AND i.deleted_at IS NULL AND i.kind = 'placeholder') AS placeholders
@@ -380,6 +385,7 @@ export class PlaylistRepo {
       source_kind: string | null;
       kind: PlaylistKind;
       settings: string | null;
+      shared_at: string | null;
       item_count: number;
       placeholders: number;
     }[];
@@ -400,6 +406,7 @@ export class PlaylistRepo {
           imported: r.source_kind !== null,
           template: templates,
           ...(fromFolder.has(r.id) ? { fromFolder: true as const } : {}),
+          ...(r.shared_at === null ? {} : { shared: true as const }),
         });
         if (r.is_folder === 1) walk(r.id);
       }
@@ -418,6 +425,7 @@ export class PlaylistRepo {
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
                   p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration,
+                  m.from_device AS media_device, p.from_device AS presentation_device,
                   EXISTS (SELECT 1 FROM smart_files sf WHERE sf.item_id = i.id AND sf.state = 'missing') AS smart_gone
              FROM playlist_items i
              LEFT JOIN presentations p ON p.id = i.presentation_id
@@ -517,6 +525,48 @@ export class PlaylistRepo {
               };
       }
     });
+  }
+
+  /**
+   * Share a playlist with phones and tablets, or stop (Session 54): a playlist (a folder playlist too), never a
+   * folder of playlists or a template. Shared again, it keeps its first time. False when there is no such one.
+   */
+  setShared(id: string, on: boolean): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE playlists SET shared_at = CASE WHEN ? = 1 THEN COALESCE(shared_at, ${NOW}) ELSE NULL END
+            WHERE id = ? AND deleted_at IS NULL AND is_folder = 0 AND is_template = 0`,
+        )
+        .run(on ? 1 : 0, id).changes > 0
+    );
+  }
+
+  /** The playlists shared with phones (Session 54), in the order they were shared, with their items' count. */
+  sharedPlaylists(): { id: string; name: string; itemCount: number; fromFolder: boolean }[] {
+    const fromFolder = this.fromFolderIds();
+    return (
+      this.db
+        .prepare(
+          `SELECT p.id, p.name,
+                  (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id AND i.deleted_at IS NULL) AS item_count
+             FROM playlists p
+            WHERE p.shared_at IS NOT NULL AND p.deleted_at IS NULL AND p.is_folder = 0 AND p.is_template = 0
+            ORDER BY p.shared_at, p.rowid`,
+        )
+        .all() as { id: string; name: string; item_count: number }[]
+    ).map((r) => ({ id: r.id, name: r.name, itemCount: r.item_count, fromFolder: fromFolder.has(r.id) }));
+  }
+
+  /** Whether a playlist is shared with phones now (Session 54). */
+  isShared(id: string): boolean {
+    return (
+      this.db
+        .prepare(
+          'SELECT 1 FROM playlists WHERE id = ? AND shared_at IS NOT NULL AND deleted_at IS NULL AND is_template = 0',
+        )
+        .get(id) !== undefined
+    );
   }
 
   /** Whether a playlist is a sabha template. */

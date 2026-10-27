@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import type { PipLayer, PipSource, VideoClips } from '../../../shared/engine/state';
+import type { PipLayer, PipSource, VideoClips, VideoSeeks } from '../../../shared/engine/state';
 import type { Movement } from '../../../shared/looks';
 import type { MediaElement } from '../../../shared/model';
 import type { Size } from '../../../shared/scaling';
@@ -268,18 +268,28 @@ export function PipSourcePicture({
   source,
   shownAt,
   clips,
+  seeks,
   size,
 }: {
   source: PipSource;
   shownAt: number;
   /** Its video's start and end points, the engine's (the box's clips, Session 53). */
   clips: VideoClips | undefined;
+  /** Where the time bar moved or paused its video, the engine's (the box's seeks, Session 54). */
+  seeks?: VideoSeeks | undefined;
   size: Size;
 }) {
   switch (source.kind) {
     case 'media':
       return (
-        <PipMedia mediaId={source.mediaId} media={source.media} shownAt={shownAt} clips={clips} size={size} />
+        <PipMedia
+          mediaId={source.mediaId}
+          media={source.media}
+          shownAt={shownAt}
+          clips={clips}
+          seeks={seeks}
+          size={size}
+        />
       );
     case 'input':
       return <PipInputPicture inputId={source.inputId} device={source.device} shownAt={shownAt} />;
@@ -302,17 +312,20 @@ function PipMedia({
   media,
   shownAt,
   clips,
+  seeks,
   size,
 }: {
   mediaId: string;
   media: 'image' | 'video';
   shownAt: number;
   clips: VideoClips | undefined;
+  seeks: VideoSeeks | undefined;
   size: Size;
 }) {
   const { width, height } = size;
   // As a slide's picture or video is drawn (its look, a node's copy, a phone's preview), filling the box; a video
-  // between its file's points as a slide's is (Session 53), new ones moving it at once without a reload.
+  // between its file's points as a slide's is (Session 53), new ones moving it at once without a reload, as the time
+  // bar's moves and pauses do (Session 54).
   const el = useMemo<MediaElement>(
     () => ({
       id: 'pip-media',
@@ -326,7 +339,7 @@ function PipMedia({
   );
   return (
     <div data-pip-picture="media" style={BLACK}>
-      <ElementView el={el} startedAt={shownAt} clips={clips} />
+      <ElementView el={el} startedAt={shownAt} clips={clips} seeks={seeks} />
     </div>
   );
 }

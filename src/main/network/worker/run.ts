@@ -54,6 +54,9 @@ export function runNetworkWorker(
     log: (level, message) => {
       send({ type: 'log', level, message });
     },
+    arrived: (file) => {
+      send({ type: 'arrived', file });
+    },
   });
 
   return (message) => {
@@ -83,6 +86,15 @@ export function runNetworkWorker(
         resolve?.(message.answer);
         return;
       }
+      case 'uploads':
+        server.setUploadPolicy(message.policy);
+        return;
+      case 'upload-outcome':
+        server.uploadOutcome(message.id, message.outcome);
+        return;
+      case 'upload-note':
+        server.uploadNote(message.id, message.message);
+        return;
     }
   };
 }

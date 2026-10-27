@@ -5,7 +5,9 @@ import type { DeviceKind } from './network';
  * kind first; the main process checks it again (and the device itself, and
  * Simple Mode) before anything runs. A device never changes the library,
  * the screens, the sound, the stream, conversions, imports, backups, the
- * network's settings or Simple Mode: none of those are here.
+ * network's settings or Simple Mode: none of those are here. (Session 54: a
+ * Remote adds a file of its own while "Phones and tablets may add files" is
+ * on, imported as a dropped file is, and never live by itself.)
  */
 export const DEVICE_OPS = {
   /** Who this device is. */
@@ -58,6 +60,16 @@ export const DEVICE_OPS = {
    * and a stage display's audience picture box (Session 51).
    */
   preview: ['remote', 'stage'],
+  /**
+   * Full quality (Session 54, D1): a picture, or a video's frame, at the width the device draws it, up to the
+   * original (`GET /api/v1/media/{id}/picture?width=…`): a Stage device's picture box, as its previews were.
+   */
+  'media.picture': ['remote', 'stage'],
+  /**
+   * A picture's or video's own file, in pieces as it plays (HTTP Range), and a link to it a <video> can play
+   * (Session 54, D1); never a sound's, as previews never were.
+   */
+  'media.original': ['remote'],
   /** Send an announcement for the operator to approve. */
   announce: ['announcements'],
   /** What became of an announcement this device sent. */
@@ -79,6 +91,18 @@ export const DEVICE_OPS = {
   'lowerThird.show': ['remote'],
   /** The audio playlists by name (Play starts one: music.play). */
   music: ['remote'],
+  /**
+   * Session 54 (shared/phone-files.ts): the playlists shared with phones, and a shared one's items, to view and
+   * play on the device (read-only); and files a phone adds, while the switch is on: its own files and how each
+   * stands, a new one, its pieces, and Cancel. Never a Stage or Announcements device.
+   */
+  shared: ['remote'],
+  'shared.items': ['remote'],
+  uploads: ['remote'],
+  upload: ['remote'],
+  'upload.status': ['remote'],
+  'upload.piece': ['remote'],
+  'upload.cancel': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;
@@ -135,6 +159,14 @@ export const REMOTE_COMMANDS = [
   'skip',
   'startIdle',
   'stopIdle',
+  // The time bar (Session 54): what plays moved, paused or played on, as under LIVE (Simple Mode refuses the move).
+  'moveTo',
+  'pausePlaying',
+  'resumePlaying',
+  // The live zoom (Session 54, D2): the zoom of the picture a phone looks at, put on the screens, and Back to Whole
+  // (Simple Mode refuses both, as in the window).
+  'zoomLive',
+  'resetLiveZoom',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */

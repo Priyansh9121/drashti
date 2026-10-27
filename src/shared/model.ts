@@ -3,6 +3,8 @@
  * Everything here is plain, JSON-serializable data.
  */
 
+import type { DeckSlide } from './deck';
+
 /**
  * Languages: English, Gujarati, Hindi (Devanagari), Roman transliteration,
  * and Sanskrit in either of its scripts (Session 12, for Shastra texts):
@@ -179,6 +181,11 @@ export interface MediaElement extends ElementBase {
   opacity?: number;
   /** Videos: how loud its sound plays (0 to 1, 0 for none); left out for full. */
   volume?: number;
+  /**
+   * Videos (Session 54): the screens draw a thin bar along its bottom with its time and a play or pause mark, from the
+   * engine's time, as a deck's video shows in a slideshow. Left out (off) unless ticked in the slide editor.
+   */
+  playBar?: boolean;
 }
 
 /** What a countdown on a slide does at zero (Session 50): holds at 0:00, or the next slide comes on. */
@@ -240,6 +247,12 @@ export interface RenderSlide {
    * (language-view.ts; Sessions 31–36, I18N-4). Never stored: a slide in full says by its own lines.
    */
   translitOf?: TranslitSource;
+  /**
+   * A slide made from a PowerPoint or Keynote deck with its animations (Session 54, C2): its steps, its own
+   * transition and its real videos and sounds (shared/deck.ts). Left out for every other slide, and for a deck's
+   * page made as a picture only.
+   */
+  deck?: DeckSlide;
 }
 
 /**

@@ -20,6 +20,7 @@ import type {
   PlaylistCursor,
   PropItem,
   TickerLayer,
+  VideoSeeks,
 } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, readsEngineVersion } from '../../shared/engine/state';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
@@ -64,6 +65,8 @@ export interface SavedLive {
     slideIndex: number;
     arrangementId: string | null;
     shownAt?: number;
+    /** Where the time bar had moved or paused its videos (Session 54): put back, they carry on from there. */
+    seeks?: VideoSeeks;
   } | null;
   /** The playlist item being played, so Next carries on after the restart. */
   playlist: PlaylistCursor | null;
@@ -107,10 +110,17 @@ export interface SavedLive {
 
 /**
  * Where a video or a sound last jumped to (a marker, Back 15 s, Forward 15 s, Last 10 s): put back, it plays on
- * from there (Session 51). Its start and end points and markers are not read back: the library has them, and
- * the engine takes them from it as it puts the file back (show-engine.ts restore).
+ * from there (Session 51); paused there by the time bar (Session 54), it waits there. Its start and end points and
+ * markers are not read back: the library has them, and the engine takes them from it as it puts the file back
+ * (show-engine.ts restore).
  */
-const seekSchema: z.ZodType<PlaybackSeek> = z.object({ at: z.number(), toMs: z.number().min(0) });
+const seekSchema: z.ZodType<PlaybackSeek> = z.object({
+  at: z.number(),
+  toMs: z.number().min(0),
+  paused: z.boolean().optional(),
+});
+/** Where the time bar moved or paused a slide's, a prop's, the logo's or the box's videos, by file (Session 54). */
+const seeksSchema: z.ZodType<VideoSeeks> = z.record(idSchema, seekSchema);
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('color'), color: hexColorSchema }),
@@ -155,8 +165,13 @@ const tickerSchema: z.ZodType<TickerLayer> = z.object({
 
 /** A saved message, with the time it went up (Session 27): put back, it comes back still, with no entrance. */
 const savedMessageSchema = messageSchema.and(z.object({ shownAt: z.number().optional() }));
-/** A saved prop or logo, with the time it went up (Session 27): put back, its videos carry on in step. */
-const savedPropSchema = propSchema.and(z.object({ shownAt: z.number().optional() }));
+/**
+ * A saved prop or logo, with the time it went up (Session 27), and where the time bar left its videos (Session 54):
+ * put back, its videos carry on in step.
+ */
+const savedPropSchema = propSchema.and(
+  z.object({ shownAt: z.number().optional(), seeks: seeksSchema.optional() }),
+);
 /** A saved lower third (Session 44), with the time it went up. */
 const savedLowerThirdSchema: z.ZodType<LowerThirdLayer> = lowerThirdSchema.and(
   z.object({ shownAt: z.number() }),
@@ -182,6 +197,8 @@ const savedPipSchema: z.ZodType<PipLayer> = z.object({
   place: pipPlaceSchema,
   swapped: z.boolean(),
   shownAt: z.number(),
+  // Where the time bar left its video (Session 54).
+  seeks: seeksSchema.optional(),
 });
 
 const savedSchema = z.object({
@@ -197,6 +214,8 @@ const savedSchema = z.object({
       arrangementId: idSchema.nullable().default(null),
       // Files saved before Session 51 have none: the slide comes back from the restart.
       shownAt: z.number().optional(),
+      // Where the time bar left its videos (Session 54); files saved before have none.
+      seeks: seeksSchema.optional(),
     })
     .nullable(),
   // Files saved before playlists could be played have none.
@@ -276,6 +295,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
             slideIndex: slide.slideIndex,
             arrangementId: state.live.arrangementId,
             shownAt: slide.shownAt,
+            ...(slide.seeks ? { seeks: slide.seeks } : {}),
           }
         : null,
     playlist: state.live.playlist,

@@ -386,6 +386,29 @@ describe('the network server', () => {
 
   // Session 51 (S4-4): a tablet's stage display draws the audience picture box from the same small previews as a
   // remote's live picture, under the same rules (a paired device's token, a media id); an announcements poster none.
+  it('takes the time bar’s move, Pause and Play from a remote as the engine’s commands, and none from a stage display (Session 54)', async () => {
+    const { port, host } = await start();
+    const send = (path: string, token: string, body: unknown) =>
+      call(port, path, {
+        method: 'POST',
+        headers: { ...bearer(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const playing = { layer: 'slide', mediaId: 'placeholder-video' };
+    // Its own words only: a body naming another command is still a move.
+    expect(
+      (await send('/api/v1/playing/move', REMOTE_TOKEN, { playing, toMs: 61_500, type: 'clearAll' })).status,
+    ).toBe(200);
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'moveTo', playing, toMs: 61_500 });
+    await send('/api/v1/playing/pause', REMOTE_TOKEN, { playing });
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'pausePlaying', playing });
+    await send('/api/v1/playing/play', REMOTE_TOKEN, { playing });
+    expect(host.requests.at(-1)?.args).toEqual({ type: 'resumePlaying', playing });
+    const asked = host.requests.length;
+    expect((await send('/api/v1/playing/pause', STAGE_TOKEN, { playing })).status).toBe(403);
+    expect(host.requests).toHaveLength(asked);
+  });
+
   it('gives a stage display the same small previews as a remote, and an announcements poster none', async () => {
     const { port } = await start();
     const preview = (headers: Record<string, string>) =>
@@ -524,5 +547,151 @@ describe('the network server', () => {
     poster.ws.send(JSON.stringify({ type: 'hello', token: ANNOUNCE_TOKEN }));
     await until(() => poster.messages.some((m) => m.type === 'bye'));
     expect(poster.messages.at(-1)).toEqual({ type: 'bye', reason: 'not-allowed' });
+  });
+});
+
+describe('full quality for phones and tablets (Session 54, D1 and D2)', () => {
+  /** A PNG's headers saying this size, as a stand-in picture in the media folder. */
+  function pictureFile(width: number, height: number): string {
+    const b = Buffer.alloc(64);
+    b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    b.writeUInt32BE(13, 8);
+    b.write('IHDR', 12, 'latin1');
+    b.writeUInt32BE(width, 16);
+    b.writeUInt32BE(height, 20);
+    b[24] = 8;
+    b[25] = 2;
+    const file = join(dir, 'placeholder-picture.png');
+    writeFileSync(file, b);
+    return file;
+  }
+
+  const CLIP = 'Placeholder clip bytes. '.repeat(40);
+
+  /** The server, its stand-in main process knowing a picture and a video by these ids. */
+  async function withMedia() {
+    const started = await start();
+    const picture = pictureFile(640, 360);
+    const video = join(dir, 'placeholder-clip.mp4');
+    writeFileSync(video, CLIP);
+    started.host.mediaSource = (mediaId) =>
+      Promise.resolve(
+        mediaId === 'm-picture'
+          ? { path: picture, kind: 'image' as const }
+          : mediaId === 'm-video'
+            ? { path: video, kind: 'video' as const }
+            : null,
+      );
+    return started;
+  }
+
+  it('gives a Remote and a Stage device a picture at the width asked, up to the file itself, and others none', async () => {
+    const { port } = await withMedia();
+    const picture = (width: string, headers: Record<string, string>) =>
+      call(port, `/api/v1/media/m-picture/picture?width=${width}`, { headers });
+    for (const token of [REMOTE_TOKEN, STAGE_TOKEN]) {
+      // Asked wider than it is (640): the file itself, never made bigger.
+      const whole = await picture('1280', bearer(token));
+      expect(whole.status, token).toBe(200);
+      expect(whole.headers['content-type']).toBe('image/png');
+      expect(whole.headers['content-length']).toBe('64');
+      expect(whole.headers['x-content-type-options']).toBe('nosniff');
+      // Asked smaller: FFmpeg would make it (the tests have none), so not yet; never the 320 preview instead.
+      const smaller = await picture('320', bearer(token));
+      expect(smaller.status).toBe(503);
+      expect(JSON.parse(smaller.body)).toEqual({
+        ok: false,
+        message: 'That picture is not ready yet: try again in a moment.',
+      });
+    }
+    expect((await picture('1280', bearer(ANNOUNCE_TOKEN))).status).toBe(403);
+    expect((await picture('1280', {})).status).toBe(401);
+    expect(
+      (await call(port, '/api/v1/media/m-nothing/picture?width=640', { headers: bearer(REMOTE_TOKEN) }))
+        .status,
+    ).toBe(404);
+    expect(
+      (await call(port, '/api/v1/media/..%2Fm-picture/picture', { headers: bearer(REMOTE_TOKEN) })).status,
+    ).toBe(400);
+  });
+
+  it('streams a video’s own file to a Remote in pieces, by its token or a link made for it, and to no other kind', async () => {
+    const { port } = await withMedia();
+    const piece = await call(port, '/api/v1/media/m-video/original', {
+      headers: { ...bearer(REMOTE_TOKEN), Range: 'bytes=0-10' },
+    });
+    expect(piece.status).toBe(206);
+    expect(piece.body).toBe(CLIP.slice(0, 11));
+    expect(piece.headers['content-range']).toBe(`bytes 0-10/${String(CLIP.length)}`);
+    expect(piece.headers['content-type']).toBe('video/mp4');
+    expect((await call(port, '/api/v1/media/m-video/original', { headers: bearer(REMOTE_TOKEN) })).body).toBe(
+      CLIP,
+    );
+    // A Stage device draws pictures only; an announcements poster nothing.
+    for (const token of [STAGE_TOKEN, ANNOUNCE_TOKEN]) {
+      expect((await call(port, '/api/v1/media/m-video/original', { headers: bearer(token) })).status).toBe(
+        403,
+      );
+      expect((await call(port, '/api/v1/media/m-video/link', { headers: bearer(token) })).status).toBe(403);
+    }
+    // A <video> cannot send the token: the link, made for this device and this file, plays without it.
+    const made = await call(port, '/api/v1/media/m-video/link', { headers: bearer(REMOTE_TOKEN) });
+    expect(made.status).toBe(200);
+    const { url, until } = JSON.parse(made.body) as { url: string; until: string };
+    expect(url).toMatch(/^\/api\/v1\/media\/m-video\/original\?link=d-remote\.[0-9a-z]+\.[A-Za-z0-9_-]+$/u);
+    expect(Date.parse(until)).toBeGreaterThan(0);
+    const played = await call(port, url, { headers: { Range: `bytes=${String(CLIP.length - 4)}-` } });
+    expect(played.status).toBe(206);
+    expect(played.body).toBe(CLIP.slice(-4));
+    // Never for a media item there is none of.
+    expect((await call(port, '/api/v1/media/m-nothing/link', { headers: bearer(REMOTE_TOKEN) })).status).toBe(
+      404,
+    );
+  });
+
+  it('refuses a link for another file, with a token beside it, made up, or once its device is removed', async () => {
+    const { port, server: s } = await withMedia();
+    const made = await call(port, '/api/v1/media/m-video/link', { headers: bearer(REMOTE_TOKEN) });
+    const { url } = JSON.parse(made.body) as { url: string };
+    const ticket = url.split('link=')[1] ?? '';
+    // The picture's address with the video's link; the picture link never made.
+    expect((await call(port, `/api/v1/media/m-picture/original?link=${ticket}`)).status).toBe(401);
+    // A link is for the original alone: never a picture, nor anything else.
+    expect((await call(port, `/api/v1/media/m-video/picture?link=${ticket}`)).status).toBe(401);
+    expect((await call(port, `/api/v1/state?link=${ticket}`)).status).toBe(401);
+    // With a token it does not belong to, the token decides.
+    expect((await call(port, url, { headers: bearer('test-made-up-wrong-token-000000000') })).status).toBe(
+      401,
+    );
+    const [deviceId = '', at = '', signature = ''] = ticket.split('.');
+    expect((await call(port, `/api/v1/media/m-video/original?link=d-stage.${at}.${signature}`)).status).toBe(
+      401,
+    );
+    expect(
+      (await call(port, `/api/v1/media/m-video/original?link=${deviceId}.${at}.x${signature}`)).status,
+    ).toBe(401);
+    // The device removed in Drashti: its links stop at once.
+    expect((await call(port, url)).status).toBe(200);
+    s.setDevices(devices.filter((d) => d.id !== 'd-remote'));
+    expect((await call(port, url)).status).toBe(401);
+  });
+
+  it('puts a phone’s zoom on the screens, and the screens back to whole, as a Remote’s commands (D2)', async () => {
+    const { port, host } = await start();
+    const zoom = await call(port, '/api/v1/zoom', {
+      method: 'POST',
+      headers: { ...bearer(REMOTE_TOKEN), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zoom: 2.5, x: 0.25, y: -0.5, type: 'clearAll' }),
+    });
+    expect(zoom.status).toBe(200);
+    expect(host.requests.at(-1)).toMatchObject({
+      op: 'command',
+      args: { type: 'zoomLive', zoom: 2.5, x: 0.25, y: -0.5 },
+    });
+    await call(port, '/api/v1/zoom/whole', { method: 'POST', headers: bearer(REMOTE_TOKEN) });
+    expect(host.requests.at(-1)).toMatchObject({ op: 'command', args: { type: 'resetLiveZoom' } });
+    expect((await call(port, '/api/v1/zoom', { method: 'POST', headers: bearer(STAGE_TOKEN) })).status).toBe(
+      403,
+    );
   });
 });

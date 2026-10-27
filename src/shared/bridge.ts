@@ -406,6 +406,8 @@ export interface DrashtiBridge {
     /** A new Repeat Slides playlist (Session 26d) in a folder or at the top level, and its settings. */
     createRepeat(parentId: string | null): Promise<PlaylistResult>;
     setRepeat(playlistId: string, settings: RepeatSettings): Promise<PlaylistResult>;
+    /** Share a playlist with phones and tablets, or stop (Session 54). */
+    share(playlistId: string, on: boolean): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
     onSmartChanged(listener: (views: SmartPlaylistView[]) => void): () => void;
   };
@@ -614,6 +616,8 @@ export interface DrashtiBridge {
     renameDevice(deviceId: string, name: string): Promise<NetworkResult>;
     revokeDevice(deviceId: string): Promise<NetworkResult>;
     makePoster(): Promise<NetworkResult>;
+    /** "Phones and tablets may add files" (Session 54). */
+    setAddFiles(on: boolean): Promise<NetworkResult>;
   };
   /** Output nodes on Main (Session 13): pairing, the dashboard, its actions (changes in Pro Mode only). */
   nodes: {
