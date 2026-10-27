@@ -64,7 +64,10 @@ export function toPairing(): void {
   if (location.pathname !== '/pair') location.replace('/pair');
 }
 
-export type ApiAnswer<T> = ({ ok: true } & T) | { ok: false; message: string; status: number };
+export type ApiAnswer<T> =
+  | ({ ok: true } & T)
+  /** `confirm`: nothing changed until the window's question is answered on the device (Session 54: "switch-off"). */
+  | { ok: false; message: string; status: number; confirm?: string };
 
 /**
  * A request to Drashti with this device's token. A token Drashti no longer
@@ -110,6 +113,7 @@ export async function api<T = Record<string, unknown>>(
       status: response.status,
       message:
         typeof body['message'] === 'string' ? body['message'] : `Drashti said no (${response.status}).`,
+      ...(typeof body['confirm'] === 'string' ? { confirm: body['confirm'] } : {}),
     };
   return body as { ok: true } & T;
 }

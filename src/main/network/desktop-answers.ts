@@ -184,6 +184,7 @@ export class DesktopAnswers {
       // The stream's group is YouTube's card, and stays on the computer.
       groups: snapshot.groups.filter((g) => g.role !== 'stream'),
       status: snapshot.status,
+      nodes: snapshot.nodes,
       switches: this.acts.switches.get(),
       asksFirst: bothSwitches((which) => this.acts.switches.asksFirst(which)),
       pending: this.acts.screens.pending(),

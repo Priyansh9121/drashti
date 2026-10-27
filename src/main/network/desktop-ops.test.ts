@@ -310,6 +310,7 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
         controlsDisplayId: 1,
         groups: [HALL],
         status: [{ screenId: 's-1', state: 'showing', displayId: 2 }],
+        nodes: [],
         switches: { audience: true, stage: false },
         asksFirst: { audience: true, stage: false },
         pending: { deadline: 1_015_000, coversControls: false },

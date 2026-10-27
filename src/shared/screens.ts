@@ -191,6 +191,32 @@ export function missingFontsIn(raw: unknown): string[] {
     .slice(0, 20);
 }
 
+/** Each screen's state as Screens says it, and a phone setting the screens up (Session 54). */
+export const SCREEN_STATE_WORDS: Readonly<Record<ScreenState, string>> = {
+  showing: 'Showing',
+  'missing-display': 'Display not connected',
+  unassigned: 'No display',
+  disabled: 'Off',
+  // Audience or Stage is off (Session 50): on purpose, never a failure.
+  'switched-off': 'Switched off',
+  'node-offline': 'Node offline',
+  stopped: 'Stopped',
+};
+
+/** What a group shows, as Screens' Shows offers it. */
+export const GROUP_ROLE_WORDS: Readonly<Record<(typeof GROUP_ROLES)[number], string>> = {
+  audience: 'The audience picture',
+  stage: 'The stage view (performers)',
+  keyfill: 'Key and fill (for a video switcher)',
+};
+
+/** How a screen's canvas is scaled into it, as Screens' Scaling offers it. */
+export const SCALING_WORDS: Readonly<Record<ScalingMode, string>> = {
+  fit: 'Fit (letterbox)',
+  fill: 'Fill (crop)',
+  stretch: 'Stretch',
+};
+
 /** Common canvas sizes offered in the UI; any size is allowed. */
 export const CANVAS_PRESETS: readonly { label: string; width: number; height: number }[] = [
   { label: '1920 × 1080 (HD)', width: 1920, height: 1080 },

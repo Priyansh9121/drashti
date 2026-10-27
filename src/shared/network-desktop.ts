@@ -1,6 +1,6 @@
 import type { PendingScreens } from './keep-screens';
 import type { ScreenSwitch, ScreenSwitches } from './screen-switches';
-import type { DisplayInfo, ScreenGroupConfig, ScreenStatus } from './screens';
+import type { DisplayInfo, NodeDisplays, ScreenGroupConfig, ScreenStatus } from './screens';
 
 /*
  * The phone as a full Drashti (Session 54, the owner's item 3: "just like a mirror … full of drashti connection"):
@@ -34,6 +34,8 @@ export interface RemoteScreens {
   /** The screen groups and their screens, a node's too; the stream's group is YouTube's, and stays on the computer. */
   groups: ScreenGroupConfig[];
   status: ScreenStatus[];
+  /** The paired nodes and their displays, so a node's screen is named with it (set up on the computer). */
+  nodes: NodeDisplays[];
   /** Audience and Stage: which are on. */
   switches: ScreenSwitches;
   /** Whether turning each off asks first now (its screens are open and show something). */
