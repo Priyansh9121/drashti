@@ -3,7 +3,25 @@ import { describeDisplay } from '../../shared/display-match';
 import type { PendingScreens } from '../../shared/keep-screens';
 import { idSchema } from '../../shared/model-schema';
 import type { DeviceAnswer } from '../../shared/network-api';
-import { bothSwitches, type RemoteScreens, SWITCH_ASKS_FIRST } from '../../shared/network-desktop';
+import {
+  bothSwitches,
+  CAMERA_AT_COMPUTER,
+  CAMERAS_NOT_LISTED,
+  NOT_A_LISTED_CAMERA,
+  type RemoteInputs,
+  type RemoteScreens,
+  type RemoteWindows,
+  SCREEN_RECORDING_AT_COMPUTER,
+  SWITCH_ASKS_FIRST,
+} from '../../shared/network-desktop';
+import type { LiveWindowResult, WindowList } from '../../shared/live-window';
+import {
+  type CameraAccess,
+  VIDEO_INPUT_DEVICE_MAX,
+  VIDEO_INPUT_NAME_MAX,
+  type VideoInputResult,
+  type VideoInputsView,
+} from '../../shared/video-inputs';
 import {
   SCREEN_SWITCHES,
   type ScreenSwitch,
@@ -61,10 +79,29 @@ export interface DesktopSwitches {
   turn(which: ScreenSwitch, on: boolean): ScreenSwitchResult;
 }
 
+/** The computer's video inputs, as Media's Video inputs and Add a Video Input… change them (video-inputs-service.ts). */
+export interface DesktopInputs {
+  view(): VideoInputsView;
+  access(): CameraAccess;
+  /** The cameras the operator window last saw, by name; null before it has said. */
+  cameras(): string[] | null;
+  add(fields: unknown): VideoInputResult;
+  update(id: unknown, fields: unknown): VideoInputResult;
+  remove(id: unknown): VideoInputResult;
+}
+
+/** Show a Window… (live-window-service.ts): the other apps' windows, and one of those just listed put up. */
+export interface DesktopWindows {
+  list(): Promise<WindowList>;
+  show(id: string): LiveWindowResult;
+}
+
 /** The Drashti computer's own things a Remote sets up, as the main process does them for the window. */
 export interface DesktopActs {
   screens: DesktopScreens;
   switches: DesktopSwitches;
+  inputs: DesktopInputs;
+  windows: DesktopWindows;
   /** Simple Mode is on (it only turns the screens on). */
   simple(): boolean;
   /** The computer's own box: "Cover the Drashti controls?". True only when the operator agrees there. */
@@ -96,10 +133,16 @@ export type DesktopOp =
   | 'screens.keep'
   | 'screens.goBack'
   | 'screens.identify'
-  | 'switch';
+  | 'switch'
+  | 'inputs'
+  | 'input.add'
+  | 'input.change'
+  | 'input.remove'
+  | 'windows'
+  | 'window.show';
 
-/** The ops that change something: limited per phone. */
-const READS: ReadonlySet<DesktopOp> = new Set(['screens']);
+/** The ops that read only (all others are limited per phone; the windows' list too, which takes the computer a while). */
+const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs']);
 
 const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
   status: 200,
@@ -132,6 +175,20 @@ const screenChange = z
   })
   .strict();
 const nothing = z.object({}).strict();
+const fit = z.enum(['fit', 'fill']);
+const inputName = z.string().trim().min(1).max(VIDEO_INPUT_NAME_MAX);
+const cameraName = z.string().min(1).max(VIDEO_INPUT_DEVICE_MAX);
+const inputAdd = z.object({ name: inputName, device: cameraName, fit }).strict();
+const inputChange = z
+  .object({
+    inputId: idSchema,
+    name: inputName.optional(),
+    device: cameraName.optional(),
+    fit: fit.optional(),
+  })
+  .strict();
+const inputRef = z.object({ inputId: idSchema }).strict();
+const windowRef = z.object({ id: z.string().min(1).max(200) }).strict();
 const switchTurn = z
   .object({ which: z.enum(SCREEN_SWITCHES), on: z.boolean(), confirmed: z.literal(true).optional() })
   .strict();
@@ -283,7 +340,95 @@ export class DesktopAnswers {
         return ok({});
       case 'switch':
         return this.turn(args, device.id, who);
+      case 'inputs':
+        return ok({ ...this.inputs() });
+      case 'input.add':
+      case 'input.change':
+      case 'input.remove':
+        return this.input(op, args, who);
+      case 'windows':
+        // Looked for in a while: answered by windows(), never here.
+        return deny(400, 'Drashti answers that in a moment.');
+      case 'window.show': {
+        const a = windowRef.safeParse(args);
+        if (!a.success) return deny(400, 'Which window?');
+        const shown = this.acts.windows.show(a.data.id);
+        if (!shown.ok) return deny(409, shown.message);
+        this.ctx.log(`Network: ${who} put another app’s window up as the background`);
+        return ok({});
+      }
     }
+  }
+
+  /** Media's video inputs, the cameras the computer lists, and whether Drashti may use them. */
+  private inputs(): RemoteInputs {
+    return {
+      inputs: this.acts.inputs.view().inputs,
+      access: this.acts.inputs.access(),
+      cameras: this.acts.inputs.cameras(),
+    };
+  }
+
+  /**
+   * A video input named, changed or removed as Media does it, its camera one the computer lists now (a phone never
+   * names one), or for a change the one it has. The camera's own setting is the computer's to answer.
+   */
+  private input(
+    op: 'input.add' | 'input.change' | 'input.remove',
+    args: Record<string, unknown>,
+    who: string,
+  ) {
+    const inputs = this.acts.inputs;
+    const listed = (device: string): string | null => {
+      if (inputs.access() !== 'granted') return CAMERA_AT_COMPUTER;
+      const cameras = inputs.cameras();
+      if (cameras === null) return CAMERAS_NOT_LISTED;
+      return cameras.includes(device) ? null : NOT_A_LISTED_CAMERA;
+    };
+    const done = (result: VideoInputResult, did: string): DeviceAnswer => {
+      if (!result.ok) return deny(409, result.message);
+      this.ctx.log(`Network: ${who} ${did}`);
+      return ok({ ...this.inputs() });
+    };
+    if (op === 'input.add') {
+      const a = inputAdd.safeParse(args);
+      if (!a.success) return deny(400, 'Give it a name, a camera the computer lists, and Fit or Fill.');
+      const refused = listed(a.data.device);
+      if (refused) return deny(409, refused);
+      return done(inputs.add(a.data), 'named a video input');
+    }
+    if (op === 'input.change') {
+      const a = inputChange.safeParse(args);
+      if (!a.success) return deny(400, 'A name, a camera the computer lists, or Fit or Fill.');
+      const { inputId, ...fields } = a.data;
+      const was = inputs.view().inputs.find((i) => i.id === inputId);
+      if (fields.device !== undefined && fields.device !== was?.device) {
+        const refused = listed(fields.device);
+        if (refused) return deny(409, refused);
+      }
+      return done(inputs.update(inputId, fields), 'changed a video input');
+    }
+    const a = inputRef.safeParse(args);
+    if (!a.success) return deny(400, 'Which video input?');
+    return done(inputs.remove(a.data.inputId), 'removed a video input');
+  }
+
+  /**
+   * The other apps' windows, as Show a Window… lists them (the list a window is then put up from): by name, never a
+   * picture of them. macOS's Screen Recording is the computer's to allow, and said so.
+   */
+  async windows(device: { id: string }): Promise<DeviceAnswer> {
+    if (!this.changes.take(device.id))
+      return deny(429, 'Too many changes at once: wait a moment, then try again.');
+    const list = await this.acts.windows.list();
+    const windows: RemoteWindows = list.ok
+      ? { ok: true, windows: list.windows.map(({ id, name }) => ({ id, name })) }
+      : {
+          ok: false,
+          reason: list.reason,
+          message: list.reason === 'permission' ? SCREEN_RECORDING_AT_COMPUTER : list.message,
+        };
+    return ok({ windows });
   }
 
   /** Audience or Stage off or on, as the window turns it: off asks first (answered on the phone), Simple Mode only on. */

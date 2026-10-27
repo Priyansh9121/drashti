@@ -246,6 +246,133 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     await app.close();
   });
 
+/** Chromium's fake camera, as the computer names it (DRASHTI_TEST_FAKE_DEVICES), and the window stand-in's name. */
+const FAKE_CAMERA = 'fake_device_0';
+const MEETING = 'Placeholder meeting';
+
+/** A placeholder meeting window, opened in Drashti's own process without the focus (show-a-window.spec.ts's). */
+const openMeeting = (app: ElectronApplication) =>
+  app.evaluate(async ({ BrowserWindow }, title) => {
+    const w = new BrowserWindow({
+      width: 640,
+      height: 360,
+      show: false,
+      title,
+      webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false },
+    });
+    const html = `<!doctype html><title>${title}</title><body style="background:#1d4ed8">`;
+    await w.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    w.showInactive();
+    return w.id;
+  }, MEETING);
+
+const backgroundNow = (win: Page) =>
+  win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.background,
+  );
+
+const inputsNow = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.videoInputs.list()).inputs);
+
+for (const engine of ['webkit', 'chromium'] as Engine[])
+  test(`video inputs and windows from a phone as in Media: one named from the computer’s cameras, put up, changed and deleted (asked first), and a window from its list; at 375 × 812 and 768 × 1024 (${engine})`, async () => {
+    test.setTimeout(300_000);
+    const { app } = await launchApp({
+      ...NETWORK_ENV,
+      DRASHTI_TEST_FAKE_DEVICES: '1',
+      DRASHTI_TEST_WINDOW_STANDIN: '1',
+    });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await openMeeting(app);
+    const { base } = await networkOn(win);
+    const browser = await (engine === 'webkit' ? webkit : chromium).launch();
+    try {
+      for (const [index, size] of SIZES.entries()) {
+        const context = await browser.newContext({
+          viewport: { width: size.width, height: size.height },
+          isMobile: true,
+          hasTouch: true,
+          bypassCSP: true,
+        });
+        const p = await context.newPage();
+        const at = `${size.name} (${String(size.width)} × ${String(size.height)}, ${engine})`;
+        try {
+          await pairByQr(p, base, await pairingCode(win, 'remote', `Placeholder ${size.name}`), '/remote');
+          await expect(p.getByTestId('connection')).toHaveText('Connected');
+          if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
+          await p.getByTestId('remote-open-inputs').click();
+          const sheet = p.getByTestId('remote-inputs-sheet');
+          await expect(sheet).toBeVisible();
+          if (index === 0) {
+            // Named from the cameras the computer lists: the fake one, as its window sees it.
+            await sheet.getByTestId('remote-input-add').click();
+            const form = sheet.getByTestId('remote-input-add-form');
+            await expect(form.getByLabel('Name')).toHaveValue('Input 1');
+            await form.getByLabel('Name').fill('Placeholder input');
+            await expect(form.getByTestId('remote-input-camera').locator('option')).toContainText([
+              FAKE_CAMERA,
+            ]);
+            await form.getByTestId('remote-input-camera').selectOption(FAKE_CAMERA);
+            await form.getByRole('button', { name: 'Add' }).click();
+            await expect
+              .poll(() => inputsNow(win))
+              .toEqual([
+                expect.objectContaining({ name: 'Placeholder input', device: FAKE_CAMERA, fit: 'fit' }),
+              ]);
+            // Put up as Media's click does, and cleared.
+            const row = sheet.locator('[data-testid="remote-input"][data-name="Placeholder input"]');
+            await row.getByTestId('remote-input-show').click();
+            await expect.poll(async () => (await backgroundNow(win))?.kind).toBe('input');
+            await expect(row).toHaveAttribute('data-live', 'true');
+            await row.getByTestId('remote-input-clear').click();
+            await expect.poll(() => backgroundNow(win)).toBeNull();
+            // Changed: the window's Media has the new name.
+            await row.getByTestId('remote-input-change').click();
+            const change = sheet.getByTestId('remote-input-change-form');
+            await change.getByLabel('Name').fill('Placeholder stage camera');
+            await change.getByRole('button', { name: 'Keep' }).click();
+            await expect
+              .poll(async () => (await inputsNow(win)).map((i) => i.name))
+              .toEqual(['Placeholder stage camera']);
+          }
+          // Show a Window…'s list, by name only: the placeholder meeting, put up and cleared.
+          await sheet.getByTestId('remote-windows-look').click();
+          const meeting = sheet.locator(`[data-testid="remote-window"][data-name="${MEETING}"]`);
+          await expect(meeting).toHaveCount(1);
+          await expect(sheet.locator('[data-testid="remote-windows"] img')).toHaveCount(0);
+          await meeting.getByTestId('remote-window-show').click();
+          await expect.poll(async () => (await backgroundNow(win))?.kind).toBe('window');
+          await expect(sheet.getByTestId('remote-window-up')).toContainText(MEETING);
+          // The sheet with an input and a window up: laid out for this size.
+          await expectNoSeriousA11yIssues(p, `video inputs and windows on ${at}`);
+          expect.soft(await tooSmall(p), `targets under 44 px: inputs and windows on ${at}`).toEqual([]);
+          expect.soft(await offTheSide(p), `off the side: inputs and windows on ${at}`).toEqual([]);
+          await sheet.getByTestId('remote-window-clear').click();
+          await expect.poll(() => backgroundNow(win)).toBeNull();
+          if (index === SIZES.length - 1) {
+            // Deleted, asked first in Media's words: Cancel keeps it, Delete takes it from Media.
+            const row = sheet.locator('[data-testid="remote-input"][data-name="Placeholder stage camera"]');
+            await row.getByTestId('remote-input-delete').click();
+            const ask = p.getByTestId('remote-input-delete-ask');
+            await expect(ask).toContainText('Delete the video input “Placeholder stage camera”?');
+            await expect(ask.getByTestId('remote-input-delete-ask-safe')).toBeFocused();
+            await ask.getByTestId('remote-input-delete-ask-safe').click();
+            expect(await inputsNow(win)).toHaveLength(1);
+            await row.getByTestId('remote-input-delete').click();
+            await ask.getByTestId('remote-input-delete-ask-act').click();
+            await expect.poll(() => inputsNow(win)).toEqual([]);
+          }
+        } finally {
+          await context.close();
+        }
+      }
+    } finally {
+      await browser.close();
+    }
+    await app.close();
+  });
+
 test('Audience and Stage from a phone as from the window’s top bar: off asks the window’s question while its screens show something, on puts them back where they were', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({
@@ -367,6 +494,19 @@ test('Simple Mode refuses on a phone just what it refuses in the window: the scr
     expect(
       (await apiCall(port, '/api/v1/switches/stage', { method: 'POST', token, body: { on: true } })).status,
     ).toBe(200);
+    // Media's video inputs are read, never changed; the windows are Pro Mode's.
+    expect((await apiCall(port, '/api/v1/video-inputs', { token })).status).toBe(200);
+    expect(
+      await apiCall(port, '/api/v1/video-inputs', {
+        method: 'POST',
+        token,
+        body: { name: 'Input 1', device: 'Placeholder camera', fit: 'fit' },
+      }),
+    ).toEqual({ status: 403, json: { ok: false, message: SIMPLE_MODE_REFUSAL } });
+    expect(await apiCall(port, '/api/v1/windows', { token })).toEqual({
+      status: 403,
+      json: { ok: false, message: SIMPLE_MODE_REFUSAL },
+    });
   } finally {
     await phone.close();
   }

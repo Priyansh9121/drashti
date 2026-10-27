@@ -4,7 +4,17 @@ import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/st
 import type { InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
-import { ASKED_AT_COMPUTER, COMPUTER_BUSY, SWITCH_ASKS_FIRST } from '../../shared/network-desktop';
+import {
+  ASKED_AT_COMPUTER,
+  CAMERA_AT_COMPUTER,
+  CAMERAS_NOT_LISTED,
+  COMPUTER_BUSY,
+  NOT_A_LISTED_CAMERA,
+  SCREEN_RECORDING_AT_COMPUTER,
+  SWITCH_ASKS_FIRST,
+} from '../../shared/network-desktop';
+import type { WindowList } from '../../shared/live-window';
+import type { CameraAccess, VideoInput } from '../../shared/video-inputs';
 import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
 import type {
   CoverOptions,
@@ -93,6 +103,15 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
   let switches: ScreenSwitches = { audience: true, stage: true };
   let status: ScreenStatus[] = [{ screenId: 's-1', state: 'showing', displayId: 2 }];
   const asks: Record<ScreenSwitch, boolean> = { audience: true, stage: false };
+  // Media's video inputs, the computer's cameras as its window saw them, and the other apps' windows.
+  const camera: VideoInput = { id: 'in-1', name: 'Input 1', device: 'Placeholder camera', fit: 'fit' };
+  let inputs: VideoInput[] = [camera];
+  let access: CameraAccess = 'granted';
+  let cameras: string[] | null = ['Placeholder camera', 'Placeholder capture card'];
+  let windows: WindowList = {
+    ok: true,
+    windows: [{ id: 'window:7:0', name: 'Placeholder meeting', picture: 'data:image/png;base64,AAAA' }],
+  };
   const state = initialEngineState();
   const snapshot = () => ({ displays: DISPLAYS, groups: GROUPS, status, nodes: [] });
   const done = (): ScreensResult => ({ ok: true, snapshot: snapshot() });
@@ -189,6 +208,30 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
           return { ok: true, switches };
         },
       },
+      inputs: {
+        view: () => ({ inputs }),
+        access: () => access,
+        cameras: () => cameras,
+        add: (fields) => {
+          calls.push({ what: 'addInput', args: [fields] });
+          return { ok: true, view: { inputs } };
+        },
+        update: (id, fields) => {
+          calls.push({ what: 'updateInput', args: [id, fields] });
+          return { ok: true, view: { inputs } };
+        },
+        remove: (id) => {
+          calls.push({ what: 'removeInput', args: [id] });
+          return { ok: true, view: { inputs } };
+        },
+      },
+      windows: {
+        list: () => Promise.resolve(windows),
+        show: (id) => {
+          calls.push({ what: 'showWindow', args: [id] });
+          return { ok: true };
+        },
+      },
       simple: () => locked,
       confirmCover: (question) =>
         new Promise<boolean>((resolve) => {
@@ -220,7 +263,18 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     return service.answer({ address: PHONE, deviceId, op, args });
   };
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const listWindows = (deviceId: string) =>
+    service.windows({ address: PHONE, deviceId, op: 'windows', args: {} });
   return {
+    listWindows,
+    setInputs: (v: { inputs?: VideoInput[]; access?: CameraAccess; cameras?: string[] | null }) => {
+      inputs = v.inputs ?? inputs;
+      access = v.access ?? access;
+      cameras = v.cameras === undefined ? cameras : v.cameras;
+    },
+    setWindows: (w: WindowList) => {
+      windows = w;
+    },
     ask,
     remote,
     stage,
@@ -469,6 +523,115 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
     expect(answers.slice(0, 10)).toEqual(Array.from({ length: 10 }, () => 200));
     expect(answers.slice(10)).toEqual([429, 429]);
     expect(t.ask(t.remote, 'screens').status).toBe(200);
+  });
+});
+
+describe('the phone as a full Drashti: video inputs and the other apps’ windows (Session 54)', () => {
+  const OPS3: [DeviceOp, Record<string, unknown>][] = [
+    ['inputs', {}],
+    ['input.add', { name: 'Input 2', device: 'Placeholder capture card', fit: 'fill' }],
+    ['input.change', { inputId: 'in-1', name: 'Placeholder stage camera' }],
+    ['input.remove', { inputId: 'in-1' }],
+    ['window.show', { id: 'window:7:0' }],
+  ];
+
+  it('lets a Remote alone name, change, remove and read them, and put a window up, and none while Drashti is not let in', async () => {
+    const t = setup();
+    for (const [op] of [...OPS3, ['windows', {}] as const]) expect(DEVICE_OPS[op], op).toEqual(['remote']);
+    for (const [op, args] of OPS3) {
+      expect(t.ask(t.stage, op, args).status, op).toBe(403);
+      expect(t.ask(t.poster, op, args).status, op).toBe(403);
+    }
+    expect((await t.listWindows(t.stage)).status).toBe(403);
+    expect((await t.listWindows(t.poster)).status).toBe(403);
+    t.setLetIn(false);
+    for (const [op, args] of OPS3) expect(t.ask(t.remote, op, args).status, op).toBe(503);
+    expect((await t.listWindows(t.remote)).status).toBe(503);
+    expect(t.calls).toEqual([]);
+    t.setLetIn(true);
+    for (const [op, args] of OPS3) expect(t.ask(t.remote, op, args).status, op).toBe(200);
+    expect(t.calls).toEqual([
+      { what: 'addInput', args: [{ name: 'Input 2', device: 'Placeholder capture card', fit: 'fill' }] },
+      { what: 'updateInput', args: ['in-1', { name: 'Placeholder stage camera' }] },
+      { what: 'removeInput', args: ['in-1'] },
+      { what: 'showWindow', args: ['window:7:0'] },
+    ]);
+  });
+
+  it('gives a phone Media’s inputs, the cameras the computer lists and whether Drashti may use them', () => {
+    const t = setup();
+    expect(t.ask(t.remote, 'inputs').body).toEqual({
+      ok: true,
+      inputs: [{ id: 'in-1', name: 'Input 1', device: 'Placeholder camera', fit: 'fit' }],
+      access: 'granted',
+      cameras: ['Placeholder camera', 'Placeholder capture card'],
+    });
+  });
+
+  it('names an input only with a camera the computer lists now, never one a phone names, and says why not', () => {
+    const t = setup();
+    const add = (device: string) => t.ask(t.remote, 'input.add', { name: 'Input 2', device, fit: 'fit' });
+    expect(add('Placeholder camera of the phone’s own naming')).toEqual({
+      status: 409,
+      body: { ok: false, message: NOT_A_LISTED_CAMERA },
+    });
+    // A change keeps the camera it has, listed or not; another must be listed.
+    t.setInputs({ cameras: ['Placeholder capture card'] });
+    expect(
+      t.ask(t.remote, 'input.change', { inputId: 'in-1', device: 'Placeholder camera', fit: 'fill' }).status,
+    ).toBe(200);
+    expect(t.ask(t.remote, 'input.change', { inputId: 'in-1', device: 'Placeholder webcam' }).status).toBe(
+      409,
+    );
+    t.setInputs({ cameras: null });
+    expect(add('Placeholder capture card').body).toEqual({ ok: false, message: CAMERAS_NOT_LISTED });
+    // The camera's own setting is the computer's to answer.
+    t.setInputs({ cameras: ['Placeholder capture card'], access: 'not-determined' });
+    expect(add('Placeholder capture card').body).toEqual({ ok: false, message: CAMERA_AT_COMPUTER });
+    // Each request carries what it names, and nothing else.
+    t.setInputs({ access: 'granted' });
+    expect(
+      t.ask(t.remote, 'input.add', {
+        name: 'Input 2',
+        device: 'Placeholder capture card',
+        fit: 'fit',
+        id: 'x',
+      }).status,
+    ).toBe(400);
+    expect(t.ask(t.remote, 'window.show', { id: 'window:7:0', sourceId: 'screen:0:0' }).status).toBe(400);
+    expect(t.calls).toEqual([
+      { what: 'updateInput', args: ['in-1', { device: 'Placeholder camera', fit: 'fill' }] },
+    ]);
+  });
+
+  it('lists the other apps’ windows by name, never a picture of them, and says when the computer must allow it', async () => {
+    const t = setup();
+    expect(await t.listWindows(t.remote)).toEqual({
+      status: 200,
+      body: { ok: true, windows: { ok: true, windows: [{ id: 'window:7:0', name: 'Placeholder meeting' }] } },
+    });
+    t.setWindows({ ok: false, reason: 'permission', message: 'Screen Recording, on the Mac.' });
+    expect((await t.listWindows(t.remote)).body).toEqual({
+      ok: true,
+      windows: { ok: false, reason: 'permission', message: SCREEN_RECORDING_AT_COMPUTER },
+    });
+    // Answered once listed, never by the request's own answer.
+    expect(t.ask(t.remote, 'windows').status).toBe(400);
+  });
+
+  it('refuses in Simple Mode just what the window’s Media refuses: naming, changing and removing an input, and the windows', async () => {
+    const t = setup({ locked: true });
+    for (const [op, args] of OPS3)
+      expect(t.ask(t.remote, op, args), op).toEqual(
+        op === 'inputs'
+          ? expect.objectContaining({ status: 200 })
+          : { status: 403, body: { ok: false, message: SIMPLE_MODE_REFUSAL } },
+      );
+    expect(await t.listWindows(t.remote)).toEqual({
+      status: 403,
+      body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+    });
+    expect(t.calls).toEqual([]);
   });
 });
 

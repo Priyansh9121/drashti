@@ -127,6 +127,16 @@ export const DEVICE_OPS = {
   'screens.goBack': ['remote'],
   'screens.identify': ['remote'],
   switch: ['remote'],
+  /**
+   * Media's video inputs (named, changed, removed; put up with the command showInput) and Show a Window… (the other
+   * apps' windows by name, one put up by its id in that list), Pro Mode's as in the window (Session 54).
+   */
+  inputs: ['remote'],
+  'input.add': ['remote'],
+  'input.change': ['remote'],
+  'input.remove': ['remote'],
+  windows: ['remote'],
+  'window.show': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;
@@ -191,6 +201,9 @@ export const REMOTE_COMMANDS = [
   // (Simple Mode refuses both, as in the window).
   'zoomLive',
   'resetLiveZoom',
+  // A video input up as the background, by its id in this computer's list (Session 54, the phone as a full Drashti:
+  // Media's click), Pro Mode's (the engine refuses it in Simple Mode).
+  'showInput',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */

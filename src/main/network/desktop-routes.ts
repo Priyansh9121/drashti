@@ -45,5 +45,16 @@ export function desktopRoutes<R>(route: MakeRoute<R>): R[] {
       groupId: p['id'],
     })),
     route('POST', '/api/v1/switches/:id', 'switch', (b, p) => ({ ...b, which: p['id'] }), SWITCH_PARAM),
+    // Media's video inputs and Show a Window….
+    route('GET', '/api/v1/video-inputs', 'inputs'),
+    route('POST', '/api/v1/video-inputs', 'input.add', (b) => b),
+    route('POST', '/api/v1/video-inputs/:id/change', 'input.change', (b, p) => ({ ...b, inputId: p['id'] })),
+    route('POST', '/api/v1/video-inputs/:id/remove', 'input.remove', (_b, p) => ({ inputId: p['id'] })),
+    route('POST', '/api/v1/video-inputs/:id/show', 'command', (_b, p) => ({
+      type: 'showInput',
+      inputId: p['id'],
+    })),
+    route('GET', '/api/v1/windows', 'windows'),
+    route('POST', '/api/v1/windows/show', 'window.show', (b) => b),
   ];
 }

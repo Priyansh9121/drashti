@@ -592,6 +592,8 @@ export interface DrashtiBridge {
     report(report: VideoInputReport): Promise<null>;
     status(): Promise<VideoInputStatus>;
     onStatus(listener: (status: VideoInputStatus) => void): () => void;
+    /** The operator window: the camera names it sees, for a phone naming an input (Session 54). */
+    cameras(names: string[]): Promise<null>;
   };
   /** Picture in picture (Session 50): where a new box goes and how it looks, as the library remembers. */
   pip: {

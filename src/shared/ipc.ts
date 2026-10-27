@@ -717,6 +717,8 @@ export const IPC = {
     report: 'videoinput:report',
     /** How the input on the screens stands (operator window). */
     status: 'videoinput:status',
+    /** The camera names the operator window sees (Session 54): a phone naming an input chooses among them. */
+    cameras: 'videoinput:cameras',
     /** main -> operator: it stopped, or came back. */
     statusChanged: 'videoinput:status-changed',
   },
@@ -1279,6 +1281,7 @@ export interface InvokeContract {
   [IPC.videoInputs.openSettings]: { args: []; result: null };
   [IPC.videoInputs.report]: { args: [report: VideoInputReport]; result: null };
   [IPC.videoInputs.status]: { args: []; result: VideoInputStatus };
+  [IPC.videoInputs.cameras]: { args: [names: string[]]; result: null };
   [IPC.pip.place]: { args: []; result: PipPlace };
   [IPC.pip.savePlace]: { args: [place: PipPlace]; result: PipSettingsResult };
   [IPC.zoom.open]: { args: []; result: null };

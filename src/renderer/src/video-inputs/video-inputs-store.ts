@@ -6,6 +6,7 @@ import type {
   VideoInputStatus,
 } from '../../../shared/video-inputs';
 import { dispatch } from '../operator/actions';
+import { inputDeviceNames } from '../render/video-input-state';
 import { inputOfName } from './words';
 
 /*
@@ -39,6 +40,16 @@ export const useVideoInputs = create<VideoInputsUi>(() => ({
 
 let connected = false;
 
+/**
+ * Tell the main process which cameras this window sees, by name (Session 54: a phone naming an input chooses among
+ * them), once Drashti may use them: never asking for them (enumerating asks nothing), and none said before.
+ */
+async function sayCameras(access: CameraAccess | null): Promise<void> {
+  if (access !== 'granted') return;
+  const devices = await navigator.mediaDevices.enumerateDevices().catch((): MediaDeviceInfo[] => []);
+  await window.drashti.videoInputs.cameras(inputDeviceNames(devices)).catch(() => null);
+}
+
 /** Follow the list and how the input on the screens stands (once, as the operator window opens). */
 export function connectVideoInputs(): void {
   if (connected) return;
@@ -48,8 +59,15 @@ export function connectVideoInputs(): void {
     useVideoInputs.setState({ inputs: view.inputs });
   });
   inputs.onStatus((status) => {
+    const was = useVideoInputs.getState().access;
     useVideoInputs.setState({ status, access: status.access });
+    if (status.access !== was) void sayCameras(status.access);
   });
+  // Plugged in or out: said again (a page with no cameras at all, a test's, has none to follow).
+  if ('mediaDevices' in navigator)
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+      void sayCameras(useVideoInputs.getState().access);
+    });
   void inputs.list().then(
     (view) => {
       useVideoInputs.setState({ inputs: view.inputs });
@@ -59,6 +77,7 @@ export function connectVideoInputs(): void {
   void inputs.status().then(
     (status) => {
       useVideoInputs.setState({ status, access: status.access });
+      void sayCameras(status.access);
     },
     () => undefined,
   );
@@ -68,6 +87,7 @@ export function connectVideoInputs(): void {
 export async function readAccess(): Promise<void> {
   const access = await window.drashti.videoInputs.access().catch((): CameraAccess => 'unknown');
   useVideoInputs.setState({ access });
+  void sayCameras(access);
 }
 
 /** A Mac: macOS asks for the camera, now that Drashti has said why. */

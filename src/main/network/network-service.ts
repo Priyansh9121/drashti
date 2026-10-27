@@ -243,6 +243,13 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'screens.goBack': IPC.screens.goBack,
   'screens.identify': IPC.screens.identify,
   switch: IPC.screenSwitches.turn,
+  // Media's video inputs and Show a Window… (Session 54), Pro Mode's as in the window.
+  inputs: IPC.videoInputs.list,
+  'input.add': IPC.videoInputs.add,
+  'input.change': IPC.videoInputs.update,
+  'input.remove': IPC.videoInputs.remove,
+  windows: IPC.liveWindow.list,
+  'window.show': IPC.liveWindow.show,
 };
 
 const ON_SETTING = 'network.on';
@@ -581,7 +588,12 @@ export class NetworkService implements EngineTransport {
   ): Promise<void> {
     let answer: unknown;
     try {
-      if (question.kind === 'request') answer = this.answer(question.request);
+      // The open windows take the computer a while to list (Session 54): checked alike, answered once listed.
+      if (question.kind === 'request')
+        answer =
+          question.request.op === 'windows'
+            ? await this.windows(question.request)
+            : this.answer(question.request);
       else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
       // No file while Drashti is not let in (Session 54): a preview, a picture, an original, a shared sound.
       else if (!this.letIn()) answer = null;
@@ -782,7 +794,10 @@ export class NetworkService implements EngineTransport {
 
   // ---- what devices ask for ------------------------------------------------------------------
 
-  answer(request: DeviceRequest): DeviceAnswer {
+  /** Every request's checks: Drashti let in, the device still paired, its kind, Simple Mode's lock. */
+  private checked(
+    request: DeviceRequest,
+  ): { device: DeviceRow; args: Record<string, unknown>; who: string } | DeviceAnswer {
     if (!this.letIn()) return deny(503, STOPPED_REFUSAL);
     const device = this.deps.devices.get(request.deviceId);
     if (!device) return deny(401, 'This device was removed in Drashti. Pair it again.');
@@ -791,7 +806,22 @@ export class NetworkService implements EngineTransport {
     const channel = OP_CHANNEL[request.op];
     if (channel && this.deps.refused(channel)) return deny(403, SIMPLE_MODE_REFUSAL);
     const args = (request.args ?? {}) as Record<string, unknown>;
-    const who = `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”`;
+    return { device, args, who: `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”` };
+  }
+
+  /** The other apps' open windows for a phone (Session 54): checked as every request is, answered once listed. */
+  async windows(request: DeviceRequest): Promise<DeviceAnswer> {
+    const checked = this.checked(request);
+    if ('status' in checked) return checked;
+    if (request.op !== 'windows' || !this.desktop)
+      return deny(404, 'Drashti cannot list windows for a phone here.');
+    return this.desktop.windows(checked.device);
+  }
+
+  answer(request: DeviceRequest): DeviceAnswer {
+    const checked = this.checked(request);
+    if ('status' in checked) return checked;
+    const { device, args, who } = checked;
     switch (request.op) {
       case 'status':
         return ok({ status: summary(this.deps.engine.state()) });
@@ -910,6 +940,12 @@ export class NetworkService implements EngineTransport {
       case 'screens.goBack':
       case 'screens.identify':
       case 'switch':
+      case 'inputs':
+      case 'input.add':
+      case 'input.change':
+      case 'input.remove':
+      case 'windows':
+      case 'window.show':
         return this.desktop
           ? this.desktop.answer(request.op, args, device, who)
           : deny(404, 'Drashti cannot set that up from a phone here.');

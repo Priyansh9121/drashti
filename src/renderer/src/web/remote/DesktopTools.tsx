@@ -8,11 +8,12 @@ import {
 } from '../../../../shared/screen-switches';
 import { useNow } from '../../render/useNow';
 import { Button } from '../../ui/Button';
-import { Monitor } from '../../ui/icons';
+import { Monitor, Video } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { plural } from '../../ui/text';
 import { answerKeep, answerOff, openSheet, startDesktop, useDesktop } from './desktop-store';
 import { PhoneQuestion } from './PhoneSheet';
+import { InputsSheet } from './InputsSheet';
 import { ScreensSheet, SwitchButtons } from './ScreensSheet';
 
 /*
@@ -53,6 +54,17 @@ export function DesktopTools() {
         }}
       >
         Set up the screens…
+      </Button>
+      <Button
+        size="lg"
+        className="min-h-12 w-full"
+        icon={Video}
+        data-testid="remote-open-inputs"
+        onClick={() => {
+          openSheet('inputs');
+        }}
+      >
+        Video inputs and windows…
       </Button>
     </section>
   );
@@ -130,6 +142,7 @@ export function DesktopLayer() {
   return (
     <>
       {sheet === 'screens' && <ScreensSheet />}
+      {sheet === 'inputs' && <InputsSheet />}
       <KeepQuestion />
       <OffQuestion />
     </>

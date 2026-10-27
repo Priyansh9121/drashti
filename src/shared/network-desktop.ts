@@ -1,4 +1,5 @@
 import type { PendingScreens } from './keep-screens';
+import { type CameraAccess, VIDEO_INPUT_DEVICE_MAX, type VideoInput } from './video-inputs';
 import type { ScreenSwitch, ScreenSwitches } from './screen-switches';
 import type { DisplayInfo, NodeDisplays, ScreenGroupConfig, ScreenStatus } from './screens';
 
@@ -78,3 +79,56 @@ export const bothSwitches = (of: (which: ScreenSwitch) => boolean): ScreenSwitch
   audience: of('audience'),
   stage: of('stage'),
 });
+
+/**
+ * The computer's video inputs as a Remote reads them (GET /api/v1/video-inputs, Session 54): Media's named inputs,
+ * to put one up, name another or change one, choosing among the cameras the computer lists, never naming its own.
+ */
+export interface RemoteInputs {
+  inputs: VideoInput[];
+  /** Whether Drashti may use the computer's cameras (a Mac's Camera setting, Windows' camera privacy setting). */
+  access: CameraAccess;
+  /** The computer's cameras and capture inputs by name, as its operator window last saw them; null: not yet. */
+  cameras: string[] | null;
+}
+
+/**
+ * Another app's window on the computer, as a Remote reads it (Session 54): its id in the list just made, and its
+ * name. Never a picture of it: a phone chooses by name, and what is on the computer's screen stays there.
+ */
+export interface RemoteWindow {
+  id: string;
+  name: string;
+}
+
+export type RemoteWindows =
+  { ok: true; windows: RemoteWindow[] } | { ok: false; reason: 'permission' | 'unlisted'; message: string };
+
+/** The most camera names a computer's window reports, each as long as a device name is kept. */
+export const CAMERA_NAMES_MAX = 64;
+
+/** The camera names an operator window reports, as checked (a page is never trusted): names only, each once. */
+export function cameraNamesIn(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const names: string[] = [];
+  for (const n of raw)
+    if (typeof n === 'string' && n.trim() !== '' && n.length <= VIDEO_INPUT_DEVICE_MAX && !names.includes(n))
+      names.push(n);
+  return names.slice(0, CAMERA_NAMES_MAX);
+}
+
+/** A phone choosing a camera the computer has not listed: never one of its own naming. */
+export const NOT_A_LISTED_CAMERA =
+  'The Drashti computer does not list that camera now: choose one it lists, or plug it in there and look again.';
+
+/** Before the computer's window has listed its cameras (it does as it starts, once Drashti may use them). */
+export const CAMERAS_NOT_LISTED =
+  'The Drashti computer has not listed its cameras yet: on it, open Library, then Media, then Add a Video Input… once.';
+
+/** macOS's or Windows' camera setting is answered at the computer, never from a phone. */
+export const CAMERA_AT_COMPUTER =
+  'Drashti may not use the cameras on its computer yet. On the Drashti computer: Library, Media, Add a Video Input… asks for the camera, or says where to turn it on.';
+
+/** macOS's Screen Recording is answered at the computer, never from a phone. */
+export const SCREEN_RECORDING_AT_COMPUTER =
+  'macOS has not let Drashti see other apps’ windows. On the Drashti computer: Library, Media, Show a Window… says how to turn on Screen Recording for Drashti.';

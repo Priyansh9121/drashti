@@ -211,6 +211,7 @@ import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
 import { coverBox } from './network/desktop-consent';
+import { cameraNamesIn } from '../shared/network-desktop';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
@@ -1347,6 +1348,8 @@ function start(): void {
   };
   // The local network gets every engine message too (once it is on); it is made further down.
   let network: NetworkService | null = null;
+  /** The cameras the operator window last saw, by name (Session 54: a phone naming a video input); null until said. */
+  let seenCameras: string[] | null = null;
   const networkTransport: EngineTransport = {
     broadcast: (message) => {
       network?.broadcast(message);
@@ -1463,6 +1466,8 @@ function start(): void {
     changed: (view) => {
       sendToPage(operatorWindow, IPC.videoInputs.changed, view);
       inputsChanged();
+      // A phone naming or putting up an input reads them again (Session 54).
+      net.hint('setup');
     },
     statusChanged: (status) => {
       sendToPage(operatorWindow, IPC.videoInputs.statusChanged, status);
@@ -3859,6 +3864,18 @@ function start(): void {
         asksFirst: (which) => screenSwitches.asksFirst(which),
         turn: (which, on) => screenSwitches.turn(which, on),
       },
+      inputs: {
+        view: () => inputs.view(),
+        access: () => inputs.access(),
+        cameras: () => seenCameras,
+        add: (fields) => inputs.add(fields),
+        update: (id, fields) => inputs.update(id, fields),
+        remove: (id) => inputs.remove(id),
+      },
+      windows: {
+        list: () => shownWindows.list(),
+        show: (id) => shownWindows.show(id),
+      },
       simple: () => simpleNow(),
       confirmCover: async (question) => {
         const box = coverBox(question, process.platform);
@@ -4993,6 +5010,15 @@ function start(): void {
     return null;
   });
   handle(IPC.videoInputs.status, () => inputs.status());
+  // The cameras the operator window sees, by name (Session 54): a phone naming an input chooses among them.
+  handle(IPC.videoInputs.cameras, (e, raw) => {
+    const names = fromOperator(e) ? cameraNamesIn(raw) : null;
+    if (names && JSON.stringify(names) !== JSON.stringify(seenCameras)) {
+      seenCameras = names;
+      net.hint('setup');
+    }
+    return null;
+  });
 
   // ---- the setup wizard ----------------------------------------------------------
   // Tests start with it closed, unless a test is about it; the self-tests never open it (a dialog

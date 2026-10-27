@@ -293,7 +293,6 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       },
       { type: 'setMask', mask: { id: 'mask', name: 'Placeholder', shapes: [] } },
       { type: 'swapPip' },
-      { type: 'showInput', inputId: 'in-1' },
     ])
       expect([400, 403], args.type).toContain(ask(remote, 'command', args).status);
     expect(commands).toEqual([]);

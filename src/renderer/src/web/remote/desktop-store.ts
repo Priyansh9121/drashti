@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RemoteScreens } from '../../../../shared/network-desktop';
+import type { RemoteInputs, RemoteScreens, RemoteWindows } from '../../../../shared/network-desktop';
 import type { ScreenSwitch } from '../../../../shared/screen-switches';
 import { api } from '../device';
 import { onListsChanged, onOnline } from '../feed';
@@ -14,7 +14,7 @@ import { onListsChanged, onOnline } from '../feed';
  */
 
 /** The sheets a phone opens over the remote to set up the computer's things. */
-export type DesktopSheet = 'screens';
+export type DesktopSheet = 'screens' | 'inputs';
 
 interface DesktopView {
   /** The sheet open now, or null. */
@@ -29,6 +29,11 @@ interface DesktopView {
   mine: boolean;
   /** The window's question before a switch goes off, asked here now (null: none). */
   askingOff: ScreenSwitch | null;
+  /** Media's video inputs and the computer's cameras (null until read). */
+  inputs: RemoteInputs | null;
+  /** The other apps' windows as last listed (null until looked for), and whether a look is on its way. */
+  windows: RemoteWindows | null;
+  lookingForWindows: boolean;
 }
 
 export const useDesktop = create<DesktopView>(() => ({
@@ -38,6 +43,9 @@ export const useDesktop = create<DesktopView>(() => ({
   problem: null,
   mine: false,
   askingOff: null,
+  inputs: null,
+  windows: null,
+  lookingForWindows: false,
 }));
 
 /**
@@ -56,9 +64,41 @@ export async function loadScreens(): Promise<void> {
   if (r.ok) take(r.screens);
 }
 
+export async function loadInputs(): Promise<void> {
+  const r = await api<RemoteInputs>('/api/v1/video-inputs');
+  if (r.ok) useDesktop.setState({ inputs: { inputs: r.inputs, access: r.access, cameras: r.cameras } });
+}
+
 export function openSheet(sheet: DesktopSheet): void {
-  useDesktop.setState({ sheet, problem: null });
-  void loadScreens();
+  useDesktop.setState({ sheet, problem: null, ...(sheet === 'inputs' ? { windows: null } : {}) });
+  void (sheet === 'screens' ? loadScreens() : loadInputs());
+}
+
+/**
+ * A change to Media's video inputs, sent and answered with them as they are after it; false with the problem said,
+ * when nothing changed.
+ */
+export async function changeInputs(path: string, body?: unknown): Promise<boolean> {
+  if (useDesktop.getState().busy) return false;
+  useDesktop.setState({ busy: true, problem: null });
+  const r = await api<RemoteInputs>(path, { method: 'POST', body });
+  useDesktop.setState({ busy: false });
+  if (!r.ok) {
+    useDesktop.setState({ problem: r.message });
+    return false;
+  }
+  useDesktop.setState({ inputs: { inputs: r.inputs, access: r.access, cameras: r.cameras } });
+  return true;
+}
+
+/** The other apps' windows, as the computer lists them now (Show a Window…'s list, by name). */
+export async function lookForWindows(): Promise<void> {
+  if (useDesktop.getState().lookingForWindows) return;
+  useDesktop.setState({ lookingForWindows: true, problem: null });
+  const r = await api<{ windows: RemoteWindows }>('/api/v1/windows');
+  useDesktop.setState({ lookingForWindows: false });
+  if (r.ok) useDesktop.setState({ windows: r.windows });
+  else useDesktop.setState({ problem: r.message });
 }
 
 export function closeSheet(): void {
@@ -126,12 +166,14 @@ export function startDesktop(): void {
   started = true;
   const needed = () => {
     const s = useDesktop.getState();
-    return s.sheet !== null || s.mine || s.screens?.asked?.state === 'waiting';
+    return s.sheet === 'screens' || s.mine || s.screens?.asked?.state === 'waiting';
   };
   onOnline(() => {
     if (needed()) void loadScreens();
+    if (useDesktop.getState().sheet === 'inputs') void loadInputs();
   });
   onListsChanged((what) => {
     if ((what === 'setup' || what === 'screens') && needed()) void loadScreens();
+    if (what === 'setup' && useDesktop.getState().sheet === 'inputs') void loadInputs();
   });
 }

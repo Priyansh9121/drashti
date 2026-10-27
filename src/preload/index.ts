@@ -439,6 +439,7 @@ const bridge: DrashtiBridge = {
     report: (report) => invoke(IPC.videoInputs.report, report),
     status: () => invoke(IPC.videoInputs.status),
     onStatus: (listener) => on(IPC.videoInputs.statusChanged, listener),
+    cameras: (names) => invoke(IPC.videoInputs.cameras, names),
   },
   pip: {
     place: () => invoke(IPC.pip.place),

@@ -151,6 +151,32 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
     { on: false, confirmed: true, which: 'audience' },
   ],
   ['POST', '/api/v1/switches/stage', { on: true }, 'switch', { on: true, which: 'stage' }],
+  // Media's video inputs and Show a Window….
+  ['GET', '/api/v1/video-inputs', undefined, 'inputs', {}],
+  [
+    'POST',
+    '/api/v1/video-inputs',
+    { name: 'Input 2', device: 'Placeholder camera', fit: 'fit' },
+    'input.add',
+    { name: 'Input 2', device: 'Placeholder camera', fit: 'fit' },
+  ],
+  [
+    'POST',
+    '/api/v1/video-inputs/in-1/change',
+    { name: 'Placeholder stage camera', inputId: 'in-2' },
+    'input.change',
+    { name: 'Placeholder stage camera', inputId: 'in-1' },
+  ],
+  ['POST', '/api/v1/video-inputs/in-1/remove', undefined, 'input.remove', { inputId: 'in-1' }],
+  [
+    'POST',
+    '/api/v1/video-inputs/in-1/show',
+    { type: 'clearAll' },
+    'command',
+    { type: 'showInput', inputId: 'in-1' },
+  ],
+  ['GET', '/api/v1/windows', undefined, 'windows', {}],
+  ['POST', '/api/v1/windows/show', { id: 'window:7:0' }, 'window.show', { id: 'window:7:0' }],
 ];
 
 describe('the phone as a full Drashti’s requests (Session 54)', () => {
@@ -167,7 +193,9 @@ describe('the phone as a full Drashti’s requests (Session 54)', () => {
     for (const [method, path] of ASKED) {
       expect((await call(port, path, STAGE_TOKEN, method)).status, path).toBe(403);
       expect((await call(port, path, POSTER_TOKEN, method)).status, path).toBe(403);
-      if (method === 'POST') expect((await call(port, path, REMOTE_TOKEN, 'GET')).status, path).toBe(405);
+      // By GET, a change's path is refused (one that is also a read's path, Media's video inputs, reads).
+      if (method === 'POST' && !ASKED.some(([m, p]) => m === 'GET' && p === path))
+        expect((await call(port, path, REMOTE_TOKEN, 'GET')).status, path).toBe(405);
     }
     // Only Audience and Stage are switches.
     expect(
@@ -190,7 +218,7 @@ describe('the phone as a full Drashti’s requests (Session 54)', () => {
   it('are each in the API’s list, which the documentation is checked against', () => {
     for (const [method, path] of ASKED) {
       const route = `${method} ${path}`
-        .replace(/\/(s-1|g-1)\//u, '/:id/')
+        .replace(/\/(s-1|g-1|in-1)\//u, '/:id/')
         .replace(/\/(audience|stage)$/u, '/:id');
       expect(API_ROUTES, route).toContain(route);
     }

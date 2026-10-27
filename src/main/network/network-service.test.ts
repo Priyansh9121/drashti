@@ -450,16 +450,30 @@ describe('the network in the main process', () => {
     ).toBe(403);
   });
 
-  it('lets a Remote clear a video input, never choose one (Session 50)', () => {
+  it('lets a Remote clear a video input (Session 50), and put one up by its id as Media does (Session 54)', () => {
     const { service, commands } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const command = (args: Record<string, unknown>) =>
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status;
-    expect(command({ type: 'showInput', inputId: 'in-1' })).toBe(403);
-    expect(commands).toEqual([]);
+    expect(command({ type: 'showInput', inputId: 'in-1' })).toBe(200);
     expect(command({ type: 'clearLayer', layer: 'background' })).toBe(200);
     expect(command({ type: 'clearAll' })).toBe(200);
-    expect(commands).toEqual([{ type: 'clearLayer', layer: 'background' }, { type: 'clearAll' }]);
+    expect(commands).toEqual([
+      { type: 'showInput', inputId: 'in-1' },
+      { type: 'clearLayer', layer: 'background' },
+      { type: 'clearAll' },
+    ]);
+    // Simple Mode refuses it, as the window's Media does (the engine's refusal, from anywhere).
+    const simple = setup({ locked: true });
+    const phone = simple.service.pairForCheck('remote', 'Placeholder phone').id;
+    expect(
+      simple.service.answer({
+        address: PHONE,
+        deviceId: phone,
+        op: 'command',
+        args: { type: 'showInput', inputId: 'in-1' },
+      }).status,
+    ).toBe(403);
   });
 
   it('lets a Remote see Repeat Slides going round, and start and stop it (Session 26d)', () => {
@@ -575,6 +589,12 @@ describe('the network in the main process', () => {
       'screens.useDisplay',
       'screens.change',
       'screens.remove',
+      // Media's video inputs and Show a Window… (Session 54), Pro Mode's as in the window.
+      'input.add',
+      'input.change',
+      'input.remove',
+      'windows',
+      'window.show',
     ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });
