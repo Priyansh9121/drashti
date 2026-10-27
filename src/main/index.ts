@@ -5703,6 +5703,16 @@ function start(): void {
       dropShortcuts: () => {
         globalShortcut.unregisterAll();
       },
+      uncover: () => {
+        const result = screens.uncoverOperator();
+        log.info(
+          `Access: the stop's screen uncovered: turned off ${result.turnedOff?.join(', ') || 'nothing'}`,
+        );
+        if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.show();
+      },
+      later: (ms, run) => {
+        setTimeout(run, ms);
+      },
       others: [
         { what: 'the window for Zoom', stop: () => zoom.close() },
         { what: 'the drop folder', stop: () => dropFolder.stop() },
