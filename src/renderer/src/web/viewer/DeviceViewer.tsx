@@ -146,7 +146,7 @@ function Viewer() {
             content={content}
             view={view}
             maxZoom={maxZoom}
-            label={page.title}
+            label={`${page.title}: + and − zoom it here, and the arrows move it`}
             onView={setView}
             onSettle={settle}
           >

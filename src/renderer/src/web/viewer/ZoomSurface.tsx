@@ -190,7 +190,6 @@ export function ZoomSurface({
       ref={ref}
       role="img"
       aria-label={label}
-      aria-roledescription="zoomable picture"
       tabIndex={0}
       data-testid="viewer-surface"
       data-zoom={shown.zoom.toFixed(3)}
