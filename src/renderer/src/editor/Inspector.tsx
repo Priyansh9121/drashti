@@ -1005,6 +1005,18 @@ function MediaSection({ el, change }: { el: MediaElement; change: Change }) {
               });
             }}
           />
+          {/* Its play bar on the screens (Session 54), as a deck's video shows one: off unless ticked. */}
+          <Toggle
+            label="Show the play bar on the screens"
+            checked={el.playBar === true}
+            data-testid="field-play-bar"
+            onChange={(on) => {
+              set((m) => {
+                const { playBar: _p, ...rest } = m;
+                return on ? { ...rest, playBar: true } : rest;
+              });
+            }}
+          />
           <Toggle
             label="Its sound"
             checked={volume > 0}

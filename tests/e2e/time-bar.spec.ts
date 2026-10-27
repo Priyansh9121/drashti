@@ -10,6 +10,7 @@ import {
   importAndGetIds,
   launchApp,
   letTimePass,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPage,
@@ -17,6 +18,7 @@ import {
   outputReady,
   setUpScreen,
 } from './helpers';
+import { holdClock } from './placeholder-slides';
 import { makeTestTone, makeTestVideo } from './test-media';
 
 /*
@@ -172,33 +174,34 @@ async function clickAlong(win: Page, bar: Locator, fraction: number): Promise<vo
   await win.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
 }
 
-/** A presentation of one slide with a looping video on it (not a background: it goes and comes with the slide). */
-async function slideWithVideo(win: Page, dir: string, mediaId: string): Promise<string> {
-  const words = join(dir, 'Placeholder Time Bar.txt');
+/**
+ * A presentation of one slide with a looping video on it (not a background: it goes and comes with the slide), under
+ * its words; or, `onTop`, over them in the slide's top right quarter, where the slide editor finds it by a click.
+ */
+async function slideWithVideo(win: Page, dir: string, mediaId: string, onTop = false): Promise<string> {
+  const words = join(dir, onTop ? 'Placeholder Play Bar.txt' : 'Placeholder Time Bar.txt');
   writeFileSync(words, '[Verse]\nPlaceholder words over a video\n');
   const [presentationId = ''] = await importAndGetIds(win, [words]);
   await win.evaluate(
-    async ({ presentationId, mediaId }) => {
+    async ({ presentationId, mediaId, onTop }) => {
       const d = (globalThis as PageGlobals).drashti;
       const opened = await d.library.slidesForEdit(presentationId);
       if (!opened.ok) throw new Error(opened.message);
       const slide = opened.doc.groups[0]?.slides[0];
       if (!slide) throw new Error('The presentation has no slide.');
-      slide.elements = [
-        {
-          id: 'placeholder-slide-video',
-          kind: 'video',
-          mediaId,
-          frame: { x: 0, y: 0, width: 1920, height: 1080 },
-          fit: 'fit',
-          loop: true,
-        },
-        ...slide.elements,
-      ];
+      const video = {
+        id: 'placeholder-slide-video',
+        kind: 'video' as const,
+        mediaId,
+        frame: onTop ? { x: 960, y: 0, width: 960, height: 540 } : { x: 0, y: 0, width: 1920, height: 1080 },
+        fit: 'fit' as const,
+        loop: true,
+      };
+      slide.elements = onTop ? [...slide.elements, video] : [video, ...slide.elements];
       const saved = await d.library.saveSlides(presentationId, opened.doc, opened.stamp);
       if (!saved.ok) throw new Error(saved.message);
     },
-    { presentationId, mediaId },
+    { presentationId, mediaId, onTop },
   );
   return presentationId;
 }
@@ -623,3 +626,119 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
     await app.close();
   });
 }
+
+/** Open the slide editor on a presentation, by its row in the library. */
+async function openEditor(win: Page, name: string): Promise<Locator> {
+  await openLibrary(win);
+  await win
+    .getByTestId('presentation-list')
+    .getByTestId('presentation-row')
+    .filter({ hasText: name })
+    .click();
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  return editor;
+}
+
+/** In the slide editor: the video's own "Show the play bar on the screens", set as asked, then saved. */
+async function setPlayBar(win: Page, on: boolean): Promise<void> {
+  const editor = await openEditor(win, 'Placeholder Play Bar');
+  // The video sits in the slide's top right quarter, over the words: a click in its middle chooses it.
+  const canvas = editor.getByTestId('editor-canvas');
+  const box = await canvas.boundingBox();
+  const scale = Number(await canvas.getAttribute('data-scale'));
+  if (!box) throw new Error('no canvas');
+  await win.mouse.click(box.x + 1440 * scale, box.y + 270 * scale);
+  await expect(editor.getByTestId('inspector-media')).toBeVisible();
+  const toggle = editor.getByTestId('field-play-bar');
+  await expect(toggle).toHaveAttribute('aria-checked', String(!on));
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', String(on));
+  if (on) await expectNoSeriousA11yIssues(win, 'a video’s settings with its play bar');
+  await editor.getByTestId('save-slides').click();
+  await expect(editor).toHaveCount(0);
+}
+
+test('the play bar on the screens: off unless ticked; ticked in the slide editor, both screens draw it along the bottom of the slide’s video, the same at the same moment, its mark following Pause and Play; unticked, gone', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+  });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-play-bar-'));
+  const file = await makeTestVideo(win, join(dir, 'Placeholder play bar clip.webm'), {
+    seconds: 10,
+    hue: 160,
+  });
+  const [mediaId = ''] = await importAndGetIds(win, [file]);
+  const presentationId = await slideWithVideo(win, dir, mediaId, true);
+  await setUpScreen(win, 'Main Hall', 0);
+  await setUpScreen(win, 'Overflow', 1);
+  await expect.poll(() => outputPages(app).length).toBe(2);
+  const screens = outputPages(app) as [Page, Page];
+  for (const o of screens) await outputReady(o);
+  await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
+  const video = (o: Page) => o.locator(`[data-layer="slide"] video[data-media-id="${mediaId}"]`);
+  const playBar = (o: Page) => o.locator('[data-layer="slide"] [data-play-bar]');
+  for (const o of screens) await expect(video(o)).toHaveCount(1);
+  // Off unless ticked: no bar on either screen.
+  for (const o of screens) await expect(playBar(o)).toHaveCount(0);
+
+  // Ticked: both screens draw it along the bottom of the video, playing (a pause mark, as a deck's video shows).
+  await setPlayBar(win, true);
+  const element = await win.evaluate(async (id) => {
+    const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(id);
+    return doc?.groups[0]?.slides[0]?.slide.elements.find((e) => e.kind === 'video') ?? null;
+  }, presentationId);
+  expect(element).toMatchObject({ kind: 'video', playBar: true });
+  for (const o of screens) {
+    await expect(playBar(o)).toHaveAttribute('data-state', 'playing');
+    await expect(playBar(o).locator('svg[data-mark="pause"]')).toHaveCount(1);
+    await expect(playBar(o).locator('[data-play-bar-time]')).toHaveText(/^\d+:\d\d \/ \d+:\d\d$/);
+    const bar = await playBar(o).locator(':scope > div').boundingBox();
+    const shown = await video(o).boundingBox();
+    if (!bar || !shown) throw new Error('not drawn');
+    expect(Math.abs(bar.y + bar.height - (shown.y + shown.height)), 'along the video’s bottom').toBeLessThan(
+      1.5,
+    );
+    expect(Math.abs(bar.width - shown.width), 'as wide as the video').toBeLessThan(1.5);
+  }
+  // Held at one moment (the engine's time), the two screens draw the same bar.
+  const drawn = (o: Page) =>
+    playBar(o)
+      .locator(':scope > div')
+      .evaluate(
+        (el) =>
+          `${el.dataset['fraction'] ?? ''} ${el.querySelector('[data-play-bar-time]')?.textContent ?? ''}`,
+      );
+  await holdClock(app, Date.now());
+  try {
+    await expect.poll(async () => (await drawn(screens[0])) === (await drawn(screens[1]))).toBe(true);
+  } finally {
+    await holdClock(app, null);
+  }
+
+  // Paused from LIVE's time bar: a play mark on both, at the same place, waiting.
+  await row(win, `slide:${mediaId}`).getByRole('button', { name: 'Pause' }).click();
+  for (const o of screens) {
+    await expect(playBar(o)).toHaveAttribute('data-state', 'paused');
+    await expect(playBar(o).locator('svg[data-mark="play"]')).toHaveCount(1);
+  }
+  await expect.poll(async () => (await drawn(screens[0])) === (await drawn(screens[1]))).toBe(true);
+  const waiting = await drawn(screens[0]);
+  await letTimePass(win, 1000, 'paused, its bar waits');
+  expect(await drawn(screens[0])).toBe(waiting);
+  await row(win, `slide:${mediaId}`).getByRole('button', { name: 'Play' }).click();
+  for (const o of screens) await expect(playBar(o)).toHaveAttribute('data-state', 'playing');
+
+  // Unticked: gone from both screens, the video playing on.
+  await setPlayBar(win, false);
+  for (const o of screens) await expect(playBar(o)).toHaveCount(0);
+  for (const o of screens) await expect(video(o)).toHaveCount(1);
+  await app.close();
+});

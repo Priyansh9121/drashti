@@ -31,6 +31,7 @@ import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
 import { standsUpright } from '../../../shared/text-runs';
 import { TimerElementView } from './TimerElementView';
+import { PlayBar } from './PlayBar';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -451,18 +452,33 @@ function SlideVideo({
     playback.current?.resync();
   }, [clipKey, seekKey]);
   return (
-    <video
-      ref={ref}
-      data-element={el.id}
-      data-media-id={el.mediaId}
-      muted
-      playsInline
-      disablePictureInPicture
-      preload="auto"
-      // Between start and end points it goes round by playback.ts's loop, not the element's.
-      loop={loop && !clip}
-      style={mediaStyle(el)}
-    />
+    <>
+      <video
+        ref={ref}
+        data-element={el.id}
+        data-media-id={el.mediaId}
+        muted
+        playsInline
+        disablePictureInPicture
+        preload="auto"
+        // Between start and end points it goes round by playback.ts's loop, not the element's.
+        loop={loop && !clip}
+        style={mediaStyle(el)}
+      />
+      {/* Its play bar (Session 54), when the slide editor's setting is ticked: drawn from the same timing. */}
+      {el.playBar === true && (
+        <PlayBar
+          frame={frameStyle(el)}
+          height={el.frame.height}
+          opacity={el.opacity ?? 1}
+          video={ref}
+          startedAt={start}
+          loop={loop}
+          clip={clip}
+          seek={seek}
+        />
+      )}
+    </>
   );
 }
 
