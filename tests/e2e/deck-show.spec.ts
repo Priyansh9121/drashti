@@ -94,19 +94,29 @@ const holdLive = (app: ElectronApplication, at: number | null) =>
     at,
   );
 
-/** Wait until the middle of an element on its page (LIVE's picture, a stage box, a phone's picture) is this colour. */
+/**
+ * Wait until the middle of an element on its page (LIVE's picture, a stage box, a phone's picture) is this colour.
+ * What it saw last is said when it is not: the colour, and the deck's step's phase there (its clip, still loading, held
+ * or its hold).
+ */
 async function middleShows(page: Page, target: Locator, rgb: readonly number[], what: string): Promise<void> {
   await expect
     .poll(
       async () => {
         const box = await target.boundingBox();
-        if (!box) return false;
+        if (!box) return { shows: false, seen: 'no box' };
         const [colour] = await pixels(page, [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }]);
-        return near(colour, [rgb[0] ?? 0, rgb[1] ?? 0, rgb[2] ?? 0]);
+        const phases = await target
+          .locator('[data-deck-phase]')
+          .evaluateAll((els) => els.map((e) => e.getAttribute('data-deck-phase') ?? ''));
+        return {
+          shows: near(colour, [rgb[0] ?? 0, rgb[1] ?? 0, rgb[2] ?? 0]),
+          seen: `${(colour ?? []).join(',')} (${phases.join(', ') || 'no step'})`,
+        };
       },
       { message: what, timeout: 15_000 },
     )
-    .toBe(true);
+    .toMatchObject({ shows: true });
 }
 
 /** Hold every app's clock at `ms` after the step up was shown, and wait for each output to show `rgb`. */
@@ -170,22 +180,18 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     await expect.poll(() => step(win)).toBe(1);
     // LIVE says which click is up.
     await expect(win.getByTestId('live-text')).toContainText('slide 1 of 2 · click 1 of 2');
-    // At held moments (C review): the hall's screens, LIVE and the stage's current play the click's clip (dark), then
-    // hold its last frame (bright), each at the same moment.
-    const live = win.getByTestId('live-preview').getByTestId('scene').first();
+    // At held moments (C review): the hall's screens and the stage's current play the click's clip (dark), then hold
+    // its last frame (bright), each at the same moment. LIVE's picture is compared in a test of its own, where no
+    // screen's window covers the operator window (here they do: a window covered draws no frames).
     const stageNow = stage.locator('[data-stage-deck="now"]');
-    const clickAt = await stepAt(win);
     for (const [ms, colour] of [
       [300, STEP_COLOURS[1].clip],
       [CLIP_MS + 800, STEP_COLOURS[1].last],
     ] as const) {
-      await holdLive(app, clickAt + ms);
       await heldAt([app], win, halls, ms, colour);
-      await middleShows(win, live, colour, `LIVE, ${String(ms)} ms into the click`);
       await middleShows(stage, stageNow, colour, `the stage’s current, ${String(ms)} ms into the click`);
     }
     await holdClock(app, null);
-    await holdLive(app, null);
     await middleShows(
       stage,
       stage.locator('[data-stage-deck="next"]'),
@@ -238,6 +244,37 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     await win.keyboard.press('ArrowLeft');
     await expect.poll(async () => (await state(win)).live.slideIndex).toBe(0);
     expect(await step(win)).toBe(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test('LIVE draws a deck’s click from the engine’s time as the screens do: at held moments its clip, then its last frame (C review)', async () => {
+  test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(180_000);
+  // No screen set up: nothing covers the operator window, so LIVE draws every frame (a window under the screens'
+  // windows draws none).
+  const { app } = await launchApp({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const files = await makeDeckFiles(win);
+    const id = await writeDeck(win, 'Placeholder LIVE deck', standInDecks(files));
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await dispatch(win, { type: 'next' });
+    const live = win.getByTestId('live-preview').getByTestId('scene').first();
+    await expect(live.locator('[data-deck-step="1"]')).toHaveCount(1);
+    const clickAt = await stepAt(win);
+    for (const [ms, colour, phase] of [
+      [300, STEP_COLOURS[1].clip, 'clip'],
+      [CLIP_MS + 800, STEP_COLOURS[1].last, 'held'],
+    ] as const) {
+      // The test switch reaches the operator window, and LIVE draws that moment.
+      expect(await holdLive(app, clickAt + ms), 'LIVE’s clock held').toBe(true);
+      await expect(live.locator('[data-deck-step="1"]')).toHaveAttribute('data-deck-phase', phase);
+      await middleShows(win, live, colour, `LIVE, ${String(ms)} ms into the click`);
+    }
+    await holdLive(app, null);
   } finally {
     await app.close();
   }
