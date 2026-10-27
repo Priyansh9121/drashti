@@ -16,7 +16,8 @@ import { loadMedia, useMirror } from './mirror-store';
  * video as the background, the slide taken off, as a playlist's picture item goes up; a sound plays over the rest.
  * The one up says so, with Take off (the background's or the sound's clear). A missing file, or one Drashti cannot
  * play as it is, says so and is not offered. Adding one to a playlist, its markers and converting it stay in Drashti;
- * the video inputs listed with Media there are that computer's own. D4's Add from this Phone… goes at the top.
+ * the video inputs listed with Media there are that computer's own. D4's Add from this Phone… goes at the top
+ * (LibraryPanel.tsx), while Drashti takes files from phones.
  */
 
 const KIND_WORD: Record<RemoteMedia['kind'], string> = { image: 'Picture', video: 'Video', audio: 'Sound' };

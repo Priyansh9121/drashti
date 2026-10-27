@@ -4,6 +4,7 @@ import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { api } from '../device';
 import { onListsChanged, onOnline } from '../feed';
 import { closeViewer, useViewer, type ViewerPage } from '../viewer/viewer-store';
+import { useMirror } from './mirror-store';
 import { type Sending, sendFile } from './upload-client';
 import { deviceTransport } from './upload-transport';
 
@@ -61,6 +62,9 @@ export async function loadShared(): Promise<void> {
   const r = await api<{ playlists: SharedPlaylist[] }>('/api/v1/shared');
   if (!r.ok) return;
   usePhoneFiles.setState({ shared: r.playlists });
+  // Nothing shared: the library's Shared from Drashti goes, back to Presentations, never chosen again by itself.
+  if (r.playlists.length === 0 && useMirror.getState().libraryKind === 'shared')
+    useMirror.setState({ libraryKind: 'presentations' });
   // Its files looked at here close once it is no longer shared.
   const lookedAt = looking?.playlistId;
   if (lookedAt !== undefined && !r.playlists.some((p) => p.id === lookedAt)) stopLooking(lookedAt);

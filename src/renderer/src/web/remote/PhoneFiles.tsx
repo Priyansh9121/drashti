@@ -20,15 +20,14 @@ import type { Sending } from './upload-client';
 /*
  * Files between Drashti and this phone, in the remote's Library (Session 54, D3 and D4):
  *
- * - Shared from Drashti: the playlists the operator shared with phones, a folder playlist with its folders as its
- *   headers. Tapping a file opens it on this device in D1's viewer, the playlist's other files before and after it
- *   (shared-pages.ts): pictures, videos and sounds at their own quality, a presentation's slides one by one.
- *   Nothing here changes the playlist.
- * - Add to Drashti: while Drashti takes files from phones, "Add from this Phone…" picks pictures, videos, sounds,
- *   PDF, PowerPoint or Keynote files from the phone's photos or files; each is sent whole, with how far it has got,
- *   Cancel, and picking up again by itself after the Wi-Fi drops. Drashti says what became of it.
- *
- * Shown only when there is something to show: a shared playlist, adding on, or a file sent from this page.
+ * - Shared from Drashti, the library's third choice while a playlist is shared with phones (LibraryPanel.tsx):
+ *   the shared playlists, a folder playlist with its folders as its headers. Tapping a file opens it on this device
+ *   in D1's viewer, the playlist's other files before and after it (shared-pages.ts): pictures, videos and sounds
+ *   at their own quality, a presentation's slides one by one. Nothing here changes the playlist.
+ * - Add to Drashti, at the top of the library's Media (LibraryPanel.tsx) while Drashti takes files from phones or
+ *   this page has sent some: "Add from this Phone…" picks pictures, videos, sounds, PDF, PowerPoint or Keynote
+ *   files from the phone's photos or files; each is sent whole, with how far it has got, Cancel, and picking up
+ *   again by itself after the Wi-Fi drops. Drashti says what became of it.
  */
 
 const HEADING = 'text-base font-bold tracking-wider text-muted uppercase';
@@ -118,7 +117,9 @@ function SharedItems({ playlist, list }: { playlist: SharedPlaylist; list: Playl
   );
 }
 
-function SharedFromDrashti({ shared }: { shared: SharedPlaylist[] | null }) {
+/** The playlists shared with phones, or the one opened: the library's third choice, there while one is shared. */
+export function SharedFromDrashti() {
+  const shared = usePhoneFiles((s) => s.shared);
   const open = usePhoneFiles((s) => s.open);
   const playlist = open ? shared?.find((p) => p.id === open.id) : undefined;
   return (
@@ -128,17 +129,8 @@ function SharedFromDrashti({ shared }: { shared: SharedPlaylist[] | null }) {
       </h2>
       {open && playlist ? (
         <SharedItems playlist={playlist} list={open.items} />
-      ) : shared === null ? (
-        <p role="status" className="text-base text-muted">
-          Loading what is shared…
-        </p>
-      ) : shared.length === 0 ? (
-        <p className="text-base text-muted" data-testid="remote-shared-none">
-          Nothing is shared yet: in Drashti on the computer, right-click a playlist and choose Share with
-          Phones and Tablets.
-        </p>
       ) : (
-        <SharedList shared={shared} />
+        <SharedList shared={shared ?? []} />
       )}
     </section>
   );
@@ -221,10 +213,12 @@ function SendingRow({ s }: { s: Sending }) {
   );
 }
 
-function AddToDrashti() {
+/** Add from this Phone…, at the top of Media: while Drashti takes files from phones, or this page has sent some. */
+export function AddToDrashti() {
   const adding = usePhoneFiles((s) => s.adding);
   const sending = usePhoneFiles((s) => s.sending);
   const picker = useRef<HTMLInputElement>(null);
+  if (!adding?.on && sending.length === 0) return null;
   return (
     <section className="space-y-2" aria-labelledby="remote-add-title" data-testid="remote-add">
       <h2 id="remote-add-title" className={HEADING}>
@@ -275,23 +269,5 @@ function AddToDrashti() {
         </ul>
       )}
     </section>
-  );
-}
-
-/**
- * Both parts, where there is something to show; `always` (a place of their own, as a choice in the library) shows
- * each with what to do while it is empty.
- */
-export function PhoneFiles({ always = false }: { always?: boolean }) {
-  const shared = usePhoneFiles((s) => s.shared);
-  const adding = usePhoneFiles((s) => s.adding?.on === true);
-  const sent = usePhoneFiles((s) => s.sending.length > 0);
-  const anyShared = shared !== null && shared.length > 0;
-  if (!always && !anyShared && !adding && !sent) return null;
-  return (
-    <div className="space-y-5 pb-2" data-testid="remote-files">
-      {(always || anyShared) && <SharedFromDrashti shared={shared} />}
-      {(always || adding || sent) && <AddToDrashti />}
-    </div>
   );
 }

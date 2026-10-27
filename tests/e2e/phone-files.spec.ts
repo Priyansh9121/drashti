@@ -13,11 +13,11 @@ import { makeTestImage, makeTestTone } from './test-media';
  * Files between Drashti and its phones (Session 54, D3 and D4), each step seen in the operator window and on a
  * phone or tablet against the app's real server on this computer (Safari's engine as an iPhone or iPad, Chrome's
  * as an Android phone): a playlist shared with phones from its right-click menu, listed on a remote under Shared
- * from Drashti, its files opened in D1's viewer on the device (a sound played there from its own file, only while
- * shared), read-only, and never for a Stage or Announcements device; and a file added from a phone while the
- * switch is on, sent with a progress bar, picking up again after the connection drops, Cancel, the size limit and
- * a renamed file refused in words, then in Added from Phones and Media with the phone's name, never live by
- * itself. At 375 × 812 and 768 × 1024, passing axe. Placeholder content and generated sound only; codes and
+ * from Drashti (the library's third choice while something is shared), its files opened in D1's viewer on the
+ * device (a sound played there from its own file, only while shared), read-only, and never for a Stage or
+ * Announcements device; and a file added from a phone (at the top of the library's Media) while the switch is on,
+ * sent with a progress bar, picking up again after the connection drops, Cancel, the size limit and a renamed file
+ * refused in words, then in Added from Phones and Media with the phone's name, never live by itself. At 375 × 812 and 768 × 1024, passing axe. Placeholder content and generated sound only; codes and
  * tokens are made at run time and never printed.
  */
 
@@ -112,6 +112,9 @@ test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared 
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await p.getByTestId('remote-tab-library').click();
     await expect(p.getByTestId('remote-library')).toBeVisible();
+    // Nothing shared: the library's switch is Presentations and Media alone.
+    await expect(p.getByTestId('remote-library-media')).toBeVisible();
+    await expect(p.getByTestId('remote-library-shared')).toHaveCount(0);
     await expect(p.getByTestId('remote-shared')).toHaveCount(0);
 
     // A remote is paired: Share with Phones and Tablets, and the playlist's row says so.
@@ -121,11 +124,16 @@ test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared 
     await expect(node.getByTestId('playlist-shared')).toBeVisible();
     await expectNoSeriousA11yIssues(win, 'a playlist shared with phones, in the operator window');
 
-    // On the phone, under Shared from Drashti: its items with its headers, each file to look at.
+    // On the phone, Shared from Drashti is the library's third choice now: its items with its headers, each file
+    // to look at.
+    const choice = p.getByTestId('remote-library-shared');
+    await choice.click();
+    await expect(choice).toHaveAttribute('aria-selected', 'true');
     const shared = p.getByTestId('remote-shared');
     await expect(shared.getByTestId('remote-shared-playlist')).toContainText(PLAYLIST);
     await expectNoSeriousA11yIssues(p, 'Shared from Drashti on a phone at 375 × 812');
-    expect(await tooSmall(p, '[data-testid="remote-files"]')).toEqual([]);
+    expect(await tooSmall(p, '[data-testid="remote-shared"]')).toEqual([]);
+    expect(await tooSmall(p, '[role="tablist"][aria-label="In the library"]')).toEqual([]);
     await shared.getByTestId('remote-shared-playlist').click();
     await expect(shared.getByTestId('remote-shared-header')).toHaveText(['Welcome', 'Kirtan']);
     await expect(shared.getByTestId('remote-shared-item')).toHaveCount(3);
@@ -180,11 +188,14 @@ test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared 
       expect((await apiCall(port, items, { token })).status, kind).toBe(403);
     }
 
-    // Stop Sharing: gone from its row, from the phone, and from the API.
+    // Stop Sharing: gone from its row, from the phone (the library back on Presentations), and from the API.
     await node.click({ button: 'right' });
     await win.getByRole('menuitem', { name: 'Stop Sharing' }).click();
     await expect(node.getByTestId('playlist-shared')).toHaveCount(0);
+    await expect(p.getByTestId('remote-library-shared')).toHaveCount(0);
     await expect(p.getByTestId('remote-shared')).toHaveCount(0);
+    await expect(p.getByTestId('remote-library-presentations')).toHaveAttribute('aria-selected', 'true');
+    await expect(p.getByTestId('remote-library')).toBeVisible();
     expect((await apiCall(port, items, { token: script })).status).toBe(404);
   } finally {
     await phone.close();
@@ -231,6 +242,7 @@ test('a shared playlist’s sound plays on a phone from its own file, only while
     await setShared(win, show.playlistId, true);
     expect((await apiCall(port, original, { token: script })).status).toBe(200);
     await p.getByTestId('remote-tab-library').click();
+    await p.getByTestId('remote-library-shared').click();
     const shared = p.getByTestId('remote-shared');
     await shared.getByTestId('remote-shared-playlist').click();
     await shared.getByTestId('remote-shared-item').filter({ hasText: 'Placeholder tone' }).click();
@@ -261,6 +273,8 @@ test('a shared playlist’s sound plays on a phone from its own file, only while
     await p.setViewportSize({ width: 768, height: 1024 });
     await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
     await p.getByTestId('remote-side-library').click();
+    // Still the library's choice, as it was on the phone.
+    await expect(p.getByTestId('remote-library-shared')).toHaveAttribute('aria-selected', 'true');
     await expect(
       shared.getByTestId('remote-shared-item').filter({ hasText: 'Placeholder tone' }),
     ).toBeVisible();
@@ -328,6 +342,7 @@ test('a folder playlist shared whole: a smart playlist following a folder, its f
     await win.getByRole('menuitem', { name: 'Share with Phones and Tablets' }).click();
     await expect(node.getByTestId('playlist-shared')).toBeVisible();
     // Shared whole: its own files, then its folder's, under the folder's name.
+    await p.getByTestId('remote-library-shared').click();
     const shared = p.getByTestId('remote-shared');
     await shared.getByTestId('remote-shared-playlist').filter({ hasText: 'Placeholder Sabha' }).click();
     await expect(shared.getByTestId('remote-shared-header')).toHaveText(['Week 1']);
@@ -359,9 +374,10 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // Add to Drashti sits at the top of the library's Media, and is not there until someone turns it on.
     await p.getByTestId('remote-tab-library').click();
-    await expect(p.getByTestId('remote-library')).toBeVisible();
-    // Off until someone turns it on.
+    await p.getByTestId('remote-library-media').click();
+    await expect(p.getByTestId('remote-media')).toBeVisible();
     await expect(p.getByTestId('remote-add')).toHaveCount(0);
     await win.getByTestId('open-network').click();
     const panel = win.getByTestId('network-panel');
@@ -373,7 +389,7 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
     await panel.getByRole('button', { name: 'Close phones and tablets' }).click();
     await expect(p.getByTestId('remote-add-button')).toBeVisible();
     await expectNoSeriousA11yIssues(p, 'Add to Drashti on a phone at 375 × 812');
-    expect(await tooSmall(p, '[data-testid="remote-files"]')).toEqual([]);
+    expect(await tooSmall(p, '[data-testid="remote-add"]')).toEqual([]);
 
     // The second piece's connection drops; asking where to carry on waits until the test has seen it said.
     let pieces = 0;
@@ -453,6 +469,7 @@ test('at 768 × 1024: Cancel leaves nothing behind, a file over the size limit a
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
     await p.getByTestId('remote-side-library').click();
+    await p.getByTestId('remote-library-media').click();
     await expect(p.getByTestId('remote-add-button')).toBeVisible();
 
     // Cancel while a piece is on its way: it stops at once, and Drashti keeps nothing of it.
@@ -475,7 +492,7 @@ test('at 768 × 1024: Cancel leaves nothing behind, a file over the size limit a
     await expect.poll(() => pieces).toBe(2);
     await expect(row).toHaveAttribute('data-state', 'receiving');
     await expectNoSeriousA11yIssues(p, 'a file being sent from a tablet at 768 × 1024');
-    expect(await tooSmall(p, '[data-testid="remote-files"]')).toEqual([]);
+    expect(await tooSmall(p, '[data-testid="remote-add"]')).toEqual([]);
     await row.getByRole('button', { name: 'Cancel Placeholder tone.wav' }).click();
     cancelled();
     await expect(row).toHaveAttribute('data-state', 'cancelled');
