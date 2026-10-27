@@ -1,8 +1,10 @@
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   utimesSync,
@@ -12,6 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PICTURE_WIDTHS, pictureStep } from '../../shared/device-pictures';
+import { ffmpegHere } from '../testing/ffmpeg-here';
+import { readPictureInfo } from './picture-info';
 import { renditionArgs, RenditionMaker, type RenditionRun } from './renditions';
 
 /*
@@ -182,4 +186,68 @@ describe('making and keeping pictures for devices (Session 54, D1)', () => {
     expect(await again.get('c', c, 640)).toEqual(third);
     expect(run.calls.length).toBe(calls);
   });
+});
+
+const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+
+/** FFmpeg's own test picture or clip, made here. */
+function make(args: string[]): void {
+  const r = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+  if (r.status !== 0) throw new Error(r.stderr.toString());
+}
+
+/** The same JPEG with an EXIF orientation of 6 (turned a quarter clockwise, as a phone's upright photo is). */
+function turned(file: string, out: string): string {
+  const jpg = readFileSync(file);
+  const tiff = Buffer.alloc(26);
+  tiff.write('II', 0, 'latin1');
+  tiff.writeUInt16LE(42, 2);
+  tiff.writeUInt32LE(8, 4);
+  tiff.writeUInt16LE(1, 8);
+  tiff.writeUInt16LE(0x0112, 10);
+  tiff.writeUInt16LE(3, 12);
+  tiff.writeUInt32LE(1, 14);
+  tiff.writeUInt16LE(6, 18);
+  const payload = Buffer.concat([Buffer.from('Exif\0\0', 'latin1'), tiff]);
+  const head = Buffer.from([0xff, 0xe1, 0, 0]);
+  head.writeUInt16BE(payload.length + 2, 2);
+  writeFileSync(out, Buffer.concat([jpg.subarray(0, 2), head, payload, jpg.subarray(2)]));
+  return out;
+}
+
+describe.skipIf(!ffmpegHere(ffmpeg))('pictures made smaller by the bundled FFmpeg (Session 54, D1)', () => {
+  it('makes a step as wide as asked, a photo turned as it is shown, a see-through picture so, and a video’s frame', async () => {
+    const media = join(dir, 'media');
+    const maker = new RenditionMaker(join(dir, 'sized'), ffmpeg);
+    const photo = join(media, 'photo.jpg');
+    make(['-f', 'lavfi', '-i', 'testsrc2=s=1600x900', '-frames:v', '1', photo]);
+    const wide = await maker.get('photo', { path: photo, kind: 'image' }, 600);
+    expect(wide).toMatchObject({ type: 'image/jpeg', original: false });
+    expect(await readPictureInfo(wide?.file ?? '')).toMatchObject({
+      format: 'jpeg',
+      width: 640,
+      height: 360,
+    });
+    // Upright on a phone: 900 wide as shown, so 320 wide and taller than wide.
+    const upright = turned(photo, join(media, 'upright.jpg'));
+    expect(await readPictureInfo(upright)).toMatchObject({ width: 900, height: 1600 });
+    const small = await maker.get('upright', { path: upright, kind: 'image' }, 300);
+    expect(await readPictureInfo(small?.file ?? '')).toMatchObject({ width: 320, height: 569 });
+    // Half see-through: a PNG still, its alpha kept.
+    const glass = join(media, 'glass.png');
+    make(['-f', 'lavfi', '-i', 'color=c=red@0.5:s=800x600,format=rgba', '-frames:v', '1', glass]);
+    const kept = await maker.get('glass', { path: glass, kind: 'image' }, 320);
+    expect(kept).toMatchObject({ type: 'image/png', original: false });
+    expect(await readPictureInfo(kept?.file ?? '')).toMatchObject({ format: 'png', width: 320, alpha: true });
+    // A video's frame, at the width asked.
+    const clip = join(media, 'clip.mp4');
+    make(['-f', 'lavfi', '-i', 'testsrc2=s=1280x720:r=10', '-t', '1', '-pix_fmt', 'yuv420p', clip]);
+    const frame = await maker.get('clip', { path: clip, kind: 'video' }, 640);
+    expect(await readPictureInfo(frame?.file ?? '')).toMatchObject({
+      format: 'jpeg',
+      width: 640,
+      height: 360,
+    });
+  }, 60_000);
 });
