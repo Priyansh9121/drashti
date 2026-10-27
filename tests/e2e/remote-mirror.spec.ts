@@ -236,14 +236,33 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await expect(prop).toHaveAttribute('data-shown', 'true');
     await dispatch(win, { type: 'hideProp', propId: logo.id });
     await expect(prop).not.toHaveAttribute('data-shown');
-    await win.evaluate(() =>
+    const made = await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.props.save(null, {
         name: 'Placeholder corner words',
         width: 1920,
         height: 1080,
-        elements: [],
+        elements: [
+          {
+            id: 'placeholder-corner-words',
+            kind: 'text',
+            frame: { x: 60, y: 960, width: 1800, height: 80 },
+            text: 'Placeholder corner words',
+            lang: 'en',
+            style: {
+              fontFamily: null,
+              fontSize: 48,
+              fontWeight: 600,
+              color: '#ffffff',
+              align: 'center',
+              verticalAlign: 'middle',
+              lineHeight: 1.2,
+              shadow: true,
+            },
+          },
+        ],
       }),
     );
+    expect(made.ok).toBe(true);
     await expect(p.getByTestId('remote-prop').filter({ hasText: 'Placeholder corner words' })).toBeVisible();
 
     // The stage message: shown on the stage screens only, said on the phone and in the window, then cleared.
