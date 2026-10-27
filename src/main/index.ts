@@ -318,6 +318,11 @@ const perfTest = sw('DRASHTI_SELFTEST') === 'performance';
 const ffmpegCheck = sw('DRASHTI_SELFTEST') === 'ffmpeg';
 // The restart after a restore, for real (scripts/check-relaunch.mjs; see relaunch-selftest.ts).
 const relaunchTest = sw('DRASHTI_SELFTEST') === 'restore-relaunch';
+/**
+ * Any self-test (Session 54, E review): it puts back no show after a crash, runs no schedule, imports nothing from the
+ * drop folder and shows no announcement: a computer not let in shows only the self-test's own placeholder content.
+ */
+const selfTestRun = sw('DRASHTI_SELFTEST') !== undefined;
 // Tests (and multiple installs) can point Drashti at its own data folder.
 const userDataOverride = sw('DRASHTI_USER_DATA_DIR');
 /** This computer's own data folder, before any override (the performance check reads its settings). */
@@ -2142,9 +2147,10 @@ function start(): void {
   // What the last run left, read once before this run saves anything (Session 20): whether it quit
   // cleanly (which also decides the starting mode) and, if not, its show. A restored library starts
   // with nothing live (the saved state belongs to the library before it).
-  const startup: StartupRecovery = restored.restored
-    ? { cleanQuit: true, recentStop: false, putBack: null, tooOld: null }
-    : startupRecovery(recoveryFiles, { startLookId: lookRepo.firstId() });
+  const startup: StartupRecovery =
+    restored.restored || selfTestRun
+      ? { cleanQuit: true, recentStop: false, putBack: null, tooOld: null }
+      : startupRecovery(recoveryFiles, { startLookId: lookRepo.firstId() });
   const saved = startup.putBack;
   if (saved) {
     const put = engine.restore(saved);
@@ -3207,6 +3213,8 @@ function start(): void {
     ...(testBackupRate ? { bytesPerSecond: testBackupRate } : {}),
   });
   eventsBackupsWas ??= scheduledBackups.view();
+  // A self-test runs no schedule (Session 54).
+  if (selfTestRun) scheduledBackups.dispose();
   stops.add('scheduled backups', () => {
     scheduledBackups.dispose();
   });
@@ -3623,7 +3631,7 @@ function start(): void {
   });
   eventsAnnouncementsWas = announcements.view();
   // What recovery put back carries on until its time; the rest that was showing has ended.
-  announcements.resume();
+  if (!selfTestRun) announcements.resume();
   stops.add('announcements', () => {
     announcements.close();
   });
@@ -4310,7 +4318,7 @@ function start(): void {
     settleMs: DROP_SETTLE_MS,
     watch: nodeWatch,
   });
-  void dropFolder.start();
+  if (!selfTestRun) void dropFolder.start();
   stops.add('drop folder', () => {
     dropFolder.stop();
   });
