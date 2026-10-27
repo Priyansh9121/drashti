@@ -71,6 +71,7 @@ import {
   stepsLeft,
 } from './deck-steps';
 import { deckClips, lastStep, stepOf } from '../../shared/deck-show';
+import type { DeckSlide } from '../../shared/deck';
 import { reduce, sameData } from './reducer';
 import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
@@ -1113,9 +1114,12 @@ export class ShowEngine {
   /**
    * Whether a deck's slide at `slideIndex` comes in order (Session 54, C2): the slide up is the one before it in the
    * same order, a deck's, at its last step, so the deck's own transition in its coming-in clip starts from what the
-   * screens show. Never in Repeat Slides, whose own transition brings every slide.
+   * screens show. Never in Repeat Slides, whose own transition brings every slide. And (C review) only when that slide
+   * is the very one its clip was made after (`after`, its last still): the order played leaves out an unticked slide,
+   * and a slide deleted or moved leaves a clip that begins on another's frame, which would show on every screen, node,
+   * the stream and key and fill through its transition. One that does not say comes in past its own transition.
    */
-  private inOrder(presentationId: string, slideIndex: number): boolean {
+  private inOrder(presentationId: string, slideIndex: number, deck: DeckSlide): boolean {
     const before = this.state.layers.slide;
     return (
       repeatPlaylistOf(presentationId) === null &&
@@ -1124,7 +1128,9 @@ export class ShowEngine {
       before.presentationId === presentationId &&
       before.slideIndex === slideIndex - 1 &&
       before.slide.deck !== undefined &&
-      stepOf(before) === lastStep(before.slide.deck)
+      stepOf(before) === lastStep(before.slide.deck) &&
+      deck.after !== undefined &&
+      before.slide.deck.steps.at(-1)?.lastId === deck.after
     );
   }
 
@@ -1168,7 +1174,7 @@ export class ShowEngine {
       ? deckShow(
           played.slide.deck,
           entry,
-          this.inOrder(presentationId, slideIndex),
+          this.inOrder(presentationId, slideIndex, played.slide.deck),
           this.transitionFor(order, played),
           at,
         )

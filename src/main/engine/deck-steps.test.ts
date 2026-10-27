@@ -59,14 +59,32 @@ const video = (mediaId: string, start: DeckMedia['start'], more: Partial<DeckMed
   ...more,
 });
 
+/**
+ * The slides of one deck, each coming-in clip made after the slide before it (`after`: that slide's last frame), as an
+ * import of the whole deck makes them.
+ */
+function chained(slides: RenderSlide[]): RenderSlide[] {
+  return slides.map((s, i) => {
+    const before = slides[i - 1]?.deck?.steps.at(-1)?.lastId;
+    return before && s.deck ? { ...s, deck: { ...s.deck, after: before } } : s;
+  });
+}
+
 function setup(
   slides: RenderSlide[] = [deckSlide('a', 3), deckSlide('b', 2), deckSlide('c', 1)],
-  options: { transition?: Transition | null; autoAdvance?: (number | null)[] } = {},
+  options: {
+    transition?: Transition | null;
+    autoAdvance?: (number | null)[];
+    arrangements?: Record<string, number[]>;
+    selected?: string;
+  } = {},
 ) {
   const source = new MemorySlideSource();
-  source.set('deck', slides, [], {
+  source.set('deck', chained(slides), [], {
     transition: options.transition ?? dissolve(600),
     ...(options.autoAdvance ? { autoAdvance: options.autoAdvance } : {}),
+    ...(options.arrangements ? { arrangements: options.arrangements } : {}),
+    ...(options.selected ? { selected: options.selected } : {}),
   });
   source.set('plain', [textSlide('x', 'Placeholder one')]);
   let clock = 50_000;
@@ -197,6 +215,29 @@ describe('a deck’s slide stepped through its clicks (Session 54, C2)', () => {
     engine.dispatch({ type: 'goLive', presentationId: 'plain', slideIndex: 0 });
     engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 2 });
     expect(up(engine)).toEqual({ id: 'c', step: 0, from: 400, transition: 'dissolve' });
+  });
+
+  it('comes in order only after the very slide its clip was made after: never past a slide left out of the play order (C review)', () => {
+    // The middle slide left out of the order played (unticked, or an arrangement without it): the last slide's
+    // coming-in clip begins on the middle one's last frame, which no screen shows, so it comes in past its own
+    // transition, under Drashti's.
+    const { engine } = setup(undefined, { arrangements: { short: [0, 2] }, selected: 'short' });
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    for (let i = 0; i < 3; i++) engine.dispatch({ type: 'next' });
+    expect(engine.current.live.slideIndex).toBe(1);
+    expect(up(engine)).toEqual({ id: 'c', step: 0, from: 400, transition: 'dissolve' });
+    // Made after the slide before it: in order. One that says nothing of the slide it was made after: always past its
+    // own transition.
+    const known = setup([deckSlide('a', 1), deckSlide('b', 1)]);
+    known.engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    known.engine.dispatch({ type: 'next' });
+    expect(up(known.engine)).toMatchObject({ id: 'b', from: 0 });
+    const plain = new MemorySlideSource();
+    plain.set('deck', [deckSlide('a', 1), deckSlide('b', 1)]);
+    const loose = new ShowEngine(plain, new RecordingTransport(), () => 1000);
+    loose.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    loose.dispatch({ type: 'next' });
+    expect(up(loose)).toMatchObject({ id: 'b', step: 0, from: 400 });
   });
 
   it('a click on the deck’s slide up never starts it again', () => {

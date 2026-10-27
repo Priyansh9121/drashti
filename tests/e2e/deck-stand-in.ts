@@ -70,6 +70,45 @@ function colour(file: string, rgb: readonly number[], seconds: number | null): s
   return file;
 }
 
+/**
+ * Two flat colours one after the other (an H.264 MP4): a coming-in clip as a deck's movie cuts it, beginning on the
+ * slide before's last colour for `firstSeconds` (the deck's own transition), then the slide's own.
+ */
+function twoColours(
+  file: string,
+  first: readonly number[],
+  second: readonly number[],
+  firstSeconds: number,
+): string {
+  const lavfi = (rgb: readonly number[], d: number) => [
+    '-f',
+    'lavfi',
+    '-i',
+    `color=c=0x${hex(rgb)}:s=320x180:r=30:d=${String(d)}`,
+  ];
+  const r = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    ...lavfi(first, firstSeconds),
+    ...lavfi(second, CLIP_MS / 1000 - firstSeconds),
+    '-filter_complex',
+    '[0:v][1:v]concat=n=2:v=1:a=0',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
+    '-g',
+    '15',
+    file,
+  ]);
+  if (r.status !== 0) throw new Error(`ffmpeg: ${r.stderr.toString()}`);
+  return file;
+}
+
 /** A placeholder video of FFmpeg's test pattern, `seconds` long, with no sound. */
 function pattern(file: string, seconds: number): string {
   const r = spawnSync(ffmpeg ?? '', [
@@ -107,6 +146,8 @@ export interface DeckFiles {
   video: string;
   poster: string;
   tone: string;
+  /** A coming-in clip beginning on step 1's last colour (green), then the next slide's own (yellow). */
+  through: string;
 }
 
 /** Make the stand-in deck's files and bring them into Media. */
@@ -123,6 +164,12 @@ export async function makeDeckFiles(win: Page): Promise<DeckFiles> {
     pattern(join(dir, 'Placeholder deck video.mp4'), 6),
     colour(join(dir, 'Placeholder poster.png'), [40, 40, 40], null),
     makeTestTone(join(dir, 'Placeholder deck sound.wav'), { seconds: 8, hz: 440 }),
+    twoColours(
+      join(dir, 'Placeholder through.mp4'),
+      STEP_COLOURS[1].last,
+      NEXT_COLOURS.last,
+      TRANSITION_MS / 1000,
+    ),
   ];
   const ids = await importAndGetIds(win, files);
   const at = (i: number) => ids[i] ?? '';
@@ -135,6 +182,7 @@ export async function makeDeckFiles(win: Page): Promise<DeckFiles> {
     video: at(9),
     poster: at(10),
     tone: at(11),
+    through: at(12),
   };
 }
 
@@ -157,6 +205,8 @@ export function standInDecks(
   };
   const second: DeckSlide = {
     transition: { name: 'fade', durationMs: TRANSITION_MS },
+    // Made after the first slide, as an import of the whole deck makes it (C review): it comes in order after it.
+    after: f.lasts[2] ?? '',
     steps: [{ clipId: f.nextClip, clipMs: CLIP_MS, transitionMs: TRANSITION_MS, lastId: f.nextLast }],
     media: [],
     ...more.second,
@@ -193,9 +243,15 @@ export function deckSound(f: DeckFiles, start: DeckMedia['start']): DeckMedia {
  * A presentation of the deck's slides, written into the library as C2's import stores them (through the slide
  * editor's own save): each slide's picture its last step's last frame over the whole slide, its videos at their boxes.
  */
-export async function writeDeck(win: Page, name: string, decks: DeckSlide[]): Promise<string> {
+export async function writeDeck(
+  win: Page,
+  name: string,
+  decks: DeckSlide[],
+  /** Slides left unticked (by index: kept, skipped in the show), and the presentation's own transition. */
+  more: { unticked?: number[]; transition?: { kind: 'dissolve'; durationMs: number } } = {},
+): Promise<string> {
   return win.evaluate(
-    async ({ name, decks }) => {
+    async ({ name, decks, more }) => {
       const d = (globalThis as PageGlobals).drashti;
       const made = await d.library.newFromWords(
         name,
@@ -238,11 +294,13 @@ export async function writeDeck(win: Page, name: string, decks: DeckSlide[]): Pr
           }));
         slide.elements = [picture, ...videos];
         slide.deck = deck;
+        if (more.unticked?.includes(i)) slide.enabled = false;
       });
+      if (more.transition) doc.transition = more.transition;
       const saved = await d.library.saveSlides(made.id, doc, opened.stamp);
       if (!saved.ok) throw new Error(saved.message);
       return made.id;
     },
-    { name, decks },
+    { name, decks, more },
   );
 }
