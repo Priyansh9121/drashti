@@ -324,11 +324,22 @@ describe('a deck’s videos and sounds (Session 54, C2)', () => {
     expect(sounds.some((s) => s.mediaId === 'muted-sound')).toBe(false);
   });
 
-  it('play its transition’s sound as the slide comes in with that transition, never after a jump or once clicked on', () => {
+  it('play its transition’s sound as the slide comes in with that transition, to its end however soon it is clicked on, never after a jump (C review)', () => {
     const chime = (layer: EngineState['layers']['slide']) =>
       soundsOf(state({ slide: layer })).find((s) => s.mediaId === 'chime');
-    expect(chime(deckSlide(0))).toMatchObject({ startedAt: 5000, loop: false, volume: 1 });
-    // Come in by a jump (its clip started past the deck's own transition): no chime.
+    // The engine stamps its start as the slide comes in with the deck's own transition.
+    const withChime = (layer: EngineState['layers']['slide'], step: number) =>
+      layer && {
+        ...layer,
+        step,
+        stepAt: 5000 + step * 300,
+        seeks: { ...layer.seeks, chime: { at: 5000, toMs: 0 } },
+      };
+    const coming = chime(withChime(deckSlide(0), 0));
+    expect(coming).toMatchObject({ startedAt: 5000, loop: false, volume: 1, seek: { at: 5000, toMs: 0 } });
+    // Clicked on while it sounds: the same sound plays on to its end (its key the same), never cut off.
+    expect(chime(withChime(deckSlide(0), 1))?.key).toBe(coming?.key);
+    // Come in by a jump (its clip started past the deck's own transition): the engine stamps none, so no chime.
     expect(chime(deckSlide(0, 500))).toBeUndefined();
   });
 });

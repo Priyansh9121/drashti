@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { DeckMedia, DeckSlide } from './deck';
-import { deckPictureId, deckPictures, deckSlideAt, deckSounds, stepOf, stepTiming } from './deck-show';
+import {
+  deckPictureId,
+  deckPictures,
+  deckSlideAt,
+  deckSounds,
+  stepOf,
+  stepTiming,
+  videoShowsFrom,
+} from './deck-show';
 import { playingNow, playingOf } from './engine/playing';
 import { mediaToPreload } from './engine/preload';
 import { type EngineState, initialEngineState, type SlideLayer } from './engine/state';
@@ -161,5 +169,32 @@ describe('a deck’s slide as the screens draw it (Session 54, C2)', () => {
     ]);
     expect(playingOf(s, { layer: 'slide', mediaId: 'deck-video' })?.paused).toBe(true);
     expect(playingOf(s, { layer: 'slide', mediaId: 'nothing' })).toBeNull();
+  });
+});
+
+describe('a deck’s video between its entrance and its exit (C review)', () => {
+  const at = (step: number, more: Partial<SlideLayer> = {}) => {
+    const t = stepTiming(layer({ step, stepAt: 20_000, ...more }));
+    if (!t) throw new Error('no step');
+    return t;
+  };
+  const entering: DeckMedia = { ...video, enterStep: 1, exitStep: 2 };
+
+  it('is hidden before its entrance step and from its exit step, never its poster', () => {
+    expect(videoShowsFrom(entering, at(0))).toBeNull();
+    expect(videoShowsFrom(entering, at(2))).toBeNull();
+  });
+
+  it('shows once its entrance step’s motion is over, at once when come back to, and later steps at once', () => {
+    // Step 1's clip, 800 ms from 20 000: its poster comes in on it.
+    expect(videoShowsFrom(entering, at(1))).toBe(20_800);
+    expect(videoShowsFrom(entering, at(1, { stepFromMs: 800 }))).toBe(-Infinity);
+    expect(videoShowsFrom({ ...video, enterStep: 1 }, at(2))).toBe(-Infinity);
+  });
+
+  it('with no entrance, shows once the deck’s own transition into the slide is over (at once past it)', () => {
+    // Step 0 played from its start: its clip's first 500 ms are the deck's push.
+    expect(videoShowsFrom(video, at(0))).toBe(20_500);
+    expect(videoShowsFrom(video, at(0, { stepFromMs: 500 }))).toBe(20_000);
   });
 });
