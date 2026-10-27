@@ -1,3 +1,5 @@
+import type { AccessPhase, AccessReason } from '../../shared/access';
+
 /*
  * Whether this computer is let in (Session 54, access by Gmail): the one answer every part of the main process asks
  * before it acts (the IPC handlers, the engine's commands, the outputs, the stream and recording, the phones' API and
@@ -6,17 +8,8 @@
  * the countdown to the stop running), everything stops and only Quit works.
  */
 
-export type AccessPhase =
-  /** At start, before the list has answered: nothing opens yet. */
-  | 'checking'
-  /** This computer is not let in: the lock screen (Request Access, or I Have a Token). */
-  | 'locked'
-  /** Let in, and the last check was answered. */
-  | 'in'
-  /** Let in, but the list has not answered for a while: the countdown to the stop runs. */
-  | 'warning'
-  /** Stopped: revoked, rejected, unknown, or 2 minutes with no answer. Only Quit works. */
-  | 'stopped';
+/** Checking at start, locked (the lock screen), in, warning (the countdown) or stopped: shared/access.ts says each. */
+export type { AccessPhase };
 
 export interface AccessState {
   phase: AccessPhase;
@@ -24,8 +17,8 @@ export interface AccessState {
   gmail: string | null;
   /** This computer's Gmail is the owner's (the approver's): only then the Access List. */
   owner: boolean;
-  /** Why it is locked or stopped, as a code the window puts into words; null otherwise. */
-  reason: string | null;
+  /** Why it is locked or stopped, as a code the window puts into words (shared/access.ts); null otherwise. */
+  reason: AccessReason | null;
   /** While 'warning': when the stop comes, in ms on the main process's monotonic clock (never the computer's). */
   stopsAt: number | null;
 }
