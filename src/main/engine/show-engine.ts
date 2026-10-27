@@ -2071,12 +2071,19 @@ export class ShowEngine {
     // What was cued goes once it is live (however it got there).
     if (next.live !== prev.live && next.live.presentationId === next.cue?.presentationId)
       next = reduce(next, { type: 'cue/set', cue: null });
-    // A new position (or a cue) has a new slide after it, and other items coming up.
-    if (next.live !== prev.live || next.cue !== prev.cue) {
+    // A new position (or a cue) has a new slide after it, and other items coming up. What Next says of a file missing
+    // follows the background and the sound up too (Session 54 review): one carrying a deleted file on goes (cleared,
+    // or music in the sound's place), and the next slide's missing file is said.
+    const moved = next.live !== prev.live || next.cue !== prev.cue;
+    if (
+      moved ||
+      next.layers.background !== prev.layers.background ||
+      next.layers.audio !== prev.layers.audio
+    ) {
       const upNext = this.upNext(next.live, next.cue, next.layers.background, next.layers.audio);
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
-      next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
     }
+    if (moved) next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
     // A playlist item going up runs its timer cues, in the same change (not when Back, Previous or
     // recovery come back to it).
     const item = next.live.playlist;

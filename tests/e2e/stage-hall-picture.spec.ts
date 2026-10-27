@@ -32,9 +32,10 @@ import { makeTestImage } from './test-media';
  * this computer's stage screen (read in a small box, inside a tiny one), a tablet's and a node's. Since Session 53
  * Audience off keeps to 30 px at least while it fits, read in a box as small as the layout editor makes one, and
  * the box of the audience screens' state says there are none too: on this computer's stage screen, a node's and a
- * tablet's. Since Session 54 a tablet's muted line naming a window it cannot draw keeps to 30 px at least too, in
- * that box, under Audience off and alone. Placeholder words and generated media only. Quiet: outputs as windows,
- * nothing wider than 1024 assumed.
+ * tablet's. Since Session 54 a tablet's muted line naming a window it cannot draw keeps to 30 px at least too while
+ * it fits, in that box, wrapped and never cut (the review); under Audience off, and with a picture-in-picture input's
+ * line too, all whole. Placeholder words and generated media only. Quiet: outputs as windows, nothing wider than
+ * 1024 assumed.
  */
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -405,15 +406,15 @@ const audienceOffOn = (box: Locator) =>
   });
 
 /**
- * The box's first muted line naming what a page cannot draw (Session 54), as the page draws it, as audienceOffOn
- * reads Audience off: the box's size and the line's in stage canvas pixels, its words, whether the picture is drawn
- * fitted to the box's size yet, whether the line lies wholly inside the picture, and whether it sits in its bottom
- * left.
+ * One of the box's muted lines naming what a page cannot draw (Session 54; the first unless `n` says), as the page
+ * draws it, as audienceOffOn reads Audience off: the box's size and the line's in stage canvas pixels, its words,
+ * whether the picture is drawn fitted to the box's size yet, whether the line lies wholly inside the picture, whether
+ * its words are shown whole (wrapped, never cut: Session 54 review), and whether it sits in its bottom left.
  */
-const unseenOn = (box: Locator) =>
+const unseenOn = (box: Locator, n = 0) =>
   box
     .getByTestId('stage-audience-unseen')
-    .first()
+    .nth(n)
     .evaluate((line) => {
       const area = line.closest<HTMLElement>('[data-testid="stage-audience"]');
       const picture = line.closest<HTMLElement>('[data-hall-picture]');
@@ -435,6 +436,7 @@ const unseenOn = (box: Locator) =>
           r.top >= p.top - 0.5 &&
           r.right <= p.right + 0.5 &&
           r.bottom <= p.bottom + 0.5,
+        whole: line.scrollWidth <= line.clientWidth + 0.5 && line.scrollHeight <= line.clientHeight + 0.5,
         bottomLeft: r.left - p.left < p.width / 4 && p.bottom - r.bottom < p.height / 4,
       };
     });
@@ -776,9 +778,14 @@ test('on a node with no audience screen, the stage box draws Main’s hall as th
   }
 });
 
-test('a tablet’s box names a window it cannot draw, at 30 px at least in a small box, and the box of the audience screens says when they are off, and when there are none', async () => {
+test('a tablet’s box names a window it cannot draw, whole and at 30 px at least in a small box while it fits, and the box of the audience screens says when they are off, and when there are none', async () => {
   test.setTimeout(180_000);
-  const { app } = await launchApp({ ...NETWORK_ENV, ...OUTPUTS, DRASHTI_TEST_WINDOW_STANDIN: '1' });
+  const { app } = await launchApp({
+    ...NETWORK_ENV,
+    ...OUTPUTS,
+    DRASHTI_TEST_WINDOW_STANDIN: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+  });
   const win = await operatorPage(app);
   await operatorReady(win);
   await setUpScreen(win, 'Main Hall', 0);
@@ -839,9 +846,9 @@ test('a tablet’s box names a window it cannot draw, at 30 px at least in a sma
     await expect(screensState).toHaveText('Audience screens showing');
     await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
 
-    // In a box as small as the layout editor makes one (Session 54): the window's name keeps to 30 px at least, as
-    // Audience off does, where at 40 px on the picture it was a sixth of that; alone, and under Audience off, each
-    // wholly inside the picture, the name in its bottom left (Audience off above it).
+    // In a box as small as the layout editor makes one (Session 54): the window's name keeps to 30 px at least while
+    // it fits, as Audience off does, where at 40 px on the picture it was a sixth of that; wrapped, never cut with
+    // "…" (Session 54 review), wholly inside the picture, in its bottom left.
     const small = {
       ...newStageBox('audience', 'placeholder-hall-box'),
       frame: { x: 800, y: 450, ...AUDIENCE_BOX_MIN },
@@ -852,16 +859,48 @@ test('a tablet’s box names a window it cannot draw, at 30 px at least in a sma
       text: `A window: ${MEETING}`,
       fitted: true,
       inside: true,
+      whole: true,
       bottomLeft: true,
     };
     await expect.poll(() => unseenOn(box)).toMatchObject(named);
     expect((await unseenOn(box))?.size).toBeGreaterThanOrEqual(30);
+    // Under Audience off: both whole and inside, in step (the same size), brought below 30 px only as far as the
+    // wrapped name needs to fit under it (where it wraps decides: 29 or 30 px with these words).
     await audience(win, false);
     await expect(box.getByTestId('stage-audience-off')).toHaveText('Audience off');
     await expect.poll(() => unseenOn(box)).toMatchObject(named);
-    expect((await unseenOn(box))?.size).toBeGreaterThanOrEqual(30);
-    expect(await audienceOffOn(box)).toMatchObject({ box: '320x180', fitted: true, inside: true });
-    expect((await audienceOffOn(box))?.size).toBeGreaterThanOrEqual(30);
+    const under = await unseenOn(box);
+    expect(under?.size).toBeGreaterThanOrEqual(24);
+    expect(await audienceOffOn(box)).toMatchObject({
+      box: '320x180',
+      fitted: true,
+      inside: true,
+      size: under?.size,
+    });
+    // A picture-in-picture box holding a video input too (Chromium's fake camera): its line under the window's, both
+    // whole and inside, the same size, coming down together as far as both must to fit under Audience off.
+    const inputId = await win.evaluate(
+      async ({ device, name }) => {
+        const made = await (globalThis as PageGlobals).drashti.videoInputs.add({ name, device, fit: 'fit' });
+        if (!made.ok) throw new Error(made.message);
+        return made.view.inputs.find((i) => i.name === name)?.id ?? '';
+      },
+      { device: await fakeCamera(win), name: INPUT },
+    );
+    await dispatch(win, { type: 'showPip', source: { kind: 'input', inputId }, place: PLACE });
+    await expect(box.getByTestId('stage-audience-unseen')).toHaveText([
+      `A window: ${MEETING}`,
+      `Picture in picture: ${INPUT}`,
+    ]);
+    await expect
+      .poll(() => unseenOn(box, 1))
+      .toMatchObject({ ...named, text: `Picture in picture: ${INPUT}` });
+    const first = await unseenOn(box);
+    expect(first).toMatchObject({ box: '320x180', fitted: true, inside: true, whole: true });
+    expect(first?.size).toBe((await unseenOn(box, 1))?.size);
+    expect(await audienceOffOn(box)).toMatchObject({ inside: true, size: first?.size });
+    await dispatch(win, { type: 'hidePip' });
+    await expect(box.getByTestId('stage-audience-unseen')).toHaveCount(1);
     await audience(win, true);
     await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
 
