@@ -1,15 +1,18 @@
 import { PHONE_STOPPED_TEXT, PHONE_STOPPED_TITLE } from '../../../shared/access';
 import { useEngine } from '../engine/engine-store';
 import { Mark } from '../ui/Mark';
+import { useStopped } from './stopped-store';
 
 /*
  * A phone's or tablet's page while its Drashti has stopped (Session 54, access by Gmail): said plainly over the whole
- * page, from the engine's own state as the feed brings it. Nothing under it works anyway: Drashti refuses every
- * request while it is not let in.
+ * page, from the engine's own state as the feed brings it, or as the feed closed or a request was refused with
+ * Drashti's own words for it. Nothing under it works anyway: Drashti refuses every request while it is not let in.
  */
 export function PhoneStopped() {
   const stopped = useEngine((s) => s.state?.stopped ?? null);
-  if (!stopped) return null;
+  // Or told so as its feed closed, or as a request was refused (stopped-store.ts).
+  const told = useStopped((s) => s.stopped);
+  if (!stopped && !told) return null;
   return (
     <div
       role="alert"

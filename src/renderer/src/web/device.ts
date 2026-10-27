@@ -1,4 +1,5 @@
 import type { DeviceKind } from '../../../shared/network';
+import { heardStopped, isStoppedAnswer } from './stopped-store';
 
 /*
  * This device's pairing, as a phone or tablet keeps it: its token, kept in
@@ -101,6 +102,8 @@ export async function api<T = Record<string, unknown>>(
     // An answer without JSON.
   }
   if (response.status === 401 && own && token && path !== '/api/v1/pair') toPairing();
+  // Drashti has stopped (Session 54): the page says so plainly.
+  if (isStoppedAnswer(response.status, body['message'])) heardStopped();
   if (!response.ok || body['ok'] !== true)
     return {
       ok: false,
