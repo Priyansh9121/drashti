@@ -378,8 +378,7 @@ interface BuiltMenu {
 }
 
 /**
- * Every menu Drashti can have on `platform`: Main's in each mode and a node's, diagnostics off and on. Roles on
- * or off give the same menus (an admin's items ask for the PIN when chosen), so they are built once.
+ * Every menu Drashti can have on `platform`: Main's in each mode and a node's, diagnostics off and on.
  */
 function everyMenu(platform: Platform): BuiltMenu[] {
   return on(platform, () => {

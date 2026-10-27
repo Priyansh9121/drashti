@@ -410,29 +410,24 @@ async function onAirAndRec(
   await expect(win.getByTestId('no-sound')).toHaveCount(noSound ? 1 : 0);
 }
 
-test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones and the PINs on: nothing cut off, nothing over another, no sideways scroll', async () => {
+test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones on: nothing cut off, nothing over another, no sideways scroll', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
   await networkOn(win);
-  // Placeholder PINs, as the roles specs use.
-  const pins = await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.roles.setPins({ admin: '481526', operator: '937402' }),
-  );
-  expect(pins).toMatchObject({ ok: true });
   const header = win.getByTestId('app-header');
   await expect(header.getByTestId('network-badge')).toBeVisible();
   await expect(header.getByTestId('open-announcements')).toBeVisible();
-  const chip = header.getByTestId('role-chip');
-  await expect(chip).toHaveAttribute('data-role', 'admin');
+  // No button says who is at the controls (Session 54, E5: roles are gone).
+  await expect(header.getByTestId('role-chip')).toHaveCount(0);
   const sizes = [
     [1024, 645],
     [1280, 720],
   ] as const;
   for (const [width, height] of sizes) {
     await win.setViewportSize({ width, height });
-    await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, admin unlocked`);
+    await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, with Phones on`);
     // Crowded, its buttons keep their names for the keyboard and screen readers; Screens and the switches their words.
     for (const words of ['Themes', 'Stream', 'Phones', 'Announcements', 'Simple Mode'])
       await expect(header.getByRole('button', { name: words, exact: true })).toBeVisible();
@@ -452,17 +447,6 @@ test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones and the PINs o
       await onAirAndRec(app, win, stream.live, stream.noSound);
       await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, ${stream.words}`);
     }
-  // Locked: the operator's chip, the same, on air and recording.
-  await chip.click();
-  await expect(chip).toHaveAttribute('data-role', 'operator');
-  await onAirAndRec(app, win, 'live', false);
-  for (const [width, height] of sizes) {
-    await win.setViewportSize({ width, height });
-    await expectTopBarFits(
-      win,
-      `the top bar at ${String(width)} × ${String(height)}, as an operator, on air`,
-    );
-  }
   await app.close();
 });
 

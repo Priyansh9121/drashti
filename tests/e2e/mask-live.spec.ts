@@ -8,8 +8,8 @@ import { launchApp, letTimePass, openMoreTools, operatorPage, operatorReady, set
  * Masks drawn over the live screen (Session 44; Priyansh: "masking, i like it, but it should allow me to add
  * live screen which is projector screen, admin can use it for as long as he wants, not 10 minutes. operator also
  * can use it as long as he can"). The mask editor draws the hall screen's picture as it is now under the
- * shapes, live for as long as it is open, for an admin or an operator; with no hall screen set up, a test
- * pattern, and it says so. Placeholder words only.
+ * shapes, live for as long as it is open, for anyone in Pro Mode (Session 54, E5: roles are gone); with no hall
+ * screen set up, a test pattern, and it says so. Placeholder words only.
  */
 
 const dispatch = (win: Page, command: object) =>
@@ -75,13 +75,7 @@ test('the mask editor draws the hall’s live picture under the shapes for as lo
   await expect(live.locator('[data-layer="slide"]')).toContainText('Placeholder second line');
   await closeEditor(win);
 
-  // An operator (roles on, admin locked) has it live too, and with no time limit it stays so.
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    await d.roles.setPins({ admin: '481526', operator: '937402' });
-    await d.roles.lock();
-  });
-  await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+  // Opened again, it is live again, and with no time limit it stays so.
   await openEditor(win);
   await expect(live.locator('[data-layer="slide"]')).toContainText('Placeholder second line');
   await letTimePass(win, 3000, 'the editor stays open a while; nothing about it runs out');

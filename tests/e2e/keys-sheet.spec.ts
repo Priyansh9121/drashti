@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { KEY_GROUPS, KEYMAP } from '../../src/shared/keymap';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
-import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
@@ -80,14 +79,11 @@ test('the keys sheet opens from the Help menu and with ?, lists every key, and i
 /*
  * Single-letter keys (Session 37, WCAG 2.1.4): B and . (Black-out), L (the Logo) and ? (this list) act
  * anywhere in the window, so a word said to speech software, or a key brushed, could black out the hall.
- * They stay on unless an admin turns them off, with the switch in the keys sheet: then they do nothing
- * anywhere (the window, its menus, Simple Mode), and Black-out and the Logo still work from their buttons.
+ * They stay on unless they are turned off, with the switch in the keys sheet (anyone's in Pro Mode, with no PIN
+ * since Session 54, E5): then they do nothing anywhere (the window, its menus, Simple Mode), and Black-out and
+ * the Logo still work from their buttons.
  * The Logo keeps F12 (Session 50), a named key: the window shows it beside the Logo still.
  */
-
-/** Made-up PINs only, never printed. */
-const ADMIN = '481526';
-const OPERATOR = '937402';
 
 const show = (win: Page) =>
   win.evaluate(async () => {
@@ -152,7 +148,7 @@ const menuAccelerators = (app: Awaited<ReturnType<typeof launchApp>>['app']) =>
     return found;
   });
 
-test('single-letter keys (B, ., L and ?) are on to begin with, and an admin can turn them off in the keys sheet: then they do nothing, in Pro and Simple Mode, and the buttons still work (Session 37, WCAG 2.1.4)', async () => {
+test('single-letter keys (B, ., L and ?) are on to begin with, and can be turned off in the keys sheet: then they do nothing, in Pro and Simple Mode, and the buttons still work (Session 37, WCAG 2.1.4)', async () => {
   test.setTimeout(120_000);
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
@@ -272,57 +268,6 @@ test('single-letter keys (B, ., L and ?) are on to begin with, and an admin can 
   expect(refused).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   expect(await singleKeys(win2)).toBe(false);
   await again.app.close();
-});
-
-test('with roles on, a locked admin cannot change the single-letter keys; the admin PIN can (Session 37)', async () => {
-  test.setTimeout(90_000);
-  const { app } = await launchApp();
-  const win = await operatorPage(app);
-  await win.setViewportSize({ width: 1280, height: 720 });
-  await operatorReady(win);
-  const pins = await win.evaluate((p) => (globalThis as PageGlobals).drashti.roles.setPins(p), {
-    admin: ADMIN,
-    operator: OPERATOR,
-  });
-  expect(pins.ok).toBe(true);
-  // Lock: an operator now.
-  await win.getByTestId('role-chip').click();
-  await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
-  const sheet = win.getByTestId('keys-sheet');
-  const single = sheet.getByTestId('keys-single');
-  const prompt = win.getByTestId('admin-pin');
-
-  // The switch asks for the admin PIN; cancelled, nothing changes.
-  await chooseMenuItem(app, 'keyboard-shortcuts');
-  await expect(single).toBeChecked();
-  await single.click();
-  await expect(prompt).toBeVisible();
-  await prompt.getByRole('button', { name: 'Cancel' }).click();
-  await expect(prompt).toHaveCount(0);
-  await expect(single).toBeChecked();
-  expect(await singleKeys(win)).toBe(true);
-  // The main process refuses it, whatever the page does.
-  await win.evaluate(() => {
-    (globalThis as PageGlobals).drashti.roles.setAdminAsker(() => Promise.resolve(false));
-  });
-  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(false))).toEqual({
-    ok: false,
-    message: ADMIN_REFUSAL,
-  });
-  expect(await singleKeys(win)).toBe(true);
-
-  // The window's own prompt again (a reload connects it): the admin PIN unlocks it, and the keys go off.
-  await win.reload();
-  await operatorReady(win);
-  await chooseMenuItem(app, 'keyboard-shortcuts');
-  await single.click();
-  await expect(prompt).toBeVisible();
-  await prompt.getByTestId('admin-pin-input').fill(ADMIN);
-  await prompt.getByTestId('admin-pin-unlock').click();
-  await expect(prompt).toHaveCount(0);
-  await expect(single).not.toBeChecked();
-  expect(await singleKeys(win)).toBe(false);
-  await app.close();
 });
 
 /*

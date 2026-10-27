@@ -150,7 +150,7 @@ export const SIMPLE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scop
 /**
  * A key of one character with no Cmd, Ctrl or Alt (Shift or not): B, ., L and ?. WCAG 2.1.4 calls these
  * character key shortcuts. They act wherever the window has the keyboard, so a word said to speech software,
- * or a key brushed, could black out the hall: an admin can turn them off (Help › Keyboard Shortcuts…,
+ * or a key brushed, could black out the hall: they can be turned off (Help › Keyboard Shortcuts…,
  * Session 37). Every other key has Cmd, Ctrl or Alt, is a named key (arrows, Space, F1…), or works only in a
  * list with the keyboard.
  */

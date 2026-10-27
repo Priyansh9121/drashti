@@ -2,8 +2,8 @@ import { isIP } from 'node:net';
 import { isLocalAddress } from '../network/addresses';
 
 /*
- * Where events out may go (Session 28, decision 20): an address on the local network unless an admin allows
- * this one on the internet, and then only over https. The name is resolved first and every address it
+ * Where events out may go (Session 28, decision 20): an address on the local network unless this one is
+ * allowed on the internet, and then only over https. The name is resolved first and every address it
  * resolves to is checked; the request then goes to the address checked, so a name that later resolves
  * elsewhere (DNS rebinding) cannot send it anywhere else. Tests (never a packaged Drashti) go only to
  * 127.0.0.1, refused loudly otherwise.
@@ -49,7 +49,7 @@ export async function checkTarget(
   if (!options.allowInternet && found.some((f) => !isLocalAddress(f.address)))
     return {
       ok: false,
-      reason: `${url.hostname} is not on this computer’s local network. An admin can allow one internet address (https only).`,
+      reason: `${url.hostname} is not on this computer’s local network. One address on the internet may be allowed: tick “It is on the internet” (https only).`,
     };
   // Never an address that means "any" or a group.
   const first = found.find((f) => !/^(0\.0\.0\.0|::|22[4-9]\.|23\d\.|ff)/iu.test(f.address));

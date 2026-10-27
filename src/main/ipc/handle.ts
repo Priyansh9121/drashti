@@ -23,35 +23,14 @@ export function lockChannels(
 }
 
 /**
- * With roles on (Session 14), admin requests answer their refusal while
- * admin is locked; one that goes through keeps admin unlocked for a while.
- */
-let adminLock: {
-  locked: () => boolean;
-  refusals: ReadonlyMap<string, () => unknown>;
-  touched?: () => void;
-} | null = null;
-
-/** Refuse the listed (admin) channels while `locked()` says so; `touched` (if any) hears of each that went through. */
-export function lockAdminChannels(
-  locked: () => boolean,
-  refusals: ReadonlyMap<InvokeChannel, () => unknown>,
-  touched?: () => void,
-): void {
-  adminLock = { locked, refusals, touched };
-}
-
-/**
- * What a request on this channel gets instead of running now, or undefined
- * when it may run: Simple Mode's refusal first, then the admin's.
+ * What a request on this channel gets instead of running now, or undefined when it may run: Simple Mode's
+ * refusal (Session 54, E5: roles, and their admin lock, are gone).
  */
 export function refusalFor(channel: string): (() => unknown) | undefined {
-  const simple = lock?.locked() ? lock.refusals.get(channel) : undefined;
-  if (simple) return simple;
-  return adminLock?.locked() ? adminLock.refusals.get(channel) : undefined;
+  return lock?.locked() ? lock.refusals.get(channel) : undefined;
 }
 
-/** Whether a request on this channel would be refused now (Simple Mode, or admin locked): the network asks the same. */
+/** Whether a request on this channel would be refused now (Simple Mode): the network asks the same. */
 export function refusedNow(channel: InvokeChannel): boolean {
   return refusalFor(channel) !== undefined;
 }
@@ -97,7 +76,6 @@ export function handle<C extends InvokeChannel>(
     }
     const refusal = refusalFor(channel);
     if (refusal) return refusal();
-    if (adminLock?.refusals.has(channel)) adminLock.touched?.();
     const run = () => {
       const started = performance.now();
       const result = handler(event, ...args);

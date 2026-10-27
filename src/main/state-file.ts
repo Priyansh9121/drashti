@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { fileStamp } from '../shared/format';
 
@@ -73,20 +73,6 @@ export function setAside(file: string, now = new Date()): string | null {
   const to = asideName(file, now);
   try {
     renameSync(file, to);
-    return to;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Copy a file aside, as setAside names it, leaving it where it is too (roles.json, Sessions 31–36: kept for
- * whoever looks into it, while the file itself waits for the admin guide's reset). The copy's path, or null.
- */
-export function copyAside(file: string, now = new Date()): string | null {
-  const to = asideName(file, now);
-  try {
-    copyFileSync(file, to);
     return to;
   } catch {
     return null;

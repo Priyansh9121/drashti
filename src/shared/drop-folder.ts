@@ -1,11 +1,11 @@
 /*
- * The drop folder (Session 28, decision 21): one folder an admin chooses, where pictures, videos and (Session
+ * The drop folder (Session 28, decision 21): one folder, chosen in Pro Mode, where pictures, videos and (Session
  * 51) sounds put in it are imported by themselves, once each has held still for 5 seconds; the library only
  * ever gains from it (nothing is removed when a file goes, and the folder itself is never written to). It waits
  * while the stream is on air or recording, and carries on quietly in Simple Mode. Media lists what came from it.
  */
 
-/** A file's size limit (2 GB); a larger one is listed, and an admin can Import anyway. */
+/** A file's size limit (2 GB); a larger one is listed, and Import anyway brings it in. */
 export const DROP_MAX_BYTES = 2 * 1024 ** 3;
 /** How long a file's size and time must hold still before it is taken (ms). */
 export const DROP_SETTLE_MS = 5000;
@@ -14,7 +14,7 @@ export const DROP_SETTLE_MS = 5000;
 export interface DropNotTaken {
   name: string;
   reason: string;
-  /** Too large: an admin can import it anyway. */
+  /** Too large: it can be imported anyway. */
   tooLarge: boolean;
 }
 
@@ -37,7 +37,7 @@ export interface DropFolderView {
 
 export type DropFolderResult = { ok: true; view: DropFolderView } | { ok: false; message: string };
 
-/** What a refused look at the drop folder answers (Simple Mode, a locked admin): nothing. */
+/** What a refused look at the drop folder answers (Simple Mode): nothing. */
 export const DROP_REFUSED_VIEW: DropFolderView = {
   folder: null,
   on: false,

@@ -204,9 +204,9 @@ export function chosenHeight(video: VideoDetails, maxHeight: number, picked: num
 /** The permission tick's words: each time, before Download wakes (PLAN §7). */
 export const PERMISSION_WORDS = 'This video is the mandir’s own, or its owner allows us to use it';
 
-/** Why a quality above the setting cannot be picked, and where an admin changes it. */
+/** Why a quality above the setting cannot be picked, and where it is changed. */
 export const aboveTheSetting = (maxHeight: number): string =>
-  `Above ${heightLabel(maxHeight)}, the highest video quality an admin allows. An admin can change it under Highest video quality, above.`;
+  `Above ${heightLabel(maxHeight)}, the highest video quality allowed. Change it under Highest video quality, above.`;
 
 export type LinkPhase =
   /** Nothing yet: choose a kind, paste a link. */
@@ -265,7 +265,7 @@ export interface LinkView {
   waitingAdded: number | null;
 }
 
-/** A refusal from Simple Mode or the admin lock carries no view; the service's own refusals do. */
+/** A refusal from Simple Mode carries no view; the service's own refusals do. */
 export type LinkResult = { ok: true; view: LinkView } | { ok: false; message: string; view?: LinkView };
 
 /** Kept free on the disk the files are saved on, as the import and conversions do. */

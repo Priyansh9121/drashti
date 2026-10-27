@@ -98,12 +98,12 @@ test('YouTube: details, quality up to the setting, the tick each time, MP4 and M
   await expect(win.getByTestId('link-holds')).toContainText('no adverts');
   expect((await view(win)).link).toBe('https://www.youtube.com/watch?v=AAAAAAAAAAA');
 
-  // The heights it offers: above the admin's 1080p shown, but not to be picked, with why and where.
+  // The heights it offers: above the setting's 1080p shown, but not to be picked, with why and where.
   for (const h of [4320, 2160, 1440])
     await expect(win.getByTestId(`link-quality-${String(h)}`)).toBeDisabled();
   for (const h of [1080, 720]) await expect(win.getByTestId(`link-quality-${String(h)}`)).toBeEnabled();
   await expect(win.getByTestId('link-quality-above')).toHaveText(
-    'Above 1080p, the highest video quality an admin allows. An admin can change it under Highest video quality, above.',
+    'Above 1080p, the highest video quality allowed. Change it under Highest video quality, above.',
   );
   await expect(win.getByTestId('link-quality-1080')).toHaveAttribute('aria-checked', 'true');
   await expect(win.getByTestId('link-quality-2160')).toContainText('2160p (4K)');

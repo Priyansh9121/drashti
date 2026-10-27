@@ -16,8 +16,8 @@ import {
  * The first start (Session 26g): once per library, the lamp lights, then a welcome with three
  * choices. Set Up Screens… opens the wizard; Skip for now leaves the empty places to lead; Try a
  * practice show first puts placeholder slides on the operator's screen only, and they reach no
- * output and change nothing in the show or the library. Never in Simple Mode or for a volunteer, and
- * nor is the setup wizard opened by itself for one (Session 46: with roles on, Drashti starts in Pro Mode).
+ * output and change nothing in the show or the library. Never in Simple Mode; in Pro Mode, anyone's
+ * (Session 54, E5: roles are gone).
  */
 
 /**
@@ -212,37 +212,29 @@ test('View › Set Up Screens… still opens the wizard, from the practice show 
   await app.close();
 });
 
-test('never in Simple Mode, nor for a volunteer (roles on, the admin PIN not typed), nor the wizard by itself when Drashti starts again in Pro Mode with roles on (Session 46)', async () => {
+test('never in Simple Mode; never answered, it comes again when Drashti starts again in Pro Mode, for anyone (Session 54, E5: no role keeps it away)', async () => {
   const { app, userData } = await launchApp(FIRST);
   const { win, welcome } = await welcomeOf(app);
   await welcome.getByRole('button', { name: 'Try a practice show first' }).click();
   const state = () => win.evaluate(() => (globalThis as PageGlobals).drashti.setup.state());
-  // Roles on and locked: a volunteer's start.
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const on = await d.roles.setPins({ admin: '246813', operator: '135792' });
-    if (!on.ok) throw new Error(on.message);
-    await d.roles.lock();
-  });
-  expect((await state()).welcome).toBe(false);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(win.getByTestId('welcome')).toHaveCount(0);
   await expect(win.getByTestId('practice-banner')).toHaveCount(0);
-  expect((await state()).welcome).toBe(false);
+  expect(await state()).toMatchObject({ firstRun: false, welcome: false });
   await app.close();
-  // Started again with roles on: Pro Mode as the operator, admin locked (Session 46). Neither the welcome
-  // nor the setup wizard opens by itself, though neither was ever answered: both are an admin's.
+  // Started again after a clean quit: Pro Mode, with nothing to type and no button saying who is at the
+  // controls. The practice show never answered the welcome, so it comes again, and nothing asks for a PIN.
   const again = await launchApp(FIRST, userData);
   const next = await operatorPage(again.app);
   await operatorReady(next);
   expect(await next.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode())).toBe('pro');
-  await expect(next.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+  await expect(next.getByTestId('role-chip')).toHaveCount(0);
   expect(await next.evaluate(() => (globalThis as PageGlobals).drashti.setup.state())).toMatchObject({
-    firstRun: false,
-    welcome: false,
+    firstRun: true,
+    welcome: true,
   });
-  await expect(next.getByTestId('welcome')).toHaveCount(0);
-  await expect(next.getByTestId('setup-wizard')).toHaveCount(0);
+  await expect(next.getByTestId('welcome')).toBeVisible();
+  await expect(next.getByRole('dialog')).toHaveCount(1);
   await again.app.close();
 });

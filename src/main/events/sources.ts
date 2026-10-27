@@ -8,8 +8,8 @@ import { cutText } from '../../shared/text';
 /*
  * What happens in the show, as events out (Session 28): each source's state before and after a change,
  * turned into the events it makes. Ids and kinds in `data`; anything in words (a slide's lines, an
- * announcement, a screen's name) apart in `words`, which goes only where an admin ticked "Include the
- * words". Engine listeners get the state after a change only, so the caller keeps the one before.
+ * announcement, a screen's name) apart in `words`, which goes only where "Include the words" is
+ * ticked. Engine listeners get the state after a change only, so the caller keeps the one before.
  */
 
 export interface Emitted {

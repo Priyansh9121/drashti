@@ -1289,7 +1289,7 @@ test('output nodes: the node’s window, Screens with a node, pairing, the dashb
   }
 });
 
-test('music, markers, scheduled backups, and roles and PINs (Session 14)', async () => {
+test('music, markers, scheduled backups, and Simple Mode with music (Session 14)', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -1368,31 +1368,11 @@ test('music, markers, scheduled backups, and roles and PINs (Session 14)', async
   await shot(win, 'scheduled-backups', [backups.getByTestId('backups-folder')]);
   await backups.getByRole('button', { name: 'Close', exact: true }).click();
 
-  // Roles and PINs (made-up PINs, shown as dots): turned on, the chips, the admin prompt, leaving Simple Mode.
+  // Simple Mode with the music (roles and their PINs, pictured here until Session 54, are gone: E5).
   await win.setViewportSize({ width: 1280, height: 720 });
-  await chooseMenuItem(app, 'roles-and-pins');
-  const roles = win.getByTestId('roles-dialog');
-  await roles.getByTestId('roles-admin-pin').fill('481526');
-  await roles.getByTestId('roles-admin-again').fill('481526');
-  await roles.getByTestId('roles-operator-pin').fill('937402');
-  await roles.getByTestId('roles-operator-again').fill('937402');
-  await shot(win, 'roles-dialog');
-  await roles.getByTestId('roles-turn-on').click();
-  await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'admin');
-  await shot(win, 'role-chip-admin');
-  await win.getByTestId('role-chip').click();
-  await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
-  const asked = win.evaluate(() => (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder B'));
-  await expect(win.getByTestId('admin-pin')).toBeVisible();
-  await shot(win, 'admin-pin');
-  await win.getByTestId('admin-pin').getByRole('button', { name: 'Cancel' }).click();
-  await asked;
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await expect(win.getByTestId('simple-music')).toContainText('Placeholder before sabha');
   await shot(win, 'simple-mode-music');
-  await chooseMenuItem(app, 'switch-mode');
-  await expect(win.getByTestId('leave-simple')).toBeVisible();
-  await shot(win, 'leave-simple-pin');
   await app.close();
 });
 

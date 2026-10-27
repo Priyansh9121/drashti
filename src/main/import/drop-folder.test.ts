@@ -230,7 +230,7 @@ describe('the drop folder', () => {
       ['Talk.mp3', OLD],
       ['Arti.flv', OLD],
       ['Notes.pdf', OLD],
-      ['Big.mp4', 'Larger than 12 B: an admin can import it anyway.'],
+      ['Big.mp4', 'Larger than 12 B: it can be imported anyway.'],
     ] as const) {
       const s = await stat(join(folder, name));
       listed.run(folder, name, s.size, Math.round(s.mtimeMs), reason);
@@ -242,7 +242,7 @@ describe('the drop folder', () => {
     expect(h.dropped()).toEqual(['Arti.flv', 'Talk.mp3']);
     // Still not taken: the deck, in today's words, and the file over the limit, as it was.
     expect(h.service.view().notTaken).toEqual([
-      { name: 'Big.mp4', reason: 'Larger than 12 B: an admin can import it anyway.', tooLarge: true },
+      { name: 'Big.mp4', reason: 'Larger than 12 B: it can be imported anyway.', tooLarge: true },
       {
         name: 'Notes.pdf',
         reason: 'Only pictures, videos and sounds are taken from the drop folder.',
@@ -308,7 +308,7 @@ describe('the drop folder', () => {
     expect(h.service.view()).toMatchObject({ state: 'watching', waiting: 0 });
   });
 
-  it('over the size limit: listed, and imported anyway when an admin says (not on air)', async () => {
+  it('over the size limit: listed, and imported anyway when asked (not on air)', async () => {
     const air = { on: false };
     const h = setup({ maxBytes: 10, air });
     await put('Huge.mp4', 'more than ten bytes');
@@ -316,7 +316,7 @@ describe('the drop folder', () => {
     await h.settle();
     expect(h.imports).toEqual([]);
     expect(h.service.view().notTaken).toEqual([
-      { name: 'Huge.mp4', reason: 'Larger than 10 bytes: an admin can import it anyway.', tooLarge: true },
+      { name: 'Huge.mp4', reason: 'Larger than 10 bytes: it can be imported anyway.', tooLarge: true },
     ]);
     air.on = true;
     expect(await h.service.importAnyway('Huge.mp4')).toMatchObject({ ok: false });

@@ -17,7 +17,7 @@ import { cutText } from '../../shared/text';
  * there but cannot be read is never replaced by a new identity: that cut off
  * every node without a word. It is read once more after a moment (antivirus
  * can hold a file), then set aside with the date, and Main holds: no link to
- * the nodes, the operator is told, and only an admin's "Make a new identity"
+ * the nodes, the operator is told, and only "Make a new identity" in Screens
  * (makeNewIdentity) makes another, after which each node is paired again. The
  * hold is kept in node-link/identity-held.json, so a restart does not quietly
  * make a new identity in the set-aside file's place.
@@ -58,7 +58,7 @@ export function heldProblem(setAsideAs: string | null): string {
     setAsideAs
       ? `It was kept as “${setAsideAs}” in Drashti’s data folder (node-link).`
       : 'It was left where it is, in Drashti’s data folder (node-link).'
-  } An admin can make a new identity, then pair each node again.`;
+  } Make a new identity in Screens, then pair each node again.`;
 }
 
 function write(f: ReturnType<typeof files>, identity: MainIdentity): void {
@@ -113,12 +113,12 @@ export function loadIdentity(
   o.log(
     `Nodes: node-link/identity.json could not be read (${read.reason}); ${
       setAsideAs ? `kept as ${setAsideAs}` : 'left where it is'
-    }. No new identity is made until an admin asks: the nodes cannot follow until then.`,
+    }. No new identity is made until one is asked for in Screens: the nodes cannot follow until then.`,
   );
   return { ok: false, problem: heldProblem(setAsideAs) };
 }
 
-/** An admin's choice (Screens > Nodes > Make a new identity): a new identity, ending the hold. */
+/** Screens > Nodes > Make a new identity: a new identity, ending the hold. */
 export function makeNewIdentity(userData: string, commonName: string, now = new Date()): MainIdentity {
   const f = files(userData);
   // Whatever is still in its place (a folder, a file that could not be moved before) goes aside first.

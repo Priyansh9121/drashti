@@ -22,6 +22,12 @@ describe('curated answers', () => {
     for (const a of GUIDE_ANSWERS) expect(a.question).toMatch(/^When .+, what do I do\?$/u);
   });
 
+  // Session 54 (E5): roles and PINs are gone, so no answer asks after a forgotten PIN or a role.
+  it('none is about a PIN or a role', () => {
+    const about = GUIDE_ANSWERS.filter((a) => /\bPINs?\b|\broles?\b/iu.test(`${a.question} ${a.words}`));
+    expect(about).toEqual([]);
+  });
+
   it('each point at exactly one passage of its guide, never a heading, and no two at the same one', () => {
     const seen = new Set<string>();
     for (const a of GUIDE_ANSWERS) {

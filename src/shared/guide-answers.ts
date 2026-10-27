@@ -140,11 +140,6 @@ export const GUIDE_ANSWERS: readonly GuideAnswer[] = [
     words: '**One version on both computers.**',
   },
   {
-    question: 'When the admin PIN is forgotten, what do I do?',
-    doc: 'admin',
-    words: '**Resetting a forgotten admin PIN.**',
-  },
-  {
     question: 'When a screen says Stopped, what do I do?',
     doc: 'admin',
     words: '**A screen that says Stopped.**',

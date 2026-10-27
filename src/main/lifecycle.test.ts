@@ -31,8 +31,8 @@ describe('the stop list (Session 23)', () => {
     const order: string[] = [];
     const errors: string[] = [];
     const list = new StopList((name, error) => errors.push(`${name}: ${String(error)}`));
-    list.add('roles', () => {
-      order.push('roles');
+    list.add('network', () => {
+      order.push('network');
     });
     list.add('stream', () => {
       throw new Error('The database connection is not open');
@@ -47,7 +47,7 @@ describe('the stop list (Session 23)', () => {
       order.push('clean-quit mark');
     });
     expect(list.run()).toEqual(['stream', 'library']);
-    expect(order).toEqual(['updates', 'roles', 'clean-quit mark']);
+    expect(order).toEqual(['updates', 'network', 'clean-quit mark']);
     expect(errors).toEqual(['stream: Error: The database connection is not open', 'library: Error: busy']);
   });
 

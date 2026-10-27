@@ -21,9 +21,9 @@ import type { ScreensSnapshot } from '../../shared/screens';
  * recording, and nodes' screens carry on. Both are on at every start, as nothing is saved.
  *
  * Every request is checked here. Simple Mode may only turn them on (a volunteer gives a screen back to the hall,
- * never takes it away); with roles on, an operator may turn them either way, so a volunteer can give the
- * projector back to the laptop in a hurry (not an admin's channel). Turning one off from the View menu asks
- * first while its screens show something, as the window's switches and keys do.
+ * never takes it away); Pro Mode turns them either way, so the projector can be given back to the laptop in a
+ * hurry. Turning one off from the View menu asks first while its screens show something, as the window's
+ * switches and keys do.
  */
 
 /** What the switches need of the output windows (output-manager.ts). */

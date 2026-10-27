@@ -350,7 +350,7 @@ export interface NodesStatus {
   main: { version: string; outputs: NodeOutputStatus[] };
   /**
    * Main's identity for its nodes could not be read (Session 23): what to tell the operator. Until
-   * an admin makes a new identity (nodes.newIdentity), nothing follows and no node can pair.
+   * a new identity is made (nodes.newIdentity), nothing follows and no node can pair.
    */
   identityProblem: string | null;
 }

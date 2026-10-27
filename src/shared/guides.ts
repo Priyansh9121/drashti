@@ -6,7 +6,7 @@ import { matchesAll, searchWords } from './search';
  * The guides inside Drashti (Phase B of Sessions 31–36): the operator's, the presenter's, the admin's and
  * the setup day's, in English, shipped as files beside the app (docs/ in the repository) and read through
  * the bridge, never from the internet and never served to phones. Simple Mode sees the operator's and the
- * presenter's only: the admin's guide holds how to reset a forgotten PIN.
+ * presenter's only: the admin's and the setup day's are about setting Drashti up, which is Pro Mode's.
  */
 
 export const GUIDE_IDS = ['operator', 'presenter', 'admin', 'setup-day'] as const;

@@ -15,9 +15,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { IPC } from '../../shared/ipc';
 import { DEFAULT_LINK_MAX_HEIGHT, type LinkHeight, type LinkView } from '../../shared/links';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
-import { ADMIN_REFUSAL, isAdminChannel } from '../../shared/roles';
-import { lockAdminChannels, lockChannels, refusalFor, refusedNow } from '../ipc/handle';
-import { adminRefusals } from '../roles/admin-lock';
+import { lockChannels, refusalFor, refusedNow } from '../ipc/handle';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from '../simple-mode';
 import { toolEnv, toolFolders } from './youtube-tools';
 import { makeDropboxLikeZip, makeZip } from '../import/testing/zip-writer';
@@ -540,26 +538,16 @@ describe('the highest video quality (Session 25c)', () => {
     h.service.stop();
   });
 
-  it('is an admin’s request, refused in Simple Mode and while admin is locked', () => {
-    expect(isAdminChannel(IPC.links.setMaxHeight)).toBe(true);
+  it('is refused in Simple Mode, and anyone’s in Pro Mode (Session 54, E5: roles are gone)', () => {
     expect(SIMPLE_MODE_LOCKED).toContain(IPC.links.setMaxHeight);
     const sound = () => ({ chosen: null, devices: [], state: 'default' as const, checked: true });
     let simple = true;
-    let locked = false;
     lockChannels(() => simple, simpleModeRefusals(sound));
-    lockAdminChannels(
-      () => locked,
-      adminRefusals(sound),
-      () => undefined,
-    );
     expect(refusedNow(IPC.links.setMaxHeight)).toBe(true);
     expect(refusalFor(IPC.links.setMaxHeight)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     simple = false;
-    locked = true;
-    expect(refusedNow(IPC.links.setMaxHeight)).toBe(true);
-    expect(refusalFor(IPC.links.setMaxHeight)?.()).toEqual({ ok: false, message: ADMIN_REFUSAL });
-    locked = false;
     expect(refusedNow(IPC.links.setMaxHeight)).toBe(false);
+    expect(refusalFor(IPC.links.setMaxHeight)).toBeUndefined();
   });
 
   it('is what a Dropbox video taller than it is made: at 2160p a 2160p video needs no copy', async () => {
@@ -633,7 +621,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       'Tick the box',
     );
     expect(say(h.service.download({ type: 'mp4', height: 2160, permission: true }))).toContain(
-      'Above 1080p, the highest video quality an admin allows',
+      'Above 1080p, the highest video quality allowed',
     );
     expect(say(h.service.download({ type: 'mp4', height: 999, permission: true }))).toContain(
       'qualities this video offers',

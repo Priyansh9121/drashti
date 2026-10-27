@@ -178,7 +178,7 @@ function decorationRules(): ContrastRule[] {
       source: `WCAG 1.4.11 (${header})`,
     },
     {
-      what: 'a warning button on the header (Announcements, Admin): its edge or its fill',
+      what: 'a warning button on the header (Announcements): its edge or its fill',
       fg: 'warning',
       or: 'warning-bg',
       bg: 'header',
