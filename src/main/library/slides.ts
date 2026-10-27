@@ -105,7 +105,9 @@ function deckOf(text: string | null | undefined): { deck?: DeckSlide } {
  * document's. A slide whose document has none keeps what it has: the editor never takes a deck away.
  */
 function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck?: string | null } {
-  const stored = old?.deck;
+  // A slide made in the editor (no row before it, a copy of a deck's slide too) is no deck's: only an import makes one.
+  if (!old) return {};
+  const stored = old.deck;
   // Nothing to keep or give: a row read with no deck stays as it was read.
   if (!deck) return stored === undefined ? {} : { deck: stored };
   const was = deckFromJson(stored);

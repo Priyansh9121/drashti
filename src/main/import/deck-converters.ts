@@ -818,7 +818,7 @@ async function convertOnMac(
     if (!exists(inApp))
       return {
         ok: false,
-        reason: `${name} could not save it as PDF`,
+        reason: `${name} could not save it as PDF: save it as PDF by hand and import that`,
         message: `${name} could not save it as PDF. ${byHand(converter)}`,
       };
     await copyFile(inApp, pdf);
