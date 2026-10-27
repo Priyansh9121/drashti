@@ -17,6 +17,7 @@ import {
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
 import {
+  closeLibrary,
   launchApp,
   openLibrary,
   operatorPage,
@@ -116,7 +117,18 @@ test('a deck’s clicks with the keys: Next and Back, two screens and LIVE drawi
     const stage = await outputFor(app, stageScreen);
     const halls = [one, two];
 
-    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    // Chosen in the library, as an operator chooses it: the keys work on what the slide grid shows (Drashti chooses the
+    // library's first presentation by itself, a placeholder, so Next would put that up), and Next puts it up.
+    await openLibrary(win);
+    await win
+      .getByTestId('presentation-list')
+      .getByTestId('presentation-row')
+      .filter({ hasText: 'Placeholder deck' })
+      .click();
+    await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toBeVisible();
+    await closeLibrary(win);
+    await win.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await state(win)).live.presentationId).toBe(id);
     // Come to by a jump: its coming-in clip past the deck's own transition; then held at its last frame, red.
     expect((await state(win)).layers.slide).toMatchObject({ step: 0, stepFromMs: TRANSITION_MS });
     await allShow(halls, STEP_COLOURS[0].last, 'the first step’s last frame');
