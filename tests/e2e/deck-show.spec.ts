@@ -96,27 +96,35 @@ const holdLive = (app: ElectronApplication, at: number | null) =>
 
 /**
  * Wait until the middle of an element on its page (LIVE's picture, a stage box, a phone's picture) is this colour.
- * What it saw last is said when it is not: the colour, and the deck's step's phase there (its clip, still loading, held
- * or its hold).
+ * When it is not, the failure says what was there (C review): the colour, the page's visibility, the deck's step's
+ * phase, and each of its layers with its opacity (a clip or hold also its time, how far it has loaded, and whether it
+ * plays), so a failed run says why.
  */
 async function middleShows(page: Page, target: Locator, rgb: readonly number[], what: string): Promise<void> {
   await expect
     .poll(
       async () => {
         const box = await target.boundingBox();
-        if (!box) return { shows: false, seen: 'no box' };
+        if (!box) return 'no box';
         const [colour] = await pixels(page, [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }]);
-        const phases = await target
-          .locator('[data-deck-phase]')
-          .evaluateAll((els) => els.map((e) => e.getAttribute('data-deck-phase') ?? ''));
-        return {
-          shows: near(colour, [rgb[0] ?? 0, rgb[1] ?? 0, rgb[2] ?? 0]),
-          seen: `${(colour ?? []).join(',')} (${phases.join(', ') || 'no step'})`,
-        };
+        if (near(colour, [rgb[0] ?? 0, rgb[1] ?? 0, rgb[2] ?? 0])) return 'shows';
+        const there = await target.evaluate((el) => {
+          const root = el.querySelector<HTMLElement>('[data-deck-step]') ?? el;
+          const layers = [...root.children].map((child) => {
+            const c = child as HTMLElement;
+            const role = c.dataset['deckStill'] ?? c.dataset['deckVideo'] ?? c.tagName.toLowerCase();
+            const opacity = getComputedStyle(c).opacity;
+            return c instanceof HTMLVideoElement
+              ? `${role} ${opacity} at ${c.currentTime.toFixed(2)} s, loaded ${String(c.readyState)}${c.paused ? ', paused' : ''}`
+              : `${role} ${opacity}`;
+          });
+          return `page ${document.visibilityState}, step ${root.dataset['deckPhase'] ?? 'none'}: ${layers.join(' | ')}`;
+        });
+        return `${(colour ?? []).join(',')} (${there})`;
       },
-      { message: what, timeout: 15_000 },
+      { message: `${what}: what was there`, timeout: 15_000 },
     )
-    .toMatchObject({ shows: true });
+    .toBe('shows');
 }
 
 /** Hold every app's clock at `ms` after the step up was shown, and wait for each output to show `rgb`. */
