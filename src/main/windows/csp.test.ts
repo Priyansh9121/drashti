@@ -88,7 +88,20 @@ describe('page security policies', () => {
     for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
   });
 
-  const ownRules = new Set(['pdf.html', 'sharpen.html', 'zoom.html']);
+  // The lock screen (Session 54, access by Gmail), before this computer is let in: nothing of the library.
+  it('lock.html (the lock screen): app scripts only, no fetching, no media at all', () => {
+    const policy = policyOf(readFileSync(join(RENDERER, 'lock.html'), 'utf8'));
+    expect(policy.get('default-src')).toEqual(["'self'"]);
+    expect(policy.get('script-src')).toEqual(["'self'"]);
+    expect(policy.get('connect-src')).toEqual(["'self'"]);
+    expect(policy.get('media-src')).toEqual(["'none'"]);
+    expect(policy.get('object-src')).toEqual(["'none'"]);
+    expect(policy.get('base-uri')).toEqual(["'none'"]);
+    expect(policy.get('form-action')).toEqual(["'none'"]);
+    for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
+  });
+
+  const ownRules = new Set(['pdf.html', 'sharpen.html', 'zoom.html', 'lock.html']);
   for (const page of pages.filter((p) => !NETWORK_PAGES.has(p) && !ownRules.has(p))) {
     it(`${page}: app scripts only, no fetching, media only as images and media`, () => {
       const policy = policyOf(readFileSync(join(RENDERER, page), 'utf8'));
