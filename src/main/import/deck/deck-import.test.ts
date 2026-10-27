@@ -82,6 +82,8 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           noFfmpeg?: boolean;
           /** The disk's free space, as the deck's bake sees it (the media folder's own is plenty). */
           freeBytes?: number;
+          /** How many pages the stand-in's PDF has (one per shown slide; the trial deck's five). */
+          pages?: number;
         },
         paths = [deck],
       ) =>
@@ -103,14 +105,15 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
             return () => Promise.resolve(on === true || (typeof on === 'object' && ++asked >= on.from));
           })(),
           drawPdf: (_pdf, outDir): Promise<PicturesResult> => {
-            // The stand-in's PDF has a page per shown slide: five.
+            // The stand-in's PDF has a page per shown slide: the trial deck's five.
             mkdirSync(outDir, { recursive: true });
-            const pages = [0, 1, 2, 3, 4].map((index) => {
+            const total = options.pages ?? 5;
+            const pages = Array.from({ length: total }, (_, index) => {
               const file = join(outDir, `page-${String(index + 1)}.png`);
               writeFileSync(file, png([20 + index * 40, 30, 90]));
               return { index, file, notes: '' };
             });
-            return Promise.resolve({ ok: true, width: 1920, height: 1080, pages, total: 5, failed: [] });
+            return Promise.resolve({ ok: true, width: 1920, height: 1080, pages, total, failed: [] });
           },
         });
       const repo = new PresentationRepo(db);
@@ -221,7 +224,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(second?.after).toBe(first?.steps.at(-1)?.lastId);
     }, 240_000);
 
-    it('a sound set to play across slides plays on as its slide’s sound; one started by a click says it stays on its slide', async () => {
+    it('a sound set to play across slides keeps its slides, with its slide or on a click; as pictures, its slide’s sound says so (Session 54)', async () => {
       const t = setup();
       const tone = {
         id: 3,
@@ -258,21 +261,87 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const summary = await t.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
       const item = t.report(summary.id)?.items[0];
       const [auto, click] = t.slidesOf(item?.target?.id ?? '');
-      // By itself: the slide's sound, which plays on as the next slides go up (never also the deck's own).
-      expect(auto?.cues).toMatchObject([{ kind: 'audio', volume: 1, loop: false }]);
-      expect(auto?.slide.deck?.media).toEqual([]);
-      // On a click: the deck's own, on its slide only, and the report says so.
-      expect(click?.cues).toEqual([]);
-      expect(click?.slide.deck?.media.map((m) => [m.kind, 'step' in m.start ? m.start.step : null])).toEqual([
-        ['audio', 1],
-      ]);
+      // The deck's own, with its slide and at its click, each across its three slides (main/engine/across-slides.ts):
+      // never a slide's sound cue.
+      expect([auto?.cues, click?.cues]).toEqual([[], []]);
+      const mediaOf = (s: typeof auto) =>
+        s?.slide.deck?.media.map((m) => [
+          m.kind,
+          m.name,
+          m.acrossSlides,
+          'step' in m.start ? m.start.step : null,
+        ]);
+      expect(mediaOf(auto)).toEqual([['audio', 'Long tone', 3, 0]]);
+      expect(mediaOf(click)).toEqual([['audio', 'Long tone', 3, 1]]);
       const words = item?.issues.map((i) => i.message) ?? [];
       expect(words).toContain(
-        '1 sound set to play across slides came in as its slide’s sound: it plays on as the next slides go up, until it ends or another sound takes its place.',
+        '2 sounds set to play across slides play on as the slides and their clicks change, as in its slide show, each until its last slide; Next and Back never start one again.',
       );
-      expect(words).toContain(
-        '1 sound set to play across slides starts on a click: here it plays on its own slide only.',
+      // As pictures: the one with its slide is its slide's sound, saying so; the one on a click needs the animations.
+      const pictures = setup();
+      const again = await pictures.run({ baker: false, converters: 'stand-in', pages: 2 }, [file]);
+      const asPictures = pictures.report(again.id)?.items[0];
+      const [first, second] = pictures.slidesOf(asPictures?.target?.id ?? '');
+      expect(first?.cues).toMatchObject([{ kind: 'audio', label: 'Long tone', acrossSlides: 3 }]);
+      expect(second?.cues).toEqual([]);
+      const said = asPictures?.issues.map((i) => i.message) ?? [];
+      expect(said).toContain(
+        '1 sound set to play across slides plays on from its slide, as in its slide show, until its last slide; Next and Back never start it again.',
       );
+      expect(said).toContain(
+        '1 sound that started on a click, or with a transition, is left out: they need the deck’s animations, which PowerPoint or Keynote makes.',
+      );
+    }, 240_000);
+
+    it('as pictures, a slide’s own sound where the music plays on takes its place, and the report says so; with its animations both play (Session 54)', async () => {
+      const t = setup();
+      const shape = (id: number, name: string, media: 'tone' | 'chime', acrossSlides?: number) => ({
+        id,
+        type: 'audio' as const,
+        name,
+        media,
+        poster: 'speaker' as const,
+        x: 9_000_000,
+        y: 2_000_000,
+        w: 900_000,
+        h: 900_000,
+        ...(acrossSlides ? { acrossSlides } : {}),
+      });
+      const slide = (key: string, shapes: TestDeckSlide['shapes'], play: number[]): TestDeckSlide => ({
+        key,
+        bg: '1B2A4A',
+        transition: { kind: 'fade', dur: 500 },
+        notes: `Placeholder notes: ${key}.`,
+        shapes,
+        effects: play.map((target) => ({ kind: 'play' as const, target, dur: 600, start: 'after' as const })),
+      });
+      const deckSlides: TestDeckSlide[] = [
+        slide('music', [shape(3, 'Placeholder music', 'tone', 999)], [3]),
+        slide('quiet', [], []),
+        slide('chime', [shape(3, 'Placeholder chime', 'chime')], [3]),
+      ];
+      const file = join(dir, 'Placeholder music and chime.pptx');
+      writeFileSync(file, makeTestDeck(deckSlides, makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const summary = await t.run({ baker: false, converters: 'stand-in', pages: 3 }, [file]);
+      const item = t.report(summary.id)?.items[0];
+      const slides = t.slidesOf(item?.target?.id ?? '');
+      expect(
+        slides.map((s) => s.cues.map((c) => (c.kind === 'audio' ? [c.label, c.acrossSlides] : []))),
+      ).toEqual([[['Placeholder music', 999]], [], [['Placeholder chime', undefined]]]);
+      expect(item?.issues.find((i) => i.code === 'deck-sound-over-music')?.message).toBe(
+        'The sound of slide 3 takes the place of the sound playing across slides as that slide goes up: as pictures, one sound plays at a time (with the deck’s animations, both play).',
+      );
+      // With its animations: the music the deck's own across its slides, the chime its slide's own; nothing said.
+      const baked = setup();
+      const withSteps = await baked.run({ baker: 'stand-in', converters: 'stand-in' }, [file]);
+      const bakedItem = baked.report(withSteps.id)?.items[0];
+      const decks = baked.slidesOf(bakedItem?.target?.id ?? '').map((s) => s.slide.deck);
+      expect(decks.map((d) => d?.media.map((m) => [m.name, m.acrossSlides]))).toEqual([
+        [['Placeholder music', 999]],
+        [],
+        [[undefined, undefined]],
+      ]);
+      expect(bakedItem?.issues.some((i) => i.code === 'deck-sound-over-music')).toBe(false);
     }, 240_000);
 
     it('follows a linked video only inside the deck’s own folder: a link out of it (a phone’s crafted deck) is refused', async () => {
