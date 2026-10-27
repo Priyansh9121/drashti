@@ -304,13 +304,14 @@ test('the Access List at CI’s 1024 × 645 and wider: everything in reach, by k
   test.setTimeout(150_000);
   const { app, win, access: s } = await owner();
   try {
-    for (let i = 0; i < 40; i++)
+    // 30 more Gmails, each asked for, approved and let in (two emails each, inside the list's 100 a day).
+    for (let i = 0; i < 30; i++)
       s.grant(
         `p${String(i).padStart(2, '0')}.placeholder@example.com`,
         computerOf(`access-list-many-${String(i)}`, 'Placeholder Mac'),
       );
     const list = await openList(app);
-    await expect.poll(async () => list.getByTestId('access-table').getAttribute('data-count')).toBe('41');
+    await expect.poll(async () => list.getByTestId('access-table').getAttribute('data-count')).toBe('31');
     for (const size of [CI_WINDOW, { width: 1440, height: 900 }]) {
       const what = `the Access List at ${String(size.width)} × ${String(size.height)}`;
       await sizeList(app, list, size);
@@ -332,9 +333,9 @@ test('the Access List at CI’s 1024 × 645 and wider: everything in reach, by k
     await list.keyboard.press('ArrowDown');
     const second = (await shown(list))[1] ?? '';
     await expect(list.getByTestId('access-chosen-gmail')).toHaveText(second);
-    // All approved, so by Gmail: the owner's first, p39's last.
+    // All approved, so by Gmail: the owner's first, p29's last.
     await list.keyboard.press('End');
-    const last = 'p39.placeholder@example.com';
+    const last = 'p29.placeholder@example.com';
     await expect(list.getByTestId('access-chosen-gmail')).toHaveText(last);
     await expect(row(list, last)).toBeInViewport();
     await expect(row(list, last).locator('th button')).toBeFocused();
