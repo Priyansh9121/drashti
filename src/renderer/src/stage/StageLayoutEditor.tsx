@@ -24,11 +24,12 @@ import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
 import { plural } from '../ui/text';
 import { ColorInput, Field, NumberInput, Select, Textarea, TextInput } from '../ui/Field';
-import { CopyPlus, Plus, Trash2 } from '../ui/icons';
+import { CopyPlus, LayoutTemplate, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { useHallPicture } from './hall-picture';
+import { StageTemplateDialog } from './StageTemplateDialog';
 import {
   addBox,
   change,
@@ -48,7 +49,8 @@ import {
  * layouts on the left (Standard, built in, first), the one shown in the
  * middle with what the stage shows now, and the chosen box's settings on the
  * right. Changes are kept until Save; a stage group whose live Look uses the
- * layout shows them then.
+ * layout shows them then. New from a Template… (Session 54) makes a ready-made
+ * layout and its timer, and chooses it for the stage screens at once.
  */
 
 const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
@@ -292,9 +294,11 @@ export function StageLayoutEditor() {
   // The audience picture box's picture (Session 50): the hall's, as the stage screens are told it.
   const hall = useHallPicture();
   const [kind, setKind] = useState<StageBoxKind>('current');
-  const [ask, setAsk] = useState<null | { why: 'switch'; to: string } | { why: 'close' } | { why: 'remove' }>(
-    null,
-  );
+  const [ask, setAsk] = useState<
+    null | { why: 'switch'; to: string } | { why: 'close' } | { why: 'remove' } | { why: 'template' }
+  >(null);
+  // New from a Template… (Session 54): its dialog, over the editor.
+  const [templates, setTemplates] = useState(false);
   if (!s.open) return null;
   const e = s.editing;
   const dirty = isDirty(s);
@@ -383,6 +387,16 @@ export function StageLayoutEditor() {
         </ul>
         <Button icon={CopyPlus} onClick={duplicate} data-testid="stage-layout-duplicate">
           {e ? 'Duplicate' : 'Duplicate Standard'}
+        </Button>
+        <Button
+          icon={LayoutTemplate}
+          data-testid="stage-layout-from-template"
+          onClick={() => {
+            if (dirty) setAsk({ why: 'template' });
+            else setTemplates(true);
+          }}
+        >
+          New from a Template…
         </Button>
       </nav>
 
@@ -553,6 +567,7 @@ export function StageLayoutEditor() {
             void save().then((ok) => {
               if (!ok) return;
               if (was.why === 'close') closeStageLayouts();
+              else if (was.why === 'template') setTemplates(true);
               else show(was.to);
             });
           }}
@@ -560,7 +575,17 @@ export function StageLayoutEditor() {
             const was = ask;
             setAsk(null);
             if (was.why === 'close') closeStageLayouts();
-            else show(was.to);
+            else if (was.why === 'template') {
+              show(e?.id ?? STANDARD);
+              setTemplates(true);
+            } else show(was.to);
+          }}
+        />
+      )}
+      {templates && (
+        <StageTemplateDialog
+          onClose={() => {
+            setTemplates(false);
           }}
         />
       )}
