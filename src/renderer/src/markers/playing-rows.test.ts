@@ -76,12 +76,15 @@ describe('the time bar’s rows', () => {
   it('are, in order: the background video, the slide’s videos (each file once), the box’s video, then the sound or the music', () => {
     const rows = playingRows(everything);
     expect(rows.map((r) => [r.key, r.short, r.name])).toEqual([
-      ['background', 'Background', 'The background video'],
-      ['slide:a', 'Slide video 1', 'Video 1 on the slide'],
-      ['slide:b', 'Slide video 2', 'Video 2 on the slide'],
-      ['pip', 'Box video', 'The video in the picture-in-picture box'],
-      ['audio', 'Music', 'The music playing'],
+      ['background', 'Background', 'Time of the background video'],
+      ['slide:a', 'Slide video 1', 'Time of video 1 on the slide'],
+      ['slide:b', 'Slide video 2', 'Time of video 2 on the slide'],
+      ['pip', 'Box video', 'Time of the video in the picture-in-picture box'],
+      ['audio', 'Music', 'Time of the music playing'],
     ]);
+    // Never the names of the rows of skips and markers beside them (LIVE's, Session 50; a phone's, D5): a screen
+    // reader tells them apart (Session 54's review).
+    for (const r of rows) expect(['The background video', 'The sound playing']).not.toContain(r.name);
     // A picture, a colour, the slides in the box and a sound with no file have none; nothing up, none at all.
     expect(playingRows(initialEngineState())).toEqual([]);
     expect(
@@ -103,7 +106,7 @@ describe('the time bar’s rows', () => {
     };
     expect(playingRows(state({ audio: sound }))[0]).toMatchObject({
       short: 'Sound',
-      name: 'The sound playing',
+      name: 'Time of the sound playing',
     });
   });
 

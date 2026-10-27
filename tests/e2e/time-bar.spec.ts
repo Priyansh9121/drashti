@@ -247,7 +247,7 @@ test('the background video: a click on its bar moves it in step on two screens a
   });
   // Its row under LIVE: a slider once its length is known, with Pause before it and its marker as a tick.
   const bg = row(win, 'background');
-  const bar = bg.getByRole('slider', { name: 'The background video' });
+  const bar = bg.getByRole('slider', { name: 'Time of the background video', exact: true });
   await expect(bar).toBeVisible({ timeout: 15_000 });
   await expect(bg.getByRole('button', { name: 'Pause' })).toBeEnabled();
   await expect(bg.locator('[data-marker="m1"]')).toHaveCount(1);
@@ -352,7 +352,7 @@ test('a video on the slide and the picture-in-picture box’s video: each row mo
     },
   ];
   const slideRow = row(win, `slide:${slideVideo}`);
-  const slideBar = slideRow.getByRole('slider', { name: 'The video on the slide' });
+  const slideBar = slideRow.getByRole('slider', { name: 'Time of the video on the slide', exact: true });
   await expect(slideBar).toBeVisible({ timeout: 15_000 });
   const slideLength = (await snapshot(win)).videoFiles?.[slideVideo]?.durationMs ?? 0;
   expect(slideLength).toBeGreaterThan(10_000);
@@ -379,7 +379,10 @@ test('a video on the slide and the picture-in-picture box’s video: each row mo
     { name: 'the second screen', page: b, selector: boxPicture },
   ];
   const boxRow = row(win, 'pip');
-  const boxBar = boxRow.getByRole('slider', { name: 'The video in the picture-in-picture box' });
+  const boxBar = boxRow.getByRole('slider', {
+    name: 'Time of the video in the picture-in-picture box',
+    exact: true,
+  });
   await expect(boxBar).toBeVisible({ timeout: 15_000 });
   const boxLength = (await snapshot(win)).videoFiles?.[boxVideo]?.durationMs ?? 0;
   expect(boxLength).toBeGreaterThan(8000);
@@ -421,7 +424,7 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
     audio: { id: 'placeholder-sound', title: 'Placeholder sound', mediaId: long, volume: 1, loop: false },
   });
   const soundRow = row(win, 'audio');
-  const soundBar = soundRow.getByRole('slider', { name: 'The sound playing' });
+  const soundBar = soundRow.getByRole('slider', { name: 'Time of the sound playing', exact: true });
   await expect(soundBar).toBeVisible({ timeout: 15_000 });
   await clickAlong(win, soundBar, 0.5);
   await expect
@@ -447,9 +450,13 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
   );
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id, 0), listId);
   await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(one);
-  const musicBar = win.getByTestId('music-panel').getByRole('slider', { name: 'The track playing' });
+  const musicBar = win
+    .getByTestId('music-panel')
+    .getByRole('slider', { name: 'Time of the track playing', exact: true });
   await expect(musicBar).toBeVisible({ timeout: 15_000 });
-  await expect(row(win, 'audio').getByRole('slider', { name: 'The music playing' })).toBeVisible();
+  await expect(
+    row(win, 'audio').getByRole('slider', { name: 'Time of the music playing', exact: true }),
+  ).toBeVisible();
   await clickAlong(win, musicBar, 0.5);
   await expect
     .poll(async () => Math.abs(((await soundTiming(win)).seek?.toMs ?? 0) - 10_000))
@@ -516,7 +523,7 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const bg = row(win, 'background');
-  const shows = bg.getByRole('progressbar', { name: 'The background video' });
+  const shows = bg.getByRole('progressbar', { name: 'Time of the background video', exact: true });
   await expect(shows).toBeVisible();
   await expect(bg.getByRole('slider')).toHaveCount(0);
   await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-\d+:\d\d$/);
@@ -588,7 +595,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       const playing = p.getByTestId('remote-time-bars');
       const row = playing.locator('[data-testid="remote-time-bar-row"][data-playing="background"]');
-      const bar = row.getByRole('slider', { name: 'The background video' });
+      const bar = row.getByRole('slider', { name: 'Time of the background video', exact: true });
       await expect(bar).toBeVisible({ timeout: 15_000 });
       // A finger's size: the bar and its button 44 px tall at least.
       for (const target of [bar, row.getByRole('button', { name: 'Pause' })]) {

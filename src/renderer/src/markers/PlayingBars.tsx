@@ -108,7 +108,7 @@ export function TrackBar() {
   const bar = barNow(track, now);
   return (
     <TimeBar
-      label="The track playing"
+      label="Time of the track playing"
       testId="music-time-bar"
       atMs={bar.atMs}
       durationMs={bar.durationMs}

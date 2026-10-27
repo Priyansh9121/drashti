@@ -14,7 +14,10 @@ export interface PlayingRow {
   key: string;
   /** Its short name beside the bar: "Background", "Slide video", "Box video", "Sound", "Music". */
   short: string;
-  /** Its name for screen readers, the row's: "The background video". */
+  /**
+   * Its name for screen readers, the row's and its bar's: "Time of the background video". Never the name of the row of
+   * skips and markers beside it (LIVE's "The background video", Session 50; a phone's, D5), so the two are told apart.
+   */
   name: string;
 }
 
@@ -28,7 +31,7 @@ export function playingRows(state: EngineState | null | undefined): PlayingRow[]
     const key = ref.layer === 'slide' ? `slide:${ref.mediaId}` : ref.layer;
     switch (ref.layer) {
       case 'background':
-        return { playing, key, short: 'Background', name: 'The background video' };
+        return { playing, key, short: 'Background', name: 'Time of the background video' };
       case 'slide': {
         nth++;
         const which = onSlide > 1 ? ` ${String(nth)}` : '';
@@ -36,17 +39,22 @@ export function playingRows(state: EngineState | null | undefined): PlayingRow[]
           playing,
           key,
           short: `Slide video${which}`,
-          name: onSlide > 1 ? `Video ${String(nth)} on the slide` : 'The video on the slide',
+          name: onSlide > 1 ? `Time of video ${String(nth)} on the slide` : 'Time of the video on the slide',
         };
       }
       case 'pip':
-        return { playing, key, short: 'Box video', name: 'The video in the picture-in-picture box' };
+        return {
+          playing,
+          key,
+          short: 'Box video',
+          name: 'Time of the video in the picture-in-picture box',
+        };
       case 'audio':
         return playing.track
-          ? { playing, key, short: 'Music', name: 'The music playing' }
-          : { playing, key, short: 'Sound', name: 'The sound playing' };
+          ? { playing, key, short: 'Music', name: 'Time of the music playing' }
+          : { playing, key, short: 'Sound', name: 'Time of the sound playing' };
       default:
-        return { playing, key, short: 'Video', name: 'The video playing' };
+        return { playing, key, short: 'Video', name: 'Time of the video playing' };
     }
   });
 }
