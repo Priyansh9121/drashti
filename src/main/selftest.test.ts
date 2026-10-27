@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { openDatabase } from './db/database';
 import { PresentationRepo } from './db/presentations';
@@ -44,5 +46,17 @@ describe('what the watchdog self-test shows (Session 50: a new library has no pl
     expect(removed).toEqual([shown.id]);
     expect(repo.list()).toEqual([]);
     db.close();
+  });
+});
+
+describe('the watchdog self-test behind the lock (Session 54, access by Gmail)', () => {
+  it('moves the show on from the main process, never by a key in the operator window, whose controls stay locked', () => {
+    const source = readFileSync(join(__dirname, 'selftest.ts'), 'utf8');
+    const watchdog = source.slice(
+      source.indexOf('export async function runWatchdogSelfTest'),
+      source.indexOf('export async function runNodeWatchdogSelfTest'),
+    );
+    expect(watchdog).not.toContain('sendInputEvent');
+    expect(watchdog).toContain("ctx.dispatch({ type: 'next' })");
   });
 });

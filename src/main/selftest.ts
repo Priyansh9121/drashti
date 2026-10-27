@@ -259,17 +259,16 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
         (await js<number>(audio, 'performance.timeOrigin')) === audioLoadedAt,
     );
 
-    // 2. The show carries on from the recovered operator window (a real key press).
-    const op = ctx.operator();
-    op?.webContents.focus();
-    op?.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' });
-    op?.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' });
+    // 2. The show carries on once the operator window is back: Next, from the main process. (Session 54: a key in the
+    // operator window did it until then; behind the lock a self-test keeps the window's controls locked, as they
+    // must stay, so Next goes as the main process's own command, as the slide went up.)
+    ctx.dispatch({ type: 'next' });
     const moved = await waitFor(
       async () => ctx.engineRev() > Number(rev1) && (await paintedRev(output)) === String(ctx.engineRev()),
     );
     const next = await steadyFrame(output, before.hash);
     check(
-      'Next in the recovered operator window updates the output',
+      'Next once the operator window is back updates the output',
       moved && next.hash !== before.hash && next.pid === before.pid,
     );
 
