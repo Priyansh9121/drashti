@@ -45,7 +45,7 @@ On a phone, **Show**, **Playlist**, **Library** and **More** along the bottom ch
 
 ![More on an iPad held sideways, in two columns](screenshots/tablet-remote-more.png)
 
-The operator can always change the screens from the computer too; your page follows whatever is up.
+The operator can always change the screens from the computer too; your page follows whatever is up. **More** starts with **Screens** (the computer's **Audience** and **Stage**, and **Set up the screens…**): that is the operator's, for setting up the hall's screens; leave it to them.
 
 ## Looking closer, on your phone only
 
