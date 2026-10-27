@@ -30,9 +30,27 @@ const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 const tree = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree());
 const view = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.links.view());
+/** A playlist's items, by name, as kept. */
+const labels = (win: Page, playlistId: string) =>
+  win.evaluate(
+    async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).map((i) => i.label),
+    playlistId,
+  );
+
+/** New playlists, by name; their ids in the same order. */
+const newPlaylists = (win: Page, names: string[]) =>
+  win.evaluate(async (list) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const ids: string[] = [];
+    for (const name of list) {
+      const made = await d.playlists.create(name, null, false);
+      ids.push(made.ok ? (made.ids[0] ?? '') : '');
+    }
+    return ids;
+  }, names);
 
 /** Drashti with the fake yt-dlp, in CI's window, saving into a folder of the test's own. */
-async function open() {
+async function open(extra: Record<string, string> = {}) {
   const work = mkdtempSync(join(tmpdir(), 'drashti-link-playlist-'));
   const chosen = join(work, 'Chosen folder');
   const { app, userData } = await launchApp({
@@ -43,6 +61,7 @@ async function open() {
       duration: 65,
     }),
     DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+    ...extra,
   });
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -137,15 +156,7 @@ test('with no playlist, it asks for one’s name before the download, makes it, 
 test('it offers the playlist chosen last first, even with another open; the download lands there, which opens with it shown, and one click puts it up', async () => {
   test.setTimeout(300_000);
   const { app, win, userData } = await open();
-  const [sunday = '', youth = ''] = await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const ids: string[] = [];
-    for (const name of ['Placeholder Sunday', 'Placeholder Youth']) {
-      const made = await d.playlists.create(name, null, false);
-      ids.push(made.ok ? (made.ids[0] ?? '') : '');
-    }
-    return ids;
-  });
+  const [sunday = '', youth = ''] = await newPlaylists(win, ['Placeholder Sunday', 'Placeholder Youth']);
   const node = (name: string) => win.getByTestId('playlist-node').filter({ hasText: name });
   const title = win.getByTestId('open-playlist').getByTestId('playlist-title');
   await node('Placeholder Sunday').click();
@@ -208,4 +219,136 @@ test('it offers the playlist chosen last first, even with another open; the down
     { value: string } | undefined;
   db.close();
   expect(setting?.value).toBe(JSON.stringify(youth));
+});
+
+test('a playlist’s own From a Link… is where the next download goes, after Another link too, though another went in last', async () => {
+  test.setTimeout(300_000);
+  const { app, win } = await open();
+  const [a = '', b = ''] = await newPlaylists(win, ['Placeholder A', 'Placeholder B']);
+  const node = (name: string) => win.getByTestId('playlist-node').filter({ hasText: name });
+  const title = win.getByTestId('open-playlist').getByTestId('playlist-title');
+  await node('Placeholder A').click();
+  await expect(title).toHaveText('Placeholder A');
+
+  // The sound into A, which is the playlist chosen last from then on.
+  await chooseMenuItem(app, 'import-from-link');
+  await lookAtVideo(win);
+  await expect(win.getByTestId('link-add-to')).toHaveValue(`playlist:${a}`);
+  await win.getByTestId('link-type-mp3').click();
+  await download(win);
+  await expect.poll(async () => (await view(win)).lastPlaylist).toBe(a);
+  await win.getByTestId('link-dialog').getByRole('button', { name: 'Close', exact: true }).click();
+
+  // B open, its own From a Link… ("add it at the end of this playlist"): the dialog still shows the last
+  // download, and Another link keeps B, never the playlist chosen last.
+  await node('Placeholder B').click();
+  await expect(title).toHaveText('Placeholder B');
+  await win.getByTestId('playlist-from-link').click();
+  await expect(win.getByTestId('link-saved')).toBeVisible();
+  await win.getByTestId('link-another').click();
+  await lookAtVideo(win);
+  await expect(win.getByTestId('link-add-to')).toHaveValue(`playlist:${b}`);
+  await download(win);
+  await expect(title).toHaveText('Placeholder B', { timeout: 60_000 });
+  await expect(cards(win).filter({ hasText: 'Placeholder video.mp4' })).toHaveAttribute(
+    'data-marked',
+    'true',
+  );
+  await expect.poll(() => labels(win, b)).toEqual(['Placeholder video.mp4']);
+  expect(await labels(win, a)).toEqual(['Placeholder video.mp3']);
+  await expect.poll(async () => (await view(win)).lastPlaylist).toBe(b);
+  await app.close();
+});
+
+test('with the playlists unread, it says so with Try again, never that there are no playlists, and offers them once read', async () => {
+  test.setTimeout(180_000);
+  // The playlists' read held failing (Session 39's test switch) until the test makes it readable.
+  const { app, win } = await open({ DRASHTI_TEST_UNREADABLE: 'playlists' });
+  const [sunday = ''] = await newPlaylists(win, ['Placeholder Sunday']);
+  expect(sunday).not.toBe('');
+  await chooseMenuItem(app, 'import-from-link');
+  await lookAtVideo(win);
+  const dialog = win.getByTestId('link-dialog');
+  const unread = dialog.getByTestId('playlists-unread');
+  await expect(unread).toBeVisible();
+  await expect(unread).toContainText('Drashti couldn’t read the playlists');
+  await expect(dialog).not.toContainText('There are no playlists yet');
+  await expect(dialog.getByLabel('The new playlist’s name')).toHaveValue('Placeholder video');
+  await expectNoSeriousA11yIssues(
+    win,
+    'Import from a Link with the playlists unread',
+    '[data-testid="link-dialog"]',
+  );
+  // Readable again: Try again, in the dialog, brings them to choose from.
+  await app.evaluate(() => {
+    (globalThis as { drashtiTestReadable?: (name: string) => void }).drashtiTestReadable?.('playlists');
+  });
+  await dialog.getByTestId('playlists-try-again').click();
+  await expect(unread).toHaveCount(0);
+  await expect(win.getByTestId('link-add-to').locator('option')).toHaveText([
+    'Placeholder Sunday',
+    'A new playlist, “Placeholder video”',
+    'No playlist',
+  ]);
+  await app.close();
+});
+
+test('the playlist chosen last, renamed, is offered under its new name; deleted, the open playlist is, or with none open a new one’s name', async () => {
+  test.setTimeout(240_000);
+  const { app, win } = await open();
+  const [sunday = '', youth = ''] = await newPlaylists(win, ['Placeholder Sunday', 'Placeholder Youth']);
+  const node = (name: string) => win.getByTestId('playlist-node').filter({ hasText: name });
+  const title = win.getByTestId('open-playlist').getByTestId('playlist-title');
+  const dialog = win.getByTestId('link-dialog');
+  const target = win.getByTestId('link-add-to');
+  const close = () => dialog.getByRole('button', { name: 'Close', exact: true }).click();
+
+  // The sound into Youth, chosen from the list: the playlist chosen last from then on.
+  await chooseMenuItem(app, 'import-from-link');
+  await lookAtVideo(win);
+  await target.selectOption(`playlist:${youth}`);
+  await win.getByTestId('link-type-mp3').click();
+  await download(win);
+  await expect.poll(async () => (await view(win)).lastPlaylist).toBe(youth);
+  await close();
+  await node('Placeholder Sunday').click();
+  await expect(title).toHaveText('Placeholder Sunday');
+
+  // Renamed: still offered first, under its new name.
+  await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.playlists.rename(id, 'Placeholder Youth renamed'),
+    youth,
+  );
+  await expect(node('Placeholder Youth renamed')).toBeVisible();
+  await chooseMenuItem(app, 'import-from-link');
+  await win.getByTestId('link-another').click();
+  await lookAtVideo(win);
+  await expect(target).toHaveValue(`playlist:${youth}`);
+  await expect(target.locator('option')).toHaveText([
+    'Placeholder Youth renamed',
+    'Placeholder Sunday (open)',
+    'A new playlist, “Placeholder video”',
+    'No playlist',
+  ]);
+
+  // Deleted: the open playlist to begin with.
+  await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.remove([id]), youth);
+  await expect(target).toHaveValue(`playlist:${sunday}`);
+  await expect(target.locator('option')).toHaveText([
+    'Placeholder Sunday (open)',
+    'A new playlist, “Placeholder video”',
+    'No playlist',
+  ]);
+  // And with no playlist open, a new one, its name asked for.
+  await close();
+  await win.getByTestId('playlist-close').click();
+  await chooseMenuItem(app, 'import-from-link');
+  await expect(target).toHaveValue('new');
+  await expect(win.getByTestId('link-new-playlist')).toHaveValue('Placeholder video');
+  await expectNoSeriousA11yIssues(
+    win,
+    'Import from a Link, the playlist chosen last deleted',
+    '[data-testid="link-dialog"]',
+  );
+  await app.close();
 });

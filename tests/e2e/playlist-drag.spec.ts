@@ -11,6 +11,7 @@ import {
   dropFiles,
   importAndGetIds,
   launchApp,
+  letTimePass,
   openLibrary,
   operatorPage,
   operatorReady,
@@ -241,8 +242,10 @@ test('reordering a playlist by dragging, from the chosen item and an unchosen on
   // Undo takes the move back.
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/ }).click();
   await expect.poll(() => labels(items)).toEqual([two, three, one]);
-  // Up and Down, and Alt+arrows, still move the chosen item.
+  // Up and Down, and Alt+arrows, still move the chosen item. Up and Down take a click once they have been there a
+  // moment (Session 54: a double click's second never lands on them).
   await items.nth(2).click();
+  await letTimePass(win, 600, 'Up and Down take a click once they have been there a moment');
   await win
     .getByTestId('open-playlist')
     .getByTestId('playlist-item-moves')

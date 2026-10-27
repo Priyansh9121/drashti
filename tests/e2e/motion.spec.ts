@@ -242,6 +242,8 @@ test('a playlist row moving Up or Down slides to its place over 180 ms', async (
         setTimeout(() => resolve(seen), 3000);
       }),
   );
+  // Up takes a click once it has been there a moment (Session 54: never a double click's second).
+  await letTimePass(win, 600, 'Up and Down take a click once they have been there a moment');
   await win.locator('[data-move="up"]').click();
   expect(await watch).toContain(180);
   await expect(rows.first()).toHaveAttribute('data-item-id', moved ?? '');
@@ -325,6 +327,7 @@ async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> 
     .click();
   await still(win, 'a playlist opening');
   await win.getByTestId('playlist-item').nth(1).click();
+  await letTimePass(win, 600, 'Up and Down take a click once they have been there a moment');
   await win.locator('[data-move="up"]').click();
   await still(win, 'a row moving up');
   await openLibrary(win);
