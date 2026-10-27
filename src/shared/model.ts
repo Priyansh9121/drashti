@@ -3,6 +3,8 @@
  * Everything here is plain, JSON-serializable data.
  */
 
+import type { DeckSlide } from './deck';
+
 /**
  * Languages: English, Gujarati, Hindi (Devanagari), Roman transliteration,
  * and Sanskrit in either of its scripts (Session 12, for Shastra texts):
@@ -245,6 +247,12 @@ export interface RenderSlide {
    * (language-view.ts; Sessions 31–36, I18N-4). Never stored: a slide in full says by its own lines.
    */
   translitOf?: TranslitSource;
+  /**
+   * A slide made from a PowerPoint or Keynote deck with its animations (Session 54, C2): its steps, its own
+   * transition and its real videos and sounds (shared/deck.ts). Left out for every other slide, and for a deck's
+   * page made as a picture only.
+   */
+  deck?: DeckSlide;
 }
 
 /**
