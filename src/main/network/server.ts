@@ -650,7 +650,7 @@ export class NetworkServer {
         res.setHeader('WWW-Authenticate', 'Bearer');
         throw new HttpError(
           401,
-          'This device is not paired with Drashti. Pair it from Drashti’s Network panel.',
+          'This device is not paired with Drashti. Pair it again from Phones and tablets in Drashti.',
         );
       }
       // A file's pieces count apart (Session 54): a phone sending one can still tap Next.
