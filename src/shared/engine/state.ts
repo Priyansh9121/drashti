@@ -29,16 +29,18 @@ import type { LowerThird } from '../lower-thirds';
  * `clips`); and a slide's and the next slide's background file that is missing (`fileMissing`); and (Session 53,
  * still before any release read 13) a slide's sound file that is missing (`soundMissing`), and a video from Media in
  * the picture-in-picture box playing between its points too (the box's `clips`). 13 only adds to 12, so a state saved
- * by alpha.11 (its recovery file, a node's last picture) is read as it is: `readsEngineVersion`.
+ * by alpha.11 (its recovery file, a node's last picture) is read as it is: `readsEngineVersion`. 14 (Session 54,
+ * after alpha.12 had published 13) only adds to 13, so a state alpha.12 saved is read as it is too.
  */
-export const ENGINE_STATE_VERSION = 13;
+export const ENGINE_STATE_VERSION = 14;
 
 /**
- * Whether a state saved by this engine version is read whole (Session 52): this version's own, and 12, alpha.11's,
- * as 13 only adds fields to it. Any other version's layers are left out, as their shapes may differ.
+ * Whether a state saved by this engine version is read whole (Session 52): this version's own, 13 (alpha.12's) and
+ * 12 (alpha.11's), as 14 and 13 each only add fields to the one before. Any other version's layers are left out, as
+ * their shapes may differ.
  */
 export function readsEngineVersion(version: unknown): boolean {
-  return version === ENGINE_STATE_VERSION || version === 12;
+  return version === ENGINE_STATE_VERSION || version === 13 || version === 12;
 }
 
 export type LayerName =

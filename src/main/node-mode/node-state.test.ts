@@ -54,6 +54,15 @@ describe('a node’s last picture (Session 52)', () => {
     expect(shown?.snapshot.state.version).toBe(ENGINE_STATE_VERSION);
   });
 
+  it('reads the one alpha.12 kept (engine 13) as it is, as this engine’s (Session 54)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-node-state-'));
+    writeFileSync(join(dir, 'node-show.json'), JSON.stringify({ offsetMs: 7, snapshot: snapshot(13) }));
+    const shown = new NodeStore(dir).readShow();
+    expect(shown?.offsetMs).toBe(7);
+    expect(shown?.snapshot).toMatchObject({ rev: 4, version: ENGINE_STATE_VERSION });
+    expect(shown?.snapshot.state.version).toBe(ENGINE_STATE_VERSION);
+  });
+
   it('reads its own, and leaves out any other version’s', () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-node-state-'));
     const store = new NodeStore(dir);

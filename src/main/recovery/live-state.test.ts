@@ -554,6 +554,14 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toMatchObject({ slide: { slideIndex: 2 }, background });
   });
 
+  it('reads a file alpha.12 saved (engine 13) whole: 14 only adds to it (Session 54)', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, live());
+    const raw = JSON.parse(readFileSync(files.state, 'utf8')) as Record<string, unknown>;
+    writeFileSync(files.state, JSON.stringify({ ...raw, engineVersion: 13 }));
+    expect(toRestore(files)).toMatchObject({ slide: { slideIndex: 2 }, background });
+  });
+
   it('reads files saved before playlists could be played', () => {
     writeFileSync(
       files.state,
