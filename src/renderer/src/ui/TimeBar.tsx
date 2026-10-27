@@ -2,7 +2,7 @@ import type { KeyboardEvent, PointerEvent } from 'react';
 import { useRef, useState } from 'react';
 import { formatDuration } from '../../../shared/format';
 import { cx } from './cx';
-import { barFraction, barSpan, keyTarget, leftText, timeAt, timeWords } from './time-bar';
+import { barFraction, barSpan, keyPress, leftText, timeAt, timeWords } from './time-bar';
 
 /*
  * The time bar (Session 54): a file's time, as LIVE, Music and a phone show what plays, and as a phone shows a video
@@ -117,13 +117,14 @@ export function TimeBar({
       letGo(null);
       return;
     }
-    if (!movable || e.altKey || e.ctrlKey || e.metaKey) return;
-    const to = keyTarget(e.key, at, span);
-    if (to === null) return;
-    // The bar's keys are its own: the show's keys (the arrows are Next and Back) never hear them.
+    if (!movable) return;
+    const press = keyPress(e, at, span);
+    if (!press) return;
+    // The bar's keys are its own: the show's keys (the arrows are Next and Back) never hear them. One move a press:
+    // a key held down moves nothing more (Session 54's review: before, each repeat was a jump on every screen).
     e.preventDefault();
     e.stopPropagation();
-    if (to !== at) onMove(to);
+    if (press.to !== null) onMove(press.to);
   };
 
   const head = held ?? at;
