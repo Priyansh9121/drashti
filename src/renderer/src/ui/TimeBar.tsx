@@ -73,7 +73,7 @@ export function TimeBar({
   const pointer = useRef<number | null>(null);
   const known = durationMs !== null && durationMs > 0;
   const span = barSpan(known ? durationMs : 0, startMs, endMs);
-  const at = Math.min(span.endMs, Math.max(0, atMs));
+  const at = Math.min(span.endMs, Math.max(span.startMs, atMs));
   const movable = onMove !== undefined && known;
   const s = SIZES[size];
 
