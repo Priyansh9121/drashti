@@ -3,20 +3,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { STOPPED_REFUSAL } from '../../src/shared/access';
+import { PHONE_STOPPED_TEXT, PHONE_STOPPED_TITLE, STOPPED_REFUSAL } from '../../src/shared/access';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { PLACEHOLDER_PERSON, revoke, standInOf } from './access';
-import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
+import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken, TABLET } from './devices';
+import { expectFits } from './fit';
 import { importAndGetIds, outputPage, type PageGlobals } from './helpers';
 import { launchMain, launchNode, pairNode, type MainRun, type NodeRun } from './nodes';
 import { makeTestImage } from './test-media';
 
 /*
  * A node runs only while paired with a Main that is let in; phones and tablets work only while their Drashti is
- * (Session 54, access by Gmail, E2 and E3). When Main stops, its phones' pages say so plainly and every request is
- * refused, those the network answers by itself too (a picture, an original, a link, an upload); its nodes' screens
- * fade to black and their windows say why; a node that hears no Main let in for 2 minutes (20 s here) does the same.
- * The stand-in list on 127.0.0.1; placeholder media made at run time; tokens and codes never printed.
+ * (Session 54, access by Gmail, E2 and E3). When Main stops, its phones' pages say so plainly (in Safari on a phone and
+ * a tablet too) and every request is refused, those the network answers by itself too (a picture, an original, a
+ * link, an upload); its nodes' screens fade to black and their windows say why; a node that hears no Main let in for
+ * 2 minutes (20 s here) does the same. The stand-in list on 127.0.0.1; placeholder media made at run time; tokens and
+ * codes never printed.
  */
 
 const FAST = {
@@ -78,6 +80,43 @@ test('phones and tablets stop with their Drashti: every request refused, files t
     for (const r of refused)
       expect(r).toEqual({ status: 503, json: { ok: false, message: STOPPED_REFUSAL } });
   } finally {
+    await phone.close();
+    await main.app.close();
+  }
+});
+
+test('a phone and a tablet in Safari say plainly that Drashti has stopped, at 375 × 812 and 768 × 1024', async () => {
+  test.setTimeout(180_000);
+  const main = await launchMain({ ...NETWORK_ENV, ...FAST });
+  const phone = await device('webkit');
+  const tablet = await device('webkit', TABLET);
+  try {
+    const { win } = main;
+    const { base } = await networkOn(win);
+    const held = [
+      { d: phone, size: { width: 375, height: 812 }, name: 'Placeholder phone' },
+      { d: tablet, size: { width: 768, height: 1024 }, name: 'Placeholder tablet' },
+    ];
+    for (const { d, size, name } of held) {
+      await d.page.setViewportSize(size);
+      await pairByQr(d.page, base, await pairingCode(win, 'remote', name), '/remote');
+      await expect(d.page.getByTestId('connection')).toHaveAttribute('data-state', 'online');
+      await expect(d.page.getByTestId('phone-stopped')).toHaveCount(0);
+    }
+
+    revoke(standInOf(main.userData), PLACEHOLDER_PERSON);
+    await expect(win.getByTestId('access-stopped')).toBeVisible({ timeout: 20_000 });
+    for (const { d, size } of held) {
+      const at = `${String(size.width)} × ${String(size.height)}`;
+      const stopped = d.page.getByTestId('phone-stopped');
+      await expect(stopped).toBeVisible({ timeout: 10_000 });
+      await expect(stopped.getByRole('heading', { level: 1 })).toHaveText(PHONE_STOPPED_TITLE);
+      await expect(stopped).toContainText(PHONE_STOPPED_TEXT);
+      await expectFits(stopped, `a phone’s page once Drashti has stopped, at ${at}`);
+      await expectNoSeriousA11yIssues(d.page, `a phone’s page once Drashti has stopped, in Safari at ${at}`);
+    }
+  } finally {
+    await tablet.close();
     await phone.close();
     await main.app.close();
   }
