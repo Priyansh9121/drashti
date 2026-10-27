@@ -375,6 +375,9 @@ const APP: Record<Baker, string> = {
   'stand-in': 'The stand-in',
 };
 
+/** "video", "2 videos", or '' for none: what a deck has, after "Its". */
+const some = (n: number, one: string) => (n === 0 ? '' : n === 1 ? one : `${String(n)} ${one}s`);
+
 /** "17 s", "1 min 5 s". */
 export function took(ms: number): string {
   const s = Math.max(1, Math.round(ms / 1000));
@@ -428,7 +431,7 @@ export function bakedIssues(d: {
     out.push(
       info(
         'deck-media',
-        `Its ${[d.videos > 0 ? plural(d.videos, 'video') : '', d.audios > 0 ? plural(d.audios, 'sound') : ''].filter(Boolean).join(' and ')} came in as real media, played as the deck plays them (when they start, ${d.trimmed > 0 ? 'their trims, ' : ''}loop and volume), with the time bar under LIVE.`,
+        `Its ${[some(d.videos, 'video'), some(d.audios, 'sound')].filter(Boolean).join(' and ')} came in as real media, played as the deck plays ${d.videos + d.audios === 1 ? 'it' : 'them'} (when ${d.videos + d.audios === 1 ? 'it starts' : 'they start'}, ${d.trimmed > 0 ? 'trims, ' : ''}loop and volume), with the time bar under LIVE.`,
       ),
     );
   if (d.transitionSounds > 0)
@@ -463,7 +466,7 @@ export function bakedIssues(d: {
     out.push(
       info(
         'deck-advance',
-        `${plural(d.advancing, 'slide moved', 'slides moved')} on by itself after some seconds in the deck: in Drashti each waits for Next (a Repeat Slides playlist moves on by itself).`,
+        `${plural(d.advancing, 'slide moved on by itself', 'slides moved on by themselves')} after some seconds in the deck: in Drashti each waits for Next (a Repeat Slides playlist moves on by itself).`,
       ),
     );
   if (d.hidden > 0)
@@ -514,7 +517,10 @@ export function picturesMediaIssues(d: { videos: number; cued: number; left: num
     out.push({
       severity: 'info',
       code: 'deck-media',
-      message: `Its ${plural(d.videos, 'video')} came in as real ${d.videos === 1 ? 'video' : 'videos'} where ${d.videos === 1 ? 'its slide has it' : 'the slides have them'}, with the time bar under LIVE; ${d.videos === 1 ? 'it starts' : 'they start'} as ${d.videos === 1 ? 'its' : 'their'} slide goes up.`,
+      message:
+        d.videos === 1
+          ? 'Its video came in as a real video where its slide has it, with the time bar under LIVE; it starts as its slide goes up.'
+          : `Its ${String(d.videos)} videos came in as real videos where the slides have them, with the time bar under LIVE; they start as their slide goes up.`,
       fix: null,
     });
   if (d.cued > 0)
@@ -540,9 +546,11 @@ export function noAppIssue(d: { media: number }): ImportIssue {
     severity: 'info',
     code: 'deck-needs-app',
     message: `${
-      d.media > 0
-        ? `Its ${plural(d.media, 'video or sound', 'videos and sounds')} came in as media (in the Media list), with the time bar. `
-        : ''
+      d.media === 1
+        ? 'Its video or sound came in as media (in the Media list), with the time bar. '
+        : d.media > 1
+          ? `Its ${String(d.media)} videos and sounds came in as media (in the Media list), with the time bar. `
+          : ''
     }Its slides as pictures, and its animations, clicks and transitions, need PowerPoint (or Keynote on a Mac): import it on a computer with one, or save it as PDF there and import the PDF here.`,
     fix: null,
   };

@@ -70,7 +70,7 @@ test('a deck comes in with its animations: each slide its steps, its one picture
   );
   await expect(item).toContainText('Next and Back step through the clicks as in its slide show');
   await expect(item).toContainText('Every step was found where it should be in the movie');
-  await expect(item).toContainText('Its 2 videos and 1 sound came in as real media');
+  await expect(item).toContainText('Its 2 videos and sound came in as real media');
   await expect(item).toContainText('1 transition sound plays as its slide comes in.');
   await expect(item).toContainText('1 slide is hidden in the file and left out, as in its slide show.');
   await expectNoSeriousA11yIssues(
