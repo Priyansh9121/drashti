@@ -22,8 +22,14 @@ extraResources:
       - presenter-guide.md
       - admin-guide.md
       - setup-day.md
+      - screenshots/access-countdown.png
+      - screenshots/access-list.png
+      - screenshots/access-revoke.png
+      - screenshots/access-stopped.png
       - screenshots/appearance-window.png
       - screenshots/calendar-dialog.png
+      - screenshots/deck-live-click.png
+      - screenshots/deck-transitions.png
       - screenshots/dropbox-playlist.png
       - screenshots/first-start-welcome.png
       - screenshots/idle-dialog.png
@@ -33,15 +39,25 @@ extraResources:
       - screenshots/keep-changes.png
       - screenshots/keys-sheet.png
       - screenshots/live-zoom.png
+      - screenshots/lock-request.png
+      - screenshots/lock-token.png
       - screenshots/lower-thirds.png
       - screenshots/marker-jumps.png
       - screenshots/markers-dialog.png
+      - screenshots/music-bar.png
       - screenshots/music-panel.png
       - screenshots/node-diagnostics-saved.png
       - screenshots/node-update-offer.png
       - screenshots/operator-1920x1080.png
+      - screenshots/output-play-bar.png
+      - screenshots/output-stage-timer.png
+      - screenshots/phone-add-files.png
+      - screenshots/phone-remote-clears.png
       - screenshots/phone-remote-notes.png
       - screenshots/phone-remote-search.png
+      - screenshots/phone-shared.png
+      - screenshots/phone-viewer-zoom.png
+      - screenshots/phones-panel-files.png
       - screenshots/phones-panel.png
       - screenshots/picture-editor.png
       - screenshots/playlist-cards.png
@@ -55,9 +71,14 @@ extraResources:
       - screenshots/screens-looks.png
       - screenshots/screens-pair-node.png
       - screenshots/setup-wizard.png
+      - screenshots/share-with-phones.png
       - screenshots/shastra-texts.png
       - screenshots/smart-playlist.png
+      - screenshots/stage-panel-timers.png
+      - screenshots/stage-template-dialog.png
+      - screenshots/stage-timer-box.png
       - screenshots/start-here.png
+      - screenshots/tablet-remote-more.png
       - screenshots/tablet-remote-sideways.png
       - screenshots/theme-charcoal.png
       - screenshots/theme-forest.png
@@ -70,6 +91,7 @@ extraResources:
       - screenshots/theme-plum-and-flame.png
       - screenshots/theme-saffron.png
       - screenshots/themes-builtin.png
+      - screenshots/time-bar.png
       - screenshots/updates-offer.png
       - screenshots/video-timeline.png
       - screenshots/what-is-this.png

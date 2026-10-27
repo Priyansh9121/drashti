@@ -37,9 +37,13 @@ On a phone, **Show**, **Playlist**, **Library** and **More** along the bottom ch
 
 ![The library, searched for words on a slide](screenshots/phone-remote-search.png)
 
+![The clears on a phone, in the operator's order with their keys: those with something to clear are lit](screenshots/phone-remote-clears.png)
+
 **On an iPad held sideways** (or a laptop): the live picture, your notes, what comes next and the clears are on the left, and the slides are on the right, with the Playlist, the Library and More (in two columns) a tab away above them; Back and Next run along the bottom. Held upright, the iPad shows the playlist or the library beside the show, and More under it. A phone held sideways keeps a phone's tabs, with Back and Next in reach.
 
 ![An iPad held sideways: the live picture and notes beside the slides](screenshots/tablet-remote-sideways.png)
+
+![More on an iPad held sideways, in two columns](screenshots/tablet-remote-more.png)
 
 The operator can always change the screens from the computer too; your page follows whatever is up.
 
@@ -49,10 +53,16 @@ The operator can always change the screens from the computer too; your page foll
 - Two fingers zoom in and out, up to 400% (two quick taps too), and one finger moves what you have zoomed; the buttons along the bottom do the same, and step to the page before or after. **Close**, or your phone's own Back (Android's back, an iPhone's swipe from the edge), goes back to the remote. None of this changes the screens.
 - **Show this zoom on the screens**: when the picture you have zoomed into is the one on the screens (a red LIVE at the top), this large button at the side puts your zoom on the screens, and **Back to Whole** shows the whole picture again. It is there for a slide's own picture, or a picture up on its own, and only while the screens can zoom as far as you have; never for words over a picture behind them, nor on anything not live.
 
+![Looking closer at the picture on the screens, zoomed on the phone, with Show this zoom on the screens at the side](screenshots/phone-viewer-zoom.png)
+
 ## Files between your phone and Drashti
 
 - **Shared from Drashti**, beside **Presentations** and **Media** in the **Library** while the operator shares a playlist with phones (in Drashti, right-click it and choose **Share with Phones and Tablets**): tap the playlist, then a file, to look at it or play it on your phone alone, with the playlist's other files before and after it. Nothing there changes the playlist or the screens.
 - **Add from this Phone…**, at the top of the library's **Media**, while the operator has turned on **Phones and tablets may add files** (in **Phones** on the Drashti computer): choose pictures, videos, sounds, PDF, PowerPoint or Keynote files, up to 2 GB each. Each goes whole, with a bar showing how much has gone and **Cancel**; if the Wi-Fi drops, it picks up again by itself. Drashti adds it to the playlist **Added from Phones** (and to Media or the library), marked with your phone's name, and your phone says when it is in; a PDF or a deck waits until the stream and recording have ended. It never goes on the screens by itself. On an iPhone, choose a video from **Files** to send it whole: one chosen from the photo library may go as a smaller copy.
+
+![Shared from Drashti: a shared playlist's files, under its headers](screenshots/phone-shared.png)
+
+![Add from this Phone…: a sound on its way, with how much has gone and Cancel](screenshots/phone-add-files.png)
 
 ## If something is not right
 
