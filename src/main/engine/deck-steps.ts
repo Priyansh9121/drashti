@@ -131,6 +131,15 @@ export function settledStep(layer: SlideLayer, at: number): SlideLayer {
   return atStep(layer, timing.index, at, timing.step.clipMs);
 }
 
+/**
+ * The deck's own transition's sound from `at`, as its slide comes in with that transition (C review): stamped with the
+ * slide's media, so it plays on to its end whatever clicks come meanwhile (it was cut off by the first).
+ */
+function withChime(deck: DeckSlide, seeks: VideoSeeks | undefined, at: number): VideoSeeks | undefined {
+  const chime = deck.transition?.soundId;
+  return chime ? { ...seeks, [chime]: { at, toMs: 0 } } : seeks;
+}
+
 /** How a deck's slide comes on: its step, how far into the step's clip, its transition and its media's moves. */
 export interface DeckShow {
   step: number;
@@ -162,7 +171,7 @@ export function deckShow(
   const own = deck.drashti;
   if (entry === 'order' && inOrder && own?.mode !== 'instead') {
     const transition = own?.mode === 'over' ? takingTime(own.transition) : undefined;
-    return { step: 0, fromMs: 0, transition, seeks: entrySeeks(deck, 0, at, 0) };
+    return { step: 0, fromMs: 0, transition, seeks: withChime(deck, entrySeeks(deck, 0, at, 0), at) };
   }
   const fromMs = Math.max(0, deckStep(deck, 0)?.transitionMs ?? 0);
   const transition = own ? takingTime(own.transition) : jumpWith;

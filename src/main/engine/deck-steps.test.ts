@@ -240,6 +240,22 @@ describe('a deck’s slide stepped through its clicks (Session 54, C2)', () => {
     expect(up(loose)).toMatchObject({ id: 'b', step: 0, from: 400 });
   });
 
+  it('stamps its transition’s sound as the slide comes in with the deck’s own transition, and keeps it through its clicks (C review)', () => {
+    const chiming = (id: string, steps: number) =>
+      deckSlide(id, steps, { transition: { name: 'push', durationMs: 400, soundId: `${id}-chime` } });
+    const { engine } = setup([chiming('a', 1), chiming('b', 2)]);
+    // A jump: past the deck's own transition, so no chime.
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    expect(engine.current.layers.slide?.seeks?.['a-chime']).toBeUndefined();
+    // In order: its own transition, and its chime, from when it came in, kept as it is clicked on.
+    engine.dispatch({ type: 'next' });
+    const shownAt = engine.current.layers.slide?.shownAt ?? 0;
+    expect(engine.current.layers.slide?.seeks?.['b-chime']).toEqual({ at: shownAt, toMs: 0 });
+    engine.dispatch({ type: 'next' });
+    expect(up(engine).step).toBe(1);
+    expect(engine.current.layers.slide?.seeks?.['b-chime']).toEqual({ at: shownAt, toMs: 0 });
+  });
+
   it('a click on the deck’s slide up never starts it again', () => {
     const { engine } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
