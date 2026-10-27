@@ -443,11 +443,14 @@ function settingsLayout(longId: string, zeroId: string): StageBox[] {
 
 /** What a page draws of the settings layout, with the clock's time as its shape (pages read it at moments apart). */
 async function settingsOn(scope: Page | Locator) {
-  const looks = await looksOn(scope);
-  for (const l of looks)
-    if (l.kind === 'clock') expect(l.text, 'the clock: 24 hours, the seconds').toMatch(/^\d\d:\d\d:\d\d$/u);
-  return looks.map(({ fitted, ...l }) => ({ ...l, text: l.kind === 'clock' ? '00:00:00' : l.text, fitted }));
+  return (await looksOn(scope)).map((l) => ({
+    ...l,
+    text: l.kind === 'clock' ? l.text.replace(/\d/gu, '0') : l.text,
+  }));
 }
+
+/** The same without how large each box's words were fitted (a font's measure may differ by a pixel). */
+const unfitted = (looks: Awaited<ReturnType<typeof settingsOn>>) => looks.map(({ fitted: _f, ...l }) => l);
 
 test('a box’s settings draw alike on this computer’s stage screen, a node’s, a tablet’s stage page, the Stage panel’s preview and the editor', async () => {
   test.setTimeout(240_000);
@@ -506,7 +509,7 @@ test('a box’s settings draw alike on this computer’s stage screen, a node’
       timerColor: '#f5a524',
       color: 'rgb(245, 165, 36)',
     });
-    // As large as its box holds: past the 400 px a box saved before keeps to.
+    // Fitted to its box, inside the fill's room and under its label.
     expect(timer?.fitted).toBeGreaterThan(200);
     expect(spent).toMatchObject({
       fill: 'rgba(0, 0, 0, 0)',
@@ -517,38 +520,35 @@ test('a box’s settings draw alike on this computer’s stage screen, a node’
       timerColor: '#ef4444',
       color: 'rgb(239, 68, 68)',
     });
-    expect(clock).toMatchObject({ shadow: true, weight: '400' });
+    // 24 hours, with the seconds.
+    expect(clock).toMatchObject({ shadow: true, weight: '400', text: '00:00:00' });
 
-    // The same on the node's stage screen.
-    const same = (other: Awaited<ReturnType<typeof settingsOn>>, where: string) => {
-      expect(
-        other.map(({ fitted: _f, ...l }) => l),
-        where,
-      ).toEqual(drawn.map(({ fitted: _f, ...l }) => l));
-      other.forEach((l, i) => {
+    /** Drawn alike elsewhere: every setting the same, and its words fitted as large, give or take a pixel or two. */
+    const same = async (scope: Page | Locator, where: string) => {
+      await expect
+        .poll(async () => unfitted(await settingsOn(scope)), { message: where })
+        .toEqual(unfitted(drawn));
+      (await settingsOn(scope)).forEach((l, i) => {
         const at = drawn[i]?.fitted ?? NaN;
         if (Number.isNaN(at)) expect(l.fitted, `${where} ${String(l.kind)}`).toBeNaN();
         else expect(Math.abs(l.fitted - at), `${where} ${String(l.kind)} fitted`).toBeLessThanOrEqual(2);
       });
     };
-    await expect(nodeStage.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
-    same(await settingsOn(nodeStage), 'a node’s stage screen');
+    // The node's stage screen.
+    await same(nodeStage, 'a node’s stage screen');
 
     // A tablet's stage page.
     const { base } = await networkOn(main.win);
     const code = await pairingCode(main.win, 'stage', 'Placeholder tablet');
     await pairByQr(tablet.page, base, code, '/stage');
-    await expect(tablet.page.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
-    same(await settingsOn(tablet.page), 'a tablet’s stage page');
+    await expect(tablet.page.getByTestId('stage-layout')).toBeVisible();
+    await same(tablet.page, 'a tablet’s stage page');
 
     // The Stage panel's preview, and the editor's canvas.
-    const preview = main.win.getByTestId('stage-preview');
-    await expect(preview.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
-    same(await settingsOn(preview), 'the Stage panel’s preview');
+    await same(main.win.getByTestId('stage-preview'), 'the Stage panel’s preview');
     await main.win.getByTestId('stage-edit-layout').click();
-    const canvas = main.win.getByTestId('stage-layout-canvas');
-    await expect(canvas.locator('[data-stage-box="clock"]')).toHaveText(/^\d\d:\d\d:\d\d$/u);
-    same(await settingsOn(canvas), 'the stage layout editor');
+    await expect(main.win.getByTestId('stage-layout-editor')).toBeVisible();
+    await same(main.win.getByTestId('stage-layout-canvas'), 'the stage layout editor');
   } finally {
     await tablet.close();
     await node.app.close();
