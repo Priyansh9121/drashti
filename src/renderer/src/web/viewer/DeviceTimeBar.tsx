@@ -7,8 +7,9 @@ import { Pause, Play } from '../../ui/icons';
  * A video's time bar for a video played on a phone or tablet only (Session 54, D1): Play or Pause, the time gone
  * and the time left, and a track to tap or drag (the time under the finger shown while dragging, moved there once,
  * as the finger lifts). It only draws and says what was asked: the video is the caller's. It is drawn as Part B's
- * bar under LIVE and on the remote (B1, B2) is meant to be; when both are in, this becomes that one component,
- * with the start and end points and the markers as ticks that the screens' videos have.
+ * bar (ui/TimeBar.tsx, 'lg', as a phone shows what plays on the screens) is drawn, built beside it; once both are
+ * in, DeviceVideoControls draws B's TimeBar (onMove: the video's own time) with this Play and Pause, and this file
+ * goes.
  */
 
 /** "1:05", or "1:02:05" past an hour; whole seconds, never below 0. */
@@ -79,7 +80,7 @@ export function DeviceTimeBar({
       >
         {playing ? 'Pause' : 'Play'}
       </Button>
-      <span className="shrink-0 text-base text-fg tabular-nums" data-testid="viewer-time">
+      <span className="shrink-0 text-base text-muted tabular-nums" data-testid="viewer-time">
         {clockText(at)}
       </span>
       <div
@@ -126,13 +127,13 @@ export function DeviceTimeBar({
         />
         <span
           aria-hidden="true"
-          className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ink bg-fg"
+          className="absolute top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-ink bg-fg"
           style={{ left: `${String(share * 100)}%` }}
         />
         {dragging !== null && (
           <span
             aria-hidden="true"
-            className="absolute bottom-full mb-1 -translate-x-1/2 rounded-md bg-panel-3 px-2 py-0.5 text-base text-fg tabular-nums"
+            className="absolute bottom-full z-10 mb-1 -translate-x-1/2 rounded-md border border-line-strong bg-panel-2 px-1.5 py-0.5 whitespace-nowrap text-base text-fg tabular-nums shadow-card"
             style={{ left: `${String(share * 100)}%` }}
           >
             {clockText(dragging)}
