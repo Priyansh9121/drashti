@@ -97,6 +97,8 @@ Do these about 30 minutes before the sabha starts.
 
 ![Closing Edit words with a line typed: the question, while the kirtan is on the screens](screenshots/keep-changes.png)
 
+![A deck's slide up at its first click: the top line says click 1 of 4, and the deck's slides are in the middle](screenshots/deck-live-click.png)
+
 **Covering and clearing:**
 
 | Key or button                                          | What it does                                                                                                                                         |
@@ -124,6 +126,10 @@ If the single-letter keys are turned off (**Keys at a glance**, below), **B**, *
 
 **A timer on the stage screens.** For a time the performers can see: in **Stage screen**, press **Edit layout…**, then **New from a Template…**. Choose **Timer only**, **Countdown to a time** (to a time of day, large, with "Starting in" above it), **Countdown** (from a length down to 0:00, then on past it in another colour), **Count up from 0:00**, or **Timer and clock over the audience** (the hall's picture, live, with a timer at the top left and the clock at the top right). Under **The timer it shows**, choose **One in Timers** or keep **A new timer** (its length, or the time it counts down to, and **Its name in Timers**). **Make the layout** makes it, and the stage screens show it at once. **Stage screen** then lists the layout's timers, each with what it counts to and **Start**, **Pause** and **Reset** (a countdown to a time has **Stop**), so nobody has to look for them in **Timers** during the sabha. Everything in the layout can be changed after, in the editor: its boxes moved, sized and coloured (the admin's guide has the details).
 
+![New from a Template…: Countdown chosen, with its length and its timer's name](screenshots/stage-template-dialog.png)
+
+![The Stage screen panel: the stage layout's countdown running, with Pause and Reset](screenshots/stage-panel-timers.png)
+
 **Props.** In **Props**, **Show** puts one up (the mandir's name, say) over whatever slide is live; **Hide** or **F4** takes it down.
 
 **Looks.** If there is more than one Look ("Gujarati only", "Lower thirds"), switch between them in **Looks**: every screen changes at once.
@@ -142,11 +148,17 @@ If the single-letter keys are turned off (**Keys at a glance**, below), **B**, *
 
 **Files and phones.** To let the phones look at a playlist's files, right-click the playlist and choose **Share with Phones and Tablets** (offered while a phone remote is paired): its row gets a mark, and the remote's **Library** has **Shared from Drashti** beside **Presentations** and **Media**, its files to look at and play on the phone only. **Stop Sharing**, in the same menu, ends it. With **Phones and tablets may add files** turned on in **Phones** (it is off until someone turns it on), the remote's **Media** has **Add from this Phone…** at its top: a picture, video, sound, PDF, PowerPoint or Keynote file, up to 2 GB, comes into **Media** and the playlist **Added from Phones**, marked with the phone's name. It never goes on the screens by itself, and a PDF, PowerPoint or Keynote file waits while the stream is on air or recording.
 
+![A playlist's menu, with Share with Phones and Tablets](screenshots/share-with-phones.png)
+
 **Zooming the picture on the screens** (Pro Mode). While a picture is up (a picture item, or a slide that is a picture, such as a PDF or PowerPoint page), scroll or pinch over the **LIVE** picture to zoom it and drag it to move it, or use **+** and **−** under it; every screen follows smoothly, together. It lasts for that showing: the next slide comes up as it is kept. **Reset** goes back; **Keep this zoom** saves it with the picture, so it shows that way wherever it shows from then on. A phone can put a zoom on the screens too (**The phone remote**, above). A picture's zoom and enhancements are set once in the **Picture editor** (`docs/admin-guide.md`, section 10).
 
 ![The picture on the screens zoomed from LIVE, with Keep this zoom](screenshots/live-zoom.png)
 
 **The time bar.** While a video or a sound plays, a bar under **Back** and **Next** shows it (in Simple Mode, under the live picture), one for each thing playing: **Background**, **Slide video**, **Box video** (in the picture-in-picture box), **Sound**, or **Music** for an audio playlist's track (which has its bar in the **Music** panel too). Before the bar is the time played, after it the time left; its start and end points are short upright lines, and its markers are ticks. Click or drag along it to move there: while you drag it shows the time, and it moves once, as you let go, on every screen, the second computer, the stream and the sound together. **Play** and **Pause** are at the start of its row. With the keyboard on the bar, **→** and **↑** move it 5 seconds on, **←** and **↓** 5 seconds back, **Page Up** and **Page Down** 30 seconds on and back, and Home and End go to its start and end points; there they never change the slide. Simple Mode shows the bar and the time left only. In Simple Mode nothing, not even a phone, moves what plays, jumps it (**Back 15 s**, **Forward 15 s**, **Last 10 s**) or pauses it, apart from the music's own **Pause music**; **Play** always works, so nothing stays paused, and a phone's markers still jump. A video on a slide can show a thin play bar on the screens too, along its bottom, with its time: turn on **Show the play bar on the screens** for it in the slide editor (it is off to begin with).
+
+![The time bars under Back and Next: the background video and the music, each with Pause, the time played and the time left](screenshots/time-bar.png)
+
+![The Music panel playing, with its track's time bar](screenshots/music-bar.png)
 
 **Markers.** While a video or a sound with markers plays, its markers are buttons under the live picture: a press jumps every screen and the sound there together. A video's start and end (where it plays from and to) are set on its timeline: **Start, end and markers…** in its card's menu, or its row in **Media** (`docs/admin-guide.md`, section 10). It plays between them as the background, on a slide (its sound too), as a prop and as the logo, on every screen alike: going round between them if it loops, or stopping at its end point if it plays once. In the picture-in-picture box, swapped or not (section 7), it goes round between them. The marker buttons, and the jumps below, are for the background's video and a sound alone.
 
@@ -184,9 +196,15 @@ If the single-letter keys are turned off (**Keys at a glance**, below), **B**, *
 
 **A lock screen in place of the window.** Drashti opens only on a computer that whoever looks after Drashti has let in, for a Gmail they have let in, and it checks over the internet as it starts and every 15 seconds while it runs. On a computer not let in yet, it shows a lock screen, **Let this computer in**: ask whoever looks after Drashti. Under **Request Access**, type your Gmail and press **Request Access**; once they approve it, an email brings you a token. Then, under **I Have a Token**, type that Gmail and the token, and press **Let This Computer In**. A token works once, on one computer, and runs out after 3 days. **Quit Drashti** always works there.
 
+![The lock screen: Request Access with a Gmail, and the email on its way to whoever approves access](screenshots/lock-request.png)
+
 **A countdown: no internet.** If Drashti can't reach the internet while it runs, a warning at the top counts down: **No internet: Drashti stops in … unless it can check your access**. The show carries on meanwhile: get the internet back (the mandir's wired connection, or a phone's hotspot as the spare), and the warning goes once Drashti can check again. After 2 minutes with no answer, Drashti stops, as below (time the computer spends asleep does not count). With no internet as it starts, it does not open: press **Try Again** once the internet is back (it also tries again by itself every 15 seconds).
 
+![The countdown at the top of the window, while the show goes on](screenshots/access-countdown.png)
+
 **Drashti has stopped everything.** If this computer's access is removed, or the countdown runs out, Drashti stops at once, saying so in place of the controls (**Your access to Drashti has been removed**, or **Drashti stopped: no internet**): every screen fades to black, the stream and recording end, imports, conversions and downloads stop, the second computer and the phones stop too, and only **Quit Drashti** works. Once the screens have faded, a screen that covered the controls is turned off, so the message is always in view: switch it on again in **Screens** once Drashti is let in again. After the countdown, quit, get the internet back and start Drashti again; otherwise tell whoever looks after Drashti. If the sabha must go on meanwhile, fall back to the old program (below).
+
+![Drashti stopped: one message in place of the controls, and Quit Drashti](screenshots/access-stopped.png)
 
 **When to fall back to the old program.** If Drashti cannot keep the screens right, the named fallback operator quits Drashti (**Cmd+Q**, or close its window on Windows) and opens the mandir's old presentation program, as practised (`docs/parallel-run.md`, section 9). Then save diagnostics (below) for whoever looks after Drashti.
 
