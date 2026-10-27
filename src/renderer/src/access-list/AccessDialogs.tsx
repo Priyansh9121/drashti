@@ -38,7 +38,7 @@ export function AddGmailDialog() {
       title="Add a Gmail"
       size="sm"
       onClose={busy ? null : closeDialog}
-      testId="access-add"
+      testId="access-add-dialog"
       bodyClassName="space-y-3"
       footer={
         <>
@@ -125,7 +125,7 @@ export function NoteDialog({ gmail }: { gmail: string }) {
       title={`Note for ${gmail}`}
       size="sm"
       onClose={busy ? null : closeDialog}
-      testId="access-note"
+      testId="access-note-dialog"
       footer={
         <>
           <Button onClick={closeDialog} disabled={busy}>
@@ -170,7 +170,7 @@ export function RevokeDialog({ gmail, done }: { gmail: string; done: () => void 
     <ConfirmDialog
       title={REVOKE_QUESTION.title(gmail)}
       confirmLabel={REVOKE_QUESTION.confirm}
-      testId="access-revoke"
+      testId="access-revoke-question"
       onCancel={closeDialog}
       onConfirm={() => {
         closeDialog();
