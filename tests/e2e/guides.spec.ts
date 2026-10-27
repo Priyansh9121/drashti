@@ -13,19 +13,25 @@ const menuHas = (app: Awaited<ReturnType<typeof launchApp>>['app'], id: string) 
 
 test('Help › Guides…: the four guides offline, "black" finds the Black-out row, pictures from beside the app, and nothing goes out', async () => {
   test.setTimeout(90_000);
-  const { app } = await launchApp();
-  // Every request off this computer is stopped and written down: none may be made.
-  await app.evaluate(({ session }) => {
+  const { app, access } = await launchApp();
+  // Every request off this computer is stopped and written down: none may be made. Drashti's own checks of its
+  // access (Session 54) go to the access list, not the guides': they are let through (the tests' list is the
+  // stand-in on this computer).
+  await app.evaluate(({ session }, list) => {
     const g = globalThis as { drashtiRequestsOut?: string[] };
     g.drashtiRequestsOut = [];
     session.defaultSession.webRequest.onBeforeRequest(
       { urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] },
       (details, callback) => {
+        if (new URL(details.url).origin === list) {
+          callback({});
+          return;
+        }
         g.drashtiRequestsOut?.push(details.url);
         callback({ cancel: true });
       },
     );
-  });
+  }, new URL(access.url).origin);
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
