@@ -8,7 +8,7 @@ import { handleAccessList } from './access-list-ipc';
 import { AccessListWindow } from './access-list-window';
 import { AccessClient, accessTarget } from './client';
 import { electronTransport } from './electron-transport';
-import { accessState, isOwner, onAccessChange } from './gate';
+import { accessState, isLetIn, isOwner, onAccessChange } from './gate';
 import { accessComputer, computerId } from './identity';
 import { AccessStore, grantOf } from './store';
 
@@ -32,9 +32,19 @@ export interface AccessListStart {
   /** The appearance's window colour, and its following of a window until it closes. */
   background: () => string;
   track: (win: BrowserWindow) => void;
-  /** The owner's computer let in, or no longer: the menu offers View › Access List…, or not. */
+  /**
+   * The owner's computer let in, or no longer while still let in: the menu is built again, with View › Access
+   * List… or without. (While this computer is not let in, the lock's own menu stands: never built again here.)
+   */
   ownerChanged: () => void;
   log: (line: string) => void;
+  /**
+   * The lock's own client and this computer's way in as the lock keeps them, when it has them: the owner's calls
+   * are then made with that client and signed with that grant. Left out, the client is made here the first time
+   * the owner's calls are needed, and the way in is read from the data folder.
+   */
+  client?: () => Promise<AccessClient | null>;
+  grant?: () => AccessGrant | null;
 }
 
 export interface AccessListControl {
@@ -92,7 +102,7 @@ export function startAccessList(o: AccessListStart): AccessListControl {
     },
     log: o.log,
   });
-  const calls = ownerCalls(clientNow, grant);
+  const calls = ownerCalls(o.client ?? clientNow, o.grant ?? grant);
   const list = new AccessList({
     calls: () => (isOwner() ? calls : null),
     isOwner,
@@ -128,7 +138,7 @@ export function startAccessList(o: AccessListStart): AccessListControl {
     if (!isOwner()) listWindow.close();
     if (offered !== isOwner()) {
       offered = isOwner();
-      o.ownerChanged();
+      if (isLetIn()) o.ownerChanged();
     }
   });
   return {

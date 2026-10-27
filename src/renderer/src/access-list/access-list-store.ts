@@ -62,16 +62,24 @@ export function connectAccessList(): void {
   window.drashti.accessList.onChanged((view) => {
     useAccessList.setState({ view });
   });
-  void window.drashti.accessList.view().then((view) => {
-    // An answer heard meanwhile is newer.
-    if (useAccessList.getState().view === null) useAccessList.setState({ view });
-  });
+  void window.drashti.accessList.view().then(
+    (view) => {
+      // An answer heard meanwhile is newer.
+      if (useAccessList.getState().view === null) useAccessList.setState({ view });
+    },
+    // Refused (this computer no longer the owner's, let in): the window is closing.
+    () => undefined,
+  );
 }
 
 /** Ask the list again now (Try again). */
 export async function tryAgain(): Promise<void> {
-  const view = await window.drashti.accessList.refresh();
-  useAccessList.setState({ view });
+  try {
+    const view = await window.drashti.accessList.refresh();
+    useAccessList.setState({ view });
+  } catch {
+    // Refused (this computer no longer the owner's, let in): the window is closing.
+  }
 }
 
 /** Sort by a column: by it, then the other way when it is the one sorted by already. */
