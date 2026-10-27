@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -17,20 +17,34 @@ import {
   importAndGetIds,
   launchApp,
   letTimePass,
+  lockPage,
   openLibrary,
   openMoreTools,
   operatorPage,
   operatorReady,
   outputPage,
+  outputPages,
   QUIET,
   setUpScreen,
   showExtras,
+  windowShowing,
 } from './helpers';
+import {
+  answerAgain,
+  closedWatch,
+  moveListClock,
+  PLACEHOLDER_PERSON,
+  pressLink,
+  revoke,
+  stopAnswering,
+} from './access';
+import { callBody, COMPUTERS, PEOPLE, placeholderComputer } from '../access-core';
 import { KIRTAN, NOTE_ONE, placeholderTalk, PLAYLIST, setUpPlaceholderShow, TALK } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } from './nodes';
 import { releaseServer } from './release-server';
+import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../../src/main/import/testing/make-deck';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeZip } from '../../src/main/import/testing/zip-writer';
@@ -123,6 +137,10 @@ async function barAndStatus(page: Page, name: string) {
     animations: 'disabled',
   });
 }
+
+/** Simple Mode's button in the header (as the time bar's specs find it since Session 54). */
+const simpleModeButton = (win: Page) =>
+  win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true });
 
 /** The placeholder sabha running: the kirtan's verse live, a message on the screens and a timer going. */
 async function running(win: Page) {
@@ -455,7 +473,7 @@ test('Simple Mode', async () => {
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await setUpPlaceholderShow(win);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await simpleModeButton(win).click();
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('PageDown');
   await win.keyboard.press('PageDown');
@@ -1370,7 +1388,7 @@ test('music, markers, scheduled backups, and Simple Mode with music (Session 14)
 
   // Simple Mode with the music (roles and their PINs, pictured here until Session 54, are gone: E5).
   await win.setViewportSize({ width: 1280, height: 720 });
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await simpleModeButton(win).click();
   await expect(win.getByTestId('simple-music')).toContainText('Placeholder before sabha');
   await shot(win, 'simple-mode-music');
   await app.close();
@@ -2103,4 +2121,532 @@ test('Zoom, both ways: the window for Zoom with the stream’s picture, and Show
   await shot(win, 'window-picker');
   await picker.getByRole('button', { name: 'Cancel' }).click();
   await app.close();
+});
+
+/*
+ * Session 54's windows, for the guides (taken on the dev Mac once the version is 1.0.0-alpha.13, which every
+ * picture of the operator window shows): stage timer layouts, the time bar, a deck with its animations, phones and
+ * tablets as a mirror of the operator window, and access by Gmail (the lock screen, the countdown, the stop and the
+ * owner's Access List). Placeholder words and generated media only; placeholder Gmails, on the tests' stand-in
+ * access list (tests/e2e/access.ts); a deck's movie made by the tests' stand-in in PowerPoint's place; codes and
+ * tokens made at run time, and never in a picture.
+ */
+
+/** The output showing this screen (outputs by data-screen). */
+async function outputShowing(app: ElectronApplication, screenId: string): Promise<Page> {
+  let found: Page | undefined;
+  await expect
+    .poll(async () => {
+      for (const p of outputPages(app))
+        if ((await p.getByTestId('output-root').getAttribute('data-screen')) === screenId) found = p;
+      return found !== undefined;
+    })
+    .toBe(true);
+  if (!found) throw new Error(`no output for ${screenId}`);
+  return found;
+}
+
+/** FFmpeg's test pattern: one frame as a picture (`seconds` null), or a moving one as an H.264 video. */
+function testPattern(ffmpeg: string, file: string, size: string, seconds: number | null): string {
+  const out =
+    seconds === null
+      ? ['-frames:v', '1']
+      : ['-t', String(seconds), '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '50', '-pix_fmt', 'yuv420p'];
+  const made = spawnSync(ffmpeg, [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    `testsrc2=s=${size}:r=25`,
+    ...out,
+    file,
+  ]);
+  if (made.status !== 0) throw new Error(made.stderr.toString());
+  return file;
+}
+
+test('stage timer layouts: New from a Template…, a timer box’s settings, the Stage screen panel’s timer, and the stage screen over the audience (Session 54)', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await operatorReady(win);
+  await running(win);
+  // The hall's screen (the kirtan's verse over a colour) and a stage screen, each a window of its own.
+  await setUpScreen(win, 'Placeholder hall', 0);
+  const stageId = await setUpScreen(win, 'Placeholder stage', 1);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const stage = (await d.screens.get()).groups.find((g) => g.name === 'Placeholder stage');
+    const set = await d.screens.setGroupRole(stage?.id ?? '', 'stage');
+    if (!set.ok) throw new Error(set.message);
+    await d.engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#1f3a5f' } });
+  });
+  const stage = await outputShowing(app, stageId);
+
+  // New from a Template…, from the Stage screen panel's Edit layout…: Countdown chosen, its length and its
+  // timer's name as it offers them.
+  await win.getByTestId('stage-edit-layout').click();
+  const editor = win.getByTestId('stage-layout-editor');
+  await expect(editor).toBeVisible();
+  await editor.getByTestId('stage-layout-from-template').click();
+  const dialog = win.getByTestId('stage-template-dialog');
+  await dialog.getByRole('radio', { name: 'Countdown', exact: true }).click();
+  await expect(dialog.getByTestId('stage-template-length')).toHaveValue('5:00');
+  await expect(dialog.getByTestId('stage-template-name')).toHaveValue('Stage countdown');
+  await shot(win, 'stage-template-dialog');
+
+  // Timer and clock over the audience made instead, with a new countdown of 5:00, chosen for the stage at once.
+  await dialog.getByRole('radio', { name: 'Timer and clock over the audience', exact: true }).click();
+  await dialog.getByTestId('stage-template-make').click();
+  await expect(dialog).toHaveCount(0);
+  await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Timer and clock over the audience');
+  // Its timer box chosen: its place and look, and its timer's own settings.
+  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Timer', exact: true }).click();
+  const timerLook = editor.getByTestId('stage-box-timer-look');
+  await expect(timerLook).toBeVisible();
+  await timerLook.scrollIntoViewIfNeeded();
+  await shot(win, 'stage-timer-box');
+  await editor.getByRole('button', { name: 'Close stage layouts' }).click();
+  await expect(editor).toHaveCount(0);
+
+  // The Stage screen panel: the layout's timer, with what it counts down from, started there.
+  const panel = win.getByTestId('stage-message-control');
+  const row = panel.getByTestId('stage-timer-row');
+  await expect(row).toHaveCount(1);
+  await row.getByRole('button', { name: 'Start' }).click();
+  await expect(row).toHaveAttribute('data-running', 'true');
+  await panel.scrollIntoViewIfNeeded();
+  await part(win, 'stage-panel-timers', [panel]);
+
+  // The stage screen: the hall's picture, live, with the countdown at the top left and the clock at the top right.
+  await expect(stage.locator('[data-stage-box="audience"]')).toBeVisible();
+  await expect(stage.locator('[data-stage-box="timer"]')).toContainText(/4:\d\d/u, { timeout: 10_000 });
+  await shot(stage, 'output-stage-timer');
+  await app.close();
+});
+
+test('the time bar: under LIVE in Pro Mode and in Simple Mode, Music’s own, and a slide video’s play bar on a screen (Session 54)', async () => {
+  test.setTimeout(240_000);
+  const ffmpeg = testFfmpeg();
+  test.skip(!ffmpeg, 'FFmpeg is not fetched here');
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-54-time-bar-'));
+  // Two minutes of FFmpeg's moving test pattern, and a placeholder tone.
+  const clip = testPattern(ffmpeg ?? '', join(dir, 'Placeholder opening video.mp4'), '640x360', 120);
+  const tone = makeTestTone(join(dir, 'Placeholder tone one.wav'), { seconds: 90, hz: 440 });
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const [clipId = '', toneId = ''] = await importAndGetIds(win, [clip, tone]);
+  await win.evaluate(
+    async ({ clipId, toneId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const list = await d.music.create('Placeholder before sabha');
+      if (!list.ok || !list.id) throw new Error('not made');
+      await d.music.addTracks(list.id, [toneId], null);
+      await d.engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: clipId, media: 'video', fit: 'fill', loop: true },
+      });
+    },
+    { clipId, toneId },
+  );
+  const music = win.getByTestId('music-panel');
+  await music.scrollIntoViewIfNeeded();
+  await music.getByTestId('music-play').click();
+  await expect(music.getByTestId('music-now')).toContainText('Placeholder tone one');
+
+  // Under Back and Next: a row for the background video and one for the music's track, each with Pause once
+  // Drashti knows how long it is.
+  const bars = win.getByTestId('time-bars');
+  for (const playing of ['background', 'audio'])
+    await expect(
+      bars
+        .locator(`[data-testid="time-bar-row"][data-playing="${playing}"]`)
+        .getByRole('button', { name: 'Pause' }),
+    ).toBeEnabled({ timeout: 15_000 });
+  await letTimePass(win, 4000, 'the docs’ picture: a few seconds of each played');
+  await win.getByRole('complementary', { name: 'Live' }).evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await part(win, 'time-bar', [win.getByTestId('live-preview'), bars]);
+  // Music's own bar, in its panel.
+  await music.scrollIntoViewIfNeeded();
+  await part(win, 'music-bar', [music]);
+
+  // A slide whose video shows its play bar on the screens (ticked for it in the slide editor), up on the hall's
+  // screen; the background off.
+  const words = join(dir, 'Placeholder Play Bar.txt');
+  writeFileSync(words, '[Verse]\nPlaceholder words over a video\n');
+  const [slidesId = ''] = await importAndGetIds(win, [words]);
+  await win.evaluate(
+    async ({ id, mediaId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const opened = await d.library.slidesForEdit(id);
+      if (!opened.ok) throw new Error(opened.message);
+      const slide = opened.doc.groups[0]?.slides[0];
+      if (!slide) throw new Error('The presentation has no slide.');
+      const video = {
+        id: 'placeholder-slide-video',
+        kind: 'video' as const,
+        mediaId,
+        frame: { x: 0, y: 0, width: 1920, height: 1080 },
+        fit: 'fit' as const,
+        loop: true,
+        playBar: true,
+      };
+      slide.elements = [video, ...slide.elements];
+      const saved = await d.library.saveSlides(id, opened.doc, opened.stamp);
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { id: slidesId, mediaId: clipId },
+  );
+  await setUpScreen(win, 'Placeholder hall', 0);
+  const hall = await outputPage(app);
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    await d.engine.dispatch({ type: 'clearLayer', layer: 'background' });
+    await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
+  }, slidesId);
+  await expect(hall.locator('[data-layer="slide"] [data-play-bar]')).toHaveAttribute(
+    'data-state',
+    'playing',
+    {
+      timeout: 15_000,
+    },
+  );
+  await letTimePass(hall, 3000, 'the docs’ picture: the slide’s video a few seconds in');
+  await shot(hall, 'output-play-bar');
+
+  // Simple Mode: the bars under its LIVE picture, each with its time left, moving nothing.
+  await simpleModeButton(win).click();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await expect(win.locator(`[data-testid="time-bar-row"][data-playing="slide:${clipId}"]`)).toBeVisible();
+  await shot(win, 'simple-mode-time-bar');
+  await app.close();
+});
+
+test('a deck with its animations: the import report, a click of it up in LIVE, and its transitions in the slide editor (Session 54)', async () => {
+  test.setTimeout(300_000);
+  const ffmpeg = testFfmpeg();
+  test.skip(!ffmpeg, 'FFmpeg is not fetched here');
+  // The placeholder trial deck (made-up words, FFmpeg's videos and a tone), its movie made by the tests' stand-in as
+  // PowerPoint makes it from a timed copy (DRASHTI_TEST_DECK_BAKER), and cut by Drashti for real.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-54-deck-'));
+  const deck = join(dir, 'Placeholder trial deck.pptx');
+  writeFileSync(deck, makeTestDeck(TRIAL_SLIDES, makeDeckMedia(ffmpeg ?? '', join(dir, 'made'))));
+  const { app } = await launchApp({ DRASHTI_TEST_DECK_BAKER: '1', DRASHTI_TEST_DECK_CONVERTER: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await openLibrary(win);
+  await dropFiles(win, win.getByTestId('library-drop'), [deck]);
+  const report = win.getByTestId('import-report');
+  const line = report.getByTestId('report-item').filter({ hasText: 'Placeholder trial deck' }).first();
+  await expect(line).toContainText('made this deck’s movie with its animations', { timeout: 180_000 });
+  await shot(win, 'deck-report');
+  await line.getByRole('button', { name: 'Open' }).click();
+  await expect(report).toHaveCount(0);
+
+  // Its first slide up, then its first click with Next: LIVE says which click is up.
+  await win.getByTestId('slide-thumb').first().click();
+  await expect(win.getByTestId('live-text')).toContainText('slide 1 of 5');
+  await win.getByTestId('show-next').click();
+  await expect(win.getByTestId('live-text')).toContainText('slide 1 of 5 · click 1 of 4');
+  await expect(win.getByTestId('live-preview').locator('[data-deck-step="1"]')).toBeVisible();
+  await letTimePass(win, 3000, 'the docs’ picture: the click has played to its last frame');
+  await shot(win, 'deck-live-click');
+
+  // The slide editor on the deck's first slide: its own transition and each click's, with Drashti's own beside.
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  await editor.getByTestId('editor-slide-thumb').first().click();
+  const transitions = editor.getByTestId('deck-transitions');
+  await expect(transitions.getByTestId('deck-own-transition')).toBeVisible();
+  await transitions.scrollIntoViewIfNeeded();
+  await shot(win, 'deck-transitions');
+  await app.close();
+});
+
+/** A file's pieces as a phone sends them (phone-files.spec.ts). */
+const PIECE = /\/api\/v1\/uploads\/[0-9a-f-]{36}\/piece\?offset=\d+$/u;
+
+test('phones and tablets: Files from phones, a playlist shared, Look closer with Show this zoom on the screens, the clears, Shared from Drashti, a file on its way, and More held sideways (Session 54)', async () => {
+  test.setTimeout(300_000);
+  const ffmpeg = testFfmpeg();
+  test.skip(!ffmpeg, 'FFmpeg is not fetched here');
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-54-phones-'));
+  // A generated picture with something in it to zoom into, and a placeholder tone to send (about 5.8 MB: pieces).
+  const picture = testPattern(ffmpeg ?? '', join(dir, 'Placeholder darshan.png'), '1920x1080', null);
+  const tone = makeTestTone(join(dir, 'Placeholder tone.wav'), { seconds: 60, rate: 48_000 });
+  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const show = await setUpPlaceholderShow(win, { video: true });
+  const [pictureId = ''] = await importAndGetIds(win, [picture]);
+  const { base } = await networkOn(win);
+  const phone = await device('webkit');
+  const tablet = await device('webkit', 'iPad (gen 7) landscape');
+  try {
+    const p = phone.page;
+    const t = tablet.page;
+    await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await pairByQr(t, base, await pairingCode(win, 'remote', 'Placeholder iPad'), '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await expect(t.getByTestId('connection')).toHaveText('Connected');
+
+    // Files from phones, in the Phones panel: off until someone turns it on.
+    await win.getByTestId('open-network').click();
+    const panel = win.getByTestId('network-panel');
+    const addFiles = panel.getByTestId('network-add-files');
+    await addFiles.click();
+    await expect(addFiles).toHaveAttribute('aria-checked', 'true');
+    const section = panel.getByTestId('network-add-files-section');
+    await section.scrollIntoViewIfNeeded();
+    await part(win, 'phones-panel-files', [section]);
+    await panel.getByRole('button', { name: 'Close phones and tablets' }).click();
+
+    // The playlist shared from its menu, offered while a remote is paired; its row marked.
+    const node = win.getByTestId('playlist-node').filter({ hasText: PLAYLIST });
+    await node.click({ button: 'right' });
+    const share = win.getByRole('menuitem', { name: 'Share with Phones and Tablets' });
+    await expect(share).toBeVisible();
+    await shot(win, 'share-with-phones');
+    await share.click();
+    await expect(node.getByTestId('playlist-shared')).toBeVisible();
+
+    // Look closer: the picture on the screens alone, zoomed on the device, with the button at the side that puts
+    // that zoom on the screens (it is the one live); on a phone, and on an iPad held sideways.
+    await win.evaluate(
+      (id) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'setBackground',
+          background: { kind: 'media', mediaId: id, media: 'image', fit: 'fit', loop: false },
+        }),
+      pictureId,
+    );
+    for (const [page, name] of [
+      [p, 'phone-viewer-zoom'],
+      [t, 'tablet-viewer-zoom'],
+    ] as const) {
+      await page.getByTestId('remote-look-closer').click();
+      const viewer = page.getByTestId('viewer');
+      await expect(viewer).toHaveAttribute('data-live', 'true');
+      await page.getByTestId('viewer-zoom-in').click();
+      await expect(page.getByTestId('viewer-zoom-level')).toHaveText('150%');
+      await expect(page.getByTestId('viewer-show-zoom')).toHaveText('Show this zoom on the screens');
+      await expect(
+        viewer.locator(`img[data-preview="shown"][data-media-id="${pictureId}"]`).first(),
+      ).toBeVisible({
+        timeout: 60_000,
+      });
+      await shot(page, name);
+      await page.getByTestId('viewer-close').click();
+      await expect(viewer).toHaveCount(0);
+    }
+
+    // The clears, in the operator's order with their keys: the kirtan's verse over the picture, a message and the
+    // stage message up, so the slide's, the background's and the messages' are lit.
+    await win.evaluate(async (kirtanId) => {
+      const d = (globalThis as PageGlobals).drashti;
+      await d.engine.dispatch({ type: 'goLive', presentationId: kirtanId, slideIndex: 1 });
+      await d.engine.dispatch({
+        type: 'showMessage',
+        message: { id: 'message:placeholder', text: 'Placeholder: car 12 please move' },
+      });
+      await d.engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes' });
+    }, show.kirtanId);
+    await expect(p.getByTestId('remote-clear-messages')).toHaveAttribute('data-lit', 'true');
+    await p.getByTestId('remote-actions').evaluate((el) => {
+      el.scrollIntoView({ block: 'center' });
+    });
+    await shot(p, 'phone-remote-clears');
+
+    // Shared from Drashti, in the phone's library: the shared playlist's files, under its headers.
+    await p.getByTestId('remote-tab-library').click();
+    await p.getByTestId('remote-library-shared').click();
+    const shared = p.getByTestId('remote-shared');
+    await shared.getByTestId('remote-shared-playlist').filter({ hasText: PLAYLIST }).click();
+    await expect(shared.getByTestId('remote-shared-header')).toHaveText(['Welcome', 'Kirtan']);
+    await shot(p, 'phone-shared');
+
+    // Add from this Phone…, at the top of the library's Media: a placeholder tone on its way, its second piece
+    // held back so the picture shows it partway, with Cancel.
+    await p.getByTestId('remote-library-media').click();
+    await expect(p.getByTestId('remote-add-button')).toBeVisible();
+    let pieces = 0;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await p.route(PIECE, async (route) => {
+      pieces++;
+      if (pieces === 2) await held;
+      await route.continue();
+    });
+    const [chooser] = await Promise.all([
+      p.waitForEvent('filechooser'),
+      p.getByTestId('remote-add-button').click(),
+    ]);
+    await chooser.setFiles([tone]);
+    const sending = p.getByTestId('remote-sending').filter({ hasText: 'Placeholder tone.wav' });
+    await expect(sending.getByTestId('remote-sending-words')).toHaveText(/ sent$/u, { timeout: 30_000 });
+    await expect
+      .poll(async () =>
+        Number(await sending.getByTestId('remote-sending-progress').getAttribute('aria-valuenow')),
+      )
+      .toBeGreaterThan(0);
+    await shot(p, 'phone-add-files');
+    release();
+    await expect(sending).toHaveAttribute('data-state', 'added', { timeout: 60_000 });
+
+    // More on an iPad held sideways: the rest of the operator's right column, in two columns.
+    await t.getByTestId('remote-panel-more').click();
+    await expect(t.getByTestId('remote-panel-more')).toHaveAttribute('aria-selected', 'true');
+    await expect(t.getByTestId('remote-stage-message')).toContainText('Placeholder: two minutes');
+    await shot(t, 'tablet-remote-more');
+  } finally {
+    await phone.close();
+    await tablet.close();
+  }
+  await app.close();
+});
+
+test('access by Gmail, the lock screen: Request Access with a placeholder Gmail, then I Have a Token once it is approved (Session 54)', async () => {
+  test.setTimeout(120_000);
+  const { app, access: list } = await launchApp({}, undefined, { as: 'locked' });
+  try {
+    const lock = await lockPage(app);
+    await expect(lock.getByTestId('access-lock')).toHaveAttribute('data-phase', 'locked');
+    // Taller than its window opens, so the answer under the form shows too.
+    await lock.setViewportSize({ width: 760, height: 760 });
+    await lock.getByTestId('access-gmail').fill(PLACEHOLDER_PERSON);
+    await lock.getByTestId('access-name').fill('Placeholder Person');
+    await lock.getByTestId('access-request').click();
+    await expect(lock.getByTestId('access-message')).toContainText(
+      'The person who approves access has been emailed',
+    );
+    await shot(lock, 'lock-request');
+    // Approved with the owner's emailed link (its page's one button), heard with Check Again: the token is next.
+    expect(await pressLink(list.list.linksFor(PLACEHOLDER_PERSON)?.approve ?? '')).toMatchObject({
+      kind: 'done',
+    });
+    await lock.getByTestId('access-check-request').click();
+    await expect(lock.getByTestId('access-message')).toContainText('Approved');
+    // A made-up token in a token's shape: the real one went by email, and is never in a picture.
+    await lock.getByTestId('access-token').fill('ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345');
+    await shot(lock, 'lock-token');
+  } finally {
+    await app.close();
+  }
+});
+
+test('access by Gmail, live: the countdown with no internet over the show, then the stop once access is removed (Session 54)', async () => {
+  test.setTimeout(150_000);
+  // A check every 6 s with 2 s to answer (test switches), and the stop 2 minutes after the last answer, as it is.
+  const { app, access: list } = await launchApp({
+    DRASHTI_TEST_ACCESS_CHECK_MS: '6000',
+    DRASHTI_TEST_ACCESS_TIMEOUT_MS: '2000',
+    DRASHTI_TEST_ACCESS_STOP_MS: '120000',
+  });
+  const watch = closedWatch(app);
+  try {
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1280, height: 720 });
+    await operatorReady(win);
+    await running(win);
+    // No answer from the list (as with no internet): the countdown at the top, while the show goes on.
+    stopAnswering(list);
+    await expect(win.getByTestId('access-countdown')).toBeVisible({ timeout: 30_000 });
+    await shot(win, 'access-countdown');
+    // An answer again takes it away; then this Gmail revoked: everything stops at the next check.
+    answerAgain(list);
+    await expect(win.getByTestId('access-countdown')).toHaveCount(0, { timeout: 30_000 });
+    revoke(list, PLACEHOLDER_PERSON);
+    await expect(win.getByTestId('access-stopped')).toHaveAttribute('data-reason', 'revoked', {
+      timeout: 30_000,
+    });
+    await shot(win, 'access-stopped');
+    await win.getByTestId('access-quit').click();
+    await watch.whenClosed;
+  } finally {
+    if (!watch.closed()) await app.close();
+  }
+});
+
+test('access by Gmail, the owner’s Access List: placeholder Gmails with their computers and counts, and Revoke asking first (Session 54)', async () => {
+  test.setTimeout(150_000);
+  // Let in as the owner; its own checks every 10 minutes here, so the list never writes this computer's own name.
+  const { app, access: s } = await launchApp(
+    { DRASHTI_TEST_ACCESS_CHECK_MS: String(10 * 60_000) },
+    undefined,
+    {
+      as: 'owner',
+    },
+  );
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    // This computer was let in under its own name: in the picture, a placeholder's, typed in the list's Sheet.
+    s.list.sheet.type(COMPUTERS, 'Gmail', s.approver, 'Computer', 'Placeholder office Mac');
+    // Placeholder people: one on a Mac with 2 h 5 min of use (counts only), one on a Windows PC, one revoked in the
+    // Sheet, and one asking.
+    const hall = placeholderComputer('shots-access-hall', 'Placeholder Hall Mac');
+    const person = s.grant(PLACEHOLDER_PERSON, hall);
+    s.grant('side.placeholder@example.com', {
+      ...placeholderComputer('shots-access-side', 'Placeholder Side PC'),
+      platform: 'win32',
+    });
+    s.grant(
+      'former.placeholder@example.com',
+      placeholderComputer('shots-access-former', 'Placeholder Lobby Mac'),
+    );
+    s.list.sheet.type(PEOPLE, 'Gmail', 'former.placeholder@example.com', 'Status', 'revoked');
+    // The list writes a computer's totals a minute after its token was used at the soonest: its clock moved on.
+    moveListClock(s, 61_000);
+    const activity = { minutes: 125, shows: 3, streams: 2, recordings: 1, imports: 4 };
+    s.list.handle(JSON.stringify(callBody('check', hall, { at: s.list.t, activity }, person).body));
+    s.list.handle(
+      JSON.stringify(
+        callBody('request', placeholderComputer('shots-access-asker', 'Placeholder Kitchen Mac'), {
+          gmail: 'asker.placeholder@example.com',
+          name: 'Placeholder Asker',
+        }).body,
+      ),
+    );
+
+    await chooseMenuItem(app, 'access-list');
+    const list = await windowShowing(app, (p) => p.url().includes('access-list.html'), 'the Access List');
+    await expect(list.getByTestId('access-table')).toBeVisible({ timeout: 30_000 });
+    const size = { width: 1280, height: 720 };
+    await app.evaluate(({ BrowserWindow }, want) => {
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().includes('access-list.html'))
+        ?.setContentSize(want.width, want.height);
+    }, size);
+    await list.setViewportSize(size);
+    const row = (gmail: string) => list.locator(`[data-testid="access-row"][data-gmail="${gmail}"]`);
+    await expect(list.getByTestId('access-summary')).toHaveText('5 Gmails · 1 request waiting');
+    await expect(row(s.approver)).toContainText('Placeholder office Mac');
+    await expect(row(PLACEHOLDER_PERSON)).toContainText('2 h 5 min');
+    await expect(row('former.placeholder@example.com')).toHaveAttribute('data-status', 'revoked');
+    await shot(list, 'access-list');
+
+    // Revoke… on a chosen Gmail asks first, in the owner's words, Cancel ready.
+    await row(PLACEHOLDER_PERSON).locator('th button').click();
+    await expect(list.getByTestId('access-chosen-gmail')).toHaveText(PLACEHOLDER_PERSON);
+    await list.getByTestId('access-revoke').click();
+    const question = list.getByTestId('access-revoke-question');
+    await expect(question).toContainText('Their Drashti stops at once, screens and stream included.');
+    await shot(list, 'access-revoke');
+    await question.getByRole('button', { name: 'Cancel' }).click();
+  } finally {
+    await app.close();
+  }
 });
