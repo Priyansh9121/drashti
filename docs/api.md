@@ -280,7 +280,16 @@ curl -s -X POST "$DRASHTI/api/v1/screens/keep" -H "Authorization: Bearer $TOKEN"
 | `POST /api/v1/playlist-items/delete`  | `{"ids":["…"]}`                                                                           | Takes items out of their playlist.                                                                       |
 | `POST /api/v1/playlist-items/restore` | `{"ids":["…"]}`                                                                           | Puts them back (the phone's Undo).                                                                       |
 
-The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep these screens?, a phone's ask, Media's video inputs or the cameras the computer lists changed: a Remote setting them up reads them again (`"screens"` still says the switches or the hall changed).
+**MIDI** (MIDI… on the computer), a Remote's alone, Simple Mode refusing the changes as the window does (403). Only the operator window may use the computer's MIDI, so it lists the devices it sees, and learns a mapping from the next press on the controller there.
+
+| Request                    | Body                                          | Does                                                                                                                                                                                                                 |
+| -------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/midi`         |                                               | `midi`: `settings` (`deviceName`, `mappings`), `seen` (the window's `access`, `devices` and whether the chosen one is `connected`; null until it has said) and `learning` (null, or the action waiting for a press). |
+| `POST /api/v1/midi/device` | `{"deviceName":"…"}` or `{"deviceName":null}` | Chooses the device, one the computer lists now (409 otherwise), or none.                                                                                                                                             |
+| `POST /api/v1/midi/forget` | `{"index":0}`                                 | Forgets a mapping, by its place in `mappings`.                                                                                                                                                                       |
+| `POST /api/v1/midi/learn`  | `{"action":"next"}` or `{"action":null}`      | Learn: the next press on the chosen device's controller at the computer is mapped to `next`, `back`, `clearAll`, `blackout` or `logo`; `null` stops learning.                                                        |
+
+The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep these screens?, a phone's ask, Media's video inputs, the cameras the computer lists or MIDI changed: a Remote setting them up reads them again (`"screens"` still says the switches or the hall changed).
 
 ## The state feed (WebSocket)
 

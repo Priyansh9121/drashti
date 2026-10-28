@@ -7,8 +7,11 @@ import {
   bothSwitches,
   CAMERA_AT_COMPUTER,
   CAMERAS_NOT_LISTED,
+  MIDI_NOT_LISTED,
   NOT_A_LISTED_CAMERA,
+  NOT_A_LISTED_MIDI_DEVICE,
   type RemoteInputs,
+  type RemoteMidi,
   type RemoteScreens,
   type RemoteWindows,
   SCREEN_RECORDING_AT_COMPUTER,
@@ -35,6 +38,7 @@ import { GROUP_ROLES, SCALING_MODES } from '../../shared/screens';
 import { canvasSizeSchema, displayIdSchema, nameSchema } from '../../shared/screens-schema';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
 import type { NewFromWordsResult } from '../../shared/library';
+import { MIDI_LEARNABLE, type MidiLearnable, type MidiResult, type MidiSettings } from '../../shared/midi';
 import type { PlaylistResult } from '../../shared/playlists';
 import type { PlaylistChanges } from '../playlists/playlist-ipc';
 import { DesktopConsent, type ConsentQuestion } from './desktop-consent';
@@ -112,6 +116,17 @@ export interface DesktopLibrary {
   playlists(): PlaylistChanges | null;
 }
 
+/**
+ * MIDI (Session 54): the controller's settings kept as the window keeps them, the computer's devices as its operator
+ * window sees them, and the window asked to listen or to learn the next press on the controller at the computer.
+ */
+export interface DesktopMidi {
+  view(): RemoteMidi;
+  listen(): void;
+  set(settings: MidiSettings): MidiResult;
+  learn(action: MidiLearnable | null): void;
+}
+
 /** The Drashti computer's own things a Remote sets up, as the main process does them for the window. */
 export interface DesktopActs {
   screens: DesktopScreens;
@@ -120,6 +135,8 @@ export interface DesktopActs {
   windows: DesktopWindows;
   /** The library's changes (left out, a test of something else: a phone cannot). */
   library?: DesktopLibrary;
+  /** MIDI (left out, a test of something else: a phone cannot). */
+  midi?: DesktopMidi;
   /** Simple Mode is on (it only turns the screens on). */
   simple(): boolean;
   /** The computer's own box: "Cover the Drashti controls?". True only when the operator agrees there. */
@@ -168,7 +185,11 @@ export type DesktopOp =
   | 'playlist.add'
   | 'playlist.move'
   | 'playlist.removeItems'
-  | 'playlist.restoreItems';
+  | 'playlist.restoreItems'
+  | 'midi'
+  | 'midi.device'
+  | 'midi.forget'
+  | 'midi.learn';
 
 /** The library's ops (Session 54): each a change the window makes too. */
 export const LIBRARY_OPS = [
@@ -187,7 +208,7 @@ export const LIBRARY_OPS = [
 export type LibraryOp = (typeof LIBRARY_OPS)[number];
 
 /** The ops that read only (all others are limited per phone; the windows' list too, which takes the computer a while). */
-const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs']);
+const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs', 'midi']);
 
 const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
   status: 200,
@@ -256,6 +277,10 @@ const playlistAdd = z
     at: z.number().int().min(0).max(100_000).nullable().optional(),
   })
   .strict();
+// MIDI's (Session 54): a device by the name the computer lists (or none), a mapping by its place, an action to learn.
+const midiDevice = z.object({ deviceName: z.string().min(1).max(300).nullable() }).strict();
+const midiForget = z.object({ index: z.number().int().min(0).max(1000) }).strict();
+const midiLearn = z.object({ action: z.enum(MIDI_LEARNABLE).nullable() }).strict();
 const playlistMove = z
   .object({
     playlistId: idSchema,
@@ -438,8 +463,64 @@ export class DesktopAnswers {
         this.ctx.log(`Network: ${who} put another app’s window up as the background`);
         return ok({});
       }
+      case 'midi':
+      case 'midi.device':
+      case 'midi.forget':
+      case 'midi.learn':
+        return this.midi(op, args, who);
       default:
         return this.library(op, args, who);
+    }
+  }
+
+  /**
+   * MIDI from a phone (Session 54), as the window's MIDI… sets it up: its device one the computer's window lists now
+   * (never one a phone names), a mapping forgotten, or the window asked to learn the next press on the controller at
+   * the computer. Reading asks the window to listen until it has, so its devices are listed.
+   */
+  private midi(
+    op: 'midi' | 'midi.device' | 'midi.forget' | 'midi.learn',
+    args: Record<string, unknown>,
+    who: string,
+  ) {
+    const midi = this.acts.midi;
+    if (!midi) return deny(404, 'Drashti cannot set up MIDI from a phone here.');
+    const now = midi.view();
+    const kept = (result: MidiResult, did: string): DeviceAnswer => {
+      if (!result.ok) return deny(409, result.message);
+      this.ctx.log(`Network: ${who} ${did}`);
+      return ok({ midi: midi.view() });
+    };
+    switch (op) {
+      case 'midi':
+        // Asked to listen only until it has (a window refused MIDI is never asked again by a read: no loop).
+        if (now.seen === null || now.seen.access === 'off') midi.listen();
+        return ok({ midi: now });
+      case 'midi.device': {
+        const a = midiDevice.safeParse(args);
+        if (!a.success) return deny(400, 'Which MIDI device?');
+        const name = a.data.deviceName;
+        if (name !== null && name !== now.settings.deviceName) {
+          if (now.seen === null) return deny(409, MIDI_NOT_LISTED);
+          if (!now.seen.devices.includes(name)) return deny(409, NOT_A_LISTED_MIDI_DEVICE);
+        }
+        return kept(midi.set({ ...now.settings, deviceName: name }), 'chose the MIDI device');
+      }
+      case 'midi.forget': {
+        const a = midiForget.safeParse(args);
+        if (!a.success || a.data.index >= now.settings.mappings.length) return deny(400, 'Which mapping?');
+        const mappings = now.settings.mappings.filter((_m, i) => i !== a.data.index);
+        return kept(midi.set({ ...now.settings, mappings }), 'forgot a MIDI mapping');
+      }
+      case 'midi.learn': {
+        const a = midiLearn.safeParse(args);
+        if (!a.success) return deny(400, 'Learn which?');
+        if (a.data.action !== null && now.settings.deviceName === null)
+          return deny(409, 'Choose the MIDI device first: Learn listens to it.');
+        midi.learn(a.data.action);
+        this.ctx.log(`Network: ${who} ${a.data.action ? 'asked MIDI to learn' : 'stopped MIDI learning'}`);
+        return ok({ midi: midi.view() });
+      }
     }
   }
 

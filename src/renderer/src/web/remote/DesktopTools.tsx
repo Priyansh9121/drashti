@@ -8,13 +8,14 @@ import {
 } from '../../../../shared/screen-switches';
 import { useNow } from '../../render/useNow';
 import { Button } from '../../ui/Button';
-import { BookOpen, Monitor, PictureInPicture2, Video } from '../../ui/icons';
+import { BookOpen, Monitor, KeyboardMusic, PictureInPicture2, Video } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { plural } from '../../ui/text';
 import { answerKeep, answerOff, openSheet, startDesktop, useDesktop } from './desktop-store';
 import { PhoneQuestion } from './PhoneSheet';
 import { InputsSheet } from './InputsSheet';
 import { LibrarySheet } from './LibrarySheet';
+import { MidiSheet } from './MidiSheet';
 import { PipSheet } from './PipSheet';
 import { ScreensSheet, SwitchButtons } from './ScreensSheet';
 
@@ -89,6 +90,17 @@ export function DesktopTools() {
         }}
       >
         Change the library…
+      </Button>
+      <Button
+        size="lg"
+        className="min-h-12 w-full"
+        icon={KeyboardMusic}
+        data-testid="remote-open-midi"
+        onClick={() => {
+          openSheet('midi');
+        }}
+      >
+        MIDI…
       </Button>
     </section>
   );
@@ -169,6 +181,7 @@ export function DesktopLayer() {
       {sheet === 'inputs' && <InputsSheet />}
       {sheet === 'pip' && <PipSheet />}
       {sheet === 'library' && <LibrarySheet />}
+      {sheet === 'midi' && <MidiSheet />}
       <KeepQuestion />
       <OffQuestion />
     </>

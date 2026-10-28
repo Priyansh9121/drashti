@@ -14,6 +14,8 @@ import {
   SWITCH_ASKS_FIRST,
 } from '../../shared/network-desktop';
 import type { WindowList } from '../../shared/live-window';
+import type { MidiLearnable, MidiSeen, MidiSettings } from '../../shared/midi';
+import { MIDI_NOT_LISTED, NOT_A_LISTED_MIDI_DEVICE } from '../../shared/network-desktop';
 import type { CameraAccess, VideoInput } from '../../shared/video-inputs';
 import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
 import type {
@@ -113,6 +115,16 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     windows: [{ id: 'window:7:0', name: 'Placeholder meeting', picture: 'data:image/png;base64,AAAA' }],
   };
   const state = initialEngineState();
+  let midiSettings: MidiSettings = {
+    deviceName: 'Placeholder pad',
+    mappings: [{ input: { type: 'note', channel: 0, number: 36 }, action: { kind: 'next' } }],
+  };
+  let midiSeen: MidiSeen | null = {
+    access: 'on',
+    devices: ['Placeholder pad', 'Placeholder keys'],
+    connected: true,
+  };
+  let midiLearning: MidiLearnable | null = null;
   const snapshot = () => ({ displays: DISPLAYS, groups: GROUPS, status, nodes: [] });
   const done = (): ScreensResult => ({ ok: true, snapshot: snapshot() });
   /** As ScreensService answers: an output on the controls' display (1) waits for the operator's consent. */
@@ -232,6 +244,22 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
           return { ok: true };
         },
       },
+      // MIDI (Session 54): the settings kept, the window's devices as it said them, learning asked of it.
+      midi: {
+        view: () => ({ settings: midiSettings, seen: midiSeen, learning: midiLearning }),
+        listen: () => {
+          calls.push({ what: 'midiListen', args: [] });
+        },
+        set: (next) => {
+          calls.push({ what: 'midiSet', args: [next] });
+          midiSettings = next;
+          return { ok: true, settings: next };
+        },
+        learn: (action) => {
+          calls.push({ what: 'midiLearn', args: [action] });
+          midiLearning = action;
+        },
+      },
       // The library's changes (Session 54): each recorded, answered with the ids as the window's own are.
       library: {
         newFromWords: (name, words) => {
@@ -324,6 +352,10 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     setWindows: (w: WindowList) => {
       windows = w;
     },
+    setMidiSeen: (seen: MidiSeen | null) => {
+      midiSeen = seen;
+    },
+    midiNow: () => midiSettings,
     ask,
     remote,
     stage,
@@ -819,5 +851,69 @@ describe('the library from a phone (Session 54, the phone as a full Drashti)', (
       body: { message: STOPPED_REFUSAL },
     });
     expect(calls).toEqual([]);
+  });
+});
+
+describe('MIDI from a phone (Session 54, the phone as a full Drashti)', () => {
+  it('reads it and asks the computer’s window to listen until it has, so its devices are listed, never again after', () => {
+    const { ask, remote, calls, setMidiSeen } = setup();
+    setMidiSeen(null);
+    expect(ask(remote, 'midi').status).toBe(200);
+    setMidiSeen({ access: 'refused', devices: [], connected: false });
+    expect(ask(remote, 'midi').status).toBe(200);
+    setMidiSeen({ access: 'on', devices: ['Placeholder pad', 'Placeholder keys'], connected: true });
+    expect(ask(remote, 'midi')).toMatchObject({
+      status: 200,
+      body: {
+        midi: {
+          settings: { deviceName: 'Placeholder pad' },
+          seen: { devices: ['Placeholder pad', 'Placeholder keys'] },
+        },
+      },
+    });
+    // Asked once, while the window had not said: a refusal or a list never asks again (no loop of reads).
+    expect(calls).toEqual([{ what: 'midiListen', args: [] }]);
+  });
+
+  it('chooses a device only among those the computer lists, forgets a mapping, and learns only with a device chosen', () => {
+    const { ask, remote, calls, setMidiSeen, midiNow } = setup();
+    expect(ask(remote, 'midi.device', { deviceName: 'Placeholder keys' }).status).toBe(200);
+    expect(midiNow().deviceName).toBe('Placeholder keys');
+    expect(ask(remote, 'midi.device', { deviceName: 'A device the phone made up' })).toMatchObject({
+      status: 409,
+      body: { message: NOT_A_LISTED_MIDI_DEVICE },
+    });
+    expect(ask(remote, 'midi.forget', { index: 0 }).status).toBe(200);
+    expect(midiNow().mappings).toEqual([]);
+    expect(ask(remote, 'midi.forget', { index: 0 }).status).toBe(400);
+    expect(ask(remote, 'midi.learn', { action: 'blackout' }).status).toBe(200);
+    expect(ask(remote, 'midi.learn', { action: null }).status).toBe(200);
+    expect(ask(remote, 'midi.learn', { action: 'macro' }).status).toBe(400);
+    expect(ask(remote, 'midi.device', { deviceName: null }).status).toBe(200);
+    expect(ask(remote, 'midi.learn', { action: 'next' }).status).toBe(409);
+    setMidiSeen(null);
+    expect(ask(remote, 'midi.device', { deviceName: 'Placeholder keys' })).toMatchObject({
+      status: 409,
+      body: { message: MIDI_NOT_LISTED },
+    });
+    expect(calls.map((c) => c.what)).toEqual(['midiSet', 'midiSet', 'midiLearn', 'midiLearn', 'midiSet']);
+  });
+
+  it('is a Remote’s alone, and Simple Mode refuses its changes as the window’s MIDI… does, never its reading', () => {
+    const { ask, remote, stage, calls, setLocked } = setup();
+    expect(ask(stage, 'midi').status).toBe(403);
+    expect(ask(stage, 'midi.learn', { action: 'next' }).status).toBe(403);
+    setLocked(true);
+    expect(ask(remote, 'midi').status).toBe(200);
+    for (const [op, args] of [
+      ['midi.device', { deviceName: null }],
+      ['midi.forget', { index: 0 }],
+      ['midi.learn', { action: 'next' }],
+    ] as const)
+      expect(ask(remote, op, args as Record<string, unknown>)).toMatchObject({
+        status: 403,
+        body: { message: SIMPLE_MODE_REFUSAL },
+      });
+    expect(calls.map((c) => c.what)).toEqual([]);
   });
 });

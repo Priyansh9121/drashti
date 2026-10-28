@@ -85,7 +85,7 @@ import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
-import type { MidiResult, MidiSettings } from './midi';
+import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
@@ -529,6 +529,12 @@ export const IPC = {
   midi: {
     get: 'midi:get',
     set: 'midi:set',
+    /** operator -> main (Session 54): the MIDI devices the operator window sees, for a phone to choose among. */
+    report: 'midi:report',
+    /** main -> operator (Session 54): a phone asks the window to listen, or to learn the next press for an action. */
+    ask: 'midi:ask',
+    /** main -> operator (Session 54): the settings changed from a phone. */
+    changed: 'midi:changed',
   },
   /** The mask library (changing it: operator window, Pro Mode; putting one up is the engine's setMask). */
   masks: {
@@ -1178,6 +1184,7 @@ export interface InvokeContract {
   [IPC.lowerThirds.restore]: { args: [ids: string[]]; result: LowerThirdsResult };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
+  [IPC.midi.report]: { args: [seen: MidiSeen]; result: null };
   [IPC.shastra.list]: { args: []; result: ShastraTextInfo[] };
   [IPC.shastra.tree]: { args: [textId: string]; result: ShastraTree | null };
   [IPC.shastra.resolve]: { args: [reference: string]; result: PassageResult };
@@ -1375,6 +1382,8 @@ export interface EventContract {
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.masks.changed]: Mask[];
+  [IPC.midi.ask]: MidiAsk;
+  [IPC.midi.changed]: MidiSettings;
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.calendar.changed]: CalendarView;
   [IPC.idle.changed]: IdleView;

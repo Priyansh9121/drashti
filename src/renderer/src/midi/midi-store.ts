@@ -131,10 +131,46 @@ async function open(): Promise<void> {
   }
 }
 
+let reporting = false;
+
+/**
+ * The phone as a full Drashti (Session 54): this window tells Drashti which MIDI devices it sees (a phone chooses
+ * among this computer's own), listens or learns when a phone asks, and takes the settings a phone changed.
+ */
+function serveRemote(): void {
+  if (reporting) return;
+  reporting = true;
+  // Never the moment of asking: only what came of it.
+  const report = (s: MidiStore) => {
+    if (s.access !== 'asking')
+      void window.drashti.midi.report({ access: s.access, devices: s.devices, connected: s.connected });
+  };
+  report(useMidi.getState());
+  useMidi.subscribe((s, before) => {
+    if (s.access !== before.access || s.devices !== before.devices || s.connected !== before.connected)
+      report(s);
+  });
+  window.drashti.midi.onAsk((ask) => {
+    // Listen: only until asked once (a refusal stands until MIDI… is opened here). Learn: asked once more.
+    if (!('learn' in ask)) {
+      if (useMidi.getState().access === 'off') void open();
+      return;
+    }
+    void open().then(() => {
+      learn(ask.learn === null ? null : { kind: ask.learn });
+    });
+  });
+  window.drashti.midi.onChanged((settings) => {
+    useMidi.setState({ settings, learning: null });
+    attach();
+  });
+}
+
 /** At start: the saved settings, and listening if a device was chosen. */
 export async function startMidi(): Promise<void> {
   const settings = await window.drashti.midi.get();
   useMidi.setState({ settings });
+  serveRemote();
   if (settings.deviceName !== null) await open();
 }
 

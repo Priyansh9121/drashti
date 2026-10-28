@@ -156,6 +156,14 @@ export const DEVICE_OPS = {
   'playlist.move': ['remote'],
   'playlist.removeItems': ['remote'],
   'playlist.restoreItems': ['remote'],
+  /**
+   * MIDI (Session 54): the controller's settings, its device chosen among those the computer's window lists, a
+   * mapping forgotten, and the window asked to learn the next press at the computer. Simple Mode refuses the changes.
+   */
+  midi: ['remote'],
+  'midi.device': ['remote'],
+  'midi.forget': ['remote'],
+  'midi.learn': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;

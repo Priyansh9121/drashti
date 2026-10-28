@@ -95,3 +95,30 @@ export function inputOf(data: ArrayLike<number>): MidiInput | null {
 /** How an input is written for people: "Note 36, channel 1", "Controller 20, channel 10". */
 export const inputName = (i: MidiInput): string =>
   `${i.type === 'note' ? 'Note' : 'Controller'} ${i.number}, channel ${i.channel + 1}`;
+
+/**
+ * How the operator window's MIDI stands (Session 54, the phone as a full Drashti): only that page may use Web MIDI,
+ * so it tells the main process which devices it sees, for a phone to choose among this computer's own.
+ */
+export interface MidiSeen {
+  access: 'off' | 'asking' | 'on' | 'refused' | 'unsupported';
+  /** Connected input devices, by name. */
+  devices: string[];
+  /** The chosen device is plugged in. */
+  connected: boolean;
+}
+
+export const midiSeenSchema: z.ZodType<MidiSeen> = z
+  .object({
+    access: z.enum(['off', 'asking', 'on', 'refused', 'unsupported']),
+    devices: z.array(z.string().min(1).max(300)).max(64),
+    connected: z.boolean(),
+  })
+  .strict();
+
+/** The actions a phone may learn a mapping for (never a macro's: Macros went in Session 44). */
+export const MIDI_LEARNABLE = ['next', 'back', 'clearAll', 'blackout', 'logo'] as const;
+export type MidiLearnable = (typeof MIDI_LEARNABLE)[number];
+
+/** What the main process asks of the operator window's MIDI for a phone: listen (so it lists the devices), or learn. */
+export type MidiAsk = { listen: true } | { learn: MidiLearnable | null };

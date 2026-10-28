@@ -484,6 +484,9 @@ const bridge: DrashtiBridge = {
   midi: {
     get: () => invoke(IPC.midi.get),
     set: (settings) => invoke(IPC.midi.set, settings),
+    report: (seen) => invoke(IPC.midi.report, seen),
+    onAsk: (listener) => on(IPC.midi.ask, listener),
+    onChanged: (listener) => on(IPC.midi.changed, listener),
   },
   masks: {
     list: () => invoke(IPC.masks.list),

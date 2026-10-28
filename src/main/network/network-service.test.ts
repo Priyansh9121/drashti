@@ -616,6 +616,10 @@ describe('the network in the main process', () => {
       'playlist.move',
       'playlist.removeItems',
       'playlist.restoreItems',
+      // MIDI's changes (Session 54), as the window's MIDI… are; reading it stays open.
+      'midi.device',
+      'midi.forget',
+      'midi.learn',
     ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });

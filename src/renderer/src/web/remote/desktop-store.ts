@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { RemoteInputs, RemoteScreens, RemoteWindows } from '../../../../shared/network-desktop';
+import type {
+  RemoteInputs,
+  RemoteMidi,
+  RemoteScreens,
+  RemoteWindows,
+} from '../../../../shared/network-desktop';
 import type { ScreenSwitch } from '../../../../shared/screen-switches';
 import { api } from '../device';
 import { onListsChanged, onOnline } from '../feed';
@@ -15,7 +20,7 @@ import { loadMedia } from './mirror-store';
  */
 
 /** The sheets a phone opens over the remote to set up the computer's things. */
-export type DesktopSheet = 'screens' | 'inputs' | 'pip' | 'library';
+export type DesktopSheet = 'screens' | 'inputs' | 'pip' | 'library' | 'midi';
 
 interface DesktopView {
   /** The sheet open now, or null. */
@@ -35,6 +40,8 @@ interface DesktopView {
   /** The other apps' windows as last listed (null until looked for), and whether a look is on its way. */
   windows: RemoteWindows | null;
   lookingForWindows: boolean;
+  /** MIDI as the computer has it (Session 54; null until read). */
+  midi: RemoteMidi | null;
 }
 
 export const useDesktop = create<DesktopView>(() => ({
@@ -47,6 +54,7 @@ export const useDesktop = create<DesktopView>(() => ({
   inputs: null,
   windows: null,
   lookingForWindows: false,
+  midi: null,
 }));
 
 /**
@@ -70,10 +78,30 @@ export async function loadInputs(): Promise<void> {
   if (r.ok) useDesktop.setState({ inputs: { inputs: r.inputs, access: r.access, cameras: r.cameras } });
 }
 
+export async function loadMidi(): Promise<void> {
+  const r = await api<{ midi: RemoteMidi }>('/api/v1/midi');
+  if (r.ok) useDesktop.setState({ midi: r.midi });
+}
+
+/** A change to MIDI, sent and answered with MIDI as it is after it; false with the problem said. */
+export async function changeMidi(path: string, body: unknown): Promise<boolean> {
+  if (useDesktop.getState().busy) return false;
+  useDesktop.setState({ busy: true, problem: null });
+  const r = await api<{ midi: RemoteMidi }>(path, { method: 'POST', body });
+  useDesktop.setState({ busy: false });
+  if (!r.ok) {
+    useDesktop.setState({ problem: r.message });
+    return false;
+  }
+  useDesktop.setState({ midi: r.midi });
+  return true;
+}
+
 export function openSheet(sheet: DesktopSheet): void {
   useDesktop.setState({ sheet, problem: null, ...(sheet !== 'screens' ? { windows: null } : {}) });
   if (sheet === 'screens') void loadScreens();
   else if (sheet === 'inputs' || sheet === 'pip') void loadInputs();
+  else if (sheet === 'midi') void loadMidi();
   // The box takes a picture or video from Media too (Session 54); the library's sheet reads its own lists.
   if (sheet === 'pip') void loadMedia();
 }
@@ -180,5 +208,6 @@ export function startDesktop(): void {
     if ((what === 'setup' || what === 'screens') && needed()) void loadScreens();
     const sheet = useDesktop.getState().sheet;
     if (what === 'setup' && (sheet === 'inputs' || sheet === 'pip')) void loadInputs();
+    if (what === 'setup' && sheet === 'midi') void loadMidi();
   });
 }

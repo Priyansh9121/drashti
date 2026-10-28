@@ -100,7 +100,7 @@ import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
-import type { MidiResult, MidiSettings } from './midi';
+import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
@@ -726,6 +726,12 @@ export interface DrashtiBridge {
   midi: {
     get(): Promise<MidiSettings>;
     set(settings: MidiSettings): Promise<MidiResult>;
+    /** The devices this window sees (Session 54: a phone chooses among them). */
+    report(seen: MidiSeen): Promise<null>;
+    /** A phone asks this window to listen, or to learn the next press for an action (Session 54). */
+    onAsk(listener: (ask: MidiAsk) => void): () => void;
+    /** The settings changed from a phone (Session 54). */
+    onChanged(listener: (settings: MidiSettings) => void): () => void;
   };
   /** The mask library (changing it: operator window, Pro Mode). A mask goes up with the engine's setMask. */
   masks: {

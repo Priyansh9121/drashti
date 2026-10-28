@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
+import { MIDI_NOT_LISTED } from '../../src/shared/network-desktop';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../../src/main/outputs/screen-switches';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
@@ -913,6 +914,89 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         await expect.poll(() => maskUp(win)).toBeNull();
         await expect(row.getByTestId('remote-mask-toggle')).toHaveText('Show');
       }
+    } finally {
+      await phone.close();
+      await app.close();
+    }
+  });
+
+/** MIDI's settings as the window reads them. */
+const midiNow = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.midi.get());
+
+for (const engine of ['webkit', 'chromium'] as Engine[])
+  test(`MIDI from a phone as MIDI… sets it up on the computer: its device and mappings read, Learn asked of the computer and cancelled, a mapping forgotten, None chosen, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+    test.setTimeout(180_000);
+    const { app } = await launchApp(NETWORK_ENV);
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    // A device and a mapping set up in the window (a made-up device: none is plugged into a test computer).
+    const kept = await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.midi.set({
+        deviceName: 'Placeholder pad',
+        mappings: [
+          { input: { type: 'note', channel: 0, number: 36 }, action: { kind: 'next' } },
+          { input: { type: 'note', channel: 0, number: 38 }, action: { kind: 'back' } },
+        ],
+      }),
+    );
+    expect(kept.ok).toBe(true);
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    const phone = await device(engine);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      for (const size of SIZES) {
+        await p.setViewportSize(size);
+        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
+        await p.getByTestId('remote-open-midi').click();
+        await expect(p.getByTestId('remote-midi-sheet')).toBeVisible();
+        // The chosen device, not plugged in here; the computer's window has listed what it sees.
+        const chosen = p.locator('[data-testid="remote-midi-device"][data-device="Placeholder pad"]');
+        await expect(chosen).toHaveAttribute('aria-pressed', 'true');
+        await expect(chosen).toContainText('not plugged in');
+        await expect(p.getByText(MIDI_NOT_LISTED)).toHaveCount(0);
+        await expect(p.getByTestId('remote-midi-mapping')).toHaveCount(size.layout === 'phone' ? 2 : 1);
+        // Learn: the computer waits for a press on its controller; Cancel stops it. A computer that refuses Drashti
+        // MIDI (a test computer may) says so, and Learn is off: it would wait for a press that could never come.
+        const learnBlackout = p.getByTestId('remote-midi-learn-blackout');
+        if (await learnBlackout.isEnabled()) {
+          await learnBlackout.click();
+          await expect(p.getByTestId('remote-midi-learning')).toContainText('Black-out');
+          await p.getByTestId('remote-midi-learning').getByRole('button', { name: 'Cancel' }).click();
+          await expect(p.getByTestId('remote-midi-learning')).toHaveCount(0);
+        } else {
+          await expect(p.getByTestId('remote-midi-devices')).toContainText(/refused MIDI|cannot be used/u);
+        }
+        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
+        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
+        await expectNoSeriousA11yIssues(p, `the MIDI sheet on ${size.name} (${engine})`);
+        // On the phone's pass, Back's mapping is forgotten: the window has it so.
+        if (size.layout === 'phone') {
+          await p.getByTestId('remote-midi-forget').nth(1).click();
+          await expect
+            .poll(async () => (await midiNow(win)).mappings.map((m) => m.action.kind))
+            .toEqual(['next']);
+        }
+        await p.getByTestId('remote-midi-sheet-close').click();
+      }
+      // Simple Mode: forgetting refused in words, nothing changed.
+      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      await p.getByTestId('remote-open-midi').click();
+      await p.getByTestId('remote-midi-forget').first().click();
+      await expect(p.getByTestId('remote-midi-problem')).toContainText('Simple Mode');
+      expect((await midiNow(win)).mappings).toHaveLength(1);
+      // Pro Mode again: None chosen from the phone.
+      expect(
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro')),
+      ).toMatchObject({
+        ok: true,
+      });
+      await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+      await p.locator('[data-testid="remote-midi-device"][data-device=""]').click();
+      await expect.poll(async () => (await midiNow(win)).deviceName).toBeNull();
     } finally {
       await phone.close();
       await app.close();

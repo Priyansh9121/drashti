@@ -104,7 +104,13 @@ import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
 import { lowerThirdInputSchema } from '../shared/lower-thirds';
-import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
+import {
+  type MidiLearnable,
+  type MidiSeen,
+  midiSeenSchema,
+  midiSettingsSchema,
+  NO_MIDI,
+} from '../shared/midi';
 import { seedLibrary, seedOptions } from './db/seed';
 import { removeUntouchedPlaceholders } from './library/placeholders';
 import { ShowEngine } from './engine/show-engine';
@@ -3609,16 +3615,36 @@ function start(): void {
     return { ok: true as const, ids: back };
   });
   // The MIDI controller's settings: which device, and what its notes and controllers do.
-  handle(IPC.midi.get, () => {
+  const midiNow = () => {
     const parsed = midiSettingsSchema.safeParse(settings.get('midi'));
     return parsed.success ? parsed.data : NO_MIDI;
-  });
-  handle(IPC.midi.set, (e, raw) => {
-    if (!fromOperator(e)) return { ok: false as const, message: 'Only the operator window can set up MIDI.' };
+  };
+  // The MIDI devices the operator window sees, and what a phone asked it to learn (Session 54: the phone as a full
+  // Drashti chooses among this computer's own devices, and learns from a press on its controller).
+  let seenMidi: MidiSeen | null = null;
+  let midiLearning: MidiLearnable | null = null;
+  /** Keep MIDI settings, the window's or a phone's alike: a learn waiting is done, and the phones read them again. */
+  const keepMidi = (raw: unknown) => {
     const parsed = midiSettingsSchema.safeParse(raw);
     if (!parsed.success) return { ok: false as const, message: 'Those MIDI settings cannot be kept.' };
     settings.set('midi', parsed.data);
+    midiLearning = null;
+    net.hint('setup');
     return { ok: true as const, settings: parsed.data };
+  };
+  handle(IPC.midi.get, () => midiNow());
+  handle(IPC.midi.set, (e, raw) =>
+    fromOperator(e)
+      ? keepMidi(raw)
+      : { ok: false as const, message: 'Only the operator window can set up MIDI.' },
+  );
+  handle(IPC.midi.report, (e, raw) => {
+    const seen = fromOperator(e) ? midiSeenSchema.safeParse(raw) : null;
+    if (seen?.success && JSON.stringify(seen.data) !== JSON.stringify(seenMidi)) {
+      seenMidi = seen.data;
+      net.hint('setup');
+    }
+    return null;
   });
 
   // ---- the local network ----------------------------------------------------------
@@ -3883,6 +3909,23 @@ function start(): void {
       windows: {
         list: () => shownWindows.list(),
         show: (id) => shownWindows.show(id),
+      },
+      midi: {
+        view: () => ({ settings: midiNow(), seen: seenMidi, learning: midiLearning }),
+        listen: () => {
+          sendToOperator(IPC.midi.ask, { listen: true });
+        },
+        set: (next) => {
+          const kept = keepMidi(next);
+          if (kept.ok) sendToOperator(IPC.midi.changed, kept.settings);
+          return kept;
+        },
+        learn: (action) => {
+          midiLearning = action;
+          sendToOperator(IPC.midi.ask, { listen: true });
+          sendToOperator(IPC.midi.ask, { learn: action });
+          net.hint('setup');
+        },
       },
       library: {
         newFromWords: (name, words) => wordsChanges.newFromWords(name, words),

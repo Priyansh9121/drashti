@@ -265,6 +265,11 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'playlist.move': IPC.playlists.moveItems,
   'playlist.removeItems': IPC.playlists.removeItems,
   'playlist.restoreItems': IPC.playlists.restoreItems,
+  // MIDI (Session 54): reading it is open; changing it is the window's MIDI…, which Simple Mode refuses.
+  midi: null,
+  'midi.device': IPC.midi.set,
+  'midi.forget': IPC.midi.set,
+  'midi.learn': IPC.midi.set,
 };
 
 const ON_SETTING = 'network.on';
@@ -974,6 +979,10 @@ export class NetworkService implements EngineTransport {
       case 'playlist.move':
       case 'playlist.removeItems':
       case 'playlist.restoreItems':
+      case 'midi':
+      case 'midi.device':
+      case 'midi.forget':
+      case 'midi.learn':
         return this.desktop
           ? this.desktop.answer(request.op, args, device, who)
           : deny(404, 'Drashti cannot set that up from a phone here.');

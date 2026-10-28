@@ -80,5 +80,10 @@ export function desktopRoutes<R>(route: MakeRoute<R>): R[] {
     route('POST', '/api/v1/playlists/:id/move', 'playlist.move', (b, p) => ({ ...b, playlistId: p['id'] })),
     route('POST', '/api/v1/playlist-items/delete', 'playlist.removeItems', (b) => b),
     route('POST', '/api/v1/playlist-items/restore', 'playlist.restoreItems', (b) => b),
+    // MIDI, as MIDI… sets it up on the computer.
+    route('GET', '/api/v1/midi', 'midi'),
+    route('POST', '/api/v1/midi/device', 'midi.device', (b) => b),
+    route('POST', '/api/v1/midi/forget', 'midi.forget', (b) => b),
+    route('POST', '/api/v1/midi/learn', 'midi.learn', (b) => b),
   ];
 }

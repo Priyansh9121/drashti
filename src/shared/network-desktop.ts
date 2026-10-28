@@ -2,6 +2,7 @@ import type { PendingScreens } from './keep-screens';
 import { type CameraAccess, VIDEO_INPUT_DEVICE_MAX, type VideoInput } from './video-inputs';
 import type { ScreenSwitch, ScreenSwitches } from './screen-switches';
 import type { DisplayInfo, NodeDisplays, ScreenGroupConfig, ScreenStatus } from './screens';
+import type { MidiLearnable, MidiSeen, MidiSettings } from './midi';
 
 /*
  * The phone as a full Drashti (Session 54, the owner's item 3: "just like a mirror … full of drashti connection"):
@@ -132,3 +133,22 @@ export const CAMERA_AT_COMPUTER =
 /** macOS's Screen Recording is answered at the computer, never from a phone. */
 export const SCREEN_RECORDING_AT_COMPUTER =
   'macOS has not let Drashti see other apps’ windows. On the Drashti computer: Library, Media, Show a Window… says how to turn on Screen Recording for Drashti.';
+
+/**
+ * MIDI as a Remote reads it (GET /api/v1/midi, Session 54): the controller's settings, the computer's MIDI devices as
+ * its operator window sees them (null until it has said), and the action a phone asked it to learn, waiting for a
+ * press on the controller at the computer.
+ */
+export interface RemoteMidi {
+  settings: MidiSettings;
+  seen: MidiSeen | null;
+  learning: MidiLearnable | null;
+}
+
+/** Before the computer's window has listed its MIDI devices. */
+export const MIDI_NOT_LISTED =
+  'The Drashti computer has not listed its MIDI devices yet: it lists them a moment after this opens, while its window is open.';
+
+/** A phone choosing a MIDI device the computer does not list: never one of its own naming. */
+export const NOT_A_LISTED_MIDI_DEVICE =
+  'The Drashti computer does not list that MIDI device now: plug it in there, then choose it again.';
