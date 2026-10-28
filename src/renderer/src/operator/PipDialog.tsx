@@ -1,9 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import type { EngineCommand } from '../../../shared/engine/commands';
-import type { PipCorner, PipMotion, PipPlace, PipSize, PipSource } from '../../../shared/engine/state';
+import type { PipMotion, PipPlace, PipSource } from '../../../shared/engine/state';
 import { PIP_CORNERS, PIP_MOTIONS, PIP_SIZES } from '../../../shared/engine/state';
 import { SCREEN_RECORDING_STEPS, type WindowList, WINDOWS_FAILED } from '../../../shared/live-window';
-import { DEFAULT_PIP_PLACE } from '../../../shared/pip';
+import { DEFAULT_PIP_PLACE, PIP_CORNER_NAMES, PIP_SIZE_NAMES } from '../../../shared/pip';
 import type { VideoInput } from '../../../shared/video-inputs';
 import { useEngine } from '../engine/engine-store';
 import { loadMedia, useMedia } from '../library/library-store';
@@ -56,19 +56,6 @@ const KINDS: { id: Kind; label: string; hint: string; icon: Icon }[] = [
     icon: AppWindow,
   },
 ];
-
-const CORNER_NAMES: Record<PipCorner, string> = {
-  'top-left': 'Top left',
-  'top-right': 'Top right',
-  'bottom-left': 'Bottom left',
-  'bottom-right': 'Bottom right',
-};
-
-const SIZE_NAMES: Record<PipSize, { label: string; hint: string }> = {
-  small: { label: 'Small', hint: 'A quarter of the width' },
-  medium: { label: 'Medium', hint: 'A third of the width' },
-  large: { label: 'Large', hint: 'Two fifths of the width' },
-};
 
 const MOTION_NAMES: Record<PipMotion, string> = {
   fade: 'Fade',
@@ -429,7 +416,7 @@ function PipDialogBody() {
           </h3>
           <Choices
             labelledBy={whereId}
-            choices={PIP_CORNERS.map((id) => ({ id, label: CORNER_NAMES[id] }))}
+            choices={PIP_CORNERS.map((id) => ({ id, label: PIP_CORNER_NAMES[id] }))}
             value={place.corner}
             onChoose={(corner) => {
               change({ corner });
@@ -450,7 +437,7 @@ function PipDialogBody() {
           </h3>
           <Choices
             labelledBy={sizeId}
-            choices={PIP_SIZES.map((id) => ({ id, ...SIZE_NAMES[id] }))}
+            choices={PIP_SIZES.map((id) => ({ id, ...PIP_SIZE_NAMES[id] }))}
             value={place.size}
             onChoose={(size) => {
               change({ size });

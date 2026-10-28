@@ -72,6 +72,7 @@ import { ClockStyleContext } from '../../render/clock-style';
 import { namedBackground } from '../../render/named-background';
 import { formatClock, validClockStyle } from '../../../../shared/format';
 import { Clears } from './Clears';
+import { DesktopLayer, DesktopTools } from './DesktopTools';
 import { itemLine } from './item-line';
 import { LibraryPanel } from './LibraryPanel';
 import { LiveLines } from './LiveLines';
@@ -80,6 +81,7 @@ import { startMirror } from './mirror-store';
 import { MoreTools } from './MoreTools';
 import { MusicList } from './MusicList';
 import { Playing } from './Playing';
+import { Masks } from './Masks';
 import { Props } from './Props';
 import { RemotePlaying } from './RemotePlaying';
 import { isRepeatPlaylist, repeatItemUp, startGoingRound } from './repeat';
@@ -1096,6 +1098,8 @@ function TimersAndMessages() {
     // props, the Looks and Shastra, then its More tools; in two columns where a tablet has the width for them.
     <div className="@container">
       <div className="@lg:columns-2 @lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid">
+        {/* The computer's own screens first, as the window's top bar has them (Session 54). */}
+        <DesktopTools />
         <Music />
         <StageScreen />
         <section className="space-y-2" aria-labelledby="messages-title">
@@ -1123,6 +1127,7 @@ function TimersAndMessages() {
         </section>
         <Timers />
         <Props />
+        <Masks />
         <Looks />
         <Shastra />
         <MoreTools />
@@ -1352,6 +1357,7 @@ export function RemoteApp() {
       <ClockStyleContext.Provider value={clock}>
         <Layout />
         <DeviceViewer />
+        <DesktopLayer />
         <PhoneStopped />
       </ClockStyleContext.Provider>
     </PreviewsContext.Provider>

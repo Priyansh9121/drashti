@@ -8,7 +8,13 @@ import type {
   ScalingMode,
 } from '../../../shared/screens';
 import { shortcutText } from '../../../shared/keymap';
-import { CANVAS_PRESETS, SCALING_MODES } from '../../../shared/screens';
+import {
+  CANVAS_PRESETS,
+  GROUP_ROLE_WORDS,
+  SCALING_MODES,
+  SCALING_WORDS,
+  SCREEN_STATE_WORDS,
+} from '../../../shared/screens';
 import { SWITCH_NAMES, switchFor } from '../../../shared/screen-switches';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -35,16 +41,8 @@ import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
 import { useControlsDisplay } from './ShowOn';
 
-const stateText: Record<ScreenState, string> = {
-  showing: 'Showing',
-  'missing-display': 'Display not connected',
-  unassigned: 'No display',
-  disabled: 'Off',
-  // Audience or Stage is off (Session 50): on purpose, never a failure.
-  'switched-off': 'Switched off',
-  'node-offline': 'Node offline',
-  stopped: 'Stopped',
-};
+// The words are a phone's too (Session 54, the phone as a full Drashti).
+const stateText = SCREEN_STATE_WORDS;
 const stateTone: Record<ScreenState, string> = {
   showing: 'border-success/60 bg-success-bg text-success-fg',
   'missing-display': 'border-warning/60 bg-warning-bg text-warning-fg',
@@ -230,7 +228,7 @@ function ScreenRow({
           >
             {SCALING_MODES.map((m) => (
               <option key={m} value={m}>
-                {m === 'fit' ? 'Fit (letterbox)' : m === 'fill' ? 'Fill (crop)' : 'Stretch'}
+                {SCALING_WORDS[m]}
               </option>
             ))}
           </Select>
@@ -293,9 +291,9 @@ function GroupCard({
               void screensAction(() => bridge().setGroupRole(group.id, role));
             }}
           >
-            <option value="audience">The audience picture</option>
-            <option value="stage">The stage view (performers)</option>
-            <option value="keyfill">Key and fill (for a video switcher)</option>
+            <option value="audience">{GROUP_ROLE_WORDS.audience}</option>
+            <option value="stage">{GROUP_ROLE_WORDS.stage}</option>
+            <option value="keyfill">{GROUP_ROLE_WORDS.keyfill}</option>
           </Select>
         </label>
         <Button

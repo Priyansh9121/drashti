@@ -76,6 +76,11 @@ test('phones and tablets stop with their Drashti: every request refused, files t
         body: { name: 'Placeholder upload.jpg', bytes: 10 },
       }),
       await apiCall(port, '/api/v1/pair', { method: 'POST', body: { code: '123456' } }),
+      // The computer's own screens and switches from a phone (Session 54, the phone as a full Drashti).
+      await apiCall(port, '/api/v1/screens', { token }),
+      await apiCall(port, '/api/v1/screen-groups', { method: 'POST', token, body: { name: 'Placeholder' } }),
+      await apiCall(port, '/api/v1/screens/keep', { method: 'POST', token }),
+      await apiCall(port, '/api/v1/switches/audience', { method: 'POST', token, body: { on: false } }),
     ];
     for (const r of refused)
       expect(r).toEqual({ status: 503, json: { ok: false, message: STOPPED_REFUSAL } });

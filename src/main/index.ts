@@ -104,7 +104,13 @@ import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
 import { lowerThirdInputSchema } from '../shared/lower-thirds';
-import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
+import {
+  type MidiLearnable,
+  type MidiSeen,
+  midiSeenSchema,
+  midiSettingsSchema,
+  NO_MIDI,
+} from '../shared/midi';
 import { seedLibrary, seedOptions } from './db/seed';
 import { removeUntouchedPlaceholders } from './library/placeholders';
 import { ShowEngine } from './engine/show-engine';
@@ -146,7 +152,7 @@ import { SharpenedCopies } from './media/sharpened';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
 import { runPerformanceTest, seedPerfLibrary } from './perftest';
-import { registerPlaylistIpc } from './playlists/playlist-ipc';
+import { type PlaylistChanges, registerPlaylistIpc } from './playlists/playlist-ipc';
 import { startupReads } from './ipc/startup-reads';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
@@ -210,6 +216,9 @@ import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
+import { coverBox } from './network/desktop-consent';
+import type { DesktopLibrary } from './network/desktop-answers';
+import { cameraNamesIn } from '../shared/network-desktop';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
@@ -1346,6 +1355,8 @@ function start(): void {
   };
   // The local network gets every engine message too (once it is on); it is made further down.
   let network: NetworkService | null = null;
+  /** The cameras the operator window last saw, by name (Session 54: a phone naming a video input); null until said. */
+  let seenCameras: string[] | null = null;
   const networkTransport: EngineTransport = {
     broadcast: (message) => {
       network?.broadcast(message);
@@ -1462,6 +1473,8 @@ function start(): void {
     changed: (view) => {
       sendToPage(operatorWindow, IPC.videoInputs.changed, view);
       inputsChanged();
+      // A phone naming or putting up an input reads them again (Session 54).
+      net.hint('setup');
     },
     statusChanged: (status) => {
       sendToPage(operatorWindow, IPC.videoInputs.statusChanged, status);
@@ -1822,6 +1835,8 @@ function start(): void {
       eventsOut.emit(screenEvents(eventsScreensWas, screensNow));
       eventsScreensWas = screensNow;
       if (pageAlive(operatorWindow)) sendToPage(operatorWindow, IPC.screens.changed, screens.snapshot());
+      // And a phone setting them up (Session 54).
+      net.hint('setup');
       for (const [screenId, win] of outputWindows) {
         const context = contextFor(screenId);
         if (context) sendToPage(win, IPC.output.context, context);
@@ -1950,6 +1965,8 @@ function start(): void {
     snapshot: () => screens.snapshot(),
     changed: (pending) => {
       sendToPage(operatorWindow, IPC.screens.pendingChanged, pending);
+      // A phone that set up the screens answers it too (Session 54).
+      net.hint('setup');
       const covering = new Set(pending?.coversControls ? coveringNow() : []);
       for (const [screenId, win] of outputWindows)
         sendToPage(win, IPC.output.keepQuestion, covering.has(screenId) ? pending : null);
@@ -3026,7 +3043,7 @@ function start(): void {
     }
     libraryChanged(true);
   };
-  registerWordsIpc({
+  const wordsChanges = registerWordsIpc({
     presentations,
     revisions,
     fromOperator,
@@ -3598,16 +3615,36 @@ function start(): void {
     return { ok: true as const, ids: back };
   });
   // The MIDI controller's settings: which device, and what its notes and controllers do.
-  handle(IPC.midi.get, () => {
+  const midiNow = () => {
     const parsed = midiSettingsSchema.safeParse(settings.get('midi'));
     return parsed.success ? parsed.data : NO_MIDI;
-  });
-  handle(IPC.midi.set, (e, raw) => {
-    if (!fromOperator(e)) return { ok: false as const, message: 'Only the operator window can set up MIDI.' };
+  };
+  // The MIDI devices the operator window sees, and what a phone asked it to learn (Session 54: the phone as a full
+  // Drashti chooses among this computer's own devices, and learns from a press on its controller).
+  let seenMidi: MidiSeen | null = null;
+  let midiLearning: MidiLearnable | null = null;
+  /** Keep MIDI settings, the window's or a phone's alike: a learn waiting is done, and the phones read them again. */
+  const keepMidi = (raw: unknown) => {
     const parsed = midiSettingsSchema.safeParse(raw);
     if (!parsed.success) return { ok: false as const, message: 'Those MIDI settings cannot be kept.' };
     settings.set('midi', parsed.data);
+    midiLearning = null;
+    net.hint('setup');
     return { ok: true as const, settings: parsed.data };
+  };
+  handle(IPC.midi.get, () => midiNow());
+  handle(IPC.midi.set, (e, raw) =>
+    fromOperator(e)
+      ? keepMidi(raw)
+      : { ok: false as const, message: 'Only the operator window can set up MIDI.' },
+  );
+  handle(IPC.midi.report, (e, raw) => {
+    const seen = fromOperator(e) ? midiSeenSchema.safeParse(raw) : null;
+    if (seen?.success && JSON.stringify(seen.data) !== JSON.stringify(seenMidi)) {
+      seenMidi = seen.data;
+      net.hint('setup');
+    }
+    return null;
   });
 
   // ---- the local network ----------------------------------------------------------
@@ -3647,6 +3684,8 @@ function start(): void {
     minuteMs: announceMinuteMs,
     changed: (view) => {
       sendToOperator(IPC.announcements.changed, view);
+      // A phone deciding on them reads them again (Session 54).
+      net.hint('queue');
       eventsOut.emit(announcementEvents(eventsAnnouncementsWas, view));
       eventsAnnouncementsWas = view;
     },
@@ -3697,6 +3736,10 @@ function start(): void {
     // No file is taken while Drashti is not let in (Session 54).
     letIn: isLetIn,
   });
+  // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
+  // below, where the window's own requests for them are registered.
+  let playlistChanges: PlaylistChanges | null = null;
+  let presentationChanges: Pick<DesktopLibrary, 'removePresentations' | 'restorePresentations'> | null = null;
   const net = new NetworkService({
     // Phones and tablets work only while Drashti is let in (Session 54): every request, pairing and file refused.
     letIn: isLetIn,
@@ -3802,6 +3845,9 @@ function start(): void {
         const prop = props.list().find((p) => p.id === id);
         return prop ? asPropItem(prop) : null;
       },
+      // The library's masks, read as Masks reads them (Session 54).
+      masks: () => maskRepo.list().map((m) => ({ id: m.id, name: m.name })),
+      mask: (id) => maskRepo.list().find((m) => m.id === id) ?? null,
       media: () =>
         media.list().map((m) => ({
           id: m.id,
@@ -3827,6 +3873,83 @@ function start(): void {
     announcements: {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),
+    },
+    // The phone as a full Drashti (Session 54): the computer's screens and Audience and Stage, as the window's own
+    // requests change them; covering the controls is asked in the computer's own box, never taken from a phone.
+    desktop: {
+      screens: {
+        snapshot: () => screens.snapshot(),
+        controlsDisplayId: () => operatorDisplayId(),
+        createGroup: (name) => screenChanges.createGroup(name),
+        renameGroup: (id, name) => screenChanges.renameGroup(id, name),
+        setGroupRole: (id, role) => screenChanges.setGroupRole(id, role),
+        deleteGroup: (id) => screenChanges.deleteGroup(id),
+        assignDisplay: (groupId, displayId, options) =>
+          screenChanges.assignDisplay(groupId, displayId, options),
+        updateScreen: (id, patch, options) => screenChanges.updateScreen(id, patch, options),
+        removeScreen: (id) => screenChanges.removeScreen(id),
+        identify: () => {
+          screenChanges.identify();
+        },
+        pending: () => keepScreens.current(),
+        keep: () => keepScreens.keep(),
+        goBack: () => keepScreens.goBack(),
+      },
+      switches: {
+        get: () => screenSwitches.get(),
+        asksFirst: (which) => screenSwitches.asksFirst(which),
+        turn: (which, on) => screenSwitches.turn(which, on),
+      },
+      inputs: {
+        view: () => inputs.view(),
+        access: () => inputs.access(),
+        cameras: () => seenCameras,
+        add: (fields) => inputs.add(fields),
+        update: (id, fields) => inputs.update(id, fields),
+        remove: (id) => inputs.remove(id),
+      },
+      windows: {
+        list: () => shownWindows.list(),
+        show: (id) => shownWindows.show(id),
+      },
+      queue: {
+        view: () => announcements.view(),
+        approve: (input) => announcements.approve(input),
+        reject: (input) => announcements.reject(input),
+        takeOff: (input) => announcements.takeOff(input),
+      },
+      midi: {
+        view: () => ({ settings: midiNow(), seen: seenMidi, learning: midiLearning }),
+        listen: () => {
+          sendToOperator(IPC.midi.ask, { listen: true });
+        },
+        set: (next) => {
+          const kept = keepMidi(next);
+          if (kept.ok) sendToOperator(IPC.midi.changed, kept.settings);
+          return kept;
+        },
+        learn: (action) => {
+          midiLearning = action;
+          sendToOperator(IPC.midi.ask, { listen: true });
+          sendToOperator(IPC.midi.ask, { learn: action });
+          net.hint('setup');
+        },
+      },
+      library: {
+        newFromWords: (name, words) => wordsChanges.newFromWords(name, words),
+        removePresentations: (ids) =>
+          presentationChanges?.removePresentations(ids) ?? { ok: false, message: 'Nothing was removed.' },
+        restorePresentations: (ids) =>
+          presentationChanges?.restorePresentations(ids) ?? { ok: false, message: 'Nothing was restored.' },
+        playlists: () => playlistChanges,
+      },
+      simple: () => simpleNow(),
+      confirmCover: async (question) => {
+        const box = coverBox(question, process.platform);
+        const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
+        const answer = parent ? await dialog.showMessageBox(parent, box) : await dialog.showMessageBox(box);
+        return answer.response === 1;
+      },
     },
     files: phoneFiles,
     refused: (channel) => refusedNow(channel),
@@ -4386,7 +4509,7 @@ function start(): void {
   handle(IPC.drop.importAnyway, (e, name) =>
     fromOperator(e) ? dropFolder.importAnyway(name) : notDropOperator,
   );
-  registerPlaylistIpc({
+  playlistChanges = registerPlaylistIpc({
     repo: playlists,
     fromOperator,
     reads: windowReads,
@@ -4541,26 +4664,40 @@ function start(): void {
     engine.refreshNext();
     return { ok: true as const };
   });
-  handle(IPC.library.removePresentations, (e, ids) => {
-    const parsed = idListSchema.safeParse(ids);
-    if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was removed.' };
-    const removed = presentations.remove(parsed.data);
-    for (const id of removed) slides.invalidate(id);
-    engine.refreshNext();
-    log.info(`Removed ${removed.length} presentation(s)`);
-    libraryChanged(true);
-    return { ok: true as const, ids: removed };
-  });
-  handle(IPC.library.restorePresentations, (e, ids) => {
-    const parsed = idListSchema.safeParse(ids);
-    if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was restored.' };
-    const restored = presentations.restore(parsed.data);
-    for (const id of restored) slides.invalidate(id);
-    engine.refreshNext();
-    log.info(`Restored ${restored.length} presentation(s)`);
-    libraryChanged(true);
-    return { ok: true as const, ids: restored };
-  });
+  // Presentations taken out of the library and put back: the window's and a phone's alike (Session 54).
+  presentationChanges = {
+    removePresentations: (ids) => {
+      const parsed = idListSchema.safeParse(ids);
+      if (!parsed.success) return { ok: false as const, message: 'Nothing was removed.' };
+      const removed = presentations.remove(parsed.data);
+      for (const id of removed) slides.invalidate(id);
+      engine.refreshNext();
+      log.info(`Removed ${removed.length} presentation(s)`);
+      libraryChanged(true);
+      return { ok: true as const, ids: removed };
+    },
+    restorePresentations: (ids) => {
+      const parsed = idListSchema.safeParse(ids);
+      if (!parsed.success) return { ok: false as const, message: 'Nothing was restored.' };
+      const restored = presentations.restore(parsed.data);
+      for (const id of restored) slides.invalidate(id);
+      engine.refreshNext();
+      log.info(`Restored ${restored.length} presentation(s)`);
+      libraryChanged(true);
+      return { ok: true as const, ids: restored };
+    },
+  };
+  const changingPresentations = presentationChanges;
+  handle(IPC.library.removePresentations, (e, ids) =>
+    fromOperator(e)
+      ? changingPresentations.removePresentations(ids)
+      : { ok: false as const, message: 'Nothing was removed.' },
+  );
+  handle(IPC.library.restorePresentations, (e, ids) =>
+    fromOperator(e)
+      ? changingPresentations.restorePresentations(ids)
+      : { ok: false as const, message: 'Nothing was restored.' },
+  );
   handle(IPC.library.getImportReport, (_e, runId) => {
     const parsed = runIdSchema.safeParse(runId);
     return parsed.success ? importRepo.report(parsed.data) : null;
@@ -4639,6 +4776,8 @@ function start(): void {
     changed: (list) => {
       sendToOperator(IPC.masks.changed, list);
       looks.masksChanged();
+      // A phone lists them too (Session 54).
+      net.hint('masks');
     },
     log: (message) => {
       log.info(message);
@@ -4673,15 +4812,50 @@ function start(): void {
       });
     return screens.snapshot();
   });
-  handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
-  handle(IPC.screens.setGroupRole, (e, id, role) => {
-    if (!fromOperator(e)) return notAllowed;
-    // Shows (Session 51, S3-3): another picture on the group's displays asks Keep these screens? too.
-    const result = keepScreens.change(() => screens.setGroupRole(id, role));
-    // A stage display in a browser shows the stage group's languages.
-    net.hint('screens');
-    return result;
-  });
+  // The screens' changes, as the window's requests and a phone's make them alike (Session 54: the phone as a full
+  // Drashti, network/desktop-answers.ts). Only the window's own request ever says it agreed to cover the controls.
+  const screenChanges = {
+    createGroup: (name: unknown) => screens.createGroup(name),
+    setGroupRole: (id: unknown, role: unknown) => {
+      // Shows (Session 51, S3-3): another picture on the group's displays asks Keep these screens? too.
+      const result = keepScreens.change(() => screens.setGroupRole(id, role));
+      // A stage display in a browser shows the stage group's languages.
+      net.hint('screens');
+      return result;
+    },
+    renameGroup: (id: unknown, name: unknown) => screens.renameGroup(id, name),
+    deleteGroup: (id: unknown) => {
+      const result = screens.deleteGroup(id);
+      streaming.contextChanged();
+      // A stage display in a browser follows the first stage group: it may be another now.
+      net.hint('screens');
+      return result;
+    },
+    // Use this display and On (Session 50): a change that puts an output on a display asks Keep these screens?; so
+    // does a key and fill pair's Sends (Session 51, S3-3: the key is another picture), through updateScreen.
+    assignDisplay: (groupId: unknown, displayId: unknown, options?: unknown) =>
+      keepScreens.change(() => screens.assignDisplay(groupId, displayId, options)),
+    updateScreen: (id: unknown, patch: unknown, options?: unknown) =>
+      keepScreens.change(() => screens.updateScreen(id, patch, options)),
+    removeScreen: (id: unknown) => screens.removeScreen(id),
+    identify: () => {
+      for (const [screenId, win] of outputWindows) {
+        const s = screenRepo.screen(screenId);
+        if (s) {
+          sendToPage(win, IPC.output.identify, {
+            name: s.name,
+            groupName: screenRepo.groupName(s.groupId) ?? '',
+          });
+        }
+      }
+    },
+  };
+  handle(IPC.screens.createGroup, (e, name) =>
+    fromOperator(e) ? screenChanges.createGroup(name) : notAllowed,
+  );
+  handle(IPC.screens.setGroupRole, (e, id, role) =>
+    fromOperator(e) ? screenChanges.setGroupRole(id, role) : notAllowed,
+  );
   handle(IPC.screens.setGroupLanguages, (e, id, languages) => {
     if (!fromOperator(e)) return notAllowed;
     const result = screens.setGroupLanguages(id, languages);
@@ -4691,25 +4865,14 @@ function start(): void {
     return result;
   });
   handle(IPC.screens.renameGroup, (e, id, name) =>
-    fromOperator(e) ? screens.renameGroup(id, name) : notAllowed,
+    fromOperator(e) ? screenChanges.renameGroup(id, name) : notAllowed,
   );
-  handle(IPC.screens.deleteGroup, (e, id) => {
-    if (!fromOperator(e)) return notAllowed;
-    const result = screens.deleteGroup(id);
-    streaming.contextChanged();
-    // A stage display in a browser follows the first stage group: it may be another now.
-    net.hint('screens');
-    return result;
-  });
-  // Use this display and On (Session 50): a change that puts an output on a display asks Keep these screens?; so
-  // does a key and fill pair's Sends (Session 51, S3-3: the key is another picture), through updateScreen.
+  handle(IPC.screens.deleteGroup, (e, id) => (fromOperator(e) ? screenChanges.deleteGroup(id) : notAllowed));
   handle(IPC.screens.assignDisplay, (e, groupId, displayId, options) =>
-    fromOperator(e)
-      ? keepScreens.change(() => screens.assignDisplay(groupId, displayId, options))
-      : notAllowed,
+    fromOperator(e) ? screenChanges.assignDisplay(groupId, displayId, options) : notAllowed,
   );
   handle(IPC.screens.updateScreen, (e, id, patch, options) =>
-    fromOperator(e) ? keepScreens.change(() => screens.updateScreen(id, patch, options)) : notAllowed,
+    fromOperator(e) ? screenChanges.updateScreen(id, patch, options) : notAllowed,
   );
   handle(IPC.screens.uncoverOperator, (e) => {
     if (!fromOperator(e)) return notAllowed;
@@ -4742,7 +4905,9 @@ function start(): void {
     watchdog.retryNow(win.webContents, 'Try again');
     return { ok: true as const };
   });
-  handle(IPC.screens.removeScreen, (e, id) => (fromOperator(e) ? screens.removeScreen(id) : notAllowed));
+  handle(IPC.screens.removeScreen, (e, id) =>
+    fromOperator(e) ? screenChanges.removeScreen(id) : notAllowed,
+  );
   // Audience and Stage (Session 50): anyone's in Pro Mode, in Simple Mode only on.
   handle(IPC.screenSwitches.get, () => screenSwitches.get());
   handle(IPC.screenSwitches.turn, (e, which, on) =>
@@ -4786,16 +4951,7 @@ function start(): void {
     return null;
   });
   handle(IPC.screens.identify, (e) => {
-    if (!fromOperator(e)) return null;
-    for (const [screenId, win] of outputWindows) {
-      const s = screenRepo.screen(screenId);
-      if (s) {
-        sendToPage(win, IPC.output.identify, {
-          name: s.name,
-          groupName: screenRepo.groupName(s.groupId) ?? '',
-        });
-      }
-    }
+    if (fromOperator(e)) screenChanges.identify();
     return null;
   });
   // ---- streaming (operator window; the stream's page for its own calls) ---------------
@@ -4937,6 +5093,15 @@ function start(): void {
     return null;
   });
   handle(IPC.videoInputs.status, () => inputs.status());
+  // The cameras the operator window sees, by name (Session 54): a phone naming an input chooses among them.
+  handle(IPC.videoInputs.cameras, (e, raw) => {
+    const names = fromOperator(e) ? cameraNamesIn(raw) : null;
+    if (names && JSON.stringify(names) !== JSON.stringify(seenCameras)) {
+      seenCameras = names;
+      net.hint('setup');
+    }
+    return null;
+  });
 
   // ---- the setup wizard ----------------------------------------------------------
   // Tests start with it closed, unless a test is about it; the self-tests never open it (a dialog

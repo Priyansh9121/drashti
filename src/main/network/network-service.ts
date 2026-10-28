@@ -61,6 +61,7 @@ import { hashToken, newPairingCode, newToken } from './tokens';
 import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
 import { mirrorAnswer, type MirrorReads } from './mirror-answers';
+import { type DesktopActs, DesktopAnswers } from './desktop-answers';
 import { cutText } from '../../shared/text';
 import { NO_LOGO_CHOSEN } from '../../shared/props';
 import { nfcDeep } from '../../shared/nfc';
@@ -143,6 +144,11 @@ export interface NetworkDeps {
     submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer;
     statusFor(device: { id: string }, args: unknown): DeviceAnswer;
   };
+  /**
+   * The computer's own things a phone sets up (Session 54, the phone as a full Drashti: desktop-answers.ts), as the
+   * window's own requests do them. Left out (a test of something else): a phone cannot.
+   */
+  desktop?: DesktopActs;
   /** Files between Drashti and its phones (Session 54, phone-files.ts): shared playlists, and files phones add. */
   files?: {
     view(): AddFilesView;
@@ -207,6 +213,8 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   keys: IPC.app.singleKeys,
   props: IPC.props.list,
   'prop.show': IPC.engine.command,
+  masks: null,
+  'mask.show': IPC.engine.command,
   media: IPC.library.listMedia,
   'media.show': IPC.engine.command,
   lowerThirds: IPC.lowerThirds.list,
@@ -222,6 +230,51 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'upload.status': null,
   'upload.piece': null,
   'upload.cancel': null,
+  // The phone as a full Drashti (Session 54): each the window's own request, so Simple Mode refuses on a phone just
+  // what it refuses in the window (the screens' changes; Keep and Go back, Identify and the switches stay open, and
+  // the switch service itself turns them only on in Simple Mode).
+  screens: IPC.screens.get,
+  'screens.addGroup': IPC.screens.createGroup,
+  'screens.renameGroup': IPC.screens.renameGroup,
+  'screens.groupRole': IPC.screens.setGroupRole,
+  'screens.deleteGroup': IPC.screens.deleteGroup,
+  'screens.useDisplay': IPC.screens.assignDisplay,
+  'screens.change': IPC.screens.updateScreen,
+  'screens.remove': IPC.screens.removeScreen,
+  'screens.keep': IPC.screens.keep,
+  'screens.goBack': IPC.screens.goBack,
+  'screens.identify': IPC.screens.identify,
+  switch: IPC.screenSwitches.turn,
+  // Media's video inputs and Show a Window… (Session 54), Pro Mode's as in the window.
+  inputs: IPC.videoInputs.list,
+  'input.add': IPC.videoInputs.add,
+  'input.change': IPC.videoInputs.update,
+  'input.remove': IPC.videoInputs.remove,
+  windows: IPC.liveWindow.list,
+  'window.show': IPC.liveWindow.show,
+  // The library's changes (Session 54), each the window's own request, so Simple Mode refuses them on a phone as it
+  // does in the window.
+  'library.new': IPC.library.newFromWords,
+  'library.remove': IPC.library.removePresentations,
+  'library.restore': IPC.library.restorePresentations,
+  'playlist.new': IPC.playlists.create,
+  'playlist.rename': IPC.playlists.rename,
+  'playlist.remove': IPC.playlists.remove,
+  'playlist.restore': IPC.playlists.restore,
+  'playlist.add': IPC.playlists.addItems,
+  'playlist.move': IPC.playlists.moveItems,
+  'playlist.removeItems': IPC.playlists.removeItems,
+  'playlist.restoreItems': IPC.playlists.restoreItems,
+  // MIDI (Session 54): reading it is open; changing it is the window's MIDI…, which Simple Mode refuses.
+  midi: null,
+  'midi.device': IPC.midi.set,
+  'midi.forget': IPC.midi.set,
+  'midi.learn': IPC.midi.set,
+  // The announcements' queue (Session 54): reading it is open; deciding is Pro Mode's, as in the window.
+  queue: IPC.announcements.list,
+  'queue.approve': IPC.announcements.approve,
+  'queue.reject': IPC.announcements.reject,
+  'queue.takeOff': IPC.announcements.takeOff,
 };
 
 const ON_SETTING = 'network.on';
@@ -275,8 +328,31 @@ export class NetworkService implements EngineTransport {
   private stopping: Promise<void> | null = null;
   private seenWriter: NodeJS.Timeout | null = null;
   private seenNotice: NodeJS.Timeout | null = null;
+  /** The computer's own things a phone sets up (Session 54), or null where it cannot. */
+  private readonly desktop: DesktopAnswers | null;
 
-  constructor(private readonly deps: NetworkDeps) {}
+  constructor(private readonly deps: NetworkDeps) {
+    this.desktop = deps.desktop
+      ? new DesktopAnswers(deps.desktop, {
+          // At the computer's yes, long after the ask: still let in, the phone still paired, Simple Mode not refusing.
+          mayStill: (deviceId, op) => {
+            const channel = OP_CHANNEL[op];
+            return (
+              this.letIn() &&
+              this.deps.devices.get(deviceId) !== null &&
+              !(channel !== null && this.deps.refused(channel))
+            );
+          },
+          changed: () => {
+            this.hint('setup');
+          },
+          log: (message) => {
+            this.deps.log('info', message);
+          },
+          now: () => this.deps.now(),
+        })
+      : null;
+  }
 
   // ---- settings ----------------------------------------------------------------------------
 
@@ -537,7 +613,12 @@ export class NetworkService implements EngineTransport {
   ): Promise<void> {
     let answer: unknown;
     try {
-      if (question.kind === 'request') answer = this.answer(question.request);
+      // The open windows take the computer a while to list (Session 54): checked alike, answered once listed.
+      if (question.kind === 'request')
+        answer =
+          question.request.op === 'windows'
+            ? await this.windows(question.request)
+            : this.answer(question.request);
       else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
       // No file while Drashti is not let in (Session 54): a preview, a picture, an original, a shared sound.
       else if (!this.letIn()) answer = null;
@@ -738,7 +819,10 @@ export class NetworkService implements EngineTransport {
 
   // ---- what devices ask for ------------------------------------------------------------------
 
-  answer(request: DeviceRequest): DeviceAnswer {
+  /** Every request's checks: Drashti let in, the device still paired, its kind, Simple Mode's lock. */
+  private checked(
+    request: DeviceRequest,
+  ): { device: DeviceRow; args: Record<string, unknown>; who: string } | DeviceAnswer {
     if (!this.letIn()) return deny(503, STOPPED_REFUSAL);
     const device = this.deps.devices.get(request.deviceId);
     if (!device) return deny(401, 'This device was removed in Drashti. Pair it again.');
@@ -747,7 +831,22 @@ export class NetworkService implements EngineTransport {
     const channel = OP_CHANNEL[request.op];
     if (channel && this.deps.refused(channel)) return deny(403, SIMPLE_MODE_REFUSAL);
     const args = (request.args ?? {}) as Record<string, unknown>;
-    const who = `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”`;
+    return { device, args, who: `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”` };
+  }
+
+  /** The other apps' open windows for a phone (Session 54): checked as every request is, answered once listed. */
+  async windows(request: DeviceRequest): Promise<DeviceAnswer> {
+    const checked = this.checked(request);
+    if ('status' in checked) return checked;
+    if (request.op !== 'windows' || !this.desktop)
+      return deny(404, 'Drashti cannot list windows for a phone here.');
+    return this.desktop.windows(checked.device);
+  }
+
+  answer(request: DeviceRequest): DeviceAnswer {
+    const checked = this.checked(request);
+    if ('status' in checked) return checked;
+    const { device, args, who } = checked;
     switch (request.op) {
       case 'status':
         return ok({ status: summary(this.deps.engine.state()) });
@@ -845,6 +944,8 @@ export class NetworkService implements EngineTransport {
       case 'keys':
       case 'props':
       case 'prop.show':
+      case 'masks':
+      case 'mask.show':
       case 'media':
       case 'media.show':
       case 'lowerThirds':
@@ -854,6 +955,46 @@ export class NetworkService implements EngineTransport {
         return mirrorAnswer(request.op, args, this.deps.mirror, (command, did) =>
           this.run(command, who, did),
         );
+      case 'screens':
+      case 'screens.addGroup':
+      case 'screens.renameGroup':
+      case 'screens.groupRole':
+      case 'screens.deleteGroup':
+      case 'screens.useDisplay':
+      case 'screens.change':
+      case 'screens.remove':
+      case 'screens.keep':
+      case 'screens.goBack':
+      case 'screens.identify':
+      case 'switch':
+      case 'inputs':
+      case 'input.add':
+      case 'input.change':
+      case 'input.remove':
+      case 'windows':
+      case 'window.show':
+      case 'library.new':
+      case 'library.remove':
+      case 'library.restore':
+      case 'playlist.new':
+      case 'playlist.rename':
+      case 'playlist.remove':
+      case 'playlist.restore':
+      case 'playlist.add':
+      case 'playlist.move':
+      case 'playlist.removeItems':
+      case 'playlist.restoreItems':
+      case 'midi':
+      case 'midi.device':
+      case 'midi.forget':
+      case 'midi.learn':
+      case 'queue':
+      case 'queue.approve':
+      case 'queue.reject':
+      case 'queue.takeOff':
+        return this.desktop
+          ? this.desktop.answer(request.op, args, device, who)
+          : deny(404, 'Drashti cannot set that up from a phone here.');
       case 'announce':
         return this.deps.announcements.submit(device, request.address, args);
       case 'announcement':

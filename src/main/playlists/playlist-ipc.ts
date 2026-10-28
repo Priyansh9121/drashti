@@ -50,6 +50,22 @@ export interface PlaylistIpcDeps {
 const refused: PlaylistResult = { ok: false, message: 'Only the operator window can change playlists.' };
 const failed = (message: string): PlaylistResult => ({ ok: false, message });
 
+/**
+ * The playlists' changes a phone makes too (Session 54, the phone as a full Drashti: network/desktop-answers.ts),
+ * each as the operator window's request makes it, every argument checked alike; the windows told when something
+ * changed. Simple Mode's lock and the phone's own checks are the network's.
+ */
+export interface PlaylistChanges {
+  create: (name: unknown, parentId: unknown, isFolder: unknown) => PlaylistResult;
+  rename: (playlistId: unknown, name: unknown) => PlaylistResult;
+  remove: (ids: unknown) => PlaylistResult;
+  restore: (ids: unknown) => PlaylistResult;
+  addItems: (playlistId: unknown, at: unknown, items: unknown) => PlaylistResult;
+  moveItems: (playlistId: unknown, ids: unknown, to: unknown) => PlaylistResult;
+  removeItems: (ids: unknown) => PlaylistResult;
+  restoreItems: (ids: unknown) => PlaylistResult;
+}
+
 export function registerPlaylistIpc({
   repo,
   fromOperator,
@@ -58,7 +74,7 @@ export function registerPlaylistIpc({
   firstSlide,
   smart,
   reads,
-}: PlaylistIpcDeps): void {
+}: PlaylistIpcDeps): PlaylistChanges {
   /** Run a change for the operator window, then tell everyone when something changed. */
   const change = (event: IpcMainInvokeEvent, run: () => PlaylistResult): PlaylistResult => {
     if (!fromOperator(event)) return refused;
@@ -94,62 +110,53 @@ export function registerPlaylistIpc({
         : failed('Only a playlist can be shared with phones and tablets.');
     }),
   );
-  handle(IPC.playlists.create, (e, name, parentId, isFolder) =>
-    change(e, () => {
+  // The changes themselves, the operator window's and a phone's alike (Session 54).
+  const changes: PlaylistChanges = {
+    create: (name, parentId, isFolder) => {
       const n = playlistNameSchema.safeParse(name);
       const parent = playlistIdSchema.nullable().safeParse(parentId);
       if (!n.success || !parent.success || typeof isFolder !== 'boolean')
         return failed('A name needs 1 to 200 characters.');
       const id = repo.create(n.data, parent.data, isFolder);
       return id ? { ok: true, ids: [id] } : failed('That folder no longer exists.');
-    }),
-  );
-  handle(IPC.playlists.rename, (e, playlistId, name) =>
-    change(e, () => {
+    },
+    rename: (playlistId, name) => {
       const id = playlistIdSchema.safeParse(playlistId);
       const n = playlistNameSchema.safeParse(name);
       if (!id.success || !n.success) return failed('A name needs 1 to 200 characters.');
       return repo.rename(id.data, n.data)
         ? { ok: true, ids: [id.data] }
         : failed('That playlist no longer exists.');
-    }),
-  );
-  // A smart playlist deleted stops following its folder; brought back, it follows it again.
-  handle(IPC.playlists.remove, (e, ids) =>
-    change(e, () => {
+    },
+    // A smart playlist deleted stops following its folder; brought back, it follows it again.
+    remove: (ids) => {
       const list = idListSchema.safeParse(ids);
       if (!list.success) return failed('Nothing was removed.');
       const removed = repo.remove(list.data);
       void smart?.refresh();
       return { ok: true, ids: removed };
-    }),
-  );
-  handle(IPC.playlists.restore, (e, ids) =>
-    change(e, () => {
+    },
+    restore: (ids) => {
       const list = idListSchema.safeParse(ids);
       if (!list.success) return failed('Nothing was restored.');
       const restored = repo.restore(list.data);
       void smart?.refresh();
       return { ok: true, ids: restored };
-    }),
-  );
-  handle(IPC.playlists.addItems, (e, playlistId, at, items) =>
-    change(e, () => {
+    },
+    addItems: (playlistId, at, items) => {
       const id = playlistIdSchema.safeParse(playlistId);
       const where = positionSchema.nullable().safeParse(at);
       const list = newItemsSchema.safeParse(items);
       if (!id.success || !where.success || !list.success) return failed('Those items cannot be added.');
       // A Repeat Slides playlist takes no videos or sounds (Session 26d), and says so.
-      const refused = repo.refusal(id.data, list.data);
-      if (refused !== null) return failed(refused);
+      const refusal = repo.refusal(id.data, list.data);
+      if (refusal !== null) return failed(refusal);
       const added = repo.addItems(id.data, where.data, list.data);
       return added.length > 0
         ? { ok: true, ids: added }
         : failed('That playlist, or something added, no longer exists.');
-    }),
-  );
-  handle(IPC.playlists.moveItems, (e, playlistId, ids, to) =>
-    change(e, () => {
+    },
+    moveItems: (playlistId, ids, to) => {
       const id = playlistIdSchema.safeParse(playlistId);
       const list = idListSchema.safeParse(ids);
       const where = positionSchema.safeParse(to);
@@ -157,24 +164,34 @@ export function registerPlaylistIpc({
       return repo.moveItems(id.data, list.data, where.data)
         ? { ok: true, ids: list.data }
         : failed('Those items are not all in that playlist.');
-    }),
-  );
-  handle(IPC.playlists.removeItems, (e, ids) =>
-    change(e, () => {
+    },
+    removeItems: (ids) => {
       const list = idListSchema.safeParse(ids);
       return list.success ? { ok: true, ids: repo.removeItems(list.data) } : failed('Nothing was removed.');
-    }),
-  );
-  handle(IPC.playlists.restoreItems, (e, ids) =>
-    change(e, () => {
+    },
+    restoreItems: (ids) => {
       const list = idListSchema.safeParse(ids);
       if (!list.success) return failed('Nothing was restored.');
       const restored = repo.restoreItems(list.data);
       // A smart playlist's missing items taken out and brought back: missing again.
       smart?.itemsRestored(restored);
       return { ok: true, ids: restored };
-    }),
+    },
+  };
+  handle(IPC.playlists.create, (e, name, parentId, isFolder) =>
+    change(e, () => changes.create(name, parentId, isFolder)),
   );
+  handle(IPC.playlists.rename, (e, playlistId, name) => change(e, () => changes.rename(playlistId, name)));
+  handle(IPC.playlists.remove, (e, ids) => change(e, () => changes.remove(ids)));
+  handle(IPC.playlists.restore, (e, ids) => change(e, () => changes.restore(ids)));
+  handle(IPC.playlists.addItems, (e, playlistId, at, items) =>
+    change(e, () => changes.addItems(playlistId, at, items)),
+  );
+  handle(IPC.playlists.moveItems, (e, playlistId, ids, to) =>
+    change(e, () => changes.moveItems(playlistId, ids, to)),
+  );
+  handle(IPC.playlists.removeItems, (e, ids) => change(e, () => changes.removeItems(ids)));
+  handle(IPC.playlists.restoreItems, (e, ids) => change(e, () => changes.restoreItems(ids)));
   handle(IPC.playlists.fillPlaceholder, (e, itemId, presentationId) =>
     change(e, () => {
       const item = playlistIdSchema.safeParse(itemId);
@@ -301,4 +318,23 @@ export function registerPlaylistIpc({
       return made ? { ok: true, ids: [made] } : failed('That playlist no longer exists.');
     }),
   );
+
+  // A phone's (Session 54): the same changes, the windows and the engine told when something changed.
+  const told =
+    <A extends unknown[]>(run: (...args: A) => PlaylistResult) =>
+    (...args: A): PlaylistResult => {
+      const result = run(...args);
+      if (result.ok && result.ids.length > 0) changed();
+      return result;
+    };
+  return {
+    create: told(changes.create),
+    rename: told(changes.rename),
+    remove: told(changes.remove),
+    restore: told(changes.restore),
+    addItems: told(changes.addItems),
+    moveItems: told(changes.moveItems),
+    removeItems: told(changes.removeItems),
+    restoreItems: told(changes.restoreItems),
+  };
 }

@@ -7,6 +7,7 @@ import { ALL_ON, type ScreenSwitches } from '../../../../shared/screen-switches'
 import type { SearchHit, SearchResult } from '../../../../shared/search';
 import { useEngine } from '../../engine/engine-store';
 import { api } from '../device';
+import { oneAtATime } from '../one-at-a-time';
 import { onListsChanged, onOnline } from '../feed';
 
 /*
@@ -112,7 +113,10 @@ export const useRemote = create<RemoteView>(() => ({
   hall: null,
 }));
 
-export async function loadPlaylists(): Promise<void> {
+/** The playlists, as Drashti's "changed" asks for them again: one read at a time (one-at-a-time.ts). */
+export const loadPlaylists = oneAtATime(readPlaylists);
+
+async function readPlaylists(): Promise<void> {
   const r = await api<{ playlists: PlaylistNode[] }>('/api/v1/playlists');
   if (!r.ok) return;
   const lists = r.playlists.filter((p) => !p.isFolder && !p.template);

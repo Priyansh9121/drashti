@@ -4,10 +4,11 @@ import type { DeviceKind } from './network';
  * What a paired device may ask for, by kind. The network server checks the
  * kind first; the main process checks it again (and the device itself, and
  * Simple Mode) before anything runs. A device never changes the library,
- * the screens, the sound, the stream, conversions, imports, backups, the
- * network's settings or Simple Mode: none of those are here. (Session 54: a
- * Remote adds a file of its own while "Phones and tablets may add files" is
- * on, imported as a dropped file is, and never live by itself.)
+ * the sound, the stream, conversions, imports, backups, the network's
+ * settings or Simple Mode: none of those are here. (Session 54: a Remote adds
+ * a file of its own while "Phones and tablets may add files" is on, imported
+ * as a dropped file is, and never live by itself; and, the phone as a full
+ * Drashti, sets up the computer's screens as Screens does, below.)
  */
 export const DEVICE_OPS = {
   /** Who this device is. */
@@ -81,6 +82,9 @@ export const DEVICE_OPS = {
   props: ['remote'],
   /** Put a prop up by its id (the main process reads it from the library). */
   'prop.show': ['remote'],
+  /** The library's masks, and one put up by its id as Masks does (Session 54, the phone as a full Drashti). */
+  masks: ['remote'],
+  'mask.show': ['remote'],
   /** The library's pictures, videos and sounds by name, a page at a time. */
   media: ['remote'],
   /** Put one up by its id: a picture or video as the background (the slide taken off), a sound played. */
@@ -108,6 +112,66 @@ export const DEVICE_OPS = {
   'upload.status': ['remote'],
   'upload.piece': ['remote'],
   'upload.cancel': ['remote'],
+  /**
+   * The phone as a full Drashti (Session 54, the owner's item 3: shared/network-desktop.ts): the computer's own
+   * screens set up as Screens does (its displays chosen by their ids), Keep these screens? answered, and Audience
+   * and Stage turned. Each as the window's own request does it, Simple Mode's refusals too; an output a phone would
+   * put over the controls is asked of the computer itself. Never a Stage or Announcements device.
+   */
+  screens: ['remote'],
+  'screens.addGroup': ['remote'],
+  'screens.renameGroup': ['remote'],
+  'screens.groupRole': ['remote'],
+  'screens.deleteGroup': ['remote'],
+  'screens.useDisplay': ['remote'],
+  'screens.change': ['remote'],
+  'screens.remove': ['remote'],
+  'screens.keep': ['remote'],
+  'screens.goBack': ['remote'],
+  'screens.identify': ['remote'],
+  switch: ['remote'],
+  /**
+   * Media's video inputs (named, changed, removed; put up with the command showInput) and Show a Window… (the other
+   * apps' windows by name, one put up by its id in that list), Pro Mode's as in the window (Session 54).
+   */
+  inputs: ['remote'],
+  'input.add': ['remote'],
+  'input.change': ['remote'],
+  'input.remove': ['remote'],
+  windows: ['remote'],
+  'window.show': ['remote'],
+  /**
+   * The library's changes (Session 54), as the window makes them: a presentation from words, presentations and
+   * playlists deleted and put back (the phone's Undo), a playlist made or renamed, items added from the library (by
+   * id), moved, taken out and put back. Simple Mode refuses them, as in the window.
+   */
+  'library.new': ['remote'],
+  'library.remove': ['remote'],
+  'library.restore': ['remote'],
+  'playlist.new': ['remote'],
+  'playlist.rename': ['remote'],
+  'playlist.remove': ['remote'],
+  'playlist.restore': ['remote'],
+  'playlist.add': ['remote'],
+  'playlist.move': ['remote'],
+  'playlist.removeItems': ['remote'],
+  'playlist.restoreItems': ['remote'],
+  /**
+   * MIDI (Session 54): the controller's settings, its device chosen among those the computer's window lists, a
+   * mapping forgotten, and the window asked to learn the next press at the computer. Simple Mode refuses the changes.
+   */
+  midi: ['remote'],
+  'midi.device': ['remote'],
+  'midi.forget': ['remote'],
+  'midi.learn': ['remote'],
+  /**
+   * The announcements' queue (Session 54): what waits and what shows, each approved (in the ticker or as a message),
+   * rejected or taken off, as the window's Announcements does. Never the poster's device: it only sends.
+   */
+  queue: ['remote'],
+  'queue.approve': ['remote'],
+  'queue.reject': ['remote'],
+  'queue.takeOff': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;
@@ -172,6 +236,15 @@ export const REMOTE_COMMANDS = [
   // (Simple Mode refuses both, as in the window).
   'zoomLive',
   'resetLiveZoom',
+  // A video input up as the background, by its id in this computer's list (Session 54, the phone as a full Drashti:
+  // Media's click), Pro Mode's (the engine refuses it in Simple Mode).
+  'showInput',
+  // The picture-in-picture box's setup (Session 54, the phone as a full Drashti): what it holds (by its id: an input
+  // in this computer's list, a Media file, a window in the list just offered, or the slides), Swap and its place, as
+  // Picture in Picture… does; Pro Mode's (the engine refuses them in Simple Mode). Take off is hidePip, above.
+  'showPip',
+  'swapPip',
+  'placePip',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */

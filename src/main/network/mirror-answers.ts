@@ -1,5 +1,6 @@
 import type { EngineCommand } from '../../shared/engine/commands';
 import type { PropItem } from '../../shared/engine/state';
+import type { Mask } from '../../shared/masks';
 import type { LowerThird } from '../../shared/lower-thirds';
 import { idSchema } from '../../shared/model-schema';
 import type { DeviceAnswer } from '../../shared/network-api';
@@ -8,6 +9,7 @@ import {
   REMOTE_MEDIA_MAX,
   REMOTE_MEDIA_PAGE,
   type RemoteKeys,
+  type RemoteMask,
   type RemoteMedia,
   type RemoteMediaPage,
   type RemoteMusic,
@@ -28,6 +30,12 @@ export interface MirrorReads {
   props(): RemoteProp[];
   /** A prop ready for the engine, by its id; null when there is none. */
   prop(id: string): PropItem | null;
+  /**
+   * The library's masks by name (Session 54, the phone as a full Drashti), and one by its id, ready for the engine
+   * as Masks puts it up; left out (a test of something else): none.
+   */
+  masks?(): RemoteMask[];
+  mask?(id: string): Mask | null;
   /** The library's pictures, videos and sounds by name, as Media lists them (never their files). */
   media(): RemoteMedia[];
   lowerThirds(): LowerThird[];
@@ -46,6 +54,8 @@ export type MirrorOp =
   | 'keys'
   | 'props'
   | 'prop.show'
+  | 'masks'
+  | 'mask.show'
   | 'media'
   | 'media.show'
   | 'lowerThirds'
@@ -104,6 +114,16 @@ export function mirrorAnswer(
       return prop
         ? run({ type: 'showProp', prop }, `showed the prop “${prop.name}”`)
         : deny(404, 'There is no such prop.');
+    }
+    case 'masks':
+      return ok({ masks: reads.masks?.() ?? [] });
+    case 'mask.show': {
+      // By its id, read here from the library, as Masks puts it up: a phone never sends a mask's shapes.
+      const id = named(args['maskId']);
+      const mask = id === null ? null : (reads.mask?.(id) ?? null);
+      return mask
+        ? run({ type: 'setMask', mask }, `put the mask “${mask.name}” up`)
+        : deny(404, 'There is no such mask.');
     }
     case 'media': {
       const query = typeof args['query'] === 'string' ? cutText(args['query'].trim(), 200) : '';

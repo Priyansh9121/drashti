@@ -257,26 +257,35 @@ describe('the network in the main process', () => {
     ).toBe(401);
   });
 
-  it('lets a Remote take the picture-in-picture box off (Session 50), never set one up, swap or move it', () => {
+  it('lets a Remote set the picture-in-picture box up, swap it, move it and take it off, as Picture in Picture… does (Session 54, the phone as a full Drashti; until then Take off alone)', () => {
     const { service, commands } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const send = (args: Record<string, unknown>) =>
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status;
-    for (const args of [
+    const sent = [
       { type: 'showPip', source: { kind: 'slides' } },
       { type: 'showPip', source: { kind: 'window', id: 'window:4021:0' } },
       { type: 'showPip', source: { kind: 'input', inputId: 'in-1' } },
+      { type: 'showPip', source: { kind: 'media', mediaId: 'placeholder-video' }, place: DEFAULT_PIP_PLACE },
       { type: 'swapPip' },
       { type: 'placePip', place: DEFAULT_PIP_PLACE },
-    ])
-      expect(send(args), JSON.stringify(args)).toBe(403);
-    expect(commands).toEqual([]);
-    // Take off, and the box's own clear (POST /api/v1/clear/pip): both play its out.
-    expect(send({ type: 'hidePip' })).toBe(200);
-    expect(send({ type: 'clearLayer', layer: 'pip' })).toBe(200);
-    expect(commands).toEqual([{ type: 'hidePip' }, { type: 'clearLayer', layer: 'pip' }]);
-    for (const type of ['showPip', 'swapPip', 'placePip'])
-      expect(REMOTE_COMMANDS as readonly string[]).not.toContain(type);
+      // Take off, and the box's own clear (POST /api/v1/clear/pip): both play its out.
+      { type: 'hidePip' },
+      { type: 'clearLayer', layer: 'pip' },
+    ];
+    for (const args of sent) expect(send(args), JSON.stringify(args)).toBe(200);
+    expect(commands).toEqual(sent);
+    // Never a file or an address for what it holds: refused before the engine hears of it.
+    expect(send({ type: 'showPip', source: { kind: 'media', path: '/placeholder/file.mp4' } })).toBe(400);
+    expect(send({ type: 'showPip', source: { kind: 'window', url: 'https://example.com' } })).toBe(400);
+    // A Stage device: none of it.
+    const stage = service.pairForCheck('stage', 'Placeholder stage').id;
+    expect(
+      service.answer({ address: PHONE, deviceId: stage, op: 'command', args: { type: 'swapPip' } }).status,
+    ).toBe(403);
+    expect(commands).toHaveLength(sent.length);
+    for (const type of ['showPip', 'swapPip', 'placePip', 'hidePip'])
+      expect(REMOTE_COMMANDS as readonly string[]).toContain(type);
   });
 
   it('lets a Remote move, pause and play on what plays, as the time bar under LIVE does (Session 54)', () => {
@@ -450,16 +459,30 @@ describe('the network in the main process', () => {
     ).toBe(403);
   });
 
-  it('lets a Remote clear a video input, never choose one (Session 50)', () => {
+  it('lets a Remote clear a video input (Session 50), and put one up by its id as Media does (Session 54)', () => {
     const { service, commands } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const command = (args: Record<string, unknown>) =>
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status;
-    expect(command({ type: 'showInput', inputId: 'in-1' })).toBe(403);
-    expect(commands).toEqual([]);
+    expect(command({ type: 'showInput', inputId: 'in-1' })).toBe(200);
     expect(command({ type: 'clearLayer', layer: 'background' })).toBe(200);
     expect(command({ type: 'clearAll' })).toBe(200);
-    expect(commands).toEqual([{ type: 'clearLayer', layer: 'background' }, { type: 'clearAll' }]);
+    expect(commands).toEqual([
+      { type: 'showInput', inputId: 'in-1' },
+      { type: 'clearLayer', layer: 'background' },
+      { type: 'clearAll' },
+    ]);
+    // Simple Mode refuses it, as the window's Media does (the engine's refusal, from anywhere).
+    const simple = setup({ locked: true });
+    const phone = simple.service.pairForCheck('remote', 'Placeholder phone').id;
+    expect(
+      simple.service.answer({
+        address: PHONE,
+        deviceId: phone,
+        op: 'command',
+        args: { type: 'showInput', inputId: 'in-1' },
+      }).status,
+    ).toBe(403);
   });
 
   it('lets a Remote see Repeat Slides going round, and start and stop it (Session 26d)', () => {
@@ -559,12 +582,49 @@ describe('the network in the main process', () => {
   });
 
   it('refuses over the network exactly what Simple Mode refuses in the window', () => {
-    // Each network action is the window request that does the same thing, so it gets the same answer: none
-    // is locked, as in the window (Session 44: running a macro was the one, and Macros are gone).
-    for (const op of Object.keys(DEVICE_OPS) as DeviceOp[]) {
+    // Each network action is the window request that does the same thing, so it gets the same answer: the only
+    // ones locked are the screens' setup, which a phone changes as Screens does since Session 54 (the phone as a
+    // full Drashti), refused in Simple Mode as in the window (Session 44: running a macro was one, and Macros are
+    // gone).
+    const locked = (Object.keys(DEVICE_OPS) as DeviceOp[]).filter((op) => {
       const channel = OP_CHANNEL[op];
-      if (channel) expect(SIMPLE_MODE_LOCKED.includes(channel), op).toBe(false);
-    }
+      return channel !== null && SIMPLE_MODE_LOCKED.includes(channel);
+    });
+    expect(locked).toEqual([
+      'screens.addGroup',
+      'screens.renameGroup',
+      'screens.groupRole',
+      'screens.deleteGroup',
+      'screens.useDisplay',
+      'screens.change',
+      'screens.remove',
+      // Media's video inputs and Show a Window… (Session 54), Pro Mode's as in the window.
+      'input.add',
+      'input.change',
+      'input.remove',
+      'windows',
+      'window.show',
+      // The library's changes (Session 54), as the window's are.
+      'library.new',
+      'library.remove',
+      'library.restore',
+      'playlist.new',
+      'playlist.rename',
+      'playlist.remove',
+      'playlist.restore',
+      'playlist.add',
+      'playlist.move',
+      'playlist.removeItems',
+      'playlist.restoreItems',
+      // MIDI's changes (Session 54), as the window's MIDI… are; reading it stays open.
+      'midi.device',
+      'midi.forget',
+      'midi.learn',
+      // The announcements' decisions (Session 54), as the window's are.
+      'queue.approve',
+      'queue.reject',
+      'queue.takeOff',
+    ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });
     const remote = simple.service.pairForCheck('remote', 'Placeholder phone').id;
@@ -621,16 +681,18 @@ describe('the network in the main process', () => {
     expect(service.answer({ address: PHONE, deviceId: stage, op: 'hall', args: {} }).status).toBe(403);
   });
 
-  it('tells a Remote which of Main’s screens are off, with the hall, and gives no way to turn them (Session 50)', () => {
+  it('tells a Remote which of Main’s screens are off, with the hall (Session 50), and turns them only as the window’s own request does (Session 54)', () => {
     const { service, switches } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const hall = () => service.answer({ address: PHONE, deviceId: remote, op: 'hall', args: {} });
     expect(hall()).toMatchObject({ status: 200, body: { switches: { audience: true, stage: true } } });
     switches.audience = false;
     expect(hall()).toMatchObject({ status: 200, body: { switches: { audience: false, stage: true } } });
-    // Nothing a device can ask for turns them: no op of its own, and none reaches the window's request.
-    expect(Object.keys(DEVICE_OPS).filter((op) => /switch/iu.test(op))).toEqual([]);
-    expect(Object.values(OP_CHANNEL)).not.toContain(IPC.screenSwitches.turn);
+    // Since Session 54 (the phone as a full Drashti) one op turns them, a Remote's only, as the window's own
+    // request (desktop-ops.test.ts has the rest).
+    expect(Object.keys(DEVICE_OPS).filter((op) => /switch/iu.test(op))).toEqual(['switch']);
+    expect(DEVICE_OPS.switch).toEqual(['remote']);
+    expect(OP_CHANNEL.switch).toBe(IPC.screenSwitches.turn);
   });
 });
 

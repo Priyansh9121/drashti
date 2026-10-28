@@ -94,6 +94,12 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
               height: 1080,
             }
           : null,
+      // The library's masks (Session 54, the phone as a full Drashti).
+      masks: () => [{ id: 'mask-band', name: 'Placeholder band' }],
+      mask: (id) =>
+        id === 'mask-band'
+          ? { id, name: 'Placeholder band', width: 1920, height: 1080, mode: 'hide', shapes: [] }
+          : null,
       media: () => MEDIA,
       lowerThirds: () => [
         {
@@ -282,7 +288,7 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(commands).toEqual([]);
   });
 
-  it('keeps a phone from sending what it puts up whole, or setting up masks, the box or the background', () => {
+  it('keeps a phone from sending what it puts up whole: a prop, a background, a sound, a mask or a lower third (the box’s setup goes by ids since Session 54, the phone as a full Drashti)', () => {
     const { ask, remote, commands } = setup();
     for (const args of [
       { type: 'showProp', prop: { id: 'p', name: 'Placeholder', elements: [] } },
@@ -292,12 +298,10 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         audio: { id: 'a', title: 'Placeholder', mediaId: null, volume: 1, loop: false },
       },
       { type: 'setMask', mask: { id: 'mask', name: 'Placeholder', shapes: [] } },
-      { type: 'swapPip' },
-      { type: 'showInput', inputId: 'in-1' },
     ])
       expect([400, 403], args.type).toContain(ask(remote, 'command', args).status);
     expect(commands).toEqual([]);
-    for (const type of ['showProp', 'setBackground', 'playAudio', 'setMask', 'showLowerThird', 'swapPip'])
+    for (const type of ['showProp', 'setBackground', 'playAudio', 'setMask', 'showLowerThird'])
       expect(REMOTE_COMMANDS as readonly string[], type).not.toContain(type);
   });
 
@@ -364,6 +368,45 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         status: 403,
         body: { ok: false, message: SIMPLE_MODE_REFUSAL },
       });
+    expect(commands).toEqual([]);
+  });
+});
+
+describe('masks from a phone (Session 54, the phone as a full Drashti)', () => {
+  it('lists the library’s masks by name and puts one up by its id, as Masks does, read from the library', () => {
+    const { ask, remote, commands } = setup();
+    expect(ask(remote, 'masks')).toMatchObject({
+      status: 200,
+      body: { masks: [{ id: 'mask-band', name: 'Placeholder band' }] },
+    });
+    expect(ask(remote, 'mask.show', { maskId: 'mask-band' }).status).toBe(200);
+    expect(commands).toEqual([
+      {
+        type: 'setMask',
+        mask: {
+          id: 'mask-band',
+          name: 'Placeholder band',
+          width: 1920,
+          height: 1080,
+          mode: 'hide',
+          shapes: [],
+        },
+      },
+    ]);
+    // One no longer there, or named wrongly: nothing goes up.
+    expect(ask(remote, 'mask.show', { maskId: 'mask-gone' }).status).toBe(404);
+    expect(ask(remote, 'mask.show', { maskId: 7 }).status).toBe(404);
+    expect(commands).toHaveLength(1);
+  });
+
+  it('is a Remote’s alone, and never takes a mask’s shapes from a phone', () => {
+    const { ask, stage, poster, commands } = setup();
+    for (const device of [stage, poster]) {
+      expect(ask(device, 'masks').status).toBe(403);
+      expect(ask(device, 'mask.show', { maskId: 'mask-band' }).status).toBe(403);
+    }
+    expect(DEVICE_OPS.masks).toEqual(['remote']);
+    expect(DEVICE_OPS['mask.show']).toEqual(['remote']);
     expect(commands).toEqual([]);
   });
 });

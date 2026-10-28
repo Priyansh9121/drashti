@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { VideoInput, VideoInputsView } from '../../../shared/video-inputs';
 import { connectVideoInputs, useVideoInputs } from './video-inputs-store';
 import { inputOfName } from './words';
@@ -34,5 +34,56 @@ describe('the operator window’s video inputs', () => {
     await expect.poll(() => useVideoInputs.getState().inputs).toEqual([one]);
     expect(named('Input 1')).toEqual(one);
     expect(named('Input 2')).toBeNull();
+  });
+
+  it('says which cameras it sees, by name, once Drashti may use them, and again as one is plugged in (Session 54)', async () => {
+    vi.resetModules();
+    const said: string[][] = [];
+    let plugged: () => void = () => undefined;
+    let access: 'not-determined' | 'granted' = 'not-determined';
+    let status: (s: { stopped: null; access: typeof access }) => void = () => undefined;
+    const devices = [
+      { kind: 'videoinput', label: 'Placeholder camera', deviceId: 'cam-1' },
+      { kind: 'audioinput', label: 'Placeholder microphone', deviceId: 'mic-1' },
+    ];
+    (globalThis as { window?: unknown }).window = {
+      drashti: {
+        videoInputs: {
+          onChanged: () => undefined,
+          onStatus: (listener: typeof status) => {
+            status = listener;
+          },
+          list: () => Promise.resolve({ inputs: [] }),
+          status: () => Promise.resolve({ stopped: null, access }),
+          cameras: (names: string[]) => {
+            said.push(names);
+            return Promise.resolve(null);
+          },
+        },
+      },
+    };
+    vi.stubGlobal('navigator', {
+      mediaDevices: {
+        enumerateDevices: () => Promise.resolve(devices),
+        addEventListener: (_what: string, listener: () => void) => {
+          plugged = listener;
+        },
+      },
+    });
+    const store = await import('./video-inputs-store');
+    store.connectVideoInputs();
+    // Not yet allowed: nothing looked for, nothing said.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    plugged();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(said).toEqual([]);
+    // Allowed: its cameras by name, microphones left out.
+    access = 'granted';
+    status({ stopped: null, access });
+    await expect.poll(() => said).toEqual([['Placeholder camera']]);
+    devices.push({ kind: 'videoinput', label: 'Placeholder capture card', deviceId: 'cap-1' });
+    plugged();
+    await expect.poll(() => said.at(-1)).toEqual(['Placeholder camera', 'Placeholder capture card']);
+    vi.unstubAllGlobals();
   });
 });

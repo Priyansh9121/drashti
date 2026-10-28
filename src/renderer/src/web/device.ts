@@ -64,7 +64,13 @@ export function toPairing(): void {
   if (location.pathname !== '/pair') location.replace('/pair');
 }
 
-export type ApiAnswer<T> = ({ ok: true } & T) | { ok: false; message: string; status: number };
+export type ApiAnswer<T> =
+  | ({ ok: true } & T)
+  /** `confirm`: nothing changed until the window's question is answered on the device (Session 54: "switch-off"). */
+  | { ok: false; message: string; status: number; confirm?: string };
+
+/** How long a request refused for coming too fast waits before it is asked again (ms), each time. */
+const ASK_AGAIN_MS = [400, 1200];
 
 /**
  * A request to Drashti with this device's token. A token Drashti no longer
@@ -77,23 +83,32 @@ export async function api<T = Record<string, unknown>>(
 ): Promise<ApiAnswer<T>> {
   const own = init.token === undefined;
   const token = init.token ?? current()?.token;
+  const method = init.method ?? 'GET';
   let response: Response;
-  try {
-    response = await fetch(path, {
-      method: init.method ?? 'GET',
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      cache: 'no-store',
-    });
-  } catch {
-    return {
-      ok: false,
-      status: 0,
-      message: 'Drashti cannot be reached. Check this phone is on the same Wi-Fi.',
-    };
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      response = await fetch(path, {
+        method,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        cache: 'no-store',
+      });
+    } catch {
+      return {
+        ok: false,
+        status: 0,
+        message: 'Drashti cannot be reached. Check this phone is on the same Wi-Fi.',
+      };
+    }
+    // A request refused for coming too fast (Session 54: the burst of reads a phone makes as the lists change under
+    // a run of quick changes) is asked again a moment later, at most twice, as Drashti's limit refills within a
+    // second. Refused so, it was never done: a change asked again is still done once.
+    const wait = ASK_AGAIN_MS[attempt];
+    if (response.status !== 429 || wait === undefined) break;
+    await new Promise((resolve) => setTimeout(resolve, wait));
   }
   let body: Record<string, unknown> = {};
   try {
@@ -110,6 +125,7 @@ export async function api<T = Record<string, unknown>>(
       status: response.status,
       message:
         typeof body['message'] === 'string' ? body['message'] : `Drashti said no (${response.status}).`,
+      ...(typeof body['confirm'] === 'string' ? { confirm: body['confirm'] } : {}),
     };
   return body as { ok: true } & T;
 }

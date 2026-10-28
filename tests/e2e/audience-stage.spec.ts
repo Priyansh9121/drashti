@@ -189,7 +189,7 @@ test('Mod+2 asks first whenever a stage screen is open, closes only the stage sc
   const off = win.getByTestId('switch-off-stage');
   await expect(off).toContainText('Stage off');
   await expect(win.getByTestId('switch-stage')).toContainText('Off');
-  // A Remote is told which are off, and has no way to turn them.
+  // A Remote is told which are off (and since Session 54 turns them as the window does: phone-desktop.spec.ts).
   await expect.poll(hallAnswer).toEqual({ audience: true, stage: false });
 
   // One click in the status bar: on again, never asked.
