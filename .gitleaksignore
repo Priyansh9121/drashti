@@ -1,0 +1,6 @@
+# Findings of the secret scan (scripts/secret-scan.mjs) that are no secrets, each by its fingerprint
+# (commit:file:rule:line) and why. The repository is public: add one only for made-up test data, never to pass a real secret.
+#
+# docs/access-setup.md's example token, made up and written into a unit test of the lock (Session 54, E2 and E3);
+# the test builds it at run time since. The owner's access list makes every real token at run time, in the owner's own Google account.
+fc949beac8e0d884685246b0133abc52fb3ca8e8:src/main/access/service.test.ts:generic-api-key:35
