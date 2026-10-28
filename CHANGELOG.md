@@ -2,7 +2,7 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.13 (28 Oct 2026)
+## 1.0.0-alpha.13 (29 Oct 2026)
 
 From this version, Drashti opens only for people the owner has let in, and needs the internet to check. Each computer is let in once, under one Gmail (a mandir computer under the Gmail the owner chooses, an operator's own computer under their own), with a one-time token from the owner's email, and roles and PINs are gone. Update after a sabha, never on the day of one, and the node computers the same evening.
 
