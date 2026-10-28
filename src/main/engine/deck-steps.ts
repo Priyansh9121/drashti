@@ -1,5 +1,5 @@
 import type { DeckMedia, DeckSlide } from '../../shared/deck';
-import { deckStep, lastStep, stepOf, stepTiming, takingTime } from '../../shared/deck-show';
+import { deckStep, lastStep, playsAcross, stepOf, stepTiming, takingTime } from '../../shared/deck-show';
 import type { SlideLayer, VideoSeeks } from '../../shared/engine/state';
 import type { PlaybackSeek } from '../../shared/media';
 import type { Transition } from '../../shared/model';
@@ -18,7 +18,8 @@ import type { Transition } from '../../shared/model';
  * 54), so every screen, node, the stream and the audio player play them alike and the time bar moves them: each
  * waits at its start point, its poster shown (`waiting`), until its step comes, then plays from that step's moment
  * plus its offset; one started only by a click on it waits for the time bar's Play. Back undoes its click: what it
- * started waits again.
+ * started waits again. A sound set to play across slides is no slide's own (Session 54): it plays on the audio layer
+ * (across-slides.ts), so none of these stamps it.
  */
 
 /** How a deck's slide is come to: by Next from the slide before it, by a jump, or back from the slide after it. */
@@ -32,6 +33,9 @@ export function waitingSeek(m: DeckMedia, at: number): PlaybackSeek {
 /** Its step's number: a click's, 0 with the slide; null when only a click on it starts it. */
 const stepOfMedia = (m: DeckMedia): number | null => ('step' in m.start ? m.start.step : null);
 
+/** The deck's videos and sounds its slide plays itself: all but a sound set to play across slides (Session 54). */
+const ownMedia = (deck: DeckSlide): DeckMedia[] => deck.media.filter((m) => !playsAcross(m));
+
 /** Plays from `at`, from where it waits (its start point, or where the time bar left it paused). */
 function playing(m: DeckMedia, at: number, was: PlaybackSeek | undefined): PlaybackSeek {
   return { at, toMs: was?.paused ? was.toMs : (m.clip?.startMs ?? 0) };
@@ -40,7 +44,7 @@ function playing(m: DeckMedia, at: number, was: PlaybackSeek | undefined): Playb
 /** The deck's media moves of a slide come to at step `index` at `at` (its clip from `fromMs`). */
 function entrySeeks(deck: DeckSlide, index: number, at: number, fromMs: number): VideoSeeks | undefined {
   const seeks: VideoSeeks = {};
-  for (const m of deck.media) {
+  for (const m of ownMedia(deck)) {
     const step = stepOfMedia(m);
     // With the slide: from its moment in the coming-in clip (its offset counts from the clip's start, so a clip
     // started past the deck's own transition starts them that much sooner); every other waits.
@@ -60,7 +64,7 @@ function forwardSeeks(
   seeks: VideoSeeks | undefined,
 ): VideoSeeks | undefined {
   let out = seeks;
-  for (const m of deck.media) {
+  for (const m of ownMedia(deck)) {
     if (stepOfMedia(m) !== index || !('offsetMs' in m.start)) continue;
     const was = seeks?.[m.mediaId];
     // Already played on from the time bar before its click: it goes on as it is.
@@ -78,7 +82,7 @@ function backSeeks(
   seeks: VideoSeeks | undefined,
 ): VideoSeeks | undefined {
   let out = seeks;
-  for (const m of deck.media) {
+  for (const m of ownMedia(deck)) {
     const step = stepOfMedia(m);
     if (step === null || step <= index || out?.[m.mediaId]?.waiting) continue;
     out = { ...out, [m.mediaId]: waitingSeek(m, at) };

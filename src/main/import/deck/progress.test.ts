@@ -35,7 +35,7 @@ describe('a movie making no progress', () => {
     for (const samples of [growing, working]) {
       const { read, count } = reads(samples);
       expect(
-        await noProgress(read, { signal: new AbortController().signal, stallMs: 100, everyMs: 10 }),
+        await noProgress(read, { signal: new AbortController().signal, stallMs: 300, everyMs: 10 }),
       ).toBe('stalled');
       // Every sample of progress read, then the time given without any.
       expect(count()).toBeGreaterThan(samples.length);
@@ -52,13 +52,15 @@ describe('a movie making no progress', () => {
   });
 
   it('half a second of processor time since the last progress, however slowly it came, is progress', async () => {
-    // 100 ms a read: the fifth read since the mark is progress, so it never stalls within 400 reads.
-    const slow: Progress[] = Array.from({ length: 400 }, (_, i) => ({ cpuMs: 1000 + i * 100, bytes: null }));
+    // 100 ms a read: the fifth read since the mark is progress, so it never stalls within its 100 reads. Five reads
+    // 10 ms apart take 50 ms; 300 ms without progress are given, so a busy machine's slower reads never stall it
+    // early (60 ms did once, on the dev Mac during a run of every test, Session 54).
+    const slow: Progress[] = Array.from({ length: 100 }, (_, i) => ({ cpuMs: 1000 + i * 100, bytes: null }));
     const { read, count } = reads(slow);
-    expect(await noProgress(read, { signal: new AbortController().signal, stallMs: 60, everyMs: 10 })).toBe(
+    expect(await noProgress(read, { signal: new AbortController().signal, stallMs: 300, everyMs: 10 })).toBe(
       'stalled',
     );
-    expect(count()).toBeGreaterThan(400);
+    expect(count()).toBeGreaterThan(100);
   });
 
   it('stops when told', async () => {

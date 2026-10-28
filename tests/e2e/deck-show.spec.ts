@@ -739,3 +739,76 @@ test('a node and key and fill draw the same step as Main’s screen at held mome
     await main.app.close();
   }
 });
+
+test('a deck’s sound set to play across slides plays on through the clicks and slides with its own time bar, never started again by Next or Back, and stops after its last slide (the owner’s answer of 28 Oct)', async () => {
+  test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const files = await makeDeckFiles(win);
+    // Across its first two slides of three (PowerPoint's "stop after 2 slides").
+    const music = {
+      ...deckSound(files, { step: 0, offsetMs: 0 }),
+      acrossSlides: 2,
+      name: 'Placeholder music',
+    };
+    const [first, second] = standInDecks(files, { first: { media: [music] } });
+    if (!first || !second) throw new Error('no stand-in slides');
+    const id = await writeDeck(win, 'Placeholder music deck', [
+      first,
+      second,
+      { ...second, after: files.nextLast },
+    ]);
+    await outputFor(app, await setUpScreen(win, 'Main Hall', 0));
+    await dispatch(win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    // On the audio layer as the sound playing, with the sound's own bar, never the slide's.
+    const sound = async () => (await state(win)).layers.audio;
+    await expect.poll(async () => (await sound())?.mediaId).toBe(files.tone);
+    const startedAt = (await sound())?.startedAt;
+    await expect(win.locator('[data-testid="time-bar-row"][data-playing="audio"]')).toHaveAttribute(
+      'aria-label',
+      'Time of the sound playing',
+    );
+    await expect(win.locator(`[data-testid="time-bar-row"][data-playing="slide:${files.tone}"]`)).toHaveCount(
+      0,
+    );
+    // Drashti's audio player plays it.
+    await expect.poll(() => app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
+    const audio = app.windows().find((w) => w.url().includes('audio.html'));
+    if (!audio) throw new Error('no audio player');
+    const heard = () =>
+      audio.evaluate((mediaId) => {
+        const a = document.querySelector<HTMLAudioElement>(`audio[data-media-id="${mediaId}"]`);
+        return a !== null && !a.paused;
+      }, files.tone);
+    await expect.poll(heard).toBe(true);
+    const where = async () => {
+      const live = (await state(win)).live;
+      return `${String(live.slideIndex)}:${String(await step(win))}`;
+    };
+    // Its first slide's two clicks, then its second slide: the same playing all along.
+    for (const at of ['0:1', '0:2', '1:0']) {
+      await dispatch(win, { type: 'next' });
+      await expect.poll(where).toBe(at);
+      expect((await sound())?.startedAt, `at ${at}`).toBe(startedAt);
+    }
+    // Back onto its first slide, then Next onto the second again: never started again, never stopped.
+    await dispatch(win, { type: 'back' });
+    await expect.poll(async () => (await state(win)).live.slideIndex).toBe(0);
+    expect((await sound())?.startedAt, 'after Back').toBe(startedAt);
+    await dispatch(win, { type: 'next' });
+    await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
+    expect((await sound())?.startedAt, 'after Next again').toBe(startedAt);
+    await expect.poll(heard).toBe(true);
+    // The third slide is past its last: it stops, its bar goes.
+    await dispatch(win, { type: 'next' });
+    await expect.poll(async () => (await state(win)).live.slideIndex).toBe(2);
+    await expect.poll(async () => (await sound()) ?? null).toBeNull();
+    await expect(win.locator('[data-testid="time-bar-row"][data-playing="audio"]')).toHaveCount(0);
+    await expect.poll(heard).toBe(false);
+  } finally {
+    await app.close();
+  }
+});

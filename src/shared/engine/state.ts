@@ -250,6 +250,22 @@ export interface AudioLayer extends AudioChoice {
   seek?: PlaybackSeek;
   /** The file's named markers to jump to (Session 14), when it has any. */
   marks?: PlaybackMarker[];
+  /**
+   * A sound set to play across slides (Session 54, main/engine/across-slides.ts): a deck's (PowerPoint's Play Across
+   * Slides or "stop after N slides", Keynote's soundtrack), or a slide's sound cue that came in as one. It plays on as
+   * the slides and their clicks change and stops after its last slide, or as anything else goes live. Left out for
+   * any other sound.
+   */
+  across?: AcrossSlides;
+  /** A deck's fades in from its start point and out before its end point (ms; Session 54), as its deck says. */
+  fades?: { inMs: number; outMs: number };
+}
+
+/** Where a sound set to play across slides plays (Session 54): its presentation, up to its last slide. */
+export interface AcrossSlides {
+  presentationId: string;
+  /** Its last slide, by place in the order played: the slide it started on, then as many after as its deck says. */
+  lastIndex: number;
 }
 
 export type MediaFit = 'fit' | 'fill' | 'stretch';

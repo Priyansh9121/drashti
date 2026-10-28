@@ -29,6 +29,11 @@ import { type PptxMedia, stepOfGroup } from './pptx-deck';
  * Without the steps (no PowerPoint or Keynote to make them, the stream on air, a movie off its plan) the deck comes
  * in as pictures, as before Session 54, and its videos still come in as real videos on their slides, and a sound
  * that starts with its slide as the slide's sound. The report says plainly which, and why.
+ *
+ * A sound set to play across slides (Session 54: PowerPoint's Play Across Slides and "stop after N slides", Keynote's
+ * soundtrack in its own PowerPoint copy) keeps how many slides it plays across: the deck's own with its steps, which
+ * plays on the audio layer from its slide or its click (main/engine/across-slides.ts), or, as pictures, its slide's
+ * sound cue saying so.
  */
 
 /** A deck's media file taken out of it (or found where it links to), for the import to copy into Media. */
@@ -226,10 +231,9 @@ export async function bakedPresentation(
   let videos = 0;
   let audios = 0;
   let clicked = 0;
-  /** Sounds set to play across slides: the slide's sound; on their own slide, starting later or a second one. */
-  let acrossCued = 0;
-  let acrossLater = 0;
-  let acrossSecond = 0;
+  /** Sounds set to play across slides: playing on across them; only a click on one starts it (on its own slide). */
+  let across = 0;
+  let acrossTriggered = 0;
   let advancing = 0;
   let transitionSounds = 0;
   let trimmed = 0;
@@ -293,7 +297,11 @@ export async function bakedPresentation(
     for (const m of d?.media ?? []) {
       const taken = media.get(m.part ?? m.link ?? '');
       if (!taken) continue;
-      const told = baked.baker === 'keynote' ? keynoteFor(m, planned.index + 1, baked.keynoteMedia) : null;
+      // Keynote's word on a slide's own movie or sound; a sound across slides is its soundtrack, no slide's (its copy's).
+      const told =
+        baked.baker === 'keynote' && m.acrossSlides === null
+          ? keynoteFor(m, planned.index + 1, baked.keynoteMedia)
+          : null;
       const clip = clipOf(m, taken.durationMs);
       if (clip) trimmed++;
       const mediaId = refs.ref(
@@ -304,23 +312,11 @@ export async function bakedPresentation(
       );
       const loop = told ? told.loop : m.loop;
       const volume = told ? told.volume : m.volume;
-      // A sound set to play across slides (C review): starting with its slide, it is the slide's sound, which plays
-      // on as the next slides go up (Drashti's sound layer); one that starts later stays on its own slide.
-      if (m.kind === 'audio' && m.acrossSlides) {
-        const withSlide = !('clicked' in m.start) && stepOfGroup(d?.groups ?? [], m.start.group) === 0;
-        if (withSlide && cues.length === 0) {
-          cues.push({
-            kind: 'audio',
-            label: m.name,
-            media: refs.indexOf(mediaId),
-            props: { volume: m.muted ? 0 : volume, loop },
-          });
-          acrossCued++;
-          continue;
-        }
-        if (withSlide) acrossSecond++;
-        else acrossLater++;
-      }
+      // A sound set to play across slides (Session 54): the deck's own, with its slide or at its click, playing on
+      // across its slides from the audio layer; one only a click on it starts stays on its slide.
+      const isAcross = m.kind === 'audio' && m.acrossSlides !== null;
+      if (isAcross && 'clicked' in m.start) acrossTriggered++;
+      else if (isAcross) across++;
       let start: DeckMedia['start'];
       if ('clicked' in m.start) {
         start = { clicked: true };
@@ -345,7 +341,9 @@ export async function bakedPresentation(
         ...(m.fadeInMs > 0 ? { fadeInMs: m.fadeInMs } : {}),
         ...(m.fadeOutMs > 0 ? { fadeOutMs: m.fadeOutMs } : {}),
         start,
-        ...(m.acrossSlides ? { acrossSlides: m.acrossSlides } : {}),
+        ...(isAcross && m.acrossSlides
+          ? { acrossSlides: m.acrossSlides, ...(m.name ? { name: m.name } : {}) }
+          : {}),
         ...(m.hideWhenStopped ? { hideWhenStopped: true } : {}),
         // Shown only from its entrance and until its exit, where the deck animates it in or out (C review).
         ...(m.enterGroup !== null ? { enterStep: stepOfGroup(d?.groups ?? [], m.enterGroup) } : {}),
@@ -391,14 +389,20 @@ export async function bakedPresentation(
     };
     before = deckSteps.at(-1)?.lastId ?? null;
     if (isOff) {
-      // Its sound that starts with it, as its own sound (one a slide); the rest stays out.
-      const sound = deckMedia.find((m) => m.kind === 'audio' && 'step' in m.start && m.start.step === 0);
+      // Its sound that starts with it, as its own sound (one a slide): one set to play across slides first, which
+      // its cue says (Session 54); the rest stays out.
+      const withIt = deckMedia.filter((m) => m.kind === 'audio' && 'step' in m.start && m.start.step === 0);
+      const sound = withIt.find((m) => m.acrossSlides !== undefined) ?? withIt[0];
       if (sound && cues.length === 0)
         cues.push({
           kind: 'audio',
-          label: '',
+          label: sound.name ?? '',
           media: refs.indexOf(sound.mediaId),
-          props: { volume: sound.muted ? 0 : sound.volume, loop: sound.loop },
+          props: {
+            volume: sound.muted ? 0 : sound.volume,
+            loop: sound.loop,
+            ...(sound.acrossSlides ? { acrossSlides: sound.acrossSlides } : {}),
+          },
         });
       const worst = Math.max(
         0,
@@ -448,9 +452,8 @@ export async function bakedPresentation(
       videos,
       audios,
       clicked,
-      acrossCued,
-      acrossLater,
-      acrossSecond,
+      across,
+      acrossTriggered,
       transitionSounds,
       advancing,
       trimmed,
@@ -491,10 +494,9 @@ export function bakedIssues(d: {
   audios: number;
   /** Videos and sounds that start only when clicked on (a trigger in the deck). */
   clicked: number;
-  /** Sounds set to play across slides: as their slide's sound; starting later, or a slide's second, on their own slide. */
-  acrossCued: number;
-  acrossLater: number;
-  acrossSecond: number;
+  /** Sounds set to play across slides (Session 54): playing on across them; only a click on one starts it. */
+  across: number;
+  acrossTriggered: number;
   transitionSounds: number;
   /** Slides that moved on by themselves in the deck. */
   advancing: number;
@@ -542,29 +544,22 @@ export function bakedIssues(d: {
         `Its ${[some(d.videos, 'video'), some(d.audios, 'sound')].filter(Boolean).join(' and ')} came in as real media, played as the deck plays ${d.videos + d.audios === 1 ? 'it' : 'them'} (when ${d.videos + d.audios === 1 ? 'it starts' : 'they start'}, ${d.trimmed > 0 ? 'trims, ' : ''}loop and volume), with the time bar under LIVE.`,
       ),
     );
-  if (d.acrossCued > 0)
+  if (d.across > 0)
     out.push(
       info(
         'deck-across-slides',
-        d.acrossCued === 1
-          ? '1 sound set to play across slides came in as its slide’s sound: it plays on as the next slides go up, until it ends or another sound takes its place.'
-          : `${String(d.acrossCued)} sounds set to play across slides came in as their slides’ sounds: each plays on as the next slides go up, until it ends or another sound takes its place.`,
+        d.across === 1
+          ? '1 sound set to play across slides plays on as the slides and their clicks change, as in its slide show, until its last slide; Next and Back never start it again.'
+          : `${String(d.across)} sounds set to play across slides play on as the slides and their clicks change, as in its slide show, each until its last slide; Next and Back never start one again.`,
       ),
     );
-  if (d.acrossLater > 0)
+  if (d.acrossTriggered > 0)
     out.push(
       info(
         'deck-across-own-slide',
-        d.acrossLater === 1
-          ? '1 sound set to play across slides starts on a click: here it plays on its own slide only.'
-          : `${String(d.acrossLater)} sounds set to play across slides start on a click: here they play on their own slides only.`,
-      ),
-    );
-  if (d.acrossSecond > 0)
-    out.push(
-      info(
-        'deck-across-own-slide',
-        `${plural(d.acrossSecond, 'sound', 'sounds')} set to play across slides ${d.acrossSecond === 1 ? 'plays' : 'play'} on ${d.acrossSecond === 1 ? 'its' : 'their'} own slide only here: ${d.acrossSecond === 1 ? 'its slide has' : 'their slides have'} another sound that plays on.`,
+        d.acrossTriggered === 1
+          ? '1 sound set to play across slides starts only when clicked on: here it plays on its own slide, from Play on the time bar under LIVE.'
+          : `${String(d.acrossTriggered)} sounds set to play across slides start only when clicked on: here they play on their own slides, from Play on the time bar under LIVE.`,
       ),
     );
   if (d.transitionSounds > 0)
@@ -657,6 +652,10 @@ export function picturesMediaIssues(d: {
   left: number;
   /** Its videos and sounds that could not be put on their slides (its pictures not one a slide; C review). */
   unmatched?: number;
+  /** Sounds set to play across slides, as their slides' sounds saying so (Session 54). */
+  across?: number;
+  /** Slides (from 1) whose own sound goes up where one of those plays on: it takes its place (one sound a slide). */
+  overMusic?: readonly number[];
 }): ImportIssue[] {
   const out: ImportIssue[] = [];
   if ((d.unmatched ?? 0) > 0)
@@ -683,6 +682,28 @@ export function picturesMediaIssues(d: {
       message: `${plural(d.cued, 'sound plays', 'sounds play')} as ${d.cued === 1 ? 'its' : 'their'} slide goes up.`,
       fix: null,
     });
+  const across = d.across ?? 0;
+  if (across > 0)
+    out.push({
+      severity: 'info',
+      code: 'deck-across-slides',
+      message:
+        across === 1
+          ? '1 sound set to play across slides plays on from its slide, as in its slide show, until its last slide; Next and Back never start it again.'
+          : `${String(across)} sounds set to play across slides play on from their slides, as in its slide show, each until its last slide; Next and Back never start one again.`,
+      fix: null,
+    });
+  const over = d.overMusic ?? [];
+  if (over.length > 0) {
+    const names = over.map(String);
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+    out.push({
+      severity: 'info',
+      code: 'deck-sound-over-music',
+      message: `${over.length === 1 ? `The sound of slide ${list ?? ''} takes` : `The sounds of slides ${list ?? ''} take`} the place of the sound playing across slides as ${over.length === 1 ? 'that slide goes' : 'those slides go'} up: as pictures, one sound plays at a time (with the deck’s animations, both play).`,
+      fix: null,
+    });
+  }
   if (d.left > 0)
     out.push({
       severity: 'info',
@@ -725,7 +746,14 @@ export async function addDeckMedia(
   ffmpeg: string | null,
   /** The deck's own folder: its links are followed only inside it. */
   deckDir: string,
-): Promise<{ videos: number; cued: number; left: number; unmatched?: number }> {
+): Promise<{
+  videos: number;
+  cued: number;
+  left: number;
+  unmatched?: number;
+  across?: number;
+  overMusic?: number[];
+}> {
   const shown = deck.slides.flatMap((s, i) => (s.hidden ? [] : [i]));
   const slides = parsed.groups.flatMap((g) => g.slides);
   if (slides.length !== shown.length) return { videos: 0, cued: 0, left: 0, unmatched: deckMediaCount(deck) };
@@ -733,6 +761,11 @@ export async function addDeckMedia(
   let videos = 0;
   let cued = 0;
   let left = 0;
+  let across = 0;
+  /** Where a sound set to play across slides plays (Session 54): from its slide (by place), to its last. */
+  const plays: { from: number; to: number }[] = [];
+  /** The slides (by place) with a sound of their own. */
+  const own: number[] = [];
   const refFor = (path: string, kind: ParsedMediaRef['kind'], markers?: ParsedMediaRef['markers']) => {
     parsed.media.push({ originalPath: path, kind, sourcePath, ...(markers ? { markers } : {}) });
     return parsed.media.length - 1;
@@ -741,6 +774,15 @@ export async function addDeckMedia(
     const slide = slides[i];
     const d = deck.slides[index]?.deck;
     if (!slide || !d) return;
+    // With the slide: the slide's sound, as Drashti plays one (one a slide), a sound set to play across slides first.
+    const withSlide = d.media.filter(
+      (m) =>
+        m.kind === 'audio' &&
+        !('clicked' in m.start) &&
+        stepOfGroup(d.groups, m.start.group) === 0 &&
+        media.has(m.part ?? m.link ?? ''),
+    );
+    const sound = withSlide.find((m) => m.acrossSlides !== null) ?? withSlide[0];
     for (const m of d.media) {
       const taken = media.get(m.part ?? m.link ?? '');
       if (!taken) continue;
@@ -758,24 +800,40 @@ export async function addDeckMedia(
           ...(m.muted ? { volume: 0 } : m.volume < 1 ? { volume: m.volume } : {}),
         });
         videos++;
-      } else if (
-        !('clicked' in m.start) &&
-        stepOfGroup(d.groups, m.start.group) === 0 &&
-        slide.cues.length === 0
-      ) {
-        // With the slide: the slide's sound, as Drashti plays one (one a slide).
+      } else if (m === sound && slide.cues.length === 0) {
+        // Set to play across slides (Session 54), its cue says how many: it plays on across them.
         const cue: ParsedCue = {
           kind: 'audio',
           label: m.name,
           media: refFor(taken.path, 'audio', markers),
-          props: { volume: m.muted ? 0 : m.volume, loop: m.loop },
+          props: {
+            volume: m.muted ? 0 : m.volume,
+            loop: m.loop,
+            ...(m.acrossSlides ? { acrossSlides: m.acrossSlides } : {}),
+          },
         };
         slide.cues.push(cue);
-        cued++;
+        if (m.acrossSlides) {
+          across++;
+          plays.push({ from: i, to: i + m.acrossSlides - 1 });
+        } else {
+          cued++;
+          own.push(i);
+        }
       } else left++;
     }
   });
-  return { videos, cued, left };
+  // A slide's own sound where one set to play across slides plays on takes its place there (one sound a slide): the
+  // first in each one's slides, which stops it.
+  const overMusic = [
+    ...new Set(
+      plays.flatMap((p) => {
+        const first = own.find((i) => i > p.from && i <= p.to);
+        return first === undefined ? [] : [first + 1];
+      }),
+    ),
+  ].sort((a, b) => a - b);
+  return { videos, cued, left, across, ...(overMusic.length > 0 ? { overMusic } : {}) };
 }
 
 /** How many videos and sounds the deck's shown slides have. */

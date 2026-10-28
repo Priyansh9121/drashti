@@ -43,6 +43,11 @@ export interface Motion {
   width: number;
   height: number;
   fps: number;
+  /**
+   * Whether the movie has sound (Session 54): Keynote's, made with its slides' own sounds taken out, has only its
+   * soundtrack's, so a silent one tells a soundtrack that is Off (keynote-music.ts).
+   */
+  sound: boolean;
 }
 
 /** A stretch of moving frames. */
@@ -77,8 +82,10 @@ export function motionRuns(frames: readonly MotionFrame[]): MotionRun[] {
   return runs;
 }
 
-/** What FFmpeg prints of a movie: its size, rate and length. */
-export function parseMovieInfo(stderr: string): Pick<Motion, 'durationMs' | 'width' | 'height' | 'fps'> {
+/** What FFmpeg prints of a movie: its size, rate and length, and whether it has sound. */
+export function parseMovieInfo(
+  stderr: string,
+): Pick<Motion, 'durationMs' | 'width' | 'height' | 'fps' | 'sound'> {
   const d = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/u.exec(stderr);
   const video = /Stream #[^\n]*Video:[^\n]*?(\d{2,5})x(\d{2,5})/u.exec(stderr);
   const fps = /Stream #[^\n]*Video:[^\n]*?(\d+(?:\.\d+)?) (?:fps|tbr)/u.exec(stderr);
@@ -87,6 +94,7 @@ export function parseMovieInfo(stderr: string): Pick<Motion, 'durationMs' | 'wid
     width: video ? Number(video[1]) : 0,
     height: video ? Number(video[2]) : 0,
     fps: fps ? Number(fps[1]) : 30,
+    sound: /Stream #[^\n]*Audio:/u.test(stderr),
   };
 }
 

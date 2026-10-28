@@ -26,6 +26,7 @@ import {
   planCuts,
 } from './cut';
 import { diskFreeBytes } from '../media-store';
+import { keynoteMusic } from './keynote-music';
 import { type Baker, keynotePlan, type MoviePlan, plannedLength, powerPointPlan } from './plan';
 import { macProgress, NO_PROGRESS_MS, noProgress } from './progress';
 import { standInMovie } from './stand-in-baker';
@@ -384,7 +385,12 @@ const KEYNOTE_MEDIA_SCRIPT = [
   'return res',
 ];
 
-async function keynoteOnMac(input: string, work: string, options: BakeOptions): Promise<Made> {
+async function keynoteOnMac(
+  input: string,
+  read: PptxDeck | null,
+  work: string,
+  options: BakeOptions,
+): Promise<Made> {
   const limits = options.limits ?? CONVERT_LIMITS;
   let deck: PptxDeck | null = null;
   let deckFile: string | null = null;
@@ -429,7 +435,9 @@ async function keynoteOnMac(input: string, work: string, options: BakeOptions): 
         return s.fromError(exported, 'saving it as PowerPoint', 'save it as PowerPoint');
       deckFile = join(work, 'keynote.pptx');
       await copyFile(ownCopy, deckFile);
-      deck = await readPptxDeck(deckFile);
+      // Its sounds across slides as the deck plays them (Session 54, keynote-music.ts): a .pptx's own say across how
+      // many slides, how loud and whether they loop; a .key's soundtrack plays across the whole deck, at full volume.
+      deck = keynoteMusic(await readPptxDeck(deckFile), { original: read, movieSound: null });
       const plan = keynotePlan(deck.slides);
       if (plan.slides.length === 0)
         return {
@@ -659,7 +667,7 @@ export async function bakeDeck(
       baker === 'stand-in'
         ? await standIn(input, read, work, appOptions)
         : baker === 'keynote'
-          ? await keynoteOnMac(input, work, appOptions)
+          ? await keynoteOnMac(input, read, work, appOptions)
           : platform === 'win32'
             ? await powerPointOnWindows(source, input, read, work, appOptions)
             : await powerPointOnMac(source, input, read, work, appOptions);
@@ -720,6 +728,11 @@ export async function bakeDeck(
   try {
     options.progress?.('Finding the steps in the movie');
     const motion = await measureMotion(options.ffmpeg, made.movie, options.signal);
+    // Keynote's movie silent: a .key's soundtrack Keynote copied is Off, so it never plays (keynote-music.ts).
+    const deck =
+      baker === 'keynote' && !motion.sound
+        ? keynoteMusic(made.deck, { original: read, movieSound: false })
+        : made.deck;
     const cuts = planCuts(made.plan, motion);
     options.log?.(
       `Deck: ${String(cuts.offsets.length)} steps checked, the furthest ${cuts.worst ? `${String(cuts.worst.offsetMs)} ms (slide ${String(cuts.worst.slide + 1)}, step ${String(cuts.worst.step)})` : 'not measured'}; slides not found: ${cuts.lostSlides.map((i) => String(i + 1)).join(', ') || 'none'}`,
@@ -740,7 +753,7 @@ export async function bakeDeck(
       baked: {
         baker,
         deckFile: made.deckFile,
-        deck: made.deck,
+        deck,
         plan: made.plan,
         cuts,
         files,

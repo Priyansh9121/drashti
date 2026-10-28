@@ -270,6 +270,11 @@ const audioLayerSchema = z.intersection(
     music: musicStartSchema.extend({ index: z.number().int().min(0).max(999) }).optional(),
     pausedAtMs: z.number().min(0).optional(),
     seek: seekSchema.optional(),
+    // A sound set to play across slides (Session 54): it comes back with its slides, and its deck's fades.
+    across: z
+      .object({ presentationId: idSchema, lastIndex: z.number().int().min(0).max(100_000) })
+      .optional(),
+    fades: z.object({ inMs: z.number().min(0), outMs: z.number().min(0) }).optional(),
   }),
 );
 const markSchema = z.object({ session: z.string().min(1).max(64) });

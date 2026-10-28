@@ -113,6 +113,12 @@ export function cueFromRow(row: CueRow): SlideCue | null {
     if (media !== 'audio' && media !== 'video') return null;
     const volume =
       typeof props['volume'] === 'number' && Number.isFinite(props['volume']) ? props['volume'] : 1;
+    // Set to play across slides (Session 54: a deck's sound, its deck come in as pictures), as many as a deck can say.
+    const across = props['acrossSlides'];
+    const slides =
+      typeof across === 'number' && Number.isInteger(across) && across > 1 && across <= 10_000
+        ? across
+        : null;
     return {
       kind: 'audio',
       label: row.label,
@@ -122,6 +128,7 @@ export function cueFromRow(row: CueRow): SlideCue | null {
       mediaId: row.media_id,
       volume: Math.min(1, Math.max(0, volume)),
       loop: props['loop'] === true,
+      ...(slides !== null ? { acrossSlides: slides } : {}),
     };
   }
   if (row.kind !== 'background' || (media !== 'image' && media !== 'video')) return null;

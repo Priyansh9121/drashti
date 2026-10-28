@@ -72,6 +72,15 @@ import {
 } from './deck-steps';
 import { deckClips, lastStep, stepOf } from '../../shared/deck-show';
 import type { DeckSlide } from '../../shared/deck';
+import {
+  type AcrossStart,
+  acrossLayer,
+  isAcrossCue,
+  keptPlaying,
+  playsOn,
+  startsAt,
+  startsWith,
+} from './across-slides';
 import { reduce, sameData } from './reducer';
 import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
@@ -1210,7 +1219,12 @@ export class ShowEngine {
     // A file deleted while it is the sound playing carries on (missingSound).
     const sound = soundCueOf(played.cues);
     const soundMissing = missingSound(played, this.state.layers.audio);
-    if (sound && soundMissing === null) {
+    // A sound set to play across slides (Session 54, across-slides.ts), its deck's own or its sound cue saying so: on
+    // the audio layer with the slide, never started again by Next or Back. A sound cue of its own comes after it.
+    const across = startsWith(played, entry, deck?.fromMs ?? 0, soundMissing === null);
+    const music = across ? this.acrossAction(across, presentationId, slideIndex, at) : null;
+    if (music) layers.push(music);
+    if (sound && soundMissing === null && !isAcrossCue(sound)) {
       const { mediaId, volume, loop } = sound;
       layers.push({
         type: 'audio/set',
@@ -1764,7 +1778,30 @@ export class ShowEngine {
     )
       return null;
     const moved = delta > 0 ? stepForward(layer, this.now()) : stepBack(layer, this.now());
-    return moved ? { ok: true, actions: [{ type: 'slide/put', layer: moved }] } : null;
+    if (!moved) return null;
+    // A click that starts a sound set to play across slides (Session 54, across-slides.ts): on the audio layer.
+    const across = delta > 0 ? startsAt(layer.slide.deck, stepOf(moved)) : null;
+    const music = across
+      ? this.acrossAction(across, layer.presentationId, layer.slideIndex, this.now())
+      : null;
+    return { ok: true, actions: [{ type: 'slide/put', layer: moved }, ...(music ? [music] : [])] };
+  }
+
+  /** The audio layer's change for a sound set to play across slides from here (across-slides.ts), or null for none. */
+  private acrossAction(
+    start: AcrossStart,
+    presentationId: string,
+    slideIndex: number,
+    at: number,
+  ): EngineAction | null {
+    const audio = acrossLayer(
+      start,
+      { presentationId, slideIndex },
+      at,
+      this.state.layers.audio,
+      this.libraryOf(start.mediaId, undefined),
+    );
+    return audio ? { type: 'audio/set', audio } : null;
   }
 
   /**
@@ -1776,7 +1813,7 @@ export class ShowEngine {
   private backLayers(was: Layers): Layers {
     const layers = this.withLengths(was);
     const back = layers.slide;
-    if (!back?.slide.deck) return layers;
+    if (!back?.slide.deck) return this.playingOn(was, layers);
     const now = this.state.layers.slide;
     const same =
       now !== null &&
@@ -1784,10 +1821,22 @@ export class ShowEngine {
       now.slideIndex === back.slideIndex &&
       now.shownAt === back.shownAt;
     const slide = (same ? stepBack(now, this.now()) : null) ?? settledStep(back, this.now());
-    if (slide === back) return layers;
+    if (slide === back) return this.playingOn(was, layers);
     const out = { ...layers, slide };
     const below = this.steps.at(-1);
     if (below?.toLayers === was) below.toLayers = out;
+    return this.playingOn(was, out);
+  }
+
+  /**
+   * The layers Back puts back with a sound playing across slides now playing on as it is (Session 54,
+   * across-slides.ts): Back never stops it, so Next never starts it again. Back after Back still undoes each Next.
+   */
+  private playingOn(was: Layers, layers: Layers): Layers {
+    const out = keptPlaying(layers, this.state.layers.audio);
+    if (out === layers) return layers;
+    const below = this.steps.at(-1);
+    if (below && (below.toLayers === was || below.toLayers === layers)) below.toLayers = out;
     return out;
   }
 
@@ -2224,6 +2273,15 @@ export class ShowEngine {
     // slide cleared ends it (Stop and Esc leave its slide up).
     if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))
       next = reduce(next, { type: 'repeat/set', repeat: null });
+    // A sound playing across slides (Session 54, across-slides.ts) stops once a slide past its last goes up, or
+    // anything else goes live (or a restart put it back with its deck not live).
+    const across = next.layers.audio?.across;
+    if (
+      across &&
+      (next.live !== prev.live || next.layers.audio !== prev.layers.audio) &&
+      !playsOn(across, next.live)
+    )
+      next = reduce(next, { type: 'layer/clear', layer: 'audio' });
     // A live zoom lasts for that showing only (Session 26e): another slide or background ends it.
     const zoomed = next.liveZoom;
     if (zoomed) {

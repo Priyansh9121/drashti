@@ -19,9 +19,8 @@ const DECK = {
   videos: 4,
   audios: 4,
   clicked: 0,
-  acrossCued: 0,
-  acrossLater: 0,
-  acrossSecond: 0,
+  across: 0,
+  acrossTriggered: 0,
   transitionSounds: 4,
   advancing: 0,
   trimmed: 4,
@@ -84,6 +83,31 @@ describe('the report’s words on a deck', () => {
     expect(words).toContain('The file has no speaker notes.');
     // Nothing could be seen to move: nothing is said of the steps' moments.
     expect(words.some((w) => w.startsWith('Every step was found'))).toBe(false);
+  });
+
+  it('says that its sounds set to play across slides play on, and that one only a click on it starts stays on its slide (Session 54)', () => {
+    const words = (across: number, acrossTriggered: number) =>
+      bakedIssues({ ...DECK, across, acrossTriggered })
+        .filter((i) => i.code.startsWith('deck-across'))
+        .map((i) => i.message);
+    expect(words(1, 0)).toEqual([
+      '1 sound set to play across slides plays on as the slides and their clicks change, as in its slide show, until its last slide; Next and Back never start it again.',
+    ]);
+    expect(words(2, 2)).toEqual([
+      '2 sounds set to play across slides play on as the slides and their clicks change, as in its slide show, each until its last slide; Next and Back never start one again.',
+      '2 sounds set to play across slides start only when clicked on: here they play on their own slides, from Play on the time bar under LIVE.',
+    ]);
+    expect(words(0, 0)).toEqual([]);
+    // As pictures: its slide's sound saying so, and a slide's own sound where it plays on taking its place.
+    expect(
+      picturesMediaIssues({ videos: 0, cued: 2, left: 0, across: 1, overMusic: [3, 7] }).map(
+        (i) => i.message,
+      ),
+    ).toEqual([
+      '2 sounds play as their slide goes up.',
+      '1 sound set to play across slides plays on from its slide, as in its slide show, until its last slide; Next and Back never start it again.',
+      'The sounds of slides 3 and 7 take the place of the sound playing across slides as those slides go up: as pictures, one sound plays at a time (with the deck’s animations, both play).',
+    ]);
   });
 
   it('says plainly why a deck came in as pictures', () => {

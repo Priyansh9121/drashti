@@ -117,7 +117,7 @@ function motionOf(plan: MoviePlan, shift: Record<string, number> = {}, lose: num
     });
     frames.push({ t: Math.round(t), avg, max });
   }
-  return { frames, durationMs: total, width: 1920, height: 1080, fps: FPS };
+  return { frames, durationMs: total, width: 1920, height: 1080, fps: FPS, sound: false };
 }
 
 describe('reading what FFmpeg says of a movie', () => {
@@ -142,7 +142,17 @@ describe('reading what FFmpeg says of a movie', () => {
     ]);
     const err =
       "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'movie.mov':\n  Duration: 00:01:28.03, start: 0.000000, bitrate: 6043 kb/s\n  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080, 6000 kb/s, 30 fps, 30 tbr, 30k tbn (default)";
-    expect(parseMovieInfo(err)).toEqual({ durationMs: 88_030, width: 1920, height: 1080, fps: 30 });
+    expect(parseMovieInfo(err)).toEqual({
+      durationMs: 88_030,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      sound: false,
+    });
+    // Keynote's movie of a deck with its soundtrack on (its slides' own sounds taken out first): it has sound, which
+    // tells a soundtrack that plays from one Keynote copies even when it is Off (Session 54, keynote-music.ts).
+    const withSound = `${err}\n  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 125 kb/s (default)`;
+    expect(parseMovieInfo(withSound)).toMatchObject({ durationMs: 88_030, sound: true });
   });
 
   it('runs of moving frames bridge one still frame, and a lone flicker is a run of one', () => {
