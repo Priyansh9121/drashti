@@ -212,3 +212,94 @@ describe('a deck’s sounds on the slide (Session 54, C2)', () => {
     ]);
   });
 });
+
+describe('a prop’s and the logo’s videos (Session 54, the owner’s answer of 28 Oct: every video has a bar)', () => {
+  const prop = (id: string, name: string, elements: MediaElement[], shownAt = 3000) => ({
+    id,
+    name,
+    elements,
+    shownAt,
+  });
+  const withProps = {
+    ...everything,
+    layers: {
+      ...everything.layers,
+      props: [
+        prop('p1', 'Placeholder corner', [
+          video('pv1', 'corner', true),
+          video('pv2', 'corner'),
+          video('pv3', 'b'),
+        ]),
+        {
+          ...prop('p2', 'Placeholder banner', [video('pv4', 'corner')]),
+          seeks: { corner: { at: 3500, toMs: 900, paused: true } },
+        },
+      ],
+    },
+    logo: prop('logo', 'Placeholder logo', [video('lv', 'mark', true)], 4000),
+    videoFiles: { ...everything.videoFiles, corner: { durationMs: 6000 }, mark: { durationMs: 9000 } },
+  };
+
+  it('have rows of their own after the slide’s and before the box’s: each prop’s videos, each file once a prop, then the logo’s', () => {
+    expect(playingRows(withProps).map((r) => [r.which, r.short, r.name])).toEqual([
+      ['background', 'Background', 'Time of the background video'],
+      ['slide:a', 'Slide video 1', 'Time of video 1 on the slide'],
+      ['slide:b', 'Slide video 2', 'Time of video 2 on the slide'],
+      ['props:p1:corner', 'Prop video 1', 'Time of video 1 in the prop “Placeholder corner”'],
+      ['props:p1:b', 'Prop video 2', 'Time of video 2 in the prop “Placeholder corner”'],
+      ['props:p2:corner', 'Prop video 3', 'Time of the video in the prop “Placeholder banner”'],
+      ['logo:mark', 'Logo video', 'Time of the logo’s video'],
+      ['pip', 'Box video', 'Time of the video in the picture-in-picture box'],
+      ['audio', 'Music', 'Time of the music playing'],
+    ]);
+    // One prop with one video: "Prop video", as a slide's one video is "Slide video".
+    const one = {
+      ...withProps,
+      logo: null,
+      layers: { ...withProps.layers, props: [prop('p', 'Placeholder', [video('v', 'corner')])] },
+    };
+    expect(playingRows(one).find((r) => r.which.startsWith('props:'))).toMatchObject({
+      short: 'Prop video',
+      name: 'Time of the video in the prop “Placeholder”',
+    });
+  });
+
+  it('are each their own prop’s, so the same file in two props is two rows that never share a drag', () => {
+    const keys = playingRows(withProps).map((r) => r.key);
+    expect(keys).toContain('props:p1:corner@3000');
+    expect(keys).toContain('props:p2:corner@3000');
+    expect(keys).toContain('logo:mark@4000');
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('are where every screen has them, and move, pause and play by their own prop and file', () => {
+    const rows = playingRows(withProps);
+    const banner = rows.find((r) => r.which === 'props:p2:corner');
+    const mark = rows.find((r) => r.which === 'logo:mark');
+    if (!banner || !mark) throw new Error('rows missing');
+    expect(banner.playing.ref).toEqual({ layer: 'props', propId: 'p2', mediaId: 'corner' });
+    expect(banner.playing.paused).toBe(true);
+    expect(barNow(banner.playing, 99_000)).toMatchObject({ atMs: 900, durationMs: 6000, ended: false });
+    expect(mark.playing.ref).toEqual({ layer: 'logo', mediaId: 'mark' });
+    // The logo's looping video, 10 s after it went up, round once and 1 s in.
+    expect(barNow(mark.playing, 14_000)).toMatchObject({ atMs: 1000, durationMs: 9000 });
+  });
+
+  it('have none for a prop or a logo of pictures only, nor a prop saved before Session 27 (no time it went up)', () => {
+    const picture = {
+      id: 'pic',
+      kind: 'image',
+      frame: { x: 0, y: 0, width: 10, height: 10 },
+      mediaId: 'still',
+      fit: 'fit',
+    } as const;
+    const { shownAt: _was, ...unshown } = prop('old', 'Placeholder old', [video('ov', 'corner')]);
+    const s = state(
+      { props: [{ id: 'pics', name: 'Placeholder pictures', elements: [picture], shownAt: 1 }, unshown] },
+      {
+        logo: { id: 'logo', name: 'Placeholder logo', elements: [picture], shownAt: 1 },
+      },
+    );
+    expect(playingRows(s)).toEqual([]);
+  });
+});

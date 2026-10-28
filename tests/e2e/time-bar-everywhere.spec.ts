@@ -30,6 +30,7 @@ import {
   dispatch,
   heldAt,
   inStep,
+  logoTiming,
   propTiming,
   row,
   slideTiming,
@@ -37,12 +38,13 @@ import {
   slideWithVideos,
   snapshot,
   soundTiming,
+  type Timing,
 } from './time-bar-helpers';
 
 /*
  * The time bar beyond Main's own screens (Session 54's review): a node's screen beside Main's and a key and fill pair
- * land on a Pause and a Play as Main's do; a prop's looping video, which has no bar of its own, is moved and paused
- * in step by the engine; what was paused and moved comes back after a crash where it would be; and the worst fit, every
+ * land on a Pause and a Play as Main's do; a prop's looping video and the logo's are moved and paused in step by bars of
+ * their own (the owner's answer of 28 Oct); what was paused and moved comes back after a crash where it would be; and the worst fit, every
  * kind playing at once, one paused, one file hours long, fits CI's operator window in Pro and Simple Mode and a phone
  * and a tablet, Next and Back never moving. Generated media only, quiet; codes and tokens made at run time.
  */
@@ -213,61 +215,104 @@ test('the key and the fill: a slide’s video (a key and fill pair keys the slid
   await app.close();
 });
 
-test('a prop’s looping video, which has no bar of its own: the engine’s move and Pause land in step on two screens, and Play plays it on there', async () => {
-  test.setTimeout(180_000);
+test('a prop’s looping video and the logo’s have bars of their own under LIVE: a click along moves each, and its Pause and Play hold it and play it on, in step on two screens', async () => {
+  test.setTimeout(240_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-time-bar-prop-'));
   const file = await makeTestVideo(win, join(dir, 'Placeholder prop clip.webm'), { seconds: 10, hue: 250 });
-  const [mediaId = ''] = await importAndGetIds(win, [file]);
+  const mark = await makeTestVideo(win, join(dir, 'Placeholder logo clip.webm'), { seconds: 10, hue: 30 });
+  const [mediaId = '', logoMediaId = ''] = await importAndGetIds(win, [file, mark]);
   await setUpScreen(win, 'Main Hall', 0);
   await setUpScreen(win, 'Overflow', 1);
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [a, b] = outputPages(app) as [Page, Page];
   for (const o of [a, b]) await outputReady(o);
+  const looping = (id: string, media: string) => ({
+    id,
+    kind: 'video' as const,
+    mediaId: media,
+    frame: { x: 1280, y: 0, width: 640, height: 360 },
+    fit: 'fit' as const,
+    loop: true,
+  });
+  const onBoth = (selector: string): Copy[] => [
+    { name: 'the first screen', page: a, selector },
+    { name: 'the second screen', page: b, selector },
+  ];
+
+  /** By its own row under LIVE: a click halfway along moves it there everywhere, Pause holds it, Play plays it on. */
+  async function byItsBar(
+    which: string,
+    media: string,
+    copies: Copy[],
+    timing: () => Promise<Timing>,
+    what: string,
+  ) {
+    await inStep(copies, timing, `${what}, playing`);
+    await expect
+      .poll(async () => (await snapshot(win)).videoFiles?.[media]?.durationMs ?? 0)
+      .toBeGreaterThan(8000);
+    const length = (await snapshot(win)).videoFiles?.[media]?.durationMs ?? 0;
+    const itsRow = row(win, which);
+    const bar = itsRow.getByRole('slider');
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await bar.scrollIntoViewIfNeeded();
+    await clickAlong(win, bar, 0.5);
+    await expect
+      .poll(async () => Math.abs(((await timing()).seek?.toMs ?? 0) - length * 0.5))
+      .toBeLessThan(length * 0.03);
+    await inStep(copies, timing, `${what}, moved halfway`);
+    await itsRow.getByRole('button', { name: 'Pause' }).click();
+    await expect.poll(async () => (await timing()).seek?.paused).toBe(true);
+    await heldAt(copies, ((await timing()).seek?.toMs ?? 0) / 1000, `${what}, paused`);
+    await itsRow.getByRole('button', { name: 'Play' }).click();
+    await expect.poll(async () => (await timing()).seek?.paused).toBeUndefined();
+    await inStep(copies, timing, `${what}, played on`);
+  }
+
   const propId = 'placeholder-prop';
   await dispatch(win, {
     type: 'showProp',
+    prop: { id: propId, name: 'Placeholder prop', elements: [looping('placeholder-prop-video', mediaId)] },
+  });
+  const propRow = `props:${propId}:${mediaId}`;
+  await expect(row(win, propRow)).toHaveAttribute(
+    'aria-label',
+    'Time of the video in the prop “Placeholder prop”',
+  );
+  await byItsBar(
+    propRow,
+    mediaId,
+    onBoth(`[data-layer="props"] video[data-media-id="${mediaId}"]`),
+    () => propTiming(win, propId, mediaId, true),
+    'the prop’s video',
+  );
+  // Taken down, its row goes.
+  await dispatch(win, { type: 'hideProp', propId });
+  await expect(row(win, propRow)).toHaveCount(0);
+
+  // The logo, with a looping video of its own: a row and a bar of its own, alike.
+  await dispatch(win, {
+    type: 'showLogo',
     prop: {
-      id: propId,
-      name: 'Placeholder prop',
-      elements: [
-        {
-          id: 'placeholder-prop-video',
-          kind: 'video',
-          mediaId,
-          frame: { x: 1280, y: 0, width: 640, height: 360 },
-          fit: 'fit',
-          loop: true,
-        },
-      ],
+      id: 'placeholder-logo',
+      name: 'Placeholder logo',
+      elements: [looping('placeholder-logo-video', logoMediaId)],
     },
   });
-  const picture = `[data-layer="props"] video[data-media-id="${mediaId}"]`;
-  const copies: Copy[] = [
-    { name: 'the first screen', page: a, selector: picture },
-    { name: 'the second screen', page: b, selector: picture },
-  ];
-  const timing = () => propTiming(win, propId, mediaId, true);
-  const playing = { layer: 'props', propId, mediaId };
-  await inStep(copies, timing, 'playing');
-  await expect
-    .poll(async () => (await snapshot(win)).videoFiles?.[mediaId]?.durationMs ?? 0)
-    .toBeGreaterThan(8000);
-  const length = (await snapshot(win)).videoFiles?.[mediaId]?.durationMs ?? 0;
-  // Moved halfway: both screens there, going round.
-  expect(await dispatch(win, { type: 'moveTo', playing, toMs: Math.round(length / 2) })).toMatchObject({
-    ok: true,
-  });
-  await expect.poll(async () => (await timing()).seek?.toMs).toBe(Math.round(length / 2));
-  await inStep(copies, timing, 'moved halfway');
-  // Paused: both held where the pause put it; played on: in step again.
-  expect(await dispatch(win, { type: 'pausePlaying', playing })).toMatchObject({ ok: true });
-  const waits = ((await timing()).seek?.toMs ?? 0) / 1000;
-  await heldAt(copies, waits, 'paused');
-  expect(await dispatch(win, { type: 'resumePlaying', playing })).toMatchObject({ ok: true });
-  await inStep(copies, timing, 'played on');
+  const logoRow = `logo:${logoMediaId}`;
+  await expect(row(win, logoRow)).toHaveAttribute('aria-label', 'Time of the logo’s video');
+  await byItsBar(
+    logoRow,
+    logoMediaId,
+    onBoth(`[data-layer="logo"] video[data-media-id="${logoMediaId}"]`),
+    () => logoTiming(win, logoMediaId, true),
+    'the logo’s video',
+  );
+  await dispatch(win, { type: 'hideLogo' });
+  await expect(row(win, logoRow)).toHaveCount(0);
   await app.close();
 });
 
@@ -359,7 +404,7 @@ async function rowsFit(page: Page, rows: Locator, width: number, what: string): 
   ).toBe(true);
 }
 
-test('the worst fit: the background (two hours long, paused), two slide videos, the box and a sound at once fit 1024 × 645 in Pro and Simple Mode, Next and Back never moving, and a phone and a tablet at 44 px', async () => {
+test('the worst fit: the background (two hours long, paused), two slide videos, a prop’s and the logo’s videos, the box and a sound at once fit 1024 × 645 in Pro and Simple Mode, Next and Back never moving, and a phone and a tablet at 44 px', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -371,14 +416,19 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   const one = await makeTestVideo(win, join(dir, 'Placeholder slide one.webm'), { seconds: 4, hue: 100 });
   const two = await makeTestVideo(win, join(dir, 'Placeholder slide two.webm'), { seconds: 4, hue: 200 });
   const boxed = await makeTestVideo(win, join(dir, 'Placeholder boxed.webm'), { seconds: 4, hue: 300 });
+  const propped = await makeTestVideo(win, join(dir, 'Placeholder propped.webm'), { seconds: 4, hue: 40 });
+  const marked = await makeTestVideo(win, join(dir, 'Placeholder marked.webm'), { seconds: 4, hue: 160 });
   const tone = makeTestTone(join(dir, 'Placeholder fit tone.wav'), { seconds: 60, hz: 440 });
-  const [longId = '', oneId = '', twoId = '', boxedId = '', toneId = ''] = await importAndGetIds(win, [
-    long,
-    one,
-    two,
-    boxed,
-    tone,
-  ]);
+  const [longId = '', oneId = '', twoId = '', boxedId = '', proppedId = '', markedId = '', toneId = ''] =
+    await importAndGetIds(win, [long, one, two, boxed, propped, marked, tone]);
+  const videoOf = (id: string, mediaId: string) => ({
+    id,
+    kind: 'video' as const,
+    mediaId,
+    frame: { x: 1280, y: 0, width: 640, height: 360 },
+    fit: 'fit' as const,
+    loop: true,
+  });
   const presentationId = await slideWithVideos(win, dir, 'Placeholder Two Videos', [oneId, twoId]);
   await setUpScreen(win);
   await outputPage(app);
@@ -396,8 +446,33 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
     type: 'playAudio',
     audio: { id: 'placeholder-sound', title: 'Placeholder sound', mediaId: toneId, volume: 1, loop: false },
   });
-  await expect(rows(win)).toHaveCount(5);
-  for (const which of ['background', `slide:${oneId}`, `slide:${twoId}`, 'pip', 'audio'])
+  // A prop's video and the logo's (the owner's answer of 28 Oct: every video has a bar): seven rows in all.
+  await dispatch(win, {
+    type: 'showProp',
+    prop: {
+      id: 'placeholder-fit-prop',
+      name: 'Placeholder corner',
+      elements: [videoOf('fit-prop-video', proppedId)],
+    },
+  });
+  await dispatch(win, {
+    type: 'showLogo',
+    prop: {
+      id: 'placeholder-fit-logo',
+      name: 'Placeholder logo',
+      elements: [videoOf('fit-logo-video', markedId)],
+    },
+  });
+  await expect(rows(win)).toHaveCount(7);
+  for (const which of [
+    'background',
+    `slide:${oneId}`,
+    `slide:${twoId}`,
+    `props:placeholder-fit-prop:${proppedId}`,
+    `logo:${markedId}`,
+    'pip',
+    'audio',
+  ])
     await expect(row(win, which).getByRole('slider')).toBeVisible({ timeout: 15_000 });
   // The two-hour background paused: its row says so, its time left in hours, minutes and seconds (counted up to
   // whole seconds, as a countdown is: paused within its first second, -2:00:00).
@@ -428,7 +503,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
     ]) {
       await p.setViewportSize(size);
       const phoneRows = p.getByTestId('remote-time-bar-row');
-      await expect(phoneRows).toHaveCount(5);
+      await expect(phoneRows).toHaveCount(7);
       await rowsFit(p, phoneRows, size.width, `the remote at ${String(size.width)} × ${String(size.height)}`);
       for (const r of await phoneRows.all())
         for (const target of [r.getByRole('button'), r.getByRole('slider')]) {
@@ -442,10 +517,10 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
     await phone.close();
   }
 
-  // Simple Mode: the same five, each whole under its LIVE picture, its big buttons in view.
+  // Simple Mode: the same seven, each whole under its LIVE picture, its big buttons in view.
   await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  await expect(rows(win)).toHaveCount(5);
+  await expect(rows(win)).toHaveCount(7);
   await rowsFit(win, rows(win), 1024, 'Simple Mode');
   const buttons = await win.getByTestId('simple-buttons').boundingBox();
   expect((buttons?.y ?? 9999) + (buttons?.height ?? 0), 'the big buttons in view').toBeLessThanOrEqual(645);
