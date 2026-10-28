@@ -7,10 +7,12 @@
  */
 
 /** The web app's address (Deploy › Manage deployments › Web app URL). */
-export const ACCESS_LIST_URL = 'https://script.google.com/macros/s/PLACEHOLDER-WEB-APP-ADDRESS/exec';
+export const ACCESS_LIST_URL =
+  'https://script.google.com/macros/s/AKfycbw38hgrsBcIsKL4DOLBVxeVMvrgqwk0wYFsiN9Lbz12QKqd9kge1vBrgAZMcspP1bynEg/exec';
 
 /** The list's public key: SPKI, base64, RSA 2048 (Drashti › Set up… makes the pair). */
-export const ACCESS_LIST_PUBLIC_KEY = 'PLACEHOLDER-PUBLIC-KEY';
+export const ACCESS_LIST_PUBLIC_KEY =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2C7DKk0VqU+ZC/osfZcK9hbP3UTWCswzwAICOJTpvHNz+MfbSUEpQ2usHzUfZOU4VGRPSXTFqE9iapRIDbJcw10x0NSK9ZEFdB36FjCYGtEBMnFXbaHoiYcMPQM9PeTUC8p0iyWJ2mlsAJxsE46mPRGqWcIETuu4c4zDlplMAyZ+Ju6XBr/auZJyR6d6VX/ya9O5SghNJCHaseWFcceTnt9acSd7zsQVRHDJiZD2qE+gZUY7aQj24j8Y21S3A5ogwpR2sILplMbf+qEL+9jHZYXKCf5Z8vL9Tzw+OyU3ltzdu9qhOwfOkSdbXWOx94HsHmb3sPbP9vG1NuF7KrtE4wIDAQAB';
 
 /** A web app's address as Apps Script makes one (a Google Workspace account's has /a/macros/<domain>/). */
 export const ACCESS_LIST_URL_SHAPE =
