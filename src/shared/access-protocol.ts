@@ -44,7 +44,16 @@ export const ACCESS_LIMITS = {
 /** Any Drashti may make these. */
 export const ACCESS_PUBLIC_OPS = ['request', 'status', 'redeem', 'check'] as const;
 /** Only the owner's computer (its Gmail is the approver's), signed as a check is. */
-export const ACCESS_OWNER_OPS = ['list', 'add', 'approve', 'reject', 'revoke', 'regrant', 'note'] as const;
+export const ACCESS_OWNER_OPS = [
+  'list',
+  'add',
+  'approve',
+  'reject',
+  'revoke',
+  'regrant',
+  'note',
+  'length',
+] as const;
 export type AccessPublicOp = (typeof ACCESS_PUBLIC_OPS)[number];
 export type AccessOwnerOp = (typeof ACCESS_OWNER_OPS)[number];
 export type AccessOp = AccessPublicOp | AccessOwnerOp;
@@ -52,8 +61,8 @@ export type AccessOp = AccessPublicOp | AccessOwnerOp;
 /** A Gmail's row in the Sheet. */
 export const ACCESS_STATUSES = ['requested', 'approved', 'rejected', 'revoked'] as const;
 export type AccessStatus = (typeof ACCESS_STATUSES)[number];
-/** What a check answers: let in, or why not. */
-export const ACCESS_CHECK_STATUSES = ['in', 'revoked', 'rejected', 'unknown'] as const;
+/** What a check answers: let in, or why not ('expired': the length the owner gave has ended, by the list's clock). */
+export const ACCESS_CHECK_STATUSES = ['in', 'revoked', 'rejected', 'expired', 'unknown'] as const;
 export type AccessCheckStatus = (typeof ACCESS_CHECK_STATUSES)[number];
 /** What became of this computer's request. */
 export const ACCESS_REQUEST_STATUSES = ['requested', 'approved', 'rejected', 'revoked', 'unknown'] as const;
@@ -72,6 +81,7 @@ export const ACCESS_ERRORS = [
   'owner-row',
   'not-found',
   'wrong-status',
+  'bad-length',
   'mail-limit',
   'mail-failed',
   'server',
@@ -94,10 +104,35 @@ export const ACCESS_ERROR_TEXT: Record<AccessErrorCode, string> = {
     'That is the owner’s own Gmail: it is never asked for, rejected or revoked. The owner lets a computer in from the access list’s Sheet: Drashti › Let me in (the owner)…, then I Have a Token.',
   'not-found': 'That Gmail is not on the access list.',
   'wrong-status': 'That cannot be done to this Gmail as it is now.',
+  'bad-length': 'That is not a length of access the list gives: 1 to 730 whole days, or Unlimited.',
   'mail-limit': 'The access list has sent all the emails it may send today. Try again tomorrow.',
   'mail-failed': 'The access list could not send the email. Try again later.',
   server: 'The access list could not answer just now. Try again in a moment.',
 };
+
+/**
+ * How long access lasts (the owner's decision of 28 Oct 2026): one of these days, a whole number of days up to
+ * ACCESS_LENGTH_MAX_DAYS typed in, or Unlimited (until revoked, chosen at first so nobody is cut off by a slip).
+ * Each counts from when it is given, by the list's clock. The list checks every length itself.
+ */
+export const ACCESS_LENGTH_DAYS = [1, 7, 30, 60, 90, 120, 180, 365] as const;
+export const ACCESS_LENGTH_MAX_DAYS = 730;
+export const ACCESS_UNLIMITED = 'unlimited';
+export type AccessLength = number | typeof ACCESS_UNLIMITED;
+
+/** A length the list gives: Unlimited, or a whole number of days from 1 to ACCESS_LENGTH_MAX_DAYS. */
+export function accessLengthOk(length: unknown): length is AccessLength {
+  return (
+    length === ACCESS_UNLIMITED ||
+    (typeof length === 'number' &&
+      Number.isInteger(length) &&
+      length >= 1 &&
+      length <= ACCESS_LENGTH_MAX_DAYS)
+  );
+}
+
+/** Drashti's bar says when access ends from this long before the end (so at once for 7 days or less). */
+export const ACCESS_ENDS_WARN_MS = 7 * 24 * 60 * 60_000;
 
 /** A computer as each call names it. `id` is the computer id (src/main/access/identity.ts). */
 export interface AccessComputer {
@@ -145,6 +180,14 @@ export interface AccessPerson {
   recordings: number;
   imports: number;
   note: string;
+  /** The length last given (or chosen when the owner added the Gmail); null: none given yet. */
+  length: AccessLength | null;
+  /** When access ends, by the list's clock (ms); null: no end (Unlimited, or the owner's own). */
+  endsAt: number | null;
+  /** Approved, and its end has come by the list's clock (or the end typed in the Sheet cannot be read). */
+  ended: boolean;
+  /** The Access ends typed in the Sheet cannot be read: that Gmail's computers stop until it is put right. */
+  endsUnreadable: boolean;
   computers: {
     name: string;
     version: string;

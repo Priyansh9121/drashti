@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   EDIT_WORDS,
   editsFor,
+  endsCell,
   shownPeople,
   STATUS_ORDER,
   STATUS_WORDS,
@@ -21,7 +22,7 @@ import { Download, ListFilter, Search, UserPlus, Users } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { EmptyState, ErrorState, Loading } from '../ui/States';
-import { AddGmailDialog, NoteDialog, RevokeDialog } from './AccessDialogs';
+import { AddGmailDialog, LengthDialog, NoteDialog, RevokeDialog } from './AccessDialogs';
 import { AccessTable } from './AccessTable';
 import {
   choose,
@@ -38,7 +39,8 @@ import {
 /*
  * View › Access List… (Session 54, E4): the owner's window onto the access list in their Google account, easy to
  * read: who is on it and how they stand, one row each, sorted by any column, shown by status, searched, and saved
- * as a CSV; the chosen Gmail's edits in the bar under the table (Revoke asks first); and Add a Gmail…. The list is
+ * as a CSV; the chosen Gmail's edits in the bar under the table (Revoke asks first; Approve, Give access again and
+ * Change the length ask how long access lasts); when each Gmail's access ends; and Add a Gmail…. The list is
  * asked again every few seconds while the window is open ("Updated just now"), so a request, an Approve link or a
  * status typed into the Sheet shows here within seconds.
  */
@@ -75,13 +77,17 @@ function keyboardBack(): void {
 function act(kind: AccessEdit, gmail: string): void {
   if (kind === 'revoke') openDialog({ kind: 'revoke', gmail });
   else if (kind === 'note') openDialog({ kind: 'note', gmail });
+  else if (kind === 'approve' || kind === 'regrant' || kind === 'length')
+    openDialog({ kind: 'length', edit: kind, gmail });
   else void edit(kind, gmail).then(keyboardBack);
 }
 
 /** The chosen Gmail and its edits, under the table (next after it in the Tab order). */
 function ChosenBar({ person }: { person: AccessPerson | null }) {
   const busy = useAccessList((s) => s.busy);
+  const listTime = useAccessList((s) => s.view?.listTime ?? null);
   const detail = person ? statusDetail(person) : '';
+  const ends = person ? endsCell(person, listTime).text : '';
   return (
     <section
       aria-label="The Gmail chosen"
@@ -97,6 +103,7 @@ function ChosenBar({ person }: { person: AccessPerson | null }) {
             <p className="truncate text-xs text-muted">
               {statusWord(person.status)}
               {detail ? ` · ${detail}` : ''}
+              {ends ? ` · Access ends: ${ends}` : ''}
             </p>
           </div>
           <span role="status" className="text-xs text-muted">
@@ -122,7 +129,7 @@ function ChosenBar({ person }: { person: AccessPerson | null }) {
         <>
           <p className="min-w-0 flex-1 text-sm text-muted">
             Choose a Gmail in the list for what you can do with it: approve, reject, revoke, give access
-            again, or a note.
+            again, change how long access lasts, or a note.
           </p>
           <span role="status" className="text-xs text-muted">
             {busy ? 'Asking the access list…' : ''}
@@ -280,6 +287,7 @@ export function AccessListApp() {
         onChoose={choose}
         reveal={reveal}
         now={now}
+        listTime={view.listTime}
       />
     );
 
@@ -374,6 +382,9 @@ export function AccessListApp() {
       {dialog?.kind === 'add' && <AddGmailDialog />}
       {dialog?.kind === 'note' && <NoteDialog key={dialog.gmail} gmail={dialog.gmail} />}
       {dialog?.kind === 'revoke' && <RevokeDialog gmail={dialog.gmail} done={keyboardBack} />}
+      {dialog?.kind === 'length' && (
+        <LengthDialog key={`${dialog.edit}:${dialog.gmail}`} kind={dialog.edit} gmail={dialog.gmail} />
+      )}
     </div>
   );
 }

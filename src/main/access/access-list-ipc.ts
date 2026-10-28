@@ -1,7 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import { NO_VIEW, type AccessListResult, type AccessListSaved } from '../../shared/access-list';
-import { ACCESS_ERROR_TEXT } from '../../shared/access-protocol';
+import { ACCESS_ERROR_TEXT, ACCESS_LENGTH_MAX_DAYS, ACCESS_UNLIMITED } from '../../shared/access-protocol';
 import { IPC } from '../../shared/ipc';
 import { handle } from '../ipc/handle';
 import type { AccessList } from './access-list';
@@ -13,11 +13,14 @@ import type { AccessList } from './access-list';
  */
 
 const gmail = z.string().max(320);
+/** A length of access: Unlimited, or whole days (the list checks it again). */
+const length = z.union([z.literal(ACCESS_UNLIMITED), z.number().int().min(1).max(ACCESS_LENGTH_MAX_DAYS)]);
 const addSchema = z.object({
   gmail,
   name: z.string().max(1000),
   note: z.string().max(5000),
   approve: z.boolean(),
+  length,
 });
 const noteSchema = z.string().max(5000);
 const gmailsSchema = z.array(gmail).max(100_000);
@@ -47,9 +50,20 @@ export function handleAccessList(o: {
       const t = gmail.safeParse(target);
       return isPage(e) && t.success ? edit(t.data) : refused();
     };
+  const withLength =
+    (edit: (target: string, l: z.infer<typeof length>) => Promise<AccessListResult>) =>
+    (
+      e: IpcMainInvokeEvent,
+      target: unknown,
+      chosen: unknown,
+    ): Promise<AccessListResult> | AccessListResult => {
+      const t = gmail.safeParse(target);
+      const l = length.safeParse(chosen);
+      return isPage(e) && t.success && l.success ? edit(t.data, l.data) : refused();
+    };
   handle(
     IPC.accessList.approve,
-    one((t) => list.approve(t)),
+    withLength((t, l) => list.approve(t, l)),
   );
   handle(
     IPC.accessList.reject,
@@ -61,7 +75,11 @@ export function handleAccessList(o: {
   );
   handle(
     IPC.accessList.regrant,
-    one((t) => list.regrant(t)),
+    withLength((t, l) => list.regrant(t, l)),
+  );
+  handle(
+    IPC.accessList.changeLength,
+    withLength((t, l) => list.changeLength(t, l)),
   );
   handle(IPC.accessList.note, (e, target, note) => {
     const t = gmail.safeParse(target);

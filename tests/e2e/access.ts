@@ -241,10 +241,10 @@ export function answerAgain(standIn: AccessStandIn): void {
 const OWNER_COMPUTER = placeholderComputer('placeholder-owner-test-computer', 'Placeholder owner computer');
 const ownerGrants = new WeakMap<AccessStandIn, AccessGrant>();
 
-/** One of the owner's calls (revoke, reject, regrant, approve, add, note), as the Access List makes it. */
+/** One of the owner's calls (revoke, reject, regrant, approve, add, note, length), as the Access List makes it. */
 export function ownerCall(
   standIn: AccessStandIn,
-  op: 'revoke' | 'reject' | 'regrant' | 'approve' | 'add' | 'note',
+  op: 'revoke' | 'reject' | 'regrant' | 'approve' | 'add' | 'note' | 'length',
   fields: Record<string, unknown>,
 ): AnswerPayload {
   let grant = ownerGrants.get(standIn);

@@ -180,13 +180,14 @@ describe('Simple Mode locks', () => {
       IPC.accessList.reject,
       IPC.accessList.revoke,
       IPC.accessList.regrant,
+      IPC.accessList.changeLength,
       IPC.accessList.note,
     ]) {
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
       expect(answers.get(channel)?.(), channel).toEqual({
         ok: false,
         message: SIMPLE_MODE_REFUSAL,
-        view: { people: null, updatedAt: null, problem: null },
+        view: { people: null, updatedAt: null, listTime: null, problem: null },
       });
     }
     for (const channel of [IPC.accessList.view, IPC.accessList.refresh, IPC.accessList.exportCsv])

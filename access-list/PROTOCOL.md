@@ -29,6 +29,11 @@ before it opens and every 15 seconds while open, whether this computer is still 
   one-time token emailed to the Gmail. The token, used once, binds the grant to that computer until the
   Gmail is revoked. A Gmail may have several computers, each with its own grant. A new grant ends only a
   token not used yet (the newest token is the only one that works), never a computer already in.
+- **A length** is how long a Gmail's access lasts (the owner's decision of 28 Oct 2026): `"unlimited"` (until
+  revoked) or a whole number of days from 1 to 730 (Drashti offers 1, 7, 30, 60, 90, 120, 180 and 365, or a
+  number typed). It counts from when it is given (the approval, Give access again, or a change of length), as
+  days of 24 hours by the list's clock, and is the Gmail's, so all its computers end together. The owner's own
+  row is always Unlimited. See "How long access lasts" below.
 
 ## Calls
 
@@ -66,13 +71,13 @@ old answer or another computer's answer is never believed. Before the list is se
 | `request` | `name` (optional)                  | `{ status: "requested", mailed }`; refused `owner-row`, `already-approved`, `too-many`   |
 | `status`  |                                    | `{ status, tokenWaiting }`: `requested`, `approved`, `rejected`, `revoked`, or `unknown` |
 | `redeem`  | `token`                            | `{ grantId, secret, owner }`; refused `bad-token`, `too-many`                            |
-| `check`   | `grantId`, `at`, `activity`, `mac` | `{ status, owner, recorded }`: `in`, `revoked`, `rejected`, or `unknown`                 |
+| `check`   | `grantId`, `at`, `activity`, `mac` | `{ status, owner, recorded, endsAt }`: `in`, `revoked`, `rejected`, `expired`, `unknown` |
 
 - **request** makes the Gmail's row (or makes it again) **requested**, with a new request id, so the links
   sent before for it are replaced, and emails the approver the Gmail, the name typed, the computer and its
   version, with Approve and Reject links. A row approved with a computer in or a token waiting answers
   `already-approved` (the person uses their token, or the owner gives access again); one approved whose
-  token ran out unused is asked for again like any other. `mailed: false` when the day's emails are used
+  token ran out unused, or whose length has ended, is asked for again like any other. `mailed: false` when the day's emails are used
   up: the row is kept all the same, for the owner to see. The owner's own Gmail is never asked for
   (`owner-row`, before anything is counted or read), so nobody's request can make the owner's row
   "requested" again: the owner's way in is Let me in, from the Sheet's menu.
@@ -88,7 +93,11 @@ old answer or another computer's answer is never believed. Before the list is se
   `drashti-access-v1\n` + the call's canonical JSON without `mac`, in hex. `in` only when the grant is the
   Gmail's, bound to this computer, not ended, the row approved, and the mac right. A wrong mac, another
   computer (a copied data folder), another Gmail or a grant not known: `unknown`. Ended by a revoke:
-  `revoked`; by a rejection: `rejected`. `owner` is true only for the owner's computer while `in`.
+  `revoked`; by a rejection: `rejected`. Approved, but its length has ended by the list's clock (or the end
+  typed in the Sheet cannot be read): `expired`, which ends nothing (a new length lets the same computers back
+  in). `owner` is true only for the owner's computer while `in`.
+  - `endsAt`: while `in` or `expired`, when the Gmail's access ends (ms, by the list's clock), or null for no
+    end. Drashti counts down to it from the answer's own `serverTime`, never by its computer's clock.
   - `at`: the time on Drashti's clock (ms). Drashti never sends one smaller than the last it sent for the
     grant (it sends the last one + 1 if its clock went back). A check whose `at` is not above the last one
     recorded records nothing (a replay).
@@ -106,30 +115,37 @@ old answer or another computer's answer is never believed. Before the list is se
 Signed exactly as `check` is (`grantId`, `at`, `mac`), from a computer let in with the approver's own Gmail.
 Anyone else gets `not-owner`. The Gmail acted on is `target`.
 
-| op        | adds                       | does                                                                                         |
-| --------- | -------------------------- | -------------------------------------------------------------------------------------------- |
-| `list`    |                            | `{ people: [...] }`, every Gmail (see below)                                                 |
-| `add`     | `target`, `name?`, `note?` | the row **requested**, and the approver's email with its links (`mailed`)                    |
-| `approve` | `target`                   | approved, a new token emailed; refused `already-approved` for a row already approved         |
-| `regrant` | `target`                   | Give access again: approved, a new token emailed (after a revoke, with no computer in)       |
-| `reject`  | `target`                   | a **requested** row rejected, the person told by email; refused `wrong-status` otherwise     |
-| `revoke`  | `target`                   | an **approved** row revoked: every computer of that Gmail ends at once (and a token waiting) |
-| `note`    | `target`, `note`           | the row's note (up to 500 letters)                                                           |
+| op        | adds                                  | does                                                                                         |
+| --------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `list`    |                                       | `{ people: [...] }`, every Gmail (see below)                                                 |
+| `add`     | `target`, `name?`, `note?`, `length?` | the row **requested**, its Length kept for the approval, and the approver's email (`mailed`) |
+| `approve` | `target`, `length?`                   | approved for `length` from now, a new token emailed; `already-approved` for a row approved   |
+| `regrant` | `target`, `length?`                   | Give access again: approved for `length` from now, a new token emailed                       |
+| `length`  | `target`, `length`                    | an **approved** row's length, counted from now: `{ status, endsAt }`; `wrong-status` else    |
+| `reject`  | `target`                              | a **requested** row rejected, the person told by email; refused `wrong-status` otherwise     |
+| `revoke`  | `target`                              | an **approved** row revoked: every computer of that Gmail ends at once (and a token waiting) |
+| `note`    | `target`, `note`                      | the row's note (up to 500 letters)                                                           |
 
-`reject` and `revoke` never touch the owner's own row (`owner-row`). A Gmail with no row: `not-found`.
+`approve` and `regrant` answer `{ status, runsOut, endsAt }`. A `length` not given is Unlimited (`length` itself
+needs one: `bad-request`); one the list does not give is refused `bad-length`, before anything is changed.
+`reject`, `revoke` and `length` never touch the owner's own row (`owner-row`), nor does any length but Unlimited.
+A Gmail with no row: `not-found`.
 `approve`, `regrant` and Let me in change nothing when the email cannot go: `mail-limit` when the day's
 emails are used up, `mail-failed` when sending fails (the token sent before still works).
 
 Each of `list`'s people: `{ gmail, name, status, owner, requestedAt, approvedAt, rejectedAt, revokedAt,
-lastSeen, version, minutes, shows, streams, recordings, imports, note, computers: [{ name, version, platform,
-lastSeen, usedAt, ended, endedWhy }], token: { sentAt, runsOut } | null, request: { computer, at } | null }`,
-dates in ms (or null), in the Sheet's order, one per Gmail.
+lastSeen, version, minutes, shows, streams, recordings, imports, note, length, endsAt, ended, endsUnreadable,
+computers: [{ name, version, platform, lastSeen, usedAt, ended, endedWhy }], token: { sentAt, runsOut } | null,
+request: { computer, at } | null }`, dates in ms (or null), in the Sheet's order, one per Gmail. `length`: the
+one last given (or chosen adding the Gmail), or null; `endsAt`: the end, or null for none; `ended`: approved and
+past its end by the list's clock (or its end cannot be read: `endsUnreadable`). The answer's `serverTime` is the
+list's clock, for how long is left.
 
 ### Refusals
 
 `bad-request` (not a call of this version), `bad-gmail`, `too-many`, `busy` (the script's lock was not had in
 10 seconds), `not-set-up`, `already-approved`, `bad-token`, `not-owner`, `owner-row`, `not-found`,
-`wrong-status`, `mail-limit`, `mail-failed`, `server`. Drashti shows its own words for each
+`wrong-status`, `bad-length` (not Unlimited, nor 1 to 730 whole days), `mail-limit`, `mail-failed`, `server`. Drashti shows its own words for each
 (`ACCESS_ERROR_TEXT`).
 
 ### Canonical JSON
@@ -165,13 +181,32 @@ Sheet keeps only SHA-256(`drashti-token\n` + the token). A token works once, onl
 after a revoke or a newer grant, and runs out 3 days after it is sent. Randomness in Apps Script:
 `Utilities.getUuid` (Java's `UUID.randomUUID`, a strong generator), two at a time through SHA-256.
 
+## How long access lasts
+
+- **Given** with each approval (an Approve link's page, or the Access List's Approve or Add), with Give access
+  again, and changed for a Gmail approved (the `length` call). Unlimited is chosen at first everywhere, so
+  nobody is cut off by a slip; approving a Gmail the owner added with a length offers that one first.
+- **The end** is the moment given plus the length's days of 24 hours, by the list's clock (Google's), written in
+  the Sheet's **Access ends** as a date and time (or `Unlimited`). The list alone says whether it has come: a
+  check after it answers `expired`. Drashti counts down to `endsAt` from each answer's `serverTime` on its own
+  monotonic clock, so changing a computer's clock changes nothing; its next check comes a moment after the
+  end at the latest.
+- **When it comes**, the Gmail's computers stop as a revoke stops them, but nothing is ended: a new length
+  (`length`, or Give access again) lets the same computers back in at their next check; a Drashti started
+  again asks by itself every 15 seconds until one comes. The person may also ask again (`request` takes a row
+  whose length has ended).
+- **The owner's own row** never ends: no length is given to it (`owner-row`), and an end typed on it is never
+  read.
+
 ## Approve and Reject links
 
 `<web app>?a=approve|reject&r=<request id>&x=<expiry, ms>&s=<HMAC-SHA-256(LINK_KEY, "drashti-link\n" + a +
 "\n" + r + "\n" + x), hex>`, made with each request, running out after 7 days. Opening one (doGet) shows a page
 saying what it is for, with ONE button; nothing changes until it is pressed (Link.html calls `answerLink`
 through `google.script.run`, which checks the link again under the lock), so an email scanner opening it does
-nothing. A link used (either of the two), out of date, for a request since replaced (asked again, or the row
+nothing. An Approve page also asks how long access lasts (Unlimited chosen, or the length the owner chose
+adding the Gmail), and sends the length chosen with the button (`length`: `unlimited`, or the days as text);
+the list checks it again, and a length it does not give changes nothing. A link used (either of the two), out of date, for a request since replaced (asked again, or the row
 removed), or forged says so plainly. Approve emails the person a token; Reject marks the row rejected and
 tells the person in a short email.
 
@@ -180,19 +215,25 @@ tells the person in a short email.
 Two tabs, made by Drashti › Set up… (which also puts back a column taken away):
 
 - **Access List**, one row per Gmail: Gmail, Name, Status (a list: requested, approved, rejected, revoked),
-  Requested, Approved, Rejected, Revoked, Computers (the names of those in), Version, Last seen, Minutes used,
-  Shows, Streams, Recordings, Imports, Note; and, hidden, the list's own: Request, Request from, Request
-  computer, Request at, Answered, Status seen.
+  Requested, Approved, Rejected, Revoked, Access ends, Computers (the names of those in), Version, Last seen,
+  Minutes used, Shows, Streams, Recordings, Imports, Note; and, hidden, the list's own: Request, Request from,
+  Request computer, Request at, Answered, Status seen, Length.
 - **Computers**, one row per grant (protected with a warning): Gmail, Computer, Version, Platform, Last seen,
   Minutes used, Shows, Streams, Recordings, Imports, Token sent, Token used, Ended, Why ended; and, hidden,
   Grant, Token hash, Computer id, Last at.
+
+**Access ends** and **Length** came after the first Sheets were set up (28 Oct 2026): the list adds each itself,
+after the last column, the first time it reads a Sheet without it (Length hidden, Access ends shown as dates
+and written `Unlimited` for each Gmail approved then), so the owner never sets the Sheet up again for them.
 
 Columns are found by their headers, so the owner may sort, move or add columns. **A status changed in the
 Sheet counts as the list's own** once the list reads the Sheet again (within 10 seconds of the next call
 about that Gmail): revoked or rejected stops that Gmail's computers at their next check and ends their
 grants (so setting approved again later lets none of them back in: Give access again does); its date is
 written. Setting approved by hand sends no token (Approve links and the Access List do). A status the list
-does not know stops the computers without ending them. A second row for the same Gmail is never read.
+does not know stops the computers without ending them. **Access ends typed in the Sheet counts too**: a date and
+time is the new end; empty or `Unlimited` is no end; anything else the list cannot read stops that Gmail's
+computers (`expired`) without ending them, until it is put right. A second row for the same Gmail is never read.
 
 ## Keys (Script Properties, in the owner's account only)
 

@@ -1,4 +1,5 @@
-import type { AccessRequestStatus } from './access-protocol';
+import { ACCESS_ENDS_WARN_MS, type AccessRequestStatus } from './access-protocol';
+import { plural } from './text';
 
 /*
  * The lock and the stop as Drashti's windows show them (Session 54, access by Gmail, E2 and E3). The main
@@ -15,7 +16,7 @@ export type AccessPhase =
   | 'in'
   /** Let in, but the list has not answered for a while: the countdown to the stop runs. */
   | 'warning'
-  /** Stopped: revoked, rejected, unknown, or 2 minutes with no answer. Only Quit works. */
+  /** Stopped: revoked, rejected, unknown, the length ended, or 2 minutes with no answer. Only Quit works. */
   | 'stopped';
 
 /** Why this computer is not let in, or why Drashti stopped. */
@@ -24,6 +25,8 @@ export type AccessReason =
   | 'revoked'
   | 'rejected'
   | 'unknown'
+  /** The length of access the owner gave has ended, by the list's clock (the owner's decision of 28 Oct 2026). */
+  | 'expired'
   /** No answer from the list: at start (Try Again), or for 2 minutes while open (the stop). */
   | 'no-answer'
   /** The access kept in the data folder was made on another computer (a copied folder). */
@@ -70,6 +73,10 @@ export interface AccessView {
   canRetry: boolean;
   /** This Drashti's version, for the lock screen's foot. */
   version: string;
+  /** When access ends, by the list's clock (ms since 1970, for its date), or null for no end. */
+  endsAt: number | null;
+  /** How long until then as of when this view was made (counted from the list's own answer, never this computer's clock). */
+  endsInMs: number | null;
 }
 
 /** How long the screens take to fade to black when Drashti stops (render/StopFade.tsx draws it). */
@@ -84,6 +91,42 @@ export const STOP_REASON_TEXT: Partial<Record<AccessReason, string>> = {
   rejected: 'The request for this Gmail was rejected.',
   unknown: 'This computer is no longer on the access list.',
 };
+
+/** A day and time as Drashti says them: "4 Nov 2026 at 15:40" (this computer's time zone, only to show it). */
+export function whenText(ms: number): string {
+  const d = new Date(ms);
+  const day = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${day} at ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+/** The stop once the length of access has ended (the owner's decision of 28 Oct 2026). */
+export const ENDED_STOP_TITLE = 'Your access to Drashti has ended';
+export const endedStopText = (endsAt: number | null): string =>
+  endsAt === null
+    ? 'The time the person who approves access gave you is up.'
+    : `The time the person who approves access gave you ended on ${whenText(endsAt)}.`;
+/** How to come back, on the stop. */
+export const ENDED_COME_BACK_TEXT =
+  'To use Drashti again, ask the person who approves access for more time, then start Drashti again.';
+
+/** How long is left, in words: "6 days", "5 hours", "12 minutes", "less than a minute". */
+export function leftText(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'less than a minute';
+  if (minutes < 60) return plural(minutes, 'minute');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return plural(hours, 'hour');
+  return plural(Math.floor(hours / 24), 'day');
+}
+
+/** Whether the window's bar says when access ends: from 7 days before the end (so at once for 7 days or less). */
+export const endsBarShown = (endsInMs: number | null): endsInMs is number =>
+  endsInMs !== null && endsInMs <= ACCESS_ENDS_WARN_MS;
+
+/** The bar's words. */
+export const endsBarTitle = (endsAt: number): string => `Your access to Drashti ends on ${whenText(endsAt)}`;
+export const endsBarText = (leftMs: number): string =>
+  `In ${leftText(leftMs)}. Ask the person who approves access for more time: when it is up, everything stops, the screens and the stream included.`;
 
 /** The stop after 2 minutes with no answer. */
 export const NO_ANSWER_STOP_TITLE = 'Drashti stopped: no internet';
@@ -110,6 +153,8 @@ export const LOCK_REASON_TEXT: Record<AccessReason, string> = {
     'Your access to Drashti has been removed. To use it again, ask for access, or ask the person who approves access to give it again.',
   rejected: 'Your request for access was not approved.',
   unknown: 'This computer is not on the access list. Ask for access with your Gmail.',
+  expired:
+    'Your access to Drashti has ended. Ask the person who approves access for more time: once they give it, Drashti opens here by itself. Or ask for access again.',
   'no-answer':
     'No internet: Drashti cannot check your access, so it does not open. Check the connection, then Try Again.',
   copied:

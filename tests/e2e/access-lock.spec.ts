@@ -294,6 +294,7 @@ test('no token, secret or Gmail ever reaches drashti.log: a token used on the lo
     await page.getByTestId('access-revoke-question').getByRole('button', { name: 'Revoke' }).click();
     await expect(row(PLACEHOLDER_PERSON)).toHaveAttribute('data-status', 'revoked');
     await page.getByTestId('access-regrant').click();
+    await page.getByTestId('access-length-save').click();
     await expect(row(PLACEHOLDER_PERSON)).toHaveAttribute('data-status', 'approved');
     never.push({
       what: 'the token Give access again sent',

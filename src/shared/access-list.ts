@@ -1,8 +1,13 @@
+import { leftText } from './access';
 import {
   ACCESS_ERROR_TEXT,
+  ACCESS_LENGTH_DAYS,
+  ACCESS_LENGTH_MAX_DAYS,
   ACCESS_STATUSES,
+  ACCESS_UNLIMITED,
   gmailKey,
   type AccessErrorCode,
+  type AccessLength,
   type AccessPerson,
   type AccessStatus,
 } from './access-protocol';
@@ -12,8 +17,9 @@ import { plural } from './text';
  * View › Access List… (Session 54, E4): the owner's own window onto the access list in their Google account
  * (access-list/PROTOCOL.md, "The owner's calls"). Only the owner's computer has it, and only its main process
  * asks the list (src/main/access/access-list.ts). Here: what the window is told, and the rules both sides keep:
- * the columns, sorting, the status filter and the search, which edits a Gmail is offered (never Revoke or
- * Reject on the owner's own row), the words for each, and the CSV the owner saves. Counts only, never content:
+ * the columns, sorting, the status filter and the search, which edits a Gmail is offered (never Revoke, Reject or a
+ * length on the owner's own row), the lengths of access offered (the owner's decision of 28 Oct 2026: Unlimited
+ * first), the words for each, and the CSV the owner saves. Counts only, never content:
  * the list holds no words, file names or pictures of anyone's shows, so nothing here can.
  */
 
@@ -29,18 +35,75 @@ export interface AccessListView {
   people: AccessPerson[] | null;
   /** When that answer came (this computer's clock, ms), or null. */
   updatedAt: number | null;
+  /** The list's own time when it answered (ms), or null: how long is left of a length is counted from it. */
+  listTime: number | null;
   /** Why the last time the list was asked brought no answer, in words (it is asked again by itself), or null. */
   problem: string | null;
 }
 
-export const NO_VIEW: AccessListView = { people: null, updatedAt: null, problem: null };
+export const NO_VIEW: AccessListView = { people: null, updatedAt: null, listTime: null, problem: null };
 
-/** A Gmail added by the owner: a row requested (the request emailed), approved at once when `approve`. */
+/**
+ * A Gmail added by the owner: a row requested (the request emailed), approved at once when `approve`; `length` is how
+ * long access lasts once approved.
+ */
 export interface AccessListAdd {
   gmail: string;
   name: string;
   note: string;
   approve: boolean;
+  length: AccessLength;
+}
+
+// ---- lengths of access (the owner's decision of 28 Oct 2026) ----
+
+/** The lengths the owner chooses from, in the order offered: Unlimited first (chosen at first), then the days. */
+export const LENGTH_CHOICES: readonly { length: AccessLength; label: string }[] = [
+  { length: ACCESS_UNLIMITED, label: 'Unlimited, until you revoke it' },
+  ...ACCESS_LENGTH_DAYS.map((days) => ({
+    length: days,
+    label: days === 1 ? '1 day (24 hours)' : `${String(days)} days`,
+  })),
+];
+
+/** The most days that may be typed in for a length (the list refuses more). */
+export const LENGTH_MAX_DAYS = ACCESS_LENGTH_MAX_DAYS;
+
+/** A length in a word or two: "Unlimited", "1 day", "30 days". */
+export const lengthWord = (length: AccessLength): string =>
+  length === ACCESS_UNLIMITED ? 'Unlimited' : plural(length, 'day');
+
+/** Days typed for a length, read as the list reads them: a whole number from 1 to LENGTH_MAX_DAYS, or null. */
+export function typedDays(text: string): number | null {
+  const t = text.trim();
+  if (!/^[0-9]{1,4}$/u.test(t)) return null;
+  const days = Number(t);
+  return days >= 1 && days <= LENGTH_MAX_DAYS ? days : null;
+}
+
+/** What the Access ends cell says for a Gmail: its first line, a second, and whether it needs a look. */
+export function endsCell(
+  p: AccessPerson,
+  listTime: number | null,
+): { text: string; detail: string; warn: boolean } {
+  if (knownStatus(p.status) === 'requested' && p.length !== null && p.length !== ACCESS_UNLIMITED)
+    return { text: '', detail: `${lengthWord(p.length)} once approved`, warn: false };
+  if (knownStatus(p.status) !== 'approved') return { text: '', detail: '', warn: false };
+  if (p.owner) return { text: 'Unlimited', detail: 'Your own: always', warn: false };
+  if (p.endsUnreadable)
+    return {
+      text: 'Can’t be read',
+      detail: 'Put the date right in the Sheet: their Drashti stops until then',
+      warn: true,
+    };
+  if (p.endsAt === null) return { text: 'Unlimited', detail: '', warn: false };
+  if (p.ended)
+    return { text: `Ended ${formatDay(p.endsAt)}`, detail: 'Their Drashti has stopped', warn: true };
+  return {
+    text: formatDay(p.endsAt),
+    detail: listTime === null ? '' : `In ${leftText(p.endsAt - listTime)}`,
+    warn: false,
+  };
 }
 
 /** An edit's outcome: what happened in words, and the list as it is afterwards (asked again). */
@@ -150,6 +213,7 @@ export type AccessColumn =
   | 'status'
   | 'requested'
   | 'approved'
+  | 'ends'
   | 'revoked'
   | 'computers'
   | 'lastSeen'
@@ -166,6 +230,7 @@ export const ACCESS_COLUMNS: readonly { id: AccessColumn; label: string; numeric
   { id: 'status', label: 'Status' },
   { id: 'requested', label: 'Requested' },
   { id: 'approved', label: 'Approved' },
+  { id: 'ends', label: 'Access ends' },
   { id: 'revoked', label: 'Revoked' },
   { id: 'computers', label: 'Computer and version' },
   { id: 'lastSeen', label: 'Last seen' },
@@ -206,6 +271,11 @@ function sortValue(p: AccessPerson, column: AccessColumn): string | number | nul
       return p.requestedAt;
     case 'approved':
       return p.approvedAt;
+    case 'ends':
+      // Those approved only: one that cannot be read first, then by their end, Unlimited after every date.
+      if (knownStatus(p.status) !== 'approved') return null;
+      if (p.endsUnreadable) return 0;
+      return p.endsAt ?? Number.MAX_SAFE_INTEGER;
     case 'revoked':
       return p.revokedAt;
     case 'computers':
@@ -271,21 +341,24 @@ export function shownPeople(
 
 // ---- the edits ----
 
-export type AccessEdit = 'approve' | 'reject' | 'regrant' | 'revoke' | 'note';
+export type AccessEdit = 'approve' | 'reject' | 'regrant' | 'length' | 'revoke' | 'note';
 
 export const EDIT_WORDS: Record<AccessEdit, string> = {
-  approve: 'Approve',
+  approve: 'Approve…',
   reject: 'Reject',
-  regrant: 'Give access again',
+  regrant: 'Give access again…',
+  length: 'Change the length…',
   revoke: 'Revoke…',
   note: 'Edit note…',
 };
 
 /**
  * What the window offers for a Gmail, by its status: a request Approve or Reject; an approved Gmail Give access
- * again (a new token, for one more computer) and Revoke; a rejected one Approve; a revoked one Give access again;
- * one with a status the list does not know (typed into the Sheet) Give access again, which puts it right. Never
- * Revoke or Reject on the owner's own row (the list refuses them too). Every row may have its note edited.
+ * again (a new token, for one more computer), Change the length and Revoke; a rejected one Approve; a revoked one
+ * Give access again; one with a status the list does not know (typed into the Sheet) Give access again, which puts
+ * it right. Approve, Give access again and Change the length each ask how long access lasts. Never Revoke, Reject
+ * or a length on the owner's own row (always Unlimited; the list refuses them too). Every row may have its note
+ * edited.
  */
 export function editsFor(p: AccessPerson): AccessEdit[] {
   const edits: AccessEdit[] = [];
@@ -296,7 +369,7 @@ export function editsFor(p: AccessPerson): AccessEdit[] {
       break;
     case 'approved':
       edits.push('regrant');
-      if (!p.owner) edits.push('revoke');
+      if (!p.owner) edits.push('length', 'revoke');
       break;
     case 'rejected':
       edits.push('approve');
@@ -424,6 +497,8 @@ export const CSV_COLUMNS = [
   'Approved',
   'Rejected',
   'Revoked',
+  'Length',
+  'Access ends',
   'Computers',
   'Last seen',
   'Minutes used',
@@ -481,6 +556,14 @@ export function accessListCsv(people: readonly AccessPerson[]): string {
     csvTime(p.approvedAt),
     csvTime(p.rejectedAt),
     csvTime(p.revokedAt),
+    p.length === null ? '' : csvField(lengthWord(p.length), false),
+    knownStatus(p.status) !== 'approved'
+      ? ''
+      : p.endsUnreadable
+        ? 'Not readable'
+        : p.endsAt === null
+          ? 'Unlimited'
+          : csvTime(p.endsAt),
     csvField(csvComputers(p), true),
     csvTime(p.lastSeen),
     csvField(p.minutes, false),

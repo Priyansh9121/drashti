@@ -5,6 +5,8 @@ import {
   ACCESS_CHECK_EVERY_MS,
   ACCESS_CHECK_STATUSES,
   ACCESS_ERRORS,
+  ACCESS_LENGTH_DAYS,
+  ACCESS_LENGTH_MAX_DAYS,
   ACCESS_LIMITS,
   ACCESS_LINK_MS,
   ACCESS_MAC_PREFIX,
@@ -57,6 +59,11 @@ describe('the access list’s copy of the protocol', () => {
     expect(p.tokenAlphabet).toBe(ACCESS_TOKEN_ALPHABET);
     expect(p.tokenLength).toBe(ACCESS_TOKEN_LENGTH);
     expect(p.macPrefix).toBe(ACCESS_MAC_PREFIX);
+  });
+
+  it('gives the same lengths of access Drashti offers: 1 day, 7 to 365 days, up to 730 typed, and Unlimited', () => {
+    expect(core.PROTOCOL.lengths).toEqual({ days: [...ACCESS_LENGTH_DAYS], maxDays: ACCESS_LENGTH_MAX_DAYS });
+    expect(core.MESSAGES['bad-length']).toContain(String(ACCESS_LENGTH_MAX_DAYS));
   });
 
   it('makes the same canonical JSON as Drashti from the same call', () => {

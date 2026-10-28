@@ -93,6 +93,7 @@ import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
+import type { AccessLength } from './access-protocol';
 import type {
   CameraAccess,
   VideoInputFields,
@@ -755,6 +756,8 @@ export const IPC = {
     revoke: 'accesslist:revoke',
     /** Give access again: a new token by email. */
     regrant: 'accesslist:regrant',
+    /** A new length of access for a Gmail approved, counted from now. */
+    changeLength: 'accesslist:change-length',
     note: 'accesslist:note',
     /** The rows shown (by Gmail, in their order) saved as a CSV file where the owner chooses. */
     exportCsv: 'accesslist:export-csv',
@@ -1296,10 +1299,11 @@ export interface InvokeContract {
   [IPC.accessList.view]: { args: []; result: AccessListView };
   [IPC.accessList.refresh]: { args: []; result: AccessListView };
   [IPC.accessList.add]: { args: [fields: AccessListAdd]; result: AccessListResult };
-  [IPC.accessList.approve]: { args: [gmail: string]; result: AccessListResult };
+  [IPC.accessList.approve]: { args: [gmail: string, length: AccessLength]; result: AccessListResult };
   [IPC.accessList.reject]: { args: [gmail: string]; result: AccessListResult };
   [IPC.accessList.revoke]: { args: [gmail: string]; result: AccessListResult };
-  [IPC.accessList.regrant]: { args: [gmail: string]; result: AccessListResult };
+  [IPC.accessList.regrant]: { args: [gmail: string, length: AccessLength]; result: AccessListResult };
+  [IPC.accessList.changeLength]: { args: [gmail: string, length: AccessLength]; result: AccessListResult };
   [IPC.accessList.note]: { args: [gmail: string, note: string]; result: AccessListResult };
   [IPC.accessList.exportCsv]: { args: [gmails: string[]]; result: AccessListSaved };
   [IPC.network.status]: { args: []; result: NetworkStatus };

@@ -2,13 +2,16 @@
 <!--
   The page an Approve or Reject link opens (Session 54, E1): what the link is for, and ONE button. Opening
   it changes nothing (an email scanner following the link does no harm); pressing the button asks the list
-  (answerLink in Code.js, which checks the link's signature again). Every text from the list is put in with
-  the template's escaping printer.
+  (answerLink in Code.js, which checks the link's signature again). An Approve page also asks how long access
+  lasts (the owner's decision of 28 Oct 2026): Unlimited chosen at first, or the length chosen when the Gmail
+  was added; the list checks the length again. Every text from the list is put in with the template's
+  escaping printer.
 -->
-<html>
+<html lang="en">
   <head>
     <base target="_top" />
     <meta charset="utf-8" />
+    <title>Drashti access list</title>
     <style>
       body {
         margin: 0;
@@ -49,9 +52,47 @@
         opacity: 0.6;
         cursor: default;
       }
-      button:focus-visible {
+      button:focus-visible,
+      input:focus-visible {
         outline: 3px solid #1f1f1f;
         outline-offset: 2px;
+      }
+      fieldset {
+        margin: 0 0 1.5rem;
+        padding: 0.75rem 1rem 0.5rem;
+        border: 1px solid #b9b2a5;
+        border-radius: 8px;
+        background: #fff;
+      }
+      legend {
+        padding: 0 0.3rem;
+        font-weight: 600;
+      }
+      .choice {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        min-height: 44px;
+      }
+      .choice input {
+        width: 1.25rem;
+        height: 1.25rem;
+        margin: 0;
+        accent-color: #8a3b12;
+      }
+      #typed {
+        width: 7rem;
+        min-height: 44px;
+        margin-left: 1.85rem;
+        padding: 0 0.6rem;
+        font: inherit;
+        border: 1px solid #8b8478;
+        border-radius: 6px;
+      }
+      .hint {
+        margin: 0.4rem 0 0.25rem;
+        font-size: 0.9rem;
+        color: #55504a;
       }
     </style>
   </head>
@@ -70,6 +111,38 @@
         <p><?= page.lines[i] ?></p>
         <? } ?>
       </div>
+      <? if (page.lengths) { ?>
+      <fieldset id="lengths" data-chosen="<?= page.lengths.chosen ?>">
+        <legend>How long may they use Drashti?</legend>
+        <label class="choice"
+          ><input type="radio" name="length" value="unlimited" /> Unlimited, until you revoke it</label
+        >
+        <? for (var d = 0; d < page.lengths.days.length; d++) { ?>
+        <label class="choice"
+          ><input type="radio" name="length" value="<?= page.lengths.days[d] ?>" />
+          <?= page.lengths.days[d] === 1 ? '1 day (24 hours)' : page.lengths.days[d] + ' days' ?></label
+        >
+        <? } ?>
+        <label class="choice"
+          ><input type="radio" name="length" value="typed" id="typed-choice" /> A number of days</label
+        >
+        <input
+          id="typed"
+          type="number"
+          min="1"
+          max="<?= page.lengths.maxDays ?>"
+          step="1"
+          inputmode="numeric"
+          aria-label="Number of days"
+          aria-describedby="typed-hint"
+        />
+        <p id="typed-hint" class="hint">
+          From 1 to
+          <?= page.lengths.maxDays ?>
+          whole days. Every length counts from when you press Approve.
+        </p>
+      </fieldset>
+      <? } ?>
       <? if (page.button) { ?>
       <button id="go" type="button"><?= page.button ?></button>
       <? } ?>
@@ -80,7 +153,33 @@
         var main = document.getElementById('page');
         var go = document.getElementById('go');
         var wait = document.getElementById('wait');
+        var lengths = document.getElementById('lengths');
+        var typed = document.getElementById('typed');
         if (!go) return;
+
+        // An Approve page: the length chosen at first (Unlimited, or the one chosen when the Gmail was added).
+        if (lengths) {
+          var chosen = lengths.dataset.chosen;
+          var preset = lengths.querySelector('input[name="length"][value="' + chosen + '"]');
+          if (preset) preset.checked = true;
+          else {
+            document.getElementById('typed-choice').checked = true;
+            typed.value = chosen;
+          }
+          typed.addEventListener('input', function () {
+            document.getElementById('typed-choice').checked = true;
+          });
+        }
+
+        /** The length chosen, as the list reads it ('unlimited' or whole days), or null when the days typed are not. */
+        function lengthChosen() {
+          var picked = lengths.querySelector('input[name="length"]:checked');
+          var value = picked ? picked.value : 'unlimited';
+          if (value !== 'typed') return value;
+          var text = String(typed.value).trim();
+          var days = Number(text);
+          return /^[0-9]+$/.test(text) && days >= 1 && days <= Number(typed.max) ? String(days) : null;
+        }
 
         function show(result, keepButton) {
           wait.textContent = '';
@@ -93,16 +192,30 @@
             lines.appendChild(p);
           });
           if (keepButton) go.disabled = false;
-          else go.remove();
+          else {
+            go.remove();
+            if (lengths) lengths.remove();
+          }
         }
 
         go.addEventListener('click', function () {
+          var params = { a: main.dataset.a, r: main.dataset.r, x: main.dataset.x, s: main.dataset.s };
+          if (lengths) {
+            params.length = lengthChosen();
+            if (params.length === null) {
+              wait.textContent =
+                'Type a whole number of days from 1 to ' + typed.max + ', or choose another length.';
+              typed.focus();
+              return;
+            }
+          }
           // Pressed once: never twice.
           go.disabled = true;
           wait.textContent = 'One moment…';
           google.script.run
             .withSuccessHandler(function (result) {
-              show(result, false);
+              // Refused (a length the list does not give, say): the button stays, to choose again.
+              show(result, result.kind === 'refused');
             })
             .withFailureHandler(function () {
               show(
@@ -115,7 +228,7 @@
                 true,
               );
             })
-            .answerLink({ a: main.dataset.a, r: main.dataset.r, x: main.dataset.x, s: main.dataset.s });
+            .answerLink(params);
         });
       })();
     </script>

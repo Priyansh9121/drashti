@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { placeholderComputer } from '../../../tests/access-core';
 import { accessStandIn, type AccessStandIn } from '../../../tests/access-standin';
-import { countdownLine } from '../../shared/access';
+import { countdownLine, endsBarShown } from '../../shared/access';
 import {
   ACCESS_CHECK_EVERY_MS,
   ACCESS_STOP_AFTER_MS,
@@ -38,6 +38,9 @@ import { ACCESS_FILE, AccessStore, storedAccess } from './store';
 
 const PERSON = 'placeholder.user@example.com';
 const HERE = 'a'.repeat(64);
+const DAY = 24 * 3_600_000;
+/** The scripted list's own clock: its time when the test's monotonic clock reads 0. */
+const LIST_START = Date.UTC(2026, 9, 28, 1, 0, 0);
 const ELSEWHERE = 'b'.repeat(64);
 const GRANT: AccessGrant = { gmail: PERSON, grantId: '1'.repeat(32), secret: '2'.repeat(64) };
 // docs/access-setup.md's example token, made at run time: written whole, it reads as a secret to the secret scan.
@@ -100,6 +103,10 @@ class ScriptedList implements AccessCalls {
   activities: AccessActivity[] = [];
   /** A check held until the test lets it answer. */
   hold: { release: () => void } | null = null;
+  /** When access ends by the list's clock (a length the owner gave), or null for none. */
+  endsAt: number | null = null;
+  /** The list's own clock: it moves with the test's (never with this computer's own clock). */
+  listNow = (): number => LIST_START + clock.t;
 
   private noAnswer = <T>(): AccessResult<T> => ({
     ok: false,
@@ -140,7 +147,9 @@ class ScriptedList implements AccessCalls {
   async check(
     _grant: AccessGrant,
     activity: AccessActivity,
-  ): Promise<AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean }>> {
+  ): Promise<
+    AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean; endsAt: number | null }>
+  > {
     this.calls.push('check');
     this.activities.push({ ...activity });
     if (this.hold) await new Promise<void>((resolve) => (this.hold = { release: resolve }));
@@ -148,7 +157,15 @@ class ScriptedList implements AccessCalls {
     // A call that throws (the data folder could not be written as it was signed): never an answer.
     if (this.check_ === 'throw') throw new Error('placeholder: the data folder could not be written');
     if (this.check_ === 'busy') return { ok: false, kind: 'refused', error: 'busy', message: '' };
-    return { ok: true, value: { status: this.check_, owner: this.owner, recorded: true }, serverTime: 0 };
+    // The list's own rule: let in, but past the end of its length by the list's clock, it has ended.
+    const now = this.listNow();
+    const status =
+      this.check_ === 'in' && this.endsAt !== null && now >= this.endsAt ? 'expired' : this.check_;
+    return {
+      ok: true,
+      value: { status, owner: this.owner, recorded: true, endsAt: this.endsAt },
+      serverTime: now,
+    };
   }
 
   get checks(): number {
@@ -450,6 +467,81 @@ describe('while open', () => {
   });
 });
 
+describe('a length of access (the owner’s decision of 28 Oct 2026)', () => {
+  it('says when access ends from the list’s own answer, counted down on the monotonic clock, whatever this computer’s clock says', async () => {
+    list.endsAt = list.listNow() + 3 * DAY;
+    const s = await startedIn();
+    expect(s.view()).toMatchObject({ endsAt: list.endsAt, endsInMs: 3 * DAY });
+    expect(endsBarShown(s.view().endsInMs)).toBe(true);
+    await clock.move(4 * ACCESS_CHECK_EVERY_MS);
+    expect(s.view().endsInMs).toBe(3 * DAY - 4 * ACCESS_CHECK_EVERY_MS);
+    // The computer's own clock set back a year, or on a month: nothing moves.
+    clock.wall -= 365 * DAY;
+    expect(s.view().endsInMs).toBe(3 * DAY - 4 * ACCESS_CHECK_EVERY_MS);
+    clock.wall += 30 * DAY;
+    expect(s.view().endsInMs).toBe(3 * DAY - 4 * ACCESS_CHECK_EVERY_MS);
+    // A length of 30 days: no bar until 7 days before its end.
+    list.endsAt = list.listNow() + 30 * DAY;
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    expect(s.view().endsInMs).toBe(30 * DAY - ACCESS_CHECK_EVERY_MS);
+    expect(endsBarShown(s.view().endsInMs)).toBe(false);
+    // Unlimited: no end at all.
+    list.endsAt = null;
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    expect(s.view()).toMatchObject({ endsAt: null, endsInMs: null });
+  });
+
+  it('stops at the end as a revoke stops it, its check coming a moment after the end: by the list’s clock, this computer’s a year back', async () => {
+    clock.wall -= 365 * DAY;
+    // The end falls between two checks (at 30 s and 45 s after the start).
+    list.endsAt = list.listNow() + 37_000;
+    await startedIn();
+    await clock.move(36_000);
+    expect(accessState().phase).toBe('in');
+    expect(list.checks).toBe(3);
+    await clock.move(2_000);
+    expect(list.checks).toBe(4);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'expired', owner: false });
+    expect(isLetIn()).toBe(false);
+    expect(logs).toContain('warn: Access: stopped (expired): everything stops, and only Quit works');
+    // For good, as a revoke: nothing is asked any more; only Quit.
+    await clock.move(ACCESS_STOP_AFTER_MS * 2);
+    expect(list.checks).toBe(4);
+    expect(clock.waiting).toBe(0);
+  });
+
+  it('a new length given before the end: no stop, and its new end counts down instead', async () => {
+    list.endsAt = list.listNow() + 20_000;
+    const s = await startedIn();
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    // The owner gives 30 days more, from now.
+    list.endsAt = list.listNow() + 30 * DAY;
+    await clock.move(10_000);
+    expect(list.checks).toBe(3);
+    expect(accessState().phase).toBe('in');
+    expect(s.view().endsAt).toBe(list.endsAt);
+    expect(endsBarShown(s.view().endsInMs)).toBe(false);
+    expect(logs).toContain('info: Access: a new end');
+  });
+
+  it('at start, an ended length keeps it locked and says so, asking again by itself: a new length opens it', async () => {
+    list.endsAt = list.listNow() - DAY;
+    keep();
+    const s = make();
+    s.start();
+    await clock.move(0);
+    expect(accessState()).toMatchObject({ phase: 'locked', reason: 'expired' });
+    expect(s.view()).toMatchObject({ canRetry: true, endsAt: list.endsAt });
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    expect(list.checks).toBe(2);
+    expect(accessState().phase).toBe('locked');
+    list.endsAt = list.listNow() + 7 * DAY;
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    expect(accessState().phase).toBe('in');
+    expect(s.view().endsInMs).toBe(7 * DAY - ACCESS_CHECK_EVERY_MS);
+  });
+});
+
 describe('the lock screen', () => {
   it('Request Access: a Gmail that is not one is said on its field; one that is asks, and what came of it is asked every 30 s', async () => {
     const asked = new MemoryAsked();
@@ -594,6 +686,47 @@ describe('against the stand-in list (the list’s own rules)', () => {
     await clock.move(ACCESS_CHECK_EVERY_MS);
     await expect.poll(() => accessState().phase).toBe('stopped');
     expect(accessState().reason).toBe('revoked');
+  });
+
+  it('a length of 1 day chosen on the Approve page: the bar at once, from the list’s own clock, and the stop once the list’s clock passes the end, this computer’s clock a year back', async () => {
+    const s0 = (standIn = await accessStandIn());
+    const computer = placeholderComputer('service-length-mac');
+    const client = new AccessClient({
+      url: s0.url,
+      publicKey: s0.publicKey,
+      computer,
+      transport: nodeTransport,
+      local: true,
+    });
+    service = new AccessService({
+      calls: client,
+      kept: store(),
+      asked: new MemoryAsked(),
+      computer: { ok: true, id: computer.id },
+      selfTest: false,
+      version: '1.0.0-alpha.13',
+      monotonic: () => clock.t,
+      now: () => clock.wall - 365 * DAY,
+      setTimer: clock.setTimer,
+      log: () => undefined,
+    });
+    const s = service;
+    s.start();
+    await s.requestAccess(PERSON, 'Placeholder Person');
+    s0.press(s0.list.linksFor(PERSON)?.approve ?? '', '1');
+    await s.redeemToken(PERSON, s0.list.tokenFor(PERSON) ?? '');
+    expect(accessState().phase).toBe('in');
+    expect(s.view()).toMatchObject({ endsAt: s0.list.t + DAY, endsInMs: DAY });
+    expect(endsBarShown(s.view().endsInMs)).toBe(true);
+    s0.list.move(DAY - ACCESS_CHECK_EVERY_MS);
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    // Its answer heard (15 s left by the list's clock), and the next check set for the end.
+    await expect.poll(() => s.view().endsInMs).toBe(ACCESS_CHECK_EVERY_MS);
+    expect(accessState().phase).toBe('in');
+    s0.list.move(ACCESS_CHECK_EVERY_MS);
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    await expect.poll(() => accessState().phase).toBe('stopped');
+    expect(accessState().reason).toBe('expired');
   });
 });
 

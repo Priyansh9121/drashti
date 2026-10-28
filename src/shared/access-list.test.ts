@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { ACCESS_ERRORS, type AccessPerson } from './access-protocol';
+import { endsBarShown, endsBarText, endsBarTitle, leftText } from './access';
 import {
   accessListCsv,
   CSV_COLUMNS,
   csvTime,
   DEFAULT_SORT,
   editsFor,
+  endsCell,
   formatDay,
+  LENGTH_CHOICES,
+  lengthWord,
+  typedDays,
   formatMinutes,
   formatSeen,
   matchesSearch,
@@ -44,6 +49,10 @@ const person = (o: Partial<AccessPerson> & { gmail: string }): AccessPerson => (
   recordings: 0,
   imports: 0,
   note: '',
+  length: null,
+  endsAt: null,
+  ended: false,
+  endsUnreadable: false,
   computers: [],
   token: null,
   request: null,
@@ -66,7 +75,7 @@ const at = (y: number, mo: number, d: number, h = 0, mi = 0) => new Date(y, mo -
 const gmails = (people: readonly AccessPerson[]) => people.map((p) => p.gmail);
 
 describe('the edits each Gmail is offered', () => {
-  it('follow its status: a request Approve or Reject, approved Give access again or Revoke, and a note for all', () => {
+  it('follow its status: a request Approve or Reject, approved Give access again, Change the length or Revoke, and a note for all', () => {
     expect(editsFor(person({ gmail: 'a@example.com', status: 'requested' }))).toEqual([
       'approve',
       'reject',
@@ -74,6 +83,14 @@ describe('the edits each Gmail is offered', () => {
     ]);
     expect(editsFor(person({ gmail: 'a@example.com', status: 'approved' }))).toEqual([
       'regrant',
+      'length',
+      'revoke',
+      'note',
+    ]);
+    // Its length ended: Give access again, or a new length, brings it back.
+    expect(editsFor(person({ gmail: 'a@example.com', status: 'approved', ended: true }))).toEqual([
+      'regrant',
+      'length',
       'revoke',
       'note',
     ]);
@@ -85,16 +102,18 @@ describe('the edits each Gmail is offered', () => {
     // Typed in the Sheet in capitals or with spaces, a status is still the one it says.
     expect(editsFor(person({ gmail: 'a@example.com', status: ' Approved ' }))).toEqual([
       'regrant',
+      'length',
       'revoke',
       'note',
     ]);
   });
 
-  it('never offer Revoke or Reject on the owner’s own row', () => {
+  it('never offer Revoke, Reject or a length on the owner’s own row (always Unlimited)', () => {
     for (const status of ['requested', 'approved', 'rejected', 'revoked', 'paused']) {
       const edits = editsFor(person({ gmail: 'owner.placeholder@example.com', status, owner: true }));
       expect(edits, status).not.toContain('revoke');
       expect(edits, status).not.toContain('reject');
+      expect(edits, status).not.toContain('length');
     }
     // The owner may still give their own Gmail access again, for another computer of theirs.
     expect(editsFor(person({ gmail: 'owner.placeholder@example.com', owner: true }))).toEqual([
@@ -351,6 +370,93 @@ function readCsv(text: string): string[][] {
   return rows;
 }
 
+describe('lengths of access (the owner’s decision of 28 Oct 2026)', () => {
+  const DAY = 24 * 60 * 60_000;
+  const now = at(2026, 10, 28, 12, 0);
+
+  it('offers Unlimited first, then 1 day, 7 to 365 days; a typed number of days is a whole number from 1 to 730', () => {
+    expect(LENGTH_CHOICES.map((c) => c.length)).toEqual(['unlimited', 1, 7, 30, 60, 90, 120, 180, 365]);
+    expect(LENGTH_CHOICES[0]?.label).toBe('Unlimited, until you revoke it');
+    expect(LENGTH_CHOICES[1]?.label).toBe('1 day (24 hours)');
+    for (const [typed, days] of [
+      ['45', 45],
+      [' 730 ', 730],
+      ['1', 1],
+    ] as const)
+      expect(typedDays(typed)).toBe(days);
+    for (const typed of ['0', '731', '2.5', '-3', '', 'ten', '1e2', '0x10'])
+      expect(typedDays(typed), typed).toBeNull();
+    expect([lengthWord('unlimited'), lengthWord(1), lengthWord(30)]).toEqual([
+      'Unlimited',
+      '1 day',
+      '30 days',
+    ]);
+  });
+
+  it('says when each Gmail’s access ends, by the list’s time: Unlimited, a day and how long is left, ended, or not readable', () => {
+    const ends = (o: Partial<AccessPerson>) => endsCell(person({ gmail: 'a@example.com', ...o }), now);
+    expect(ends({ length: 'unlimited' })).toEqual({ text: 'Unlimited', detail: '', warn: false });
+    expect(ends({ length: 30, endsAt: now + 30 * DAY })).toEqual({
+      text: formatDay(now + 30 * DAY),
+      detail: 'In 30 days',
+      warn: false,
+    });
+    expect(ends({ length: 1, endsAt: now + 5 * 60 * 60_000 }).detail).toBe('In 5 hours');
+    expect(ends({ length: 7, endsAt: now - DAY, ended: true })).toEqual({
+      text: `Ended ${formatDay(now - DAY)}`,
+      detail: 'Their Drashti has stopped',
+      warn: true,
+    });
+    expect(ends({ ended: true, endsUnreadable: true })).toMatchObject({ text: 'Can’t be read', warn: true });
+    expect(ends({ owner: true, endsAt: now - DAY })).toMatchObject({
+      text: 'Unlimited',
+      detail: 'Your own: always',
+    });
+    // A request the owner added with a length: that length once approved; any other status, nothing.
+    expect(ends({ status: 'requested', length: 90 })).toMatchObject({
+      text: '',
+      detail: '90 days once approved',
+    });
+    expect(ends({ status: 'revoked', length: 30, endsAt: now + DAY })).toEqual({
+      text: '',
+      detail: '',
+      warn: false,
+    });
+  });
+
+  it('sorts by when access ends: one not readable first, then by the day, Unlimited after every day, the rest last', () => {
+    const people = [
+      person({ gmail: 'unlimited@example.com' }),
+      person({ gmail: 'later@example.com', endsAt: now + 30 * DAY }),
+      person({ gmail: 'asking@example.com', status: 'requested' }),
+      person({ gmail: 'sooner@example.com', endsAt: now + DAY }),
+      person({ gmail: 'unread@example.com', endsUnreadable: true, ended: true }),
+    ];
+    expect(sortPeople(people, { column: 'ends', descending: false }).map((p) => p.gmail)).toEqual([
+      'unread@example.com',
+      'sooner@example.com',
+      'later@example.com',
+      'unlimited@example.com',
+      'asking@example.com',
+    ]);
+  });
+
+  it('the window’s bar: from 7 days before the end, saying when and how long is left', () => {
+    expect(endsBarShown(null)).toBe(false);
+    expect(endsBarShown(7 * DAY + 1)).toBe(false);
+    expect(endsBarShown(7 * DAY)).toBe(true);
+    expect(endsBarShown(0)).toBe(true);
+    expect([leftText(6 * DAY + 1), leftText(DAY - 1), leftText(61_000), leftText(59_000)]).toEqual([
+      '6 days',
+      '23 hours',
+      '1 minute',
+      'less than a minute',
+    ]);
+    expect(endsBarTitle(at(2026, 11, 4, 15, 40))).toMatch(/^Your access to Drashti ends on 4 Nov 2026 at /u);
+    expect(endsBarText(3 * DAY)).toMatch(/^In 3 days\. Ask the person who approves access for more time/u);
+  });
+});
+
 describe('the CSV the owner saves', () => {
   const people = [
     person({
@@ -366,6 +472,8 @@ describe('the CSV the owner saves', () => {
       recordings: 1,
       imports: 9,
       note: 'Placeholder note\non two lines',
+      length: 30,
+      endsAt: at(2026, 11, 2, 18, 30),
       computers: [
         mac('Placeholder Old Mac', { ended: true, endedWhy: 'revoked' }),
         mac('Placeholder Hall Mac'),
@@ -396,6 +504,8 @@ describe('the CSV the owner saves', () => {
       '2026-10-03 18:30',
       '',
       '',
+      '30 days',
+      '2026-11-02 18:30',
       'Placeholder Hall Mac (Mac, 1.0.0-alpha.13); Placeholder PC (Windows, 1.0.0-alpha.13); Placeholder Old Mac (Mac, 1.0.0-alpha.13, ended: revoked)',
       '2026-10-27 10:00',
       '605',
@@ -408,6 +518,13 @@ describe('the CSV the owner saves', () => {
     // Words someone typed that a spreadsheet would run as a formula are kept as words.
     expect(rows[2]?.slice(0, 3)).toEqual(['bob.placeholder@example.com', "'=1+2", 'Rejected']);
     expect(rows[2]?.[5]).toBe(csvTime(at(2026, 10, 4)));
+    // Only an approved Gmail has an end: none, Unlimited, a date, or one typed in the Sheet that cannot be read.
+    expect(rows[2]?.slice(7, 9)).toEqual(['', '']);
+    const ends = (o: Partial<AccessPerson>) =>
+      readCsv(accessListCsv([person({ gmail: 'c@example.com', ...o })]).slice(1))[1]?.slice(7, 9);
+    expect(ends({ length: 'unlimited' })).toEqual(['Unlimited', 'Unlimited']);
+    expect(ends({ length: 1, endsAt: at(2026, 10, 29, 9, 0) })).toEqual(['1 day', '2026-10-29 09:00']);
+    expect(ends({ endsUnreadable: true, ended: true })).toEqual(['', 'Not readable']);
   });
 
   it('holds counts and the list’s own fields only, never content: no words or file names of any show', () => {
@@ -420,6 +537,8 @@ describe('the CSV the owner saves', () => {
       'Approved',
       'Rejected',
       'Revoked',
+      'Length',
+      'Access ends',
       'Computers',
       'Last seen',
       'Minutes used',

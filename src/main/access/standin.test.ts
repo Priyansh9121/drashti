@@ -56,6 +56,42 @@ describe('the stand-in list', () => {
     expect(r).toMatchObject({ ok: true, owner: false });
   });
 
+  it('serves the list’s own Approve page (Link.html, as Apps Script makes it), whose button reaches the list with the length chosen', async () => {
+    const s = (standIn = await accessStandIn());
+    const computer = placeholderComputer('stand-in-page');
+    await post(s, JSON.stringify(callBody('request', computer, { gmail: PERSON }).body));
+    const approve = s.list.linksFor(PERSON)?.approve ?? '';
+    const html = await (await fetch(s.pageUrl(approve))).text();
+    // The page's lengths, Unlimited first, each a choice; its one button; google.script.run as the web app has it.
+    expect(html).toContain('<legend>How long may they use Drashti?</legend>');
+    expect(html).toContain('data-chosen="unlimited"');
+    for (const v of ['unlimited', '1', '7', '30', '60', '90', '120', '180', '365', 'typed'])
+      expect(html).toContain(`name="length" value="${v}"`);
+    expect(html).toContain('max="730"');
+    expect(html).toContain('<button id="go" type="button">Approve</button>');
+    expect(html).toContain('window.google = { script: { run:');
+    // Every text from the list is escaped as Apps Script's printer escapes it.
+    expect(html).not.toMatch(/<\?|\?>/u);
+    const params = Object.fromEntries(new URL(approve).searchParams.entries());
+    const run = new URL('/macros/s/stand-in/run', s.url);
+    const answer = async (length: string) =>
+      (await (await fetch(run, { method: 'POST', body: JSON.stringify({ ...params, length }) })).json()) as {
+        kind: string;
+        title: string;
+        lines: string[];
+      };
+    expect(await answer('0')).toMatchObject({ kind: 'refused', title: 'Not done' });
+    const done = await answer('30');
+    expect(done).toMatchObject({ kind: 'done', title: 'Approved' });
+    expect(done.lines.join(' ')).toContain('Their access lasts until');
+    expect(s.list.sheet.find('Access List', 'Gmail', PERSON)?.['Access ends']).toEqual(
+      new Date(s.list.t + 30 * 24 * 3_600_000),
+    );
+    // A Reject page has no lengths.
+    const reject = await (await fetch(s.pageUrl(s.list.linksFor(PERSON)?.reject ?? ''))).text();
+    expect(reject).not.toContain('<legend>');
+  });
+
   it('makes grants the real way, for a person, a second computer of theirs, and the owner', async () => {
     const s = (standIn = await accessStandIn());
     const one = placeholderComputer('stand-in-one');

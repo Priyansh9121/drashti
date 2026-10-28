@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import {
   ACCESS_REMOVED_TEXT,
   type AccessView,
+  ENDED_COME_BACK_TEXT,
+  ENDED_STOP_TITLE,
+  endedStopText,
   NO_ANSWER_STOP_TEXT,
   NO_ANSWER_STOP_TITLE,
   STOP_REASON_TEXT,
@@ -11,7 +14,7 @@ import { Button } from '../ui/Button';
 import { Mark } from '../ui/Mark';
 
 /*
- * The stop (Session 54, access by Gmail: revoked, rejected, unknown, or 2 minutes with no answer), in place of the
+ * The stop (Session 54, access by Gmail: revoked, rejected, unknown, the length ended, or 2 minutes with no answer), in place of the
  * controls, in Pro and Simple Mode alike: one plain message and Quit, the one button that works. The main process
  * has stopped everything already (the screens fade to black, the stream and recording end, the nodes and phones
  * stop) and refuses every other request; this only says so.
@@ -22,7 +25,8 @@ export function StopScreen({ view }: { view: AccessView }) {
     quit.current?.focus();
   }, []);
   const noAnswer = view.reason === 'no-answer';
-  const why = view.reason ? STOP_REASON_TEXT[view.reason] : undefined;
+  const ended = view.reason === 'expired';
+  const why = ended ? endedStopText(view.endsAt) : view.reason ? STOP_REASON_TEXT[view.reason] : undefined;
   return (
     <main
       className="flex h-full items-center justify-center overflow-y-auto bg-ink px-6 py-8 text-fg"
@@ -35,7 +39,9 @@ export function StopScreen({ view }: { view: AccessView }) {
           Drashti
         </p>
         <div role="alert" className="space-y-3">
-          <h1 className="text-2xl font-bold">{noAnswer ? NO_ANSWER_STOP_TITLE : ACCESS_REMOVED_TEXT}</h1>
+          <h1 className="text-2xl font-bold">
+            {noAnswer ? NO_ANSWER_STOP_TITLE : ended ? ENDED_STOP_TITLE : ACCESS_REMOVED_TEXT}
+          </h1>
           {noAnswer ? (
             <p className="text-base">{NO_ANSWER_STOP_TEXT}</p>
           ) : (
@@ -44,7 +50,9 @@ export function StopScreen({ view }: { view: AccessView }) {
           <p className="text-base text-muted">{STOPPED_WHAT_TEXT}</p>
           {!noAnswer && (
             <p className="text-base text-muted">
-              To use Drashti again, ask the person who approves access, then start Drashti again.
+              {ended
+                ? ENDED_COME_BACK_TEXT
+                : 'To use Drashti again, ask the person who approves access, then start Drashti again.'}
             </p>
           )}
         </div>

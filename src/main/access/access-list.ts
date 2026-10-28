@@ -6,6 +6,7 @@ import {
   accessListCsv,
   EDIT_NO_ANSWER_TEXT,
   formatDay,
+  lengthWord,
   NO_ANSWER_TEXT,
   NO_VIEW,
   ownerErrorText,
@@ -16,10 +17,13 @@ import {
 } from '../../shared/access-list';
 import {
   ACCESS_ERROR_TEXT,
+  ACCESS_UNLIMITED,
+  accessLengthOk,
   gmailKey,
   gmailShaped,
   type AccessErrorCode,
   type AccessGrant,
+  type AccessLength,
   type AccessPerson,
 } from '../../shared/access-protocol';
 import { cutText, plural } from '../../shared/text';
@@ -32,14 +36,16 @@ import type { AccessClient } from './client';
  * or changed, each time as the owner's signed call (access-list/PROTOCOL.md, "The owner's calls"); anyone else
  * is refused here, before anything is sent, and by the list itself. While the window is open the list is asked
  * again a few seconds after each answer, so a change made anywhere (another Drashti's request, an Approve link,
- * a status typed into the Sheet) shows within seconds; after each edit, at once. Revoke and Reject never reach
- * the owner's own row: refused here, and by the list. The CSV is made here, from the list's own answer, of the
- * rows the window shows. The log never names a Gmail.
+ * a status typed into the Sheet) shows within seconds; after each edit, at once. Revoke, Reject and a length never
+ * reach the owner's own row (always Unlimited): refused here, and by the list. Approve, Add, Give access again and
+ * Change the length each carry how long access lasts (the owner's decision of 28 Oct 2026), checked here and by the
+ * list. The CSV is made here, from the list's own answer, of the rows the window shows. The log never names a Gmail.
  */
 
 /** What an owner's call comes back with: client.ts's AccessResult, as far as the Access List needs it. */
 export type OwnerResult<T> =
-  | { ok: true; value: T }
+  /** Done; `serverTime`: the list's own time as it answered. */
+  | { ok: true; value: T; serverTime?: number }
   /** The list answered, signed, and refused. */
   | { ok: false; kind: 'refused'; error: AccessErrorCode; message: string }
   /** Nothing believable came back. */
@@ -48,9 +54,19 @@ export type OwnerResult<T> =
 /** The owner's calls, each signed with this computer's grant: what the Access List asks the list. */
 export interface OwnerCalls {
   list: () => Promise<OwnerResult<{ people: AccessPerson[] }>>;
-  add: (target: string, o: { name?: string; note?: string }) => Promise<OwnerResult<{ mailed: boolean }>>;
-  approve: (target: string) => Promise<OwnerResult<{ runsOut: number }>>;
-  regrant: (target: string) => Promise<OwnerResult<{ runsOut: number }>>;
+  add: (
+    target: string,
+    o: { name?: string; note?: string; length: AccessLength },
+  ) => Promise<OwnerResult<{ mailed: boolean }>>;
+  approve: (
+    target: string,
+    length: AccessLength,
+  ) => Promise<OwnerResult<{ runsOut: number; endsAt: number | null }>>;
+  regrant: (
+    target: string,
+    length: AccessLength,
+  ) => Promise<OwnerResult<{ runsOut: number; endsAt: number | null }>>;
+  changeLength: (target: string, length: AccessLength) => Promise<OwnerResult<{ endsAt: number | null }>>;
   reject: (target: string) => Promise<OwnerResult<{ mailed: boolean }>>;
   revoke: (target: string) => Promise<OwnerResult<unknown>>;
   note: (target: string, note: string) => Promise<OwnerResult<unknown>>;
@@ -79,8 +95,9 @@ export function ownerCalls(
   return {
     list: () => signed((c, g) => c.list(g)),
     add: (target, o) => signed((c, g) => c.add(g, target, o)),
-    approve: (target) => signed((c, g) => c.approve(g, target)),
-    regrant: (target) => signed((c, g) => c.regrant(g, target)),
+    approve: (target, length) => signed((c, g) => c.approve(g, target, length)),
+    regrant: (target, length) => signed((c, g) => c.regrant(g, target, length)),
+    changeLength: (target, length) => signed((c, g) => c.length(g, target, length)),
     reject: (target) => signed((c, g) => c.reject(g, target)),
     revoke: (target) => signed((c, g) => c.revoke(g, target)),
     note: (target, note) => signed((c, g) => c.note(g, target, note)),
@@ -130,6 +147,13 @@ function outcome<T>(
 const tokenWords = (runsOut: number) =>
   `their token is on its way by email, and runs out on ${formatDay(runsOut)} if it is not used.`;
 
+/** How long access lasts now, in words: "Unlimited" or "30 days, until 27 Nov 2026". */
+const lastsWords = (length: AccessLength, endsAt: number | null) =>
+  endsAt === null ? 'Unlimited' : `${lengthWord(length)}, until ${formatDay(endsAt)}`;
+
+/** The owner's own row: always Unlimited (the list refuses a length on it too). */
+const OWN_ALWAYS_UNLIMITED = 'That is your own Gmail: its access is always Unlimited.';
+
 const notOwner = (): string => ACCESS_ERROR_TEXT['not-owner'];
 
 /** Words a person typed, as the list keeps them: one line, trimmed, cut at the list's length. */
@@ -145,6 +169,7 @@ function dayStamp(ms: number): string {
 export class AccessList {
   private people: AccessPerson[] | null = null;
   private updatedAt: number | null = null;
+  private listTime: number | null = null;
   private problem: string | null = null;
   /** The list being asked now, shared by everyone who asks meanwhile. */
   private asking: Promise<AccessListView> | null = null;
@@ -157,7 +182,7 @@ export class AccessList {
   /** What the window shows: nothing at all while this computer is not the owner's, let in. */
   view(): AccessListView {
     if (!this.deps.isOwner()) return NO_VIEW;
-    return { people: this.people, updatedAt: this.updatedAt, problem: this.problem };
+    return { people: this.people, updatedAt: this.updatedAt, listTime: this.listTime, problem: this.problem };
   }
 
   /** The window opened: ask the list now, and again a few seconds after each answer. */
@@ -179,6 +204,7 @@ export class AccessList {
     if (this.people === null && this.updatedAt === null && this.problem === null) return;
     this.people = null;
     this.updatedAt = null;
+    this.listTime = null;
     this.problem = null;
     this.deps.changed(this.view());
   }
@@ -192,15 +218,23 @@ export class AccessList {
     return this.asking;
   }
 
-  /** A Gmail added, as requested (the request emailed to the owner), and approved at once when asked. */
+  /**
+   * A Gmail added, as requested (the request emailed to the owner), and approved at once when asked; `length` is how
+   * long access lasts once it is approved.
+   */
   async add(fields: AccessListAdd): Promise<AccessListResult> {
     const gmail = fields.gmail.trim();
-    const refusal = this.refusal(gmail, false);
+    const refusal = this.refusal(gmail, false) ?? this.lengthRefusal(gmail, fields.length);
     if (refusal) return refusal;
     const name = typed(fields.name, ACCESS_NAME_MAX);
     const note = typed(fields.note, ACCESS_NOTE_MAX);
+    const length = fields.length;
     return this.edit('added a Gmail', async (calls) => {
-      const added = await calls.add(gmail, { ...(name ? { name } : {}), ...(note ? { note } : {}) });
+      const added = await calls.add(gmail, {
+        ...(name ? { name } : {}),
+        ...(note ? { note } : {}),
+        length,
+      });
       if (!added.ok || !fields.approve)
         return outcome(
           added,
@@ -213,11 +247,11 @@ export class AccessList {
               'That Gmail is on the list and approved already: choose it in the list to give access again.',
           },
         );
-      const approved = await calls.approve(gmail);
+      const approved = await calls.approve(gmail, length);
       if (approved.ok)
         return {
           ok: true,
-          message: `Added and approved ${gmail}: ${tokenWords(approved.value.runsOut)}`,
+          message: `Added and approved ${gmail} (${lastsWords(length, approved.value.endsAt)}): ${tokenWords(approved.value.runsOut)}`,
           why: '',
         };
       const not = outcome(approved, () => '');
@@ -225,24 +259,66 @@ export class AccessList {
     });
   }
 
-  approve(target: string): Promise<AccessListResult> {
-    return this.one('approved a Gmail', target, false, (calls, gmail, shown) =>
-      calls.approve(gmail).then((r) => outcome(r, (v) => `Approved ${shown}: ${tokenWords(v.runsOut)}`)),
+  /** Approved for `length`, counted from now, and a token on its way by email. */
+  approve(target: string, length: AccessLength): Promise<AccessListResult> {
+    return (
+      this.lengthRefusal(target, length) ??
+      this.one('approved a Gmail', target, false, (calls, gmail, shown) =>
+        calls
+          .approve(gmail, length)
+          .then((r) =>
+            outcome(
+              r,
+              (v) => `Approved ${shown} (${lastsWords(length, v.endsAt)}): ${tokenWords(v.runsOut)}`,
+            ),
+          ),
+      )
     );
   }
 
-  /** Give access again: a new token by email, for one more computer (after a revoke, approved again). */
-  regrant(target: string): Promise<AccessListResult> {
-    return this.one('gave a Gmail access again', target, false, (calls, gmail, shown) =>
-      calls
-        .regrant(gmail)
-        .then((r) =>
+  /**
+   * Give access again: a new token by email, for one more computer (after a revoke, approved again), and `length`
+   * counted from now (computers stopped by an end come back with it).
+   */
+  regrant(target: string, length: AccessLength): Promise<AccessListResult> {
+    return (
+      this.lengthRefusal(target, length) ??
+      this.one('gave a Gmail access again', target, false, (calls, gmail, shown) =>
+        calls
+          .regrant(gmail, length)
+          .then((r) =>
+            outcome(
+              r,
+              (v) =>
+                `A new token is on its way to ${shown} by email (${lastsWords(length, v.endsAt)}). It runs out on ${formatDay(v.runsOut)} if it is not used; a token sent before and not used no longer works.`,
+            ),
+          ),
+      )
+    );
+  }
+
+  /** A new length for a Gmail approved, counted from now: their Drashti hears it at its next check. */
+  changeLength(target: string, length: AccessLength): Promise<AccessListResult> {
+    if (this.ownersOwn(target.trim()))
+      return Promise.resolve({ ok: false, message: OWN_ALWAYS_UNLIMITED, view: this.view() });
+    return (
+      this.lengthRefusal(target, length) ??
+      this.one('changed a Gmail’s length of access', target, false, (calls, gmail, shown) =>
+        calls.changeLength(gmail, length).then((r) =>
           outcome(
             r,
             (v) =>
-              `A new token is on its way to ${shown} by email. It runs out on ${formatDay(v.runsOut)} if it is not used; a token sent before and not used no longer works.`,
+              v.endsAt === null
+                ? `${shown} now has Unlimited access: their Drashti hears it within 15 seconds.`
+                : `${shown} now has access for ${lengthWord(length)}, until ${formatDay(v.endsAt)}: their Drashti hears it within 15 seconds.`,
+            {
+              'wrong-status':
+                'Only a Gmail approved has a length to change: the list shows it as it is now. Approve it, or give access again.',
+              'owner-row': OWN_ALWAYS_UNLIMITED,
+            },
           ),
         ),
+      )
     );
   }
 
@@ -324,6 +400,7 @@ export class AccessList {
     if (answer.ok) {
       this.people = answer.value.people;
       this.updatedAt = this.deps.now();
+      this.listTime = answer.serverTime ?? null;
       this.problem = null;
       if (was !== null) this.deps.log('Access List: the list answered again');
     } else {
@@ -357,6 +434,17 @@ export class AccessList {
     if (!this.deps.isOwner() || !this.deps.calls()) return no(notOwner());
     if (!gmailShaped(gmail)) return no('That does not look like an email address: check it, then try again.');
     if (endsAccess && this.ownersOwn(gmail)) return no(ACCESS_ERROR_TEXT['owner-row']);
+    return null;
+  }
+
+  /**
+   * Why a length is refused before anything is sent, or null: one the list does not give, or one that is not
+   * Unlimited for the owner's own row. Resolved as an edit's outcome.
+   */
+  private lengthRefusal(gmail: string, length: unknown): Promise<AccessListResult> | null {
+    const no = (message: string) => Promise.resolve({ ok: false, message, view: this.view() });
+    if (!accessLengthOk(length)) return no(ACCESS_ERROR_TEXT['bad-length']);
+    if (length !== ACCESS_UNLIMITED && this.ownersOwn(gmail.trim())) return no(OWN_ALWAYS_UNLIMITED);
     return null;
   }
 

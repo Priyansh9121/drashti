@@ -53,9 +53,9 @@ var DrashtiAccess = (function () {
       cacheMs: 10 * 1000,
     },
     publicOps: ['request', 'status', 'redeem', 'check'],
-    ownerOps: ['list', 'add', 'approve', 'reject', 'revoke', 'regrant', 'note'],
+    ownerOps: ['list', 'add', 'approve', 'reject', 'revoke', 'regrant', 'note', 'length'],
     statuses: ['requested', 'approved', 'rejected', 'revoked'],
-    checkStatuses: ['in', 'revoked', 'rejected', 'unknown'],
+    checkStatuses: ['in', 'revoked', 'rejected', 'expired', 'unknown'],
     requestStatuses: ['requested', 'approved', 'rejected', 'revoked', 'unknown'],
     errors: [
       'bad-request',
@@ -69,6 +69,7 @@ var DrashtiAccess = (function () {
       'owner-row',
       'not-found',
       'wrong-status',
+      'bad-length',
       'mail-limit',
       'mail-failed',
       'server',
@@ -77,6 +78,9 @@ var DrashtiAccess = (function () {
     tokenAlphabet: '0123456789' + 'ABCDEFGHJKMNPQRSTVWXYZ',
     tokenLength: 28,
     macPrefix: 'drashti-access-v1\n',
+    // How long access lasts (the owner's decision of 28 Oct 2026): these days, any whole number of days up to
+    // maxDays typed in, or 'unlimited' (until revoked); each counted from when it is given, by the list's clock.
+    lengths: { days: [1, 7, 30, 60, 90, 120, 180, 365], maxDays: 730 },
   };
 
   /** The list's own words with each refusal (Drashti shows its own; these are for anyone reading the answer). */
@@ -93,6 +97,7 @@ var DrashtiAccess = (function () {
       'The owner’s own row is never asked for, rejected or revoked: the owner’s way in is Drashti › Let me in (the owner)… in the Sheet.',
     'not-found': 'That Gmail is not on the list.',
     'wrong-status': 'That cannot be done to this Gmail as it is now.',
+    'bad-length': 'That is not a length of access the list gives: 1 to 730 whole days, or Unlimited.',
     'mail-limit': 'The list has sent all the emails it may send today; try again tomorrow.',
     'mail-failed': 'The list could not send the email; try again later.',
     server: 'Something went wrong in the list; try again in a moment.',
@@ -110,6 +115,9 @@ var DrashtiAccess = (function () {
     { field: 'approvedAt', header: 'Approved', date: true },
     { field: 'rejectedAt', header: 'Rejected', date: true },
     { field: 'revokedAt', header: 'Revoked', date: true },
+    // When access ends (a time, or Unlimited); typed in the Sheet, it counts. `added`: the list adds the column
+    // itself to a Sheet set up before it came (addColumns), so nobody sets the Sheet up again for it.
+    { field: 'endsAt', header: 'Access ends', ends: true, added: true },
     { field: 'computers', header: 'Computers' },
     { field: 'version', header: 'Version' },
     { field: 'lastSeen', header: 'Last seen', date: true },
@@ -127,6 +135,8 @@ var DrashtiAccess = (function () {
     { field: 'requestAt', header: 'Request at', date: true, hidden: true },
     { field: 'answered', header: 'Answered', hidden: true },
     { field: 'statusSeen', header: 'Status seen', hidden: true },
+    // The length last given (or chosen when the owner added the Gmail, for its approval): days, or 'unlimited'.
+    { field: 'length', header: 'Length', length: true, hidden: true, added: true },
   ];
   TABLES[COMPUTERS] = [
     { field: 'gmail', header: 'Gmail' },
@@ -503,6 +513,52 @@ var DrashtiAccess = (function () {
     cachePut(env, 'gen', hex(env.randomBytes(8)), 6 * 60 * 60);
   }
 
+  // ---- how long access lasts ----
+
+  var UNLIMITED = 'unlimited';
+  /** How the Sheet says a Gmail's access has no end. */
+  var UNLIMITED_WORD = 'Unlimited';
+  /** An end typed in the Sheet that the list cannot read: it stops that Gmail's computers until put right. */
+  var UNREADABLE = -1;
+
+  /** A length the list gives: 'unlimited', or a whole number of days from 1 to PROTOCOL.lengths.maxDays. */
+  function lengthOk(length) {
+    return (
+      length === UNLIMITED ||
+      (typeof length === 'number' &&
+        isFinite(length) &&
+        length === Math.floor(length) &&
+        length >= 1 &&
+        length <= PROTOCOL.lengths.maxDays)
+    );
+  }
+
+  /** When access given now for `length` ends: null for none. */
+  function endsFor(now, length) {
+    return length === UNLIMITED ? null : now + length * DAY;
+  }
+
+  /** An Access ends cell: a time; null for none (empty, or Unlimited); UNREADABLE for anything else typed. */
+  function endsFromCell(v) {
+    if (v === null || v === undefined) return null;
+    if (Object.prototype.toString.call(v) === '[object Date]') {
+      var t = v.getTime();
+      return isFinite(t) && t > 0 ? t : UNREADABLE;
+    }
+    var s = String(v).trim().toLowerCase();
+    return s === '' || s === UNLIMITED ? null : UNREADABLE;
+  }
+
+  /** A Length cell: 'unlimited', days, or null (none given). */
+  function lengthFromCell(v) {
+    var s = String(v === null || v === undefined ? '' : v)
+      .trim()
+      .toLowerCase();
+    if (s === UNLIMITED) return UNLIMITED;
+    var n = s === '' ? NaN : Number(s);
+    return lengthOk(n) ? n : null;
+  }
+
   // ---- the Sheet ----
 
   function columnOf(tab, field) {
@@ -512,28 +568,43 @@ var DrashtiAccess = (function () {
   }
 
   function fromCell(v, c) {
+    if (c.ends) return endsFromCell(v);
+    if (c.length) return lengthFromCell(v);
     if (c.date) return toMs(v);
     if (c.number) return toCount(v);
     return v === null || v === undefined ? '' : String(v).trim();
   }
 
   function toCell(v, c) {
+    if (c.ends) return typeof v === 'number' && v > 0 ? new Date(v) : v === null ? UNLIMITED_WORD : '';
+    if (c.length) return v === UNLIMITED || typeof v === 'number' ? v : '';
     if (c.date) return v ? new Date(v) : '';
     if (c.number) return toCount(v);
     // Every text the list writes was cleaned when it came in; this keeps a formula out all the same.
     return String(v === null || v === undefined ? '' : v).replace(/^[=+@-]+/, '');
   }
 
-  /** Where each of a tab's columns is, by its header (the owner may move or add columns). */
-  function columnsFrom(tab, headerRow) {
-    var header = (headerRow || []).map(function (h) {
+  function headersOf(headerRow) {
+    return (headerRow || []).map(function (h) {
       return String(h === null || h === undefined ? '' : h)
         .trim()
         .toLowerCase();
     });
+  }
+
+  /**
+   * Where each of a tab's columns is, by its header (the owner may move or add columns). A column the list adds
+   * itself (`added`) that is not there yet goes into `missing` when it is given; any other is refused.
+   */
+  function columnsFrom(tab, headerRow, missing) {
+    var header = headersOf(headerRow);
     var cols = {};
     TABLES[tab].forEach(function (c) {
       var i = header.indexOf(c.header.toLowerCase());
+      if (i < 0 && c.added && missing) {
+        missing.push(c);
+        return;
+      }
       if (i < 0)
         throw refusal(
           'server',
@@ -544,11 +615,44 @@ var DrashtiAccess = (function () {
     return cols;
   }
 
+  /**
+   * Columns that came after the owner's Sheet was set up, added by the list itself after its last column, under
+   * the lock (a column another call added meanwhile is not added twice); Access ends written Unlimited for each
+   * Gmail approved, as each was let in before lengths came.
+   */
+  function addColumns(env, tab, missing) {
+    var add = function () {
+      var header = headersOf(env.sheet.row(tab, 1));
+      missing.forEach(function (c) {
+        if (header.indexOf(c.header.toLowerCase()) >= 0) return;
+        var col = env.sheet.addColumn(tab, c.header, {
+          hidden: Boolean(c.hidden),
+          date: Boolean(c.date || c.ends),
+        });
+        header[col - 1] = c.header.toLowerCase();
+        if (c.field !== 'endsAt') return;
+        var status = header.indexOf(columnOf(tab, 'status').header.toLowerCase()) + 1;
+        var statuses = status > 0 ? env.sheet.column(tab, status) || [] : [];
+        for (var r = 1; r < statuses.length; r++)
+          if (statusOf({ status: statuses[r] }) === 'approved')
+            env.sheet.write(tab, r + 1, col, UNLIMITED_WORD);
+      });
+    };
+    if (lockDepth > 0) add();
+    else withLock(env, add);
+  }
+
   function readTable(env, tab) {
     var cells = env.sheet.read(tab);
     if (!cells || cells.length === 0)
       throw refusal('server', 'The Sheet has no "' + tab + '" tab: open Drashti › Set up… in the Sheet.');
-    var cols = columnsFrom(tab, cells[0]);
+    var missing = [];
+    var cols = columnsFrom(tab, cells[0], missing);
+    if (missing.length > 0) {
+      addColumns(env, tab, missing);
+      cells = env.sheet.read(tab);
+      cols = columnsFrom(tab, cells[0]);
+    }
     var rows = [];
     for (var r = 1; r < cells.length; r++) {
       var line = cells[r] || [];
@@ -732,14 +836,19 @@ var DrashtiAccess = (function () {
     if (person) writePerson(env, data, person, totals(data, key));
   }
 
+  /** How many withLock calls are running now: inside one, the lock is never taken again. */
+  var lockDepth = 0;
+
   /** fn under the script's lock; then the Sheet written, and every read kept from before thrown away. */
   function withLock(env, fn) {
     var result;
     try {
       result = env.lock(function () {
+        lockDepth++;
         try {
           return fn();
         } finally {
+          lockDepth--;
           env.flush();
           newGeneration(env);
         }
@@ -862,6 +971,7 @@ var DrashtiAccess = (function () {
       'Each link opens a page with one button; nothing changes until you press it. The links work once, and run out on ' +
         env.formatTime(expires) +
         '.',
+      'On the Approve page you choose how long access lasts: Unlimited (until you revoke it) unless you choose a length.',
       'You can also answer in Drashti on your own computer: View › Access List.',
     );
     return {
@@ -871,12 +981,15 @@ var DrashtiAccess = (function () {
     };
   }
 
-  function tokenMail(env, person, token, runsOut) {
+  function tokenMail(env, person, token, runsOut, endsAt) {
     return {
       to: person.gmail,
       subject: 'Your Drashti token',
       body: [
-        'Your Gmail ' + person.gmail + ' may now use Drashti.',
+        'Your Gmail ' +
+          person.gmail +
+          ' may now use Drashti' +
+          (endsAt === null ? '.' : ', until ' + env.formatTime(endsAt) + '.'),
         '',
         'Your one-time token:',
         '',
@@ -900,15 +1013,17 @@ var DrashtiAccess = (function () {
   }
 
   /**
-   * A new grant for a Gmail: a new token emailed to it, and its row approved. The newest token is the only
-   * one that works: one sent before and not used yet ends. Computers already in stay in. Under the lock.
+   * A new grant for a Gmail: a new token emailed to it, and its row approved for `length` from now (the clock
+   * starts at the approval). The newest token is the only one that works: one sent before and not used yet ends.
+   * Computers already in stay in, for the new length. Under the lock.
    */
-  function grant(env, props, data, person) {
+  function grant(env, props, data, person, length) {
     if (remaining(env) < 1) throw refusal('mail-limit');
     var now = env.now();
+    var endsAt = endsFor(now, length);
     var token = makeToken(env);
     // The email first: if it cannot go, nothing changes (the token sent before still works).
-    send(env, tokenMail(env, person, token, now + PROTOCOL.tokenMs));
+    send(env, tokenMail(env, person, token, now + PROTOCOL.tokenMs, endsAt));
     grantsOf(data, person.key).forEach(function (g) {
       if (!g.usedAt && !g.endedAt) writeGrant(env, data, g, { endedAt: now, endedWhy: 'replaced' });
     });
@@ -918,14 +1033,40 @@ var DrashtiAccess = (function () {
       tokenHash: tokenHash(env, token),
       sentAt: now,
     });
-    var changes = { status: 'approved', statusSeen: 'approved' };
+    var changes = { status: 'approved', statusSeen: 'approved', endsAt: endsAt, length: length };
     if (statusOf(person) !== 'approved' || !person.approvedAt) changes.approvedAt = now;
     if (person.requestId && !person.answered) changes.answered = 'approved';
     writePerson(env, data, person, changes);
-    return { runsOut: now + PROTOCOL.tokenMs };
+    return { runsOut: now + PROTOCOL.tokenMs, endsAt: endsAt };
   }
 
-  /** A row asked (or asked again) for: requested, with a new request id, so links sent before are replaced. */
+  /** A Gmail approved now ends `length` from now: its computers in (or stopped by an end) keep their grants. */
+  function setLength(env, data, person, length) {
+    var endsAt = endsFor(env.now(), length);
+    writePerson(env, data, person, { endsAt: endsAt, length: length });
+    return endsAt;
+  }
+
+  /**
+   * Whether an approved Gmail's access has ended by the list's clock, or its end typed in the Sheet cannot be read
+   * (which stops it until put right). The owner's own row never ends, whatever is typed on it.
+   */
+  function ended(env, props, person) {
+    if (person.key === ownerKey(props)) return false;
+    var e = person.endsAt;
+    return e === UNREADABLE || (typeof e === 'number' && e > 0 && e <= env.now());
+  }
+
+  /** When a Gmail's access ends, by the list's clock: null for none (the owner's, Unlimited, or not readable). */
+  function endsOf(props, person) {
+    var e = person.endsAt;
+    return person.key !== ownerKey(props) && typeof e === 'number' && e > 0 ? e : null;
+  }
+
+  /**
+   * A row asked (or asked again) for: requested, with a new request id, so links sent before are replaced. Its
+   * Length is the one the owner chose adding it (for the approval), or none (Unlimited is offered first).
+   */
   function newRequest(env, data, person, fields) {
     var now = env.now();
     var changes = {
@@ -937,6 +1078,7 @@ var DrashtiAccess = (function () {
       requestComputer: fields.requestComputer,
       requestAt: now,
       answered: '',
+      length: fields.length || null,
     };
     if (fields.name) changes.name = fields.name;
     if (fields.note) changes.note = fields.note;
@@ -1027,6 +1169,12 @@ var DrashtiAccess = (function () {
       if (op === 'add' || op === 'note') call.note = cleanText(raw.note, 500);
       if (op === 'note' && typeof raw.note !== 'string') throw refusal('bad-request');
     }
+    if (op === 'add' || op === 'approve' || op === 'regrant' || op === 'length') {
+      // How long access lasts: always said for a change of length; Unlimited when not said for the others.
+      if (raw.length === undefined && op === 'length') throw refusal('bad-request');
+      call.length = raw.length === undefined ? UNLIMITED : raw.length;
+      if (!lengthOk(call.length)) throw refusal('bad-length');
+    }
     return call;
   }
 
@@ -1056,10 +1204,11 @@ var DrashtiAccess = (function () {
       var data = load(env);
       var p = data.byKey[call.key];
       if (p && changedByHand(p)) takeInHandEdit(env, data, p);
-      if (p && statusOf(p) === 'approved') {
+      if (p && statusOf(p) === 'approved' && !ended(env, props, p)) {
         var mine = grantsOf(data, p.key);
         // Approved, and a computer in or a token waiting: the person uses it, or the owner gives access
-        // again. Approved with neither (its token ran out unused): asked for again like any other.
+        // again. Approved with neither (its token ran out unused), or its length ended: asked for again like
+        // any other.
         if (
           mine.some(live) ||
           mine.some(function (g) {
@@ -1148,19 +1297,22 @@ var DrashtiAccess = (function () {
     });
   }
 
-  function checkStatus(person, g) {
+  function checkStatus(env, props, person, g) {
     if (!person) return 'unknown';
     if (g.endedAt)
       return g.endedWhy === 'revoked' ? 'revoked' : g.endedWhy === 'rejected' ? 'rejected' : 'unknown';
     var s = statusOf(person);
-    return s === 'approved' ? 'in' : s === 'revoked' ? 'revoked' : s === 'rejected' ? 'rejected' : 'unknown';
+    // Its length ended (by the list's clock, never the computer's): stopped as a revoke stops it, but nothing is
+    // ended, so a new length lets the same computers back in.
+    if (s === 'approved') return ended(env, props, person) ? 'expired' : 'in';
+    return s === 'revoked' ? 'revoked' : s === 'rejected' ? 'rejected' : 'unknown';
   }
 
   function check(env, props, call) {
     var now = env.now();
     var data = snapshot(env);
     var g = signedGrant(env, props, data, call);
-    if (!g) return { ok: true, status: 'unknown', owner: false, recorded: false };
+    if (!g) return { ok: true, status: 'unknown', owner: false, recorded: false, endsAt: null };
     // At most one check a computer every PROTOCOL.limits.checkGapMs counts (is recorded); one sooner (Drashti
     // quit and started again at once, say) is answered as any other. Only signed ones are counted, so nobody
     // else can use up a computer's checks.
@@ -1183,7 +1335,7 @@ var DrashtiAccess = (function () {
       p = data.byKey[g.key];
       g = data.byGrant[g.grantId] || g;
     }
-    var s = checkStatus(p, g);
+    var s = checkStatus(env, props, p, g);
     var recorded = false;
     var lastRecord = state.lastRecord || g.lastSeen || 0;
     if (
@@ -1216,7 +1368,14 @@ var DrashtiAccess = (function () {
         JSON.stringify({ lastCheck: now, lastRecord: recorded ? now : state.lastRecord || 0 }),
         600,
       );
-    return { ok: true, status: s, owner: s === 'in' && g.key === ownerKey(props), recorded: recorded };
+    return {
+      ok: true,
+      status: s,
+      owner: s === 'in' && g.key === ownerKey(props),
+      recorded: recorded,
+      // Drashti's bar counts down to this from the answer's serverTime: the list's clock, never the computer's.
+      endsAt: p && (s === 'in' || s === 'expired') ? endsOf(props, p) : null,
+    };
   }
 
   function personAnswer(env, props, data, p) {
@@ -1243,6 +1402,11 @@ var DrashtiAccess = (function () {
       recordings: t.recordings,
       imports: t.imports,
       note: p.note,
+      // How long access lasts and when it ends, as the list's clock has it (the owner's own: always Unlimited).
+      length: p.key === ownerKey(props) ? UNLIMITED : p.length,
+      endsAt: endsOf(props, p),
+      ended: statusOf(p) === 'approved' && ended(env, props, p),
+      endsUnreadable: p.key !== ownerKey(props) && p.endsAt === UNREADABLE,
       computers: mine
         .filter(function (g) {
           return Boolean(g.usedAt);
@@ -1302,6 +1466,9 @@ var DrashtiAccess = (function () {
       var p = data.byKey[call.targetKey];
       if (p && changedByHand(p)) takeInHandEdit(env, data, p);
       var isOwnerRow = call.targetKey === ownerKey(props);
+      // The owner's own row is always Unlimited: a length is never given to it (as it is never revoked).
+      if (isOwnerRow && (call.op === 'length' || (call.length !== undefined && call.length !== UNLIMITED)))
+        throw refusal('owner-row');
       switch (call.op) {
         case 'add': {
           if (p && statusOf(p) === 'approved') throw refusal('already-approved');
@@ -1311,6 +1478,7 @@ var DrashtiAccess = (function () {
             note: call.note,
             requestFrom: '',
             requestComputer: 'added by the owner',
+            length: call.length,
           });
           var mailed = false;
           if (remaining(env) >= 1)
@@ -1330,8 +1498,14 @@ var DrashtiAccess = (function () {
         case 'regrant': {
           if (!p) throw refusal('not-found');
           if (call.op === 'approve' && statusOf(p) === 'approved') throw refusal('already-approved');
-          var sent = grant(env, props, data, p);
-          return { ok: true, status: 'approved', runsOut: sent.runsOut };
+          var sent = grant(env, props, data, p, call.length);
+          return { ok: true, status: 'approved', runsOut: sent.runsOut, endsAt: sent.endsAt };
+        }
+        case 'length': {
+          // A new length for a Gmail approved, counted from now: its computers stopped by an end come back.
+          if (!p) throw refusal('not-found');
+          if (statusOf(p) !== 'approved') throw refusal('wrong-status');
+          return { ok: true, status: 'approved', endsAt: setLength(env, data, p, call.length) };
         }
         case 'reject': {
           if (!p) throw refusal('not-found');
@@ -1456,7 +1630,7 @@ var DrashtiAccess = (function () {
 
   function page(kind, extra) {
     var words = LINK_WORDS[kind] || ['', ''];
-    var out = { kind: kind, title: words[0], lines: [words[1]], button: null, params: null };
+    var out = { kind: kind, title: words[0], lines: [words[1]], button: null, params: null, lengths: null };
     Object.keys(extra || {}).forEach(function (k) {
       out[k] = extra[k];
     });
@@ -1505,7 +1679,31 @@ var DrashtiAccess = (function () {
       ],
       button: approve ? 'Approve' : 'Reject',
       params: { a: params.a, r: params.r, x: params.x, s: params.s },
+      // How long access lasts, chosen on the page: the one chosen when the owner added the Gmail, or Unlimited.
+      lengths: approve
+        ? {
+            days: PROTOCOL.lengths.days.slice(),
+            maxDays: PROTOCOL.lengths.maxDays,
+            chosen: p.length === null || p.length === undefined ? UNLIMITED : p.length,
+          }
+        : null,
     });
+  }
+
+  /** The length an Approve page sent ('unlimited' or a number of days, as text); Unlimited when none was. */
+  function linkLength(params) {
+    var raw = isObject(params) ? params.length : undefined;
+    if (raw === undefined || raw === null) return UNLIMITED;
+    var s = String(raw).trim();
+    if (s === UNLIMITED) return UNLIMITED;
+    return /^[0-9]{1,4}$/.test(s) && lengthOk(Number(s)) ? Number(s) : null;
+  }
+
+  /** The approval's last line: until when. */
+  function lengthWords(env, endsAt) {
+    return endsAt === null
+      ? 'Their access has no end: it lasts until you revoke it.'
+      : 'Their access lasts until ' + env.formatTime(endsAt) + ', by the list’s clock.';
   }
 
   /** The button on a link's page pressed: the request approved or rejected, once. */
@@ -1518,6 +1716,8 @@ var DrashtiAccess = (function () {
     }
     var l = readLink(env, props, params);
     if (l.kind !== 'signed') return page(l.kind);
+    var length = l.action === 'approve' ? linkLength(params) : UNLIMITED;
+    if (length === null) return page('refused', { title: 'Not done', lines: [MESSAGES['bad-length']] });
     try {
       return withLock(env, function () {
         var data = load(env);
@@ -1526,11 +1726,13 @@ var DrashtiAccess = (function () {
         if (p.answered) return answeredPage(p);
         if (changedByHand(p)) takeInHandEdit(env, data, p);
         if (l.action === 'approve') {
-          var sent = grant(env, props, data, p);
+          if (p.key === ownerKey(props) && length !== UNLIMITED) throw refusal('owner-row');
+          var sent = grant(env, props, data, p, length);
           return page('done', {
             title: 'Approved',
             lines: [
               p.gmail + ' was emailed a one-time token. It runs out on ' + env.formatTime(sent.runsOut) + '.',
+              lengthWords(env, sent.endsAt),
             ],
           });
         }
@@ -1571,7 +1773,7 @@ var DrashtiAccess = (function () {
           approvedAt: env.now(),
         });
       } else if (changedByHand(p)) takeInHandEdit(env, data, p);
-      var sent = grant(env, props, data, p);
+      var sent = grant(env, props, data, p, UNLIMITED);
       return { ok: true, to: p.gmail, runsOut: sent.runsOut };
     });
   }
@@ -1585,7 +1787,7 @@ var DrashtiAccess = (function () {
           return {
             field: c.field,
             header: c.header,
-            date: Boolean(c.date),
+            date: Boolean(c.date || c.ends),
             number: Boolean(c.number),
             hidden: Boolean(c.hidden),
           };

@@ -61,6 +61,7 @@ import { LibraryButton, LibrarySheet } from './LibrarySheet';
 import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
 import { SlideGrid } from './SlideGrid';
 import { RecoveryBanner } from './RecoveryBanner';
+import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { StageMessageControl } from './StageControls';
 import { NoticeArea, StatusBar } from './StatusBar';
 import { ScreenSwitchAsk } from './ScreenSwitches';
@@ -307,6 +308,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
     // on a 1280 × 720 display leaves 640 × 360) the window scrolls rather than cutting the Live column off.
     <div className="flex h-full bg-ink min-h-[540px] min-w-[960px] flex-col">
       <Header platform={platform} onOpenScreens={openScreens} />
+      {/* When access ends (Session 54, a length of access): in the flow, so it never covers the show controls. */}
+      <AccessEndsNotice />
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
       <EngineUnread />
       <StoppedScreens />

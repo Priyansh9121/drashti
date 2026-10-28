@@ -33,6 +33,7 @@ import {
   answerAgain,
   closedWatch,
   moveListClock,
+  ownerCall,
   PLACEHOLDER_PERSON,
   pressLink,
   revoke,
@@ -2582,7 +2583,7 @@ test('access by Gmail, live: the countdown with no internet over the show, then 
   }
 });
 
-test('access by Gmail, the owner’s Access List: placeholder Gmails with their computers and counts, and Revoke asking first (Session 54)', async () => {
+test('access by Gmail, the owner’s Access List: placeholder Gmails with their computers, counts and when access ends, and Revoke asking first (Session 54)', async () => {
   test.setTimeout(150_000);
   // Let in as the owner; its own checks every 10 minutes here, so the list never writes this computer's own name.
   const { app, access: s } = await launchApp(
@@ -2604,6 +2605,10 @@ test('access by Gmail, the owner’s Access List: placeholder Gmails with their 
     s.grant('side.placeholder@example.com', {
       ...placeholderComputer('shots-access-side', 'Placeholder Side PC'),
       platform: 'win32',
+    });
+    // An operator's own computer given 30 days (Session 54, a length of access): the Access ends column says when.
+    expect(ownerCall(s, 'length', { target: 'side.placeholder@example.com', length: 30 })).toMatchObject({
+      ok: true,
     });
     s.grant(
       'former.placeholder@example.com',
@@ -2638,6 +2643,7 @@ test('access by Gmail, the owner’s Access List: placeholder Gmails with their 
     await expect(row(s.approver)).toContainText('Placeholder office Mac');
     await expect(row(PLACEHOLDER_PERSON)).toContainText('2 h 5 min');
     await expect(row('former.placeholder@example.com')).toHaveAttribute('data-status', 'revoked');
+    await expect(row('side.placeholder@example.com').getByTestId('access-ends')).toContainText('In 29 days');
     await shot(list, 'access-list');
 
     // Revoke… on a chosen Gmail asks first, in the owner's words, Cancel ready.

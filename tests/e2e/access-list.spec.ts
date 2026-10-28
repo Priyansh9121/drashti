@@ -130,10 +130,14 @@ test('the owner’s Access List: every Gmail as the list has it, each edit reach
     await expect(theirs).toHaveAttribute('data-status', 'revoked');
     expect(s.list.sheet.find('Access List', 'Gmail', PLACEHOLDER_PERSON)?.['Status']).toBe('revoked');
 
-    // Give access again: approved, with a new token by email.
+    // Give access again: how long, Unlimited chosen at first; approved, with a new token by email.
     const mails = s.list.mailTo(PLACEHOLDER_PERSON).length;
     await list.getByTestId('access-regrant').click();
+    await expect(list.getByTestId('access-length-choice')).toHaveValue('unlimited');
+    await list.getByTestId('access-length-save').click();
+    await expect(list.getByTestId('access-length-dialog')).toHaveCount(0);
     await expect(theirs).toHaveAttribute('data-status', 'approved');
+    await expect(theirs.getByTestId('access-ends')).toContainText('Unlimited');
     expect(s.list.mailTo(PLACEHOLDER_PERSON)).toHaveLength(mails + 1);
     expect(s.list.tokenFor(PLACEHOLDER_PERSON)).not.toBeNull();
 
@@ -180,6 +184,78 @@ test('the owner’s Access List: every Gmail as the list has it, each edit reach
     // A status typed into the Sheet itself counts the same: shown within seconds.
     s.list.sheet.type('Access List', 'Gmail', 'new.placeholder@example.com', 'Status', 'revoked');
     await expect(added).toHaveAttribute('data-status', 'revoked', { timeout: 20_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test('how long access lasts: Approve, Give access again and Change the length each ask, Unlimited first; the end in its own column and the Sheet; never on the owner’s row', async () => {
+  test.setTimeout(180_000);
+  const { app, access: s } = await owner();
+  try {
+    const asker = 'asker.placeholder@example.com';
+    ask(s, asker, computerOf('access-list-lengths-asker', 'Placeholder Side Mac'));
+    const list = await openList(app);
+    const theirs = row(list, asker);
+    await expect(theirs).toHaveAttribute('data-status', 'requested', { timeout: 20_000 });
+    await expect(list.getByRole('columnheader', { name: 'Access ends' })).toBeVisible();
+    // Approve asks how long, Unlimited chosen; 7 days chosen.
+    await choose(list, asker);
+    await list.getByTestId('access-approve').click();
+    const dialog = list.getByTestId('access-length-dialog');
+    await expect(dialog.getByRole('heading')).toHaveText(`Approve ${asker}`);
+    await expect(list.getByTestId('access-length-choice')).toHaveValue('unlimited');
+    await list.getByTestId('access-length-choice').selectOption('7');
+    await list.getByTestId('access-length-save').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(theirs).toHaveAttribute('data-status', 'approved');
+    await expect(theirs.getByTestId('access-ends')).toContainText('In 6 days');
+    await expect(list.getByTestId('access-said')).toContainText('(7 days, until');
+    const sheetEnd = () => s.list.sheet.find('Access List', 'Gmail', asker)?.['Access ends'];
+    expect(sheetEnd()).toBeInstanceOf(Date);
+    // Change the length: days typed, checked before anything is sent, then counted from now.
+    await list.getByTestId('access-length').click();
+    await expect(list.getByTestId('access-length-now')).toContainText('Now: ');
+    await list.getByTestId('access-length-choice').selectOption('typed');
+    await list.getByTestId('access-length-days').fill('731');
+    await list.getByTestId('access-length-save').click();
+    await expect(dialog).toContainText('A whole number of days from 1 to 730.');
+    await list.getByTestId('access-length-days').fill('45');
+    const from = s.list.t;
+    await list.getByTestId('access-length-save').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(theirs.getByTestId('access-ends')).toContainText('In 44 days');
+    const end = (sheetEnd() as Date).getTime();
+    expect(end - from).toBeGreaterThanOrEqual(45 * 24 * 3_600_000);
+    expect(end - from).toBeLessThan(45 * 24 * 3_600_000 + 60_000);
+    // Its length ended (the list's clock moved past it): said in the row; Give access again with Unlimited brings it
+    // back.
+    moveListClock(s, 46 * 24 * 3_600_000);
+    await expect(theirs.getByTestId('access-ends')).toHaveAttribute('data-ended', 'true', {
+      timeout: 20_000,
+    });
+    await expect(theirs.getByTestId('access-ends')).toContainText('Their Drashti has stopped');
+    await list.getByTestId('access-regrant').click();
+    await list.getByTestId('access-length-save').click();
+    await expect(theirs.getByTestId('access-ends')).toContainText('Unlimited');
+    expect(sheetEnd()).toBe('Unlimited');
+    // The owner's own row: always Unlimited, never a length to change.
+    await choose(list, s.approver);
+    await expect(row(list, s.approver).getByTestId('access-ends')).toContainText('Unlimited');
+    await expect(list.getByTestId('access-length')).toHaveCount(0);
+    await list.getByTestId('access-regrant').click();
+    await expect(list.getByTestId('access-length-choice')).toHaveValue('unlimited');
+    await list.getByTestId('access-length-dialog').getByRole('button', { name: 'Cancel' }).click();
+    // Add asks how long too.
+    await list.getByTestId('access-search').fill('');
+    await list.getByTestId('access-add-open').click();
+    await list.getByTestId('access-add-gmail').fill('new.placeholder@example.com');
+    await expect(list.getByTestId('access-length-choice')).toHaveValue('unlimited');
+    await list.getByTestId('access-length-choice').selectOption('90');
+    await list.getByTestId('access-add-save').click();
+    await expect(row(list, 'new.placeholder@example.com').getByTestId('access-ends')).toContainText(
+      'In 89 days',
+    );
   } finally {
     await app.close();
   }
@@ -284,7 +360,7 @@ test('the Access List sorts, shows one status, searches, and saves the rows show
       .trimEnd()
       .split('\r\n');
     expect(lines[0]).toBe(
-      'Gmail,Name,Status,Requested,Approved,Rejected,Revoked,Computers,Last seen,Minutes used,Shows,Streams,Recordings,Imports,Note',
+      'Gmail,Name,Status,Requested,Approved,Rejected,Revoked,Length,Access ends,Computers,Last seen,Minutes used,Shows,Streams,Recordings,Imports,Note',
     );
     expect(lines.slice(1).map((l) => l.split(',')[0])).toEqual([
       'a.placeholder@example.com',
@@ -333,6 +409,17 @@ test('the Access List at CI’s 1024 × 645 and wider: everything in reach, by k
       await expectFits(list.getByTestId('access-chosen'), `${what}: the bar under the table`);
       await expect(list.getByTestId('access-export')).toBeInViewport();
       await expectNoSeriousA11yIssues(list, what);
+      // How long access lasts: its dialog, with days typed, at this size too.
+      await choose(list, 'p02.placeholder@example.com');
+      await list.getByTestId('access-length').click();
+      const dialog = list.getByTestId('access-length-dialog');
+      await list.getByTestId('access-length-choice').selectOption('typed');
+      await expect(list.getByTestId('access-length-days')).toBeFocused();
+      await expectFits(dialog, `${what}: Change the length`);
+      await expectNoSeriousA11yIssues(list, `${what}: Change the length`);
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toHaveCount(0);
+      await list.getByTestId('access-search').fill('');
     }
     await sizeList(app, list, CI_WINDOW);
     const table = list.getByTestId('access-table');
@@ -359,7 +446,8 @@ test('the Access List at CI’s 1024 × 645 and wider: everything in reach, by k
     await expect.poll(() => offered(app)).toBe(false);
     await choose(list, 'p01.placeholder@example.com');
     await list.getByTestId('access-regrant').click();
-    await expect(list.getByTestId('access-said')).toContainText(SIMPLE_MODE_REFUSAL);
+    await list.getByTestId('access-length-save').click();
+    await expect(list.getByTestId('access-length-dialog')).toContainText(SIMPLE_MODE_REFUSAL);
     await expect(row(list, 'p01.placeholder@example.com')).toHaveAttribute('data-status', 'approved');
   } finally {
     await app.close();

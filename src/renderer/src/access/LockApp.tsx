@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type AccessView, LOCK_REASON_TEXT } from '../../../shared/access';
+import { type AccessView, LOCK_REASON_TEXT, whenText } from '../../../shared/access';
 import { Button } from '../ui/Button';
 import { Field, TextInput } from '../ui/Field';
 import { Mark } from '../ui/Mark';
@@ -11,7 +11,8 @@ import { act, connectAccess, useAccess } from './access-store';
 /*
  * The lock screen (Session 54, access by Gmail), before Drashti opens on a computer not let in: Request Access with
  * a Gmail (the approver is emailed; what came of it is shown here, a rejection plainly), or I Have a Token (the
- * Gmail and the token from its email, once). With no answer from the list, Try Again. Quit always works. The main
+ * Gmail and the token from its email, once). With no answer from the list, Try Again. Its length of access ended:
+ * when, and how to come back (a new length opens it by itself; it asks every 15 s). Quit always works. The main
  * process checks everything again and decides; this page shows its view.
  */
 
@@ -24,6 +25,8 @@ const TABS = [
 
 /** What the lock screen says first, for why this computer is not let in. */
 function reasonLine(view: AccessView): string {
+  if (view.reason === 'expired' && view.endsAt !== null)
+    return `${LOCK_REASON_TEXT.expired} It ended on ${whenText(view.endsAt)}.`;
   if (view.reason) return LOCK_REASON_TEXT[view.reason];
   return 'Drashti opens once this computer is let in. Ask for access with your Gmail; when it is approved, a token comes to your email: type it under I Have a Token.';
 }
@@ -90,22 +93,23 @@ export function LockApp() {
             {reasonLine(view)}
           </Notice>
         )}
-        {view.canRetry && (view.reason === 'no-answer' || view.reason === 'unknown') && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="primary"
-              size="lg"
-              disabled={busy}
-              data-testid="access-retry"
-              onClick={() => void act(() => window.drashti.access.retry())}
-            >
-              {view.busy === 'checking' ? 'Checking…' : 'Try Again'}
-            </Button>
-            {view.reason === 'no-answer' && (
-              <p className="text-sm text-muted">It also tries again by itself every 15 seconds.</p>
-            )}
-          </div>
-        )}
+        {view.canRetry &&
+          (view.reason === 'no-answer' || view.reason === 'unknown' || view.reason === 'expired') && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="primary"
+                size="lg"
+                disabled={busy}
+                data-testid="access-retry"
+                onClick={() => void act(() => window.drashti.access.retry())}
+              >
+                {view.busy === 'checking' ? 'Checking…' : 'Try Again'}
+              </Button>
+              {(view.reason === 'no-answer' || view.reason === 'expired') && (
+                <p className="text-sm text-muted">It also tries again by itself every 15 seconds.</p>
+              )}
+            </div>
+          )}
         {!closed && (
           <section className="space-y-4" aria-label="Let this computer in">
             <Tabs

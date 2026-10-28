@@ -96,6 +96,13 @@ class FakeSheet {
   getLastRow = () => this.cells.filter((r) => r.some((v) => v !== '' && v !== null)).length;
   getLastColumn = () => Math.max(0, ...this.cells.map((r) => r.length));
   getMaxRows = () => 1000;
+  /** A new Sheet's 26 columns (A to Z), or as many as were inserted. */
+  maxColumns = 26;
+  getMaxColumns = () => this.maxColumns;
+  insertColumnsAfter = (after: number, n: number) => {
+    expect(after).toBe(this.maxColumns);
+    this.maxColumns += n;
+  };
   getRange = (r: number, c: number, nr?: number, nc?: number) => new FakeRange(this, r, c, nr, nc);
   appendRow = (values: Value[]) => {
     this.cells.splice(this.getLastRow(), 0, [...values]);
@@ -378,11 +385,13 @@ describe('the list in Apps Script', () => {
     const computers = g.sheets.find((s) => s.name === 'Computers');
     expect(g.sheets.map((s) => s.name)).toEqual(['Access List', 'Computers']);
     expect(list?.header().slice(0, 4)).toEqual(['Gmail', 'Name', 'Status', 'Requested']);
-    expect(list?.header()).toHaveLength(22);
+    expect(list?.header()).toHaveLength(24);
+    expect(list?.header()[7]).toBe('Access ends');
     expect(computers?.header()).toHaveLength(18);
     expect(list?.validation.get(3)).toEqual(['requested', 'approved', 'rejected', 'revoked']);
-    expect([...(list?.hidden ?? [])].sort((a, b) => a - b)).toEqual([17, 18, 19, 20, 21, 22]);
+    expect([...(list?.hidden ?? [])].sort((a, b) => a - b)).toEqual([18, 19, 20, 21, 22, 23, 24]);
     expect(list?.formats.get(4)).toBe('d mmm yyyy, h:mm');
+    expect(list?.formats.get(8)).toBe('d mmm yyyy, h:mm');
     expect(computers?.protections).toEqual([
       { warningOnly: true, description: expect.stringContaining('access list') as unknown },
     ]);
@@ -390,6 +399,30 @@ describe('the list in Apps Script', () => {
     list?.cells[0]?.splice(1, 1);
     g.fn('prepareSheet_');
     expect(list?.header().at(-1)).toBe('Name');
+  });
+
+  it('adds Access ends and Length to a Sheet set up before they came, by itself: after its last column, as Set up… would', () => {
+    const g = appsScript({ props: setUpProps() });
+    g.fn('prepareSheet_');
+    const list = g.sheets.find((s) => s.name === 'Access List');
+    if (!list) throw new Error('No Access List tab');
+    // The Sheet as Set up… made it before lengths came: 22 columns, the last 6 hidden, in a Sheet 22 wide.
+    const gone = ['Access ends', 'Length'].map((h) => list.header().indexOf(h));
+    list.cells = list.cells.map((r) => r.filter((_, i) => !gone.includes(i)));
+    list.hidden = new Set([17, 18, 19, 20, 21, 22]);
+    list.formats = new Map();
+    list.maxColumns = 22;
+    const computer = placeholderComputer('code-old-sheet');
+    expect(post(g, callBody('request', computer, { gmail: PERSON }).body)).toMatchObject({ ok: true });
+    expect(list.header().slice(-2)).toEqual(['Access ends', 'Length']);
+    expect(list.maxColumns).toBe(24);
+    expect(list.formats.get(23)).toBe('d mmm yyyy, h:mm');
+    expect(list.hidden.has(24)).toBe(true);
+    expect(list.hidden.has(23)).toBe(false);
+    expect(list.records()[0]).toMatchObject({ Gmail: PERSON, Status: 'requested', 'Access ends': '' });
+    // Found, never added again.
+    post(g, callBody('status', computer, { gmail: PERSON }).body);
+    expect(list.header().filter((h) => h === 'Access ends')).toHaveLength(1);
   });
 
   it('Set up…: asks for the approver first, then its window checks Google’s signing and keeps the keys once', () => {

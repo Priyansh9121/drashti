@@ -32,6 +32,11 @@ import { grantOf, type StoredAccess, storedAccess } from './store';
  * - While open, every 15 s: let in, nothing changes; revoked, rejected or unknown, everything stops at once; no
  *   answer, the countdown, and 2 minutes after the last answer, the same stop. The 2 minutes are on the main
  *   process's monotonic clock: a changed computer clock moves nothing. A stop is for good: only Quit works.
+ * - A length of access (the owner's decision of 28 Oct 2026): each answer says when access ends by the list's
+ *   clock; the window's bar counts down to it from the answer's own time, on the monotonic clock, and the next
+ *   check comes at the end at the latest. Once the list says the length has ended ('expired'), everything stops
+ *   as a revoke stops it; at start, the lock screen says so and asks again by itself, so a new length opens it.
+ *   The computer's own clock is never asked when access ends.
  * - Its totals (minutes let in, shows, streams, recordings, imports: never content) go with each check.
  * - A self-test (DRASHTI_SELFTEST) never asks the list, and its controls stay locked.
  *
@@ -46,7 +51,9 @@ export interface AccessCalls {
   check(
     grant: AccessGrant,
     activity: AccessActivity,
-  ): Promise<AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean }>>;
+  ): Promise<
+    AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean; endsAt: number | null }>
+  >;
 }
 
 /** Where this computer's access is kept: store.ts's AccessStore. */
@@ -97,6 +104,8 @@ export const ASK_EVERY_MS = 30_000;
 const ASLEEP_MS = 30_000;
 /** A minute let in, added to the totals. */
 const MINUTE_MS = 60_000;
+/** At the end of a length, the check comes this long after it: the list's clock has passed it by then. */
+const END_MARGIN_MS = 1_000;
 
 type Message = AccessView['message'];
 
@@ -207,6 +216,11 @@ export class AccessService {
   private busy: AccessBusy | null = null;
   private message: Message = null;
   private request: AccessRequestView | null = null;
+  /**
+   * When access ends, as the list's last signed answer said it: the end by the list's clock (for its date), and how
+   * long was left then (the end less the answer's serverTime), from that moment on the monotonic clock.
+   */
+  private ends: { endsAt: number; left: number; at: number } | null = null;
   private readonly timers = new Map<'check' | 'deadline' | 'minute' | 'ask' | 'retry', () => void>();
   private readonly listeners = new Set<(view: AccessView) => void>();
   private disposed = false;
@@ -236,6 +250,8 @@ export class AccessService {
       message: this.message,
       canRetry: s.phase === 'locked' && this.madeHere(),
       version: this.o.version,
+      endsAt: this.ends?.endsAt ?? null,
+      endsInMs: this.endsInMs(),
     };
   }
 
@@ -437,7 +453,8 @@ export class AccessService {
     this.busy = null;
     if (this.disposed || isLetIn() || accessState().phase === 'stopped') return;
     if (r.ok) {
-      const { status, owner } = r.value;
+      const { status, owner, endsAt } = r.value;
+      if (status === 'in' || status === 'expired') this.heardEnds(endsAt, r.serverTime);
       if (status === 'in') {
         this.letIn(owner);
         return;
@@ -445,12 +462,20 @@ export class AccessService {
       this.o.log('warn', `Access: not let in (${status})`);
       this.message = null;
       this.lock(status);
+      // Its length ended: asked again by itself, so once the owner gives a new length, Drashti opens.
+      if (status === 'expired') this.retryLater();
       return;
     }
     this.o.log('warn', `Access: no answer from the access list, so Drashti does not open (${why(r)})`);
     this.message = r.kind === 'refused' ? { tone: 'warning', text: ACCESS_ERROR_TEXT[r.error] } : null;
     this.lock('no-answer');
     // As Try Again, by itself: once the connection is back, Drashti opens.
+    this.retryLater();
+  }
+
+  /** The access kept here asked about again in 15 s, by itself (as Try Again). */
+  private retryLater(): void {
+    this.cancel('retry');
     this.timers.set(
       'retry',
       this.o.setTimer(this.every, () => {
@@ -458,6 +483,21 @@ export class AccessService {
         void this.checkToOpen();
       }),
     );
+  }
+
+  /**
+   * When access ends, from a signed answer: the end, and how long was left by the list's own clock (its serverTime),
+   * counted on from now on the monotonic clock. Whether the end changed.
+   */
+  private heardEnds(endsAt: number | null, serverTime: number): boolean {
+    const before = this.ends?.endsAt ?? null;
+    this.ends = endsAt === null ? null : { endsAt, left: endsAt - serverTime, at: this.o.monotonic() };
+    return before !== endsAt;
+  }
+
+  /** How long until access ends, as of now (never below 0); null for no end. */
+  private endsInMs(): number | null {
+    return this.ends ? Math.max(0, this.ends.left - (this.o.monotonic() - this.ends.at)) : null;
   }
 
   private letIn(owner: boolean): void {
@@ -468,7 +508,7 @@ export class AccessService {
     this.request = null;
     this.o.log('info', owner ? 'Access: let in, as the owner' : 'Access: let in');
     this.set({ phase: 'in', gmail: this.kept?.gmail ?? null, owner, reason: null, stopsAt: null });
-    this.checkIn(this.every);
+    this.checkIn(this.nextCheckIn(this.o.monotonic()));
     this.countMinutes();
   }
 
@@ -495,22 +535,37 @@ export class AccessService {
     // Stopped meanwhile (the 2 minutes ran out while it waited): nothing it says opens it again.
     if (!this.open()) return;
     if (r.ok) {
-      const { status, owner } = r.value;
+      const { status, owner, endsAt } = r.value;
       if (status !== 'in') {
+        // Its length ended: stopped as a revoke stops it (the stop says when it ended).
+        if (status === 'expired') this.heardEnds(endsAt, r.serverTime);
         this.stop(status);
         return;
       }
       this.lastAnswer = this.o.monotonic();
       this.cancel('deadline');
+      const changed = this.heardEnds(endsAt, r.serverTime);
       const s = accessState();
       if (s.phase === 'warning') this.o.log('info', 'Access: the access list answers again');
+      if (changed) this.o.log('info', endsAt === null ? 'Access: no end now' : 'Access: a new end');
       if (s.phase !== 'in' || s.owner !== owner)
         this.set({ phase: 'in', owner, reason: null, stopsAt: null });
+      // A new end (a new length, or Unlimited): the windows' bar counts down to it afresh. Otherwise each window counts
+      // down on its own monotonic clock from what it was told.
+      else if (changed) this.changed();
     } else {
       this.noAnswer(r);
       if (!isLetIn()) return;
     }
-    this.checkIn(Math.max(0, started + this.every - this.o.monotonic()));
+    this.checkIn(this.nextCheckIn(started));
+  }
+
+  /** How long until the next check: 15 s after the last began, or a moment after the length ends if that is sooner. */
+  private nextCheckIn(started: number): number {
+    const now = this.o.monotonic();
+    let due = started + this.every;
+    if (this.ends) due = Math.min(due, Math.max(now, this.ends.at + this.ends.left) + END_MARGIN_MS);
+    return Math.max(0, due - now);
   }
 
   /** No answer (or one that says neither in nor out): the countdown, and at its end the stop. */

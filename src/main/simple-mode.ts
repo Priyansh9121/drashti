@@ -25,6 +25,7 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
   IPC.accessList.reject,
   IPC.accessList.revoke,
   IPC.accessList.regrant,
+  IPC.accessList.changeLength,
   IPC.accessList.note,
 ];
 

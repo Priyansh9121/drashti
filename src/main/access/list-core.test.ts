@@ -1046,3 +1046,304 @@ describe('the owner’s first way in (Let me in)', () => {
     expect(() => core.letOwnerIn(list.env)).toThrow();
   });
 });
+
+describe('access lengths (the owner’s decision of 28 Oct 2026)', () => {
+  function setUp() {
+    const list = newList();
+    const owner = new Computer(list, placeholderComputer('mac-lengths-owner'));
+    const me = ownerIn(list, owner);
+    return { list, owner, me };
+  }
+
+  /** Someone asks, the owner approves them (with `length` when given), and their computer comes in: its grant. */
+  function letInFor(
+    list: TestList,
+    owner: Computer,
+    me: AccessGrant,
+    c: Computer,
+    length?: unknown,
+    gmail = PERSON,
+  ): AccessGrant {
+    expect(c.request(gmail, 'Placeholder Person')).toMatchObject({ ok: true, status: 'requested' });
+    expect(
+      owner.owner('approve', me, { target: gmail, ...(length === undefined ? {} : { length }) }),
+    ).toMatchObject({ ok: true, status: 'approved' });
+    return c.letIn(gmail, list.tokenFor(gmail) ?? '');
+  }
+
+  /** A Gmail's Access ends cell, as the Sheet shows it. */
+  const ends = (list: TestList, gmail = PERSON) => row(list, gmail)?.['Access ends'];
+
+  it('gives every length: 1 day, 7 to 365 days and a typed number of days, from the approval by the list’s clock; Unlimited when none is chosen', () => {
+    for (const days of [1, 7, 30, 60, 90, 120, 180, 365, 45, 730]) {
+      const { list, owner, me } = setUp();
+      const c = new Computer(list, placeholderComputer(`mac-length-${String(days)}`));
+      list.move(HOUR);
+      const end = list.t + days * DAY;
+      c.request(PERSON);
+      expect(owner.owner('approve', me, { target: PERSON, length: days })).toMatchObject({
+        ok: true,
+        status: 'approved',
+        endsAt: end,
+      });
+      expect(ends(list)).toEqual(new Date(end));
+      const grant = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+      list.move(6 * SECOND);
+      expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: end });
+    }
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-length-none'));
+    const grant = letInFor(list, owner, me, c);
+    expect(ends(list)).toBe('Unlimited');
+    new Computer(list, placeholderComputer('mac-length-unlimited')).request(OTHER);
+    expect(owner.owner('approve', me, { target: OTHER, length: 'unlimited' })).toMatchObject({
+      ok: true,
+      endsAt: null,
+    });
+    expect(ends(list, OTHER)).toBe('Unlimited');
+    list.move(1000 * DAY);
+    expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null });
+  });
+
+  it('refuses a length not in its list (bad-length) for every call that takes one, changing nothing', () => {
+    const { list, owner, me } = setUp();
+    new Computer(list, placeholderComputer('mac-bad-length')).request(PERSON);
+    for (const length of [0, -1, 731, 1.5, 1e9, '30', 'forever', 'Unlimited', null, true, { days: 30 }, [30]])
+      for (const op of ['approve', 'regrant', 'add', 'length'])
+        expect(owner.owner(op, me, { target: PERSON, length })).toMatchObject({
+          ok: false,
+          error: 'bad-length',
+        });
+    expect(row(list, PERSON)).toMatchObject({ Status: 'requested', 'Access ends': '' });
+    expect(list.tokenFor(PERSON)).toBeNull();
+    // A change of length always says which.
+    expect(owner.owner('length', me, { target: PERSON })).toMatchObject({ ok: false, error: 'bad-request' });
+  });
+
+  it('ends at its time by the list’s clock: the computers stop (expired) without being ended, whatever their own clocks say', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-ends'));
+    const grant = letInFor(list, owner, me, c, 7);
+    const end = list.t + 7 * DAY;
+    list.move(7 * DAY - SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: end });
+    list.move(SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'expired', owner: false, endsAt: end });
+    // The computer's own clock (each call's `at`) a year back changes nothing: the list's clock decides.
+    c.at -= 365 * DAY;
+    expect(c.check(grant)).toMatchObject({ status: 'expired', endsAt: end });
+    // Nothing is ended: the computer's grant stays bound and the row approved, for a new length to bring it back.
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PERSON)?.['Ended']).toBe('');
+    expect(row(list, PERSON)?.['Status']).toBe('approved');
+    // Asked for again from that computer: taken, as a new request the owner may approve with a new length.
+    expect(c.request(PERSON)).toMatchObject({ ok: true, status: 'requested' });
+  });
+
+  it('a change of length counts from when it is set: a longer one brings the computers back, Unlimited takes the end away', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-change-length'));
+    const grant = letInFor(list, owner, me, c, 1);
+    list.move(2 * DAY);
+    expect(c.check(grant)).toMatchObject({ status: 'expired' });
+    const longer = list.t + 30 * DAY;
+    expect(owner.owner('length', me, { target: PERSON, length: 30 })).toMatchObject({
+      ok: true,
+      status: 'approved',
+      endsAt: longer,
+    });
+    expect(ends(list)).toEqual(new Date(longer));
+    list.move(6 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: longer });
+    expect(owner.owner('length', me, { target: PERSON, length: 1 })).toMatchObject({ endsAt: list.t + DAY });
+    expect(owner.owner('length', me, { target: PERSON, length: 'unlimited' })).toMatchObject({
+      ok: true,
+      endsAt: null,
+    });
+    expect(ends(list)).toBe('Unlimited');
+    list.move(1000 * DAY);
+    expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null });
+    // Only for a Gmail on the list and approved.
+    new Computer(list, placeholderComputer('mac-change-asks')).request(OTHER);
+    expect(owner.owner('length', me, { target: OTHER, length: 30 })).toMatchObject({
+      ok: false,
+      error: 'wrong-status',
+    });
+    expect(owner.owner('length', me, { target: 'nobody.placeholder@example.com', length: 30 })).toMatchObject(
+      { ok: false, error: 'not-found' },
+    );
+    owner.owner('revoke', me, { target: PERSON });
+    expect(owner.owner('length', me, { target: PERSON, length: 30 })).toMatchObject({
+      ok: false,
+      error: 'wrong-status',
+    });
+  });
+
+  it('never gives the owner’s own row a length: refused, and an end typed on it by hand never stops the owner', () => {
+    const { list, owner, me } = setUp();
+    expect(ends(list, PLACEHOLDER_APPROVER)).toBe('Unlimited');
+    for (const length of [30, 'unlimited'])
+      expect(owner.owner('length', me, { target: PLACEHOLDER_APPROVER, length })).toMatchObject({
+        ok: false,
+        error: 'owner-row',
+      });
+    expect(owner.owner('regrant', me, { target: PLACEHOLDER_APPROVER, length: 7 })).toMatchObject({
+      ok: false,
+      error: 'owner-row',
+    });
+    expect(owner.owner('regrant', me, { target: PLACEHOLDER_APPROVER, length: 'unlimited' })).toMatchObject({
+      ok: true,
+      endsAt: null,
+    });
+    list.sheet.type(PEOPLE, 'Gmail', PLACEHOLDER_APPROVER, 'Access ends', new Date(list.t - DAY));
+    list.move(11 * SECOND);
+    expect(owner.check(me)).toMatchObject({ status: 'in', owner: true, endsAt: null });
+    const people = owner.owner('list', me)['people'] as Record<string, unknown>[];
+    expect(people[0]).toMatchObject({ owner: true, endsAt: null, ended: false });
+  });
+
+  it('Give access again with a length: a new token, and the end counted from now', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-regrant-length'));
+    const first = letInFor(list, owner, me, c, 7);
+    owner.owner('revoke', me, { target: PERSON });
+    list.move(DAY);
+    const end = list.t + 90 * DAY;
+    expect(owner.owner('regrant', me, { target: PERSON, length: 90 })).toMatchObject({
+      ok: true,
+      status: 'approved',
+      endsAt: end,
+    });
+    expect(ends(list)).toEqual(new Date(end));
+    const again = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+    list.move(6 * SECOND);
+    expect(c.check(again)).toMatchObject({ status: 'in', endsAt: end });
+    expect(c.check(first)).toMatchObject({ status: 'revoked' });
+  });
+
+  it('Add keeps the length chosen for the approval, which the Approve page offers first; a person’s own request offers Unlimited first', () => {
+    const { list, owner, me } = setUp();
+    expect(owner.owner('add', me, { target: PERSON, name: 'Placeholder Added', length: 30 })).toMatchObject({
+      ok: true,
+      status: 'requested',
+    });
+    expect(ends(list)).toBe('');
+    const links = list.linksFor(PERSON);
+    if (!links) throw new Error('No links');
+    expect(core.linkPage(list.env, linkParams(links.approve)).lengths).toEqual({
+      days: [1, 7, 30, 60, 90, 120, 180, 365],
+      maxDays: 730,
+      chosen: 30,
+    });
+    expect(core.linkPage(list.env, linkParams(links.reject)).lengths).toBeNull();
+    new Computer(list, placeholderComputer('mac-own-request')).request(OTHER);
+    const theirs = list.linksFor(OTHER);
+    if (!theirs) throw new Error('No links');
+    expect(core.linkPage(list.env, linkParams(theirs.approve)).lengths).toMatchObject({
+      chosen: 'unlimited',
+    });
+    // Approved in the Access List with another length: that one.
+    expect(owner.owner('approve', me, { target: PERSON, length: 60 })).toMatchObject({
+      endsAt: list.t + 60 * DAY,
+    });
+  });
+
+  it('the Approve page approves with the length chosen on it, says until when, and refuses one not in its list', () => {
+    const { list } = setUp();
+    new Computer(list, placeholderComputer('mac-page-length')).request(PERSON);
+    const links = list.linksFor(PERSON);
+    if (!links) throw new Error('No links');
+    const params = linkParams(links.approve);
+    for (const length of ['0', '731', '2.5', 'soon', 'Unlimited'])
+      expect(core.answerLink(list.env, { ...params, length })).toMatchObject({
+        kind: 'refused',
+        title: 'Not done',
+        lines: [core.MESSAGES['bad-length']],
+      });
+    expect(row(list, PERSON)?.['Status']).toBe('requested');
+    expect(list.tokenFor(PERSON)).toBeNull();
+    const end = list.t + 120 * DAY;
+    const done = core.answerLink(list.env, { ...params, length: '120' });
+    expect(done).toMatchObject({ kind: 'done', title: 'Approved' });
+    expect(done.lines.join(' ')).toContain(list.env.formatTime(end));
+    expect(ends(list)).toEqual(new Date(end));
+    // The person's email says until when.
+    expect(list.mailTo(PERSON).at(-1)?.body).toContain(`until ${list.env.formatTime(end)}`);
+    // Unlimited, chosen on the page.
+    new Computer(list, placeholderComputer('mac-page-unlimited')).request(OTHER);
+    const theirs = list.linksFor(OTHER);
+    if (!theirs) throw new Error('No links');
+    const open = core.answerLink(list.env, { ...linkParams(theirs.approve), length: 'unlimited' });
+    expect(open).toMatchObject({ kind: 'done', title: 'Approved' });
+    expect(open.lines.join(' ')).toContain('no end');
+    expect(ends(list, OTHER)).toBe('Unlimited');
+  });
+
+  it('adds its two columns to a Sheet set up before lengths came, by itself: Access ends (Unlimited for each Gmail approved) and the hidden Length', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-old-sheet'));
+    const grant = letInFor(list, owner, me, c);
+    new Computer(list, placeholderComputer('mac-old-sheet-asks')).request(OTHER);
+    // The Sheet as Drashti › Set up… made it before: neither column.
+    list.sheet.removeColumn(PEOPLE, 'Access ends');
+    list.sheet.removeColumn(PEOPLE, 'Length');
+    list.cache.clear();
+    list.move(6 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null });
+    expect(list.sheet.read(PEOPLE)[0]?.slice(-2)).toEqual(['Access ends', 'Length']);
+    expect(list.sheet.added).toEqual([
+      { tab: PEOPLE, header: 'Access ends', hidden: false, date: true },
+      { tab: PEOPLE, header: 'Length', hidden: true, date: false },
+    ]);
+    expect(ends(list, PLACEHOLDER_APPROVER)).toBe('Unlimited');
+    expect(ends(list)).toBe('Unlimited');
+    expect(ends(list, OTHER)).toBe('');
+    // Added once: every call after finds them.
+    list.cache.clear();
+    list.move(6 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in' });
+    expect(owner.owner('length', me, { target: PERSON, length: 7 })).toMatchObject({ ok: true });
+    expect(list.sheet.added).toHaveLength(2);
+    expect(list.sheet.read(PEOPLE)[0]?.filter((h) => h === 'Access ends')).toHaveLength(1);
+  });
+
+  it('reads an end typed in the Sheet: a date counts, empty or Unlimited is no end, and one it cannot read stops the computers until it is put right', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-typed-end'));
+    const grant = letInFor(list, owner, me, c, 30);
+    const soon = list.t + HOUR;
+    list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Access ends', new Date(soon));
+    list.move(11 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: soon });
+    list.move(HOUR);
+    expect(c.check(grant)).toMatchObject({ status: 'expired', endsAt: soon });
+    for (const none of ['', 'Unlimited', ' unlimited ']) {
+      list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Access ends', none);
+      list.move(11 * SECOND);
+      expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null });
+    }
+    list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Access ends', 'next Tuesday');
+    list.move(11 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'expired', endsAt: null });
+    const people = owner.owner('list', me)['people'] as Record<string, unknown>[];
+    expect(people.find((p) => p['gmail'] === PERSON)).toMatchObject({ ended: true, endsUnreadable: true });
+    list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Access ends', new Date(list.t + DAY));
+    list.move(11 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: list.t - 11 * SECOND + DAY });
+  });
+
+  it('lists each Gmail’s length and end, and whether it has ended, by the list’s clock', () => {
+    const { list, owner, me } = setUp();
+    letInFor(list, owner, me, new Computer(list, placeholderComputer('mac-listed-7')), 7);
+    const end = list.t + 7 * DAY;
+    letInFor(list, owner, me, new Computer(list, placeholderComputer('mac-listed-u')), 'unlimited', OTHER);
+    owner.owner('add', me, { target: 'added.placeholder@example.com', length: 90 });
+    list.move(8 * DAY);
+    const people = owner.owner('list', me)['people'] as Record<string, unknown>[];
+    expect(people).toMatchObject([
+      { owner: true, length: 'unlimited', endsAt: null, ended: false, endsUnreadable: false },
+      { gmail: PERSON, length: 7, endsAt: end, ended: true, endsUnreadable: false },
+      { gmail: OTHER, length: 'unlimited', endsAt: null, ended: false },
+      { status: 'requested', length: 90, endsAt: null, ended: false },
+    ]);
+  });
+});

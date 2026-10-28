@@ -5,10 +5,11 @@ import {
   accessListCsv,
   ACCESS_LIST_REFRESH_MS,
   EDIT_NO_ANSWER_TEXT,
+  formatDay,
   NO_ANSWER_TEXT,
   ownerErrorText,
 } from '../../shared/access-list';
-import { ACCESS_ERROR_TEXT, type AccessPerson } from '../../shared/access-protocol';
+import { ACCESS_ERROR_TEXT, type AccessLength, type AccessPerson } from '../../shared/access-protocol';
 import {
   AccessList,
   ownerCalls,
@@ -46,6 +47,10 @@ const person = (o: Partial<AccessPerson> & { gmail: string }): AccessPerson => (
   recordings: 0,
   imports: 0,
   note: '',
+  length: null,
+  endsAt: null,
+  ended: false,
+  endsUnreadable: false,
   computers: [],
   token: null,
   request: null,
@@ -53,6 +58,11 @@ const person = (o: Partial<AccessPerson> & { gmail: string }): AccessPerson => (
 });
 
 const answer = <T>(value: T): Promise<OwnerResult<T>> => Promise.resolve({ ok: true, value });
+const DAY = 24 * 60 * 60_000;
+/** The list's own time in the fake answers. */
+const LIST_NOW = new Date(2026, 9, 28, 12).getTime();
+/** When a length given at LIST_NOW ends (null: Unlimited). */
+const endFor = (length: AccessLength) => (length === 'unlimited' ? null : LIST_NOW + length * DAY);
 const refused = (
   error: 'wrong-status' | 'server' | 'owner-row' | 'mail-limit',
 ): Promise<OwnerResult<never>> =>
@@ -68,22 +78,32 @@ function fakeCalls(
   people: AccessPerson[] = [person({ gmail: OWNER, owner: true }), person({ gmail: PERSON })],
 ) {
   const made: string[] = [];
+  /** Each length sent, with its call and Gmail. */
+  const lengths: string[] = [];
   const calls: OwnerCalls = {
     list: vi.fn(() => {
       made.push('list');
       return answer({ people: people.map((p) => ({ ...p })) });
     }),
-    add: vi.fn((target: string, o: { name?: string; note?: string }) => {
+    add: vi.fn((target: string, o: { name?: string; note?: string; length: AccessLength }) => {
       made.push(`add ${target} ${o.name ?? ''} ${o.note ?? ''}`.trimEnd());
+      lengths.push(`add ${target} ${String(o.length)}`);
       return answer({ mailed: true });
     }),
-    approve: vi.fn((target: string) => {
+    approve: vi.fn((target: string, length: AccessLength) => {
       made.push(`approve ${target}`);
-      return answer({ runsOut: new Date(2026, 9, 30, 12).getTime() });
+      lengths.push(`approve ${target} ${String(length)}`);
+      return answer({ runsOut: new Date(2026, 9, 30, 12).getTime(), endsAt: endFor(length) });
     }),
-    regrant: vi.fn((target: string) => {
+    regrant: vi.fn((target: string, length: AccessLength) => {
       made.push(`regrant ${target}`);
-      return answer({ runsOut: new Date(2026, 9, 30, 12).getTime() });
+      lengths.push(`regrant ${target} ${String(length)}`);
+      return answer({ runsOut: new Date(2026, 9, 30, 12).getTime(), endsAt: endFor(length) });
+    }),
+    changeLength: vi.fn((target: string, length: AccessLength) => {
+      made.push(`length ${target}`);
+      lengths.push(`length ${target} ${String(length)}`);
+      return answer({ endsAt: endFor(length) });
     }),
     reject: vi.fn((target: string) => {
       made.push(`reject ${target}`);
@@ -98,7 +118,7 @@ function fakeCalls(
       return answer({});
     }),
   };
-  return { calls, made, people };
+  return { calls, made, lengths, people };
 }
 
 interface Rig {
@@ -157,11 +177,12 @@ describe('only the owner’s computer, let in', () => {
     expect(view.people).toBeNull();
     expect(view.problem).toBe(ACCESS_ERROR_TEXT['not-owner']);
     const results = [
-      await r.list.add({ gmail: PERSON, name: '', note: '', approve: true }),
-      await r.list.approve(PERSON),
+      await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: 'unlimited' }),
+      await r.list.approve(PERSON, 'unlimited'),
       await r.list.reject(PERSON),
       await r.list.revoke(PERSON),
-      await r.list.regrant(PERSON),
+      await r.list.regrant(PERSON, 'unlimited'),
+      await r.list.changeLength(PERSON, 30),
       await r.list.note(PERSON, 'Placeholder note'),
     ];
     for (const result of results)
@@ -180,13 +201,13 @@ describe('only the owner’s computer, let in', () => {
       expect(r.list.view().people).toHaveLength(2);
       r.owner.on = false;
       r.list.accessChanged();
-      expect(r.list.view()).toEqual({ people: null, updatedAt: null, problem: null });
+      expect(r.list.view()).toEqual({ people: null, updatedAt: null, listTime: null, problem: null });
       const asked = r.made.length;
       await vi.advanceTimersByTimeAsync(ACCESS_LIST_REFRESH_MS * 4);
       expect(r.made.length).toBe(asked);
       // Let in as the owner again, it starts afresh: nothing from before is shown until the list answers.
       r.owner.on = true;
-      expect(r.list.view()).toEqual({ people: null, updatedAt: null, problem: null });
+      expect(r.list.view()).toEqual({ people: null, updatedAt: null, listTime: null, problem: null });
     } finally {
       vi.useRealTimers();
     }
@@ -264,7 +285,7 @@ describe('the list, while the window is open', () => {
 describe('each edit', () => {
   it('goes to the list as the owner’s call for that Gmail, then the list is asked again', async () => {
     const r = rig();
-    const approved = await r.list.approve(PERSON);
+    const approved = await r.list.approve(PERSON, 'unlimited');
     expect(approved.ok).toBe(true);
     expect(approved.message).toContain(PERSON);
     expect(approved.message).toContain('token');
@@ -273,7 +294,7 @@ describe('each edit', () => {
 
     r.made.length = 0;
     expect((await r.list.reject(PERSON)).message).toMatch(/^Rejected placeholder\.user@example\.com/u);
-    expect((await r.list.regrant(PERSON)).message).toContain('new token');
+    expect((await r.list.regrant(PERSON, 'unlimited')).message).toContain('new token');
     const revoked = await r.list.revoke(PERSON);
     expect(revoked.message).toContain('stops');
     expect((await r.list.note(PERSON, '  Placeholder note  ')).ok).toBe(true);
@@ -296,6 +317,7 @@ describe('each edit', () => {
       name: 'Placeholder New',
       note: '',
       approve: false,
+      length: 'unlimited',
     });
     expect(added.ok).toBe(true);
     expect(added.message).toContain('new.placeholder@example.com');
@@ -307,6 +329,7 @@ describe('each edit', () => {
       name: '',
       note: 'Placeholder note',
       approve: true,
+      length: 'unlimited',
     });
     expect(both.ok).toBe(true);
     expect(both.message).toContain('token');
@@ -325,7 +348,7 @@ describe('each edit', () => {
         error: 'already-approved',
         message: 'The list’s own words',
       });
-    const again = await r.list.add({ gmail: PERSON, name: '', note: '', approve: true });
+    const again = await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: 'unlimited' });
     expect(again).toMatchObject({ ok: false });
     expect(again.message).toContain('give access again');
     expect(r.made).toEqual(['list']);
@@ -354,13 +377,59 @@ describe('each edit', () => {
 
   it('takes only an address, and keeps a name and note to the list’s lengths', async () => {
     const r = rig();
-    expect((await r.list.approve('not an address')).ok).toBe(false);
-    expect((await r.list.add({ gmail: '', name: '', note: '', approve: false })).ok).toBe(false);
+    expect((await r.list.approve('not an address', 'unlimited')).ok).toBe(false);
+    expect(
+      (await r.list.add({ gmail: '', name: '', note: '', approve: false, length: 'unlimited' })).ok,
+    ).toBe(false);
     expect(r.made).toEqual([]);
-    await r.list.add({ gmail: PERSON, name: 'N'.repeat(80), note: 'n'.repeat(600), approve: false });
+    await r.list.add({
+      gmail: PERSON,
+      name: 'N'.repeat(80),
+      note: 'n'.repeat(600),
+      approve: false,
+      length: 'unlimited',
+    });
     await r.list.note(PERSON, 'm'.repeat(600));
     expect(r.made[0]).toBe(`add ${PERSON} ${'N'.repeat(60)} ${'n'.repeat(500)}`);
     expect(r.made[2]).toBe(`note ${PERSON} ${'m'.repeat(500)}`);
+  });
+
+  it('carries the length chosen to the list, says until when, and refuses before sending anything a length the list does not give, or one on the owner’s own row', async () => {
+    const f = fakeCalls();
+    const r = rig({ calls: f });
+    const approved = await r.list.approve(PERSON, 7);
+    expect(approved.ok).toBe(true);
+    expect(approved.message).toContain(`7 days, until ${formatDay(LIST_NOW + 7 * DAY)}`);
+    expect((await r.list.regrant(PERSON, 'unlimited')).message).toContain('(Unlimited)');
+    const changed = await r.list.changeLength(PERSON, 365);
+    expect(changed.message).toContain(`365 days, until ${formatDay(LIST_NOW + 365 * DAY)}`);
+    expect((await r.list.changeLength(PERSON, 'unlimited')).message).toContain('Unlimited access');
+    await r.list.add({ gmail: 'new.placeholder@example.com', name: '', note: '', approve: true, length: 1 });
+    expect(f.lengths).toEqual([
+      `approve ${PERSON} 7`,
+      `regrant ${PERSON} unlimited`,
+      `length ${PERSON} 365`,
+      `length ${PERSON} unlimited`,
+      'add new.placeholder@example.com 1',
+      'approve new.placeholder@example.com 1',
+    ]);
+    f.lengths.length = 0;
+    for (const bad of [0, 731, 2.5, 'Unlimited', null] as unknown as AccessLength[]) {
+      for (const result of [
+        await r.list.approve(PERSON, bad),
+        await r.list.regrant(PERSON, bad),
+        await r.list.changeLength(PERSON, bad),
+        await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: bad }),
+      ])
+        expect(result).toMatchObject({ ok: false, message: ACCESS_ERROR_TEXT['bad-length'] });
+    }
+    for (const typed of [OWNER, ' OWNER.placeholder@example.com ']) {
+      expect((await r.list.changeLength(typed, 'unlimited')).message).toContain('always Unlimited');
+      expect((await r.list.regrant(typed, 30)).message).toContain('always Unlimited');
+    }
+    expect(f.lengths).toEqual([]);
+    // Unlimited for the owner's own row may go (a new token for another computer of theirs).
+    expect((await r.list.regrant(OWNER, 'unlimited')).ok).toBe(true);
   });
 
   it('says a refusal in the owner’s words, and no answer as no answer, and asks the list again either way', async () => {
@@ -368,7 +437,7 @@ describe('each edit', () => {
     f.calls.approve = () => refused('wrong-status');
     f.calls.revoke = () => noAnswer;
     const r = rig({ calls: f });
-    const wrong = await r.list.approve(PERSON);
+    const wrong = await r.list.approve(PERSON, 'unlimited');
     expect(wrong).toMatchObject({ ok: false, message: ownerErrorText('wrong-status') });
     expect(wrong.view.people).toHaveLength(2);
     expect(await r.list.revoke(PERSON)).toMatchObject({ ok: false, message: EDIT_NO_ANSWER_TEXT });
@@ -431,7 +500,7 @@ describe('through Drashti’s client and the stand-in list (the list’s own rul
     standIn = null;
   });
 
-  it('lists every Gmail, adds, approves, revokes and gives access again, and the list itself refuses the owner’s row', async () => {
+  it('lists every Gmail, adds, approves, revokes, gives access again and changes the length, and the list itself refuses the owner’s row', async () => {
     const s = await accessStandIn();
     standIn = s;
     const computer = placeholderComputer('access-list-owner');
@@ -470,20 +539,42 @@ describe('through Drashti’s client and the stand-in list (the list’s own rul
       name: 'Placeholder New',
       note: '',
       approve: true,
+      length: 30,
     });
     expect(added.ok).toBe(true);
+    expect(added.message).toContain('30 days, until');
     expect(added.view.people?.find((p) => p.gmail === 'new.placeholder@example.com')).toMatchObject({
       name: 'Placeholder New',
       status: 'approved',
+      length: 30,
+      endsAt: s.list.t + 30 * DAY,
+      ended: false,
     });
+    expect(added.view.listTime).toBe(s.list.t);
     expect(s.list.tokenFor('new.placeholder@example.com')).not.toBeNull();
 
     const revoked = await list.revoke(PERSON);
     expect(revoked.ok).toBe(true);
     expect(revoked.view.people?.find((p) => p.gmail === PERSON)?.status).toBe('revoked');
-    const again = await list.regrant(PERSON);
+    const again = await list.regrant(PERSON, 90);
     expect(again.ok).toBe(true);
-    expect(again.view.people?.find((p) => p.gmail === PERSON)?.status).toBe('approved');
+    expect(again.view.people?.find((p) => p.gmail === PERSON)).toMatchObject({
+      status: 'approved',
+      endsAt: s.list.t + 90 * DAY,
+    });
+    const unlimited = await list.changeLength(PERSON, 'unlimited');
+    expect(unlimited.ok).toBe(true);
+    expect(unlimited.view.people?.find((p) => p.gmail === PERSON)).toMatchObject({
+      length: 'unlimited',
+      endsAt: null,
+    });
+    // The owner's own row: always Unlimited, refused here and by the list itself.
+    expect((await list.changeLength(s.approver, 30)).ok).toBe(false);
+    expect(await calls.changeLength(s.approver, 30)).toMatchObject({
+      ok: false,
+      kind: 'refused',
+      error: 'owner-row',
+    });
     expect(
       (await list.note(PERSON, 'Placeholder note')).view.people?.find((p) => p.gmail === PERSON)?.note,
     ).toBe('Placeholder note');

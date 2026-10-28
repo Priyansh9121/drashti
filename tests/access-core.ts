@@ -71,6 +71,8 @@ export interface ListEnv {
     column(tab: string, col: number): Cell[];
     write(tab: string, row: number, col: number, value: Cell): void;
     append(tab: string, values: Cell[]): number;
+    /** A column added after the last, its header bold, hidden or shown as dates when asked: its number. */
+    addColumn(tab: string, header: string, o: { hidden: boolean; date: boolean }): number;
   };
   log?(text: string): void;
 }
@@ -81,6 +83,8 @@ export interface LinkPage {
   lines: string[];
   button: string | null;
   params: Record<string, string> | null;
+  /** An Approve page's lengths: the days offered, the most typed, and the one chosen at first. */
+  lengths: { days: number[]; maxDays: number; chosen: number | 'unlimited' } | null;
 }
 
 export interface SheetColumn {
@@ -109,6 +113,7 @@ export interface AccessCore {
     tokenAlphabet: string;
     tokenLength: number;
     macPrefix: string;
+    lengths: { days: number[]; maxDays: number };
   };
   MESSAGES: Record<string, string>;
   handle(env: ListEnv, text: string): { payload: string; sig: string };
@@ -140,6 +145,8 @@ export class MemorySheet {
   readonly tabs = new Map<string, Cell[][]>();
   /** Cells written, by the list (a test counts them). */
   writes = 0;
+  /** The columns the list added itself, in order. */
+  readonly added: { tab: string; header: string; hidden: boolean; date: boolean }[] = [];
 
   constructor() {
     for (const { tab, columns } of core.sheetLayout()) this.tabs.set(tab, [columns.map((c) => c.header)]);
@@ -176,6 +183,24 @@ export class MemorySheet {
     const rows = this.rows(tab);
     rows.push([...values]);
     return rows.length;
+  }
+
+  addColumn(tab: string, header: string, o: { hidden: boolean; date: boolean }): number {
+    const head = this.rows(tab)[0] ?? [];
+    let col = head.length;
+    while (col > 0 && (head[col - 1] === '' || head[col - 1] === null)) col--;
+    this.write(tab, 1, col + 1, header);
+    this.added.push({ tab, header, hidden: o.hidden, date: o.date });
+    return col + 1;
+  }
+
+  /** A column taken away, its cells with it (as a Sheet set up before the column came had it). */
+  removeColumn(tab: string, header: string): void {
+    const c = this.col(tab, header);
+    this.tabs.set(
+      tab,
+      this.rows(tab).map((r) => r.filter((_, i) => i !== c)),
+    );
   }
 
   private col(tab: string, header: string): number {

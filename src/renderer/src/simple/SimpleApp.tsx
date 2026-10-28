@@ -38,6 +38,7 @@ import { LivePreview } from '../operator/LivePreview';
 import { leaveSimpleMode, useMode } from '../operator/mode-store';
 import { NextPreview } from '../operator/NextPreview';
 import { RecoveryBanner } from '../operator/RecoveryBanner';
+import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { EngineUnread } from '../operator/EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
@@ -521,6 +522,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         </Button>
       </header>
       <Band />
+      {/* When access ends (Session 54, a length of access): in the flow, never over the big buttons. */}
+      <AccessEndsNotice />
       <RecoveryBanner />
       {/* A hall screen that stopped (Session 26h), or no sound on the stream (Session 31): in the flow, so
           they never cover the big buttons. */}

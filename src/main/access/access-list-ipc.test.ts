@@ -34,17 +34,18 @@ function setUp() {
   const list = {
     view: () => {
       asked.push('view');
-      return { people: [], updatedAt: 1, problem: null };
+      return { people: [], updatedAt: 1, listTime: 2, problem: null };
     },
     refresh: () => {
       asked.push('refresh');
       return Promise.resolve(NO_VIEW);
     },
-    add: (f: { gmail: string }) => done(`add ${f.gmail}`),
-    approve: (t: string) => done(`approve ${t}`),
+    add: (f: { gmail: string; length: unknown }) => done(`add ${f.gmail} ${String(f.length)}`),
+    approve: (t: string, l: unknown) => done(`approve ${t} ${String(l)}`),
     reject: (t: string) => done(`reject ${t}`),
     revoke: (t: string) => done(`revoke ${t}`),
-    regrant: (t: string) => done(`regrant ${t}`),
+    regrant: (t: string, l: unknown) => done(`regrant ${t} ${String(l)}`),
+    changeLength: (t: string, l: unknown) => done(`length ${t} ${String(l)}`),
     note: (t: string, n: string) => done(`note ${t} ${n}`),
     exportCsv: (g: string[]) => {
       asked.push(`csv ${g.join(' ')}`);
@@ -62,23 +63,25 @@ const refused = { ok: false, message: ACCESS_ERROR_TEXT['not-owner'], view: NO_V
 describe('the Access List’s channels', () => {
   it('answer its own page', async () => {
     const { asked, call } = setUp();
-    expect(call(IPC.accessList.view, PAGE)).toEqual({ people: [], updatedAt: 1, problem: null });
+    expect(call(IPC.accessList.view, PAGE)).toEqual({ people: [], updatedAt: 1, listTime: 2, problem: null });
     await call(IPC.accessList.refresh, PAGE);
-    await call(IPC.accessList.add, PAGE, { gmail: PERSON, name: '', note: '', approve: false });
-    await call(IPC.accessList.approve, PAGE, PERSON);
+    await call(IPC.accessList.add, PAGE, { gmail: PERSON, name: '', note: '', approve: false, length: 30 });
+    await call(IPC.accessList.approve, PAGE, PERSON, 'unlimited');
     await call(IPC.accessList.reject, PAGE, PERSON);
     await call(IPC.accessList.revoke, PAGE, PERSON);
-    await call(IPC.accessList.regrant, PAGE, PERSON);
+    await call(IPC.accessList.regrant, PAGE, PERSON, 7);
+    await call(IPC.accessList.changeLength, PAGE, PERSON, 730);
     await call(IPC.accessList.note, PAGE, PERSON, 'Placeholder note');
     await call(IPC.accessList.exportCsv, PAGE, [PERSON]);
     expect(asked).toEqual([
       'view',
       'refresh',
-      `add ${PERSON}`,
-      `approve ${PERSON}`,
+      `add ${PERSON} 30`,
+      `approve ${PERSON} unlimited`,
       `reject ${PERSON}`,
       `revoke ${PERSON}`,
-      `regrant ${PERSON}`,
+      `regrant ${PERSON} 7`,
+      `length ${PERSON} 730`,
       `note ${PERSON} Placeholder note`,
       `csv ${PERSON}`,
     ]);
@@ -89,15 +92,22 @@ describe('the Access List’s channels', () => {
     expect(call(IPC.accessList.view, OPERATOR)).toEqual(NO_VIEW);
     expect(call(IPC.accessList.refresh, OPERATOR)).toEqual(NO_VIEW);
     expect(
-      await call(IPC.accessList.add, OPERATOR, { gmail: PERSON, name: '', note: '', approve: true }),
+      await call(IPC.accessList.add, OPERATOR, {
+        gmail: PERSON,
+        name: '',
+        note: '',
+        approve: true,
+        length: 'unlimited',
+      }),
     ).toEqual(refused);
     for (const channel of [
       IPC.accessList.approve,
       IPC.accessList.reject,
       IPC.accessList.revoke,
       IPC.accessList.regrant,
+      IPC.accessList.changeLength,
     ])
-      expect(await call(channel, OPERATOR, PERSON), channel).toEqual(refused);
+      expect(await call(channel, OPERATOR, PERSON, 'unlimited'), channel).toEqual(refused);
     expect(await call(IPC.accessList.note, OPERATOR, PERSON, 'Placeholder note')).toEqual(refused);
     expect(await call(IPC.accessList.exportCsv, OPERATOR, [PERSON])).toEqual({
       ok: false,
@@ -113,6 +123,15 @@ describe('the Access List’s channels', () => {
     expect(await call(IPC.accessList.revoke, PAGE, { gmail: PERSON })).toEqual(refused);
     expect(await call(IPC.accessList.revoke, PAGE, 'x'.repeat(400))).toEqual(refused);
     expect(await call(IPC.accessList.note, PAGE, PERSON, 42)).toEqual(refused);
+    // A length the list does not give, or none at all, is never sent on.
+    for (const length of [0, 731, 2.5, 'Unlimited', '30', null, undefined]) {
+      expect(await call(IPC.accessList.approve, PAGE, PERSON, length)).toEqual(refused);
+      expect(await call(IPC.accessList.regrant, PAGE, PERSON, length)).toEqual(refused);
+      expect(await call(IPC.accessList.changeLength, PAGE, PERSON, length)).toEqual(refused);
+      expect(
+        await call(IPC.accessList.add, PAGE, { gmail: PERSON, name: '', note: '', approve: true, length }),
+      ).toEqual(refused);
+    }
     expect(await call(IPC.accessList.exportCsv, PAGE, PERSON)).toMatchObject({ ok: false });
     expect(asked).toEqual([]);
   });

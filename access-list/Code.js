@@ -18,6 +18,8 @@ var URL_SHAPE_ =
   /^https:\/\/script\.google\.com\/(?:a\/macros\/[a-z0-9.-]+|macros)\/s\/[A-Za-z0-9_-]{10,200}\/exec$/;
 // Built from parts, so no text in the repository looks like a key to a secret scanner.
 var PEM_LABEL_ = 'PRIVATE' + ' KEY';
+/** How the Sheet shows the list's dates and times. */
+var DATE_FORMAT_ = 'd mmm yyyy, h:mm';
 
 // ---- the web app ----
 
@@ -35,7 +37,10 @@ function doGet(e) {
   return page_(DrashtiAccess.linkPage(env_(), params));
 }
 
-/** The button on a link's page (Link.html, through google.script.run): the link checks itself. */
+/**
+ * The button on a link's page (Link.html, through google.script.run): the link checks itself, and the list the
+ * length chosen on an Approve page.
+ */
 function answerLink(params) {
   var page = DrashtiAccess.answerLink(env_(), params && typeof params === 'object' ? params : {});
   return { kind: page.kind, title: page.title, lines: page.lines };
@@ -233,7 +238,7 @@ function prepareSheet_() {
         sheet.getRange(1, at + 1).setValue(c.header);
       }
       var col = at + 1;
-      if (c.date) sheet.getRange(2, col, rows, 1).setNumberFormat('d mmm yyyy, h:mm');
+      if (c.date) sheet.getRange(2, col, rows, 1).setNumberFormat(DATE_FORMAT_);
       if (c.hidden) sheet.hideColumns(col);
       if (t.tab === 'Access List' && c.field === 'status')
         sheet
@@ -352,6 +357,17 @@ function sheet_(ss) {
       var s = tab(name);
       s.appendRow(values);
       return s.getLastRow();
+    },
+    // A column core.js adds itself to a Sheet set up before the column came (Access ends, Length): after the
+    // last one, its header bold, and hidden or shown as dates as Set up… would have made it.
+    addColumn: function (name, header, o) {
+      var s = tab(name);
+      var col = s.getLastColumn() + 1;
+      if (s.getMaxColumns() < col) s.insertColumnsAfter(s.getMaxColumns(), col - s.getMaxColumns());
+      s.getRange(1, col).setValue(header).setFontWeight('bold');
+      if (o && o.date) s.getRange(2, col, Math.max(s.getMaxRows() - 1, 1), 1).setNumberFormat(DATE_FORMAT_);
+      if (o && o.hidden) s.hideColumns(col);
+      return col;
     },
   };
 }

@@ -100,6 +100,7 @@ describe('the checks', () => {
       status: 'in',
       owner: false,
       recorded: false,
+      endsAt: null,
     });
     const owner = clientOf(s, 'client-owner');
     const me = s.grant(PLACEHOLDER_APPROVER, placeholderComputer('client-owner'));
@@ -142,11 +143,20 @@ describe('the owner’s calls', () => {
       status: 'requested',
       mailed: true,
     });
-    expect(value(await owner.approve(me, PERSON))).toMatchObject({
+    expect(value(await owner.approve(me, PERSON, 30))).toMatchObject({
       status: 'approved',
       runsOut: expect.any(Number) as unknown,
+      endsAt: s.list.t + 30 * 24 * 3_600_000,
     });
-    expect(value(await owner.regrant(me, PERSON))).toMatchObject({ status: 'approved' });
+    expect(value(await owner.regrant(me, PERSON, 'unlimited'))).toMatchObject({
+      status: 'approved',
+      endsAt: null,
+    });
+    expect(value(await owner.length(me, PERSON, 7))).toEqual({
+      status: 'approved',
+      endsAt: s.list.t + 7 * 24 * 3_600_000,
+    });
+    expect(await owner.length(me, PERSON, 731)).toMatchObject({ ok: false, error: 'bad-length' });
     expect(value(await owner.note(me, PERSON, 'Placeholder note'))).toEqual({});
     expect(value(await owner.add(me, 'placeholder.other@example.com'))).toMatchObject({
       status: 'requested',
@@ -165,6 +175,10 @@ describe('the owner’s calls', () => {
       name: 'Placeholder Added',
       note: 'Placeholder note',
       token: { runsOut: expect.any(Number) as unknown },
+      length: 7,
+      endsAt: s.list.t + 7 * 24 * 3_600_000,
+      ended: false,
+      endsUnreadable: false,
     });
     expect(await owner.revoke(me, PLACEHOLDER_APPROVER)).toMatchObject({ ok: false, error: 'owner-row' });
 

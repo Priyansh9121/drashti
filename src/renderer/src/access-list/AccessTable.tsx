@@ -4,6 +4,7 @@ import {
   ACCESS_COLUMNS,
   computerLine,
   computersOf,
+  endsCell,
   formatDay,
   formatMinutes,
   formatSeen,
@@ -34,6 +35,7 @@ const WIDTHS: Record<AccessColumn, number> = {
   status: 200,
   requested: 116,
   approved: 116,
+  ends: 150,
   revoked: 116,
   computers: 290,
   lastSeen: 150,
@@ -89,6 +91,7 @@ const Row = memo(function Row({
   chosen,
   tabbable,
   now,
+  listTime,
   onChoose,
   onKeys,
 }: {
@@ -97,10 +100,13 @@ const Row = memo(function Row({
   chosen: boolean;
   tabbable: boolean;
   now: number;
+  /** The list's own time as it last answered: how long is left of a length is counted from it. */
+  listTime: number | null;
   onChoose: (gmail: string) => void;
   onKeys: (e: KeyboardEvent<HTMLButtonElement>, index: number) => void;
 }) {
   const computers = computersOf(p);
+  const ends = endsCell(p, listTime);
   const numbers = 'text-right tabular-nums';
   return (
     <tr
@@ -151,6 +157,10 @@ const Row = memo(function Row({
       <td className={cell}>
         <Line text={formatDay(p.approvedAt)} />
       </td>
+      <td className={cell} data-testid="access-ends" data-ended={p.ended ? 'true' : undefined}>
+        <Line text={ends.text} className={ends.warn ? 'font-medium text-warning-fg' : undefined} />
+        <Line text={ends.detail} tone="muted" />
+      </td>
       <td className={cell}>
         <Line text={formatDay(p.revokedAt)} />
       </td>
@@ -200,6 +210,7 @@ export function AccessTable({
   onChoose,
   reveal,
   now,
+  listTime,
 }: {
   /** The rows shown, in their order. */
   people: readonly AccessPerson[];
@@ -212,6 +223,8 @@ export function AccessTable({
   /** Bring the chosen row into view whenever this changes. */
   reveal: number;
   now: number;
+  /** The list's own time as it last answered (for how long is left of each length). */
+  listTime: number | null;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
@@ -395,6 +408,7 @@ export function AccessTable({
                 chosen={index === chosenIndex}
                 tabbable={index === tabbable}
                 now={now}
+                listTime={listTime}
                 onChoose={rowChoose}
                 onKeys={rowKeys}
               />

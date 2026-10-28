@@ -10,8 +10,10 @@ import {
 import {
   ACCESS_CHECK_STATUSES,
   ACCESS_ERRORS,
+  ACCESS_LENGTH_MAX_DAYS,
   ACCESS_MAC_PREFIX,
   ACCESS_REQUEST_STATUSES,
+  ACCESS_UNLIMITED,
   ACCESS_VERSION,
   canonicalJson,
   type AccessActivity,
@@ -19,6 +21,7 @@ import {
   type AccessComputer,
   type AccessErrorCode,
   type AccessGrant,
+  type AccessLength,
   type AccessOp,
   type AccessPerson,
   type AccessRequestStatus,
@@ -147,6 +150,7 @@ const headSchema = z.object({
 const refusalSchema = z.object({ error: z.enum(ACCESS_ERRORS), message: z.string() });
 const date = z.number().nullable();
 const count = z.number().int().min(0);
+const length = z.union([z.literal(ACCESS_UNLIMITED), z.number().int().min(1).max(ACCESS_LENGTH_MAX_DAYS)]);
 const personSchema = z.object({
   gmail: z.string(),
   name: z.string(),
@@ -164,6 +168,10 @@ const personSchema = z.object({
   recordings: count,
   imports: count,
   note: z.string(),
+  length: length.nullable(),
+  endsAt: date,
+  ended: z.boolean(),
+  endsUnreadable: z.boolean(),
   computers: z.array(
     z.object({
       name: z.string(),
@@ -190,9 +198,12 @@ const checkSchema = z.object({
   status: z.enum(ACCESS_CHECK_STATUSES),
   owner: z.boolean(),
   recorded: z.boolean(),
+  /** When access ends, by the list's clock (the answer's serverTime is its now); null: no end. */
+  endsAt: date,
 });
 const listSchema = z.object({ people: z.array(personSchema) });
-const approvedSchema = z.object({ status: z.literal('approved'), runsOut: z.number() });
+const approvedSchema = z.object({ status: z.literal('approved'), runsOut: z.number(), endsAt: date });
+const lengthSchema = z.object({ status: z.literal('approved'), endsAt: date });
 const rejectedSchema = z.object({ status: z.literal('rejected'), mailed: z.boolean() });
 const revokedSchema = z.object({ status: z.literal('revoked') });
 const notedSchema = z.object({});
@@ -252,11 +263,13 @@ export class AccessClient {
       : r;
   }
 
-  /** Every 15 s: still let in? With this computer's totals since its token was used. */
+  /** Every 15 s: still let in, and until when? With this computer's totals since its token was used. */
   check(
     grant: AccessGrant,
     activity: AccessActivity,
-  ): Promise<AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean }>> {
+  ): Promise<
+    AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean; endsAt: number | null }>
+  > {
     return this.call('check', { activity }, checkSchema, grant);
   }
 
@@ -265,29 +278,40 @@ export class AccessClient {
     return this.call('list', {}, listSchema, grant);
   }
 
-  /** The owner's: a Gmail added (a request, and the approver's email with its links). */
+  /** The owner's: a Gmail added (a request, and the approver's email with its links), the length kept for its approval. */
   add(
     grant: AccessGrant,
     target: string,
-    o: { name?: string; note?: string } = {},
+    o: { name?: string; note?: string; length?: AccessLength } = {},
   ): Promise<AccessResult<z.infer<typeof requestedSchema>>> {
     return this.call('add', { target, ...o }, requestedSchema, grant);
   }
 
-  /** The owner's: approved, and a token emailed to the Gmail. */
+  /** The owner's: approved for `length` from now, and a token emailed to the Gmail. */
   approve(
     grant: AccessGrant,
     target: string,
-  ): Promise<AccessResult<{ status: 'approved'; runsOut: number }>> {
-    return this.call('approve', { target }, approvedSchema, grant);
+    length: AccessLength,
+  ): Promise<AccessResult<{ status: 'approved'; runsOut: number; endsAt: number | null }>> {
+    return this.call('approve', { target, length }, approvedSchema, grant);
   }
 
-  /** The owner's: Give access again (a new token; after a revoke, with no computer in). */
+  /** The owner's: Give access again (a new token, and `length` from now; after a revoke, with no computer in). */
   regrant(
     grant: AccessGrant,
     target: string,
-  ): Promise<AccessResult<{ status: 'approved'; runsOut: number }>> {
-    return this.call('regrant', { target }, approvedSchema, grant);
+    length: AccessLength,
+  ): Promise<AccessResult<{ status: 'approved'; runsOut: number; endsAt: number | null }>> {
+    return this.call('regrant', { target, length }, approvedSchema, grant);
+  }
+
+  /** The owner's: a new length for a Gmail approved, counted from now (its computers stopped by an end come back). */
+  length(
+    grant: AccessGrant,
+    target: string,
+    length: AccessLength,
+  ): Promise<AccessResult<{ status: 'approved'; endsAt: number | null }>> {
+    return this.call('length', { target, length }, lengthSchema, grant);
   }
 
   /** The owner's: a request rejected, the person told. */

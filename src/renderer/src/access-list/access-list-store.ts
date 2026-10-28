@@ -9,7 +9,7 @@ import {
   type AccessSort,
   type StatusFilter,
 } from '../../../shared/access-list';
-import { gmailKey } from '../../../shared/access-protocol';
+import { gmailKey, type AccessLength } from '../../../shared/access-protocol';
 
 /*
  * The Access List's page (Session 54, E4): the list as the main process last had it from the owner's Google
@@ -18,8 +18,15 @@ import { gmailKey } from '../../../shared/access-protocol';
  * Every edit goes through the main process, which alone asks the list, as the owner.
  */
 
+/** An edit that asks how long access lasts first (the owner's decision of 28 Oct 2026). */
+export type LengthEdit = 'approve' | 'regrant' | 'length';
+
 export type AccessDialog =
-  { kind: 'add' } | { kind: 'note'; gmail: string } | { kind: 'revoke'; gmail: string } | null;
+  | { kind: 'add' }
+  | { kind: 'note'; gmail: string }
+  | { kind: 'revoke'; gmail: string }
+  | { kind: 'length'; edit: LengthEdit; gmail: string }
+  | null;
 
 interface AccessListPage {
   /** As the main process last told it; null until it first has. */
@@ -137,16 +144,33 @@ async function run(
   }
 }
 
-/** Approve, Reject, Revoke or Give access again (Revoke is asked first, by its dialog). */
-export function edit(kind: Exclude<AccessEdit, 'note'>, gmail: string): Promise<AccessListResult | null> {
+/** Reject or Revoke (Revoke is asked first, by its dialog). */
+export function edit(
+  kind: Exclude<AccessEdit, 'note' | LengthEdit>,
+  gmail: string,
+): Promise<AccessListResult | null> {
   const bridge = window.drashti.accessList;
   const calls = {
-    approve: () => bridge.approve(gmail),
     reject: () => bridge.reject(gmail),
     revoke: () => bridge.revoke(gmail),
-    regrant: () => bridge.regrant(gmail),
   };
   return run(calls[kind], kind === 'revoke');
+}
+
+/**
+ * Approve, Give access again or Change the length, with the length chosen in its dialog: the dialog closes once it is
+ * done, and says why not when it is not.
+ */
+export async function giveLength(kind: LengthEdit, gmail: string, length: AccessLength): Promise<void> {
+  const bridge = window.drashti.accessList;
+  const calls = {
+    approve: () => bridge.approve(gmail, length),
+    regrant: () => bridge.regrant(gmail, length),
+    length: () => bridge.changeLength(gmail, length),
+  };
+  const result = await run(calls[kind], false);
+  if (result?.ok) closeDialog();
+  else if (result) useAccessList.setState({ dialogProblem: result.message, said: null });
 }
 
 /** Save a Gmail's note (from its dialog, which closes once it is saved). */
