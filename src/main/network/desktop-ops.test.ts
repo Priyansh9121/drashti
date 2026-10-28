@@ -13,6 +13,7 @@ import {
   SCREEN_RECORDING_AT_COMPUTER,
   SWITCH_ASKS_FIRST,
 } from '../../shared/network-desktop';
+import type { Announcement, AnnouncementsView } from '../../shared/announcements';
 import type { WindowList } from '../../shared/live-window';
 import type { MidiLearnable, MidiSeen, MidiSettings } from '../../shared/midi';
 import { MIDI_NOT_LISTED, NOT_A_LISTED_MIDI_DEVICE } from '../../shared/network-desktop';
@@ -90,6 +91,27 @@ interface Call {
   what: string;
   args: unknown[];
 }
+
+/** One announcement waiting, one showing, and one decided earlier (never sent to a phone). */
+const announcement = (id: string, status: Announcement['status']): Announcement => ({
+  id,
+  text: `Placeholder announcement ${id}`,
+  sentText: `Placeholder announcement ${id}`,
+  from: 'Placeholder volunteer',
+  minutes: 5,
+  deviceName: 'Placeholder poster',
+  status,
+  shownAs: status === 'showing' ? 'ticker' : null,
+  sentAt: '2026-10-28T10:00:00.000Z',
+  decidedAt: null,
+  until: null,
+  endedAt: null,
+});
+const QUEUE: AnnouncementsView = {
+  waiting: [announcement('a-1', 'waiting')],
+  showing: [announcement('a-2', 'showing')],
+  earlier: [announcement('a-3', 'ended')],
+};
 
 function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
   const db = openDatabase(':memory:');
@@ -242,6 +264,22 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
         show: (id) => {
           calls.push({ what: 'showWindow', args: [id] });
           return { ok: true };
+        },
+      },
+      // The announcements' queue (Session 54): the service's own functions, recorded.
+      queue: {
+        view: () => QUEUE,
+        approve: (input) => {
+          calls.push({ what: 'approve', args: [input] });
+          return { ok: true, view: QUEUE };
+        },
+        reject: (input) => {
+          calls.push({ what: 'reject', args: [input] });
+          return { ok: true, view: QUEUE };
+        },
+        takeOff: (input) => {
+          calls.push({ what: 'takeOff', args: [input] });
+          return { ok: true, view: QUEUE };
         },
       },
       // MIDI (Session 54): the settings kept, the window's devices as it said them, learning asked of it.
@@ -915,5 +953,39 @@ describe('MIDI from a phone (Session 54, the phone as a full Drashti)', () => {
         body: { message: SIMPLE_MODE_REFUSAL },
       });
     expect(calls.map((c) => c.what)).toEqual([]);
+  });
+});
+
+describe('the announcements’ queue from a phone (Session 54, the phone as a full Drashti)', () => {
+  it('reads what waits and what shows, never what was decided earlier, and decides as Announcements does', () => {
+    const { ask, remote, calls } = setup();
+    const read = ask(remote, 'queue');
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ queue: { waiting: [{ id: 'a-1' }], showing: [{ id: 'a-2' }] } });
+    expect(JSON.stringify(read.body)).not.toContain('a-3');
+    expect(ask(remote, 'queue.approve', { id: 'a-1', as: 'ticker' }).status).toBe(200);
+    expect(ask(remote, 'queue.reject', { id: 'a-1' }).status).toBe(200);
+    expect(ask(remote, 'queue.takeOff', { id: 'a-2' }).status).toBe(200);
+    expect(calls.map((c) => [c.what, c.args[0]])).toEqual([
+      ['approve', { id: 'a-1', as: 'ticker' }],
+      ['reject', { id: 'a-1' }],
+      ['takeOff', { id: 'a-2' }],
+    ]);
+  });
+
+  it('is a Remote’s alone, never the poster’s, and Simple Mode refuses the decisions, never the reading', () => {
+    const { ask, remote, stage, poster, calls, setLocked } = setup();
+    for (const device of [stage, poster]) {
+      expect(ask(device, 'queue').status).toBe(403);
+      expect(ask(device, 'queue.approve', { id: 'a-1', as: 'ticker' }).status).toBe(403);
+    }
+    setLocked(true);
+    expect(ask(remote, 'queue').status).toBe(200);
+    for (const op of ['queue.approve', 'queue.reject', 'queue.takeOff'] as const)
+      expect(ask(remote, op, { id: 'a-1', as: 'ticker' })).toMatchObject({
+        status: 403,
+        body: { message: SIMPLE_MODE_REFUSAL },
+      });
+    expect(calls).toEqual([]);
   });
 });

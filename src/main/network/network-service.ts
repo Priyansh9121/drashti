@@ -270,6 +270,11 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'midi.device': IPC.midi.set,
   'midi.forget': IPC.midi.set,
   'midi.learn': IPC.midi.set,
+  // The announcements' queue (Session 54): reading it is open; deciding is Pro Mode's, as in the window.
+  queue: IPC.announcements.list,
+  'queue.approve': IPC.announcements.approve,
+  'queue.reject': IPC.announcements.reject,
+  'queue.takeOff': IPC.announcements.takeOff,
 };
 
 const ON_SETTING = 'network.on';
@@ -983,6 +988,10 @@ export class NetworkService implements EngineTransport {
       case 'midi.device':
       case 'midi.forget':
       case 'midi.learn':
+      case 'queue':
+      case 'queue.approve':
+      case 'queue.reject':
+      case 'queue.takeOff':
         return this.desktop
           ? this.desktop.answer(request.op, args, device, who)
           : deny(404, 'Drashti cannot set that up from a phone here.');

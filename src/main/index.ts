@@ -3684,6 +3684,8 @@ function start(): void {
     minuteMs: announceMinuteMs,
     changed: (view) => {
       sendToOperator(IPC.announcements.changed, view);
+      // A phone deciding on them reads them again (Session 54).
+      net.hint('queue');
       eventsOut.emit(announcementEvents(eventsAnnouncementsWas, view));
       eventsAnnouncementsWas = view;
     },
@@ -3909,6 +3911,12 @@ function start(): void {
       windows: {
         list: () => shownWindows.list(),
         show: (id) => shownWindows.show(id),
+      },
+      queue: {
+        view: () => announcements.view(),
+        approve: (input) => announcements.approve(input),
+        reject: (input) => announcements.reject(input),
+        takeOff: (input) => announcements.takeOff(input),
       },
       midi: {
         view: () => ({ settings: midiNow(), seen: seenMidi, learning: midiLearning }),

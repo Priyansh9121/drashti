@@ -280,6 +280,15 @@ curl -s -X POST "$DRASHTI/api/v1/screens/keep" -H "Authorization: Bearer $TOKEN"
 | `POST /api/v1/playlist-items/delete`  | `{"ids":["…"]}`                                                                           | Takes items out of their playlist.                                                                       |
 | `POST /api/v1/playlist-items/restore` | `{"ids":["…"]}`                                                                           | Puts them back (the phone's Undo).                                                                       |
 
+**The announcements' queue** (Announcements on the computer), a Remote's alone, Simple Mode refusing the decisions as the window does (403); the announcements poster's device only sends.
+
+| Request                                         | Body                                                                                               | Does                                                                                                                                |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/announcement-queue`                |                                                                                                    | `queue`: `waiting` and `showing`, each announcement's `id`, `text`, `from`, `minutes`, `deviceName`, `status`, `shownAs` and times. |
+| `POST /api/v1/announcement-queue/{id}/approve`  | `{"as":"ticker"}`, or `{"as":"message"}` (with `"templateId":"…"`, else the Announcement template) | Puts it up for its minutes, in the ticker or as a message, as Approve does; answers with the queue.                                 |
+| `POST /api/v1/announcement-queue/{id}/reject`   |                                                                                                    | Rejects it: the phone that sent it is told.                                                                                         |
+| `POST /api/v1/announcement-queue/{id}/take-off` |                                                                                                    | Takes one that shows off before its time is up.                                                                                     |
+
 **MIDI** (MIDI… on the computer), a Remote's alone, Simple Mode refusing the changes as the window does (403). Only the operator window may use the computer's MIDI, so it lists the devices it sees, and learns a mapping from the next press on the controller there.
 
 | Request                    | Body                                          | Does                                                                                                                                                                                                                 |

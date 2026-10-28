@@ -37,6 +37,7 @@ import type { CoverOptions, ScreensResult, ScreensSnapshot } from '../../shared/
 import { GROUP_ROLES, SCALING_MODES } from '../../shared/screens';
 import { canvasSizeSchema, displayIdSchema, nameSchema } from '../../shared/screens-schema';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
+import type { AnnouncementResult, AnnouncementsView } from '../../shared/announcements';
 import type { NewFromWordsResult } from '../../shared/library';
 import { MIDI_LEARNABLE, type MidiLearnable, type MidiResult, type MidiSettings } from '../../shared/midi';
 import type { PlaylistResult } from '../../shared/playlists';
@@ -127,6 +128,17 @@ export interface DesktopMidi {
   learn(action: MidiLearnable | null): void;
 }
 
+/**
+ * The announcements' queue (Session 54), as the operator window's Announcements decides on them: the service's own
+ * functions (announcement-service.ts), each checking what it is given as the window's request is checked.
+ */
+export interface DesktopQueue {
+  view(): AnnouncementsView;
+  approve(input: unknown): AnnouncementResult;
+  reject(input: unknown): AnnouncementResult;
+  takeOff(input: unknown): AnnouncementResult;
+}
+
 /** The Drashti computer's own things a Remote sets up, as the main process does them for the window. */
 export interface DesktopActs {
   screens: DesktopScreens;
@@ -137,6 +149,8 @@ export interface DesktopActs {
   library?: DesktopLibrary;
   /** MIDI (left out, a test of something else: a phone cannot). */
   midi?: DesktopMidi;
+  /** The announcements' queue (left out, a test of something else: a phone cannot). */
+  queue?: DesktopQueue;
   /** Simple Mode is on (it only turns the screens on). */
   simple(): boolean;
   /** The computer's own box: "Cover the Drashti controls?". True only when the operator agrees there. */
@@ -189,7 +203,11 @@ export type DesktopOp =
   | 'midi'
   | 'midi.device'
   | 'midi.forget'
-  | 'midi.learn';
+  | 'midi.learn'
+  | 'queue'
+  | 'queue.approve'
+  | 'queue.reject'
+  | 'queue.takeOff';
 
 /** The library's ops (Session 54): each a change the window makes too. */
 export const LIBRARY_OPS = [
@@ -208,7 +226,7 @@ export const LIBRARY_OPS = [
 export type LibraryOp = (typeof LIBRARY_OPS)[number];
 
 /** The ops that read only (all others are limited per phone; the windows' list too, which takes the computer a while). */
-const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs', 'midi']);
+const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs', 'midi', 'queue']);
 
 const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
   status: 200,
@@ -468,9 +486,41 @@ export class DesktopAnswers {
       case 'midi.forget':
       case 'midi.learn':
         return this.midi(op, args, who);
+      case 'queue':
+      case 'queue.approve':
+      case 'queue.reject':
+      case 'queue.takeOff':
+        return this.queue(op, args, who);
       default:
         return this.library(op, args, who);
     }
+  }
+
+  /**
+   * The announcements' queue from a phone (Session 54), as the window's Announcements decides: what waits and what
+   * shows (never the ones decided earlier), approved in the ticker or as a message, rejected, or taken off. Its words
+   * are as the phone that sent it wrote them; the service checks each request as it checks the window's.
+   */
+  private queue(
+    op: 'queue' | 'queue.approve' | 'queue.reject' | 'queue.takeOff',
+    args: Record<string, unknown>,
+    who: string,
+  ) {
+    const queue = this.acts.queue;
+    if (!queue) return deny(404, 'Drashti cannot decide on announcements from a phone here.');
+    const shown = (view: AnnouncementsView) => ({ waiting: view.waiting, showing: view.showing });
+    if (op === 'queue') return ok({ queue: shown(queue.view()) });
+    const result =
+      op === 'queue.approve'
+        ? queue.approve(args)
+        : op === 'queue.reject'
+          ? queue.reject(args)
+          : queue.takeOff(args);
+    if (!result.ok) return deny(409, result.message);
+    this.ctx.log(
+      `Network: ${who} ${op === 'queue.approve' ? 'approved' : op === 'queue.reject' ? 'rejected' : 'took off'} an announcement`,
+    );
+    return ok({ queue: shown(result.view) });
   }
 
   /**

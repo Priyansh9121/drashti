@@ -620,6 +620,10 @@ describe('the network in the main process', () => {
       'midi.device',
       'midi.forget',
       'midi.learn',
+      // The announcements' decisions (Session 54), as the window's are.
+      'queue.approve',
+      'queue.reject',
+      'queue.takeOff',
     ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });

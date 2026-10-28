@@ -1002,3 +1002,75 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await app.close();
     }
   });
+
+/** The announcements in the ticker on the screens now, by id. */
+const inTicker = (win: Page) =>
+  win.evaluate(async () =>
+    ((await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.ticker?.items ?? []).map(
+      (i) => i.id,
+    ),
+  );
+
+for (const engine of ['webkit', 'chromium'] as Engine[])
+  test(`the announcements’ queue from a phone as Announcements decides: one put in the ticker and taken off, one rejected, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+    test.setTimeout(180_000);
+    const { app } = await launchApp(NETWORK_ENV);
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const { port, base } = await networkOn(win);
+    const poster = await pairToken(win, port, 'announcements', 'Placeholder poster');
+    const send = async (text: string) => {
+      const sent = await apiCall(port, '/api/v1/announcements', {
+        method: 'POST',
+        token: poster,
+        body: { text, from: 'Placeholder volunteer', minutes: 10 },
+      });
+      expect(sent.status).toBe(202);
+      return (sent.json['announcement'] as { id: string }).id;
+    };
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    const phone = await device(engine);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      for (const size of SIZES) {
+        const first = await send(`Placeholder car notice ${size.layout}`);
+        const second = await send(`Placeholder lost keys ${size.layout}`);
+        await p.setViewportSize(size);
+        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
+        await p.getByTestId('remote-open-queue').click();
+        await expect(p.getByTestId('remote-queue-sheet')).toBeVisible();
+        const waiting = (id: string) => p.locator(`[data-testid="remote-queue-waiting"][data-id="${id}"]`);
+        await expect(waiting(first)).toContainText('Placeholder volunteer');
+        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
+        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
+        await expectNoSeriousA11yIssues(p, `the announcements’ queue on ${size.name} (${engine})`);
+        // In the ticker: on the hall's screens; then taken off.
+        await waiting(first).getByTestId('remote-queue-ticker').click();
+        await expect.poll(() => inTicker(win)).toContain(first);
+        const showing = p.locator(`[data-testid="remote-queue-showing"][data-id="${first}"]`);
+        await expect(showing).toContainText('in the ticker');
+        await showing.getByTestId('remote-queue-take-off').click();
+        await expect.poll(() => inTicker(win)).not.toContain(first);
+        // Rejected: gone from the queue.
+        await waiting(second).getByTestId('remote-queue-reject').click();
+        await expect(waiting(second)).toHaveCount(0);
+        await p.getByTestId('remote-queue-sheet-close').click();
+      }
+      // Simple Mode: approving refused in words, nothing up.
+      const third = await send('Placeholder refused notice');
+      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      await p.getByTestId('remote-open-queue').click();
+      await p
+        .locator(`[data-testid="remote-queue-waiting"][data-id="${third}"]`)
+        .getByTestId('remote-queue-ticker')
+        .click();
+      await expect(p.getByTestId('remote-queue-problem')).toContainText('Simple Mode');
+      expect(await inTicker(win)).not.toContain(third);
+    } finally {
+      await phone.close();
+      await app.close();
+    }
+  });

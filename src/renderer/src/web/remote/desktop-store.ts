@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Announcement } from '../../../../shared/announcements';
 import type {
   RemoteInputs,
   RemoteMidi,
@@ -20,7 +21,7 @@ import { loadMedia } from './mirror-store';
  */
 
 /** The sheets a phone opens over the remote to set up the computer's things. */
-export type DesktopSheet = 'screens' | 'inputs' | 'pip' | 'library' | 'midi';
+export type DesktopSheet = 'screens' | 'inputs' | 'pip' | 'library' | 'midi' | 'queue';
 
 interface DesktopView {
   /** The sheet open now, or null. */
@@ -42,6 +43,14 @@ interface DesktopView {
   lookingForWindows: boolean;
   /** MIDI as the computer has it (Session 54; null until read). */
   midi: RemoteMidi | null;
+  /** The announcements waiting and showing (Session 54; null until read). */
+  queue: RemoteQueue | null;
+}
+
+/** The announcements' queue as a Remote reads it. */
+export interface RemoteQueue {
+  waiting: Announcement[];
+  showing: Announcement[];
 }
 
 export const useDesktop = create<DesktopView>(() => ({
@@ -55,6 +64,7 @@ export const useDesktop = create<DesktopView>(() => ({
   windows: null,
   lookingForWindows: false,
   midi: null,
+  queue: null,
 }));
 
 /**
@@ -97,11 +107,31 @@ export async function changeMidi(path: string, body: unknown): Promise<boolean> 
   return true;
 }
 
+export async function loadQueue(): Promise<void> {
+  const r = await api<{ queue: RemoteQueue }>('/api/v1/announcement-queue');
+  if (r.ok) useDesktop.setState({ queue: r.queue });
+}
+
+/** A decision on an announcement, sent and answered with the queue as it is after it; false with the problem said. */
+export async function decideQueue(path: string, body?: unknown): Promise<boolean> {
+  if (useDesktop.getState().busy) return false;
+  useDesktop.setState({ busy: true, problem: null });
+  const r = await api<{ queue: RemoteQueue }>(path, { method: 'POST', body });
+  useDesktop.setState({ busy: false });
+  if (!r.ok) {
+    useDesktop.setState({ problem: r.message });
+    return false;
+  }
+  useDesktop.setState({ queue: r.queue });
+  return true;
+}
+
 export function openSheet(sheet: DesktopSheet): void {
   useDesktop.setState({ sheet, problem: null, ...(sheet !== 'screens' ? { windows: null } : {}) });
   if (sheet === 'screens') void loadScreens();
   else if (sheet === 'inputs' || sheet === 'pip') void loadInputs();
   else if (sheet === 'midi') void loadMidi();
+  else if (sheet === 'queue') void loadQueue();
   // The box takes a picture or video from Media too (Session 54); the library's sheet reads its own lists.
   if (sheet === 'pip') void loadMedia();
 }
@@ -203,11 +233,13 @@ export function startDesktop(): void {
   onOnline(() => {
     if (needed()) void loadScreens();
     if (useDesktop.getState().sheet === 'inputs' || useDesktop.getState().sheet === 'pip') void loadInputs();
+    if (useDesktop.getState().sheet === 'queue') void loadQueue();
   });
   onListsChanged((what) => {
     if ((what === 'setup' || what === 'screens') && needed()) void loadScreens();
     const sheet = useDesktop.getState().sheet;
     if (what === 'setup' && (sheet === 'inputs' || sheet === 'pip')) void loadInputs();
     if (what === 'setup' && sheet === 'midi') void loadMidi();
+    if (what === 'queue' && sheet === 'queue') void loadQueue();
   });
 }

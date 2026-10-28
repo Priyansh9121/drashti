@@ -164,6 +164,14 @@ export const DEVICE_OPS = {
   'midi.device': ['remote'],
   'midi.forget': ['remote'],
   'midi.learn': ['remote'],
+  /**
+   * The announcements' queue (Session 54): what waits and what shows, each approved (in the ticker or as a message),
+   * rejected or taken off, as the window's Announcements does. Never the poster's device: it only sends.
+   */
+  queue: ['remote'],
+  'queue.approve': ['remote'],
+  'queue.reject': ['remote'],
+  'queue.takeOff': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;

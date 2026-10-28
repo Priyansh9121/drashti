@@ -128,7 +128,9 @@ export type NetworkChange =
    */
   | 'setup'
   /** The library's masks changed (Session 54, the phone as a full Drashti): a Remote reads them again. */
-  | 'masks';
+  | 'masks'
+  /** The announcements' queue changed (Session 54): a Remote deciding on them reads it again. */
+  | 'queue';
 
 /** What the feed sends a device. */
 export type ToDevice =

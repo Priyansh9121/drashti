@@ -85,5 +85,13 @@ export function desktopRoutes<R>(route: MakeRoute<R>): R[] {
     route('POST', '/api/v1/midi/device', 'midi.device', (b) => b),
     route('POST', '/api/v1/midi/forget', 'midi.forget', (b) => b),
     route('POST', '/api/v1/midi/learn', 'midi.learn', (b) => b),
+    // The announcements' queue, as Announcements decides on the computer.
+    route('GET', '/api/v1/announcement-queue', 'queue'),
+    route('POST', '/api/v1/announcement-queue/:id/approve', 'queue.approve', (b, p) => ({
+      ...b,
+      id: p['id'],
+    })),
+    route('POST', '/api/v1/announcement-queue/:id/reject', 'queue.reject', (_b, p) => ({ id: p['id'] })),
+    route('POST', '/api/v1/announcement-queue/:id/take-off', 'queue.takeOff', (_b, p) => ({ id: p['id'] })),
   ];
 }
