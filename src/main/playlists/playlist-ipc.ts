@@ -56,14 +56,14 @@ const failed = (message: string): PlaylistResult => ({ ok: false, message });
  * changed. Simple Mode's lock and the phone's own checks are the network's.
  */
 export interface PlaylistChanges {
-  create(name: unknown, parentId: unknown, isFolder: unknown): PlaylistResult;
-  rename(playlistId: unknown, name: unknown): PlaylistResult;
-  remove(ids: unknown): PlaylistResult;
-  restore(ids: unknown): PlaylistResult;
-  addItems(playlistId: unknown, at: unknown, items: unknown): PlaylistResult;
-  moveItems(playlistId: unknown, ids: unknown, to: unknown): PlaylistResult;
-  removeItems(ids: unknown): PlaylistResult;
-  restoreItems(ids: unknown): PlaylistResult;
+  create: (name: unknown, parentId: unknown, isFolder: unknown) => PlaylistResult;
+  rename: (playlistId: unknown, name: unknown) => PlaylistResult;
+  remove: (ids: unknown) => PlaylistResult;
+  restore: (ids: unknown) => PlaylistResult;
+  addItems: (playlistId: unknown, at: unknown, items: unknown) => PlaylistResult;
+  moveItems: (playlistId: unknown, ids: unknown, to: unknown) => PlaylistResult;
+  removeItems: (ids: unknown) => PlaylistResult;
+  restoreItems: (ids: unknown) => PlaylistResult;
 }
 
 export function registerPlaylistIpc({
