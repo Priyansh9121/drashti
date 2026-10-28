@@ -1347,3 +1347,92 @@ describe('access lengths (the owner’s decision of 28 Oct 2026)', () => {
     ]);
   });
 });
+
+describe('a check’s answer once access has ended: a status, never a refusal (28 Oct 2026)', () => {
+  /** A Gmail let in on its computer, the owner's computer beside it: the check's grant. */
+  function letInOne(length?: number) {
+    const list = newList();
+    const owner = new Computer(list, placeholderComputer('mac-ended-owner'));
+    const me = ownerIn(list, owner);
+    const c = new Computer(list, placeholderComputer('mac-ended'));
+    expect(c.request(PERSON)).toMatchObject({ ok: true });
+    owner.owner('approve', me, { target: PERSON, ...(length === undefined ? {} : { length }) });
+    const grant = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+    return { list, owner, me, c, grant };
+  }
+
+  it('answers revoked, rejected, unknown or expired for every way a computer’s access can end', () => {
+    const ways: [string, (o: ReturnType<typeof letInOne>) => void, string][] = [
+      ['revoked in the Access List', (o) => o.owner.owner('revoke', o.me, { target: PERSON }), 'revoked'],
+      [
+        'revoked typed in the Sheet',
+        (o) => o.list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Status', 'revoked'),
+        'revoked',
+      ],
+      [
+        'rejected typed in the Sheet',
+        (o) => o.list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Status', 'rejected'),
+        'rejected',
+      ],
+      [
+        'a status the list does not know',
+        (o) => o.list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Status', 'paused'),
+        'unknown',
+      ],
+      [
+        'its row taken out of the Sheet',
+        (o) => o.list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Gmail', ''),
+        'unknown',
+      ],
+      [
+        'its computer’s row taken out',
+        (o) => o.list.sheet.type(COMPUTERS, 'Gmail', PERSON, 'Grant', ''),
+        'unknown',
+      ],
+      ['its length ended', (o) => o.owner.owner('length', o.me, { target: PERSON, length: 1 }), 'expired'],
+      [
+        'an end it cannot read typed in',
+        (o) => o.list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Access ends', 'soon'),
+        'expired',
+      ],
+    ];
+    for (const [what, end, status] of ways) {
+      const o = letInOne();
+      end(o);
+      o.list.move(2 * DAY);
+      const a = o.c.check(o.grant);
+      expect(a, what).toMatchObject({ ok: true, status });
+      expect(['revoked', 'rejected', 'unknown', 'expired'], what).toContain(a['status']);
+    }
+  });
+
+  it('refuses a check only when it is no call of this version, or the list cannot answer it now: never because access ended', () => {
+    // Not a call of this version: Drashti's own calls never are.
+    const o = letInOne();
+    const bad = readAnswer(
+      o.list.handle(JSON.stringify({ v: 2, op: 'check', nonce: '0'.repeat(32), computer: o.c.computer })),
+      o.list.keys.publicKey,
+    );
+    expect(bad).toMatchObject({ ok: false, error: 'bad-request' });
+    // The list not set up (its keys gone), busy (its lock held elsewhere while a status typed by hand is taken in),
+    // or failing inside (its Sheet unreadable): no answer for now, each.
+    const notSetUp = letInOne();
+    notSetUp.list.props.secretKey = '';
+    expect(notSetUp.c.check(notSetUp.grant)).toMatchObject({ ok: false, error: 'not-set-up' });
+    const busy = letInOne();
+    busy.list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Note', 'Placeholder');
+    busy.list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Status', 'revoked');
+    busy.list.move(11 * SECOND);
+    busy.list.lockBusy = true;
+    expect(busy.c.check(busy.grant)).toMatchObject({ ok: false, error: 'busy' });
+    // Once it can answer, the revoke typed in is the answer.
+    busy.list.lockBusy = false;
+    expect(busy.c.check(busy.grant)).toMatchObject({ ok: true, status: 'revoked' });
+    const failing = letInOne();
+    failing.list.move(11 * SECOND);
+    failing.list.env.sheet.read = () => {
+      throw new Error('Placeholder Sheet failure');
+    };
+    expect(failing.c.check(failing.grant)).toMatchObject({ ok: false, error: 'server' });
+  });
+});
