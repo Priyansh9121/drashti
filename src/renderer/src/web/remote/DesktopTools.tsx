@@ -21,8 +21,9 @@ import { PipSheet } from './PipSheet';
 import { ScreensSheet, SwitchButtons } from './ScreensSheet';
 
 /*
- * The phone as a full Drashti (Session 54, the owner's item 3): in More, first, what the operator window's top bar
- * has for the computer's own screens (Audience and Stage, and Screens, opened here as a sheet); and over the
+ * The phone as a full Drashti (Session 54, the owner's item 3): in More, first, The Drashti computer: what the
+ * operator window's top bar has for its screens (Audience and Stage, and Screens, opened here as a sheet), then a
+ * sheet each for its video inputs and windows, picture in picture, library, MIDI and announcements; and over the
  * remote, the sheet open now and the window's questions asked on the phone: Keep these screens?, with its
  * countdown, once a change of this phone's waits for it (or the Screens sheet is open), and "Turn Audience off?"
  * before a switch goes off while its screens show something.
@@ -33,10 +34,11 @@ export function DesktopTools() {
   return (
     <section className="space-y-2" aria-labelledby="remote-desktop-title" data-testid="remote-desktop">
       <h2 id="remote-desktop-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Screens
+        The Drashti computer
       </h2>
       <p className="text-base text-muted">
-        The Drashti computer’s own screens, set up from here as in Drashti.
+        Its screens, video inputs and windows, picture in picture, library, MIDI and announcements, set up
+        from here as in Drashti.
       </p>
       <SwitchButtons />
       {problem && (
