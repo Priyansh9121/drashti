@@ -57,10 +57,13 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
   () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-deck-import-'));
     const deck = join(dir, 'Placeholder trial.pptx');
+    // Every library a test opens, closed before the folder goes: Windows will not delete a file still open.
+    const opened: { close(): unknown }[] = [];
     beforeAll(() => {
       writeFileSync(deck, makeTestDeck(TRIAL_SLIDES, makeDeckMedia(ffmpeg, join(dir, 'made'))));
     });
     afterAll(() => {
+      for (const db of opened) db.close();
       rmSync(dir, { recursive: true, force: true });
     });
 
@@ -69,6 +72,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       const mediaDir = join(root, 'Media');
       mkdirSync(mediaDir);
       const db = openDatabase(join(root, 'drashti.sqlite'));
+      opened.push(db);
       const media = new MediaStore(db, { dir: mediaDir, freeBytes: () => 1024 ** 4 });
       const run = (
         options: {
