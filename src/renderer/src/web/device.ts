@@ -69,6 +69,9 @@ export type ApiAnswer<T> =
   /** `confirm`: nothing changed until the window's question is answered on the device (Session 54: "switch-off"). */
   | { ok: false; message: string; status: number; confirm?: string };
 
+/** How long a read refused for coming too fast waits before it is asked again (ms), each time. */
+const READ_AGAIN_MS = [400, 1200];
+
 /**
  * A request to Drashti with this device's token. A token Drashti no longer
  * knows goes back to pairing; a token given here (the announcements poster's)
@@ -80,23 +83,32 @@ export async function api<T = Record<string, unknown>>(
 ): Promise<ApiAnswer<T>> {
   const own = init.token === undefined;
   const token = init.token ?? current()?.token;
+  const method = init.method ?? 'GET';
   let response: Response;
-  try {
-    response = await fetch(path, {
-      method: init.method ?? 'GET',
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      cache: 'no-store',
-    });
-  } catch {
-    return {
-      ok: false,
-      status: 0,
-      message: 'Drashti cannot be reached. Check this phone is on the same Wi-Fi.',
-    };
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      response = await fetch(path, {
+        method,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        cache: 'no-store',
+      });
+    } catch {
+      return {
+        ok: false,
+        status: 0,
+        message: 'Drashti cannot be reached. Check this phone is on the same Wi-Fi.',
+      };
+    }
+    // A read refused for coming too fast (Session 54: the burst of reads a phone makes as the lists change under a
+    // run of its own changes) is asked again a moment later, at most twice, as the server's limit refills within a
+    // second; a change is never sent twice.
+    const wait = READ_AGAIN_MS[attempt];
+    if (response.status !== 429 || method !== 'GET' || wait === undefined) break;
+    await new Promise((resolve) => setTimeout(resolve, wait));
   }
   let body: Record<string, unknown> = {};
   try {

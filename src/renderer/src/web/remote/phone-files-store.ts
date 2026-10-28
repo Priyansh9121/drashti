@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AddFilesView, SharedPlaylist } from '../../../../shared/phone-files';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { api } from '../device';
+import { oneAtATime } from '../one-at-a-time';
 import { onListsChanged, onOnline } from '../feed';
 import { closeViewer, useViewer, type ViewerPage } from '../viewer/viewer-store';
 import { useMirror } from './mirror-store';
@@ -58,7 +59,10 @@ function stopLooking(playlistId: string): void {
 /** At most this many files' rows are kept on the page (the newest). */
 const ROWS = 20;
 
-export async function loadShared(): Promise<void> {
+/** The playlists shared with phones, one read at a time however often Drashti says they changed. */
+export const loadShared = oneAtATime(readShared);
+
+async function readShared(): Promise<void> {
   const r = await api<{ playlists: SharedPlaylist[] }>('/api/v1/shared');
   if (!r.ok) return;
   usePhoneFiles.setState({ shared: r.playlists });

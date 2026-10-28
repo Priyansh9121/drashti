@@ -8,6 +8,7 @@ import type {
   RemoteProp,
 } from '../../../../shared/network-mirror';
 import { api } from '../device';
+import { oneAtATime } from '../one-at-a-time';
 import { onListsChanged, onOnline } from '../feed';
 
 /*
@@ -65,10 +66,11 @@ export async function loadLowerThirds(): Promise<void> {
   if (r.ok) useMirror.setState({ lowerThirds: r.lowerThirds });
 }
 
-export async function loadMusic(): Promise<void> {
+/** The audio playlists, one read at a time however often Drashti says they changed (one-at-a-time.ts). */
+export const loadMusic = oneAtATime(async () => {
   const r = await api<{ playlists: RemoteMusic[] }>('/api/v1/music');
   if (r.ok) useMirror.setState({ music: r.playlists });
-}
+});
 
 /**
  * The media whose names hold the words asked for (all of them for none): the first page, or the next one after
