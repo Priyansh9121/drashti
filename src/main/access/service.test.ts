@@ -30,7 +30,7 @@ import { ACCESS_FILE, AccessStore, storedAccess } from './store';
 
 /*
  * Whether Drashti may open and stay open (Session 54, E2 and E3, service.ts): the checks before it opens and
- * every 15 s, the 2 minutes on the monotonic clock with the countdown, the stop that only Quit ends, the lock
+ * every 15 s, the hour without an answer on the monotonic clock with its bar, the stop that only Quit ends, the lock
  * screen's request, token and Try Again, the self-tests that never ask, and a data folder copied from another
  * computer. Mostly against a list scripted here, on a clock the test moves; then once against the stand-in list
  * (the list's own rules) on 127.0.0.1. Placeholder addresses and made-up grants only.

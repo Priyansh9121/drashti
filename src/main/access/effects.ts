@@ -6,7 +6,7 @@ import type { ActivityKind } from './service';
 
 /*
  * What the gate's changes do in a Drashti that has opened (Session 54, access by Gmail, E3). On a stop (revoked,
- * rejected, unknown, or 2 minutes with no answer) everything stops at once, in the main process: the engine fades
+ * rejected, unknown, its length ended, or an hour with no answer) everything stops at once, in the main process: the engine fades
  * every screen to black from its own time and changes nothing after (so the hall's screens, the stage, key and
  * fill, the nodes, the phones and the stream's picture all go black together), the stream and the recording end,
  * the nodes are told, the menu keeps only Quit and no key works system-wide. The phones' API and every window's

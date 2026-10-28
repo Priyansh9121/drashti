@@ -114,7 +114,7 @@ Use these; don't restyle native elements in a panel. Each is in the gallery.
 
 **Icons** are Lucide (ISC, `LICENSES/icons/`). Import them only from `ui/icons.ts`, and add a new one there (`BlackOut` is Lucide's rectangle, filled). Use 14 px in small controls, 16 px by default, and larger in Simple Mode. An icon is decoration (`aria-hidden`) unless it is the whole button, and then the button has a label.
 
-**What sits over what** (z-index): the splitter 10, notices and the recovery banner 30, dialogs and the slide editor 40, menus 50 and a dialog `onTop` 50 too (Session 51: Keep these screens?), tooltips 60, and the stop's countdown 60 too (Session 54, §51; it takes no click); a leaving copy (§3, "Motion") in the layer of what it copies.
+**What sits over what** (z-index): the splitter 10, notices and the recovery banner 30, dialogs and the slide editor 40, menus 50 and a dialog `onTop` 50 too (Session 51: Keep these screens?), tooltips 60 (the bars with no internet and when access ends, Session 54, §51, sit in the window's flow, over nothing); a leaving copy (§3, "Motion") in the layer of what it copies.
 
 **Menus** show the focus ring on the choice that has the focus, give the focus back to what opened them when they close (unless a choice put it somewhere else, such as a name to type), and keep Esc to themselves: over a dialog or the slide editor, Esc closes only the menu. While one is open, the keyboard is in it (the menu itself when nothing in it can be chosen), and its keys (the arrows, Home, End, Page Up and Down, Space and Enter) never reach the show: Space chooses, as Enter does (Session 25).
 

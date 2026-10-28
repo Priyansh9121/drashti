@@ -89,7 +89,7 @@ export interface AccessServiceOptions {
   /** A self-test: never asks the list; the controls stay locked. */
   selfTest: boolean;
   version: string;
-  /** The main process's monotonic clock (ms): the 2 minutes, and the minutes let in. */
+  /** The main process's monotonic clock (ms): the hour without an answer, and the minutes let in. */
   monotonic: () => number;
   /** This computer's clock (ms): only when the token was used, kept with the access. */
   now: () => number;

@@ -14,7 +14,7 @@ import { Button } from '../ui/Button';
 import { Mark } from '../ui/Mark';
 
 /*
- * The stop (Session 54, access by Gmail: revoked, rejected, unknown, the length ended, or 2 minutes with no answer), in place of the
+ * The stop (Session 54, access by Gmail: revoked, rejected, unknown, the length ended, or an hour with no answer), in place of the
  * controls, in Pro and Simple Mode alike: one plain message and Quit, the one button that works. The main process
  * has stopped everything already (the screens fade to black, the stream and recording end, the nodes and phones
  * stop) and refuses every other request; this only says so.

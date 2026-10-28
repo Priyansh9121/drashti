@@ -109,7 +109,7 @@ export async function prepareTheLock(o: {
     // The performance check's own run adds nothing to this computer's totals.
     counts: !perfCheck,
     version: o.version,
-    // The monotonic clock: the 2 minutes never follow the computer's clock.
+    // The monotonic clock: the hour without an answer never follows the computer's clock.
     monotonic: () => performance.now(),
     now: () => Date.now(),
     setTimer: (ms, run) => {

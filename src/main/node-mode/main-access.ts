@@ -2,8 +2,8 @@
  * A node runs only while paired with a Main that is let in (Session 54, access by Gmail). Main says whether it is
  * as the node connects, at each change and every 15 s. Told it is not, the node's screens go black at once; hearing
  * nothing of it for 2 minutes (Main quit, or its network gone), the same. A node that starts while Main is away shows
- * the last picture it kept (Session 13) for those 2 minutes too, as Main's own 2 minutes keep a show going through a
- * blip, then black. Hearing a Main let in again, the node shows what Main shows: a node has no controls of its own,
+ * the last picture it kept (Session 13) for those 2 minutes too, as Main's own hour without the internet keeps a show
+ * going, then black. Hearing a Main let in again, the node shows what Main shows: a node has no controls of its own,
  * so there is nothing for it to keep stopped (Main itself stops for good). The 2 minutes are on the timers' own
  * clock: a changed computer clock moves nothing. They are the node's own, about the local network to its Main, not the
  * internet: Main keeps working up to an hour without the internet (28 Oct 2026), telling its nodes it is let in.
@@ -13,7 +13,7 @@
 export const NODE_HEARD_MAIN_WITHIN_MS = 2 * 60_000;
 
 export type NodeStopWhy =
-  /** Main said it is not let in (revoked, rejected, unknown, or its own 2 minutes with no answer). */
+  /** Main said it is not let in (revoked, rejected, unknown, its length ended, or its own hour with no answer). */
   | 'main-stopped'
   /** No Main let in heard: since the node started, or for 2 minutes. */
   | 'not-heard';
