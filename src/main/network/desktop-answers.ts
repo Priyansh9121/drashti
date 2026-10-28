@@ -34,6 +34,9 @@ import type { CoverOptions, ScreensResult, ScreensSnapshot } from '../../shared/
 import { GROUP_ROLES, SCALING_MODES } from '../../shared/screens';
 import { canvasSizeSchema, displayIdSchema, nameSchema } from '../../shared/screens-schema';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
+import type { NewFromWordsResult } from '../../shared/library';
+import type { PlaylistResult } from '../../shared/playlists';
+import type { PlaylistChanges } from '../playlists/playlist-ipc';
 import { DesktopConsent, type ConsentQuestion } from './desktop-consent';
 import { RateLimiter } from './limits';
 
@@ -96,12 +99,27 @@ export interface DesktopWindows {
   show(id: string): LiveWindowResult;
 }
 
+/**
+ * The library's changes (Session 54): a presentation made from words, presentations and playlists deleted and put
+ * back (a phone's Undo), a playlist made or renamed, and items added (from the library, by id), moved and taken out
+ * and put back; each as the window's own request makes it (playlist-ipc.ts, words-ipc.ts, index.ts).
+ */
+export interface DesktopLibrary {
+  newFromWords(name: unknown, words: unknown): NewFromWordsResult;
+  removePresentations(ids: unknown): PlaylistResult;
+  restorePresentations(ids: unknown): PlaylistResult;
+  /** Null until the window's own playlist requests are registered (a moment into the start). */
+  playlists(): PlaylistChanges | null;
+}
+
 /** The Drashti computer's own things a Remote sets up, as the main process does them for the window. */
 export interface DesktopActs {
   screens: DesktopScreens;
   switches: DesktopSwitches;
   inputs: DesktopInputs;
   windows: DesktopWindows;
+  /** The library's changes (left out, a test of something else: a phone cannot). */
+  library?: DesktopLibrary;
   /** Simple Mode is on (it only turns the screens on). */
   simple(): boolean;
   /** The computer's own box: "Cover the Drashti controls?". True only when the operator agrees there. */
@@ -139,7 +157,34 @@ export type DesktopOp =
   | 'input.change'
   | 'input.remove'
   | 'windows'
-  | 'window.show';
+  | 'window.show'
+  | 'library.new'
+  | 'library.remove'
+  | 'library.restore'
+  | 'playlist.new'
+  | 'playlist.rename'
+  | 'playlist.remove'
+  | 'playlist.restore'
+  | 'playlist.add'
+  | 'playlist.move'
+  | 'playlist.removeItems'
+  | 'playlist.restoreItems';
+
+/** The library's ops (Session 54): each a change the window makes too. */
+export const LIBRARY_OPS = [
+  'library.new',
+  'library.remove',
+  'library.restore',
+  'playlist.new',
+  'playlist.rename',
+  'playlist.remove',
+  'playlist.restore',
+  'playlist.add',
+  'playlist.move',
+  'playlist.removeItems',
+  'playlist.restoreItems',
+] as const satisfies readonly DesktopOp[];
+export type LibraryOp = (typeof LIBRARY_OPS)[number];
 
 /** The ops that read only (all others are limited per phone; the windows' list too, which takes the computer a while). */
 const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs']);
@@ -189,6 +234,35 @@ const inputChange = z
   .strict();
 const inputRef = z.object({ inputId: idSchema }).strict();
 const windowRef = z.object({ id: z.string().min(1).max(200) }).strict();
+// The library's (Session 54): names and words as the window's requests take them, things by their ids only, at most
+// 50 at once from a phone; what is added to a playlist is a presentation or a file of Media's, never a path.
+const libraryName = z.string().trim().min(1).max(200);
+const fromWords = z.object({ name: libraryName, words: z.string().min(1).max(200_000) }).strict();
+const someIds = z.object({ ids: z.array(idSchema).min(1).max(50) }).strict();
+const playlistName = z.object({ name: libraryName }).strict();
+const playlistRenamed = z.object({ playlistId: idSchema, name: libraryName }).strict();
+const playlistAdd = z
+  .object({
+    playlistId: idSchema,
+    items: z
+      .array(
+        z.discriminatedUnion('kind', [
+          z.object({ kind: z.literal('presentation'), presentationId: idSchema }).strict(),
+          z.object({ kind: z.literal('media'), mediaId: idSchema }).strict(),
+        ]),
+      )
+      .min(1)
+      .max(50),
+    at: z.number().int().min(0).max(100_000).nullable().optional(),
+  })
+  .strict();
+const playlistMove = z
+  .object({
+    playlistId: idSchema,
+    ids: z.array(idSchema).min(1).max(50),
+    to: z.number().int().min(0).max(100_000),
+  })
+  .strict();
 const switchTurn = z
   .object({ which: z.enum(SCREEN_SWITCHES), on: z.boolean(), confirmed: z.literal(true).optional() })
   .strict();
@@ -217,6 +291,11 @@ export class DesktopAnswers {
   private readonly consent: DesktopConsent;
   /** Changes from one phone: two a second, ten at once (each one can open and close windows). */
   private readonly changes: RateLimiter;
+  /**
+   * The library's from one phone (Session 54): five a second, thirty at once, as a person tapping through a playlist
+   * makes them (each a change in the library, never a window); a phone sending more is held back all the same.
+   */
+  private readonly libraryChanges: RateLimiter;
 
   constructor(
     private readonly acts: DesktopActs,
@@ -230,6 +309,7 @@ export class DesktopAnswers {
       },
     });
     this.changes = new RateLimiter(2, 10, () => ctx.now());
+    this.libraryChanges = new RateLimiter(5, 30, () => ctx.now());
   }
 
   /** The screens as this phone reads them, its own ask to cover the controls with them. */
@@ -250,7 +330,8 @@ export class DesktopAnswers {
   }
 
   answer(op: DesktopOp, args: Record<string, unknown>, device: { id: string }, who: string): DeviceAnswer {
-    if (!READS.has(op) && !this.changes.take(device.id))
+    const limit = (LIBRARY_OPS as readonly DesktopOp[]).includes(op) ? this.libraryChanges : this.changes;
+    if (!READS.has(op) && !limit.take(device.id))
       return deny(429, 'Too many changes at once: wait a moment, then try again.');
     const s = this.acts.screens;
     const done = (result: ScreensResult, did: string): DeviceAnswer => {
@@ -356,6 +437,81 @@ export class DesktopAnswers {
         if (!shown.ok) return deny(409, shown.message);
         this.ctx.log(`Network: ${who} put another app’s window up as the background`);
         return ok({});
+      }
+      default:
+        return this.library(op, args, who);
+    }
+  }
+
+  /**
+   * The library's changes (Session 54), as the window makes them: each answered with the ids it changed, so a phone's
+   * Undo puts back what its delete took out (by those ids, as the window's Undo does).
+   */
+  private library(op: LibraryOp, args: Record<string, unknown>, who: string): DeviceAnswer {
+    const library = this.acts.library;
+    const playlists = library?.playlists() ?? null;
+    if (!library || !playlists) return deny(503, 'Drashti is still starting: try again in a moment.');
+    const done = (result: PlaylistResult | NewFromWordsResult, did: string): DeviceAnswer => {
+      if (!result.ok) return deny(409, result.message);
+      this.ctx.log(`Network: ${who} ${did}`);
+      return ok('ids' in result ? { ids: result.ids } : { id: result.id });
+    };
+    const bad = (words: string) => deny(400, words);
+    switch (op) {
+      case 'library.new': {
+        const a = fromWords.safeParse(args);
+        if (!a.success) return bad('Give the presentation a name, and its words.');
+        return done(library.newFromWords(a.data.name, a.data.words), 'made a presentation from words');
+      }
+      case 'library.remove':
+      case 'library.restore': {
+        const a = someIds.safeParse(args);
+        if (!a.success) return bad('Which presentations?');
+        return op === 'library.remove'
+          ? done(library.removePresentations(a.data.ids), 'deleted presentations')
+          : done(library.restorePresentations(a.data.ids), 'put deleted presentations back');
+      }
+      case 'playlist.new': {
+        const a = playlistName.safeParse(args);
+        if (!a.success) return bad('A name needs 1 to 200 characters.');
+        return done(playlists.create(a.data.name, null, false), 'made a playlist');
+      }
+      case 'playlist.rename': {
+        const a = playlistRenamed.safeParse(args);
+        if (!a.success) return bad('A name needs 1 to 200 characters.');
+        return done(playlists.rename(a.data.playlistId, a.data.name), 'renamed a playlist');
+      }
+      case 'playlist.remove':
+      case 'playlist.restore': {
+        const a = someIds.safeParse(args);
+        if (!a.success) return bad('Which playlists?');
+        return op === 'playlist.remove'
+          ? done(playlists.remove(a.data.ids), 'deleted playlists')
+          : done(playlists.restore(a.data.ids), 'put deleted playlists back');
+      }
+      case 'playlist.add': {
+        const a = playlistAdd.safeParse(args);
+        if (!a.success) return bad('Add a presentation or something from Media.');
+        return done(
+          playlists.addItems(a.data.playlistId, a.data.at ?? null, a.data.items),
+          'added to a playlist',
+        );
+      }
+      case 'playlist.move': {
+        const a = playlistMove.safeParse(args);
+        if (!a.success) return bad('Which items, and where to?');
+        return done(
+          playlists.moveItems(a.data.playlistId, a.data.ids, a.data.to),
+          'moved items in a playlist',
+        );
+      }
+      case 'playlist.removeItems':
+      case 'playlist.restoreItems': {
+        const a = someIds.safeParse(args);
+        if (!a.success) return bad('Which items?');
+        return op === 'playlist.removeItems'
+          ? done(playlists.removeItems(a.data.ids), 'took items out of a playlist')
+          : done(playlists.restoreItems(a.data.ids), 'put items back in a playlist');
       }
     }
   }

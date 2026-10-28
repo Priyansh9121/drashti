@@ -137,6 +137,22 @@ export const DEVICE_OPS = {
   'input.remove': ['remote'],
   windows: ['remote'],
   'window.show': ['remote'],
+  /**
+   * The library's changes (Session 54), as the window makes them: a presentation from words, presentations and
+   * playlists deleted and put back (the phone's Undo), a playlist made or renamed, items added from the library (by
+   * id), moved, taken out and put back. Simple Mode refuses them, as in the window.
+   */
+  'library.new': ['remote'],
+  'library.remove': ['remote'],
+  'library.restore': ['remote'],
+  'playlist.new': ['remote'],
+  'playlist.rename': ['remote'],
+  'playlist.remove': ['remote'],
+  'playlist.restore': ['remote'],
+  'playlist.add': ['remote'],
+  'playlist.move': ['remote'],
+  'playlist.removeItems': ['remote'],
+  'playlist.restoreItems': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;

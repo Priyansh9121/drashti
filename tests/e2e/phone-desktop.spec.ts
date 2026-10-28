@@ -739,3 +739,125 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await app.close();
     }
   });
+
+/** The window's playlists (not folders) by name, and a playlist's items by their labels, as the window reads them. */
+const playlistNames = (win: Page) =>
+  win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.playlists.tree())
+      .filter((p) => !p.isFolder)
+      .map((p) => p.name),
+  );
+const playlistId = (win: Page, name: string) =>
+  win.evaluate(
+    async (name) =>
+      (await (globalThis as PageGlobals).drashti.playlists.tree()).find((p) => p.name === name)?.id ?? null,
+    name,
+  );
+const itemIds = (win: Page, id: string) =>
+  win.evaluate(
+    async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).map((i) => i.id),
+    id,
+  );
+const presentationNames = (win: Page) =>
+  win.evaluate(async () =>
+    (await (globalThis as PageGlobals).drashti.library.listPresentations()).map((p) => p.name),
+  );
+
+for (const engine of ['webkit', 'chromium'] as Engine[])
+  test(`the library changed from a phone as the window changes it: a presentation from words, a playlist made, added to, moved, taken out and put back with Undo, renamed, deleted and put back, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+    test.setTimeout(240_000);
+    const { app } = await launchApp(NETWORK_ENV);
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    const phone = await device(engine);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      for (const size of SIZES) {
+        const words = `Placeholder phone words ${size.layout}`;
+        const list = `Placeholder phone list ${size.layout}`;
+        await p.setViewportSize(size);
+        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
+        await p.getByTestId('remote-open-library').click();
+        await expect(p.getByTestId('remote-library-sheet')).toBeVisible();
+        // A presentation from words, made in the computer's library.
+        await p.getByTestId('remote-library-tab-presentations').click();
+        await p.getByTestId('remote-library-new-presentation-name').fill(words);
+        await p
+          .getByTestId('remote-library-new-presentation-words')
+          .fill('Placeholder line one\n\nPlaceholder line two');
+        await p
+          .getByTestId('remote-library-new-presentation')
+          .getByRole('button', { name: 'Make the presentation' })
+          .click();
+        await expect.poll(() => presentationNames(win)).toContain(words);
+        // A playlist made: in the window's list, and open on the phone.
+        await p.getByTestId('remote-library-tab-playlists').click();
+        await p.getByTestId('remote-library-new-playlist-name').fill(list);
+        await p
+          .getByTestId('remote-library-new-playlist')
+          .getByRole('button', { name: 'Make the playlist' })
+          .click();
+        await expect.poll(() => playlistNames(win)).toContain(list);
+        const id = (await playlistId(win, list)) ?? '';
+        const row = p.locator(`[data-testid="remote-library-playlist"][data-playlist-id="${id}"]`);
+        await expect(row.getByTestId('remote-library-playlist-open')).toHaveAttribute('aria-pressed', 'true');
+        // The presentation added twice, then the second moved up: the window has the same order.
+        const choice = row.getByTestId('remote-library-add-choice');
+        for (let i = 0; i < 2; i += 1) {
+          await expect(choice.locator('option', { hasText: words })).toHaveCount(1);
+          await choice.selectOption({ label: words });
+          await row.getByTestId('remote-library-add-form').getByRole('button', { name: 'Add' }).click();
+          await expect.poll(async () => (await itemIds(win, id)).length).toBe(i + 1);
+          // On the phone too, its choice cleared for the next.
+          await expect(row.getByTestId('remote-library-item')).toHaveCount(i + 1);
+          await expect(choice).toHaveValue('');
+        }
+        const [first = '', second = ''] = await itemIds(win, id);
+        await row
+          .locator(`[data-testid="remote-library-item"][data-item-id="${second}"]`)
+          .getByTestId('remote-library-item-up')
+          .click();
+        await expect.poll(() => itemIds(win, id)).toEqual([second, first]);
+        // One taken out, then put back by Undo, where it was.
+        await row
+          .locator(`[data-testid="remote-library-item"][data-item-id="${first}"]`)
+          .getByTestId('remote-library-item-remove')
+          .click();
+        await expect.poll(() => itemIds(win, id)).toEqual([second]);
+        await p.getByTestId('remote-library-undo').click();
+        await expect.poll(() => itemIds(win, id)).toEqual([second, first]);
+        // Renamed, then deleted and put back by Undo.
+        await row.getByTestId('remote-library-playlist-rename').click();
+        await p.getByTestId('remote-library-rename-name').fill(`${list}, renamed`);
+        await p.getByTestId('remote-library-rename-form').getByRole('button', { name: 'Rename' }).click();
+        await expect.poll(() => playlistNames(win)).toContain(`${list}, renamed`);
+        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
+        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
+        await expectNoSeriousA11yIssues(p, `the library’s sheet on ${size.name} (${engine})`);
+        await row.getByTestId('remote-library-playlist-delete').click();
+        await expect.poll(() => playlistNames(win)).not.toContain(`${list}, renamed`);
+        await p.getByTestId('remote-library-undo').click();
+        await expect.poll(() => playlistNames(win)).toContain(`${list}, renamed`);
+        await p.getByTestId('remote-library-sheet-close').click();
+        await expect(p.getByTestId('remote-library-sheet')).toHaveCount(0);
+      }
+      // Simple Mode: a new playlist refused in words on the phone, and none made.
+      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      await p.getByTestId('remote-open-library').click();
+      await p.getByTestId('remote-library-new-playlist-name').fill('Placeholder refused list');
+      await p
+        .getByTestId('remote-library-new-playlist')
+        .getByRole('button', { name: 'Make the playlist' })
+        .click();
+      await expect(p.getByTestId('remote-library-problem')).toContainText('Simple Mode');
+      expect(await playlistNames(win)).not.toContain('Placeholder refused list');
+    } finally {
+      await phone.close();
+      await app.close();
+    }
+  });

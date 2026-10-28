@@ -8,12 +8,13 @@ import {
 } from '../../../../shared/screen-switches';
 import { useNow } from '../../render/useNow';
 import { Button } from '../../ui/Button';
-import { Monitor, PictureInPicture2, Video } from '../../ui/icons';
+import { BookOpen, Monitor, PictureInPicture2, Video } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { plural } from '../../ui/text';
 import { answerKeep, answerOff, openSheet, startDesktop, useDesktop } from './desktop-store';
 import { PhoneQuestion } from './PhoneSheet';
 import { InputsSheet } from './InputsSheet';
+import { LibrarySheet } from './LibrarySheet';
 import { PipSheet } from './PipSheet';
 import { ScreensSheet, SwitchButtons } from './ScreensSheet';
 
@@ -77,6 +78,17 @@ export function DesktopTools() {
         }}
       >
         Picture in picture…
+      </Button>
+      <Button
+        size="lg"
+        className="min-h-12 w-full"
+        icon={BookOpen}
+        data-testid="remote-open-library"
+        onClick={() => {
+          openSheet('library');
+        }}
+      >
+        Change the library…
       </Button>
     </section>
   );
@@ -156,6 +168,7 @@ export function DesktopLayer() {
       {sheet === 'screens' && <ScreensSheet />}
       {sheet === 'inputs' && <InputsSheet />}
       {sheet === 'pip' && <PipSheet />}
+      {sheet === 'library' && <LibrarySheet />}
       <KeepQuestion />
       <OffQuestion />
     </>

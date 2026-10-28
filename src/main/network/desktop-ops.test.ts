@@ -232,6 +232,55 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
           return { ok: true };
         },
       },
+      // The library's changes (Session 54): each recorded, answered with the ids as the window's own are.
+      library: {
+        newFromWords: (name, words) => {
+          calls.push({ what: 'newFromWords', args: [name, words] });
+          return { ok: true, id: 'p-new' };
+        },
+        removePresentations: (ids) => {
+          calls.push({ what: 'removePresentations', args: [ids] });
+          return { ok: true, ids: ids as string[] };
+        },
+        restorePresentations: (ids) => {
+          calls.push({ what: 'restorePresentations', args: [ids] });
+          return { ok: true, ids: ids as string[] };
+        },
+        playlists: () => ({
+          create: (...args) => {
+            calls.push({ what: 'createPlaylist', args });
+            return { ok: true, ids: ['pl-new'] };
+          },
+          rename: (...args) => {
+            calls.push({ what: 'renamePlaylist', args });
+            return { ok: true, ids: [String(args[0])] };
+          },
+          remove: (ids) => {
+            calls.push({ what: 'removePlaylists', args: [ids] });
+            return { ok: true, ids: ids as string[] };
+          },
+          restore: (ids) => {
+            calls.push({ what: 'restorePlaylists', args: [ids] });
+            return { ok: true, ids: ids as string[] };
+          },
+          addItems: (...args) => {
+            calls.push({ what: 'addItems', args });
+            return { ok: true, ids: ['item-new'] };
+          },
+          moveItems: (...args) => {
+            calls.push({ what: 'moveItems', args });
+            return { ok: true, ids: args[1] as string[] };
+          },
+          removeItems: (ids) => {
+            calls.push({ what: 'removeItems', args: [ids] });
+            return { ok: true, ids: ids as string[] };
+          },
+          restoreItems: (ids) => {
+            calls.push({ what: 'restoreItems', args: [ids] });
+            return { ok: true, ids: ids as string[] };
+          },
+        }),
+      },
       simple: () => locked,
       confirmCover: (question) =>
         new Promise<boolean>((resolve) => {
@@ -663,5 +712,112 @@ describe('whether a switch turned on opens an output over the controls', () => {
         1,
       ),
     ).toBe(false);
+  });
+});
+
+describe('the library from a phone (Session 54, the phone as a full Drashti)', () => {
+  it('changes it as the window does, each through the window’s own functions, a delete answered with what its Undo puts back', () => {
+    const { ask, remote, calls } = setup();
+    const ok = (op: DeviceOp, args: Record<string, unknown>) => {
+      const a = ask(remote, op, args);
+      expect(a.status, op).toBe(200);
+      return a.body;
+    };
+    expect(ok('library.new', { name: 'Placeholder words', words: 'Placeholder line one' })).toMatchObject({
+      id: 'p-new',
+    });
+    // Deleted, then put back by the ids the delete answered with: the phone's Undo.
+    const deleted = ok('library.remove', { ids: ['p-1', 'p-2'] });
+    expect(deleted).toMatchObject({ ids: ['p-1', 'p-2'] });
+    ok('library.restore', { ids: (deleted as { ids: string[] }).ids });
+    ok('playlist.new', { name: 'Placeholder evening' });
+    ok('playlist.rename', { playlistId: 'pl-1', name: 'Placeholder evening, again' });
+    ok('playlist.remove', { ids: ['pl-1'] });
+    ok('playlist.restore', { ids: ['pl-1'] });
+    ok('playlist.add', {
+      playlistId: 'pl-1',
+      items: [
+        { kind: 'presentation', presentationId: 'p-1' },
+        { kind: 'media', mediaId: 'm-1' },
+      ],
+    });
+    ok('playlist.move', { playlistId: 'pl-1', ids: ['item-2'], to: 0 });
+    ok('playlist.removeItems', { ids: ['item-2'] });
+    ok('playlist.restoreItems', { ids: ['item-2'] });
+    expect(calls.map((c) => [c.what, c.args])).toEqual([
+      ['newFromWords', ['Placeholder words', 'Placeholder line one']],
+      ['removePresentations', [['p-1', 'p-2']]],
+      ['restorePresentations', [['p-1', 'p-2']]],
+      ['createPlaylist', ['Placeholder evening', null, false]],
+      ['renamePlaylist', ['pl-1', 'Placeholder evening, again']],
+      ['removePlaylists', [['pl-1']]],
+      ['restorePlaylists', [['pl-1']]],
+      [
+        'addItems',
+        [
+          'pl-1',
+          null,
+          [
+            { kind: 'presentation', presentationId: 'p-1' },
+            { kind: 'media', mediaId: 'm-1' },
+          ],
+        ],
+      ],
+      ['moveItems', ['pl-1', ['item-2'], 0]],
+      ['removeItems', [['item-2']]],
+      ['restoreItems', [['item-2']]],
+    ]);
+  });
+
+  it('takes things by their ids only, never a path, a file or a header’s words, and at most 50 at once', () => {
+    const { ask, remote, calls } = setup();
+    for (const [op, args] of [
+      ['playlist.add', { playlistId: 'pl-1', items: [{ kind: 'media', path: '/placeholder/file.mp4' }] }],
+      ['playlist.add', { playlistId: 'pl-1', items: [{ kind: 'header', label: 'Placeholder' }] }],
+      [
+        'playlist.add',
+        { playlistId: 'pl-1', items: [{ kind: 'media', mediaId: 'm-1', url: 'https://example.com' }] },
+      ],
+      ['library.remove', { ids: Array.from({ length: 51 }, (_, i) => `p-${String(i)}`) }],
+      ['library.remove', { ids: [] }],
+      ['library.new', { name: 'Placeholder', words: 'x', file: '/placeholder' }],
+      ['playlist.new', { name: '   ' }],
+    ] as const)
+      expect(ask(remote, op, args as Record<string, unknown>).status, JSON.stringify(args)).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
+  it('limits a phone’s library changes on their own, thirty at once, as a person tapping through a playlist makes them', () => {
+    const { ask, remote, hold, calls } = setup();
+    hold();
+    const move = () => ask(remote, 'playlist.move', { playlistId: 'pl-1', ids: ['item-1'], to: 0 }).status;
+    for (let i = 0; i < 30; i += 1) expect(move(), `change ${String(i + 1)}`).toBe(200);
+    expect(move()).toBe(429);
+    expect(calls).toHaveLength(30);
+    // The screens' own limit is apart: still ten at once.
+    expect(ask(remote, 'screens.identify').status).toBe(200);
+  });
+
+  it('is a Remote’s alone, nothing while Drashti is not let in, and refused in Simple Mode as the window refuses it', () => {
+    const { ask, remote, stage, poster, calls, setLocked, setLetIn } = setup();
+    const add = { playlistId: 'pl-1', items: [{ kind: 'presentation', presentationId: 'p-1' }] };
+    for (const op of ['library.remove', 'playlist.add'] as const) {
+      expect(DEVICE_OPS[op]).toEqual(['remote']);
+      expect(OP_CHANNEL[op], op).not.toBeNull();
+    }
+    expect(ask(stage, 'playlist.add', add).status).toBe(403);
+    expect(ask(poster, 'library.remove', { ids: ['p-1'] }).status).toBe(403);
+    setLocked(true);
+    const refused = ask(remote, 'playlist.add', add);
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ message: SIMPLE_MODE_REFUSAL });
+    expect(ask(remote, 'library.remove', { ids: ['p-1'] }).status).toBe(403);
+    setLocked(false);
+    setLetIn(false);
+    expect(ask(remote, 'library.remove', { ids: ['p-1'] })).toMatchObject({
+      status: 503,
+      body: { message: STOPPED_REFUSAL },
+    });
+    expect(calls).toEqual([]);
   });
 });

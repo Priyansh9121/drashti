@@ -250,6 +250,19 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'input.remove': IPC.videoInputs.remove,
   windows: IPC.liveWindow.list,
   'window.show': IPC.liveWindow.show,
+  // The library's changes (Session 54), each the window's own request, so Simple Mode refuses them on a phone as it
+  // does in the window.
+  'library.new': IPC.library.newFromWords,
+  'library.remove': IPC.library.removePresentations,
+  'library.restore': IPC.library.restorePresentations,
+  'playlist.new': IPC.playlists.create,
+  'playlist.rename': IPC.playlists.rename,
+  'playlist.remove': IPC.playlists.remove,
+  'playlist.restore': IPC.playlists.restore,
+  'playlist.add': IPC.playlists.addItems,
+  'playlist.move': IPC.playlists.moveItems,
+  'playlist.removeItems': IPC.playlists.removeItems,
+  'playlist.restoreItems': IPC.playlists.restoreItems,
 };
 
 const ON_SETTING = 'network.on';
@@ -946,6 +959,17 @@ export class NetworkService implements EngineTransport {
       case 'input.remove':
       case 'windows':
       case 'window.show':
+      case 'library.new':
+      case 'library.remove':
+      case 'library.restore':
+      case 'playlist.new':
+      case 'playlist.rename':
+      case 'playlist.remove':
+      case 'playlist.restore':
+      case 'playlist.add':
+      case 'playlist.move':
+      case 'playlist.removeItems':
+      case 'playlist.restoreItems':
         return this.desktop
           ? this.desktop.answer(request.op, args, device, who)
           : deny(404, 'Drashti cannot set that up from a phone here.');

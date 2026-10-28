@@ -15,7 +15,7 @@ import { loadMedia } from './mirror-store';
  */
 
 /** The sheets a phone opens over the remote to set up the computer's things. */
-export type DesktopSheet = 'screens' | 'inputs' | 'pip';
+export type DesktopSheet = 'screens' | 'inputs' | 'pip' | 'library';
 
 interface DesktopView {
   /** The sheet open now, or null. */
@@ -72,8 +72,9 @@ export async function loadInputs(): Promise<void> {
 
 export function openSheet(sheet: DesktopSheet): void {
   useDesktop.setState({ sheet, problem: null, ...(sheet !== 'screens' ? { windows: null } : {}) });
-  void (sheet === 'screens' ? loadScreens() : loadInputs());
-  // The box takes a picture or video from Media too (Session 54).
+  if (sheet === 'screens') void loadScreens();
+  else if (sheet === 'inputs' || sheet === 'pip') void loadInputs();
+  // The box takes a picture or video from Media too (Session 54); the library's sheet reads its own lists.
   if (sheet === 'pip') void loadMedia();
 }
 

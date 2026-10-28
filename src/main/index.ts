@@ -146,7 +146,7 @@ import { SharpenedCopies } from './media/sharpened';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
 import { runPerformanceTest, seedPerfLibrary } from './perftest';
-import { registerPlaylistIpc } from './playlists/playlist-ipc';
+import { type PlaylistChanges, registerPlaylistIpc } from './playlists/playlist-ipc';
 import { startupReads } from './ipc/startup-reads';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
@@ -211,6 +211,7 @@ import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
 import { coverBox } from './network/desktop-consent';
+import type { DesktopLibrary } from './network/desktop-answers';
 import { cameraNamesIn } from '../shared/network-desktop';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
@@ -3036,7 +3037,7 @@ function start(): void {
     }
     libraryChanged(true);
   };
-  registerWordsIpc({
+  const wordsChanges = registerWordsIpc({
     presentations,
     revisions,
     fromOperator,
@@ -3707,6 +3708,10 @@ function start(): void {
     // No file is taken while Drashti is not let in (Session 54).
     letIn: isLetIn,
   });
+  // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
+  // below, where the window's own requests for them are registered.
+  let playlistChanges: PlaylistChanges | null = null;
+  let presentationChanges: Pick<DesktopLibrary, 'removePresentations' | 'restorePresentations'> | null = null;
   const net = new NetworkService({
     // Phones and tablets work only while Drashti is let in (Session 54): every request, pairing and file refused.
     letIn: isLetIn,
@@ -3875,6 +3880,14 @@ function start(): void {
       windows: {
         list: () => shownWindows.list(),
         show: (id) => shownWindows.show(id),
+      },
+      library: {
+        newFromWords: (name, words) => wordsChanges.newFromWords(name, words),
+        removePresentations: (ids) =>
+          presentationChanges?.removePresentations(ids) ?? { ok: false, message: 'Nothing was removed.' },
+        restorePresentations: (ids) =>
+          presentationChanges?.restorePresentations(ids) ?? { ok: false, message: 'Nothing was restored.' },
+        playlists: () => playlistChanges,
       },
       simple: () => simpleNow(),
       confirmCover: async (question) => {
@@ -4442,7 +4455,7 @@ function start(): void {
   handle(IPC.drop.importAnyway, (e, name) =>
     fromOperator(e) ? dropFolder.importAnyway(name) : notDropOperator,
   );
-  registerPlaylistIpc({
+  playlistChanges = registerPlaylistIpc({
     repo: playlists,
     fromOperator,
     reads: windowReads,
@@ -4597,26 +4610,40 @@ function start(): void {
     engine.refreshNext();
     return { ok: true as const };
   });
-  handle(IPC.library.removePresentations, (e, ids) => {
-    const parsed = idListSchema.safeParse(ids);
-    if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was removed.' };
-    const removed = presentations.remove(parsed.data);
-    for (const id of removed) slides.invalidate(id);
-    engine.refreshNext();
-    log.info(`Removed ${removed.length} presentation(s)`);
-    libraryChanged(true);
-    return { ok: true as const, ids: removed };
-  });
-  handle(IPC.library.restorePresentations, (e, ids) => {
-    const parsed = idListSchema.safeParse(ids);
-    if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was restored.' };
-    const restored = presentations.restore(parsed.data);
-    for (const id of restored) slides.invalidate(id);
-    engine.refreshNext();
-    log.info(`Restored ${restored.length} presentation(s)`);
-    libraryChanged(true);
-    return { ok: true as const, ids: restored };
-  });
+  // Presentations taken out of the library and put back: the window's and a phone's alike (Session 54).
+  presentationChanges = {
+    removePresentations: (ids) => {
+      const parsed = idListSchema.safeParse(ids);
+      if (!parsed.success) return { ok: false as const, message: 'Nothing was removed.' };
+      const removed = presentations.remove(parsed.data);
+      for (const id of removed) slides.invalidate(id);
+      engine.refreshNext();
+      log.info(`Removed ${removed.length} presentation(s)`);
+      libraryChanged(true);
+      return { ok: true as const, ids: removed };
+    },
+    restorePresentations: (ids) => {
+      const parsed = idListSchema.safeParse(ids);
+      if (!parsed.success) return { ok: false as const, message: 'Nothing was restored.' };
+      const restored = presentations.restore(parsed.data);
+      for (const id of restored) slides.invalidate(id);
+      engine.refreshNext();
+      log.info(`Restored ${restored.length} presentation(s)`);
+      libraryChanged(true);
+      return { ok: true as const, ids: restored };
+    },
+  };
+  const changingPresentations = presentationChanges;
+  handle(IPC.library.removePresentations, (e, ids) =>
+    fromOperator(e)
+      ? changingPresentations.removePresentations(ids)
+      : { ok: false as const, message: 'Nothing was removed.' },
+  );
+  handle(IPC.library.restorePresentations, (e, ids) =>
+    fromOperator(e)
+      ? changingPresentations.restorePresentations(ids)
+      : { ok: false as const, message: 'Nothing was restored.' },
+  );
   handle(IPC.library.getImportReport, (_e, runId) => {
     const parsed = runIdSchema.safeParse(runId);
     return parsed.success ? importRepo.report(parsed.data) : null;

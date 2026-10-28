@@ -38,7 +38,7 @@ export function registerWordsIpc({
   lookFor,
   changed,
   styleNew,
-}: WordsIpcDeps): void {
+}: WordsIpcDeps): { newFromWords(name: unknown, text: unknown): NewFromWordsResult } {
   handle(IPC.library.words, (_e, presentationId): WordsResult => {
     const id = idSchema.safeParse(presentationId);
     const rows = id.success ? presentations.content(id.data) : null;
@@ -70,8 +70,8 @@ export function registerWordsIpc({
     return { ok: true, revisionId, kept, changed: edited, added, removed };
   });
 
-  handle(IPC.library.newFromWords, (e, name, text): NewFromWordsResult => {
-    if (!fromOperator(e)) return onlyOperator;
+  // A new presentation from words, the operator window's and a phone's alike (Session 54, the phone as a full Drashti).
+  const newFromWords = (name: unknown, text: unknown): NewFromWordsResult => {
     const n = nameSchema.safeParse(name);
     const words = wordsSchema.safeParse(text);
     if (!n.success) return { ok: false, message: 'Give the presentation a name.' };
@@ -90,7 +90,10 @@ export function registerWordsIpc({
     styleNew(id);
     changed([id]);
     return { ok: true, id };
-  });
+  };
+  handle(IPC.library.newFromWords, (e, name, text): NewFromWordsResult =>
+    fromOperator(e) ? newFromWords(name, text) : onlyOperator,
+  );
 
   handle(IPC.library.restoreRevision, (e, revisionId): RevisionResult => {
     if (!fromOperator(e)) return onlyOperator;
@@ -105,4 +108,5 @@ export function registerWordsIpc({
       ? { ok: true, presentationId: first.presentationId }
       : { ok: false, message: 'That presentation is no longer in the library.' };
   });
+  return { newFromWords };
 }

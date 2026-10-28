@@ -604,6 +604,18 @@ describe('the network in the main process', () => {
       'input.remove',
       'windows',
       'window.show',
+      // The library's changes (Session 54), as the window's are.
+      'library.new',
+      'library.remove',
+      'library.restore',
+      'playlist.new',
+      'playlist.rename',
+      'playlist.remove',
+      'playlist.restore',
+      'playlist.add',
+      'playlist.move',
+      'playlist.removeItems',
+      'playlist.restoreItems',
     ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });

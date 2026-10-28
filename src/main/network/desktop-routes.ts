@@ -65,5 +65,20 @@ export function desktopRoutes<R>(route: MakeRoute<R>): R[] {
     })),
     route('POST', '/api/v1/pip/swap', 'command', () => ({ type: 'swapPip' })),
     route('POST', '/api/v1/pip/place', 'command', (b) => ({ type: 'placePip', place: b['place'] })),
+    // The library's changes, as the window makes them; each answers with the ids it changed (a delete's Undo).
+    route('POST', '/api/v1/presentations/new', 'library.new', (b) => b),
+    route('POST', '/api/v1/presentations/delete', 'library.remove', (b) => b),
+    route('POST', '/api/v1/presentations/restore', 'library.restore', (b) => b),
+    route('POST', '/api/v1/playlists/new', 'playlist.new', (b) => b),
+    route('POST', '/api/v1/playlists/delete', 'playlist.remove', (b) => b),
+    route('POST', '/api/v1/playlists/restore', 'playlist.restore', (b) => b),
+    route('POST', '/api/v1/playlists/:id/rename', 'playlist.rename', (b, p) => ({
+      ...b,
+      playlistId: p['id'],
+    })),
+    route('POST', '/api/v1/playlists/:id/add', 'playlist.add', (b, p) => ({ ...b, playlistId: p['id'] })),
+    route('POST', '/api/v1/playlists/:id/move', 'playlist.move', (b, p) => ({ ...b, playlistId: p['id'] })),
+    route('POST', '/api/v1/playlist-items/delete', 'playlist.removeItems', (b) => b),
+    route('POST', '/api/v1/playlist-items/restore', 'playlist.restoreItems', (b) => b),
   ];
 }
