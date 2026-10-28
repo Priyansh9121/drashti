@@ -204,6 +204,12 @@ export const REMOTE_COMMANDS = [
   // A video input up as the background, by its id in this computer's list (Session 54, the phone as a full Drashti:
   // Media's click), Pro Mode's (the engine refuses it in Simple Mode).
   'showInput',
+  // The picture-in-picture box's setup (Session 54, the phone as a full Drashti): what it holds (by its id: an input
+  // in this computer's list, a Media file, a window in the list just offered, or the slides), Swap and its place, as
+  // Picture in Picture… does; Pro Mode's (the engine refuses them in Simple Mode). Take off is hidePip, above.
+  'showPip',
+  'swapPip',
+  'placePip',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */

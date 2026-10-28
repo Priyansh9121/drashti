@@ -8,12 +8,13 @@ import {
 } from '../../../../shared/screen-switches';
 import { useNow } from '../../render/useNow';
 import { Button } from '../../ui/Button';
-import { Monitor, Video } from '../../ui/icons';
+import { Monitor, PictureInPicture2, Video } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { plural } from '../../ui/text';
 import { answerKeep, answerOff, openSheet, startDesktop, useDesktop } from './desktop-store';
 import { PhoneQuestion } from './PhoneSheet';
 import { InputsSheet } from './InputsSheet';
+import { PipSheet } from './PipSheet';
 import { ScreensSheet, SwitchButtons } from './ScreensSheet';
 
 /*
@@ -65,6 +66,17 @@ export function DesktopTools() {
         }}
       >
         Video inputs and windows…
+      </Button>
+      <Button
+        size="lg"
+        className="min-h-12 w-full"
+        icon={PictureInPicture2}
+        data-testid="remote-open-pip"
+        onClick={() => {
+          openSheet('pip');
+        }}
+      >
+        Picture in picture…
       </Button>
     </section>
   );
@@ -143,6 +155,7 @@ export function DesktopLayer() {
     <>
       {sheet === 'screens' && <ScreensSheet />}
       {sheet === 'inputs' && <InputsSheet />}
+      {sheet === 'pip' && <PipSheet />}
       <KeepQuestion />
       <OffQuestion />
     </>

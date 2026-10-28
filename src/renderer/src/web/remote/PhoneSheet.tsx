@@ -2,12 +2,15 @@ import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { Button } from '../../ui/Button';
 import { useFocusTrap } from '../../ui/Dialog';
 import { X } from '../../ui/icons';
+import { Notice } from '../../ui/Notice';
+import { useTapNotice } from '../taps';
 
 /*
  * A sheet over the remote for setting up the Drashti computer's things (Session 54, the phone as a full Drashti):
  * full screen on a phone and a tablet, its title and Close at the top, its body scrolling, the safe areas kept
  * (a phone's notch and rounded corners). The keyboard stays in it, Esc closes it, and the phone's own Back closes
- * it as it closes D1's viewer (an entry of its own in the page's history). And a question asked on the phone
+ * it as it closes D1's viewer (an entry of its own in the page's history). A tap's refusal (Simple Mode's, say)
+ * shows at its top, as the remote's does under it. And a question asked on the phone
  * (Keep these screens?, Turn Audience off?): over everything, its buttons a thumb's size, its safe choice first.
  */
 
@@ -52,6 +55,7 @@ export function PhoneSheet({
 }) {
   const titleId = useId();
   const root = useRef<HTMLDivElement>(null);
+  const notice = useTapNotice((s) => s.text);
   useFocusTrap(root, onClose);
   useBackCloses(onClose);
   return (
@@ -76,7 +80,18 @@ export function PhoneSheet({
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
-        <div className="mx-auto max-w-3xl space-y-6">{children}</div>
+        <div className="mx-auto max-w-3xl space-y-6">
+          {notice && (
+            <Notice
+              tone="warning"
+              data-testid={`${testId}-notice`}
+              onDismiss={() => useTapNotice.setState({ text: null })}
+            >
+              {notice}
+            </Notice>
+          )}
+          {children}
+        </div>
       </div>
     </div>
   );

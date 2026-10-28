@@ -282,7 +282,7 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(commands).toEqual([]);
   });
 
-  it('keeps a phone from sending what it puts up whole, or setting up masks, the box or the background', () => {
+  it('keeps a phone from sending what it puts up whole: a prop, a background, a sound, a mask or a lower third (the box’s setup goes by ids since Session 54, the phone as a full Drashti)', () => {
     const { ask, remote, commands } = setup();
     for (const args of [
       { type: 'showProp', prop: { id: 'p', name: 'Placeholder', elements: [] } },
@@ -292,11 +292,10 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         audio: { id: 'a', title: 'Placeholder', mediaId: null, volume: 1, loop: false },
       },
       { type: 'setMask', mask: { id: 'mask', name: 'Placeholder', shapes: [] } },
-      { type: 'swapPip' },
     ])
       expect([400, 403], args.type).toContain(ask(remote, 'command', args).status);
     expect(commands).toEqual([]);
-    for (const type of ['showProp', 'setBackground', 'playAudio', 'setMask', 'showLowerThird', 'swapPip'])
+    for (const type of ['showProp', 'setBackground', 'playAudio', 'setMask', 'showLowerThird'])
       expect(REMOTE_COMMANDS as readonly string[], type).not.toContain(type);
   });
 

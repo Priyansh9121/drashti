@@ -257,26 +257,35 @@ describe('the network in the main process', () => {
     ).toBe(401);
   });
 
-  it('lets a Remote take the picture-in-picture box off (Session 50), never set one up, swap or move it', () => {
+  it('lets a Remote set the picture-in-picture box up, swap it, move it and take it off, as Picture in Picture… does (Session 54, the phone as a full Drashti; until then Take off alone)', () => {
     const { service, commands } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const send = (args: Record<string, unknown>) =>
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status;
-    for (const args of [
+    const sent = [
       { type: 'showPip', source: { kind: 'slides' } },
       { type: 'showPip', source: { kind: 'window', id: 'window:4021:0' } },
       { type: 'showPip', source: { kind: 'input', inputId: 'in-1' } },
+      { type: 'showPip', source: { kind: 'media', mediaId: 'placeholder-video' }, place: DEFAULT_PIP_PLACE },
       { type: 'swapPip' },
       { type: 'placePip', place: DEFAULT_PIP_PLACE },
-    ])
-      expect(send(args), JSON.stringify(args)).toBe(403);
-    expect(commands).toEqual([]);
-    // Take off, and the box's own clear (POST /api/v1/clear/pip): both play its out.
-    expect(send({ type: 'hidePip' })).toBe(200);
-    expect(send({ type: 'clearLayer', layer: 'pip' })).toBe(200);
-    expect(commands).toEqual([{ type: 'hidePip' }, { type: 'clearLayer', layer: 'pip' }]);
-    for (const type of ['showPip', 'swapPip', 'placePip'])
-      expect(REMOTE_COMMANDS as readonly string[]).not.toContain(type);
+      // Take off, and the box's own clear (POST /api/v1/clear/pip): both play its out.
+      { type: 'hidePip' },
+      { type: 'clearLayer', layer: 'pip' },
+    ];
+    for (const args of sent) expect(send(args), JSON.stringify(args)).toBe(200);
+    expect(commands).toEqual(sent);
+    // Never a file or an address for what it holds: refused before the engine hears of it.
+    expect(send({ type: 'showPip', source: { kind: 'media', path: '/placeholder/file.mp4' } })).toBe(400);
+    expect(send({ type: 'showPip', source: { kind: 'window', url: 'https://example.com' } })).toBe(400);
+    // A Stage device: none of it.
+    const stage = service.pairForCheck('stage', 'Placeholder stage').id;
+    expect(
+      service.answer({ address: PHONE, deviceId: stage, op: 'command', args: { type: 'swapPip' } }).status,
+    ).toBe(403);
+    expect(commands).toHaveLength(sent.length);
+    for (const type of ['showPip', 'swapPip', 'placePip', 'hidePip'])
+      expect(REMOTE_COMMANDS as readonly string[]).toContain(type);
   });
 
   it('lets a Remote move, pause and play on what plays, as the time bar under LIVE does (Session 54)', () => {

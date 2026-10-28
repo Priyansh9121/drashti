@@ -1,4 +1,4 @@
-import type { PipPlace } from './engine/state';
+import type { PipCorner, PipPlace, PipSize } from './engine/state';
 import type { Movement } from './looks';
 
 /*
@@ -28,3 +28,18 @@ export const PIP_OUT_MS: Record<Movement, number> = { calm: 250, bold: 300 };
  */
 export const pipSwapMs = (movements: readonly Movement[]): number =>
   2 * Math.max(PIP_OUT_MS.calm, ...movements.map((m) => PIP_OUT_MS[m]));
+
+/** The box's corners in words, as Picture in Picture… and a phone's sheet name them (Session 54: the phone too). */
+export const PIP_CORNER_NAMES: Record<PipCorner, string> = {
+  'top-left': 'Top left',
+  'top-right': 'Top right',
+  'bottom-left': 'Bottom left',
+  'bottom-right': 'Bottom right',
+};
+
+/** The box's sizes in words, with how wide each is. */
+export const PIP_SIZE_NAMES: Record<PipSize, { label: string; hint: string }> = {
+  small: { label: 'Small', hint: 'A quarter of the width' },
+  medium: { label: 'Medium', hint: 'A third of the width' },
+  large: { label: 'Large', hint: 'Two fifths of the width' },
+};

@@ -254,6 +254,14 @@ curl -s -X POST "$DRASHTI/api/v1/screens/keep" -H "Authorization: Bearer $TOKEN"
 | `GET /api/v1/windows`                   |                                                      | `windows`: `{"ok":true,"windows":[{"id":"…","name":"…"}]}`, the other apps' open windows as Show a Window… lists them, or `{"ok":false,"reason":"permission" or "unlisted","message":"…"}`. Each listing counts as a change for the limit above. |
 | `POST /api/v1/windows/show`             | `{"id":"…"}`                                         | Puts one of the windows just listed up as the background (409 for one not in the list just made). `POST /api/v1/clear/background` takes it off.                                                                                                  |
 
+**The picture-in-picture box** (Picture in Picture…), Pro Mode's as in the window (Simple Mode refuses them, 403). What goes in the box is named by its id, never by a file or an address: one of Media's inputs, a picture or video from Media, a window from the list `GET /api/v1/windows` just made, or the slides. `POST /api/v1/clear/pip` takes it off.
+
+| Request                  | Body                                                                                                                               | Does                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/pip/show`  | `{"source":{"kind":"media","mediaId":"…"}}`, `{"kind":"input","inputId":"…"}`, `{"kind":"window","id":"…"}` or `{"kind":"slides"}` | Puts it in the box (where the box is now, else where the library remembers), as Show in the box does; `place` may come with it. |
+| `POST /api/v1/pip/swap`  |                                                                                                                                    | Swap: the box's picture and the main picture change places (409 with no box up).                                                |
+| `POST /api/v1/pip/place` | `{"place":{"corner":"top-right","x":0.95,"y":0.05,"size":"large","border":true,"rounded":true,"motion":"fade"}}`                   | Moves the box up now and sets its size and look, on every screen at once (409 with no box up).                                  |
+
 The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep these screens?, a phone's ask, Media's video inputs or the cameras the computer lists changed: a Remote setting them up reads them again (`"screens"` still says the switches or the hall changed).
 
 ## The state feed (WebSocket)

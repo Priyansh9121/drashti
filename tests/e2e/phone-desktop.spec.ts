@@ -1,5 +1,8 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { chromium, expect, test, webkit } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../../src/main/outputs/screen-switches';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -14,6 +17,7 @@ import {
   pairToken,
 } from './devices';
 import {
+  importAndGetIds,
   launchApp,
   needsRealScreen,
   operatorPage,
@@ -22,6 +26,7 @@ import {
   type PageGlobals,
   setUpScreen,
 } from './helpers';
+import { makeTestVideo } from './test-media';
 
 /*
  * The phone as a full Drashti (Session 54, the owner's item 3: "the drashti phone should be just like a mirror …
@@ -664,3 +669,73 @@ test('an output a phone would put over the controls is asked in the computer’s
   }
   await app.close();
 });
+
+/** The picture-in-picture box as the engine has it now, or null. */
+const pipNow = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.pip);
+
+for (const engine of ['webkit', 'chromium'] as Engine[])
+  test(`the picture-in-picture box set up from a phone as Picture in Picture… does: a Media video in it, moved to a corner and made Large, swapped and taken off, laid out at 375 × 812 and 768 × 1024, and Simple Mode refusing it in words (${engine})`, async () => {
+    test.setTimeout(240_000);
+    const { app } = await launchApp({
+      ...NETWORK_ENV,
+      DRASHTI_WINDOWED_OUTPUTS: '1',
+      DRASHTI_EXTRA_DISPLAYS: '1',
+    });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-phone-pip-'));
+    const clip = await makeTestVideo(win, join(dir, 'Placeholder boxed clip.webm'), { seconds: 4, hue: 120 });
+    const [mediaId = ''] = await importAndGetIds(win, [clip]);
+    await setUpScreen(win, 'Main Hall', 0);
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    const phone = await device(engine);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      for (const size of SIZES) {
+        await p.setViewportSize(size);
+        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
+        await p.getByTestId('remote-open-pip').click();
+        await expect(p.getByTestId('remote-pip-sheet')).toBeVisible();
+        await expect(p.getByTestId('remote-pip-none')).toBeVisible();
+        // A video from Media, by its id: in the box on the screens, named on the phone.
+        await p.locator(`[data-testid="remote-pip-media-item"][data-media-id="${mediaId}"]`).click();
+        await expect
+          .poll(async () => (await pipNow(win))?.source)
+          .toEqual({ kind: 'media', mediaId, media: 'video' });
+        await expect(p.getByTestId('remote-pip-now')).toContainText('Placeholder boxed clip');
+        // To the top left, then Large: on every screen at once (the engine's place).
+        await p.getByTestId('remote-pip-corner-top-left').click();
+        await expect.poll(async () => (await pipNow(win))?.place.corner).toBe('top-left');
+        await p.getByTestId('remote-pip-size-large').click();
+        await expect.poll(async () => (await pipNow(win))?.place.size).toBe('large');
+        await expect(p.getByTestId('remote-pip-size-large')).toHaveAttribute('aria-pressed', 'true');
+        // Swap: the box's picture and the main picture change places.
+        await p.getByTestId('remote-pip-swap').click();
+        await expect.poll(async () => (await pipNow(win))?.swapped).toBe(true);
+        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
+        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
+        await expectNoSeriousA11yIssues(p, `the box’s sheet on ${size.name} (${engine})`);
+        // Take off: the box goes.
+        await p.getByTestId('remote-pip-sheet-take-off').click();
+        await expect.poll(() => pipNow(win)).toBeNull();
+        await expect(p.getByTestId('remote-pip-none')).toBeVisible();
+        await p.getByTestId('remote-pip-sheet-close').click();
+        await expect(p.getByTestId('remote-pip-sheet')).toHaveCount(0);
+      }
+      // Simple Mode: the slides in the box refused, said on the phone, nothing up.
+      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      await p.getByTestId('remote-open-pip').click();
+      await p.getByTestId('remote-pip-kind-slides').click();
+      await p.getByTestId('remote-pip-slides').click();
+      await expect(p.getByTestId('remote-pip-sheet-notice')).toContainText('Simple Mode');
+      expect(await pipNow(win)).toBeNull();
+    } finally {
+      await phone.close();
+      await app.close();
+    }
+  });

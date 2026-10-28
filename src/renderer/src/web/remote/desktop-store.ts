@@ -3,6 +3,7 @@ import type { RemoteInputs, RemoteScreens, RemoteWindows } from '../../../../sha
 import type { ScreenSwitch } from '../../../../shared/screen-switches';
 import { api } from '../device';
 import { onListsChanged, onOnline } from '../feed';
+import { loadMedia } from './mirror-store';
 
 /*
  * The phone as a full Drashti (Session 54, the owner's item 3): the Drashti computer's own things a phone sets up,
@@ -14,7 +15,7 @@ import { onListsChanged, onOnline } from '../feed';
  */
 
 /** The sheets a phone opens over the remote to set up the computer's things. */
-export type DesktopSheet = 'screens' | 'inputs';
+export type DesktopSheet = 'screens' | 'inputs' | 'pip';
 
 interface DesktopView {
   /** The sheet open now, or null. */
@@ -70,8 +71,10 @@ export async function loadInputs(): Promise<void> {
 }
 
 export function openSheet(sheet: DesktopSheet): void {
-  useDesktop.setState({ sheet, problem: null, ...(sheet === 'inputs' ? { windows: null } : {}) });
+  useDesktop.setState({ sheet, problem: null, ...(sheet !== 'screens' ? { windows: null } : {}) });
   void (sheet === 'screens' ? loadScreens() : loadInputs());
+  // The box takes a picture or video from Media too (Session 54).
+  if (sheet === 'pip') void loadMedia();
 }
 
 /**
@@ -170,10 +173,11 @@ export function startDesktop(): void {
   };
   onOnline(() => {
     if (needed()) void loadScreens();
-    if (useDesktop.getState().sheet === 'inputs') void loadInputs();
+    if (useDesktop.getState().sheet === 'inputs' || useDesktop.getState().sheet === 'pip') void loadInputs();
   });
   onListsChanged((what) => {
     if ((what === 'setup' || what === 'screens') && needed()) void loadScreens();
-    if (what === 'setup' && useDesktop.getState().sheet === 'inputs') void loadInputs();
+    const sheet = useDesktop.getState().sheet;
+    if (what === 'setup' && (sheet === 'inputs' || sheet === 'pip')) void loadInputs();
   });
 }

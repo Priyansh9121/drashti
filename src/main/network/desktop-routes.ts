@@ -56,5 +56,14 @@ export function desktopRoutes<R>(route: MakeRoute<R>): R[] {
     })),
     route('GET', '/api/v1/windows', 'windows'),
     route('POST', '/api/v1/windows/show', 'window.show', (b) => b),
+    // The picture-in-picture box's setup, as Picture in Picture… does: what it holds (by id), Swap and its place;
+    // Take off is the box's own clear (POST /api/v1/clear/pip). Engine commands, checked as every Remote's is.
+    route('POST', '/api/v1/pip/show', 'command', (b) => ({
+      type: 'showPip',
+      source: b['source'],
+      ...(b['place'] === undefined ? {} : { place: b['place'] }),
+    })),
+    route('POST', '/api/v1/pip/swap', 'command', () => ({ type: 'swapPip' })),
+    route('POST', '/api/v1/pip/place', 'command', (b) => ({ type: 'placePip', place: b['place'] })),
   ];
 }
