@@ -124,7 +124,10 @@ export class DesktopConsent {
         try {
           failed = go();
         } catch (error) {
-          failed = `Drashti could not make that change (${(error as Error).message}).`;
+          this.deps.log(
+            `Network: the change ${question.who} asked for could not be made (${(error as Error).message})`,
+          );
+          failed = 'Drashti could not make that change: try again, or make it on the Drashti computer.';
         }
         this.keep(deviceId, failed === null ? 'agreed' : 'failed', failed ?? ASK_WORDS.agreed);
       }

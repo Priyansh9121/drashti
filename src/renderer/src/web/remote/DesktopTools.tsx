@@ -57,7 +57,7 @@ export function DesktopTools() {
           openSheet('screens');
         }}
       >
-        Set up the screens…
+        Set Up Screens…
       </Button>
       <Button
         size="lg"

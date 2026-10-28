@@ -133,9 +133,10 @@ describe('the computer’s say before a phone covers its controls', () => {
     );
     boxes[1]?.answer(true);
     await settle();
+    // In plain words on the phone; the error's own text goes to the log only (messages.test.ts).
     expect(consent.forDevice('d-2')).toEqual({
       state: 'failed',
-      message: 'Drashti could not make that change (placeholder failure).',
+      message: 'Drashti could not make that change: try again, or make it on the Drashti computer.',
     });
   });
 
