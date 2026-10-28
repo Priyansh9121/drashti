@@ -143,7 +143,7 @@ The list's own limits, so that requests never use up the emails tokens need: **5
 **If a limit is hit:**
 
 - **The day's emails are used up:** a request is still kept (you see it in the Sheet and in the Access List), but no email comes; approving says **The access list has sent all the emails it may send today. Try again tomorrow.**, and nothing changes. Wait until the next day. When many people join at once, approve them over several days, about 50 a day.
-- **Too many Drashtis checking at once:** some checks are answered late or not at all. Each Drashti waits up to **2 minutes** without an answer (with a countdown) before it stops, so a busy moment does no harm. If it happens often, tell Claude: the time between checks can be made longer in a new release.
+- **Too many Drashtis checking at once:** some checks are answered late or not at all. Each Drashti keeps working up to **an hour** without an answer (a bar says so), so a busy moment does no harm. If it happens often, tell Claude: the time between checks can be made longer in a new release.
 - **Google says "Service invoked too many times":** the same; wait, and it clears.
 
 ## 13. If something goes wrong
