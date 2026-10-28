@@ -3817,6 +3817,9 @@ function start(): void {
         const prop = props.list().find((p) => p.id === id);
         return prop ? asPropItem(prop) : null;
       },
+      // The library's masks, read as Masks reads them (Session 54).
+      masks: () => maskRepo.list().map((m) => ({ id: m.id, name: m.name })),
+      mask: (id) => maskRepo.list().find((m) => m.id === id) ?? null,
       media: () =>
         media.list().map((m) => ({
           id: m.id,
@@ -4722,6 +4725,8 @@ function start(): void {
     changed: (list) => {
       sendToOperator(IPC.masks.changed, list);
       looks.masksChanged();
+      // A phone lists them too (Session 54).
+      net.hint('masks');
     },
     log: (message) => {
       log.info(message);

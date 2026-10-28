@@ -82,6 +82,9 @@ export const DEVICE_OPS = {
   props: ['remote'],
   /** Put a prop up by its id (the main process reads it from the library). */
   'prop.show': ['remote'],
+  /** The library's masks, and one put up by its id as Masks does (Session 54, the phone as a full Drashti). */
+  masks: ['remote'],
+  'mask.show': ['remote'],
   /** The library's pictures, videos and sounds by name, a page at a time. */
   media: ['remote'],
   /** Put one up by its id: a picture or video as the background (the slide taken off), a sound played. */

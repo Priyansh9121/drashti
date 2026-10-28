@@ -861,3 +861,60 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await app.close();
     }
   });
+
+/** The mask up on the audience screens, as the engine has it (its id), or null. */
+const maskUp = (win: Page) =>
+  win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.masks?.id ?? null,
+  );
+
+for (const engine of ['webkit', 'chromium'] as Engine[])
+  test(`the library’s masks from a phone as Masks puts them up: one shown by its id and taken off, laid out at 375 × 812 and 768 × 1024 (${engine})`, async () => {
+    test.setTimeout(180_000);
+    const { app } = await launchApp(NETWORK_ENV);
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const made = await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.masks.save(null, {
+        name: 'Placeholder band',
+        width: 1920,
+        height: 1080,
+        mode: 'hide',
+        shapes: [
+          {
+            id: 'placeholder-band-shape',
+            kind: 'rectangle',
+            frame: { x: 0, y: 0, width: 1920, height: 200 },
+          },
+        ],
+      }),
+    );
+    if (!made.ok) throw new Error(made.message);
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    const phone = await device(engine);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      for (const size of SIZES) {
+        await p.setViewportSize(size);
+        if (size.layout === 'phone') await p.getByTestId('remote-tab-more').click();
+        const row = p.locator(`[data-testid="remote-mask"][data-mask-id="${made.id}"]`);
+        await expect(row).toContainText('Placeholder band');
+        await row.getByTestId('remote-mask-toggle').click();
+        await expect.poll(() => maskUp(win)).toBe(made.id);
+        await expect(row).toHaveAttribute('data-shown', 'true');
+        await expect(row.getByTestId('remote-mask-toggle')).toHaveText('Take off');
+        expect(await tooSmall(p), `targets on ${size.name}`).toEqual([]);
+        expect(await offTheSide(p), `nothing off the side on ${size.name}`).toEqual([]);
+        await expectNoSeriousA11yIssues(p, `the masks on ${size.name} (${engine})`);
+        await row.getByTestId('remote-mask-toggle').click();
+        await expect.poll(() => maskUp(win)).toBeNull();
+        await expect(row.getByTestId('remote-mask-toggle')).toHaveText('Show');
+      }
+    } finally {
+      await phone.close();
+      await app.close();
+    }
+  });

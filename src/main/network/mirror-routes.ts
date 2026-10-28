@@ -21,6 +21,10 @@ export function mirrorRoutes<R>(route: MakeRoute<R>): R[] {
     route('GET', '/api/v1/keys', 'keys'),
     route('GET', '/api/v1/props', 'props'),
     route('POST', '/api/v1/props/:id/show', 'prop.show', (_b, p) => ({ propId: p['id'] })),
+    // The library's masks, one put up by its id (Session 54, the phone as a full Drashti); POST /api/v1/clear/masks
+    // takes it off.
+    route('GET', '/api/v1/masks', 'masks'),
+    route('POST', '/api/v1/masks/:id/show', 'mask.show', (_b, p) => ({ maskId: p['id'] })),
     route('POST', '/api/v1/props/:id/hide', 'command', (_b, p) => ({ type: 'hideProp', propId: p['id'] })),
     route('GET', '/api/v1/media', 'media', (q) => ({
       offset: q['offset'],

@@ -34,6 +34,12 @@ export interface RemoteMediaPage {
 export const REMOTE_MEDIA_PAGE = 100;
 export const REMOTE_MEDIA_MAX = 200;
 
+/** A mask as a Remote lists it (Session 54, the phone as a full Drashti): its name; it goes up by its id. */
+export interface RemoteMask {
+  id: string;
+  name: string;
+}
+
 /** A lower third as a Remote lists it: its lines, as the window's row shows them. */
 export interface RemoteLowerThird {
   id: string;

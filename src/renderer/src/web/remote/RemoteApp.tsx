@@ -81,6 +81,7 @@ import { startMirror } from './mirror-store';
 import { MoreTools } from './MoreTools';
 import { MusicList } from './MusicList';
 import { Playing } from './Playing';
+import { Masks } from './Masks';
 import { Props } from './Props';
 import { RemotePlaying } from './RemotePlaying';
 import { isRepeatPlaylist, repeatItemUp, startGoingRound } from './repeat';
@@ -1126,6 +1127,7 @@ function TimersAndMessages() {
         </section>
         <Timers />
         <Props />
+        <Masks />
         <Looks />
         <Shastra />
         <MoreTools />

@@ -213,6 +213,8 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   keys: IPC.app.singleKeys,
   props: IPC.props.list,
   'prop.show': IPC.engine.command,
+  masks: null,
+  'mask.show': IPC.engine.command,
   media: IPC.library.listMedia,
   'media.show': IPC.engine.command,
   lowerThirds: IPC.lowerThirds.list,
@@ -932,6 +934,8 @@ export class NetworkService implements EngineTransport {
       case 'keys':
       case 'props':
       case 'prop.show':
+      case 'masks':
+      case 'mask.show':
       case 'media':
       case 'media.show':
       case 'lowerThirds':

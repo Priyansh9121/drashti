@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   RemoteKeys,
   RemoteLowerThird,
+  RemoteMask,
   RemoteMedia,
   RemoteMediaPage,
   RemoteMusic,
@@ -37,6 +38,8 @@ interface MirrorView {
   libraryKind: LibraryKind;
   keys: RemoteKeys | null;
   props: RemoteProp[] | null;
+  /** The library's masks (Session 54, the phone as a full Drashti); null until read. */
+  masks: RemoteMask[] | null;
   media: MirrorMedia;
   lowerThirds: RemoteLowerThird[] | null;
   music: RemoteMusic[] | null;
@@ -46,6 +49,7 @@ export const useMirror = create<MirrorView>(() => ({
   libraryKind: 'presentations',
   keys: null,
   props: null,
+  masks: null,
   media: { list: null, total: 0, query: '' },
   lowerThirds: null,
   music: null,
@@ -59,6 +63,11 @@ export async function loadKeys(): Promise<void> {
 export async function loadProps(): Promise<void> {
   const r = await api<{ props: RemoteProp[] }>('/api/v1/props');
   if (r.ok) useMirror.setState({ props: r.props });
+}
+
+export async function loadMasks(): Promise<void> {
+  const r = await api<{ masks: RemoteMask[] }>('/api/v1/masks');
+  if (r.ok) useMirror.setState({ masks: r.masks });
 }
 
 export async function loadLowerThirds(): Promise<void> {
@@ -101,6 +110,7 @@ export function startMirror(): void {
   onOnline(() => {
     void loadKeys();
     void loadProps();
+    void loadMasks();
     void loadLowerThirds();
     void loadMusic();
     // The media once they have been shown (a library can hold thousands).
@@ -109,6 +119,7 @@ export function startMirror(): void {
   onListsChanged((what) => {
     if (what === 'keys') void loadKeys();
     if (what === 'props') void loadProps();
+    if (what === 'masks') void loadMasks();
     if (what === 'lowerThirds') void loadLowerThirds();
     // A folder's sounds follow its playlist into Audio (Session 44); an import can bring sounds.
     if (what === 'music' || what === 'playlists' || what === 'presentations') void loadMusic();
