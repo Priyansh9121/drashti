@@ -498,10 +498,13 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     for (const size of [
-      { width: 375, height: 812 },
-      { width: 768, height: 1024 },
+      { width: 375, height: 812, layout: 'phone' },
+      { width: 768, height: 1024, layout: 'wide' },
     ]) {
-      await p.setViewportSize(size);
+      await p.setViewportSize({ width: size.width, height: size.height });
+      // The remote lays itself out for its new size a moment later (its media queries' change), drawing its rows anew:
+      // they are measured once it has.
+      await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', size.layout);
       const phoneRows = p.getByTestId('remote-time-bar-row');
       await expect(phoneRows).toHaveCount(7);
       await rowsFit(p, phoneRows, size.width, `the remote at ${String(size.width)} × ${String(size.height)}`);
