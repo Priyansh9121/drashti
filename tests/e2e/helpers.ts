@@ -1,7 +1,7 @@
-import type { ElectronApplication, Locator, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page, TestInfo } from '@playwright/test';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DrashtiBridge } from '../../src/shared/bridge';
@@ -82,6 +82,8 @@ export async function launchApp(
   // unless a spec says otherwise (locked, the owner, another Gmail), on that data folder's own list.
   access: AccessOptions = {},
 ): Promise<{ app: ElectronApplication; userData: string; access: AccessStandIn }> {
+  const running = currentTest();
+  sweepDataFolders(running, userDataDir);
   const userData = userDataDir ?? mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
   const version = extraEnv['DRASHTI_TEST_VERSION'];
   const lock = await letInBeforeStart(userData, version ? { version, ...access } : access);
@@ -109,7 +111,72 @@ export async function launchApp(
   });
   sayIfItStops(app);
   sayIfQuittingIsSlow(app, userData);
+  followDataFolder(app, userData, running, userDataDir === undefined);
   return { app, userData, access: lock.standIn };
+}
+
+/** A data folder launchApp made, the test that last started a Drashti on it, and how many of those are running. */
+interface DataFolder {
+  folder: string;
+  test: TestInfo;
+  open: number;
+}
+
+/*
+ * Each test's data folders go once the test has passed (Session 54, after the gate of 28 Oct 2026). CI runs every
+ * spec in one run, whose temporary folder goes only at its end (tests/global-setup.ts): without this, every test's
+ * data folder, about 10 MB (Chromium's GPU caches the most), stays on the CI machine's disk for the whole run, some
+ * 7 GB by its 650th test. A failed test's stay, for its report; so does one with a Drashti still running on it (one
+ * started again on it counts too), and one a later test starts a Drashti on, which becomes that test's. They go at
+ * the next launchApp of a later test (nothing of a test runs after it ends), at once and never waited for: one still
+ * held (Windows keeps a quit Drashti's files a moment) is left, as the last test's are, for the run's own folder.
+ */
+const dataFolders: DataFolder[] = [];
+
+/** Count the Drashtis on a data folder this launchApp made (`made`), or on one made by an earlier launchApp. */
+function followDataFolder(
+  app: ElectronApplication,
+  folder: string,
+  test: TestInfo | null,
+  made: boolean,
+): void {
+  if (!test) return;
+  let d = dataFolders.find((f) => f.folder === folder);
+  if (!d && made) {
+    d = { folder, test, open: 0 };
+    dataFolders.push(d);
+  }
+  if (!d) return;
+  const followed = d;
+  followed.test = test;
+  followed.open++;
+  app.once('close', () => {
+    followed.open--;
+  });
+}
+
+function sweepDataFolders(running: TestInfo | null, startingOn: string | undefined): void {
+  for (let i = dataFolders.length - 1; i >= 0; i--) {
+    const d = dataFolders[i];
+    if (!d || d.test === running || d.folder === startingOn) continue;
+    dataFolders.splice(i, 1);
+    if (d.open > 0 || d.test.status !== d.test.expectedStatus) continue;
+    try {
+      // No retries: each would wait (Node waits longer at each), at the start of a test.
+      rmSync(d.folder, { recursive: true, force: true });
+    } catch {
+      // Still held: the run's own folder takes it at the end.
+    }
+  }
+}
+
+/** The test running now, or null outside one. */
+function currentTest(): TestInfo | null {
+  try {
+    return test.info();
+  } catch {
+    return null;
+  }
 }
 
 /** The running test's own folder for crash files, or nothing outside a test. */
@@ -243,8 +310,22 @@ export function lockPage(app: ElectronApplication): Promise<Page> {
  * moment the window appears) would not be seen.
  */
 export async function operatorReady(win: Page): Promise<void> {
-  await expect(win.getByRole('contentinfo', { name: 'Status' })).toContainText(/Electron \d/u);
+  // Up to 30 s (it was 10 s until Session 54): every start now asks the stand-in list first, and a slow CI
+  // machine took longer than 10 s for every start once (28 Oct 2026). A start this slow is said in the log,
+  // never passed over in silence; here one takes under a second.
+  const asked = Date.now();
+  await expect(win.getByRole('contentinfo', { name: 'Status' })).toContainText(/Electron \d/u, {
+    timeout: 30_000,
+  });
+  const took = Date.now() - asked;
+  if (took > SLOW_START_MS)
+    console.log(
+      `Slow start: the operator window was ready ${(took / 1000).toFixed(1)} s after it was asked for.`,
+    );
 }
+
+/** A start slower than this is said (operatorReady). */
+const SLOW_START_MS = 10_000;
 
 /**
  * Choose an application menu item, as the operator would: from the main process's event loop.

@@ -97,9 +97,12 @@ test('a background dissolve cut short by another background never leaves the pic
   await setUpScreen(win);
   const out = await outputPage(app);
 
-  // The first background, settled.
+  // The first background, settled: its picture 1.5 s late by design, then the 3 s dissolve, given 30 s (one CI
+  // Windows machine took more than the 10 s it had until Session 54; the dissolve cut short is what is tested).
   await goLive(win, id, 0);
-  await expect.poll(async () => (await shownBackgrounds(out)).map((b) => b.media)).toEqual([backgrounds[0]]);
+  await expect
+    .poll(async () => (await shownBackgrounds(out)).map((b) => b.media), { timeout: 30_000 })
+    .toEqual([backgrounds[0]]);
   await expect(out.locator('[data-layer="background"][data-fading="true"]')).toHaveCount(0, {
     timeout: MS * 3,
   });

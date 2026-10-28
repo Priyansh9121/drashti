@@ -158,9 +158,19 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Playwright's Chromium and WebKit
         run: pnpm exec playwright install chromium webkit
+      # The disk's free space and the test runs' temporary folders, before and after (Session 54: on 28 Oct the Mac's
+      # starts slowed from its 650th test on, and nothing in the log said why).
+      - name: The disk before the end-to-end tests (reports, never fails)
+        if: env.QUICK != 'true'
+        continue-on-error: true
+        run: node scripts/disk-note.mjs "before the end-to-end tests"
       - name: End-to-end tests (Playwright + Electron)
         if: env.QUICK != 'true'
         run: pnpm test:e2e
+      - name: The disk after the end-to-end tests (reports, never fails)
+        if: always() && env.QUICK != 'true'
+        continue-on-error: true
+        run: node scripts/disk-note.mjs "after the end-to-end tests"
       - name: Unit quick check (the files named, each run as many times as asked; Session 16)
         if: env.QUICK == 'true' && inputs.unit != ''
         shell: bash
@@ -332,8 +342,15 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Playwright's Chromium and WebKit
         run: pnpm exec playwright install chromium webkit
+      - name: The disk before the end-to-end tests (reports, never fails)
+        continue-on-error: true
+        run: node scripts/disk-note.mjs "before the end-to-end tests"
       - name: End-to-end tests in Black (Playwright + Electron)
         run: pnpm test:e2e
+      - name: The disk after the end-to-end tests (reports, never fails)
+        if: always()
+        continue-on-error: true
+        run: node scripts/disk-note.mjs "after the end-to-end tests"
       - name: Cap the crash files in the report
         if: always()
         run: node scripts/cap-crash-files.mjs test-results 200
