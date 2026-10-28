@@ -1,12 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { ACCESS_STOP_AFTER_MS } from '../../shared/access-protocol';
-import { MainAccess } from './main-access';
+import { MainAccess, NODE_HEARD_MAIN_WITHIN_MS } from './main-access';
+
+/** The node's own 2 minutes, about the local network to its Main (never Main's hour without the internet). */
+const TWO_MINUTES = 2 * 60_000;
 
 /*
  * A node shows only while it hears a Main that is let in (Session 54, access by Gmail): black at once when Main says
  * it is not, and 2 minutes after it last heard one (from its start, its last picture for those 2 minutes); showing
  * again when it hears one. On a clock the test moves.
  */
+
+describe('the node’s own 2 minutes', () => {
+  it('are 2 minutes, whatever Main keeps working for without the internet (an hour, 28 Oct 2026)', () => {
+    expect(NODE_HEARD_MAIN_WITHIN_MS).toBe(TWO_MINUTES);
+    expect(ACCESS_STOP_AFTER_MS).toBe(60 * 60_000);
+  });
+});
 
 function setup() {
   let t = 5_000;
@@ -43,7 +53,7 @@ describe('a node and its Main’s access (Session 54)', () => {
     const { access, move, engine } = setup();
     expect(access.stopped).toBeNull();
     expect(access.stop).toBeNull();
-    move(ACCESS_STOP_AFTER_MS - 1);
+    move(TWO_MINUTES - 1);
     expect(access.stopped).toBeNull();
     move(1);
     expect(access.stopped).toBe('not-heard');
@@ -72,7 +82,7 @@ describe('a node and its Main’s access (Session 54)', () => {
     access.heard(true);
     move(60_000);
     access.heard(true);
-    move(ACCESS_STOP_AFTER_MS - 1);
+    move(TWO_MINUTES - 1);
     expect(access.stopped).toBeNull();
     move(1);
     expect(access.stopped).toBe('not-heard');
@@ -81,14 +91,14 @@ describe('a node and its Main’s access (Session 54)', () => {
   it('says why when the reason changes, and stops waiting when it goes', () => {
     const { access, move, changes } = setup();
     access.heard(true);
-    move(ACCESS_STOP_AFTER_MS);
+    move(TWO_MINUTES);
     expect(access.stopped).toBe('not-heard');
     const before = changes();
     access.heard(false);
     expect(access.stopped).toBe('main-stopped');
     expect(changes()).toBe(before + 1);
     access.dispose();
-    move(ACCESS_STOP_AFTER_MS * 2);
+    move(TWO_MINUTES * 2);
     expect(access.stopped).toBe('main-stopped');
   });
 });

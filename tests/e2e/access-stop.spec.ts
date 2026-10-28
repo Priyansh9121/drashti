@@ -1,9 +1,15 @@
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { ACCESS_REMOVED_TEXT, NO_ANSWER_STOP_TITLE, STOPPED_REFUSAL } from '../../src/shared/access';
+import {
+  ACCESS_REMOVED_TEXT,
+  LOCK_REASON_TEXT,
+  NO_ANSWER_STOP_TITLE,
+  OFFLINE_TEXT,
+  STOPPED_REFUSAL,
+} from '../../src/shared/access';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   answerAgain,
@@ -19,6 +25,7 @@ import { clearOfShowControls, expectFits } from './fit';
 import {
   holdStill,
   launchApp,
+  letTimePass,
   lockPage,
   operatorPage,
   operatorReady,
@@ -34,11 +41,12 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Live checks (Session 54, access by Gmail, E3): Drashti checks its access before it opens and while open; revoked
  * (in the Access List or typed into the Sheet), rejected or unknown, everything stops at once in the main process
  * (the controls behind one plain message with only Quit, every request refused whatever page asks, the screens fading
- * to black, the stream and recording ended); with no answer, the countdown over Pro and Simple Mode, then the same
- * stop; at start with no answer it does not open (Try Again), and quit and started again at once it opens at once; a
- * data folder copied to another computer does not let that computer in. The stand-in list on 127.0.0.1; checks every 6 s
- * and the stop 20 s after the last answer here (test switches a packaged Drashti never reads), so no test waits
- * minutes.
+ * to black, the stream and recording ended). With no answer (no internet; the owner's decision of 28 Oct 2026), Drashti
+ * keeps working, the stream and recording included, a bar in the window's flow over Pro and Simple Mode saying how
+ * long, for up to an hour from the last answer, then the same stop; started with no answer, it opens only within that
+ * hour of an answer that let it in (Try Again otherwise); quit and started again at once it opens at once; a data folder
+ * copied to another computer does not let that computer in. The stand-in list on 127.0.0.1; checks every 6 s and "the
+ * hour" 20 s here (test switches a packaged Drashti never reads), so no test waits an hour.
  */
 
 const FAST = {
@@ -165,28 +173,32 @@ test('the stop in Simple Mode, in CI’s window: one message and Quit, fitting, 
   }
 });
 
-test('with no answer: the countdown over the controls, gone when the list answers, then the stop 2 minutes after the last answer', async () => {
+test('with no answer: Drashti keeps working, a bar in the window’s flow saying for how long, gone when the list answers; the stop once the hour (20 s here) is up', async () => {
   test.setTimeout(150_000);
   const { app, win, access: list } = await showing();
   const watch = closedWatch(app);
   try {
     await sizeOperatorWindow(app, win, CI_WINDOW);
     stopAnswering(list);
-    // The countdown, from the next check: the show goes on under it.
-    const countdown = win.getByTestId('access-countdown');
-    await expect(countdown).toBeVisible({ timeout: 15_000 });
-    await expect(win.getByTestId('access-countdown-line')).toHaveText(
-      /^No internet: Drashti stops in 0:\d\d unless it can check your access$/u,
+    // The bar, from the next check: the show goes on, every control answering.
+    const bar = win.getByTestId('access-offline-notice');
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await expect(bar).toContainText(
+      /No internet: Drashti keeps working for .+ more, then stops unless it can check your access/u,
     );
-    expect(await tryIt(win, 'library')).not.toContain(STOPPED_REFUSAL);
-    await expectNoSeriousA11yIssues(win, 'the countdown at 1024 × 645', '[data-testid="access-countdown"]');
-    // The list answers again: the countdown goes, and the show goes on.
+    await expect(bar).toContainText(OFFLINE_TEXT);
+    for (const what of ['command', 'library', 'screens'] as const)
+      expect(await tryIt(win, what), what).not.toContain(STOPPED_REFUSAL);
+    await expectFits(win.getByTestId('access-offline-notices'), 'the bar at 1024 × 645');
+    await clearOfShowControls(win, bar);
+    await expectNoSeriousA11yIssues(win, 'the bar with no internet at 1024 × 645');
+    // The list answers again: the bar goes, and the show goes on.
     answerAgain(list);
-    await expect(countdown).toHaveCount(0, { timeout: 15_000 });
-    // No answer again, now for good: the countdown, then the stop.
+    await expect(bar).toHaveCount(0, { timeout: 15_000 });
+    // No answer again, now for good: the bar, then the stop when the hour is up.
     stopAnswering(list);
-    await expect(countdown).toBeVisible({ timeout: 15_000 });
-    await expectStopped(win, NO_ANSWER_STOP_TITLE);
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await expectStopped(win, NO_ANSWER_STOP_TITLE, 40_000);
     await expect(win.getByTestId('access-stopped')).toHaveAttribute('data-reason', 'no-answer');
     // The list answering again later opens nothing.
     answerAgain(list);
@@ -201,9 +213,9 @@ test('with no answer: the countdown over the controls, gone when the list answer
   }
 });
 
-test('the countdown over Simple Mode, in CI’s window: clear of its big buttons, fitting, passing the accessibility checks, the show going on under it', async () => {
+test('the bar over Simple Mode, in CI’s window: in its flow, clear of its big buttons, fitting, passing the accessibility checks, the show going on under it', async () => {
   test.setTimeout(150_000);
-  // The stop a minute after the last answer here, so the countdown stays up while it is looked at.
+  // "The hour" a minute here, so the bar stays up while it is looked at.
   const { app, win, access: list } = await showing({ DRASHTI_TEST_ACCESS_STOP_MS: '60000' });
   try {
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
@@ -211,45 +223,71 @@ test('the countdown over Simple Mode, in CI’s window: clear of its big buttons
     await expect(simple).toBeVisible();
     await sizeOperatorWindow(app, win, CI_WINDOW);
     stopAnswering(list);
-    const countdown = win.getByTestId('access-countdown');
-    await expect(countdown).toBeVisible({ timeout: 15_000 });
-    await expect(win.getByTestId('access-countdown-line')).toHaveText(
-      /^No internet: Drashti stops in 0:\d\d unless it can check your access$/u,
+    const bar = win.getByTestId('access-offline-notice');
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await expect(bar).toContainText(
+      /No internet: Drashti keeps working for .+ more, then stops unless it can check your access/u,
     );
-    // Over Simple Mode, which stays: inside the window, never over Next, Back or the other big buttons.
+    // In Simple Mode's flow, which stays: inside the window, never over Next, Back or the other big buttons.
     await expect(simple).toBeVisible();
-    await expectFits(countdown, 'the countdown over Simple Mode at 1024 × 645');
-    await clearOfShowControls(win, countdown);
-    await expectNoSeriousA11yIssues(win, 'the countdown over Simple Mode at 1024 × 645');
+    await expectFits(win.getByTestId('access-offline-notices'), 'the bar over Simple Mode at 1024 × 645');
+    await clearOfShowControls(win, bar);
+    await expectNoSeriousA11yIssues(win, 'the bar over Simple Mode at 1024 × 645');
     // The show goes on under it: Simple Mode's own Black-out button still works.
     const blackout = simple.getByTestId('simple-blackout');
     await blackout.click();
     await expect(blackout).toContainText('Black-out is on');
     await blackout.click();
     await expect(blackout).not.toContainText('Black-out is on');
-    // The list answers again: the countdown goes, and Simple Mode is as it was.
+    // The list answers again: the bar goes, and Simple Mode is as it was.
     answerAgain(list);
-    await expect(countdown).toHaveCount(0, { timeout: 15_000 });
+    await expect(bar).toHaveCount(0, { timeout: 15_000 });
     await expect(simple).toBeVisible();
   } finally {
     await app.close();
   }
 });
 
-test('at start with no answer Drashti does not open: Try Again opens it once the list answers', async () => {
+test('started with no internet within the hour of an answer that let it in, Drashti opens, the bar saying for how long', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp({ ...FAST, DRASHTI_TEST_ACCESS_STOP_MS: '120000' });
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const list = standInOf(first.userData);
+  stopAnswering(list);
+  const { app } = await relaunchApp(first.userData, { ...FAST, DRASHTI_TEST_ACCESS_STOP_MS: '120000' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await expect(win.getByTestId('access-offline-notice')).toContainText(
+      /No internet: Drashti keeps working for .+ more, then stops unless it can check your access/u,
+    );
+    expect(await tryIt(win, 'library')).not.toContain(STOPPED_REFUSAL);
+    // The list answers again: the bar goes.
+    answerAgain(list);
+    await expect(win.getByTestId('access-offline-notice')).toHaveCount(0, { timeout: 20_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test('started with no internet after the hour, Drashti does not open: Try Again opens it once the list answers', async () => {
   test.setTimeout(150_000);
   const first = await launchApp(FAST);
   await operatorReady(await operatorPage(first.app));
   await first.app.close();
   const list = standInOf(first.userData);
   stopAnswering(list);
+  // "The hour" (20 s here) passes, Drashti closed: nothing asks the list meanwhile.
+  const asked = list.calls.length;
+  await holdStill(() => list.calls.length === asked, 21_000, 'Drashti closed asks the list nothing');
   const { app } = await relaunchApp(first.userData, FAST);
   try {
     const lock = await lockPage(app);
     await expect(lock.getByTestId('access-reason')).toHaveAttribute('data-reason', 'no-answer', {
       timeout: 20_000,
     });
-    await expect(lock.getByTestId('access-reason')).toContainText('No internet');
+    await expect(lock.getByTestId('access-reason')).toContainText(LOCK_REASON_TEXT['no-answer']);
     expect(app.windows().filter((w) => !w.url().includes('lock.html'))).toEqual([]);
     await expectFits(lock.getByTestId('access-lock'), 'the lock screen with no answer');
     await expectNoSeriousA11yIssues(lock, 'the lock screen with no answer');
@@ -322,6 +360,66 @@ test('a data folder copied to another computer does not let that computer in, an
   const back = await relaunchApp(first.userData);
   await operatorReady(await operatorPage(back.app));
   await back.app.close();
+});
+
+test('with no internet the stream and the recording go on, until the hour (45 s here) is up', async () => {
+  test.setTimeout(180_000);
+  const ffmpeg = testFfmpeg();
+  // CI fetches FFmpeg first (scripts/fetch-ffmpeg.mjs): there, a missing one is a failure, not a skip.
+  test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
+  const port = await freePort();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-access-offline-stream-'));
+  // FFmpeg on this computer stands in for YouTube; the stream's key is made up (stream-helpers.ts).
+  const received = join(dir, 'received.flv');
+  const farEnd = rtmpListener(ffmpeg ?? '', port, received);
+  const {
+    app,
+    userData,
+    access: list,
+  } = await launchApp({
+    ...FAST,
+    DRASHTI_TEST_ACCESS_STOP_MS: '45000',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+  });
+  const watch = closedWatch(app);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await setUpStream(app, win, port, dir);
+    await win.evaluate(async () => {
+      const s = (globalThis as PageGlobals).drashti.stream;
+      await s.startRecording();
+      await s.goLive({ confirmed: true });
+    });
+    const status = () => win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
+    await expect.poll(async () => (await status()).live.state, { timeout: 45_000 }).toBe('live');
+    const recorded = () =>
+      readdirSync(dir)
+        .filter((f) => f.endsWith('.mkv'))
+        .reduce((n, f) => n + statSync(join(dir, f)).size, 0);
+    stopAnswering(list);
+    await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 15_000 });
+    // Two checks with no answer: still on air and recording, both still growing.
+    const before = { sent: statSync(received).size, kept: recorded() };
+    await letTimePass(win, 13_000, 'two checks with no answer (every 6 s here)');
+    const s = await status();
+    expect(s.live.state).toBe('live');
+    expect(s.recording.state).toBe('recording');
+    expect(statSync(received).size).toBeGreaterThan(before.sent);
+    expect(recorded()).toBeGreaterThan(before.kept);
+    // The hour up: the stop, the stream and the recording ended.
+    await expectStopped(win, NO_ANSWER_STOP_TITLE, 60_000);
+    const kept = () =>
+      JSON.parse(readFileSync(join(userData, 'stream-state.json'), 'utf8')) as {
+        live: boolean;
+        recording: boolean;
+      };
+    await expect.poll(kept, { timeout: 10_000 }).toMatchObject({ live: false, recording: false });
+    await quitFromTheStop(watch, win);
+  } finally {
+    farEnd.kill('SIGKILL');
+    if (!watch.closed()) await app.close();
+  }
 });
 
 test('a revoke ends the stream and the recording at once', async () => {

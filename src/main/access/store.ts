@@ -1,7 +1,13 @@
 import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
-import { NO_ACTIVITY, type AccessActivity, type AccessGrant } from '../../shared/access-protocol';
+import {
+  ACCESS_CHECK_STATUSES,
+  NO_ACTIVITY,
+  type AccessActivity,
+  type AccessCheckStatus,
+  type AccessGrant,
+} from '../../shared/access-protocol';
 import { readStateTwice, type StateRead } from '../state-file';
 
 /*
@@ -13,7 +19,9 @@ import { readStateTwice, type StateRead } from '../state-file';
  *
  * It keeps too what each check sends: the last `at` (the next is never at or below it, whatever this
  * computer's clock does) and the totals since the token was used (minutes open, shows, streams, recordings,
- * imports: never content).
+ * imports: never content). And, so that Drashti may start without the internet within the hour of an answer that
+ * let it in (the owner's decision of 28 Oct 2026), the last answer (what it said, when on this computer's clock,
+ * the list's own time, and the end of the length) and how long Drashti has run since without one.
  */
 
 export const ACCESS_FILE = 'access.json';
@@ -32,6 +40,21 @@ export interface StoredAccess {
   lastAt: number;
   /** Totals since the token was used. */
   activity: AccessActivity;
+  /** The list's last answer to a check: let in or why not, heard when (this computer's clock), its own time, the end. */
+  answer?: KeptAnswer;
+  /** How long Drashti has run since that answer with none after it (the monotonic clock's time, ms). */
+  offlineMs?: number;
+}
+
+export interface KeptAnswer {
+  status: AccessCheckStatus;
+  owner: boolean;
+  /** This computer's clock when it was heard. */
+  heardAt: number;
+  /** The list's own time in it. */
+  serverTime: number;
+  /** When access ends by the list's clock, or null for no end. */
+  endsAt: number | null;
 }
 
 const count = z.number().int().min(0).max(1e9);
@@ -45,6 +68,16 @@ const storedSchema = z.object({
   since: z.number().min(0),
   lastAt: z.number().min(0),
   activity: z.object({ minutes: count, shows: count, streams: count, recordings: count, imports: count }),
+  answer: z
+    .object({
+      status: z.enum(ACCESS_CHECK_STATUSES),
+      owner: z.boolean(),
+      heardAt: z.number().min(0),
+      serverTime: z.number().min(0),
+      endsAt: z.number().min(0).nullable(),
+    })
+    .optional(),
+  offlineMs: z.number().min(0).optional(),
 }) satisfies z.ZodType<StoredAccess>;
 
 /** A way in, as the list gave it, ready to keep. */
@@ -124,6 +157,18 @@ export class AccessStore {
     const at = Math.max(Math.floor(now), (s?.lastAt ?? 0) + 1);
     if (s) this.save({ ...s, lastAt: at });
     return at;
+  }
+
+  /** The list's answer to a check, kept (and the time run without one, back to none). */
+  heard(answer: KeptAnswer): void {
+    const s = this.current();
+    if (s) this.save({ ...s, answer, offlineMs: 0 });
+  }
+
+  /** How long Drashti has run since the last answer with none after it: never less than kept before. */
+  offline(ms: number): void {
+    const s = this.current();
+    if (s) this.save({ ...s, offlineMs: Math.max(s.offlineMs ?? 0, Math.floor(ms)) });
   }
 
   /** More shows, streams, minutes…, added to the totals kept. */

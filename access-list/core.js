@@ -39,7 +39,8 @@ var DrashtiAccess = (function () {
   var PROTOCOL = {
     version: 1,
     checkEveryMs: 15 * 1000,
-    stopAfterMs: 2 * MINUTE,
+    // Drashti's own: with no answer, it keeps working this long from the last answer (the list never uses it).
+    stopAfterMs: 60 * MINUTE,
     tokenMs: 3 * DAY,
     linkMs: 7 * DAY,
     limits: {

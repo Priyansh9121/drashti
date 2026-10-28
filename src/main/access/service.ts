@@ -19,7 +19,7 @@ import { readState, type StateRead } from '../state-file';
 import type { AccessResult } from './client';
 import { accessState, type AccessState, isLetIn, setAccessState } from './gate';
 import type { ComputerIdResult } from './identity';
-import { grantOf, type StoredAccess, storedAccess } from './store';
+import { grantOf, type KeptAnswer, type StoredAccess, storedAccess } from './store';
 
 /*
  * Whether Drashti may open, and stay open (Session 54, access by Gmail, E2 and E3). The only thing that changes
@@ -29,9 +29,13 @@ import { grantOf, type StoredAccess, storedAccess } from './store';
  *   Drashti opens; not let in, the lock screen (Request Access, or I Have a Token); no answer, it does not open
  *   (Try Again, and it tries again by itself every 15 s). Access made on another computer (a copied data folder)
  *   is never sent: the lock screen says so, and the list would refuse it anyway.
- * - While open, every 15 s: let in, nothing changes; revoked, rejected or unknown, everything stops at once; no
- *   answer, the countdown, and 2 minutes after the last answer, the same stop. The 2 minutes are on the main
+ * - While open, every 15 s: let in, nothing changes; revoked, rejected or unknown, everything stops at once. No
+ *   answer (no internet; the owner's decision of 28 Oct 2026): Drashti keeps working, the stream and recording
+ *   included, a bar saying for how long, and an hour after the last answer, the same stop. The hour is on the main
  *   process's monotonic clock: a changed computer clock moves nothing. A stop is for good: only Quit works.
+ * - No answer as it starts: it opens all the same only when the last answer kept in the data folder let it in, less
+ *   than an hour before (by this computer's clock, never earlier than it read before, and by the time Drashti has run
+ *   since without an answer, whichever is longer), and its length had not ended; then for the rest of the hour.
  * - A length of access (the owner's decision of 28 Oct 2026): each answer says when access ends by the list's
  *   clock; the window's bar counts down to it from the answer's own time, on the monotonic clock, and the next
  *   check comes at the end at the latest. Once the list says the length has ended ('expired'), everything stops
@@ -61,6 +65,10 @@ export interface AccessKept {
   read(retryMs?: number): StateRead<StoredAccess>;
   save(value: StoredAccess): void;
   add(more: Partial<AccessActivity>): AccessActivity;
+  /** The list's answer to a check, kept for a start without the internet. */
+  heard(answer: KeptAnswer): void;
+  /** How long Drashti has run since the last answer with none after it. */
+  offline(ms: number): void;
 }
 
 /** The Gmail of the last request made from this computer (not a secret), so the next start can say what came of it. */
@@ -454,6 +462,7 @@ export class AccessService {
     if (this.disposed || isLetIn() || accessState().phase === 'stopped') return;
     if (r.ok) {
       const { status, owner, endsAt } = r.value;
+      this.keepAnswer(r.value, r.serverTime);
       if (status === 'in' || status === 'expired') this.heardEnds(endsAt, r.serverTime);
       if (status === 'in') {
         this.letIn(owner);
@@ -466,11 +475,78 @@ export class AccessService {
       if (status === 'expired') this.retryLater();
       return;
     }
+    if (this.openWithoutAnswer(r)) return;
     this.o.log('warn', `Access: no answer from the access list, so Drashti does not open (${why(r)})`);
     this.message = r.kind === 'refused' ? { tone: 'warning', text: ACCESS_ERROR_TEXT[r.error] } : null;
     this.lock('no-answer');
     // As Try Again, by itself: once the connection is back, Drashti opens.
     this.retryLater();
+  }
+
+  /**
+   * No answer as Drashti starts (no internet): it opens all the same only when the last answer kept here let it in,
+   * less than an hour before, and its length had not ended by then; then it keeps working for the rest of the hour,
+   * as when the internet goes while it is open. The hour since that answer is the longer of this computer's clock
+   * (never read as earlier than the latest `at` it sent: a clock set back changes nothing) and the time Drashti has
+   * run since without an answer (kept as it runs: a clock set back while it was closed never gives it more).
+   */
+  private openWithoutAnswer(r: Extract<AccessResult<unknown>, { ok: false }>): boolean {
+    const kept = this.kept;
+    const a = kept?.answer;
+    if (!kept || a?.status !== 'in') return false;
+    const byClock = Math.max(this.o.now(), kept.lastAt, a.heardAt) - a.heardAt;
+    const since = Math.max(byClock, kept.offlineMs ?? 0);
+    if (since >= this.stopAfter) return false;
+    if (a.endsAt !== null && a.serverTime + since >= a.endsAt) return false;
+    const now = this.o.monotonic();
+    this.lastAnswer = now - since;
+    this.ends =
+      a.endsAt === null ? null : { endsAt: a.endsAt, left: a.endsAt - a.serverTime, at: now - since };
+    this.message = null;
+    this.request = null;
+    const stopsAt = this.lastAnswer + this.stopAfter;
+    this.o.log(
+      'warn',
+      `Access: no answer from the access list (${why(r)}); let in ${String(Math.round(since / 60_000))} min ago, so Drashti opens and keeps working for ${String(Math.ceil((stopsAt - now) / 60_000))} min unless it answers`,
+    );
+    this.set({ phase: 'warning', gmail: kept.gmail, owner: a.owner, reason: null, stopsAt });
+    this.armDeadline();
+    this.checkIn(this.nextCheckIn(now));
+    this.countMinutes();
+    return true;
+  }
+
+  /** The list's answer, kept in the data folder for a start without the internet (the time run without one, back to none). */
+  private keepAnswer(
+    v: { status: AccessCheckStatus; owner: boolean; endsAt: number | null },
+    serverTime: number,
+  ): void {
+    try {
+      this.o.kept.heard({
+        status: v.status,
+        owner: v.owner,
+        endsAt: v.endsAt,
+        serverTime,
+        heardAt: this.o.now(),
+      });
+    } catch (error) {
+      this.o.log(
+        'warn',
+        `Access: the list’s answer could not be kept in the data folder (${(error as Error).message})`,
+      );
+    }
+  }
+
+  /** The time run since the last answer with none after it, kept in the data folder. */
+  private keepOffline(ms: number): void {
+    try {
+      this.o.kept.offline(ms);
+    } catch (error) {
+      this.o.log(
+        'warn',
+        `Access: the time without an answer could not be kept in the data folder (${(error as Error).message})`,
+      );
+    }
   }
 
   /** The access kept here asked about again in 15 s, by itself (as Try Again). */
@@ -532,10 +608,11 @@ export class AccessService {
     this.wokeAfter(this.dueAt);
     const started = this.o.monotonic();
     const r = await safely(() => calls.check(grantOf(kept), this.activity));
-    // Stopped meanwhile (the 2 minutes ran out while it waited): nothing it says opens it again.
+    // Stopped meanwhile (the hour ran out while it waited): nothing it says opens it again.
     if (!this.open()) return;
     if (r.ok) {
       const { status, owner, endsAt } = r.value;
+      this.keepAnswer(r.value, r.serverTime);
       if (status !== 'in') {
         // Its length ended: stopped as a revoke stops it (the stop says when it ended).
         if (status === 'expired') this.heardEnds(endsAt, r.serverTime);
@@ -568,19 +645,29 @@ export class AccessService {
     return Math.max(0, due - now);
   }
 
-  /** No answer (or one that says neither in nor out): the countdown, and at its end the stop. */
+  /**
+   * No answer (or one that says neither in nor out): Drashti keeps working, the bar saying for how long, and an hour
+   * after the last answer, the stop. A length that ends meanwhile, by the last answer's own time, stops it at its end.
+   */
   private noAnswer(r: Extract<AccessResult<unknown>, { ok: false }>): void {
-    const stopsAt = (this.lastAnswer ?? this.o.monotonic()) + this.stopAfter;
-    const left = stopsAt - this.o.monotonic();
+    const now = this.o.monotonic();
+    if (this.ends && this.endsInMs() === 0) {
+      this.o.log('warn', `Access: no answer from the access list (${why(r)}), and its length has ended`);
+      this.stop('expired');
+      return;
+    }
+    const stopsAt = (this.lastAnswer ?? now) + this.stopAfter;
+    const left = stopsAt - now;
     if (left <= 0) {
-      this.o.log('warn', `Access: no answer from the access list for 2 minutes (${why(r)})`);
+      this.o.log('warn', `Access: no answer from the access list for an hour (${why(r)})`);
       this.stop('no-answer');
       return;
     }
+    this.keepOffline(now - (this.lastAnswer ?? now));
     if (accessState().phase === 'warning') return;
     this.o.log(
       'warn',
-      `Access: no answer from the access list (${why(r)}): Drashti stops in ${String(Math.ceil(left / 1000))} s unless it answers`,
+      `Access: no answer from the access list (${why(r)}): Drashti keeps working for ${String(Math.ceil(left / 60_000))} min unless it answers`,
     );
     this.set({ phase: 'warning', stopsAt, reason: null });
     this.armDeadline();
@@ -602,7 +689,7 @@ export class AccessService {
           this.armDeadline();
           return;
         }
-        this.o.log('warn', 'Access: no answer from the access list for 2 minutes');
+        this.o.log('warn', 'Access: no answer from the access list for an hour');
         this.stop('no-answer');
       }),
     );
@@ -610,8 +697,8 @@ export class AccessService {
 
   /**
    * A timer due at `due` ran this late: the computer slept (Windows' monotonic clock counts on through a sleep, a
-   * Mac's does not). The time asleep is never counted toward the 2 minutes: they go on from the last answer as if
-   * the computer had not slept. Each sleep counted once, whichever timer runs first.
+   * Mac's does not). The time asleep is never counted toward the hour: it goes on from the last answer as if the
+   * computer had not slept. Each sleep counted once, whichever timer runs first.
    */
   private wokeAfter(due: number): void {
     const late = this.o.monotonic() - Math.max(due, this.awake);
@@ -633,6 +720,8 @@ export class AccessService {
   private stop(reason: AccessReason): void {
     for (const cancel of this.timers.values()) cancel();
     this.timers.clear();
+    // The hour without an answer used up: started again without the internet, it never opens on it.
+    if (reason === 'no-answer') this.keepOffline(this.stopAfter);
     this.o.log('warn', `Access: stopped (${reason}): everything stops, and only Quit works`);
     this.set({ phase: 'stopped', owner: false, reason, stopsAt: null });
   }

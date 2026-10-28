@@ -85,4 +85,26 @@ describe('the way in kept', () => {
     const again = new AccessStore(dir).read(0);
     expect(again.status === 'ok' && again.value.activity.shows).toBe(3);
   });
+
+  it('keeps the last answer and the time run without one since, for a start with no internet (28 Oct 2026)', () => {
+    const store = new AccessStore(dir);
+    store.save(kept());
+    const answer = { status: 'in' as const, owner: false, heardAt: 5_000, serverTime: 6_000, endsAt: null };
+    store.heard(answer);
+    store.offline(90_000);
+    // Never less than kept before (a check that answers in between puts it back to none).
+    store.offline(30_000);
+    let again = new AccessStore(dir).read(0);
+    expect(again.status === 'ok' && again.value).toMatchObject({ answer, offlineMs: 90_000 });
+    store.heard({ ...answer, status: 'revoked', heardAt: 7_000 });
+    again = new AccessStore(dir).read(0);
+    expect(again.status === 'ok' && again.value).toMatchObject({
+      answer: { status: 'revoked' },
+      offlineMs: 0,
+    });
+    // One kept before it knew of either still reads.
+    const old = new AccessStore(dir);
+    old.save(kept());
+    expect(new AccessStore(dir).read(0)).toEqual({ status: 'ok', value: kept() });
+  });
 });

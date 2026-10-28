@@ -2550,13 +2550,13 @@ test('access by Gmail, the lock screen: Request Access with a placeholder Gmail,
   }
 });
 
-test('access by Gmail, live: the countdown with no internet over the show, then the stop once access is removed (Session 54)', async () => {
+test('access by Gmail, live: the bar with no internet while the show goes on, then the stop once access is removed (Session 54)', async () => {
   test.setTimeout(150_000);
-  // A check every 6 s with 2 s to answer (test switches), and the stop 2 minutes after the last answer, as it is.
+  // A check every 6 s with 2 s to answer (test switches), and the stop an hour after the last answer, as it is.
   const { app, access: list } = await launchApp({
     DRASHTI_TEST_ACCESS_CHECK_MS: '6000',
     DRASHTI_TEST_ACCESS_TIMEOUT_MS: '2000',
-    DRASHTI_TEST_ACCESS_STOP_MS: '120000',
+    DRASHTI_TEST_ACCESS_STOP_MS: '3600000',
   });
   const watch = closedWatch(app);
   try {
@@ -2564,13 +2564,13 @@ test('access by Gmail, live: the countdown with no internet over the show, then 
     await win.setViewportSize({ width: 1280, height: 720 });
     await operatorReady(win);
     await running(win);
-    // No answer from the list (as with no internet): the countdown at the top, while the show goes on.
+    // No answer from the list (as with no internet): the bar under the header, while the show goes on.
     stopAnswering(list);
-    await expect(win.getByTestId('access-countdown')).toBeVisible({ timeout: 30_000 });
-    await shot(win, 'access-countdown');
+    await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
+    await shot(win, 'access-offline');
     // An answer again takes it away; then this Gmail revoked: everything stops at the next check.
     answerAgain(list);
-    await expect(win.getByTestId('access-countdown')).toHaveCount(0, { timeout: 30_000 });
+    await expect(win.getByTestId('access-offline-notice')).toHaveCount(0, { timeout: 30_000 });
     revoke(list, PLACEHOLDER_PERSON);
     await expect(win.getByTestId('access-stopped')).toHaveAttribute('data-reason', 'revoked', {
       timeout: 30_000,

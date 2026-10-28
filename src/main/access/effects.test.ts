@@ -86,6 +86,16 @@ describe('a stop, once Drashti has opened (Session 54)', () => {
     expect(did.at(-1)).toBe('uncover');
   });
 
+  it('with no internet (the list not answering, for up to an hour), stops nothing: the screens, the stream, the recording and the nodes go on', () => {
+    setAccessState(at('in'));
+    const s = setup({ live: true, recording: true });
+    setAccessState(at('warning'));
+    s.tick();
+    expect(s.did).toEqual([]);
+    expect(s.told.every(Boolean)).toBe(true);
+    s.stop();
+  });
+
   it('ends only what is going: no stream to end, none ended', () => {
     setAccessState(at('in'));
     const { did } = setup();

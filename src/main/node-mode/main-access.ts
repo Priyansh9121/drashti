@@ -1,5 +1,3 @@
-import { ACCESS_STOP_AFTER_MS } from '../../shared/access-protocol';
-
 /*
  * A node runs only while paired with a Main that is let in (Session 54, access by Gmail). Main says whether it is
  * as the node connects, at each change and every 15 s. Told it is not, the node's screens go black at once; hearing
@@ -7,8 +5,12 @@ import { ACCESS_STOP_AFTER_MS } from '../../shared/access-protocol';
  * the last picture it kept (Session 13) for those 2 minutes too, as Main's own 2 minutes keep a show going through a
  * blip, then black. Hearing a Main let in again, the node shows what Main shows: a node has no controls of its own,
  * so there is nothing for it to keep stopped (Main itself stops for good). The 2 minutes are on the timers' own
- * clock: a changed computer clock moves nothing.
+ * clock: a changed computer clock moves nothing. They are the node's own, about the local network to its Main, not the
+ * internet: Main keeps working up to an hour without the internet (28 Oct 2026), telling its nodes it is let in.
  */
+
+/** A node goes black when it has heard nothing of a Main let in for this long. */
+export const NODE_HEARD_MAIN_WITHIN_MS = 2 * 60_000;
 
 export type NodeStopWhy =
   /** Main said it is not let in (revoked, rejected, unknown, or its own 2 minutes with no answer). */
@@ -67,7 +69,7 @@ export class MainAccess {
   /** The 2 minutes from now, until Main is heard again. */
   private wait(): void {
     this.cancel?.();
-    this.cancel = this.o.setTimer(this.o.graceMs ?? ACCESS_STOP_AFTER_MS, () => {
+    this.cancel = this.o.setTimer(this.o.graceMs ?? NODE_HEARD_MAIN_WITHIN_MS, () => {
       this.cancel = null;
       this.goBlack('not-heard');
     });

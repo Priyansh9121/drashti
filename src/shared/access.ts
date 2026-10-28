@@ -14,9 +14,9 @@ export type AccessPhase =
   | 'locked'
   /** Let in, and the last check was answered. */
   | 'in'
-  /** Let in, but the list has not answered for a while: the countdown to the stop runs. */
+  /** Let in, but the list has not answered for a while (no internet): Drashti keeps working, for up to an hour. */
   | 'warning'
-  /** Stopped: revoked, rejected, unknown, the length ended, or 2 minutes with no answer. Only Quit works. */
+  /** Stopped: revoked, rejected, unknown, the length ended, or an hour with no answer. Only Quit works. */
   | 'stopped';
 
 /** Why this computer is not let in, or why Drashti stopped. */
@@ -27,7 +27,7 @@ export type AccessReason =
   | 'unknown'
   /** The length of access the owner gave has ended, by the list's clock (the owner's decision of 28 Oct 2026). */
   | 'expired'
-  /** No answer from the list: at start (Try Again), or for 2 minutes while open (the stop). */
+  /** No answer from the list: at start (Try Again), or for an hour while open (the stop). */
   | 'no-answer'
   /** The access kept in the data folder was made on another computer (a copied folder). */
   | 'copied'
@@ -58,7 +58,7 @@ export interface AccessView {
   /** This computer's Gmail is the owner's: only then the Access List. */
   owner: boolean;
   reason: AccessReason | null;
-  /** While 'warning': how long until the stop, in ms, as of when this view was made. */
+  /** While 'warning' (no internet): how long it keeps working until the stop, in ms, as of when this view was made. */
   stopsInMs: number | null;
   /** The request made from this computer, while it waits or was answered. */
   request: AccessRequestView | null;
@@ -128,24 +128,21 @@ export const endsBarTitle = (endsAt: number): string => `Your access to Drashti 
 export const endsBarText = (leftMs: number): string =>
   `In ${leftText(leftMs)}. Ask the person who approves access for more time: when it is up, everything stops, the screens and the stream included.`;
 
-/** The stop after 2 minutes with no answer. */
+/** The stop after an hour with no answer. */
 export const NO_ANSWER_STOP_TITLE = 'Drashti stopped: no internet';
 export const NO_ANSWER_STOP_TEXT =
-  'Drashti could not check your access for 2 minutes, so everything has stopped. Quit, check the internet connection, then start Drashti again.';
+  'Drashti could not check your access for an hour, so everything has stopped. Quit, check the internet connection, then start Drashti again.';
 
 /** What has stopped, said on the stop screen. */
 export const STOPPED_WHAT_TEXT =
   'The screens, the stream and recording, the nodes and the phones have all stopped. Only Quit works.';
 
-/** m:ss, for the countdown (never below 0:00). */
-export function countdownText(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${String(Math.floor(s / 60))}:${String(s % 60).padStart(2, '0')}`;
-}
-
-/** The countdown while the list does not answer (the brief's own words). */
-export const countdownLine = (ms: number): string =>
-  `No internet: Drashti stops in ${countdownText(ms)} unless it can check your access`;
+/** While the list does not answer (no internet): how long Drashti keeps working (the owner's decision of 28 Oct 2026). */
+export const offlineLine = (ms: number): string =>
+  `No internet: Drashti keeps working for ${leftText(ms)} more, then stops unless it can check your access`;
+/** What to do meanwhile, under that line. */
+export const OFFLINE_TEXT =
+  'The show goes on: the screens, the sound, the second computer and the phones, and the stream waits and carries on by itself once this computer is online again (the recording keeps going). Join another Wi-Fi or a phone’s hotspot: this goes once Drashti can check again.';
 
 /** What the lock screen says for each reason Drashti is not let in. */
 export const LOCK_REASON_TEXT: Record<AccessReason, string> = {
@@ -156,7 +153,7 @@ export const LOCK_REASON_TEXT: Record<AccessReason, string> = {
   expired:
     'Your access to Drashti has ended. Ask the person who approves access for more time: once they give it, Drashti opens here by itself. Or ask for access again.',
   'no-answer':
-    'No internet: Drashti cannot check your access, so it does not open. Check the connection, then Try Again.',
+    'No internet: Drashti cannot check your access, so it does not open. Without the internet it opens only within an hour of a check that let it in. Check the connection, then Try Again.',
   copied:
     'This data folder was let in on another computer. Each computer needs its own access: ask for access with your Gmail.',
   unreadable:

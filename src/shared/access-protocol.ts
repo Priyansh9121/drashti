@@ -17,8 +17,11 @@ export const ACCESS_VERSION = 1;
 
 /** Drashti checks its access this often while it is open. */
 export const ACCESS_CHECK_EVERY_MS = 15_000;
-/** With no answer for this long, Drashti stops (a countdown first). */
-export const ACCESS_STOP_AFTER_MS = 2 * 60_000;
+/**
+ * With no answer for this long, Drashti stops (the owner's decision of 28 Oct 2026: without the internet it keeps
+ * working, the stream and recording included, for up to an hour from the last answer, a bar saying how long).
+ */
+export const ACCESS_STOP_AFTER_MS = 60 * 60_000;
 /** A token that is not used runs out this long after it is sent: 3 days. */
 export const ACCESS_TOKEN_MS = 3 * 24 * 60 * 60_000;
 /** An Approve or Reject link runs out this long after the request: 7 days. */

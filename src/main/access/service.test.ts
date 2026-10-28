@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { placeholderComputer } from '../../../tests/access-core';
 import { accessStandIn, type AccessStandIn } from '../../../tests/access-standin';
-import { countdownLine, endsBarShown } from '../../shared/access';
+import { endsBarShown, offlineLine } from '../../shared/access';
 import {
   ACCESS_CHECK_EVERY_MS,
   ACCESS_STOP_AFTER_MS,
@@ -38,6 +38,7 @@ import { ACCESS_FILE, AccessStore, storedAccess } from './store';
 
 const PERSON = 'placeholder.user@example.com';
 const HERE = 'a'.repeat(64);
+const SECOND = 1000;
 const DAY = 24 * 3_600_000;
 /** The scripted list's own clock: its time when the test's monotonic clock reads 0. */
 const LIST_START = Date.UTC(2026, 9, 28, 1, 0, 0);
@@ -380,22 +381,24 @@ describe('while open', () => {
       expect(accessState()).toMatchObject({ phase: 'stopped', reason: status });
     });
 
-  it('with no answer: the countdown from 1:45, back to let in when the list answers', async () => {
+  it('with no answer: the bar saying how long it keeps working, gone when the list answers', async () => {
     const s = await startedIn();
     list.check_ = 'silent';
     await clock.move(ACCESS_CHECK_EVERY_MS);
     expect(accessState().phase).toBe('warning');
-    // Still let in while it counts down: the show goes on.
+    // Still let in while it waits for an answer: the show goes on.
     expect(isLetIn()).toBe(true);
     const left = s.view().stopsInMs ?? 0;
     expect(left).toBe(ACCESS_STOP_AFTER_MS - ACCESS_CHECK_EVERY_MS);
-    expect(countdownLine(left)).toBe('No internet: Drashti stops in 1:45 unless it can check your access');
+    expect(offlineLine(left)).toBe(
+      'No internet: Drashti keeps working for 59 minutes more, then stops unless it can check your access',
+    );
     await clock.move(ACCESS_CHECK_EVERY_MS);
     expect(s.view().stopsInMs).toBe(ACCESS_STOP_AFTER_MS - 2 * ACCESS_CHECK_EVERY_MS);
     list.check_ = 'in';
     await clock.move(ACCESS_CHECK_EVERY_MS);
     expect(accessState()).toMatchObject({ phase: 'in', stopsAt: null });
-    // The 2 minutes count again from this answer.
+    // The hour counts again from this answer.
     list.check_ = 'silent';
     await clock.move(ACCESS_STOP_AFTER_MS - 1);
     expect(accessState().phase).toBe('warning');
@@ -403,12 +406,12 @@ describe('while open', () => {
     expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'no-answer' });
   });
 
-  it('stops 2 minutes after the last answer even while a check waits for its answer, and a late answer changes nothing', async () => {
+  it('stops an hour after the last answer even while a check waits for its answer, and a late answer changes nothing', async () => {
     await startedIn();
     list.check_ = 'silent';
     await clock.move(ACCESS_CHECK_EVERY_MS);
     expect(accessState().phase).toBe('warning');
-    // The next check waits (a slow network) past the 2 minutes.
+    // The next check waits (a slow network) past the hour.
     list.hold = { release: () => undefined };
     list.check_ = 'in';
     await clock.move(ACCESS_STOP_AFTER_MS);
@@ -419,11 +422,11 @@ describe('while open', () => {
     expect(accessState().phase).toBe('stopped');
   });
 
-  it('measures the 2 minutes on the monotonic clock: a changed computer clock moves nothing', async () => {
+  it('measures the hour on the monotonic clock: a changed computer clock moves nothing', async () => {
     const s = await startedIn();
     list.check_ = 'silent';
     await clock.move(ACCESS_CHECK_EVERY_MS);
-    // The computer's clock set back a day, then on a week: the stop is still 1:45 away.
+    // The computer's clock set back a day, then on a week: the stop is still 59 minutes 45 seconds away.
     clock.wall -= 24 * 3_600_000;
     clock.wall += 7 * 24 * 3_600_000;
     expect(s.view().stopsInMs).toBe(ACCESS_STOP_AFTER_MS - ACCESS_CHECK_EVERY_MS);
@@ -539,6 +542,147 @@ describe('a length of access (the owner’s decision of 28 Oct 2026)', () => {
     await clock.move(ACCESS_CHECK_EVERY_MS);
     expect(accessState().phase).toBe('in');
     expect(s.view().endsInMs).toBe(7 * DAY - ACCESS_CHECK_EVERY_MS);
+  });
+});
+
+describe('with no internet, Drashti keeps working for up to an hour (the owner’s decision of 28 Oct 2026)', () => {
+  const MINUTE = 60_000;
+
+  /** Time passes: the monotonic clock and this computer's own clock alike. */
+  async function pass(ms: number): Promise<void> {
+    clock.wall += ms;
+    await clock.move(ms);
+  }
+
+  /** Drashti quit, and started again on the same data folder. */
+  async function restart(): Promise<AccessService> {
+    service?.dispose();
+    setAccessState({ phase: 'checking', gmail: null, owner: false, reason: null, stopsAt: null });
+    const s = make();
+    s.start();
+    await clock.move(0);
+    return s;
+  }
+
+  it('2 minutes, then 59 minutes with no answer: still let in, nothing stopped, the bar saying how long; an hour after the last answer, the stop', async () => {
+    const s = await startedIn();
+    list.check_ = 'silent';
+    await pass(2 * MINUTE);
+    expect(accessState().phase).toBe('warning');
+    expect(isLetIn()).toBe(true);
+    expect(offlineLine(s.view().stopsInMs ?? 0)).toBe(
+      'No internet: Drashti keeps working for 58 minutes more, then stops unless it can check your access',
+    );
+    await pass(57 * MINUTE);
+    expect(accessState().phase).toBe('warning');
+    expect(isLetIn()).toBe(true);
+    await pass(MINUTE - 1);
+    expect(isLetIn()).toBe(true);
+    await pass(1);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'no-answer' });
+  });
+
+  it('the list answering again after a while without the internet: revoked stops it at once, let in takes the bar away', async () => {
+    const s = await startedIn();
+    list.check_ = 'silent';
+    await pass(10 * MINUTE);
+    expect(accessState().phase).toBe('warning');
+    list.check_ = 'in';
+    await pass(ACCESS_CHECK_EVERY_MS);
+    expect(s.view()).toMatchObject({ phase: 'in', stopsInMs: null });
+    list.check_ = 'silent';
+    await pass(30 * MINUTE);
+    list.check_ = 'revoked';
+    await pass(ACCESS_CHECK_EVERY_MS);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'revoked' });
+  });
+
+  it('a length that ends without the internet stops it at its end, by the last answer’s own time', async () => {
+    list.endsAt = list.listNow() + 5 * MINUTE;
+    await startedIn();
+    list.check_ = 'silent';
+    await pass(5 * MINUTE - SECOND);
+    expect(accessState().phase).toBe('warning');
+    await pass(2 * SECOND);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'expired' });
+  });
+
+  it('started again with no internet within the hour of an answer that let it in: it opens for the rest of the hour; after the hour it does not', async () => {
+    await startedIn();
+    list.check_ = 'silent';
+    await pass(10 * MINUTE);
+    let s = await restart();
+    expect(accessState()).toMatchObject({ phase: 'warning', reason: null });
+    expect(isLetIn()).toBe(true);
+    expect(s.view().stopsInMs).toBe(50 * MINUTE);
+    await pass(50 * MINUTE - 1);
+    expect(isLetIn()).toBe(true);
+    await pass(1);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'no-answer' });
+    s = await restart();
+    expect(s.view()).toMatchObject({ phase: 'locked', reason: 'no-answer' });
+    // The list answering again (let in): it opens, as ever.
+    list.check_ = 'in';
+    await pass(ACCESS_CHECK_EVERY_MS);
+    expect(accessState().phase).toBe('in');
+  });
+
+  it('a computer clock set back never opens it again without the internet: the time it ran without an answer is kept', async () => {
+    await startedIn();
+    list.check_ = 'silent';
+    await pass(60 * MINUTE);
+    expect(accessState().phase).toBe('stopped');
+    clock.wall -= 3 * 60 * MINUTE;
+    await restart();
+    expect(accessState()).toMatchObject({ phase: 'locked', reason: 'no-answer' });
+    // Quit 20 minutes after an answer, then started an hour later with the clock set back to the quit: it may use
+    // only what is left of the hour by the time it ran, never more.
+    list.check_ = 'in';
+    await pass(ACCESS_CHECK_EVERY_MS);
+    expect(accessState().phase).toBe('in');
+    list.check_ = 'silent';
+    await pass(20 * MINUTE);
+    service?.dispose();
+    await pass(60 * MINUTE);
+    clock.wall -= 60 * MINUTE;
+    const s = await restart();
+    expect(s.view().phase).toBe('warning');
+    expect(s.view().stopsInMs).toBeLessThanOrEqual(40 * MINUTE);
+  });
+
+  it('never opens without an answer after one that said revoked, rejected or its length ended, nor once its length has ended meanwhile', async () => {
+    keep();
+    for (const status of ['revoked', 'rejected'] as const) {
+      list.check_ = 'in';
+      await restart();
+      expect(accessState().phase, status).toBe('in');
+      list.check_ = status;
+      await pass(ACCESS_CHECK_EVERY_MS);
+      expect(accessState().phase, status).toBe('stopped');
+      list.check_ = 'silent';
+      await restart();
+      expect(accessState(), status).toMatchObject({ phase: 'locked', reason: 'no-answer' });
+    }
+    // Its length ended (the list said so): never opened without the internet.
+    list.check_ = 'in';
+    list.endsAt = list.listNow() + MINUTE;
+    await restart();
+    expect(accessState().phase).toBe('in');
+    await pass(MINUTE + 2 * SECOND);
+    expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'expired' });
+    list.check_ = 'silent';
+    await restart();
+    expect(accessState()).toMatchObject({ phase: 'locked', reason: 'no-answer' });
+    // Let in for 30 minutes, then quit; started 40 minutes later with no internet: its length has ended meanwhile.
+    list.check_ = 'in';
+    list.endsAt = list.listNow() + 30 * MINUTE;
+    await restart();
+    expect(accessState().phase).toBe('in');
+    service?.dispose();
+    await pass(40 * MINUTE);
+    list.check_ = 'silent';
+    await restart();
+    expect(accessState()).toMatchObject({ phase: 'locked', reason: 'no-answer' });
   });
 });
 
@@ -820,7 +964,7 @@ describe('the performance check’s own check (Session 54, E review)', () => {
 describe('a computer that sleeps (Session 54, E review: Windows counts the time asleep)', () => {
   const HOUR = 60 * 60_000;
 
-  it('woken with no internet yet: the countdown from 1:45, never a stop for the time it slept', async () => {
+  it('woken with no internet yet: the bar, never a stop for the time it slept', async () => {
     const s = await startedIn();
     clock.sleep(HOUR);
     list.check_ = 'silent';
@@ -850,7 +994,7 @@ describe('a computer that sleeps (Session 54, E review: Windows counts the time 
     expect(accessState()).toMatchObject({ phase: 'stopped', reason: 'no-answer' });
   });
 
-  it('never stretches the 2 minutes when no timer ran late', async () => {
+  it('never stretches the hour when no timer ran late', async () => {
     await startedIn();
     list.check_ = 'silent';
     await clock.move(ACCESS_STOP_AFTER_MS);
