@@ -99,9 +99,15 @@ A token works once, for one computer, and runs out after **3 days**. If yours ru
 ## 10. Using the list
 
 - **Someone asks for access** from their Drashti's lock screen: you get an email **Drashti: … asks for access**, with their Gmail, the name they typed, their computer and Drashti's version, and an **Approve** and a **Reject** link. Each link opens a page with **one button**: nothing happens until you press it. The links work once, and for **7 days**.
-- **Approve:** they get an email from your approver Gmail with their one-time token (it works once, on one computer, for 3 days).
+- **Approve:** the page asks **How long may they use Drashti?** (below), then they get an email from your approver Gmail with their one-time token (it works once, on one computer, for 3 days).
 - **Reject:** they are told plainly, by email and on their lock screen, and nothing more happens.
-- **In Drashti, View › Access List** (your computer only): add a Gmail, approve, reject, revoke, give access again (a new token), and a note.
+- **In Drashti, View › Access List** (your computer only): add a Gmail, approve, reject, revoke, give access again (a new token), change how long access lasts, and a note.
+- **How long access lasts** (from 28 Oct 2026). Approving (on the Approve page, or **Approve…** and **Add a Gmail…** in the Access List), **Give access again…** and **Change the length…** each ask how long: **Unlimited** (until you revoke it, chosen at first, so nobody is cut off by a slip), **1 day** (24 hours), **7, 30, 60, 90, 120, 180 or 365 days**, or **a number of days** you type (1 to 730, two years; for longer, choose Unlimited). A length counts from the moment you give it, by the list's clock (Google's), never by anyone's computer.
+  - **When it ends** shows in the Sheet's **Access ends** column and in the Access List. From 7 days before (at once for 7 days or less), a bar in their Drashti says when it ends. When the time is up, their Drashti stops exactly as a revoke stops it, and its lock screen says their access has ended and how to come back.
+  - **To give more time,** before or after the end: **Change the length…** (or **Give access again…**) in the Access List. A new length counts from that moment. Given before the end, nothing stops. After it, a Drashti showing its lock screen opens by itself within 15 seconds; one that stopped while open is quit and started again.
+  - **Your own row is always Unlimited:** no length can be set on it, as it can never be revoked.
+  - **Give each mandir computer's Gmail Unlimited**, so a date never cuts off a sabha. Lengths are for operators' own computers.
+  - **Typed in the Sheet,** **Access ends** counts too: a date and time is the new end, and empty or `Unlimited` is no end. Anything else the list cannot read stops that Gmail's Drashtis until you put it right.
 - **In the Sheet:** to stop someone at once, set their **Status** to **revoked** (it is a list to choose from). Their Drashti stops within about 30 seconds, and their computers stay out even if you set **approved** again later: to let them back in, use **Give access again** in Drashti's Access List. Setting **approved** in the Sheet sends no token: use the Approve link or the Access List.
 - **Leave alone:** the **Computers** tab (Google warns you before a change), the hidden columns, and the column headers. Do not add a second row for a Gmail that has one. In **Script Properties**, the list keeps its own settings beside your `APPROVER_EMAIL` (`WEB_APP_URL`, the keys, and `REQUESTS_TODAY`, its count of the day's requests): leave them as they are, except as section 13 says.
 - **Never share the Sheet or the script** with anyone: whoever can edit them can let people in.
@@ -109,13 +115,17 @@ A token works once, for one computer, and runs out after **3 days**. If yours ru
 
 ## 11. Putting in a change later (always the same deployment)
 
-When Claude gives you new text for a file:
+When a new Drashti needs a change in the list, Claude names the files to paste again (only those):
 
-1. Paste it as in step 5 and save.
+1. In **Extensions › Apps Script**, open each file named, select all its text, and paste the new text over it, as in step 5. Save (the disk icon, or Cmd+S / Ctrl+S).
 2. **Deploy › Manage deployments**. Click your deployment (`Drashti access list`), then the pencil (**Edit**).
 3. **Version:** choose **New version**. Click **Deploy**.
 
-The address stays the same and every Drashti carries on. Never use **New deployment**.
+The address and the key stay the same, so the line built into Drashti keeps working and every Drashti carries on.
+
+- **Never use New deployment** (it makes a new address).
+- **Never touch the keys** in **Project Settings › Script Properties**, and **never choose Drashti › Set up…** for a change.
+- **Lengths of access (28 Oct 2026):** paste `core.js`, `Code.js` and `Link.html` again (`appsscript.json` and `Setup.html` are unchanged). Your Sheet needs nothing: the list adds its two new columns, **Access ends** (shown) and **Length** (hidden), by itself at its first call, with **Unlimited** for everyone approved before.
 
 ## 12. The limits of a free Google account
 

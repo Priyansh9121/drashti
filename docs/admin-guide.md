@@ -71,7 +71,7 @@ Section 2 of `docs/parallel-run.md` has the same steps for the volunteers.
 
 1. **Request Access**: type **Your Gmail** and, if you like, **Your name (optional)**, so the owner knows who asks, then press **Request Access**. The owner gets an email with an **Approve** and a **Reject** link: each opens a page with one button (nothing happens until it is pressed), and works once, for 7 days. The window asks every 30 seconds what came of the request (**Check Again** asks at once).
 2. Approved, the person gets an email from the owner's Gmail with a one-time **token**: 28 letters and digits in groups of four (`ABCD-EFGH-…`). Rejected, they are told so, by email and in the window.
-3. Under **I Have a Token**, type the Gmail and the **Token**, and press **Let This Computer In**. This computer is let in, and stays in until the owner revokes that Gmail.
+3. Under **I Have a Token**, type the Gmail and the **Token**, and press **Let This Computer In**. This computer is let in, and stays in for as long as the owner gave (below), or until the owner revokes that Gmail.
 
 **Quit Drashti** is always there. The owner's own Gmail never uses **Request Access** (the list refuses it): the owner's computer is let in from the Sheet, with **Drashti › Let me in (the owner)…**, which emails the owner a token for **I Have a Token** (`docs/access-setup.md`, section 9).
 
@@ -83,6 +83,8 @@ Section 2 of `docs/parallel-run.md` has the same steps for the volunteers.
 
 **When access is taken away.** When the owner revokes a Gmail (in the Access List, or in the Sheet), every computer let in with it stops at its next check, for good: in place of the controls, one message, "Your access to Drashti has been removed", and **Quit Drashti**, the one button that works. The screens fade to black over a second; the stream and the recording end; imports, conversions, downloads, the drop folder and the **Drashti for Zoom** window stop; phones and tablets say "Drashti has stopped", what one was playing stops, and a file on its way to or from one is cut off. Once the screens have faded, a screen over the controls is turned off, so the message can be read: switch it on again in **Screens** once access is back. A Gmail rejected, or a computer the list no longer knows, stops the same way. To let a revoked Gmail back in, the owner presses **Give access again** (for a rejected one, **Approve**): a new token comes by email, for **I Have a Token** when Drashti is started again.
 
+**How long access lasts.** When the owner approves a Gmail (or gives it access again), they choose how long: **Unlimited** (until revoked; chosen at first, so nobody is cut off by a slip), **1 day** (24 hours), **7, 30, 60, 90, 120, 180 or 365 days**, or a number of days typed in (up to 730). It counts from the moment they give it, by the access list's own clock: changing a computer's clock changes nothing. From 7 days before the end (at once for a length of 7 days or less), a bar under the top bar says when access ends and how long is left, in Pro and Simple Mode alike ("Your access to Drashti ends on 4 Nov 2026 at …", with the time). It never covers a control, and it cannot be closed. When the time is up, Drashti stops exactly as when access is taken away (above), saying "Your access to Drashti has ended", when it ended, and how to come back: ask the owner for more time, then start Drashti again. Started again before then, the window says the same, with **Try Again**, and opens by itself within 15 seconds once the owner has given more time. **Every mandir computer's Gmail is given Unlimited**, so a date never cuts off a sabha: lengths are for operators' own computers. The owner's own Gmail is always Unlimited.
+
 **A node** needs no Gmail of its own: it runs while its Main is let in. When its Main stops, the node's screens go black at once; when it has heard nothing from a Main let in for 2 minutes (Main quit, or the network gone), the same, its last picture kept until then. It shows Main's screens again as soon as it hears its Main let in.
 
 **With no internet.** A check with no answer changes nothing at once, and the show goes on: a bar at the top of the operator window counts down to the stop, **2 minutes** after the last answer ("No internet: Drashti stops in 1:45 unless it can check your access"), and an answer in time takes it away. At 0:00 Drashti stops as above, saying "Drashti stopped: no internet": quit, check the connection, and start Drashti again. Time the computer spends asleep is never counted. With no answer as it starts, Drashti does not open: its window says so, with **Try Again** (it also tries again by itself every 15 seconds). So give each Main the surest connection there is: **a wired connection** to the mandir's internet where possible, with **a phone's hotspot** ready as a spare, to join the computer to before the countdown ends.
@@ -93,26 +95,29 @@ Section 2 of `docs/parallel-run.md` has the same steps for the volunteers.
 
 - **Gmail and name** (the owner's own row says **Owner**), and **Status**: Requested, Approved, Revoked or Rejected, with a second line where there is more to say (the computer a request came from, a token sent and the day it runs out, **No computer in yet**, the day of a rejection);
 - **Requested**, **Approved** and **Revoked**: the days;
+- **Access ends**: **Unlimited**, or the day access ends and how long is left by the list's clock ("In 6 days"); **Ended …** once it has ("Their Drashti has stopped"); for a request added with a length, that length "once approved";
 - **Computer and version**: each of its computers, with its Drashti's version and its system (one no longer in says **(ended)**);
 - **Last seen**, **Time used**, and how many **Shows**, **Streams**, **Recordings** and **Imports**: counts only, never anything shown;
 - **Note**: the owner's own, seen only there and in the Sheet.
 
 A click on a column's heading sorts by it, a second the other way (it opens with the requests waiting first). **All**, **Requested**, **Approved**, **Revoked** and **Rejected**, each with how many, show one status at a time, and the search finds a Gmail, a name, a computer or a note (**Cmd+F** / **Ctrl+F**). **Export CSV…** saves the rows shown, in their order, as a file for a spreadsheet. While the window is open, the list is asked again every 5 seconds ("Updated just now", at the top right).
 
-![The Access List: each Gmail with its status, its computers, when it was last seen and how much it was used](screenshots/access-list.png)
+![The Access List: each Gmail with its status, when its access ends, its computers, when it was last seen and how much it was used](screenshots/access-list.png)
 
 **Changing the list.** Choose a Gmail's row, and the bar under the table offers what can be done with it:
 
-- a request: **Approve** (their token goes to them by email) or **Reject** (they are told);
-- an approved Gmail: **Give access again** (a new token, for one more computer) or **Revoke…**, which asks first: "Their Drashti stops at once, screens and stream included.";
-- a rejected Gmail: **Approve**; a revoked one: **Give access again**;
+- a request: **Approve…** (how long, then their token goes to them by email) or **Reject** (they are told);
+- an approved Gmail: **Give access again…** (a new token, for one more computer, and how long from now), **Change the length…** (how long from now: before the end nothing stops; after it, their Drashti comes back), or **Revoke…**, which asks first: "Their Drashti stops at once, screens and stream included.";
+- a rejected Gmail: **Approve…**; a revoked one: **Give access again…**;
 - every row: **Edit note…**.
 
-**Add a Gmail…** puts someone on the list before they ask: their Gmail, a name and a note. With **Approve it now: their token goes to them by email** ticked, it is **Add and approve**; without it, the Gmail waits as a request, as if they had asked. The owner's own row is never offered **Revoke…** or **Reject**.
+**Approve…**, **Give access again…** and **Change the length…** ask **How long may they use Drashti?**: **Unlimited, until you revoke it** is chosen at first; **A number of days…** takes a whole number from 1 to 730. Approving a Gmail added with a length offers that length first.
+
+**Add a Gmail…** puts someone on the list before they ask: their Gmail, a name, a note and how long (counted from the approval). With **Approve it now: their token goes to them by email** ticked, it is **Add and approve**; without it, the Gmail waits as a request, as if they had asked. The owner's own row is never offered **Revoke…**, **Reject** or **Change the length…**: it is always Unlimited.
 
 ![Revoke… asking first: their Drashti stops at once, screens and stream included](screenshots/access-revoke.png)
 
-**In the Sheet.** The owner may also set a Gmail's **Status** in the Sheet (a list to choose from). Set to **revoked** (or **rejected**), its computers stop within about 30 seconds, and stay out even if it is set to **approved** again later: **Give access again** lets them back in. Set to **approved** by hand, it sends no token: use the email's Approve link, or the Access List. A status typed there that the list does not know stops its computers too, until it is put right. In the script's settings (**Script Properties**), leave the list's own as they are: `WEB_APP_URL`, the keys, and `REQUESTS_TODAY`, its count of the day's requests (`docs/access-setup.md`, section 10).
+**In the Sheet.** The owner may also set a Gmail's **Status** in the Sheet (a list to choose from). Set to **revoked** (or **rejected**), its computers stop within about 30 seconds, and stay out even if it is set to **approved** again later: **Give access again** lets them back in. Set to **approved** by hand, it sends no token: use the email's Approve link, or the Access List. A status typed there that the list does not know stops its computers too, until it is put right. **Access ends** typed there counts as well: a date and time is the new end, empty or `Unlimited` is no end, and anything the list cannot read stops that Gmail's computers until it is put right (the Access List says **Can't be read**). In the script's settings (**Script Properties**), leave the list's own as they are: `WEB_APP_URL`, the keys, and `REQUESTS_TODAY`, its count of the day's requests (`docs/access-setup.md`, section 10).
 
 **Setting the list up** (once, in the owner's Google account), what to do when something goes wrong there, and **what a free Google account allows** (about 50 new people a day by email, and about 400 Drashtis checking at once) are in `docs/access-setup.md`.
 

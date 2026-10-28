@@ -137,7 +137,7 @@ export const PANEL_HELP = {
   statusbar: {
     title: 'The status bar',
     doc: 'operator',
-    text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version. A warning in yellow says what to look at: Audience off or Stage off means this computer’s hall or stage screens are switched off, and Turn on brings them back where they were, asking nothing. After a screen is put on a display, or Shows or Sends is changed in Screens, Keep these screens? undoes the change in 15 seconds unless you press Keep.',
+    text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off or Stage off means this computer’s hall or stage screens are switched off, and Turn on brings them back where they were, asking nothing. After a screen is put on a display, or Shows or Sends is changed in Screens, Keep these screens? undoes the change in 15 seconds unless you press Keep.',
     guide: '**Along the bottom:**',
   },
   audio: {
