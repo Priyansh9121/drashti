@@ -2550,8 +2550,8 @@ test('access by Gmail, the lock screen: Request Access with a placeholder Gmail,
   }
 });
 
-test('access by Gmail, live: the bar with no internet while the show goes on, then the stop once access is removed (Session 54)', async () => {
-  test.setTimeout(150_000);
+test('access by Gmail, live: the bar saying when access ends, the bar with no internet while the show goes on, then the stop once access is removed (Session 54)', async () => {
+  test.setTimeout(180_000);
   // A check every 6 s with 2 s to answer (test switches), and the stop an hour after the last answer, as it is.
   const { app, access: list } = await launchApp({
     DRASHTI_TEST_ACCESS_CHECK_MS: '6000',
@@ -2564,6 +2564,15 @@ test('access by Gmail, live: the bar with no internet while the show goes on, th
     await win.setViewportSize({ width: 1280, height: 720 });
     await operatorReady(win);
     await running(win);
+    // A length of a day from the owner (an operator's own computer, never a mandir one): the bar saying when access
+    // ends, at once, under the header; Unlimited again takes it away.
+    expect(ownerCall(list, 'length', { target: PLACEHOLDER_PERSON, length: 1 })).toMatchObject({ ok: true });
+    await expect(win.getByTestId('access-ends-notice')).toBeVisible({ timeout: 30_000 });
+    await shot(win, 'access-ends');
+    expect(ownerCall(list, 'length', { target: PLACEHOLDER_PERSON, length: 'unlimited' })).toMatchObject({
+      ok: true,
+    });
+    await expect(win.getByTestId('access-ends-notice')).toHaveCount(0, { timeout: 30_000 });
     // No answer from the list (as with no internet): the bar under the header, while the show goes on.
     stopAnswering(list);
     await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });

@@ -22,6 +22,7 @@ extraResources:
       - presenter-guide.md
       - admin-guide.md
       - setup-day.md
+      - screenshots/access-ends.png
       - screenshots/access-offline.png
       - screenshots/access-list.png
       - screenshots/access-revoke.png
