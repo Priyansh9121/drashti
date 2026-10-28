@@ -69,8 +69,8 @@ export type ApiAnswer<T> =
   /** `confirm`: nothing changed until the window's question is answered on the device (Session 54: "switch-off"). */
   | { ok: false; message: string; status: number; confirm?: string };
 
-/** How long a read refused for coming too fast waits before it is asked again (ms), each time. */
-const READ_AGAIN_MS = [400, 1200];
+/** How long a request refused for coming too fast waits before it is asked again (ms), each time. */
+const ASK_AGAIN_MS = [400, 1200];
 
 /**
  * A request to Drashti with this device's token. A token Drashti no longer
@@ -103,11 +103,11 @@ export async function api<T = Record<string, unknown>>(
         message: 'Drashti cannot be reached. Check this phone is on the same Wi-Fi.',
       };
     }
-    // A read refused for coming too fast (Session 54: the burst of reads a phone makes as the lists change under a
-    // run of its own changes) is asked again a moment later, at most twice, as the server's limit refills within a
-    // second; a change is never sent twice.
-    const wait = READ_AGAIN_MS[attempt];
-    if (response.status !== 429 || method !== 'GET' || wait === undefined) break;
+    // A request refused for coming too fast (Session 54: the burst of reads a phone makes as the lists change under
+    // a run of quick changes) is asked again a moment later, at most twice, as Drashti's limit refills within a
+    // second. Refused so, it was never done: a change asked again is still done once.
+    const wait = ASK_AGAIN_MS[attempt];
+    if (response.status !== 429 || wait === undefined) break;
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
   let body: Record<string, unknown> = {};
