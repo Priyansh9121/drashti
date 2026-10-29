@@ -5,7 +5,7 @@ import type { ZoneColours } from '../../../shared/appearance/zones';
 import { cx } from '../ui/cx';
 
 /*
- * An appearance drawn as a small picture of the operator window (Sessions 39–40), as Themes draws a slide theme:
+ * An appearance drawn as a small picture of the operator window (Sessions 39–40), as Themes drew a slide theme:
  * the header, the playlists with the chosen row, the slides with the live one's red border, LIVE above the live
  * picture, and Next in the primary with Back beside it. In the appearance's own colours, whatever the window's
  * is now. Flat colours only (no shadows; no gradients but the decoration's own), and a picture for screen readers

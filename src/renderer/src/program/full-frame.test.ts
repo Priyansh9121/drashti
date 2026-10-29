@@ -5,7 +5,6 @@ import {
   type InputBackground,
   type LowerThirdLayer,
   type PipLayer,
-  type PropItem,
 } from '../../../shared/engine/state';
 import { NEW_LOWER_THIRD } from '../../../shared/lower-thirds';
 import { programPicture } from '../../../shared/program';
@@ -70,18 +69,15 @@ const input: InputBackground = {
 };
 
 describe('the stream’s Camera layout at full frame', () => {
-  it('draws the hall’s background, slide and props with the picture-in-picture box over them, as the hall has it', () => {
-    const prop: PropItem = { id: 'placeholder-prop', name: 'Placeholder prop', elements: [], shownAt: 1 };
-    const state = withBox({ props: [prop] });
+  it('draws the hall’s background and slide with the picture-in-picture box over them, as the hall has it', () => {
+    const state = withBox({});
     // No slide up and a picture behind: the hall's picture instead of the camera.
     expect(programPicture(state, 'camera', null)).toMatchObject({ kind: 'camera', full: 'background' });
     const full = fullFrameState(state);
     expect(full.layers.pip).toBe(box);
     expect(full.layers.background).toBe(state.layers.background);
-    // The props in it, under the box as on the hall's screens (the Camera layout draws its own only over the
-    // camera).
-    expect(full.layers.props).toBe(state.layers.props);
-    expect(FULL_FRAME_LAYERS).toEqual(['background', 'slide', 'props', 'pip']);
+    // Props, which were drawn in it too, went in Session 55.
+    expect(FULL_FRAME_LAYERS).toEqual(['background', 'slide', 'pip']);
   });
 
   it('leaves the Camera layout’s own lower third to it', () => {

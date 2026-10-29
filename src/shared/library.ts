@@ -18,7 +18,7 @@ export interface ImportSource {
  * presentations (added, edited, removed, imported: an import can bring props
  * too), or the props, message templates or themes.
  */
-export type LibraryChange = 'presentations' | 'props' | 'messages' | 'themes' | 'shastra';
+export type LibraryChange = 'presentations' | 'messages' | 'shastra';
 
 /** Removing or restoring presentations: the ids that changed. */
 export type RemoveResult = { ok: true; ids: string[] } | { ok: false; message: string };

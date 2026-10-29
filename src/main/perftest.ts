@@ -129,7 +129,8 @@ export interface PerfContext {
   cpu?: () => number;
   /**
    * An operator's edits meanwhile (DRASHTI_PERF_EDITS=1; Session 16): the words of a presentation,
-   * a playlist's name and a theme in turn, every 0.7 s, timed from the operator window.
+   * and a playlist's name in turn (a theme too until Themes went, Session 55), every 0.7 s, timed from the operator
+   * window.
    */
   edits?: boolean;
   /** How the import gave way to those edits (the import service's counts). */
@@ -276,7 +277,7 @@ interface Sample {
 
 /** An operator's edit, as long as it took from the operator window. */
 interface EditSample {
-  kind: 'words' | 'playlist' | 'theme';
+  kind: 'words' | 'playlist';
   ms: number;
   during: boolean;
   ok: boolean;
@@ -317,29 +318,23 @@ async function slideChangesDuringImport(
     await wait(every);
   }
   // An operator's edits (Session 16): the other placeholder presentation's words, a playlist's
-  // name and the default theme in turn, each changed back and forth so every save writes.
-  const editSamples: { kind: 'words' | 'playlist' | 'theme'; ms: number; during: boolean; ok: boolean }[] =
-    [];
+  // name in turn (the default theme too until Themes went, Session 55), each changed back and forth so every save
+  // writes.
+  const editSamples: { kind: 'words' | 'playlist'; ms: number; during: boolean; ok: boolean }[] = [];
   const wordsId = (await d.library.listPresentations()).find((p) => p.id !== id)?.id ?? '';
   const words = edits ? await d.library.words(wordsId) : null;
   const made = edits ? await d.playlists.create('Placeholder edits', null, false) : null;
   const playlistId = made?.ok ? (made.ids[0] ?? '') : '';
-  const themes = edits ? await d.themes.list() : null;
-  const theme = themes?.themes.find((t) => t.id === themes.defaultId) ?? null;
   let editCount = 0;
   const editOnce = async (during: boolean) => {
     const n = editCount++;
-    const kind = (['words', 'playlist', 'theme'] as const)[n % 3] ?? 'words';
+    const kind = (['words', 'playlist'] as const)[n % 2] ?? 'words';
     const t0 = performance.now();
     let ok = false;
     if (kind === 'words' && words?.ok)
       ok = (await d.library.saveWords(wordsId, `${words.text}\n\nPlaceholder edit ${String(n % 2)}`)).ok;
     else if (kind === 'playlist' && playlistId)
       ok = (await d.playlists.rename(playlistId, `Placeholder edits ${String(n)}`)).ok;
-    else if (kind === 'theme' && theme) {
-      const { id: themeId, ...fields } = theme;
-      ok = (await d.themes.save(themeId, { ...fields, name: `${theme.name}${n % 2 ? ' ' : ''}` })).ok;
-    }
     editSamples.push({ kind, ms: performance.now() - t0, during, ok });
   };
   if (edits)
@@ -772,7 +767,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
         )}; ${editLine(
           'importing',
           run.edits.filter((e) => e.during),
-        )} (${(['words', 'playlist', 'theme'] as const).map((k) => `${k} worst ${Math.max(0, ...run.edits.filter((e) => e.during && e.kind === k).map((e) => Math.round(e.ms)))} ms`).join(', ')})`
+        )} (${(['words', 'playlist'] as const).map((k) => `${k} worst ${Math.max(0, ...run.edits.filter((e) => e.during && e.kind === k).map((e) => Math.round(e.ms)))} ms`).join(', ')})`
       : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;

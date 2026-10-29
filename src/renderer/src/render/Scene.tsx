@@ -7,29 +7,24 @@ import type {
   EngineState,
   MessageItem,
   PipLayer,
-  PropItem,
   TickerLayer,
 } from '../../../shared/engine/state';
-import type { LiveGroupLook, LookLayer, Movement } from '../../../shared/looks';
+import type { GroupLayer, LiveGroupLook, Movement } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
-import type { Mask } from '../../../shared/masks';
-import { maskCoverUrl } from '../../../shared/masks';
 import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
 import { LiveWindowView } from './LiveWindowView';
 import { useEntrance } from './entrance';
-import { NothingUp, nothingUpShows } from './NothingUp';
+import { NothingUp, nothingUpShows, WallpaperCover } from './NothingUp';
 import { clockHeld, engineFrameNow, onClockJump } from './clock';
 import { LANG_FONT_STACK } from './fonts';
 import { textLang } from './lang';
-import { Placed } from './Placed';
 import { SlideLayerView } from './SlideLayerView';
 import { SlideLowerThird } from './LowerThird';
 import { LowerThirdView } from './LowerThirdView';
 import { ScreenPictures } from './picture-looks';
-import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
 import { useLiveHere } from './live-here';
 import { pipMainPlaces, type PipPicture, type PipRun, pipShownFor, pipShowsHere, type PipSlot } from './pip';
@@ -274,75 +269,7 @@ export function TickerBand({
   );
 }
 
-/** Props: each on its own canvas, placed on the screen's as slides are. */
-export function PropsLayer({
-  props,
-  canvas,
-  scaling,
-}: {
-  props: readonly PropItem[];
-  canvas: Size;
-  scaling: ScalingMode;
-}) {
-  return (
-    <>
-      {props.map((prop) => {
-        const size = { width: prop.width ?? 1920, height: prop.height ?? 1080 };
-        return (
-          <div
-            key={prop.id}
-            data-layer="props"
-            data-prop={prop.id}
-            style={{ position: 'absolute', inset: 0 }}
-          >
-            <Placed content={size} box={canvas} mode={scaling}>
-              <div style={{ position: 'relative', width: size.width, height: size.height }}>
-                {/* Its videos play from when it went up, in step on every screen (Session 27), between their files'
-                    start and end points (Session 52). */}
-                {prop.elements.map((el) => (
-                  <ElementView
-                    key={el.id}
-                    el={el}
-                    startedAt={prop.shownAt}
-                    clips={prop.clips}
-                    seeks={prop.seeks}
-                  />
-                ))}
-              </div>
-            </Placed>
-          </div>
-        );
-      })}
-    </>
-  );
-}
-
 const FULL = { position: 'absolute', inset: 0 } as const;
-
-/**
- * A mask, drawn as its cover laid over what it masks: black where it hides
- * (the screen's black, or nothing for a key output to key), see-through
- * where the picture shows. Its own canvas is stretched over the screen's.
- * The same pixels as masking the layers below, but a still picture on top:
- * masking them instead (CSS mask-image) made the compositor draw a video
- * background through the mask again on every one of its frames (Session 15).
- */
-function MaskCover({ mask, layer }: { mask: Mask; layer: 'masks' | 'look' }) {
-  const style = useMemo<CSSProperties>(
-    () => ({
-      ...FULL,
-      backgroundImage: maskCoverUrl(mask),
-      backgroundSize: '100% 100%',
-      backgroundRepeat: 'no-repeat',
-    }),
-    [mask],
-  );
-  return layer === 'masks' ? (
-    <div data-layer="masks" data-mask={mask.id} style={style} />
-  ) : (
-    <div data-look-mask={mask.id} style={style} />
-  );
-}
 
 /**
  * The background layer as a screen draws it: a colour, a picture or a video, or another app's window (Session
@@ -412,12 +339,12 @@ function MainSlot({
 
 /**
  * Everything one screen shows, drawn on that screen's canvas (in canvas
- * pixels). Bottom to top: background, slide, props, the picture-in-picture box (Session 50), a lower third (Session 44,
- * on the pictures it is for), messages, the ticker, masks, the logo, black-out. The operator preview and every output use this
- * same component; the preview sets `annotate` to mark problems the audience
- * never sees. What a screen shows of it is its group's settings in the live
- * Look (`look`: its layers, languages and slide style). The stream leaves
- * the ticker out (`ticker`).
+ * pixels). Bottom to top: background, slide, the picture-in-picture box (Session 50), a lower third (Session 44,
+ * on the pictures it is for), messages, the ticker, the Wallpaper (Session 55, in the Logo's place), black-out.
+ * The operator preview and every output use this same component; the preview sets `annotate` to mark problems the
+ * audience never sees. What a screen shows of it is its group's settings (`look`: its layers, languages and slide
+ * style, by its role and its languages in Screens). The stream leaves the ticker out (`ticker`). With nothing up,
+ * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black until then).
  */
 export const Scene = memo(function Scene({
   state,
@@ -433,14 +360,14 @@ export const Scene = memo(function Scene({
   canvas: Size;
   scaling: ScalingMode;
   annotate?: boolean;
-  /** This screen's group's settings in the live Look (every layer and language when left out). */
+  /** This screen's group's settings (every layer and language when left out). */
   look?: LiveGroupLook;
   /** Draw the announcements ticker (the hall's screens do; the stream does not). */
   ticker?: boolean;
   /**
    * A key and fill pair's half: the fill is the picture, black where empty;
    * the key is white wherever the fill has something, by its opacity, black
-   * elsewhere. Black-out and the logo are for the hall: they take the
+   * elsewhere. Black-out and the Wallpaper are for the hall: they take the
    * graphics off (nothing to key).
    */
   matte?: 'fill' | 'key' | null;
@@ -448,20 +375,17 @@ export const Scene = memo(function Scene({
   place?: 'hall' | 'stream';
 }) {
   const { layers } = state;
-  const shown = (layer: LookLayer) => look.layers.includes(layer);
+  const shown = (layer: GroupLayer) => look.layers.includes(layer);
   const band = ticker && shown('ticker') && layers.ticker ? layers.ticker : null;
   const bandHeight = band ? Math.round(canvas.height * TICKER_HEIGHT) : 0;
-  // A Look's lower third keeps the bottom: messages go along the top (as in the stream's Camera
-  // layout), and the words sit above the ticker's band.
+  // A group's lower third (a key and fill pair's) keeps the bottom: messages go along the top (as in the stream's
+  // Camera layout), and the words sit above the ticker's band.
   const lowerThirds = look.slides === 'lowerThird';
   const background = shown('background') ? layers.background : null;
-  // The group's own mask (its screens' shape) over everything; the Masks layer over the layers below the logo.
-  const groupMask = look.mask;
-  const layerMask = shown('masks') ? layers.masks : null;
-  // Key and fill: black-out and the logo take the graphics off; the key draws every colour white, by its opacity.
+  // Key and fill: black-out and the Wallpaper take the graphics off; the key draws every colour white, by its opacity.
   const keyed = matte !== null;
-  const off = keyed && (state.blackout || state.logo !== null);
-  // The picture-in-picture box (Session 50, render/pip.ts): where this group's Look shows it (else drawn as if
+  const off = keyed && (state.blackout || state.wallpaper);
+  // The picture-in-picture box (Session 50, render/pip.ts): where this group's role shows it (else drawn as if
   // there were none), a video input or a window only on this computer's own pages, and the slides in it only
   // while a slide is up and the group shows the slides.
   const live = useLiveHere();
@@ -473,12 +397,10 @@ export const Scene = memo(function Scene({
   // Worked out at every drawing from the engine's time, kept while it draws the same (Session 51).
   const [run, refreshRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
   const up = boxHere(layers.pip) ? layers.pip : null;
-  // The idle rotation, where this group's Look shows it, while nothing is up on these screens (the box counts).
+  // Nothing up on these screens (the box counts): what shows then (Session 55, render/NothingUp.tsx: Part 6's
+  // chosen wallpaper goes there; black until then).
   const nothingUp = background === null && (layers.slide === null || !shown('slide')) && up === null;
-  const idle =
-    nothingUp && (look.idle === 'always' || (look.idle === 'started' && state.idle.startedAt !== null));
-  // What shows while nothing is up (Session 55, render/NothingUp.tsx: Part 6's wallpaper goes there).
-  const nothingUpNow = nothingUp ? nothingUpShows(idle) : null;
+  const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
   // The pictures' looks and the live zoom, as the state carries them (Session 26e): every screen alike.
   const pictures = useMemo(
@@ -563,14 +485,7 @@ export const Scene = memo(function Scene({
                     />
                   )}
                 </MainSlot>
-                {nothingUpNow && (
-                  <NothingUp
-                    shows={nothingUpNow}
-                    idle={state.idle}
-                    languages={look.languages}
-                    canvas={canvas}
-                  />
-                )}
+                {nothingUpNow && <NothingUp shows={nothingUpNow} state={state} canvas={canvas} />}
                 <MainSlot slot={slotOf('slide')} swap={swap}>
                   <SlideLayerView
                     layer={shown('slide') ? layers.slide : null}
@@ -594,7 +509,6 @@ export const Scene = memo(function Scene({
                     />
                   )}
                 </MainSlot>
-                {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
                 {boxRun && <PipBox run={boxRun} onRun={refreshRun} canvas={canvas} draw={inBox} />}
                 <LowerThirdView
                   layer={layers.lowerThird}
@@ -616,47 +530,15 @@ export const Scene = memo(function Scene({
                 )}
                 {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}
               </div>
-              {layerMask && !keyed && <MaskCover mask={layerMask} layer="masks" />}
-              {state.logo && !keyed && (
-                // The logo instead of the picture: drawn over the layers, which carry on underneath, so
-                // taking it down brings back exactly what was there. Black-out covers it in turn.
-                <div
-                  data-layer="logo"
-                  data-testid="logo"
-                  style={{ position: 'absolute', inset: 0, background: '#000000' }}
-                >
-                  <Placed
-                    content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
-                    box={canvas}
-                    mode={scaling}
-                  >
-                    <div
-                      style={{
-                        position: 'relative',
-                        width: state.logo.width ?? 1920,
-                        height: state.logo.height ?? 1080,
-                      }}
-                    >
-                      {state.logo.elements.map((el) => (
-                        <ElementView
-                          key={el.id}
-                          el={el}
-                          startedAt={state.logo?.shownAt}
-                          clips={state.logo?.clips}
-                          seeks={state.logo?.seeks}
-                        />
-                      ))}
-                    </div>
-                  </Placed>
-                </div>
+              {state.wallpaper && !keyed && (
+                // The Wallpaper instead of the picture (Session 55, Part 13, in the Logo's place): drawn over the
+                // layers, which carry on underneath, so taking it off brings back exactly what was there. Black-out
+                // covers it in turn.
+                <WallpaperCover state={state} canvas={canvas} />
               )}
-              {groupMask && !keyed && <MaskCover mask={groupMask} layer="look" />}
             </>
           )}
         </div>
-        {/* A key and fill pair's covers go over the key's white too: what a mask hides is never keyed. */}
-        {keyed && !off && layerMask && <MaskCover mask={layerMask} layer="masks" />}
-        {keyed && !off && groupMask && <MaskCover mask={groupMask} layer="look" />}
         {state.blackout && !keyed && (
           <div
             data-layer="blackout"

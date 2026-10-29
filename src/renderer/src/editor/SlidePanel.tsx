@@ -18,7 +18,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { ColorInput, Field, NumberInput, Select, Slider, Textarea, TextInput } from '../ui/Field';
-import { Check, Music, Palette, Trash2, X } from '../ui/icons';
+import { Check, Music, Trash2, X } from '../ui/icons';
 import { Toggle } from '../ui/Toggle';
 import { ConfirmDialog } from '../ui/Dialog';
 import { commit, select, tell, useEditor } from './editor-store';
@@ -38,7 +38,6 @@ import {
   setBackgroundCue,
   setSoundCue,
 } from './ops';
-import { cutText } from '../../../shared/text';
 import { DeckTransitions } from './DeckTransitions';
 
 /*
@@ -621,27 +620,6 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
         <div className="flex flex-col items-start gap-2 pt-1">
           <Button size="sm" onClick={() => setAskLook(true)} data-testid="apply-look">
             Give every slide this slide’s look
-          </Button>
-          <Button
-            size="sm"
-            icon={Palette}
-            data-testid="theme-from-slide"
-            onClick={() => {
-              const name = cutText(`${cutText(doc.name, 60)}: ${slide.label || `slide ${number}`}`, 80);
-              void window.drashti.themes
-                .fromSlide(name, {
-                  width: doc.width,
-                  height: doc.height,
-                  background: slide.background,
-                  elements: slide.elements,
-                  cues: slide.cues,
-                })
-                .then((r) => {
-                  tell(r.ok ? `Made the theme “${name}”. It is in Themes.` : r.message);
-                });
-            }}
-          >
-            Make a theme from this slide
           </Button>
         </div>
       </Section>

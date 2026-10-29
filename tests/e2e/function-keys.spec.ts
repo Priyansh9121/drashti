@@ -21,56 +21,16 @@ import { makeTestTone } from './test-media';
 
 /*
  * The keys the operators already press (Session 50, from their presentation program's menus), pressed for real
- * (Session 51, S5-3: no test pressed F7): F5 takes the sound off, F6 the messages, F7 the ticker and F8 the Masks
- * layer, each leaving everything else up, on the engine and on the screens; F12 covers the picture with the logo
- * and F12 again uncovers it. Simple Mode's key line names F12 or L for the Logo while the single-letter keys are
- * on. View › Audience and Stage show ⌘1 and ⌘2 (Ctrl+1 and Ctrl+2) without binding them (S2-6), and the window
- * takes every press of them. Placeholder words, a generated tone, and this computer's own network only.
+ * (Session 51, S5-3: no test pressed F7): F5 takes the sound off, F6 the messages and F7 the ticker, each leaving
+ * everything else up, on the engine and on the screens; F4 and F8 do nothing (Session 55: Props and Masks went);
+ * F12 covers the picture with the Wallpaper (the Logo's key; black until Part 6 brings wallpapers) and F12 again
+ * uncovers it. Simple Mode's key line names F12 for the Wallpaper. View › Audience and Stage show ⌘1 and ⌘2 (Ctrl+1 and
+ * Ctrl+2) without binding them (S2-6), and the window takes every press of them. Placeholder words, a generated tone,
+ * and this computer's own network only.
  */
-
-const LOGO = 'Placeholder Logo';
 
 /** The operator page's globals, with the presses of 1 and 2 a test keeps. */
 type Pressed = typeof globalThis & { digitPresses?: KeyboardEvent[] };
-
-/** A line of placeholder words for a prop. */
-const words = (id: string, text: string) => ({
-  id,
-  kind: 'text' as const,
-  frame: { x: 360, y: 440, width: 1200, height: 200 },
-  text,
-  lang: 'en' as const,
-  style: {
-    fontFamily: null,
-    fontSize: 96,
-    fontWeight: 700,
-    color: '#ffffff',
-    align: 'center' as const,
-    verticalAlign: 'middle' as const,
-    lineHeight: 1.2,
-    shadow: false,
-  },
-});
-
-/** A placeholder prop marked as the logo, so F12 and L have something to put up. */
-async function markLogo(win: Page): Promise<void> {
-  const problem = await win.evaluate(
-    async (logo) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const prop = await d.props.save(null, {
-        name: logo.name,
-        width: 1920,
-        height: 1080,
-        elements: [logo.words],
-      });
-      if (!prop.ok) return prop.message;
-      const marked = await d.props.setLogo(prop.id);
-      return marked.ok ? '' : marked.message;
-    },
-    { name: LOGO, words: words('placeholder-logo-words', LOGO) },
-  );
-  expect(problem).toBe('');
-}
 
 /** A command to the show engine, which must be taken. */
 async function dispatch(win: Page, command: unknown): Promise<void> {
@@ -113,18 +73,17 @@ const letGo = (win: Page) =>
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
 
-/** What is up as the engine has it: each layer the keys clear, and the logo over the picture. */
+/** What is up as the engine has it: each layer the keys clear, and the Wallpaper over the picture. */
 const up = (win: Page) =>
   win.evaluate(async () => {
     const s = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state;
     return {
       background: s.layers.background !== null,
-      props: s.layers.props.length > 0,
+      slide: s.layers.slide !== null,
       sound: s.layers.audio !== null,
       messages: s.layers.messages.length > 0,
       ticker: s.layers.ticker !== null,
-      masks: s.layers.masks !== null,
-      logo: s.logo !== null,
+      wallpaper: s.wallpaper,
     };
   });
 
@@ -133,16 +92,15 @@ const drawn = async (out: Page, audio: Page, soundId: string) => {
   const has = async (page: Page, selector: string) => (await page.locator(selector).count()) > 0;
   return {
     background: await has(out, '[data-layer="background"]'),
-    props: await has(out, '[data-layer="props"]'),
+    slide: await has(out, '[data-layer="slide"] [data-slide-in]'),
     sound: await has(audio, `audio[data-media-id="${soundId}"]`),
     messages: await has(out, '[data-layer="messages"]'),
     ticker: await has(out, '[data-layer="ticker"]'),
-    masks: await has(out, '[data-layer="masks"]'),
-    logo: await has(out, '[data-layer="logo"]'),
+    wallpaper: await has(out, '[data-layer="wallpaper"]'),
   };
 };
 
-test('F5 takes the sound off, F6 the messages, F7 the ticker and F8 the masks, each leaving the rest; F12 covers the picture with the logo and F12 again uncovers it (S5-3)', async () => {
+test('F5 takes the sound off, F6 the messages and F7 the ticker, each leaving the rest; F4 and F8 do nothing; F12 covers the picture with the Wallpaper and F12 again uncovers it (S5-3, Session 55)', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
@@ -156,20 +114,15 @@ test('F5 takes the sound off, F6 the messages, F7 the ticker and F8 the masks, e
     makeTestTone(join(dir, 'Placeholder tone.wav'), { seconds: 20, hz: 330 }),
   ]);
   expect(soundId).not.toBe('');
-  await markLogo(win);
 
-  // Everything up: a background, a prop, the tone (going round), a message, the Masks layer, and the ticker.
+  // Everything up: a background, a slide, the tone (going round), a message, and the ticker.
   await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#1d4e89' } });
-  await dispatch(win, {
-    type: 'showProp',
-    prop: {
-      id: 'placeholder-prop',
-      name: 'Placeholder prop',
-      width: 1920,
-      height: 1080,
-      elements: [words('placeholder-prop-words', 'Placeholder prop')],
-    },
+  const sample = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    return (await d.library.listPresentations()).find((p) => p.name.startsWith('Sample kirtan'))?.id ?? '';
   });
+  expect(sample).not.toBe('');
+  await dispatch(win, { type: 'goLive', presentationId: sample, slideIndex: 0 });
   await dispatch(win, {
     type: 'playAudio',
     audio: { id: 'placeholder-tone', title: 'Placeholder tone', mediaId: soundId, volume: 1, loop: true },
@@ -178,37 +131,27 @@ test('F5 takes the sound off, F6 the messages, F7 the ticker and F8 the masks, e
     type: 'showMessage',
     message: { id: 'placeholder-message', text: 'Placeholder message' },
   });
-  await dispatch(win, {
-    type: 'setMask',
-    mask: {
-      id: 'placeholder-circle',
-      name: 'Placeholder circle',
-      width: 1920,
-      height: 1080,
-      mode: 'show',
-      shapes: [{ id: 'circle', kind: 'ellipse', frame: { x: 660, y: 240, width: 600, height: 600 } }],
-    },
-  });
   await tickerUp(win, 'Placeholder announcement');
   const all = {
     background: true,
-    props: true,
+    slide: true,
     sound: true,
     messages: true,
     ticker: true,
-    masks: true,
-    logo: false,
+    wallpaper: false,
   };
   await expect.poll(() => up(win)).toEqual(all);
   await expect.poll(() => drawn(out, audio, soundId)).toEqual(all);
 
   // Each key takes its own layer off and leaves the rest, on the engine, the screen and the sound.
   await letGo(win);
+  // F4 and F8 first: they took the props and the masks off until Session 55, and do nothing now.
   const steps = [
+    { key: 'F4', left: all },
     { key: 'F5', left: { ...all, sound: false } },
     { key: 'F6', left: { ...all, sound: false, messages: false } },
     { key: 'F7', left: { ...all, sound: false, messages: false, ticker: false } },
-    { key: 'F8', left: { ...all, sound: false, messages: false, ticker: false, masks: false } },
+    { key: 'F8', left: { ...all, sound: false, messages: false, ticker: false } },
   ];
   for (const { key, left } of steps) {
     await win.keyboard.press(key);
@@ -216,42 +159,40 @@ test('F5 takes the sound off, F6 the messages, F7 the ticker and F8 the masks, e
     await expect.poll(() => drawn(out, audio, soundId), `${key}: as the screen draws it`).toEqual(left);
   }
 
-  // F12: the logo over the picture, which carries on underneath (the background and the prop stay up); F12
+  // F12: the Wallpaper over the picture, which carries on underneath (the background and the slide stay up); F12
   // again: the picture as it was.
-  const before = { ...all, sound: false, messages: false, ticker: false, masks: false };
+  const before = { ...all, sound: false, messages: false, ticker: false };
   await win.keyboard.press('F12');
-  await expect.poll(() => up(win)).toEqual({ ...before, logo: true });
-  await expect(out.getByTestId('logo')).toContainText(LOGO);
-  await expect.poll(() => drawn(out, audio, soundId)).toEqual({ ...before, logo: true });
+  await expect.poll(() => up(win)).toEqual({ ...before, wallpaper: true });
+  await expect(out.getByTestId('wallpaper')).toBeVisible();
+  await expect.poll(() => drawn(out, audio, soundId)).toEqual({ ...before, wallpaper: true });
   await win.keyboard.press('F12');
   await expect.poll(() => up(win)).toEqual(before);
   await expect.poll(() => drawn(out, audio, soundId)).toEqual(before);
   await app.close();
 });
 
-test('Simple Mode’s key line names F12 or L for the Logo while the single-letter keys are on, and F12 covers and uncovers there (S5-3)', async () => {
+test('Simple Mode’s key line names F12 for the Wallpaper, and F12 covers and uncovers there (S5-3, Session 55)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  await markLogo(win);
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.singleKeys())).toBe(true);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const keyLine = win.getByTestId('simple-keys');
-  await expect(keyLine).toContainText('Logo F12 or L');
+  await expect(keyLine).toContainText('Wallpaper F12');
+  await expect(keyLine).not.toContainText('Logo');
   await expect(keyLine).toContainText('Black-out B or .');
   // Every one has a key: none is left to its button.
   await expect(keyLine).not.toContainText('button');
-  const logoUp = () =>
-    win.evaluate(
-      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.logo !== null,
-    );
+  const wallpaperUp = () =>
+    win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.wallpaper);
   await letGo(win);
   await win.keyboard.press('F12');
-  await expect.poll(logoUp).toBe(true);
-  await expect(win.getByTestId('simple-logo')).toHaveText(/Logo is on/u);
+  await expect.poll(wallpaperUp).toBe(true);
+  await expect(win.getByTestId('simple-wallpaper')).toHaveText(/Wallpaper is on/u);
   await win.keyboard.press('F12');
-  await expect.poll(logoUp).toBe(false);
+  await expect.poll(wallpaperUp).toBe(false);
   await app.close();
 });
 

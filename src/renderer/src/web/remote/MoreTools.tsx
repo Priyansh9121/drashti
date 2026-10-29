@@ -2,16 +2,14 @@ import { lowerThirdName, shownLines } from '../../../../shared/lower-thirds';
 import { useEngine } from '../../engine/engine-store';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
-import { Play, Square } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
 import { useMirror } from './mirror-store';
 
 /*
  * The operator window's More tools that run the show (Session 54, D5): the Lower Thirds, each shown and hidden
- * again with one button (Session 44), and the idle rotation started and stopped. Making and changing them, the
- * masks (shaped to the hall, and set up in Drashti: a phone takes one down with Clear masks, F8) and the MIDI
- * controller stay in Drashti.
+ * again with one button (Session 44). Making and changing them, and the MIDI controller, stay in Drashti. (The idle
+ * rotation and the masks went in Session 55.)
  */
 
 const post = (path: string) => () => api<{ rev?: number }>(path, { method: 'POST' });
@@ -69,50 +67,10 @@ function LowerThirds() {
   );
 }
 
-/** The idle rotation: Start (with something to show) and Stop; it stops by itself when a slide or picture goes up. */
-function Idle() {
-  const running = useEngine((s) => s.state?.idle.startedAt != null);
-  const items = useEngine((s) => s.state?.idle.items.length ?? 0);
-  if (!running && items === 0) return null;
-  return (
-    <section className="space-y-2" aria-labelledby="idle-title" data-testid="remote-idle">
-      <h2 id="idle-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Idle rotation
-      </h2>
-      <p className="text-base text-muted">Pictures and quotes while nothing else is up.</p>
-      {running ? (
-        <Button
-          size="lg"
-          className="min-h-12"
-          instant
-          variant="live"
-          icon={Square}
-          data-testid="remote-idle-stop"
-          onClick={() => void tap(post('/api/v1/idle/stop'))}
-        >
-          Stop the idle rotation
-        </Button>
-      ) : (
-        <Button
-          size="lg"
-          className="min-h-12"
-          instant
-          icon={Play}
-          data-testid="remote-idle-start"
-          onClick={() => void tap(post('/api/v1/idle/start'))}
-        >
-          Start the idle rotation
-        </Button>
-      )}
-    </section>
-  );
-}
-
 export function MoreTools() {
   return (
     <>
       <LowerThirds />
-      <Idle />
     </>
   );
 }

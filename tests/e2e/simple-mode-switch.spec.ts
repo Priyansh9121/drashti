@@ -87,7 +87,7 @@ test('in CI’s window (1024 × 645): Pro Mode’s header and Simple Mode’s sc
   // Pro Mode: the header, every button's words in it, and no role button among them.
   const header = win.getByTestId('app-header');
   await expectFits(header, 'the header in Pro Mode at 1024 × 645');
-  for (const words of ['Themes', 'Stream', 'Phones', 'Screens', 'Simple Mode'])
+  for (const words of ['Stream', 'Phones', 'Screens', 'Simple Mode'])
     await expect(header.getByRole('button', { name: words, exact: true })).toBeVisible();
   await noRoles(win);
   await expectNoSeriousA11yIssues(win, 'the header in Pro Mode at 1024 × 645', '[data-testid="app-header"]');

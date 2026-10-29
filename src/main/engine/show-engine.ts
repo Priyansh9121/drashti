@@ -16,13 +16,11 @@ import {
   type Layers,
   type LiveCursor,
   type LowerThirdLayer,
-  type MaskLayer,
   type MessageItem,
   type MusicRun,
   type PipLayer,
   type PipPlace,
   type PlaylistCursor,
-  type PropItem,
   type RepeatRun,
   type SlideLayer,
   type TickerItem,
@@ -36,7 +34,7 @@ import {
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { CalendarDay } from '../../shared/calendar';
-import type { IdleState, Quote } from '../../shared/idle';
+import type { Quote } from '../../shared/idle';
 import { backgroundCueOf, soundCueOf } from '../../shared/library';
 import type { LiveLook, Movement } from '../../shared/looks';
 import { CUT, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
@@ -171,11 +169,12 @@ export const TIMER_FADE: Transition = { kind: 'dissolve', durationMs: 500 };
 /** The message a timer cue shows: one per timer (showing it again replaces it). */
 export const timerMessageId = (timerId: string): string => `timer:${timerId}`;
 
-/** Where the engine finds Looks: the library's, every group's settings filled in. */
+/**
+ * Where the engine finds each screen group's settings (Session 55, Part 12: Looks are gone from the window): its
+ * languages, set in Screens, and the layers and slide style its role gives it (main/looks/look-service.ts).
+ */
 export interface LookSource {
-  /** A Look, or null when it no longer exists. */
-  look(lookId: string): LiveLook | null;
-  /** The Look Drashti starts with: the first in the list. */
+  /** Every group's settings as they are now. */
   start(): LiveLook;
 }
 
@@ -184,12 +183,11 @@ export interface EngineOptions {
   defaultTransition?: () => Transition;
   /** Run `run` after `delayMs`; returns a way to cancel it (setTimeout when left out; tests run it by hand). */
   schedule?: (delayMs: number, run: () => void) => () => void;
-  /** The library's Looks (none when left out: every group has the defaults). */
+  /** Each screen group's settings (none when left out: every group has the defaults). */
   looks?: LookSource;
   /**
-   * Why a command is refused now, or null to run it: Simple Mode refuses
-   * switching the Look, from the window, a phone or the API alike; and, by
-   * what plays (`state`, Session 54), the time bar's Pause of a single sound.
+   * Why a command is refused now, or null to run it: Simple Mode refuses Pro Mode's commands, from the window, a
+   * phone or the API alike; and, by what plays (`state`, Session 54), the time bar's Pause of a single sound.
    */
   refuse?: (command: EngineCommand, state: EngineState) => string | null;
   /** A media file's length in ms, when the library knows it (learned from playing it). */
@@ -252,16 +250,13 @@ export interface RestoreRequest {
   playlist?: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
-  /** The logo shown instead of the picture (Simple Mode's Logo). */
-  logo?: PropItem | null;
+  /** The Wallpaper was up (Session 55, Part 13): it comes back up. */
+  wallpaper?: boolean;
   /** The sound, with when it started: it carries on from where it would be now. */
   audio?: AudioLayer | null;
-  props?: readonly PropItem[];
   messages?: readonly MessageItem[];
   /** The announcements ticker, carrying on in step from when it started. */
   ticker?: TickerLayer | null;
-  /** The mask up on the Masks layer. */
-  masks?: MaskLayer | null;
   /** The lower third up (Session 44): it comes back still, as it was. */
   lowerThird?: LowerThirdLayer | null;
   /** The picture-in-picture box up (Session 50): it comes back still, as it was (see pip.ts restoredPip). */
@@ -273,25 +268,20 @@ export interface RestoreRequest {
   autoAdvance?: { leftMs: number; durationMs: number } | null;
   /** A Repeat Slides playlist was going round (Session 26d): it carries on, from the slide that was up. */
   repeat?: { playlistId: string } | null;
-  /** The Look that was live (left out or gone: the one already live stays). */
-  lookId?: string | null;
   /** A timer shown alone (Session 50): it comes back over the slide, still, while that timer is in the library. */
   timer?: { timerId: string } | null;
 }
 
 /** What restart recovery put back. */
 export interface Restored {
-  /** The name of the Look that came back, when it was not the one already live (the first); else null. */
-  look: string | null;
   slide: boolean;
   background: boolean;
   blackout: boolean;
-  logo: boolean;
+  /** The Wallpaper came back up (Session 55, Part 13). */
+  wallpaper: boolean;
   audio: boolean;
-  props: number;
   messages: number;
   ticker: number;
-  masks: boolean;
   lowerThird: boolean;
   /** The picture-in-picture box (Session 50). */
   pip: boolean;
@@ -464,10 +454,6 @@ export class ShowEngine {
   private restoreAt(request: RestoreRequest): Restored {
     const actions: EngineAction[] = [];
     let slide = false;
-    // The Look first, so the screens draw what comes back the way they did.
-    const look = request.lookId ? (this.options.looks?.look(request.lookId) ?? null) : null;
-    const lookBack = look !== null && look.id !== this.state.look.id;
-    if (look) actions.push({ type: 'look/set', look });
     const playlist = request.playlist ? this.checkItem(request.playlist) : null;
     if (request.slide) {
       const { presentationId, slideIndex, arrangementId, shownAt, seeks, step, stepAt, stepFromMs } =
@@ -477,7 +463,7 @@ export class ShowEngine {
       if (order && found) {
         const from =
           playlist?.item.kind === 'presentation' && playlist.item.presentationId === presentationId;
-        // From when it went up (Session 51), as props and the logo are (Session 27): its videos and their sound carry
+        // From when it went up (Session 51), as a message is (Session 27): its videos and their sound carry
         // on where they would be, and what draws from that time (a lower third's in) is long over. Since Session 3 it
         // went up again at the restart. Never from a time to come (a clock set back since).
         const at = shownAt === undefined ? {} : { at: Math.min(shownAt, this.now()) };
@@ -541,19 +527,15 @@ export class ShowEngine {
     }
     if (background) actions.push({ type: 'background/set', background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
-    // The logo and the props keep the time they went up, so their videos carry on where they would be, between their
-    // files' points as the library has them now (Session 52: restart recovery keeps none, as for a video above).
-    if (request.logo) actions.push({ type: 'logo/set', prop: this.propClips(request.logo) });
+    if (request.wallpaper) actions.push({ type: 'wallpaper/set', on: true });
     // The sound keeps its start time and its last jump, so it carries on where it would be now, as a video does.
     if (request.audio) {
       const { clip: _clip, marks: _marks, ...played } = request.audio;
       const audio = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
       actions.push({ type: 'audio/set', audio });
     }
-    for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop: this.propClips(prop) });
     for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
-    if (request.masks) actions.push({ type: 'mask/set', mask: request.masks });
     if (request.lowerThird) actions.push({ type: 'lowerThird/show', layer: request.lowerThird });
     // The picture-in-picture box (Session 50): never a window, a video input only while it is in the list (one no
     // longer there is only said, Session 51; whether its camera is there the screens tell, as for the background's).
@@ -592,17 +574,14 @@ export class ShowEngine {
       ]);
     }
     return {
-      look: lookBack ? look.name : null,
       slide,
       background: background !== null && background.kind !== 'input',
       blackout: request.blackout,
-      logo: Boolean(request.logo),
+      wallpaper: request.wallpaper === true,
       // Not an audio playlist that would have ended meanwhile (caughtUp took it off): the notice says no sound.
       audio: Boolean(request.audio) && this.state.layers.audio !== null,
-      props: request.props?.length ?? 0,
       messages: request.messages?.length ?? 0,
       ticker: request.ticker?.items.length ?? 0,
-      masks: Boolean(request.masks),
       lowerThird: Boolean(request.lowerThird),
       pip: box.layer !== null,
       stageMessage: Boolean(request.stageMessage),
@@ -751,17 +730,13 @@ export class ShowEngine {
   }
 
   /**
-   * The Looks changed in the library (a Look or a group edited, made or
-   * removed): the live one is read again, so the screens follow at once.
-   * If it was removed, the first Look goes live. At startup this puts the
-   * first Look live.
+   * The screen groups' settings changed (Screens: a group's languages, a group made, removed or given another role):
+   * read again, so the screens follow at once. At startup this reads them the first time.
    */
   refreshLook(): CommandResult {
     const looks = this.options.looks;
     if (!looks) return this.unchanged();
-    const id = this.state.look.id;
-    const look = (id ? looks.look(id) : null) ?? looks.start();
-    return this.apply([{ type: 'look/set', look }]);
+    return this.apply([{ type: 'look/set', look: looks.start() }]);
   }
 
   /**
@@ -807,14 +782,7 @@ export class ShowEngine {
     });
   }
 
-  /** What the idle rotation shows (from the admin's settings, the media library and the quotes). */
-  setIdle(content: Omit<IdleState, 'startedAt'>): CommandResult {
-    const { startedAt: _running, ...was } = this.state.idle;
-    if (sameData(was, content)) return this.unchanged();
-    return this.apply([{ type: 'idle/set', content }]);
-  }
-
-  /** The quote of the day: at midnight, and when the quotes change. */
+  /** The quote of the day (a stage layout's Quote box): at midnight, and when the quotes change. */
   setQuote(quote: Quote | null): CommandResult {
     if (sameData(this.state.quote, quote)) return this.unchanged();
     return this.apply([{ type: 'quote/set', quote }]);
@@ -982,7 +950,7 @@ export class ShowEngine {
     const audio = this.state.layers.audio;
     if (audio?.mediaId === mediaId && audio.durationMs !== durationMs)
       actions.push({ type: 'audio/set', audio: { ...audio, durationMs } });
-    // A video on the slide up, a prop, the logo or in the box (Session 54): the time bar's length.
+    // A video on the slide up or in the box (Session 54): the time bar's length.
     const files = learnedFiles(this.state, mediaId, durationMs);
     if (files) actions.push({ type: 'videoFiles/set', files });
     if (actions.length === 0) return this.unchanged();
@@ -997,7 +965,7 @@ export class ShowEngine {
 
   /**
    * Layers as they were (Put it back, Back), with the lengths of their files
-   * the library knows by now, and the points the slide's and the props' videos play between as it has them now
+   * the library knows by now, and the points the slide's videos play between as it has them now
    * (Session 52), and the picture-in-picture box's video (Session 53). An audio playlist playing now goes on as it
    * is (it is independent of the slides); one that was playing then comes back where it would be now.
    */
@@ -1005,14 +973,10 @@ export class ShowEngine {
     const playing = this.state.layers.audio;
     if (playing?.music && layers.audio !== playing) layers = { ...layers, audio: playing };
     layers = this.withJumps(layers);
-    // The slide's and the props' videos' points (Session 52), and the box's (Session 53): ones saved since they went
-    // off are not lost.
+    // The slide's videos' points (Session 52), and the box's (Session 53): ones saved since they went off are not lost.
     const slide = layers.slide && this.slideClips(layers.slide);
-    const props = layers.props.map((p) => this.propClips(p));
-    const newProps = props.some((p, i) => p !== layers.props[i]);
     const pip = layers.pip && this.pipClips(layers.pip);
-    if (slide !== layers.slide || newProps || pip !== layers.pip)
-      layers = { ...layers, slide, props: newProps ? props : layers.props, pip };
+    if (slide !== layers.slide || pip !== layers.pip) layers = { ...layers, slide, pip };
     // A video input as Media has it now (Session 50): renamed or set to fill since, it comes back so. One no
     // longer in this computer's list does not come back (no screen opens an input the list does not have).
     const was = layers.background;
@@ -1048,7 +1012,7 @@ export class ShowEngine {
    * so undoing a Next moves the slides, not what plays.
    */
   private withJumps(layers: Layers): Layers {
-    // The box's and the props' videos where the time bar left them (Session 54).
+    // The box's videos where the time bar left them (Session 54).
     layers = keepMoves(layers, this.state.layers);
     const keep = <T extends { mediaId: string | null; startedAt: number; seek?: PlaybackSeek }>(
       was: T,
@@ -1462,7 +1426,7 @@ export class ShowEngine {
 
   /**
    * The start and end points of the files the videos among these elements play (Session 52), by media id, as the
-   * library has them: a slide's, a prop's and the logo's videos play between them, as a background video does.
+   * library has them: a slide's videos play between them, as a background video does.
    * Left out when none has any (a picture never plays, so it has none).
    */
   private clipsOf(elements: readonly SlideElement[]): { clips?: VideoClips } {
@@ -1486,17 +1450,10 @@ export class ShowEngine {
   }
 
   /**
-   * A prop or the logo with its videos' points as the library has them now (Session 52), never a page's: the very
-   * prop given while they are the same, as Back knows the layers a Next left by the object itself (made anew, with
-   * its keys in another order, a second Back in a row was Previous).
+   * The slide up with its videos' points as the library has them now (Session 52): the same layer while they are, as
+   * Back knows the layers a Next left by the object itself (made anew, with its keys in another order, a second Back
+   * in a row was Previous).
    */
-  private propClips(prop: PropItem): PropItem {
-    const { clips: given, ...rest } = prop;
-    const now = this.clipsOf(prop.elements);
-    return sameData(given, now.clips) ? prop : { ...rest, ...now };
-  }
-
-  /** The slide up with its videos' points as the library has them now (Session 52): the same layer while they are. */
   private slideClips(layer: SlideLayer): SlideLayer {
     const { clips: was, ...rest } = layer;
     const now = this.slideClipsOf(layer.slide);
@@ -1506,7 +1463,7 @@ export class ShowEngine {
   /**
    * The picture-in-picture box with its video's points as the library has them now (Session 53), never a page's: a
    * video from Media in it plays between them, as a slide's does; a picture, a video input, a window and the slides
-   * have none (the slides' own videos are the slide layer's). The same box while they are the same, as for a prop.
+   * have none (the slides' own videos are the slide layer's). The same box while they are the same, as for a slide.
    */
   private pipClips(box: PipLayer): PipLayer {
     const { clips: was, ...rest } = box;
@@ -1518,8 +1475,8 @@ export class ShowEngine {
 
   /**
    * A file's markers changed in the library: what is playing it now plays
-   * between its new points (carrying on), with its new markers: a video on the slide up, a prop or the logo too
-   * (Session 52), and in the picture-in-picture box (Session 53).
+   * between its new points (carrying on), with its new markers: a video on the slide up too (Session 52), and in
+   * the picture-in-picture box (Session 53).
    */
   refreshMarkers(mediaId: string): CommandResult {
     const actions: EngineAction[] = [];
@@ -1538,11 +1495,6 @@ export class ShowEngine {
     const slide = this.state.layers.slide;
     if (slide && plays(slide.slide.elements))
       actions.push({ type: 'slide/put', layer: this.slideClips(slide) });
-    // Each keeps the time it went up (a prop or logo already up does), so its videos carry on.
-    for (const prop of this.state.layers.props)
-      if (plays(prop.elements)) actions.push({ type: 'prop/show', prop: this.propClips(prop) });
-    const logo = this.state.logo;
-    if (logo && plays(logo.elements)) actions.push({ type: 'logo/set', prop: this.propClips(logo) });
     // The box keeps its time, its place and a swap running (Session 53), so its video carries on.
     const box = this.state.layers.pip;
     if (box?.source.kind === 'media' && box.source.mediaId === mediaId)
@@ -2101,13 +2053,10 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'blackout/set', on: command.on }] };
       case 'toggleBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: !this.state.blackout }] };
-      case 'showLogo':
-        return {
-          ok: true,
-          actions: [{ type: 'logo/set', prop: this.propClips(command.prop), at: this.now() }],
-        };
-      case 'hideLogo':
-        return { ok: true, actions: [{ type: 'logo/set', prop: null }] };
+      case 'setWallpaper':
+        return { ok: true, actions: [{ type: 'wallpaper/set', on: command.on }] };
+      case 'toggleWallpaper':
+        return { ok: true, actions: [{ type: 'wallpaper/set', on: !this.state.wallpaper }] };
       case 'setBackground':
         return {
           ok: true,
@@ -2115,19 +2064,10 @@ export class ShowEngine {
         };
       case 'playAudio':
         return { ok: true, actions: [{ type: 'audio/set', audio: this.audioLayer(command.audio) }] };
-      case 'showProp':
-        return {
-          ok: true,
-          actions: [{ type: 'prop/show', prop: this.propClips(command.prop), at: this.now() }],
-        };
-      case 'hideProp':
-        return { ok: true, actions: [{ type: 'prop/hide', propId: command.propId }] };
       case 'showMessage':
         return { ok: true, actions: [{ type: 'message/show', message: command.message, at: this.now() }] };
       case 'hideMessage':
         return { ok: true, actions: [{ type: 'message/hide', messageId: command.messageId }] };
-      case 'setMask':
-        return { ok: true, actions: [{ type: 'mask/set', mask: command.mask }] };
       case 'showLowerThird':
         return {
           ok: true,
@@ -2172,19 +2112,6 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'cue/set', cue: null }] };
       case 'playCue':
         return this.playCue() ?? { ok: false, error: 'nothing-cued', message: 'Nothing is cued' };
-      case 'startIdle':
-        return this.state.idle.startedAt === null
-          ? { ok: true, actions: [{ type: 'idle/run', startedAt: this.now() }] }
-          : NO_CHANGE;
-      case 'stopIdle':
-        return this.state.idle.startedAt === null
-          ? NO_CHANGE
-          : { ok: true, actions: [{ type: 'idle/run', startedAt: null }] };
-      case 'setLook': {
-        const look = this.options.looks?.look(command.lookId) ?? null;
-        if (!look) return { ok: false, error: 'unknown-look', message: 'That look no longer exists' };
-        return { ok: true, actions: [{ type: 'look/set', look }] };
-      }
       case 'playMusic': {
         const index = Math.min(command.index, command.music.tracks.length - 1);
         return {
@@ -2293,7 +2220,7 @@ export class ShowEngine {
   /**
    * Keep what Put it back and Back can undo. Clear all remembers what it took
    * down; each Next remembers what was there before it. Anything else that
-   * changes the layers or the position forgets them (black-out, the logo,
+   * changes the layers or the position forgets them (black-out, the Wallpaper,
    * timers and the stage message do not).
    */
   private keepUndo(prev: EngineState, next: EngineState, cause: EngineCommandType | null): EngineState {
@@ -2350,17 +2277,6 @@ export class ShowEngine {
       if (target?.mediaId !== zoomed.mediaId || target.showing !== zoomed.showing)
         next = reduce(next, { type: 'zoom/set', liveZoom: null });
     }
-    // The idle rotation, once started, stops by itself when a slide or a picture goes up (so a later
-    // Clear all does not bring it back): a picture-in-picture box too, as it goes up (Session 50).
-    const boxUp = next.layers.pip;
-    if (
-      next.idle.startedAt !== null &&
-      next.idle === prev.idle &&
-      ((next.layers.slide !== null && next.layers.slide !== prev.layers.slide) ||
-        (next.layers.background !== null && next.layers.background !== prev.layers.background) ||
-        (boxUp !== null && boxUp.shownAt !== prev.layers.pip?.shownAt))
-    )
-      next = reduce(next, { type: 'idle/run', startedAt: null });
     // What was cued goes once it is live (however it got there).
     if (next.live !== prev.live && next.live.presentationId === next.cue?.presentationId)
       next = reduce(next, { type: 'cue/set', cue: null });
@@ -2394,20 +2310,14 @@ export class ShowEngine {
     const audio = this.caughtUp(next.layers.audio);
     if (audio !== next.layers.audio)
       next = reduce(next, audio ? { type: 'audio/set', audio } : { type: 'layer/clear', layer: 'audio' });
-    // What the time bar shows of the slide's, the props', the logo's and the box's videos (Session 54).
+    // What the time bar shows of the slide's and the box's videos (Session 54).
     const files = videoFilesFor(next, {
       lengthOf: (id) => this.options.mediaLength?.(id) ?? null,
       markersOf: (id) => this.options.mediaMarkers?.(id) ?? null,
     });
     if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
     // The pictures on the screens and coming next carry their looks (Session 26e).
-    if (
-      next.layers !== prev.layers ||
-      next.next !== prev.next ||
-      next.idle !== prev.idle ||
-      next.logo !== prev.logo ||
-      next.pipOff !== prev.pipOff
-    )
+    if (next.layers !== prev.layers || next.next !== prev.next || next.pipOff !== prev.pipOff)
       next = reduce(next, { type: 'pictures/set', pictures: this.picturesFor(next) });
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
@@ -2508,7 +2418,7 @@ export class ShowEngine {
    * or the first again when the presentation loops). A different slide
    * coming on (whatever the operator did) starts its own count; the slide
    * going off stops it; the same slide with new content (an edit) keeps
-   * its start. Black-out and the logo change no slide, so they leave it.
+   * its start. Black-out and the Wallpaper change no slide, so they leave it.
    */
   private withAutoAdvance(prev: EngineState, next: EngineState): EngineState {
     const want = this.countFor(prev, next);

@@ -1,137 +1,81 @@
 import { localDateOf, nextMidnight } from '../../shared/calendar';
 import type { CommandResult } from '../../shared/engine/commands';
-import { parsePlain } from '../../shared/plain-parse';
 import {
   DEFAULT_IDLE_SETTINGS,
-  IDLE_DISSOLVE_MS,
-  type IdleItem,
-  type IdleResult,
   type IdleSettings,
   idleSettingsSchema,
-  type IdleState,
-  type IdleView,
+  type OldIdleRotation,
   type Quote,
-  quoteFieldsSchema,
   quoteOfTheDay,
-  type QuoteResult,
-  QUOTES_MAX,
 } from '../../shared/idle';
-import type { QuoteRepo } from '../db/quotes';
-import { nfcDeep } from '../../shared/nfc';
 
 /*
- * The idle rotation (src/shared/idle.ts), as the main process keeps it: the
- * admin's settings and quotes, the pictures that are still in the media
- * library, and the quote of the day (again just after midnight), all put
- * into the engine's state so every window shows the same. Starting and
- * stopping it are engine commands (the panel, the remote); which groups show
- * it is in their Look.
+ * What is left of the idle rotation (Session 55, Part 12: taken out of the window, the phone, the API and the
+ * screens). Its settings and quotes stay in the library, unseen:
+ * - oldIdleRotation lists what it was set to show, for Part 6 to make a wallpaper set of it, so nothing is lost;
+ * - QuoteOfTheDay puts the quote of the day into the engine's state (again just after midnight), for a stage layout's
+ *   Quote box, which shows one quote a day from the quotes it had.
  */
 
-export interface IdleDeps {
-  quotes: QuoteRepo;
-  settings: { get(name: string): unknown; set(name: string, value: unknown): void };
-  /** A picture in the media library (not missing), with its name; null otherwise. */
+/** The library's settings, where the idle rotation's are kept. */
+export interface IdleSettingsStore {
+  get(name: string): unknown;
+}
+
+/** The setting the idle rotation's settings are kept under (as Session 12 kept them). */
+export const IDLE_SETTING = 'idleRotation';
+
+/** The idle rotation's settings as the library keeps them (its defaults when there are none, or they do not read). */
+export function idleSettings(settings: IdleSettingsStore): IdleSettings {
+  const parsed = idleSettingsSchema.safeParse(settings.get(IDLE_SETTING));
+  return parsed.success ? parsed.data : DEFAULT_IDLE_SETTINGS;
+}
+
+/**
+ * What the idle rotation was set to show (shared/idle.ts OldIdleRotation), read from the library: its pictures in
+ * order, each with its name in the media library (`picture`: null once it is gone), the seconds each, whether the
+ * quote of the day came after them, and the quotes. Part 6 turns this into a wallpaper set.
+ */
+export function oldIdleRotation(deps: {
+  settings: IdleSettingsStore;
+  quotes: { list(): Quote[] };
   picture(mediaId: string): { name: string } | null;
-  engine: {
-    setIdle(content: Omit<IdleState, 'startedAt'>): CommandResult;
-    setQuote(quote: Quote | null): CommandResult;
+}): OldIdleRotation {
+  const settings = idleSettings(deps.settings);
+  return {
+    pictures: settings.pictures.map((mediaId) => ({ mediaId, name: deps.picture(mediaId)?.name ?? null })),
+    secondsEach: settings.secondsEach,
+    quoteOfTheDay: settings.quoteOfTheDay,
+    quotes: deps.quotes.list(),
   };
+}
+
+export interface QuoteOfTheDayDeps {
+  quotes: { list(): Quote[] };
+  engine: { setQuote(quote: Quote | null): CommandResult };
   /** The engine's clock (Date.now). */
   now(): number;
   schedule?: (ms: number, run: () => void) => () => void;
-  /** The settings, quotes or the quote of the day changed: the operator window is told. */
-  changed(view: IdleView): void;
 }
 
-const SETTING = 'idleRotation';
 /** Look again at least this often, so a change to the computer's clock is noticed. */
 const RECHECK_MS = 60 * 60_000;
 
-export class IdleService {
+/** The quote of the day in the engine's state, for a stage layout's Quote box: one quote a date, from the quotes. */
+export class QuoteOfTheDay {
   private cancelTimer: (() => void) | null = null;
   private disposed = false;
 
-  constructor(private readonly deps: IdleDeps) {
+  constructor(private readonly deps: QuoteOfTheDayDeps) {
     this.refresh();
   }
 
-  settings(): IdleSettings {
-    const parsed = idleSettingsSchema.safeParse(this.deps.settings.get(SETTING));
-    return parsed.success ? parsed.data : DEFAULT_IDLE_SETTINGS;
-  }
-
-  view(): IdleView {
-    const settings = this.settings();
-    const quotes = this.deps.quotes.list();
-    return {
-      settings,
-      quotes,
-      pictures: settings.pictures.map((mediaId) => ({
-        mediaId,
-        name: this.deps.picture(mediaId)?.name ?? null,
-      })),
-      quoteOfTheDay: quoteOfTheDay(quotes, localDateOf(this.deps.now())),
-    };
-  }
-
-  saveSettings(input: unknown): IdleResult {
-    const parsed = parsePlain(
-      idleSettingsSchema,
-      input,
-      'Those settings cannot be kept: check them, then save again.',
-    );
-    if (!parsed.success) return { ok: false, message: parsed.message };
-    const pictures = [...new Set(parsed.data.pictures)];
-    const gone = pictures.find((id) => this.deps.picture(id) === null);
-    if (gone !== undefined)
-      return { ok: false, message: 'A chosen picture is no longer in the media library.' };
-    this.deps.settings.set(SETTING, { ...parsed.data, pictures });
-    this.refresh();
-    return { ok: true };
-  }
-
-  saveQuote(id: string | null, input: unknown): QuoteResult {
-    const parsed = parsePlain(
-      quoteFieldsSchema,
-      input,
-      'That quote cannot be kept: check its words and where it is from, then save again.',
-    );
-    if (!parsed.success) return { ok: false, message: parsed.message };
-    // In one form, NFC (Sessions 31–36, I18N-6).
-    const quote = nfcDeep(parsed.data);
-    if (id === null) {
-      if (this.deps.quotes.count() >= QUOTES_MAX)
-        return { ok: false, message: `There can be up to ${String(QUOTES_MAX)} quotes.` };
-      const made = this.deps.quotes.create(quote);
-      this.refresh();
-      return { ok: true, id: made };
-    }
-    if (!this.deps.quotes.save(id, quote)) return { ok: false, message: 'That quote is no longer there.' };
-    this.refresh();
-    return { ok: true, id };
-  }
-
-  removeQuote(id: string): IdleResult {
-    if (!this.deps.quotes.remove(id)) return { ok: false, message: 'That quote is no longer there.' };
-    this.refresh();
-    return { ok: true };
-  }
-
-  /** What the rotation shows, into the engine; the operator window told; the next look just after midnight. */
+  /** Today's quote into the engine; the next look just after midnight. */
   refresh(): void {
     if (this.disposed) return;
-    const view = this.view();
-    const items: IdleItem[] = view.pictures.flatMap((p) =>
-      p.name === null ? [] : [{ kind: 'picture' as const, mediaId: p.mediaId }],
-    );
-    if (view.settings.quoteOfTheDay && view.quoteOfTheDay)
-      items.push({ kind: 'quote', quote: view.quoteOfTheDay });
-    this.deps.engine.setIdle({ items, secondsEach: view.settings.secondsEach, dissolveMs: IDLE_DISSOLVE_MS });
-    this.deps.engine.setQuote(view.quoteOfTheDay);
-    this.deps.changed(view);
-    this.cancelTimer?.();
     const now = this.deps.now();
+    this.deps.engine.setQuote(quoteOfTheDay(this.deps.quotes.list(), localDateOf(now)));
+    this.cancelTimer?.();
     const schedule =
       this.deps.schedule ??
       ((wait: number, go: () => void) => {

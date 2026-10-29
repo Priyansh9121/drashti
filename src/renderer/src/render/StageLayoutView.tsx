@@ -460,7 +460,7 @@ function contentKey(box: StageBox, state: EngineState, hall: HallPicture | null 
         hall === null,
         hall?.off === true,
         state.blackout,
-        state.logo?.id,
+        state.wallpaper,
         state.layers.slide?.slide.id,
         state.layers.background?.kind,
       ];

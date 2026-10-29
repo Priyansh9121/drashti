@@ -9,7 +9,7 @@ import { sameData } from './reducer';
 /*
  * The time bar in the engine (Session 54, shared/engine/playing.ts): one move for each kind that plays, kept between
  * its file's start and end points, and Pause and Play. Each is made as a jump to a marker is: the layer's own seek (the
- * background video's, the sound's), or its `seeks` by file (a video on the slide up, a prop, the logo, the box; until
+ * background video's, the sound's), or its `seeks` by file (a video on the slide up or in the box; until
  * now only the background and the sound had jumps), from which every screen, node, key and fill, the stream and the
  * audio player play on, or wait, in step. Paused, a move waits where it puts it (as Back 15 s and Forward 15 s move a
  * paused track); Play plays on from there, and from the start point again once played to its end. An audio playlist's
@@ -39,8 +39,6 @@ const NOT_PLAYING: Record<PlayingRef['layer'], string> = {
   background: 'No video is playing as the background.',
   audio: 'No sound is playing.',
   slide: 'That video is not on the slide up any more.',
-  props: 'That prop’s video is not on the screens any more.',
-  logo: 'The logo’s video is not on the screens.',
   pip: 'No video is in the picture-in-picture box.',
 };
 
@@ -50,7 +48,7 @@ const NO_LENGTH: Refused = {
   message: 'Its length is not known yet: try again in a moment, once it has started playing.',
 };
 
-/** The layer (or the logo) with this jump for what plays: the background's and the sound's own, the rest by file. */
+/** The layer with this jump for what plays: the background's and the sound's own, the rest by file. */
 function withSeek(state: EngineState, playing: Playing, seek: PlaybackSeek): EngineAction | null {
   const by = (seeks: VideoSeeks | undefined): VideoSeeks => ({ ...seeks, [playing.mediaId]: seek });
   const { layers } = state;
@@ -66,13 +64,6 @@ function withSeek(state: EngineState, playing: Playing, seek: PlaybackSeek): Eng
       return layers.slide
         ? { type: 'slide/put', layer: { ...layers.slide, seeks: by(layers.slide.seeks) } }
         : null;
-    case 'props': {
-      const prop = layers.props.find((p) => p.id === ref.propId);
-      // It keeps the time it went up (the reducer keeps a prop's own), so its videos carry on from the jump.
-      return prop ? { type: 'prop/show', prop: { ...prop, seeks: by(prop.seeks) } } : null;
-    }
-    case 'logo':
-      return state.logo ? { type: 'logo/set', prop: { ...state.logo, seeks: by(state.logo.seeks) } } : null;
     case 'pip':
       // Its time, its place and a swap running kept, as new points keep them (Session 53).
       return layers.pip ? { type: 'pip/set', layer: { ...layers.pip, seeks: by(layers.pip.seeks) } } : null;
@@ -149,7 +140,7 @@ export function resolvePlaying(
 }
 
 /**
- * What the time bar shows of each video on the slide up, the props, the logo and in the box (Session 54): the length
+ * What the time bar shows of each video on the slide up and in the box (Session 54): the length
  * the state has (one a screen has just told, which the library keeps a moment later), else the library's; and its
  * markers as the library has them now. Null when none has either.
  */
@@ -165,8 +156,8 @@ export function videoFilesFor(state: EngineState, library: FileLookups): Record<
 }
 
 /**
- * The videoFiles with a length a screen has just told (Session 54); null when no video on the slide up, a prop, the
- * logo or in the box plays that file, or the state has that length already.
+ * The videoFiles with a length a screen has just told (Session 54); null when no video on the slide up or in the box
+ * plays that file, or the state has that length already.
  */
 export function learnedFiles(
   state: EngineState,
@@ -185,7 +176,7 @@ function withSeeks<T extends { seeks?: VideoSeeks }>(layer: T, seeks: VideoSeeks
 }
 
 /**
- * Layers as they were (Back), the box and each prop still up as it was then (the same one, from the same time)
+ * Layers as they were (Back), the box still up as it was then (the same one, from the same time)
  * keeping where the time bar has moved or paused its videos since (Session 54), as a background's and the sound's
  * jumps are kept: undoing a Next moves the slides, not what plays. The same layers when nothing moved.
  */
@@ -198,10 +189,5 @@ export function keepMoves(was: Layers, now: Layers): Layers {
     sameData(box.source, boxNow.source) &&
     !sameData(box.seeks, boxNow.seeks);
   const pip = boxMoved ? withSeeks(box, boxNow.seeks) : box;
-  const props = was.props.map((p) => {
-    const is = now.props.find((q) => q.id === p.id && q.shownAt === p.shownAt);
-    return is && !sameData(is.seeks, p.seeks) ? withSeeks(p, is.seeks) : p;
-  });
-  const propsMoved = props.some((p, i) => p !== was.props[i]);
-  return pip === box && !propsMoved ? was : { ...was, pip, props: propsMoved ? props : was.props };
+  return pip === box ? was : { ...was, pip };
 }

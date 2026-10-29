@@ -60,7 +60,7 @@ function setup(options: { simple?: boolean; bold?: boolean } = {}) {
     refuse: (c) =>
       options.simple === true && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type) ? SIMPLE_MODE_REFUSAL : null,
     schedule: () => () => undefined,
-    ...(options.bold === true ? { looks: { look: () => null, start: () => BOLD_LOOK } } : {}),
+    ...(options.bold === true ? { looks: { start: () => BOLD_LOOK } } : {}),
   });
   if (options.bold === true) engine.refreshLook();
   /** Time passing on the engine's clock (each reading of it moves it on 10 ms too). */
@@ -352,15 +352,15 @@ describe('the picture-in-picture box in the engine', () => {
     expect(engine.current.layers.slide).not.toBeNull();
   });
 
-  it('black-out and the logo cover it and never take it off; Next and Previous leave it up', () => {
+  it('black-out and the Wallpaper cover it and never take it off; Next and Previous leave it up', () => {
     const { engine } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
     engine.dispatch(show({ kind: 'slides' }));
     const up = engine.current.layers.pip;
     engine.dispatch({ type: 'setBlackout', on: true });
-    engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Placeholder logo', elements: [] } });
+    engine.dispatch({ type: 'setWallpaper', on: true });
     expect(engine.current.layers.pip).toBe(up);
-    engine.dispatch({ type: 'hideLogo' });
+    engine.dispatch({ type: 'setWallpaper', on: false });
     engine.dispatch({ type: 'toggleBlackout' });
     expect(engine.current.layers.pip).toBe(up);
     expect(engine.current.pipOff).toBeNull();
@@ -385,15 +385,6 @@ describe('the picture-in-picture box in the engine', () => {
     // A video input or a window is on this computer only: no media for a node to copy.
     engine.dispatch(show({ kind: 'input', inputId: 'in-1' }));
     expect(mediaInState(engine.current)).toEqual({ now: [], next: [] });
-  });
-
-  it('going up stops the idle rotation, as a slide or a picture does', () => {
-    const { engine } = setup();
-    engine.setIdle({ items: [{ kind: 'picture', mediaId: 'm-photo' }], secondsEach: 10, dissolveMs: 1500 });
-    engine.dispatch({ type: 'startIdle' });
-    expect(engine.current.idle.startedAt).not.toBeNull();
-    engine.dispatch(show({ kind: 'media', mediaId: 'm-clip' }));
-    expect(engine.current.idle.startedAt).toBeNull();
   });
 
   it('Simple Mode refuses setting one up, swapping and moving it, from anywhere; Take off and Clear all still work', () => {

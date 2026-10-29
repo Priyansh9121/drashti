@@ -123,7 +123,7 @@ test('show controls, thumbnails and the live picture never move, in Pro Mode and
   await expect(win.getByTestId('slide-thumb').first()).toHaveAttribute('aria-current', 'true');
 
   const SHOW =
-    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="item-media"], [data-testid="live-preview"], [data-testid="look-button"]';
+    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="item-media"], [data-testid="live-preview"]';
   expect(await moving(win, SHOW)).toEqual([]);
   // Hovered, pressed and lit too.
   await win.getByTestId('blackout-button').hover();
@@ -180,8 +180,8 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
     .toBe(presentation);
   await expect(win.locator('[data-leaving-host]')).toHaveCount(0);
 
-  // A side sheet slides 16 px from its edge over 240 ms.
-  await win.getByRole('button', { name: 'Themes' }).click();
+  // A side sheet slides 16 px from its edge over 240 ms (Screens; Themes until Session 55 took it out).
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win.locator('[data-motion="sheet"]')).toBeVisible();
   expect(await animationOf('[data-motion="sheet"]')).toBe('sheet-in 0.24s');
   await win.keyboard.press('Escape');
@@ -289,7 +289,7 @@ async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> 
   await still(win, 'a dialog');
   await win.keyboard.press('Escape');
   await still(win, 'a dialog closing');
-  await win.getByRole('button', { name: 'Themes' }).click();
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
   await still(win, 'a side sheet');
   await win.keyboard.press('Escape');
   await openLibrary(win);
@@ -555,7 +555,7 @@ test('Lively never moves a show control or the live picture, starts nothing as t
   await dispatch(win, { type: 'goLive', presentationId: presentation, slideIndex: 0 });
   await expect(win.getByTestId('slide-thumb').first()).toHaveAttribute('aria-current', 'true');
   const SHOW =
-    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="live-preview"], [data-testid="look-button"]';
+    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="live-preview"]';
   expect(await moving(win, SHOW)).toEqual([]);
   // Next, pressed: the slide changes at once and nothing in the window starts moving with it.
   await letTimePass(win, 900, 'the show has not changed for a moment');

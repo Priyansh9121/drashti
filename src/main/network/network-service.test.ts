@@ -97,7 +97,6 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
         legacyCount: 0,
       }),
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
-      logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
       // A sound a playlist shared with phones has (Session 54, D3): its file, for a phone to play.
       sharedSound: (mediaId) => (mediaId === 'm-shared-sound' ? '/placeholder/Media/ab/tone.wav' : null),
@@ -115,10 +114,6 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
       ],
       hall: () => ({ groupId: 'hall-group' }),
       switches: () => ({ ...switches }),
-      looks: () => [
-        { id: 'look-standard', name: 'Standard' },
-        { id: 'look-lower', name: 'Placeholder lower thirds' },
-      ],
       clockStyle: () => ({ locale: 'en-GB', timeZone: 'Europe/London' }),
       shastraTexts: () => [{ name: 'Placeholder Granth', abbreviation: 'PG', itemCount: 16 }],
       passage: (reference) =>
@@ -138,8 +133,6 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
     },
     // The mirror's reads (Session 54, D5): mirror-ops.test.ts checks them.
     mirror: {
-      props: () => [],
-      prop: () => null,
       media: () => [],
       lowerThirds: () => [],
       music: () => [],
@@ -371,7 +364,7 @@ describe('the network in the main process', () => {
     // is a Remote's since Session 54, D5: mirror-ops.test.ts.)
     for (const args of [
       { type: 'setBackground', background: { kind: 'color', color: '#000000' } },
-      { type: 'showProp', prop: { id: 'p', name: 'Placeholder', elements: [] } },
+      { type: 'showMessage', message: { id: 'm', text: 'Placeholder' } },
     ])
       expect(
         service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status,
@@ -380,9 +373,15 @@ describe('the network in the main process', () => {
     expect(
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'goLive' } }).status,
     ).toBe(400);
-    // The logo and messages are made here from what the operator marked and wrote, never sent whole.
-    service.answer({ address: PHONE, deviceId: remote, op: 'logo.set', args: { on: true } });
-    expect(commands.at(-1)).toMatchObject({ type: 'showLogo', prop: { id: 'logo' } });
+    // The Wallpaper (Session 55, the Logo's place) is a command; messages are made here from what the operator wrote,
+    // never sent whole.
+    service.answer({
+      address: PHONE,
+      deviceId: remote,
+      op: 'command',
+      args: { type: 'setWallpaper', on: true },
+    });
+    expect(commands.at(-1)).toEqual({ type: 'setWallpaper', on: true });
     expect(
       service.answer({
         address: PHONE,
@@ -406,11 +405,7 @@ describe('the network in the main process', () => {
     });
     service.answer({ address: PHONE, deviceId: remote, op: 'message.hide', args: { templateId: 'm1' } });
     expect(commands.at(-1)).toEqual({ type: 'hideMessage', messageId: 'message:m1' });
-    // Looks: a Remote reads them and switches the live one; a Stage device reads its group and languages.
-    expect(service.answer({ address: PHONE, deviceId: remote, op: 'looks', args: {} })).toMatchObject({
-      status: 200,
-      body: { looks: [{ name: 'Standard' }, { name: 'Placeholder lower thirds' }] },
-    });
+    // Looks went (Session 55): a Remote can no longer switch one. A Stage device reads its group and languages.
     expect(
       service.answer({
         address: PHONE,
@@ -418,9 +413,7 @@ describe('the network in the main process', () => {
         op: 'command',
         args: { type: 'setLook', lookId: 'look-lower' },
       }).status,
-    ).toBe(200);
-    expect(commands.at(-1)).toEqual({ type: 'setLook', lookId: 'look-lower' });
-    expect(service.answer({ address: PHONE, deviceId: stage, op: 'looks', args: {} }).status).toBe(403);
+    ).toBe(400);
     expect(service.answer({ address: PHONE, deviceId: stage, op: 'stage', args: {} })).toMatchObject({
       status: 200,
       body: { groupId: 'stage-group', languages: ['gu'] },
@@ -635,13 +628,14 @@ describe('the network in the main process', () => {
       simple.service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'next' } })
         .status,
     ).toBe(200);
-    // And not switch the Look, which Simple Mode keeps (the engine refuses it, from anywhere).
+    // And not zoom the live picture, which is Pro Mode's (the engine refuses it, from anywhere; Session 55: the Look,
+    // refused here before, went).
     expect(
       simple.service.answer({
         address: PHONE,
         deviceId: remote,
         op: 'command',
-        args: { type: 'setLook', lookId: 'look-lower' },
+        args: { type: 'zoomLive', zoom: 2, x: 0.5, y: 0.5 },
       }),
     ).toEqual({ status: 403, body: { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL } });
     // And the lock is asked: an action whose window request were locked is refused with Simple Mode's words.

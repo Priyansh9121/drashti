@@ -29,12 +29,8 @@ import { EmptyState, Loading } from '../ui/States';
 import { Checkbox } from '../ui/Toggle';
 import { nodesAction } from '../nodes/nodes-store';
 import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
-import type { LookInfo } from '../../../shared/looks';
-import { useEngine } from '../engine/engine-store';
-import { connectLooks, useLooks } from '../looks/looks-store';
-import { GroupLookSettings, LooksSection } from './LookSettings';
+import { GroupLanguages } from './GroupLanguages';
 import { connectStageLayouts } from '../stage/stage-layouts-store';
-import { connectMasks } from '../masks/masks-store';
 import { SoundOutput } from './SoundOutput';
 import { ScreenCards } from './ScreenCards';
 import { NodesSection } from './NodesSection';
@@ -243,15 +239,12 @@ function GroupCard({
   states,
   displays,
   nodes,
-  look,
 }: {
   group: ScreenGroupConfig;
   states: Map<string, ScreenState>;
   displays: DisplayInfo[];
   /** Output nodes and their displays (a screen on a node shows on one of those). */
   nodes: NodeDisplays[];
-  /** The Look whose settings the card shows. */
-  look: LookInfo | null;
 }) {
   const [name, setName] = useState(group.name);
   const [shown, setShown] = useState(group.name);
@@ -305,11 +298,12 @@ function GroupCard({
           Delete group
         </Button>
       </div>
-      {look && <GroupLookSettings look={look} groupId={group.id} role={group.role} />}
+      {/* Its languages (Session 55: here, now that Looks are gone). */}
+      <GroupLanguages groupId={group.id} role={group.role} />
       {group.role === 'keyfill' && (
         <p className="px-2 text-xs text-muted" data-testid="keyfill-hint">
           Two displays: the fill and the key, each into the video switcher (an ATEM, for example). Set its key
-          to pre-multiplied. Black-out and the logo are for the hall: they take these graphics off.
+          to pre-multiplied. Black-out and the Wallpaper are for the hall: they take these graphics off.
         </p>
       )}
       {group.screens.length === 0 ? (
@@ -383,19 +377,8 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
   const controlsDisplayId = useControlsDisplay();
   useEffect(() => {
     connectScreens();
-    connectLooks();
     connectStageLayouts();
-    connectMasks();
   }, []);
-  // The Look whose settings the group cards show: the live one until another is chosen.
-  const liveId = useEngine((s) => s.state?.look.id ?? '');
-  const lookList = useLooks((s) => s.view?.looks);
-  const [chosenLook, setChosenLook] = useState<string | null>(null);
-  const look =
-    lookList?.find((l) => l.id === chosenLook) ??
-    lookList?.find((l) => l.id === liveId) ??
-    lookList?.[0] ??
-    null;
 
   const states = new Map((snapshot?.status ?? []).map((s) => [s.screenId, s.state]));
   const usedBy = new Map<number, string>();
@@ -434,7 +417,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
       }
     >
       {error && <Notice tone="danger">{error}</Notice>}
-      <ScreenCards look={look} onClose={onClose} />
+      <ScreenCards onClose={onClose} />
       <SoundOutput />
       <section className="space-y-2">
         <SectionTitle>Connected displays</SectionTitle>
@@ -463,7 +446,6 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
       <NodesSection groups={(snapshot?.groups ?? []).filter((g) => g.role !== 'stream')} />
       <section className="space-y-3">
         <SectionTitle>Screen groups</SectionTitle>
-        {look && <LooksSection lookId={look.id} onChoose={setChosenLook} />}
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -504,7 +486,6 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
               states={states}
               displays={snapshot?.displays ?? []}
               nodes={snapshot?.nodes ?? []}
-              look={look}
             />
           ))}
       </section>

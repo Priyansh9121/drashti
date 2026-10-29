@@ -93,9 +93,7 @@ function call(port: number, path: string, token: string, method = 'GET', body?: 
 /** Each request, and what the main process is asked: the op and its arguments. */
 const ASKED: [method: string, path: string, body: unknown, op: string, args: unknown][] = [
   ['GET', '/api/v1/keys', undefined, 'keys', {}],
-  ['GET', '/api/v1/props', undefined, 'props', {}],
-  ['POST', '/api/v1/props/prop-1/show', undefined, 'prop.show', { propId: 'prop-1' }],
-  ['POST', '/api/v1/props/prop-1/hide', undefined, 'command', { type: 'hideProp', propId: 'prop-1' }],
+  // (The props' requests were here until Session 55 took props out, and the idle rotation's at the end.)
   [
     'GET',
     '/api/v1/media?offset=100&limit=50&q=placeholder%20words',
@@ -141,8 +139,6 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
     'repeat.start',
     { playlistId: 'r-1', slideIndex: 2 },
   ],
-  ['POST', '/api/v1/idle/start', undefined, 'command', { type: 'startIdle' }],
-  ['POST', '/api/v1/idle/stop', undefined, 'command', { type: 'stopIdle' }],
 ];
 
 describe('the mirror’s requests (Session 54, D5)', () => {
@@ -165,10 +161,7 @@ describe('the mirror’s requests (Session 54, D5)', () => {
 
   it('are each in the API’s list, which the documentation is checked against', () => {
     for (const [method, path] of ASKED) {
-      const route = `${method} ${path.split('?')[0] ?? ''}`.replace(
-        /\/(prop-1|m-1|lt-1|t-1|r-1)\//u,
-        '/:id/',
-      );
+      const route = `${method} ${path.split('?')[0] ?? ''}`.replace(/\/(m-1|lt-1|t-1|r-1)\//u, '/:id/');
       expect(API_ROUTES, route).toContain(route);
     }
   });

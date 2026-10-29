@@ -1,4 +1,5 @@
 import type { ClockStyle } from './format';
+import type { Lang } from './model';
 import type { HallPicture } from './stage-layouts';
 
 /** How a screen's canvas is scaled into its output window. */
@@ -74,6 +75,11 @@ export interface ScreenGroupConfig {
   name: string;
   role: ScreenRole;
   screens: ScreenConfig[];
+  /**
+   * The languages its screens show of a kirtan's slides, in order (null: every language), as Screens sets them
+   * (Session 55, Part 12: no longer in Looks). In the screens' snapshot; left out where a group is read alone.
+   */
+  languages?: Lang[] | null;
 }
 
 export type ScreenState =

@@ -3,16 +3,17 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { TextElement } from '../../shared/model';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
-import { PropRepo } from '../db/props';
 import { MediaStore } from './media-store';
 import { runImport } from './pipeline';
 import { cocoaRtf, pp6Presentation } from './testing/pp6-fixtures';
 import { pp7Props } from './testing/pp7-fixtures';
 
-/* Props from both formats' props files. Placeholder text and made-up paths only. */
+/*
+ * Props files from both formats (Session 55, Part 12: Props are gone from Drashti): left out, said in the report, never
+ * imported; props an earlier import kept stay in the library, unseen. Placeholder text and made-up paths only.
+ */
 
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-props-'));
@@ -40,14 +41,18 @@ function setup() {
     });
     return new ImportRepo(db).report(summary.id);
   };
-  return { db, write, run, props: new PropRepo(db) };
+  /** The library's props rows, by name (kept, unseen). */
+  const props = () =>
+    (db.prepare('SELECT name FROM props ORDER BY name').all() as { name: string }[]).map((r) => r.name);
+  return { db, write, run, props };
 }
 
-const textOf = (el: unknown) => (el as TextElement).text;
-
-describe('importing props', () => {
-  it('reads a ProPresenter 6 Props.pro6: one prop per slide, named by its label', async () => {
+describe('importing a props file (Props are gone)', () => {
+  it('leaves a ProPresenter 6 Props.pro6 out, saying why; props kept before stay', async () => {
     const t = setup();
+    t.db
+      .prepare("INSERT INTO props (id, name, definition) VALUES ('kept', 'Placeholder kept prop', '{}')")
+      .run();
     const file = t.write(
       'Props.pro6',
       pp6Presentation({
@@ -60,30 +65,21 @@ describe('importing props', () => {
                 label: 'Placeholder logo line',
                 text: [{ rtf: cocoaRtf([['Placeholder Mandir', 40, [255, 255, 255]]]) }],
               },
-              { label: '', text: [{ rtf: cocoaRtf([['Placeholder second prop', 40, [255, 255, 255]]]) }] },
             ],
           },
         ],
       }),
     );
     const report = await t.run([file]);
-    expect(report?.items[0]).toMatchObject({ outcome: 'imported', format: 'pp6' });
-    expect(t.props.list().map((p) => [p.name, p.imported, p.width, textOf(p.elements[0])])).toEqual([
-      ['Placeholder logo line', true, 1920, 'Placeholder Mandir'],
-      ['Prop 2', true, 1920, 'Placeholder second prop'],
-    ]);
-    // Importing the file again replaces its props; props made in Drashti stay.
-    t.props.create({ name: 'Mine', width: 1920, height: 1080, elements: t.props.list()[0]?.elements ?? [] });
-    await t.run([file]);
-    expect(
-      t.props
-        .list()
-        .map((p) => p.name)
-        .sort(),
-    ).toEqual(['Mine', 'Placeholder logo line', 'Prop 2']);
+    expect(report?.items[0]).toMatchObject({
+      outcome: 'skipped',
+      format: 'pp6',
+      message: 'Drashti no longer has props, so this file of props was left out.',
+    });
+    expect(t.props()).toEqual(['Placeholder kept prop']);
   });
 
-  it('reads a ProPresenter 7 Configuration/Props file', async () => {
+  it('leaves a ProPresenter 7 Configuration/Props file out, saying why', async () => {
     const t = setup();
     const file = t.write(
       join('Configuration', 'Props'),
@@ -96,10 +92,8 @@ describe('importing props', () => {
       ]),
     );
     const report = await t.run([file]);
-    expect(report?.items[0]).toMatchObject({ outcome: 'imported', format: 'pp7' });
-    const [prop] = t.props.list();
-    expect(prop).toMatchObject({ name: 'Placeholder corner line', imported: true });
-    expect(textOf(prop?.elements[0])).toBe('Placeholder PP7 prop');
+    expect(report?.items[0]).toMatchObject({ outcome: 'skipped', format: 'pp7' });
+    expect(t.props()).toEqual([]);
   });
 
   it('still reports the other settings files as not imported', async () => {
@@ -107,6 +101,6 @@ describe('importing props', () => {
     const file = t.write(join('Configuration', 'Timers'), new Uint8Array([8, 1]));
     const report = await t.run([file]);
     expect(report?.items[0]).toMatchObject({ outcome: 'unsupported' });
-    expect(t.props.list()).toEqual([]);
+    expect(t.props()).toEqual([]);
   });
 });

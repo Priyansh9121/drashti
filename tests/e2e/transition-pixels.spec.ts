@@ -16,6 +16,7 @@ import {
 } from './helpers';
 import { EASE } from '../../src/renderer/src/render/easing';
 import { canvasPixels } from './pixels';
+import { setMovement } from './placeholder-slides';
 
 /*
  * Each transition the same on two screens (Session 26d): two audience
@@ -255,31 +256,33 @@ test('each transition is the same on two screens at the same moment, and gives t
     await hold(app, null);
   }
 
-  // Bold for the side hall's group only (Session 27): a dissolve there eases on Bold's curve, while the
-  // main hall's stays Calm's, at the same held moment of the same engine change.
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const side = (await d.screens.get()).groups.find((g) => g.name === 'Side Hall')?.id ?? '';
-    const set = await d.looks.setGroup((await d.engine.snapshot()).state.look.id, side, { movement: 'bold' });
-    if (!set.ok) throw new Error(set.message);
-  });
-  await expect(two.getByTestId('output-root')).toHaveAttribute('data-movement', 'bold');
-  await expect(one.getByTestId('output-root')).toHaveAttribute('data-movement', 'calm');
-  await settings('dissolve', MS);
-  await show(0);
-  for (const p of both) await expect(p.locator('[data-fading="true"]')).toHaveCount(0, { timeout: MS * 3 });
-  await hold(app, Date.now() - 60_000);
-  await show(1);
-  const shownAt = (await snapshot(win)).layers.slide?.shownAt ?? 0;
-  await hold(app, shownAt + 0.25 * MS);
-  for (const p of both) await expect(p.locator('[data-layer="slide"]')).toHaveAttribute('data-fade', '0.250');
+  // Bold (Session 27): a dissolve eases on Bold's curve, Calm's on its own, at the same held moment of the same
+  // engine change on both screens. Every group moves alike since Session 55 (Movement went with Looks; the
+  // performance check asks for Bold, as this does through a test seam).
   const opacity = (p: Page) =>
     p.locator('[data-slide-in]').evaluate((el) => Number((el as HTMLElement).style.opacity));
-  expect(await opacity(one)).toBeCloseTo(EASE.smooth(0.25), 4);
-  expect(await opacity(two)).toBeCloseTo(EASE.inOut(0.25), 4);
-  const [calm, bold] = [await canvasPixels(one, POINTS), await canvasPixels(two, POINTS)];
-  expect(close(calm[0], mix(OLD.left, NEW.left, EASE.smooth(0.25))), `Calm: ${String(calm[0])}`).toBe(true);
-  expect(close(bold[0], mix(OLD.left, NEW.left, EASE.inOut(0.25))), `Bold: ${String(bold[0])}`).toBe(true);
-  await hold(app, null);
+  for (const [movement, ease] of [
+    ['calm', EASE.smooth],
+    ['bold', EASE.inOut],
+  ] as const) {
+    await setMovement(app, movement);
+    for (const p of both)
+      await expect(p.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
+    await settings('dissolve', MS);
+    await show(0);
+    for (const p of both) await expect(p.locator('[data-fading="true"]')).toHaveCount(0, { timeout: MS * 3 });
+    await hold(app, Date.now() - 60_000);
+    await show(1);
+    const shownAt = (await snapshot(win)).layers.slide?.shownAt ?? 0;
+    await hold(app, shownAt + 0.25 * MS);
+    for (const p of both)
+      await expect(p.locator('[data-layer="slide"]')).toHaveAttribute('data-fade', '0.250');
+    for (const p of both) {
+      expect(await opacity(p)).toBeCloseTo(ease(0.25), 4);
+      const [point] = await canvasPixels(p, POINTS);
+      expect(close(point, mix(OLD.left, NEW.left, ease(0.25))), `${movement}: ${String(point)}`).toBe(true);
+    }
+    await hold(app, null);
+  }
   await app.close();
 });

@@ -1,16 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Practice } from './practice';
-import {
-  PRACTICE_ID,
-  PRACTICE_LOGO,
-  PRACTICE_START,
-  practiceSlides,
-  practiceState,
-  practiceStep,
-} from './practice';
+import { PRACTICE_ID, PRACTICE_START, practiceSlides, practiceState, practiceStep } from './practice';
 
 /*
- * The practice show (Session 26g): Next, Back, Black-out, Logo, Clear all and Put it back as in a
+ * The practice show (Session 26g): Next, Back, Black-out, the Wallpaper (the Logo's place since Session 55), Clear
+ * all and Put it back as in a
  * show, on placeholder slides, as a state the operator window draws and nothing else ever sees.
  */
 
@@ -26,7 +20,6 @@ describe('the practice show', () => {
       expect(words).toMatch(/Practice slide/u);
       expect(s.elements.map((e) => (e.kind === 'text' ? e.lang : null))).toEqual(['gu', 'hi', 'en']);
     }
-    expect(PRACTICE_LOGO.name).toBe('Placeholder logo');
   });
 
   it('Next starts at the first slide and goes on; Back goes back; neither runs off the ends', () => {
@@ -51,11 +44,11 @@ describe('the practice show', () => {
     expect(run('next', 'clearSlide').cleared).toBeNull();
   });
 
-  it('Black-out and the logo cover the slide without clearing it', () => {
-    const p = run('next', 'toggleBlackout', 'toggleLogo');
+  it('Black-out and the Wallpaper cover the slide without clearing it', () => {
+    const p = run('next', 'toggleBlackout', 'toggleWallpaper');
     const state = practiceState(p);
     expect(state.blackout).toBe(true);
-    expect(state.logo).toEqual(PRACTICE_LOGO);
+    expect(state.wallpaper).toBe(true);
     expect(state.layers.slide?.slideIndex).toBe(0);
     const back = practiceState(run('next', 'toggleBlackout', 'toggleBlackout'));
     expect(back.blackout).toBe(false);
@@ -67,7 +60,7 @@ describe('the practice show', () => {
     expect(state.layers.slide?.presentationId).toBe(PRACTICE_ID);
     expect(state.next).toMatchObject({ kind: 'slide', slideIndex: 1 });
     expect(state.layers.background).toBeNull();
-    expect(state.layers.props).toEqual([]);
+    expect(state.layers.messages).toEqual([]);
     expect(practiceState(PRACTICE_START).layers.slide).toBeNull();
     // Every step counts, so the window draws again.
     expect(run('next', 'next').rev).toBe(2);

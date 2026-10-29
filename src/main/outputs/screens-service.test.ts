@@ -21,15 +21,19 @@ import { ScreensService } from './screens-service';
 import type { ScreensSetup } from './screens-setup';
 import { afterStop, WaitingFile, WENT_BACK_AFTER_STOP } from './screens-setup';
 
-/** The library's Looks, with the engine that keeps the live one (each group's languages are there). */
-function looksAndEngine(db: Db): { looks: LookService; engine: ShowEngine } {
+/**
+ * Each group's settings (Session 55: its languages, kept in the library's first Look, and its role's), with the engine
+ * that draws them; the library's Looks too, kept as they are.
+ */
+function looksAndEngine(db: Db): { looks: LookService; engine: ShowEngine; lookRepo: LookRepo } {
   let looks: LookService | null = null;
   const engine = new ShowEngine(makeSource(), new RecordingTransport(), Date.now, NO_PLAYLISTS, {
-    looks: { look: (id) => looks?.look(id) ?? null, start: () => looks?.start() ?? NO_LOOK },
+    looks: { start: () => looks?.start() ?? NO_LOOK },
   });
-  looks = new LookService({ repo: new LookRepo(db), engine, changed: () => undefined, log: () => undefined });
+  const lookRepo = new LookRepo(db);
+  looks = new LookService({ repo: lookRepo, engine, log: () => undefined });
   engine.refreshLook();
-  return { looks, engine };
+  return { looks, engine, lookRepo };
 }
 const looksOf = (db: Db): LookService => looksAndEngine(db).looks;
 
@@ -195,13 +199,14 @@ describe('ScreensService', () => {
     expect(repo.groupName(stream.id)).toBe('Stream 2');
   });
 
-  it('sets the languages a group shows of a kirtan in the live Look, in order, or all of them', () => {
+  it('sets the languages a group shows of a kirtan, in order, or all of them; Screens’ snapshot says them', () => {
     service.createGroup('Hall');
     const groupId = repo.groups()[0]?.id ?? '';
     expect(looks.liveLanguages(groupId)).toBeNull();
     expect(service.setGroupLanguages(groupId, ['translit', 'gu']).ok).toBe(true);
     expect(looks.liveLanguages(groupId)).toEqual(['translit', 'gu']);
-    expect(looks.view().looks[0]?.groups[groupId]?.languages).toEqual(['translit', 'gu']);
+    expect(Object.values(looks.everyLook())[0]?.[groupId]?.languages).toEqual(['translit', 'gu']);
+    expect(service.snapshot().groups.find((g) => g.id === groupId)?.languages).toEqual(['translit', 'gu']);
     // None, twice the same, or an unknown language: refused, and the choice stays.
     for (const bad of [[], ['gu', 'gu'], ['fr'], ['en', 'gu', 'hi', 'translit', 'en'], 'gu'])
       expect(service.setGroupLanguages(groupId, bad)).toMatchObject({ ok: false });
@@ -212,10 +217,10 @@ describe('ScreensService', () => {
     // A deleted group's settings leave every Look.
     expect(service.setGroupLanguages(groupId, ['gu']).ok).toBe(true);
     expect(service.deleteGroup(groupId).ok).toBe(true);
-    expect(Object.keys(looks.view().looks[0]?.groups ?? {})).toEqual([]);
+    expect(Object.keys(Object.values(looks.everyLook())[0] ?? {})).toEqual([]);
   });
 
-  it('makes a key and fill pair: the first screen the fill, the next the key, and the words as a lower third', () => {
+  it('makes a key and fill pair: the first screen the fill, the next the key, and the words as a lower third (its role’s)', () => {
     const stageTv: DisplayInfo = {
       ...hall,
       id: 3,
@@ -225,7 +230,7 @@ describe('ScreensService', () => {
     };
     const db = openDatabase(':memory:');
     const r = new ScreenRepo(db);
-    const l = looksOf(db);
+    const { looks: l, engine: e } = looksAndEngine(db);
     const outputs = new OutputManager({
       listDisplays: () => [hall, stageTv],
       screens: () => r.screens(),
@@ -257,11 +262,8 @@ describe('ScreensService', () => {
       ['Hall TV', 'fill'],
       ['Stage TV', 'key'],
     ]);
-    // Typically the words as a lower third, props and messages, with no background, in every Look.
-    expect(l.view().looks[0]?.groups[id]).toMatchObject({
-      layers: ['slide', 'props', 'messages'],
-      slides: 'lowerThird',
-    });
+    // The words as a lower third and messages, with no background: its role's (Session 55), drawn at once.
+    expect(e.current.look.groups[id]).toMatchObject({ layers: ['slide', 'messages'], slides: 'lowerThird' });
     // Swapped by hand; back to an audience group, the screens have no feed.
     const [fill, key] = r.screens();
     expect(s.updateScreen(fill?.id, { feed: 'key' }).ok).toBe(true);
@@ -472,7 +474,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
   function two() {
     const db = openDatabase(':memory:');
     const r = new ScreenRepo(db);
-    const { looks: l, engine } = looksAndEngine(db);
+    const { looks: l, engine, lookRepo } = looksAndEngine(db);
     const open = new Set<number>();
     const outputs = new OutputManager({
       listDisplays: () => [hall, stageTv],
@@ -503,7 +505,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
       () => operatorDisplay,
       l,
     );
-    return { service: s, repo: r, looks: l, engine, outputs, open };
+    return { service: s, repo: r, looks: l, engine, lookRepo, db, outputs, open };
   }
   const shape = (t: { repo: ScreenRepo; looks: LookService }) =>
     t.repo.groups().map((g) => [g.name, g.role, t.looks.liveLanguages(g.id), g.screens.map((sc) => sc.name)]);
@@ -523,9 +525,9 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
       now: () => 0,
       later: () => () => undefined,
     });
-  /** A group's settings in a Look. */
+  /** A group's settings in a Look, as the library keeps them. */
   const settingsIn = (t: ReturnType<typeof two>, lookId: string, groupId: string) =>
-    t.looks.view().looks.find((l) => l.id === lookId)?.groups[groupId];
+    t.looks.everyLook()[lookId]?.[groupId];
   const groupNamed = (t: ReturnType<typeof two>, name: string) =>
     t.repo.groups().find((g) => g.name === name)?.id ?? '';
 
@@ -538,7 +540,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     const screens = t.repo.saved();
     const was = shape(t);
     const before: ScreensSetup = t.service.setup();
-    expect(before.looks[t.looks.view().liveId]?.[groupId]?.languages).toEqual(['gu']);
+    expect(before.looks[t.engine.current.look.id]?.[groupId]?.languages).toEqual(['gu']);
 
     // Finish: the hall's display becomes the stage's, in English; the other the audience's (a group made).
     t.service.applySetup([
@@ -557,7 +559,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
       { screenId: t.repo.screens()[0]?.id, state: 'showing', displayId: 2 },
     ]);
     // A group the change made leaves every Look.
-    expect(Object.keys(t.looks.view().looks[0]?.groups ?? {})).toEqual([groupId]);
+    expect(Object.keys(Object.values(t.looks.everyLook())[0] ?? {})).toEqual([groupId]);
   });
 
   it('as Drashti quits, only saves the setup: no window opens or closes', () => {
@@ -649,7 +651,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     t.service.createGroup('Lobby');
     const lobby = groupNamed(t, 'Lobby');
     t.service.setGroupLanguages(lobby, ['en']);
-    const live = t.looks.view().liveId;
+    const live = t.engine.current.look.id;
 
     // Set Up Screens…'s Done: the hall in English, the stage on the other display. Asked.
     keep.change(() =>
@@ -660,9 +662,10 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     );
     expect(keep.current()).not.toBeNull();
     expect(t.looks.liveLanguages(hall)).toEqual(['en']);
-    // Meanwhile, in Screens: the lobby in Hindi, the hall Bold, a group made.
+    // Meanwhile, in Screens: the lobby in Hindi, a group made; and a setting of the hall's that a Look kept (Bold, kept
+    // unread since Session 55) changed in the library.
     t.service.setGroupLanguages(lobby, ['hi']);
-    t.looks.setGroup(live, hall, { movement: 'bold' });
+    t.lookRepo.setGroup(live, hall, { movement: 'bold' });
     t.service.createGroup('Foyer');
 
     expect(keep.goBack()).toMatchObject({ ok: true });
@@ -674,33 +677,6 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
       ['Foyer', []],
     ]);
     expect(t.open.size).toBe(1);
-  });
-
-  it('Go back puts a group’s languages back in the Look the change set them in: the live Look switched meanwhile stays as it is', () => {
-    const t = two();
-    const keep = keeperOf(t);
-    t.service.createGroup('Main Hall');
-    const hall = groupNamed(t, 'Main Hall');
-    t.service.assignDisplay(hall, 2);
-    t.service.setGroupLanguages(hall, ['gu']);
-    const standard = t.looks.view().liveId;
-    t.looks.create('Festival', standard);
-    const festival = t.looks.view().looks.find((l) => l.name === 'Festival')?.id ?? '';
-    t.looks.setGroup(festival, hall, { languages: ['translit'] });
-
-    keep.change(() =>
-      t.service.applySetup([
-        { displayId: 2, use: 'audience', languages: ['en'] },
-        { displayId: 3, use: 'stage', languages: null },
-      ]),
-    );
-    // Meanwhile the Festival Look goes live.
-    expect(t.engine.dispatch({ type: 'setLook', lookId: festival })).toMatchObject({ ok: true });
-    keep.goBack();
-    expect(settingsIn(t, standard, hall)?.languages).toEqual(['gu']);
-    expect(settingsIn(t, festival, hall)?.languages).toEqual(['translit']);
-    expect(t.engine.current.look.id).toBe(festival);
-    expect(t.looks.liveLanguages(hall)).toEqual(['translit']);
   });
 
   // Session 51, S3-2: a crash or a power cut within the 15 s; the next start goes back, before the outputs open.
@@ -759,7 +735,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
   });
 
   // Session 51, S3-3: Screens' Shows (a group's role) and a key and fill pair's Sends put another picture on a display.
-  it('Shows and Sends ask; Go back puts back the role, the key and fill pair’s settings in every Look, and what each screen sends', () => {
+  it('Shows and Sends ask; Go back puts back the role (and with it what the pair draws), and what each screen sends; the Looks stay as they were', () => {
     const t = two();
     // The controls on the display the fill goes to.
     const keep = keeperOf(t, 2);
@@ -767,19 +743,24 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     const id = groupNamed(t, 'Switcher');
     t.service.assignDisplay(id, 2);
     t.service.assignDisplay(id, 3);
-    t.looks.create('Festival', null);
-    const looks = () => t.looks.view().looks.map((l) => l.groups[id]);
+    t.lookRepo.create('Festival');
+    // The Looks as the library keeps them: never written by a role's change (Session 55).
+    const looks = () => t.db.prepare('SELECT definition FROM looks ORDER BY rowid').all();
     const was = looks();
+    const draws = () => t.engine.current.look.groups[id]?.slides;
     const feeds = () => t.repo.screens().map((sc) => sc.feed);
 
-    // Shows: a key and fill pair. Asked; the words as a lower third in every Look; Go back puts it all back.
+    // Shows: a key and fill pair. Asked; the words as a lower third (its role's, Session 55: the Looks unchanged);
+    // Go back puts it all back.
     keep.change(() => t.service.setGroupRole(id, 'keyfill'));
     expect(keep.current()).not.toBeNull();
     expect(feeds()).toEqual(['fill', 'key']);
-    expect(looks().map((g) => g?.slides)).toEqual(['lowerThird', 'lowerThird']);
+    expect(draws()).toBe('lowerThird');
+    expect(looks()).toEqual(was);
     expect(keep.goBack()).toMatchObject({ ok: true });
     expect(t.repo.groups()[0]?.role).toBe('audience');
     expect(feeds()).toEqual([null, null]);
+    expect(draws()).toBe('designed');
     expect(looks()).toEqual(was);
 
     // Kept; then Sends swapped on the fill: asked, and Go back sends the fill again.

@@ -18,22 +18,20 @@ import { expectFits } from './fit';
 /*
  * The first-run setup wizard (Session 8): identify the outputs, choose
  * what each shows and in which languages, the sound output with a test
- * tone, the default theme. No test slide at Finish (Session 55): each
+ * tone (the default theme until Session 55 took Themes out). No test slide at Finish (Session 55): each
  * screen shows its own picture in its own languages, black until something
  * is up. Skipping or closing changes nothing; the operator's display is
  * never covered without the confirm step; Simple Mode never shows it.
  */
 
-/** Each group, with its languages in the live Look. */
+/** Each group, with its languages (in Screens since Session 55, as Looks went). */
 const groupsOf = (win: Page) =>
   win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const [snapshot, looks] = await Promise.all([d.screens.get(), d.looks.list()]);
-    const live = looks.looks.find((l) => l.id === looks.liveId);
+    const snapshot = await (globalThis as PageGlobals).drashti.screens.get();
     return snapshot.groups.map((g) => ({
       name: g.name,
       role: g.role,
-      languages: live?.groups[g.id]?.languages ?? null,
+      languages: g.languages ?? null,
       screens: g.screens.length,
     }));
   });
@@ -45,7 +43,7 @@ async function fromMenu(app: ElectronApplication): Promise<void> {
 
 const page = (app: ElectronApplication, part: string) => app.windows().find((w) => w.url().includes(part));
 
-test('on the first start: identify, what each output shows and its languages, a test tone, a theme; no test slide', async () => {
+test('on the first start: identify, what each output shows and its languages, a test tone; no test slide', async () => {
   const { app } = await launchApp({
     DRASHTI_TEST_NO_WIZARD: '0',
     // A new library as a person's starts (Session 50): without the tests' placeholder presentations.
@@ -132,12 +130,10 @@ test('on the first start: identify, what each output shows and its languages, a 
   await expectNoSeriousA11yIssues(win, 'the setup wizard, stream');
   await wizard.getByTestId('setup-next').click();
 
-  // Theme, then the summary (Session 54, E5: no PINs step, roles are gone).
-  await expect(wizard.getByTestId('setup-step')).toHaveText('Theme');
-  await wizard.getByTestId('setup-theme').first().getByRole('radio').check();
-  await wizard.getByTestId('setup-next').click();
+  // Then the summary (Session 54, E5: no PINs step, roles are gone; Session 55: no Theme step, Themes are gone).
   await expect(wizard.getByTestId('setup-step')).toHaveText('Finish');
   await expect(wizard.getByTestId('setup-summary')).not.toContainText('PIN');
+  await expect(wizard.getByTestId('setup-summary')).not.toContainText(/theme/iu);
   await expect(wizard.getByTestId('setup-summary')).toContainText(
     `Display ${String(main.index + 1)}: Audience, Gujarati, Transliteration`,
   );
@@ -221,14 +217,13 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
     'data-use',
     'audience',
   );
-  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
+  for (const step of ['Screens', 'Sound', 'Stream']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-skip').click();
   }
   await expect(wizard.getByTestId('setup-summary')).toContainText('The screens stay as they are.');
   await expect(wizard.getByTestId('setup-summary')).toContainText('Sound: stays as it is');
   await expect(wizard.getByTestId('setup-summary')).toContainText('Stream: stays as it is');
-  await expect(wizard.getByTestId('setup-summary')).toContainText('Default theme: stays as it is');
   await wizard.getByTestId('setup-finish').click();
   await expect(wizard.getByTestId('setup-done')).toBeVisible();
   expect(await groupsOf(win)).toEqual(before);
@@ -260,7 +255,7 @@ test('never covers the operator’s display without the confirm step', async () 
   await expect(row).toContainText('The controls are on this display');
   await row.getByTestId('setup-use-audience').click();
   await expect(row).toContainText('Finish asks before it does');
-  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
+  for (const step of ['Screens', 'Sound', 'Stream']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-next').click();
   }
@@ -293,7 +288,7 @@ test('Simple Mode never shows it, and refuses to apply a setup', async () => {
   );
   expect(menuHasIt).toBe(false);
   const refused = await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.setup.finish({ outputs: [], sound: 'skip', themeId: null }),
+    (globalThis as PageGlobals).drashti.setup.finish({ outputs: [], sound: 'skip' }),
   );
   expect(refused).toMatchObject({ ok: false });
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.setup.state())).toMatchObject({

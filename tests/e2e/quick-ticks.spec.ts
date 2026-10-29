@@ -1,5 +1,4 @@
 import { type ElectronApplication, type Page, expect, test } from '@playwright/test';
-import { LOOK_LAYERS } from '../../src/shared/looks';
 import {
   chooseMenuItem,
   launchApp,
@@ -13,7 +12,8 @@ import {
  * Quick ticks of boxes the main process saves (Session 54, Session 53's question 6): a tick made before the one
  * before it is saved never undoes it. Each box showed what the main process had saved, and each tick sent the whole
  * setting made from that, so a second tick made before the first's answer was made to what was saved before the
- * first, and put it back: a group's layers and a kirtan's languages in a Look, and what an Events out address gets.
+ * first, and put it back: a kirtan's languages for a group (in a Look with its layers until Session 55, in Screens
+ * since), and what an Events out address gets.
  * Here the main process handles those requests 1.5 s late, as a busy one on a slow computer does (CI's Windows,
  * Session 52), so each next tick comes first. Since the review, one save at a time for each setting: the main
  * process here handles the first of two saves last, as two waiting for an import to give way could go (each waits
@@ -104,8 +104,11 @@ async function refusedOnce(app: ElectronApplication, channel: string, ms: number
 const heldHandled = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as { drashtiTestHeldHandled?: boolean }).drashtiTestHeldHandled === true);
 
-/** Drashti with a Main Hall group, Screens open: the group's card in the live Look, and the group's id. */
-async function hallCard(win: Page) {
+/** The channel a group's languages are saved on (screens.setGroupLanguages). */
+const LANGUAGES = 'screens:set-group-languages';
+
+/** Drashti with a Main Hall group, Screens open: the group's languages in its card, and the group's id. */
+async function hallLanguages(win: Page) {
   await setUpScreen(win, 'Main Hall', 0);
   const groupId = await win.evaluate(
     async () =>
@@ -114,15 +117,21 @@ async function hallCard(win: Page) {
   );
   expect(groupId).not.toBe('');
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
-  return { groupId, card: win.locator(`#screen-group-${groupId}`).getByTestId('group-look') };
+  const picker = win
+    .locator(`#screen-group-${groupId}`)
+    .getByTestId('group-languages')
+    .getByTestId('language-picker');
+  return { groupId, picker, box: (name: string) => picker.getByRole('checkbox', { name }) };
 }
 
-/** A group's settings in the live Look, as the main process has saved them. */
-const savedLook = (win: Page, groupId: string) =>
-  win.evaluate(async (id) => {
-    const looks = await (globalThis as PageGlobals).drashti.looks.list();
-    return looks.looks.find((l) => l.id === looks.liveId)?.groups[id] ?? null;
-  }, groupId);
+/** A group's languages, as the main process has saved them (null: every language). */
+const savedLanguages = (win: Page, groupId: string) =>
+  win.evaluate(
+    async (id) =>
+      (await (globalThis as PageGlobals).drashti.screens.get()).groups.find((g) => g.id === id)?.languages ??
+      null,
+    groupId,
+  );
 
 /** What the first Events out address gets, as the main process has saved it. */
 const savedAddress = (win: Page) =>
@@ -131,46 +140,25 @@ const savedAddress = (win: Page) =>
     return first ? { kinds: first.kinds, words: first.words } : null;
   });
 
-test('a group’s layers and a kirtan’s languages in a Look: each tick made before the one before it is saved is kept', async () => {
+test('a group’s languages in Screens: each tick made before the one before it is saved is kept', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
-  await setUpScreen(win, 'Main Hall', 0);
-  const groupId = await win.evaluate(
-    async () =>
-      (await (globalThis as PageGlobals).drashti.screens.get()).groups.find((g) => g.name === 'Main Hall')
-        ?.id ?? '',
-  );
-  expect(groupId).not.toBe('');
-  await handledLate(app, ['looks:set-group'], LATE_MS);
-  await win.getByRole('button', { name: 'Screens', exact: true }).click();
-  const card = win.locator(`#screen-group-${groupId}`).getByTestId('group-look');
-
-  // Two layers off, the second straight after the first: both are off once both are saved, and the boxes say so.
-  const background = card.getByTestId('look-layer-background');
-  const messages = card.getByTestId('look-layer-messages');
-  await expect(background).toBeChecked();
-  await expect(messages).toBeChecked();
-  await background.click();
-  await messages.click();
-  await expect
-    .poll(() => savedLook(win, groupId), SAVED)
-    .toMatchObject({ layers: LOOK_LAYERS.filter((l) => l !== 'background' && l !== 'messages') });
-  await expect(background).not.toBeChecked();
-  await expect(messages).not.toBeChecked();
+  const { groupId, picker, box } = await hallLanguages(win);
+  await handledLate(app, [LANGUAGES], LATE_MS);
+  // (A group's layers, in its Look, were ticked here too until Session 55 took Looks out.)
 
   // Only these languages, then Hindi off and English off, each straight after the one before: Gujarati and
   // transliteration once all three are saved.
-  const picker = card.getByTestId('language-picker');
   await picker.getByTestId('languages-some').click();
-  await picker.getByRole('checkbox', { name: 'Hindi' }).click();
-  await picker.getByRole('checkbox', { name: 'English' }).click();
-  await expect.poll(() => savedLook(win, groupId), SAVED).toMatchObject({ languages: ['gu', 'translit'] });
+  await box('Hindi').click();
+  await box('English').click();
+  await expect.poll(() => savedLanguages(win, groupId), SAVED).toEqual(['gu', 'translit']);
   await expect(picker.getByTestId('languages-some')).toBeChecked();
-  await expect(picker.getByRole('checkbox', { name: 'Hindi' })).not.toBeChecked();
-  await expect(picker.getByRole('checkbox', { name: 'English' })).not.toBeChecked();
-  await expect(picker.getByRole('checkbox', { name: 'Gujarati' })).toBeChecked();
+  await expect(box('Hindi')).not.toBeChecked();
+  await expect(box('English')).not.toBeChecked();
+  await expect(box('Gujarati')).toBeChecked();
   await app.close();
 });
 
@@ -211,20 +199,19 @@ test('two ticks whose saves the main process would handle the wrong way round: t
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const { groupId, card } = await hallCard(win);
+  const { groupId, picker, box } = await hallLanguages(win);
+  await picker.getByTestId('languages-some').click();
+  await expect.poll(() => savedLanguages(win, groupId), SAVED).toEqual(['gu', 'hi', 'translit', 'en']);
   // The first save held back, the second handled at once: sent together, the second was written first, then the
-  // first over it, Messages back on.
-  await firstHandledLast(app, 'looks:set-group', LATE_MS);
-  const background = card.getByTestId('look-layer-background');
-  const messages = card.getByTestId('look-layer-messages');
-  await background.click();
-  await messages.click();
+  // first over it, English back on.
+  await firstHandledLast(app, LANGUAGES, LATE_MS);
+  await box('Hindi').click();
+  await box('English').click();
   // Once the held one has been handled (it was written last before), both are off, and the boxes say so.
   await expect.poll(() => heldHandled(app), SAVED).toBe(true);
-  const both = LOOK_LAYERS.filter((l) => l !== 'background' && l !== 'messages');
-  await expect.poll(() => savedLook(win, groupId), SAVED).toMatchObject({ layers: both });
-  await expect(background).not.toBeChecked();
-  await expect(messages).not.toBeChecked();
+  await expect.poll(() => savedLanguages(win, groupId), SAVED).toEqual(['gu', 'translit']);
+  await expect(box('Hindi')).not.toBeChecked();
+  await expect(box('English')).not.toBeChecked();
   await app.close();
 });
 
@@ -233,29 +220,28 @@ test('a tick the main process refuses goes back once refused; refused with anoth
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const { groupId, card } = await hallCard(win);
-  const background = card.getByTestId('look-layer-background');
-  const messages = card.getByTestId('look-layer-messages');
+  const { groupId, picker, box } = await hallLanguages(win);
+  const some = picker.getByTestId('languages-some');
+  const all = picker.getByTestId('languages-all');
 
   // Refused: shown at once, then back as it was once the refusal comes, saying why; nothing saved.
-  await refusedOnce(app, 'looks:set-group', LATE_MS);
-  await background.click();
-  await expect(background).not.toBeChecked();
-  await expect(win.getByTestId('looks-section')).toContainText(
+  await refusedOnce(app, LANGUAGES, LATE_MS);
+  await some.click();
+  await expect(some).toBeChecked();
+  await expect(win.getByRole('dialog', { name: 'Screens' })).toContainText(
     'Placeholder: that change cannot be made now.',
   );
-  await expect(background).toBeChecked();
-  expect(await savedLook(win, groupId)).toMatchObject({ layers: [...LOOK_LAYERS] });
+  await expect(all).toBeChecked();
+  expect(await savedLanguages(win, groupId)).toBeNull();
 
-  // Refused, with Messages off straight after: that goes once the refusal has come, made to what the boxes showed,
+  // Refused, with Hindi off straight after: that goes once the refusal has come, made to what the boxes showed,
   // and the boxes end on what the main process saved.
-  await refusedOnce(app, 'looks:set-group', LATE_MS);
-  await background.click();
-  await messages.click();
-  await expect
-    .poll(() => savedLook(win, groupId), SAVED)
-    .toMatchObject({ layers: LOOK_LAYERS.filter((l) => l !== 'background' && l !== 'messages') });
-  await expect(background).not.toBeChecked();
-  await expect(messages).not.toBeChecked();
+  await refusedOnce(app, LANGUAGES, LATE_MS);
+  await some.click();
+  await box('Hindi').click();
+  await expect.poll(() => savedLanguages(win, groupId), SAVED).toEqual(['gu', 'translit', 'en']);
+  await expect(some).toBeChecked();
+  await expect(box('Hindi')).not.toBeChecked();
+  await expect(box('English')).toBeChecked();
   await app.close();
 });

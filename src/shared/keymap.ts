@@ -2,10 +2,11 @@
  * Every operator keyboard shortcut, in one place.
  *
  * The keys are the ones the mandir's operators already press (Session 50): their presentation program's
- * Presentation and Screens menus, photographed on 22 Oct 2026. F1 to F4 were already the same; F5 (sound)
- * and F6 (messages), and F7 (the ticker, their "announcements") and F8 (masks), changed places from
- * Drashti's own; F12 is the logo, beside L; Mod+1 and Mod+2 turn the Audience and Stage screens off and on.
- * Nothing else in the app hard-codes a key.
+ * Presentation and Screens menus, photographed on 22 Oct 2026. F1 to F3 were already the same; F5 (sound)
+ * and F6 (messages), and F7 (the ticker, their "announcements"), changed places from Drashti's own; Mod+1
+ * and Mod+2 turn the Audience and Stage screens off and on. Session 55 (Part 12): Props (F4), Masks (F8) and
+ * the Logo (F12 and L) went, and F4 and F8 do nothing now; F12 is the Wallpaper's (Part 13), in the Logo's
+ * place. Nothing else in the app hard-codes a key.
  *
  * Key names are KeyboardEvent.key values, except "Space". Letters match
  * either case (with Cmd, Ctrl or Alt, Shift as the binding has it). "Mod+"
@@ -23,13 +24,11 @@ export type OperatorAction =
   | 'clearAll'
   | 'clearSlide'
   | 'clearBackground'
-  | 'clearProps'
   | 'clearMessages'
   | 'clearTicker'
   | 'clearAudio'
-  | 'clearMasks'
   | 'toggleBlackout'
-  | 'toggleLogo'
+  | 'toggleWallpaper'
   | 'toggleAudience'
   | 'toggleStage'
   | 'stopRepeat'
@@ -74,16 +73,14 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'clearAll', keys: ['F1'], label: 'Clear all' },
   { action: 'clearSlide', keys: ['F2'], label: 'Clear slide' },
   { action: 'clearBackground', keys: ['F3'], label: 'Clear background' },
-  { action: 'clearProps', keys: ['F4'], label: 'Clear props' },
   { action: 'clearAudio', keys: ['F5'], label: 'Clear audio' },
   { action: 'clearMessages', keys: ['F6'], label: 'Clear messages' },
   // The announcements ticker (Session 10).
   { action: 'clearTicker', keys: ['F7'], label: 'Clear ticker' },
-  { action: 'clearMasks', keys: ['F8'], label: 'Clear masks' },
   { action: 'toggleBlackout', keys: ['B', '.'], label: 'Black-out' },
-  // The logo instead of the picture, and back (the prop marked as the logo in Pro Mode): F12, as the operators
-  // press it, and L as before.
-  { action: 'toggleLogo', keys: ['F12', 'L'], label: 'Logo' },
+  // The chosen wallpaper instead of the picture, and back (Session 55, Part 13): F12, the Logo's key, as the
+  // operators press it.
+  { action: 'toggleWallpaper', keys: ['F12'], label: 'Wallpaper' },
   // This computer's audience screens (key and fill too), or its stage screens, off and on (Session 50): Audience off
   // gives their displays back to the computer, Stage off shows the audience picture on the stage screens (Session 55);
   // the show carries on. View › Audience and Stage show them.
@@ -116,18 +113,9 @@ export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAct
   { title: 'Running the show', actions: ['next', 'previous', 'nextItem', 'previousItem', 'stopRepeat'] },
   {
     title: 'Clearing the screens',
-    actions: [
-      'clearAll',
-      'clearSlide',
-      'clearBackground',
-      'clearProps',
-      'clearAudio',
-      'clearMessages',
-      'clearTicker',
-      'clearMasks',
-    ],
+    actions: ['clearAll', 'clearSlide', 'clearBackground', 'clearAudio', 'clearMessages', 'clearTicker'],
   },
-  { title: 'Covering the picture', actions: ['toggleBlackout', 'toggleLogo'] },
+  { title: 'Covering the picture', actions: ['toggleBlackout', 'toggleWallpaper'] },
   {
     title: 'The library and playlists',
     actions: ['findInLibrary', 'moveItemUp', 'moveItemDown', 'removeSelected', 'undo'],
@@ -149,7 +137,8 @@ export const LIBRARY_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => b.scop
 export const SIMPLE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope);
 
 /**
- * A key of one character with no Cmd, Ctrl or Alt (Shift or not): B, ., L and ?. WCAG 2.1.4 calls these
+ * A key of one character with no Cmd, Ctrl or Alt (Shift or not): B, . and ? (L went with the Logo, Session 55).
+ * WCAG 2.1.4 calls these
  * character key shortcuts. They act wherever the window has the keyboard, so a word said to speech software,
  * or a key brushed, could black out the hall: they can be turned off (Help › Keyboard Shortcuts…,
  * Session 37). Every other key has Cmd, Ctrl or Alt, is a named key (arrows, Space, F1…), or works only in a
@@ -160,10 +149,10 @@ export function isSingleKey(binding: string): boolean {
   return key.length === 1 && !mod && !alt;
 }
 
-/** The single-letter keys, in the keymap's order: B, ., L and ?. */
+/** The single-letter keys, in the keymap's order: B, . and ?. */
 export const SINGLE_KEYS: readonly string[] = KEYMAP.flatMap((b) => b.keys.filter(isSingleKey));
 
-/** The single-letter keys in words, as the switch and the guides name them: "B, ., L and ?". */
+/** The single-letter keys in words, as the switch and the guides name them: "B, . and ?". */
 export const SINGLE_KEYS_TEXT = `${SINGLE_KEYS.slice(0, -1).join(', ')} and ${SINGLE_KEYS.at(-1) ?? ''}`;
 
 const withoutSingle = new WeakMap<readonly KeyBinding[], readonly KeyBinding[]>();

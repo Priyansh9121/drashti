@@ -81,8 +81,6 @@ import { startMirror } from './mirror-store';
 import { MoreTools } from './MoreTools';
 import { MusicList } from './MusicList';
 import { Playing } from './Playing';
-import { Masks } from './Masks';
-import { Props } from './Props';
 import { RemotePlaying } from './RemotePlaying';
 import { isRepeatPlaylist, repeatItemUp, startGoingRound } from './repeat';
 import { RepeatStart } from './RepeatStart';
@@ -107,10 +105,11 @@ import { Timers } from './Timers';
  * A mirror of the operator window (Session 54, D5): the clears in its order
  * with its keys' names (Clears.tsx), LIVE's own lines and what is playing
  * under it, the library's media beside its presentations, and More in the
- * window's order: Music, the stage screen, messages, timers, props, Looks,
- * Shastra, the lower thirds and the idle rotation (each in a file of its
- * own here). Never the screens' setup, video inputs, windows or anything
- * that changes the library.
+ * window's order: Music, the stage screen, messages, timers, Shastra and
+ * the lower thirds (each in a file of its own here; Session 55 took the
+ * props, the masks, the Looks and the idle rotation out). Never the
+ * screens' setup, video inputs, windows or anything that changes the
+ * library.
  */
 
 const CANVAS = { width: 1920, height: 1080 };
@@ -133,7 +132,7 @@ const firstLine = (s: OrderedSlide): string =>
 // ---- what is on the screens ---------------------------------------------------------------------
 
 /**
- * The hall's group's settings in the live Look (Sessions 31–36, SLD-6): the remote shows the slide, and the
+ * The hall's group's settings (Sessions 31–36, SLD-6): the remote shows the slide, and the
  * next one, in its languages, as the hall's screens and the operator's LIVE do.
  */
 function useHallLook(state: EngineState | null): LiveGroupLook {
@@ -166,8 +165,8 @@ function LivePicture({ state }: { state: EngineState | null }) {
         </h2>
         {state?.blackout ? (
           <Badge tone="live">Black-out</Badge>
-        ) : state?.logo ? (
-          <Badge tone="live">Logo</Badge>
+        ) : state?.wallpaper ? (
+          <Badge tone="live">Wallpaper</Badge>
         ) : up ? (
           <LiveBadge />
         ) : null}
@@ -974,40 +973,6 @@ function MessageRow({ template, shown }: { template: MessageTemplate; shown: boo
 // Selectors return the state's own arrays, never a fresh one (a fresh one each time would loop).
 const NO_MESSAGES: EngineState['layers']['messages'] = [];
 
-/** The Looks: tapping one makes it live (every screen group changes at once). */
-function Looks() {
-  const looks = useRemote((s) => s.looks);
-  const liveId = useEngine((s) => s.state?.look.id ?? '');
-  if (!looks || looks.length < 2) return null;
-  return (
-    <section className="space-y-2" aria-labelledby="looks-title">
-      <h2 id="looks-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Looks
-      </h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="remote-looks">
-        {looks.map((look) => {
-          const live = look.id === liveId;
-          return (
-            <Button
-              key={look.id}
-              size="lg"
-              className="min-h-12"
-              variant={live ? 'live' : 'secondary'}
-              aria-pressed={live}
-              data-look={look.id}
-              onClick={() => {
-                if (!live) void tap(post(`/api/v1/looks/${encodeURIComponent(look.id)}/live`));
-              }}
-            >
-              <span className="truncate">{look.name}</span>
-            </Button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 /** The audio playlist (Session 14): Play and Pause, and the next track; what plays shows as it changes. */
 function Music() {
   const audio = useEngine((s) => s.state?.layers.audio ?? null);
@@ -1094,15 +1059,18 @@ function TimersAndMessages() {
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const templates = useRemote((s) => s.templates);
   return (
-    // The operator window's right column in its order (Session 54, D5): Music, the stage screen, messages, timers,
-    // props, the Looks and Shastra, then its More tools; in two columns where a tablet has the width for them.
+    // The operator window's right column in its order (Session 54, D5): Music, the stage screen, messages, timers and
+    // Shastra, then its More tools; in two columns where a tablet has the width for them.
     <div className="@container">
-      <div className="@lg:columns-2 @lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid">
+      <div
+        className="@lg:columns-2 @lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid"
+        data-testid="remote-more-columns"
+      >
         {/* The computer's own screens first, as the window's top bar has them (Session 54). */}
         <DesktopTools />
         <Music />
         <StageScreen />
-        <section className="space-y-2" aria-labelledby="messages-title">
+        <section className="space-y-2" aria-labelledby="messages-title" data-testid="remote-messages">
           <h2 id="messages-title" className="text-base font-bold tracking-wider text-muted uppercase">
             Messages
           </h2>
@@ -1126,9 +1094,6 @@ function TimersAndMessages() {
           )}
         </section>
         <Timers />
-        <Props />
-        <Masks />
-        <Looks />
         <Shastra />
         <MoreTools />
       </div>

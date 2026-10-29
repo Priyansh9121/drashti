@@ -26,15 +26,15 @@ export function namedBackground(background: BackgroundLayer | null | undefined):
 /**
  * What the hall's picture holds that this page cannot draw (Session 51), one line each, as the phone remote says
  * them: the background's video input or window ("Video input: Input 1"), then the picture-in-picture box's
- * ("Picture in picture: Input 1"); only those the hall's group shows in the live Look, and none under black-out or
- * the logo. None at all on a page that draws them (`live`: this computer's own).
+ * ("Picture in picture: Input 1"); only those the hall's group shows, and none under black-out or the Wallpaper.
+ * None at all on a page that draws them (`live`: this computer's own).
  */
 export function unseenLive(
-  state: Pick<EngineState, 'layers' | 'blackout' | 'logo'>,
+  state: Pick<EngineState, 'layers' | 'blackout' | 'wallpaper'>,
   look: LiveGroupLook,
   live: boolean,
 ): string[] {
-  if (live || state.blackout || state.logo !== null) return [];
+  if (live || state.blackout || state.wallpaper) return [];
   const lines: string[] = [];
   const named = shows(look, 'background') ? namedBackground(state.layers.background) : null;
   if (named) lines.push(`${named.label} ${named.name}`);

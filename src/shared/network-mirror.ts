@@ -1,22 +1,12 @@
 import type { MediaSummary } from './playlists';
 
 /*
- * What a Remote reads to mirror the operator window (Session 54, D5): the library's props, its pictures, videos
- * and sounds, the lower thirds and the audio playlists, each by name, to put up and take off as the window does,
- * never to change; and the keys the window answers now, so the phone's clears name them as the desktop's buttons
- * do. A prop, a lower third or a media item is put up by its id: the main process reads it from the library, so a
- * phone never sends one whole (as with the logo and messages, Session 10).
+ * What a Remote reads to mirror the operator window (Session 54, D5): the library's pictures, videos and sounds,
+ * the lower thirds and the audio playlists, each by name, to put up and take off as the window does, never to
+ * change; and the keys the window answers now, so the phone's clears name them as the desktop's buttons do. A lower
+ * third or a media item is put up by its id: the main process reads it from the library, so a phone never sends one
+ * whole (as with messages, Session 10). Session 55 (Part 12): the props and the masks went.
  */
-
-/** A prop as a Remote lists it: its name, and whether it is the logo; what it shows stays in the library. */
-export interface RemoteProp {
-  id: string;
-  name: string;
-  /** Came from another program's props file. */
-  imported: boolean;
-  /** Marked as the logo (Logo shows it). */
-  logo: boolean;
-}
 
 /** A picture, video or sound as a Remote lists it (the library's Media): never its file or where it is. */
 export type RemoteMedia = Pick<MediaSummary, 'id' | 'name' | 'kind' | 'missing' | 'unplayable'>;
@@ -34,12 +24,6 @@ export interface RemoteMediaPage {
 export const REMOTE_MEDIA_PAGE = 100;
 export const REMOTE_MEDIA_MAX = 200;
 
-/** A mask as a Remote lists it (Session 54, the phone as a full Drashti): its name; it goes up by its id. */
-export interface RemoteMask {
-  id: string;
-  name: string;
-}
-
 /** A lower third as a Remote lists it: its lines, as the window's row shows them. */
 export interface RemoteLowerThird {
   id: string;
@@ -56,7 +40,7 @@ export interface RemoteMusic {
 /** The keys the operator window answers now: its system (how a key is written) and the single-letter keys. */
 export interface RemoteKeys {
   platform: string;
-  /** B, ., L and ? act (Session 37); off, Black-out has no key and the Logo keeps F12. */
+  /** B, . and ? act (Session 37); off, Black-out has no key (the Wallpaper keeps F12, Session 55). */
   singleKeys: boolean;
 }
 

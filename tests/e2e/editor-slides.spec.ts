@@ -125,9 +125,8 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
     .evaluateAll((thumbs) => thumbs.map((t) => t.querySelectorAll('svg[data-shape]').length));
   expect(shapes).toEqual([1, 1, 1, 1, 1]);
 
-  // A theme from this slide.
-  await editor.getByTestId('theme-from-slide').click();
-  await expect(editor.getByTestId('editor-note')).toContainText('Made the theme');
+  // No theme from this slide any more (Session 55: Themes went with the theme editor).
+  await expect(editor.getByTestId('theme-from-slide')).toHaveCount(0);
 
   // Saved: all of it is in the library.
   await editor.getByTestId('save-slides').click();
@@ -167,10 +166,6 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
     shapes: 1,
   });
   expect(saved.groups?.flatMap((g) => g.slides.map((s) => s.shapes))).toEqual([1, 1, 1, 1, 1]);
-  const themes = await win.evaluate(
-    async () => (await (globalThis as PageGlobals).drashti.themes.list()).themes,
-  );
-  expect(themes.map((t) => t.name)).toContain('Placeholder Slides Kirtan: Opening');
 
   // One Undo puts the whole edit back.
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/ }).click();

@@ -2,11 +2,9 @@ import { create } from 'zustand';
 import type {
   RemoteKeys,
   RemoteLowerThird,
-  RemoteMask,
   RemoteMedia,
   RemoteMediaPage,
   RemoteMusic,
-  RemoteProp,
 } from '../../../../shared/network-mirror';
 import { api } from '../device';
 import { oneAtATime } from '../one-at-a-time';
@@ -14,7 +12,7 @@ import { onListsChanged, onOnline } from '../feed';
 
 /*
  * What the remote reads to mirror the operator window (Session 54, D5), besides remote-store.ts's: the library's
- * props, its pictures, videos and sounds, the lower thirds, the audio playlists, and the keys the window answers.
+ * pictures, videos and sounds, the lower thirds, the audio playlists, and the keys the window answers.
  * Read over the network as the window reads them, and again when Drashti says they changed. Nothing here changes
  * the library: each is put up and taken off (mirror-actions.ts).
  */
@@ -37,9 +35,6 @@ export interface MirrorMedia {
 interface MirrorView {
   libraryKind: LibraryKind;
   keys: RemoteKeys | null;
-  props: RemoteProp[] | null;
-  /** The library's masks (Session 54, the phone as a full Drashti); null until read. */
-  masks: RemoteMask[] | null;
   media: MirrorMedia;
   lowerThirds: RemoteLowerThird[] | null;
   music: RemoteMusic[] | null;
@@ -48,8 +43,6 @@ interface MirrorView {
 export const useMirror = create<MirrorView>(() => ({
   libraryKind: 'presentations',
   keys: null,
-  props: null,
-  masks: null,
   media: { list: null, total: 0, query: '' },
   lowerThirds: null,
   music: null,
@@ -58,16 +51,6 @@ export const useMirror = create<MirrorView>(() => ({
 export async function loadKeys(): Promise<void> {
   const r = await api<{ keys: RemoteKeys }>('/api/v1/keys');
   if (r.ok) useMirror.setState({ keys: r.keys });
-}
-
-export async function loadProps(): Promise<void> {
-  const r = await api<{ props: RemoteProp[] }>('/api/v1/props');
-  if (r.ok) useMirror.setState({ props: r.props });
-}
-
-export async function loadMasks(): Promise<void> {
-  const r = await api<{ masks: RemoteMask[] }>('/api/v1/masks');
-  if (r.ok) useMirror.setState({ masks: r.masks });
 }
 
 export async function loadLowerThirds(): Promise<void> {
@@ -109,8 +92,6 @@ export function startMirror(): void {
   started = true;
   onOnline(() => {
     void loadKeys();
-    void loadProps();
-    void loadMasks();
     void loadLowerThirds();
     void loadMusic();
     // The media once they have been shown (a library can hold thousands).
@@ -118,8 +99,6 @@ export function startMirror(): void {
   });
   onListsChanged((what) => {
     if (what === 'keys') void loadKeys();
-    if (what === 'props') void loadProps();
-    if (what === 'masks') void loadMasks();
     if (what === 'lowerThirds') void loadLowerThirds();
     // A folder's sounds follow its playlist into Audio (Session 44); an import can bring sounds.
     if (what === 'music' || what === 'playlists' || what === 'presentations') void loadMusic();

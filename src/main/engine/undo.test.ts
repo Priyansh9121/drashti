@@ -1,37 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { PropItem } from '../../shared/engine/state';
 import { MemoryPlaylistSource } from './playlist-source';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
 /*
  * Simple Mode's safety nets in the engine: Put it back after Clear all, Back
- * that undoes the last Next exactly, and the logo instead of the picture.
+ * that undoes the last Next exactly, and the Wallpaper instead of the picture
+ * (Session 55, in the Logo's place).
  */
-
-const logo: PropItem = {
-  id: 'logo',
-  name: 'Placeholder logo',
-  elements: [
-    {
-      id: 'logo-t',
-      kind: 'text',
-      frame: { x: 0, y: 0, width: 1920, height: 1080 },
-      text: 'Placeholder logo',
-      lang: 'en',
-      style: {
-        fontFamily: null,
-        fontSize: 96,
-        fontWeight: 700,
-        color: '#ffffff',
-        align: 'center',
-        verticalAlign: 'middle',
-        lineHeight: 1.2,
-        shadow: false,
-      },
-    },
-  ],
-};
 
 /** A kirtan, then a picture, then a sound, in a playlist. */
 function sabha() {
@@ -65,7 +41,6 @@ describe('Put it back after Clear all', () => {
       type: 'playAudio',
       audio: { id: 'a', title: 'Dhun', mediaId: 'a', volume: 1, loop: true },
     });
-    engine.dispatch({ type: 'showProp', prop: logo });
     engine.dispatch({ type: 'showMessage', message: { id: 'm', text: 'Car 12 please move' } });
     const before = engine.current.layers;
     expect(engine.current.canPutBack).toBe(false);
@@ -137,40 +112,38 @@ describe('Back undoes the last Next', () => {
     expect(engine.current.layers.background).toBeNull();
   });
 
-  it('keeps working through black-out and the logo', () => {
+  it('keeps working through black-out and the Wallpaper', () => {
     const { engine } = sabha();
     engine.dispatch({ type: 'playItem', playlistId: 'ravi', itemId: 'i-kirtan' });
     engine.dispatch({ type: 'next' });
     engine.dispatch({ type: 'toggleBlackout' });
     engine.dispatch({ type: 'toggleBlackout' });
-    engine.dispatch({ type: 'showLogo', prop: logo });
-    engine.dispatch({ type: 'hideLogo' });
+    engine.dispatch({ type: 'toggleWallpaper' });
+    engine.dispatch({ type: 'toggleWallpaper' });
     engine.dispatch({ type: 'back' });
     expect(words(engine)).toBe('Chorus');
   });
 });
 
-describe('the logo', () => {
-  it('goes up and comes down without touching the layers', () => {
+describe('the Wallpaper (Session 55, in the Logo’s place)', () => {
+  it('goes up and comes off without touching the layers', () => {
     const { engine } = sabha();
     engine.dispatch({ type: 'playItem', playlistId: 'ravi', itemId: 'i-kirtan' });
     const layers = engine.current.layers;
-    expect(engine.dispatch({ type: 'showLogo', prop: logo })).toMatchObject({ ok: true, changed: true });
-    // With when it went up (Session 27): its videos play from then, in step on every screen.
-    expect(engine.current.logo).toEqual({ ...logo, shownAt: engine.current.logo?.shownAt });
-    expect(typeof engine.current.logo?.shownAt).toBe('number');
+    expect(engine.dispatch({ type: 'toggleWallpaper' })).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.wallpaper).toBe(true);
     expect(engine.current.layers).toBe(layers);
-    // The same logo again changes nothing (it keeps its time).
-    expect(engine.dispatch({ type: 'showLogo', prop: logo })).toMatchObject({ changed: false });
-    engine.dispatch({ type: 'hideLogo' });
-    expect(engine.current.logo).toBeNull();
+    // Up again changes nothing.
+    expect(engine.dispatch({ type: 'setWallpaper', on: true })).toMatchObject({ changed: false });
+    engine.dispatch({ type: 'toggleWallpaper' });
+    expect(engine.current.wallpaper).toBe(false);
     expect(engine.current.layers).toBe(layers);
   });
 
   it('comes back after a restart, with black-out', () => {
     const { engine } = sabha();
-    const put = engine.restore({ slide: null, background: null, blackout: true, logo });
-    expect(put).toMatchObject({ logo: true, blackout: true });
-    expect(engine.current.logo).toEqual(logo);
+    const put = engine.restore({ slide: null, background: null, blackout: true, wallpaper: true });
+    expect(put).toMatchObject({ wallpaper: true, blackout: true });
+    expect(engine.current.wallpaper).toBe(true);
   });
 });

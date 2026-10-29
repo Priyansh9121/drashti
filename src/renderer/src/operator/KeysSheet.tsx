@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId } from 'react';
 import { create } from 'zustand';
-import { KEY_GROUPS, KEYMAP, keyText, shortcutText, SINGLE_KEYS_TEXT } from '../../../shared/keymap';
+import { KEY_GROUPS, KEYMAP, keyText, SINGLE_KEYS_TEXT } from '../../../shared/keymap';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Kbd } from '../ui/Kbd';
@@ -30,8 +30,6 @@ export function KeysSheet({ platform }: { platform: string }) {
   const open = useKeysSheet((s) => s.open);
   const singleOn = useSingleKeys((s) => s.on !== false);
   const keymap = useKeymapNow();
-  // The Logo's key while the single-letter keys are off (Session 50: F12, as the operators press it).
-  const logoKey = shortcutText('toggleLogo', platform, keymap);
   const ids = useId();
   // ? closes it again (the show's keys are off while a dialog is open, so the sheet listens itself), while
   // the single-letter keys are on.
@@ -81,8 +79,8 @@ export function KeysSheet({ platform }: { platform: string }) {
           </p>
         ) : (
           <p className="text-xs text-muted" data-testid="keys-single-off">
-            Off on this computer: {SINGLE_KEYS_TEXT} do nothing. Black-out and the Logo still work from their
-            buttons, a MIDI pad and the phone remote{logoKey && `, and the Logo from ${logoKey}`}.
+            Off on this computer: {SINGLE_KEYS_TEXT} do nothing. Black-out still works from its button, a MIDI
+            pad and the phone remote.
           </p>
         )}
       </div>

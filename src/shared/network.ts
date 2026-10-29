@@ -25,8 +25,7 @@ export const DEVICE_KIND_LABEL: Record<DeviceKind, string> = {
 
 /** What each kind of device is for, as the operator reads it when pairing one. */
 export const DEVICE_KIND_HELP: Record<DeviceKind, string> = {
-  remote:
-    'Runs the show: Next and Back, slides, the clears, media, props, timers, messages and the stage message.',
+  remote: 'Runs the show: Next and Back, slides, the clears, media, timers, messages and the stage message.',
   stage: 'Watches only: shows what a stage screen shows.',
   announcements: 'Sends announcements for the operator to approve; nothing else.',
 };
@@ -114,9 +113,7 @@ export type NetworkChange =
   | 'presentations'
   | 'messages'
   | 'timers'
-  | 'props'
   | 'screens'
-  | 'looks'
   | 'shastra'
   | 'lowerThirds'
   | 'music'
@@ -127,8 +124,6 @@ export type NetworkChange =
    * controls changed; a Remote that set them up reads them again (never a Stage device: its 'screens' says enough).
    */
   | 'setup'
-  /** The library's masks changed (Session 54, the phone as a full Drashti): a Remote reads them again. */
-  | 'masks'
   /** The announcements' queue changed (Session 54): a Remote deciding on them reads it again. */
   | 'queue';
 

@@ -235,9 +235,9 @@ describe('Set Up Screens… and Keep these screens?', () => {
 
 // Session 54 (E5): roles and PINs are gone, and the wizard's PINs step with them.
 describe('the setup wizard’s steps (Session 54, E5)', () => {
-  it('has no PINs step: the theme, then Finish', async () => {
+  it('has no PINs step, nor a theme’s (Session 55: Themes went): the stream, then Finish', async () => {
     const { setup } = await fresh();
-    expect(setup.STEPS).toEqual(['Welcome', 'Screens', 'Sound', 'Stream', 'Theme', 'Finish']);
+    expect(setup.STEPS).toEqual(['Welcome', 'Screens', 'Sound', 'Stream', 'Finish']);
   });
 
   it('opens from the setup as it is, asking nothing of roles, with no PINs to set at Finish', async () => {
@@ -256,7 +256,6 @@ describe('the setup wizard’s steps (Session 54, E5)', () => {
         audio: {
           getOutput: () => Promise.resolve({ chosen: null, devices: [], state: 'default', checked: true }),
         },
-        themes: { list: () => Promise.resolve({ themes: [], defaultId: null }) },
       },
     };
     const { setup } = await fresh();
@@ -294,7 +293,6 @@ describe('Set Up Screens… opens on the screens as they are (Session 55)', () =
         audio: {
           getOutput: () => Promise.resolve({ chosen: null, devices: [], state: 'default', checked: true }),
         },
-        themes: { list: () => Promise.resolve({ themes: [], defaultId: null }) },
       },
     };
     const { setup } = await fresh();

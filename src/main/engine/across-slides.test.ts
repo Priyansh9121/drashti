@@ -160,7 +160,7 @@ describe('a sound set to play across slides (Session 54)', () => {
     expect(sound(engine)).toBeNull();
   });
 
-  it('Play Across Slides (999) plays to the deck’s end; anything else going live stops it, but clearing the slide, black-out and the logo leave it', () => {
+  it('Play Across Slides (999) plays to the deck’s end; anything else going live stops it, but clearing the slide, black-out and the Wallpaper leave it', () => {
     const { engine } = setup(fourSlides(999));
     engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
     const playing = sound(engine);
@@ -168,7 +168,7 @@ describe('a sound set to play across slides (Session 54)', () => {
     engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 3 });
     engine.dispatch({ type: 'clearLayer', layer: 'slide' });
     engine.dispatch({ type: 'setBlackout', on: true });
-    engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Placeholder logo', elements: [] } });
+    engine.dispatch({ type: 'setWallpaper', on: true });
     expect(sound(engine)).toEqual(playing);
     // The deck's slides go on after Clear: still its music.
     engine.dispatch({ type: 'previous' });

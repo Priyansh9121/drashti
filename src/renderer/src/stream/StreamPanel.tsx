@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { StreamStatus } from '../../../shared/stream';
 import { STREAM_PRESETS } from '../../../shared/stream';
-import { useEngine } from '../engine/engine-store';
-import { connectLooks, useLooks } from '../looks/looks-store';
-import { GroupLookSettings } from '../screens/LookSettings';
+import { GroupLanguages } from '../screens/GroupLanguages';
 import { connectScreens, useScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -134,20 +132,17 @@ function Inputs({ status }: { status: StreamStatus }) {
   );
 }
 
-/** The stream's languages for a kirtan's words, in the live Look (as on YouTube's card in Screens). */
+/** The stream's languages for a kirtan's words (as on YouTube's card in Screens). */
 function StreamLanguages() {
-  const liveId = useEngine((s) => s.state?.look.id ?? '');
-  const look = useLooks((s) => s.view?.looks.find((l) => l.id === liveId) ?? null);
   const group = useScreens((s) => s.snapshot?.groups.find((g) => g.role === 'stream') ?? null);
   useEffect(() => {
     connectScreens();
-    connectLooks();
   }, []);
-  if (!look || !group) return null;
+  if (!group) return null;
   return (
     <section className="space-y-2" data-testid="stream-languages">
       <SectionTitle>Languages</SectionTitle>
-      <GroupLookSettings look={look} groupId={group.id} role="stream" />
+      <GroupLanguages groupId={group.id} role="stream" />
     </section>
   );
 }

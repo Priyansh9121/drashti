@@ -2,11 +2,16 @@ import { z } from 'zod';
 import { IDLE_WHENS, type IdleWhen } from './idle';
 import type { Lang } from './model';
 import { idSchema } from './model-schema';
-import type { Mask } from './masks';
 import type { ScreenRole } from './screens';
 import { groupLanguagesSchema } from './screens-schema';
 
 /*
+ * Session 55 (Part 12): Looks are gone from the window, the menus, the keys, the phone and the API. What the screens
+ * draw is each group's languages, set in Screens and kept in the library's first Look, and what its role gives it
+ * (roleLook below): a key and fill pair the words as a lower third and messages, every other group everything, slides
+ * as designed, Calm. Every Look the library keeps, and every setting in them, stays as it was, unread (main/db/looks.ts
+ * reads and writes them as before): what follows says how they were, and how they are still stored.
+ *
  * Looks (PLAN.md 2 and 4.1, Session 11): for each screen group, what its
  * screens show. One Look is live at a time, and switching it is a show
  * action: every group changes at once, from the engine state, which carries
@@ -47,16 +52,6 @@ export const LOOK_LAYERS = [
   'masks',
 ] as const satisfies readonly LookLayer[];
 
-export const LOOK_LAYER_NAMES: Record<LookLayer, string> = {
-  background: 'Background',
-  slide: 'Slides',
-  props: 'Props',
-  pip: 'Picture in picture',
-  messages: 'Messages',
-  ticker: 'Ticker',
-  masks: 'Masks layer',
-};
-
 /**
  * Layers that came after Looks were first kept (Session 50: the picture-in-picture box). A group's stored
  * `layers` lists only the earlier ones it shows (as an older Drashti reads it), and a later layer it leaves out
@@ -89,7 +84,6 @@ export const SLIDE_STYLES = ['designed', 'lowerThird'] as const satisfies readon
 /** How a group's screens move (Session 27): Calm fades in place; Bold may move the words. */
 export type Movement = 'calm' | 'bold';
 export const MOVEMENTS = ['calm', 'bold'] as const satisfies readonly Movement[];
-export const MOVEMENT_NAMES: Record<Movement, string> = { calm: 'Calm', bold: 'Bold' };
 
 /** One group's settings in a Look, as kept in the library and edited in Screens. */
 export interface GroupLook {
@@ -104,7 +98,7 @@ export interface GroupLook {
    * every stage screen, once, at the first start after the update (main/stage/stage-layout-service.ts).
    */
   stageLayoutId: string | null;
-  /** The group's screens' own shape: a mask from the library always over them in this Look (shared/masks.ts). */
+  /** The group's screens' own shape: a mask from the library over them in this Look (kept, unread, since Session 55). */
   maskId: string | null;
   /** When nothing is up on its screens: nothing, or the idle rotation once started, or always (shared/idle.ts). */
   idle: IdleWhen;
@@ -122,57 +116,66 @@ export const DEFAULT_GROUP_LOOK: GroupLook = {
   movement: 'calm',
 };
 
-/** A Look as the operator window sees it: every group's settings, the defaults filled in. */
+/** A Look as the library keeps it: every group's settings, the defaults filled in. */
 export interface LookInfo {
   id: string;
   name: string;
   groups: Record<string, GroupLook>;
 }
 
-export interface LooksView {
-  /** In order: the first is the one Drashti starts with. */
-  looks: LookInfo[];
-  /** The live Look. */
-  liveId: string;
-}
+/** The picture layers a group's screens draw (Session 55: by its role; the props and masks layers are gone). */
+export type GroupLayer = 'background' | 'slide' | 'pip' | 'messages' | 'ticker';
+/** Bottom to top, as the screens draw them. */
+export const GROUP_LAYERS = [
+  'background',
+  'slide',
+  'pip',
+  'messages',
+  'ticker',
+] as const satisfies readonly GroupLayer[];
 
-export type LookResult = { ok: true; view: LooksView } | { ok: false; message: string };
-
-/** The live Look in the engine state: every group's settings, ready to draw. */
+/** A screen group's settings in the engine state, ready to draw. */
 export interface LiveGroupLook {
-  layers: readonly LookLayer[];
+  layers: readonly GroupLayer[];
   languages: readonly Lang[] | null;
   slides: SlideStyle;
-  /** The group's own mask, ready to draw (over everything on its screens); null for none. */
-  mask: Mask | null;
-  /** When nothing is up: the idle rotation, once started or always; or nothing. */
-  idle: IdleWhen;
-  /** How its screens move between slides: Calm, or Bold. */
+  /** How its screens move between slides: Calm (every group since Session 55), or Bold. */
   movement: Movement;
 }
 
-/** How a group draws when the live Look does not list it (and in previews with no group). */
+/** How a group draws when the engine state does not list it (and in previews with no group). */
 export const DEFAULT_LIVE_GROUP_LOOK: LiveGroupLook = {
-  layers: LOOK_LAYERS,
+  layers: GROUP_LAYERS,
   languages: null,
   slides: 'designed',
-  mask: null,
-  idle: 'off',
   movement: 'calm',
 };
 
+/**
+ * What a group of this role draws, in these languages (Session 55, Part 12): a key and fill pair keys its graphics
+ * over a video switcher's picture, so it draws the words as a lower third and the messages alone (no background, no
+ * picture-in-picture box, no ticker), as a group made a key and fill pair always started in every Look (Session 23);
+ * every other group draws everything, its slides as designed. Every group moves Calm.
+ */
+export function roleLook(role: ScreenRole, languages: readonly Lang[] | null): LiveGroupLook {
+  const shown = languages ? [...languages] : null;
+  return role === 'keyfill'
+    ? { layers: ['slide', 'messages'], languages: shown, slides: 'lowerThird', movement: 'calm' }
+    : { ...DEFAULT_LIVE_GROUP_LOOK, languages: shown };
+}
+
 export interface LiveLook {
-  /** Its id in the library ('' before the library's Looks are read). */
+  /** The library's first Look's id, which keeps the groups' languages ('' before the library is read). */
   id: string;
   name: string;
   /** By screen group id. A group not here (just made) draws with the defaults. */
   groups: Record<string, LiveGroupLook>;
 }
 
-/** The engine's state before the library's Looks are read: every group with the defaults. */
+/** The engine's state before the library is read: every group with the defaults. */
 export const NO_LOOK: LiveLook = { id: '', name: '', groups: {} };
 
-/** A group's settings in the live Look (the defaults when the Look does not list it). */
+/** A group's settings in the engine state (the defaults when it does not list it). */
 export function groupLookIn(
   look: LiveLook | null | undefined,
   groupId: string | null | undefined,
@@ -180,12 +183,11 @@ export function groupLookIn(
   return (groupId ? look?.groups[groupId] : undefined) ?? DEFAULT_LIVE_GROUP_LOOK;
 }
 
-/** Whether a group's screens draw this layer in the live Look. */
-export const shows = (g: LiveGroupLook, layer: LookLayer): boolean => g.layers.includes(layer);
+/** Whether a group's screens draw this layer. */
+export const shows = (g: LiveGroupLook, layer: GroupLayer): boolean => g.layers.includes(layer);
 
-// ---- validation (IPC input and what the library holds) ------------------------------------------
+// ---- validation (what the library holds) ------------------------------------------
 
-export const lookNameSchema = z.string().trim().min(1).max(60);
 export const lookLayersSchema = z
   .array(z.enum(LOOK_LAYERS))
   .max(LOOK_LAYERS.length)
@@ -195,23 +197,6 @@ const laterLayersSchema = z
   .array(z.enum(LATER_LOOK_LAYERS))
   .max(LATER_LOOK_LAYERS.length)
   .refine((list) => new Set(list).size === list.length, 'a layer is listed twice');
-
-/**
- * A change to one group's settings in a Look (only what is given changes). A stage layout is no longer one of them
- * (Session 55): one is chosen for every stage screen, and a change naming one is refused.
- */
-export const groupLookPatchSchema = z
-  .object({
-    layers: lookLayersSchema,
-    languages: groupLanguagesSchema,
-    slides: z.enum(SLIDE_STYLES),
-    maskId: idSchema.nullable(),
-    idle: z.enum(IDLE_WHENS),
-    movement: z.enum(MOVEMENTS),
-  })
-  .partial()
-  .strict();
-export type GroupLookPatch = z.infer<typeof groupLookPatchSchema>;
 
 /**
  * A Look's definition as stored: per group, only what differs from the

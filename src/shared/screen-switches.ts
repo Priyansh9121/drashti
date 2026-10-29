@@ -84,16 +84,11 @@ export function openUnder(snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>, 
 
 /**
  * Whether the audience screens show anything at all: a layer with a picture (sound has none), black-out (the hall
- * sees black), the logo, or the idle rotation with something to show, started or on a group that shows it
- * whenever nothing is up.
+ * sees black) or the Wallpaper (Session 55, Part 13).
  */
 export function showsSomething(state: EngineState): boolean {
-  if (state.blackout || state.logo !== null) return true;
-  if (LAYER_NAMES.some((layer) => layer !== 'audio' && !isLayerEmpty(state.layers, layer))) return true;
-  return (
-    state.idle.items.length > 0 &&
-    (state.idle.startedAt !== null || Object.values(state.look.groups).some((g) => g.idle === 'always'))
-  );
+  if (state.blackout || state.wallpaper) return true;
+  return LAYER_NAMES.some((layer) => layer !== 'audio' && !isLayerEmpty(state.layers, layer));
 }
 
 /**

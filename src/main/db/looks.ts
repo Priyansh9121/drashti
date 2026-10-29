@@ -10,6 +10,9 @@ import type { Db } from './database';
  * (shared/looks.ts); reading fills in the rest, for every group there is.
  * Session 51: a group's defaults follow its role as it is now (a key and fill
  * pair leaves the picture-in-picture box out until a Look turns it on).
+ * Session 55 (Part 12): Looks are gone from the window; the first one keeps
+ * each group's languages (Screens sets them), and every Look and setting
+ * stays as it was, unread (main/looks/look-service.ts).
  */
 
 interface LookRow {
@@ -50,6 +53,11 @@ export class LookRepo {
 
   private groups(): GroupRow[] {
     return this.db.prepare('SELECT id, role FROM screen_groups ORDER BY position, rowid').all() as GroupRow[];
+  }
+
+  /** Every screen group with its role, in Screens' order. */
+  groupRoles(): { id: string; role: ScreenRole }[] {
+    return this.groups();
   }
 
   /** A group's role, for its defaults (one gone or not yet made reads as an audience group's). */
@@ -153,13 +161,6 @@ export class LookRepo {
   /** The same change to a group in every Look (a group the setup wizard makes starts the same in each). */
   setGroupEverywhere(groupId: string, patch: Partial<GroupLook>): void {
     for (const r of this.rows()) this.setGroup(r.id, groupId, patch);
-  }
-
-  /** A mask was removed: groups that had it as their own shape show their whole canvas. */
-  forgetMask(maskId: string): void {
-    for (const look of this.list())
-      for (const [groupId, g] of Object.entries(look.groups))
-        if (g.maskId === maskId) this.setGroup(look.id, groupId, { maskId: null });
   }
 
   /**

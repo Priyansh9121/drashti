@@ -9,15 +9,15 @@ import { makeTestImage, makeTestVideo } from './test-media';
 /*
  * A small placeholder sabha for the UI tests, Simple Mode and the
  * screenshots: a welcome slide, a kirtan with a chorus sung three times, a
- * generated picture, and a playlist of them with headers; a prop (the
- * logo), a message template and a timer. Placeholder words only.
+ * generated picture, and a playlist of them with headers; a message
+ * template and a timer (Session 55: no prop, the Logo gone). Placeholder
+ * words only.
  */
 
 export const WELCOME = 'Placeholder Welcome';
 export const KIRTAN = 'Placeholder Kirtan';
 export const PICTURE = 'Placeholder backdrop';
 export const PLAYLIST = 'Placeholder Ravi Sabha';
-export const LOGO = 'Placeholder Mandir Logo';
 export const VIDEO = 'Placeholder clip';
 
 export interface PlaceholderShow {
@@ -27,7 +27,6 @@ export interface PlaceholderShow {
   pictureMediaId: string;
   /** With `video`: a short generated video, the item after the kirtan. */
   videoMediaId: string | null;
-  logoPropId: string;
   /** The kirtan's slides in playing order: chorus, verse 1, chorus, verse 2, chorus. */
   kirtanOrder: string[];
 }
@@ -104,31 +103,6 @@ export async function setUpPlaceholderShow(
         { kind: 'media', mediaId: pictureMediaId },
       ]);
       if (!added.ok) throw new Error(added.message);
-      const logo = await d.props.save(null, {
-        name: names.logo,
-        width: 1920,
-        height: 1080,
-        elements: [
-          {
-            id: 'placeholder-logo-text',
-            kind: 'text',
-            frame: { x: 360, y: 440, width: 1200, height: 200 },
-            text: names.logo,
-            lang: 'en',
-            style: {
-              fontFamily: null,
-              fontSize: 96,
-              fontWeight: 700,
-              color: '#ffffff',
-              align: 'center',
-              verticalAlign: 'middle',
-              lineHeight: 1.2,
-              shadow: false,
-            },
-          },
-        ],
-      });
-      if (!logo.ok) throw new Error(logo.message);
       const message = await d.messages.create({
         name: 'Car parking',
         template: 'Car {plate} please move',
@@ -153,7 +127,6 @@ export async function setUpPlaceholderShow(
         kirtanId,
         pictureMediaId,
         videoMediaId,
-        logoPropId: logo.id,
         kirtanOrder,
       };
     },
@@ -163,7 +136,6 @@ export async function setUpPlaceholderShow(
       names: {
         picture: PICTURE,
         playlist: PLAYLIST,
-        logo: LOGO,
         video: VIDEO,
         welcome: WELCOME,
         kirtan: KIRTAN,

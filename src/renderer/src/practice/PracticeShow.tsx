@@ -61,14 +61,14 @@ export function PracticeShow({ platform, run }: { platform: string; run: (action
 
 /** The keys a show runs on, to try here. */
 function TryTheKeys({ platform }: { platform: string }) {
-  // Only keys that act: Black-out has none while B, . and L are turned off (Session 37); the
-  // logo keeps F12, as the operators press it (Session 50).
+  // Only keys that act: Black-out has none while B, . and ? are turned off (Session 37); the
+  // Wallpaper keeps F12 (Session 55, the Logo's key, as the operators press it).
   const keymap = useKeymapNow();
   const keys: { what: string; key: string }[] = [
     { what: 'Next slide', key: shortcutText('next', platform, keymap) },
     { what: 'Back a slide', key: shortcutText('previous', platform, keymap) },
     { what: 'Black-out', key: shortcutText('toggleBlackout', platform, keymap) },
-    { what: 'The logo', key: shortcutText('toggleLogo', platform, keymap) },
+    { what: 'The wallpaper', key: shortcutText('toggleWallpaper', platform, keymap) },
     { what: 'Clear all', key: shortcutText('clearAll', platform, keymap) },
   ].filter((k) => k.key !== '');
   return (

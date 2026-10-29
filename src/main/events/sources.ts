@@ -60,8 +60,8 @@ export function engineEvents(before: EngineState | null, after: EngineState): Em
     });
   if (after.blackout !== before.blackout)
     out.push({ kind: 'blackout.changed', data: { on: after.blackout } });
-  if ((after.logo !== null) !== (before.logo !== null))
-    out.push({ kind: 'logo.changed', data: { on: after.logo !== null } });
+  if (after.wallpaper !== before.wallpaper)
+    out.push({ kind: 'wallpaper.changed', data: { on: after.wallpaper } });
   return out;
 }
 

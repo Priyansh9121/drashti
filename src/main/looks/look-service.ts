@@ -1,186 +1,103 @@
-import { z } from 'zod';
 import type { EngineState } from '../../shared/engine/state';
-import type { GroupLook, LiveGroupLook, LiveLook, LookInfo, LookResult, LooksView } from '../../shared/looks';
-import { groupLookPatchSchema, lookNameSchema, NO_LOOK, storedGroupLook } from '../../shared/looks';
+import type { GroupLook, LiveGroupLook, LiveLook, Movement } from '../../shared/looks';
+import { NO_LOOK, roleLook, storedGroupLook } from '../../shared/looks';
 import type { Lang } from '../../shared/model';
-import { idSchema } from '../../shared/model-schema';
-import type { Mask } from '../../shared/masks';
+import type { ScreenRole } from '../../shared/screens';
 import type { LookRepo } from '../db/looks';
 import type { LookSource } from '../engine/show-engine';
 
 /*
- * Looks as the operator changes them (Screens), and as the engine reads them
- * (LookSource). Every change is saved, then the engine reads the live Look
- * again, so the screens follow at once; the operator window and the phones
- * are told. Switching the live Look is the engine's own command (setLook).
+ * Each screen group's settings, as the engine reads them (LookSource) and Screens changes them (Session 55, Part 12:
+ * Looks are gone from the window, the menus, the phone and the API). A group's languages are set in Screens and kept
+ * where Drashti kept them since Session 11: in the library's first Look, the one Drashti always started with; the
+ * rest of what a group draws its role gives it (shared/looks.ts roleLook). Nothing of the library's Looks is deleted:
+ * every Look, and every other setting in them (layers, slide style, a mask, the idle rotation, Movement, a stage
+ * layout), stays as it was, unread, so an older library or a backup opens and a restore loses nothing. Every change
+ * is saved, then the engine reads the groups again, so the screens follow at once.
  */
 
 export interface LookServiceDeps {
   repo: LookRepo;
-  /** A mask from the library, or null (gone). */
-  mask?: (id: string) => Mask | null;
   engine: { current: EngineState; refreshLook(): unknown };
-  /** The Looks changed: the operator window (and the phones) are told. */
-  changed(view: LooksView): void;
   log(message: string): void;
 }
 
-/**
- * A Look ready to draw: every group's settings and each group's mask in full. No stage layout since Session 55: one
- * is chosen for every stage screen, in the engine's own `stage` (main/stage/stage-layout-service.ts).
- */
-export function liveLook(info: LookInfo, mask: (id: string) => Mask | null = () => null): LiveLook {
+/** Every group's settings, ready to draw: its role's, in its languages (shared/looks.ts roleLook). */
+export function liveLook(
+  look: { id: string; name: string; groups: Record<string, Pick<GroupLook, 'languages'>> },
+  roles: readonly { id: string; role: ScreenRole }[],
+): LiveLook {
   const groups: Record<string, LiveGroupLook> = {};
-  for (const [id, g] of Object.entries(info.groups))
-    groups[id] = {
-      layers: [...g.layers],
-      languages: g.languages ? [...g.languages] : null,
-      slides: g.slides,
-      mask: g.maskId ? mask(g.maskId) : null,
-      idle: g.idle,
-      movement: g.movement,
-    };
-  return { id: info.id, name: info.name, groups };
+  for (const { id, role } of roles) groups[id] = roleLook(role, look.groups[id]?.languages ?? null);
+  return { id: look.id, name: look.name, groups };
 }
 
 export class LookService implements LookSource {
+  /** How every group moves: Calm, unless the performance check asks for Bold (moveAll). */
+  private movement: Movement = 'calm';
+
   constructor(private readonly deps: LookServiceDeps) {}
 
   // ---- the engine's LookSource -------------------------------------------------------------
 
-  look(lookId: string): LiveLook | null {
-    const info = this.deps.repo.get(lookId);
-    return info ? liveLook(info, this.deps.mask) : null;
-  }
-
   start(): LiveLook {
-    return this.look(this.deps.repo.firstId()) ?? NO_LOOK;
+    const info = this.deps.repo.get(this.deps.repo.firstId());
+    if (!info) return NO_LOOK;
+    const look = liveLook(info, this.deps.repo.groupRoles());
+    if (this.movement === 'calm') return look;
+    const moved = Object.fromEntries(
+      Object.entries(look.groups).map(([id, g]) => [id, { ...g, movement: this.movement }]),
+    );
+    return { ...look, groups: moved };
   }
 
-  // ---- the operator's changes ----------------------------------------------------------------
-
-  view(): LooksView {
-    return { looks: this.deps.repo.list(), liveId: this.deps.engine.current.look.id };
+  /**
+   * The performance check's Bold transitions only (perf-scenarios.ts bold-transitions): every group moves this way
+   * until Drashti quits. Nothing in a show asks for it (Session 55: Movement went with Looks; every group is Calm).
+   */
+  moveAll(movement: Movement): void {
+    this.movement = movement;
+    this.done();
   }
 
-  /** Something changed: the live Look is read again, and everyone is told. */
-  private done(): LookResult {
+  /** Something changed: the engine reads the groups again. */
+  private done(): void {
     this.deps.engine.refreshLook();
-    const view = this.view();
-    this.deps.changed(view);
-    return { ok: true, view };
   }
 
-  private fail(message: string): LookResult {
-    return { ok: false, message };
-  }
+  // ---- Screens' changes (outputs/screens-service.ts ScreenLooks) ---------------------------------------------
 
-  create(rawName: unknown, rawCopyOf: unknown): LookResult {
-    const name = lookNameSchema.safeParse(rawName);
-    const copyOf = idSchema.nullable().safeParse(rawCopyOf ?? null);
-    if (!name.success) return this.fail('Give the Look a name (up to 60 characters).');
-    if (!copyOf.success || (copyOf.data !== null && !this.deps.repo.get(copyOf.data)))
-      return this.fail('That Look no longer exists.');
-    this.deps.repo.create(name.data, copyOf.data);
-    this.deps.log(`Looks: made one${copyOf.data ? ' (a copy)' : ''}`);
-    return this.done();
-  }
-
-  rename(rawId: unknown, rawName: unknown): LookResult {
-    const id = idSchema.safeParse(rawId);
-    const name = lookNameSchema.safeParse(rawName);
-    if (!name.success) return this.fail('Give the Look a name (up to 60 characters).');
-    if (!id.success || !this.deps.repo.rename(id.data, name.data))
-      return this.fail('That Look no longer exists.');
-    return this.done();
-  }
-
-  remove(rawId: unknown): LookResult {
-    const id = idSchema.safeParse(rawId);
-    if (!id.success || !this.deps.repo.get(id.data)) return this.fail('That Look no longer exists.');
-    if (this.deps.repo.count() <= 1) return this.fail('There must always be one Look.');
-    this.deps.repo.remove(id.data);
-    this.deps.log('Looks: removed one');
-    // Removing the live Look puts the first one live (refreshLook).
-    return this.done();
-  }
-
-  move(rawId: unknown, rawTo: unknown): LookResult {
-    const id = idSchema.safeParse(rawId);
-    const to = z.number().int().min(0).max(1000).safeParse(rawTo);
-    if (!id.success || !to.success || !this.deps.repo.move(id.data, to.data))
-      return this.fail('That Look no longer exists.');
-    return this.done();
-  }
-
-  setGroup(rawLookId: unknown, rawGroupId: unknown, rawPatch: unknown): LookResult {
-    const lookId = idSchema.safeParse(rawLookId);
-    const groupId = idSchema.safeParse(rawGroupId);
-    // A Look no longer chooses a stage layout (Session 55): said plainly, not as a setting it does not know.
-    if (typeof rawPatch === 'object' && rawPatch !== null && 'stageLayoutId' in rawPatch)
-      return this.fail(
-        'A Look no longer chooses the stage layout: choose it for every stage screen in the Stage screen panel.',
-      );
-    const patch = groupLookPatchSchema.safeParse(rawPatch);
-    if (!patch.success)
-      return this.fail(
-        'A group shows some layers, every language or one to four of them, slides as designed or as a lower third, and moves Calm or Bold.',
-      );
-    const look = lookId.success ? this.deps.repo.get(lookId.data) : null;
-    if (!look) return this.fail('That Look no longer exists.');
-    if (!groupId.success || !(groupId.data in look.groups)) return this.fail('That group no longer exists.');
-    const maskId = patch.data.maskId;
-    if (maskId && !this.deps.mask?.(maskId)) return this.fail('That mask no longer exists.');
-    this.deps.repo.setGroup(look.id, groupId.data, patch.data);
-    return this.done();
-  }
-
-  /** A group's languages in the live Look (Screens' and the setup wizard's language choice). */
+  /** A group's languages (Screens' and the setup wizard's language choice), kept in the first Look. */
   setLiveLanguages(groupId: string, languages: Lang[] | null): boolean {
-    const live = this.deps.engine.current.look.id || this.deps.repo.firstId();
-    const look = this.deps.repo.get(live);
+    const first = this.deps.repo.firstId();
+    const look = this.deps.repo.get(first);
     if (!look || !(groupId in look.groups)) return false;
-    this.deps.repo.setGroup(live, groupId, { languages });
+    this.deps.repo.setGroup(first, groupId, { languages });
     this.done();
     return true;
   }
 
-  /** A group's languages in the live Look. */
+  /** A group's languages, as its screens show them. */
   liveLanguages(groupId: string): Lang[] | null {
     const languages = this.deps.engine.current.look.groups[groupId]?.languages ?? null;
     return languages ? [...languages] : null;
   }
 
-  /** A new group starts with these languages in every Look (the setup wizard's choice). */
+  /** A new group starts with these languages (the setup wizard's choice), in every Look as before. */
   groupMade(groupId: string, languages: Lang[] | null = null): void {
     if (languages !== null) this.deps.repo.setGroupEverywhere(groupId, { languages });
     this.done();
   }
 
-  /** Masks changed (made, saved, removed): the live Look's groups draw them at once. */
-  masksChanged(): void {
-    this.done();
-  }
-
   /**
-   * The stage layout the live Look gives its first stage group, as Looks chose them before Session 55 (null for the
+   * The stage layout the first Look gives its first stage group, as Looks chose them before Session 55 (null for the
    * Standard stage screen): read once, at the first start after the update, as the one chosen for every stage screen.
    */
   liveStageLayoutId(): string | null {
-    const live = this.deps.engine.current.look.id || this.deps.repo.firstId();
-    return this.deps.repo.stageLayoutIdOf(live);
+    return this.deps.repo.stageLayoutIdOf(this.deps.engine.current.look.id || this.deps.repo.firstId());
   }
 
-  /** A group became a key and fill pair: in every Look, the words as a lower third, props and messages. */
-  becameKeyFill(groupId: string): void {
-    this.deps.repo.setGroupEverywhere(groupId, {
-      layers: ['slide', 'props', 'messages'],
-      slides: 'lowerThird',
-    });
-    this.done();
-  }
-
-  /** Groups were added, removed or changed role in Screens: the live Look covers them again. */
+  /** Groups were added, removed or changed role in Screens: the screens draw each as it is now. */
   groupsChanged(): void {
     this.done();
   }

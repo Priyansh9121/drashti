@@ -253,24 +253,17 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
   // The requests only the admin PIN opened with roles on, straight from the bridge: each goes through.
   const answers = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    // A theme as the default one is, under a name of its own (as library.spec makes one).
-    const { themes, defaultId } = await d.themes.list();
-    const base = themes.find((t) => t.id === defaultId) ?? themes[0];
-    if (!base) throw new Error('no theme to start from');
-    const { id: _id, ...fields } = base;
+    // A Look, a theme and the logo were asked here too, until Session 55 took them out.
     return {
       'a screen group': await d.screens.createGroup('Placeholder Group'),
-      'a Look': await d.looks.create('Placeholder Look', null),
-      'a theme': await d.themes.save(null, { ...fields, name: 'Placeholder theme' }),
       'the MIDI controller': await d.midi.set({ deviceName: null, mappings: [] }),
-      'the logo': await d.props.setLogo(null),
       'the single-letter keys off': await d.app.setSingleKeys(false),
       'the single-letter keys on': await d.app.setSingleKeys(true),
       'Shastra, Templates and Kirtan Details': await d.library.setExtras(true),
       'the highest video quality': await d.links.setMaxHeight(1440),
       'the daily look for updates': await d.updates.setAutoCheck(false),
       'the transliteration style': await d.kirtans.setTranslitStyle('plain'),
-      'the setup, finished': await d.setup.finish({ outputs: null, sound: 'skip', themeId: null }),
+      'the setup, finished': await d.setup.finish({ outputs: null, sound: 'skip' }),
     };
   });
   for (const [what, answer] of Object.entries(answers)) {

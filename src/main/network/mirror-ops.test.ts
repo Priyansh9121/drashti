@@ -6,17 +6,17 @@ import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import type { RemoteMedia } from '../../shared/network-mirror';
-import { NO_LOGO_CHOSEN } from '../../shared/props';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { SIMPLE_MODE_LOCKED } from '../simple-mode';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
 /*
- * The phone as a mirror of the operator window (Session 54, D5): a Remote reads the library's props, media, lower
- * thirds and audio playlists, and the keys the window answers; puts each up by its id, as the main process reads it
- * from the library, and takes it off; shows a timer alone, the stage message, Back 15 s and the rest. Never a Stage
- * or Announcements device, and Simple Mode's refusals as in the window. Placeholder names, made-up ids.
+ * The phone as a mirror of the operator window (Session 54, D5): a Remote reads the library's media, lower thirds
+ * and audio playlists (its props and masks went in Session 55), and the keys the window answers; puts each up by its
+ * id, as the main process reads it from the library, and takes it off; shows a timer alone, the stage message,
+ * Back 15 s and the rest. Never a Stage or Announcements device, and Simple Mode's refusals as in the window.
+ * Placeholder names, made-up ids.
  */
 
 const PHONE = '192.168.1.20';
@@ -67,39 +67,17 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       library: () => ({ total: 0, presentations: [] }),
       search: (query) => ({ query, hits: [], more: false, legacyCount: 0 }),
       messages: () => [],
-      logo: () => null,
       mediaSource: () => null,
       sharedSound: () => null,
       stage: () => ({ groupId: null, languages: null }),
       hallGroups: () => [],
       hall: () => ({ groupId: null }),
       switches: () => ({ audience: true, stage: true }),
-      looks: () => [],
       clockStyle: () => ({ locale: 'en-GB', timeZone: 'Europe/London' }),
       shastraTexts: () => [],
       passage: () => ({ ok: false, message: 'No texts.' }),
     },
     mirror: {
-      props: () => [
-        { id: 'prop-name', name: 'Placeholder mandir name', imported: false, logo: false },
-        { id: 'prop-logo', name: 'Placeholder logo', imported: false, logo: true },
-      ],
-      prop: (id) =>
-        id === 'prop-name'
-          ? {
-              id,
-              name: 'Placeholder mandir name',
-              elements: [],
-              width: 1920,
-              height: 1080,
-            }
-          : null,
-      // The library's masks (Session 54, the phone as a full Drashti).
-      masks: () => [{ id: 'mask-band', name: 'Placeholder band' }],
-      mask: (id) =>
-        id === 'mask-band'
-          ? { id, name: 'Placeholder band', width: 1920, height: 1080, mode: 'hide', shapes: [] }
-          : null,
       media: () => MEDIA,
       lowerThirds: () => [
         {
@@ -141,24 +119,15 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
 }
 
 /** The new reads and the actions that put something up. */
-const READS = ['keys', 'props', 'media', 'lowerThirds', 'music'] as const satisfies readonly DeviceOp[];
-const PUTS = ['prop.show', 'media.show', 'lowerThird.show'] as const satisfies readonly DeviceOp[];
+const READS = ['keys', 'media', 'lowerThirds', 'music'] as const satisfies readonly DeviceOp[];
+const PUTS = ['media.show', 'lowerThird.show'] as const satisfies readonly DeviceOp[];
 
 describe('the phone as a mirror of the operator window (Session 54, D5)', () => {
-  it('lets a Remote read the props, the media, the lower thirds, the audio playlists and the keys', () => {
+  it('lets a Remote read the media, the lower thirds, the audio playlists and the keys', () => {
     const { ask, remote } = setup();
     expect(ask(remote, 'keys')).toEqual({
       status: 200,
       body: { ok: true, keys: { platform: 'darwin', singleKeys: true } },
-    });
-    expect(ask(remote, 'props')).toMatchObject({
-      status: 200,
-      body: {
-        props: [
-          { id: 'prop-name', logo: false },
-          { id: 'prop-logo', logo: true },
-        ],
-      },
     });
     expect(ask(remote, 'lowerThirds')).toEqual({
       status: 200,
@@ -193,16 +162,8 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(ask(remote, 'media', { offset: '-4', limit: 'all' }).body).toMatchObject({ offset: 0, total: 5 });
   });
 
-  it('puts a prop, a lower third, a picture, a video and a sound up by its id, as the library has it', () => {
+  it('puts a lower third, a picture, a video and a sound up by its id, as the library has it', () => {
     const { ask, remote, commands } = setup();
-    expect(ask(remote, 'prop.show', { propId: 'prop-name' })).toMatchObject({
-      status: 200,
-      body: { ok: true },
-    });
-    expect(commands.at(-1)).toEqual({
-      type: 'showProp',
-      prop: { id: 'prop-name', name: 'Placeholder mandir name', elements: [], width: 1920, height: 1080 },
-    });
     expect(ask(remote, 'lowerThird.show', { lowerThirdId: 'lt-1' }).status).toBe(200);
     expect(commands.at(-1)).toMatchObject({
       type: 'showLowerThird',
@@ -247,25 +208,21 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
       },
     });
     expect(ask(remote, 'media.show', { mediaId: 'm-nothing' }).status).toBe(404);
-    expect(ask(remote, 'prop.show', { propId: 'prop-nothing' }).status).toBe(404);
     expect(ask(remote, 'lowerThird.show', { lowerThirdId: 'lt-nothing' }).status).toBe(404);
-    for (const op of PUTS) expect(ask(remote, op, { mediaId: '../x', propId: 7 }).status, op).toBe(404);
+    for (const op of PUTS) expect(ask(remote, op, { mediaId: '../x', lowerThirdId: 7 }).status, op).toBe(404);
     expect(commands).toEqual([]);
   });
 
-  it('takes them off, and shows a timer alone, the stage message, the skips and the idle rotation', () => {
+  it('takes them off, and shows a timer alone, the stage message and the skips', () => {
     for (const locked of [false, true]) {
       const { ask, remote, commands } = setup({ locked });
       const sent: Record<string, unknown>[] = [
-        { type: 'hideProp', propId: 'prop-name' },
         { type: 'hideLowerThird' },
         { type: 'showTimer', timerId: 'timer-1' },
         { type: 'setStageMessage', text: 'Placeholder: five minutes' },
         { type: 'clearStageMessage' },
         { type: 'skip', layer: 'background', jump: 'forward' },
         { type: 'skip', layer: 'audio', jump: 'last' },
-        { type: 'startIdle' },
-        { type: 'stopIdle' },
       ];
       // In Simple Mode too: running the show, as its window does; but Back 15 s and the rest, which move what plays,
       // are Pro Mode's (Session 54's review: Simple Mode shows the time bar and moves nothing).
@@ -280,28 +237,26 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     const { ask, stage, poster, commands } = setup();
     for (const device of [stage, poster]) {
       for (const op of [...READS, ...PUTS])
-        expect(ask(device, op, { propId: 'prop-name' }).status, op).toBe(403);
-      for (const type of ['hideProp', 'showTimer', 'setStageMessage', 'skip', 'startIdle'])
+        expect(ask(device, op, { lowerThirdId: 'lt-1' }).status, op).toBe(403);
+      for (const type of ['hideLowerThird', 'showTimer', 'setStageMessage', 'skip'])
         expect(ask(device, 'command', { type }).status, type).toBe(403);
     }
     for (const op of [...READS, ...PUTS]) expect(DEVICE_OPS[op], op).toEqual(['remote']);
     expect(commands).toEqual([]);
   });
 
-  it('keeps a phone from sending what it puts up whole: a prop, a background, a sound, a mask or a lower third (the box’s setup goes by ids since Session 54, the phone as a full Drashti)', () => {
+  it('keeps a phone from sending what it puts up whole: a background, a sound or a lower third (the box’s setup goes by ids since Session 54, the phone as a full Drashti)', () => {
     const { ask, remote, commands } = setup();
     for (const args of [
-      { type: 'showProp', prop: { id: 'p', name: 'Placeholder', elements: [] } },
       { type: 'setBackground', background: { kind: 'color', color: '#000000' } },
       {
         type: 'playAudio',
         audio: { id: 'a', title: 'Placeholder', mediaId: null, volume: 1, loop: false },
       },
-      { type: 'setMask', mask: { id: 'mask', name: 'Placeholder', shapes: [] } },
     ])
       expect([400, 403], args.type).toContain(ask(remote, 'command', args).status);
     expect(commands).toEqual([]);
-    for (const type of ['showProp', 'setBackground', 'playAudio', 'setMask', 'showLowerThird'])
+    for (const type of ['setBackground', 'playAudio', 'showLowerThird'])
       expect(REMOTE_COMMANDS as readonly string[], type).not.toContain(type);
   });
 
@@ -329,18 +284,6 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     expect(DEVICE_OPS['repeat.start']).toEqual(['remote']);
   });
 
-  it('says why a phone’s Logo shows nothing with no logo chosen, in the window’s own words (D5 review)', () => {
-    const { ask, remote, commands } = setup();
-    expect(ask(remote, 'logo.set', { on: true })).toEqual({
-      status: 409,
-      body: { ok: false, message: NO_LOGO_CHOSEN },
-    });
-    expect(NO_LOGO_CHOSEN).toBe(
-      'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.',
-    );
-    expect(commands).toEqual([]);
-  });
-
   it('plays the audio playlist a phone chose, or on from where it was paused', () => {
     const { ask, remote, played } = setup();
     expect(ask(remote, 'music.play', { playlistId: 'music-1' })).toEqual({
@@ -364,7 +307,7 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
     }
     const { ask, remote, commands } = setup({ lockEverything: true });
     for (const op of [...READS, ...PUTS])
-      expect(ask(remote, op, { propId: 'prop-name', mediaId: 'm-pic', lowerThirdId: 'lt-1' }), op).toEqual({
+      expect(ask(remote, op, { mediaId: 'm-pic', lowerThirdId: 'lt-1' }), op).toEqual({
         status: 403,
         body: { ok: false, message: SIMPLE_MODE_REFUSAL },
       });
@@ -372,41 +315,17 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
   });
 });
 
-describe('masks from a phone (Session 54, the phone as a full Drashti)', () => {
-  it('lists the library’s masks by name and puts one up by its id, as Masks does, read from the library', () => {
+describe('what Session 55 took out, from a phone', () => {
+  it('neither lists nor puts up props or masks, nor starts the idle rotation or switches a Look; the Wallpaper goes up and off', () => {
     const { ask, remote, commands } = setup();
-    expect(ask(remote, 'masks')).toMatchObject({
-      status: 200,
-      body: { masks: [{ id: 'mask-band', name: 'Placeholder band' }] },
-    });
-    expect(ask(remote, 'mask.show', { maskId: 'mask-band' }).status).toBe(200);
-    expect(commands).toEqual([
-      {
-        type: 'setMask',
-        mask: {
-          id: 'mask-band',
-          name: 'Placeholder band',
-          width: 1920,
-          height: 1080,
-          mode: 'hide',
-          shapes: [],
-        },
-      },
-    ]);
-    // One no longer there, or named wrongly: nothing goes up.
-    expect(ask(remote, 'mask.show', { maskId: 'mask-gone' }).status).toBe(404);
-    expect(ask(remote, 'mask.show', { maskId: 7 }).status).toBe(404);
-    expect(commands).toHaveLength(1);
-  });
-
-  it('is a Remote’s alone, and never takes a mask’s shapes from a phone', () => {
-    const { ask, stage, poster, commands } = setup();
-    for (const device of [stage, poster]) {
-      expect(ask(device, 'masks').status).toBe(403);
-      expect(ask(device, 'mask.show', { maskId: 'mask-band' }).status).toBe(403);
-    }
-    expect(DEVICE_OPS.masks).toEqual(['remote']);
-    expect(DEVICE_OPS['mask.show']).toEqual(['remote']);
+    // No such request any more (the API's routes are gone too: 404 there).
+    for (const op of ['props', 'prop.show', 'masks', 'mask.show', 'looks', 'logo', 'logo.set'])
+      expect(ask(remote, op as DeviceOp, {}).status, op).toBe(403);
+    for (const type of ['hideProp', 'startIdle', 'stopIdle', 'setLook', 'showLogo', 'hideLogo'])
+      expect([400, 403], type).toContain(ask(remote, 'command', { type }).status);
     expect(commands).toEqual([]);
+    expect(ask(remote, 'command', { type: 'toggleWallpaper' }).status).toBe(200);
+    expect(ask(remote, 'command', { type: 'setWallpaper', on: false }).status).toBe(200);
+    expect(commands).toEqual([{ type: 'toggleWallpaper' }, { type: 'setWallpaper', on: false }]);
   });
 });

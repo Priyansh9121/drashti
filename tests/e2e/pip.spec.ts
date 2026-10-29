@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ElectronApplication, expect, type Page, test } from '@playwright/test';
 import type { PipPlace } from '../../src/shared/engine/state';
-import { LOOK_LAYERS } from '../../src/shared/looks';
 import { type PlaybackClock, playbackBounds, playbackOffset, playbackPosition } from '../../src/shared/media';
 import { pipSwapMs } from '../../src/shared/pip';
 import { pipRect } from '../../src/renderer/src/render/pip';
@@ -30,13 +29,13 @@ import { makeTestVideo } from './test-media';
  * carries on. The slides in the box (the main picture shows the background without the slide), a video from
  * Media, a video input (Chromium's fake camera: DRASHTI_TEST_FAKE_DEVICES, never a real one) and a window (Session
  * 48's stand-in, a placeholder window the test opens itself: DRASHTI_TEST_WINDOW_STANDIN), each as an output
- * draws it; Swap, Take off, Clear all and Put it back; a Look leaving the box out of the hall's group; black-out
- * and the logo over it; dragging it in LIVE; the stream's Slides layout; and the phone remote. Session 51: Swap
+ * draws it; Swap, Take off, Clear all and Put it back; black-out and the Wallpaper over it (the logo until Session
+ * 55); dragging it in LIVE; the stream's Slides layout; and the phone remote. Session 51: Swap
  * changes the main picture in the box's time at held moments (a dissolve since Session 52, nothing on the main
  * picture growing or shrinking as the box does); the stream's Camera layout shows the box with the hall's picture
- * at full frame; a key and fill group leaves the box out unless its Look turns it on. Session 53: a video from
- * Media in it loops between its file's start and end points, as a slide's does. Generated media and placeholder
- * words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
+ * at full frame; a key and fill group leaves the box out (a Look could turn it on until Session 55). Session 53: a
+ * video from Media in it loops between its file's start and end points, as a slide's does. Generated media and
+ * placeholder words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
  */
 
 const WINDOWED = { DRASHTI_WINDOWED_OUTPUTS: '1' };
@@ -627,7 +626,7 @@ test('a video from Media in the box loops between its file’s start and end poi
   await app.close();
 });
 
-test('a Look that leaves the box out of the hall’s group hides it there, the slide back on the main picture; black-out and the logo cover it; LIVE drags it into a corner', async () => {
+test('black-out and the Wallpaper cover the box and take nothing off; LIVE drags it into a corner', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(WINDOWED);
   const win = await operatorPage(app);
@@ -640,36 +639,20 @@ test('a Look that leaves the box out of the hall’s group hides it there, the s
   await dispatch(win, { type: 'showPip', source: { kind: 'slides' }, place: PLACE });
   await expect.poll(async () => (await drawn(hall)).inBox).toEqual(['slide']);
 
-  // The live Look leaves the box out of the hall's group: no box there, the slide back on its main picture.
-  const setLayers = (layers: readonly string[]) =>
-    win.evaluate(async (layers) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const look = (await d.engine.snapshot()).state.look.id;
-      const group = (await d.screens.get()).groups.find((g) => g.name === 'Main Hall');
-      const set = await d.looks.setGroup(look, group?.id ?? '', { layers: layers as never });
-      if (!set.ok) throw new Error(set.message);
-    }, layers);
-  await setLayers(LOOK_LAYERS.filter((l) => (l as string) !== 'pip'));
-  await expect(hall.getByTestId('pip-box')).toHaveCount(0);
-  expect(await drawn(hall)).toMatchObject({ pip: 'none', main: ['background', 'slide'] });
-  expect((await pipNow(win))?.source.kind, 'still up for the other groups').toBe('slides');
-  await setLayers(LOOK_LAYERS);
-  await expect(hall.getByTestId('pip-box')).toHaveCount(1);
+  // (A Look could leave the box out of a hall's group until Session 55 took Looks out: an audience group shows it.)
   expect((await drawn(hall)).main).toEqual(['background']);
 
-  // Black-out and the logo cover it, and take nothing off.
+  // Black-out and the Wallpaper (Session 55, in the logo's place) cover it, and take nothing off.
   await dispatch(win, { type: 'setBlackout', on: true });
   await expect(hall.getByTestId('blackout')).toBeVisible();
   await expect(hall.getByTestId('pip-box')).toHaveCount(1);
   await dispatch(win, { type: 'setBlackout', on: false });
-  await dispatch(win, {
-    type: 'showLogo',
-    prop: { id: 'placeholder-logo', name: 'Placeholder logo', elements: [] },
-  });
-  await expect(hall.getByTestId('logo')).toBeVisible();
+  await dispatch(win, { type: 'setWallpaper', on: true });
+  await expect(hall.getByTestId('wallpaper')).toBeVisible();
   await expect(hall.getByTestId('pip-box')).toHaveCount(1);
-  await dispatch(win, { type: 'hideLogo' });
-  await expect(hall.getByTestId('logo')).toHaveCount(0);
+  await dispatch(win, { type: 'setWallpaper', on: false });
+  await expect(hall.getByTestId('wallpaper')).toHaveCount(0);
+  expect((await pipNow(win))?.source.kind).toBe('slides');
 
   // LIVE: dragged near the top left corner, it goes into it, and the hall's box moves there.
   const handle = win.getByTestId('live-pip-handle');
@@ -774,15 +757,6 @@ test('the stream’s Camera layout shows the box with the hall’s picture at fu
   });
   expect(onStream.box?.rect).toBe(rectOn(onStream.canvas, PLACE));
   await expect(full.locator('[data-pip-main="background"] [data-layer="background"]')).toHaveCount(1);
-  // A prop up: drawn once, in the hall's picture, the box over it as on the hall's screens.
-  await dispatch(win, {
-    type: 'showProp',
-    prop: { id: 'placeholder-prop', name: 'Placeholder prop', elements: [] },
-  });
-  await expect(full.locator('[data-layer="props"] ~ [data-testid="pip-box"]')).toHaveCount(1);
-  await expect(program.locator('[data-layer="props"]')).toHaveCount(1);
-  await dispatch(win, { type: 'hideProp', propId: 'placeholder-prop' });
-  await expect(program.locator('[data-layer="props"]')).toHaveCount(0);
   // Swapped, as the hall has it: the box's picture full, the background small in the box; and back.
   await dispatch(win, { type: 'swapPip' });
   await expect.poll(async () => (await drawn(program)).main, { timeout: 5000 }).toEqual(['source', 'slide']);
@@ -841,7 +815,7 @@ test('the stream’s Camera layout shows the box with the hall’s picture at fu
   await app.close();
 });
 
-test('a key and fill group leaves the box out unless its Look turns it on, in a Look made since too', async () => {
+test('a key and fill group leaves the box out (Session 55: by its role, Looks having gone)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(WINDOWED);
   const win = await operatorPage(app);
@@ -867,34 +841,11 @@ test('a key and fill group leaves the box out unless its Look turns it on, in a 
   await expect(fill.getByTestId('output-root')).toHaveAttribute('data-feed', 'fill');
   await outputReady(fill);
   const layers = async () => (await engineState(win)).look.groups[switcher]?.layers ?? [];
-  // A box up: the key and fill group leaves it out, its Look saying nothing of it.
+  // A box up: the key and fill group leaves it out.
   await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: boxed }, place: PLACE });
   await expect.poll(async () => (await pipNow(win))?.source.kind).toBe('media');
   expect(await layers()).not.toContain('pip');
   await expect(fill.getByTestId('scene')).toHaveAttribute('data-pip', 'none');
   await expect(fill.getByTestId('pip-box')).toHaveCount(0);
-  // A Look made since, from nothing, put live: left out there too.
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const made = await d.looks.create('Placeholder blank', null);
-    if (!made.ok) throw new Error(made.message);
-    const blank = made.view.looks.find((l) => l.name === 'Placeholder blank')?.id ?? '';
-    const live = await d.engine.dispatch({ type: 'setLook', lookId: blank });
-    if (!live.ok) throw new Error(live.message);
-  });
-  await expect.poll(async () => (await engineState(win)).look.name).toBe('Placeholder blank');
-  expect(await layers()).not.toContain('pip');
-  await expect(fill.getByTestId('scene')).toHaveAttribute('data-pip', 'none');
-  await expect(fill.getByTestId('pip-box')).toHaveCount(0);
-  // Turned on in the live Look (its tick in Screens): the fill draws it.
-  await win.evaluate(async (id) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const view = await d.looks.list();
-    const shown = view.looks.find((l) => l.id === view.liveId)?.groups[id]?.layers ?? [];
-    const set = await d.looks.setGroup(view.liveId, id, { layers: [...shown, 'pip'] });
-    if (!set.ok) throw new Error(set.message);
-  }, switcher);
-  await expect(fill.getByTestId('pip-box')).toHaveCount(1);
-  expect(await layers()).toContain('pip');
   await app.close();
 });

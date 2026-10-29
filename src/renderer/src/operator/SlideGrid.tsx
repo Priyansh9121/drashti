@@ -35,7 +35,6 @@ import {
   LayoutGrid,
   MoreHorizontal,
   Music,
-  Palette,
   Pencil,
   Presentation,
   RotateCcw,
@@ -56,8 +55,7 @@ import { openKirtan } from '../kirtans/kirtan-store';
 import { usePersistentState } from '../ui/persist';
 import { CentredPlace, EmptyState, ErrorState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
-import { themeFromPresentation } from '../themes/themes-store';
-import { chooseArrangement, goLive, playItem, useNotice } from './actions';
+import { chooseArrangement, goLive, playItem } from './actions';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { StartHere } from './StartHere';
 
@@ -663,9 +661,6 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
     return shown && !shown.timer ? shown.slide.id : null;
   });
   const focusSlideId = useLibrary((s) => s.focusSlideId);
-  const isTemplate = useLibrary(
-    (s) => s.presentations.find((p) => p.id === doc?.id)?.libraryName === 'Templates',
-  );
   const itemDoc = item ? (item.kind === 'shastra' ? item.passageId : item.presentationId) : null;
   const order = useMemo(
     () =>
@@ -740,20 +735,6 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
           <ItemOrderPicker doc={doc} item={item} />
         ) : (
           <ArrangementPicker doc={doc} />
-        )}
-        {isTemplate && (
-          <Button
-            size="sm"
-            icon={Palette}
-            title="A theme from this template’s first text box"
-            onClick={() => {
-              void themeFromPresentation(doc.id).then((problem) => {
-                useNotice.setState({ text: problem });
-              });
-            }}
-          >
-            Make a theme from this
-          </Button>
         )}
         {!doc.passage && !doc.repeat && (
           <>

@@ -1,7 +1,20 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdtempSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { launchApp, openLibrary, operatorPage, outputPages, setTicked, setUpScreen } from './helpers';
+import {
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setTicked,
+  setUpScreen,
+} from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -11,6 +24,9 @@ import { expectFits } from './fit';
  * close up with no gap and shrink-to-fit fits what is left; a slide that is
  * not a kirtan's shows in full everywhere; the live preview follows the
  * first audience group and says so, and thumbnails show every language.
+ * Session 55 (Part 12): Looks are gone from the window, and the languages are
+ * Screens' own (kept where Drashti kept them since Session 11, the library's
+ * first Look); a library from before Looks still keeps each group's.
  * The seeded sample kirtan and placeholder words only.
  */
 
@@ -73,12 +89,10 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   ).toBeDisabled();
   await expectNoSeriousA11yIssues(win, 'the Screens panel with languages chosen');
   await win.getByRole('button', { name: 'Close screens' }).click();
-  // Each group's languages are its settings in the live Look (Standard).
+  // Each group's languages, as Screens has them (Session 55: no Look any more).
   const chosen = await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const [snapshot, looks] = await Promise.all([d.screens.get(), d.looks.list()]);
-    const live = looks.looks.find((l) => l.id === looks.liveId);
-    return snapshot.groups.map((g) => [g.name, live?.groups[g.id]?.languages ?? null]);
+    const snapshot = await (globalThis as PageGlobals).drashti.screens.get();
+    return snapshot.groups.map((g) => [g.name, g.languages ?? null]);
   });
   expect(chosen).toEqual([
     ['Hall', ['gu', 'translit']],
@@ -169,7 +183,9 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   await app.close();
 });
 
+// And at CI's 1024 x 645 since Session 55, the languages on each group's card (Looks gone).
 for (const [width, height] of [
+  [1024, 645],
   [1280, 720],
   [1920, 1080],
 ] as const)
@@ -186,3 +202,64 @@ for (const [width, height] of [
     );
     await app.close();
   });
+
+test('a library from before Looks keeps exactly what each group showed, its languages now in Screens', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
+  const TWO_OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
+  // Written as Drashti kept it in Session 10 (schema 19: each group's languages on the group).
+  const electron = createRequire(__filename)('electron') as string;
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env))
+    if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
+  Object.assign(env, TWO_OUTPUTS, {
+    DRASHTI_USER_DATA_DIR: userData,
+    DRASHTI_SELFTEST: 'old-library',
+    DRASHTI_TEST_QUIET: '1',
+    DRASHTI_SELFTEST_LIBRARY: JSON.stringify({
+      schema: 19,
+      groups: [
+        { name: 'Hall', role: 'audience', languages: ['translit', 'gu'], display: 0 },
+        { name: 'Stage', role: 'stage', languages: ['gu'], display: 1 },
+      ],
+    }),
+  });
+  const code = await new Promise<number | null>((resolve) => {
+    spawn(electron, ['.'], { env, stdio: 'ignore' }).on('exit', resolve);
+  });
+  expect(code).toBe(0);
+  expect(existsSync(join(userData, 'drashti.sqlite'))).toBe(true);
+
+  const { app } = await launchApp(TWO_OUTPUTS, userData);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // The upgrade kept a copy of the old library; each group's languages are in Screens, the stream's group made at
+  // the upgrade (YouTube in Screens, Session 26) with every language.
+  expect(existsSync(join(userData, 'drashti.sqlite.v19.bak'))).toBe(true);
+  const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
+  expect(snapshot.groups.map((g) => [g.name, g.role, g.languages ?? null])).toEqual([
+    ['Hall', 'audience', ['translit', 'gu']],
+    ['Stage', 'stage', ['gu']],
+    ['Stream', 'stream', null],
+  ]);
+  // The screens show what they did: the hall transliteration then Gujarati, the stage Gujarati only.
+  await expect.poll(() => outputPages(app).length).toBe(2);
+  const hallScreen = snapshot.groups[0]?.screens[0]?.id ?? '';
+  const stageScreen = snapshot.groups[1]?.screens[0]?.id ?? '';
+  const [hall, stage] = [await outputFor(app, hallScreen), await outputFor(app, stageScreen)];
+  await openLibrary(win);
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Sample kirtan/ })
+    .click();
+  await win.getByTestId('slide-thumb').first().click();
+  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-languages', 'translit,gu');
+  await expect
+    .poll(() =>
+      hall
+        .locator('[data-layer="slide"] [data-slide-in] [data-run]')
+        .evaluateAll((runs) => runs.map((r) => r.getAttribute('data-lang'))),
+    )
+    .toEqual(['translit', 'gu']);
+  await expect(stage.getByTestId('stage-current')).toHaveText('નમૂનાની પહેલી પંક્તિ');
+  await app.close();
+});

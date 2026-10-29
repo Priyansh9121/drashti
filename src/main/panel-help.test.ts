@@ -19,8 +19,6 @@ import { PANEL_HELP } from '../shared/panel-help';
  * keys the operators already press). Every other card names none.
  */
 const KEY_NAMED: Partial<Record<PanelHelpId, OperatorAction>> = {
-  props: 'clearProps',
-  masks: 'clearMasks',
   audio: 'clearAudio',
 };
 
@@ -68,8 +66,9 @@ describe('"What is this?" on the operator panels', () => {
         ),
     );
     expect(without).toEqual([]);
-    // Nine: the Arti's and the Macros' panels left, and Lower Thirds came in Macros' place (Session 44).
-    expect(sources.reduce((n, s) => n + panelTags(s.text).length, 0)).toBeGreaterThanOrEqual(9);
+    // The Arti's and the Macros' panels left, and Lower Thirds came in Macros' place (Session 44); Props, Looks,
+    // Masks and the Idle rotation went, and Music's own heading in Audio (Session 55).
+    expect(sources.reduce((n, s) => n + panelTags(s.text).length, 0)).toBeGreaterThanOrEqual(4);
   });
 
   it('two or three plain sentences each, following exactly one passage of a shipped guide (Read more opens it)', () => {

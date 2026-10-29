@@ -44,12 +44,6 @@ export const PANEL_HELP = {
     text: 'What the hall sees this moment. Under it, each video or sound playing has a time bar, with Play or Pause: click it, or drag along it and let go, to move there on every screen at once; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
     guide: 'headed **LIVE**',
   },
-  looks: {
-    title: 'Looks',
-    doc: 'operator',
-    text: 'A Look says what each group of screens shows: which layers, and which languages. Press one, and every screen in its group changes at once. The lit one is on the screens now.',
-    guide: '**Looks.**',
-  },
   lowerthirds: {
     title: 'Lower Thirds',
     doc: 'operator',
@@ -61,18 +55,6 @@ export const PANEL_HELP = {
     doc: 'operator',
     text: 'What the speaker and the singers see, never the hall: Layout chooses the one layout every stage screen shows, and Video input the input its video box shows. A short message for them, such as “Two minutes left”, goes up with Show and off with its own Clear; the timers in the layout are here too, with Start, Pause and Reset, and what each counts to, changed here at once. Edit layouts… makes, renames and deletes layouts, each with Undo, and New from a Template… makes a ready-made one, such as Pravachan and anchoring; with Stage off every stage screen shows exactly the audience picture.',
     guide: '**The stage message.**',
-  },
-  props: {
-    title: 'Props',
-    doc: 'operator',
-    text: 'Something to show over any slide, such as the mandir’s name. Show puts one up and Hide takes it off; F4 takes them all off.',
-    guide: '**Props.**',
-  },
-  masks: {
-    title: 'Masks',
-    doc: 'admin',
-    text: 'A mask hides part of the screens, or shows only what is inside it. Show one here; F8 takes the Masks layer off, and a screen’s own mask, set in its Look, stays.',
-    guide: '**Masks.**',
   },
   messages: {
     title: 'Messages',
@@ -86,18 +68,6 @@ export const PANEL_HELP = {
     text: 'Countdowns and clocks. Press Start, then Show on the screens to put one up alone in the slide’s place; press it again, or Clear slide, to take it off. The stage screens show every running timer by themselves, or, with a layout of their own, the timers in it.',
     guide: '**Timers.**',
   },
-  music: {
-    title: 'Music',
-    doc: 'operator',
-    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play: the time bar shows the track’s time left, and a click or a drag along it moves in the track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). A slide with its own sound stops the music.',
-    guide: '**Music before the sabha.**',
-  },
-  idle: {
-    title: 'Idle rotation',
-    doc: 'operator',
-    text: 'Darshan pictures and quotes, one after another, while nothing else is up. Press Start; it stops by itself when the first slide goes up.',
-    guide: '**Darshan pictures and quotes on the screens**',
-  },
   playlist: {
     title: 'The open playlist',
     doc: 'operator',
@@ -107,7 +77,7 @@ export const PANEL_HELP = {
   controls: {
     title: 'Show controls',
     doc: 'operator',
-    text: 'Clear all, the layers’ clear buttons in the order of their keys, Logo and Black-out, each with its key. Each changes the hall’s screens at once, and Put it back, straight after Clear all, brings back what it took off.',
+    text: 'Clear all, the layers’ clear buttons in the order of their keys, the Wallpaper and Black-out, each with its key; a button with nothing of its own up is dimmed, so what is on the screens shows at a glance. Each changes the hall’s screens at once: the Wallpaper puts the chosen wallpaper up instead of the picture, and Put it back, straight after Clear all, brings back what it took off.',
     guide: '**Covering and clearing:**',
   },
   nextback: {
@@ -140,6 +110,12 @@ export const PANEL_HELP = {
     text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off means this computer’s hall screens are switched off, and Stage off that its stage screens show the audience picture; Turn on brings them back where they were, asking nothing. A display plugged in sets itself, said in a line under the top bar; when a change made by hand puts a screen on the display with these controls, Keep these screens? undoes it in 15 seconds unless you press Keep.',
     guide: '**Along the bottom:**',
   },
+  music: {
+    title: 'Music',
+    doc: 'operator',
+    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play: the time bar shows the track’s time left, and a click or a drag along it moves in the track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). A slide with its own sound stops the music.',
+    guide: '**Music before the sabha.**',
+  },
   audio: {
     title: 'Audio',
     doc: 'operator',
@@ -149,7 +125,7 @@ export const PANEL_HELP = {
   tools: {
     title: 'More tools',
     doc: 'operator',
-    text: 'Lower Thirds, Masks, the Idle rotation and the MIDI controller, folded away until you need them. Press More tools to open them or fold them again.',
+    text: 'Lower Thirds and the MIDI controller, folded away until you need them. Press More tools to open them or fold them again.',
     guide: '**More tools.** Folded away',
   },
 } as const satisfies Record<string, PanelHelp>;

@@ -27,7 +27,7 @@ import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-s
 
 /*
  * The phone remote runs a sabha, each step seen on a real output: a slide
- * tapped, Next and Back, Clear, black-out, the logo, Put it back, a timer
+ * tapped, Next and Back, Clear, black-out, the Wallpaper, Put it back, a timer
  * and a message. Next twice quickly goes on, never restarting an item. The
  * remote comes back by itself after the server stops and starts again, and
  * a remote and a stage display left open while Drashti restarts follow its
@@ -128,7 +128,6 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
     const win = await operatorPage(app);
     await operatorReady(win);
     const show = await setUpPlaceholderShow(win);
-    await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
     await setUpScreen(win);
     const output = await outputPage(app);
     const { base } = await networkOn(win);
@@ -186,7 +185,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await actions.getByRole('button', { name: 'Put it back' }).click();
       await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
 
-      // Black-out and the logo, on and off, each with its key's name as on the desktop (Session 54, D5).
+      // Black-out and the Wallpaper, on and off, each with its key's name as on the desktop (Session 54, D5).
       // On, each says so in words, as Pro Mode and Simple Mode do (Session 26g), with no aria-pressed.
       await actions.getByRole('button', { name: 'Black-out B', exact: true }).click();
       await expect(output.getByTestId('blackout')).toBeVisible();
@@ -195,11 +194,12 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(on).not.toHaveAttribute('aria-pressed');
       await on.click();
       await expect(output.getByTestId('blackout')).toHaveCount(0);
-      await actions.getByRole('button', { name: 'Logo F12', exact: true }).click();
-      await expect(output.getByTestId('logo')).toContainText('Placeholder Mandir Logo');
-      await expect(actions.getByRole('button', { name: 'Logo is on' })).toBeVisible();
-      await actions.getByRole('button', { name: 'Logo is on' }).click();
-      await expect(output.getByTestId('logo')).toHaveCount(0);
+      // The Wallpaper (Session 55, in the Logo's place): black until Part 6 brings wallpapers.
+      await actions.getByRole('button', { name: 'Wallpaper F12', exact: true }).click();
+      await expect(output.getByTestId('wallpaper')).toBeVisible();
+      await expect(actions.getByRole('button', { name: 'Wallpaper is on' })).toBeVisible();
+      await actions.getByRole('button', { name: 'Wallpaper is on' }).click();
+      await expect(output.getByTestId('wallpaper')).toHaveCount(0);
 
       // A timer started, paused and reset; a message filled in, shown and taken off.
       await p.getByTestId('remote-tab-more').click();

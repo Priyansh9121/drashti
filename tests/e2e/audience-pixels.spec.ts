@@ -17,6 +17,8 @@ import {
   windowShowing,
 } from './helpers';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
+import type { SlideElement } from '../../src/shared/model';
+import { makeSlides } from './placeholder-slides';
 
 /*
  * What the audience sees, picture for picture against another build (Session 26g). The operator's
@@ -246,7 +248,8 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await shoot('message');
       await dispatch(win, { type: 'hideMessage', messageId: 'placeholder-message' });
       // Words made smaller to fit their box, and words that run past theirs (Sessions 31–36, SLD-1: each box
-      // is now measured and marked, and the screens must look exactly as before).
+      // is now measured and marked, and the screens must look exactly as before), on a slide of their own (a prop
+      // drew them over the last slide until Session 55 took props out); then the last slide up again.
       const words = Array.from({ length: 40 }, (_, i) => `Placeholder word ${String(i + 1)}`).join(' ');
       const look = {
         fontFamily: null,
@@ -257,35 +260,32 @@ test('the audience screens show exactly what the earlier build showed, frame by 
         lineHeight: 1.2,
         shadow: false,
       };
-      await dispatch(win, {
-        type: 'showProp',
-        prop: {
-          id: 'placeholder-fit',
-          name: 'Placeholder fit',
-          width: 1920,
-          height: 1080,
-          elements: [
-            {
-              id: 'fitted',
-              kind: 'text',
-              frame: { x: 160, y: 120, width: 1600, height: 380 },
-              text: words,
-              lang: 'en',
-              style: { ...look, fontSize: 90, shrinkToFit: true },
-            },
-            {
-              id: 'overflowing',
-              kind: 'text',
-              frame: { x: 160, y: 700, width: 800, height: 120 },
-              text: words,
-              lang: 'en',
-              style: { ...look, fontSize: 40, verticalAlign: 'top' },
-            },
-          ],
+      const fitting: SlideElement[] = [
+        {
+          id: 'fitted',
+          kind: 'text',
+          frame: { x: 160, y: 120, width: 1600, height: 380 },
+          text: words,
+          lang: 'en',
+          style: { ...look, fontSize: 90, shrinkToFit: true },
         },
+        {
+          id: 'overflowing',
+          kind: 'text',
+          frame: { x: 160, y: 700, width: 800, height: 120 },
+          text: words,
+          lang: 'en',
+          style: { ...look, fontSize: 40, verticalAlign: 'top' },
+        },
+      ];
+      const fit = await makeSlides(win, 'Placeholder fit', [{ elements: fitting }], {
+        kind: 'cut',
+        durationMs: 0,
       });
+      await dispatch(win, { type: 'goLive', presentationId: fit, slideIndex: 0 });
       await shoot('shrink-to-fit');
-      await dispatch(win, { type: 'hideProp', propId: 'placeholder-fit' });
+      const last = presentations.at(-1);
+      if (last) await dispatch(win, { type: 'goLive', presentationId: last.id, slideIndex: last.slides - 1 });
 
       // The slides for alpha.6's four hall changes (Sessions 31–36), as a file brings them: placeholder
       // words only.

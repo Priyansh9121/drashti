@@ -82,10 +82,10 @@ describe('the stage screens in the engine’s state (Session 55)', () => {
     expect(engine.current.blackout).toBe(false);
   });
 
-  it('is engine 15; a state saved by alpha.13 (14), alpha.12 (13) or alpha.11 (12) is read whole', () => {
-    expect(ENGINE_STATE_VERSION).toBe(15);
-    for (const v of [15, 14, 13, 12]) expect(readsEngineVersion(v), String(v)).toBe(true);
-    for (const v of [11, 16, '15', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
+  it('is engine 16 (Session 55, Part 12: the Wallpaper); a state saved with the stage (15), by alpha.13 (14), alpha.12 (13) or alpha.11 (12) is read whole', () => {
+    expect(ENGINE_STATE_VERSION).toBe(16);
+    for (const v of [16, 15, 14, 13, 12]) expect(readsEngineVersion(v), String(v)).toBe(true);
+    for (const v of [11, 17, '16', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
   });
 });
 

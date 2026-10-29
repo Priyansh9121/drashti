@@ -10,7 +10,6 @@ import type { MediaRemovalResult, MediaUsage } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
-import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
   PassageInfo,
   PassageResult,
@@ -46,7 +45,7 @@ import type {
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Lang, RenderSlide, Transition } from './model';
-import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
+import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
@@ -81,14 +80,10 @@ import type { GuideId, GuideRead } from './guides';
 import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
 import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
-import type { PropFields, PropInfo, PropResult } from './props';
-import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
-import type { Mask, MaskResult } from './masks';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
-import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
 import type { ZoomProgram } from './zoom';
@@ -148,7 +143,7 @@ export const IPC = {
     /** main -> operator: the switch changed. */
     safeAreasChanged: 'app:safe-areas-changed',
     /**
-     * Single-letter keys (Session 37, WCAG 2.1.4): whether B, ., L and ? act (kept with the library; on unless
+     * Single-letter keys (Session 37, WCAG 2.1.4): whether B, . and ? act (kept with the library; on unless
      * turned off), and turning them on or off (never in Simple Mode).
      */
     singleKeys: 'app:single-keys',
@@ -454,16 +449,6 @@ export const IPC = {
     /** main -> operator: how following the smart playlists' folders goes changed. */
     smartChanged: 'playlists:smart-changed',
   },
-  /** Props; changing them is for the operator window only (showing one goes through the engine). */
-  props: {
-    list: 'props:list',
-    save: 'props:save',
-    remove: 'props:remove',
-    /** The prop marked as the logo (Simple Mode's Logo button), or null. */
-    getLogo: 'props:get-logo',
-    setLogo: 'props:set-logo',
-  },
-  /** Themes; changing and applying them is for the operator window only. */
   /**
    * The look of Drashti's own windows (Sessions 39–40), kept per computer: what a page draws in as it starts
    * (the preload asks for it at once, before the page draws), every appearance and the choice for the
@@ -484,17 +469,6 @@ export const IPC = {
     /** main -> operator: View › Appearance… was chosen. */
     open: 'appearance:open',
   },
-  themes: {
-    list: 'themes:list',
-    save: 'themes:save',
-    remove: 'themes:remove',
-    apply: 'themes:apply',
-    /** The default theme for new presentations (Session 26). */
-    setDefault: 'themes:set-default',
-    fromPresentation: 'themes:from-presentation',
-    /** A theme from a slide in the slide editor (its first text box, its colour and background). */
-    fromSlide: 'themes:from-slide',
-  },
   /** Message templates; changing them is for the operator window only. */
   messages: {
     list: 'messages:list',
@@ -507,17 +481,6 @@ export const IPC = {
     create: 'timers:create',
     update: 'timers:update',
     remove: 'timers:remove',
-  },
-  /** Looks: what each screen group shows. Changing them is for the operator window, Pro Mode (switching the live one is an engine command). */
-  looks: {
-    list: 'looks:list',
-    create: 'looks:create',
-    rename: 'looks:rename',
-    remove: 'looks:remove',
-    move: 'looks:move',
-    setGroup: 'looks:set-group',
-    /** main -> operator: the Looks changed (or which is live). */
-    changed: 'looks:changed',
   },
   /** Lower Thirds (Session 44; changing them: operator window, Pro Mode). */
   lowerThirds: {
@@ -539,15 +502,10 @@ export const IPC = {
     /** main -> operator (Session 54): the settings changed from a phone. */
     changed: 'midi:changed',
   },
-  /** The mask library (changing it: operator window, Pro Mode; putting one up is the engine's setMask). */
-  masks: {
-    list: 'masks:list',
-    save: 'masks:save',
-    remove: 'masks:remove',
-    /** main -> operator: the masks changed. */
-    changed: 'masks:changed',
-  },
-  /** Shastra texts (Session 12): finding passages; choosing a text's theme or removing it is Pro Mode only. */
+  /**
+   * Shastra texts (Session 12): finding passages; removing one is Pro Mode only (Session 55: a text's theme is no
+   * longer chosen in the window: each keeps the one it had, with Themes gone).
+   */
   shastra: {
     list: 'shastra:list',
     tree: 'shastra:tree',
@@ -555,17 +513,7 @@ export const IPC = {
     search: 'shastra:search',
     passage: 'shastra:passage',
     itemPassage: 'shastra:item-passage',
-    setTheme: 'shastra:set-theme',
     remove: 'shastra:remove',
-  },
-  /** The idle rotation (Session 12): its pictures, timing and quotes (Pro Mode); starting it is an engine command. */
-  idle: {
-    view: 'idle:view',
-    saveSettings: 'idle:save-settings',
-    saveQuote: 'idle:save-quote',
-    removeQuote: 'idle:remove-quote',
-    /** main -> operator: the settings, the quotes or the quote of the day changed. */
-    changed: 'idle:changed',
   },
   /** Samvat and tithi (Session 12): the loaded calendars and today's entry; removing one is Pro Mode only. */
   calendar: {
@@ -1166,18 +1114,6 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
-  [IPC.props.list]: { args: []; result: PropInfo[] };
-  [IPC.props.save]: { args: [propId: string | null, fields: PropFields]; result: PropResult };
-  [IPC.props.remove]: { args: [propId: string]; result: PropResult };
-  [IPC.props.getLogo]: { args: []; result: string | null };
-  [IPC.props.setLogo]: { args: [propId: string | null]; result: PropResult };
-  [IPC.themes.list]: { args: []; result: { themes: Theme[]; defaultId: string } };
-  [IPC.themes.save]: { args: [themeId: string | null, fields: ThemeFields]; result: ThemeResult };
-  [IPC.themes.remove]: { args: [themeId: string]; result: ThemeResult };
-  [IPC.themes.setDefault]: { args: [themeId: string]; result: ThemeResult };
-  [IPC.themes.apply]: { args: [themeId: string, presentationIds: string[]]; result: ApplyThemeResult };
-  [IPC.themes.fromPresentation]: { args: [presentationId: string]; result: ThemeResult };
-  [IPC.themes.fromSlide]: { args: [name: string, slide: ThemeSlide]; result: ThemeResult };
   [IPC.messages.list]: { args: []; result: MessageTemplate[] };
   [IPC.messages.create]: { args: [template: MessageTemplateFields]; result: MessageResult };
   [IPC.messages.update]: {
@@ -1188,15 +1124,6 @@ export interface InvokeContract {
   [IPC.timers.create]: { args: [fields: TimerFields]; result: TimerResult };
   [IPC.timers.update]: { args: [timerId: string, fields: TimerFields]; result: TimerResult };
   [IPC.timers.remove]: { args: [timerId: string]; result: TimerResult };
-  [IPC.looks.list]: { args: []; result: LooksView };
-  [IPC.looks.create]: { args: [name: string, copyOf: string | null]; result: LookResult };
-  [IPC.looks.rename]: { args: [lookId: string, name: string]; result: LookResult };
-  [IPC.looks.remove]: { args: [lookId: string]; result: LookResult };
-  [IPC.looks.move]: { args: [lookId: string, to: number]; result: LookResult };
-  [IPC.looks.setGroup]: {
-    args: [lookId: string, groupId: string, patch: GroupLookPatch];
-    result: LookResult;
-  };
   [IPC.lowerThirds.list]: { args: []; result: LowerThird[] };
   [IPC.lowerThirds.save]: { args: [id: string | null, input: LowerThirdInput]; result: LowerThirdResult };
   [IPC.lowerThirds.remove]: { args: [ids: string[]]; result: LowerThirdsResult };
@@ -1210,17 +1137,9 @@ export interface InvokeContract {
   [IPC.shastra.search]: { args: [query: string]; result: ShastraHit[] };
   [IPC.shastra.passage]: { args: [passageId: string]; result: PassageInfo | null };
   [IPC.shastra.itemPassage]: { args: [itemId: string]; result: PassageInfo | null };
-  [IPC.shastra.setTheme]: { args: [textId: string, themeId: string | null]; result: ShastraResult };
   [IPC.shastra.remove]: { args: [textId: string]; result: ShastraResult };
-  [IPC.idle.view]: { args: []; result: IdleView };
-  [IPC.idle.saveSettings]: { args: [settings: IdleSettings]; result: IdleResult };
-  [IPC.idle.saveQuote]: { args: [quoteId: string | null, quote: QuoteFields]; result: QuoteResult };
-  [IPC.idle.removeQuote]: { args: [quoteId: string]; result: IdleResult };
   [IPC.calendar.view]: { args: []; result: CalendarView };
   [IPC.calendar.remove]: { args: [calendarId: string]; result: CalendarResult };
-  [IPC.masks.list]: { args: []; result: Mask[] };
-  [IPC.masks.save]: { args: [maskId: string | null, mask: Omit<Mask, 'id'>]; result: MaskResult };
-  [IPC.masks.remove]: { args: [maskId: string]; result: MaskResult };
   [IPC.stageLayouts.list]: { args: []; result: StageLayout[] };
   [IPC.stageLayouts.save]: {
     args: [layoutId: string | null, layout: Omit<StageLayout, 'id'>];
@@ -1412,14 +1331,11 @@ export interface EventContract {
   [IPC.app.showKeys]: { at: number };
   [IPC.app.showGuides]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
-  [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];
-  [IPC.masks.changed]: Mask[];
   [IPC.midi.ask]: MidiAsk;
   [IPC.midi.changed]: MidiSettings;
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.calendar.changed]: CalendarView;
-  [IPC.idle.changed]: IdleView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string; label?: string };
   [IPC.output.mediaReady]: { mediaId: string };

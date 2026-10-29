@@ -1,6 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
-import type { Transition } from '../../src/shared/model';
+import type { Movement } from '../../src/shared/looks';
+import type { SlideElement, Transition } from '../../src/shared/model';
 import type { PageGlobals } from './helpers';
 
 /*
@@ -22,6 +23,8 @@ export interface PlaceholderSlide {
   background?: string | null;
   /** A picture's media id it puts up as the background (behind the slide), as a background cue does. */
   backgroundCue?: string;
+  /** Elements of its own, over the rest (what a prop put up in a test until Session 55 took props out). */
+  elements?: SlideElement[];
 }
 
 /** A rectangle of a picture, in fractions of its size, and its colour ("r,g,b"). */
@@ -141,6 +144,7 @@ export async function makeSlides(
                 },
               ]
             : []),
+          ...(want.elements ?? []),
         ];
       });
       doc.transition = transition;
@@ -178,6 +182,16 @@ export const goLive = (win: Page, presentationId: string, slideIndex: number) =>
 /** The engine's state now. */
 export const engineState = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
+
+/**
+ * Tests only: every screen group moves Calm or Bold (Session 55: Movement went with Looks, every group is Calm; the
+ * performance check's Bold transitions, and the specs that draw them, ask through this). Wait for an output's
+ * data-movement before drawing.
+ */
+export const setMovement = (app: ElectronApplication, movement: Movement) =>
+  app.evaluate((_e, movement) => {
+    (globalThis as { drashtiTestMovement?: (movement: Movement) => void }).drashtiTestMovement?.(movement);
+  }, movement);
 
 /** Tests only (DRASHTI_TEST_CLOCK_HOLD=1): every output's clock, and the stream's, held at `at`, or let go (null). */
 export const holdClock = (app: ElectronApplication, at: number | null) =>

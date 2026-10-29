@@ -33,7 +33,6 @@ describe('the stream’s picture with a video input up', () => {
       kind: 'camera',
       lowerThird: [],
       full: null,
-      props: false,
       messages: false,
     });
   });

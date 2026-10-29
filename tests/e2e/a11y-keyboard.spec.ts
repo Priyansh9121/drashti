@@ -127,12 +127,7 @@ async function slideOn(win: Page): Promise<string> {
 }
 
 async function setUp(win: Page) {
-  const show = await setUpPlaceholderShow(win, { video: false });
-  await win.evaluate(async (logoId) => {
-    const marked = await (globalThis as PageGlobals).drashti.props.setLogo(logoId);
-    if (!marked.ok) throw new Error(marked.message);
-  }, show.logoPropId);
-  return show;
+  return setUpPlaceholderShow(win, { video: false });
 }
 
 test('Pro Mode: the keyboard goes through the window as it is laid out, its focus always seen', async () => {
@@ -255,15 +250,16 @@ test('Pro Mode: a whole sabha by keyboard alone', async () => {
   await win.keyboard.press('Shift+ArrowLeft');
   await expect(live).toContainText(KIRTAN);
 
-  // Black-out and the logo, on and off: the logo with F12, as the operators press it, and L (Session 50).
+  // Black-out and the Wallpaper, on and off: the Wallpaper with F12, the Logo's key as the operators press it
+  // (Session 55, Part 13).
   await win.keyboard.press('b');
   await expect(output.getByTestId('blackout')).toHaveCount(1);
   await win.keyboard.press('b');
   await expect(output.getByTestId('blackout')).toHaveCount(0);
   await win.keyboard.press('F12');
-  await expect.poll(async () => (await engine(win)).state.logo).not.toBeNull();
-  await win.keyboard.press('l');
-  await expect.poll(async () => (await engine(win)).state.logo).toBeNull();
+  await expect.poll(async () => (await engine(win)).state.wallpaper).toBe(true);
+  await win.keyboard.press('F12');
+  await expect.poll(async () => (await engine(win)).state.wallpaper).toBe(false);
 
   // A message, typed in its field and shown with Enter; Tab out of the field, and F6 takes it off.
   await tabTo(win, (f) => f.tag === 'input' && f.region === 'Live' && f.name === 'plate');

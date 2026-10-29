@@ -9,7 +9,6 @@ import { openLibrary, selectPresentation, useLibrary } from '../library/library-
 import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
 // logo-store uses dispatch from here; both only call each other when an action runs.
-import { toggleLogo } from './logo-store';
 import { toggleSwitch, turnOnIfOff } from './screen-switches-store';
 
 /** The last problem to show the operator (for example "Slide 4 of 3 does not exist"). */
@@ -161,20 +160,17 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
       return dispatch({ type: 'clearLayer', layer: 'slide' });
     case 'clearBackground':
       return dispatch({ type: 'clearLayer', layer: 'background' });
-    case 'clearProps':
-      return dispatch({ type: 'clearLayer', layer: 'props' });
     case 'clearMessages':
       return dispatch({ type: 'clearLayer', layer: 'messages' });
     case 'clearAudio':
       return dispatch({ type: 'clearLayer', layer: 'audio' });
-    case 'clearMasks':
-      return dispatch({ type: 'clearLayer', layer: 'masks' });
     case 'clearTicker':
       return dispatch({ type: 'clearLayer', layer: 'ticker' });
     case 'toggleBlackout':
       return dispatch({ type: 'toggleBlackout' });
-    case 'toggleLogo':
-      return toggleLogo();
+    // The chosen wallpaper instead of the picture, and back (Session 55, Part 13: the Logo's place).
+    case 'toggleWallpaper':
+      return dispatch({ type: 'toggleWallpaper' });
     // This computer's audience screens (key and fill too) or its stage screens off and on (Session 50): off asks
     // first while they show something.
     case 'toggleAudience':

@@ -1,7 +1,12 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { EngineCommand } from '../../src/shared/engine/commands';
 import type { OutputGlobals, PageGlobals } from './helpers';
 import {
+  importAndGetIds,
   launchApp,
   letTimePass,
   openLibrary,
@@ -12,6 +17,7 @@ import {
   testDisplays,
 } from './helpers';
 import { canvasPixels, near } from './pixels';
+import { drawPicture, makeSlides } from './placeholder-slides';
 
 /*
  * Key and fill outputs (Session 11): a key and fill group drives two
@@ -20,7 +26,7 @@ import { canvasPixels, near } from './pixels';
  * black elsewhere, for a video switcher to key over a camera. Both follow the
  * same state and clock: a dissolve starts at the same moment on both, and the
  * frames each window paints for a change are measured and reported.
- * Generated shapes and placeholder words only.
+ * Generated pictures and placeholder words only.
  */
 
 const TWO_OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -69,43 +75,27 @@ async function keyFillPair(app: ElectronApplication, win: Page): Promise<{ fill:
   return { fill, key };
 }
 
-test('the key is white where the fill has something, grey at half opacity and black elsewhere, and where a mask hides', async () => {
+test('the key is white where the fill has something, grey at half opacity and black elsewhere; the Wallpaper and Black-out key nothing', async () => {
   const { app } = await launchApp(TWO_OUTPUTS);
   const win = await operatorPage(app);
   await operatorReady(win);
   const { fill, key } = await keyFillPair(app, win);
-  // A prop: an opaque red rectangle and a blue one at half opacity.
-  await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.engine.dispatch({
-      type: 'showProp',
-      prop: {
-        id: 'placeholder-keyed',
-        name: 'Placeholder keyed shapes',
-        width: 1920,
-        height: 1080,
-        elements: [
-          {
-            id: 'full',
-            kind: 'shape',
-            shape: 'rectangle',
-            frame: { x: 100, y: 100, width: 400, height: 300 },
-            fill: '#ff0000',
-            cornerRadius: 0,
-            opacity: 1,
-          },
-          {
-            id: 'half',
-            kind: 'shape',
-            shape: 'rectangle',
-            frame: { x: 1000, y: 100, width: 400, height: 300 },
-            fill: '#0000ff',
-            cornerRadius: 0,
-            opacity: 0.5,
-          },
-        ],
-      },
-    }),
-  );
+  const dispatch = (command: EngineCommand) =>
+    win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), command);
+  // A picture slide (a key and fill group draws one whole): an opaque red rectangle and a blue one at half opacity,
+  // on nothing. A prop drew them here until Session 55 took props out.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-keyfill-'));
+  const [picture = ''] = await importAndGetIds(win, [
+    await drawPicture(win, join(dir, 'Placeholder keyed shapes.png'), [
+      { x: 100 / 1920, y: 100 / 1080, width: 400 / 1920, height: 300 / 1080, rgb: '255,0,0' },
+      { x: 1000 / 1920, y: 100 / 1080, width: 400 / 1920, height: 300 / 1080, rgb: '0,0,255,0.5' },
+    ]),
+  ]);
+  const presentationId = await makeSlides(win, 'Placeholder keyed slide', [{ picture }], {
+    kind: 'cut',
+    durationMs: 0,
+  });
+  await dispatch({ type: 'goLive', presentationId, slideIndex: 0 });
   // The fill: the picture on black (half opacity is half the colour: pre-multiplied).
   await expect
     .poll(async () => {
@@ -120,33 +110,16 @@ test('the key is white where the fill has something, grey at half opacity and bl
       return [near(full, [255, 255, 255], 8), near(half, [128, 128, 128], 16), near(none, [0, 0, 0], 8)];
     })
     .toEqual([true, true, true]);
-  // The group's own mask (its screens' shape) hides the same on both: black on the fill, and black
-  // on the key (nothing keyed) where the opaque rectangle was; the rest is as it was.
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const made = await d.masks.save(null, {
-      name: 'Placeholder corner',
-      width: 1920,
-      height: 1080,
-      mode: 'hide',
-      shapes: [{ id: 'corner', kind: 'rectangle', frame: { x: 0, y: 0, width: 700, height: 540 } }],
-    });
-    if (!made.ok) throw new Error(made.message);
-    const group = (await d.screens.get()).groups.find((g) => g.name === 'Placeholder switcher');
-    const set = await d.looks.setGroup((await d.looks.list()).liveId, group?.id ?? '', { maskId: made.id });
-    if (!set.ok) throw new Error(set.message);
-  });
-  await expect
-    .poll(async () => {
-      const [full, half] = await canvasPixels(key, [FULL, HALF]);
-      return [near(full, [0, 0, 0], 8), near(half, [128, 128, 128], 16)];
-    })
-    .toEqual([true, true]);
+  // (A group's mask hid the same on both here until Session 55 took masks out.)
+  // The Wallpaper is for the hall (Session 55, in the logo's place): it takes the graphics off both (nothing to key),
+  // and they come back with it off.
+  await dispatch({ type: 'setWallpaper', on: true });
+  await expect.poll(async () => near((await canvasPixels(key, [FULL]))[0], [0, 0, 0], 8)).toBe(true);
   await expect.poll(async () => near((await canvasPixels(fill, [FULL]))[0], [0, 0, 0], 8)).toBe(true);
+  await dispatch({ type: 'setWallpaper', on: false });
+  await expect.poll(async () => near((await canvasPixels(key, [FULL]))[0], [255, 255, 255], 8)).toBe(true);
   // Black-out is for the hall: it takes the graphics off both (nothing to key).
-  await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'setBlackout', on: true }),
-  );
+  await dispatch({ type: 'setBlackout', on: true });
   await expect.poll(async () => near((await canvasPixels(key, [FULL]))[0], [0, 0, 0], 8)).toBe(true);
   await expect.poll(async () => near((await canvasPixels(fill, [FULL]))[0], [0, 0, 0], 8)).toBe(true);
   await app.close();

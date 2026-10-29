@@ -1,5 +1,5 @@
 import type { CalendarDay } from '../../shared/calendar';
-import type { IdleState, Quote } from '../../shared/idle';
+import type { Quote } from '../../shared/idle';
 import type { LiveLook } from '../../shared/looks';
 import type { LiveZoom, PictureLook } from '../../shared/picture-look';
 import type { RenderSlide, Transition } from '../../shared/model';
@@ -13,11 +13,9 @@ import type {
   Layers,
   LiveCursor,
   LowerThirdLayer,
-  MaskLayer,
   MessageItem,
   PipLayer,
   PlaylistCursor,
-  PropItem,
   RepeatRun,
   SlideLayer,
   TickerItem,
@@ -93,10 +91,6 @@ export type EngineAction =
   | { type: 'cue/set'; cue: CuedNext | null }
   /** Today's calendar entry (a new day, or a calendar loaded or removed). */
   | { type: 'calendar/set'; calendar: CalendarDay | null }
-  /** The idle rotation starts (at a time) or stops (null). */
-  | { type: 'idle/run'; startedAt: number | null }
-  /** What the idle rotation shows (the admin's pictures, the quote of the day), and for how long each. */
-  | { type: 'idle/set'; content: Omit<IdleState, 'startedAt'> }
   | { type: 'quote/set'; quote: Quote | null }
   | { type: 'upcoming/set'; upcoming: UpcomingItem[] }
   | { type: 'stage/message'; text: string | null }
@@ -107,15 +101,12 @@ export type EngineAction =
   | { type: 'layer/clear'; layer: LayerName; at?: number }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }
-  /** `at`: when, by the engine's clock (its videos play from then, Session 27); a logo already up keeps its own. */
-  | { type: 'logo/set'; prop: PropItem | null; at?: number }
+  /** The Wallpaper up or off (Session 55, Part 13, in the Logo's place). */
+  | { type: 'wallpaper/set'; on: boolean }
   /** Put the layers (and the live position) back exactly as they were: Put it back, and Back. */
   | { type: 'show/put'; live: LiveCursor; layers: Layers }
   | { type: 'background/set'; background: BackgroundLayer }
   | { type: 'audio/set'; audio: AudioLayer }
-  /** `at`: when, by the engine's clock (its videos play from then, Session 27); a prop already up keeps its own. */
-  | { type: 'prop/show'; prop: PropItem; at?: number }
-  | { type: 'prop/hide'; propId: string }
   /** `at`: when, by the engine's clock (its entrance, Session 27); a message already up keeps its own. */
   | { type: 'message/show'; message: MessageItem; at?: number }
   | { type: 'message/hide'; messageId: string }
@@ -125,7 +116,6 @@ export type EngineAction =
   | { type: 'ticker/hide'; itemId: string; at: number }
   /** Restart recovery: the ticker as it was, carrying on in step. */
   | { type: 'ticker/set'; ticker: TickerLayer }
-  | { type: 'mask/set'; mask: MaskLayer }
   /** A lower third up (Session 44); the same one again only changes its words and look, keeping its time. */
   | { type: 'lowerThird/show'; layer: LowerThirdLayer }
   /** The lower third hidden: its out plays from `at`. */
@@ -141,9 +131,9 @@ export type EngineAction =
   /** The looks of the pictures in use, and the live zoom (Session 26e). */
   | { type: 'pictures/set'; pictures: Record<string, PictureLook> }
   | { type: 'zoom/set'; liveZoom: LiveZoom | null }
-  /** The live Look, every group's settings resolved from the library. */
+  /** Each screen group's settings (its languages, and its role's layers and slide style), from the library. */
   | { type: 'look/set'; look: LiveLook }
-  /** What the time bar shows of the videos on the slide up, the props, the logo and the box (Session 54); null: none. */
+  /** What the time bar shows of the videos on the slide up and the box (Session 54); null: none. */
   | { type: 'videoFiles/set'; files: Record<string, VideoFile> | null }
   /** Drashti stopped (Session 54, access by Gmail): the screens fade to black from `at`. */
   | { type: 'access/stop'; at: number }

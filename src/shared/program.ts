@@ -19,12 +19,11 @@ import { boxLines, lineText, readingOrder, translitSource } from './tracks';
  * - A picture or video going live (a media item, or a slide with a picture
  *   or video and no words): that picture, full frame, instead of the camera.
  * - Clear slide, or a slide with nothing on it: the camera alone.
- * - Black-out and the logo are for the hall: the stream keeps the camera and
- *   drops the words and pictures. Props and messages stay.
- * - Masks are for the hall's screens and are left out.
+ * - Black-out and the Wallpaper are for the hall: the stream keeps the camera
+ *   and drops the words and pictures. Messages stay.
  *
- * In both layouts props and messages show as the hall has them, and the
- * stage message (for the performers) never does.
+ * In both layouts messages show as the hall has them, and the stage message
+ * (for the performers) never does. (Props and masks went in Session 55.)
  */
 
 /** One line of the lower third: its runs, as the slide has them. */
@@ -48,8 +47,7 @@ export type ProgramPicture =
        * video (a media item is live), or the live slide (a picture slide).
        */
       full: 'background' | 'slide' | null;
-      /** Props and messages over the camera. */
-      props: boolean;
+      /** Messages over the camera. */
       messages: boolean;
     };
 
@@ -104,8 +102,8 @@ export function programPicture(
   languages: readonly Lang[] | null,
 ): ProgramPicture {
   if (layout === 'slides') return { kind: 'scene' };
-  const covered = state.blackout || state.logo !== null;
-  const base = { props: state.layers.props.length > 0, messages: state.layers.messages.length > 0 };
+  const covered = state.blackout || state.wallpaper;
+  const base = { messages: state.layers.messages.length > 0 };
   if (covered) return { kind: 'camera', lowerThird: [], full: null, ...base };
   const slide = state.layers.slide?.slide ?? null;
   if (slide) {

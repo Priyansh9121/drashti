@@ -2,7 +2,8 @@ import { useState } from 'react';
 
 /*
  * A setting the main process saves, as its boxes show it and change it (Session 54, Session 53's question 6): a
- * Look's layers and a kirtan's languages for a group, what an Events out address gets. Each box showed what was
+ * kirtan's languages for a group (in Screens since Session 55; with a group's layers, in a Look, until then), what an
+ * Events out address gets. Each box showed what was
  * saved, and each tick sent the whole setting made from that: a second tick made before the first was saved (the
  * main process slow for a moment, CI's Windows) was made to what was saved before the first, and put it back. Now a
  * change is shown at once, and the next is made to it; once every change has answered, what the main process saved
@@ -50,8 +51,8 @@ export class SaveQueue<T> {
 }
 
 /**
- * A setting the main process saves (`saved`, as its store has it now), named by `key` (a Look, a group and which of
- * its settings: one card can show another Look's), and how to save it, answered once its store has what was saved:
+ * A setting the main process saves (`saved`, as its store has it now), named by `key` (a group and which of its
+ * settings, say), and how to save it, answered once its store has what was saved:
  * what the boxes show, and the change a box makes, computed from what they show.
  */
 export function useSavedSetting<T>(

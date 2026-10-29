@@ -1,10 +1,8 @@
 import type { CalendarDay, CalendarLang } from '../calendar';
-import type { IdleState, Quote } from '../idle';
-import { NO_IDLE } from '../idle';
+import type { Quote } from '../idle';
 import type { LiveLook } from '../looks';
-import type { Mask } from '../masks';
 import { NO_LOOK } from '../looks';
-import type { RenderSlide, SlideElement, Transition } from '../model';
+import type { RenderSlide, Transition } from '../model';
 import type { TimerState } from '../timers';
 import type { PlaybackClip, PlaybackSeek } from '../media';
 import type { PlaybackMarker } from '../markers';
@@ -35,34 +33,38 @@ import { NO_STAGE, type StageState } from '../stage-layouts';
  * after alpha.13 had published 14): the stage screens' own `stage` (the one layout chosen for every stage screen,
  * Stage off showing the audience picture, the chosen video input), and no stage layout in the live Look's groups any
  * more; an older node or page would draw the Look's layout instead, so it says 'incompatible'. A state alpha.13 saved
- * is read as it is (its `stage` left out: the Standard stage screen until Main says otherwise, Stage on).
+ * is read as it is (its `stage` left out: the Standard stage screen until Main says otherwise, Stage on). 16 (Session
+ * 55, Part 12): Props, Masks, the Logo and the idle rotation taken out (no `props` or `masks` layer, no `logo`, no
+ * `idle`), and the Wallpaper's switch in the Logo's place (`wallpaper`, Part 13); an older node or page would look
+ * for what is gone, so it says 'incompatible'. A state 15, 14, 13 or 12 saved is read whole, its props, mask, logo
+ * and idle rotation left out (none of them shows after the update) and the wallpaper off.
  */
-export const ENGINE_STATE_VERSION = 15;
+export const ENGINE_STATE_VERSION = 16;
 
 /**
- * Whether a state saved by this engine version is read whole (Session 52): this version's own, 14 (alpha.13's), 13
- * (alpha.12's) and 12 (alpha.11's), as 15, 14 and 13 each only add fields to the one before (15 leaves the live
- * Look's stage layouts out, which nothing reads any more). Any other version's layers are left out, as their shapes
- * may differ.
+ * Whether a state saved by this engine version is read whole (Session 52): this version's own, 15 (the Session 55
+ * builds before Part 12), 14 (alpha.13's), 13 (alpha.12's) and 12 (alpha.11's), as 15, 14 and 13 each only add fields
+ * to the one before (15 leaves the live Look's stage layouts out, which nothing reads any more) and 16 only leaves
+ * out what went (Session 55, Part 12: a reader leaves an older state's props, mask, logo and idle rotation out). Any
+ * other version's layers are left out, as their shapes may differ.
  */
 export function readsEngineVersion(version: unknown): boolean {
-  return version === ENGINE_STATE_VERSION || version === 14 || version === 13 || version === 12;
+  return (
+    version === ENGINE_STATE_VERSION || version === 15 || version === 14 || version === 13 || version === 12
+  );
 }
 
-export type LayerName =
-  'audio' | 'background' | 'slide' | 'props' | 'pip' | 'lowerThird' | 'messages' | 'ticker' | 'masks';
+export type LayerName = 'audio' | 'background' | 'slide' | 'pip' | 'lowerThird' | 'messages' | 'ticker';
 
 /** Bottom to top, the order outputs composite visible layers in. Audio has no picture. */
 export const LAYER_NAMES = [
   'audio',
   'background',
   'slide',
-  'props',
   'pip',
   'lowerThird',
   'messages',
   'ticker',
-  'masks',
 ] as const satisfies readonly LayerName[];
 
 /** A playlist item being played. */
@@ -148,10 +150,10 @@ export interface SlideLayer {
 }
 
 /**
- * The start and end points of the files a slide's, a prop's or the logo's videos play (Session 52), and a video
- * from Media in the picture-in-picture box (Session 53), by media id, as the library has them: each plays between
- * them, looping round between them, as a background video does (its `clip`), on every screen, node, key and fill
- * and the stream. Only the engine stamps them, as the slide, prop or box goes up and as the library's points change;
+ * The start and end points of the files a slide's videos play (Session 52), and a video from Media in the
+ * picture-in-picture box (Session 53), by media id, as the library has them: each plays between them, looping round
+ * between them, as a background video does (its `clip`), on every screen, node, key and fill and the stream. Only
+ * the engine stamps them, as the slide or box goes up and as the library's points change;
  * a page's command never sets them.
  */
 export type VideoClips = Record<string, PlaybackClip>;
@@ -162,10 +164,10 @@ export function videoClip(clips: VideoClips | undefined, mediaId: string): Playb
 }
 
 /**
- * Where the time bar (Session 54) moved a slide's, a prop's, the logo's or the picture-in-picture box's videos, by
- * media id, playing on from there or paused there: a jump, as a background video's `seek` is, which every screen,
- * node, key and fill, the stream and the audio player play on from (or wait at) alike. Only the engine stamps them,
- * as the time bar's moves, Pause and Play come in; a slide, prop or box going up has none.
+ * Where the time bar (Session 54) moved a slide's or the picture-in-picture box's videos, by media id, playing on
+ * from there or paused there: a jump, as a background video's `seek` is, which every screen, node, key and fill, the
+ * stream and the audio player play on from (or wait at) alike. Only the engine stamps them, as the time bar's moves,
+ * Pause and Play come in; a slide or box going up has none.
  */
 export type VideoSeeks = Record<string, PlaybackSeek>;
 
@@ -175,7 +177,7 @@ export function videoSeek(seeks: VideoSeeks | null | undefined, mediaId: string)
 }
 
 /**
- * What the time bar (Session 54) shows of a video on the slide up, a prop, the logo or in the box, by media id: its
+ * What the time bar (Session 54) shows of a video on the slide up or in the box, by media id: its
  * file's length once known (learned as a screen plays it) and its markers, as the library has them. The background's
  * and the sound's are on their layers (`durationMs`, `marks`).
  */
@@ -195,7 +197,7 @@ export interface TimerShow {
  * A Repeat Slides playlist going round by itself (Session 26d, shared/repeat.ts): its slides are those of
  * `repeat:<playlistId>`, each up for its seconds (autoAdvance counts them), the last back to the first.
  * Anything else going up, Clear all, the slide cleared, Stop or Esc ends it, and the slide stays up;
- * black-out and the logo cover it while it carries on underneath.
+ * black-out and the Wallpaper cover it while it carries on underneath.
  */
 export interface RepeatRun {
   playlistId: string;
@@ -358,24 +360,6 @@ export type BackgroundLayer =
       marks?: PlaybackMarker[];
     });
 
-export interface PropItem {
-  id: string;
-  name: string;
-  elements: SlideElement[];
-  /** The canvas its elements are placed on (1920 x 1080 when left out); screens scale it as they do slides. */
-  width?: number;
-  height?: number;
-  /**
-   * When it went up, by the engine's clock (Session 27): its videos play from then on every screen, in step
-   * (before, each window played them from when it drew them). Kept while it stays up.
-   */
-  shownAt?: number;
-  /** Its videos' start and end points (Session 52): see VideoClips. Left out when none has any. */
-  clips?: VideoClips;
-  /** Where the time bar moved or paused its videos (Session 54): see VideoSeeks. Left out when it has not. */
-  seeks?: VideoSeeks;
-}
-
 /**
  * Part of a message: words, a timer shown live (each window works out its
  * time), or today's Samvat date and tithi from the loaded calendars (nothing
@@ -422,12 +406,6 @@ export interface TickerLayer {
    */
   shownAt?: number;
 }
-
-/**
- * The Masks layer: a mask from the library (shared/masks.ts) the operator
- * put up on the audience screens, until it is cleared (F8, Clear all).
- */
-export type MaskLayer = Mask;
 
 /**
  * A lower third on the screens (Session 44, shared/lower-thirds.ts): the library's, as it was when shown, so
@@ -478,7 +456,7 @@ export interface PipPlace {
 }
 
 /**
- * The picture-in-picture box on the audience screens (Session 50). Black-out and the logo cover it, Clear all
+ * The picture-in-picture box on the audience screens (Session 50). Black-out and the Wallpaper cover it, Clear all
  * takes it off, a Look can leave it out of a group, and a phone names it. No sound comes from it.
  */
 export interface PipLayer {
@@ -503,13 +481,11 @@ export interface Layers {
   audio: AudioLayer | null;
   background: BackgroundLayer | null;
   slide: SlideLayer | null;
-  props: PropItem[];
   /** The picture-in-picture box (Session 50), or null. */
   pip: PipLayer | null;
   lowerThird: LowerThirdLayer | null;
   messages: MessageItem[];
   ticker: TickerLayer | null;
-  masks: MaskLayer | null;
 }
 
 /**
@@ -585,12 +561,12 @@ export interface EngineState {
   /** Output-wide black-out. Independent of the layers, so turning it off restores the picture. */
   blackout: boolean;
   /**
-   * The logo on the audience screens instead of the picture (Simple Mode's
-   * Logo), or null. Like black-out it covers the layers without clearing
-   * them, so taking it down brings back exactly what was there; black-out
-   * covers it in turn. Stage screens ignore it.
+   * The Wallpaper (Session 55, Part 13, in the Logo's place): the chosen wallpaper on the audience screens instead of
+   * the picture (render/NothingUp.tsx: black until Part 6 brings wallpapers). Like black-out it covers the layers
+   * without clearing them, so taking it off brings back exactly what was there; black-out covers it in turn. Stage
+   * screens ignore it.
    */
-  logo: PropItem | null;
+  wallpaper: boolean;
   /** What Clear all took down can be put back: nothing else has gone up since. */
   canPutBack: boolean;
   /** What Next will show, or null when nothing follows. */
@@ -599,9 +575,7 @@ export interface EngineState {
   cue: CuedNext | null;
   /** Today's entry in the loaded calendars (Samvat date, tithi, festivals), or null when none gives today. */
   calendar: CalendarDay | null;
-  /** The idle rotation: what it shows, and whether the operator started it (shared/idle.ts). */
-  idle: IdleState;
-  /** The quote of the day (one per date), or null when there are no quotes. */
+  /** The quote of the day (one per date, for a stage layout's Quote box), or null when there are no quotes. */
   quote: Quote | null;
   /** The playlist's next items after the one playing (headers too), up to UPCOMING_ITEMS. */
   upcoming: UpcomingItem[];
@@ -624,8 +598,8 @@ export interface EngineState {
   /** The picture on the screens zoomed and moved from LIVE, for this showing only (Session 26e), or null. */
   liveZoom: LiveZoom | null;
   /**
-   * The live Look (shared/looks.ts): each screen group's layers, languages
-   * and slide style. Switching it changes every group at once.
+   * Each screen group's settings, as its screens draw them (shared/looks.ts): its languages, set in Screens, and the
+   * layers and slide style its role gives it (Session 55, Part 12: Looks are gone from the window).
    */
   look: LiveLook;
   /**
@@ -646,7 +620,7 @@ export interface EngineState {
    */
   pipOff: { layer: PipLayer; at: number } | null;
   /**
-   * The files of the videos on the slide up, the props, the logo and in the picture-in-picture box (Session 54), by
+   * The files of the videos on the slide up and in the picture-in-picture box (Session 54), by
    * media id: what the time bar shows of each (see VideoFile). Left out before any was up, and null once none is.
    */
   videoFiles?: Record<string, VideoFile> | null;
@@ -669,12 +643,10 @@ export function emptyLayers(): Layers {
     audio: null,
     background: null,
     slide: null,
-    props: [],
     pip: null,
     lowerThird: null,
     messages: [],
     ticker: null,
-    masks: null,
   };
 }
 
@@ -684,12 +656,11 @@ export function initialEngineState(): EngineState {
     live: { presentationId: null, slideIndex: null, slideCount: 0, arrangementId: null, playlist: null },
     layers: emptyLayers(),
     blackout: false,
-    logo: null,
+    wallpaper: false,
     canPutBack: false,
     next: null,
     cue: null,
     calendar: null,
-    idle: NO_IDLE,
     quote: null,
     upcoming: [],
     stageMessage: null,

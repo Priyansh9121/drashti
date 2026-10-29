@@ -11,8 +11,8 @@ import { setUpPlaceholderShow } from './placeholder-show';
  * larger (200%) loses no control, in Pro Mode, Simple Mode and a dialog;
  * with the computer set to reduce motion, the interface's transitions stop
  * and the audience screens are not touched at all (Session 27);
- * and axe at 1280 x 720 on the screens other specs do not open (Themes, the
- * words editor, the slide editor's picture picker), and on every tab of the
+ * and axe at 1280 x 720 on the screens other specs do not open (the words
+ * editor, the slide editor's picture picker; Themes until Session 55), and on every tab of the
  * phone remote at 375 x 812 (axe's target-size check included).
  */
 
@@ -152,16 +152,12 @@ test('with the computer set to reduce motion, an audience screen changes nothing
   await app.close();
 });
 
-test('axe at 1280 x 720 on Themes, the words editor and the slide editor’s picture picker', async () => {
+test('axe at 1280 x 720 on the words editor and the slide editor’s picture picker (and Themes, until Session 55 took it out)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
   await setUpPlaceholderShow(win, { video: false });
-  await win.getByRole('button', { name: 'Themes', exact: true }).click();
-  await expect(win.getByTestId('themes-panel')).toBeVisible();
-  await expectNoSeriousA11yIssues(win, 'Themes');
-  await win.getByRole('button', { name: 'Close themes' }).click();
   await openLibrary(win);
   await win
     .getByTestId('presentation-list')

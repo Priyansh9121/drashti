@@ -10,7 +10,7 @@ import { MediaRemoval } from './media-removal';
 
 /* Deleting media with Undo (Session 26a): a made-up library that uses one picture everywhere. */
 
-function library(over: { idle?: string[]; live?: string[] } = {}) {
+function library(over: { live?: string[] } = {}) {
   const db = openDatabase(':memory:');
   db.exec(`
     INSERT INTO media (id, kind, name, path, sha256) VALUES
@@ -41,7 +41,6 @@ function library(over: { idle?: string[]; live?: string[] } = {}) {
       '[{"kind":"background","mediaId":"pic"}]');
   `);
   const removal = new MediaRemoval(db, {
-    idlePictures: () => over.idle ?? [],
     onScreens: () => new Set(over.live ?? []),
   });
   return {
@@ -56,18 +55,19 @@ function library(over: { idle?: string[]; live?: string[] } = {}) {
 const itemIds = (playlists: PlaylistRepo, id: string) => playlists.itemsOf(id).map((i) => i.id);
 
 describe('deleting media from the library', () => {
-  it('says where it is used: slides, playlists, music, props, themes, the idle rotation, and on the screens', () => {
-    const { removal } = library({ idle: ['pic'], live: ['pic'] });
+  it('says where it is used: slides, playlists, music, themes, and on the screens', () => {
+    const { removal } = library({ live: ['pic'] });
     const usage = removal.usage(['pic']);
     // A removed presentation does not count.
     expect(usage.presentations).toEqual({ names: ['Placeholder Background', 'Placeholder Katha'], count: 2 });
     expect(usage.playlists).toEqual({ names: ['Sunday', 'Youth'], count: 2 });
     expect(usage.music.count).toBe(0);
-    expect(usage.props.names).toEqual(['Placeholder prop']);
     expect(usage.themes.names).toEqual(['Placeholder theme']);
-    // A library's macros (Session 44: Macros are gone) are kept as they were, and no longer counted.
+    // A library's macros (Session 44), props and idle rotation (Session 55) are kept as they were, and no longer
+    // counted: they are gone from the window.
     expect(usage).not.toHaveProperty('macros');
-    expect(usage.idle).toBe(true);
+    expect(usage).not.toHaveProperty('props');
+    expect(usage).not.toHaveProperty('idle');
     expect(usage.live).toBe(true);
     expect(removal.usage(['snd']).music).toEqual({ names: ['Before sabha'], count: 1 });
     expect(removal.usage(['other']).presentations.count).toBe(0);

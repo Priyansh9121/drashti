@@ -4,6 +4,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { near, pixels } from './pixels';
+import { makeSlides } from './placeholder-slides';
+import type { SlideElement } from '../../src/shared/model';
 import { TEST_LINES } from '../../src/main/db/seed';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import { device, networkOn, NETWORK_ENV } from './devices';
@@ -397,92 +399,95 @@ test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', as
     shadow: false,
   };
   const long = Array.from({ length: 40 }, (_, i) => `Placeholder word ${i + 1}`).join(' ');
-  await win.evaluate(
-    async ({ style, long }) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const result = await d.engine.dispatch({
-        type: 'showProp',
-        prop: {
-          id: 'placeholder-look',
-          name: 'Placeholder look',
-          width: 1920,
-          height: 1080,
-          elements: [
-            {
-              id: 'outlined',
-              kind: 'text',
-              frame: { x: 60, y: 40, width: 800, height: 200 },
-              text: 'OUTLINE',
-              lang: 'en',
-              style: { ...style, outline: { color: '#ff0000', width: 6 } },
-            },
-            {
-              id: 'shadowed',
-              kind: 'text',
-              frame: { x: 1000, y: 40, width: 800, height: 200 },
-              text: 'SHADOW',
-              lang: 'en',
-              style: { ...style, shadow: { color: '#00ff00', blur: 0, x: 14, y: 14 } },
-            },
-            {
-              id: 'turned',
-              kind: 'text',
-              frame: { x: 60, y: 400, width: 400, height: 100 },
-              rotation: 90,
-              text: 'TURNED',
-              lang: 'en',
-              style: { ...style, fontSize: 60 },
-            },
-            {
-              id: 'oval',
-              kind: 'shape',
-              shape: 'ellipse',
-              frame: { x: 600, y: 360, width: 400, height: 300 },
-              fill: '#0000ff',
-              cornerRadius: 0,
-              opacity: 1,
-              outline: { color: '#ffff00', width: 10 },
-            },
-            {
-              id: 'rule',
-              kind: 'shape',
-              shape: 'line',
-              frame: { x: 1100, y: 400, width: 700, height: 40 },
-              fill: null,
-              cornerRadius: 0,
-              opacity: 1,
-              outline: { color: '#ff00ff', width: 12 },
-            },
-            {
-              id: 'fitted',
-              kind: 'text',
-              frame: { x: 1100, y: 600, width: 700, height: 300 },
-              text: long,
-              lang: 'en',
-              style: { ...style, fontSize: 90, shrinkToFit: true },
-            },
-            {
-              id: 'overflowing',
-              kind: 'text',
-              frame: { x: 60, y: 760, width: 500, height: 100 },
-              text: long,
-              lang: 'en',
-              style: { ...style, fontSize: 40, verticalAlign: 'top' },
-            },
-          ],
-        },
-      });
-      if (!result.ok) throw new Error(result.message);
+  // On a slide (a prop until Session 55 took props out).
+  const elements: SlideElement[] = [
+    {
+      id: 'outlined',
+      kind: 'text',
+      frame: { x: 60, y: 40, width: 800, height: 200 },
+      text: 'OUTLINE',
+      lang: 'en',
+      style: { ...style, outline: { color: '#ff0000', width: 6 } },
     },
-    { style, long },
+    {
+      id: 'shadowed',
+      kind: 'text',
+      frame: { x: 1000, y: 40, width: 800, height: 200 },
+      text: 'SHADOW',
+      lang: 'en',
+      style: { ...style, shadow: { color: '#00ff00', blur: 0, x: 14, y: 14 } },
+    },
+    {
+      id: 'turned',
+      kind: 'text',
+      frame: { x: 60, y: 400, width: 400, height: 100 },
+      rotation: 90,
+      text: 'TURNED',
+      lang: 'en',
+      style: { ...style, fontSize: 60 },
+    },
+    {
+      id: 'oval',
+      kind: 'shape',
+      shape: 'ellipse',
+      frame: { x: 600, y: 360, width: 400, height: 300 },
+      fill: '#0000ff',
+      cornerRadius: 0,
+      opacity: 1,
+      outline: { color: '#ffff00', width: 10 },
+    },
+    {
+      id: 'rule',
+      kind: 'shape',
+      shape: 'line',
+      frame: { x: 1100, y: 400, width: 700, height: 40 },
+      fill: null,
+      cornerRadius: 0,
+      opacity: 1,
+      outline: { color: '#ff00ff', width: 12 },
+    },
+    {
+      id: 'fitted',
+      kind: 'text',
+      frame: { x: 1100, y: 600, width: 700, height: 300 },
+      text: long,
+      lang: 'en',
+      style: { ...style, fontSize: 90, shrinkToFit: true },
+    },
+    {
+      id: 'overflowing',
+      kind: 'text',
+      frame: { x: 60, y: 760, width: 500, height: 100 },
+      text: long,
+      lang: 'en',
+      style: { ...style, fontSize: 40, verticalAlign: 'top' },
+    },
+  ];
+  const presentationId = await makeSlides(win, 'Placeholder look', [{ elements }], {
+    kind: 'cut',
+    durationMs: 0,
+  });
+  const shown = await win.evaluate(
+    (presentationId) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 }),
+    presentationId,
   );
-  const el = (id: string) => output.locator(`[data-element="${id}"]`);
+  expect(shown.ok).toBe(true);
+  // Saved on a slide, each has an id the library gave it: found by its place, as made.
+  const savedIds = await win.evaluate(async (presentationId) => {
+    const opened = await (globalThis as PageGlobals).drashti.library.slidesForEdit(presentationId);
+    if (!opened.ok) throw new Error(opened.message);
+    return opened.doc.groups[0]?.slides[0]?.elements.map((e) => e.id) ?? [];
+  }, presentationId);
+  expect(savedIds).toHaveLength(elements.length);
+  const ids: Record<string, string> = Object.fromEntries(elements.map((e, i) => [e.id, savedIds[i] ?? e.id]));
+  const el = (id: string) => output.locator(`[data-element="${ids[id] ?? id}"]`);
   await expect(el('outlined')).toHaveText('OUTLINE');
 
   // The styles the renderer gives each box.
-  const css = await output.evaluate(() => {
+  const css = await output.evaluate((ids) => {
     const cs = (id: string) => {
-      const found = document.querySelector(`[data-element="${id}"]`);
+      const found = document.querySelector(`[data-element="${ids[id] ?? id}"]`);
       if (!found) throw new Error(`${id} is not on the output`);
       return getComputedStyle(found);
     };
@@ -492,7 +497,7 @@ test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', as
       shadow: cs('shadowed').textShadow,
       turned: cs('turned').transform,
     };
-  });
+  }, ids);
   expect(css).toEqual({
     stroke: '12px',
     // Stroke first, then the letters over it (Chromium leaves out the rest of the default order).
@@ -506,9 +511,9 @@ test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', as
   expect(turned && turned.height > turned.width * 3).toBe(true);
 
   // Shrink-to-fit: the words are made smaller until they fit; without it they run over.
-  const fit = await output.evaluate(() => {
+  const fit = await output.evaluate((ids) => {
     const box = (id: string) => {
-      const found = document.querySelector<HTMLElement>(`[data-element="${id}"]`);
+      const found = document.querySelector<HTMLElement>(`[data-element="${ids[id] ?? id}"]`);
       if (!found) throw new Error(`${id} is not on the output`);
       return found;
     };
@@ -522,7 +527,7 @@ test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', as
       fits: words('fitted').offsetHeight <= box('fitted').clientHeight + 1,
       overflows: words('overflowing').offsetHeight > box('overflowing').clientHeight,
     };
-  });
+  }, ids);
   expect(fit.fit).toBeGreaterThan(0.1);
   expect(fit.fit).toBeLessThan(1);
   expect(fit).toMatchObject({ fits: true, overflows: true });

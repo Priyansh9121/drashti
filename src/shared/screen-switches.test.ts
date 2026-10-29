@@ -106,7 +106,7 @@ describe('Audience and Stage (Session 50)', () => {
     expect(openUnder(off, 'audience')).toBe(0);
   });
 
-  it('knows when the audience screens show something: any layer with a picture, black-out, the logo', () => {
+  it('knows when the audience screens show something: any layer with a picture, black-out, the Wallpaper', () => {
     expect(showsSomething(nothing())).toBe(false);
     // Sound has no picture on the screens.
     const audio = nothing();
@@ -121,9 +121,8 @@ describe('Audience and Stage (Session 50)', () => {
     expect(showsSomething(audio)).toBe(false);
     // A black-out is still something the hall sees.
     expect(showsSomething({ ...nothing(), blackout: true })).toBe(true);
-    expect(
-      showsSomething({ ...nothing(), logo: { id: 'logo', name: 'Placeholder logo', elements: [] } }),
-    ).toBe(true);
+    // The Wallpaper (Session 55, in the Logo's place): black or the chosen wallpaper, something the hall sees.
+    expect(showsSomething({ ...nothing(), wallpaper: true })).toBe(true);
     const background = nothing();
     background.layers.background = { kind: 'color', color: '#123456' };
     expect(showsSomething(background)).toBe(true);
@@ -133,39 +132,6 @@ describe('Audience and Stage (Session 50)', () => {
     const ticker = nothing();
     ticker.layers.ticker = { items: [{ id: 't1', text: 'Placeholder' }], startedAt: 0 };
     expect(showsSomething(ticker)).toBe(true);
-  });
-
-  it('counts the idle rotation once it is started, or on a lobby group always, with something to show', () => {
-    const idle = nothing();
-    idle.idle = {
-      startedAt: null,
-      items: [{ kind: 'picture', mediaId: 'm1' }],
-      secondsEach: 10,
-      dissolveMs: 1500,
-    };
-    // Pictures chosen, never started, and no group shows it always: nothing up.
-    expect(showsSomething(idle)).toBe(false);
-    expect(showsSomething({ ...idle, idle: { ...idle.idle, startedAt: 5 } })).toBe(true);
-    const lobby: EngineState = {
-      ...idle,
-      look: {
-        id: 'look',
-        name: 'Placeholder',
-        groups: {
-          lobby: {
-            layers: [],
-            languages: null,
-            slides: 'designed',
-            mask: null,
-            idle: 'always',
-            movement: 'calm',
-          },
-        },
-      },
-    };
-    expect(showsSomething(lobby)).toBe(true);
-    // No pictures and no quote: the rotation has nothing to show.
-    expect(showsSomething({ ...lobby, idle: { ...lobby.idle, items: [], startedAt: 5 } })).toBe(false);
   });
 
   it('asks first only while its screens are open and show something; Stage whenever one is open', () => {

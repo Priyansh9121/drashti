@@ -68,7 +68,7 @@ describe('events from the show', () => {
     expect(e?.words?.['text']).toHaveLength(200);
   });
 
-  it('the playlist item, black-out and the logo', () => {
+  it('the playlist item, black-out and the Wallpaper (the logo until Session 55)', () => {
     const s = initialEngineState();
     const item = { ...s, live: { ...s.live, playlist: { playlistId: 'pl', itemId: 'i2' } } };
     expect(engineEvents(s, item)).toEqual([
@@ -77,9 +77,9 @@ describe('events from the show', () => {
     expect(engineEvents(s, { ...s, blackout: true })).toEqual([
       { kind: 'blackout.changed', data: { on: true } },
     ]);
-    const logo = { ...s, logo: { id: 'logo', name: 'Logo', elements: [] } };
-    expect(engineEvents(s, logo)).toEqual([{ kind: 'logo.changed', data: { on: true } }]);
-    expect(engineEvents(logo, s)).toEqual([{ kind: 'logo.changed', data: { on: false } }]);
+    const wallpaper = { ...s, wallpaper: true };
+    expect(engineEvents(s, wallpaper)).toEqual([{ kind: 'wallpaper.changed', data: { on: true } }]);
+    expect(engineEvents(wallpaper, s)).toEqual([{ kind: 'wallpaper.changed', data: { on: false } }]);
   });
 
   it('the stream on air, reconnecting and ended; recording started and stopped', () => {

@@ -129,7 +129,7 @@ async function drawn(page: Page): Promise<{ state: string | null; frames: number
   });
 }
 
-test('Show a Window… offers only the placeholder, shows it live on the hall, the stage screen, the stream and LIVE; black-out and the logo cover it; Clear all and Put it back', async () => {
+test('Show a Window… offers only the placeholder, shows it live on the hall, the stage screen, the stream and LIVE; black-out and the Wallpaper cover it; Clear all and Put it back', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({
     ...STANDIN,
@@ -193,18 +193,16 @@ test('Show a Window… offers only the placeholder, shows it live on the hall, t
   });
   await win.getByRole('button', { name: 'Close stream' }).click();
 
-  // Black-out and the logo cover it, and take nothing off.
+  // Black-out and the Wallpaper (Session 55, in the logo's place) cover it, and take nothing off.
   await dispatch(win, { type: 'setBlackout', on: true });
   await expect(hall.getByTestId('blackout')).toBeVisible();
   await expect(hall.locator('[data-kind="window"]')).toHaveCount(1);
   await dispatch(win, { type: 'setBlackout', on: false });
-  await dispatch(win, {
-    type: 'showLogo',
-    prop: { id: 'placeholder-logo', name: 'Placeholder logo', elements: [] },
-  });
-  await expect(hall.getByTestId('logo')).toBeVisible();
-  await dispatch(win, { type: 'hideLogo' });
-  await expect(hall.getByTestId('logo')).toHaveCount(0);
+  await dispatch(win, { type: 'setWallpaper', on: true });
+  await expect(hall.getByTestId('wallpaper')).toBeVisible();
+  await expect(hall.locator('[data-kind="window"]')).toHaveCount(1);
+  await dispatch(win, { type: 'setWallpaper', on: false });
+  await expect(hall.getByTestId('wallpaper')).toHaveCount(0);
   expect(await background(win)).toMatchObject({ kind: 'window' });
 
   // Clear all takes it off; Put it back brings it back while the window is still open.

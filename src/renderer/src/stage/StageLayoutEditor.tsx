@@ -108,8 +108,8 @@ function BoxSettings({ box }: { box: StageBox }) {
         // The hall's picture (Session 50): no words of its own, so no size, colour or alignment.
         <p className="text-xs text-muted" data-testid="stage-box-audience-note">
           What the hall’s screens show now, as the first audience group shows it: the background, the slide,
-          messages and the ticker, black-out and the logo too, at 16:9 with black around it. The boxes after
-          it in the list draw over it. Resized here, it goes no smaller than {AUDIENCE_BOX_MIN.width} ×{' '}
+          messages and the ticker, black-out and the Wallpaper too, at 16:9 with black around it. The boxes
+          after it in the list draw over it. Resized here, it goes no smaller than {AUDIENCE_BOX_MIN.width} ×{' '}
           {AUDIENCE_BOX_MIN.height}, so “Audience off” and “No audience screens” can be read in it.
         </p>
       ) : box.kind === 'videoInput' ? (

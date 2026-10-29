@@ -23,9 +23,9 @@ import { ScreensService } from './screens-service';
 function looksOf(db: Db): LookService {
   let looks: LookService | null = null;
   const engine = new ShowEngine(makeSource(), new RecordingTransport(), Date.now, NO_PLAYLISTS, {
-    looks: { look: (id) => looks?.look(id) ?? null, start: () => looks?.start() ?? NO_LOOK },
+    looks: { start: () => looks?.start() ?? NO_LOOK },
   });
-  looks = new LookService({ repo: new LookRepo(db), engine, changed: () => undefined, log: () => undefined });
+  looks = new LookService({ repo: new LookRepo(db), engine, log: () => undefined });
   engine.refreshLook();
   return looks;
 }

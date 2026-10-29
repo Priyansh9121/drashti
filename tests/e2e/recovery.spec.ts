@@ -440,7 +440,7 @@ test('after a crash a video on the slide itself, and its sound, play on from whe
   await second.app.close();
 });
 
-test('after a crash a slide’s video, its sound and a prop’s video come back between their file’s start and end points, where they would be (Session 52)', async () => {
+test('after a crash a slide’s video and its sound come back between their file’s start and end points, where they would be (Session 52)', async () => {
   test.setTimeout(150_000);
   const first = await launchApp();
   const win = await operatorPage(first.app);
@@ -473,7 +473,7 @@ test('after a crash a slide’s video, its sound and a prop’s video come back 
       fit: 'fit',
       loop: true,
     }) as const;
-  // On the slide itself, looping, and on a prop over it.
+  // On the slide itself, looping (and on a prop over it, until Session 55 took props out).
   await win.evaluate(
     async ({ presentationId, el }) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -490,34 +490,23 @@ test('after a crash a slide’s video, its sound and a prop’s video come back 
   await setUpScreen(win);
   await outputPage(first.app);
   await win.evaluate(
-    async ({ presentationId, el }) => {
-      const engine = (globalThis as PageGlobals).drashti.engine;
-      await engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 });
-      await engine.dispatch({
-        type: 'showProp',
-        prop: { id: 'placeholder-points-prop', name: 'Placeholder prop', elements: [el] },
-      });
-    },
-    { presentationId, el: element('placeholder-prop-points') },
+    (presentationId) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 }),
+    presentationId,
   );
-  /** The slide and the prop up, as the engine has them. */
+  /** The slide up, as the engine has it. */
   const shown = (page: Page) =>
-    page.evaluate(async () => {
-      const layers = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers;
-      return { slide: layers.slide, prop: layers.props[0] };
-    });
+    page.evaluate(async () => ({
+      slide: (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide,
+    }));
   const before = await shown(win);
   const points = { [videoId]: clip };
   expect(before.slide?.clips).toEqual(points);
-  expect(before.prop?.clips).toEqual(points);
-  await savedLive(first.userData, (saved) => {
-    const props = saved['props'];
-    return saved.slide?.slideIndex === 0 && Array.isArray(props) && props.length === 1;
-  });
+  await savedLive(first.userData, (saved) => saved.slide?.slideIndex === 0);
   await letTimePass(win, 2000, 'the videos play on a moment before Drashti stops');
   await killApp(first.app);
 
-  // Since Session 27 (the prop) and Session 51 (the slide's) they came back where they would be, over the whole file.
+  // Since Session 51 they came back where they would be, over the whole file.
   const second = await relaunchApp(first.userData);
   const win2 = await operatorPage(second.app);
   await operatorReady(win2);
@@ -528,7 +517,6 @@ test('after a crash a slide’s video, its sound and a prop’s video come back 
     shownAt: before.slide?.shownAt,
     clips: points,
   });
-  expect(after.prop).toMatchObject({ shownAt: before.prop?.shownAt, clips: points });
   const slideClock = { startedAt: before.slide?.shownAt ?? 0, loop: true, clip };
   const output2 = await outputPage(second.app);
   const player = await audioPage(second.app);
@@ -537,12 +525,6 @@ test('after a crash a slide’s video, its sound and a prop’s video come back 
     `[data-layer="slide"] video[data-media-id="${videoId}"]`,
     slideClock,
     'the slide’s video',
-  );
-  await nearTheClock(
-    output2,
-    `[data-layer="props"] video[data-media-id="${videoId}"]`,
-    { startedAt: before.prop?.shownAt ?? 0, loop: true, clip },
-    'the prop’s video',
   );
   await nearTheClock(player, 'audio[data-key^="slide:"]', slideClock, 'its sound');
   await second.app.close();

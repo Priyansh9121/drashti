@@ -20,16 +20,13 @@ export interface RecoveryNotice {
   slideGone: boolean;
   background: boolean;
   blackout: boolean;
-  /** The logo, shown instead of the picture. */
-  logo?: boolean;
+  /** The Wallpaper, up instead of the picture (Session 55, Part 13, in the Logo's place). */
+  wallpaper?: boolean;
   /** The sound, carrying on. */
   audio?: boolean;
-  props?: number;
   messages?: number;
   /** Announcements in the ticker. */
   ticker?: number;
-  /** A mask on the Masks layer. */
-  masks?: boolean;
   /** A lower third (Session 44). */
   lowerThird?: boolean;
   /** The picture-in-picture box (Session 50): put back (or, too long ago, up then) holding anything but a window. */
@@ -37,8 +34,6 @@ export interface RecoveryNotice {
   stageMessage?: boolean;
   /** Timers, running or paused. */
   timers?: number;
-  /** The Look that was live, by name, when it was not the one Drashti starts with. */
-  look?: string | null;
   /** Another app's window that was the background (Session 48), by name: never put back, only said. */
   window?: string | null;
   /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
@@ -81,17 +76,14 @@ export function recoveryText(notice: RecoveryNotice): string {
   const count = (n: number | undefined, one: string, many: string) => {
     if (n && n > 0) parts.push(n === 1 ? one : `${n} ${many}`);
   };
-  count(notice.props, 'a prop', 'props');
   count(notice.messages, 'a message', 'messages');
   if (notice.ticker && notice.ticker > 0) parts.push('the ticker');
-  if (notice.masks) parts.push('the mask');
   if (notice.lowerThird) parts.push('the lower third');
   if (notice.pip) parts.push('the picture-in-picture box');
   if (notice.stageMessage) parts.push('the stage message');
   count(notice.timers, 'a timer', 'timers');
-  if (notice.logo) parts.push('the logo');
+  if (notice.wallpaper) parts.push('the wallpaper');
   if (notice.blackout) parts.push('black-out');
-  if (notice.look) parts.push(`the Look “${notice.look}”`);
   const window = notice.window ?? null;
   const boxWindow = notice.pipWindow ?? null;
   const gone = notice.slideGone ? ' The slide that was live is no longer in the library.' : '';

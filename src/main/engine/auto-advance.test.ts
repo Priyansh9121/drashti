@@ -8,7 +8,7 @@ import { RecordingTransport, textSlide } from './testing';
  * Auto-advance in the engine: a slide that says so moves on by itself in
  * play order, loops at the end when its presentation does (never on into
  * the next playlist item), and anything that puts another slide up starts
- * that slide's own count. Black-out and the logo leave it be.
+ * that slide's own count. Black-out and the Wallpaper leave it be.
  */
 
 function setup(options: { loop?: boolean; times?: (number | null)[] } = {}) {
@@ -102,12 +102,12 @@ describe('auto-advance', () => {
     expect(engine.current.autoAdvance).toEqual({ startedAt: now(), durationMs: 5000 });
   });
 
-  it('carries on through black-out and the logo', () => {
+  it('carries on through black-out and the Wallpaper', () => {
     const { engine, elapse } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'p', slideIndex: 0 });
     const count = engine.current.autoAdvance;
     engine.dispatch({ type: 'setBlackout', on: true });
-    engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Placeholder logo', elements: [] } });
+    engine.dispatch({ type: 'setWallpaper', on: true });
     expect(engine.current.autoAdvance).toEqual(count);
     elapse(4000);
     expect(slideId(engine)).toBe('b');

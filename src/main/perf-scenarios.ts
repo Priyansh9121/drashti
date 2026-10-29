@@ -4,7 +4,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandResult, EngineCommand } from '../shared/engine/commands';
-import type { MaskLayer } from '../shared/engine/state';
 import type { Movement } from '../shared/looks';
 import type { TextStyle, TransitionKind } from '../shared/model';
 import type { PictureLook } from '../shared/picture-look';
@@ -19,8 +18,7 @@ import { cutText, plural } from '../shared/text';
  * hardware), chosen with DRASHTI_PERF_SCENARIO. Each runs while the usual
  * slide changes and the big import go on, with its own load on the screens:
  *
- * - video-1080p30: a 1080p30 video background (masks-video without its mask, to compare);
- * - masks-video: a 1080p30 video background with a mask up over it;
+ * - video-1080p30: a 1080p30 video background (Session 55: masks-video, the same under a mask, went with Masks);
  * - video-1080p60 and video-4k: a 1080p60, or a 4K (3840 × 2160) 30 fps, video background;
  * - dissolves-video: slides that each bring a different 1080p30 video
  *   background, dissolving into each other every two seconds;
@@ -34,7 +32,8 @@ import { cutText, plural } from '../shared/text';
  * - bold-transitions (Session 27): slides of placeholder words and a picture,
  *   each coming on by another of the Bold kinds (push, wipe, zoom, line by line,
  *   word by word, the fade) over a picture background, every screen group
- *   moving Bold from when the measured part begins: each screen must draw nine
+ *   moving Bold from when the measured part begins (Session 55: no group moves Bold in a show since Looks went;
+ *   the check moves them so, main/looks/look-service.ts moveAll): each screen must draw nine
  *   in ten of its transitions' frames (the dissolves' smoothness), and with a
  *   trace (DRASHTI_PERF_PROFILE) the GPU must make no new pipeline during the
  *   first Bold transition (the screens warmed it up, render/WarmUp.tsx).
@@ -53,12 +52,11 @@ import { cutText, plural } from '../shared/text';
  * that cannot decode and draw it in time drops them. The slides change every
  * two seconds, as in a sabha: the plain check's change every 40 ms is a test
  * of the import, and on CI's Mac it alone cost a 1080p30 background half its
- * frames, mask or none.
+ * frames.
  */
 
 export const PERF_SCENARIOS = [
   'video-1080p30',
-  'masks-video',
   'video-1080p60',
   'video-4k',
   'dissolves-video',
@@ -80,7 +78,7 @@ export interface ScenarioDeps {
   outputs: () => BrowserWindow[];
   /** Every picture's sharpened copy made (Session 26f). */
   sharpened?: () => Promise<void>;
-  /** Every screen group in the live Look to move this way (Session 27). */
+  /** Every screen group to move this way (Session 27; the check's own since Session 55). */
   setMovement?: (movement: Movement) => void;
   /** live-window (Session 48): open the placeholder window and put it up as the background; false if it cannot. */
   showPlaceholderWindow?: () => Promise<boolean>;
@@ -270,16 +268,6 @@ const TRANSITIONS = `(() => {
 })()`;
 const TRANSITIONS_READ = `(() => window.drashtiTransitionFrames ?? null)()`;
 
-/** A mask that shows only an ellipse in the middle: its edge is drawn over the video on every frame. */
-const ELLIPSE: MaskLayer = {
-  id: 'perf-mask',
-  name: 'Placeholder perf mask',
-  width: 1920,
-  height: 1080,
-  mode: 'show',
-  shapes: [{ id: 'perf-ellipse', kind: 'ellipse', frame: { x: 160, y: 60, width: 1600, height: 960 } }],
-};
-
 /**
  * Each screen's background videos: for each, the frames it presented
  * (requestVideoFrameCallback's presentedFrames) from its first frame to its
@@ -335,12 +323,6 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
       background(
         makeVideo(deps, 'video-1080p30', { width: 1920, height: 1080, fps: 30, seconds: 20, hue: 0 }),
       );
-      break;
-    }
-    case 'masks-video': {
-      const v = makeVideo(deps, 'video-1080p30', { width: 1920, height: 1080, fps: 30, seconds: 20, hue: 0 });
-      background(v);
-      deps.engine.dispatch({ type: 'setMask', mask: ELLIPSE });
       break;
     }
     case 'video-1080p60': {

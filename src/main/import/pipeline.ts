@@ -33,15 +33,8 @@ import { diskFreeBytes, type MediaStore, sha256File, type StagedMedia, UPLOADS_D
 import { isInside } from '../media/contained';
 import { withoutOutsideLinks } from './deck/links';
 import { fileNameOf, pathFromReference, resolveMedia } from './media-resolver';
-import type {
-  ParsedMediaRef,
-  ParsedPlaylist,
-  ParsedPlaylistDoc,
-  ParsedPresentation,
-  ParsedProps,
-} from './model';
-import { MEDIA_REF, propsFromPresentation, slideCount } from './model';
-import { PropRepo } from '../db/props';
+import type { ParsedMediaRef, ParsedPlaylist, ParsedPlaylistDoc, ParsedPresentation } from './model';
+import { MEDIA_REF, slideCount } from './model';
 import { SettingsRepo } from '../db/settings';
 import { ShastraRepo } from '../db/shastra';
 import { readShastraFile, SHASTRA_FORMAT } from '../../shared/shastra';
@@ -194,7 +187,7 @@ interface Where {
 const SUPPORT_FILES: Record<string, { format: ImportFormat; message: string }> = {
   'mask.pro6': {
     format: 'pp6',
-    message: 'Masks come in a later version of Drashti; set them up again from the audit.',
+    message: 'Drashti has no masks, so this file of masks was left out.',
   },
   'messages.xml': {
     format: 'unknown',
@@ -1264,73 +1257,21 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     );
   };
 
-  /** Props from a props file: each one kept in the library, replacing those from the same file before. */
-  const importProps = async (where: Where, kind: 'pp6' | 'pp7', parsed: ParsedProps) => {
-    const name = basename(where.sourcePath);
-    const staged = await stageMedia(parsed.media, where);
-    const at = position++;
-    batch.write(
-      () => {
-        const started = performance.now();
-        const media = storeMedia(staged, kind);
-        let dropped = 0;
-        const props = parsed.props.map((p) => ({
-          name: p.name,
-          ref: p.ref,
-          width: parsed.width,
-          height: parsed.height,
-          elements: p.elements.flatMap((e): SlideElement[] => {
-            let el: SlideElement | null = e;
-            if (e.kind === 'image' || e.kind === 'video') {
-              const id = e.mediaId.startsWith(MEDIA_REF)
-                ? media.ids[Number(e.mediaId.slice(MEDIA_REF.length))]
-                : null;
-              el = id ? { ...e, mediaId: id } : null;
-            }
-            if (!el || !slideElementSchema.safeParse(el).success) {
-              dropped++;
-              return [];
-            }
-            return [el];
-          }),
-        }));
-        const kept = props.filter((p) => p.elements.length > 0);
-        const ids = new PropRepo(ctx.db).replaceImported(kind, where.sourcePath, kept);
-        const issues = [...parsed.issues, ...media.issues];
-        if (dropped > 0)
-          issues.push({
-            severity: 'warning',
-            code: 'invalid-element',
-            message: `${plural(dropped, 'prop element')} could not be read and ${dropped === 1 ? 'was' : 'were'} left out: check the props, and add what is missing in their editor.`,
-            fix: null,
-          });
-        const item: NewImportItem = {
-          sourcePath: where.sourcePath,
-          format: kind,
-          outcome: 'imported',
-          name,
-          target: null,
-          counts: { ...NO_COUNTS, media: media.count },
-          message:
-            ids.length > 0
-              ? `${ids.length} prop${ids.length === 1 ? '' : 's'}: show them from Props, under the live picture.`
-              : 'No props with anything on them.',
-          issues,
-        };
-        imports.addItem(ctx.runId, at, item);
-        time('write', started);
-        return { item, marked: media.marked };
-      },
-      {
-        committed: ({ item, marked }) => {
-          addToTotals(totals, item);
-          told(marked);
-        },
-        failed: (error) => {
-          failed(where, kind, name, `Could not write these props: ${errorText(error)}`, [], at);
-        },
-      },
-    );
+  /**
+   * A props file (Session 55, Part 12: Props are gone from Drashti): left out, and said so in the report, never
+   * imported. Props an earlier import kept stay in the library, unseen.
+   */
+  const skipProps = (where: Where, kind: 'pp6' | 'pp7') => {
+    record({
+      sourcePath: where.sourcePath,
+      format: kind,
+      outcome: 'skipped',
+      name: basename(where.sourcePath),
+      target: null,
+      counts: NO_COUNTS,
+      message: 'Drashti no longer has props, so this file of props was left out.',
+      issues: [],
+    });
   };
 
   // ---- one file ---------------------------------------------------------------------
@@ -1358,7 +1299,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     }
     time('parse', t);
     if (parsed.kind === 'presentation' && basename(file.path).toLowerCase() === 'props.pro6')
-      await importProps(where, 'pp6', propsFromPresentation(parsed.presentation));
+      skipProps(where, 'pp6');
     else if (parsed.kind === 'presentation')
       await importPresentation(file, where, 'pp6', hash, parsed.presentation);
     else if (parsed.kind === 'playlist') await importPlaylist(where, 'pp6', hash, parsed.playlist);
@@ -1425,7 +1366,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     time('parse', t);
     if (parsed.kind === 'presentation')
       await importPresentation(file, where, 'pp7', hash, parsed.presentation);
-    else if (parsed.kind === 'props') await importProps(where, 'pp7', parsed.props);
+    else if (parsed.kind === 'props') skipProps(where, 'pp7');
     else await importPlaylist(where, 'pp7', hash, parsed.playlist);
   };
 
