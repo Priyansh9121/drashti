@@ -26,4 +26,13 @@ describe('where deleted media is used, as the question says it', () => {
       'The slides of “Placeholder Katha”: nothing will show in their place.',
     );
   });
+
+  it('names the wallpapers it is in (Session 55, Part 6): left out of them', () => {
+    expect(usageLines({ ...NOT_USED, wallpapers: { names: ['Placeholder evening'], count: 1 } })).toEqual([
+      'The wallpaper “Placeholder evening”: left out of it.',
+    ]);
+    expect(
+      usageLines({ ...NOT_USED, wallpapers: { names: ['Placeholder one', 'Placeholder two'], count: 2 } }),
+    ).toEqual(['The wallpapers “Placeholder one” and “Placeholder two”: left out of them.']);
+  });
 });

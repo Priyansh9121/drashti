@@ -5,6 +5,7 @@ import type { LiveZoom, PictureLook } from '../../shared/picture-look';
 import type { RenderSlide, Transition } from '../../shared/model';
 import type { StageState } from '../../shared/stage-layouts';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
+import type { ChosenWallpaper } from '../../shared/wallpapers';
 import type {
   AudioLayer,
   BackgroundLayer,
@@ -138,4 +139,6 @@ export type EngineAction =
   /** Drashti stopped (Session 54, access by Gmail): the screens fade to black from `at`. */
   | { type: 'access/stop'; at: number }
   /** The stage screens (Session 55): the chosen layout, Stage off, the chosen video input. */
-  | { type: 'stage/set'; stage: StageState };
+  | { type: 'stage/set'; stage: StageState }
+  /** The chosen wallpaper (Session 55, Part 6), as the library has it, or none. */
+  | { type: 'chosenWallpaper/set'; wallpaper: ChosenWallpaper | null };

@@ -1,5 +1,6 @@
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
+import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type {
@@ -397,6 +398,8 @@ export interface DrashtiBridge {
     editSlot(itemId: string, slot: { label: string; category: string | null }): Promise<PlaylistResult>;
     /** What an item does to timers when it goes up: start, reset or show each (none to take them away). */
     setTimers(itemId: string, cues: TimerCue[]): Promise<PlaylistResult>;
+    /** What a video's row does when it ends (Session 55, Part 6). */
+    setWhenEnds(itemId: string, whenEnds: WhenEnds): Promise<PlaylistResult>;
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;
     /** A slot, at a position or the end. */
@@ -683,6 +686,27 @@ export interface DrashtiBridge {
     onOpen(listener: () => void): () => void;
   };
   /** Lower Thirds (Session 44): changing them is the operator window's, in Pro Mode. */
+  /** The wallpapers (Session 55, Part 6, shared/wallpapers.ts). */
+  wallpapers: {
+    view(): Promise<WallpapersView>;
+    onChanged(listener: (view: WallpapersView) => void): () => void;
+    /** Files offered (a drop, Import…): the pictures, and the rest with why each is not one. */
+    sortFiles(paths: string[]): Promise<WallpaperFiles>;
+    /** The system's dialog for pictures; the paths chosen (none when cancelled). */
+    pickFiles(): Promise<string[]>;
+    /** Pictures in the library as wallpapers, one each, or into one (`into`). */
+    add(mediaIds: string[], into: string | null): Promise<WallpaperResult>;
+    rename(id: string, name: string): Promise<WallpaperResult>;
+    setPictures(id: string, mediaIds: string[]): Promise<WallpaperResult>;
+    setTiming(id: string, timing: { secondsEach: number; fadeMs: number }): Promise<WallpaperResult>;
+    /** Delete one (Undo brings it back, until Drashti next starts). */
+    remove(id: string): Promise<WallpaperResult>;
+    restore(id: string): Promise<WallpaperResult>;
+    /** Choose one, or none (null). */
+    choose(id: string | null): Promise<WallpaperResult>;
+    /** A quote of the idle rotation's, drawn as a picture (PNG), into its wallpaper. */
+    quotePicture(into: string, quoteId: string, png: Uint8Array): Promise<WallpaperResult>;
+  };
   lowerThirds: {
     list(): Promise<LowerThird[]>;
     onChanged(listener: (lowerThirds: LowerThird[]) => void): () => void;

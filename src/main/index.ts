@@ -33,7 +33,7 @@ import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
 import { FileActions } from './library/file-actions';
-import { importableExtensions, SOUND_EXTENSIONS } from './import/scan';
+import { importableExtensions, mediaKindOf, SOUND_EXTENSIONS } from './import/scan';
 import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlist';
 import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
@@ -87,6 +87,8 @@ import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
 import { oldIdleRotation, QuoteOfTheDay } from './idle/idle-service';
+import { registerWallpapers } from './wallpapers/wallpaper-ipc';
+import type { WallpaperService } from './wallpapers/wallpaper-service';
 import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
@@ -1425,6 +1427,8 @@ function start(): void {
   const pipPlaces = new PipPlaces({ settings, write: laterSetting });
   /** Audio playlists (made further down): the media library changing may change them. */
   let musicService: MusicService | null = null;
+  /** The wallpapers (Session 55, Part 6; made further down): the media library changing may change them. */
+  let wallpaperService: WallpaperService | null = null;
   /** Brings folder playlists' sounds into Audio (Session 44); set once the music is ready. */
   let syncAudios = (): void => undefined;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
@@ -2803,6 +2807,8 @@ function start(): void {
       void sharpened.refresh();
       // A sound in an audio playlist may have been converted, found or lost.
       if (musicService) sendToOperator(IPC.music.changed, musicService.view());
+      // A wallpaper's picture may have been deleted, found or lost (Session 55, Part 6).
+      wallpaperService?.mediaChanged();
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -3697,6 +3703,34 @@ function start(): void {
   log.info(
     `The idle rotation kept (unseen): ${String(idleRotationWas().pictures.length)} picture(s), ${String(quotes.list().length)} quote(s)`,
   );
+  // ---- Wallpapers (Session 55, Part 6, main/wallpapers/) ------------------------------------------------------------
+  // The chosen one on every audience screen whenever nothing is up, and under the Wallpaper; the idle rotation made
+  // into one, once; a quote's picture imported as any picture is.
+  wallpaperService = registerWallpapers({
+    db,
+    settings,
+    media: (id) => media.kindAndName(id),
+    engine,
+    fromOperator,
+    operatorWindow: () => operatorWindow,
+    pictureExtensions: () => IMPORTABLE_EXTENSIONS.filter((ext) => mediaKindOf(`x.${ext}`) === 'image'),
+    importPicture: async (file) => {
+      const done = await importPaths([file], {});
+      if (!done.ok) return null;
+      const made = importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target;
+      return made?.kind === 'media' ? made.id : null;
+    },
+    changed: (view) => {
+      sendToOperator(IPC.wallpapers.changed, view);
+      // Nodes copy the wallpapers' pictures.
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    },
+    idleRotationWas,
+    log: (line) => {
+      log.info(line);
+    },
+  });
   // ---- Lower Thirds (Session 44, shared/lower-thirds.ts): the library's, shown and hidden as engine commands --
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
@@ -4084,8 +4118,8 @@ function start(): void {
   const nodeRepo = new NodeRepo(db);
   const wanted = new WantedMedia(
     db,
-    // Nothing more since Session 55 (the idle rotation's pictures went with it); Part 6's wallpapers go here.
-    () => [],
+    // The wallpapers' pictures (Session 55, Part 6), so a node shows the chosen one at once.
+    () => wallpaperService.pictureIds(),
     Date.now,
     // A picture's sharpened copy (Session 26f), once it is ready: one more file for the node, copied as
     // media is, right after the picture's own.
@@ -4509,6 +4543,8 @@ function start(): void {
     // A live item's order may have changed, and what comes next may be different.
     engine.reorderLive();
     engine.refreshNext();
+    // A video row's When it ends (Session 55, Part 6), changed while it plays.
+    engine.refreshEnds();
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     net.hint('playlists');
     syncAudios();

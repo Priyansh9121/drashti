@@ -7,6 +7,7 @@ import { AudienceBox } from './AudienceBox';
 import { Placed } from './Placed';
 import { StageLayoutView } from './StageLayoutView';
 import { StageView } from './StageView';
+import { StageEndsIn } from './StageEndsIn';
 import type { ClockStyle } from '../../../shared/format';
 
 /**
@@ -57,22 +58,29 @@ export function StageScreen({
   const layout = shows === 'layout' ? state.stage?.layout : null;
   if (!layout)
     return (
-      <StageView
-        state={state}
-        languages={look.languages}
-        audienceOff={hall?.off === true}
-        {...(clockStyle ? { clockStyle } : {})}
-      />
+      <>
+        <StageView
+          state={state}
+          languages={look.languages}
+          audienceOff={hall?.off === true}
+          {...(clockStyle ? { clockStyle } : {})}
+        />
+        {/* A video's last 10 seconds (Part 6): the time left across the top. */}
+        <StageEndsIn state={state} canvas={canvas} />
+      </>
     );
   return (
-    <Placed content={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }} box={canvas} mode="fit">
-      <StageLayoutView
-        layout={layout}
-        state={state}
-        languages={look.languages}
-        hall={hall}
-        {...(clockStyle ? { clockStyle } : {})}
-      />
-    </Placed>
+    <>
+      <Placed content={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }} box={canvas} mode="fit">
+        <StageLayoutView
+          layout={layout}
+          state={state}
+          languages={look.languages}
+          hall={hall}
+          {...(clockStyle ? { clockStyle } : {})}
+        />
+      </Placed>
+      <StageEndsIn state={state} canvas={canvas} />
+    </>
   );
 }

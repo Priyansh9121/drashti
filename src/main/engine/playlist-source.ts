@@ -1,4 +1,5 @@
 import type { TimerCue } from '../../shared/playlists';
+import type { WhenEnds } from '../../shared/wallpapers';
 /*
  * Playlists as the show engine plays them: each item is a presentation (in
  * its order), a picture, video or sound, a video input (Session 51), or something to step over.
@@ -23,6 +24,8 @@ export type PlayItem =
       media: 'image' | 'video' | 'audio';
       label: string;
       timers?: readonly TimerCue[];
+      /** A video's When it ends (Session 55, Part 6): left out, the default (the chosen wallpaper). */
+      whenEnds?: WhenEnds;
     }
   /**
    * One of this computer's video inputs (Session 51), found by the name the item keeps: it goes up as the

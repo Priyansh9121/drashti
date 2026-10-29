@@ -344,7 +344,7 @@ function MainSlot({
  * The operator preview and every output use this same component; the preview sets `annotate` to mark problems the
  * audience never sees. What a screen shows of it is its group's settings (`look`: its layers, languages and slide
  * style, by its role and its languages in Screens). The stream leaves the ticker out (`ticker`). With nothing up,
- * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black until then).
+ * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black with none chosen).
  */
 export const Scene = memo(function Scene({
   state,
@@ -398,7 +398,7 @@ export const Scene = memo(function Scene({
   const [run, refreshRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
   const up = boxHere(layers.pip) ? layers.pip : null;
   // Nothing up on these screens (the box counts): what shows then (Session 55, render/NothingUp.tsx: Part 6's
-  // chosen wallpaper goes there; black until then).
+  // chosen wallpaper; black with none chosen).
   const nothingUp = background === null && (layers.slide === null || !shown('slide')) && up === null;
   const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;

@@ -81,6 +81,16 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stageLayouts.save,
   IPC.playlists.editSlot,
   IPC.playlists.setTimers,
+  // Session 55, Part 6: a video row's When it ends, and the wallpapers' setup (Part 18 gives Simple Mode its own).
+  IPC.playlists.setWhenEnds,
+  IPC.wallpapers.add,
+  IPC.wallpapers.pickFiles,
+  IPC.wallpapers.rename,
+  IPC.wallpapers.setPictures,
+  IPC.wallpapers.setTiming,
+  IPC.wallpapers.remove,
+  IPC.wallpapers.restore,
+  IPC.wallpapers.choose,
   // Smart playlists (Session 26c): Simple Mode sees what their folders bring, and changes no setup.
   IPC.playlists.createSmart,
   IPC.playlists.removeMissing,

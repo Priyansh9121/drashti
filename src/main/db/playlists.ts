@@ -14,6 +14,7 @@ import { DEFAULT_REPEAT, REPEAT_REFUSES, repeatSettingsOf } from '../../shared/r
 import type { PassageKey } from '../../shared/shastra';
 import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastra';
 import type { VideoInput } from '../../shared/video-inputs';
+import { DEFAULT_WHEN_ENDS, type WhenEnds, whenEndsSchema } from '../../shared/wallpapers';
 import { ShastraRepo } from './shastra';
 import type { PlayItem } from '../engine/playlist-source';
 import { copyFinder } from '../convert/relink';
@@ -59,6 +60,14 @@ interface ItemRow {
   /** Added from a phone (Session 54, migration 48): the device's name. */
   media_device: string | null;
   presentation_device: string | null;
+  /** A video row's When it ends (Session 55, Part 6, migration 50): null, the default (the chosen wallpaper). */
+  when_ends: string | null;
+}
+
+/** A stored When it ends (Part 6): left out for the default and for anything that does not read. */
+function whenEndsOf(stored: string | null): { whenEnds?: WhenEnds } {
+  const parsed = whenEndsSchema.safeParse(stored);
+  return parsed.success && parsed.data !== DEFAULT_WHEN_ENDS ? { whenEnds: parsed.data } : {};
 }
 
 /** Stored timer cues; none when they do not read. */
@@ -146,6 +155,7 @@ function itemInfo(
         durationMs: r.media_duration !== null && r.media_duration > 0 ? r.media_duration : null,
         ...(r.smart_gone === 1 ? { gone: true } : {}),
         ...(r.media_device === null ? {} : { fromDevice: r.media_device }),
+        ...whenEndsOf(r.when_ends),
       };
     case 'header':
       return { id: r.id, kind: 'header', label: r.label, color: r.color };
@@ -164,7 +174,7 @@ type CopyItem = (
       orderMode: string;
       arrangementId: string | null;
     }
-  | { kind: 'media'; mediaId: string; label: string }
+  | { kind: 'media'; mediaId: string; label: string; whenEnds?: string | null }
   | { kind: 'placeholder'; label: string; hint: string | null; category: string | null }
   | { kind: 'shastra'; passage: string; label: string }
   | { kind: 'input'; name: string; label: string }
@@ -422,7 +432,7 @@ export class PlaylistRepo {
       this.db
         .prepare(
           `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                  i.passage, i.timers, i.input_name,
+                  i.passage, i.timers, i.input_name, i.when_ends,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
                   p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration,
@@ -483,6 +493,8 @@ export class PlaylistRepo {
             media: item.media,
             label: item.label,
             timers: item.timers,
+            // What a video does when it ends (Session 55, Part 6): left out, the default.
+            ...(item.media === 'video' && item.whenEnds ? { whenEnds: item.whenEnds } : {}),
           };
         case 'header':
           return {
@@ -784,8 +796,8 @@ export class PlaylistRepo {
   /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */
   private copyItems(to: string, items: readonly CopyItem[]): void {
     const insert = this.db.prepare(
-      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage, timers, input_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage, timers, input_name, when_ends)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     // An item on a converted original (added before Session 51) is copied onto its copy.
     const copy = copyFinder(this.db);
@@ -807,6 +819,7 @@ export class PlaylistRepo {
         item.kind === 'shastra' ? item.passage : null,
         item.kind === 'header' || item.kind === 'placeholder' ? null : (item.timers ?? null),
         item.kind === 'input' ? item.name : null,
+        item.kind === 'media' ? (item.whenEnds ?? null) : null,
       );
     });
   }
@@ -816,7 +829,7 @@ export class PlaylistRepo {
     return this.db
       .prepare(
         `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                i.passage, i.timers, i.input_name, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
+                i.passage, i.timers, i.input_name, i.when_ends, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
            FROM playlist_items i
            LEFT JOIN presentations p ON p.id = i.presentation_id
            LEFT JOIN kirtans k ON k.presentation_id = i.presentation_id
@@ -836,6 +849,7 @@ export class PlaylistRepo {
       passage: string | null;
       timers: string | null;
       input_name: string | null;
+      when_ends: string | null;
       kirtan_category: string | null;
       presentation_deleted: string | null;
     }[];
@@ -858,7 +872,9 @@ export class PlaylistRepo {
         this.storedItems(playlistId).flatMap((r): CopyItem[] => {
           if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
           if (r.kind === 'media' && r.media_id)
-            return [{ kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers }];
+            return [
+              { kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers, whenEnds: r.when_ends },
+            ];
           // A video input (Session 51) stays as it is, named as it was.
           if (r.kind === 'input' && r.input_name !== null)
             return [{ kind: 'input', name: r.input_name, label: r.label, timers: r.timers }];
@@ -909,7 +925,9 @@ export class PlaylistRepo {
         this.storedItems(templateId).flatMap((r): CopyItem[] => {
           if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
           if (r.kind === 'media' && r.media_id)
-            return [{ kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers }];
+            return [
+              { kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers, whenEnds: r.when_ends },
+            ];
           if (r.kind === 'placeholder')
             return [{ kind: 'placeholder', label: r.label, hint: null, category: r.category }];
           if (r.kind === 'shastra' && r.passage !== null)
@@ -985,7 +1003,9 @@ export class PlaylistRepo {
         this.storedItems(playlistId).flatMap((r): CopyItem[] => {
           if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
           if (r.kind === 'media' && r.media_id)
-            return [{ kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers }];
+            return [
+              { kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers, whenEnds: r.when_ends },
+            ];
           if (r.kind === 'placeholder')
             return [{ kind: 'placeholder', label: r.label, hint: r.hint, category: r.category }];
           if (r.kind === 'shastra' && r.passage !== null)
@@ -1235,6 +1255,22 @@ export class PlaylistRepo {
           `UPDATE playlist_items SET timers = ? WHERE id = ? AND kind IN ('presentation', 'media', 'shastra', 'input') AND deleted_at IS NULL`,
         )
         .run(cues.length > 0 ? JSON.stringify(cues) : null, itemId).changes === 1
+    );
+  }
+
+  /**
+   * What a video's row does when it ends (Session 55, Part 6): the default (the chosen wallpaper) kept as nothing.
+   * False for a row that is not a video's, removed, or not there.
+   */
+  setWhenEnds(itemId: string, whenEnds: WhenEnds): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE playlist_items SET when_ends = ?
+            WHERE id = ? AND kind = 'media' AND deleted_at IS NULL
+              AND media_id IN (SELECT id FROM media WHERE kind = 'video')`,
+        )
+        .run(whenEnds === DEFAULT_WHEN_ENDS ? null : whenEnds, itemId).changes === 1
     );
   }
 

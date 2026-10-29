@@ -40,6 +40,7 @@ import type { LiveLook, Movement } from '../../shared/looks';
 import { CUT, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
+import { type ChosenWallpaper, DEFAULT_WHEN_ENDS, type WhenEnds } from '../../shared/wallpapers';
 import {
   backgroundShowing,
   framed,
@@ -57,7 +58,13 @@ import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '..
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
-import { type PlaybackClip, type PlaybackClock, type PlaybackSeek, playbackLeftMs } from '../../shared/media';
+import {
+  type PlaybackClip,
+  type PlaybackClock,
+  type PlaybackSeek,
+  playbackAtMs,
+  playbackLeftMs,
+} from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
 import {
@@ -368,6 +375,8 @@ export class ShowEngine {
   private zeroWait: { key: string; cancel: () => void } | null = null;
   /** The last zero that came: it is not waited for again (a slide with nowhere to go holds at 0:00). */
   private zeroDone: string | null = null;
+  /** The background video waited for to end (Session 55, Part 6): its key, and how to cancel the wait. */
+  private endWait: { key: string; cancel: () => void } | null = null;
   /** The time of the change being made, read once (null between changes). */
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
@@ -809,6 +818,38 @@ export class ShowEngine {
   setQuote(quote: Quote | null): CommandResult {
     if (sameData(this.state.quote, quote)) return this.unchanged();
     return this.apply([{ type: 'quote/set', quote }]);
+  }
+
+  /**
+   * The chosen wallpaper (Session 55, Part 6), as the library has it (main/wallpapers/wallpaper-service.ts), or none:
+   * every audience screen, node and phone shows it whenever nothing is up there, and under the Wallpaper. Changed
+   * pictures or timing go round from now; a new name alone keeps its place; the same again changes nothing. Never a
+   * change to the show: what Back, Put it back and Oops would undo stays.
+   */
+  setChosenWallpaper(wallpaper: Omit<ChosenWallpaper, 'since'> | null): CommandResult {
+    const was = this.state.chosenWallpaper ?? null;
+    const sameRound =
+      was !== null &&
+      wallpaper !== null &&
+      was.id === wallpaper.id &&
+      was.secondsEach === wallpaper.secondsEach &&
+      was.fadeMs === wallpaper.fadeMs &&
+      sameData(was.pictures, wallpaper.pictures);
+    if (wallpaper === null ? was === null : sameRound && was.name === wallpaper.name) return this.unchanged();
+    const chosen: ChosenWallpaper | null = wallpaper && {
+      id: wallpaper.id,
+      name: wallpaper.name,
+      pictures: [...wallpaper.pictures],
+      secondsEach: wallpaper.secondsEach,
+      fadeMs: wallpaper.fadeMs,
+      since: sameRound ? was.since : this.now(),
+    };
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'chosenWallpaper/set', wallpaper: chosen }]);
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
   /** Today's calendar entry: from the loaded calendars, at midnight and when they change. */
@@ -1302,7 +1343,8 @@ export class ShowEngine {
         mediaId: item.mediaId,
         media: item.media,
         fit: 'fit',
-        loop: false,
+        // A video whose row says Loop goes round (Session 55, Part 6); any other plays once.
+        loop: item.media === 'video' && item.whenEnds === 'loop',
       },
       undefined,
       again,
@@ -2381,7 +2423,13 @@ export class ShowEngine {
     });
     if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
     // The pictures on the screens and coming next carry their looks (Session 26e).
-    if (next.layers !== prev.layers || next.next !== prev.next || next.pipOff !== prev.pipOff)
+    if (
+      next.layers !== prev.layers ||
+      next.next !== prev.next ||
+      next.pipOff !== prev.pipOff ||
+      // The chosen wallpaper's pictures (Session 55, Part 6).
+      next.chosenWallpaper !== prev.chosenWallpaper
+    )
       next = reduce(next, { type: 'pictures/set', pictures: this.picturesFor(next) });
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
@@ -2402,6 +2450,7 @@ export class ShowEngine {
     this.scheduleAdvance();
     this.scheduleMusic();
     this.scheduleZero();
+    this.scheduleVideoEnd();
     return { ok: true, changed: true, rev: this.revision };
   }
 
@@ -2638,6 +2687,129 @@ export class ShowEngine {
   }
 
   /**
+   * A playlist changed (Session 55, Part 6): the live row's When it ends is read again. A video up goes round, or
+   * stops going round, as its row now says, carrying on from where it is (paused, it stays paused there); and what
+   * happens at its end follows.
+   */
+  refreshEnds(): CommandResult {
+    return this.atOnce(() => {
+      const bg = this.state.layers.background;
+      const cursor = this.state.live.playlist;
+      if (bg?.kind === 'media' && bg.media === 'video' && cursor && this.state.live.presentationId === null) {
+        const item = this.playlists.items(cursor.playlistId)?.find((i) => i.id === cursor.itemId);
+        const loop = item?.kind === 'media' && item.whenEnds === 'loop';
+        if (item?.kind === 'media' && item.mediaId === bg.mediaId && loop !== bg.loop) {
+          const now = this.now();
+          const seek =
+            bg.durationMs !== undefined && bg.durationMs > 0
+              ? {
+                  seek: {
+                    at: now,
+                    toMs: playbackAtMs(bg, bg.durationMs, now),
+                    ...(bg.seek?.paused === true ? { paused: true } : {}),
+                  },
+                }
+              : {};
+          this.bookkeeping = true;
+          try {
+            return this.apply([{ type: 'background/set', background: { ...bg, loop, ...seek } }]);
+          } finally {
+            this.bookkeeping = false;
+          }
+        }
+      }
+      this.scheduleVideoEnd();
+      return this.unchanged();
+    });
+  }
+
+  /**
+   * What a playlist row says the video up does when it ends (Session 55, Part 6): the live row's, when it is this
+   * video's; any other video (from Media, say) does the default.
+   */
+  private whenEndsOf(state: EngineState, mediaId: string): WhenEnds {
+    const cursor = state.live.playlist;
+    if (!cursor || state.live.presentationId !== null) return DEFAULT_WHEN_ENDS;
+    const item = this.playlists.items(cursor.playlistId)?.find((i) => i.id === cursor.itemId);
+    return item?.kind === 'media' && item.mediaId === mediaId
+      ? (item.whenEnds ?? DEFAULT_WHEN_ENDS)
+      : DEFAULT_WHEN_ENDS;
+  }
+
+  /**
+   * When the background video ends and what then (Session 55, Part 6), while nothing else is up over it (no slide, no
+   * box): the chosen wallpaper (the default, when one is chosen) or the next row. Null when nothing is to happen: no
+   * video, Loop (it goes round) or Freeze (its last picture stays, as with no wallpaper chosen), paused, or its length
+   * not known yet.
+   */
+  private videoEndFor(state: EngineState): { at: number; key: string; then: 'wallpaper' | 'next' } | null {
+    const bg = state.layers.background;
+    if (bg?.kind !== 'media' || bg.media !== 'video' || bg.loop || bg.seek?.paused === true) return null;
+    if (bg.durationMs === undefined || bg.durationMs <= 0) return null;
+    if (state.layers.slide !== null || state.layers.pip !== null || state.stopped) return null;
+    const then = this.whenEndsOf(state, bg.mediaId);
+    if (then === 'loop' || then === 'freeze') return null;
+    if (then === 'wallpaper' && !state.chosenWallpaper) return null;
+    const now = this.now();
+    const key = JSON.stringify([
+      bg.mediaId,
+      bg.startedAt,
+      bg.seek ?? null,
+      bg.clip ?? null,
+      bg.durationMs,
+      then,
+      state.chosenWallpaper ? 1 : 0,
+      state.live.playlist?.itemId ?? null,
+    ]);
+    return { at: now + playbackLeftMs(bg, bg.durationMs, now), key, then };
+  }
+
+  /** Wait for the background video to end (again when that changed), when something is to happen then. */
+  private scheduleVideoEnd(): void {
+    const found = this.videoEndFor(this.state);
+    if ((found?.key ?? null) === (this.endWait?.key ?? null)) return;
+    this.endWait?.cancel();
+    this.endWait = null;
+    if (!found) return;
+    const cancel = this.wait(Math.max(0, found.at - this.now()), () => {
+      if (this.endWait?.key === found.key) this.endWait = null;
+      this.videoEnded(found.key);
+    });
+    this.endWait = { key: found.key, cancel };
+  }
+
+  /**
+   * The background video has ended (Session 55, Part 6): the next row goes up, as Next would bring it, when its row
+   * says Next item and there is one; else, with a wallpaper chosen, the video goes, so nothing is up and the wallpaper
+   * shows (no change of the operator's: Back, Put it back and Oops are as they were). With none chosen it holds.
+   */
+  private videoEnded(key: string): void {
+    this.atOnce(() => {
+      const found = this.videoEndFor(this.state);
+      if (found?.key !== key) return;
+      // A timer can come a moment early (its clock and this one differ by a millisecond or so): wait again.
+      if (this.now() < found.at) {
+        this.scheduleVideoEnd();
+        return;
+      }
+      if (found.then === 'next') {
+        const moved = this.step(1);
+        if (moved.ok && moved.actions.length > 0) {
+          this.apply(moved.actions);
+          return;
+        }
+      }
+      if (!this.state.chosenWallpaper) return;
+      this.bookkeeping = true;
+      try {
+        this.apply([{ type: 'layer/clear', layer: 'background' }]);
+      } finally {
+        this.bookkeeping = false;
+      }
+    });
+  }
+
+  /**
    * Access by Gmail (Session 54): Drashti has stopped. Every screen, node, phone and the stream's picture fades to
    * black from now, by the engine's clock, and nothing changes the show after: no command, nothing moving on by
    * itself. For good: only Quit ends it.
@@ -2653,6 +2825,8 @@ export class ShowEngine {
   dispose(): void {
     this.zeroWait?.cancel();
     this.zeroWait = null;
+    this.endWait?.cancel();
+    this.endWait = null;
     this.cancelScheduled?.();
     this.cancelScheduled = null;
     this.scheduled = null;

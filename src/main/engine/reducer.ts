@@ -238,6 +238,10 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return state.blackout === action.on ? state : { ...state, blackout: action.on };
     case 'wallpaper/set':
       return state.wallpaper === action.on ? state : { ...state, wallpaper: action.on };
+    case 'chosenWallpaper/set':
+      return sameData(state.chosenWallpaper ?? null, action.wallpaper)
+        ? state
+        : { ...state, chosenWallpaper: action.wallpaper };
     case 'show/put':
       return state.live === action.live && state.layers === action.layers
         ? state

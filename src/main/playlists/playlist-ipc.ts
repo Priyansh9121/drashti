@@ -14,6 +14,7 @@ import {
   timerCuesSchema,
   templateRequestSchema,
 } from '../../shared/playlists';
+import { whenEndsSchema } from '../../shared/wallpapers';
 import type { PlaylistRepo } from '../db/playlists';
 import { handle } from '../ipc/handle';
 import type { StartupReads } from '../ipc/startup-reads';
@@ -265,6 +266,17 @@ export function registerPlaylistIpc({
       return repo.setTimers(id.data, c.data)
         ? { ok: true, ids: [id.data] }
         : failed('Only a presentation, media or passage item runs timers when it goes up.');
+    }),
+  );
+  // When it ends (Session 55, Part 6): a video row's Wallpaper, Next item, Loop or Freeze.
+  handle(IPC.playlists.setWhenEnds, (e, itemId, whenEnds) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(itemId);
+      const w = whenEndsSchema.safeParse(whenEnds);
+      if (!id.success || !w.success) return failed('That is not something a video can do when it ends.');
+      return repo.setWhenEnds(id.data, w.data)
+        ? { ok: true, ids: [id.data] }
+        : failed('Only a video’s row says what happens when it ends.');
     }),
   );
   // Duplicate (Session 55, Part 4): "<name> copy" beside it, with its rows in their order.

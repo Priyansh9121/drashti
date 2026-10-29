@@ -39,8 +39,10 @@ export function screensStateWords(state: EngineState, hall: HallPicture | null |
   if (hall?.off === true) return 'Audience screens off';
   if (state.blackout) return 'Audience screens black';
   if (state.wallpaper) return 'Wallpaper on the audience screens';
-  return state.layers.slide || state.layers.background
-    ? 'Audience screens showing'
+  if (state.layers.slide || state.layers.background) return 'Audience screens showing';
+  // Nothing up: the chosen wallpaper shows (Session 55, Part 6), or black.
+  return (state.chosenWallpaper?.pictures.length ?? 0) > 0
+    ? 'Wallpaper on the audience screens'
     : 'Nothing on the audience screens';
 }
 
