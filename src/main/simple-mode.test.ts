@@ -43,13 +43,8 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_LOCKED).toContain(IPC.setup.welcomeSeen);
   });
 
-  it('every Session 11 request that changes something: Looks, stage layouts, masks, MIDI', () => {
+  it('every Session 11 request that changes something: stage layouts, MIDI (Looks and masks went in Session 55)', () => {
     for (const channel of [
-      IPC.looks.create,
-      IPC.looks.rename,
-      IPC.looks.remove,
-      IPC.looks.move,
-      IPC.looks.setGroup,
       IPC.stageLayouts.save,
       IPC.stageLayouts.remove,
       // Session 55: Rename…, Undo of Delete, and the layout every stage screen shows.
@@ -57,21 +52,18 @@ describe('Simple Mode locks', () => {
       IPC.stageLayouts.restore,
       IPC.stageLayouts.choose,
       IPC.videoInputs.choose,
-      IPC.masks.save,
-      IPC.masks.remove,
       IPC.midi.set,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
     // Reading them is not locked, and neither is a window telling Drashti how long a file is.
-    for (const channel of [IPC.looks.list, IPC.masks.list, IPC.midi.get, IPC.media.reportLength])
+    for (const channel of [IPC.midi.get, IPC.media.reportLength])
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
-    // Switching the Look is an engine command: the engine refuses it (from anywhere) in Simple Mode, as it
-    // does zooming the live picture (Session 26e, Pro Mode's), setting up, swapping or moving a
+    // The engine refuses (from anywhere) in Simple Mode zooming the live picture (Session 26e, Pro Mode's; switching
+    // the Look was refused too, until Looks went in Session 55), setting up, swapping or moving a
     // picture-in-picture box (Session 50; taking one off is not refused), choosing a video input (Session 50:
     // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the time bar's move and the
     // skips (Session 54: Simple Mode shows the bar only).
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual([
-      'setLook',
       'zoomLive',
       'resetLiveZoom',
       'showPip',
@@ -110,8 +102,6 @@ describe('Simple Mode locks', () => {
     const everything = [
       { layer: 'background' },
       { layer: 'slide', mediaId: 'placeholder-video' },
-      { layer: 'props', propId: 'placeholder-prop', mediaId: 'placeholder-video' },
-      { layer: 'logo', mediaId: 'placeholder-video' },
       { layer: 'pip' },
       { layer: 'audio' },
     ] as const;
@@ -131,26 +121,22 @@ describe('Simple Mode locks', () => {
       expect(simpleModeRefuses({ type: 'pausePlaying', playing }, none), playing.layer).toBe(true);
     }
     expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump: 'back' }, music)).toBe(true);
-    // As before: a marker jump and Music's own buttons are not refused; switching the Look is.
+    // As before: a marker jump and Music's own buttons are not refused (switching the Look, refused here before, went
+    // with Looks in Session 55).
     expect(simpleModeRefuses({ type: 'jumpToMarker', layer: 'background', markerId: 'm1' }, sound)).toBe(
       false,
     );
     expect(simpleModeRefuses({ type: 'pauseMusic' }, music)).toBe(false);
     expect(simpleModeRefuses({ type: 'resumeMusic' }, music)).toBe(false);
-    expect(simpleModeRefuses({ type: 'setLook', lookId: 'placeholder-look' }, none)).toBe(true);
     expect(simpleModeRefuses({ type: 'next' }, none)).toBe(false);
   });
 
   it('every Session 12 request that changes something', () => {
     for (const channel of [
-      IPC.shastra.setTheme,
       IPC.shastra.remove,
       IPC.playlists.editSlot,
       IPC.playlists.setTimers,
       IPC.calendar.remove,
-      IPC.idle.saveSettings,
-      IPC.idle.saveQuote,
-      IPC.idle.removeQuote,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
     // Finding passages and reading the schedules stay.
@@ -161,7 +147,6 @@ describe('Simple Mode locks', () => {
       IPC.shastra.search,
       IPC.shastra.passage,
       IPC.calendar.view,
-      IPC.idle.view,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
   });
@@ -174,7 +159,7 @@ describe('Simple Mode locks', () => {
   });
 
   it('answers each in the shape its caller expects', () => {
-    expect(answers.get(IPC.props.save)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(answers.get(IPC.messages.create)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     expect(answers.get(IPC.library.pickImportPaths)?.()).toEqual([]);
     expect(answers.get(IPC.audio.setOutput)?.()).toBe(status);
     expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length);

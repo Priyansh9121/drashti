@@ -30,7 +30,12 @@ const FIRST = { DRASHTI_TEST_NO_WIZARD: '0', DRASHTI_TEST_SEED_PLACEHOLDERS: '' 
 const engine = (win: Page) =>
   win.evaluate(async () => {
     const snap = await (globalThis as PageGlobals).drashti.engine.snapshot();
-    return { rev: snap.rev, live: snap.state.live, blackout: snap.state.blackout, logo: snap.state.logo };
+    return {
+      rev: snap.rev,
+      live: snap.state.live,
+      blackout: snap.state.blackout,
+      wallpaper: snap.state.wallpaper,
+    };
   });
 
 /** The enabled primary buttons in the window, outside dialogs, by their words. */
@@ -155,7 +160,8 @@ test('the practice show: placeholder slides on this screen only, reaching no out
   await expectNoSeriousA11yIssues(win, 'the practice show');
   const thumbs = win.getByTestId('practice-thumb');
   await expect(thumbs).toHaveCount(5);
-  // Next, Next, Back, B, F12 and L (the logo: Session 50) and F1 work as in a show, on the window's own LIVE.
+  // Next, Next, Back, B, F12 (the Wallpaper: Session 55, in the logo's place) and F1 work as in a show, on the window's
+  // own LIVE.
   await win.keyboard.press('ArrowRight');
   await expect(thumbs.nth(0)).toHaveAttribute('aria-current', 'true');
   await expect(win.getByTestId('live-preview')).toContainText('Practice slide one');
@@ -167,8 +173,9 @@ test('the practice show: placeholder slides on this screen only, reaching no out
   await expect(win.getByTestId('blackout-button')).toHaveText(/Black-out is on/u);
   await win.keyboard.press('b');
   await win.keyboard.press('F12');
-  await expect(win.getByTestId('logo-button')).toHaveText(/Logo is on/u);
-  await win.keyboard.press('l');
+  await expect(win.getByTestId('wallpaper-button')).toHaveText(/Wallpaper is on/u);
+  await win.keyboard.press('F12');
+  await expect(win.getByTestId('wallpaper-button')).toHaveText(/^Wallpaper/u);
   await win.keyboard.press('F1');
   await expect(win.getByTestId('put-back')).toBeVisible();
   await win.getByTestId('put-back').click();

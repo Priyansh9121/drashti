@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { InputBackground, PipLayer, WindowBackground } from '../../../shared/engine/state';
 import { initialEngineState } from '../../../shared/engine/state';
-import { DEFAULT_LIVE_GROUP_LOOK, LOOK_LAYERS } from '../../../shared/looks';
+import { DEFAULT_LIVE_GROUP_LOOK, GROUP_LAYERS } from '../../../shared/looks';
 import { DEFAULT_PIP_PLACE } from '../../../shared/pip';
 import { namedBackground, unseenLive } from './named-background';
 
@@ -80,16 +80,15 @@ describe('the lines a stage box names over the hall’s picture where it cannot 
     const inBox = box({ kind: 'input', inputId: 'i1', name: 'Placeholder input', device: 'fake_device_0' });
     // This computer's own pages draw them.
     expect(unseenLive(up(input, inBox), look, true)).toEqual([]);
-    // Black-out and the logo cover them on the hall's screens.
+    // Black-out and the Wallpaper cover them on the hall's screens.
     expect(unseenLive({ ...up(input, inBox), blackout: true }, look, false)).toEqual([]);
-    const logo = { id: 'placeholder-logo', name: 'Placeholder logo', elements: [] };
-    expect(unseenLive({ ...up(input, inBox), logo }, look, false)).toEqual([]);
-    // A Look that leaves the background, or the box, out of the hall's group.
-    const noBackground = { ...look, layers: LOOK_LAYERS.filter((l) => l !== 'background') };
+    expect(unseenLive({ ...up(input, inBox), wallpaper: true }, look, false)).toEqual([]);
+    // A group that leaves the background, or the box, out (a key and fill pair, by its role).
+    const noBackground = { ...look, layers: GROUP_LAYERS.filter((l) => l !== 'background') };
     expect(unseenLive(up(input, inBox), noBackground, false)).toEqual([
       'Picture in picture: Placeholder input',
     ]);
-    const noBox = { ...look, layers: LOOK_LAYERS.filter((l) => l !== 'pip') };
+    const noBox = { ...look, layers: GROUP_LAYERS.filter((l) => l !== 'pip') };
     expect(unseenLive(up(input, inBox), noBox, false)).toEqual(['Video input: Placeholder input']);
     // Pictures, videos and the slides are drawn as small previews, never named.
     expect(unseenLive(up(null, box({ kind: 'slides' })), look, false)).toEqual([]);

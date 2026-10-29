@@ -467,7 +467,6 @@ test('Go back puts back only what the change changed: another group’s language
             { displayId: d, use: 'stage', languages: null },
           ],
           sound: 'skip',
-          themeId: null,
         },
         o,
       ),

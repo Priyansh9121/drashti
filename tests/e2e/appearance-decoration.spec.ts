@@ -112,7 +112,10 @@ for (const id of ['dhaja', 'tiranga']) {
  * the header's parts sit. Read from that build (this test's first version, run against it with
  * DRASHTI_E2E_APP_DIR) and written here; this build must draw the same. Session 44 moved one thing on purpose:
  * the left column is one section now (the playlists have it all, the library in a sheet over them), so the
- * first section under the header is the whole column, 587 px tall at 1280 by 720 (247 before).
+ * first section under the header is the whole column, 587 px tall at 1280 by 720 (247 before). Session 55 moved
+ * three on purpose: the top bar's Themes button went (Part 12), so LIVE's line is longer, 625 px (516 before); the
+ * bar of clears is 16 px less tall (Part 13), so that column is 603 px tall; and Audio's Music heading went (Part
+ * 13), so the first panel heading is the Stage screen panel's. Their colours are as they were.
  */
 const AT_9ED5D00: Record<string, unknown> = {
   black: {
@@ -120,24 +123,24 @@ const AT_9ED5D00: Record<string, unknown> = {
     name: ['rgb(245, 245, 247)', [16, 12, 95, 24]],
     stream: ['rgb(200, 200, 207)', 'rgba(0, 0, 0, 0)', [768, 8, 96, 32]],
     screens: ['rgb(245, 245, 247)', 'rgb(130, 130, 141)', 'rgb(27, 27, 31)', [1021, 8, 100, 32]],
-    live: ['rgb(245, 245, 247)', [127, 13, 516, 21]],
+    live: ['rgb(245, 245, 247)', [127, 13, 625, 21]],
     underline: ['rgb(138, 180, 248)'],
     row: ['oklab(0.76608 -0.0191589 -0.106575 / 0.7)', 'rgb(38, 38, 43)'],
     heading: ['rgb(200, 200, 207)'],
-    under: [0, 48, 300, 587],
-    headingText: 'Music',
+    under: [0, 48, 300, 603],
+    headingText: 'Stage screen',
   },
   white: {
     header: ['rgb(248, 248, 250)', 'rgb(17, 18, 22)', 'rgb(212, 214, 220)', [0, 0, 1280, 48]],
     name: ['rgb(17, 18, 22)', [16, 12, 95, 24]],
     stream: ['rgb(67, 70, 78)', 'rgba(0, 0, 0, 0)', [768, 8, 96, 32]],
     screens: ['rgb(17, 18, 22)', 'rgb(111, 115, 124)', 'rgb(255, 255, 255)', [1021, 8, 100, 32]],
-    live: ['rgb(17, 18, 22)', [127, 13, 516, 21]],
+    live: ['rgb(17, 18, 22)', [127, 13, 625, 21]],
     underline: ['rgb(29, 78, 216)'],
     row: ['oklab(0.488178 -0.0212675 -0.21611 / 0.7)', 'rgb(223, 225, 230)'],
     heading: ['rgb(67, 70, 78)'],
-    under: [0, 48, 300, 587],
-    headingText: 'Music',
+    under: [0, 48, 300, 603],
+    headingText: 'Stage screen',
   },
 };
 

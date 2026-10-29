@@ -10,13 +10,13 @@ import { installMenu, installNodeMenu } from './menu';
 
 /*
  * One press, one action (Session 50; its gaps closed in Session 51). The page answers the keymap's keys
- * (shared/keymap.ts), the ones the operators already press among them: F5 to F8 (moved in Session 50), F12 for
- * the logo, Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows) for the Audience and Stage screens. No menu of a
- * packaged Drashti answers one of them as well: no item in Main's menus or a node's, in Pro or Simple Mode, on
- * the Mac or on Windows, with diagnostics on or off, by its own accelerator or by its role's (the keys Electron
- * gives the role), but the item that is that key's own action's (OWN). Every key of the keymap is checked, each
- * menu key pressed as the page's own keyMatches hears it, whatever spelling it is written in. Nothing else built
- * in Drashti answers the operators' keys either: no key that works system-wide, and no key handler of a
+ * (shared/keymap.ts), the ones the operators already press among them: F5 to F7 (moved in Session 50), F12 for
+ * the Wallpaper (the Logo's until Session 55), Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows) for the Audience and
+ * Stage screens. No menu of a packaged Drashti answers one of them as well: no item in Main's menus or a node's, in Pro
+ * or Simple Mode, on the Mac or on Windows, with diagnostics on or off, by its own accelerator or by its role's (the
+ * keys Electron gives the role), but the item that is that key's own action's (OWN). Every key of the keymap is
+ * checked, each menu key pressed as the page's own keyMatches hears it, whatever spelling it is written in. Nothing
+ * else built in Drashti answers the operators' keys either: no key that works system-wide, and no key handler of a
  * window's own. Electron's menu is stood in for, so each menu is read just as it is built.
  */
 
@@ -39,8 +39,8 @@ const THEIRS: readonly { key: string; action: OperatorAction }[] = [
   { key: 'F5', action: 'clearAudio' },
   { key: 'F6', action: 'clearMessages' },
   { key: 'F7', action: 'clearTicker' },
-  { key: 'F8', action: 'clearMasks' },
-  { key: 'F12', action: 'toggleLogo' },
+  // F12 is the Wallpaper's (Session 55, the Logo's key); F8 went with Masks and does nothing.
+  { key: 'F12', action: 'toggleWallpaper' },
   { key: 'Mod+1', action: 'toggleAudience' },
   { key: 'Mod+2', action: 'toggleStage' },
 ];

@@ -81,7 +81,7 @@ export function LayoutSwitch({
 /** What the stream shows in a layout, within Session 9's rules (shared/program.ts). */
 export const LAYOUT_SHOWS: Record<StreamLayout, string> = {
   camera:
-    'The camera, with the slide’s words as a lower third along the bottom (six lines at most). Black-out and the logo are for the hall: the camera stays and the words go. Messages run along the top; masks are left out; the stage message never shows.',
+    'The camera, with the slide’s words as a lower third along the bottom (six lines at most). Black-out and the Wallpaper are for the hall: the camera stays and the words go. Messages run along the top; the stage message never shows.',
   slides:
     'What the hall sees, as the hall sees it, in the stream’s languages: black-out goes black, as in the hall. The stage message never shows.',
 };

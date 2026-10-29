@@ -26,7 +26,8 @@ import { makeTestImage } from './test-media';
  * stand-in: DRASHTI_TEST_WINDOW_STANDIN) and a picture-in-picture box show under it as on the hall's screen; with
  * Audience off it keeps the picture and says so in a corner, and the box of the audience screens' state says off;
  * a tablet draws it from its pictures, as the phone remote's picture does, naming a window it cannot draw; a
- * node with no audience screen of its own draws Main's hall as the live Look sets it, never every layer. Since
+ * node with no audience screen of its own draws Main's hall as its group draws it (as the live Look set it until
+ * Session 55), never every layer. Since
  * Session 52 it says Audience off in the picture's bottom left corner, where a stage message along the top never
  * covers it, and with no audience group at all it is black and says so in one short line, never every layer: on
  * this computer's stage screen (read in a small box, inside a tiny one), a tablet's and a node's. Since Session 53
@@ -227,7 +228,8 @@ async function slideOverColour(win: Page): Promise<void> {
 
 /**
  * What a picture of the show draws, read from its Scene (as stage-layouts.spec.ts reads it): its canvas and
- * Look's layers, the background's colour, the slide's words, the messages, black-out and the logo.
+ * group's layers, the background's colour, the slide's words, the messages, black-out and the Wallpaper (the logo
+ * until Session 55).
  */
 const sceneOn = (scene: Locator) =>
   scene.evaluate((root) => {
@@ -240,7 +242,7 @@ const sceneOn = (scene: Locator) =>
       words: slide ? slide.innerText.replace(/\s+/gu, ' ').trim() : null,
       messages: [...root.querySelectorAll<HTMLElement>('[data-message]')].map((m) => m.innerText.trim()),
       blackout: root.querySelector('[data-testid="blackout"]') !== null,
-      logo: root.querySelector('[data-testid="logo"]') !== null,
+      wallpaper: root.querySelector('[data-testid="wallpaper"]') !== null,
     };
   });
 
@@ -705,7 +707,7 @@ async function nodeDisplays(win: Page, nodeId: string): Promise<number[]> {
   );
 }
 
-test('on a node with no audience screen, the stage box draws Main’s hall as the live Look sets it, and says Audience off and no audience screens', async () => {
+test('on a node with no audience screen, the stage box draws Main’s hall as its group draws it, and says Audience off and no audience screens', async () => {
   test.setTimeout(240_000);
   const main = await launchMain();
   const node = await launchNode();
@@ -727,14 +729,8 @@ test('on a node with no audience screen, the stage box draws Main’s hall as th
     await outputReady(hall);
     await outputReady(nodeStage);
 
-    // The hall's Look leaves the messages out: its screen shows none, and the node's box none either.
-    await main.win.evaluate(async (group) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const set = await d.looks.setGroup((await d.looks.list()).liveId, group, {
-        layers: ['background', 'slide', 'props', 'pip', 'ticker', 'masks'],
-      });
-      if (!set.ok) throw new Error(set.message);
-    }, hallGroup);
+    // The hall's group draws its message, and the node's box the same (a Look could leave the messages out of a
+    // group until Session 55: then neither showed them).
     await slideOverColour(main.win);
     await dispatch(main.win, {
       type: 'showMessage',
@@ -749,7 +745,7 @@ test('on a node with no audience screen, the stage box draws Main’s hall as th
         canvas: '1920x1080',
         background: 'rgb(31, 111, 139)',
         words: expect.stringMatching(WORDS),
-        messages: [],
+        messages: ['Placeholder message for the hall'],
       });
     await expect.poll(() => sceneOn(box.getByTestId('scene'))).toEqual(await sceneOn(inHall));
     const screensState = nodeStage.locator('[data-stage-box="screensState"]');

@@ -35,17 +35,18 @@ import { undoChanges } from './screens-setup';
 
 const sameLanguages = (a: Lang[] | null, b: Lang[] | null) => JSON.stringify(a) === JSON.stringify(b);
 
-/** What screen changes do to the Looks (look-service.ts), which hold each group's languages. */
+/**
+ * What screen changes do to each group's languages (look-service.ts: since Session 55 set in Screens, and kept where
+ * Drashti kept them since Session 11, in the library's first Look).
+ */
 export interface ScreenLooks {
-  /** A group's languages in the live Look. */
+  /** A group's languages, as its screens show them. */
   liveLanguages(groupId: string): Lang[] | null;
   setLiveLanguages(groupId: string, languages: Lang[] | null): boolean;
   /** A new group, with these languages in every Look (null: every language). */
   groupMade(groupId: string, languages?: Lang[] | null): void;
   groupsChanged(): void;
   groupGone(groupId: string): void;
-  /** A group became a key and fill pair: in every Look it starts with the words as a lower third, props and messages. */
-  becameKeyFill(groupId: string): void;
   /** Every Look's settings for every group (Keep these screens?: what Go back may put back). */
   everyLook(): LooksSettings;
   /** Groups' settings put back in Looks as they were (Go back): only those that differ from now change. */
@@ -68,7 +69,6 @@ export function memoryScreenLooks(): ScreenLooks {
     groupGone: (id) => {
       langs.delete(id);
     },
-    becameKeyFill: () => undefined,
     everyLook: () => ({
       live: Object.fromEntries(
         [...langs].map(([id, l]): [string, GroupLook] => [id, { ...DEFAULT_GROUP_LOOK, languages: l }]),
@@ -145,7 +145,8 @@ export class ScreensService {
   snapshot(): ScreensSnapshot {
     return {
       displays: this.listDisplays(),
-      groups: this.repo.groups(),
+      // Each group with its languages (Session 55: Screens has them, now that Looks are gone from the window).
+      groups: this.repo.groups().map((g) => ({ ...g, languages: this.looks.liveLanguages(g.id) })),
       status: [...this.outputs.status(), ...this.nodes.screenStatus()],
       nodes: this.nodes.displays(),
       uses: this.uses(),
@@ -298,15 +299,14 @@ export class ScreensService {
       return this.fail('A group shows the audience picture, the stage view, or a key and fill pair.');
     if (this.repo.groupRole(id.data) === 'stream')
       return this.fail('The stream group always shows the stream.');
-    const was = this.repo.groupRole(id.data);
     if (!this.repo.setGroupRole(id.data, role.data)) return this.fail('That group no longer exists.');
     this.repo.fixFeeds(id.data);
-    if (role.data === 'keyfill' && was !== 'keyfill') this.looks.becameKeyFill(id.data);
+    // A key and fill pair draws what its role gives it (shared/looks.ts roleLook): the screens follow at once.
     this.looks.groupsChanged();
     return this.done();
   }
 
-  /** The languages a group shows of a kirtan's slides in the live Look, in order; null for all of them. */
+  /** The languages a group shows of a kirtan's slides, in order; null for all of them. */
   setGroupLanguages(rawId: unknown, rawLanguages: unknown): ScreensResult {
     const id = idSchema.safeParse(rawId);
     const languages = groupLanguagesSchema.safeParse(rawLanguages);

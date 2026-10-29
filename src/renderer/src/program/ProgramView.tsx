@@ -7,7 +7,7 @@ import type { Size } from '../../../shared/scaling';
 import type { StreamLayout } from '../../../shared/stream';
 import { MovingLowerThird } from '../render/LowerThird';
 import { LowerThirdView } from '../render/LowerThirdView';
-import { MessageBanner, PropsLayer, Scene } from '../render/Scene';
+import { MessageBanner, Scene } from '../render/Scene';
 import { FULL_FRAME_LAYERS, fullFrameState } from './full-frame';
 
 function CameraVideo({ stream }: { stream: MediaStream | null }) {
@@ -85,8 +85,8 @@ export function ProgramView({
       <CameraVideo stream={camera} />
       {picture.full && (
         <div style={{ position: 'absolute', inset: 0, background: '#000000' }} data-testid="program-full">
-          {/* The hall's picture (Session 51): its background, slide and props with the picture-in-picture box
-              over them, as the Slides layout draws them; a video input (Session 50) only with a box up. */}
+          {/* The hall's picture (Session 51): its background and slide with the picture-in-picture box over them,
+              as the Slides layout draws them; a video input (Session 50) only with a box up. */}
           <Scene
             state={hall}
             canvas={canvas}
@@ -108,10 +108,6 @@ export function ProgramView({
         canvas={canvas}
         movement={movement}
       />
-      {/* Over the camera; at full frame the hall's picture has them, under the box. */}
-      {picture.props && !picture.full && (
-        <PropsLayer props={state.layers.props} canvas={canvas} scaling="fit" />
-      )}
       {/* A lower third from the Lower Thirds panel, for the stream (Session 44). */}
       <LowerThirdView
         layer={state.layers.lowerThird}

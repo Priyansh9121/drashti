@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { EASE } from '../../src/renderer/src/render/easing';
 import { dipsAndOvershoots, type FrameLight, swings } from '../../src/shared/flash';
 import { MAX_TRANSITION_MS, TRANSITION_KINDS, type TransitionKind } from '../../src/shared/model';
-import type { Movement } from '../../src/shared/looks';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -28,6 +27,7 @@ import {
   holdClock,
   makeSlides,
   plain,
+  setMovement,
   setTransition,
 } from './placeholder-slides';
 
@@ -68,15 +68,6 @@ async function outputFor(app: ElectronApplication, screenId: string): Promise<Pa
   if (!found) throw new Error(`no output for ${screenId}`);
   return found;
 }
-
-/** The audience group's Movement in the live Look (an admin's choice in Screens). */
-const setMovement = (win: Page, movement: Movement) =>
-  win.evaluate(async (movement) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const group = (await d.screens.get()).groups.find((g) => g.role === 'audience')?.id ?? '';
-    const set = await d.looks.setGroup((await d.engine.snapshot()).state.look.id, group, { movement });
-    if (!set.ok) throw new Error(set.message);
-  }, movement);
 
 /** Wait until `out` draws the slide layer at `p` of its transition (1: done). */
 async function drawnAt(out: Page, p: number): Promise<void> {
@@ -175,7 +166,7 @@ test('every transition at its shortest, Calm and Bold: at most 3 swings a second
   const table: string[] = [];
   const failures: string[] = [];
   for (const movement of ['calm', 'bold'] as const) {
-    await setMovement(win, movement);
+    await setMovement(app, movement);
     await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
     for (const kind of KINDS) {
       await setTransition(win, id, { kind, durationMs: SHORTEST });
@@ -221,24 +212,22 @@ test('a key and fill pair: the key is the fill’s light at held moments of ever
   });
   const win = await operatorPage(app);
   await operatorReady(win);
-  // White blocks on nothing: the fill draws them over black, the key draws where they are, white.
-  const id = await makeSlides(
-    win,
-    'Placeholder key slides',
-    [
-      {
-        shapes: [{ x: 160, y: 200, width: 640, height: 680, fill: '#ffffff' }],
-        words: 'Placeholder words one\nPlaceholder line two',
-        wordsColor: '#ffffff',
-      },
-      {
-        shapes: [{ x: 1120, y: 200, width: 640, height: 680, fill: '#ffffff' }],
-        words: 'Placeholder words three\nPlaceholder line four',
-        wordsColor: '#ffffff',
-      },
-    ],
-    { kind: 'cut', durationMs: 0 },
-  );
+  // White blocks on nothing: the fill draws them over black, the key draws where they are, white. Pictures with no
+  // words, as a key and fill group draws a picture slide whole (its words would come as a lower third: Session 55,
+  // Part 12, a key and fill group's slides by its role), each a white block on a see-through picture.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-key-'));
+  const [left = '', right = ''] = await importAndGetIds(win, [
+    await drawPicture(win, join(dir, 'Placeholder left block.png'), [
+      { x: 160 / 1920, y: 200 / 1080, width: 640 / 1920, height: 680 / 1080, rgb: '255,255,255' },
+    ]),
+    await drawPicture(win, join(dir, 'Placeholder right block.png'), [
+      { x: 1120 / 1920, y: 200 / 1080, width: 640 / 1920, height: 680 / 1080, rgb: '255,255,255' },
+    ]),
+  ]);
+  const id = await makeSlides(win, 'Placeholder key slides', [{ picture: left }, { picture: right }], {
+    kind: 'cut',
+    durationMs: 0,
+  });
   // The main display and the test's pretend one, a copy of it (CI's two), however many this computer has: the
   // fill's and the key's windows on one physical screen, so their pixels are read alike.
   const on = (await testDisplays(win)).map((x) => x.id);
@@ -253,10 +242,6 @@ test('a key and fill pair: the key is the fill’s light at held moments of ever
       const used = await d.screens.assignDisplay(group?.id ?? '', id, { coverOperator: true });
       if (!used.ok) throw new Error(used.message);
     }
-    // As designed, not as a lower third (a key and fill group starts with that): blocks with no words.
-    const look = (await d.engine.snapshot()).state.look.id;
-    const set = await d.looks.setGroup(look, group?.id ?? '', { slides: 'designed' });
-    if (!set.ok) throw new Error(set.message);
     return (await d.screens.get()).groups.find((g) => g.id === group?.id)?.screens ?? [];
   }, on);
   expect(screens.map((s) => s.feed)).toEqual(['fill', 'key']);
@@ -269,12 +254,9 @@ test('a key and fill pair: the key is the fill’s light at held moments of ever
   // are not alike by design while it runs.
   for (const movement of ['calm', 'bold'] as const)
     for (const kind of KINDS.filter((k) => k !== 'fade-black')) {
-      await win.evaluate(async (movement) => {
-        const d = (globalThis as PageGlobals).drashti;
-        const group = (await d.screens.get()).groups.find((g) => g.role === 'keyfill')?.id ?? '';
-        const set = await d.looks.setGroup((await d.engine.snapshot()).state.look.id, group, { movement });
-        if (!set.ok) throw new Error(set.message);
-      }, movement);
+      await setMovement(app, movement);
+      for (const out of [fill, key])
+        await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
       await setTransition(win, id, { kind, durationMs: SHORTEST });
       const [f = [], k = []] = await framesOf(app, win, [fill, key], id, 0, 1, SHORTEST);
       for (const [i, light] of f.entries()) {
@@ -317,7 +299,8 @@ test('a screen reloaded part-way through any transition shows the new slide whol
   const RIGHT = { x: 1440, y: 540 };
   for (const movement of ['calm', 'bold'] as const)
     for (const kind of KINDS) {
-      await setMovement(win, movement);
+      await setMovement(app, movement);
+      await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
       await setTransition(win, id, { kind: 'cut', durationMs: 0 });
       await goLive(win, id, 0);
       await expect(out.locator('[data-layer="slide"] img')).toHaveCount(1);
@@ -428,7 +411,7 @@ test('every move draws the words apart where it should: the pictures and the bac
     got !== undefined && want.every((c, i) => Math.abs((got[i] ?? -999) - c) <= within);
   const failures: string[] = [];
   const run = async (movement: 'calm' | 'bold', kind: TransitionKind, apart: string | null, label = '') => {
-    await setMovement(win, movement);
+    await setMovement(app, movement);
     await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
     await setTransition(win, id, { kind, durationMs: MS });
     await holdClock(app, null);

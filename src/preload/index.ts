@@ -271,13 +271,6 @@ const bridge: DrashtiBridge = {
       }),
     onSmartChanged: (listener) => on(IPC.playlists.smartChanged, listener),
   },
-  props: {
-    list: () => invoke(IPC.props.list),
-    save: (propId, fields) => invoke(IPC.props.save, propId, fields),
-    remove: (propId) => invoke(IPC.props.remove, propId),
-    getLogo: () => invoke(IPC.props.getLogo),
-    setLogo: (propId) => invoke(IPC.props.setLogo, propId),
-  },
   appearance: {
     view: () => invoke(IPC.appearance.view),
     choose: (choice) => invoke(IPC.appearance.choose, choice),
@@ -292,15 +285,6 @@ const bridge: DrashtiBridge = {
       on(IPC.appearance.changed, () => {
         listener();
       }),
-  },
-  themes: {
-    list: () => invoke(IPC.themes.list),
-    save: (themeId, fields) => invoke(IPC.themes.save, themeId, fields),
-    remove: (themeId) => invoke(IPC.themes.remove, themeId),
-    setDefault: (themeId) => invoke(IPC.themes.setDefault, themeId),
-    apply: (themeId, presentationIds) => invoke(IPC.themes.apply, themeId, presentationIds),
-    fromPresentation: (presentationId) => invoke(IPC.themes.fromPresentation, presentationId),
-    fromSlide: (name, slide) => invoke(IPC.themes.fromSlide, name, slide),
   },
   messages: {
     list: () => invoke(IPC.messages.list),
@@ -497,19 +481,6 @@ const bridge: DrashtiBridge = {
     onAsk: (listener) => on(IPC.midi.ask, listener),
     onChanged: (listener) => on(IPC.midi.changed, listener),
   },
-  masks: {
-    list: () => invoke(IPC.masks.list),
-    onChanged: (listener) => on(IPC.masks.changed, listener),
-    save: (maskId, mask) => invoke(IPC.masks.save, maskId, mask),
-    remove: (maskId) => invoke(IPC.masks.remove, maskId),
-  },
-  idle: {
-    view: () => invoke(IPC.idle.view),
-    onChanged: (listener) => on(IPC.idle.changed, listener),
-    saveSettings: (settings) => invoke(IPC.idle.saveSettings, settings),
-    saveQuote: (quoteId, quote) => invoke(IPC.idle.saveQuote, quoteId, quote),
-    removeQuote: (quoteId) => invoke(IPC.idle.removeQuote, quoteId),
-  },
   calendar: {
     view: () => invoke(IPC.calendar.view),
     onChanged: (listener) => on(IPC.calendar.changed, listener),
@@ -522,7 +493,6 @@ const bridge: DrashtiBridge = {
     search: (query) => invoke(IPC.shastra.search, query),
     passage: (passageId) => invoke(IPC.shastra.passage, passageId),
     itemPassage: (itemId) => invoke(IPC.shastra.itemPassage, itemId),
-    setTheme: (textId, themeId) => invoke(IPC.shastra.setTheme, textId, themeId),
     remove: (textId) => invoke(IPC.shastra.remove, textId),
   },
   stageLayouts: {
@@ -533,15 +503,6 @@ const bridge: DrashtiBridge = {
     rename: (layoutId, name) => invoke(IPC.stageLayouts.rename, layoutId, name),
     restore: (layout, at, chosen) => invoke(IPC.stageLayouts.restore, layout, at, chosen),
     choose: (layoutId) => invoke(IPC.stageLayouts.choose, layoutId),
-  },
-  looks: {
-    list: () => invoke(IPC.looks.list),
-    onChanged: (listener) => on(IPC.looks.changed, listener),
-    create: (name, copyOf) => invoke(IPC.looks.create, name, copyOf),
-    rename: (lookId, name) => invoke(IPC.looks.rename, lookId, name),
-    remove: (lookId) => invoke(IPC.looks.remove, lookId),
-    move: (lookId, to) => invoke(IPC.looks.move, lookId, to),
-    setGroup: (lookId, groupId, patch) => invoke(IPC.looks.setGroup, lookId, groupId, patch),
   },
   screens: {
     get: () => invoke(IPC.screens.get),

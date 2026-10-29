@@ -16,6 +16,7 @@ import {
   outputPages,
   setUpScreen,
   showExtras,
+  testDisplays,
 } from './helpers';
 
 /*
@@ -179,7 +180,7 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   await expect(panel.getByText('Nothing found')).toBeVisible();
   await search.fill('');
 
-  // Texts…: each text's theme, and Remove (asking first). Pro Mode only.
+  // Texts…: Remove (asking first; each text's theme went with Themes, Session 55). Pro Mode only.
   await panel.getByTestId('open-shastra-texts').click();
   const dialog = win.getByTestId('shastra-texts-dialog');
   await expect(dialog.getByTestId('shastra-text-row')).toHaveCount(2);
@@ -190,15 +191,12 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   const refused = await win.evaluate(async (id) => {
     const d = (globalThis as PageGlobals).drashti;
     await d.app.setMode('simple');
-    const r = [await d.shastra.remove(id), await d.shastra.setTheme(id, null)];
+    const r = [await d.shastra.remove(id)];
     // Leaving Simple Mode takes the word.
     await d.app.setMode('pro', 'pro');
     return r;
   }, textId);
-  expect(refused).toEqual([
-    { ok: false, message: SIMPLE_MODE_REFUSAL },
-    { ok: false, message: SIMPLE_MODE_REFUSAL },
-  ]);
+  expect(refused).toEqual([{ ok: false, message: SIMPLE_MODE_REFUSAL }]);
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
   await win.getByTestId('open-shastra-texts').click();
   await win
@@ -327,19 +325,29 @@ test('each group shows its own languages, Sanskrit in either script, and a lower
   await showExtras(win);
   await load(win, [exampleFiles().granth]);
   const hallId = await setUpScreen(win, 'Placeholder hall', 0);
-  const sideId = await setUpScreen(win, 'Placeholder side', 1);
+  // The side: a key and fill group (its fill), which draws slides as a lower third (by its role since Session 55: a
+  // Look made an audience group do it until then).
+  const sideDisplay = (await testDisplays(win))[1]?.id ?? -1;
+  const sideId = await win.evaluate(async (displayId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.screens.createGroup('Placeholder side');
+    if (!made.ok) throw new Error(made.message);
+    const group = made.snapshot.groups.find((g) => g.name === 'Placeholder side')?.id ?? '';
+    const role = await d.screens.setGroupRole(group, 'keyfill');
+    if (!role.ok) throw new Error(role.message);
+    const used = await d.screens.assignDisplay(group, displayId, { coverOperator: true });
+    if (!used.ok) throw new Error(used.message);
+    if ((await d.screens.pending()) !== null) await d.screens.keep();
+    return used.snapshot.groups.find((g) => g.id === group)?.screens[0]?.id ?? '';
+  }, sideDisplay);
   const [hall, side] = [await outputFor(app, hallId), await outputFor(app, sideId)];
   // The hall: Sanskrit in Gujarati script and the Gujarati meaning; the side: Devanagari and English, as a lower third.
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    const looks = await d.looks.list();
     const screens = await d.screens.get();
     const group = (name: string) => screens.groups.find((g) => g.name === name)?.id ?? '';
-    await d.looks.setGroup(looks.liveId, group('Placeholder hall'), { languages: ['sa-gu', 'gu'] });
-    await d.looks.setGroup(looks.liveId, group('Placeholder side'), {
-      languages: ['sa', 'en'],
-      slides: 'lowerThird',
-    });
+    await d.screens.setGroupLanguages(group('Placeholder hall'), ['sa-gu', 'gu']);
+    await d.screens.setGroupLanguages(group('Placeholder side'), ['sa', 'en']);
     await d.engine.dispatch({ type: 'goLive', presentationId: 'shastra:pg#3', slideIndex: 0 });
   });
   const runs = (out: Page) =>

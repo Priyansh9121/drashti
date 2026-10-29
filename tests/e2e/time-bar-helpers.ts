@@ -53,20 +53,6 @@ export async function boxTiming(win: Page, mediaId: string): Promise<Timing> {
   return { startedAt: box.shownAt, loop: true, clip: box.clips?.[mediaId], seek: box.seeks?.[mediaId] };
 }
 
-/** A prop's video's timing, by the prop and the file (a prop's own videos have no bar: the engine moves them). */
-export async function propTiming(win: Page, propId: string, mediaId: string, loop: boolean): Promise<Timing> {
-  const prop = (await snapshot(win)).layers.props.find((p) => p.id === propId);
-  if (!prop?.shownAt) throw new Error('no prop');
-  return { startedAt: prop.shownAt, loop, clip: prop.clips?.[mediaId], seek: prop.seeks?.[mediaId] };
-}
-
-/** The logo's video's timing (Session 54, the owner's answer of 28 Oct: it has a bar too). */
-export async function logoTiming(win: Page, mediaId: string, loop: boolean): Promise<Timing> {
-  const logo = (await snapshot(win)).logo;
-  if (!logo?.shownAt) throw new Error('no logo');
-  return { startedAt: logo.shownAt, loop, clip: logo.clips?.[mediaId], seek: logo.seeks?.[mediaId] };
-}
-
 /** The sound's timing. */
 export async function soundTiming(win: Page): Promise<Timing> {
   const a = (await snapshot(win)).layers.audio;

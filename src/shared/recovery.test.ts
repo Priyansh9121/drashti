@@ -26,11 +26,11 @@ describe('the recovery notice', () => {
     );
   });
 
-  it('names the sound, props, messages, the stage message and timers', () => {
+  it('names the sound, messages, the stage message, timers and the Wallpaper', () => {
     expect(
-      recoveryText({ ...notice, audio: true, props: 2, messages: 1, stageMessage: true, timers: 3 }),
+      recoveryText({ ...notice, audio: true, messages: 1, stageMessage: true, timers: 3, wallpaper: true }),
     ).toBe(
-      'Drashti stopped unexpectedly and has put back what was live: the sound, 2 props, a message, the stage message and 3 timers.',
+      'Drashti stopped unexpectedly and has put back what was live: the sound, a message, the stage message, 3 timers and the wallpaper.',
     );
   });
 

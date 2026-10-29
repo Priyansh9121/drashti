@@ -1,10 +1,9 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import type { Movement } from '../../src/shared/looks';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
 import { launchApp, letTimePass, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
-import { engineState, holdClock } from './placeholder-slides';
+import { engineState, holdClock, setMovement } from './placeholder-slides';
 
 /*
  * A message banner's and the ticker band's entrance (Session 27, the design lab's): Calm fades in in place,
@@ -15,14 +14,6 @@ import { engineState, holdClock } from './placeholder-slides';
 
 const dispatch = (win: Page, command: unknown) =>
   win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
-
-const setMovement = (win: Page, movement: Movement) =>
-  win.evaluate(async (movement) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const group = (await d.screens.get()).groups.find((g) => g.role === 'audience')?.id ?? '';
-    const set = await d.looks.setGroup((await d.engine.snapshot()).state.look.id, group, { movement });
-    if (!set.ok) throw new Error(set.message);
-  }, movement);
 
 /** An element's entrance as it is drawn now: how far in (ms; '' when in place), its opacity and transform. */
 const entering = (out: Page, selector: string) =>
@@ -42,7 +33,7 @@ test('a message banner comes in from when it went up, Calm and Bold; an update o
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
   const banner = '[data-layer="messages"]';
   for (const movement of ['calm', 'bold'] as const) {
-    await setMovement(win, movement);
+    await setMovement(app, movement);
     await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
     await holdClock(app, Date.now() - 60_000);
     await dispatch(win, { type: 'showMessage', message: { id: 'm1', text: 'Placeholder message one' } });
@@ -88,7 +79,8 @@ test('the ticker’s band comes in once, from its own time; another announcement
   await setUpScreen(win);
   const out = await outputPage(app);
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
-  await setMovement(win, 'bold');
+  await setMovement(app, 'bold');
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', 'bold');
   const { port } = await networkOn(win);
   const token = await pairToken(win, port, 'announcements', 'Placeholder poster');
   const announce = async (text: string) => {

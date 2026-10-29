@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { IDLE_WHEN_NAMES } from '../../../shared/idle';
-import type { GroupLook, LookInfo } from '../../../shared/looks';
-import { DEFAULT_GROUP_LOOK, groupLookIn, LOOK_LAYER_NAMES, LOOK_LAYERS } from '../../../shared/looks';
+import type { LiveGroupLook } from '../../../shared/looks';
+import { groupLookIn } from '../../../shared/looks';
 import type { Lang } from '../../../shared/model';
 import { programPicture } from '../../../shared/program';
 import type { ScreenGroupConfig } from '../../../shared/screens';
@@ -26,14 +25,14 @@ import type { Icon } from '../ui/icons';
 import { Camera, LayoutTemplate, Monitor, Radio, Search, Settings, Tv, Wand2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
-import { GroupLookSettings } from './LookSettings';
+import { GroupLanguages } from './GroupLanguages';
 import { useScreens } from './screens-store';
 
 /*
  * Screens' three cards (Session 26): the projector (the audience groups),
- * the stage screen and YouTube (the stream), each with a small preview, the
- * Look whose settings it shows and what it shows. The displays, the nodes
- * and the groups' own settings are below them.
+ * the stage screen and YouTube (the stream), each with a small preview and
+ * what it shows (Session 55: no Look any more). The displays, the nodes and
+ * the groups' own settings are below them.
  *
  * YouTube's card holds the stream's layout, camera and sound input and
  * languages: the same settings the Stream panel shows. Opening Screens
@@ -89,25 +88,16 @@ function Card({
 const languageWords = (languages: readonly Lang[] | null) =>
   languages ? languages.map((l) => LANG_NAMES[l]).join(', ') : 'every language';
 
-/** A group's settings in a Look, in words. */
-function shownWords(settings: GroupLook): string {
+/** What a group's screens show, in words. */
+function shownWords(settings: LiveGroupLook): string {
   const slides = settings.slides === 'lowerThird' ? 'The words as a lower third' : 'The slides as designed';
-  const layers = LOOK_LAYERS.every((l) => settings.layers.includes(l))
-    ? 'every layer'
-    : settings.layers.length === 0
-      ? 'no layers'
-      : settings.layers.map((l) => LOOK_LAYER_NAMES[l].toLowerCase()).join(', ');
-  return `${slides}, in ${languageWords(settings.languages)}; ${layers}. When nothing is up: ${IDLE_WHEN_NAMES[settings.idle].toLowerCase()}.`;
+  return `${slides}, in ${languageWords(settings.languages)}.`;
 }
 
-/** The Look whose settings a card shows (the live one unless another is chosen under Screen groups). */
-function LookLine({ look }: { look: LookInfo }) {
-  const liveId = useEngine((s) => s.state?.look.id ?? '');
-  return (
-    <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted" data-testid="card-look">
-      In the Look “{look.name}”{look.id === liveId && <Badge tone="live">Live</Badge>}
-    </p>
-  );
+/** A group's settings as its screens draw them now (the engine's state), the defaults until it is told. */
+function useGroupLook(groupId: string | null): LiveGroupLook {
+  const state = useEngine((s) => s.state);
+  return groupLookIn(state?.look, groupId);
 }
 
 /** How many of a group's screens show now. */
@@ -194,18 +184,16 @@ function ProjectorPreview({ group }: { group: ScreenGroupConfig | null }) {
 
 function ProjectorCard({
   groups,
-  look,
   toGroup,
   onClose,
 }: {
   groups: ScreenGroupConfig[];
-  look: LookInfo | null;
   toGroup: (id: string) => void;
   onClose: () => void;
 }) {
   const showing = useShowing(groups);
   const first = groups[0] ?? null;
-  const settings = first && look ? (look.groups[first.id] ?? DEFAULT_GROUP_LOOK) : null;
+  const settings = useGroupLook(first?.id ?? null);
   return (
     <Card
       testId="screens-card-projector"
@@ -214,9 +202,8 @@ function ProjectorCard({
       badge={<ShowingBadge count={[...showing.values()].reduce((a, b) => a + b, 0)} />}
       preview={<ProjectorPreview group={first} />}
     >
-      {first && look && settings ? (
+      {first ? (
         <>
-          <LookLine look={look} />
           <p className="text-sm" data-testid="card-shows">
             {shownWords(settings)}
           </p>
@@ -244,20 +231,18 @@ function ProjectorCard({
 
 function StageCard({
   groups,
-  look,
   toGroup,
   onClose,
 }: {
   groups: ScreenGroupConfig[];
-  look: LookInfo | null;
   toGroup: (id: string) => void;
   onClose: () => void;
 }) {
   const showing = useShowing(groups);
-  // The layout every stage screen shows (Session 55: chosen in the Stage screen panel, never per Look).
+  // The layout every stage screen shows (Session 55: chosen in the Stage screen panel).
   const chosen = useEngine((s) => s.state?.stage?.layout ?? null);
   const first = groups[0] ?? null;
-  const settings = first && look ? (look.groups[first.id] ?? DEFAULT_GROUP_LOOK) : null;
+  const settings = useGroupLook(first?.id ?? null);
   return (
     <Card
       testId="screens-card-stage"
@@ -266,9 +251,8 @@ function StageCard({
       badge={<ShowingBadge count={[...showing.values()].reduce((a, b) => a + b, 0)} />}
       preview={first ? <StagePreview className="w-full" /> : <div className={PREVIEW} aria-hidden="true" />}
     >
-      {first && look && settings ? (
+      {first ? (
         <>
-          <LookLine look={look} />
           <p className="text-sm" data-testid="card-shows">
             The performers’ view in the {chosen ? `“${chosen.name}”` : 'Standard'} stage layout, in{' '}
             {languageWords(settings.languages)}. The audience never sees it.
@@ -463,15 +447,7 @@ function StreamInputs({
   );
 }
 
-function YouTubeCard({
-  group,
-  look,
-  onClose,
-}: {
-  group: ScreenGroupConfig | null;
-  look: LookInfo | null;
-  onClose: () => void;
-}) {
+function YouTubeCard({ group, onClose }: { group: ScreenGroupConfig | null; onClose: () => void }) {
   const status = useStream((s) => s.status);
   const error = useStream((s) => s.error);
   // The camera and sound input lists were asked for: the stream's page runs for them while the card is open.
@@ -506,7 +482,7 @@ function YouTubeCard({
               }}
             />
           )}
-          {look && group && <GroupLookSettings look={look} groupId={group.id} role="stream" />}
+          {group && <GroupLanguages groupId={group.id} role="stream" />}
           {error && (
             <Notice tone="danger" onDismiss={() => useStream.setState({ error: null })}>
               {error}
@@ -547,8 +523,8 @@ function YouTubeCard({
   );
 }
 
-/** The three cards, at the top of Screens. `look`: the Look whose settings they show. */
-export function ScreenCards({ look, onClose }: { look: LookInfo | null; onClose: () => void }) {
+/** The three cards, at the top of Screens. */
+export function ScreenCards({ onClose }: { onClose: () => void }) {
   const groups = useScreens((s) => s.snapshot?.groups);
   useEffect(() => {
     connectStream();
@@ -565,17 +541,11 @@ export function ScreenCards({ look, onClose }: { look: LookInfo | null; onClose:
     <section className="space-y-3" data-testid="screens-cards" aria-label="The screens">
       <ProjectorCard
         groups={groups.filter((g) => g.role === 'audience')}
-        look={look}
         toGroup={toGroup}
         onClose={onClose}
       />
-      <StageCard
-        groups={groups.filter((g) => g.role === 'stage')}
-        look={look}
-        toGroup={toGroup}
-        onClose={onClose}
-      />
-      <YouTubeCard group={groups.find((g) => g.role === 'stream') ?? null} look={look} onClose={onClose} />
+      <StageCard groups={groups.filter((g) => g.role === 'stage')} toGroup={toGroup} onClose={onClose} />
+      <YouTubeCard group={groups.find((g) => g.role === 'stream') ?? null} onClose={onClose} />
     </section>
   );
 }

@@ -1179,14 +1179,14 @@ test('a node’s stage screen and a tablet’s stage page flash a timer at 0:00 
 });
 
 // Part A's review: the layout a template makes went to every stage group in the live Look, and to no other Look. Since
-// Session 55 it is the one layout every stage screen shows, whatever the Look: no Look holds it.
-test('New from a Template… chooses the layout for every stage screen at once, whichever Look is live', async () => {
+// Session 55 it is the one layout every stage screen shows (and Looks went, Part 12).
+test('New from a Template… chooses the layout for every stage screen at once', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  // Two stage groups (no screens needed) and a second Look.
-  const { groups, other } = await win.evaluate(async () => {
+  // Two stage groups (no screens needed).
+  const groups = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const ids: string[] = [];
     for (const name of ['Placeholder stage one', 'Placeholder stage two']) {
@@ -1197,20 +1197,8 @@ test('New from a Template… chooses the layout for every stage screen at once, 
       if (!role.ok) throw new Error(role.message);
       ids.push(id);
     }
-    const before = new Set((await d.looks.list()).looks.map((l) => l.id));
-    const look = await d.looks.create('Placeholder other Look', null);
-    if (!look.ok) throw new Error(look.message);
-    return { groups: ids, other: look.view.looks.find((l) => !before.has(l.id))?.id ?? '' };
+    return ids;
   });
-  expect(other).not.toBe('');
-  const looks = () => win.evaluate(() => (globalThis as PageGlobals).drashti.looks.list());
-  /** Each stage group's layout as a Look keeps it (none since Session 55). */
-  const layoutsIn = async (lookId?: string) => {
-    const view = await looks();
-    const look = view.looks.find((l) => l.id === (lookId ?? view.liveId));
-    return groups.map((g) => look?.groups[g]?.stageLayoutId ?? null);
-  };
-  expect((await looks()).liveId).not.toBe(other);
   expect(await liveLayoutOf(win, groups[0] ?? '')).toBeNull();
 
   await win.getByTestId('stage-edit-layout').click();
@@ -1225,20 +1213,12 @@ test('New from a Template… chooses the layout for every stage screen at once, 
   await expect(dialog).toHaveCount(0);
   await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Count up from 0:00');
 
-  // Every stage screen shows it; no Look holds it, the live one or the other.
+  // Every stage screen shows it.
   await expect
     .poll(async () => (await liveLayoutOf(win, groups[0] ?? ''))?.name ?? null)
     .toBe('Count up from 0:00');
   const made = (await liveLayoutOf(win, groups[0] ?? ''))?.id ?? '';
-  expect(await layoutsIn()).toEqual([null, null]);
-  expect(await layoutsIn(other)).toEqual([null, null]);
-  // The other Look live: the stage screens show it still.
-  await editor.getByRole('button', { name: 'Close stage layouts' }).click();
-  await win.evaluate(
-    (lookId) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'setLook', lookId }),
-    other,
-  );
-  await expect.poll(async () => (await looks()).liveId).toBe(other);
   expect((await liveLayoutOf(win, groups[1] ?? ''))?.id).toBe(made);
+  await editor.getByRole('button', { name: 'Close stage layouts' }).click();
   await app.close();
 });

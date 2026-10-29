@@ -175,15 +175,12 @@ const ROUTES: Route[] = [
   ),
   route('GET', '/api/v1/messages', 'messages'),
   route('GET', '/api/v1/timers', 'timers'),
-  route('GET', '/api/v1/logo', 'logo'),
   route('GET', '/api/v1/media/:id/preview', 'preview', (_b, p) => ({ mediaId: p['id'] })),
   // Full quality (Session 54, D1): a picture at the width the device draws it, up to the original; a picture's or
   // video's own file in pieces as it plays (HTTP Range), and a link to it that a <video> can play.
   route('GET', '/api/v1/media/:id/picture', 'media.picture'),
   route('GET', '/api/v1/media/:id/original', 'media.original'),
   route('GET', '/api/v1/media/:id/link', 'media.original'),
-  route('GET', '/api/v1/looks', 'looks'),
-  route('POST', '/api/v1/looks/:id/live', 'command', (_b, p) => ({ type: 'setLook', lookId: p['id'] })),
   route('POST', '/api/v1/markers/:id/jump', 'command', (b, p) => ({
     type: 'jumpToMarker',
     layer: b['layer'] === 'audio' ? 'audio' : 'background',
@@ -244,7 +241,10 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/blackout', 'command', (b) =>
     typeof b['on'] === 'boolean' ? { type: 'setBlackout', on: b['on'] } : { type: 'toggleBlackout' },
   ),
-  route('POST', '/api/v1/logo', 'logo.set', (b) => ({ on: b['on'] })),
+  // The Wallpaper (Session 55, Part 13, in the Logo's place): on or off as asked, else the other way.
+  route('POST', '/api/v1/wallpaper', 'command', (b) =>
+    typeof b['on'] === 'boolean' ? { type: 'setWallpaper', on: b['on'] } : { type: 'toggleWallpaper' },
+  ),
   route('POST', '/api/v1/timers/:id/start', 'command', (_b, p) => ({ type: 'startTimer', timerId: p['id'] })),
   route('POST', '/api/v1/timers/:id/pause', 'command', (_b, p) => ({ type: 'pauseTimer', timerId: p['id'] })),
   route('POST', '/api/v1/timers/:id/reset', 'command', (_b, p) => ({ type: 'resetTimer', timerId: p['id'] })),

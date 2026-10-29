@@ -222,7 +222,7 @@
    * (src/main/motion.test.ts). Show controls and the live state never move. With reduced motion
    * nothing moves at all.
    */
-  --dur-instant: 0ms; /* show controls, the live state, black-out, logo: never animated */
+  --dur-instant: 0ms; /* show controls, the live state, black-out, the Wallpaper: never animated */
   --dur-press: 90ms; /* press feedback (never on a show control) */
   --dur-hover: 120ms; /* colour on hover and focus */
   --dur-exit: 150ms; /* anything leaving: about 70% of its entrance */

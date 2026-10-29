@@ -42,8 +42,6 @@ import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
 import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
-import type { PropResult } from '../shared/props';
-import { propFieldsSchema } from '../shared/props';
 import { messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
@@ -76,7 +74,6 @@ import { ShastraRepo } from './db/shastra';
 import { ShastraService } from './shastra/shastra-service';
 import { isPassageId, passageIdSchema, referenceInputSchema, shastraSearchSchema } from '../shared/shastra';
 import { FIT_EVERYWHERE, type FitTargets, fitTargets } from '../shared/shastra-slides';
-import { PropRepo } from './db/props';
 import { MessageRepo } from './db/messages';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
@@ -85,14 +82,11 @@ import { LookRepo } from './db/looks';
 import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
-import { MaskRepo } from './db/masks';
-import { MaskService } from './masks/mask-service';
 import { anyTestSwitch, sw, swMs, swOn } from './switches';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
-import { IdleService } from './idle/idle-service';
-import { quoteIdSchema } from '../shared/idle';
+import { oldIdleRotation, QuoteOfTheDay } from './idle/idle-service';
 import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
@@ -188,7 +182,6 @@ import { spawnBackupWorker } from './backup/spawn-backup-worker';
 import { Revisions } from './library/revisions';
 import { styleNewText, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
-import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
@@ -294,7 +287,7 @@ import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
-import type { EngineState, PropItem } from '../shared/engine/state';
+import type { EngineState } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { PhoneFiles } from './network/phone-files';
@@ -1414,7 +1407,8 @@ function start(): void {
       nodeService?.broadcast(message);
     },
   };
-  // Looks: the engine reads them through the service, made just below (it needs the engine).
+  // Each screen group's settings (Session 55, Part 12: Looks gone from the window): the engine reads them through the
+  // service, made just below (it needs the engine).
   const lookRepo = new LookRepo(db);
   let lookService: LookService | null = null;
   /** Simple Mode is on (set once the mode is read, further down). */
@@ -1435,8 +1429,6 @@ function start(): void {
   let syncAudios = (): void => undefined;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
   let calendarService: CalendarService | null = null;
-  /** The idle rotation (made further down): told when media change (a picture may have gone). */
-  let idleService: IdleService | null = null;
   /** This computer's video inputs (Session 50; made just below, with the engine). */
   let videoInputs: VideoInputsService | null = null;
   /** Their list changed (Session 51): playlist items and what comes next may name one that is or is not here now. */
@@ -1453,11 +1445,8 @@ function start(): void {
     { items: (id) => playlists.playItems(id) },
     {
       defaultTransition: () => defaultTransition(settings),
-      looks: {
-        look: (id) => lookService?.look(id) ?? null,
-        start: () => lookService?.start() ?? NO_LOOK,
-      },
-      // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
+      looks: { start: () => lookService?.start() ?? NO_LOOK },
+      // Simple Mode refuses Pro Mode's commands, from the window, a phone or the API alike.
       refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
@@ -1547,21 +1536,15 @@ function start(): void {
     inputs.close();
   });
   const stageLayoutRepo = new StageLayoutRepo(db);
-  const maskRepo = new MaskRepo(db);
   const looks = new LookService({
     repo: lookRepo,
-    mask: (id) => maskRepo.get(id),
     engine,
-    changed: (view) => {
-      sendToPage(operatorWindow, IPC.looks.changed, view);
-      network?.hint('looks');
-    },
     log: (message) => {
       log.info(message);
     },
   });
   lookService = looks;
-  // The first Look goes live (recovery below may bring back another).
+  // Each group's settings, read the first time.
   engine.refreshLook();
   // Stage layouts, and the one chosen for every stage screen (Session 55), given to the engine once recovery has
   // put back the Look in use (below): at the first start after the update, that Look's layout becomes the chosen one.
@@ -2352,7 +2335,7 @@ function start(): void {
   const startup: StartupRecovery =
     restored.restored || selfTestRun
       ? { cleanQuit: true, recentStop: false, putBack: null, tooOld: null }
-      : startupRecovery(recoveryFiles, { startLookId: lookRepo.firstId() });
+      : startupRecovery(recoveryFiles);
   const saved = startup.putBack;
   if (saved) {
     const put = engine.restore(saved);
@@ -2362,7 +2345,6 @@ function start(): void {
     const name = put.slide && saved.slide ? presentations.get(saved.slide.presentationId)?.name : undefined;
     recovery = {
       savedAt: saved.savedAt,
-      look: put.look,
       slide:
         saved.slide && put.slide
           ? { presentationName: name ?? '', slideNumber: saved.slide.slideIndex + 1 }
@@ -2370,12 +2352,10 @@ function start(): void {
       slideGone: saved.slide !== null && !put.slide,
       background: put.background,
       blackout: put.blackout,
-      logo: put.logo,
+      wallpaper: put.wallpaper,
       audio: put.audio,
-      props: put.props,
       messages: put.messages,
       ticker: put.ticker,
-      masks: put.masks,
       lowerThird: put.lowerThird,
       pip: put.pip,
       stageMessage: put.stageMessage,
@@ -2424,7 +2404,6 @@ function start(): void {
     recovery = {
       savedAt: old.savedAt,
       putBack: false,
-      look: old.lookId && old.lookId !== lookRepo.firstId() ? (lookRepo.get(old.lookId)?.name ?? null) : null,
       slide:
         old.slide && !slideGone
           ? {
@@ -2441,12 +2420,10 @@ function start(): void {
       pipWindow: old.pip?.source.kind === 'window' ? old.pip.source.name : null,
       input: old.background?.kind === 'input' ? old.background.name : null,
       blackout: old.blackout,
-      logo: old.logo !== null,
+      wallpaper: old.wallpaper,
       audio: old.audio !== null,
-      props: old.props.length,
       messages: old.messages.length,
       ticker: old.ticker?.items.length ?? 0,
-      masks: old.masks !== null,
       stageMessage: old.stageMessage !== null,
       timers: old.timers.length,
     };
@@ -2468,7 +2445,6 @@ function start(): void {
 
   // ---- deleting media (Session 26a) -------------------------------------------------
   const mediaRemoval = new MediaRemoval(db, {
-    idlePictures: () => idleService?.settings().pictures ?? [],
     onScreens: () => mediaUpNow(engine.current),
   });
   // Deleted before this start, so it can no longer be undone: its files go now, but never one that
@@ -2494,8 +2470,6 @@ function start(): void {
     libraryChanged(true);
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     network?.hint('playlists');
-    listChanged('props');
-    listChanged('themes');
   };
   const mediaIdsSchema = idListSchema.refine((ids) => ids.every((id) => MEDIA_ID_PATTERN.test(id)));
   handle(IPC.media.usage, (_e, ids) => {
@@ -2822,8 +2796,6 @@ function start(): void {
       lastChanged = Date.now();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       network?.hint('presentations');
-      // A picture in the idle rotation may have gone (or come back).
-      idleService?.refresh();
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
       nodeService?.libraryChanged();
@@ -2843,14 +2815,10 @@ function start(): void {
     if (changedTimer) clearTimeout(changedTimer);
     changedTimer = null;
   });
-  /** Props, message templates or themes changed: the operator's lists of them reload at once. */
+  /** Message templates or Shastra texts changed: the operator's lists of them reload at once. */
   const listChanged = (what: Exclude<LibraryChange, 'presentations'>) => {
     sendToOperator(IPC.library.changed, { at: Date.now(), what });
-    if (what === 'props' || what === 'messages' || what === 'shastra') network?.hint(what);
-    if (what === 'props') {
-      wantedMedia?.invalidate();
-      nodeService?.libraryChanged();
-    }
+    network?.hint(what);
   };
   // ---- PDF, PowerPoint and Keynote as pictures (Session 15) --------------------------------------
   // The import worker asks; a hidden window of its own draws each page with pdf.js.
@@ -3085,8 +3053,6 @@ function start(): void {
       libraryChanged(true);
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
       network?.hint('playlists');
-      listChanged('props');
-      listChanged('themes');
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
@@ -3302,59 +3268,9 @@ function start(): void {
     },
     settings,
   });
-  registerThemesIpc({
-    themes,
-    presentations,
-    revisions,
-    fromOperator,
-    changed: contentChanged,
-    themesChanged: () => {
-      listChanged('themes');
-    },
-  });
-  // Props: kept here; showing one goes through the engine.
-  const props = new PropRepo(db);
-  handle(IPC.props.list, () => props.list());
-  handle(IPC.props.save, (e, propId, fields): PropResult => {
-    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change props.' };
-    const f = propFieldsSchema.safeParse(fields);
-    if (!f.success) return { ok: false, message: 'A prop needs a name and something to show.' };
-    const id = propId === null ? props.create(f.data) : idSchema.safeParse(propId).data;
-    if (id === undefined || (propId !== null && !props.update(id, f.data)))
-      return { ok: false, message: 'That prop no longer exists.' };
-    listChanged('props');
-    return { ok: true, id };
-  });
-  handle(IPC.props.remove, (e, propId): PropResult => {
-    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change props.' };
-    const id = idSchema.safeParse(propId);
-    if (!id.success || !props.remove(id.data)) return { ok: false, message: 'That prop no longer exists.' };
-    // A prop that is up comes down with it, and the logo with it when it was the logo.
-    engine.dispatch({ type: 'hideProp', propId: id.data });
-    if (settings.get('logoPropId') === id.data) settings.set('logoPropId', null);
-    if (engine.current.logo?.id === id.data) engine.dispatch({ type: 'hideLogo' });
-    listChanged('props');
-    return { ok: true, id: id.data };
-  });
-  // The prop marked as the logo, for Simple Mode's Logo button.
-  handle(IPC.props.getLogo, () => {
-    const id = settings.get('logoPropId');
-    return typeof id === 'string' && props.list().some((p) => p.id === id) ? id : null;
-  });
-  handle(IPC.props.setLogo, (e, propId): PropResult => {
-    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can choose the logo.' };
-    if (propId === null) {
-      settings.set('logoPropId', null);
-      listChanged('props');
-      return { ok: true, id: '' };
-    }
-    const id = idSchema.safeParse(propId);
-    if (!id.success || !props.list().some((p) => p.id === id.data))
-      return { ok: false, message: 'That prop no longer exists.' };
-    settings.set('logoPropId', id.data);
-    listChanged('props');
-    return { ok: true, id: id.data };
-  });
+  // Themes, Props and the Logo are gone from the window (Session 55, Part 12): a presentation keeps the look its theme
+  // gave it, new words start in the library's default look (themeLook, styleNewText), and the props, the logo's
+  // setting and the themes stay in the library, unseen.
   handle(IPC.library.search, (_e, query) =>
     search.search(typeof query === 'string' ? cutText(query, 200) : ''),
   );
@@ -3755,40 +3671,32 @@ function start(): void {
       ? calendars.remove(which.data)
       : { ok: false as const, message: 'Only the operator window can remove a calendar.' };
   });
-  // ---- the idle rotation: its pictures, timing and quotes into the engine ------------------
-  const idleRotation = new IdleService({
-    quotes: new QuoteRepo(db),
-    settings,
-    picture: (id) => {
-      const m = media.kindAndName(id);
-      return m?.kind === 'image' ? { name: m.name } : null;
-    },
-    engine: { setIdle: (content) => engine.setIdle(content), setQuote: (quote) => engine.setQuote(quote) },
+  // ---- the quote of the day into the engine, and what the idle rotation was ----------------
+  // The idle rotation is gone (Session 55, Part 12): its settings and quotes stay in the library, unseen. A stage
+  // layout's Quote box still shows the quote of the day from its quotes; and what it was set to show is read by
+  // oldIdleRotation (main/idle/idle-service.ts), for Part 6 to make a wallpaper set of it.
+  const quotes = new QuoteRepo(db);
+  const quoteOfTheDay = new QuoteOfTheDay({
+    quotes,
+    engine: { setQuote: (quote) => engine.setQuote(quote) },
     now: Date.now,
-    changed: (view) => {
-      sendToOperator(IPC.idle.changed, view);
-    },
   });
-  idleService = idleRotation;
-  stops.add('idle rotation', () => {
-    idleRotation.dispose();
+  stops.add('quote of the day', () => {
+    quoteOfTheDay.dispose();
   });
-  const notIdleOperator = {
-    ok: false as const,
-    message: 'Only the operator window can change the idle rotation.',
-  };
-  handle(IPC.idle.view, () => idleRotation.view());
-  handle(IPC.idle.saveSettings, (e, value) =>
-    fromOperator(e) ? idleRotation.saveSettings(value) : notIdleOperator,
+  /** What the idle rotation was set to show (Part 6 turns it into a wallpaper set). */
+  const idleRotationWas = () =>
+    oldIdleRotation({
+      settings,
+      quotes,
+      picture: (id) => {
+        const m = media.kindAndName(id);
+        return m?.kind === 'image' ? { name: m.name } : null;
+      },
+    });
+  log.info(
+    `The idle rotation kept (unseen): ${String(idleRotationWas().pictures.length)} picture(s), ${String(quotes.list().length)} quote(s)`,
   );
-  handle(IPC.idle.saveQuote, (e, id, quote) => {
-    const which = quoteIdSchema.nullable().safeParse(id);
-    return fromOperator(e) && which.success ? idleRotation.saveQuote(which.data, quote) : notIdleOperator;
-  });
-  handle(IPC.idle.removeQuote, (e, id) => {
-    const which = quoteIdSchema.safeParse(id);
-    return fromOperator(e) && which.success ? idleRotation.removeQuote(which.data) : notIdleOperator;
-  });
   // ---- Lower Thirds (Session 44, shared/lower-thirds.ts): the library's, shown and hidden as engine commands --
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
@@ -3877,19 +3785,6 @@ function start(): void {
   // ---- the local network ----------------------------------------------------------
   // Phones and tablets on the mandir's Wi-Fi, once paired (README "The local network"). Off until
   // the operator turns it on (Pro Mode only); the server runs in a worker of its own.
-  const asPropItem = (p: {
-    id: string;
-    name: string;
-    elements: PropItem['elements'];
-    width?: number;
-    height?: number;
-  }): PropItem => ({
-    id: p.id,
-    name: p.name,
-    elements: p.elements,
-    width: p.width,
-    height: p.height,
-  });
   // Announcements from phones: the queue the operator approves from (Pro Mode only).
   let eventsAnnouncementsWas: AnnouncementsView | null = null;
   const announcements = new AnnouncementService({
@@ -4027,11 +3922,6 @@ function start(): void {
         shastra.list().map((t) => ({ name: t.name, abbreviation: t.abbreviation, itemCount: t.itemCount })),
       passage: (reference) => shastra.resolve(reference),
       messages: () => messageTemplates.list(),
-      logo: () => {
-        const id = settings.get('logoPropId');
-        const prop = typeof id === 'string' ? props.list().find((p) => p.id === id) : undefined;
-        return prop ? asPropItem(prop) : null;
-      },
       mediaSource: (mediaId) =>
         previewSource(mediaId, {
           mediaDir,
@@ -4057,24 +3947,10 @@ function start(): void {
       hall: () => ({ groupId: screenRepo.firstGroup('audience') }),
       // Audience and Stage (Session 50): a Remote says which are off.
       switches: () => manager.switches(),
-      looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
       clockStyle: mainClockStyle,
     },
     // The phone as a mirror of the operator window (Session 54, D5): read as the window reads them, never changed.
     mirror: {
-      props: () => {
-        const logoId = settings.get('logoPropId');
-        return props
-          .list()
-          .map((p) => ({ id: p.id, name: p.name, imported: p.imported, logo: p.id === logoId }));
-      },
-      prop: (id) => {
-        const prop = props.list().find((p) => p.id === id);
-        return prop ? asPropItem(prop) : null;
-      },
-      // The library's masks, read as Masks reads them (Session 54).
-      masks: () => maskRepo.list().map((m) => ({ id: m.id, name: m.name })),
-      mask: (id) => maskRepo.list().find((m) => m.id === id) ?? null,
       media: () =>
         media.list().map((m) => ({
           id: m.id,
@@ -4211,12 +4087,8 @@ function start(): void {
   const nodeRepo = new NodeRepo(db);
   const wanted = new WantedMedia(
     db,
-    () => {
-      const idle = settings.get('idleRotation') as { pictures?: unknown } | undefined;
-      return Array.isArray(idle?.pictures)
-        ? idle.pictures.filter((p): p is string => typeof p === 'string')
-        : [];
-    },
+    // Nothing more since Session 55 (the idle rotation's pictures went with it); Part 6's wallpapers go here.
+    () => [],
     Date.now,
     // A picture's sharpened copy (Session 26f), once it is ready: one more file for the node, copied as
     // media is, right after the picture's own.
@@ -4537,6 +4409,18 @@ function start(): void {
       operatorWindow.webContents.send(IPC.output.testClock, { at });
       return true;
     };
+  // Tests only (never a packaged Drashti): every screen group moves Calm or Bold, as the performance check's Bold
+  // transitions ask (Session 55: Movement went with Looks and every group is Calm; the specs that draw Bold ask here).
+  // On the event loop, never inside the test's call itself: that can come between a query's steps, and the library's
+  // connection refuses another query then ("This database connection is busy executing a query").
+  if (!app.isPackaged)
+    (globalThis as { drashtiTestMovement?: (movement: Movement) => void }).drashtiTestMovement = (
+      movement,
+    ) => {
+      setImmediate(() => {
+        looks.moveAll(movement);
+      });
+    };
   if (testRenderErrors)
     (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (
       screenId,
@@ -4810,21 +4694,6 @@ function start(): void {
     const parsed = idSchema.safeParse(itemId);
     return parsed.success ? shastra.itemPassage(parsed.data) : null;
   });
-  handle(IPC.shastra.setTheme, (e, textId, themeId) => {
-    if (!fromOperator(e))
-      return { ok: false as const, message: 'Only the operator window can change a text.' };
-    const t = textIdSchema.safeParse(textId);
-    const th = idSchema.nullable().safeParse(themeId);
-    if (!t.success || !th.success) return { ok: false as const, message: 'That is not a text or a theme.' };
-    if (th.data !== null && !themes.get(th.data))
-      return { ok: false as const, message: 'That theme is not in the library.' };
-    if (!shastra.setTheme(t.data, th.data))
-      return { ok: false as const, message: 'That text is not loaded.' };
-    listChanged('shastra');
-    // A live passage of this text is drawn again with its new theme as it next changes slide.
-    engine.refreshNext();
-    return { ok: true as const, texts: shastra.list() };
-  });
   handle(IPC.shastra.remove, (e, textId) => {
     if (!fromOperator(e))
       return { ok: false as const, message: 'Only the operator window can remove a text.' };
@@ -4991,48 +4860,6 @@ function start(): void {
   );
   handle(IPC.stageLayouts.choose, (e, id) => (fromOperator(e) ? stageLayouts.choose(id) : notLayoutOperator));
 
-  // ---- the mask library (a group's own in a Look; one up on the Masks layer) ---------------------
-  const masks = new MaskService({
-    repo: maskRepo,
-    forgetInLooks: (id) => {
-      lookRepo.forgetMask(id);
-    },
-    layer: {
-      shown: () => engine.current.layers.masks,
-      show: (mask) => {
-        engine.dispatch({ type: 'setMask', mask });
-      },
-      clear: () => {
-        engine.dispatch({ type: 'clearLayer', layer: 'masks' });
-      },
-    },
-    changed: (list) => {
-      sendToOperator(IPC.masks.changed, list);
-      looks.masksChanged();
-      // A phone lists them too (Session 54).
-      net.hint('masks');
-    },
-    log: (message) => {
-      log.info(message);
-    },
-  });
-  const notMaskOperator = { ok: false as const, message: 'Only the operator window can change masks.' };
-  handle(IPC.masks.list, () => masks.list());
-  handle(IPC.masks.save, (e, id, mask) => (fromOperator(e) ? masks.save(id, mask) : notMaskOperator));
-  handle(IPC.masks.remove, (e, id) => (fromOperator(e) ? masks.remove(id) : notMaskOperator));
-
-  // ---- Looks (switching the live one is the engine's setLook) ---------------------------------
-  const notLookOperator = { ok: false as const, message: 'Only the operator window can change the Looks.' };
-  handle(IPC.looks.list, () => looks.view());
-  handle(IPC.looks.create, (e, name, copyOf) =>
-    fromOperator(e) ? looks.create(name, copyOf) : notLookOperator,
-  );
-  handle(IPC.looks.rename, (e, id, name) => (fromOperator(e) ? looks.rename(id, name) : notLookOperator));
-  handle(IPC.looks.remove, (e, id) => (fromOperator(e) ? looks.remove(id) : notLookOperator));
-  handle(IPC.looks.move, (e, id, to) => (fromOperator(e) ? looks.move(id, to) : notLookOperator));
-  handle(IPC.looks.setGroup, (e, lookId, groupId, patch) =>
-    fromOperator(e) ? looks.setGroup(lookId, groupId, patch) : notLookOperator,
-  );
   // A test's first moments (Session 51, S2-4): the operator window's first ask for the screens answered this long
   // after it asks, so a test presses a key before the window knows which screens are open. Never packaged.
   let screensLateMs = swMs('DRASHTI_TEST_SCREENS_LATE_MS');
@@ -5417,25 +5244,19 @@ function start(): void {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change the screens.' };
     const plan = setupPlanSchema.safeParse(rawPlan);
     if (!plan.success) return { ok: false, message: 'That setup cannot be applied.' };
-    const { outputs, sound, themeId } = plan.data;
-    if (themeId !== null && !themes.get(themeId))
-      return { ok: false, message: 'That theme is no longer there.' };
+    const { outputs, sound } = plan.data;
     // The screens first: covering the operator's display asks before anything changes.
     if (outputs) {
-      // Keep these screens? (Session 50): Go back puts back the screens only; the sound and theme stay as chosen.
+      // Keep these screens? (Session 50): Go back puts back the screens only; the sound stays as chosen.
       const applied = keepScreens.change(() => screens.applySetup(outputs, options));
       if (!applied.ok) return applied;
       net.hint('screens');
     }
     if (sound !== 'skip') audioOutput.choose(sound);
-    if (themeId !== null) {
-      themes.setDefault(themeId);
-      listChanged('themes');
-    }
     settings.set('setupWizard', new Date().toISOString());
     // No test slide (Session 55): each screen shows what is up, or nothing (black) until something is put up.
     log.info(
-      `Setup finished: ${outputs ? `${outputs.length} display(s) set` : 'screens kept'}; sound ${sound === 'skip' ? 'kept' : 'chosen'}; theme ${themeId === null ? 'kept' : 'chosen'}`,
+      `Setup finished: ${outputs ? `${outputs.length} display(s) set` : 'screens kept'}; sound ${sound === 'skip' ? 'kept' : 'chosen'}`,
     );
     const snapshot = screens.snapshot();
     return { ok: true, snapshot, showing: snapshot.status.filter((st) => st.state === 'showing').length };
@@ -5707,7 +5528,7 @@ function start(): void {
   // ---- View > Show Safe Areas (Sessions 31–36): the slide editor's guides, anyone's to turn on ---------
   const safeAreasShown = () => settings.get('showSafeAreas') === true;
   handle(IPC.app.safeAreas, () => safeAreasShown());
-  // ---- Single-letter keys (Session 37, WCAG 2.1.4): B, ., L and ? act unless they are turned off ----
+  // ---- Single-letter keys (Session 37, WCAG 2.1.4): B, . and ? act unless they are turned off ----
   // Kept with the library's settings, as the switch in Help › Keyboard Shortcuts… sets them. Off, they do
   // nothing in the window in either mode (no menu item answers a single key); Black-out and the Logo work
   // from their buttons, a MIDI pad and the phone remote as before.
@@ -6019,8 +5840,7 @@ function start(): void {
         music,
         engine,
         setMovement: (movement) => {
-          const lookId = engine.current.look.id;
-          for (const g of screens.snapshot().groups) looks.setGroup(lookId, g.id, { movement });
+          looks.moveAll(movement);
         },
         zoom: {
           open: () => {

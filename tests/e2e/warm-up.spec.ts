@@ -7,8 +7,8 @@ import { goLive, makeSlides } from './placeholder-slides';
 
 /*
  * Warming the GPU, unseen (Session 27, render/WarmUp.tsx): before a screen first draws the show, it draws
- * every transition kind in both Movements part-way, with a Look's lower third, messages, the ticker's band
- * and the idle rotation, under a brightness(0) filter, so the GPU has made what they need before the first
+ * every transition kind in both Movements part-way, with a lower third, messages and the ticker's band (the
+ * idle rotation went in Session 55), under a brightness(0) filter, so the GPU has made what they need before the first
  * Bold transition of a show; the audience sees black throughout. A test switch keeps it drawn, to look at.
  * Placeholder words and pictures only.
  */
@@ -56,7 +56,6 @@ const scenesIn = (page: Page, scope: string) =>
         lowerThird: s.querySelector('[data-testid="lower-third"]') !== null,
         messages: s.querySelector('[data-layer="messages"]') !== null,
         ticker: s.querySelector('[data-layer="ticker"]') !== null,
-        idle: s.querySelectorAll('[data-layer="idle"] [data-idle-item]').length,
       };
     });
   }, scope);
@@ -103,7 +102,8 @@ async function expectWarmUp(page: Page, scope: string, what: string, ticker = tr
         `${what}: a lower third ${phase} on ${movement}`,
       ).toBe(true);
   }
-  expect(scenes.find((x) => x.key === 'idle')?.idle, `${what}: the idle rotation dissolving`).toBe(2);
+  // The idle rotation's dissolve went with it (Session 55, Part 12): none is drawn.
+  expect(scenes.map((x) => x.key)).not.toContain('idle');
   // The audience sees none of it.
   expect(await brightest(page, `${scope} [data-warm-up]`), `${what}: black throughout`).toBe(0);
 }

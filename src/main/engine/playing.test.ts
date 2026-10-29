@@ -4,7 +4,7 @@ import { parseEngineCommand } from '../../shared/engine/commands';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EnginePatchMessage } from '../../shared/engine/protocol';
 import type { PlayingRef } from '../../shared/engine/playing';
-import type { MusicRun, PipLayer, PropItem } from '../../shared/engine/state';
+import type { MusicRun, PipLayer } from '../../shared/engine/state';
 import type { MediaMarkers } from '../../shared/markers';
 import { playbackAtMs } from '../../shared/media';
 import type { MediaElement, RenderSlide } from '../../shared/model';
@@ -15,7 +15,8 @@ import { makeSource, RecordingTransport, textSlide } from './testing';
 
 /*
  * The time bar (Session 54): one "move to" for each kind that plays (the background video, the sound, an audio
- * playlist's track, and a video on the slide up, a prop, the logo or in the picture-in-picture box), kept between
+ * playlist's track, and a video on the slide up or in the picture-in-picture box; a prop's and the logo's went in
+ * Session 55), kept between
  * its file's start and end points; Pause, which holds it where it is on every screen alike, and Play, which plays it
  * on from there. Each is a jump, as to a marker, which every screen, node, key and fill, the stream and the audio
  * player land on in step; none is a change Back or Put it back undo; and each comes back after an unexpected restart
@@ -55,12 +56,6 @@ function slideWith(id: string, ...media: MediaElement[]): RenderSlide {
   const words = textSlide(id, 'Placeholder words');
   return { ...words, elements: [...media, ...words.elements] };
 }
-
-const prop = (id: string, mediaId: string, loop = true): PropItem => ({
-  id,
-  name: `Placeholder ${id}`,
-  elements: [videoEl(`${id}-video`, mediaId, loop)],
-});
 
 const music = (over: Partial<Omit<MusicRun, 'index'>> = {}): Omit<MusicRun, 'index'> => ({
   playlistId: 'pl',
@@ -166,7 +161,7 @@ describe('the time bar’s move (Session 54)', () => {
     });
   });
 
-  it('moves a video on the slide up, a prop’s, the logo’s and the box’s, each by its file: until now only the background and the sound had moves', () => {
+  it('moves a video on the slide up and the box’s, each by its file: until now only the background and the sound had moves', () => {
     const { engine, now } = setup();
     engine.dispatch(goLive(0));
     expect(engine.dispatch(moveTo(onSlide('video'), 12_000))).toMatchObject({ ok: true, changed: true });
@@ -177,12 +172,6 @@ describe('the time bar’s move (Session 54)', () => {
       clipped: { at: now(), toMs: 40_000 },
     });
     expect(engine.current.layers.slide?.shownAt).toBe(1_000_000);
-    engine.dispatch({ type: 'showProp', prop: prop('pr', 'video') });
-    engine.dispatch(moveTo({ layer: 'props', propId: 'pr', mediaId: 'video' }, 7000));
-    expect(engine.current.layers.props[0]?.seeks).toEqual({ video: { at: now(), toMs: 7000 } });
-    engine.dispatch({ type: 'showLogo', prop: prop('logo', 'clipped') });
-    engine.dispatch(moveTo({ layer: 'logo', mediaId: 'clipped' }, 0));
-    expect(engine.current.logo?.seeks).toEqual({ clipped: { at: now(), toMs: 10_000 } });
     engine.dispatch({ type: 'showPip', source: { kind: 'media', mediaId: 'boxed' } });
     const shown = engine.current.layers.pip?.shownAt;
     engine.dispatch(moveTo(BOX, 15_000));
@@ -196,13 +185,7 @@ describe('the time bar’s move (Session 54)', () => {
     const { engine, lengths } = setup();
     // Never played on this computer: its length is not known yet.
     delete lengths['video'];
-    for (const ref of [
-      BACKGROUND,
-      AUDIO,
-      BOX,
-      onSlide('video'),
-      { layer: 'logo', mediaId: 'video' } as const,
-    ])
+    for (const ref of [BACKGROUND, AUDIO, BOX, onSlide('video')])
       expect(engine.dispatch(moveTo(ref, 1000))).toMatchObject({ ok: false, error: 'nothing-playing' });
     // A picture has no time.
     engine.dispatch({
@@ -244,17 +227,19 @@ describe('the time bar’s move (Session 54)', () => {
     expect(engine.current.layers.audio?.pausedAtMs).toBeUndefined();
   });
 
-  it('parses: what plays named by its layer (and its file and prop), the point as whole ms; Simple Mode refuses the move', () => {
+  it('parses: what plays named by its layer (and its file), the point as whole ms; Simple Mode refuses the move', () => {
     expect(
       parseEngineCommand({ type: 'moveTo', playing: { layer: 'slide', mediaId: 'video' }, toMs: 1500 }).ok,
     ).toBe(true);
     expect(parseEngineCommand({ type: 'moveTo', playing: { layer: 'slide' }, toMs: 1500 }).ok).toBe(false);
     expect(parseEngineCommand({ type: 'moveTo', playing: { layer: 'pip' }, toMs: -1 }).ok).toBe(false);
     expect(parseEngineCommand({ type: 'pausePlaying', playing: { layer: 'messages' } }).ok).toBe(false);
-    expect(
-      parseEngineCommand({ type: 'resumePlaying', playing: { layer: 'props', propId: 'p', mediaId: 'v' } })
-        .ok,
-    ).toBe(true);
+    // A prop's or the logo's video (Session 54) is no longer one of them (Session 55).
+    for (const playing of [
+      { layer: 'props', propId: 'p', mediaId: 'v' },
+      { layer: 'logo', mediaId: 'v' },
+    ])
+      expect(parseEngineCommand({ type: 'resumePlaying', playing }).ok).toBe(false);
     // Simple Mode shows the bar only (Session 54's review): no move, no Pause but an audio playlist's track's (Music's
     // own), and Play always, so nothing stays paused there.
     const { engine } = setup();
@@ -314,7 +299,7 @@ describe('the time bar’s Pause and Play (Session 54)', () => {
     if (playing) expect(playbackAtMs(playing, 60_000, now())).toBe(18_000);
   });
 
-  it('pauses a video on the slide, a prop’s, the logo’s and the box’s, each by its file, and a single sound; a looping one where it is this time round', () => {
+  it('pauses a video on the slide and the box’s, each by its file, and a single sound; a looping one where it is this time round', () => {
     const { engine, elapse, now } = setup();
     engine.dispatch(goLive(0));
     // 'clipped' loops between 0:10 and 0:40: 35 s after it went up it is 5 s into its second time round.
@@ -325,20 +310,11 @@ describe('the time bar’s Pause and Play (Session 54)', () => {
     });
     engine.dispatch(play(onSlide('clipped')));
     expect(engine.current.layers.slide?.seeks).toEqual({ clipped: { at: now(), toMs: 15_000 } });
-    engine.dispatch({ type: 'showProp', prop: prop('pr', 'video') });
-    engine.dispatch({ type: 'showLogo', prop: prop('logo', 'video') });
     engine.dispatch({ type: 'showPip', source: { kind: 'media', mediaId: 'boxed' } });
     engine.dispatch(playSound('sound'));
     elapse(4000);
-    for (const ref of [
-      { layer: 'props', propId: 'pr', mediaId: 'video' },
-      { layer: 'logo', mediaId: 'video' },
-      BOX,
-      AUDIO,
-    ] as const)
+    for (const ref of [BOX, AUDIO] as const)
       expect(engine.dispatch(pause(ref)), ref.layer).toMatchObject({ ok: true, changed: true });
-    expect(engine.current.layers.props[0]?.seeks).toEqual({ video: { at: now(), toMs: 4000, paused: true } });
-    expect(engine.current.logo?.seeks).toEqual({ video: { at: now(), toMs: 4000, paused: true } });
     expect(engine.current.layers.pip?.seeks).toEqual({ boxed: { at: now(), toMs: 4000, paused: true } });
     expect(engine.current.layers.audio?.seek).toEqual({ at: now(), toMs: 4000, paused: true });
   });
@@ -439,17 +415,14 @@ describe('the time bar in the show (Session 54)', () => {
   it('is not a change to the show: Back still undoes the Next, keeping what plays where the bar left it', () => {
     const { engine, now } = setup();
     engine.dispatch({ type: 'showPip', source: { kind: 'media', mediaId: 'boxed' } });
-    engine.dispatch({ type: 'showProp', prop: prop('pr', 'video') });
     engine.dispatch(setVideo('video'));
     engine.dispatch(goLive(0));
     engine.dispatch({ type: 'next' });
     engine.dispatch(moveTo(BOX, 5000));
-    engine.dispatch(pause({ layer: 'props', propId: 'pr', mediaId: 'video' }));
     engine.dispatch(moveTo(BACKGROUND, 9000));
     expect(engine.dispatch({ type: 'back' })).toMatchObject({ ok: true, changed: true });
     expect(engine.current.layers.slide?.slideIndex).toBe(0);
     expect(engine.current.layers.pip?.seeks).toEqual({ boxed: { at: now(), toMs: 5000 } });
-    expect(engine.current.layers.props[0]?.seeks).toEqual({ video: { at: now(), toMs: 0, paused: true } });
     expect(background(engine)?.seek).toEqual({ at: now(), toMs: 9000 });
   });
 
@@ -503,10 +476,9 @@ describe('the time bar in the show (Session 54)', () => {
         seek: { at: 990_000, toMs: 25_000, paused: true },
       },
       blackout: false,
-      props: [{ ...prop('pr', 'video'), shownAt: 950_000, seeks: { video: { at: 960_000, toMs: 1000 } } }],
       pip: box,
     });
-    expect(put).toMatchObject({ slide: true, background: true, props: 1, pip: true });
+    expect(put).toMatchObject({ slide: true, background: true, pip: true });
     expect(engine.current.layers.slide?.seeks).toEqual({ video: { at: 990_000, toMs: 20_000 } });
     const slide = engine.current.layers.slide;
     if (slide)
@@ -516,7 +488,6 @@ describe('the time bar in the show (Session 54)', () => {
     const bg = background(engine);
     expect(bg?.seek).toEqual({ at: 990_000, toMs: 25_000, paused: true });
     if (bg) expect(playbackAtMs(bg, 60_000, now())).toBe(25_000);
-    expect(engine.current.layers.props[0]?.seeks).toEqual({ video: { at: 960_000, toMs: 1000 } });
     expect(engine.current.layers.pip?.seeks).toEqual(box.seeks);
   });
 });

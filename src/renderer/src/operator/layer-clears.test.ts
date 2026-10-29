@@ -3,24 +3,22 @@ import { KEYMAP, shortcutText } from '../../../shared/keymap';
 import { LAYER_CLEARS } from './layer-clears';
 
 /*
- * The layer bar's clears follow the keys (Session 51): left to right Slide F2, Background F3, Props F4,
- * Audio F5, Messages F6, Ticker F7 and Masks F8, so the bar reads as the keyboard does. Session 50 moved
- * the keys to the ones the operators already press and had left the buttons where they were (F6, F7 and
- * F5 out of turn).
+ * The layer bar's clears follow the keys (Session 51): left to right Slide F2, Background F3, Audio F5,
+ * Messages F6 and Ticker F7, so the bar reads as the keyboard does (Session 55, Part 13: Props F4 and Masks F8
+ * went with Props and Masks). Session 50 moved the keys to the ones the operators already press and had left the
+ * buttons where they were (F6, F7 and F5 out of turn).
  */
 
 const fNumber = (key: string): number => Number(/^F(\d+)$/u.exec(key)?.[1] ?? Number.NaN);
 
 describe('the layer bar’s clears', () => {
-  it('go left to right in the order of their keys, F2 to F8', () => {
+  it('go left to right in the order of their keys, F2 to F7, F4 among none (Session 55)', () => {
     expect(LAYER_CLEARS.map((c) => `${c.label} ${shortcutText(c.action, 'darwin')}`)).toEqual([
       'Slide F2',
       'Background F3',
-      'Props F4',
       'Audio F5',
       'Messages F6',
       'Ticker F7',
-      'Masks F8',
     ]);
   });
 

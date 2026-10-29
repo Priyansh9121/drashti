@@ -296,8 +296,8 @@ export function AnnouncementsPanel() {
           )}
           <p className="text-xs text-faint">
             The ticker scrolls along the bottom of the audience screens, in step on each. A message also goes
-            on the stream; the ticker does not. Black-out and the logo cover both; Clear all takes them off,
-            and Put it back brings them back while their time lasts.
+            on the stream; the ticker does not. Black-out and the Wallpaper cover both; Clear all takes them
+            off, and Put it back brings them back while their time lasts.
           </p>
         </>
       )}

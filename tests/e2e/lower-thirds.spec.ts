@@ -1,13 +1,21 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import type { Movement } from '../../src/shared/looks';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPage, outputPages, setUpScreen } from './helpers';
-import { engineState, goLive, holdClock, makeSlides } from './placeholder-slides';
+import {
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  outputPages,
+  setUpScreen,
+  testDisplays,
+} from './helpers';
+import { engineState, goLive, holdClock, makeSlides, setMovement } from './placeholder-slides';
 
 /*
- * Lower thirds that move (Session 27, the design lab's): a Look's lower third comes in as its slide goes up,
- * its box holds while its words change to the next slide's, and it leaves with a short fade (Calm 180 ms,
+ * Lower thirds that move (Session 27, the design lab's): a key and fill group draws a kirtan's slides as a lower third
+ * (Session 55: by its role, as Looks went; until then a Look could ask it of any group), which comes in as its slide
+ * goes up, its box holds while its words change to the next slide's, and it leaves with a short fade (Calm 180 ms,
  * Bold 310 ms) when the slide is taken off on its own; Clear all takes it off at once. All by the engine's
  * clock: outputs held at moments (a test switch) draw the same, and a key and fill pair draws it alike.
  * Placeholder words only.
@@ -35,19 +43,26 @@ const drawn = (out: Page) =>
     };
   });
 
-/** Every group as lower thirds, moving `movement`, in the live Look. */
-async function lowerThirds(win: Page, movement: Movement, role = 'audience'): Promise<void> {
-  await win.evaluate(
-    async ({ movement, role }) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const look = (await d.engine.snapshot()).state.look.id;
-      for (const g of (await d.screens.get()).groups.filter((x) => x.role === role)) {
-        const set = await d.looks.setGroup(look, g.id, { slides: 'lowerThird', movement });
-        if (!set.ok) throw new Error(set.message);
-      }
-    },
-    { movement, role },
-  );
+/**
+ * A key and fill group, which draws slides as lower thirds (Session 55), on the test's main display (its fill's
+ * screen) or on none (`display` false): the screen's id, '' with none.
+ */
+async function keyFillGroup(win: Page, display = true): Promise<string> {
+  const displayId = display ? ((await testDisplays(win))[0]?.id ?? -1) : null;
+  return win.evaluate(async (displayId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.screens.createGroup('Placeholder switcher');
+    if (!made.ok) throw new Error(made.message);
+    const group = made.snapshot.groups.find((g) => g.name === 'Placeholder switcher')?.id ?? '';
+    const role = await d.screens.setGroupRole(group, 'keyfill');
+    if (!role.ok) throw new Error(role.message);
+    if (displayId === null) return '';
+    const used = await d.screens.assignDisplay(group, displayId, { coverOperator: true });
+    if (!used.ok) throw new Error(used.message);
+    // Keep these screens? (Session 50), in a test that asks it: kept, as a test needs the output.
+    if ((await d.screens.pending()) !== null) await d.screens.keep();
+    return used.snapshot.groups.find((g) => g.id === group)?.screens[0]?.id ?? '';
+  }, displayId);
 }
 
 const WORDS = [
@@ -79,8 +94,8 @@ test('a slide with more lines than a lower third holds says so under LIVE, “Lo
   await goLive(win, id, 0);
   await expect(win.getByTestId('live-text')).toContainText('slide 1 of 2');
   await expect(note).toHaveCount(0);
-  // Its Look draws slides as a lower third: the first six of seven show, and LIVE says so.
-  await lowerThirds(win, 'calm');
+  // A key and fill group draws slides as a lower third: the first six of seven show, and LIVE says so.
+  await keyFillGroup(win, false);
   await expect(note).toHaveText('Lower third shows 6 of 7 lines');
   // A slide that fits: nothing to say.
   await goLive(win, id, 1);
@@ -89,7 +104,7 @@ test('a slide with more lines than a lower third holds says so under LIVE, “Lo
   await app.close();
 });
 
-test('a Look’s lower third comes in, changes as its box holds, and leaves with a short fade; Clear all takes it off at once (Calm and Bold)', async () => {
+test('a key and fill group’s lower third comes in, changes as its box holds, and leaves with a short fade; Clear all takes it off at once (Calm and Bold)', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
@@ -100,11 +115,12 @@ test('a Look’s lower third comes in, changes as its box holds, and leaves with
     WORDS.map((words) => ({ words })),
     { kind: 'cut', durationMs: 0 },
   );
-  await setUpScreen(win);
+  // The fill of a key and fill group (its only screen here).
+  await keyFillGroup(win);
   const out = await outputPage(app);
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
   for (const movement of ['calm', 'bold'] as const) {
-    await lowerThirds(win, movement);
+    await setMovement(app, movement);
     await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
     await holdClock(app, null);
     await dispatch(win, { type: 'clearAll' });
@@ -213,7 +229,9 @@ test('a key and fill pair draws its moving lower third alike at every held momen
   for (const p of [fill, key])
     await expect(p.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   for (const movement of ['calm', 'bold'] as const) {
-    await lowerThirds(win, movement, 'keyfill');
+    await setMovement(app, movement);
+    for (const p of [fill, key])
+      await expect(p.getByTestId('output-root')).toHaveAttribute('data-movement', movement);
     await holdClock(app, null);
     await dispatch(win, { type: 'clearAll' });
     for (const p of [fill, key]) await expect(p.getByTestId('lower-third')).toHaveCount(0);

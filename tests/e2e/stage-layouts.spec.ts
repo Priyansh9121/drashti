@@ -194,8 +194,8 @@ test('Standard is the stage screen as before; a layout made in the editor puts e
 
 /**
  * What a picture of the show draws, read from its Scene (Session 50: the hall's output and a stage layout's
- * audience picture box must draw the same): its canvas and Look's layers, the background's colour, the
- * slide's words, the messages, black-out and the logo.
+ * audience picture box must draw the same): its canvas and group's layers, the background's colour, the
+ * slide's words, the messages, black-out and the Wallpaper (the logo until Session 55).
  */
 const sceneOn = (scene: Locator) =>
   scene.evaluate((root) => {
@@ -208,11 +208,11 @@ const sceneOn = (scene: Locator) =>
       words: slide ? slide.innerText.replace(/\s+/gu, ' ').trim() : null,
       messages: [...root.querySelectorAll<HTMLElement>('[data-message]')].map((m) => m.innerText.trim()),
       blackout: root.querySelector('[data-testid="blackout"]') !== null,
-      logo: root.querySelector('[data-testid="logo"]') !== null,
+      wallpaper: root.querySelector('[data-testid="wallpaper"]') !== null,
     };
   });
 
-test('the audience picture, live, as a stage layout box: what the hall shows, black-out and the logo too, under the stage message', async () => {
+test('the audience picture, live, as a stage layout box: what the hall shows, black-out and the Wallpaper too, under the stage message', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
@@ -309,7 +309,7 @@ test('the audience picture, live, as a stage layout box: what the hall shows, bl
       words: expect.stringMatching(/placeholder words for the hall/iu),
       messages: ['Placeholder message for the hall'],
       blackout: false,
-      logo: false,
+      wallpaper: false,
     });
   await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
 
@@ -327,17 +327,8 @@ test('the audience picture, live, as a stage layout box: what the hall shows, bl
     }),
   ).toEqual({ message: true, picture: false });
 
-  // The hall's own settings in the live Look, never the stage group's: messages left out of the hall go from
-  // the box too.
-  await win.evaluate(async (group) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const set = await d.looks.setGroup((await d.looks.list()).liveId, group, {
-      layers: ['background', 'slide', 'props', 'ticker', 'masks'],
-    });
-    if (!set.ok) throw new Error(set.message);
-  }, hallGroup);
-  await expect.poll(async () => (await sceneOn(inHall)).messages).toEqual([]);
-  await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
+  // (The hall's own settings in the live Look, never the stage group's, were drawn here too until Session 55 took
+  // Looks out: messages left out of the hall went from the box.)
 
   // The hall's canvas: its screen's, as its output draws it.
   await win.evaluate(
@@ -348,22 +339,21 @@ test('the audience picture, live, as a stage layout box: what the hall shows, bl
   await expect.poll(async () => (await sceneOn(inHall)).canvas).toBe('1280x720');
   await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
 
-  // Black-out and the logo show in the box, as the hall sees them; the stage's own boxes stay.
+  // Black-out and the Wallpaper (Session 55, in the logo's place) show in the box, as the hall sees them; the
+  // stage's own boxes stay.
   await dispatch(win, { type: 'setBlackout', on: true });
   await expect(inHall.getByTestId('blackout')).toHaveCount(1);
   await expect(inBox.getByTestId('blackout')).toHaveCount(1);
   await expect(message).toHaveText('Placeholder: two minutes');
   await dispatch(win, { type: 'setBlackout', on: false });
   await expect(inBox.getByTestId('blackout')).toHaveCount(0);
-  await dispatch(win, {
-    type: 'showLogo',
-    prop: { id: 'placeholder-logo', name: 'Placeholder logo', elements: [] },
-  });
-  await expect(inHall.getByTestId('logo')).toHaveCount(1);
-  await expect(inBox.getByTestId('logo')).toHaveCount(1);
+  await dispatch(win, { type: 'setWallpaper', on: true });
+  await expect(inHall.getByTestId('wallpaper')).toHaveCount(1);
+  await expect(inBox.getByTestId('wallpaper')).toHaveCount(1);
+  await expect(message).toHaveText('Placeholder: two minutes');
   await expect.poll(() => sceneOn(inBox)).toEqual(await sceneOn(inHall));
-  await dispatch(win, { type: 'hideLogo' });
-  await expect(inBox.getByTestId('logo')).toHaveCount(0);
+  await dispatch(win, { type: 'setWallpaper', on: false });
+  await expect(inBox.getByTestId('wallpaper')).toHaveCount(0);
   await app.close();
 });
 

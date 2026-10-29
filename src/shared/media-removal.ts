@@ -1,8 +1,10 @@
 /*
  * Deleting media from the library (Session 26a): media could not be removed
  * at all before. Before it goes, Drashti says where it is used; deleting it
- * takes it out of playlists and music, and leaves slides, props, themes and
- * the idle rotation showing nothing in its place, as a missing file does.
+ * takes it out of playlists and music, and leaves slides and the looks
+ * presentations are drawn in (their themes) showing nothing in its place, as
+ * a missing file does. Session 55 (Part 12): props and the idle rotation are
+ * gone from the window, so where they use it is no longer said.
  * Undo puts everything back. Its file goes only once it can no longer be
  * undone (when Drashti next starts), and never while it is on the screens.
  */
@@ -19,10 +21,8 @@ export interface MediaUsage {
   playlists: UsedIn;
   /** Audio playlists. */
   music: UsedIn;
-  props: UsedIn;
+  /** The looks presentations are drawn in (their themes, gone from the window since Session 55): their background. */
   themes: UsedIn;
-  /** It is one of the idle rotation's pictures. */
-  idle: boolean;
   /** It is on the screens now (it stays up until it is changed). */
   live: boolean;
 }
@@ -34,9 +34,7 @@ export const NOT_USED: MediaUsage = {
   presentations: { names: [], count: 0 },
   playlists: { names: [], count: 0 },
   music: { names: [], count: 0 },
-  props: { names: [], count: 0 },
   themes: { names: [], count: 0 },
-  idle: false,
   live: false,
 };
 
@@ -62,9 +60,12 @@ export function usageLines(usage: MediaUsage, count = 1): string[] {
   line(usage.presentations, 'The slides of', 'The slides of', () => `nothing will show in ${its} place.`);
   line(usage.playlists, 'The playlist', 'The playlists', (p) => `taken out of ${p ? 'them' : 'it'}.`);
   line(usage.music, 'The music', 'The music lists', (p) => `taken out of ${p ? 'them' : 'it'}.`);
-  line(usage.props, 'The prop', 'The props', () => `nothing will show in ${its} place.`);
-  line(usage.themes, 'The theme', 'The themes', () => `nothing will show in ${its} place.`);
-  if (usage.idle) out.push('The idle rotation’s pictures: taken out of them.');
+  line(
+    usage.themes,
+    'The background of the look',
+    'The backgrounds of the looks',
+    () => `nothing will show there.`,
+  );
   return out;
 }
 

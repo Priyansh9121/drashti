@@ -24,14 +24,15 @@ import {
   type PageGlobals,
   setUpScreen,
 } from './helpers';
-import { LOGO, PICTURE, setUpPlaceholderShow, VIDEO } from './placeholder-show';
+import { PICTURE, setUpPlaceholderShow, VIDEO } from './placeholder-show';
 import { makeTestImage, makeTestTone } from './test-media';
 
 /*
  * The phone as a mirror of the operator window (Session 54, D5): the clears in the desktop's order with its keys'
- * names, each lit while its layer is up and clearing it; props, the library's media, the stage message, a timer
- * alone, a lower third, the idle rotation and an audio playlist, each put up and taken off from the phone and seen on
- * both sides as it changes; laid out for a phone and a tablet (375 × 812, 768 × 1024 and held sideways) in Safari's
+ * names, each lit while its layer is up and clearing it (the Wallpaper in the Logo's place, Session 55); the library's
+ * media, the stage message, a timer alone, a lower third and an audio playlist, each put up and taken off from the
+ * phone and seen on both sides as it changes (props and the idle rotation went in Session 55); laid out for a phone
+ * and a tablet (375 × 812, 768 × 1024 and held sideways) in Safari's
  * engine and Chrome's, with axe, 44 px targets and nothing off the side; and none of it for a Stage or Announcements
  * device. Placeholder content and generated media only; codes and tokens made at run time.
  */
@@ -120,23 +121,18 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           'Clear all F1',
           'Slide F2',
           'Background F3',
-          'Props F4',
           'Audio F5',
           'Messages F6',
           'Ticker F7',
-          'Masks F8',
-          'Logo F12',
+          'Wallpaper F12',
           'Black-out B',
         ]);
-      // No logo chosen yet: the Logo can be pressed all the same, as the window's can, and says why in the window's
-      // words (D5 review: it was greyed with no reason). Then one is chosen.
-      await expect(p.getByTestId('remote-logo')).toBeEnabled();
-      await p.getByTestId('remote-logo').click();
-      await expect(p.getByRole('alert')).toContainText(
-        'No logo has been chosen yet. Choose one in Pro Mode: Props, then “Use as the logo”.',
-      );
-      expect((await snapshot(win)).state.logo).toBeNull();
-      await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
+      // The Wallpaper (Session 55, in the Logo's place) goes up and off from the phone, as from the window.
+      await p.getByTestId('remote-wallpaper').click();
+      await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(true);
+      await expect(p.getByTestId('remote-wallpaper')).toHaveAttribute('data-lit', 'true');
+      await p.getByTestId('remote-wallpaper').click();
+      await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(false);
       // Word for word and key for key the window's own bar (D5 review), read from it rather than from a list.
       expect(await windowClearWords(win)).toEqual(await clearWords(p));
       // Read out as the desktop's are: a layer's clear by its name, the rest by their words and key.
@@ -144,32 +140,19 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect(actions.getByRole('button', { name: 'Clear all F1', exact: true })).toBeDisabled();
       await expect(actions.getByRole('button', { name: 'Clear slide', exact: true })).toBeDisabled();
 
-      // The slide, the background, a prop and a message up from the operator window: their clears light up.
-      const props = await win.evaluate(() => (globalThis as PageGlobals).drashti.props.list());
-      const logo = props.find((x) => x.name === LOGO);
-      if (!logo) throw new Error('no placeholder prop');
+      // The slide, the background and a message up from the operator window: their clears light up.
       await dispatch(win, { type: 'goLive', presentationId: show.kirtanId, slideIndex: 0 });
       await dispatch(win, {
         type: 'setBackground',
         background: { kind: 'media', mediaId: show.pictureMediaId, media: 'image', fit: 'fit', loop: false },
       });
       await dispatch(win, {
-        type: 'showProp',
-        prop: {
-          id: logo.id,
-          name: logo.name,
-          elements: logo.elements,
-          width: logo.width,
-          height: logo.height,
-        },
-      });
-      await dispatch(win, {
         type: 'showMessage',
         message: { id: 'message:placeholder', text: 'Placeholder words' },
       });
-      for (const layer of ['slide', 'background', 'props', 'messages'])
+      for (const layer of ['slide', 'background', 'messages'])
         await expect(p.getByTestId(`remote-clear-${layer}`), layer).toHaveAttribute('data-lit', 'true');
-      for (const layer of ['audio', 'ticker', 'masks'])
+      for (const layer of ['audio', 'ticker'])
         await expect(p.getByTestId(`remote-clear-${layer}`), layer).toBeDisabled();
       await expect(
         actions.getByRole('button', { name: 'Clear slide (on screen)', exact: true }),
@@ -182,13 +165,11 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         output.locator('[data-layer="slide"]', { hasText: 'Placeholder chorus line' }),
       ).toHaveCount(0);
       await expect.poll(async () => (await layers(win)).slide).toBeNull();
-      await p.getByTestId('remote-clear-props').click();
-      await expect.poll(async () => (await layers(win)).props).toEqual([]);
       await p.getByTestId('remote-clear-messages').click();
       await expect.poll(async () => (await layers(win)).messages).toEqual([]);
       await p.getByTestId('remote-clear-background').click();
       await expect.poll(async () => (await layers(win)).background).toBeNull();
-      for (const layer of ['slide', 'background', 'props', 'messages'])
+      for (const layer of ['slide', 'background', 'messages'])
         await expect(p.getByTestId(`remote-clear-${layer}`), layer).toBeDisabled();
 
       // Clear all, then Put it back in its place (no key, as the desktop's bar), then Clear all again.
@@ -199,21 +180,23 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder first verse');
       await expect(p.getByTestId('remote-clear-all')).toBeEnabled();
 
-      // The single-letter keys turned off in Drashti: Black-out names no key, the Logo keeps F12; and back.
+      // The single-letter keys turned off in Drashti: Black-out names no key, the Wallpaper keeps F12; and back.
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(false));
-      await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Logo F12', 'Black-out']);
+      await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Wallpaper F12', 'Black-out']);
       // And still the window's own bar, as its buttons read now.
       const phoneNow = await clearWords(p);
       await expect.poll(() => windowClearWords(win)).toEqual(phoneNow);
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(true));
-      await expect.poll(async () => (await clearWords(p)).slice(-2)).toEqual(['Logo F12', 'Black-out B']);
+      await expect
+        .poll(async () => (await clearWords(p)).slice(-2))
+        .toEqual(['Wallpaper F12', 'Black-out B']);
     } finally {
       await phone.close();
     }
     await app.close();
   });
 
-test('from a phone, as from the operator window: props, media with its skips, the stage message, a timer alone, a lower third, the idle rotation and an audio playlist, each seen on both sides as it changes', async () => {
+test('from a phone, as from the operator window: media with its skips, the stage message, a timer alone, a lower third and an audio playlist, each seen on both sides as it changes (Session 55: props and the idle rotation went)', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -229,7 +212,7 @@ test('from a phone, as from the operator window: props, media with its skips, th
   expect(toneId).not.toBe('');
   expect(secondToneId).not.toBe('');
   await setUpScreen(win);
-  const output = await outputPage(app);
+  await outputPage(app);
   const { base } = await networkOn(win);
   const phone = await device('chromium');
   const p = phone.page;
@@ -237,57 +220,10 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
 
-    // Props: Show and Hide, by the prop's name, the logo marked; up on the screens and in the window's LIVE.
     await p.getByTestId('remote-tab-more').click();
-    const prop = p.getByTestId('remote-prop').filter({ hasText: LOGO });
-    await prop.getByRole('button', { name: 'Show' }).click();
-    await expect.poll(async () => (await layers(win)).props.map((x) => x.name)).toEqual([LOGO]);
-    await expect(output.locator('[data-layer="props"]')).toContainText(LOGO);
-    await expect(win.getByTestId('live-preview').locator('[data-layer="props"]')).toContainText(LOGO);
-    await expect(prop).toHaveAttribute('data-shown', 'true');
-    await expectNoSeriousA11yIssues(p, 'the More tab with a prop up');
-    await prop.getByRole('button', { name: 'Hide' }).click();
-    await expect.poll(async () => (await layers(win)).props).toEqual([]);
-    // Up from the window: the phone follows, with no reload. A prop made in Drashti is listed at once.
-    const logo = (await win.evaluate(() => (globalThis as PageGlobals).drashti.props.list())).find(
-      (x) => x.name === LOGO,
-    );
-    if (!logo) throw new Error('no placeholder prop');
-    await dispatch(win, {
-      type: 'showProp',
-      prop: { id: logo.id, name: logo.name, elements: logo.elements, width: logo.width, height: logo.height },
-    });
-    await expect(prop).toHaveAttribute('data-shown', 'true');
-    await dispatch(win, { type: 'hideProp', propId: logo.id });
-    await expect(prop).not.toHaveAttribute('data-shown');
-    const made = await win.evaluate(() =>
-      (globalThis as PageGlobals).drashti.props.save(null, {
-        name: 'Placeholder corner words',
-        width: 1920,
-        height: 1080,
-        elements: [
-          {
-            id: 'placeholder-corner-words',
-            kind: 'text',
-            frame: { x: 60, y: 960, width: 1800, height: 80 },
-            text: 'Placeholder corner words',
-            lang: 'en',
-            style: {
-              fontFamily: null,
-              fontSize: 48,
-              fontWeight: 600,
-              color: '#ffffff',
-              align: 'center',
-              verticalAlign: 'middle',
-              lineHeight: 1.2,
-              shadow: true,
-            },
-          },
-        ],
-      }),
-    );
-    expect(made.ok).toBe(true);
-    await expect(p.getByTestId('remote-prop').filter({ hasText: 'Placeholder corner words' })).toBeVisible();
+    // No props, masks or idle rotation on the phone (Session 55).
+    for (const id of ['remote-props', 'remote-masks', 'remote-idle', 'remote-looks'])
+      await expect(p.getByTestId(id), id).toHaveCount(0);
 
     // The stage message: shown on the stage screens only, said on the phone and in the window, then cleared.
     await p.getByTestId('remote-stage-text').fill('Placeholder: five minutes');
@@ -323,21 +259,6 @@ test('from a phone, as from the operator window: props, media with its skips, th
     await expect(third).toHaveAttribute('data-up', 'true');
     await third.getByRole('button', { name: 'Hide' }).click();
     await expect.poll(async () => (await layers(win)).lowerThird).toBeNull();
-
-    // The idle rotation, once it has a picture: Start and Stop.
-    await win.evaluate(
-      (id) =>
-        (globalThis as PageGlobals).drashti.idle.saveSettings({
-          pictures: [id],
-          secondsEach: 3,
-          quoteOfTheDay: false,
-        }),
-      show.pictureMediaId,
-    );
-    await p.getByTestId('remote-idle-start').click();
-    await expect.poll(async () => (await snapshot(win)).state.idle.startedAt).not.toBeNull();
-    await p.getByTestId('remote-idle-stop').click();
-    await expect.poll(async () => (await snapshot(win)).state.idle.startedAt).toBeNull();
 
     // An audio playlist made in Drashti: listed with its tracks, played from the phone, then paused.
     const music = await win.evaluate(
@@ -509,13 +430,12 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await makeTestImage(win, join(dir, 'Placeholder second backdrop.png'), { color: '#7c2d12' }),
     ]);
     expect(secondPictureId).not.toBe('');
-    await win.evaluate((id) => (globalThis as PageGlobals).drashti.props.setLogo(id), show.logoPropId);
     await win.evaluate((input) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, input), {
       ...NEW_LOWER_THIRD,
       lines: ['Placeholder Speaker', 'Placeholder title', ''],
     });
-    // Everything the phone can have up at once (D5 review): an audio playlist playing (Music's rows), the idle
-    // rotation's pictures (its Start), a video behind Repeat Slides going round (the time bars, the Playing row and
+    // Everything the phone can have up at once (D5 review): an audio playlist playing (Music's rows), a video behind
+    // Repeat Slides going round (the time bars, the Playing row and
     // LIVE's own line, "Moves on by itself"), so each is laid out and checked at every size.
     const repeatId = await win.evaluate(
       async ({ toneId, pictureId, secondPictureId }) => {
@@ -529,12 +449,6 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         if (!looped.ok) throw new Error(looped.message);
         const played = await d.music.play(made.id, 0);
         if (!played.ok) throw new Error(played.message);
-        const idle = await d.idle.saveSettings({
-          pictures: [pictureId],
-          secondsEach: 3,
-          quoteOfTheDay: false,
-        });
-        if (!idle.ok) throw new Error('no idle pictures');
         // Each step of the set-up says why, should it fail, rather than leave a later wait to time out.
         const repeat = await d.playlists.createRepeat(null);
         if (!repeat.ok) throw new Error(repeat.message);
@@ -604,7 +518,6 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
               await expect(
                 page.getByTestId('remote-music-playlist').filter({ hasText: 'Placeholder tunes' }),
               ).toHaveAttribute('data-playing', 'true');
-              await expect(page.getByTestId('remote-idle-start')).toBeVisible();
             }
             await expectNoSeriousA11yIssues(page, `${place} on ${at}`);
             expect.soft(await tooSmall(page), `targets under 44 px: ${place} on ${at}`).toEqual([]);
@@ -625,11 +538,16 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           // Held sideways, More's sections stand in two columns, and Media in a grid of two or more.
           if (size.layout === 'landscape') {
             await page.getByTestId('remote-panel-more').click();
+            // Every section of More (Session 55: fewer since props, masks and Looks went, so the second column
+            // starts further down): some in each column.
             const lefts = await page
-              .locator(
-                '[data-testid="remote-stage"], [data-testid="remote-props"], [data-testid="remote-timers"]',
-              )
-              .evaluateAll((sections) => sections.map((s) => Math.round(s.getBoundingClientRect().left)));
+              .locator('[data-testid="remote-more-columns"] > *')
+              .evaluateAll((sections) =>
+                sections
+                  .map((s) => s.getBoundingClientRect())
+                  .filter((r) => r.width > 0)
+                  .map((r) => Math.round(r.left)),
+              );
             expect(new Set(lefts).size, `More in columns on ${at}`).toBeGreaterThan(1);
             await page.getByTestId('remote-panel-library').click();
             await page.getByTestId('remote-library-media').click();
@@ -673,9 +591,6 @@ test('a Stage or Announcements device can read and do none of the mirror’s req
   const poster = await pairToken(win, port, 'announcements', 'Placeholder announcer');
   const asks: [string, string, unknown?][] = [
     ['GET', '/api/v1/keys'],
-    ['GET', '/api/v1/props'],
-    ['POST', `/api/v1/props/${show.logoPropId}/show`],
-    ['POST', `/api/v1/props/${show.logoPropId}/hide`],
     ['GET', '/api/v1/media'],
     ['POST', `/api/v1/media/${show.pictureMediaId}/show`],
     ['GET', '/api/v1/lower-thirds'],
@@ -684,29 +599,21 @@ test('a Stage or Announcements device can read and do none of the mirror’s req
     ['POST', '/api/v1/stage-message', { text: 'Placeholder: five minutes' }],
     ['POST', '/api/v1/stage-message/clear'],
     ['POST', '/api/v1/skip', { layer: 'background', jump: 'back' }],
-    ['POST', '/api/v1/idle/stop'],
   ];
   const before = (await snapshot(win)).rev;
   for (const token of [stage, poster])
     for (const [method, path, body] of asks)
       expect((await apiCall(port, path, { method, token, body })).status, `${method} ${path}`).toBe(403);
   expect((await snapshot(win)).rev).toBe(before);
-  // A Remote reads them, and puts the prop and the picture up (the skip is refused: nothing is playing).
+  // A Remote reads them, and puts the picture up (the skip is refused: nothing is playing).
   expect((await apiCall(port, '/api/v1/keys', { token: remote })).json).toMatchObject({
     keys: { singleKeys: true },
   });
-  expect((await apiCall(port, '/api/v1/props', { token: remote })).json).toMatchObject({
-    props: [{ id: show.logoPropId, name: LOGO }],
-  });
-  expect(
-    (await apiCall(port, `/api/v1/props/${show.logoPropId}/show`, { method: 'POST', token: remote })).status,
-  ).toBe(200);
   expect(
     (await apiCall(port, `/api/v1/media/${show.pictureMediaId}/show`, { method: 'POST', token: remote }))
       .status,
   ).toBe(200);
   const l = await layers(win);
-  expect(l.props.map((x) => x.id)).toEqual([show.logoPropId]);
   expect(l.background?.kind === 'media' ? l.background.mediaId : null).toBe(show.pictureMediaId);
   expect(
     (

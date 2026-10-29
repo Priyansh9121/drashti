@@ -335,39 +335,6 @@ function StreamStep() {
   );
 }
 
-function ThemeStep() {
-  const themes = useSetup((s) => s.themes);
-  const themeId = useSetup((s) => s.themeId);
-  const defaultThemeId = useSetup((s) => s.defaultThemeId);
-  const name = useId();
-  return (
-    <div className="space-y-3">
-      <p className="text-sm">
-        The look presentations made in Drashti start with. Themes can be changed later in Themes.
-      </p>
-      {themeId === null && <Notice tone="info">Skipped: the default theme stays as it is.</Notice>}
-      <fieldset className="space-y-1.5">
-        <legend className="sr-only">Default theme</legend>
-        {themes.map((t) => (
-          <label key={t.id} className="flex items-center gap-2 text-sm" data-testid="setup-theme">
-            <input
-              type="radio"
-              name={name}
-              className="h-4 w-4 accent-primary"
-              checked={themeId === t.id}
-              onChange={() => {
-                useSetup.setState({ themeId: t.id });
-              }}
-            />
-            {t.name}
-            {t.id === defaultThemeId && <Badge>Default now</Badge>}
-          </label>
-        ))}
-      </fieldset>
-    </div>
-  );
-}
-
 function FinishStep() {
   const state = useSetup();
   const plan = planOf(state);
@@ -382,7 +349,6 @@ function FinishStep() {
           : 'No screen is showing yet.'}
       </Notice>
     );
-  const themeName = state.themes.find((t) => t.id === plan.themeId)?.name;
   return (
     <div className="space-y-3 text-sm">
       <p>Finish sets these. Nothing has changed yet.</p>
@@ -420,7 +386,6 @@ function FinishStep() {
             ? 'stays as it is'
             : `camera ${state.stream.camera?.label ?? 'none'}, sound input ${state.stream.sound?.label ?? 'none'}; ${state.stream.layout === 'slides' ? 'the slides' : 'the camera and words'}, ${state.stream.languages ? state.stream.languages.map((l) => LANG_NAMES[l]).join(', ') : 'every language'}`}
         </li>
-        <li>Default theme: {themeName ?? 'stays as it is'}</li>
       </ul>
     </div>
   );
@@ -441,7 +406,7 @@ export function SetupWizard({ platform }: { platform: string }) {
   if (!open) return null;
   const name = STEPS[step] ?? 'Welcome';
   const last = step === STEPS.length - 1;
-  const skippable = name === 'Screens' || name === 'Sound' || name === 'Stream' || name === 'Theme';
+  const skippable = name === 'Screens' || name === 'Sound' || name === 'Stream';
   return (
     <>
       <Dialog
@@ -469,8 +434,8 @@ export function SetupWizard({ platform }: { platform: string }) {
                   Skip this step
                 </Button>
               )}
-              {/* The displays first (Session 44): Done shows them as chosen; sound, the stream and the theme
-                  come after, with More setup. */}
+              {/* The displays first (Session 44): Done shows them as chosen; sound and the stream come after,
+                  with More setup. */}
               {name === 'Screens' && (
                 <>
                   <Button data-testid="setup-next" disabled={busy} onClick={() => goTo(step + 1)}>
@@ -521,8 +486,7 @@ export function SetupWizard({ platform }: { platform: string }) {
           <div className="space-y-2 text-sm">
             <p>
               A few steps to set Drashti up on this computer: which output feeds which screens, the languages
-              each shows, where the sound goes, the stream’s camera and sound (if this computer streams), and
-              the look new presentations start with.
+              each shows, where the sound goes, and the stream’s camera and sound (if this computer streams).
             </p>
             <p className="text-muted">
               The screens set themselves as displays are plugged in; here they can be changed. Done on the
@@ -537,8 +501,6 @@ export function SetupWizard({ platform }: { platform: string }) {
           <SoundStep />
         ) : name === 'Stream' ? (
           <StreamStep />
-        ) : name === 'Theme' ? (
-          <ThemeStep />
         ) : (
           <FinishStep />
         )}

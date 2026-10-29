@@ -14,7 +14,7 @@ import type { Db } from '../db/database';
  * - Before: where it is used (shared/media-removal.ts), for the question.
  * - Deleting marks the media row, and the playlist items and music tracks
  *   that hold it, with one moment, so Undo puts back exactly those. Slides,
- *   props, themes and the idle rotation keep pointing at it: while it
+ *   themes, and props and the idle rotation (unseen since Session 55), keep pointing at it: while it
  *   is deleted they treat it as a missing file (nothing in its place), except
  *   that what is on the screens now stays up until it is changed.
  * - Once it can no longer be undone (Drashti starting again), its file,
@@ -34,8 +34,6 @@ export class MediaRemoval {
   constructor(
     private readonly db: Db,
     private readonly deps: {
-      /** The idle rotation's pictures. */
-      idlePictures: () => readonly string[];
       /** Media on the screens now (and playing on the audio layer). */
       onScreens: () => ReadonlySet<string>;
     },
@@ -70,23 +68,16 @@ export class MediaRemoval {
          SELECT playlist_id FROM audio_playlist_tracks WHERE deleted_at IS NULL AND media_id IN (${list}))
        ORDER BY name COLLATE NOCASE`,
     );
-    const props = all(
-      `SELECT DISTINCT p.name FROM props p, json_each(p.definition, '$.elements') e
-        WHERE json_extract(e.value, '$.mediaId') IN (${list}) ORDER BY p.name COLLATE NOCASE`,
-    );
     const themes = all(
       `SELECT name FROM themes WHERE json_extract(definition, '$.background.mediaId') IN (${list})
         ORDER BY name COLLATE NOCASE`,
     );
-    const idle = this.deps.idlePictures();
     const live = this.deps.onScreens();
     return {
       presentations: usedIn(presentationRows),
       playlists: usedIn(playlists),
       music: usedIn(music),
-      props: usedIn(props),
       themes: usedIn(themes),
-      idle: ids.some((id) => idle.includes(id)),
       live: ids.some((id) => live.has(id)),
     };
   }

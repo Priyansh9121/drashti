@@ -61,7 +61,7 @@ describe('MediaStore', () => {
     const path = file('Placeholder darshan.png', 'placeholder picture bytes');
     const first = await store.importFile(path, { kind: 'media', path });
     if (!('mediaId' in first)) throw new Error('not imported');
-    const removal = new MediaRemoval(db, { idlePictures: () => [], onScreens: () => new Set() });
+    const removal = new MediaRemoval(db, { onScreens: () => new Set() });
     removal.remove([first.mediaId]);
     // Imported again before the next start: the same item, no longer deleted.
     const again = await store.importFile(path, { kind: 'media', path });

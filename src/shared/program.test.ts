@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EngineState, PropItem } from './engine/state';
+import type { EngineState } from './engine/state';
 import { initialEngineState } from './engine/state';
 import type { RenderSlide, SlideElement, TextElement, TextRun, TextStyle } from './model';
 import { LOWER_THIRD_MAX_LINES, lowerThird, lowerThirdOf, programPicture } from './program';
@@ -60,7 +60,6 @@ const live = (s: RenderSlide | null, patch: Partial<EngineState> = {}): EngineSt
 };
 
 const text = (lines: { runs: TextRun[] }[]) => lines.map((l) => l.runs.map((r) => r.text).join(''));
-const prop: PropItem = { id: 'logo', name: 'Bug', elements: [] };
 
 describe('the lower third', () => {
   it('has the live slide’s words in the stream group’s languages, in its order', () => {
@@ -111,7 +110,11 @@ describe('the lower third', () => {
 
 describe('what the stream shows', () => {
   it('in the Slides layout: what the hall sees, whatever it is', () => {
-    for (const state of [live(kirtanSlide()), live(null, { blackout: true }), live(null, { logo: prop })])
+    for (const state of [
+      live(kirtanSlide()),
+      live(null, { blackout: true }),
+      live(null, { wallpaper: true }),
+    ])
       expect(programPicture(state, 'slides', ['en'])).toEqual({ kind: 'scene' });
   });
 
@@ -123,22 +126,17 @@ describe('what the stream shows', () => {
     });
   });
 
-  it('black-out and the logo are for the hall: the camera stays, the words go, props and messages stay', () => {
+  it('black-out and the Wallpaper are for the hall: the camera stays, the words go, messages stay', () => {
     const withExtras = (patch: Partial<EngineState>) =>
       live(kirtanSlide(), {
         ...patch,
-        layers: {
-          ...initialEngineState().layers,
-          props: [prop],
-          messages: [{ id: 'm', text: 'Placeholder' }],
-        },
+        layers: { ...initialEngineState().layers, messages: [{ id: 'm', text: 'Placeholder' }] },
       });
-    for (const patch of [{ blackout: true }, { logo: prop }])
+    for (const patch of [{ blackout: true }, { wallpaper: true }])
       expect(programPicture(withExtras(patch), 'camera', null)).toEqual({
         kind: 'camera',
         lowerThird: [],
         full: null,
-        props: true,
         messages: true,
       });
   });
@@ -152,7 +150,7 @@ describe('what the stream shows', () => {
     });
     expect(programPicture(window, 'camera', null)).toMatchObject({ full: 'background', lowerThird: [] });
     expect(programPicture(window, 'slides', null)).toEqual({ kind: 'scene' });
-    // Black-out and the logo are for the hall: the camera stays.
+    // Black-out and the Wallpaper are for the hall: the camera stays.
     expect(programPicture({ ...window, blackout: true }, 'camera', null)).toMatchObject({ full: null });
   });
 

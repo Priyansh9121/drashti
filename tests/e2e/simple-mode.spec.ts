@@ -16,12 +16,12 @@ import {
   relaunchApp,
   setUpScreen,
 } from './helpers';
-import { LOGO, setUpPlaceholderShow } from './placeholder-show';
+import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
  * Simple Mode, run with the keys only (the ones a presentation clicker sends
  * included): a short sabha with a welcome slide, a kirtan whose chorus comes
- * three times, a video, black-out and back, the logo and back, and putting
+ * three times, a video, black-out and back, the Wallpaper and back, and putting
  * things right after Clear all, checking the audience and stage screens at
  * each step. Nothing that can change the library, the screens or the sound
  * can be reached, and after a forced stop Drashti comes back in Simple Mode (a clean start is Pro Mode).
@@ -75,19 +75,17 @@ async function screens(app: ElectronApplication): Promise<{ audience: Page; stag
   return { audience, stage };
 }
 
-/** Two screens (audience and stage), the placeholder sabha with a video, and its logo marked. */
+/** Two screens (audience and stage), and the placeholder sabha with a video. */
 async function setUp(win: Page) {
   const show = await setUpPlaceholderShow(win, { video: true });
   await setUpScreen(win, 'Main Hall', 0);
   await setUpScreen(win, 'Stage', 1);
-  await win.evaluate(async (logoId) => {
+  await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const snapshot = await d.screens.get();
     const stage = snapshot.groups.find((g) => g.name === 'Stage');
     if (stage) await d.screens.setGroupRole(stage.id, 'stage');
-    const marked = await d.props.setLogo(logoId);
-    if (!marked.ok) throw new Error(marked.message);
-  }, show.logoPropId);
+  });
   return show;
 }
 
@@ -165,13 +163,15 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   await expect(audience.getByTestId('blackout')).toHaveCount(0);
   expect((await state(win)).layers.background).toEqual(playing);
 
-  // The logo (F12, as the operators press it: Session 50) and back (L).
+  // The Wallpaper (F12, the Logo's key as the operators press it: Session 55, Part 13) and back; L does nothing.
   await win.keyboard.press('F12');
-  await expect(audience.getByTestId('logo')).toContainText(LOGO);
-  await expect(win.getByTestId('simple-logo')).toHaveText(/Logo is on/u);
-  await expect(stage.getByTestId('stage-view')).toContainText('LOGO ON THE AUDIENCE SCREENS');
+  await expect(audience.getByTestId('wallpaper')).toBeVisible();
+  await expect(win.getByTestId('simple-wallpaper')).toHaveText(/Wallpaper is on/u);
+  await expect(stage.getByTestId('stage-view')).toContainText('WALLPAPER ON THE AUDIENCE SCREENS');
   await win.keyboard.press('l');
-  await expect(audience.getByTestId('logo')).toHaveCount(0);
+  await expect(audience.getByTestId('wallpaper')).toBeVisible();
+  await win.keyboard.press('F12');
+  await expect(audience.getByTestId('wallpaper')).toHaveCount(0);
   expect((await state(win)).layers.background).toEqual(playing);
   await expect(video).toHaveCount(1);
 
@@ -225,7 +225,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   expect(menu).toEqual({ backup: null, restore: null, link: null, switchLabel: 'Switch to Pro Mode…' });
   // ...and the main process refuses it even if asked directly.
   const refused = await win.evaluate(
-    async ({ welcomeId, logoId }) => {
+    async ({ welcomeId }) => {
       const d = (globalThis as PageGlobals).drashti;
       const sound = await d.audio.getOutput();
       return {
@@ -238,16 +238,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
           return d.library.saveSlides(welcomeId, { ...opened.doc, loop: true }, opened.stamp, true);
         })(),
         transition: await d.library.setDefaultTransition({ kind: 'dissolve', durationMs: 500 }),
-        themeFromSlide: await d.themes.fromSlide('Placeholder theme', {
-          width: 1920,
-          height: 1080,
-          background: null,
-          elements: [],
-          cues: [],
-        }),
         import: await d.library.importPaths(['/placeholder.txt']),
         playlist: await d.playlists.create('Placeholder new', null, false),
-        prop: await d.props.remove(logoId),
         timer: await d.timers.create({
           name: 'x',
           kind: 'countup',
@@ -255,7 +247,6 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
           targetTime: null,
           allowsOverrun: false,
         }),
-        theme: await d.themes.remove('x'),
         screens: await d.screens.createGroup('Placeholder group'),
         sound: (await d.audio.setOutput({ id: 'x', label: 'Placeholder' })).chosen === sound.chosen,
         names: (await d.library.listPresentations()).length,
@@ -269,7 +260,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         template: await d.playlists.saveAsTemplate('x', { name: 'Placeholder', slots: [] }),
         fromTemplate: await d.playlists.newFromTemplate('x', 'Placeholder', null),
         slot: await d.playlists.addSlot('x', null, { label: 'Placeholder', category: null }),
-        setup: await d.setup.finish({ outputs: [], sound: 'skip', themeId: null }),
+        setup: await d.setup.finish({ outputs: [], sound: 'skip' }),
         // Session 25b: Import from a Link (a made-up link).
         link: await d.links.look('dropbox', 'https://www.dropbox.com/scl/fi/placeholder/x.mp4?dl=0'),
         linkDownload: await d.links.download(),
@@ -277,7 +268,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         linkQuality: await d.links.setMaxHeight(2160),
       };
     },
-    { welcomeId: show.welcomeId, logoId: show.logoPropId },
+    { welcomeId: show.welcomeId },
   );
   const no = { ok: false, message: SIMPLE_MODE_REFUSAL };
   expect(refused).toMatchObject({
@@ -285,12 +276,9 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     words: no,
     slides: no,
     transition: no,
-    themeFromSlide: no,
     import: no,
     playlist: no,
-    prop: no,
     timer: no,
-    theme: no,
     screens: no,
     sound: true,
     tracks: no,

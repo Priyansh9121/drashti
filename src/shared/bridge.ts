@@ -2,7 +2,6 @@ import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearanc
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
-import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
   PassageInfo,
   PassageResult,
@@ -47,7 +46,7 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { Lang, RenderSlide, Transition } from './model';
-import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
+import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
@@ -97,15 +96,11 @@ import type { RepeatSettings } from './repeat';
 import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
 import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
-import type { PropFields, PropInfo, PropResult } from './props';
-import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
-import type { Mask, MaskResult } from './masks';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
-import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -149,7 +144,7 @@ export interface DrashtiBridge {
     /** View › Show Safe Areas: whether the slide editor draws them. */
     safeAreas(): Promise<boolean>;
     onSafeAreasChanged(listener: (on: boolean) => void): () => void;
-    /** Single-letter keys (Session 37): whether B, ., L and ? act, and turning them on or off (Pro Mode). */
+    /** Single-letter keys (Session 37): whether B, . and ? act, and turning them on or off (Pro Mode). */
     singleKeys(): Promise<boolean>;
     setSingleKeys(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
     onSingleKeysChanged(listener: (on: boolean) => void): () => void;
@@ -424,18 +419,6 @@ export interface DrashtiBridge {
     onChanged(listener: () => void): () => void;
     onSmartChanged(listener: (views: SmartPlaylistView[]) => void): () => void;
   };
-  /** Props: a logo or a fixed line over whatever slide is live. Showing one goes through the engine. */
-  props: {
-    list(): Promise<PropInfo[]>;
-    /** Make a prop (no id) or change one. */
-    save(propId: string | null, fields: PropFields): Promise<PropResult>;
-    remove(propId: string): Promise<PropResult>;
-    /** The prop marked as the logo, or null. */
-    getLogo(): Promise<string | null>;
-    /** Mark a prop as the logo (null: none) (operator window, Pro Mode). */
-    setLogo(propId: string | null): Promise<PropResult>;
-  };
-  /** Themes: how presentations' words look, per language, and what is behind them. */
   /** The look of Drashti's own windows (Sessions 39–40): the Appearance window's view, and choosing. */
   appearance: {
     view(): Promise<AppearanceView>;
@@ -452,21 +435,6 @@ export interface DrashtiBridge {
     onOpen(listener: () => void): () => void;
     /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */
     onChanged(listener: () => void): () => void;
-  };
-  themes: {
-    list(): Promise<{ themes: Theme[]; defaultId: string }>;
-    /** Make a theme (no id) or change one. */
-    save(themeId: string | null, fields: ThemeFields): Promise<ThemeResult>;
-    /** Remove a theme; the default one stays. */
-    remove(themeId: string): Promise<ThemeResult>;
-    /** Make a theme the default: presentations made in Drashti start with it. */
-    setDefault(themeId: string): Promise<ThemeResult>;
-    /** Apply a theme to presentations: their styles change, never their words; one Undo brings them back. */
-    apply(themeId: string, presentationIds: string[]): Promise<ApplyThemeResult>;
-    /** A theme from a presentation's first text box (an imported template). */
-    fromPresentation(presentationId: string): Promise<ThemeResult>;
-    /** A theme from a slide in the slide editor, as it is there (saved or not). */
-    fromSlide(name: string, slide: ThemeSlide): Promise<ThemeResult>;
   };
   /** Message templates ("Car {plate} please move"). Showing one goes through the engine. */
   messages: {
@@ -714,24 +682,6 @@ export interface DrashtiBridge {
     /** View > Set Up Screens… was chosen. */
     onOpen(listener: () => void): () => void;
   };
-  /**
-   * Looks: what each screen group shows, one live at a time (changing them:
-   * operator window, Pro Mode). Switching the live Look is the engine's
-   * setLook command.
-   */
-  looks: {
-    list(): Promise<LooksView>;
-    onChanged(listener: (view: LooksView) => void): () => void;
-    /** A new Look at the end of the list, a copy of `copyOf` (or every group with the defaults). */
-    create(name: string, copyOf: string | null): Promise<LookResult>;
-    rename(lookId: string, name: string): Promise<LookResult>;
-    /** Not the last one. Removing the live Look puts the first one live. */
-    remove(lookId: string): Promise<LookResult>;
-    /** To this place in the list (0: first, the Look Drashti starts with). */
-    move(lookId: string, to: number): Promise<LookResult>;
-    /** Change one group's settings in a Look. */
-    setGroup(lookId: string, groupId: string, patch: GroupLookPatch): Promise<LookResult>;
-  };
   /** Lower Thirds (Session 44): changing them is the operator window's, in Pro Mode. */
   lowerThirds: {
     list(): Promise<LowerThird[]>;
@@ -753,15 +703,6 @@ export interface DrashtiBridge {
     /** The settings changed from a phone (Session 54). */
     onChanged(listener: (settings: MidiSettings) => void): () => void;
   };
-  /** The mask library (changing it: operator window, Pro Mode). A mask goes up with the engine's setMask. */
-  masks: {
-    list(): Promise<Mask[]>;
-    onChanged(listener: (masks: Mask[]) => void): () => void;
-    /** Make one (no id) or save one. */
-    save(maskId: string | null, mask: Omit<Mask, 'id'>): Promise<MaskResult>;
-    /** It comes off the Masks layer and out of every Look. */
-    remove(maskId: string): Promise<MaskResult>;
-  };
   /** Shastra texts (Session 12): references, search and browsing; a text's theme and removing it (Pro Mode). */
   shastra: {
     list(): Promise<ShastraTextInfo[]>;
@@ -771,17 +712,7 @@ export interface DrashtiBridge {
     search(query: string): Promise<ShastraHit[]>;
     passage(passageId: string): Promise<PassageInfo | null>;
     itemPassage(itemId: string): Promise<PassageInfo | null>;
-    setTheme(textId: string, themeId: string | null): Promise<ShastraResult>;
     remove(textId: string): Promise<ShastraResult>;
-  };
-  /** The idle rotation's pictures, timing and quotes (changing them: operator window, Pro Mode). */
-  idle: {
-    view(): Promise<IdleView>;
-    onChanged(listener: (view: IdleView) => void): () => void;
-    saveSettings(settings: IdleSettings): Promise<IdleResult>;
-    /** Make one (no id) or save one. */
-    saveQuote(quoteId: string | null, quote: QuoteFields): Promise<QuoteResult>;
-    removeQuote(quoteId: string): Promise<IdleResult>;
   };
   /** Samvat and tithi: the calendars loaded (through Import), today's entry, removing one (Pro Mode). */
   calendar: {

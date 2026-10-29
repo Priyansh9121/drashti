@@ -38,12 +38,9 @@ export function mediaInState(state: EngineState): { now: string[]; next: string[
   const bg = state.layers.background;
   if (bg?.kind === 'media') now.add(bg.mediaId);
   if (state.layers.slide) fromSlide(state.layers.slide.slide, now);
-  for (const p of state.layers.props) fromElements(p.elements, now);
   // The picture-in-picture box's picture or video (Session 50); a video input or a window is no media.
   const box = state.layers.pip?.source;
   if (box?.kind === 'media') now.add(box.mediaId);
-  if (state.logo) fromElements(state.logo.elements, now);
-  for (const item of state.idle.items) if (item.kind === 'picture') now.add(item.mediaId);
   const next = new Set<string>();
   const n = state.next;
   if (n?.kind === 'slide') {

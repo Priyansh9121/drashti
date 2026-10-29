@@ -2,7 +2,6 @@ import { z } from 'zod';
 import type { AudioDevice } from './audio';
 import { audioDeviceSchema } from './audio';
 import type { KirtanLang, Lang, RenderSlide, TextElement } from './model';
-import { idSchema } from './model-schema';
 import type { DisplayJob, ScreensSnapshot } from './screens';
 import { groupLanguagesSchema } from './screens-schema';
 import { NEW_TEXT_LINE_HEIGHT } from './model';
@@ -28,8 +27,7 @@ export interface SetupPlan {
   outputs: SetupOutput[] | null;
   /** The sound output: a device, null for the system default, or 'skip' to leave it. */
   sound: AudioDevice | null | 'skip';
-  /** The default theme, or null to leave it. */
-  themeId: string | null;
+  // No default theme since Session 55 (Part 12: Themes gone): new words start in the library's default look as it is.
 }
 
 export type SetupResult =
@@ -73,7 +71,6 @@ export const setupPlanSchema: z.ZodType<SetupPlan> = z.object({
     .max(32)
     .nullable(),
   sound: z.union([audioDeviceSchema, z.null(), z.literal('skip')]),
-  themeId: idSchema.nullable(),
 });
 
 /** Placeholder lines in each language for a sample slide: written for Drashti, not kirtan text. */

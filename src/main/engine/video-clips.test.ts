@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../shared/engine/commands';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EnginePatchMessage } from '../../shared/engine/protocol';
-import type { PipLayer, PropItem } from '../../shared/engine/state';
+import type { PipLayer } from '../../shared/engine/state';
 import type { SlideCue } from '../../shared/library';
 import type { MediaMarkers } from '../../shared/markers';
 import type { MediaElement, RenderSlide } from '../../shared/model';
@@ -11,8 +11,8 @@ import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
 /*
- * A video on a slide, and a prop's and the logo's videos, play between their files' start and end points
- * (Session 52), as a background video does: the engine stamps the points on the slide layer and on the prop
+ * A video on a slide plays between its file's start and end points (Session 52), as a background video does
+ * (a prop's and the logo's did too, until they went in Session 55): the engine stamps the points on the slide layer
  * (`clips`, by media id) from the library as they go up, so every screen, node, key and fill and the stream play
  * the same part of each file; and they follow the library when its points change. Before, they played the whole
  * file. Since Session 53 a video from Media in the picture-in-picture box does too (the box's `clips`).
@@ -53,12 +53,6 @@ function slideWith(id: string, ...media: MediaElement[]): RenderSlide {
   const words = textSlide(id, 'Placeholder words');
   return { ...words, elements: [...media, ...words.elements] };
 }
-
-const prop = (id: string, mediaId: string, loop = true): PropItem => ({
-  id,
-  name: `Placeholder ${id}`,
-  elements: [video(`${id}-video`, mediaId, loop)],
-});
 
 /** The third slide's background cue: a picture, so Back's exact undo (it goes) differs from Previous (it stays). */
 const BACKDROP: SlideCue = {
@@ -117,7 +111,7 @@ function setup() {
   return { engine, markers, transport };
 }
 
-describe('a slide’s, a prop’s and the logo’s videos between their start and end points (Session 52)', () => {
+describe('a slide’s videos between their start and end points (Session 52; props and the logo went in Session 55)', () => {
   it('a slide going up carries its videos’ points, by file: none for a file without, a picture, or a slide of words', () => {
     const { engine } = setup();
     engine.dispatch(goLive(0));
@@ -132,40 +126,19 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
     expect(engine.current.layers.slide).not.toHaveProperty('clips');
   });
 
-  it('a prop and the logo carry their videos’ points as they go up: the library’s, never a page’s', () => {
-    const { engine } = setup();
-    const forged = { clipped: { startMs: 0, endMs: 1 }, ending: { startMs: 0, endMs: 1 } };
-    engine.dispatch({ type: 'showProp', prop: { ...prop('prop', 'clipped'), clips: forged } });
-    engine.dispatch({ type: 'showLogo', prop: { ...prop('logo', 'ending', false), clips: forged } });
-    expect(engine.current.layers.props[0]?.clips).toEqual({ clipped: { startMs: 2000, endMs: 6000 } });
-    expect(engine.current.logo?.clips).toEqual({ ending: { startMs: 0, endMs: 5000 } });
-    // Its videos' files without points: none, whatever a page said.
-    engine.dispatch({ type: 'showProp', prop: { ...prop('plain', 'plain'), clips: forged } });
-    expect(engine.current.layers.props[1]?.id).toBe('plain');
-    expect(engine.current.layers.props[1]).not.toHaveProperty('clips');
-  });
-
-  it('follow the library as its points change, carrying on: the slide up, a prop and the logo; not a change to the show', () => {
+  it('follow the library as its points change, carrying on: the slide up; not a change to the show', () => {
     const { engine, markers } = setup();
-    engine.dispatch({ type: 'showProp', prop: prop('prop', 'clipped') });
-    engine.dispatch({ type: 'showLogo', prop: prop('logo', 'clipped') });
     engine.dispatch(goLive(1));
     engine.dispatch({ type: 'next' });
     const slide = engine.current.layers.slide;
-    const propShownAt = engine.current.layers.props[0]?.shownAt;
-    const logoShownAt = engine.current.logo?.shownAt;
     markers['clipped'] = { startMs: 3000, endMs: null, markers: [] };
     expect(engine.refreshMarkers('clipped')).toMatchObject({ ok: true, changed: true });
     const points = { clipped: { startMs: 3000, endMs: null } };
     expect(engine.current.layers.slide).toEqual({ ...slide, clips: points });
-    expect(engine.current.layers.props[0]).toMatchObject({ shownAt: propShownAt, clips: points });
-    expect(engine.current.logo).toMatchObject({ shownAt: logoShownAt, clips: points });
     // Its points taken away: the whole file again.
     delete markers['clipped'];
     engine.refreshMarkers('clipped');
     expect(engine.current.layers.slide).not.toHaveProperty('clips');
-    expect(engine.current.layers.props[0]).not.toHaveProperty('clips');
-    expect(engine.current.logo).not.toHaveProperty('clips');
     expect(engine.current.layers.slide?.shownAt).toBe(slide?.shownAt);
     // Another file's points change nothing.
     expect(engine.refreshMarkers('ending')).toMatchObject({ changed: false });
@@ -189,18 +162,16 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
       expect(mirror.state).toEqual(engine.current);
     };
     engine.dispatch(goLive(0));
-    engine.dispatch({ type: 'showProp', prop: prop('prop', 'clipped') });
     follow();
     expect(mirror.state?.layers.slide?.clips?.['clipped']).toEqual({ startMs: 2000, endMs: 6000 });
-    expect(mirror.state?.layers.props[0]?.clips).toEqual({ clipped: { startMs: 2000, endMs: 6000 } });
     markers['clipped'] = { startMs: 2500, endMs: 5500, markers: [] };
     engine.refreshMarkers('clipped');
     follow();
-    expect(mirror.state?.layers.props[0]?.clips).toEqual({ clipped: { startMs: 2500, endMs: 5500 } });
+    expect(mirror.state?.layers.slide?.clips?.['clipped']).toEqual({ startMs: 2500, endMs: 5500 });
     delete markers['clipped'];
     engine.refreshMarkers('clipped');
     follow();
-    expect(mirror.state?.layers.props[0]).not.toHaveProperty('clips');
+    expect(mirror.state?.layers.slide?.clips?.['clipped']).toBeUndefined();
   });
 
   it('a slide edited while it is up takes its videos’ points afresh', () => {
@@ -211,11 +182,10 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
     expect(engine.current.layers.slide?.clips).toEqual({ clipped: { startMs: 1500, endMs: 4500 } });
   });
 
-  it('Back after Back still undoes each Next exactly while a prop with points is up: what is unchanged stays the same', () => {
-    // Its points kept but the prop made anew, Back's layers were new ones each time: a second Back was Previous, and
-    // the backdrop the second slide's cue put up stayed behind the first.
+  it('Back after Back still undoes each Next exactly: what is unchanged stays the same', () => {
+    // Layers made anew, Back's were new ones each time: a second Back was Previous, and the backdrop the second
+    // slide's cue put up stayed behind the first (Session 52, with a prop up; props went in Session 55).
     const { engine } = setup();
-    engine.dispatch({ type: 'showProp', prop: prop('prop', 'clipped') });
     engine.dispatch({ type: 'goLive', presentationId: 'words', slideIndex: 0 });
     const before = engine.current.layers;
     engine.dispatch({ type: 'next' });
@@ -228,9 +198,8 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
     expect(engine.current.layers).toBe(before);
   });
 
-  it('Back and Put it back bring the slide’s and the props’ videos back between the points the library has now', () => {
+  it('Back and Put it back bring the slide’s videos back between the points the library has now', () => {
     const { engine, markers } = setup();
-    engine.dispatch({ type: 'showProp', prop: prop('prop', 'clipped') });
     engine.dispatch(goLive(0));
     engine.dispatch({ type: 'clearAll' });
     // Set while nothing played the file: Put it back brings them back between the new points.
@@ -242,7 +211,6 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
       clipped: points,
       ending: { startMs: 0, endMs: 5000 },
     });
-    expect(engine.current.layers.props[0]?.clips).toEqual({ clipped: points });
     // Moved on, the points change, then Back: the slide comes back between the new ones.
     engine.dispatch({ type: 'next' });
     markers['clipped'] = { startMs: 1000, endMs: 4000, markers: [] };
@@ -250,7 +218,6 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
     engine.dispatch({ type: 'back' });
     expect(engine.current.layers.slide?.slideIndex).toBe(0);
     expect(engine.current.layers.slide?.clips?.['clipped']).toEqual({ startMs: 1000, endMs: 4000 });
-    expect(engine.current.layers.props[0]?.clips).toEqual({ clipped: { startMs: 1000, endMs: 4000 } });
   });
 
   it('put back after an unexpected stop, they take the library’s points as they are now: recovery keeps none', () => {
@@ -259,21 +226,11 @@ describe('a slide’s, a prop’s and the logo’s videos between their start an
       slide: { presentationId: 'videos', slideIndex: 0, shownAt: 900_000 },
       background: null,
       blackout: false,
-      props: [{ ...prop('prop', 'clipped'), shownAt: 950_000, clips: { clipped: { startMs: 0, endMs: 1 } } }],
-      logo: { ...prop('logo', 'ending', false), shownAt: 960_000 },
     });
-    expect(put).toMatchObject({ slide: true, props: 1, logo: true });
+    expect(put).toMatchObject({ slide: true });
     expect(engine.current.layers.slide).toMatchObject({
       shownAt: 900_000,
       clips: { clipped: { startMs: 2000, endMs: 6000 }, ending: { startMs: 0, endMs: 5000 } },
-    });
-    expect(engine.current.layers.props[0]).toMatchObject({
-      shownAt: 950_000,
-      clips: { clipped: { startMs: 2000, endMs: 6000 } },
-    });
-    expect(engine.current.logo).toMatchObject({
-      shownAt: 960_000,
-      clips: { ending: { startMs: 0, endMs: 5000 } },
     });
   });
 });

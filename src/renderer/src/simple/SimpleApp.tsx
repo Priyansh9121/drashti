@@ -1,8 +1,10 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
 import type { OperatorAction } from '../../../shared/keymap';
-import { keyText, shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
+import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import { useKeymapNow } from '../operator/single-keys-store';
+import { LAYER_CLEARS } from '../operator/layer-clears';
+import { isLayerEmpty } from '../../../shared/engine/state';
 import { useEngine } from '../engine/engine-store';
 import { mediaKindIcon, mediaKindLabel } from '../library/MediaList';
 import { openPlaylist, playlistsUnread, usePlaylists } from '../playlists/playlist-store';
@@ -23,7 +25,7 @@ import {
   SkipBack,
   SkipForward,
   Square,
-  Stamp,
+  Wallpaper,
   Eraser,
   Video,
 } from '../ui/icons';
@@ -66,8 +68,8 @@ import { useNodes } from '../nodes/nodes-store';
 /*
  * Simple Mode (PLAN.md section 3): one uncluttered screen for a volunteer.
  * The playlist, what is on the screens and what comes next, and big
- * buttons: Next and Back, Black-out, Logo, Clear all (and Put it back after
- * it). Nothing here can change the library, the screens or the sound; the
+ * buttons: Next and Back, Black-out, the Wallpaper (Session 55, in the Logo's
+ * place), Clear all (and Put it back after it). Nothing here can change the library, the screens or the sound; the
  * main process refuses that too. Leaving takes Switch to Pro Mode… (a small
  * button at the top right since Session 20, or the View menu) and typing the
  * word.
@@ -454,13 +456,20 @@ function LeaveSimpleDialog() {
 function BigButtons({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
   const state = useEngine((s) => s.state);
   const blackout = state?.blackout ?? false;
-  const logo = state?.logo ?? null;
+  const wallpaper = state?.wallpaper ?? false;
   const canPutBack = state?.canPutBack ?? false;
-  // Each shows its keys as they act now (Session 51), as the key line names them: none for Black-out, and the
-  // Logo's F12 alone, while B, . and L are turned off.
+  // Clear all is dimmed with nothing up, as the bar of clears' is (Session 55, Part 13): a lower third and the
+  // picture-in-picture box count too. Dimmed, it stays a stop of the Tab key's, where the big buttons always are.
+  const layers = state?.layers;
+  const anything = layers
+    ? LAYER_CLEARS.some((c) => !isLayerEmpty(layers, c.layer)) ||
+      layers.lowerThird !== null ||
+      layers.pip !== null
+    : false;
+  // Each shows its keys as they act now (Session 51), as the key line names them: none for Black-out while B, . and
+  // ? are turned off; the Wallpaper's F12 always.
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
-  const logoKeys = keymap.find((b) => b.action === 'toggleLogo')?.keys.map((k) => keyText(k, platform)) ?? [];
   return (
     <div
       className="flex shrink-0 items-stretch gap-3 border-t border-line bg-panel p-3"
@@ -488,8 +497,8 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
       >
         Next
       </Button>
-      {/* Room for "Black-out is on" and "Logo is on" side by side, each in its half (Session 51: at 22rem they ran
-          out of the window with both on), their keys under their words, so Back and Next still fit a 1008-wide
+      {/* Room for "Black-out is on" and "Wallpaper is on" side by side, each in its half (Session 51: at 22rem they
+          ran out of the window with both on), their keys under their words, so Back and Next still fit a 1008-wide
           window beside them. */}
       <div className="flex w-[28rem] shrink-0 flex-col gap-2">
         <div className="flex gap-2">
@@ -509,14 +518,17 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
           </Button>
           <Button
             size="xl"
-            variant={logo ? 'live' : 'secondary'}
+            variant={wallpaper ? 'live' : 'secondary'}
             instant
-            icon={Stamp}
-            data-testid="simple-logo"
-            onClick={() => run('toggleLogo')}
+            icon={Wallpaper}
+            data-testid="simple-wallpaper"
+            onClick={() => run('toggleWallpaper')}
             className="flex-1"
           >
-            <WordsOverKeys words={logo ? 'Logo is on' : 'Logo'} keys={logoKeys} />
+            <WordsOverKeys
+              words={wallpaper ? 'Wallpaper is on' : 'Wallpaper'}
+              keys={[key('toggleWallpaper')]}
+            />
           </Button>
         </div>
         {canPutBack ? (
@@ -536,7 +548,12 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
             instant
             icon={Eraser}
             data-testid="simple-clear-all"
-            onClick={() => run('clearAll')}
+            aria-disabled={anything ? undefined : true}
+            data-dimmed={anything ? undefined : 'true'}
+            className={anything ? undefined : 'cursor-not-allowed opacity-40'}
+            onClick={() => {
+              if (anything) run('clearAll');
+            }}
           >
             <WordsOverKeys words="Clear all" keys={[key('clearAll')]} />
           </Button>
@@ -605,27 +622,26 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
     [start],
   );
   useKeymap(platform, run, SIMPLE_KEYMAP);
-  // A MIDI controller's pads do Simple Mode's own actions (a pad mapped to a macro before Session 44 does nothing).
+  // A MIDI controller's pads do Simple Mode's own actions (a pad mapped to a macro before Session 44, or to the Logo
+  // before Session 55, does nothing).
   useEffect(() => {
     setMidiHandler((action) => {
       if (action.kind === 'next') run('next');
       else if (action.kind === 'back') run('previous');
       else if (action.kind === 'clearAll') run('clearAll');
       else if (action.kind === 'blackout') run('toggleBlackout');
-      else if (action.kind === 'logo') run('toggleLogo');
     });
     return () => {
       setMidiHandler(null);
     };
   }, [run]);
-  // Its key line names only keys that act: not B, . or L while they are turned off (Session 37). The
-  // Logo keeps F12 then, as the operators press it (Session 50).
+  // Its key line names only keys that act: not B or . while they are turned off (Session 37). The Wallpaper keeps
+  // F12, the Logo's key (Session 55).
   const keymap = useKeymapNow(SIMPLE_KEYMAP);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
   const covering = key('toggleBlackout') !== '';
-  const logoKeys = keymap.find((b) => b.action === 'toggleLogo')?.keys.map((k) => keyText(k, platform)) ?? [];
-  // Those left with no key: their buttons do it.
-  const buttonsOnly = [...(covering ? [] : ['Black-out']), ...(logoKeys.length > 0 ? [] : ['Logo'])];
+  // Left with no key: its button does it.
+  const buttonsOnly = covering ? [] : ['Black-out'];
   return (
     <div className="flex h-full min-h-0 flex-col bg-ink" data-testid="simple-mode">
       <header
@@ -698,19 +714,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
                 Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> ·{' '}
               </>
             )}
-            {logoKeys.length > 0 && (
-              <>
-                Logo{' '}
-                {logoKeys.map((k, i) => (
-                  <Fragment key={k}>
-                    {i > 0 && ' or '}
-                    <Kbd>{k}</Kbd>
-                  </Fragment>
-                ))}{' '}
-                ·{' '}
-              </>
-            )}
-            Clear all <Kbd>{key('clearAll')}</Kbd> · Put it back <Kbd>{key('undo')}</Kbd>
+            Wallpaper <Kbd>{key('toggleWallpaper')}</Kbd> · Clear all <Kbd>{key('clearAll')}</Kbd> · Put it
+            back <Kbd>{key('undo')}</Kbd>
             {buttonsOnly.length > 0 &&
               ` · ${buttonsOnly.join(' and ')}: ${buttonsOnly.length > 1 ? 'their buttons' : 'its button'}`}
           </p>

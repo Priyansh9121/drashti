@@ -18,17 +18,15 @@ export const DEVICE_OPS = {
   /** The whole engine state, with its revision. */
   state: ['remote', 'stage'],
   /**
-   * The stage display's screen group (the first stage group) and its languages in the live Look, and the hall's
-   * picture for a layout's audience picture box (Session 51).
+   * The stage display's screen group (the first stage group) and its languages, and the hall's picture for a
+   * layout's audience picture box (Session 51).
    */
   stage: ['stage'],
   /**
-   * The hall's screen group (the first audience group), whose live Look the remote's picture follows, and how
+   * The hall's screen group (the first audience group), whose settings the remote's picture follows, and how
    * Drashti's computer writes the time (Sessions 31–36, SLD-6).
    */
   hall: ['remote'],
-  /** The Looks, in order, and which is live. */
-  looks: ['remote'],
   /** Play the audio playlist: on from where it was paused, or the one played last (Session 14). */
   'music.play': ['remote'],
   /** The loaded Shastra texts: name, abbreviation, how many items (Session 12). */
@@ -47,12 +45,8 @@ export const DEVICE_OPS = {
   /** Message templates and their fields. */
   messages: ['remote'],
   timers: ['remote'],
-  /** Whether a logo is marked (Logo shows it). */
-  logo: ['remote'],
   /** An engine command that runs the show (only the kinds in REMOTE_COMMANDS). */
   command: ['remote'],
-  /** Show or hide the marked logo. */
-  'logo.set': ['remote'],
   /** Fill a message template's fields and show it, or take a message off. */
   'message.show': ['remote'],
   'message.hide': ['remote'],
@@ -78,13 +72,6 @@ export const DEVICE_OPS = {
   // The mirror of the operator window (Session 54, D5: shared/network-mirror.ts), read and put up, never changed.
   /** The keys the operator window answers now, so the phone's clears name them. */
   keys: ['remote'],
-  /** The library's props by name, the logo marked. */
-  props: ['remote'],
-  /** Put a prop up by its id (the main process reads it from the library). */
-  'prop.show': ['remote'],
-  /** The library's masks, and one put up by its id as Masks does (Session 54, the phone as a full Drashti). */
-  masks: ['remote'],
-  'mask.show': ['remote'],
   /** The library's pictures, videos and sounds by name, a page at a time. */
   media: ['remote'],
   /** Put one up by its id: a picture or video as the background (the slide taken off), a sound played. */
@@ -191,10 +178,11 @@ export const deviceMay = (kind: DeviceKind, op: DeviceOp): boolean =>
 
 /**
  * The engine commands a Remote may send: running the show, as the operator
- * window does, and switching the Look. Not setting backgrounds, sounds,
- * props or masks from what it sends (a prop, a picture or a sound goes up by
- * its id, read from the library: DEVICE_OPS), and never anything that
- * changes the library. Since Session 54 (D5) the stage message too.
+ * window does. Not setting backgrounds or sounds from what it sends (a
+ * picture or a sound goes up by its id, read from the library: DEVICE_OPS),
+ * and never anything that changes the library. Since Session 54 (D5) the
+ * stage message too. Session 55 (Part 12): no Looks, props or idle rotation;
+ * the Wallpaper (Part 13) in the Logo's place.
  */
 export const REMOTE_COMMANDS = [
   'goLive',
@@ -209,11 +197,12 @@ export const REMOTE_COMMANDS = [
   'putBack',
   'setBlackout',
   'toggleBlackout',
+  // The Wallpaper (Session 55, Part 13, in the Logo's place): up or off, and the phone's button.
+  'setWallpaper',
+  'toggleWallpaper',
   'startTimer',
   'pauseTimer',
   'resetTimer',
-  // Switching the live Look (Simple Mode refuses it, as in the window).
-  'setLook',
   // The audio playlist (Session 14): pause, play on, the next or previous track.
   'pauseMusic',
   'resumeMusic',
@@ -226,16 +215,13 @@ export const REMOTE_COMMANDS = [
   'stopRepeat',
   // Picture in picture (Session 50): Take off only; setting one up, Swap and moving it are the operator's.
   'hidePip',
-  // The mirror of the operator window (Session 54, D5): a prop and a lower third taken off, a timer alone on the
-  // screens, the stage message, Back 15 s, Forward 15 s and Last 10 s, and the idle rotation started and stopped.
-  'hideProp',
+  // The mirror of the operator window (Session 54, D5): a lower third taken off, a timer alone on the screens, the
+  // stage message, and Back 15 s, Forward 15 s and Last 10 s.
   'hideLowerThird',
   'showTimer',
   'setStageMessage',
   'clearStageMessage',
   'skip',
-  'startIdle',
-  'stopIdle',
   // The time bar (Session 54): what plays moved, paused or played on, as under LIVE (Simple Mode refuses the move).
   'moveTo',
   'pausePlaying',

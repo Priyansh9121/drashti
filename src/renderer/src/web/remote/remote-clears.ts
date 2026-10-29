@@ -5,10 +5,11 @@ import { type ClearedLayer, LAYER_CLEARS } from '../../operator/layer-clears';
 
 /*
  * The phone's clears (Session 54, D5): the operator window's bottom bar (LayerBar.tsx), in its order, left to
- * right: Clear all F1 (Put it back in its place while it is offered), the layers' clears F2 to F8
- * (layer-clears.ts), then the Logo and Black-out. Each names the key the window answers now, as its buttons do
- * (useKeymapNow): with the single-letter keys off, Black-out has none and the Logo keeps F12. The phone has no keys
- * of its own: the names are the desktop's, so the operator and whoever holds the phone speak of the same buttons.
+ * right: Clear all F1 (Put it back in its place while it is offered), the layers' clears F2 to F7
+ * (layer-clears.ts), then the Wallpaper (Session 55, in the Logo's place) and Black-out. Each names the key the
+ * window answers now, as its buttons do (useKeymapNow): with the single-letter keys off, Black-out has none; the
+ * Wallpaper keeps F12. The phone has no keys of its own: the names are the desktop's, so the operator and whoever
+ * holds the phone speak of the same buttons.
  */
 
 export interface RemoteClear {
@@ -19,7 +20,7 @@ export interface RemoteClear {
   words: string;
   /** Its key as the window writes it, or '' for none. */
   key: string;
-  /** A layer's clear: its layer has something up; Clear all: anything is up; the Logo and Black-out: on. */
+  /** A layer's clear: its layer has something up; Clear all: anything is up; the Wallpaper and Black-out: on. */
   lit: boolean;
 }
 
@@ -37,7 +38,7 @@ export function remoteClears(state: EngineState | null, keys: RemoteKeys | null)
       layers.lowerThird !== null ||
       layers.pip !== null
     : false;
-  const logoOn = state?.logo != null;
+  const wallpaper = state?.wallpaper ?? false;
   const blackout = state?.blackout ?? false;
   return [
     state?.canPutBack
@@ -50,7 +51,12 @@ export function remoteClears(state: EngineState | null, keys: RemoteKeys | null)
       key: key(c.action),
       lit: layers ? !isLayerEmpty(layers, c.layer) : false,
     })),
-    { action: 'toggleLogo', words: logoOn ? 'Logo is on' : 'Logo', key: key('toggleLogo'), lit: logoOn },
+    {
+      action: 'toggleWallpaper',
+      words: wallpaper ? 'Wallpaper is on' : 'Wallpaper',
+      key: key('toggleWallpaper'),
+      lit: wallpaper,
+    },
     {
       action: 'toggleBlackout',
       words: blackout ? 'Black-out is on' : 'Black-out',

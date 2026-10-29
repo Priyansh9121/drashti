@@ -1,7 +1,7 @@
 import type { PipLayer, PipMotion, PipPlace, PipSize, PipSource } from '../../../shared/engine/state';
 import { PIP_CORNERS } from '../../../shared/engine/state';
 import type { LiveGroupLook, Movement } from '../../../shared/looks';
-import { LOOK_LAYERS } from '../../../shared/looks';
+import { GROUP_LAYERS } from '../../../shared/looks';
 import { PIP_OUT_MS } from '../../../shared/pip';
 import type { Size } from '../../../shared/scaling';
 import { cubicBezier, EASE, lerp, seg } from './easing';
@@ -528,12 +528,13 @@ export const pipShowsHere = (source: PipSource, live: boolean): boolean =>
   live || source.kind === 'slides' || source.kind === 'media';
 
 /**
- * Session 50: 'pip' joins the layers a Look can leave out of a group (s8-engine, shared/looks.ts). Until the
- * Looks know it, every group shows the box; then a group's Look shows it only when its layers list it.
+ * Session 50: 'pip' joins the layers a group can leave out (shared/looks.ts; since Session 55 by its role, a key and
+ * fill pair leaving it out). Until the layers know it, every group shows the box; then a group shows it only when its
+ * layers list it.
  */
-const LOOKS_KNOW_PIP = (LOOK_LAYERS as readonly string[]).includes('pip');
+const LOOKS_KNOW_PIP = (GROUP_LAYERS as readonly string[]).includes('pip');
 
-/** Whether a group's screens draw the box in the live Look. */
+/** Whether a group's screens draw the box. */
 export const pipShownFor = (look: Pick<LiveGroupLook, 'layers'>, known = LOOKS_KNOW_PIP): boolean =>
   !known || (look.layers as readonly string[]).includes('pip');
 

@@ -79,7 +79,7 @@ describe('the operator window’s keys, as its listener takes them', () => {
       new Press('S', { metaKey: true, shiftKey: true }),
     ];
     for (const p of presses) onKey(p);
-    expect(ran).toEqual(['toggleLogo', 'clearAudio', 'toggleAudience', 'openScreens']);
+    expect(ran).toEqual(['toggleWallpaper', 'clearAudio', 'toggleAudience', 'openScreens']);
     expect(presses.map((p) => p.taken)).toEqual([true, true, true, true]);
   });
 

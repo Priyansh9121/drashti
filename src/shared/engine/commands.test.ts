@@ -7,43 +7,17 @@ describe('parseEngineCommand', () => {
       { type: 'goLive', presentationId: 'p1', slideIndex: 0 },
       { type: 'next' },
       { type: 'previous' },
-      { type: 'clearLayer', layer: 'masks' },
+      { type: 'clearLayer', layer: 'ticker' },
       { type: 'clearAll' },
       { type: 'setBlackout', on: true },
       { type: 'toggleBlackout' },
       { type: 'setBackground', background: { kind: 'color', color: '#0a0B0c' } },
       { type: 'playAudio', audio: { id: 'a', title: 'Dhun', mediaId: null, volume: 1, loop: false } },
-      {
-        type: 'showProp',
-        prop: {
-          id: 'logo',
-          name: 'Logo',
-          elements: [
-            {
-              id: 's',
-              kind: 'shape',
-              frame: { x: 0, y: 0, width: 10, height: 10 },
-              fill: '#ffffff',
-              cornerRadius: 0,
-              opacity: 1,
-            },
-          ],
-        },
-      },
-      { type: 'hideProp', propId: 'logo' },
       { type: 'showMessage', message: { id: 'm', text: 'Car 123 please move' } },
       { type: 'hideMessage', messageId: 'm' },
-      {
-        type: 'setMask',
-        mask: {
-          id: 'k',
-          name: 'Mask',
-          width: 1920,
-          height: 1080,
-          mode: 'hide',
-          shapes: [{ id: 's', kind: 'ellipse', frame: { x: 0, y: 0, width: 5, height: 5 } }],
-        },
-      },
+      // The Wallpaper (Session 55, in the logo's place; props and masks went).
+      { type: 'setWallpaper', on: true },
+      { type: 'toggleWallpaper' },
     ];
     for (const input of valid)
       expect(parseEngineCommand(input), JSON.stringify(input)).toMatchObject({ ok: true });

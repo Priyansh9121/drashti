@@ -87,6 +87,7 @@ function library() {
   ]);
   playlist('this-week', '2026-10-04T00:00:00.000Z', [{ kind: 'media', media: 'week-item' }]);
   playlist('long-ago', '2026-08-01T00:00:00.000Z', [{ kind: 'media', media: 'old' }]);
+  // A prop an older library kept (unseen since Session 55, Part 12): its picture is copied only with everything.
   db.prepare("INSERT INTO props (id, name, definition) VALUES ('p', 'Placeholder logo', ?)").run(
     JSON.stringify({ elements: [{ kind: 'image', mediaId: 'prop-pic' }] }),
   );
@@ -94,7 +95,7 @@ function library() {
 }
 
 describe('what a node copies', () => {
-  it('what is up, the live playlist, the week’s playlists, props; never sound or files that cannot play', () => {
+  it('what is up, the live playlist, the week’s playlists; never sound, files that cannot play or a prop’s picture (Session 55)', () => {
     const { db } = library();
     const wanted = new WantedMedia(
       db,
@@ -112,7 +113,7 @@ describe('what a node copies', () => {
       startedAt: 0,
     };
     const list = wanted.list(state, false);
-    expect(list.map((w) => w.id)).toEqual(['week-item', 'slide-pic', 'live-item', 'prop-pic']);
+    expect(list.map((w) => w.id)).toEqual(['week-item', 'slide-pic', 'live-item']);
     expect(list[0]).toEqual({ id: 'week-item', sha256: sha(3), bytes: 300, ext: 'png' });
     // "Get everything ready": the rest of the library's pictures and videos too.
     expect(
@@ -250,7 +251,6 @@ describe('a picture’s sharpened copy (Session 26f)', () => {
       'slide-pic_s50',
       'live-item',
       'week-item',
-      'prop-pic',
     ]);
     expect(wanted.source('slide-pic_s50', dir)).toMatchObject({
       path: real(join(dir, 'sharpened', `${sha(1)}-50.jpg`)),
@@ -340,7 +340,6 @@ describe('a deck’s slides (Session 54, C2)', () => {
       'deck-last',
       'live-item',
       'week-item',
-      'prop-pic',
     ]);
   });
 });

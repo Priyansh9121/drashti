@@ -11,9 +11,9 @@ import { learn, openMidi, saveMidi, useMidi } from './midi-store';
 
 /*
  * The MIDI controller (Pro Mode, from More tools): the device to listen to, and what its notes and controllers
- * do. Learn, then press a pad, key or button on the controller: it now does that. Next, Back, Clear all,
- * Black-out and Logo work in Simple Mode too. A pad mapped to a macro before Session 44 is kept in the settings
- * and does nothing (macros are gone); it is not listed here.
+ * do. Learn, then press a pad, key or button on the controller: it now does that. Next, Back, Clear all and
+ * Black-out work in Simple Mode too. A pad mapped to a macro before Session 44, or to the Logo before Session 55, is
+ * kept in the settings and does nothing (both are gone); it is not listed here.
  */
 
 const same = (a: MidiAction, b: MidiAction) => JSON.stringify(a) === JSON.stringify(b);
@@ -120,9 +120,7 @@ export function MidiDialog({ onClose }: { onClose: () => void }) {
             );
           })}
         </ul>
-        <p className="text-xs text-muted">
-          Next, Back, Clear all, Black-out and Logo work in Simple Mode too.
-        </p>
+        <p className="text-xs text-muted">Next, Back, Clear all and Black-out work in Simple Mode too.</p>
       </section>
     </Dialog>
   );

@@ -129,41 +129,13 @@ test('Playback markers ask before typed points are lost', async () => {
   await app.close();
 });
 
-test('the theme form in Themes asks before a typed change is lost', async () => {
-  const { app, win } = await start();
-  const names = () =>
-    win.evaluate(async () =>
-      (await (globalThis as PageGlobals).drashti.themes.list()).themes.map((t) => t.name),
-    );
-  await win.getByRole('button', { name: 'Themes', exact: true }).click();
-  const panel = win.getByTestId('themes-panel');
-  const name = panel.getByRole('textbox', { name: 'Theme name' });
-  await name.fill('Placeholder Keep Theme');
-  await win.keyboard.press('Escape');
-  await escKeepsEditing(win, panel, { live: null });
-  await expect(win.getByTestId('keep-changes')).toHaveCount(0);
-  await expect(name).toHaveValue('Placeholder Keep Theme');
-  expect(await names()).not.toContain('Placeholder Keep Theme');
-  await win.keyboard.press('Escape');
-  await answer(win, 'Save changes');
-  await expect(panel).toHaveCount(0);
-  await expect.poll(names).toContain('Placeholder Keep Theme');
-
-  await win.getByRole('button', { name: 'Themes', exact: true }).click();
-  await panel.getByRole('textbox', { name: 'Theme name' }).fill('Placeholder Thrown Theme');
-  await panel.getByRole('button', { name: 'Close themes' }).click();
-  await answer(win, 'Throw them away');
-  await expect(panel).toHaveCount(0);
-  expect(await names()).not.toContain('Placeholder Thrown Theme');
-  await app.close();
-});
-
 test('the setup wizard closes without asking: nothing typed in it is lost (Session 54, E5: its PINs step went)', async () => {
   const { app, win } = await start();
   await chooseMenuItem(app, 'set-up-screens');
   const wizard = win.getByTestId('setup-wizard');
-  // From the displays (Session 44: where it opens) through every step to Finish, choosing as it goes.
-  for (let step = 0; step < 4; step++) await wizard.getByTestId('setup-next').click();
+  // From the displays (Session 44: where it opens) through every step to Finish, choosing as it goes (Session 55: its
+  // Theme step went).
+  for (let step = 0; step < 3; step++) await wizard.getByTestId('setup-next').click();
   await expect(wizard.getByTestId('setup-step')).toHaveText('Finish');
   await wizard.getByRole('button', { name: 'Close the setup' }).click();
   await expect(wizard).toHaveCount(0);
@@ -177,7 +149,7 @@ test('the setup wizard closes without asking: nothing typed in it is lost (Sessi
   await app.close();
 });
 
-test('the stage layout and mask editors ask the same question, and Save changes saves', async () => {
+test('the stage layout editor asks the same question, and Save changes saves', async () => {
   const { app, win } = await start();
   // A stage group and an audience group, for their editors in Screens.
   await win.evaluate(async () => {
@@ -188,16 +160,14 @@ test('the stage layout and mask editors ask the same question, and Save changes 
     const stage = made.snapshot.groups.find((g) => g.name === 'Placeholder Stage');
     await d.screens.setGroupRole(stage?.id ?? '', 'stage');
   });
-  const listed = (what: 'stageLayouts' | 'masks') =>
-    win.evaluate(async (kind) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const list = kind === 'masks' ? await d.masks.list() : await d.stageLayouts.list();
-      return list.map((x) => x.name);
-    }, what);
+  const listed = () =>
+    win.evaluate(async () =>
+      (await (globalThis as PageGlobals).drashti.stageLayouts.list()).map((x) => x.name),
+    );
 
   // A stage layout, from the stage group in Screens.
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
-  // Only the stage group has stage layouts; only the hall's has masks.
+  // Only the stage group has stage layouts.
   await win.getByTestId('edit-stage-layouts').click();
   const layouts = win.getByTestId('stage-layout-editor');
   await layouts.getByTestId('stage-layout-duplicate').click();
@@ -207,18 +177,9 @@ test('the stage layout and mask editors ask the same question, and Save changes 
   await win.keyboard.press('Escape');
   await answer(win, 'Save changes');
   await expect(layouts).toHaveCount(0);
-  await expect.poll(() => listed('stageLayouts')).toContain('Placeholder keep layout');
+  await expect.poll(listed).toContain('Placeholder keep layout');
 
-  // A mask, from the hall's group.
-  await win.getByTestId('edit-masks').click();
-  const masks = win.getByTestId('mask-editor');
-  await masks.getByTestId('mask-name').fill('Placeholder keep mask');
-  await win.keyboard.press('Escape');
-  await escKeepsEditing(win, masks, { live: 'wherever this mask is showing' });
-  await win.keyboard.press('Escape');
-  await answer(win, 'Throw them away');
-  await expect(masks).toHaveCount(0);
-  expect(await listed('masks')).not.toContain('Placeholder keep mask');
+  // A mask from the hall's group was asked here too, until Session 55 took masks out.
   await app.close();
 });
 

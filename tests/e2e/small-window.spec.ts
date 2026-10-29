@@ -155,22 +155,21 @@ const rowPlaced = (win: Page) =>
     return out;
   });
 
+/** The layer bar's clears, in the order of their keys (Session 55: F4 and F8 went with Props and Masks). */
 const CLEARS = [
   ['slide', 'F2'],
   ['background', 'F3'],
-  ['props', 'F4'],
   ['audio', 'F5'],
   ['messages', 'F6'],
   ['ticker', 'F7'],
-  ['masks', 'F8'],
 ] as const;
 
 /** The layer bar's buttons left to right (single-letter keys on): the clears in the order of their keys. */
-const proBar = (first: string, lit: string[], logo: string, blackout: string): string[] => [
+const proBar = (first: string, lit: string[], wallpaper: string, blackout: string): string[] => [
   first,
   ...CLEARS.map(([layer, key]) => `Clear ${layer}${lit.includes(layer) ? ' (on screen)' : ''} ${key}`),
   'What is this? Show controls',
-  logo,
+  wallpaper,
   blackout,
 ];
 
@@ -304,72 +303,46 @@ test('the welcome and the practice show at 1024 × 645, every button clickable; 
   await lastKey.scrollIntoViewIfNeeded();
   await expect(lastKey).toBeInViewport();
 
-  // The practice show works the layer bar as a show does: nothing up; then a slide, Black-out and the Logo on;
-  // then Clear all, Put it back offered with the Logo and Black-out still on (the bar at its widest).
+  // The practice show works the layer bar as a show does: nothing up; then a slide, Black-out and the Wallpaper on
+  // (the Logo until Session 55); then Clear all, Put it back offered with the Wallpaper and Black-out still on (the
+  // bar at its widest).
   await expectBarAtEveryWidth(
     win,
     'layer-bar',
-    proBar('Clear all F1', [], 'Logo F12', 'Black-out B'),
+    proBar('Clear all F1', [], 'Wallpaper F12', 'Black-out B'),
     'as it opens',
   );
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('b');
   await win.keyboard.press('F12');
-  await expect(win.getByTestId('logo-button')).toHaveText(/Logo is on/u);
+  await expect(win.getByTestId('wallpaper-button')).toHaveText(/Wallpaper is on/u);
   await expect(win.getByTestId('blackout-button')).toHaveText(/Black-out is on/u);
   await expectBarAtEveryWidth(
     win,
     'layer-bar',
-    proBar('Clear all F1', ['slide'], 'Logo is on F12', 'Black-out is on B'),
-    'a slide up, the Logo and Black-out on',
+    proBar('Clear all F1', ['slide'], 'Wallpaper is on F12', 'Black-out is on B'),
+    'a slide up, the Wallpaper and Black-out on',
   );
   await win.keyboard.press('F1');
   await expect(win.getByTestId('put-back')).toBeVisible();
   await expectBarAtEveryWidth(
     win,
     'layer-bar',
-    proBar('Put it back', [], 'Logo is on F12', 'Black-out is on B'),
-    'Put it back offered, the Logo and Black-out on',
+    proBar('Put it back', [], 'Wallpaper is on F12', 'Black-out is on B'),
+    'Put it back offered, the Wallpaper and Black-out on',
   );
   await app.close();
 });
 
-test('Simple Mode’s big buttons fit from 1008 px wide, with Black-out and the Logo on and Put it back offered', async () => {
+test('Simple Mode’s big buttons fit from 1008 px wide, with Black-out and the Wallpaper on and Put it back offered', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
-  // A logo, and a slide up for Clear all to take down, set in Pro Mode (Simple Mode chooses neither).
+  // A slide up for Clear all to take down, put up in Pro Mode (Simple Mode chooses none).
   const problem = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    const prop = await d.props.save(null, {
-      name: 'Placeholder Logo',
-      width: 1920,
-      height: 1080,
-      elements: [
-        {
-          id: 'placeholder-logo-text',
-          kind: 'text',
-          frame: { x: 360, y: 440, width: 1200, height: 200 },
-          text: 'Placeholder Logo',
-          lang: 'en',
-          style: {
-            fontFamily: null,
-            fontSize: 96,
-            fontWeight: 700,
-            color: '#ffffff',
-            align: 'center',
-            verticalAlign: 'middle',
-            lineHeight: 1.2,
-            shadow: false,
-          },
-        },
-      ],
-    });
-    if (!prop.ok) return prop.message;
-    const marked = await d.props.setLogo(prop.id);
-    if (!marked.ok) return marked.message;
     const [first] = await d.library.listPresentations();
     if (!first) return 'no placeholder presentation';
     await d.engine.dispatch({ type: 'goLive', presentationId: first.id, slideIndex: 0 });
@@ -378,35 +351,40 @@ test('Simple Mode’s big buttons fit from 1008 px wide, with Black-out and the 
   expect(problem).toBe('');
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  // Left to right: Back, Next, then the column with Black-out over Clear all, and the Logo beside Black-out; each
-  // with its keys (Session 51), the Logo's F12 or L as the key line names them, Put it back's Undo as this computer
-  // writes it.
+  // Left to right: Back, Next, then the column with Black-out over Clear all, and the Wallpaper beside Black-out (in
+  // the Logo's place, Session 55); each with its keys (Session 51), the Wallpaper's F12 as the key line names it,
+  // Put it back's Undo as this computer writes it.
   const undo = process.platform === 'darwin' ? '⌘Z' : 'Ctrl+Z';
-  const big = (blackout: string, logo: string, clear: string) => [
+  const big = (blackout: string, wallpaper: string, clear: string) => [
     'Back ←',
     'Next →',
     `${blackout} B`,
     clear,
-    `${logo} F12 L`,
+    `${wallpaper} F12`,
   ];
-  await expectBarAtEveryWidth(win, 'simple-buttons', big('Black-out', 'Logo', 'Clear all F1'), 'as it opens');
-  await win.keyboard.press('b');
-  await win.keyboard.press('F12');
-  await expect(win.getByTestId('simple-blackout')).toHaveText(/Black-out is on/u);
-  await expect(win.getByTestId('simple-logo')).toHaveText(/Logo is on/u);
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    big('Black-out is on', 'Logo is on', 'Clear all F1'),
-    'Black-out and the Logo on',
+    big('Black-out', 'Wallpaper', 'Clear all F1'),
+    'as it opens',
+  );
+  await win.keyboard.press('b');
+  await win.keyboard.press('F12');
+  await expect(win.getByTestId('simple-blackout')).toHaveText(/Black-out is on/u);
+  await expect(win.getByTestId('simple-wallpaper')).toHaveText(/Wallpaper is on/u);
+  await expectBarAtEveryWidth(
+    win,
+    'simple-buttons',
+    big('Black-out is on', 'Wallpaper is on', 'Clear all F1'),
+    'Black-out and the Wallpaper on',
   );
   await win.keyboard.press('F1');
   await expect(win.getByTestId('simple-put-back')).toBeVisible();
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    big('Black-out is on', 'Logo is on', `Put it back ${undo}`),
-    'Put it back offered, Black-out and the Logo on',
+    big('Black-out is on', 'Wallpaper is on', `Put it back ${undo}`),
+    'Put it back offered, Black-out and the Wallpaper on',
   );
   await app.close();
 });

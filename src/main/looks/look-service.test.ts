@@ -2,14 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_GROUP_LOOK,
   DEFAULT_LIVE_GROUP_LOOK,
-  LOOK_LAYER_NAMES,
+  GROUP_LAYERS,
   LOOK_LAYERS,
   NO_LOOK,
   readGroupLook,
   storedGroupLook,
 } from '../../shared/looks';
-import type { LooksView } from '../../shared/looks';
-import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { openDatabase } from '../db/database';
 import { LookRepo } from '../db/looks';
 import { ScreenRepo } from '../db/screens';
@@ -18,9 +16,13 @@ import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport } from '../engine/testing';
 import { LookService } from './look-service';
 
-/* Looks: kept in the library, read by the engine, changed from Screens. Placeholder names only. */
+/*
+ * Each screen group's settings (Session 55, Part 12: Looks gone from the window): its languages, set in Screens and
+ * kept in the library's first Look as since Session 11, and what its role gives it; every Look the library keeps,
+ * and every other setting in them, stays as it was, unread. Placeholder names only.
+ */
 
-function setup(options: { simple?: boolean } = {}) {
+function setup() {
   const db = openDatabase(':memory:');
   const screens = new ScreenRepo(db);
   const hall = screens.createGroup('Hall');
@@ -29,15 +31,19 @@ function setup(options: { simple?: boolean } = {}) {
   const transport = new RecordingTransport();
   let looks: LookService | null = null;
   const engine = new ShowEngine(makeSource(), transport, Date.now, NO_PLAYLISTS, {
-    looks: { look: (id) => looks?.look(id) ?? null, start: () => looks?.start() ?? NO_LOOK },
-    refuse: (c) => (options.simple === true && c.type === 'setLook' ? SIMPLE_MODE_REFUSAL : null),
+    looks: { start: () => looks?.start() ?? NO_LOOK },
   });
-  const told: LooksView[] = [];
-  looks = new LookService({ repo, engine, changed: (v) => told.push(v), log: () => undefined });
+  looks = new LookService({ repo, engine, log: () => undefined });
   engine.refreshLook();
   const standard = repo.firstId();
-  return { db, screens, repo, engine, looks, told, transport, hall, stage, standard };
+  return { db, screens, repo, engine, looks, transport, hall, stage, standard };
 }
+
+/** A Look's stored definition, as the library has it. */
+const definitionOf = (db: ReturnType<typeof openDatabase>, id: string): unknown =>
+  JSON.parse(
+    (db.prepare('SELECT definition FROM looks WHERE id = ?').get(id) as { definition: string }).definition,
+  );
 
 describe('a group’s settings in a Look', () => {
   it('store only what differs from the defaults, and read anything damaged as the default', () => {
@@ -88,7 +94,6 @@ describe('a group’s settings in a Look', () => {
 
   it('a group’s layers saved before the picture-in-picture box (Session 50) show it; only a Look saved with it left out hides it', () => {
     expect(LOOK_LAYERS).toEqual(['background', 'slide', 'props', 'pip', 'messages', 'ticker', 'masks']);
-    expect(LOOK_LAYER_NAMES.pip).toBe('Picture in picture');
     // A list from before: the box shows, where it draws (above the props).
     expect(readGroupLook({ layers: ['slide', 'props', 'messages'] }).layers).toEqual([
       'slide',
@@ -160,20 +165,95 @@ describe('a group’s settings in a Look', () => {
   });
 });
 
-describe('Looks and the stage layout (Session 55)', () => {
-  it('no longer choose it: a group’s stage layout is refused, and none reaches the live Look', () => {
+describe('each group’s settings (Session 55, Part 12)', () => {
+  it('are its role’s, in its languages: every layer and slides as designed, a key and fill pair the words as a lower third and messages alone; every group Calm', () => {
     const t = setup();
-    expect(t.looks.setGroup(t.standard, t.stage, { stageLayoutId: 'placeholder-layout' })).toMatchObject({
-      ok: false,
+    const keyfill = t.screens.createGroup('Switcher', 'keyfill');
+    t.looks.groupsChanged();
+    const groups = t.engine.current.look.groups;
+    expect(groups[t.hall]).toEqual(DEFAULT_LIVE_GROUP_LOOK);
+    expect(groups[t.hall]?.layers).toEqual(GROUP_LAYERS);
+    expect(groups[t.stage]).toEqual(DEFAULT_LIVE_GROUP_LOOK);
+    expect(groups[keyfill]).toEqual({
+      layers: ['slide', 'messages'],
+      languages: null,
+      slides: 'lowerThird',
+      movement: 'calm',
     });
-    expect(t.repo.get(t.standard)?.groups[t.stage]?.stageLayoutId).toBeNull();
-    // The other settings still change as before.
-    expect(t.looks.setGroup(t.standard, t.stage, { languages: ['gu'] }).ok).toBe(true);
-    for (const group of Object.values(t.engine.current.look.groups))
-      expect(group).not.toHaveProperty('stageLayout');
+    // Languages from Screens: on that group's screens at once, kept in the first Look.
+    expect(t.looks.setLiveLanguages(t.hall, ['gu', 'translit'])).toBe(true);
+    expect(t.engine.current.look.groups[t.hall]?.languages).toEqual(['gu', 'translit']);
+    expect(t.looks.liveLanguages(t.hall)).toEqual(['gu', 'translit']);
+    expect(t.repo.get(t.standard)?.groups[t.hall]?.languages).toEqual(['gu', 'translit']);
+    expect(t.looks.setLiveLanguages('no-such-group', ['gu'])).toBe(false);
   });
 
-  it('read one kept before without error, and say it once: the live Look’s first stage group’s', () => {
+  it('read a library’s Looks without showing them: layers, slide style, a mask, the idle rotation, Bold and another Look are kept as they were, unread', () => {
+    const t = setup();
+    // As alpha.13 kept them: the hall's own settings in the first Look, and a second Look.
+    const stored = {
+      groups: {
+        [t.hall]: {
+          layers: ['slide', 'props'],
+          languages: ['gu'],
+          slides: 'lowerThird',
+          maskId: 'placeholder-mask',
+          idle: 'always',
+          movement: 'bold',
+        },
+      },
+    };
+    t.db.prepare('UPDATE looks SET definition = ? WHERE id = ?').run(JSON.stringify(stored), t.standard);
+    const festival = t.repo.create('Placeholder festival');
+    t.db
+      .prepare('UPDATE looks SET definition = ? WHERE id = ?')
+      .run(JSON.stringify({ groups: { [t.hall]: { languages: ['en'] } } }), festival);
+    t.looks.groupsChanged();
+    // Drawn: its languages only (the first Look's), everything else its role's.
+    expect(t.engine.current.look.groups[t.hall]).toEqual({ ...DEFAULT_LIVE_GROUP_LOOK, languages: ['gu'] });
+    expect(t.engine.current.look.id).toBe(t.standard);
+    // Kept: both Looks, as they were.
+    expect(definitionOf(t.db, t.standard)).toEqual(stored);
+    expect(t.repo.list().map((l) => l.name)).toEqual(['Standard', 'Placeholder festival']);
+    // A change of languages in Screens changes the languages alone: the rest stays as an older Drashti reads it.
+    t.looks.setLiveLanguages(t.hall, ['hi']);
+    const after = t.repo.get(t.standard)?.groups[t.hall];
+    expect(after).toMatchObject({
+      layers: ['slide', 'props', 'pip'],
+      languages: ['hi'],
+      slides: 'lowerThird',
+      maskId: 'placeholder-mask',
+      idle: 'always',
+      movement: 'bold',
+    });
+    expect(t.repo.get(festival)?.groups[t.hall]?.languages).toEqual(['en']);
+  });
+
+  it('give a group the wizard makes its languages in every Look; a deleted group leaves them all', () => {
+    const t = setup();
+    t.repo.create('Second');
+    const lobby = t.screens.createGroup('Lobby');
+    t.looks.groupMade(lobby, ['hi']);
+    expect(t.repo.list().map((l) => l.groups[lobby]?.languages)).toEqual([['hi'], ['hi']]);
+    expect(t.engine.current.look.groups[lobby]?.languages).toEqual(['hi']);
+    t.screens.deleteGroup(lobby);
+    t.looks.groupGone(lobby);
+    for (const row of t.db.prepare('SELECT definition FROM looks').all() as { definition: string }[])
+      expect(row.definition).not.toContain(lobby);
+    expect(t.engine.current.look.groups[lobby]).toBeUndefined();
+  });
+
+  it('move Bold only for the performance check (moveAll), and Calm again after', () => {
+    const t = setup();
+    t.looks.moveAll('bold');
+    expect(Object.values(t.engine.current.look.groups).map((g) => g.movement)).toEqual(['bold', 'bold']);
+    t.looks.moveAll('calm');
+    expect(Object.values(t.engine.current.look.groups).map((g) => g.movement)).toEqual(['calm', 'calm']);
+  });
+});
+
+describe('the stage layout a Look chose before Session 55', () => {
+  it('is read once, without error: the first Look’s first stage group’s; none reaches the screens', () => {
     const t = setup();
     expect(t.looks.liveStageLayoutId()).toBeNull();
     const second = t.screens.createGroup('Side stage', 'stage');
@@ -191,253 +271,8 @@ describe('Looks and the stage layout (Session 55)', () => {
     t.looks.groupsChanged();
     expect(t.engine.current.look.groups[t.hall]?.languages).toEqual(['gu']);
     expect(t.engine.current.look.groups[t.stage]).toEqual(DEFAULT_LIVE_GROUP_LOOK);
+    for (const group of Object.values(t.engine.current.look.groups))
+      expect(group).not.toHaveProperty('stageLayout');
     expect(t.looks.liveStageLayoutId()).toBe('placeholder-first');
-    // Another Look live: its own.
-    expect(t.looks.create('Placeholder festival', null).ok).toBe(true);
-    const festival = t.repo.list()[1]?.id ?? '';
-    t.engine.dispatch({ type: 'setLook', lookId: festival });
-    expect(t.looks.liveStageLayoutId()).toBeNull();
-  });
-});
-
-describe('Looks', () => {
-  it('start with Standard live, every group with the defaults, in the engine state', () => {
-    const t = setup();
-    expect(t.engine.current.look).toEqual({
-      id: t.standard,
-      name: 'Standard',
-      groups: { [t.hall]: DEFAULT_LIVE_GROUP_LOOK, [t.stage]: DEFAULT_LIVE_GROUP_LOOK },
-    });
-    expect(t.looks.view()).toMatchObject({ liveId: t.standard, looks: [{ name: 'Standard' }] });
-  });
-
-  it('switch with setLook: every group changes in one patch', () => {
-    const t = setup();
-    expect(t.looks.create('Placeholder lower thirds', t.standard).ok).toBe(true);
-    const lower = t.repo.list()[1]?.id ?? '';
-    t.looks.setGroup(lower, t.hall, { slides: 'lowerThird', layers: ['slide', 'props', 'messages'] });
-    t.looks.setGroup(lower, t.stage, { languages: ['gu'] });
-    // Changing a Look that is not live changes nothing on the screens.
-    expect(t.engine.current.look.id).toBe(t.standard);
-    const before = t.transport.messages.length;
-    expect(t.engine.dispatch({ type: 'setLook', lookId: lower })).toMatchObject({ ok: true, changed: true });
-    expect(t.transport.messages.length).toBe(before + 1);
-    expect(t.engine.current.look.groups).toEqual({
-      [t.hall]: {
-        layers: ['slide', 'props', 'messages'],
-        languages: null,
-        slides: 'lowerThird',
-        mask: null,
-        idle: 'off',
-        movement: 'calm',
-      },
-      [t.stage]: { ...DEFAULT_LIVE_GROUP_LOOK, languages: ['gu'] },
-    });
-    // A Look that is gone cannot go live.
-    expect(t.engine.dispatch({ type: 'setLook', lookId: 'gone' })).toMatchObject({
-      ok: false,
-      error: 'unknown-look',
-    });
-  });
-
-  it('a Look saved before the picture-in-picture box (Session 50) shows it; a group can leave it out, and have it back', () => {
-    const t = setup();
-    // A Look as an earlier Drashti kept it: the hall leaves out the background and the ticker.
-    t.db
-      .prepare('UPDATE looks SET definition = ? WHERE id = ?')
-      .run(
-        JSON.stringify({ groups: { [t.hall]: { layers: ['slide', 'props', 'messages', 'masks'] } } }),
-        t.standard,
-      );
-    t.looks.groupsChanged();
-    expect(t.engine.current.look.groups[t.hall]?.layers).toEqual([
-      'slide',
-      'props',
-      'pip',
-      'messages',
-      'masks',
-    ]);
-    // Another setting changed on that group: the box still shows.
-    t.looks.setGroup(t.standard, t.hall, { languages: ['gu'] });
-    expect(t.repo.get(t.standard)?.groups[t.hall]?.layers).toContain('pip');
-    // Left out from Screens (its tick taken off): hidden on the hall's screens only, and kept so.
-    expect(t.looks.setGroup(t.standard, t.hall, { layers: ['slide', 'props', 'messages', 'masks'] }).ok).toBe(
-      true,
-    );
-    expect(t.engine.current.look.groups[t.hall]?.layers).toEqual(['slide', 'props', 'messages', 'masks']);
-    expect(t.engine.current.look.groups[t.stage]?.layers).toContain('pip');
-    const row = t.db.prepare('SELECT definition FROM looks WHERE id = ?').get(t.standard) as {
-      definition: string;
-    };
-    expect(JSON.parse(row.definition)).toEqual({
-      groups: {
-        [t.hall]: { layers: ['slide', 'props', 'messages', 'masks'], leftOut: ['pip'], languages: ['gu'] },
-      },
-    });
-    // Ticked again: back, and nothing kept about it.
-    t.looks.setGroup(t.standard, t.hall, { layers: ['slide', 'props', 'pip', 'messages', 'masks'] });
-    expect(t.engine.current.look.groups[t.hall]?.layers).toContain('pip');
-    expect(t.repo.get(t.standard)?.groups[t.hall]).toMatchObject({ languages: ['gu'] });
-    expect(
-      (t.db.prepare('SELECT definition FROM looks WHERE id = ?').get(t.standard) as { definition: string })
-        .definition,
-    ).not.toContain('leftOut');
-  });
-
-  it('a group made a key and fill pair leaves the box out, as it leaves out the background', () => {
-    const t = setup();
-    t.screens.setGroupRole(t.hall, 'keyfill');
-    t.looks.becameKeyFill(t.hall);
-    expect(t.engine.current.look.groups[t.hall]).toMatchObject({
-      layers: ['slide', 'props', 'messages'],
-      slides: 'lowerThird',
-    });
-  });
-
-  it('a key and fill pair leaves the box out in every Look, old and new alike, until a Look turns it on (Session 51)', () => {
-    const t = setup();
-    const definition = (lookId: string): unknown =>
-      JSON.parse(
-        (t.db.prepare('SELECT definition FROM looks WHERE id = ?').get(lookId) as { definition: string })
-          .definition,
-      );
-    // A key and fill group as an earlier Drashti kept it in a Look: the words as a lower third, props, messages.
-    const switcher = t.screens.createGroup('Placeholder switcher', 'keyfill');
-    t.db.prepare('UPDATE looks SET definition = ? WHERE id = ?').run(
-      JSON.stringify({
-        groups: { [switcher]: { layers: ['slide', 'props', 'messages'], slides: 'lowerThird' } },
-      }),
-      t.standard,
-    );
-    t.looks.groupsChanged();
-    expect(t.engine.current.look.groups[switcher]?.layers).toEqual(['slide', 'props', 'messages']);
-    expect(t.looks.view().looks[0]?.groups[switcher]?.layers).not.toContain('pip');
-    // The hall's group shows it, as before.
-    expect(t.engine.current.look.groups[t.hall]?.layers).toContain('pip');
-    // A Look made since, from nothing: the key and fill group leaves it out there too, the hall shows it.
-    t.looks.create('Placeholder blank', null);
-    const blank = t.repo.list()[1];
-    expect(blank?.groups[switcher]?.layers).toEqual(LOOK_LAYERS.filter((l) => l !== 'pip'));
-    expect(blank?.groups[t.hall]?.layers).toEqual(LOOK_LAYERS);
-    // A group made a key and fill pair now: left out, kept as an earlier Drashti keeps it (nothing said of it).
-    const lobby = t.screens.createGroup('Placeholder lobby');
-    t.screens.setGroupRole(lobby, 'keyfill');
-    t.looks.becameKeyFill(lobby);
-    expect(t.engine.current.look.groups[lobby]?.layers).toEqual(['slide', 'props', 'messages']);
-    expect(definition(t.standard)).toMatchObject({
-      groups: { [lobby]: { layers: ['slide', 'props', 'messages'], slides: 'lowerThird' } },
-    });
-    expect(JSON.stringify(definition(t.standard))).not.toContain('leftOut');
-    // Turned on in the live Look (its tick in Screens): shown on that group's screens, and kept so.
-    expect(t.looks.setGroup(t.standard, switcher, { layers: ['slide', 'props', 'pip', 'messages'] }).ok).toBe(
-      true,
-    );
-    expect(t.engine.current.look.groups[switcher]?.layers).toEqual(['slide', 'props', 'pip', 'messages']);
-    expect(t.engine.current.look.groups[lobby]?.layers).toEqual(['slide', 'props', 'messages']);
-    expect(definition(t.standard)).toMatchObject({
-      groups: {
-        [switcher]: { layers: ['slide', 'props', 'messages'], turnedOn: ['pip'], slides: 'lowerThird' },
-      },
-    });
-    // Another setting changed: it stays on. Ticked off again: out, and nothing kept about it.
-    t.looks.setGroup(t.standard, switcher, { movement: 'bold' });
-    expect(t.engine.current.look.groups[switcher]?.layers).toContain('pip');
-    t.looks.setGroup(t.standard, switcher, { layers: ['slide', 'props', 'messages'] });
-    expect(t.engine.current.look.groups[switcher]?.layers).toEqual(['slide', 'props', 'messages']);
-    expect(JSON.stringify(definition(t.standard))).not.toContain('turnedOn');
-  });
-
-  it('follow edits to the live Look at once, and fall back to the first when it is removed', () => {
-    const t = setup();
-    t.looks.setGroup(t.standard, t.hall, { languages: ['translit', 'en'] });
-    expect(t.engine.current.look.groups[t.hall]?.languages).toEqual(['translit', 'en']);
-    // Bold for the hall reaches the hall's screens only (Session 27); the stage group stays Calm.
-    expect(t.looks.setGroup(t.standard, t.hall, { movement: 'bold' }).ok).toBe(true);
-    expect(t.engine.current.look.groups[t.hall]?.movement).toBe('bold');
-    expect(t.engine.current.look.groups[t.stage]?.movement).toBe('calm');
-    expect(t.repo.get(t.standard)?.groups[t.hall]?.movement).toBe('bold');
-    t.looks.create('Placeholder festival', null);
-    const festival = t.repo.list()[1]?.id ?? '';
-    t.engine.dispatch({ type: 'setLook', lookId: festival });
-    expect(t.looks.remove(festival).ok).toBe(true);
-    expect(t.engine.current.look.id).toBe(t.standard);
-    // The last Look stays.
-    expect(t.looks.remove(t.standard)).toMatchObject({
-      ok: false,
-      message: 'There must always be one Look.',
-    });
-    // The operator window was told each time.
-    expect(t.told.at(-1)?.looks.map((l) => l.name)).toEqual(['Standard']);
-  });
-
-  it('are made, copied, renamed and put in order; the first is the one Drashti starts with', () => {
-    const t = setup();
-    t.looks.setGroup(t.standard, t.hall, { languages: ['gu'] });
-    t.looks.create('Copy', t.standard);
-    t.looks.create('Blank', null);
-    const [, copy, blank] = t.repo.list();
-    expect(copy?.groups[t.hall]?.languages).toEqual(['gu']);
-    expect(blank?.groups[t.hall]).toEqual(DEFAULT_GROUP_LOOK);
-    expect(t.looks.rename(blank?.id, '  Placeholder evening  ').ok).toBe(true);
-    expect(t.looks.move(blank?.id, 0).ok).toBe(true);
-    expect(t.repo.list().map((l) => l.name)).toEqual(['Placeholder evening', 'Standard', 'Copy']);
-    expect(t.repo.firstId()).toBe(blank?.id);
-    // Names and changes are checked.
-    expect(t.looks.create('', null)).toMatchObject({ ok: false });
-    expect(t.looks.create('x'.repeat(61), null)).toMatchObject({ ok: false });
-    expect(t.looks.create('Copy of nothing', 'gone')).toMatchObject({ ok: false });
-    expect(t.looks.setGroup(t.standard, t.hall, { languages: [] })).toMatchObject({ ok: false });
-    expect(t.looks.setGroup(t.standard, t.hall, { layers: ['slide', 'slide'] })).toMatchObject({ ok: false });
-    expect(t.looks.setGroup(t.standard, t.hall, { slides: 'sideways' })).toMatchObject({ ok: false });
-    expect(t.looks.setGroup(t.standard, t.hall, { movement: 'wild' })).toMatchObject({ ok: false });
-    expect(t.looks.setGroup(t.standard, t.hall, { shape: 'x' })).toMatchObject({ ok: false });
-    expect(t.looks.setGroup(t.standard, 'gone', { languages: ['gu'] })).toMatchObject({ ok: false });
-    expect(t.looks.setGroup('gone', t.hall, { languages: ['gu'] })).toMatchObject({ ok: false });
-  });
-
-  it('give a group the wizard makes its languages in every Look; a deleted group leaves them all', () => {
-    const t = setup();
-    t.looks.create('Second', null);
-    const lobby = t.screens.createGroup('Lobby');
-    t.looks.groupMade(lobby, ['hi']);
-    expect(t.repo.list().map((l) => l.groups[lobby]?.languages)).toEqual([['hi'], ['hi']]);
-    expect(t.engine.current.look.groups[lobby]?.languages).toEqual(['hi']);
-    t.screens.deleteGroup(lobby);
-    t.looks.groupGone(lobby);
-    for (const row of t.db.prepare('SELECT definition FROM looks').all() as { definition: string }[])
-      expect(row.definition).not.toContain(lobby);
-    expect(t.engine.current.look.groups[lobby]).toBeUndefined();
-  });
-
-  it('cannot be switched in Simple Mode', () => {
-    const t = setup({ simple: true });
-    t.looks.create('Second', null);
-    const second = t.repo.list()[1]?.id ?? '';
-    expect(t.engine.dispatch({ type: 'setLook', lookId: second })).toEqual({
-      ok: false,
-      error: 'forbidden',
-      message: SIMPLE_MODE_REFUSAL,
-    });
-    expect(t.engine.current.look.id).toBe(t.standard);
-    // Running the show is not refused.
-    expect(t.engine.dispatch({ type: 'toggleBlackout' }).ok).toBe(true);
-  });
-
-  it('come back after an unexpected stop, and say so only for a Look other than the first', () => {
-    const t = setup();
-    t.looks.create('Second', null);
-    const second = t.repo.list()[1]?.id ?? '';
-    expect(t.engine.restore({ slide: null, background: null, blackout: false, lookId: second }).look).toBe(
-      'Second',
-    );
-    expect(t.engine.current.look.id).toBe(second);
-    const again = setup();
-    expect(
-      again.engine.restore({ slide: null, background: null, blackout: false, lookId: again.standard }).look,
-    ).toBeNull();
-    expect(
-      again.engine.restore({ slide: null, background: null, blackout: false, lookId: 'gone' }).look,
-    ).toBeNull();
-    expect(again.engine.current.look.id).toBe(again.standard);
   });
 });

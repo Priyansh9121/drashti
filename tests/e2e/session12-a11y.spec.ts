@@ -4,18 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
+import { launchApp, operatorPage, operatorReady } from './helpers';
 
 /*
  * Every panel and dialog Session 12 added passes the accessibility checks at
  * 1280 x 720, beyond those its own tests check as they go (the Shastra tab
- * and Texts, the passage picker, timer cues and slots, the Calendar dialog,
- * the idle rotation's panel and dialog; the arti left in Session 44): the
- * Idle rotation panel together with today's line along the bottom, a group's "When nothing is up", the stage layout editor with a
- * Samvat box and a quote box, a message with a Samvat field, a quote being
- * written, and Simple Mode with today's line (the macro that started the idle
- * rotation left with Macros, Session 44). Placeholder names and a made-up
- * calendar only.
+ * and Texts, the passage picker, timer cues and slots, the Calendar dialog;
+ * the arti left in Session 44): today's line along the bottom, the stage
+ * layout editor with a Samvat box and a quote box, a message with a Samvat
+ * field, and Simple Mode with today's line (the macro that started the idle
+ * rotation left with Macros, Session 44; the Idle rotation's panel, a group's
+ * "When nothing is up" and writing a quote, with the idle rotation in Session
+ * 55). Placeholder names and a made-up calendar only.
  */
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -28,8 +28,6 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  // Masks and the Idle rotation are in More tools (Session 26a).
-  await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   const file = join(mkdtempSync(join(tmpdir(), 'drashti-a11y-')), 'placeholder-calendar.json');
@@ -55,10 +53,6 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
     const d = (globalThis as PageGlobals).drashti;
     const loaded = await d.library.importPaths([path]);
     if (!loaded.ok) throw new Error(loaded.message);
-    await d.idle.saveQuote(null, {
-      words: { en: 'Placeholder quote', gu: 'નમૂનાનું વાક્ય' },
-      attribution: 'Placeholder',
-    });
     const made = await d.screens.createGroup('Placeholder hall');
     if (!made.ok) throw new Error(made.message);
     const stage = await d.screens.createGroup('Placeholder stage');
@@ -99,10 +93,9 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
     });
   }, file);
 
-  // The right column's new panels, and today's line along the bottom.
+  // Today's line along the bottom.
   await expect(win.getByTestId('today-calendar')).toContainText('Placeholder festival');
-  await expectNoSeriousA11yIssues(win, 'the idle-panel', '[data-testid="idle-panel"]');
-  await expectNoSeriousA11yIssues(win, 'the operator window with the Session 12 panels and today’s line');
+  await expectNoSeriousA11yIssues(win, 'the operator window with today’s line');
 
   // A message with a Samvat field, being changed.
   const row = win.getByTestId('message-row').filter({ hasText: 'Placeholder today' });
@@ -110,10 +103,10 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   await expect(win.getByRole('combobox', { name: 'How {date} is filled' })).toHaveValue('samvat:gu');
   await expectNoSeriousA11yIssues(win, 'a message template with a Samvat field');
 
-  // Screens: an audience group's "When nothing is up", and the stage layout editor's new boxes.
+  // Screens, and the stage layout editor's new boxes.
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
-  await expect(win.getByTestId('look-idle').first()).toBeVisible();
-  await expectNoSeriousA11yIssues(win, 'Screens with “When nothing is up”');
+  await expect(win.getByTestId('edit-stage-layouts').first()).toBeVisible();
+  await expectNoSeriousA11yIssues(win, 'Screens');
   await win.getByTestId('edit-stage-layouts').first().click();
   const layouts = win.getByTestId('stage-layout-editor');
   await layouts.getByRole('button', { name: 'Placeholder calendar band' }).click();
@@ -124,14 +117,6 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   }
   await layouts.getByRole('button', { name: 'Close stage layouts' }).click();
   await win.getByRole('button', { name: 'Close screens' }).click();
-
-  // A quote being written, in the idle rotation's dialog.
-  await win.getByTestId('idle-panel').getByTestId('open-idle').click();
-  const idle = win.getByTestId('idle-dialog');
-  await idle.getByTestId('add-quote').click();
-  await expect(idle.getByTestId('quote-form')).toBeVisible();
-  await expectNoSeriousA11yIssues(win, 'writing a quote');
-  await win.getByRole('button', { name: 'Close the idle rotation' }).click();
 
   // Simple Mode, with today's line.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));

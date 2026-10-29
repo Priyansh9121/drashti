@@ -126,9 +126,8 @@ test('the operator window and every panel pass the accessibility checks', async 
   await openMoreTools(win);
   await expectNoSeriousA11yIssues(win, 'More tools, unfolded', '[data-testid="more-tools"]');
 
-  // The panels on the right, with their forms open.
+  // The panels on the right, with their forms open (Props' too until Session 55).
   for (const [panel, button] of [
-    ['props', 'New prop'],
     ['messages', 'New message'],
     ['timers', 'New timer'],
   ] as const) {
@@ -149,11 +148,6 @@ test('the operator window and every panel pass the accessibility checks', async 
       'Screens',
       () => win.getByRole('button', { name: 'Screens', exact: true }).click(),
       () => win.getByRole('button', { name: 'Close screens' }).click(),
-    ],
-    [
-      'Themes',
-      () => win.getByRole('button', { name: 'Themes', exact: true }).click(),
-      () => win.getByRole('button', { name: 'Close themes' }).click(),
     ],
     [
       // The words editor (Session 55: New… from words; the open presentation's Edit words went).

@@ -7,13 +7,13 @@ import { NO_VIEW } from '../shared/access-list';
 
 /*
  * What Simple Mode locks. Every request that would change the library, the
- * playlists, props, messages, timers, themes, the screens or the sound is
+ * playlists, messages, timers, the screens or the sound is
  * refused in the main process while Simple Mode is on (the window does not
  * offer them either), and so is starting, ending or changing the stream,
  * and turning the local network on or off or changing its devices;
  * backup and restore leave the menu. Running the show
- * (the engine's commands, except switching the Look: see
- * SIMPLE_MODE_REFUSED_COMMANDS), reading the library and saving diagnostics stay.
+ * (the engine's commands, except those SIMPLE_MODE_REFUSED_COMMANDS lists),
+ * reading the library and saving diagnostics stay.
  */
 
 const refused = () => ({ ok: false as const, message: SIMPLE_MODE_REFUSAL });
@@ -72,31 +72,13 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.renamePresentation,
   IPC.media.rename,
   IPC.playlists.addSlot,
-  IPC.props.save,
-  IPC.props.remove,
-  IPC.props.setLogo,
-  IPC.themes.save,
-  IPC.themes.remove,
-  IPC.themes.setDefault,
-  IPC.themes.apply,
-  IPC.themes.fromPresentation,
-  IPC.themes.fromSlide,
   IPC.messages.create,
   IPC.messages.update,
   IPC.messages.remove,
   IPC.timers.create,
   IPC.timers.update,
   IPC.timers.remove,
-  // Looks: Simple Mode keeps the live one (the engine refuses setLook) and changes none.
-  IPC.looks.create,
-  IPC.looks.rename,
-  IPC.looks.remove,
-  IPC.looks.move,
-  IPC.looks.setGroup,
   IPC.stageLayouts.save,
-  IPC.masks.save,
-  IPC.masks.remove,
-  IPC.shastra.setTheme,
   IPC.playlists.editSlot,
   IPC.playlists.setTimers,
   // Smart playlists (Session 26c): Simple Mode sees what their folders bring, and changes no setup.
@@ -108,10 +90,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.shastra.remove,
   // Calendars: loading one is an import (locked above); removing one is locked too.
   IPC.calendar.remove,
-  // The idle rotation: Simple Mode changes neither its pictures nor its quotes.
-  IPC.idle.saveSettings,
-  IPC.idle.saveQuote,
-  IPC.idle.removeQuote,
   // Lower Thirds (Session 44): Simple Mode changes none (it has none to show either).
   IPC.lowerThirds.save,
   IPC.lowerThirds.remove,

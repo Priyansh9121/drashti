@@ -22,7 +22,8 @@ import { Scene } from './Scene';
  * it is asked for one, and every window waits meanwhile: 100-600 ms each on CI's Mac, so the first Bold push
  * of a show would stutter in the hall. Before a page first shows the show, it draws every transition kind
  * in both Movements part-way, a Look's lower third coming, changing and going, messages and the ticker's band
- * coming in, a picture with a look, the background dissolving and the idle rotation dissolving, with
+ * coming in, a picture with a look and the background dissolving (the idle rotation's dissolve went with it in
+ * Session 55; Part 6's wallpapers that go round may bring one back), with
  * placeholder words and pictures made here, through the same Scene the show uses, until its frames come on
  * time (the GPU has made what they need); then it lets go. The pipelines are kept by the GPU for every
  * window after.
@@ -81,8 +82,8 @@ function PictureStrip({ jpeg, png }: { jpeg: string; png: string }) {
   return <>{cells}</>;
 }
 
-/** The placeholder pictures' ids: a darshan-like JPEG for each slide, a prop's PNG with see-through parts. */
-const PICTURE = { a: `${W}-picture-a`, b: `${W}-picture-b`, prop: `${W}-prop` } as const;
+/** The placeholder pictures' ids: a darshan-like JPEG for each slide, a PNG with see-through parts. */
+const PICTURE = { a: `${W}-picture-a`, b: `${W}-picture-b`, png: `${W}-png` } as const;
 
 /** How far through every transition it draws: part-way, both slides on screen. */
 const PART = 0.4;
@@ -250,7 +251,7 @@ function scenes(): WarmScene[] {
   const transitions: WarmScene[] = [];
   for (const movement of MOVEMENTS) {
     // Every kind that takes time, part-way: the slides, the background behind them, and on the fades the
-    // rest of what comes in (a message, the ticker's band, a prop, a picture with a look).
+    // rest of what comes in (a message, the ticker's band, a picture with a look; a prop until Session 55).
     for (const kind of TRANSITION_KINDS.filter((k): k is Exclude<TransitionKind, 'cut'> => k !== 'cut')) {
       const all = kind === 'dissolve';
       transitions.push({
@@ -282,24 +283,6 @@ function scenes(): WarmScene[] {
                   },
                 )
               : layerOf(slide(`${kind}-${movement}-a`, false), at - LONG_AGO),
-            props: all
-              ? [
-                  {
-                    id: `${W}-prop`,
-                    name: 'Placeholder prop',
-                    elements: [
-                      {
-                        id: 'prop-picture',
-                        kind: 'image',
-                        mediaId: PICTURE.prop,
-                        frame: { x: 60, y: 60, width: 256, height: 128 },
-                        fit: 'fit',
-                      },
-                    ],
-                    shownAt: at - LONG_AGO,
-                  },
-                ]
-              : [],
             messages:
               all && during ? [{ id: `${W}-message`, text: 'Placeholder message', shownAt: at - 100 }] : [],
             ticker:
@@ -367,24 +350,6 @@ function scenes(): WarmScene[] {
         };
       },
     });
-  // The idle rotation part-way through a dissolve between two pictures (nothing else up).
-  list.push({
-    key: 'idle',
-    look: look('calm', { idle: 'always' }),
-    state: (_during, at) => ({
-      ...base,
-      idle: {
-        items: [
-          { kind: 'picture', mediaId: PICTURE.a },
-          { kind: 'picture', mediaId: PICTURE.b },
-        ],
-        secondsEach: 10,
-        dissolveMs: 1500,
-        // 0.4 of the way through the dissolve at the end of the first item's ten seconds.
-        startedAt: at - (10_000 - 1500 + PART * 1500),
-      },
-    }),
-  });
   return [
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
@@ -470,7 +435,7 @@ export function WarmUp({
     () => ({
       [PICTURE.a]: makePicture('jpeg', 30),
       [PICTURE.b]: makePicture('jpeg', 210),
-      [PICTURE.prop]: makePicture('png', 300),
+      [PICTURE.png]: makePicture('png', 300),
     }),
     [],
   );
@@ -600,7 +565,7 @@ export function WarmUp({
                     height: canvas.height,
                   }}
                 >
-                  <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.prop] ?? ''} />
+                  <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.png] ?? ''} />
                 </div>
                 <div
                   style={{
@@ -612,7 +577,7 @@ export function WarmUp({
                     clipPath: NOTCHED,
                   }}
                 >
-                  <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.prop] ?? ''} />
+                  <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.png] ?? ''} />
                 </div>
               </>
             )}

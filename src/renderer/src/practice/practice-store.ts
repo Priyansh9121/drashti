@@ -161,7 +161,7 @@ const KEYS: Partial<Record<OperatorAction, PracticeAction>> = {
   clearAll: 'clearAll',
   clearSlide: 'clearSlide',
   toggleBlackout: 'toggleBlackout',
-  toggleLogo: 'toggleLogo',
+  toggleWallpaper: 'toggleWallpaper',
 };
 
 /** A key or button while practising: true when the practice show took it. */

@@ -1,12 +1,12 @@
-import type { EngineState, PropItem } from './engine/state';
+import type { EngineState } from './engine/state';
 import { initialEngineState } from './engine/state';
 import type { RenderSlide, TextElement } from './model';
 import { NEW_TEXT_LINE_HEIGHT } from './model';
 
 /*
  * The practice show (Session 26g): placeholder slides on the operator's own screen only, for trying
- * Next, Back, Black-out, Logo and Clear all before anything is set up. It lives in the operator
- * window alone: a little state of its own, turned into an EngineState only so the window's own
+ * Next, Back, Black-out, the Wallpaper (the Logo's place since Session 55) and Clear all before anything is set up. It
+ * lives in the operator window alone: a little state of its own, turned into an EngineState only so the window's own
  * pictures (LIVE, the slides) can draw it. It never goes to the main process, so it never reaches
  * an output, a node, the stream, a recording, a phone or the API, and nothing of it is saved.
  */
@@ -76,25 +76,25 @@ export function practiceWords(id: string, text: string): RenderSlide {
 /** What each practice slide is called in its caption (its group). */
 export const practiceLabels = (): string[] => LINES.map((l) => l.label);
 
-/** The placeholder logo F12 or L puts up in practice: never the mandir's own. */
-export const PRACTICE_LOGO: PropItem = {
-  id: 'practice-logo',
-  name: 'Placeholder logo',
-  elements: [words('practice-logo-words', 'Your logo goes here', 480, 72, 'en')],
-};
-
 export interface Practice {
   /** The slide on the operator's screen, or null when nothing is up. */
   index: number | null;
   blackout: boolean;
-  logo: boolean;
+  /** The Wallpaper up (Session 55, Part 13): black in practice, as with no wallpaper chosen. */
+  wallpaper: boolean;
   /** What Clear all took down, while Put it back can bring it back. */
   cleared: number | null;
   /** Counts every change, as the engine's rev does, so pictures know to draw again. */
   rev: number;
 }
 
-export const PRACTICE_START: Practice = { index: null, blackout: false, logo: false, cleared: null, rev: 0 };
+export const PRACTICE_START: Practice = {
+  index: null,
+  blackout: false,
+  wallpaper: false,
+  cleared: null,
+  rev: 0,
+};
 
 export type PracticeAction =
   | 'next'
@@ -104,7 +104,7 @@ export type PracticeAction =
   | 'clearSlide'
   | 'putBack'
   | 'toggleBlackout'
-  | 'toggleLogo'
+  | 'toggleWallpaper'
   | { goTo: number };
 
 /** One step of the practice show, as the real show takes it (a little simpler: one presentation). */
@@ -128,8 +128,8 @@ export function practiceStep(p: Practice, action: PracticeAction, count = LINES.
       return p.cleared === null ? p : next({ index: p.cleared, cleared: null });
     case 'toggleBlackout':
       return next({ blackout: !p.blackout });
-    case 'toggleLogo':
-      return next({ logo: !p.logo });
+    case 'toggleWallpaper':
+      return next({ wallpaper: !p.wallpaper });
   }
 }
 
@@ -155,7 +155,7 @@ export function practiceState(p: Practice, slides: readonly RenderSlide[] = prac
           : null,
     },
     blackout: p.blackout,
-    logo: p.logo ? PRACTICE_LOGO : null,
+    wallpaper: p.wallpaper,
     canPutBack: p.cleared !== null,
     next: following
       ? {

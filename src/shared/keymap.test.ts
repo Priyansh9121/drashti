@@ -53,11 +53,11 @@ describe('keymap', () => {
     expect(shortcutText('previousItem', 'win32')).toBe('Shift+←');
   });
 
-  it('shows and hides the logo with F12 and L', () => {
-    expect(actionFor(press('F12'), 'darwin')).toBe('toggleLogo');
-    expect(actionFor(press('F12'), 'win32')).toBe('toggleLogo');
-    expect(actionFor(press('l'), 'darwin')).toBe('toggleLogo');
-    expect(actionFor(press('L', { shiftKey: true }), 'win32')).toBe('toggleLogo');
+  it('puts the wallpaper up and takes it off with F12, the Logo’s key; L does nothing (Session 55)', () => {
+    expect(actionFor(press('F12'), 'darwin')).toBe('toggleWallpaper');
+    expect(actionFor(press('F12'), 'win32')).toBe('toggleWallpaper');
+    expect(actionFor(press('l'), 'darwin')).toBeNull();
+    expect(actionFor(press('L', { shiftKey: true }), 'win32')).toBeNull();
   });
 
   it('maps the clear keys and black-out', () => {
@@ -69,22 +69,22 @@ describe('keymap', () => {
   });
 
   // Session 50: the keys the mandir's operators already press (their Presentation and Screens menus, seen 22 Oct
-  // 2026). F5 and F6, and F7 and F8, changed places from Drashti's own; F12 is the logo beside L; Mod+1 and
-  // Mod+2 turn the Audience and Stage screens off and on.
+  // 2026). F5 and F6, and F7 and F8, changed places from Drashti's own; Mod+1 and Mod+2 turn the Audience and
+  // Stage screens off and on. Session 55: F4 (props) and F8 (masks) went with them and do nothing; F12, the logo's,
+  // is the Wallpaper's.
   it('uses the keys the operators already press', () => {
     const at = (key: string) => actionFor(press(key), 'win32');
     expect([at('F1'), at('F2'), at('F3'), at('F4')]).toEqual([
       'clearAll',
       'clearSlide',
       'clearBackground',
-      'clearProps',
+      null,
     ]);
     expect(at('F5')).toBe('clearAudio');
     expect(at('F6')).toBe('clearMessages');
     expect(at('F7')).toBe('clearTicker');
-    expect(at('F8')).toBe('clearMasks');
-    expect(at('F12')).toBe('toggleLogo');
-    expect(actionFor(press('l'), 'darwin')).toBe('toggleLogo');
+    expect(at('F8')).toBeNull();
+    expect(at('F12')).toBe('toggleWallpaper');
     expect(actionFor(press('1', { metaKey: true }), 'darwin')).toBe('toggleAudience');
     expect(actionFor(press('2', { metaKey: true }), 'darwin')).toBe('toggleStage');
     expect(actionFor(press('1', { ctrlKey: true }), 'win32')).toBe('toggleAudience');
@@ -96,7 +96,7 @@ describe('keymap', () => {
     expect(actionFor(press('1'), 'darwin')).toBeNull();
     expect(shortcutText('toggleAudience', 'darwin')).toBe('⌘1');
     expect(shortcutText('toggleStage', 'win32')).toBe('Ctrl+2');
-    expect(shortcutText('toggleLogo', 'win32')).toBe('F12');
+    expect(shortcutText('toggleWallpaper', 'win32')).toBe('F12');
   });
 
   it('respects modifiers', () => {
@@ -124,7 +124,6 @@ describe('keymap', () => {
     expect(actionFor(press('s', { metaKey: true }), 'darwin')).toBeNull();
     // A letter alone, a digit with Cmd or Ctrl, and "?" match with Shift or without, as before.
     expect(actionFor(press('B', { shiftKey: true }), 'win32')).toBe('toggleBlackout');
-    expect(actionFor(press('L', { shiftKey: true }), 'darwin')).toBe('toggleLogo');
     expect(actionFor(press('1', { metaKey: true, shiftKey: true }), 'darwin')).toBe('toggleAudience');
     expect(actionFor(press('2', { ctrlKey: true, shiftKey: true }), 'win32')).toBe('toggleStage');
     expect(actionFor(press('?', { shiftKey: true }), 'darwin')).toBe('showKeys');
@@ -178,11 +177,11 @@ describe('keymap', () => {
 
   // WCAG 2.1.4 (Session 37): a key of one character with no Cmd, Ctrl or Alt acts on its own, so they can
   // be turned off. A new one must be added here on purpose: the switch names them.
-  it('knows its single-letter keys: B, ., L and ?, and only those', () => {
-    expect(SINGLE_KEYS).toEqual(['B', '.', 'L', '?']);
+  it('knows its single-letter keys: B, . and ?, and only those (L went with the Logo, Session 55)', () => {
+    expect(SINGLE_KEYS).toEqual(['B', '.', '?']);
   });
 
-  it('without its single-letter keys, B, ., L and ? do nothing, in Pro and Simple Mode, and every other key works', () => {
+  it('without its single-letter keys, B, . and ? do nothing, in Pro and Simple Mode, and every other key works', () => {
     for (const [keymap, platform] of [
       [withoutSingleKeys(PAGE_KEYMAP), 'darwin'],
       [withoutSingleKeys(SIMPLE_KEYMAP), 'win32'],
@@ -196,8 +195,8 @@ describe('keymap', () => {
       expect(actionFor(press('PageUp'), platform, keymap)).toBe('previous');
       expect(actionFor(press(' '), platform, keymap)).toBe('next');
       expect(actionFor(press('F1'), platform, keymap)).toBe('clearAll');
-      // The logo keeps F12 (Session 50): a named key, never acted on by a word said.
-      expect(actionFor(press('F12'), platform, keymap)).toBe('toggleLogo');
+      // The Wallpaper keeps F12 (Session 55, the Logo's since Session 50): a named key, never acted on by a word said.
+      expect(actionFor(press('F12'), platform, keymap)).toBe('toggleWallpaper');
       expect(actionFor(press('Escape'), platform, keymap)).toBe('stopRepeat');
     }
     // Keys with Cmd or Ctrl stay: they never act by a word said or a key brushed.
@@ -205,10 +204,10 @@ describe('keymap', () => {
     expect(actionFor(press('f', { metaKey: true }), 'darwin', pro)).toBe('findInLibrary');
     expect(actionFor(press('U', { ctrlKey: true, shiftKey: true }), 'win32', pro)).toBe('uncoverControls');
     // What the window shows beside a button follows: no key for Black-out or the list of keys, and F12 for the
-    // Logo.
+    // Wallpaper.
     const all = withoutSingleKeys(KEYMAP);
     expect(shortcutText('toggleBlackout', 'darwin', all)).toBe('');
-    expect(shortcutText('toggleLogo', 'win32', all)).toBe('F12');
+    expect(shortcutText('toggleWallpaper', 'win32', all)).toBe('F12');
     expect(shortcutText('showKeys', 'darwin', all)).toBe('');
     expect(shortcutText('next', 'darwin', all)).toBe('→');
     expect(shortcutText('clearAll', 'win32', all)).toBe('F1');
@@ -217,11 +216,8 @@ describe('keymap', () => {
   it('leaves a keymap without single-letter keys as it was, binding for binding', () => {
     const library = KEYMAP.filter((b) => b.scope === 'library');
     expect(withoutSingleKeys(library)).toEqual(library);
-    // The Logo keeps its binding with F12 alone (Session 50); every other binding is as it was.
-    const logo = KEYMAP.find((b) => b.action === 'toggleLogo');
-    for (const b of withoutSingleKeys(KEYMAP))
-      if (b.action === 'toggleLogo') expect(b).toEqual({ ...logo, keys: ['F12'] });
-      else expect(KEYMAP).toContain(b);
+    // Every binding with a key left is as it was (Session 55: the Wallpaper has F12 alone, no single-letter key).
+    for (const b of withoutSingleKeys(KEYMAP)) expect(KEYMAP).toContain(b);
     expect(withoutSingleKeys(KEYMAP).map((b) => b.action)).toEqual(
       KEYMAP.filter((b) => !['toggleBlackout', 'showKeys'].includes(b.action)).map((b) => b.action),
     );

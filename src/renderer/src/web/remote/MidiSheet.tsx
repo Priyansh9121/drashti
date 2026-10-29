@@ -163,8 +163,10 @@ function Mappings({ midi, busy }: { midi: RemoteMidi; busy: boolean }) {
               data-testid="remote-midi-mapping"
             >
               <span className="min-w-0 flex-1 text-base text-fg">
-                {m.action.kind === 'macro' ? 'A macro (no longer used)' : MIDI_ACTION_NAMES[m.action.kind]}:{' '}
-                {inputName(m.input)}
+                {m.action.kind === 'macro' || m.action.kind === 'logo'
+                  ? `${m.action.kind === 'macro' ? 'A macro' : 'The logo'} (no longer used)`
+                  : MIDI_ACTION_NAMES[m.action.kind]}
+                : {inputName(m.input)}
               </span>
               <Button
                 size="lg"

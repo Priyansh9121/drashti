@@ -31,14 +31,14 @@ export function backgroundWords(background: EngineState['layers']['background'])
  * What the audience screens show, as a stage layout's box of their state says it, from the hall as the page is
  * told it. None first (Session 53: with no audience group at all, a key and fill pair alone too, there are none to
  * be off, black or showing, as the audience picture box says; it said they were showing), then off (Session 51:
- * with Audience off they show this computer's desktop, whatever is up), then black-out, the logo, a picture or
- * nothing. Until the page is told the hall, what is up: never that there are none.
+ * with Audience off they show this computer's desktop, whatever is up), then black-out, the Wallpaper (Session 55, in
+ * the Logo's place), a picture or nothing. Until the page is told the hall, what is up: never that there are none.
  */
 export function screensStateWords(state: EngineState, hall: HallPicture | null | undefined): string {
   if (hall === null) return NO_AUDIENCE;
   if (hall?.off === true) return 'Audience screens off';
   if (state.blackout) return 'Audience screens black';
-  if (state.logo) return 'Logo on the audience screens';
+  if (state.wallpaper) return 'Wallpaper on the audience screens';
   return state.layers.slide || state.layers.background
     ? 'Audience screens showing'
     : 'Nothing on the audience screens';
@@ -46,15 +46,15 @@ export function screensStateWords(state: EngineState, hall: HallPicture | null |
 
 /**
  * The same beside NOW on the Standard stage screen: said only while they do not show the picture, off, black or
- * with the logo, which the performers must know while it lasts. Never that there are none (Session 53): that lasts
- * all the show, where none is how the mandir set it up (a hall with no screen, or a key and fill pair alone whose
+ * with the Wallpaper up, which the performers must know while it lasts. Never that there are none (Session 53): that
+ * lasts all the show, where none is how the mandir set it up (a hall with no screen, or a key and fill pair alone whose
  * video switcher may well put the picture on the hall's screens), and it would stand beside NOW at every slide,
  * words the performers can do nothing about. A layout's box of their state, chosen to say it, says so.
  */
 export function screensStateNote(state: EngineState, off: boolean): string {
   if (off) return ' · AUDIENCE SCREENS OFF';
   if (state.blackout) return ' · AUDIENCE SCREENS BLACK';
-  return state.logo ? ' · LOGO ON THE AUDIENCE SCREENS' : '';
+  return state.wallpaper ? ' · WALLPAPER ON THE AUDIENCE SCREENS' : '';
 }
 
 /*

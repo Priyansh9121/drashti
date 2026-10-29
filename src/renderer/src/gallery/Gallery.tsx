@@ -20,7 +20,7 @@ import {
   Presentation,
   SkipBack,
   SkipForward,
-  Stamp,
+  Wallpaper,
   Trash2,
   X,
 } from '../ui/icons';
@@ -150,8 +150,8 @@ function ButtonsSection() {
         <Button size="xl" variant="secondary" instant icon={BlackOut}>
           <WordsOverKeys words="Black-out" keys={[shortcutText('toggleBlackout', 'darwin')]} />
         </Button>
-        <Button size="xl" variant="live" icon={Stamp}>
-          <WordsOverKeys words="Logo is on" keys={keysOf('toggleLogo')} />
+        <Button size="xl" variant="live" icon={Wallpaper}>
+          <WordsOverKeys words="Wallpaper is on" keys={keysOf('toggleWallpaper')} />
         </Button>
       </Row>
     </Section>
@@ -352,8 +352,8 @@ function FieldsSection() {
   return (
     <Section id="fields" title="Form fields">
       <div className="grid max-w-3xl grid-cols-2 gap-4">
-        <Field label="Theme name" hint="Up to 80 letters">
-          <TextInput defaultValue="Placeholder theme" />
+        <Field label="Playlist name" hint="Up to 80 letters">
+          <TextInput defaultValue="Placeholder playlist" />
         </Field>
         <Field label="Group name" error="A group needs a name.">
           <TextInput defaultValue="" placeholder="For example Main Hall" />
@@ -440,7 +440,7 @@ function StatesSection() {
           <Loading />
         </div>
         <div className="rounded-lg border border-line bg-panel">
-          <ErrorState title="Could not load the themes" action={<Button size="sm">Try again</Button>} />
+          <ErrorState title="Could not load the playlists" action={<Button size="sm">Try again</Button>} />
         </div>
       </div>
       {/* A place's own state across its room (Session 51): centred while it fits, from its top when it does not. */}

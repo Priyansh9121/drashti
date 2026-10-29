@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type CommandResult, type EngineCommand, parseEngineCommand } from '../../shared/engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
-import type { EngineState, PropItem } from '../../shared/engine/state';
+import type { EngineState } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import type { PresentationDoc } from '../../shared/library';
@@ -63,7 +63,6 @@ import { COULD_NOT } from './messages';
 import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { type DesktopActs, DesktopAnswers } from './desktop-answers';
 import { cutText } from '../../shared/text';
-import { NO_LOGO_CHOSEN } from '../../shared/props';
 import { nfcDeep } from '../../shared/nfc';
 
 /*
@@ -86,15 +85,13 @@ export interface NetworkReads {
   /** The library searched as the operator window searches it. */
   search(query: string): SearchResult;
   messages(): MessageTemplate[];
-  /** The prop marked as the logo, ready for the engine; null when none is. */
-  logo(): PropItem | null;
   /** A media item's file and kind for a preview (pictures and videos only). */
   mediaSource(mediaId: string): PreviewSource | null;
   /** A sound's file while a playlist shared with phones has it (Session 54, D3), for a phone to play; else null. */
   sharedSound(mediaId: string): string | null;
   /**
    * The stage display's group (the first stage group, or null when there is
-   * none) and its languages in the live Look (null: all of them).
+   * none) and its languages (null: all of them).
    */
   stage(): { groupId: string | null; languages: Lang[] | null };
   /**
@@ -107,8 +104,6 @@ export interface NetworkReads {
   hall(): { groupId: string | null };
   /** Main's Audience and Stage (Session 50): a Remote says which are off, and cannot turn them. */
   switches(): ScreenSwitches;
-  /** The Looks, in order (a Remote switches the live one). */
-  looks(): { id: string; name: string }[];
   /** The loaded Shastra texts. */
   shastraTexts(): { name: string; abbreviation: string; itemCount: number }[];
   /** What a Shastra reference names (a passage that plays like a presentation), or why it names nothing. */
@@ -184,7 +179,6 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   state: IPC.engine.snapshot,
   stage: IPC.screens.get,
   hall: IPC.screens.get,
-  looks: IPC.looks.list,
   // Playing music is not a change to the library: Simple Mode lets a Remote do it, as it does the window.
   'music.play': IPC.music.play,
   'shastra.texts': IPC.shastra.list,
@@ -198,9 +192,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   search: IPC.library.search,
   messages: IPC.messages.list,
   timers: IPC.engine.snapshot,
-  logo: IPC.props.getLogo,
   command: IPC.engine.command,
-  'logo.set': IPC.engine.command,
   'message.show': IPC.engine.command,
   'message.hide': IPC.engine.command,
   preview: null,
@@ -211,10 +203,6 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   announcement: null,
   // The mirror (Session 54, D5): the window's own reads, and what goes up as the window puts it up.
   keys: IPC.app.singleKeys,
-  props: IPC.props.list,
-  'prop.show': IPC.engine.command,
-  masks: null,
-  'mask.show': IPC.engine.command,
   media: IPC.library.listMedia,
   'media.show': IPC.engine.command,
   lowerThirds: IPC.lowerThirds.list,
@@ -299,7 +287,6 @@ const showSchema = z
   })
   .strict();
 const hideSchema = z.object({ templateId: idSchema }).strict();
-const logoSchema = z.object({ on: z.boolean().optional() }).strict();
 
 const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
   status: 200,
@@ -874,8 +861,6 @@ export class NetworkService implements EngineTransport {
           // The stage screens' group (Session 54): a Remote runs the timers of its layout in the live Look.
           stageGroupId: this.deps.reads.stage().groupId,
         });
-      case 'looks':
-        return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });
       case 'shastra.texts':
         return ok({ texts: this.deps.reads.shastraTexts() });
       case 'shastra': {
@@ -927,14 +912,8 @@ export class NetworkService implements EngineTransport {
         return ok({ messages: this.deps.reads.messages() });
       case 'timers':
         return ok({ timers: this.deps.engine.state().timers });
-      case 'logo': {
-        const logo = this.deps.reads.logo();
-        return ok({ logo: logo ? { id: logo.id, name: logo.name } : null });
-      }
       case 'command':
         return this.command(args, who);
-      case 'logo.set':
-        return this.setLogo(args, who);
       case 'message.show':
         return this.showMessage(args, who);
       case 'message.hide': {
@@ -947,10 +926,6 @@ export class NetworkService implements EngineTransport {
         );
       }
       case 'keys':
-      case 'props':
-      case 'prop.show':
-      case 'masks':
-      case 'mask.show':
       case 'media':
       case 'media.show':
       case 'lowerThirds':
@@ -1049,17 +1024,6 @@ export class NetworkService implements EngineTransport {
     return this.run(parsed.command, who, type);
   }
 
-  private setLogo(args: Record<string, unknown>, who: string): DeviceAnswer {
-    const parsed = logoSchema.safeParse(args);
-    if (!parsed.success) return deny(400, 'Logo on or off?');
-    const on = parsed.data.on ?? this.deps.engine.state().logo === null;
-    if (!on) return this.run({ type: 'hideLogo' }, who, 'took the logo down');
-    const logo = this.deps.reads.logo();
-    // In the operator window's own words (Session 54, D5 review).
-    if (!logo) return deny(409, NO_LOGO_CHOSEN);
-    return this.run({ type: 'showLogo', prop: logo }, who, 'showed the logo');
-  }
-
   private showMessage(args: Record<string, unknown>, who: string): DeviceAnswer {
     const parsed = showSchema.safeParse(args);
     if (!parsed.success) return deny(400, 'Which message, with what in its fields?');
@@ -1106,7 +1070,8 @@ export function summary(state: EngineState): Record<string, unknown> {
       onScreen: slide !== null,
     },
     blackout: state.blackout,
-    logo: state.logo !== null,
+    // The Wallpaper up (Session 55, Part 13, in the Logo's place).
+    wallpaper: state.wallpaper,
     canPutBack: state.canPutBack,
     next: state.next
       ? state.next.kind === 'slide'

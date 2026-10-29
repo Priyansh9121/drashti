@@ -10,9 +10,10 @@ import { useMirror } from './mirror-store';
  * (remote-clears.ts), filling the width in rows (three on a phone, more on a tablet). A layer's clear is lit while its
  * layer has something up (its edge in LIVE's red, a dot, and "on screen" read out) and dimmed with nothing to
  * clear, as the desktop's; Clear all is the strong one, Put it back takes its place in the warning colour while it
- * can be; the Logo and Black-out turn LIVE's red while on and say so in words ("Black-out is on", Session 26g), with
- * no aria-pressed. Show controls: each changes in the same frame as the screens, with no fade. Plain buttons drawn
- * in the Button variants' colours, so the words and the key can wrap in a narrow column (Button keeps one line).
+ * can be; the Wallpaper (Session 55, in the Logo's place) and Black-out turn LIVE's red while on and say so in words
+ * ("Black-out is on", Session 26g), with no aria-pressed, and are dimmed while off, as the desktop's. Show controls:
+ * each changes in the same frame as the screens, with no fade. Plain buttons drawn in the Button variants' colours,
+ * so the words and the key can wrap in a narrow column (Button keeps one line).
  * Until Session 54 the remote had five of these (Clear slide, Clear all, Black-out, Logo and Put it back), in
  * another order and with no keys.
  */
@@ -26,8 +27,8 @@ function request(c: RemoteClear, state: EngineState | null): ReturnType<typeof p
       return post('/api/v1/put-back');
     case 'clearAll':
       return post('/api/v1/clear/all');
-    case 'toggleLogo':
-      return post('/api/v1/logo', { on: state?.logo == null });
+    case 'toggleWallpaper':
+      return post('/api/v1/wallpaper', { on: !(state?.wallpaper ?? false) });
     case 'toggleBlackout':
       return post('/api/v1/blackout', { on: !(state?.blackout ?? false) });
     default:
@@ -40,13 +41,14 @@ function look(c: RemoteClear): string {
   if (c.layer) return c.lit ? 'border-live bg-layer text-fg' : 'border-layer-edge bg-transparent text-faint';
   if (c.action === 'putBack') return 'border-warning bg-warning-bg text-warning-fg';
   if (c.action === 'clearAll') return 'border-primary-edge bg-panel-2 font-bold text-fg';
-  return c.lit ? 'border-live bg-live text-white' : 'border-field bg-panel-2 text-fg';
+  // The Wallpaper and Black-out: LIVE's red while on, dimmed while off (Session 55, as the desktop's bar).
+  return c.lit ? 'border-live bg-live text-white' : 'border-layer-edge bg-transparent text-faint';
 }
 
 const TEST_ID: Partial<Record<RemoteClear['action'], string>> = {
   putBack: 'remote-put-back',
   clearAll: 'remote-clear-all',
-  toggleLogo: 'remote-logo',
+  toggleWallpaper: 'remote-wallpaper',
   toggleBlackout: 'remote-blackout',
 };
 
@@ -60,8 +62,7 @@ export function Clears({ state }: { state: EngineState | null }) {
       data-testid="remote-actions"
     >
       {remoteClears(state, keys).map((c) => {
-        // Dimmed with nothing to clear, as the desktop's. The Logo stays to be pressed with none chosen, as the
-        // window's does, and says why (Session 54, D5 review: it had been greyed with no reason).
+        // Dimmed with nothing to clear, as the desktop's; the Wallpaper and Black-out stay to be pressed.
         const off = c.layer !== undefined || c.action === 'clearAll' ? !c.lit : false;
         return (
           <button

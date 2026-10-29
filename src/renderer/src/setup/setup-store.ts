@@ -1,22 +1,21 @@
 import { create } from 'zustand';
-import { useEngine } from '../engine/engine-store';
 import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
 import type { DisplayInfo, ScreenGroupConfig, ScreensSnapshot } from '../../../shared/screens';
 import type { OutputUse, SetupPlan } from '../../../shared/setup';
 import type { DeviceChoice, StreamLayout } from '../../../shared/stream';
-import type { Theme } from '../../../shared/themes';
 import { useKeepScreens } from '../operator/keep-screens-store';
 import { useScreens } from '../screens/screens-store';
 
 /*
  * The setup wizard (PLAN.md 3): what each output shows and in which
- * languages, the sound output and the default theme, chosen step by step.
+ * languages, the sound output and the stream, chosen step by step (Session
+ * 55: the default theme's step went with Themes).
  * Nothing is applied until Finish; closing it, or skipping a step, keeps
  * things as they are.
  */
 
-export const STEPS = ['Welcome', 'Screens', 'Sound', 'Stream', 'Theme', 'Finish'] as const;
+export const STEPS = ['Welcome', 'Screens', 'Sound', 'Stream', 'Finish'] as const;
 
 export interface StreamChoice {
   layout: StreamLayout;
@@ -44,15 +43,11 @@ interface SetupView {
   devices: AudioDevice[];
   /** The sound output chosen (null: the system default), or 'skip'. */
   sound: AudioDevice | null | 'skip';
-  themes: Theme[];
   /**
    * The stream's settings, as YouTube's card in Screens has them (Session 26): its layout, the camera and
    * sound input of the profile in use and a kirtan's languages; or 'skip' to keep them.
    */
   stream: StreamChoice | 'skip';
-  /** The default theme chosen, or null to keep it. */
-  themeId: string | null;
-  defaultThemeId: string | null;
   busy: boolean;
   problem: string | null;
   /** Finish asked first: an output would cover the controls. */
@@ -76,9 +71,6 @@ const closed: SetupView = {
   devices: [],
   sound: 'skip',
   stream: 'skip',
-  themes: [],
-  themeId: null,
-  defaultThemeId: null,
   busy: false,
   problem: null,
   askCover: false,
@@ -95,20 +87,17 @@ export const useSetup = create<SetupView>(() => closed);
  */
 export async function openSetup(from = 0): Promise<void> {
   useSetup.setState({ ...closed, open: true, busy: true, step: from });
-  const [state, snapshot, sound, themes] = await Promise.all([
+  const [state, snapshot, sound] = await Promise.all([
     window.drashti.setup.state(),
     window.drashti.screens.get(),
     window.drashti.audio.getOutput(),
-    window.drashti.themes.list(),
   ]);
   useScreens.setState({ snapshot });
-  // Each display as it is used now: by a screen showing on it, in a group with its role, and its
-  // languages in the live Look.
-  const look = useEngine.getState().state?.look;
+  // Each display as it is used now: by a screen showing on it, in a group with its role, and its languages.
   const outputs: Record<number, OutputChoice> = {};
   for (const d of snapshot.displays) {
     const group = groupOn(snapshot, d.id);
-    const languages = group ? (look?.groups[group.id]?.languages ?? null) : null;
+    const languages = group?.languages ?? null;
     outputs[d.id] = group
       ? { use: group.role === 'stage' ? 'stage' : 'audience', languages: languages ? [...languages] : null }
       : { use: 'none', languages: null };
@@ -121,9 +110,6 @@ export async function openSetup(from = 0): Promise<void> {
     outputs,
     devices: sound.devices,
     sound: sound.chosen,
-    themes: themes.themes,
-    themeId: themes.defaultId,
-    defaultThemeId: themes.defaultId,
   });
 }
 
@@ -143,7 +129,6 @@ export function skipStep(): void {
   if (STEPS[step] === 'Screens') useSetup.setState({ outputsSkipped: true });
   if (STEPS[step] === 'Sound') useSetup.setState({ sound: 'skip' });
   if (STEPS[step] === 'Stream') useSetup.setState({ stream: 'skip' });
-  if (STEPS[step] === 'Theme') useSetup.setState({ themeId: null });
   goTo(step + 1);
 }
 
@@ -168,13 +153,12 @@ export function planOf(s: SetupView): SetupPlan {
           return { displayId: d.id, use: o.use, languages: o.use === 'none' ? null : o.languages };
         }),
     sound: s.sound,
-    themeId: s.themeId,
   };
 }
 
-/** Done on the displays (Session 44): the screens as chosen, and nothing else (sound, stream and theme as they are). */
+/** Done on the displays (Session 44): the screens as chosen, and nothing else (sound and stream as they are). */
 export async function finishScreens(coverOperator = false): Promise<void> {
-  useSetup.setState({ sound: 'skip', stream: 'skip', themeId: null });
+  useSetup.setState({ sound: 'skip', stream: 'skip' });
   await finishSetup(coverOperator);
 }
 

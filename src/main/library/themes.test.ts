@@ -9,8 +9,7 @@ import { PresentationRepo } from '../db/presentations';
 import { seedBuiltinThemes } from '../db/seed';
 import { ThemeRepo } from '../db/themes';
 import { LYRICS_STYLE } from '../import/formats/text';
-import { applyTheme, styleNewText, themeFromContent, themeLook } from './themes';
-import { saveTheme } from './themes-ipc';
+import { applyTheme, styleNewText, themeLook } from './themes';
 
 /* Placeholder words only. */
 
@@ -219,22 +218,6 @@ describe('theme looks and themes from templates', () => {
     // Slides already made, given the theme: its own, as stored themes never change.
     expect(texts(applyTheme(rows, theme)).map((t) => t.style.lineHeight)).toEqual([1.1, 1.1, 1.1, 1.1]);
   });
-
-  it('makes a theme from a template: its first text box, the look of each language, its background', () => {
-    const { rows } = setup();
-    const made = must(themeFromContent(rows, 'From a template'));
-    expect(made.box).toMatchObject({ x: 0.05, y: 96 / 1080, align: 'center', verticalAlign: 'middle' });
-    expect(made.langs.gu).toMatchObject({ size: 70 });
-    expect(made.langs.translit).toMatchObject({ size: 40 });
-    expect(made.langs.en).toMatchObject({ size: 80 });
-    expect(made.background).toEqual({
-      kind: 'media',
-      mediaId: 'old',
-      media: 'image',
-      fit: 'fill',
-      loop: false,
-    });
-  });
 });
 
 describe('themes in the library', () => {
@@ -253,51 +236,6 @@ describe('themes in the library', () => {
 });
 
 describe('built-in themes in the library (Session 26)', () => {
-  it('saving a theme that misses the theme contract saves it, and says what it misses (Sessions 31–36, SLD-4)', () => {
-    const db = openDatabase(':memory:');
-    seedBuiltinThemes(db);
-    const repo = new ThemeRepo(db);
-    const midnight = must(repo.list().find((t) => t.name === 'Midnight'));
-    const { id: _id, builtIn: _builtIn, ...fields } = midnight;
-    const tiny = {
-      ...fields,
-      name: 'Placeholder tiny',
-      langs: { ...fields.langs, gu: { ...fields.langs.gu, size: 20 } },
-    };
-    const saved = saveTheme(repo, null, tiny);
-    expect(saved).toMatchObject({
-      ok: true,
-      warnings: ['Gujarati is set at 20 px: below 36 px the back of the hall cannot read it.'],
-    });
-    expect(repo.get(saved.ok ? saved.id : '')?.langs.gu.size).toBe(20);
-    // One that keeps it: no warnings at all.
-    expect(saveTheme(repo, null, { ...fields, name: 'Placeholder fine' })).not.toHaveProperty('warnings');
-  });
-
-  it('saving a built-in one makes a copy, named so unless it was renamed; the built-in stays as it was', () => {
-    const db = openDatabase(':memory:');
-    seedBuiltinThemes(db);
-    const repo = new ThemeRepo(db);
-    const midnight = must(repo.list().find((t) => t.name === 'Midnight'));
-    const { id: _id, builtIn: _builtIn, ...fields } = midnight;
-    const bigger = { ...fields, langs: { ...fields.langs, en: { ...fields.langs.en, size: 96 } } };
-    const saved = saveTheme(repo, midnight.id, bigger);
-    expect(saved.ok && saved.id !== midnight.id).toBe(true);
-    const copy = must(repo.get(saved.ok ? saved.id : ''));
-    expect([copy.name, copy.builtIn, copy.langs.en.size]).toEqual(['Midnight (copy)', undefined, 96]);
-    expect(repo.get(midnight.id)).toEqual(midnight);
-    // Saved again: a second copy is named apart; renamed, it keeps its new name.
-    const again = saveTheme(repo, midnight.id, bigger);
-    expect(repo.get(again.ok ? again.id : '')?.name).toBe('Midnight (copy 2)');
-    const renamed = saveTheme(repo, midnight.id, { ...bigger, name: 'Placeholder hall night' });
-    expect(repo.get(renamed.ok ? renamed.id : '')?.name).toBe('Placeholder hall night');
-    // The copy is the library's own: saving it changes it in place.
-    expect(saveTheme(repo, copy.id, { ...bigger, name: 'Placeholder copy' })).toEqual({
-      ok: true,
-      id: copy.id,
-    });
-  });
-
   it('a built-in one can be removed, and made the default for new presentations', () => {
     const db = openDatabase(':memory:');
     seedBuiltinThemes(db);

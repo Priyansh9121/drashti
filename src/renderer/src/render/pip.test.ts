@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PipLayer, PipPlace } from '../../../shared/engine/state';
-import type { LookLayer } from '../../../shared/looks';
+import { GROUP_LAYERS } from '../../../shared/looks';
 import { pipSwapMs } from '../../../shared/pip';
 import {
   droppedPlace,
@@ -583,17 +583,9 @@ describe('what goes where', () => {
     );
   });
 
-  it('a Look that leaves the box out of a group hides it there (once the Looks know the box)', () => {
-    const all = [
-      'background',
-      'slide',
-      'props',
-      'pip',
-      'messages',
-      'ticker',
-      'masks',
-    ] as unknown as LookLayer[];
-    const without = all.filter((l) => (l as string) !== 'pip');
+  it('a group that leaves the box out (a key and fill pair, by its role since Session 55) hides it there (once the layers know the box)', () => {
+    const all = [...GROUP_LAYERS];
+    const without = all.filter((l) => l !== 'pip');
     expect(pipShownFor({ layers: all }, true)).toBe(true);
     expect(pipShownFor({ layers: without }, true)).toBe(false);
     // Before the Looks know it, every group shows it.

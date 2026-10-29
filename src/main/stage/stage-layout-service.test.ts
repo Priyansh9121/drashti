@@ -30,12 +30,11 @@ function setup(given?: Db) {
   const lookRepo = new LookRepo(db);
   let looks: LookService | null = null;
   const engine = new ShowEngine(makeSource(), new RecordingTransport(), Date.now, NO_PLAYLISTS, {
-    looks: { look: (id) => looks?.look(id) ?? null, start: () => looks?.start() ?? NO_LOOK },
+    looks: { start: () => looks?.start() ?? NO_LOOK },
   });
   const lookService = new LookService({
     repo: lookRepo,
     engine,
-    changed: () => undefined,
     log: () => undefined,
   });
   looks = lookService;

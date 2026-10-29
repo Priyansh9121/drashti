@@ -439,7 +439,7 @@ test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones on: nothing cu
     await win.setViewportSize({ width, height });
     await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, with Phones on`);
     // Crowded, its buttons keep their names for the keyboard and screen readers; Screens and the switches their words.
-    for (const words of ['Themes', 'Stream', 'Phones', 'Announcements', 'Simple Mode'])
+    for (const words of ['Stream', 'Phones', 'Announcements', 'Simple Mode'])
       await expect(header.getByRole('button', { name: words, exact: true })).toBeVisible();
     await expect(header.getByRole('button', { name: 'Screens', exact: true })).toContainText('Screens');
     await expect(header.getByTestId('switch-audience')).toContainText('On');

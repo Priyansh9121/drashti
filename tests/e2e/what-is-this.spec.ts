@@ -39,8 +39,8 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   await networkOn(win);
   await showRunning(win);
 
-  // Every panel and column heading has its ?, one each (Masks and the Idle rotation in More tools, unfolded:
-  // Session 26a), and the places added in Sessions 31–36.
+  // Every panel and column heading has its ?, one each (More tools unfolded: Session 26a), and the places added in
+  // Sessions 31–36.
   await openMoreTools(win);
   // The library's is in its sheet (Session 44).
   await openLibrary(win);
@@ -49,11 +49,12 @@ test('What is this? opens a panel’s words under its heading, never over the sh
     await expect(win.getByTestId(`what-is-this-${id}`)).toHaveCount(1);
   }
 
-  const ask = win.getByTestId('what-is-this-looks');
-  await expect(ask).toHaveAccessibleName('What is this? Looks');
+  // (Looks' was the one asked here until Session 55 took Looks out.)
+  const ask = win.getByTestId('what-is-this-messages');
+  await expect(ask).toHaveAccessibleName('What is this? Messages');
   await ask.click();
   const card = win.getByTestId('what-is-this');
-  await expect(card).toContainText(PANEL_HELP.looks.text);
+  await expect(card).toContainText(PANEL_HELP.messages.text);
   await expect(card.getByRole('button', { name: 'Got it' })).toBeFocused();
   await expect(ask).toHaveAttribute('aria-expanded', 'true');
   await expectNoSeriousA11yIssues(win, 'a panel’s What is this?');
@@ -114,14 +115,7 @@ test('Read more opens the guide at the passage its words follow; Esc closes it, 
   await expect(guides).toBeHidden();
   await win.keyboard.press('Space');
   await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 3 of 5`);
-  // A card whose words are in the admin's guide opens that guide.
-  await openMoreTools(win);
-  await win.getByTestId('what-is-this-masks').click();
-  await win.getByTestId('what-is-this').getByTestId('what-is-this-read-more').click();
-  await expect(guides.getByRole('tab', { name: 'Admin' })).toHaveAttribute('aria-selected', 'true');
-  await expect(guides.locator('[data-passage][data-current="true"]')).toContainText(
-    plainWords(PANEL_HELP.masks.guide),
-  );
-  await win.keyboard.press('Escape');
+  // (A card whose words were in the admin's guide, Masks', opened that guide here until Session 55 took masks out:
+  // every card's words are in the operator's guide now.)
   await app.close();
 });

@@ -75,17 +75,14 @@ describe('restart recovery', () => {
       playlist: null,
       background,
       blackout: true,
-      logo: null,
+      wallpaper: false,
       audio: null,
-      props: [],
       messages: [],
       ticker: null,
       stageMessage: null,
       timers: [],
       autoAdvance: null,
       repeat: null,
-      lookId: null,
-      masks: null,
       lowerThird: null,
       pip: null,
     });
@@ -109,7 +106,7 @@ describe('restart recovery', () => {
       files.state,
       JSON.stringify({ ...was, slide: { presentationId: 'p1', slideIndex: 2, arrangementId: null } }),
     );
-    expect(toRestore(files, null, new Date('2026-10-23T10:05:00.000Z'))?.slide).toEqual({
+    expect(toRestore(files, new Date('2026-10-23T10:05:00.000Z'))?.slide).toEqual({
       presentationId: 'p1',
       slideIndex: 2,
       arrangementId: null,
@@ -146,7 +143,7 @@ describe('restart recovery', () => {
       // As a run saved it before the box (no `pip` at all), or with this in its place.
       const { pip: _box, ...before } = savedFrom(live(), 'crashed-run', new Date('2026-10-22T10:00:00.000Z'));
       writeFileSync(files.state, JSON.stringify({ ...before, ...(pip === undefined ? {} : { pip }) }));
-      return toRestore(files, null, new Date('2026-10-22T10:05:00.000Z'));
+      return toRestore(files, new Date('2026-10-22T10:05:00.000Z'));
     };
     expect(file(undefined)?.pip).toBeNull();
     for (const pip of [
@@ -200,16 +197,55 @@ describe('restart recovery', () => {
     expect(toRestore(files)?.background ?? null).toBeNull();
   });
 
-  it('keeps the live Look; a Look other than the first is worth putting back on its own', async () => {
+  it('keeps the Wallpaper up (Session 55): alone, it is worth putting back; a Look is no longer kept', async () => {
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     const nothing = initialEngineState();
-    await saved(writer, { ...nothing, look: { id: 'look-first', name: 'Standard', groups: {} } });
-    expect(toRestore(files, 'look-first')).toBeNull();
     await saved(writer, { ...nothing, look: { id: 'look-2', name: 'Placeholder', groups: {} } });
-    expect(toRestore(files, 'look-first')).toMatchObject({ slide: null, lookId: 'look-2' });
-    // With a slide up, the Look comes along whichever it is.
-    await saved(writer, { ...live(), look: { id: 'look-first', name: 'Standard', groups: {} } });
-    expect(toRestore(files, 'look-first')).toMatchObject({ lookId: 'look-first' });
+    expect(toRestore(files)).toBeNull();
+    await saved(writer, { ...nothing, wallpaper: true });
+    expect(toRestore(files)).toMatchObject({ slide: null, wallpaper: true });
+    expect(toRestore(files)).not.toHaveProperty('lookId');
+  });
+
+  it('reads a file alpha.13 saved (engine 15) whole, its logo, props, mask and Look left out: none of them comes back (Session 55)', () => {
+    const was = savedFrom(live(), 'crashed-run', new Date('2026-10-29T10:00:00.000Z'));
+    const { wallpaper: _none, ...alpha13 } = was;
+    writeFileSync(
+      files.state,
+      JSON.stringify({
+        ...alpha13,
+        engineVersion: 15,
+        logo: { id: 'logo', name: 'Placeholder logo', elements: [], shownAt: 5 },
+        props: [{ id: 'p', name: 'Placeholder prop', elements: [], shownAt: 6 }],
+        masks: { id: 'k', name: 'Placeholder mask', width: 1920, height: 1080, mode: 'hide', shapes: [] },
+        lookId: 'look-2',
+      }),
+    );
+    const back = toRestore(files, new Date('2026-10-29T10:05:00.000Z'));
+    // The rest whole: the slide and the background, as alpha.13 left them.
+    expect(back).toMatchObject({
+      slide: was.slide,
+      background: was.background,
+      blackout: false,
+      wallpaper: false,
+    });
+    for (const gone of ['logo', 'props', 'masks', 'lookId']) expect(back, gone).not.toHaveProperty(gone);
+    // Alone (nothing else up), they are nothing to put back.
+    const { slide: _slide, background: _bg, playlist: _item, ...bare } = alpha13;
+    writeFileSync(
+      files.state,
+      JSON.stringify({
+        ...bare,
+        slide: null,
+        background: null,
+        playlist: null,
+        engineVersion: 15,
+        logo: { id: 'logo', name: 'Placeholder logo', elements: [], shownAt: 5 },
+        props: [{ id: 'p', name: 'Placeholder prop', elements: [], shownAt: 6 }],
+        lookId: 'look-2',
+      }),
+    );
+    expect(toRestore(files, new Date('2026-10-29T10:05:00.000Z'))).toBeNull();
   });
 
   it('keeps the time a slide moving on by itself had left, saved again every second while it counts', async () => {
@@ -249,7 +285,7 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toMatchObject({ slide: null, playlist, background: null });
   });
 
-  it('keeps the sound, props, messages, the stage message, timers that ran and the lower third', async () => {
+  it('keeps the sound, messages, the stage message, timers that ran and the lower third', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const audio = { id: 'a', title: 'Placeholder', mediaId: 'tune', volume: 1, loop: false, startedAt: 99 };
     const lowerThird: LowerThirdLayer = {
@@ -265,7 +301,6 @@ describe('restart recovery', () => {
       layers: {
         ...state.layers,
         audio,
-        props: [{ id: 'p', name: 'Placeholder logo', elements: [] }],
         messages: [{ id: 'm', text: 'Placeholder message', parts: [{ kind: 'timer', timerId: 't1' }] }],
         lowerThird,
       },
@@ -298,7 +333,6 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toMatchObject({
       slide: null,
       audio,
-      props: [{ id: 'p' }],
       messages: [{ id: 'm' }],
       stageMessage: 'Placeholder stage',
       // Only timers that ran: t2 was never started.
@@ -396,9 +430,9 @@ describe('restart recovery', () => {
     expect(playbackPosition(heard, 90, clock.now + 10_000)).toBe(80);
   });
 
-  it('after an unexpected stop, a slide’s, a prop’s and the logo’s videos come back between their start and end points, where they would be by now (Session 52)', async () => {
-    // Since Session 27 (a prop, the logo) and Session 51 (the slide's) they came back where they would be, but over
-    // the whole file: only a background video and the sound played between their points.
+  it('after an unexpected stop, a slide’s videos come back between their start and end points, where they would be by now (Session 52)', async () => {
+    // Since Session 51 they came back where they would be, but over the whole file: only a background video and the
+    // sound played between their points. (A prop's and the logo's did too, until they went in Session 55.)
     const markers: Record<string, MediaMarkers> = { clouds: { startMs: 10_000, endMs: 40_000, markers: [] } };
     const looping = {
       id: 'placeholder-video',
@@ -417,33 +451,18 @@ describe('restart recovery', () => {
       });
     const before = engine();
     before.dispatch({ type: 'goLive', presentationId: 'shown', slideIndex: 0 });
-    before.dispatch({ type: 'showProp', prop: { id: 'p', name: 'Placeholder prop', elements: [looping] } });
-    // The logo's plays once: it holds at its end point.
-    before.dispatch({
-      type: 'showLogo',
-      prop: { id: 'l', name: 'Placeholder logo', elements: [{ ...looping, loop: false }] },
-    });
     const points = { clouds: { startMs: 10_000, endMs: 40_000 } };
-    const was = {
-      slide: before.current.layers.slide,
-      props: before.current.layers.props,
-      logo: before.current.logo,
-    };
+    const was = { slide: before.current.layers.slide };
     expect(was.slide?.clips).toEqual(points);
-    expect(was.props[0]?.clips).toEqual(points);
-    expect(was.logo?.clips).toEqual(points);
     await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
     // Drashti stops dead 8 s on, and starts again 2 s later.
     clock.now += 10_000;
     const after = engine();
     const back = toRestore(files);
     if (!back) throw new Error('nothing to put back');
-    expect(after.restore(back)).toMatchObject({ slide: true, props: 1, logo: true });
+    expect(after.restore(back)).toMatchObject({ slide: true });
     expect(after.current.layers.slide).toEqual(was.slide);
-    expect(after.current.layers.props).toEqual(was.props);
-    expect(after.current.logo).toEqual(was.logo);
-    // 35 s after they went up, every screen has them where they would be: the slide's and the prop's round their
-    // loop between 0:10 and 0:40 (at 0:15), the logo's held at its end point (0:40).
+    // 35 s after it went up, every screen has it where it would be: round its loop between 0:10 and 0:40 (at 0:15).
     const at = (startedAt: number | undefined, loop: boolean, clips: VideoClips | undefined) =>
       playbackPosition(
         { startedAt: startedAt ?? 0, loop, clip: videoClip(clips, 'clouds') },
@@ -451,11 +470,7 @@ describe('restart recovery', () => {
         clock.now + 25_000,
       );
     const slide = after.current.layers.slide;
-    const prop = after.current.layers.props[0];
-    const logo = after.current.logo;
     expect(at(slide?.shownAt, true, slide?.clips)).toBe(15);
-    expect(at(prop?.shownAt, true, prop?.clips)).toBe(15);
-    expect(at(logo?.shownAt, false, logo?.clips)).toBe(40);
   });
 
   it('after an unexpected stop, a video from Media in the picture-in-picture box comes back between its start and end points, where it would be by now (Session 53)', async () => {
@@ -509,99 +524,47 @@ describe('restart recovery', () => {
       });
     const before = engine();
     before.dispatch({ type: 'goLive', presentationId: 'shown', slideIndex: 0 });
-    before.dispatch({ type: 'showProp', prop: { id: 'p', name: 'Placeholder prop', elements: [looping] } });
     before.dispatch({ type: 'showPip', source: { kind: 'media', mediaId: 'tide' } });
     before.dispatch({
       type: 'setBackground',
       background: { kind: 'media', mediaId: 'waves', media: 'video', fit: 'fill', loop: false },
     });
     clock.now += 5000;
-    // The slide's video moved on to 0:30, the prop's paused 5 s in, the box's moved to 0:12, the background paused.
+    // The slide's video moved on to 0:30, the box's moved to 0:12, the background paused.
     before.dispatch({ type: 'moveTo', playing: { layer: 'slide', mediaId: 'clouds' }, toMs: 30_000 });
-    before.dispatch({ type: 'pausePlaying', playing: { layer: 'props', propId: 'p', mediaId: 'clouds' } });
     before.dispatch({ type: 'moveTo', playing: { layer: 'pip' }, toMs: 12_000 });
     before.dispatch({ type: 'pausePlaying', playing: { layer: 'background' } });
     const was = before.current.layers;
     expect(was.slide?.seeks).toEqual({ clouds: { at: 1_005_000, toMs: 30_000 } });
-    expect(was.props[0]?.seeks).toEqual({ clouds: { at: 1_005_000, toMs: 5000, paused: true } });
     await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
     // Drashti stops dead, and starts again 3 s later.
     clock.now += 3000;
     const after = engine();
     const back = toRestore(files);
     if (!back) throw new Error('nothing to put back');
-    expect(after.restore(back)).toMatchObject({ slide: true, background: true, props: 1, pip: true });
+    expect(after.restore(back)).toMatchObject({ slide: true, background: true, pip: true });
     expect(after.current.layers.slide).toEqual(was.slide);
-    expect(after.current.layers.props).toEqual(was.props);
     expect(after.current.layers.pip).toEqual(was.pip);
     expect(after.current.layers.background).toEqual(was.background);
     // Where each is by now, on every screen: moved ones played on from their move, paused ones waiting.
     const now = clock.now;
     const slide = after.current.layers.slide;
-    const prop = after.current.layers.props[0];
     const box = after.current.layers.pip;
     const bg = after.current.layers.background;
     expect(playbackPosition({ startedAt: 0, loop: true, seek: slide?.seeks?.['clouds'] }, 60, now)).toBe(33);
-    expect(playbackPosition({ startedAt: 0, loop: true, seek: prop?.seeks?.['clouds'] }, 60, now)).toBe(5);
     expect(playbackPosition({ startedAt: 0, loop: true, seek: box?.seeks?.['tide'] }, 60, now)).toBe(15);
     if (bg?.kind !== 'media') throw new Error('no background');
     expect(playbackPosition(bg, 60, now)).toBe(5);
   });
 
-  it('after an unexpected stop, the logo’s video the time bar moved and paused comes back where it waited (Session 54, the owner’s answer of 28 Oct)', async () => {
-    const looping = {
-      id: 'placeholder-logo-video',
-      kind: 'video',
-      mediaId: 'emblem',
-      frame: { x: 0, y: 0, width: 640, height: 360 },
-      fit: 'fit',
-      loop: true,
-    } as const;
-    const source = makeSource();
-    const clock = { now: 1_000_000 };
-    const engine = () =>
-      new ShowEngine(source, new RecordingTransport(), () => clock.now, undefined, {
-        mediaLength: () => 60_000,
-        mediaKind: () => 'video',
-      });
-    const before = engine();
-    before.dispatch({
-      type: 'showLogo',
-      prop: { id: 'logo', name: 'Placeholder logo', elements: [looping] },
-    });
-    clock.now += 5000;
-    // Moved on to 0:20, then paused 2 s later, at 0:22.
-    before.dispatch({ type: 'moveTo', playing: { layer: 'logo', mediaId: 'emblem' }, toMs: 20_000 });
-    clock.now += 2000;
-    before.dispatch({ type: 'pausePlaying', playing: { layer: 'logo', mediaId: 'emblem' } });
-    const was = before.current.logo;
-    expect(was?.seeks).toEqual({ emblem: { at: 1_007_000, toMs: 22_000, paused: true } });
-    await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
-    clock.now += 3000;
-    const after = engine();
-    const back = toRestore(files);
-    if (!back) throw new Error('nothing to put back');
-    expect(after.restore(back)).toMatchObject({ logo: true });
-    expect(after.current.logo).toEqual(was);
-    const seek = after.current.logo?.seeks?.['emblem'];
-    expect(playbackPosition({ startedAt: 0, loop: true, seek }, 60, clock.now)).toBe(22);
-  });
-
-  it('puts props, the logo and messages back with the time they went up, so their videos carry on in step (Session 27)', async () => {
+  it('puts messages back with the time they went up, so they carry on in step (Session 27)', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     await saved(writer, {
       ...state,
-      logo: { id: 'l', name: 'Placeholder logo', elements: [], shownAt: 555 },
-      layers: {
-        ...state.layers,
-        props: [{ id: 'p', name: 'Placeholder prop', elements: [], shownAt: 777 }],
-        messages: [{ id: 'm', text: 'Placeholder message', shownAt: 666 }],
-      },
+      layers: { ...state.layers, messages: [{ id: 'm', text: 'Placeholder message', shownAt: 666 }] },
     });
     const back = toRestore(files);
-    expect(back?.logo?.shownAt).toBe(555);
-    expect(back?.props.map((p) => p.shownAt)).toEqual([777]);
     expect(back?.messages.map((m) => m.shownAt)).toEqual([666]);
   });
 
@@ -634,10 +597,9 @@ describe('restart recovery', () => {
       }),
     );
     // Five minutes after it was saved (the time is the test's own, not the real clock).
-    expect(toRestore(files, null, new Date('2026-09-01T10:05:00.000Z'))).toMatchObject({
+    expect(toRestore(files, new Date('2026-09-01T10:05:00.000Z'))).toMatchObject({
       slide: { slideIndex: 1 },
       audio: null,
-      props: [],
       stageMessage: null,
       timers: [],
     });
@@ -672,7 +634,7 @@ describe('restart recovery', () => {
         blackout: false,
       }),
     );
-    expect(toRestore(files, null, new Date('2026-09-01T10:05:00.000Z'))).toMatchObject({
+    expect(toRestore(files, new Date('2026-09-01T10:05:00.000Z'))).toMatchObject({
       slide: { slideIndex: 1 },
       playlist: null,
     });

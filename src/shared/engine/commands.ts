@@ -1,20 +1,17 @@
 import { z } from 'zod';
 import { CALENDAR_LANGS } from '../calendar';
 import { lowerThirdSchema } from '../lower-thirds';
-import { maskSchema } from '../masks';
-import { hexColorSchema, idSchema, slideElementSchema } from '../model-schema';
+import { hexColorSchema, idSchema } from '../model-schema';
 import { playingSchema } from './playing';
 import {
   type AudioChoice,
   type BackgroundChoice,
   LAYER_NAMES,
-  type MaskLayer,
   type MessageItem,
   PIP_CORNERS,
   PIP_MOTIONS,
   PIP_SIZES,
   type PipPlace,
-  type PropItem,
 } from './state';
 
 /*
@@ -25,7 +22,6 @@ import {
 
 const id = idSchema;
 const hexColor = hexColorSchema;
-const slideElement = slideElementSchema;
 
 const background: z.ZodType<BackgroundChoice> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('color'), color: hexColor }),
@@ -44,13 +40,6 @@ export const audioChoiceSchema: z.ZodType<AudioChoice> = z.object({
   volume: z.number().min(0).max(1),
   loop: z.boolean(),
 });
-export const propSchema: z.ZodType<PropItem> = z.object({
-  id,
-  name: z.string().max(200),
-  elements: z.array(slideElement).max(50),
-  width: z.number().int().min(16).max(16384).optional(),
-  height: z.number().int().min(16).max(16384).optional(),
-});
 const messagePart = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), text: z.string().max(500) }),
   z.object({ kind: z.literal('timer'), timerId: id }),
@@ -61,7 +50,6 @@ export const messageSchema: z.ZodType<MessageItem> = z.object({
   text: z.string().min(1).max(500),
   parts: z.array(messagePart).max(40).optional(),
 });
-const mask: z.ZodType<MaskLayer> = maskSchema;
 
 const playlistCursor = z.object({ playlistId: id, itemId: id });
 
@@ -170,9 +158,12 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('oops') }),
   z.object({ type: z.literal('setBlackout'), on: z.boolean() }),
   z.object({ type: z.literal('toggleBlackout') }),
-  /** The logo instead of the picture on the audience screens; hideLogo brings the picture back. */
-  z.object({ type: z.literal('showLogo'), prop: propSchema }),
-  z.object({ type: z.literal('hideLogo') }),
+  /**
+   * The Wallpaper (Session 55, Part 13, in the Logo's place): the chosen wallpaper instead of the picture on the
+   * audience screens, or the picture back; toggleWallpaper is its button and F12.
+   */
+  z.object({ type: z.literal('setWallpaper'), on: z.boolean() }),
+  z.object({ type: z.literal('toggleWallpaper') }),
   z.object({ type: z.literal('setBackground'), background }),
   /** A video input from this computer's list up as the live background (Session 50), the slide staying over it. */
   z.object({ type: z.literal('showInput'), inputId: id }),
@@ -182,11 +173,8 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
    */
   z.object({ type: z.literal('toggleInput'), inputId: id }),
   z.object({ type: z.literal('playAudio'), audio: audioChoiceSchema }),
-  z.object({ type: z.literal('showProp'), prop: propSchema }),
-  z.object({ type: z.literal('hideProp'), propId: id }),
   z.object({ type: z.literal('showMessage'), message: messageSchema }),
   z.object({ type: z.literal('hideMessage'), messageId: id }),
-  z.object({ type: z.literal('setMask'), mask }),
   /**
    * A lower third up (Session 44), as the library has it, in place of any up now; the same one again changes
    * its words and look without playing its in again. hideLowerThird plays its out.
@@ -200,14 +188,10 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   /** A message on stage screens only, for the performers. */
   z.object({ type: z.literal('setStageMessage'), text: z.string().trim().min(1).max(300) }),
   z.object({ type: z.literal('clearStageMessage') }),
-  /** Switch the live Look: every screen group changes at once (Simple Mode refuses it). */
-  z.object({ type: z.literal('setLook'), lookId: id }),
   /** Put a presentation first in line for Next (the arti at its time); clearCue takes it away. */
   z.object({ type: z.literal('cueNext'), presentationId: id, label: z.string().trim().min(1).max(120) }),
   z.object({ type: z.literal('clearCue') }),
   z.object({ type: z.literal('playCue') }),
-  z.object({ type: z.literal('startIdle') }),
-  z.object({ type: z.literal('stopIdle') }),
   /**
    * Audio playlists (Session 14), on the audio layer: start one at a track
    * (the main process reads its tracks from the library), pause and play on,
@@ -276,7 +260,6 @@ export type EngineErrorCode =
   | 'not-playable'
   | 'unknown-timer'
   | 'nothing-to-put-back'
-  | 'unknown-look'
   | 'nothing-cued'
   | 'no-music'
   | 'unknown-marker'

@@ -11,7 +11,7 @@ import { screensStateNote, screensStateWords } from './StageView';
 
 const nothing = initialEngineState();
 const black = { ...nothing, blackout: true };
-const logo = { ...nothing, logo: { id: 'placeholder-logo', name: 'Placeholder logo', elements: [] } };
+const wallpaper = { ...nothing, wallpaper: true };
 const showing = {
   ...nothing,
   layers: { ...nothing.layers, background: { kind: 'color' as const, color: '#1f6f8b' } },
@@ -27,8 +27,8 @@ const hall: HallPicture = {
 const off: HallPicture = { ...hall, off: true };
 
 describe('a stage screen’s words for the audience screens', () => {
-  it('says they are off while Audience is off, before black-out, the logo or a picture', () => {
-    for (const state of [nothing, black, logo, showing]) {
+  it('says they are off while Audience is off, before black-out, the Wallpaper or a picture', () => {
+    for (const state of [nothing, black, wallpaper, showing]) {
       expect(screensStateWords(state, off)).toBe('Audience screens off');
       expect(screensStateNote(state, true)).toBe(' · AUDIENCE SCREENS OFF');
     }
@@ -36,11 +36,11 @@ describe('a stage screen’s words for the audience screens', () => {
 
   it('keeps its words while they are on', () => {
     expect(screensStateWords(black, hall)).toBe('Audience screens black');
-    expect(screensStateWords(logo, hall)).toBe('Logo on the audience screens');
+    expect(screensStateWords(wallpaper, hall)).toBe('Wallpaper on the audience screens');
     expect(screensStateWords(showing, hall)).toBe('Audience screens showing');
     expect(screensStateWords(nothing, hall)).toBe('Nothing on the audience screens');
     expect(screensStateNote(black, false)).toBe(' · AUDIENCE SCREENS BLACK');
-    expect(screensStateNote(logo, false)).toBe(' · LOGO ON THE AUDIENCE SCREENS');
+    expect(screensStateNote(wallpaper, false)).toBe(' · WALLPAPER ON THE AUDIENCE SCREENS');
     expect(screensStateNote(showing, false)).toBe('');
     expect(screensStateNote(nothing, false)).toBe('');
   });
@@ -48,7 +48,7 @@ describe('a stage screen’s words for the audience screens', () => {
   // Session 53 (question 5): with no audience group at all the box said "Audience screens showing", of screens
   // there are none of, while the audience picture box beside it said "No audience screens".
   it('says there are none with no audience group at all, whatever is up, as the audience picture box does', () => {
-    for (const state of [nothing, black, logo, showing])
+    for (const state of [nothing, black, wallpaper, showing])
       expect(screensStateWords(state, null)).toBe('No audience screens');
   });
 

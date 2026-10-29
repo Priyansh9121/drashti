@@ -110,23 +110,17 @@ test('the Program: the camera with the words in the stream’s languages, or the
     .poll(async () => Number(await win.getByTestId('stream-level').getAttribute('data-db')))
     .toBeGreaterThan(-60);
 
-  // Black-out and the logo are for the hall: the camera stays, the words go.
+  // Black-out and the Wallpaper (Session 55, in the logo's place) are for the hall: the camera stays, the words go.
   await run(win, { type: 'setBlackout', on: true });
   await expect(third).toHaveCount(0);
   await expect(program.getByTestId('program-camera')).toHaveAttribute('data-on', 'yes');
   await expect(program.locator('[data-layer="blackout"]')).toHaveCount(0);
   await run(win, { type: 'setBlackout', on: false });
   await expect(third).toBeVisible();
-  await run(win, {
-    type: 'showLogo',
-    prop: {
-      id: 'test-logo',
-      name: 'Placeholder logo',
-      elements: [],
-    },
-  });
+  await run(win, { type: 'setWallpaper', on: true });
   await expect(third).toHaveCount(0);
-  await run(win, { type: 'hideLogo' });
+  await expect(program.getByTestId('program-camera')).toHaveAttribute('data-on', 'yes');
+  await run(win, { type: 'setWallpaper', on: false });
   await expect(third).toBeVisible();
   // Clear slide: the camera alone.
   await run(win, { type: 'clearLayer', layer: 'slide' });

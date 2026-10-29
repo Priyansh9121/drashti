@@ -56,9 +56,6 @@ interface RemoteView {
   viewing: Viewing | null;
   doc: PresentationDoc | null;
   templates: MessageTemplate[] | null;
-  logo: { id: string; name: string } | null;
-  /** The Looks, in order (which is live comes with the engine state). */
-  looks: { id: string; name: string }[] | null;
   /** The loaded Shastra texts (a reference box shows when there are any). */
   shastra: { name: string; abbreviation: string; itemCount: number }[] | null;
   /**
@@ -107,8 +104,6 @@ export const useRemote = create<RemoteView>(() => ({
   viewing: null,
   doc: null,
   templates: null,
-  logo: null,
-  looks: null,
   shastra: null,
   hall: null,
 }));
@@ -219,16 +214,6 @@ async function loadHall(): Promise<void> {
     });
 }
 
-async function loadLooks(): Promise<void> {
-  const r = await api<{ looks: { id: string; name: string }[] }>('/api/v1/looks');
-  if (r.ok) useRemote.setState({ looks: r.looks });
-}
-
-async function loadLogo(): Promise<void> {
-  const r = await api<{ logo: { id: string; name: string } | null }>('/api/v1/logo');
-  if (r.ok) useRemote.setState({ logo: r.logo });
-}
-
 /** What is live, as the slides to show: the live presentation, with its playlist item when it has one. */
 function liveViewing(): Viewing | null {
   const live = useEngine.getState().state?.live;
@@ -284,8 +269,6 @@ export function startRemote(): void {
   onOnline(() => {
     void loadPlaylists();
     void loadTemplates();
-    void loadLogo();
-    void loadLooks();
     void loadHall();
     void loadShastra();
     const v = useRemote.getState().viewing;
@@ -302,8 +285,6 @@ export function startRemote(): void {
       if (library.query !== '') void searchLibrary(library.query);
     }
     if (what === 'messages') void loadTemplates();
-    if (what === 'props') void loadLogo();
-    if (what === 'looks') void loadLooks();
     if (what === 'screens') void loadHall();
     if (what === 'shastra') void loadShastra();
   });

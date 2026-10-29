@@ -35,7 +35,7 @@ import { useInputNamed } from '../video-inputs/video-inputs-store';
  */
 /**
  * How many of the live slide's lines a lower third shows, where one is drawn now (the stream's Camera and
- * words, or a group whose Look draws slides as a lower third), when it is fewer than the slide has
+ * words, or a key and fill group, which draws slides as a lower third: Session 55), when it is fewer than the slide has
  * (Sessions 31–36, SLD-8: "Lower third shows 6 of 8 lines").
  */
 function useLowerThirdShort(state: EngineState | null): { shown: number; total: number } | null {
@@ -96,21 +96,13 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   const blackout = state?.blackout ?? false;
   // The picture-in-picture box alone is something on the screens too (Session 50).
   const somethingUp = state
-    ? state.layers.slide !== null ||
-      state.layers.background !== null ||
-      state.layers.props.length > 0 ||
-      state.layers.pip !== null
+    ? state.layers.slide !== null || state.layers.background !== null || state.layers.pip !== null
     : false;
   // The GPU warmed up, unseen, in the LIVE picture while it would be black (Session 27, render/WarmUp.tsx):
   // anything up, or put back after a restart, shows at once instead.
   const drawsSomething =
     state !== null &&
-    (somethingUp ||
-      state.layers.messages.length > 0 ||
-      state.layers.ticker !== null ||
-      state.layers.masks !== null ||
-      state.logo !== null ||
-      state.idle.startedAt !== null);
+    (somethingUp || state.layers.messages.length > 0 || state.layers.ticker !== null || state.wallpaper);
   const [warmed, setWarmed] = useState(SKIP_WARM_UP);
   const warmedUp = useCallback(() => {
     setWarmed(true);

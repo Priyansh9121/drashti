@@ -3,7 +3,6 @@ import type { Lang, TextRun, TextStyle } from '../../shared/model';
 import { LANGS, NEW_TEXT_LINE_HEIGHT } from '../../shared/model';
 import { detectLang, mainLang, mergeRuns } from '../../shared/text-runs';
 import type { Theme, ThemeFields, ThemeLangStyle } from '../../shared/themes';
-import { DEFAULT_REFERENCE } from '../../shared/themes';
 import type { ContentRows, CueRow, ElementRow, SlideRow } from '../db/content';
 import type { NewSlideLook } from './words';
 
@@ -206,85 +205,4 @@ export function themeLook(theme: ThemeFields, width: number, height: number): Ne
     background: theme.background.kind === 'color' ? theme.background.color : null,
     darken: theme.darken ?? null,
   };
-}
-
-/**
- * A theme from a presentation's first text box (an imported template): its
- * place and alignment, each language's look as its runs have it (the box's
- * own style for the rest), and the first slide's background. Null when it
- * has no text box.
- */
-export function themeFromContent(rows: ContentRows, name: string): ThemeFields | null {
-  const groupOrder = new Map(rows.groups.map((g) => [g.id, g.position]));
-  const slides = [...rows.slides].sort(
-    (a, b) =>
-      (groupOrder.get(a.group_id) ?? 0) - (groupOrder.get(b.group_id) ?? 0) || a.position - b.position,
-  );
-  for (const slide of slides) {
-    const element = byPosition(rows.elements.filter((e) => e.slide_id === slide.id)).find((e) => readText(e));
-    const p = element ? readText(element) : null;
-    if (!element || !p) continue;
-    const scale = rows.height / 1080;
-    const s = p.style;
-    const own: ThemeLangStyle = {
-      font: s.fontFamily,
-      size: Math.round(s.fontSize / scale),
-      weight: s.fontWeight,
-      color: s.color,
-      // Themes keep a shadow on or off: a shadow of the box's own counts as on.
-      shadow: s.shadow !== false,
-    };
-    const langs = Object.fromEntries(LANGS.map((l) => [l, { ...own }])) as Record<Lang, ThemeLangStyle>;
-    const seen = new Set<Lang>();
-    for (const run of p.runs ?? []) {
-      const lang = run.lang ?? detectLang(run.text);
-      if (!lang || run.legacy || seen.has(lang)) continue;
-      seen.add(lang);
-      langs[lang] = {
-        font: run.font ?? own.font,
-        size: run.size !== undefined ? Math.round(run.size / scale) : own.size,
-        weight: run.weight ?? own.weight,
-        color: run.color ?? own.color,
-        shadow: run.shadow === undefined ? own.shadow : run.shadow !== false,
-      };
-    }
-    const cue = rows.cues.find((c) => c.slide_id === slide.id && c.kind === 'background' && c.media_id);
-    let background: ThemeFields['background'] = slide.background
-      ? { kind: 'color', color: slide.background.slice(0, 7) }
-      : { kind: 'none' };
-    if (cue?.media_id) {
-      const c = JSON.parse(cue.props) as {
-        media?: 'image' | 'video';
-        fit?: 'fit' | 'fill' | 'stretch';
-        loop?: boolean;
-      };
-      background = {
-        kind: 'media',
-        mediaId: cue.media_id,
-        media: c.media ?? 'image',
-        fit: c.fit ?? 'fill',
-        loop: c.loop ?? true,
-      };
-    }
-    const clamp = (n: number) => Math.min(1, Math.max(0, n));
-    return {
-      name,
-      langs,
-      reference: DEFAULT_REFERENCE,
-      box: {
-        x: clamp(element.x / rows.width),
-        y: clamp(element.y / rows.height),
-        width: clamp(Math.max(element.width / rows.width, 0.05)),
-        height: clamp(Math.max(element.height / rows.height, 0.05)),
-        align: s.align,
-        verticalAlign: s.verticalAlign,
-        lineHeight: s.lineHeight,
-      },
-      background:
-        background.kind === 'color' && !/^#[0-9a-fA-F]{6}$/u.test(background.color)
-          ? { kind: 'none' }
-          : background,
-    };
-  }
-  return null;
 }

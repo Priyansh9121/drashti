@@ -15,7 +15,8 @@ import type { Db } from '../db/database';
  *   2. the live playlist's items;
  *   3. playlists made, changed or opened on Main in the last 7 days (the
  *      week's sabhas; opened counts since Session 14);
- *   4. props (the logo among them) and the idle rotation's pictures;
+ *   4. what the main process adds (`extra`: Session 55 took props, the logo and the idle rotation out, whose
+ *      pictures were here; Part 6's wallpapers come here);
  *   5. with "Get everything ready", every picture and video in the library.
  * Pictures and videos only: sound is never needed on a node. Files that are
  * missing, or that Drashti cannot play, are left out. Everything but the
@@ -36,16 +37,6 @@ export interface CopyFiles {
 
 export const RECENT_DAYS = 7;
 
-/** Every `mediaId` in a JSON value (props are stored as JSON). */
-function mediaIdsIn(value: unknown, out: Set<string>): void {
-  if (Array.isArray(value)) for (const v of value) mediaIdsIn(v, out);
-  else if (value !== null && typeof value === 'object')
-    for (const [k, v] of Object.entries(value)) {
-      if (k === 'mediaId' && typeof v === 'string') out.add(v);
-      else mediaIdsIn(v, out);
-    }
-}
-
 export class WantedMedia {
   /** Files by media id (null: not a picture or video that can be copied). */
   private readonly files = new Map<string, MediaWant | null>();
@@ -59,7 +50,7 @@ export class WantedMedia {
     private readonly copies: CopyFiles | null = null,
   ) {}
 
-  /** The library changed (presentations, playlists, media, props, settings): read it again when next asked. */
+  /** The library changed (presentations, playlists, media, settings): read it again when next asked. */
   invalidate(): void {
     this.files.clear();
     this.base = null;
@@ -190,18 +181,6 @@ export class WantedMedia {
       .filter((id) => id !== livePlaylistId);
   }
 
-  private props(): string[] {
-    const out = new Set<string>();
-    for (const row of this.db.prepare('SELECT definition FROM props').all() as { definition: string }[]) {
-      try {
-        mediaIdsIn(JSON.parse(row.definition), out);
-      } catch {
-        // Not JSON: nothing to copy.
-      }
-    }
-    return [...out];
-  }
-
   private everything(): string[] {
     this.everythingIds ??= (
       this.db
@@ -221,7 +200,7 @@ export class WantedMedia {
       const ids: string[] = [];
       if (live) ids.push(...this.playlist(live));
       for (const id of this.recentPlaylists(live)) ids.push(...this.playlist(id));
-      ids.push(...this.props(), ...this.extra());
+      ids.push(...this.extra());
       this.base = { live, ids };
     }
     const shown = state ? mediaInState(state) : { now: [], next: [] };

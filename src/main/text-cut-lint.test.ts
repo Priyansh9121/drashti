@@ -22,7 +22,8 @@ describe('the text-cut rule (lint)', () => {
   it('refuses .slice(0, n) on words in every process’s code, and not an array’s', async () => {
     for (const file of [
       'src/renderer/src/operator/MessagesPanel.tsx',
-      'src/main/db/props.ts',
+      // A main process file (src/main/db/props.ts until Session 55 took props out).
+      'src/main/db/messages.ts',
       'src/shared/messages.ts',
     ])
       expect(await refused(file, '  return [words.slice(0, 40), list, colour];'), file).toHaveLength(1);

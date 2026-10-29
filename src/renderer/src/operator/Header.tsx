@@ -1,11 +1,10 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
 import type { ReactNode } from 'react';
 import { shortcutText } from '../../../shared/keymap';
-import { openThemes } from '../themes/themes-store';
 import { Band, HeaderStates } from '../ui/Decoration';
 import { Button } from '../ui/Button';
 import { WordMark } from '../ui/Mark';
-import { Inbox, LayoutGrid, Monitor, Palette, Radio, Smartphone } from '../ui/icons';
+import { Inbox, LayoutGrid, Monitor, Radio, Smartphone } from '../ui/icons';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { openNetwork, useNetwork } from '../network/network-store';
 import { openAnnouncements, useAnnouncements } from '../network/announcements-store';
@@ -113,17 +112,6 @@ export function Header({
           </div>
         </HeaderStates>
         <div className="flex shrink-0 items-center gap-2" data-crowded={crowded ? 'true' : undefined}>
-          {/* Its icon alone says nothing: its tooltip names it (always there, so it stays put as that changes). */}
-          <Tooltip content="Themes" side="bottom" describes={false}>
-            <Button
-              variant="ghost"
-              icon={Palette}
-              onClick={() => openThemes()}
-              className={cx(crowded && ICON_IF_NARROW)}
-            >
-              <Words crowded={crowded}>Themes</Words>
-            </Button>
-          </Tooltip>
           <span className="flex items-center gap-0.5">
             <Tooltip content="The stream to YouTube, and recording" side="bottom">
               <Button

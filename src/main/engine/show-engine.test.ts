@@ -259,19 +259,7 @@ describe('ShowEngine', () => {
         goLive('p1', 0),
         { type: 'playAudio', audio: { id: 'a', title: 'Dhun', mediaId: null, volume: 1, loop: false } },
         { type: 'setBackground', background: { kind: 'color', color: '#202020' } },
-        { type: 'showProp', prop: { id: 'logo', name: 'Logo', elements: [] } },
         { type: 'showMessage', message: { id: 'm', text: 'Welcome' } },
-        {
-          type: 'setMask',
-          mask: {
-            id: 'k',
-            name: 'Mask',
-            width: 1920,
-            height: 1080,
-            mode: 'hide',
-            shapes: [{ id: 's', kind: 'rectangle', frame: { x: 0, y: 0, width: 10, height: 10 } }],
-          },
-        },
       ];
       for (const c of commands) s.engine.dispatch(c);
       s.engine.dispatch({ type: 'showLowerThird', lowerThird: PLACEHOLDER_LOWER_THIRD });
@@ -328,12 +316,10 @@ describe('ShowEngine', () => {
         audio: null,
         background: null,
         slide: null,
-        props: [],
         messages: [],
         ticker: null,
         pip: null,
         lowerThird: null,
-        masks: null,
       });
       expect(engine.current.live.presentationId).toBe('p1');
       expect(transport.messages).toHaveLength(count + 1);
@@ -1020,54 +1006,7 @@ describe('ShowEngine', () => {
     expect(engine.current.calendar).toBeNull();
   });
 
-  describe('the idle rotation', () => {
-    const content = {
-      items: [
-        { kind: 'picture' as const, mediaId: 'pic-a' },
-        { kind: 'picture' as const, mediaId: 'pic-b' },
-      ],
-      secondsEach: 5,
-      dissolveMs: 1500,
-    };
-
-    it('starts and stops on command; its pictures change without stopping it', () => {
-      const { engine } = setup();
-      engine.setIdle(content);
-      expect(engine.current.idle).toEqual({ ...content, startedAt: null });
-      engine.dispatch({ type: 'startIdle' });
-      const started = engine.current.idle.startedAt;
-      expect(started).not.toBeNull();
-      // Starting again keeps its place.
-      expect(engine.dispatch({ type: 'startIdle' })).toMatchObject({ ok: true, changed: false });
-      engine.setIdle({ ...content, secondsEach: 8 });
-      expect(engine.current.idle).toMatchObject({ startedAt: started, secondsEach: 8 });
-      expect(engine.setIdle({ ...content, secondsEach: 8 })).toMatchObject({ changed: false });
-      engine.dispatch({ type: 'stopIdle' });
-      expect(engine.current.idle.startedAt).toBeNull();
-    });
-
-    it('stops by itself when a slide or a picture goes up, so Clear all does not bring it back', () => {
-      const { engine } = setup();
-      engine.setIdle(content);
-      engine.dispatch({ type: 'startIdle' });
-      // Clearing changes nothing up: it keeps running.
-      engine.dispatch({ type: 'clearAll' });
-      expect(engine.current.idle.startedAt).not.toBeNull();
-      engine.dispatch(goLive('p1', 0));
-      expect(engine.current.idle.startedAt).toBeNull();
-      engine.dispatch({ type: 'clearAll' });
-      expect(engine.current.idle.startedAt).toBeNull();
-      // A background (a picture or a colour) going up stops it too.
-      engine.dispatch({ type: 'startIdle' });
-      engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#203040' } });
-      expect(engine.current.idle.startedAt).toBeNull();
-      // Started while something is up: it waits, and the next slide stops it.
-      engine.dispatch({ type: 'startIdle' });
-      expect(engine.current.idle.startedAt).not.toBeNull();
-      engine.dispatch(goLive('p2', 0));
-      expect(engine.current.idle.startedAt).toBeNull();
-    });
-
+  describe('the quote of the day (Session 55: the idle rotation went; a stage layout’s Quote box shows it)', () => {
     it('keeps the quote of the day for every window', () => {
       const { engine } = setup();
       const quote = { id: 'q1', words: { en: 'Placeholder quote' }, attribution: 'Placeholder' };
@@ -1272,7 +1211,7 @@ describe('ShowEngine', () => {
         background,
         blackout: true,
       });
-      expect(put).toMatchObject({ slide: true, background: true, blackout: true, audio: false, props: 0 });
+      expect(put).toMatchObject({ slide: true, background: true, blackout: true, audio: false, messages: 0 });
       expect(engine.current.layers.slide?.slide).toEqual(textSlide('c1', 'One'));
       // The saved background, with its start time; not the slide's own cue.
       expect(engine.current.layers.background).toEqual(background);
@@ -1289,7 +1228,7 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.ticker).toEqual(ticker);
     });
 
-    it('puts back the sound, props, messages, the stage message, timers and the lower third, carrying on from their start', () => {
+    it('puts back the sound, messages, the stage message, timers and the lower third, carrying on from their start', () => {
       const transport = new RecordingTransport();
       const clock = 50_000;
       const engine = new ShowEngine(makeSource(), transport, () => clock);
@@ -1316,7 +1255,6 @@ describe('ShowEngine', () => {
         background: null,
         blackout: false,
         audio,
-        props: [{ id: 'p', name: 'Placeholder logo', elements: [] }],
         messages: [{ id: 'm', text: 'Placeholder message' }],
         stageMessage: 'Placeholder: slow down',
         timers: [
@@ -1326,16 +1264,13 @@ describe('ShowEngine', () => {
         lowerThird: { ...PLACEHOLDER_LOWER_THIRD, shownAt: 41_000 },
       });
       expect(put).toEqual({
-        look: null,
         slide: false,
         background: false,
         blackout: false,
-        logo: false,
+        wallpaper: false,
         audio: true,
-        props: 1,
         messages: 1,
         ticker: 0,
-        masks: false,
         stageMessage: true,
         timers: 1,
         lowerThird: true,
@@ -1349,7 +1284,6 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.audio).toEqual(audio);
       expect(engine.current.layers.lowerThird).toEqual({ ...PLACEHOLDER_LOWER_THIRD, shownAt: 41_000 });
       expect(engine.current.timers[0]).toMatchObject({ startedAt: 40_000, elapsedMs: 5_000 });
-      expect(engine.current.layers.props.map((p) => p.id)).toEqual(['p']);
       expect(engine.current.layers.messages.map((m) => m.text)).toEqual(['Placeholder message']);
       expect(engine.current.stageMessage).toBe('Placeholder: slow down');
       expect(transport.messages).toHaveLength(2);
@@ -1423,14 +1357,14 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.background).toBeNull();
     });
 
-    it('is covered by black-out and the logo, never taken off by them', () => {
+    it('is covered by black-out and the Wallpaper, never taken off by them', () => {
       const { engine } = setup();
       engine.showWindow(meeting);
       const up = engine.current.layers.background;
       engine.dispatch({ type: 'setBlackout', on: true });
-      engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Logo', elements: [] } });
+      engine.dispatch({ type: 'setWallpaper', on: true });
       expect(engine.current.layers.background).toBe(up);
-      engine.dispatch({ type: 'hideLogo' });
+      engine.dispatch({ type: 'setWallpaper', on: false });
       engine.dispatch({ type: 'setBlackout', on: false });
       expect(engine.current.layers.background).toBe(up);
     });
@@ -1582,15 +1516,15 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.slide).not.toBeNull();
     });
 
-    it('is covered by black-out and the logo, never taken off by them', () => {
+    it('is covered by black-out and the Wallpaper, never taken off by them', () => {
       const { engine } = withInputs();
       engine.dispatch(show('in-1'));
       const up = engine.current.layers.background;
       expect(up?.kind).toBe('input');
       engine.dispatch({ type: 'setBlackout', on: true });
-      engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Logo', elements: [] } });
+      engine.dispatch({ type: 'setWallpaper', on: true });
       expect(engine.current.layers.background).toBe(up);
-      engine.dispatch({ type: 'hideLogo' });
+      engine.dispatch({ type: 'setWallpaper', on: false });
       engine.dispatch({ type: 'setBlackout', on: false });
       expect(engine.current.layers.background).toBe(up);
     });
@@ -1726,14 +1660,11 @@ describe('ShowEngine', () => {
   });
 
   describe('other layers', () => {
-    it('shows and hides props and messages', () => {
+    it('shows and hides messages', () => {
       const { engine } = setup();
-      engine.dispatch({ type: 'showProp', prop: { id: 'logo', name: 'Logo', elements: [] } });
       engine.dispatch({ type: 'showMessage', message: { id: 'm', text: 'Hello' } });
-      expect(engine.current.layers.props).toHaveLength(1);
-      engine.dispatch({ type: 'hideProp', propId: 'logo' });
+      expect(engine.current.layers.messages).toHaveLength(1);
       engine.dispatch({ type: 'hideMessage', messageId: 'm' });
-      expect(engine.current.layers.props).toEqual([]);
       expect(engine.current.layers.messages).toEqual([]);
     });
 
@@ -1828,22 +1759,10 @@ describe('ShowEngine', () => {
         { type: 'setBackground', background: { kind: 'color', color: rand(2) ? '#111111' : '#222222' } },
         { type: 'showMessage', message: { id: `m${rand(3)}`, text: `Text ${rand(5)}` } },
         { type: 'hideMessage', messageId: `m${rand(3)}` },
-        { type: 'showProp', prop: { id: `p${rand(2)}`, name: 'P', elements: [] } },
-        { type: 'hideProp', propId: `p${rand(2)}` },
+        { type: 'toggleWallpaper' },
         {
           type: 'playAudio',
           audio: { id: 'a', title: `T${rand(2)}`, mediaId: null, volume: 1, loop: false },
-        },
-        {
-          type: 'setMask',
-          mask: {
-            id: 'k',
-            name: 'k',
-            width: 1920,
-            height: 1080,
-            mode: 'hide',
-            shapes: [{ id: 's', kind: 'rectangle', frame: { x: rand(5), y: 0, width: 10, height: 10 } }],
-          },
         },
       ];
       return options[rand(options.length)] ?? { type: 'next' };

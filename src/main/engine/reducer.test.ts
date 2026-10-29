@@ -33,7 +33,6 @@ function fullState(): EngineState {
       audio: { id: 'a1', title: 'Dhun', mediaId: null, volume: 1, loop: false, startedAt: 1 },
     },
     { type: 'background/set', background: { kind: 'color', color: '#112233' } },
-    { type: 'prop/show', prop: { id: 'logo', name: 'Logo', elements: [] } },
     { type: 'message/show', message: { id: 'm1', text: 'Car please move' } },
     { type: 'ticker/show', item: { id: 't1', text: 'Placeholder ticker words' }, at: 5 },
     {
@@ -45,17 +44,6 @@ function fullState(): EngineState {
         where: 'both',
         animation: 'fade-steady',
         shownAt: 6,
-      },
-    },
-    {
-      type: 'mask/set',
-      mask: {
-        id: 'mask',
-        name: 'Centre',
-        width: 1920,
-        height: 1080,
-        mode: 'show',
-        shapes: [{ id: 's', kind: 'rectangle', frame: { x: 10, y: 10, width: 100, height: 100 } }],
       },
     },
     { type: 'blackout/set', on: true },
@@ -122,7 +110,7 @@ describe('reduce', () => {
     it('leaves the other layers untouched', () => {
       const s = fullState();
       const next = reduce(s, show(2));
-      expect(next.layers.props).toBe(s.layers.props);
+      expect(next.layers.messages).toBe(s.layers.messages);
       expect(next.layers.audio).toBe(s.layers.audio);
       expect(next.blackout).toBe(true);
     });
@@ -140,7 +128,7 @@ describe('reduce', () => {
       // Another slide up: nothing leaving any more.
       expect(reduce(off, show(1, undefined, 9500)).slideOff).toBeNull();
       // Another layer cleared, or the slide cleared with no time given: no slide taken off.
-      expect(reduce(s, { type: 'layer/clear', layer: 'props', at: 9000 }).slideOff).toBeNull();
+      expect(reduce(s, { type: 'layer/clear', layer: 'messages', at: 9000 }).slideOff).toBeNull();
       expect(reduce(s, { type: 'layer/clear', layer: 'slide' }).slideOff).toBeNull();
     });
   });
@@ -182,12 +170,10 @@ describe('reduce', () => {
         audio: null,
         background: null,
         slide: null,
-        props: [],
         messages: [],
         ticker: null,
         pip: null,
         lowerThird: null,
-        masks: null,
       });
       expect(next.live).toBe(s.live);
       expect(next.blackout).toBe(true);
@@ -201,7 +187,7 @@ describe('reduce', () => {
     it('only replaces the layers that had something', () => {
       const s = deepFreeze(reduce(initialEngineState(), show(0)));
       const next = reduce(s, { type: 'layers/clearAll' });
-      expect(next.layers.props).toBe(s.layers.props);
+      expect(next.layers.messages).toBe(s.layers.messages);
       expect(next.layers.slide).toBeNull();
     });
   });
@@ -222,18 +208,9 @@ describe('reduce', () => {
   describe('single-value layers', () => {
     const background = { kind: 'color', color: '#abcdef' } as const;
     const audio = { id: 'a', title: 'Arti', mediaId: 'm', volume: 0.5, loop: true, startedAt: 7 };
-    const mask = {
-      id: 'k',
-      name: 'k',
-      width: 1920,
-      height: 1080,
-      mode: 'hide' as const,
-      shapes: [{ id: 's', kind: 'rectangle' as const, frame: { x: 0, y: 0, width: 1, height: 1 } }],
-    };
     const cases: [string, EngineAction, (s: EngineState) => unknown, unknown][] = [
       ['background', { type: 'background/set', background }, (s) => s.layers.background, background],
       ['audio', { type: 'audio/set', audio }, (s) => s.layers.audio, audio],
-      ['masks', { type: 'mask/set', mask }, (s) => s.layers.masks, mask],
     ];
     it.each(cases)(
       'sets the %s layer, and setting it again changes nothing',
@@ -245,21 +222,7 @@ describe('reduce', () => {
     );
   });
 
-  describe('props and messages', () => {
-    it('shows, replaces and hides props by id', () => {
-      let s = reduce(deepFreeze(initialEngineState()), {
-        type: 'prop/show',
-        prop: { id: 'p', name: 'A', elements: [] },
-      });
-      s = reduce(deepFreeze(s), { type: 'prop/show', prop: { id: 'q', name: 'B', elements: [] } });
-      s = reduce(deepFreeze(s), { type: 'prop/show', prop: { id: 'p', name: 'A2', elements: [] } });
-      expect(s.layers.props.map((p) => `${p.id}:${p.name}`)).toEqual(['p:A2', 'q:B']);
-      const same = deepFreeze(s);
-      expect(reduce(same, { type: 'prop/show', prop: { id: 'p', name: 'A2', elements: [] } })).toBe(same);
-      expect(reduce(same, { type: 'prop/hide', propId: 'missing' })).toBe(same);
-      expect(reduce(same, { type: 'prop/hide', propId: 'p' }).layers.props.map((p) => p.id)).toEqual(['q']);
-    });
-
+  describe('messages', () => {
     it('shows, replaces and hides messages by id', () => {
       let s = reduce(deepFreeze(initialEngineState()), {
         type: 'message/show',
@@ -314,18 +277,16 @@ describe('reduce', () => {
     });
   });
 
-  describe('a prop’s and the logo’s time on the screens (Session 27)', () => {
-    it('is when it went up, kept while it stays up, so its videos play in step everywhere', () => {
-      const prop = { id: 'p', name: 'Placeholder prop', elements: [] };
-      let s = reduce(initialEngineState(), { type: 'prop/show', prop, at: 4000 });
-      expect(s.layers.props[0]?.shownAt).toBe(4000);
-      s = reduce(s, { type: 'prop/show', prop: { ...prop, name: 'Placeholder renamed' }, at: 8000 });
-      expect(s.layers.props[0]).toMatchObject({ name: 'Placeholder renamed', shownAt: 4000 });
-      let l = reduce(initialEngineState(), { type: 'logo/set', prop, at: 5000 });
-      expect(l.logo?.shownAt).toBe(5000);
-      expect(reduce(l, { type: 'logo/set', prop, at: 9000 })).toBe(l);
-      l = reduce(reduce(l, { type: 'logo/set', prop: null }), { type: 'logo/set', prop, at: 9000 });
-      expect(l.logo?.shownAt).toBe(9000);
+  describe('the Wallpaper (Session 55, in the Logo’s place)', () => {
+    it('goes up and off, covering the layers without changing them; the same again changes nothing', () => {
+      const s = deepFreeze(fullState());
+      const up = reduce(s, { type: 'wallpaper/set', on: true });
+      expect(up.wallpaper).toBe(true);
+      expect(up.layers).toBe(s.layers);
+      expect(reduce(deepFreeze(up), { type: 'wallpaper/set', on: true })).toBe(up);
+      expect(reduce(deepFreeze(up), { type: 'wallpaper/set', on: false }).wallpaper).toBe(false);
+      // Clear all leaves it as it is.
+      expect(reduce(deepFreeze(up), { type: 'layers/clearAll' }).wallpaper).toBe(true);
     });
   });
 

@@ -1,9 +1,9 @@
 /*
  * The top bar when it is crowded (Session 51, S2-3): with Phones on (the network, and so Announcements and the
  * network's badge), it holds more than 1024 or 1280 px give it. Below 1680 px wide (where ON AIR and REC fit
- * beside them too), its ghost buttons (Themes, Stream, Phones, Announcements, Simple Mode) then show their icon
- * only: their words stay for screen readers, and their tooltips say what they are. Screens and the Audience and
- * Stage switches keep their words, as do the states (LIVE, ON AIR, the network). Uncrowded, it is as it always
+ * beside them too), its ghost buttons (Stream, Phones, Announcements, Simple Mode; Themes went in Session 55) then show
+ * their icon only: their words stay for screen readers, and their tooltips say what they are. Screens and the Audience
+ * and Stage switches keep their words, as do the states (LIVE, ON AIR, the network). Uncrowded, it is as it always
  * was. Whole class names, so Tailwind finds them.
  */
 

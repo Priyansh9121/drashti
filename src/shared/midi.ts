@@ -5,10 +5,11 @@ import { idSchema } from './model-schema';
  * MIDI (Session 11): a controller (a pad, a keyboard, a foot switch) plugged
  * into the computer, used in the operator window only (Web MIDI, which only
  * that page is allowed; never SysEx). The operator chooses the device, then
- * Learn maps a note or a controller to Next, Back, Clear all, Black-out or
- * Logo. The mappings are kept in the library's settings; the device is found
+ * Learn maps a note or a controller to Next, Back, Clear all or Black-out.
+ * The mappings are kept in the library's settings; the device is found
  * again by its name, whenever it is plugged in. A mapping to a macro (before
- * Session 44, when Macros went) is still read and kept, and does nothing.
+ * Session 44, when Macros went) or to the Logo (before Session 55, when the
+ * Logo went) is still read and kept, and does nothing.
  */
 
 /** What a MIDI message is: a note going down, or a controller moving above its middle. */
@@ -20,7 +21,10 @@ export interface MidiInput {
   number: number;
 }
 
-/** What a mapped input does (all of them in Simple Mode too); a macro's, from before Session 44, nothing. */
+/**
+ * What a mapped input does (all of them in Simple Mode too); a macro's, from before Session 44, and the Logo's, from
+ * before Session 55, nothing.
+ */
 export type MidiAction =
   | { kind: 'next' }
   | { kind: 'back' }
@@ -42,12 +46,11 @@ export interface MidiSettings {
 
 export const NO_MIDI: MidiSettings = { deviceName: null, mappings: [] };
 
-export const MIDI_ACTION_NAMES: Record<Exclude<MidiAction['kind'], 'macro'>, string> = {
+export const MIDI_ACTION_NAMES: Record<Exclude<MidiAction['kind'], 'macro' | 'logo'>, string> = {
   next: 'Next',
   back: 'Back',
   clearAll: 'Clear all',
   blackout: 'Black-out',
-  logo: 'Logo',
 };
 
 const inputSchema = z.object({
@@ -116,8 +119,8 @@ export const midiSeenSchema: z.ZodType<MidiSeen> = z
   })
   .strict();
 
-/** The actions a phone may learn a mapping for (never a macro's: Macros went in Session 44). */
-export const MIDI_LEARNABLE = ['next', 'back', 'clearAll', 'blackout', 'logo'] as const;
+/** The actions a phone may learn a mapping for (never a macro's or the Logo's: they went in Sessions 44 and 55). */
+export const MIDI_LEARNABLE = ['next', 'back', 'clearAll', 'blackout'] as const;
 export type MidiLearnable = (typeof MIDI_LEARNABLE)[number];
 
 /** What the main process asks of the operator window's MIDI for a phone: listen (so it lists the devices), or learn. */

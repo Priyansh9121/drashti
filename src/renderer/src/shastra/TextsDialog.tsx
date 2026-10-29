@@ -1,14 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Lang } from '../../../shared/model';
 import { LANGS } from '../../../shared/model';
 import type { ShastraTextInfo } from '../../../shared/shastra';
-import type { Theme } from '../../../shared/themes';
 import { LANG_NAMES, LANG_SHORT } from '../../../shared/themes';
 import { importWithDialog } from '../library/import-store';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
-import { Select } from '../ui/Field';
 import { BookOpen, Trash2, Upload } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { EmptyState } from '../ui/States';
@@ -18,8 +16,8 @@ import { loadTexts, openTexts, useShastra } from './shastra-store';
 /*
  * The loaded Shastra texts (Pro Mode): load one
  * (a file prepared from a source BAPS or the mandir has authorised,
- * docs/shastra-format.md), choose the theme each text's passages are drawn
- * with, or remove one.
+ * docs/shastra-format.md), or remove one. Each text's passages are drawn
+ * with the theme it had (Session 55: Themes are gone from the window).
  */
 
 function Languages({ text }: { text: ShastraTextInfo }) {
@@ -37,16 +35,8 @@ function Languages({ text }: { text: ShastraTextInfo }) {
 export function TextsDialog() {
   const open = useShastra((s) => s.textsOpen);
   const texts = useShastra((s) => s.texts);
-  const [themes, setThemes] = useState<Theme[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [removing, setRemoving] = useState<ShastraTextInfo | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    void window.drashti.themes.list().then((r) => {
-      setThemes(r.themes);
-    });
-  }, [open]);
 
   if (!open) return null;
   const close = () => {
@@ -57,7 +47,7 @@ export function TextsDialog() {
   return (
     <Dialog
       title="Shastra texts"
-      subtitle="Load only texts that BAPS or the mandir has authorised. Each text’s passages are drawn with its theme."
+      subtitle="Load only texts that BAPS or the mandir has authorised."
       onClose={close}
       closeLabel="Close Shastra texts"
       size="lg"
@@ -85,7 +75,6 @@ export function TextsDialog() {
               <th className="py-1 font-medium">Text</th>
               <th className="font-medium">Items</th>
               <th className="font-medium">Languages</th>
-              <th className="font-medium">Theme</th>
               <th className="font-medium">
                 <span className="sr-only">Remove</span>
               </th>
@@ -109,27 +98,6 @@ export function TextsDialog() {
                 </td>
                 <td className="py-2 pr-3">
                   <Languages text={t} />
-                </td>
-                <td className="py-2 pr-3">
-                  <Select
-                    aria-label={`Theme for ${t.name}`}
-                    data-testid="shastra-text-theme"
-                    value={t.themeId ?? ''}
-                    onChange={(e) => {
-                      const themeId = e.target.value === '' ? null : e.target.value;
-                      void window.drashti.shastra.setTheme(t.id, themeId).then((r) => {
-                        if (r.ok) useShastra.setState({ texts: r.texts });
-                        else setProblem(r.message);
-                      });
-                    }}
-                  >
-                    <option value="">Drashti default</option>
-                    {themes.map((th) => (
-                      <option key={th.id} value={th.id}>
-                        {th.name}
-                      </option>
-                    ))}
-                  </Select>
                 </td>
                 <td className="py-2 text-right">
                   <Button

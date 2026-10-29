@@ -5,7 +5,7 @@ import { MidiDialog } from './MidiDialog';
 
 /*
  * The MIDI controller's way in, in More tools (Session 44: it was the Macros panel's, and Macros are gone): a pad,
- * a keyboard or a foot switch mapped to Next, Back, Clear all, Black-out and the Logo.
+ * a keyboard or a foot switch mapped to Next, Back, Clear all and Black-out (the Logo went in Session 55).
  */
 export function MidiTool() {
   const [open, setOpen] = useState(false);

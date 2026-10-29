@@ -32,7 +32,7 @@ export function connectSingleKeys(): void {
   );
 }
 
-/** The keys the window answers now: `keymap` as it is, or without B, ., L and ? while they are off. */
+/** The keys the window answers now: `keymap` as it is, or without B, . and ? while they are off. */
 export function useKeymapNow(keymap: readonly KeyBinding[] = KEYMAP): readonly KeyBinding[] {
   const on = useSingleKeys((s) => s.on !== false);
   return on ? keymap : withoutSingleKeys(keymap);

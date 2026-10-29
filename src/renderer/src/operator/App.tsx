@@ -16,7 +16,6 @@ import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
 import { SlideEditor } from '../editor/SlideEditor';
 import { redo as redoEdit, undo as undoEdit, useEditor } from '../editor/editor-store';
-import { ThemesPanel } from '../themes/ThemesPanel';
 import { AppearanceDialog } from '../appearance/AppearanceDialog';
 import { connectAppearance } from '../appearance/appearance-store';
 import { undoRemoval } from '../library/undo';
@@ -69,25 +68,19 @@ import { NoticeArea, StatusBar } from './StatusBar';
 import { ScreenSwitchAsk } from './ScreenSwitches';
 import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
-import { PropsPanel } from './PropsPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { undoStage, useStageLayouts } from '../stage/stage-layouts-store';
-import { MaskEditor } from '../masks/MaskEditor';
-import { MasksPanel } from './MasksPanel';
 import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
 import { LowerThirdEditor } from '../lower-thirds/LowerThirdEditor';
 import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
 import { runBack } from './actions';
-import { LooksPanel } from './LooksPanel';
 import { CalendarDialog } from '../calendar/CalendarDialog';
-import { IdlePanel } from '../idle/IdlePanel';
 import { openCalendar } from '../calendar/calendar-store';
 import { isTyping, useKeymap } from './useKeymap';
 import { KeepScreensQuestion } from './KeepScreens';
 import { connectKeepScreens } from './keep-screens-store';
-import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
 import { connectSingleKeys, useSingleKeys } from './single-keys-store';
 import { useStartMarks } from './start-marks';
@@ -129,7 +122,6 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     watchLibrary();
     watchImports();
     watchPlaylists();
-    watchProps();
     connectExtras();
     connectSmart();
     connectSaves();
@@ -195,7 +187,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const mode = useMode((s) => s.mode);
-  // Whether B, ., L and ? act (Session 37): known before the window shows, so no key is heard before then.
+  // Whether B, . and ? act (Session 37): known before the window shows, so no key is heard before then.
   // Both always come: a request that fails takes the safe default (Session 38), never a blank window.
   const keysKnown = useSingleKeys((s) => s.on !== null);
   useConnections(setInfo);
@@ -276,8 +268,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
         if (!practiceKey('back')) void runBack();
       } else if (action.kind === 'clearAll') run('clearAll');
       else if (action.kind === 'blackout') run('toggleBlackout');
-      else if (action.kind === 'logo') run('toggleLogo');
-      // A pad mapped to a macro before Session 44 does nothing: macros are gone (the mapping is kept).
+      // A pad mapped to a macro before Session 44, or to the Logo before Session 55, does nothing: both are gone
+      // (the mapping is kept).
     });
     return () => {
       setMidiHandler(null);
@@ -363,8 +355,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               <MarkerJumps />
               {/* The chosen video input on the audience in one press (Session 55). */}
               <InputOnAudience />
-              {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
-                tools folded away. */}
+              {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away
+                (Session 55: Props and Looks went). */}
               <div className="mt-3 divide-y divide-line border-t border-line">
                 <PanelGroup
                   title="Audio"
@@ -374,13 +366,11 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   actions={<AudioAddMenu />}
                   data-testid="audio-group"
                 >
-                  <MusicPanel nested platform={platform} />
+                  <MusicPanel platform={platform} />
                 </PanelGroup>
                 <StageMessageControl />
                 <MessagesPanel />
                 <TimersPanel />
-                <PropsPanel />
-                <LooksPanel />
                 <PanelGroup
                   title="More tools"
                   icon={Wrench}
@@ -396,18 +386,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
                     <LowerThirdsPanel nested platform={platform} />
                   </div>
                   <div>
-                    <PanelNote>A mask hides part of a screen, such as a corner a banner covers.</PanelNote>
-                    <MasksPanel nested />
-                  </div>
-                  <div>
                     <PanelNote>
-                      The idle rotation shows pictures and quotes while nothing else is up.
-                    </PanelNote>
-                    <IdlePanel nested />
-                  </div>
-                  <div>
-                    <PanelNote>
-                      A MIDI controller’s pads can work Next, Back, Clear all, Black-out and the Logo.
+                      A MIDI controller’s pads can work Next, Back, Clear all and Black-out.
                     </PanelNote>
                     <MidiTool />
                   </div>
@@ -418,6 +398,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
         />
       )}
       <NoticeArea />
+      {/* Part 8's quick bar goes here, just above the bar of clears (Session 55, Part 13 left it room). */}
       <LayerBar platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
 
@@ -434,7 +415,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SetupWizard platform={platform} />
       <Welcome />
       <SlideEditor platform={platform} />
-      <ThemesPanel />
       <AppearanceDialog />
       <WindowPicker />
       <VideoInputDialog platform={platform} />
@@ -444,7 +424,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {announcementsOpen && <AnnouncementsPanel />}
       <StreamSettings />
       <StageLayoutEditor platform={platform} />
-      <MaskEditor />
       <LowerThirdEditor />
       <CalendarDialog />
       <BackupsDialog />

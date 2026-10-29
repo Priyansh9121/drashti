@@ -16,7 +16,7 @@ import { RecordingTransport, textSlide } from './testing';
  * slides going round by themselves, each for its seconds, the last back to
  * the first, timed by the engine's clock (injected here). Stop and Esc leave
  * the slide up; anything else going up, Clear all or the slide cleared stop
- * it; black-out and the logo cover it as it goes on; a settings change takes
+ * it; black-out and the Wallpaper cover it as it goes on; a settings change takes
  * effect from the next slide; recovery carries it on.
  */
 
@@ -170,14 +170,14 @@ describe('Repeat Slides', () => {
     expect(engine.current.autoAdvance).toBeNull();
   });
 
-  it('black-out and the logo cover it while it goes on underneath', () => {
+  it('black-out and the Wallpaper cover it while it goes on underneath', () => {
     const { engine, elapse, step } = setup();
     engine.dispatch({ type: 'startRepeat', playlistId: LIST });
     engine.dispatch({ type: 'setBlackout', on: true });
     elapse(15_000);
     expect(step()).toBe('deckItem/0');
     expect(engine.current.blackout).toBe(true);
-    engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Logo', elements: [] } });
+    engine.dispatch({ type: 'setWallpaper', on: true });
     elapse(15_000);
     expect(step()).toBe('deckItem/1');
     expect(engine.current.repeat).not.toBeNull();

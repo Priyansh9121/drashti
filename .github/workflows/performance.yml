@@ -48,7 +48,6 @@ on:
           [
             none,
             video-1080p30,
-            masks-video,
             video-1080p60,
             video-4k,
             dissolves-video,

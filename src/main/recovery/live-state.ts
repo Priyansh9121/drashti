@@ -7,24 +7,20 @@ import {
   messageSchema,
   musicStartSchema,
   pipPlaceSchema,
-  propSchema,
 } from '../../shared/engine/commands';
 import type {
   AudioLayer,
   BackgroundLayer,
   EngineState,
   LowerThirdLayer,
-  MaskLayer,
   MessageItem,
   PipLayer,
   PlaylistCursor,
-  PropItem,
   TickerLayer,
   VideoSeeks,
 } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, readsEngineVersion } from '../../shared/engine/state';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
-import { maskSchema } from '../../shared/masks';
 import type { PlaybackSeek } from '../../shared/media';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
@@ -76,11 +72,10 @@ export interface SavedLive {
   playlist: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
-  /** The logo shown instead of the picture (Simple Mode's Logo). */
-  logo: PropItem | null;
+  /** The Wallpaper up (Session 55, Part 13, in the Logo's place): it comes back up. */
+  wallpaper: boolean;
   /** The sound playing, with when it started and where it last jumped to (Session 51): it carries on from there. */
   audio: AudioLayer | null;
-  props: PropItem[];
   messages: MessageItem[];
   /** The announcements ticker, with when it started: it carries on in step. */
   ticker: TickerLayer | null;
@@ -94,10 +89,6 @@ export interface SavedLive {
   autoAdvance: { leftMs: number; durationMs: number } | null;
   /** A Repeat Slides playlist going round (Session 26d): it carries on after the restart. */
   repeat: { playlistId: string } | null;
-  /** The live Look (an id: it comes back whatever the engine version). */
-  lookId: string | null;
-  /** The mask up on the Masks layer. */
-  masks: MaskLayer | null;
   /** The lower third up (Session 44), with when it went up: put back, it comes back still. */
   lowerThird: LowerThirdLayer | null;
   /**
@@ -171,13 +162,6 @@ const tickerSchema: z.ZodType<TickerLayer> = z.object({
 
 /** A saved message, with the time it went up (Session 27): put back, it comes back still, with no entrance. */
 const savedMessageSchema = messageSchema.and(z.object({ shownAt: z.number().optional() }));
-/**
- * A saved prop or logo, with the time it went up (Session 27), and where the time bar left its videos (Session 54):
- * put back, its videos carry on in step.
- */
-const savedPropSchema = propSchema.and(
-  z.object({ shownAt: z.number().optional(), seeks: seeksSchema.optional() }),
-);
 /** A saved lower third (Session 44), with the time it went up. */
 const savedLowerThirdSchema: z.ZodType<LowerThirdLayer> = lowerThirdSchema.and(
   z.object({ shownAt: z.number() }),
@@ -233,10 +217,11 @@ const savedSchema = z.object({
   // Checked below, only when the engine version matches.
   background: z.unknown(),
   blackout: z.boolean(),
-  // Files saved before these were kept have none.
-  logo: z.unknown().default(null),
+  // Files saved before Session 55 (Part 13) have none.
+  wallpaper: z.boolean().default(false),
+  // Files saved before these were kept have none. A file saved before Session 55 (Part 12) may also hold a logo,
+  // props, a mask and the live Look's id: read and left out (they are gone; nothing of them comes back).
   audio: z.unknown().default(null),
-  props: z.unknown().default([]),
   messages: z.unknown().default([]),
   ticker: z.unknown().default(null),
   stageMessage: z.string().max(300).nullable().default(null),
@@ -251,9 +236,6 @@ const savedSchema = z.object({
     .default(null),
   // Files saved before Repeat Slides have none.
   repeat: z.object({ playlistId: idSchema }).nullable().default(null),
-  // Files saved before Looks have none.
-  lookId: idSchema.nullable().default(null),
-  masks: z.unknown().default(null),
   // Files saved before Lower Thirds (Session 44) have none.
   lowerThird: z.unknown().default(null),
   // Files saved before picture in picture (Session 50) have none.
@@ -320,9 +302,8 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     playlist: state.live.playlist,
     background: state.layers.background,
     blackout: state.blackout,
-    logo: state.logo,
+    wallpaper: state.wallpaper,
     audio: state.layers.audio,
-    props: state.layers.props,
     messages: state.layers.messages,
     ticker: state.layers.ticker,
     stageMessage: state.stageMessage,
@@ -336,8 +317,6 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
         }
       : null,
     repeat: state.repeat ? { playlistId: state.repeat.playlistId } : null,
-    lookId: state.look.id === '' ? null : state.look.id,
-    masks: state.layers.masks,
     lowerThird: state.layers.lowerThird,
     pip: stillBox(state.layers.pip),
     ...(alone ? { timer: { timerId: alone.timerId } } : {}),
@@ -401,10 +380,10 @@ function quitCleanly(files: RecoveryFiles, saved: Saved): boolean {
 
 /**
  * The show worth putting back from a saved state, or null when nothing was live. A background saved by
- * another engine version is left out (its shape may differ). A Look other than `startLookId` (the one
- * Drashti starts with) counts as something live.
+ * another engine version is left out (its shape may differ). A logo, props, a mask or a Look an older file
+ * holds are left out (Session 55, Part 12): nothing of them comes back, and the rest comes back whole.
  */
-function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
+function liveIn(s: Saved): SavedLive | null {
   // The layers' shapes belong to one engine version: from another, only the slide and cursors come back. 12
   // (alpha.11's) is read whole, as 13 only adds to it (Session 52).
   const same = readsEngineVersion(s.engineVersion);
@@ -415,11 +394,8 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
   };
   const background = layer(backgroundSchema.nullable(), s.background, null);
   const audio = layer(audioLayerSchema.nullable(), s.audio, null);
-  const logo = layer(savedPropSchema.nullable(), s.logo, null);
-  const props = layer(z.array(savedPropSchema).max(50), s.props, []);
   const messages = layer(z.array(savedMessageSchema).max(50), s.messages, []);
   const ticker = layer(tickerSchema.nullable(), s.ticker, null);
-  const masks = layer(maskSchema.nullable(), s.masks, null);
   const lowerThird = layer(savedLowerThirdSchema.nullable(), s.lowerThird, null);
   const pip = layer(savedPipSchema.nullable(), s.pip, null);
   const timers = same ? s.timers : [];
@@ -429,29 +405,24 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
     s.playlist !== null,
     background !== null,
     s.blackout,
-    logo !== null,
+    s.wallpaper,
     audio !== null,
-    props.length > 0,
     messages.length > 0,
     ticker !== null,
-    masks !== null,
     lowerThird !== null,
     pip !== null,
     stageMessage !== null,
     timers.length > 0,
-    s.lookId !== null && s.lookId !== startLookId,
     s.timer != null,
   ].some(Boolean);
   if (!anything) return null;
+  // The schema keeps only what it names: an older file's logo, props, mask and Look are not carried on.
   return {
     ...s,
     background,
-    logo,
     audio,
-    props,
     messages,
     ticker,
-    masks,
     lowerThird,
     pip,
     stageMessage,
@@ -465,17 +436,14 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
  * time cannot be read) is not a recent one: its show is not put back, and the mode starts as after a
  * clean quit.
  */
-export function startupRecovery(
-  files: RecoveryFiles,
-  options: { startLookId?: string | null; now?: Date } = {},
-): StartupRecovery {
+export function startupRecovery(files: RecoveryFiles, options: { now?: Date } = {}): StartupRecovery {
   const saved = savedSchema.safeParse(readJson(files.state));
   if (!saved.success || quitCleanly(files, saved.data))
     return { cleanQuit: true, recentStop: false, putBack: null, tooOld: null };
   // Saved every minute while it ran, so the last save is the stop, within a minute.
   const age = (options.now ?? new Date()).getTime() - Date.parse(saved.data.savedAt);
   const recentStop = age < RECOVERY_MAX_AGE_MS;
-  const show = liveIn(saved.data, options.startLookId ?? null);
+  const show = liveIn(saved.data);
   if (!show) return { cleanQuit: false, recentStop, putBack: null, tooOld: null };
   return recentStop
     ? { cleanQuit: false, recentStop, putBack: show, tooOld: null }
@@ -483,12 +451,8 @@ export function startupRecovery(
 }
 
 /** What to put back at startup (see startupRecovery), or null. */
-export function toRestore(
-  files: RecoveryFiles,
-  startLookId: string | null = null,
-  now = new Date(),
-): SavedLive | null {
-  return startupRecovery(files, { startLookId, now }).putBack;
+export function toRestore(files: RecoveryFiles, now = new Date()): SavedLive | null {
+  return startupRecovery(files, { now }).putBack;
 }
 
 export interface LiveStateWriterOptions {

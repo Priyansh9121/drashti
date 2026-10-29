@@ -22,6 +22,7 @@ import {
   ArrowDown,
   ArrowUp,
   Import,
+  Link2,
   ListMusic,
   ListPlus,
   Pause,
@@ -34,7 +35,6 @@ import {
   SkipForward,
   Trash2,
 } from '../ui/icons';
-import { Panel } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
 import {
@@ -51,13 +51,17 @@ import {
 import { isRemoveKey } from '../playlists/playlist-shared';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { createAudioPlaylist, dropSounds, importSounds, takesSounds } from './audio-actions';
+import { openLinkForAudio } from '../links/link-store';
 
 /*
  * Audio playlists (Session 14) in the live column: music on the audio layer,
  * one track after another, independent of the slides (music before the
  * sabha). Choose a list, play from a track, pause, next and previous, go
  * round again, shuffle; make lists from the library's sounds. Simple Mode
- * has only Play and Pause (MusicStrip).
+ * has only Play and Pause (MusicStrip). Session 55 (Part 13): the lists are
+ * straight under Audio, with no Music heading or ? of their own; with none,
+ * Audio asks for one: Create playlist, Import sounds…, From a Link… (YouTube
+ * as MP3, Dropbox), or sounds dropped there.
  */
 
 /** What the audio layer is playing from an audio playlist, if anything. */
@@ -82,11 +86,8 @@ function CannotPlay({ mediaId }: { mediaId: string }) {
   );
 }
 
-/** `nested`: inside a panel group (Session 26a: Audio, More tools). */
-export function MusicPanel({
-  nested = false,
-  platform = 'darwin',
-}: { nested?: boolean; platform?: string } = {}) {
+/** The audio playlists, straight under Audio (Session 55, Part 13: no heading of their own). */
+export function MusicPanel({ platform = 'darwin' }: { platform?: string } = {}) {
   const view = useMusic((s) => s.view);
   const shownId = useMusic((s) => s.shownId);
   const playing = useMusicPlaying();
@@ -101,16 +102,7 @@ export function MusicPanel({
   const paused = playing?.pausedAtMs !== undefined;
   const skips = useEngine((s) => skipsOf(s.state, 'music'));
   return (
-    <Panel
-      nested={nested}
-      help="music"
-      title="Music"
-      icon={ListMusic}
-      collapsible
-      remember="music"
-      bodyClassName="space-y-2 px-3 pb-3"
-      data-testid="music-panel"
-    >
+    <div className="space-y-2 px-3 pb-3" data-testid="music-panel">
       {playing && (
         <p className="flex items-center gap-1.5 text-xs" role="status" data-testid="music-now">
           {paused ? <Pause size={12} aria-hidden="true" /> : <Play size={12} aria-hidden="true" />}
@@ -120,11 +112,31 @@ export function MusicPanel({
       {/* The track's time bar (Session 54), its elapsed time and time left: a click or a drag moves it. */}
       {playing && <TrackBar />}
       {!shown ? (
+        // None yet: it asks for one (Session 55, Part 13), each way in a button, and sounds dropped here start one.
         <AudioDrop playlistId={null} className="rounded-md border border-dashed border-line-strong px-3 py-3">
-          <p className="text-xs text-muted" data-testid="music-empty">
-            No audio playlists yet. <strong>+</strong> above makes one (<strong>Create playlist</strong>) or
-            brings sounds in (<strong>Import</strong>); sounds dropped here start one.
-          </p>
+          <div className="space-y-2" data-testid="music-empty">
+            <p className="text-xs text-muted">
+              No audio playlists yet. Make one, bring sounds in, or drop sounds here to start one.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <Button size="sm" icon={ListPlus} onClick={() => void createAudioPlaylist()}>
+                Create playlist
+              </Button>
+              <Button size="sm" icon={Import} onClick={() => void importSounds(null)}>
+                Import sounds…
+              </Button>
+              <Button
+                size="sm"
+                icon={Link2}
+                title="A sound from YouTube (as MP3) or Dropbox"
+                onClick={() => {
+                  openLinkForAudio(null);
+                }}
+              >
+                From a Link…
+              </Button>
+            </div>
+          </div>
         </AudioDrop>
       ) : (
         <>
@@ -240,7 +252,7 @@ export function MusicPanel({
           is playing, the music stops. Undo brings {removing.length === 1 ? 'it' : 'them'} back.
         </ConfirmDialog>
       )}
-    </Panel>
+    </div>
   );
 }
 

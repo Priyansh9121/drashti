@@ -66,9 +66,9 @@ describe('a timer shown alone, after an unexpected stop', () => {
   it('is read back as something to put back', () => {
     const alone = savedFrom({ ...timerUp(), live: initialEngineState().live }, 'run-1', SAVED_AT);
     writeFileSync(files.state, JSON.stringify(alone));
-    expect(toRestore(files, null, STARTED)).toMatchObject({ slide: null, timer: { timerId: 't1' } });
+    expect(toRestore(files, STARTED)).toMatchObject({ slide: null, timer: { timerId: 't1' } });
     writeFileSync(files.state, JSON.stringify({ ...alone, timer: { timerId: '' } }));
-    expect(toRestore(files, null, STARTED)).toBeNull();
+    expect(toRestore(files, STARTED)).toBeNull();
   });
 
   it('comes back over that slide, still, and Next goes on from there; its timer gone, only the slide', () => {
