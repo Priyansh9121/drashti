@@ -45,7 +45,9 @@ async function openStudio(app: ElectronApplication, win: Page): Promise<Page> {
   await openMoreTools(win);
   const panel = win.getByTestId('lower-thirds-panel');
   await panel.scrollIntoViewIfNeeded();
-  await panel.getByTestId('lower-third-studio').click();
+  const button = panel.getByTestId('lower-third-studio');
+  await expect(button).toBeVisible();
+  await button.click();
   const studio = await windowShowing(app, isStudio, 'the Lower Thirds studio');
   await expect(studio).toHaveTitle('Drashti Lower Thirds');
   await expect(studio.getByTestId('lt-studio')).toBeVisible({ timeout: 30_000 });
