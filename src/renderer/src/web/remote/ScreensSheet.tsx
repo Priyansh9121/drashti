@@ -12,7 +12,11 @@ import {
 import {
   CANVAS_PRESETS,
   type DisplayInfo,
+  DISPLAY_JOB_WORDS,
+  DISPLAY_JOBS,
+  type DisplayUse,
   GROUP_ROLES,
+  jobOf,
   GROUP_ROLE_WORDS,
   type NodeDisplays,
   SCALING_MODES,
@@ -35,7 +39,8 @@ import { PhoneSheet } from './PhoneSheet';
 /*
  * The Drashti computer's screens set up from a phone (Session 54, the phone as a full Drashti), as its Screens sheet
  * has them, laid out for the phone: Audience and Stage; each connected display as the computer sees it, the one the
- * controls are on said so, with Use this display; the screen groups (their names, what each shows, Delete group);
+ * controls are on said so, with its job in one tap (Session 55: Audience, Stage or Not used, remembered by the
+ * display, as in Screens) and Use this display; the screen groups (their names, what each shows, Delete group);
  * and each screen (On, its canvas, Fit, Fill or Stretch, what a key and fill screen sends, Remove). Each change is
  * the window's own request, answered with the screens as they are after it; Keep these screens? is asked here once
  * a change of this phone's waits for it (DesktopTools.tsx). An output on the controls' display is asked of the
@@ -108,11 +113,13 @@ function Displays({
   displays,
   groups,
   usedBy,
+  uses,
   controlsDisplayId,
 }: {
   displays: DisplayInfo[];
   groups: ScreenGroupConfig[];
   usedBy: Map<number, string>;
+  uses: DisplayUse[];
   controlsDisplayId: number | null;
 }) {
   return (
@@ -122,7 +129,7 @@ function Displays({
       </h3>
       <p className="text-base text-muted">
         As the Drashti computer sees them: their resolution and refresh rate are what it reports, never
-        changed.
+        changed. A display plugged in sets itself; each remembers its job.
       </p>
       <ul className="space-y-2">
         {displays.map((d) => (
@@ -131,6 +138,7 @@ function Displays({
             display={d}
             groups={groups}
             usedBy={usedBy.get(d.id) ?? null}
+            use={uses.find((u) => u.displayId === d.id)}
             controls={d.id === controlsDisplayId}
           />
         ))}
@@ -139,15 +147,50 @@ function Displays({
   );
 }
 
+/** A display's job in one tap (Session 55), as Screens' Audience, Stage and Not used. */
+function JobButtons({ display, use }: { display: DisplayInfo; use: DisplayUse }) {
+  const busy = useDesktop((s) => s.busy);
+  const job = jobOf(use);
+  return (
+    <div
+      role="radiogroup"
+      aria-label={`What ${display.label || `display ${String(display.id)}`} shows`}
+      data-testid="remote-display-job"
+      data-job={job}
+      className="grid grid-cols-3 gap-2"
+    >
+      {DISPLAY_JOBS.map((j) => (
+        <Button
+          key={j}
+          size="lg"
+          role="radio"
+          aria-checked={job === j}
+          variant={job === j ? 'primary' : 'secondary'}
+          className="min-h-12"
+          disabled={busy}
+          data-testid={`remote-display-job-${j}`}
+          onClick={() => {
+            if (job !== j) send(`/api/v1/displays/${String(display.id)}/job`, { job: j });
+          }}
+        >
+          {DISPLAY_JOB_WORDS[j]}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function DisplayCard({
   display,
   groups,
   usedBy,
+  use,
   controls,
 }: {
   display: DisplayInfo;
   groups: ScreenGroupConfig[];
   usedBy: string | null;
+  use: DisplayUse | undefined;
   controls: boolean;
 }) {
   const busy = useDesktop((s) => s.busy);
@@ -176,6 +219,7 @@ function DisplayCard({
           here is asked of the computer first.
         </p>
       )}
+      {use && <JobButtons display={display} use={use} />}
       {usedBy ? (
         <p className="text-base text-muted">Used by “{usedBy}”</p>
       ) : groups.length === 0 ? (
@@ -613,6 +657,7 @@ export function ScreensSheet() {
             displays={screens.displays}
             groups={screens.groups}
             usedBy={usedBy}
+            uses={screens.uses}
             controlsDisplayId={screens.controlsDisplayId}
           />
           <section className="space-y-3" aria-labelledby="remote-groups-title">

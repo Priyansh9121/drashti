@@ -37,7 +37,7 @@ import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlis
 import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
-import type { OutputContext } from '../shared/screens';
+import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
 import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
@@ -49,7 +49,7 @@ import { timerFieldsSchema } from '../shared/timers';
 import type { RecoveryNotice } from '../shared/recovery';
 import { audioDeviceSchema } from '../shared/audio';
 import type { SetupResult } from '../shared/setup';
-import { setupPlanSchema, TEST_CARD_MS } from '../shared/setup';
+import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import {
   isOperatorMode,
@@ -197,12 +197,18 @@ import { whenFree, writeLockFree } from './db/write-lock';
 import { writeOldLibrary } from './old-library-selftest';
 import {
   createOutputWindow,
+  EXTRA_DISPLAY_ID,
+  electronDisplays,
   listDisplays,
+  pretendDisplaysChanged,
+  setDisplayIdentities,
   setExtraDisplays,
   changeExtraDisplays,
   showDisplayNumber,
   watchDisplays,
 } from './outputs/electron-outputs';
+import { DisplayIds, standInReader, systemReader } from './outputs/display-ids';
+import { AutoScreens, NotUsedDisplays } from './outputs/auto-screens';
 import {
   type ControlsPlace,
   controlsToPutBack,
@@ -458,6 +464,41 @@ if (windowedOutputs) setExtraDisplays(Number(sw('DRASHTI_EXTRA_DISPLAYS') ?? 0) 
 // Tests only (never a packaged Drashti): pretend displays that come and go (Sessions 31–36, ROB-4).
 if (windowedOutputs && !app.isPackaged && sw('DRASHTI_TEST_DISPLAY_CHANGES') === '1')
   (globalThis as { drashtiTestDisplays?: (n: number) => void }).drashtiTestDisplays = changeExtraDisplays;
+/**
+ * Screens that set themselves (Session 55, outputs/auto-screens.ts): a display plugged in is used at once. Always in
+ * a packaged Drashti but in a self-test (which sets no screen of the library's by itself); tests not about it start
+ * without it (DRASHTI_TEST_AUTO_SCREENS: '0', launchApp's own), and then no display's own identity is read either
+ * (no child process at every test's start).
+ */
+const autoScreensOn = !selfTestRun && (app.isPackaged || sw('DRASHTI_TEST_AUTO_SCREENS') !== '0');
+/** Tests only: among the pretend displays alone ('pretend'), so a second real display here never changes a test. */
+const autoPretendOnly = !app.isPackaged && sw('DRASHTI_TEST_AUTO_SCREENS') === 'pretend';
+/**
+ * Tests only (never a packaged Drashti), with windowed outputs: a display that counts as the one the controls are on
+ * (a pretend one), so a quiet test sees what covering the controls asks (Session 55: only that asks Keep these
+ * screens?) and that the controls' display is never taken.
+ */
+const testControlsDisplay = ((): number | null => {
+  const raw = windowedOutputs && !app.isPackaged ? sw('DRASHTI_TEST_CONTROLS_DISPLAY') : undefined;
+  const n = raw === undefined ? NaN : Number(raw);
+  return Number.isSafeInteger(n) ? n : null;
+})();
+/**
+ * Tests only (never a packaged Drashti): the pretend displays' own identities, by their place ("A,B": the first is
+ * A's, the second B's), and a display the computer mirrors onto; a test changes them while Drashti runs
+ * (drashtiTestDisplaySerials), as a projector moved to another port.
+ */
+let testSerials: string[] | null = !app.isPackaged
+  ? (sw('DRASHTI_TEST_DISPLAY_SERIALS')?.split(',') ?? null)
+  : null;
+const testMirroredOnto = !app.isPackaged ? (sw('DRASHTI_TEST_MIRRORED_ONTO') ?? '') : '';
+if (windowedOutputs && testSerials !== null)
+  (globalThis as { drashtiTestDisplaySerials?: (serials: string[]) => void }).drashtiTestDisplaySerials = (
+    serials,
+  ) => {
+    testSerials = serials;
+    pretendDisplaysChanged();
+  };
 // A Diagnostics menu for the manual watchdog check (see README).
 const diagnostics = sw('DRASHTI_DIAGNOSTICS') === '1';
 // Automated tests cannot answer the quit confirmation.
@@ -1661,8 +1702,27 @@ function start(): void {
   const outputWindows = new Map<string, BrowserWindow>();
   /** Each output's name, as the watchdog and the log call it. */
   const outputNames = new Map<string, string>();
-  /** Until when the setup wizard's test slide shows on every output (ms since the epoch). */
-  let testCardUntil = 0;
+  // ---- each display's own identity (Session 55, outputs/display-ids.ts) --------------------------------------
+  // Read off the main thread (system_profiler on a Mac, PowerShell on Windows), at the start and after every change
+  // of the displays, never waited for by the start: until it is read, displays are found as before.
+  const noReading = () => Promise.resolve({ ids: new Map<number, string>(), mirroredOnto: [] });
+  const displayIds = new DisplayIds({
+    read:
+      testSerials !== null || testMirroredOnto !== ''
+        ? standInReader(
+            () => testSerials ?? [],
+            EXTRA_DISPLAY_ID,
+            () => (testMirroredOnto === '' ? [] : [testMirroredOnto]),
+          )
+        : autoScreensOn
+          ? (systemReader() ?? noReading)
+          : noReading,
+    displays: electronDisplays,
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  setDisplayIdentities((d) => displayIds.identityOf(d));
   /**
    * The hall's picture as this computer's stage screens draw it in a layout's audience picture box (Session 50): the
    * first audience group shown here, said off while Audience is off (Session 51). Its nodes' stage screens and a
@@ -1683,7 +1743,6 @@ function start(): void {
       groupName: screenRepo.groupName(s.groupId) ?? '',
       role: screenRepo.groupRole(s.groupId) ?? 'audience',
       feed: s.feed,
-      testCardUntil: testCardUntil > Date.now() ? testCardUntil : null,
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
       scaling: s.scaling,
@@ -1892,19 +1951,47 @@ function start(): void {
   stops.add('outputs', () => {
     manager.closeAll();
   });
-  /** The display the operator window is on. Windowed (development) outputs never cover it. */
+  /**
+   * The display the operator window is on, where an output covers it. Windowed (development) outputs never cover it,
+   * but for a test's pretend display that counts as the controls' (DRASHTI_TEST_CONTROLS_DISPLAY).
+   */
   const operatorDisplayId = (): number | null =>
-    windowedOutputs || !operatorWindow || operatorWindow.isDestroyed()
+    testControlsDisplay ??
+    (windowedOutputs || !operatorWindow || operatorWindow.isDestroyed()
       ? null
-      : electronScreen.getDisplayMatching(operatorWindow.getBounds()).id;
+      : electronScreen.getDisplayMatching(operatorWindow.getBounds()).id);
+  /**
+   * The display the controls are on, windowed outputs or not (Session 55: never taken by itself; Screens and Set Up
+   * Screens… mark it): the operator window's, or the main display before it opens.
+   */
+  const controlsDisplay = (): number =>
+    testControlsDisplay ??
+    (operatorWindow && !operatorWindow.isDestroyed()
+      ? electronScreen.getDisplayMatching(operatorWindow.getBounds()).id
+      : electronScreen.getPrimaryDisplay().id);
+  /** The displays set Not used by hand (Session 55): kept with the library, never taken by themselves again. */
+  const notUsed = new NotUsedDisplays({
+    get: () => settings.get('displaysNotUsed'),
+    set: (value) => {
+      settings.set('displaysNotUsed', value);
+    },
+  });
   let stream: StreamService | null = null;
   // Show a Window… and the window for Zoom (Session 48): made with the stream, below.
   let liveWindows: LiveWindowService | null = null;
   let zoomWindow: ZoomWindow | null = null;
-  const screens = new ScreensService(screenRepo, manager, listDisplays, operatorDisplayId, looks, {
-    displays: () => nodeService?.displays() ?? [],
-    screenStatus: () => nodeService?.screenStatus() ?? [],
-  });
+  const screens = new ScreensService(
+    screenRepo,
+    manager,
+    listDisplays,
+    operatorDisplayId,
+    looks,
+    {
+      displays: () => nodeService?.displays() ?? [],
+      screenStatus: () => nodeService?.screenStatus() ?? [],
+    },
+    notUsed,
+  );
   // ---- Audience and Stage (Session 50; outputs/screen-switches.ts): this computer's screens off and on --------
   // Never saved: both are on at every start.
   const screenSwitches = new ScreenSwitchService({
@@ -1938,8 +2025,6 @@ function start(): void {
     },
     capture: () => screens.setup(),
     restore: (changes, quitting) => {
-      // The setup's test slide ends with the change it showed (the screens put back show the show again).
-      if (!quitting) testCardUntil = 0;
       // Only what the changes changed goes back (Session 51): whatever else changed meanwhile stays.
       const result = screens.undo(changes, quitting);
       if (!quitting) {
@@ -1961,6 +2046,11 @@ function start(): void {
       return result;
     },
     placed: () => screens.placed(),
+    // Only a change that puts an output on the controls' display asks (Session 55); none can with windowed outputs.
+    controls: () => {
+      const id = controlsDisplayId();
+      return id === null ? null : `here ${String(id)}`;
+    },
     coversControls: () => coveringNow().length > 0,
     snapshot: () => screens.snapshot(),
     changed: (pending) => {
@@ -2013,6 +2103,45 @@ function start(): void {
     },
   });
   if (afterStopSaid) startNotice = startNotice ? `${startNotice}\n\n${afterStopSaid}` : afterStopSaid;
+
+  // ---- screens that set themselves (Session 55, outputs/auto-screens.ts) -------------------------------------
+  // A display plugged in is used at once, asking nothing: the first not the controls' shows the audience picture,
+  // the next the stage; what it did is said in one line, with Change… (and once, how to extend when the computer
+  // mirrors). Kept for a window that opens after it was said.
+  let lastSaid: ScreensSaid | null = null;
+  const autoScreens = new AutoScreens({
+    on: autoScreensOn,
+    displays: () =>
+      autoPretendOnly ? listDisplays().filter((d) => d.id >= EXTRA_DISPLAY_ID) : listDisplays(),
+    uses: () => screens.uses(),
+    controlsDisplayId: controlsDisplay,
+    notUsed,
+    give: (jobs) => {
+      const given = screens.giveJobs(jobs);
+      // As Screens' own changes do: the stream's languages, and a stage display in a browser.
+      streaming.contextChanged();
+      net.hint('screens');
+      return given;
+    },
+    said: (said) => {
+      lastSaid = said;
+      sendToPage(operatorWindow, IPC.screens.said, said);
+    },
+    mirroredOnto: () => displayIds.mirroredOnto(),
+    platform: process.platform,
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  /** The displays read again (their own identities), the outputs following, then each one plugged in given its job. */
+  const displaysRead = () => {
+    void displayIds.refresh().then(() => {
+      // Read as Drashti quits, after the library has closed: nothing to do.
+      if (db === null) return;
+      manager.reconcile();
+      autoScreens.check();
+    });
+  };
   /** Keep these screens? as an output shows it: only one over the controls, while a change waits. */
   const keepQuestionFor = (screenId: string) => {
     const pending = keepScreens.current();
@@ -3887,6 +4016,7 @@ function start(): void {
         assignDisplay: (groupId, displayId, options) =>
           screenChanges.assignDisplay(groupId, displayId, options),
         updateScreen: (id, patch, options) => screenChanges.updateScreen(id, patch, options),
+        setDisplayJob: (displayId, job, options) => screenChanges.setJob(displayId, job, options),
         removeScreen: (id) => screenChanges.removeScreen(id),
         identify: () => {
           screenChanges.identify();
@@ -4837,6 +4967,13 @@ function start(): void {
       keepScreens.change(() => screens.assignDisplay(groupId, displayId, options)),
     updateScreen: (id: unknown, patch: unknown, options?: unknown) =>
       keepScreens.change(() => screens.updateScreen(id, patch, options)),
+    // A display's job in one click (Session 55): asked only when it puts an output on the controls' display.
+    setJob: (displayId: unknown, job: unknown, options?: unknown) => {
+      const result = keepScreens.change(() => screens.setDisplayJob(displayId, job, options));
+      streaming.contextChanged();
+      net.hint('screens');
+      return result;
+    },
     removeScreen: (id: unknown) => screens.removeScreen(id),
     identify: () => {
       for (const [screenId, win] of outputWindows) {
@@ -4874,6 +5011,15 @@ function start(): void {
   handle(IPC.screens.updateScreen, (e, id, patch, options) =>
     fromOperator(e) ? screenChanges.updateScreen(id, patch, options) : notAllowed,
   );
+  handle(IPC.screens.setJob, (e, displayId, job, options) =>
+    fromOperator(e) ? screenChanges.setJob(displayId, job, options) : notAllowed,
+  );
+  // What the screens did by themselves (Session 55), for a window that opened after it was said, until it is closed.
+  handle(IPC.screens.lastSaid, (e) => (fromOperator(e) ? lastSaid : null));
+  handle(IPC.screens.saidClosed, (e, id) => {
+    if (fromOperator(e) && lastSaid?.id === id) lastSaid = null;
+    return null;
+  });
   handle(IPC.screens.uncoverOperator, (e) => {
     if (!fromOperator(e)) return notAllowed;
     uncover();
@@ -5118,12 +5264,8 @@ function start(): void {
       settings.get('welcome') === undefined &&
       settings.get('setupWizard') === undefined,
     operatorDisplayId: operatorDisplayId(),
-    // Session 44: the display the controls are on, windowed outputs or not, and whether to offer "Show on".
-    controlsDisplayId:
-      operatorWindow && !operatorWindow.isDestroyed()
-        ? electronScreen.getDisplayMatching(operatorWindow.getBounds()).id
-        : null,
-    offer: mode === 'pro' && (!wizardOff || sw('DRASHTI_TEST_SCREEN_OFFER') === '1'),
+    // Session 44: the display the controls are on, windowed outputs or not (Session 55: never taken by itself).
+    controlsDisplayId: controlsDisplay(),
   }));
   handle(IPC.setup.setSeen, (e) => {
     if (fromOperator(e)) settings.set('setupWizard', new Date().toISOString());
@@ -5184,17 +5326,12 @@ function start(): void {
       listChanged('themes');
     }
     settings.set('setupWizard', new Date().toISOString());
-    // A test slide on every screen, in its own languages, for a few seconds; the show is untouched.
-    testCardUntil = Date.now() + TEST_CARD_MS;
-    for (const [screenId, win] of outputWindows) {
-      const context = contextFor(screenId);
-      if (context) sendToPage(win, IPC.output.context, context);
-    }
+    // No test slide (Session 55): each screen shows what is up, or nothing (black) until something is put up.
     log.info(
       `Setup finished: ${outputs ? `${outputs.length} display(s) set` : 'screens kept'}; sound ${sound === 'skip' ? 'kept' : 'chosen'}; theme ${themeId === null ? 'kept' : 'chosen'}`,
     );
     const snapshot = screens.snapshot();
-    return { ok: true, snapshot, tested: snapshot.status.filter((st) => st.state === 'showing').length };
+    return { ok: true, snapshot, showing: snapshot.status.filter((st) => st.state === 'showing').length };
   });
 
   handle(IPC.output.getContext, (event) => {
@@ -5940,12 +6077,15 @@ function start(): void {
   // Each presentation put up, counted for the Access List: never which.
   engine.onChange(showCounter((kind) => behind?.service.count(kind)));
 
-  // Restore the saved screen assignments, and follow display changes.
+  // Restore the saved screen assignments, and follow display changes: at once, then again once each display's own
+  // identity has been read (Session 55), when a display plugged in is given its job.
   manager.reconcile();
+  displaysRead();
   watchDisplays(() => {
     // A display change noticed as Drashti quits comes after the library has closed: nothing to do.
     if (db === null) return;
     manager.reconcile();
+    displaysRead();
   });
 }
 

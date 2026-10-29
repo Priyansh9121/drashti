@@ -122,6 +122,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.screens.deleteGroup,
   IPC.screens.assignDisplay,
   IPC.screens.updateScreen,
+  // A display's job (Session 55): Simple Mode changes no screen.
+  IPC.screens.setJob,
   IPC.screens.removeScreen,
   IPC.audio.setOutput,
   IPC.setup.finish,

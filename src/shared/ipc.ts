@@ -108,11 +108,13 @@ import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
 import type {
   CoverOptions,
+  DisplayJob,
   OutputContext,
   OutputReport,
   ScreenPatch,
   ScreenRole,
   ScreensResult,
+  ScreensSaid,
   ScreensSnapshot,
 } from './screens';
 
@@ -590,6 +592,14 @@ export const IPC = {
     deleteGroup: 'screens:delete-group',
     assignDisplay: 'screens:assign-display',
     updateScreen: 'screens:update-screen',
+    /** A display's job in one click (Session 55): the audience picture, the stage, or Not used. */
+    setJob: 'screens:set-job',
+    /** What the screens did by themselves (Session 55), last said: for a window that opened after. */
+    lastSaid: 'screens:last-said',
+    /** The window closed what the screens said (or followed its Change…): not said again as it opens again. */
+    saidClosed: 'screens:said-closed',
+    /** main -> operator: what the screens did by themselves (a display plugged in given its job), in one line. */
+    said: 'screens:said',
     removeScreen: 'screens:remove-screen',
     /** Put a node's display into a group (Session 13). */
     assignNodeDisplay: 'screens:assign-node-display',
@@ -1229,6 +1239,12 @@ export interface InvokeContract {
     result: ScreensResult;
   };
   [IPC.screens.removeScreen]: { args: [screenId: string]; result: ScreensResult };
+  [IPC.screens.setJob]: {
+    args: [displayId: number, job: DisplayJob, options?: CoverOptions];
+    result: ScreensResult;
+  };
+  [IPC.screens.lastSaid]: { args: []; result: ScreensSaid | null };
+  [IPC.screens.saidClosed]: { args: [id: number]; result: null };
   [IPC.screens.identify]: { args: []; result: null };
   [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
   [IPC.screens.tryAgain]: { args: [screenId: string]; result: { ok: true } | { ok: false; message: string } };
@@ -1414,6 +1430,7 @@ export interface EventContract {
   [IPC.screenSwitches.covered]: { covered: boolean };
   [IPC.screenSwitches.answered]: { yes: boolean };
   [IPC.screens.pendingChanged]: PendingScreens | null;
+  [IPC.screens.said]: ScreensSaid;
   [IPC.output.keepQuestion]: PendingScreens | null;
   [IPC.output.switchQuestion]: { which: ScreenSwitch | null };
   [IPC.zoom.programChanged]: ZoomProgram | null;

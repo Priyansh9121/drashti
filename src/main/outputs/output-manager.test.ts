@@ -218,6 +218,24 @@ describe('OutputManager', () => {
     expect(saved).toEqual([['audience', moved.key]]);
   });
 
+  it('saves a display’s own identity once it is known, and never loses it while it is not (Session 55)', () => {
+    screens = [screen('audience', hall)];
+    manager.reconcile();
+    expect(saved).toEqual([]);
+    // Read: the hall's identity is saved with its key.
+    const known = { ...hall, key: { ...hall.key, hardwareId: 'edid:10ac:a0f3:n4c4c4c4c' } };
+    displays = [laptop, known, stage];
+    manager.reconcile();
+    expect(saved).toEqual([['audience', known.key]]);
+    // A moment it is not known (the display came back, not read yet), moved: its place saved, its identity kept.
+    screens = [{ ...screen('audience', hall), displayKey: known.key }];
+    saved = [];
+    const moved = { ...hall, bounds: { ...hall.bounds, x: 0 }, key: { ...hall.key, x: 0, hardwareId: null } };
+    displays = [moved];
+    manager.reconcile();
+    expect(saved).toEqual([['audience', { ...moved.key, hardwareId: 'edid:10ac:a0f3:n4c4c4c4c' }]]);
+  });
+
   it('closes windows for disabled and removed screens', () => {
     screens = [screen('a', hall), screen('b', stage)];
     manager.reconcile();

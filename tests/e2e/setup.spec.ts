@@ -8,6 +8,7 @@ import {
   operatorPage,
   operatorReady,
   outputPages,
+  outputReady,
   setUpScreen,
   testDisplays,
 } from './helpers';
@@ -17,9 +18,10 @@ import { expectFits } from './fit';
 /*
  * The first-run setup wizard (Session 8): identify the outputs, choose
  * what each shows and in which languages, the sound output with a test
- * tone, the default theme, and a test slide on every screen at Finish.
- * Skipping or closing changes nothing; the operator's display is never
- * covered without the confirm step; Simple Mode never shows it.
+ * tone, the default theme. No test slide at Finish (Session 55): each
+ * screen shows its own picture in its own languages, black until something
+ * is up. Skipping or closing changes nothing; the operator's display is
+ * never covered without the confirm step; Simple Mode never shows it.
  */
 
 /** Each group, with its languages in the live Look. */
@@ -43,7 +45,7 @@ async function fromMenu(app: ElectronApplication): Promise<void> {
 
 const page = (app: ElectronApplication, part: string) => app.windows().find((w) => w.url().includes(part));
 
-test('on the first start: identify, what each output shows and its languages, a test tone, a theme, and a test slide', async () => {
+test('on the first start: identify, what each output shows and its languages, a test tone, a theme; no test slide', async () => {
   const { app } = await launchApp({
     DRASHTI_TEST_NO_WIZARD: '0',
     // A new library as a person's starts (Session 50): without the tests' placeholder presentations.
@@ -80,8 +82,7 @@ test('on the first start: identify, what each output shows and its languages, a 
   );
   expect(numbers.sort()).toEqual(every.map((_, i) => String(i + 1)));
   // The test's two (Session 53): the main display and its pretend copy, CI's two, however many this
-  // computer has, their rows in the wizard's order. Any other (a second monitor plugged in, which the wizard
-  // starts as the hall's, the first free one) shows nothing.
+  // computer has, their rows in the wizard's order. Any other (a second monitor plugged in) shows nothing.
   const [main, copy] = await testDisplays(win);
   if (!main || !copy) throw new Error('two displays expected');
   const rowOf = (id: number) => `[data-testid="setup-display"][data-display-id="${String(id)}"]`;
@@ -138,16 +139,16 @@ test('on the first start: identify, what each output shows and its languages, a 
   await expect(wizard.getByTestId('setup-step')).toHaveText('Finish');
   await expect(wizard.getByTestId('setup-summary')).not.toContainText('PIN');
   await expect(wizard.getByTestId('setup-summary')).toContainText(
-    `Display ${String(main.index + 1)}: The audience picture, Gujarati, Transliteration`,
+    `Display ${String(main.index + 1)}: Audience, Gujarati, Transliteration`,
   );
   await expect(wizard.getByTestId('setup-summary')).toContainText(
-    `Display ${String(copy.index + 1)}: The stage view (performers), Gujarati`,
+    `Display ${String(copy.index + 1)}: Stage, Gujarati`,
   );
   await expect(wizard.getByTestId('setup-summary')).toContainText('Stream: camera fake_device_0');
   await expect(wizard.getByTestId('setup-summary')).toContainText('the slides, Transliteration');
   await expectNoSeriousA11yIssues(win, 'the setup wizard, finish');
   await wizard.getByTestId('setup-finish').click();
-  await expect(wizard.getByTestId('setup-done')).toContainText('A test slide is on 2 screens');
+  await expect(wizard.getByTestId('setup-done')).toHaveText('Done. 2 screens show now.');
   const streamInputs = await win.evaluate(async () => {
     const { profiles, activeId } = await (globalThis as PageGlobals).drashti.stream.profiles();
     const p = profiles.find((x) => x.id === activeId);
@@ -164,24 +165,27 @@ test('on the first start: identify, what each output shows and its languages, a 
     { name: 'Stream', role: 'stream', languages: ['translit'], screens: 0 },
   ]);
 
-  // A test slide on every screen, each in its own languages.
+  // No test slide (Session 55): each screen shows its own picture, in its own languages; with nothing up, the
+  // audience's is black.
   await expect.poll(() => outputPages(app).length).toBe(2);
-  const cards = await Promise.all(
+  const outputs = await Promise.all(
     outputPages(app).map(async (p) => {
-      const card = p.getByTestId('test-card');
-      await expect(card).toBeVisible();
+      await outputReady(p);
+      const root = p.getByTestId('output-root');
       return {
-        shows: await card.getByTestId('test-card-shows').textContent(),
-        langs: await card
-          .locator('[data-run]')
-          .evaluateAll((els) => els.map((e) => e.getAttribute('data-lang'))),
+        role: await root.getAttribute('data-role'),
+        languages: await root.getAttribute('data-languages'),
+        testSlides: await p.getByTestId('test-card').count(),
       };
     }),
   );
-  expect(cards.sort((a, b) => (a.shows ?? '').localeCompare(b.shows ?? ''))).toEqual([
-    { shows: 'Audience · The audience picture · Gujarati, Transliteration', langs: ['gu', 'translit'] },
-    { shows: 'Stage · The stage view · Gujarati', langs: ['gu'] },
+  expect(outputs.sort((a, b) => (a.role ?? '').localeCompare(b.role ?? ''))).toEqual([
+    { role: 'audience', languages: 'gu,translit', testSlides: 0 },
+    { role: 'stage', languages: 'gu', testSlides: 0 },
   ]);
+  for (const p of outputPages(app))
+    if ((await p.getByTestId('output-root').getAttribute('data-role')) === 'audience')
+      await expect(p.getByTestId('scene')).toHaveAttribute('data-nothing-up', 'black');
   await wizard.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(wizard).toHaveCount(0);
 
@@ -298,7 +302,9 @@ test('Simple Mode never shows it, and refuses to apply a setup', async () => {
   await app.close();
 });
 
+// And in CI's operator window, 1024 × 645 (Session 55: the Screens step's words are longer).
 for (const [width, height] of [
+  [1024, 645],
   [1280, 720],
   [1920, 1080],
 ] as const)

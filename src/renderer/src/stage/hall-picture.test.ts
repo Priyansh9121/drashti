@@ -13,6 +13,7 @@ import { hallPictureNow } from './hall-picture';
 const snapshot: ScreensSnapshot = {
   displays: [],
   nodes: [],
+  uses: [],
   status: [],
   groups: [
     { id: 'stage', name: 'Placeholder stage', role: 'stage', screens: [] },

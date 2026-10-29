@@ -240,6 +240,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'screens.deleteGroup': IPC.screens.deleteGroup,
   'screens.useDisplay': IPC.screens.assignDisplay,
   'screens.change': IPC.screens.updateScreen,
+  'screens.displayJob': IPC.screens.setJob,
   'screens.remove': IPC.screens.removeScreen,
   'screens.keep': IPC.screens.keep,
   'screens.goBack': IPC.screens.goBack,
@@ -962,6 +963,7 @@ export class NetworkService implements EngineTransport {
       case 'screens.deleteGroup':
       case 'screens.useDisplay':
       case 'screens.change':
+      case 'screens.displayJob':
       case 'screens.remove':
       case 'screens.keep':
       case 'screens.goBack':

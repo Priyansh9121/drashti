@@ -507,12 +507,16 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
   }
   const shape = (t: { repo: ScreenRepo; looks: LookService }) =>
     t.repo.groups().map((g) => [g.name, g.role, t.looks.liveLanguages(g.id), g.screens.map((sc) => sc.name)]);
-  /** Keep these screens?, wired to the screens as Drashti wires it (its own clock: nothing goes back by itself). */
-  const keeperOf = (t: ReturnType<typeof two>) =>
+  /**
+   * Keep these screens?, wired to the screens as Drashti wires it (its own clock: nothing goes back by itself), the
+   * controls on display 3 unless a test says otherwise (Session 55: only a change that puts an output there asks).
+   */
+  const keeperOf = (t: ReturnType<typeof two>, controls = 3) =>
     new KeepScreens<ScreensSetup>({
       capture: () => t.service.setup(),
       restore: (changes, quitting) => t.service.undo(changes, quitting),
       placed: () => t.service.placed(),
+      controls: () => `here ${String(controls)}`,
       coversControls: () => false,
       snapshot: () => t.service.snapshot(),
       changed: () => undefined,
@@ -587,13 +591,14 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     expect(t.service.placed()).toEqual(new Map());
   });
 
-  it('asks after Use this display and On; Go back closes the output it opened; says when the controls are covered', () => {
+  it('asks after Use this display and On over the controls, never elsewhere; Go back closes the output it opened; says when the controls are covered', () => {
     const t = two();
     const told: (PendingScreens | null)[] = [];
     const keep = new KeepScreens<ScreensSetup>({
       capture: () => t.service.setup(),
       restore: (changes, quitting) => t.service.undo(changes, quitting),
       placed: () => t.service.placed(),
+      controls: () => (operatorDisplay === null ? null : `here ${String(operatorDisplay)}`),
       coversControls: () => coveringScreens(t.outputs.status(), operatorDisplay).length > 0,
       snapshot: () => t.service.snapshot(),
       changed: (pending) => {
@@ -615,19 +620,22 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     expect(t.open.size).toBe(0);
     expect(told.at(-1)).toBeNull();
 
-    // On the other display: asked, not covering; kept.
+    // On the other display (Session 55): no question; it stands at once.
     keep.change(() => t.service.assignDisplay(groupId, 3));
-    expect(keep.current()).toMatchObject({ coversControls: false });
+    expect(keep.current()).toBeNull();
+    expect(t.open.size).toBe(1);
+    // Over the controls again, kept; then off asks nothing, and on again over them asks.
+    keep.change(() => t.service.assignDisplay(groupId, 2, { coverOperator: true }));
+    expect(keep.current()).toMatchObject({ coversControls: true });
     keep.keep();
-    const screenId = t.repo.screens()[0]?.id ?? '';
-    // Off asks nothing; On again asks.
+    const screenId = t.repo.screens().find((sc) => sc.displayKey?.id === 2)?.id ?? '';
     keep.change(() => t.service.updateScreen(screenId, { enabled: false }));
     expect(keep.current()).toBeNull();
-    keep.change(() => t.service.updateScreen(screenId, { enabled: true }));
+    keep.change(() => t.service.updateScreen(screenId, { enabled: true }, { coverOperator: true }));
     expect(keep.current()).not.toBeNull();
     keep.goBack();
     expect(t.repo.screen(screenId)?.enabled).toBe(false);
-    expect(t.open.size).toBe(0);
+    expect(t.open.size).toBe(1);
   });
 
   // Session 51, S3-4: Go back puts back only what the change changed; nothing else in the live Look goes back.
@@ -711,6 +719,7 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
         capture: () => t.service.setup(),
         restore: (changes, quitting) => t.service.undo(changes, quitting),
         placed: () => t.service.placed(),
+        controls: () => 'here 3',
         coversControls: () => false,
         snapshot: () => t.service.snapshot(),
         changed: () => undefined,
@@ -752,7 +761,8 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
   // Session 51, S3-3: Screens' Shows (a group's role) and a key and fill pair's Sends put another picture on a display.
   it('Shows and Sends ask; Go back puts back the role, the key and fill pair’s settings in every Look, and what each screen sends', () => {
     const t = two();
-    const keep = keeperOf(t);
+    // The controls on the display the fill goes to.
+    const keep = keeperOf(t, 2);
     t.service.createGroup('Switcher');
     const id = groupNamed(t, 'Switcher');
     t.service.assignDisplay(id, 2);
@@ -800,8 +810,9 @@ describe('Audience or Stage off (Session 51, S2-1): a screen switched off, as it
   /**
    * Two displays, the hall's screen on the first; the output windows counted as they open and close; each screen
    * answers to its group's switch, turned as the switches do (through the screens, which remember what it showed).
+   * The controls on the hall's display unless a test says otherwise (Session 55: only a change there asks).
    */
-  function switched() {
+  function switched(controls = 2) {
     const db = openDatabase(':memory:');
     const r = new ScreenRepo(db);
     const open = new Set<number>();
@@ -839,6 +850,7 @@ describe('Audience or Stage off (Session 51, S2-1): a screen switched off, as it
       capture: () => s.setup(),
       restore: (changes, quitting) => s.undo(changes, quitting),
       placed: () => s.placed(),
+      controls: () => `here ${String(controls)}`,
       coversControls: () => false,
       snapshot: () => s.snapshot(),
       changed: () => undefined,
@@ -888,7 +900,8 @@ describe('Audience or Stage off (Session 51, S2-1): a screen switched off, as it
   });
 
   it('asks when the hall is given another display while Audience is off: in Set Up Screens…, or the controls’ display in Screens', () => {
-    const t = switched();
+    // The controls on the other display.
+    const t = switched(3);
     t.service.setSwitch('audience', false);
     // Set Up Screens…: the hall's picture on the other display instead.
     t.keep.change(() =>

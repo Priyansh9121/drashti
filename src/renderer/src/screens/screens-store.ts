@@ -17,6 +17,8 @@ interface ScreensView {
   busy: boolean;
   /** A request waiting for the operator to agree that an output may cover the controls. */
   pendingCover: PendingCover | null;
+  /** The display Screens opens at (Session 55: the notice's Change…), once; null for none. */
+  focusDisplayId: number | null;
 }
 
 export const useScreens = create<ScreensView>(() => ({
@@ -24,7 +26,13 @@ export const useScreens = create<ScreensView>(() => ({
   error: null,
   busy: false,
   pendingCover: null,
+  focusDisplayId: null,
 }));
+
+/** Screens opens at this display, its job in reach (Session 55: the notice's Change…). */
+export function focusDisplay(displayId: number): void {
+  useScreens.setState({ focusDisplayId: displayId });
+}
 
 /**
  * How the operator's previews draw: as the first group in this role does in

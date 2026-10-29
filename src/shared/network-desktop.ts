@@ -1,7 +1,7 @@
 import type { PendingScreens } from './keep-screens';
 import { type CameraAccess, VIDEO_INPUT_DEVICE_MAX, type VideoInput } from './video-inputs';
 import type { ScreenSwitch, ScreenSwitches } from './screen-switches';
-import type { DisplayInfo, NodeDisplays, ScreenGroupConfig, ScreenStatus } from './screens';
+import type { DisplayInfo, DisplayUse, NodeDisplays, ScreenGroupConfig, ScreenStatus } from './screens';
 import type { MidiLearnable, MidiSeen, MidiSettings } from './midi';
 
 /*
@@ -38,6 +38,8 @@ export interface RemoteScreens {
   status: ScreenStatus[];
   /** The paired nodes and their displays, so a node's screen is named with it (set up on the computer). */
   nodes: NodeDisplays[];
+  /** What each of the computer's displays does now (Session 55): its job, in one tap. */
+  uses: DisplayUse[];
   /** Audience and Stage: which are on. */
   switches: ScreenSwitches;
   /** Whether turning each off asks first now (its screens are open and show something). */
@@ -74,6 +76,9 @@ export const SWITCH_ASKS_FIRST = 'Turning this off asks first: answer the questi
 
 /** Which switch a request names in its path (`/api/v1/switches/audience`). */
 export const SWITCH_PARAM = /^(?:audience|stage)$/u;
+
+/** Which display a request names in its path (`/api/v1/displays/2/job`): the computer's id for it. */
+export const DISPLAY_PARAM = /^\d{1,16}$/u;
 
 /** Both switches' answer to one question, Audience's and Stage's. */
 export const bothSwitches = (of: (which: ScreenSwitch) => boolean): ScreenSwitches => ({

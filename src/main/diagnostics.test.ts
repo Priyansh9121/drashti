@@ -53,7 +53,7 @@ function setup() {
   const input: DiagnosticsInput = {
     app: { version: '1.0.0', electron: '44', chrome: '152', node: '24', platform: 'darwin', arch: 'arm64' },
     displays: [],
-    screens: { displays: [], groups: [], status: [], nodes: [] },
+    screens: { displays: [], groups: [], status: [], nodes: [], uses: [] },
     sound: { chosen: null, devices: [], state: 'default', checked: true },
     db,
     watchdog: [

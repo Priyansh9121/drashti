@@ -4,7 +4,6 @@ import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
 import type { DisplayInfo, ScreenGroupConfig, ScreensSnapshot } from '../../../shared/screens';
 import type { OutputUse, SetupPlan } from '../../../shared/setup';
-import { displayToOffer } from '../../../shared/setup';
 import type { DeviceChoice, StreamLayout } from '../../../shared/stream';
 import type { Theme } from '../../../shared/themes';
 import { useKeepScreens } from '../operator/keep-screens-store';
@@ -58,8 +57,8 @@ interface SetupView {
   problem: string | null;
   /** Finish asked first: an output would cover the controls. */
   askCover: boolean;
-  /** Finished: how many screens show the test slide. */
-  finished: { tested: number } | null;
+  /** Finished: how many screens show now (Session 55: no test slide). */
+  finished: { showing: number } | null;
   /** What Done or Finish set on each display, while Keep these screens? waits (Session 50). */
   applied: Record<number, OutputUse> | null;
   /** Keep these screens? went back: the displays again, the choices as made, to change and press Done again. */
@@ -114,9 +113,6 @@ export async function openSetup(from = 0): Promise<void> {
       ? { use: group.role === 'stage' ? 'stage' : 'audience', languages: languages ? [...languages] : null }
       : { use: 'none', languages: null };
   }
-  // No hall screen yet (Session 44): the first display free for it starts as the hall's, the obvious choice.
-  const offered = displayToOffer(snapshot, state.controlsDisplayId);
-  if (offered) outputs[offered.id] = { use: 'audience', languages: null };
   useSetup.setState({
     busy: false,
     displays: snapshot.displays,
@@ -223,7 +219,7 @@ export async function finishSetup(coverOperator = false): Promise<void> {
   }
   // Gone back already (answered at once): the displays again, not Done.
   if (useSetup.getState().wentBack) useSetup.setState({ busy: false });
-  else useSetup.setState({ busy: false, finished: { tested: result.tested } });
+  else useSetup.setState({ busy: false, finished: { showing: result.showing } });
 }
 
 // ---- Keep these screens? (Session 50) ------------------------------------------------------------------------

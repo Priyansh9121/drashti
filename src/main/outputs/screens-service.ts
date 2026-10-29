@@ -4,12 +4,13 @@ import type { GroupLook } from '../../shared/looks';
 import { DEFAULT_GROUP_LOOK } from '../../shared/looks';
 import type { Lang } from '../../shared/model';
 import { type ScreenSwitch, type ScreenSwitches, switchFor } from '../../shared/screen-switches';
-import { GROUP_ROLES } from '../../shared/screens';
+import { DISPLAY_JOBS, GROUP_ROLES, jobOf } from '../../shared/screens';
 import type { SetupOutput } from '../../shared/setup';
 import type {
   CoverOptions,
   DisplayInfo,
   DisplayKey,
+  DisplayUse,
   NodeDisplays,
   ScreenConfig,
   ScreenPatch,
@@ -26,6 +27,8 @@ import {
   screenPatchSchema,
 } from '../../shared/screens-schema';
 import type { ScreenRepo } from '../db/screens';
+import type { JobFor, NotUsedDisplays } from './auto-screens';
+import { memoryNotUsed } from './auto-screens';
 import type { OutputManager } from './output-manager';
 import type { LooksSettings, ScreensChange, ScreensSetup } from './screens-setup';
 import { undoChanges } from './screens-setup';
@@ -122,6 +125,8 @@ export class ScreensService {
     private readonly looks: ScreenLooks = memoryScreenLooks(),
     /** Output nodes' displays and screens. */
     private readonly nodes: NodeScreens = NO_NODES,
+    /** The displays set Not used by hand (Session 55, auto-screens.ts): never taken by themselves again. */
+    private readonly notUsed: NotUsedDisplays = memoryNotUsed(),
   ) {}
 
   /** An output on this display would cover the operator window, and the operator has not agreed. */
@@ -143,7 +148,121 @@ export class ScreensService {
       groups: this.repo.groups(),
       status: [...this.outputs.status(), ...this.nodes.screenStatus()],
       nodes: this.nodes.displays(),
+      uses: this.uses(),
     };
+  }
+
+  /**
+   * What each of this computer's connected displays does (Session 55): the screen given it, on or off, matched as
+   * the outputs match theirs (the screens that are on first, then those off, to the displays left).
+   */
+  uses(): DisplayUse[] {
+    const displays = this.listDisplays();
+    const keyed = this.repo
+      .screens()
+      .filter((sc): sc is ScreenConfig & { displayKey: DisplayKey } => sc.displayKey !== null);
+    const on = keyed.filter((sc) => sc.enabled);
+    const off = keyed.filter((sc) => !sc.enabled);
+    const onDisplay = new Map<number, ScreenConfig>();
+    const place = (screens: (ScreenConfig & { displayKey: DisplayKey })[], among: readonly DisplayInfo[]) => {
+      const matched = matchDisplays(
+        screens.map((sc) => ({ screenId: sc.id, key: sc.displayKey })),
+        among,
+      );
+      for (const sc of screens) {
+        const id = matched.get(sc.id);
+        if (id !== undefined && id !== null) onDisplay.set(id, sc);
+      }
+    };
+    place(on, displays);
+    place(
+      off,
+      displays.filter((d) => !onDisplay.has(d.id)),
+    );
+    const roles = new Map(this.repo.groupIds().map((g) => [g.id, g.role]));
+    return displays.map((d) => {
+      const sc = onDisplay.get(d.id);
+      return {
+        displayId: d.id,
+        screenId: sc?.id ?? null,
+        groupId: sc?.groupId ?? null,
+        role: sc ? (roles.get(sc.groupId) ?? null) : null,
+      };
+    });
+  }
+
+  /** The first group with this role, made ("Audience", "Stage", every language in every Look) when there is none. */
+  private groupForJob(job: 'audience' | 'stage'): string {
+    const found = this.repo.groups().find((g) => g.role === job);
+    if (found) return found.id;
+    const base = job === 'stage' ? 'Stage' : 'Audience';
+    const names = new Set(this.repo.groups().map((g) => g.name));
+    let name = base;
+    for (let n = 2; names.has(name); n++) name = `${base} ${n}`;
+    const id = this.repo.createGroup(name, job);
+    this.looks.groupMade(id, null);
+    return id;
+  }
+
+  /** A new screen's name: its display's, or its number among the screens. */
+  private nameFor(display: DisplayInfo): string {
+    return display.label || `Screen ${String(this.repo.screens().length + 1)}`;
+  }
+
+  /**
+   * Displays plugged in, given their jobs by themselves (Session 55, auto-screens.ts): each a screen in the first
+   * group with that role, made when there is none, named after its display. Never the controls' display (left out
+   * there), so nothing asks; a display used meanwhile, or gone, is passed over.
+   */
+  giveJobs(jobs: readonly JobFor[]): ScreensResult {
+    const displays = this.listDisplays();
+    const busy = new Set(this.uses().flatMap((u) => (u.screenId === null ? [] : [u.displayId])));
+    let gave = 0;
+    for (const { display, job } of jobs) {
+      const d = displays.find((x) => x.id === display.id);
+      if (!d || busy.has(d.id)) continue;
+      this.repo.addScreen(this.groupForJob(job), this.nameFor(d), d.key);
+      busy.add(d.id);
+      gave++;
+    }
+    if (gave > 0) this.looks.groupsChanged();
+    return this.done();
+  }
+
+  /**
+   * A display's job changed by hand, one click (Session 55: Screens, a phone): the audience picture or the stage
+   * (its screen moved to the first group with that role, made when there is none, or a screen made for it), or Not
+   * used (its screen removed). Remembered by the display: a job given by hand is its, and Not used is never taken by
+   * itself again. A display that does the job already is left as it is (a key and fill pair's sends the audience
+   * picture). An output on the controls' display needs the operator's consent first, as ever.
+   */
+  setDisplayJob(rawDisplayId: unknown, rawJob: unknown, rawOptions?: unknown): ScreensResult {
+    const displayId = displayIdSchema.safeParse(rawDisplayId);
+    const job = z.enum(DISPLAY_JOBS).safeParse(rawJob);
+    if (!displayId.success || !job.success)
+      return this.fail('A display shows the audience picture, the stage, or nothing.');
+    const display = this.listDisplays().find((d) => d.id === displayId.data);
+    if (!display) return this.fail('That display is not connected any more.');
+    const use = this.uses().find((u) => u.displayId === display.id);
+    const screen = use?.screenId ? this.repo.screen(use.screenId) : null;
+    if (job.data === 'none') {
+      if (screen) this.repo.removeScreen(screen.id);
+      this.notUsed.remember(display.key);
+      if (screen) this.looks.groupsChanged();
+      return this.done();
+    }
+    if (screen && jobOf(use) === job.data) {
+      this.notUsed.forget(display);
+      return this.done();
+    }
+    const consent = this.needsCoverConsent(display.id, rawOptions);
+    if (consent) return consent;
+    const groupId = this.groupForJob(job.data);
+    if (screen) this.repo.moveScreen(screen.id, groupId);
+    else this.repo.addScreen(groupId, this.nameFor(display), display.key);
+    this.notUsed.forget(display);
+    this.looks.groupsChanged();
+    return this.done();
   }
 
   private done(): ScreensResult {
@@ -204,8 +323,13 @@ export class ScreensService {
     // YouTube's card in Screens is always there (Session 26): its group stays.
     if (this.repo.groupRole(id.data) === 'stream')
       return this.fail('The stream’s group stays: it is YouTube in Screens.');
+    const keys = this.repo
+      .screens()
+      .flatMap((sc) => (sc.groupId === id.data && sc.displayKey ? [sc.displayKey] : []));
     if (!this.repo.deleteGroup(id.data)) return this.fail('That group no longer exists.');
     this.looks.groupGone(id.data);
+    // Its displays are Not used now, by hand (Session 55): never taken by themselves again.
+    for (const key of keys) this.notUsed.remember(key);
     return this.done();
   }
 
@@ -228,6 +352,8 @@ export class ScreensService {
     if (consent) return consent;
     const count = this.repo.screens().length;
     this.repo.addScreen(groupId.data, display.label || `Screen ${count + 1}`, display.key);
+    // Given a job by hand (Session 55): no longer Not used.
+    this.notUsed.forget(display);
     return this.done();
   }
 
@@ -379,8 +505,11 @@ export class ScreensService {
       for (const sc of extra) this.repo.removeScreen(sc.id);
       if (o.use === 'none') {
         if (keep) this.repo.removeScreen(keep.id);
+        // Not used, by hand (Session 55): never taken by itself again.
+        this.notUsed.remember(display.key);
         continue;
       }
+      this.notUsed.forget(display);
       // A key and fill pair's screen shown as the audience picture stays in its pair, sending what it sent.
       if (keep && o.use === 'audience' && this.repo.groupRole(keep.groupId) === 'keyfill') {
         if (!keep.enabled) this.repo.updateScreen(keep.id, { enabled: true });
@@ -400,7 +529,10 @@ export class ScreensService {
 
   removeScreen(rawId: unknown): ScreensResult {
     const id = idSchema.safeParse(rawId);
+    const screen = id.success ? this.repo.screen(id.data) : null;
     if (!id.success || !this.repo.removeScreen(id.data)) return this.fail('That screen no longer exists.');
+    // Its display is Not used now, by hand (Session 55): never taken by itself again.
+    if (screen?.displayKey && screen.nodeId === null) this.notUsed.remember(screen.displayKey);
     return this.done();
   }
 

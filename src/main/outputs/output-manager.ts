@@ -1,4 +1,4 @@
-import { matchDisplays } from '../../shared/display-match';
+import { keyToSave, matchDisplays, sameKey } from '../../shared/display-match';
 import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
 import type { DisplayInfo, DisplayKey, ScreenConfig, ScreenStatus } from '../../shared/screens';
 
@@ -46,15 +46,6 @@ const realLater = (fn: () => void, ms: number) => {
     clearTimeout(timer);
   };
 };
-
-const sameKey = (a: DisplayKey, b: DisplayKey) =>
-  a.id === b.id &&
-  a.label === b.label &&
-  a.pixelWidth === b.pixelWidth &&
-  a.pixelHeight === b.pixelHeight &&
-  a.x === b.x &&
-  a.y === b.y &&
-  a.internal === b.internal;
 
 /**
  * Keeps one output window per enabled, assigned screen whose display is
@@ -138,8 +129,10 @@ export class OutputManager {
       const displayId = matches.get(screen.id);
       const display = displays.find((d) => d.id === displayId);
       if (!display) continue;
-      // Remember the display's current fingerprint so the next start matches exactly.
-      if (!sameKey(screen.displayKey, display.key)) this.deps.saveDisplayKey(screen.id, display.key);
+      // Remember the display's current fingerprint so the next start matches exactly: its own identity too
+      // (Session 55), kept as saved while the display's is not known now.
+      const key = keyToSave(screen.displayKey, display);
+      if (!sameKey(screen.displayKey, key)) this.deps.saveDisplayKey(screen.id, key);
       const entry = this.open.get(screen.id);
       const held = this.held.get(screen.id);
       if (entry) entry.window.setBounds(display.bounds);

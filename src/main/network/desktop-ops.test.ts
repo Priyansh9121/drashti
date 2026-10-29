@@ -147,7 +147,7 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     connected: true,
   };
   let midiLearning: MidiLearnable | null = null;
-  const snapshot = () => ({ displays: DISPLAYS, groups: GROUPS, status, nodes: [] });
+  const snapshot = () => ({ displays: DISPLAYS, groups: GROUPS, status, nodes: [], uses: [] });
   const done = (): ScreensResult => ({ ok: true, snapshot: snapshot() });
   /** As ScreensService answers: an output on the controls' display (1) waits for the operator's consent. */
   const coverCheck = (displayId: unknown, options?: CoverOptions): ScreensResult =>
@@ -223,6 +223,9 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
           (patch as { enabled?: boolean }).enabled === true
             ? coverCheck(1, options as CoverOptions | undefined)
             : done(),
+        ),
+        setDisplayJob: record('setDisplayJob', (displayId, job, options) =>
+          job === 'none' ? done() : coverCheck(displayId, options as CoverOptions | undefined),
         ),
         removeScreen: record('removeScreen'),
         identify: () => {
@@ -433,6 +436,7 @@ const OPS: [DeviceOp, Record<string, unknown>][] = [
   ['screens.deleteGroup', { groupId: 'g-hall' }],
   ['screens.useDisplay', { groupId: 'g-hall', displayId: 2 }],
   ['screens.change', { screenId: 's-1', patch: { name: 'Placeholder left projector' } }],
+  ['screens.displayJob', { displayId: 2, job: 'stage' }],
   ['screens.remove', { screenId: 's-1' }],
   ['screens.keep', {}],
   ['screens.goBack', {}],
@@ -469,6 +473,7 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
       // Never with a consent to cover the controls.
       { what: 'assignDisplay', args: ['g-hall', 2] },
       { what: 'updateScreen', args: ['s-1', { name: 'Placeholder left projector' }] },
+      { what: 'setDisplayJob', args: [2, 'stage'] },
       { what: 'removeScreen', args: ['s-1'] },
       { what: 'keep', args: [] },
       { what: 'goBack', args: [] },
@@ -484,6 +489,7 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
         groups: [HALL],
         status: [{ screenId: 's-1', state: 'showing', displayId: 2 }],
         nodes: [],
+        uses: [],
         switches: { audience: true, stage: false },
         asksFirst: { audience: true, stage: false },
         pending: { deadline: 1_015_000, coversControls: false },
@@ -513,6 +519,7 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
       'screens.deleteGroup',
       'screens.useDisplay',
       'screens.change',
+      'screens.displayJob',
       'screens.remove',
     ]);
     expect(t.calls.map((c) => c.what)).toEqual(['keep', 'goBack', 'identify']);
@@ -592,6 +599,31 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
     });
     // The phones were told as it was asked and as it was answered.
     expect(t.hints).toEqual(['setup', 'setup']);
+  });
+
+  // Session 55: a display's job in one tap, as Screens has it; on the controls' display, asked of the computer.
+  it('sets a display’s job as Screens does, asking the computer first on the controls’ display', async () => {
+    const t = setup();
+    expect(t.ask(t.remote, 'screens.displayJob', { displayId: 2, job: 'audience' }).status).toBe(200);
+    expect(t.ask(t.remote, 'screens.displayJob', { displayId: 2, job: 'lobby' }).status).toBe(400);
+    expect(
+      t.ask(t.remote, 'screens.displayJob', { displayId: 2, job: 'stage', coverOperator: true }).status,
+    ).toBe(400);
+    const asked = t.ask(t.remote, 'screens.displayJob', { displayId: 1, job: 'audience' });
+    expect(asked).toMatchObject({ status: 202, body: { ok: true, asked: true, message: ASKED_AT_COMPUTER } });
+    expect(t.boxes.map((b) => b.question)).toEqual([
+      {
+        who: 'Remote “Placeholder phone”',
+        what: 'to set Placeholder built-in display · 1920 × 1080 · 60 Hz to Audience',
+      },
+    ]);
+    t.boxes[0]?.answer(true);
+    await t.settle();
+    expect(t.calls).toEqual([
+      { what: 'setDisplayJob', args: [2, 'audience'] },
+      { what: 'setDisplayJob', args: [1, 'audience'] },
+      { what: 'setDisplayJob', args: [1, 'audience', { coverOperator: true }] },
+    ]);
   });
 
   it('changes nothing when the computer says no, or once that phone may no longer change the screens', async () => {

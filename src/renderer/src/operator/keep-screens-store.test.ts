@@ -12,7 +12,7 @@ type Store = typeof KeepStore;
 
 const asked: PendingScreens = { deadline: 1_000_000, coversControls: false };
 const covering: PendingScreens = { deadline: 1_005_000, coversControls: true };
-const EMPTY = { displays: [], groups: [], status: [], nodes: [] };
+const EMPTY = { displays: [], groups: [], status: [], nodes: [], uses: [] };
 
 /** A fresh store (it connects once per page), connected to a bridge whose first answer is `pending`. */
 async function connected(pending: () => Promise<PendingScreens | null>): Promise<{

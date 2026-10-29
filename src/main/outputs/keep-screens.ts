@@ -4,14 +4,16 @@ import type { ScreenStatus, ScreensResult, ScreensSnapshot } from '../../shared/
 
 /*
  * Keep these screens? (Session 50; Priyansh: in Set Up Screens… he chose the display his controls are on as the
- * audience picture by mistake, and couldn't get back). After a change that puts an output on a display (Set Up
- * Screens…'s Done or Finish, Show on, Screens' Use this display and On), Drashti asks for 15 s, with Keep and Go
- * back. Nothing pressed, it goes back by itself to the screens as they were: the setup is taken just before and
- * just after the change, and Go back undoes only what the change changed (Session 51, screens-setup.ts), so
- * whatever else changed meanwhile stays. Turning an output off asks nothing. A second change while one waits is
- * added to the first, so Go back returns to the screens before both, and its countdown starts again; a change
- * that puts nothing new on a display while one waits (an output turned off, a screen renamed) asks nothing, and
- * stays as it is when Go back undoes the ones asked about (Session 51's review).
+ * audience picture by mistake, and couldn't get back). After a change made by hand that puts an output on the
+ * display the controls are on (Set Up Screens…'s Done or Finish, Screens' job, Use this display and On, a phone's),
+ * Drashti asks for 15 s, with Keep and Go back. Nothing else asks (Session 55: on 29 Oct 2026 every Done on another
+ * display asked, its Esc went back, and Set Up Screens… came back to its displays, again and again; displays now set
+ * themselves). Nothing pressed, it goes back by itself to the screens as they were: the setup is taken just before
+ * and just after the change, and Go back undoes only what the change changed (Session 51, screens-setup.ts), so
+ * whatever else changed meanwhile stays. Turning an output off asks nothing. A second change over the controls while
+ * one waits is added to the first, so Go back returns to the screens before both, and its countdown starts again; a
+ * change that puts nothing new on the controls' display while one waits (an output elsewhere, one turned off, a
+ * screen renamed) asks nothing, and stays as it is when Go back undoes the ones asked about (Session 51's review).
  * Quitting while one waits goes back too, so the next start never opens a change nobody kept; and the changes
  * waiting are kept on disk until answered (Session 51, S3-2), so after a crash or a power cut the next start
  * goes back to the screens as they were before them.
@@ -44,6 +46,11 @@ export interface KeepScreensDeps<S> {
   restore(changes: readonly Change<S>[], quitting: boolean): ScreensResult;
   /** What each display shows now. */
   placed(): Placed;
+  /**
+   * The display the controls are on, as placed() names it ("here 1"), as each change begins (Session 55): only a
+   * change that puts an output there asks. Null: no output can cover them (windowed outputs), so none asks.
+   */
+  controls(): string | null;
   /** An output covers the controls now: it asks the same, large, in its middle. */
   coversControls(): boolean;
   /** The screens as they are, for Keep's answer. */
@@ -79,6 +86,16 @@ const realLater = (fn: () => void, ms: number) => {
 export function putsOutputOn(was: Placed, now: Placed): boolean {
   for (const [display, shows] of now) if (was.get(display) !== shows) return true;
   return false;
+}
+
+/**
+ * Whether a change put an output on the display the controls are on (Session 55): it shows something it did not
+ * (another screen, group or role). Only such a change asks Keep these screens?.
+ */
+export function putsOutputOnControls(was: Placed, now: Placed, controls: string | null): boolean {
+  if (controls === null) return false;
+  const shows = now.get(controls);
+  return shows !== undefined && was.get(controls) !== shows;
 }
 
 /**
@@ -159,10 +176,11 @@ export class KeepScreens<S> {
     return w ? { deadline: w.deadline, coversControls: w.coversControls } : null;
   }
 
-  /** Make a screen change; one that puts an output on a display then waits for Keep or Go back. */
+  /** Make a screen change; one that puts an output on the controls' display then waits for Keep or Go back. */
   change(run: () => ScreensResult): ScreensResult {
     if (this.deps.asks === false) return run();
     if (!this.waiting) this.deps.starting?.();
+    const controls = this.deps.controls();
     const before = this.deps.capture();
     const was = this.deps.placed();
     this.changing = true;
@@ -173,8 +191,10 @@ export class KeepScreens<S> {
       this.changing = false;
     }
     if (!result.ok) return result;
-    // Something new on a display asks; anything else is no question, nor one Go back undoes (a countdown goes on).
-    if (putsOutputOn(was, this.deps.placed())) this.ask({ before, after: this.deps.capture() });
+    // Something new on the controls' display asks; anything else is no question, nor one Go back undoes (a
+    // countdown goes on).
+    if (putsOutputOnControls(was, this.deps.placed(), controls))
+      this.ask({ before, after: this.deps.capture() });
     else this.refresh();
     return result;
   }

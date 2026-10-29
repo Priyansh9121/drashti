@@ -1,5 +1,5 @@
 import type { DeviceOp } from '../../shared/network-api';
-import { SWITCH_PARAM } from '../../shared/network-desktop';
+import { DISPLAY_PARAM, SWITCH_PARAM } from '../../shared/network-desktop';
 
 /*
  * The requests that make a phone a full Drashti (Session 54, the owner's item 3; docs/api.md): the computer's
@@ -28,6 +28,14 @@ export function desktopRoutes<R>(route: MakeRoute<R>): R[] {
       patch: b,
     })),
     route('POST', '/api/v1/screens/:id/remove', 'screens.remove', (_b, p) => ({ screenId: p['id'] })),
+    // A display's job in one tap (Session 55): Audience, Stage or Not used.
+    route(
+      'POST',
+      '/api/v1/displays/:id/job',
+      'screens.displayJob',
+      (b, p) => ({ ...b, displayId: Number(p['id']) }),
+      DISPLAY_PARAM,
+    ),
     route('POST', '/api/v1/screen-groups', 'screens.addGroup', (b) => b),
     route('POST', '/api/v1/screen-groups/:id/name', 'screens.renameGroup', (b, p) => ({
       ...b,

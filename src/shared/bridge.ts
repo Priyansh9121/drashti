@@ -108,11 +108,13 @@ import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
+  DisplayJob,
   OutputContext,
   OutputReport,
   ScreenPatch,
   ScreenRole,
   ScreensResult,
+  ScreensSaid,
   ScreensSnapshot,
 } from './screens';
 
@@ -799,6 +801,16 @@ export interface DrashtiBridge {
     /** May answer `confirm: 'covers-operator'`: ask the operator, then repeat with { coverOperator: true }. */
     assignDisplay(groupId: string, displayId: number, options?: CoverOptions): Promise<ScreensResult>;
     updateScreen(screenId: string, patch: ScreenPatch, options?: CoverOptions): Promise<ScreensResult>;
+    /**
+     * A display's job in one click (Session 55): the audience picture, the stage, or Not used. May answer
+     * `confirm: 'covers-operator'`, as assignDisplay does.
+     */
+    setJob(displayId: number, job: DisplayJob, options?: CoverOptions): Promise<ScreensResult>;
+    /** What the screens did by themselves (Session 55), last said, or null. */
+    lastSaid(): Promise<ScreensSaid | null>;
+    /** That was closed in the window (or its Change… followed): not said again as the window opens again. */
+    saidClosed(id: number): Promise<null>;
+    onSaid(listener: (said: ScreensSaid) => void): () => void;
     removeScreen(screenId: string): Promise<ScreensResult>;
     /** Put one of a node's displays into a group (Session 13). */
     assignNodeDisplay(groupId: string, nodeId: string, displayId: number): Promise<ScreensResult>;

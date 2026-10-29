@@ -49,6 +49,8 @@ const displayKeySchema: z.ZodType<DisplayKey> = z.object({
   x: z.number(),
   y: z.number(),
   internal: z.boolean(),
+  // The display's own identity (Session 55): left out of a key saved before.
+  hardwareId: z.string().max(500).nullable().optional(),
 });
 
 interface ScreenRow {

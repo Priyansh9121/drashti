@@ -34,7 +34,7 @@ import {
   SWITCH_NAMES,
 } from '../../shared/screen-switches';
 import type { CoverOptions, ScreensResult, ScreensSnapshot } from '../../shared/screens';
-import { GROUP_ROLES, SCALING_MODES } from '../../shared/screens';
+import { DISPLAY_JOB_WORDS, DISPLAY_JOBS, GROUP_ROLES, SCALING_MODES } from '../../shared/screens';
 import { canvasSizeSchema, displayIdSchema, nameSchema } from '../../shared/screens-schema';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
 import type { AnnouncementResult, AnnouncementsView } from '../../shared/announcements';
@@ -70,6 +70,8 @@ export interface DesktopScreens {
   /** `options` only ever from the computer's own yes (desktop-consent.ts), never from what a phone sent. */
   assignDisplay(groupId: unknown, displayId: unknown, options?: CoverOptions): ScreensResult;
   updateScreen(id: unknown, patch: unknown, options?: CoverOptions): ScreensResult;
+  /** A display's job (Session 55): Audience, Stage or Not used. */
+  setDisplayJob(displayId: unknown, job: unknown, options?: CoverOptions): ScreensResult;
   removeScreen(id: unknown): ScreensResult;
   /** Each output shows its name for a few seconds. */
   identify(): void;
@@ -178,6 +180,7 @@ export type DesktopOp =
   | 'screens.deleteGroup'
   | 'screens.useDisplay'
   | 'screens.change'
+  | 'screens.displayJob'
   | 'screens.remove'
   | 'screens.keep'
   | 'screens.goBack'
@@ -240,6 +243,7 @@ const groupRef = z.object({ groupId: idSchema }).strict();
 const renamed = z.object({ groupId: idSchema, name: nameSchema }).strict();
 const role = z.object({ groupId: idSchema, role: z.enum(GROUP_ROLES) }).strict();
 const useDisplay = z.object({ groupId: idSchema, displayId: displayIdSchema }).strict();
+const displayJob = z.object({ displayId: displayIdSchema, job: z.enum(DISPLAY_JOBS) }).strict();
 const screenRef = z.object({ screenId: idSchema }).strict();
 const screenChange = z
   .object({
@@ -365,6 +369,7 @@ export class DesktopAnswers {
       groups: snapshot.groups.filter((g) => g.role !== 'stream'),
       status: snapshot.status,
       nodes: snapshot.nodes,
+      uses: snapshot.uses,
       switches: this.acts.switches.get(),
       asksFirst: bothSwitches((which) => this.acts.switches.asksFirst(which)),
       pending: this.acts.screens.pending(),
@@ -427,6 +432,20 @@ export class DesktopAnswers {
             s.assignDisplay(groupId, displayId, { coverOperator: true }),
           );
         return done(result, `put ${what}`);
+      }
+      case 'screens.displayJob': {
+        const a = displayJob.safeParse(args);
+        if (!a.success) return deny(400, 'A display shows the audience picture, the stage, or nothing.');
+        const { displayId, job } = a.data;
+        // Never with the phone's consent: the window's coverOperator is the operator's alone.
+        const result = s.setDisplayJob(displayId, job);
+        const display = s.snapshot().displays.find((d) => d.id === displayId);
+        const what = `${display ? describeDisplay(display) : 'a display'} to ${DISPLAY_JOB_WORDS[job]}`;
+        if (!result.ok && result.confirm === 'covers-operator')
+          return this.askToCover(device.id, who, `to set ${what}`, op, () =>
+            s.setDisplayJob(displayId, job, { coverOperator: true }),
+          );
+        return done(result, `set ${what}`);
       }
       case 'screens.change': {
         const a = screenChange.safeParse(args);

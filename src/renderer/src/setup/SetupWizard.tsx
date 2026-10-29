@@ -1,6 +1,7 @@
 import { useEffect, useId } from 'react';
 import { describeDisplay } from '../../../shared/display-match';
 import { shortcutText } from '../../../shared/keymap';
+import { DISPLAY_JOB_WORDS } from '../../../shared/screens';
 import { LANG_NAMES } from '../../../shared/themes';
 import { CONTROLS_HERE } from '../screens/DisplayRow';
 import { LanguagePicker } from '../screens/LanguagePicker';
@@ -33,11 +34,8 @@ import {
 
 const useStreamStatus = () => useStream((s) => s.status);
 
-const USE_NAMES = {
-  audience: 'The audience picture',
-  stage: 'The stage view (performers)',
-  none: 'Not used',
-} as const;
+/** Each display's job as the wizard offers it (Session 55: Audience, Stage, Not used, as Screens has them). */
+const USE_NAMES = DISPLAY_JOB_WORDS;
 
 /** Which step it is, in words and as a row of numbers. */
 function StepList({ step }: { step: number }) {
@@ -75,8 +73,10 @@ function ScreensStep() {
   return (
     <div className="space-y-3">
       <p className="text-sm">
-        For each display the computer has, choose what it shows: the audience picture, the stage view for the
-        performers, or nothing. Audience and stage outputs can show a kirtan in their own languages.
+        Each display plugged in sets itself: the first (not the one with the controls) shows the audience
+        picture, the next the stage, and each remembers its job. Change any here, one click each: Audience
+        (what the hall sees), Stage (the performers’ view) or Not used. Audience and Stage can show a kirtan
+        in their own languages.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -377,15 +377,15 @@ function FinishStep() {
     return (
       <Notice tone="success" data-testid="setup-done">
         Done.{' '}
-        {finished.tested > 0
-          ? `A test slide is on ${plural(finished.tested, 'screen')} for a few seconds, each in its own languages.`
+        {finished.showing > 0
+          ? `${plural(finished.showing, 'screen')} ${finished.showing === 1 ? 'shows' : 'show'} now.`
           : 'No screen is showing yet.'}
       </Notice>
     );
   const themeName = state.themes.find((t) => t.id === plan.themeId)?.name;
   return (
     <div className="space-y-3 text-sm">
-      <p>Finish sets these, then shows a test slide on every screen. Nothing has changed yet.</p>
+      <p>Finish sets these. Nothing has changed yet.</p>
       <ul className="space-y-1.5" data-testid="setup-summary">
         {plan.outputs === null ? (
           <li>The screens stay as they are.</li>
@@ -525,9 +525,10 @@ export function SetupWizard({ platform }: { platform: string }) {
               the look new presentations start with.
             </p>
             <p className="text-muted">
-              Done on the displays sets the screens at once; the other steps change nothing until you press
-              Finish at the end. Each step can be skipped to keep things as they are, and the setup can be run
-              again from View, Set Up Screens… Drashti never changes a display’s resolution.
+              The screens set themselves as displays are plugged in; here they can be changed. Done on the
+              displays sets the screens at once; the other steps change nothing until you press Finish at the
+              end. Each step can be skipped to keep things as they are, and the setup can be run again from
+              View, Set Up Screens… Drashti never changes a display’s resolution.
             </p>
           </div>
         ) : name === 'Screens' ? (

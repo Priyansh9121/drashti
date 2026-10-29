@@ -125,6 +125,8 @@ export const DEVICE_OPS = {
   'screens.deleteGroup': ['remote'],
   'screens.useDisplay': ['remote'],
   'screens.change': ['remote'],
+  /** A display's job in one click (Session 55): Audience, Stage or Not used, as Screens has it. */
+  'screens.displayJob': ['remote'],
   'screens.remove': ['remote'],
   'screens.keep': ['remote'],
   'screens.goBack': ['remote'],

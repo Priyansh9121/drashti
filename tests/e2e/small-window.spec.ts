@@ -17,11 +17,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * their places, their buttons in reach. The displays are Drashti's pretend ones.
  */
 
-/** A first start as a person meets it, a display free for the hall: the welcome, then Start here behind it. */
+/** A first start as a person meets it, a display connected: the welcome, then Start here behind it. */
 const FIRST_START = {
   DRASHTI_TEST_NO_WIZARD: '0',
   DRASHTI_TEST_SEED_PLACEHOLDERS: '',
-  DRASHTI_TEST_SCREEN_OFFER: '1',
   DRASHTI_WINDOWED_OUTPUTS: '1',
   DRASHTI_EXTRA_DISPLAYS: '1',
 };
@@ -167,8 +166,11 @@ test('Start here at 1024 × 645 and 1024 × 768 in an empty library: centred or 
   await win.getByTestId('welcome-skip').click();
   const startHere = win.getByTestId('start-here');
   await expect(startHere.getByTestId('start-step')).toHaveCount(3);
-  // The display offered in step 3 too, beside Set Up Screens… (the case CI could not click).
-  await expect(startHere.getByTestId('show-on')).toHaveText(/^Show on /u);
+  // Step 3 says the screens set themselves (Session 55), with Set Up Screens… (the case CI could not click).
+  await expect(startHere.getByTestId('start-step').nth(2)).toContainText('The screens set themselves');
+  await expect(startHere.getByTestId('start-step').nth(2).getByRole('button')).toHaveText([
+    'Set Up Screens…',
+  ]);
   for (const size of [CI_WINDOW, { width: 1024, height: 768 }]) {
     const where = `${String(size.width)} × ${String(size.height)}`;
     await sizeOperatorWindow(app, win, size);

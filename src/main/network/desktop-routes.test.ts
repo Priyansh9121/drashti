@@ -116,6 +116,13 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
   ['POST', '/api/v1/screens/s-1/remove', { screenId: 's-2' }, 'screens.remove', { screenId: 's-1' }],
   [
     'POST',
+    '/api/v1/displays/2/job',
+    { job: 'stage', displayId: 3 },
+    'screens.displayJob',
+    { job: 'stage', displayId: 2 },
+  ],
+  [
+    'POST',
     '/api/v1/screen-groups',
     { name: 'Placeholder Hall' },
     'screens.addGroup',
@@ -218,7 +225,7 @@ describe('the phone as a full Drashti’s requests (Session 54)', () => {
   it('are each in the API’s list, which the documentation is checked against', () => {
     for (const [method, path] of ASKED) {
       const route = `${method} ${path}`
-        .replace(/\/(s-1|g-1|in-1)\//u, '/:id/')
+        .replace(/\/(s-1|g-1|in-1|2)\//u, '/:id/')
         .replace(/\/(audience|stage)$/u, '/:id');
       expect(API_ROUTES, route).toContain(route);
     }

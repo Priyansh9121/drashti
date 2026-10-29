@@ -597,6 +597,7 @@ describe('the network in the main process', () => {
       'screens.deleteGroup',
       'screens.useDisplay',
       'screens.change',
+      'screens.displayJob',
       'screens.remove',
       // Media's video inputs and Show a Window… (Session 54), Pro Mode's as in the window.
       'input.add',

@@ -26,7 +26,7 @@ import { loadTree, usePlaylists, watchPlaylists } from '../playlists/playlist-st
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
-import { connectScreens } from '../screens/screens-store';
+import { connectScreens, focusDisplay } from '../screens/screens-store';
 import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
 import { runAction, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -43,7 +43,7 @@ import { PanelGroup, PanelNote } from '../ui/Panel';
 import { Music, Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
-import { ShowOnOffer } from '../screens/ShowOn';
+import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
@@ -315,8 +315,13 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
       <EngineUnread />
       <StoppedScreens />
-      {/* A display connected and no hall screen yet (Session 44): Show on <it>, one click. */}
-      <ShowOnOffer />
+      {/* A display plugged in, given its job by itself (Session 55): said in one line, with Change… (Screens). */}
+      <ScreensSaidNotice
+        onChange={(displayId) => {
+          focusDisplay(displayId);
+          openScreens();
+        }}
+      />
       <NoSoundNotice />
       <StreamPageStopped />
       <LiveWindowNotice />

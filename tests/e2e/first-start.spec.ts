@@ -33,16 +33,6 @@ const engine = (win: Page) =>
     return { rev: snap.rev, live: snap.state.live, blackout: snap.state.blackout, logo: snap.state.logo };
   });
 
-/**
- * Whether a display is free for the hall's picture, so that the first start offers Show on (Session 44).
- * Counted here, not taken from Drashti's own rule (displayToOffer), so a wrong offer fails (Session 53):
- * nothing is set up at a first start and these tests have no pretend displays, so one is free exactly when
- * Drashti lists more than the controls' own display. Never on CI's computers, which have one; a second
- * monitor plugged in here is.
- */
-const displayFree = (win: Page): Promise<boolean> =>
-  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.screens.get()).displays.length > 1);
-
 /** The enabled primary buttons in the window, outside dialogs, by their words. */
 const primaries = (win: Page) =>
   win.evaluate(() =>
@@ -74,11 +64,11 @@ test('the lamp lights once, then Set Up Screens… opens the wizard at its Scree
   expect(flame.names).toBe('lamp-flame, lamp-breath');
   expect(flame.delays.split(', ')[1]).toBe('1.4s');
   await expectNoSeriousA11yIssues(win, 'the first start’s welcome');
-  // The one primary has the keyboard: Set Up Screens…, or with a display free for the hall (a second monitor
-  // plugged in here; CI's computers have none) Show on <it>, Set Up Screens… beside it (show-on.spec.ts).
-  const primary = (await displayFree(win))
-    ? welcome.getByTestId('show-on')
-    : welcome.getByRole('button', { name: 'Set Up Screens…' });
+  // The screens set themselves (Session 55): it says so, and Show on is gone. The one primary has the keyboard:
+  // Set Up Screens…, whatever displays this computer has.
+  await expect(welcome).toContainText('The screens set themselves');
+  await expect(welcome.getByTestId('show-on')).toHaveCount(0);
+  const primary = welcome.getByRole('button', { name: 'Set Up Screens…' });
   await expect(primary).toBeFocused();
   await expect(welcome.locator('[data-variant="primary"]')).toHaveCount(1);
   await welcome.getByRole('button', { name: 'Set Up Screens…' }).click();
@@ -122,11 +112,11 @@ test('Skip for now: the empty places lead, step 1’s Import… the one primary;
   await expect(start).toBeVisible();
   await expect(start.getByTestId('start-step')).toHaveCount(3);
   await expect(start.getByTestId('unlit-lamp')).toBeVisible();
-  // Step 1's Import… the one primary; with a display free for the hall (a second monitor plugged in here; CI's
-  // computers have none), the offer under the header has its own Show on, as a notice's next step does
-  // (show-on.spec.ts).
-  const free = await displayFree(win);
-  expect(await primaries(win)).toEqual(free ? [expect.stringMatching(/^Show on /u), 'Import…'] : ['Import…']);
+  // Step 1's Import… the one primary, whatever displays this computer has (Session 55: no Show on); step 3 says
+  // the screens set themselves.
+  expect(await primaries(win)).toEqual(['Import…']);
+  await expect(start.getByTestId('start-step').nth(2)).toContainText('The screens set themselves');
+  await expect(start.getByTestId('show-on')).toHaveCount(0);
   await expectNoSeriousA11yIssues(win, 'the window after Skip for now');
   await app.close();
   const again = await launchApp(FIRST, userData);

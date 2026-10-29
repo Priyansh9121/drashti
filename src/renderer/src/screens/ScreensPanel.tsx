@@ -39,7 +39,7 @@ import { SoundOutput } from './SoundOutput';
 import { ScreenCards } from './ScreenCards';
 import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
-import { useControlsDisplay } from './ShowOn';
+import { useControlsDisplay } from './controls-display';
 
 // The words are a phone's too (Session 54, the phone as a full Drashti).
 const stateText = SCREEN_STATE_WORDS;
@@ -358,8 +358,26 @@ function CoverConfirm({ platform }: { platform: string }) {
   );
 }
 
+/**
+ * Screens opened at a display (Session 55: the notice's Change…): its row in sight, its job's choice with the
+ * keyboard, once the displays are listed.
+ */
+function useFocusDisplay(listed: boolean): void {
+  const focusId = useScreens((s) => s.focusDisplayId);
+  useEffect(() => {
+    if (focusId === null || !listed) return;
+    useScreens.setState({ focusDisplayId: null });
+    const row = document.querySelector<HTMLElement>(
+      `[data-testid="display-row"][data-display-id="${String(focusId)}"]`,
+    );
+    row?.scrollIntoView({ block: 'center' });
+    row?.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.focus({ preventScroll: true });
+  }, [focusId, listed]);
+}
+
 export function ScreensPanel({ onClose, platform }: { onClose: () => void; platform: string }) {
   const { snapshot, error, busy } = useScreens();
+  useFocusDisplay(snapshot !== null);
   const [newGroup, setNewGroup] = useState('');
   // The display the controls are on, marked in the list (Session 50).
   const controlsDisplayId = useControlsDisplay();
@@ -421,6 +439,8 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
       <section className="space-y-2">
         <SectionTitle>Connected displays</SectionTitle>
         <p className="text-xs text-muted">
+          A display plugged in sets itself: the first (not the one with the controls) shows the audience
+          picture, the next the stage. Change one here in one click: each display remembers its job.
           Resolution and refresh rate are what the computer reports. Drashti never changes them.
         </p>
         {!snapshot ? (
@@ -434,6 +454,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
                 usedBy={usedBy.get(d.id) ?? null}
                 groups={snapshot.groups.filter((g) => g.role !== 'stream')}
                 controls={d.id === controlsDisplayId}
+                use={snapshot.uses.find((u) => u.displayId === d.id)}
               />
             ))}
           </ul>
@@ -469,8 +490,8 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
         </form>
         {snapshot?.groups.every((g) => g.role === 'stream') && (
           <EmptyState icon={Monitor} title="No screen groups yet" compact>
-            Add a group (for example Main Hall), then press “Use this display” next to each display that feeds
-            it.
+            A display plugged in sets itself, or give a display its job above. For a group of its own, add it
+            (for example Main Hall), then press “Use this display” next to each display that feeds it.
           </EmptyState>
         )}
         {/* The stream's group is YouTube's card, above. */}

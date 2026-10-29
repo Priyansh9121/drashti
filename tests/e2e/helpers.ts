@@ -73,7 +73,8 @@ export const NO_PLACEHOLDERS = { DRASHTI_TEST_SEED_PLACEHOLDERS: '' } as const;
  * (DRASHTI_TEST_NO_WIZARD: '0'), Drashti starts as Main without asking (DRASHTI_ROLE), and a new
  * library has the placeholder presentations the tests use (unless NO_PLACEHOLDERS). Keep these
  * screens? (Session 50) is asked only in a test about it (DRASHTI_TEST_KEEP_SCREENS: '1'): elsewhere a
- * screen change stands at once, as before. Quiet locally (see QUIET).
+ * screen change stands at once, as before. Displays set themselves (Session 55) only in a test about it
+ * (DRASHTI_TEST_AUTO_SCREENS: '1'): elsewhere a test's screens are its own. Quiet locally (see QUIET).
  */
 export async function launchApp(
   extraEnv: Record<string, string> = {},
@@ -95,6 +96,7 @@ export async function launchApp(
       DRASHTI_NO_QUIT_CONFIRM: '1',
       DRASHTI_TEST_NO_WIZARD: '1',
       DRASHTI_TEST_KEEP_SCREENS: '0',
+      DRASHTI_TEST_AUTO_SCREENS: '0',
       DRASHTI_TEST_QUIET: QUIET ? '1' : '0',
       // A first start asks whether the computer is Main or a node (Session 13): tests are Main
       // unless they say otherwise (tests/e2e/nodes.ts starts nodes).

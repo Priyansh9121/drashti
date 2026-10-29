@@ -21,24 +21,34 @@ import {
 
 /*
  * Keep these screens? (Session 50; Priyansh: in Set Up Screens… he chose the display his controls are on as the
- * audience picture by mistake, and couldn't get back). After a change that puts an output on a display, Drashti
- * asks for 15 s, with Keep and Go back; nothing pressed, it goes back by itself to exactly the screens as they
- * were. Turning an output off asks nothing. When the change covers the controls, the output there asks the same,
+ * audience picture by mistake, and couldn't get back). After a change made by hand that puts an output on the
+ * display the controls are on, Drashti asks for 15 s, with Keep and Go back; nothing pressed, it goes back by
+ * itself to exactly the screens as they were. Nothing else asks (Session 55: on 29 Oct 2026 each Done in Set Up
+ * Screens… asked, its Esc went back, and the wizard came back to its displays, round and round): a change on
+ * another display stands at once. Turning an output off asks nothing. The output over the controls asks the same,
  * large, in its middle. Set Up Screens… and Screens mark the display the controls are on.
  *
  * Every other test runs without the question (launchApp's DRASHTI_TEST_KEEP_SCREENS: '0'); these ask it. Quiet,
  * the displays are Drashti's pretend ones and the outputs windows (DRASHTI_WINDOWED_OUTPUTS,
- * DRASHTI_EXTRA_DISPLAYS), which never cover the controls; the output over the controls is checked on a real
- * screen (CI's one display, 1024 wide).
+ * DRASHTI_EXTRA_DISPLAYS), the first pretend one counting as the controls' (DRASHTI_TEST_CONTROLS_DISPLAY: an
+ * output there covers nothing on this computer); the output over the real controls is checked on a real screen
+ * (CI's one display, 1024 wide).
  *
  * Session 51: Screens' Shows and a key and fill pair's Sends ask too; Go back puts back only what the change
  * changed; a dialog opened while the question waits goes under it; and a change waiting when Drashti stops dead
  * goes back at the next start.
  */
 
-const ASKS = { DRASHTI_TEST_KEEP_SCREENS: '1', DRASHTI_WINDOWED_OUTPUTS: '1' };
 /** The first pretend display's id (src/main/outputs/electron-outputs.ts, EXTRA_DISPLAY_ID). */
 const PRETEND = 900_000_000;
+/** Keep these screens? asked, the controls on the first pretend display. */
+const ASKS = {
+  DRASHTI_TEST_KEEP_SCREENS: '1',
+  DRASHTI_WINDOWED_OUTPUTS: '1',
+  DRASHTI_TEST_CONTROLS_DISPLAY: String(PRETEND),
+};
+/** Covering the controls, agreed to: as Screens' and the wizard's own requests repeat it once the operator agrees. */
+const COVER = { coverOperator: true };
 
 /** The display the operator window is on. */
 const controlsDisplay = (app: ElectronApplication) =>
@@ -90,13 +100,12 @@ const openOutput = (app: ElectronApplication) =>
     'output',
   );
 
-test('Set Up Screens… marks the controls’ display; Done asks; Esc goes back to exactly the screens as they were, the wizard to its displays; Enter keeps', async () => {
-  test.setTimeout(120_000);
+test('Set Up Screens… marks the controls’ display; Done elsewhere asks nothing; Done over the controls asks; Esc goes back to exactly the screens as they were, the wizard to its displays; Enter keeps', async () => {
+  test.setTimeout(150_000);
   const { app } = await launchApp({ ...ASKS, DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const controls = await controlsDisplay(app);
-  const before = await screensNow(win);
+  const controls = PRETEND;
 
   await chooseMenuItem(app, 'set-up-screens');
   const wizard = win.getByTestId('setup-wizard');
@@ -109,11 +118,24 @@ test('Set Up Screens… marks the controls’ display; Done asks; Esc goes back 
     /the controls are on this display/iu,
   );
 
-  // The last display the stage's (the first free one starts as the hall's); Done.
+  // Session 55: the last display the stage's, another display than the controls': Done changes it at once,
+  // asking nothing (on 29 Oct 2026 this asked, and its Esc went round the loop).
   const displays = wizard.getByTestId('setup-display');
   await displays.last().getByTestId('setup-use-stage').click();
   await wizard.getByTestId('setup-screens-done').click();
+  await expect(wizard.getByTestId('setup-done')).toHaveText('Done. 1 screen shows now.');
   const question = win.getByTestId('keep-screens');
+  await expect(question).toHaveCount(0);
+  expect(await pending(win)).toBeNull();
+  await expect.poll(() => openOutputs(app)).toBe(1);
+  await wizard.getByRole('button', { name: 'Close', exact: true }).click();
+  const before = await screensNow(win);
+
+  // The controls' display the audience's: Done asks first to cover them (agreed), then Keep these screens?.
+  await chooseMenuItem(app, 'set-up-screens');
+  await controlsRow.getByTestId('setup-use-audience').click();
+  await wizard.getByTestId('setup-screens-done').click();
+  await win.getByTestId('setup-cover-confirm').getByRole('button', { name: 'Cover the controls' }).click();
   await expect(question).toContainText('Keep these screens?');
   const countdown = question.getByTestId('keep-screens-countdown');
   await expect(countdown).toHaveText(/^Going back by itself in \d+ seconds?\.$/u);
@@ -121,7 +143,7 @@ test('Set Up Screens… marks the controls’ display; Done asks; Esc goes back 
   expect(Number(await countdown.getAttribute('data-seconds'))).toBeLessThanOrEqual(15);
   await expect(question.getByTestId('keep-screens-keep')).toBeFocused();
   await expect.poll(() => openOutputs(app)).toBe(2);
-  expect(await pending(win)).toMatchObject({ coversControls: false });
+  expect(await pending(win)).toMatchObject({ coversControls: true });
   await expectNoSeriousA11yIssues(win, 'Keep these screens?', '[data-testid="keep-screens"]');
 
   // Esc goes back: exactly the screens as they were, the outputs closed, and the operator told. The wizard is at
@@ -129,20 +151,21 @@ test('Set Up Screens… marks the controls’ display; Done asks; Esc goes back 
   await win.keyboard.press('Escape');
   await expect(question).toHaveCount(0);
   await expect.poll(() => screensNow(win)).toEqual(before);
-  await expect.poll(() => openOutputs(app)).toBe(0);
+  await expect.poll(() => openOutputs(app)).toBe(1);
   await expect(win.getByTestId('operator-notice')).toContainText(
     'The screens went back to how they were before the change.',
   );
   await expect(wizard.getByTestId('setup-step')).toHaveText('Screens');
   await expect(wizard.getByTestId('setup-went-back')).toBeVisible();
-  await expect(displays.last().getByTestId('setup-use')).toHaveAttribute('data-use', 'stage');
+  await expect(controlsRow.getByTestId('setup-use')).toHaveAttribute('data-use', 'audience');
 
-  // Done again; Enter keeps (Keep has the keyboard): Done, and the outputs stay.
+  // Done again (agreed again); Enter keeps (Keep has the keyboard): Done, and the outputs stay.
   await wizard.getByTestId('setup-screens-done').click();
+  await win.getByTestId('setup-cover-confirm').getByRole('button', { name: 'Cover the controls' }).click();
   await expect(question.getByTestId('keep-screens-keep')).toBeFocused();
   await win.keyboard.press('Enter');
   await expect(question).toHaveCount(0);
-  await expect(wizard.getByTestId('setup-done')).toContainText('Done. A test slide is on 2 screens');
+  await expect(wizard.getByTestId('setup-done')).toHaveText('Done. 2 screens show now.');
   await expect(wizard.getByTestId('setup-went-back')).toHaveCount(0);
   expect(await pending(win)).toBeNull();
   // The outputs opened again with that Done: each is listed once its page is (a moment after).
@@ -150,23 +173,33 @@ test('Set Up Screens… marks the controls’ display; Done asks; Esc goes back 
   await app.close();
 });
 
-test('Show on asks too; Go back takes the hall’s picture off that display again', async () => {
+test('Screens’ job in one click: another display’s asks nothing; the controls’ display asks, and Go back takes the picture off it again', async () => {
   test.setTimeout(90_000);
-  const { app } = await launchApp({ ...ASKS, DRASHTI_TEST_SCREEN_OFFER: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const { app } = await launchApp({ ...ASKS, DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const before = await screensNow(win);
-  const offer = win.getByTestId('show-on-offer');
-  await offer.getByTestId('show-on').click();
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  const row = (id: number) => win.locator(`[data-testid="display-row"][data-display-id="${String(id)}"]`);
   const question = win.getByTestId('keep-screens');
-  await expect(question).toContainText('Keep these screens?');
+  // Another display: the audience picture at once, nothing asked.
+  await row(PRETEND + 1)
+    .getByTestId('display-job-audience')
+    .click();
+  await expect(row(PRETEND + 1).getByTestId('display-job')).toHaveAttribute('data-job', 'audience');
   await expect.poll(() => openOutputs(app)).toBe(1);
+  await expect(question).toHaveCount(0);
+  expect(await pending(win)).toBeNull();
+  const before = await screensNow(win);
+  // The controls' display: Cover the controls? first, then Keep these screens?; Go back.
+  await row(PRETEND).getByTestId('display-job-stage').click();
+  await win.getByTestId('cover-confirm').getByRole('button', { name: 'Cover the controls' }).click();
+  await expect(question).toContainText('Keep these screens?');
+  await expect.poll(() => openOutputs(app)).toBe(2);
   await question.getByTestId('keep-screens-go-back').click();
   await expect(question).toHaveCount(0);
   await expect.poll(() => screensNow(win)).toEqual(before);
-  await expect.poll(() => openOutputs(app)).toBe(0);
-  // No hall screen again: the display is offered again.
-  await expect(offer.getByTestId('show-on')).toBeVisible();
+  await expect.poll(() => openOutputs(app)).toBe(1);
+  await expect(row(PRETEND).getByTestId('display-job')).toHaveAttribute('data-job', 'none');
   await app.close();
 });
 
@@ -180,7 +213,7 @@ test('in Screens: the controls’ display marked; Use this display asks, Enter k
   });
   const win = await operatorPage(app);
   await operatorReady(win);
-  const controls = await controlsDisplay(app);
+  const controls = PRETEND;
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win.getByTestId('display-controls-here')).toHaveCount(1);
   await expect(
@@ -192,11 +225,14 @@ test('in Screens: the controls’ display marked; Use this display asks, Enter k
   await win.getByRole('button', { name: 'Add group' }).click();
   await expect(win.getByTestId('screen-group')).toHaveCount(1);
 
-  // Use this display (the pretend one): asked, the seconds left in words; Keep has the keyboard, Enter keeps.
+  // Use this display (the pretend one, the controls'): agreed to, then asked, the seconds left in words; Keep has
+  // the keyboard, Enter keeps.
   await win
     .locator(`[data-testid="display-row"][data-display-id="${String(PRETEND)}"]`)
     .getByRole('button', { name: 'Use this display' })
     .click();
+  const cover = win.getByTestId('cover-confirm');
+  await cover.getByRole('button', { name: 'Cover the controls' }).click();
   const question = win.getByTestId('keep-screens');
   await expect(question).toContainText('Keep these screens?');
   const countdown = question.getByTestId('keep-screens-countdown');
@@ -221,8 +257,9 @@ test('in Screens: the controls’ display marked; Use this display asks, Enter k
   expect(await pending(win)).toBeNull();
   await expect(question).toHaveCount(0);
 
-  // On again: asked, counting down; nothing pressed, it goes back by itself (Off again), and says so.
+  // On again (agreed to): asked, counting down; nothing pressed, it goes back by itself (Off again), and says so.
   await on.click();
+  await cover.getByRole('button', { name: 'Cover the controls' }).click();
   await expect(question).toContainText('Keep these screens?');
   await expect(state).toContainText('Showing');
   const first = Number(await countdown.getAttribute('data-seconds'));
@@ -349,16 +386,18 @@ test('Screens’ Shows and a key and fill pair’s Sends ask too: Esc goes back 
   const { app } = await launchApp({ ...ASKS, DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
   await operatorReady(win);
-  // A group on both pretend displays, each kept.
+  // A group on both pretend displays (the first the controls', agreed to: kept; the other asks nothing).
   const groupId = await makeGroup(win, 'Switcher');
   for (const displayId of [PRETEND, PRETEND + 1]) {
     await screensChange(() =>
-      win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
+      win.evaluate(({ g, d, o }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d, o), {
         g: groupId,
         d: displayId,
+        o: COVER,
       }),
     );
-    await screensChange(() => win.evaluate(() => (globalThis as PageGlobals).drashti.screens.keep()));
+    if ((await pending(win)) !== null)
+      await screensChange(() => win.evaluate(() => (globalThis as PageGlobals).drashti.screens.keep()));
   }
   await expect.poll(() => openOutputs(app)).toBe(2);
   const before = await screensNow(win);
@@ -400,14 +439,15 @@ test('Go back puts back only what the change changed: another group’s language
   const { app } = await launchApp({ ...ASKS, DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
   await operatorReady(win);
+  // The hall on the second pretend display (not the controls': asked nothing).
   const hall = await makeGroup(win, 'Main Hall');
   await screensChange(() =>
     win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
       g: hall,
-      d: PRETEND,
+      d: PRETEND + 1,
     }),
   );
-  await screensChange(() => win.evaluate(() => (globalThis as PageGlobals).drashti.screens.keep()));
+  expect(await pending(win)).toBeNull();
   await screensChange(() =>
     win.evaluate((g) => (globalThis as PageGlobals).drashti.screens.setGroupLanguages(g, ['gu']), hall),
   );
@@ -416,18 +456,22 @@ test('Go back puts back only what the change changed: another group’s language
     win.evaluate((g) => (globalThis as PageGlobals).drashti.screens.setGroupLanguages(g, ['en']), lobby),
   );
 
-  // Set Up Screens…'s Done, as the wizard sends it: the hall in English, the stage view on the other display.
+  // Set Up Screens…'s Done, as the wizard sends it once the operator agreed to cover the controls: the hall in
+  // English, the stage view on the controls' display.
   const done = await win.evaluate(
-    (d) =>
-      (globalThis as PageGlobals).drashti.setup.finish({
-        outputs: [
-          { displayId: d, use: 'audience', languages: ['en'] },
-          { displayId: d + 1, use: 'stage', languages: null },
-        ],
-        sound: 'skip',
-        themeId: null,
-      }),
-    PRETEND,
+    ({ d, o }) =>
+      (globalThis as PageGlobals).drashti.setup.finish(
+        {
+          outputs: [
+            { displayId: d + 1, use: 'audience', languages: ['en'] },
+            { displayId: d, use: 'stage', languages: null },
+          ],
+          sound: 'skip',
+          themeId: null,
+        },
+        o,
+      ),
+    { d: PRETEND, o: COVER },
   );
   expect(done.ok).toBe(true);
   const question = win.getByTestId('keep-screens');
@@ -457,11 +501,13 @@ test('a dialog opened while the question waits goes under it: Keep keeps the key
   const win = await operatorPage(app);
   await operatorReady(win);
   const groupId = await makeGroup(win, 'Main Hall');
+  // On the controls' display, agreed to: asked.
   const ask = () =>
     screensChange(() =>
-      win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
+      win.evaluate(({ g, d, o }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d, o), {
         g: groupId,
         d: PRETEND,
+        o: COVER,
       }),
     );
   const question = win.getByTestId('keep-screens');
@@ -517,9 +563,10 @@ test('Drashti stopped dead while the question waits: the next start goes back to
   const groupId = await makeGroup(win, 'Main Hall');
   const before = await screensNow(win);
   await screensChange(() =>
-    win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
+    win.evaluate(({ g, d, o }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d, o), {
       g: groupId,
       d: PRETEND,
+      o: COVER,
     }),
   );
   await expect(win.getByTestId('keep-screens')).toContainText('Keep these screens?');

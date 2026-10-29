@@ -16,7 +16,7 @@ import { KeepQuestion } from './KeepQuestion';
 import { SwitchQuestion } from './SwitchQuestion';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
-import { DisplayNumber, TestCard } from './SetupCards';
+import { DisplayNumber } from './SetupCards';
 import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
@@ -260,7 +260,6 @@ function Output() {
       {state && (!stage || showsHall(look.stageLayout)) && (
         <Preloader next={state.next} pictures={state.pictures} />
       )}
-      {context && ready && <TestCard context={context} languages={look.languages} />}
       <IdentifyOverlay />
       {/* The operator window's "Turn Audience off?" (Session 51), over the picture while this output covers the
           controls; Keep these screens? (Session 50) over everything. */}

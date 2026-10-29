@@ -41,6 +41,7 @@ import { RecoveryBanner } from '../operator/RecoveryBanner';
 import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { StoppedScreens } from '../screens/StoppedScreens';
+import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { EngineUnread } from '../operator/EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
@@ -531,6 +532,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           they never cover the big buttons. */}
       <EngineUnread />
       <StoppedScreens />
+      {/* A display plugged in, given its job by itself (Session 55): said here too; Simple Mode changes no screen. */}
+      <ScreensSaidNotice onChange={null} />
       <NoSoundNotice />
       <StreamPageStopped />
       <LiveWindowNotice />

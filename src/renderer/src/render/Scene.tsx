@@ -20,7 +20,7 @@ import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
 import { LiveWindowView } from './LiveWindowView';
 import { useEntrance } from './entrance';
-import { IdleRotation } from './IdleRotation';
+import { NothingUp, nothingUpShows } from './NothingUp';
 import { clockHeld, engineFrameNow, onClockJump } from './clock';
 import { LANG_FONT_STACK } from './fonts';
 import { textLang } from './lang';
@@ -477,6 +477,8 @@ export const Scene = memo(function Scene({
   const nothingUp = background === null && (layers.slide === null || !shown('slide')) && up === null;
   const idle =
     nothingUp && (look.idle === 'always' || (look.idle === 'started' && state.idle.startedAt !== null));
+  // What shows while nothing is up (Session 55, render/NothingUp.tsx: Part 6's wallpaper goes there).
+  const nothingUpNow = nothingUp ? nothingUpShows(idle) : null;
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
   // The pictures' looks and the live zoom, as the state carries them (Session 26e): every screen alike.
   const pictures = useMemo(
@@ -532,6 +534,7 @@ export const Scene = memo(function Scene({
         data-look-layers={look.layers.join(',')}
         data-movement={look.movement}
         data-pip={up ? (up.swapped ? 'swapped' : 'up') : 'none'}
+        data-nothing-up={nothingUpNow ?? undefined}
         style={{
           position: 'relative',
           width: canvas.width,
@@ -560,7 +563,14 @@ export const Scene = memo(function Scene({
                     />
                   )}
                 </MainSlot>
-                {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
+                {nothingUpNow && (
+                  <NothingUp
+                    shows={nothingUpNow}
+                    idle={state.idle}
+                    languages={look.languages}
+                    canvas={canvas}
+                  />
+                )}
                 <MainSlot slot={slotOf('slide')} swap={swap}>
                   <SlideLayerView
                     layer={shown('slide') ? layers.slide : null}
