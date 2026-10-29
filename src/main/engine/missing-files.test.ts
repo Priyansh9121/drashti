@@ -423,10 +423,15 @@ describe('a slide’s sound cue whose file is missing (Session 53)', () => {
       soundMissing: 'Placeholder hymn.wav',
     });
     expect(engine.current.layers.audio).toBe(music);
-    // A slide whose sound is there takes the audio layer from the music, as it always has.
+    // A slide whose sound is there plays over the music, which plays on under it, lowered (the owner's answer of 30 Oct,
+    // Session 55 Part 7: until then, it took the audio layer from the music).
     engine.dispatch({ type: 'next' });
-    expect(engine.current.layers.audio).toMatchObject({ mediaId: 'bell' });
-    expect(engine.current.layers.audio).not.toHaveProperty('music');
+    expect(engine.current.layers.audio).toMatchObject({
+      mediaId: 'track',
+      startedAt: music?.startedAt,
+      music: { playlistId: 'before-sabha' },
+      over: { mediaId: 'bell', cue: true },
+    });
   });
 
   it('after an unexpected restart, the slide put back says so again, the sound as it was', () => {

@@ -314,5 +314,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return state.stopped ? state : { ...state, stopped: { at: action.at } };
     case 'stage/set':
       return sameData(state.stage, action.stage) ? state : { ...state, stage: action.stage };
+    case 'sound/set':
+      return sameData(state.sound, action.sound) ? state : { ...state, sound: action.sound };
   }
 }

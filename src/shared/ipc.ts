@@ -102,6 +102,7 @@ import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-
 import type { PendingScreens } from './keep-screens';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
+import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
 import type {
   CoverOptions,
   DisplayJob,
@@ -420,6 +421,20 @@ export const IPC = {
     testTone: 'audio:test-tone',
     /** main -> operator: the sound output status changed. */
     status: 'audio:status',
+  },
+  /**
+   * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside switch, a file's Even
+   * loudness, and Trim black and silence on a video (each the operator window's).
+   */
+  sound: {
+    view: 'sound:view',
+    /** A video's or sound's loudness as measured, and its own switch. */
+    file: 'sound:file',
+    setStepsAside: 'sound:set-steps-aside',
+    setEven: 'sound:set-even',
+    trimEdges: 'sound:trim-edges',
+    /** main -> operator: Audio's switch or a file's Even loudness changed. */
+    changed: 'sound:changed',
   },
   playlists: {
     tree: 'playlists:tree',
@@ -1139,6 +1154,11 @@ export interface InvokeContract {
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
   [IPC.media.showSave]: { args: [jobId: string]; result: null };
+  [IPC.sound.view]: { args: []; result: SoundView };
+  [IPC.sound.file]: { args: [mediaId: string]; result: FileSoundView | null };
+  [IPC.sound.setStepsAside]: { args: [on: boolean]; result: SoundViewResult };
+  [IPC.sound.setEven]: { args: [mediaId: string, on: boolean]; result: EvenResult };
+  [IPC.sound.trimEdges]: { args: [mediaId: string]; result: TrimEdgesResult };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
@@ -1381,6 +1401,7 @@ export interface EventContract {
   [IPC.audio.testTone]: { deviceId: string };
   [IPC.setup.open]: { at: number };
   [IPC.audio.status]: AudioOutputStatus;
+  [IPC.sound.changed]: SoundView;
   [IPC.stream.changed]: StreamStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.savesChanged]: SaveJob[];

@@ -56,6 +56,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'screenSwitches',
     'setup',
     'shastra',
+    // Audio's Music steps aside, a file's Even loudness, Trim black and silence (Session 55, Part 7).
+    'sound',
     'stageLayouts',
     'stream',
     'timers',

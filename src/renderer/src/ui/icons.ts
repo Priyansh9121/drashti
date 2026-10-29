@@ -42,6 +42,8 @@ export { FilePlus, Repeat2, Wrench } from 'lucide-react';
 export { FolderSync } from 'lucide-react';
 // Session 44: back up to a folder playlist's parent folder.
 export { CornerLeftUp } from 'lucide-react';
+// Session 55, Part 7: Trim black and silence in a video's menu.
+export { Scissors } from 'lucide-react';
 // Session 54: a playlist shared with phones and tablets.
 export { Share2 } from 'lucide-react';
 // Session 26e: the Picture editor, and zooming the live picture.

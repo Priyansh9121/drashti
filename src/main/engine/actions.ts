@@ -3,6 +3,7 @@ import type { Quote } from '../../shared/idle';
 import type { LiveLook } from '../../shared/looks';
 import type { LiveZoom, PictureLook } from '../../shared/picture-look';
 import type { RenderSlide, Transition } from '../../shared/model';
+import type { SoundState } from '../../shared/sound';
 import type { StageState } from '../../shared/stage-layouts';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
@@ -138,4 +139,6 @@ export type EngineAction =
   /** Drashti stopped (Session 54, access by Gmail): the screens fade to black from `at`. */
   | { type: 'access/stop'; at: number }
   /** The stage screens (Session 55): the chosen layout, Stage off, the chosen video input. */
-  | { type: 'stage/set'; stage: StageState };
+  | { type: 'stage/set'; stage: StageState }
+  /** How Drashti's own sound plays now (Session 55, Part 7): the music stepping aside, each file's even gain. */
+  | { type: 'sound/set'; sound: SoundState };

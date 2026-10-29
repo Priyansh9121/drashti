@@ -5,6 +5,7 @@ import type { ButtonSize, ButtonVariant } from './Button';
 import { Button, IconButton } from './Button';
 import { cx } from './cx';
 import type { Icon } from './icons';
+import { Check } from './icons';
 import { Kbd } from './Kbd';
 import { leave, useArrival } from './motion';
 
@@ -26,6 +27,11 @@ export interface MenuEntry {
   kbd?: string;
   /** A line above this entry, starting a new group. */
   separatorBefore?: boolean;
+  /**
+   * A switch (Session 55, Part 7: a file's Even loudness): ticked or not, said as a checkbox; choosing it turns it the
+   * other way. Left out for an ordinary choice.
+   */
+  checked?: boolean;
 }
 
 export interface MenuPlace {
@@ -166,13 +172,15 @@ export function Menu({
       className="z-50 min-w-48 rounded-lg border border-line-strong bg-panel-2 p-1 shadow-overlay"
     >
       {entries.map((entry) => {
-        const IconShape = entry.icon;
+        // A switch shows its tick where an icon goes.
+        const IconShape = entry.checked === undefined ? entry.icon : entry.checked ? Check : undefined;
         return (
           <Fragment key={entry.label}>
             {entry.separatorBefore && <div role="separator" className="my-1 h-px bg-line" />}
             <button
               type="button"
-              role="menuitem"
+              role={entry.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+              aria-checked={entry.checked}
               disabled={entry.disabled}
               className={cx(
                 'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-panel-3 focus-visible:bg-panel-3 disabled:cursor-not-allowed disabled:opacity-40',

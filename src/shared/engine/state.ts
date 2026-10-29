@@ -9,6 +9,7 @@ import type { PlaybackMarker } from '../markers';
 import type { LiveZoom, PictureLook } from '../picture-look';
 import type { LowerThird } from '../lower-thirds';
 import { NO_STAGE, type StageState } from '../stage-layouts';
+import type { SoundState } from '../sound';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -267,6 +268,19 @@ export interface AudioLayer extends AudioChoice {
   across?: AcrossSlides;
   /** A deck's fades in from its start point and out before its end point (ms; Session 54), as its deck says. */
   fades?: { inMs: number; outMs: number };
+  /**
+   * A slide's own sound cue (Session 55, Part 7): another slide's own sound takes its place, as before. Left out for a
+   * sound the operator started (from Media, a playlist's row, Audio) and an audio playlist's track.
+   */
+  cue?: true;
+  /**
+   * A slide's own sound, or a deck's own soundtrack, playing over the operator's sound (Session 55, Part 7: the owner's
+   * answer of 30 Oct): an audio playlist's track, or a sound the operator started, plays on under it, never stopped for
+   * it, stepping aside as it does under a video (shared/sound.ts) until this one ends. It stays as a slide's sound
+   * does, over the operator's sound's next track, Pause and Play, until another slide's own sound takes its place,
+   * Clear audio or Clear all, or (a deck's, with its `across`) its deck's end. Left out when there is none.
+   */
+  over?: AudioLayer;
 }
 
 /** Where a sound set to play across slides plays (Session 54): its presentation, up to its last slide. */
@@ -641,6 +655,14 @@ export interface EngineState {
    * the audience screens reads it. Left out (a state saved before 15): the Standard stage screen, Stage on.
    */
   stage?: StageState;
+  /**
+   * How Drashti's own sound plays now (Session 55, Part 7, shared/sound.ts): whether the music steps aside under a video
+   * with sound, the gain each file sounding now plays with (even loudness), and the videos up with no sound of their
+   * own. Only the main process sets it, from the library; the audio player and the stream's page play by it. Left out
+   * (an older state, or an engine with no library): the music steps aside, and every file plays as it is. An optional
+   * field an older page leaves alone, so the state's version stays.
+   */
+  sound?: SoundState;
 }
 
 export function emptyLayers(): Layers {

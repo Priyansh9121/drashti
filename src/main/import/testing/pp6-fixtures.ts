@@ -85,6 +85,8 @@ export interface Pp6SlideSpec {
   shapes?: Pp6Shape[];
   /** Its sound cue's file; or its sound cues' files, in order (Session 54: an import can give a slide two). */
   audio?: string | string[];
+  /** Its sound cues play once instead of going round (Session 55, Part 7); left out, they go round, as before. */
+  audioOnce?: boolean;
   /** A Clear cue (clears a layer), which Drashti does not run yet. */
   clear?: boolean;
   /** true: an RVTransition of type 9 for 1 s; or its type (-1 for none of its own) and seconds. */
@@ -150,7 +152,7 @@ function slide(s: Pp6SlideSpec, i: number): string {
   const audioCue = (s.audio === undefined ? [] : [s.audio].flat())
     .map(
       (path, n) =>
-        `<RVAudioCue UUID="A-${i}${n > 0 ? `-${n}` : ''}" displayName="Placeholder audio${n > 0 ? ` ${n + 1}` : ''}" actionType="0" enabled="true" timeStamp="0" delayTime="0"><RVAudioElement rvXMLIvarName="element" source="${esc(fileUrl(path))}" volume="0.8" playRate="1" loopBehavior="1" audioType="0" inPoint="0" outPoint="0" displayName="audio"/></RVAudioCue>`,
+        `<RVAudioCue UUID="A-${i}${n > 0 ? `-${n}` : ''}" displayName="Placeholder audio${n > 0 ? ` ${n + 1}` : ''}" actionType="0" enabled="true" timeStamp="0" delayTime="0"><RVAudioElement rvXMLIvarName="element" source="${esc(fileUrl(path))}" volume="0.8" playRate="1" loopBehavior="${s.audioOnce === true ? '0' : '1'}" audioType="0" inPoint="0" outPoint="0" displayName="audio"/></RVAudioCue>`,
     )
     .join('');
   const clearCue = s.clear

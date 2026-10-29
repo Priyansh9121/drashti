@@ -324,6 +324,14 @@ const bridge: DrashtiBridge = {
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },
+  sound: {
+    view: () => invoke(IPC.sound.view),
+    file: (mediaId) => invoke(IPC.sound.file, mediaId),
+    setStepsAside: (on) => invoke(IPC.sound.setStepsAside, on),
+    setEven: (mediaId, on) => invoke(IPC.sound.setEven, mediaId, on),
+    trimEdges: (mediaId) => invoke(IPC.sound.trimEdges, mediaId),
+    onChanged: (listener) => on(IPC.sound.changed, listener),
+  },
   audio: {
     getOutput: () => invoke(IPC.audio.getOutput),
     setOutput: (device) => invoke(IPC.audio.setOutput, device),

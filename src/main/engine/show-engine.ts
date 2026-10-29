@@ -54,6 +54,7 @@ import { BUILT_IN_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } fro
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { remapPosition } from '../../shared/order';
 import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '../../shared/stage-layouts';
+import { type SoundState, soundFilesOf } from '../../shared/sound';
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
@@ -127,7 +128,22 @@ function missingFile(played: PlayedSlide, up: BackgroundLayer | null): string | 
 function missingSound(played: PlayedSlide, up: AudioLayer | null): string | null {
   const cue = soundCueOf(played.cues);
   if (cue?.missing !== true) return null;
-  return up?.mediaId === cue.mediaId ? null : cue.name;
+  // Playing over the music (Session 55, Part 7) is playing too.
+  return up?.mediaId === cue.mediaId || up?.over?.mediaId === cue.mediaId ? null : cue.name;
+}
+
+/**
+ * The operator's own sound on the audio layer (Session 55, Part 7): an audio playlist's track, or a sound the operator
+ * started (from Media, a playlist's row, Audio); null for none, or for a slide's or a deck's own sound.
+ */
+function operatorSound(up: AudioLayer | null): AudioLayer | null {
+  return up !== null && up.mediaId !== null && up.cue === undefined && up.across === undefined ? up : null;
+}
+
+/** The operator's new sound keeps a slide's or a deck's own sound playing over the one before (Part 7). */
+function keepingOver(next: AudioLayer, was: AudioLayer | null): AudioLayer {
+  const over = operatorSound(was)?.over;
+  return over && operatorSound(next) && next.over === undefined ? { ...next, over } : next;
 }
 
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
@@ -244,6 +260,13 @@ export interface EngineOptions {
   inputNamed?: (name: string) => VideoInput | null;
   /** How a timer shown alone looks (Session 50): the library's default theme's words; Drashti's own when left out. */
   timerLook?: () => TimerLook;
+  /**
+   * How a file sounds (Session 55, Part 7, main/sound/): the gain it plays with for even loudness (1: as it is), and
+   * whether it has no sound of its own; null while the library does not know (not measured yet, or not a file).
+   */
+  soundOf?: (mediaId: string) => { gain: number; silent: boolean } | null;
+  /** Whether the music steps aside under a video with sound (Part 7, K: Audio's switch; on when left out). */
+  stepsAside?: () => boolean;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -553,8 +576,19 @@ export class ShowEngine {
     if (request.wallpaper) actions.push({ type: 'wallpaper/set', on: true });
     // The sound keeps its start time and its last jump, so it carries on where it would be now, as a video does.
     if (request.audio) {
-      const { clip: _clip, marks: _marks, ...played } = request.audio;
-      const audio = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
+      const { clip: _clip, marks: _marks, over, ...played } = request.audio;
+      // A slide's or a deck's own sound over the music (Session 55, Part 7) comes back over it, the same way.
+      const above = over
+        ? (({ clip: _c, marks: _m, ...rest }) => ({
+            ...rest,
+            ...this.libraryOf(rest.mediaId, rest.durationMs),
+          }))(over)
+        : null;
+      const audio = {
+        ...played,
+        ...this.libraryOf(played.mediaId, played.durationMs),
+        ...(above ? { over: above } : {}),
+      };
       actions.push({ type: 'audio/set', audio });
     }
     for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
@@ -670,6 +704,41 @@ export class ShowEngine {
    * the show: what Back and Put it back would undo stays. Run after Back and Put it back too, for the slide they bring
    * back exactly.
    */
+  /**
+   * The library's word on how files sound changed (Session 55, Part 7: a file measured, its Even loudness switched,
+   * Audio's Music steps aside switched): what plays now follows at once. Not a change to the show: what Back and Put it
+   * back would undo stays.
+   */
+  refreshSound(): CommandResult {
+    const sound = this.soundFor(this.state);
+    if (!sound || sameData(this.state.sound, sound)) return this.unchanged();
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'sound/set', sound }]);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  /**
+   * How the files sounding now play (Session 55, Part 7, shared/sound.ts), from the library: each one's even gain (one
+   * playing as it is left out) and those with no sound of their own; and whether the music steps aside. Undefined for
+   * an engine with no library to ask (then the state never says, and every page plays each file as it is).
+   */
+  private soundFor(state: EngineState): SoundState | undefined {
+    const { soundOf, stepsAside } = this.options;
+    if (!soundOf && !stepsAside) return undefined;
+    const gains: Record<string, number> = {};
+    const silent: string[] = [];
+    for (const mediaId of soundFilesOf(state)) {
+      const known = soundOf?.(mediaId) ?? null;
+      if (!known) continue;
+      if (known.gain !== 1) gains[mediaId] = known.gain;
+      if (known.silent) silent.push(mediaId);
+    }
+    return { stepsAside: stepsAside?.() ?? true, gains, silent };
+  }
+
   refreshFiles(): CommandResult {
     const shown = this.state.layers.slide;
     const now = this.stillMissing(shown, this.state.layers);
@@ -971,8 +1040,12 @@ export class ShowEngine {
     if (bg?.kind === 'media' && bg.mediaId === mediaId && bg.durationMs !== durationMs)
       actions.push({ type: 'background/set', background: { ...bg, durationMs } });
     const audio = this.state.layers.audio;
+    const over = audio?.over;
     if (audio?.mediaId === mediaId && audio.durationMs !== durationMs)
       actions.push({ type: 'audio/set', audio: { ...audio, durationMs } });
+    // The sound over the music (Session 55, Part 7): the music steps aside until it ends.
+    else if (audio && over?.mediaId === mediaId && over.durationMs !== durationMs)
+      actions.push({ type: 'audio/set', audio: { ...audio, over: { ...over, durationMs } } });
     // A video on the slide up or in the box (Session 54): the time bar's length.
     const files = learnedFiles(this.state, mediaId, durationMs);
     if (files) actions.push({ type: 'videoFiles/set', files });
@@ -1243,10 +1316,9 @@ export class ShowEngine {
     if (music) layers.push(music);
     if (sound && soundMissing === null && !isAcrossCue(sound)) {
       const { mediaId, volume, loop } = sound;
-      layers.push({
-        type: 'audio/set',
-        audio: this.audioLayer({ id: mediaId, title: sound.label || sound.name, mediaId, volume, loop }),
-      });
+      layers.push(
+        this.ownSoundAction({ id: mediaId, title: sound.label || sound.name, mediaId, volume, loop }),
+      );
     }
     const actions: EngineAction[] = [
       this.showAction(presentationId, slideIndex, order, played, playlist, {
@@ -1273,7 +1345,7 @@ export class ShowEngine {
    * slide off (it is what the audience should see); a sound goes on the
    * audio layer and leaves the picture as it is.
    */
-  private showMedia(cursor: PlaylistCursor, item: MediaItem): Resolved {
+  private showMedia(cursor: PlaylistCursor, item: MediaItem, moveLive = true): Resolved {
     const cue: EngineAction = { type: 'live/item', playlist: cursor };
     const now = this.now();
     if (item.media === 'audio') {
@@ -1284,10 +1356,14 @@ export class ShowEngine {
       return {
         ok: true,
         actions: [
-          cue,
+          // `moveLive` false (Part 7): the playlist's place stays with the slides up.
+          ...(moveLive ? [cue] : []),
           {
             type: 'audio/set',
-            audio: this.audioLayer({ id: mediaId, title: label, mediaId, volume: 1, loop: false }, again),
+            audio: keepingOver(
+              this.audioLayer({ id: mediaId, title: label, mediaId, volume: 1, loop: false }, again),
+              up,
+            ),
           },
         ],
       };
@@ -1434,6 +1510,16 @@ export class ShowEngine {
     const found = this.checkItem({ playlistId, itemId });
     if (!found) return { ok: false, error: 'unknown-item', message: 'That playlist item no longer exists' };
     const { item } = found;
+    // A sound's row clicked while slides are up (Session 55, Part 7: a PDF's page, a deck's slide, any presentation's):
+    // the sound plays with them, and the slides stay where they are, so Next goes on with them (before, the playlist's
+    // place moved to the sound's row, and Next went past the rest of the PDF or the deck).
+    if (
+      item.kind === 'media' &&
+      item.media === 'audio' &&
+      this.state.live.presentationId !== null &&
+      this.state.layers.slide !== null
+    )
+      return this.showMedia(found.cursor, item, false);
     const started = this.startItem(playlistId, item, 'first');
     if (started) return started;
     const message =
@@ -1605,11 +1691,14 @@ export class ShowEngine {
     const m = a.music;
     let index = m.index + by;
     if (index >= m.tracks.length) {
-      if (!m.loop) return { type: 'layer/clear', layer: 'audio' };
+      // The playlist's end: a slide's or a deck's own sound over it plays on alone (Session 55, Part 7).
+      if (!m.loop)
+        return a.over ? { type: 'audio/set', audio: a.over } : { type: 'layer/clear', layer: 'audio' };
       index = 0;
     }
     if (index < 0) index = m.loop ? m.tracks.length - 1 : 0;
-    return { type: 'audio/set', audio: this.musicLayer({ ...m, index }, startedAt) };
+    const audio = this.musicLayer({ ...m, index }, startedAt);
+    return { type: 'audio/set', audio: a.over ? { ...audio, over: a.over } : audio };
   }
 
   private musicNow(): MusicLayer | null {
@@ -1843,14 +1932,41 @@ export class ShowEngine {
     slideIndex: number,
     at: number,
   ): EngineAction | null {
+    // Over the operator's sound (Session 55, Part 7: the owner's answer of 30 Oct), the music playing on under it.
+    const up = this.state.layers.audio;
+    const under = operatorSound(up);
     const audio = acrossLayer(
       start,
       { presentationId, slideIndex },
       at,
-      this.state.layers.audio,
+      under ? (under.over ?? null) : up,
       this.libraryOf(start.mediaId, undefined),
     );
-    return audio ? { type: 'audio/set', audio } : null;
+    if (!audio) return null;
+    return { type: 'audio/set', audio: under ? { ...under, over: audio } : audio };
+  }
+
+  /**
+   * A slide's own sound cue going up (Session 55, Part 7: the owner's answer of 30 Oct): over the operator's sound (an
+   * audio playlist's track, or a sound the operator started) it plays over it, the music playing on, stepping aside as
+   * under a video; the same file already over it carries on. With no sound of the operator's, it is the sound, as before.
+   */
+  private ownSoundAction(choice: AudioChoice): EngineAction {
+    const under = operatorSound(this.state.layers.audio);
+    if (!under) return { type: 'audio/set', audio: { ...this.audioLayer(choice), cue: true } };
+    // Its file is the one playing: it carries on, as a slide's sound always carried on a file already playing.
+    if (choice.mediaId === under.mediaId) return { type: 'audio/set', audio: under };
+    const was = under.over;
+    const same = choice.mediaId !== null && was?.mediaId === choice.mediaId;
+    const over: AudioLayer = {
+      ...choice,
+      startedAt: same ? was.startedAt : this.now(),
+      ...this.lengthOf(choice.mediaId),
+      ...this.clipOf(choice.mediaId),
+      ...(same && was.seek ? { seek: was.seek } : {}),
+      cue: true,
+    };
+    return { type: 'audio/set', audio: { ...under, over } };
   }
 
   /**
@@ -2119,7 +2235,15 @@ export class ShowEngine {
           actions: [{ type: 'background/set', background: this.backgroundLayer(command.background) }],
         };
       case 'playAudio':
-        return { ok: true, actions: [{ type: 'audio/set', audio: this.audioLayer(command.audio) }] };
+        return {
+          ok: true,
+          actions: [
+            {
+              type: 'audio/set',
+              audio: keepingOver(this.audioLayer(command.audio), this.state.layers.audio),
+            },
+          ],
+        };
       case 'showMessage':
         return { ok: true, actions: [{ type: 'message/show', message: command.message, at: this.now() }] };
       case 'hideMessage':
@@ -2170,9 +2294,10 @@ export class ShowEngine {
         return this.playCue() ?? { ok: false, error: 'nothing-cued', message: 'Nothing is cued' };
       case 'playMusic': {
         const index = Math.min(command.index, command.music.tracks.length - 1);
+        const audio = this.musicLayer({ ...command.music, index }, this.now());
         return {
           ok: true,
-          actions: [{ type: 'audio/set', audio: this.musicLayer({ ...command.music, index }, this.now()) }],
+          actions: [{ type: 'audio/set', audio: keepingOver(audio, this.state.layers.audio) }],
         };
       }
       case 'pauseMusic': {
@@ -2334,6 +2459,18 @@ export class ShowEngine {
       !playsOn(across, next.live)
     )
       next = reduce(next, { type: 'layer/clear', layer: 'audio' });
+    // The same for a deck's own soundtrack over the music (Session 55, Part 7): it stops, the music playing on.
+    const under = next.layers.audio;
+    const overAcross = under?.over?.across;
+    if (
+      under &&
+      overAcross &&
+      (next.live !== prev.live || under !== prev.layers.audio) &&
+      !playsOn(overAcross, next.live)
+    ) {
+      const { over: _ended, ...alone } = under;
+      next = reduce(next, { type: 'audio/set', audio: alone });
+    }
     // A live zoom lasts for that showing only (Session 26e): another slide or background ends it.
     const zoomed = next.liveZoom;
     if (zoomed) {
@@ -2380,6 +2517,9 @@ export class ShowEngine {
       markersOf: (id) => this.options.mediaMarkers?.(id) ?? null,
     });
     if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
+    // How the files sounding now play (Session 55, Part 7): each one's even gain, and the music stepping aside.
+    const sound = this.soundFor(next);
+    if (sound) next = reduce(next, { type: 'sound/set', sound });
     // The pictures on the screens and coming next carry their looks (Session 26e).
     if (next.layers !== prev.layers || next.next !== prev.next || next.pipOff !== prev.pipOff)
       next = reduce(next, { type: 'pictures/set', pictures: this.picturesFor(next) });

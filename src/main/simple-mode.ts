@@ -137,6 +137,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.media.stopSave,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
+  // Session 55, Part 7: Audio's Music steps aside, a file's Even loudness, Trim black and silence: Pro Mode's.
+  IPC.sound.setStepsAside,
+  IPC.sound.setEven,
+  IPC.sound.trimEdges,
   IPC.network.setOn,
   IPC.network.setPort,
   IPC.network.startPairing,

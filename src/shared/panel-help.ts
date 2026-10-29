@@ -113,7 +113,7 @@ export const PANEL_HELP = {
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha, listed here: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha, listed here: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing; under a video with sound, or a slide’s or a deck’s own sound, the music steps aside (the switch below the lists), and each video and sound plays at an even loudness (right-click one to play it as it is).',
     guide: '**Audio.** In the right column',
   },
   tools: {
