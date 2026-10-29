@@ -82,6 +82,7 @@ import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
 import { openSlideEditor } from '../editor/editor-store';
 import { RepeatBar } from './RepeatBar';
+import { useLastSecondsRow } from '../wallpapers/when-ends';
 import { FolderCrumbs } from './PlaylistFolders';
 import { PlaylistsUnread } from './PlaylistsUnread';
 import { type CardClick, clickCard, clickSlideRow, meantPress } from './one-click';
@@ -769,6 +770,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     return up ? st.live.playlist.itemId : null;
   });
   const shownItem = useLibrary((s) => (s.item?.playlistId === openId ? s.item.id : null));
+  // A video's last 10 seconds (Session 55, Part 6, E): its row turns amber.
+  const endingItem = useLastSecondsRow();
 
   const spotFor = (e: DragEvent): DropSpot => {
     const row = (e.target as HTMLElement).closest<HTMLElement>('[data-item-index]');
@@ -1173,6 +1176,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 data-item-id={item.id}
                 data-marked={isMarked ? 'true' : undefined}
                 data-live={isLive ? 'true' : undefined}
+                data-last-seconds={endingItem === item.id ? 'true' : undefined}
                 data-row-number={own?.row?.kind === 'item' ? (own.row.number ?? undefined) : undefined}
                 aria-pressed={isMarked}
                 aria-expanded={group ? !group.folded : undefined}
@@ -1217,6 +1221,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   'pr-10 pl-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
+                  endingItem === item.id && 'border-warning! bg-warning-bg!',
                 )}
               >
                 <ItemBody

@@ -1,5 +1,6 @@
 import type { EngineState } from '../../../shared/engine/state';
 import type { Size } from '../../../shared/scaling';
+import { WallpaperView } from './WallpaperView';
 
 /*
  * What an audience screen shows while nothing is up (Session 55, Part 1), and under the Wallpaper button (Part 13,
@@ -7,27 +8,25 @@ import type { Size } from '../../../shared/scaling';
  * the start, after Set Up Screens…) shows it until something is put up, and so does every screen after Clear all;
  * there is no test slide. The idle rotation that showed here went with Part 12.
  *
- * Today no wallpaper can be chosen, so both are black: nothing over the scene's own black (`NothingUp`), and the
- * Wallpaper's cover a black square over the layers (`WallpaperCover`). Part 6 plugs the chosen wallpaper in here, and
- * only here: it adds the chosen wallpaper to the engine's state, returns 'wallpaper' from nothingUpShows when one is
- * chosen, and draws it in WallpaperPicture (both NothingUp and WallpaperCover draw through it, on every audience
- * screen, node, key and fill's fill and phone alike, as Scene.tsx draws them).
+ * Part 6 (Session 55): the chosen wallpaper is in the engine's state (`chosenWallpaper`, set by the main process from
+ * the library), and is drawn here alone, by WallpaperPicture (render/WallpaperView.tsx: one picture, or several going
+ * round with a fade): both NothingUp and WallpaperCover draw through it, on every audience screen, node, key and
+ * fill's fill and phone alike, as Scene.tsx draws them. With none chosen (or none of its pictures left in the
+ * library), both are black: nothing over the scene's own black, and a black square over the layers.
  */
 
-/**
- * What shows while nothing is up, as a screen's scene says it (data-nothing-up): black, or the chosen wallpaper
- * (Part 6: none can be chosen yet).
- */
+/** What shows while nothing is up, as a screen's scene says it (data-nothing-up): black, or the chosen wallpaper. */
 export type NothingUpShows = 'black' | 'wallpaper';
 
-/** What shows while nothing is up (Part 6: 'wallpaper' while one is chosen in `state`). */
-export function nothingUpShows(_state: EngineState): NothingUpShows {
-  return 'black';
+/** What shows while nothing is up: the chosen wallpaper while one with a picture is chosen, else black. */
+export function nothingUpShows(state: EngineState): NothingUpShows {
+  return (state.chosenWallpaper?.pictures.length ?? 0) > 0 ? 'wallpaper' : 'black';
 }
 
-/** The chosen wallpaper, filling the screen's canvas (Part 6). Nothing yet: the screen's black shows. */
-function WallpaperPicture({ state: _state, canvas: _canvas }: { state: EngineState; canvas: Size }) {
-  return null;
+/** The chosen wallpaper, filling the screen's canvas (Part 6); none chosen: the screen's black shows. */
+function WallpaperPicture({ state, canvas: _canvas }: { state: EngineState; canvas: Size }) {
+  const chosen = state.chosenWallpaper;
+  return chosen && chosen.pictures.length > 0 ? <WallpaperView wallpaper={chosen} /> : null;
 }
 
 /** With nothing up: the chosen wallpaper, or nothing over the scene's own black. */

@@ -2,6 +2,7 @@ import { idSchema } from './model-schema';
 import type { RepeatSettings } from './repeat';
 import { passageIdSchema } from './shastra';
 import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
+import type { WhenEnds } from './wallpapers';
 import { z } from 'zod';
 
 /*
@@ -145,6 +146,8 @@ export type PlaylistItemInfo =
       gone?: boolean;
       /** Added from a phone (Session 54): the device's name. */
       fromDevice?: string;
+      /** A video's When it ends (Session 55, Part 6): left out, the default (the chosen wallpaper). */
+      whenEnds?: WhenEnds;
     }
   | { id: string; kind: 'header'; label: string; color: string | null }
   /**

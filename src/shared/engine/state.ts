@@ -10,6 +10,7 @@ import type { LiveZoom, PictureLook } from '../picture-look';
 import type { LowerThird } from '../lower-thirds';
 import { NO_STAGE, type StageState } from '../stage-layouts';
 import type { SoundState } from '../sound';
+import type { ChosenWallpaper } from '../wallpapers';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -38,9 +39,12 @@ import type { SoundState } from '../sound';
  * 55, Part 12): Props, Masks, the Logo and the idle rotation taken out (no `props` or `masks` layer, no `logo`, no
  * `idle`), and the Wallpaper's switch in the Logo's place (`wallpaper`, Part 13); an older node or page would look
  * for what is gone, so it says 'incompatible'. A state 15, 14, 13 or 12 saved is read whole, its props, mask, logo
- * and idle rotation left out (none of them shows after the update) and the wallpaper off.
+ * and idle rotation left out (none of them shows after the update) and the wallpaper off. 18 (Session 55, Part 6; 17
+ * is Part 15's): the chosen wallpaper (`chosenWallpaper`), which every audience screen, node and phone draws whenever
+ * nothing is up and under the Wallpaper; an older node or page would draw black instead, so it says 'incompatible'. A
+ * state 16 saved is read whole (none chosen until Main says which).
  */
-export const ENGINE_STATE_VERSION = 16;
+export const ENGINE_STATE_VERSION = 18;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 15 (the Session 55
@@ -51,7 +55,13 @@ export const ENGINE_STATE_VERSION = 16;
  */
 export function readsEngineVersion(version: unknown): boolean {
   return (
-    version === ENGINE_STATE_VERSION || version === 15 || version === 14 || version === 13 || version === 12
+    version === ENGINE_STATE_VERSION ||
+    // 18 only adds the chosen wallpaper to 16 (Session 55, Part 6).
+    version === 16 ||
+    version === 15 ||
+    version === 14 ||
+    version === 13 ||
+    version === 12
   );
 }
 
@@ -576,7 +586,7 @@ export interface EngineState {
   blackout: boolean;
   /**
    * The Wallpaper (Session 55, Part 13, in the Logo's place): the chosen wallpaper on the audience screens instead of
-   * the picture (render/NothingUp.tsx: black until Part 6 brings wallpapers). Like black-out it covers the layers
+   * the picture (render/NothingUp.tsx: `chosenWallpaper`, black with none chosen). Like black-out it covers the layers
    * without clearing them, so taking it off brings back exactly what was there; black-out covers it in turn. Stage
    * screens ignore it.
    */
@@ -663,6 +673,11 @@ export interface EngineState {
    * field an older page leaves alone, so the state's version stays.
    */
   sound?: SoundState;
+   * The chosen wallpaper (Session 55, Part 6, shared/wallpapers.ts): what every audience screen, node and phone shows
+   * whenever nothing is up there, and under the Wallpaper (`wallpaper`); its pictures go round from `since`. Only the
+   * main process sets it, from the library. Left out (a state saved before 18) or null: none chosen, black.
+   */
+  chosenWallpaper?: ChosenWallpaper | null;
 }
 
 export function emptyLayers(): Layers {

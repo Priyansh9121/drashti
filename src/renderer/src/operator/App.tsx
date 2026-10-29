@@ -20,6 +20,7 @@ import { AppearanceDialog } from '../appearance/AppearanceDialog';
 import { connectAppearance } from '../appearance/appearance-store';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
+import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
 import { loadTree, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
@@ -341,6 +342,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               head={<LibraryButton />}
               top={<PlaylistPanel platform={platform} />}
               bottom={byFolder ? <PlaylistFolders /> : null}
+              // The wallpapers (Session 55, Part 6), under the playlists, just above the bar of clears.
+              wallpapers={<WallpapersPanel />}
               over={<LibrarySheet platform={platform} />}
               covered={libraryOver}
               foot={<UndoBar platform={platform} />}

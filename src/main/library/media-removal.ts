@@ -72,6 +72,12 @@ export class MediaRemoval {
       `SELECT name FROM themes WHERE json_extract(definition, '$.background.mediaId') IN (${list})
         ORDER BY name COLLATE NOCASE`,
     );
+    // The wallpapers it is in (Session 55, Part 6): it is left out of them while deleted.
+    const wallpapers = all(
+      `SELECT name FROM wallpapers WHERE deleted_at IS NULL AND id IN (
+         SELECT wallpaper_id FROM wallpaper_pictures WHERE media_id IN (${list}))
+       ORDER BY position, rowid`,
+    );
     const live = this.deps.onScreens();
     return {
       presentations: usedIn(presentationRows),
@@ -79,6 +85,7 @@ export class MediaRemoval {
       music: usedIn(music),
       themes: usedIn(themes),
       live: ids.some((id) => live.has(id)),
+      ...(wallpapers.length > 0 ? { wallpapers: usedIn(wallpapers) } : {}),
     };
   }
 

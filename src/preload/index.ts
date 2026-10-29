@@ -258,6 +258,7 @@ const bridge: DrashtiBridge = {
     addSlot: (playlistId, at, slot) => invoke(IPC.playlists.addSlot, playlistId, at, slot),
     editSlot: (itemId, slot) => invoke(IPC.playlists.editSlot, itemId, slot),
     setTimers: (itemId, cues) => invoke(IPC.playlists.setTimers, itemId, cues),
+    setWhenEnds: (itemId, whenEnds) => invoke(IPC.playlists.setWhenEnds, itemId, whenEnds),
     duplicate: (playlistId) => invoke(IPC.playlists.duplicate, playlistId),
     splitItem: (itemId, rest, alone, at) => invoke(IPC.playlists.splitItem, itemId, rest, alone, at),
     undoSplit: (itemId, order, madeId) => invoke(IPC.playlists.undoSplit, itemId, order, madeId),
@@ -477,6 +478,20 @@ const bridge: DrashtiBridge = {
       on(IPC.setup.open, () => {
         listener();
       }),
+  },
+  wallpapers: {
+    view: () => invoke(IPC.wallpapers.view),
+    onChanged: (listener) => on(IPC.wallpapers.changed, listener),
+    sortFiles: (paths) => invoke(IPC.wallpapers.sortFiles, paths),
+    pickFiles: () => invoke(IPC.wallpapers.pickFiles),
+    add: (mediaIds, into) => invoke(IPC.wallpapers.add, mediaIds, into),
+    rename: (id, name) => invoke(IPC.wallpapers.rename, id, name),
+    setPictures: (id, mediaIds) => invoke(IPC.wallpapers.setPictures, id, mediaIds),
+    setTiming: (id, timing) => invoke(IPC.wallpapers.setTiming, id, timing),
+    remove: (id) => invoke(IPC.wallpapers.remove, id),
+    restore: (id) => invoke(IPC.wallpapers.restore, id),
+    choose: (id) => invoke(IPC.wallpapers.choose, id),
+    quotePicture: (into, quoteId, png) => invoke(IPC.wallpapers.quotePicture, into, quoteId, png),
   },
   lowerThirds: {
     list: () => invoke(IPC.lowerThirds.list),

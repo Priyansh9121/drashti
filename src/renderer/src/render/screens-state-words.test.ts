@@ -52,6 +52,27 @@ describe('a stage screen’s words for the audience screens', () => {
       expect(screensStateWords(state, null)).toBe('No audience screens');
   });
 
+  // Session 55, Part 6: the chosen wallpaper shows whenever nothing is up.
+  it('says the wallpaper is on them while nothing is up and one is chosen', () => {
+    const chosen = {
+      ...nothing,
+      chosenWallpaper: {
+        id: 'w1',
+        name: 'Placeholder wall',
+        pictures: ['p1'],
+        secondsEach: 10,
+        fadeMs: 1500,
+        since: 0,
+      },
+    };
+    expect(screensStateWords(chosen, hall)).toBe('Wallpaper on the audience screens');
+    expect(screensStateWords({ ...chosen, layers: showing.layers }, hall)).toBe('Audience screens showing');
+    // A wallpaper with no picture left in the library: black, so nothing is said to be on them.
+    expect(
+      screensStateWords({ ...chosen, chosenWallpaper: { ...chosen.chosenWallpaper, pictures: [] } }, hall),
+    ).toBe('Nothing on the audience screens');
+  });
+
   it('says what is up until it is told the hall, never that there are none', () => {
     expect(screensStateWords(showing, undefined)).toBe('Audience screens showing');
     expect(screensStateWords(black, undefined)).toBe('Audience screens black');

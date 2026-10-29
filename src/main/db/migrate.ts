@@ -48,6 +48,7 @@ import { up as timerElements } from './migrations/046-timer-elements';
 import { up as inputItems } from './migrations/047-input-items';
 import { up as phoneFiles } from './migrations/048-phone-files';
 import { up as deckSlides } from './migrations/049-deck-slides';
+import { up as wallpapers } from './migrations/050-wallpapers';
 import { up as evenLoudness } from './migrations/051-even-loudness';
 import { up as ownOrder } from './migrations/055-own-order';
 import { plural } from '../../shared/text';
@@ -118,7 +119,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 47, name: 'video inputs in playlists', up: inputItems },
   { version: 48, name: 'files between Drashti and its phones', up: phoneFiles },
   { version: 49, name: 'a deck shown as it was', up: deckSlides },
-  // 50 is Session 55's Part 6 (the lead puts the numbers together as each Part merges).
+  { version: 50, name: 'wallpapers, and what a video row does when it ends', up: wallpapers },
   { version: 51, name: 'even loudness', up: evenLoudness },
   { version: 55, name: 'a playlist’s own order of a presentation’s slides', up: ownOrder },
 ];

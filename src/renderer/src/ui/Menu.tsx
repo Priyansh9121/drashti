@@ -28,10 +28,13 @@ export interface MenuEntry {
   /** A line above this entry, starting a new group. */
   separatorBefore?: boolean;
   /**
-   * A switch (Session 55, Part 7: a file's Even loudness): ticked or not, said as a checkbox; choosing it turns it the
-   * other way. Left out for an ordinary choice.
+   * Ticked or not (Session 55): a switch, said as a checkbox, which choosing turns the other way (Part 7: a file's
+   * Even loudness); or, with `radio`, one of a few choices, ticked when it is the one in use, said as a radio choice
+   * (Part 6: a video's When it ends). A tick shows in the icon's place. Left out: an ordinary entry.
    */
   checked?: boolean;
+  /** With `checked`: one of a few choices (a radio choice to a screen reader), not a switch. */
+  radio?: true;
 }
 
 export interface MenuPlace {
@@ -179,7 +182,7 @@ export function Menu({
             {entry.separatorBefore && <div role="separator" className="my-1 h-px bg-line" />}
             <button
               type="button"
-              role={entry.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+              role={entry.checked === undefined ? 'menuitem' : entry.radio ? 'menuitemradio' : 'menuitemcheckbox'}
               aria-checked={entry.checked}
               disabled={entry.disabled}
               className={cx(
@@ -192,7 +195,9 @@ export function Menu({
               }}
             >
               <span className="flex w-4 shrink-0 justify-center">
-                {IconShape && <IconShape size={15} aria-hidden="true" />}
+                {entry.checked === undefined
+                  ? IconShape && <IconShape size={15} aria-hidden="true" />
+                  : entry.checked && <Check size={15} aria-hidden="true" />}
               </span>
               <span className="flex-1">{entry.label}</span>
               {entry.kbd && <Kbd className="text-muted">{entry.kbd}</Kbd>}

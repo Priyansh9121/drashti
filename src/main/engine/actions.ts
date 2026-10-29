@@ -6,6 +6,7 @@ import type { RenderSlide, Transition } from '../../shared/model';
 import type { SoundState } from '../../shared/sound';
 import type { StageState } from '../../shared/stage-layouts';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
+import type { ChosenWallpaper } from '../../shared/wallpapers';
 import type {
   AudioLayer,
   BackgroundLayer,
@@ -151,3 +152,5 @@ export type EngineAction =
   | { type: 'stage/set'; stage: StageState }
   /** How Drashti's own sound plays now (Session 55, Part 7): the music stepping aside, each file's even gain. */
   | { type: 'sound/set'; sound: SoundState };
+  /** The chosen wallpaper (Session 55, Part 6), as the library has it, or none. */
+  | { type: 'chosenWallpaper/set'; wallpaper: ChosenWallpaper | null };

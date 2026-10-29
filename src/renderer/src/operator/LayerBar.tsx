@@ -28,7 +28,7 @@ import { Tooltip } from '../ui/Tooltip';
  * Along the bottom (Session 55, Part 13: smaller, one row): Clear all F1, a clear for each layer in the order of
  * their keys (Slide F2, Background F3, Audio F5, Messages F6, Ticker F7: layer-clears.ts; F4 and F8 went with Props
  * and Masks and do nothing), then the Wallpaper F12 (in the Logo's place: the chosen wallpaper up instead of the
- * picture, black until Part 6 brings wallpapers) and Black-out B. Each button is one line, its words with its key
+ * picture, black with none chosen: Part 6's wallpapers, under the playlists) and Black-out B. Each button is one line, its words with its key
  * beside them, 32 px tall, so the bar fits one row from 1008 px wide (Windows' smallest; CI's window is 1024 × 645) in
  * every state, both covers on and Put it back offered, and Part 8's quick bar has room above it. Its icons, and a
  * little more room, show from 1280 px wide. What is up shows at a glance: a clear is lit while its layer has something

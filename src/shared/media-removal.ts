@@ -25,6 +25,8 @@ export interface MediaUsage {
   themes: UsedIn;
   /** It is on the screens now (it stays up until it is changed). */
   live: boolean;
+  /** The wallpapers it is in (Session 55, Part 6): left out of them. Left out when it is in none. */
+  wallpapers?: UsedIn;
 }
 
 /** At most this many names are said for each. */
@@ -66,6 +68,8 @@ export function usageLines(usage: MediaUsage, count = 1): string[] {
     'The backgrounds of the looks',
     () => `nothing will show there.`,
   );
+  if (usage.wallpapers)
+    line(usage.wallpapers, 'The wallpaper', 'The wallpapers', (p) => `left out of ${p ? 'them' : 'it'}.`);
   return out;
 }
 

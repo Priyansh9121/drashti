@@ -63,6 +63,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'timers',
     'updates',
     'videoInputs',
+    // The wallpapers (Session 55, Part 6).
+    'wallpapers',
     'zoom',
   ],
   // The hall's screens (a video input up now, Session 50: whether this computer has it, and how it stands).

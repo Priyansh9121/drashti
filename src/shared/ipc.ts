@@ -1,5 +1,6 @@
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
+import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
@@ -465,6 +466,8 @@ export const IPC = {
     editSlot: 'playlists:edit-slot',
     /** What an item does to timers when it goes up (Session 12). */
     setTimers: 'playlists:set-timers',
+    /** A video row's When it ends (Session 55, Part 6). */
+    setWhenEnds: 'playlists:set-when-ends',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
     /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
@@ -520,6 +523,25 @@ export const IPC = {
     remove: 'timers:remove',
   },
   /** Lower Thirds (Session 44; changing them: operator window, Pro Mode). */
+  /** The wallpapers (Session 55, Part 6): changing them, operator window only. */
+  wallpapers: {
+    view: 'wallpapers:view',
+    /** Files offered (a drop, Import…): the pictures, and the rest with why each is not one. */
+    sortFiles: 'wallpapers:sort-files',
+    /** The system's dialog for pictures (Import…). */
+    pickFiles: 'wallpapers:pick-files',
+    add: 'wallpapers:add',
+    rename: 'wallpapers:rename',
+    setPictures: 'wallpapers:set-pictures',
+    setTiming: 'wallpapers:set-timing',
+    remove: 'wallpapers:remove',
+    restore: 'wallpapers:restore',
+    choose: 'wallpapers:choose',
+    /** A quote of the idle rotation's, drawn as a picture by the operator window. */
+    quotePicture: 'wallpapers:quote-picture',
+    /** main -> operator: the wallpapers changed. */
+    changed: 'wallpapers:changed',
+  },
   lowerThirds: {
     list: 'lowerthirds:list',
     save: 'lowerthirds:save',
@@ -1071,6 +1093,7 @@ export interface InvokeContract {
     result: PlaylistResult;
   };
   [IPC.playlists.setTimers]: { args: [itemId: string, cues: TimerCue[]]; result: PlaylistResult };
+  [IPC.playlists.setWhenEnds]: { args: [itemId: string, whenEnds: WhenEnds]; result: PlaylistResult };
   [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.splitItem]: {
     args: [itemId: string, rest: ItemOrder, alone: ItemOrder, at: number];
@@ -1183,6 +1206,23 @@ export interface InvokeContract {
   [IPC.timers.create]: { args: [fields: TimerFields]; result: TimerResult };
   [IPC.timers.update]: { args: [timerId: string, fields: TimerFields]; result: TimerResult };
   [IPC.timers.remove]: { args: [timerId: string]; result: TimerResult };
+  [IPC.wallpapers.view]: { args: []; result: WallpapersView };
+  [IPC.wallpapers.sortFiles]: { args: [paths: string[]]; result: WallpaperFiles };
+  [IPC.wallpapers.pickFiles]: { args: []; result: string[] };
+  [IPC.wallpapers.add]: { args: [mediaIds: string[], into: string | null]; result: WallpaperResult };
+  [IPC.wallpapers.rename]: { args: [id: string, name: string]; result: WallpaperResult };
+  [IPC.wallpapers.setPictures]: { args: [id: string, mediaIds: string[]]; result: WallpaperResult };
+  [IPC.wallpapers.setTiming]: {
+    args: [id: string, timing: { secondsEach: number; fadeMs: number }];
+    result: WallpaperResult;
+  };
+  [IPC.wallpapers.remove]: { args: [id: string]; result: WallpaperResult };
+  [IPC.wallpapers.restore]: { args: [id: string]; result: WallpaperResult };
+  [IPC.wallpapers.choose]: { args: [id: string | null]; result: WallpaperResult };
+  [IPC.wallpapers.quotePicture]: {
+    args: [into: string, quoteId: string, png: Uint8Array];
+    result: WallpaperResult;
+  };
   [IPC.lowerThirds.list]: { args: []; result: LowerThird[] };
   [IPC.lowerThirds.save]: { args: [id: string | null, input: LowerThirdInput]; result: LowerThirdResult };
   [IPC.lowerThirds.remove]: { args: [ids: string[]]; result: LowerThirdsResult };
@@ -1401,6 +1441,7 @@ export interface EventContract {
   [IPC.midi.ask]: MidiAsk;
   [IPC.midi.changed]: MidiSettings;
   [IPC.lowerThirds.changed]: LowerThird[];
+  [IPC.wallpapers.changed]: WallpapersView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string; label?: string };

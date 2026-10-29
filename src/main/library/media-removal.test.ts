@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
 import { MediaRepo } from '../db/media';
 import { PlaylistRepo } from '../db/playlists';
+import { WallpaperRepo } from '../db/wallpapers';
 import { AudioPlaylistRepo } from '../db/audio-playlists';
 import { MediaRemoval } from './media-removal';
 
@@ -71,6 +72,16 @@ describe('deleting media from the library', () => {
     expect(usage.live).toBe(true);
     expect(removal.usage(['snd']).music).toEqual({ names: ['Before sabha'], count: 1 });
     expect(removal.usage(['other']).presentations.count).toBe(0);
+  });
+
+  it('says the wallpapers it is in (Session 55, Part 6), and nothing of them when it is in none', () => {
+    const { db, removal } = library();
+    const walls = new WallpaperRepo(db);
+    walls.create('Placeholder evening', ['pic']);
+    const gone = walls.create('Placeholder deleted', ['pic']);
+    walls.remove(gone);
+    expect(removal.usage(['pic']).wallpapers).toEqual({ names: ['Placeholder evening'], count: 1 });
+    expect(removal.usage(['snd'])).not.toHaveProperty('wallpapers');
   });
 
   it('takes it out of the media list, playlists and music; Undo puts back just what it took', () => {
