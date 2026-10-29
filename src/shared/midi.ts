@@ -22,14 +22,15 @@ export interface MidiInput {
 }
 
 /**
- * What a mapped input does (all of them in Simple Mode too); a macro's, from before Session 44, and the Logo's, from
- * before Session 55, nothing.
+ * What a mapped input does (all of them in Simple Mode too); a macro's, from before Session 44, nothing. The Logo's,
+ * from before Session 55, is read as the Wallpaper's, which took its place (Part 13: midiSettingsNow).
  */
 export type MidiAction =
   | { kind: 'next' }
   | { kind: 'back' }
   | { kind: 'clearAll' }
   | { kind: 'blackout' }
+  | { kind: 'wallpaper' }
   | { kind: 'logo' }
   | { kind: 'macro'; macroId: string };
 
@@ -51,6 +52,7 @@ export const MIDI_ACTION_NAMES: Record<Exclude<MidiAction['kind'], 'macro' | 'lo
   back: 'Back',
   clearAll: 'Clear all',
   blackout: 'Black-out',
+  wallpaper: 'Wallpaper',
 };
 
 const inputSchema = z.object({
@@ -64,6 +66,7 @@ const actionSchema: z.ZodType<MidiAction> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('back') }),
   z.object({ kind: z.literal('clearAll') }),
   z.object({ kind: z.literal('blackout') }),
+  z.object({ kind: z.literal('wallpaper') }),
   z.object({ kind: z.literal('logo') }),
   z.object({ kind: z.literal('macro'), macroId: idSchema }),
 ]);
@@ -74,6 +77,21 @@ export const midiSettingsSchema: z.ZodType<MidiSettings> = z.object({
 });
 
 export type MidiResult = { ok: true; settings: MidiSettings } | { ok: false; message: string };
+
+/**
+ * The settings as kept (in the library's settings), read for use: a pad mapped to the Logo before Session 55 works the
+ * Wallpaper, which took its place; anything that cannot be read is no settings.
+ */
+export function midiSettingsNow(raw: unknown): MidiSettings {
+  const parsed = midiSettingsSchema.safeParse(raw);
+  if (!parsed.success) return NO_MIDI;
+  return {
+    ...parsed.data,
+    mappings: parsed.data.mappings.map((m) =>
+      m.action.kind === 'logo' ? { ...m, action: { kind: 'wallpaper' } } : m,
+    ),
+  };
+}
 
 /** The same input (a note and a controller with one number are different inputs). */
 export const sameInput = (a: MidiInput, b: MidiInput): boolean =>
@@ -120,7 +138,7 @@ export const midiSeenSchema: z.ZodType<MidiSeen> = z
   .strict();
 
 /** The actions a phone may learn a mapping for (never a macro's or the Logo's: they went in Sessions 44 and 55). */
-export const MIDI_LEARNABLE = ['next', 'back', 'clearAll', 'blackout'] as const;
+export const MIDI_LEARNABLE = ['next', 'back', 'clearAll', 'blackout', 'wallpaper'] as const;
 export type MidiLearnable = (typeof MIDI_LEARNABLE)[number];
 
 /** What the main process asks of the operator window's MIDI for a phone: listen (so it lists the devices), or learn. */

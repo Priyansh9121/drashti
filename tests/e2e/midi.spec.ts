@@ -18,7 +18,8 @@ import {
  * The MIDI controller (Session 11; Session 44 moved its way in to More tools, as Macros went): with Web MIDI
  * mocked in the operator page, Learn maps a note and a controller, and they work; only the operator page may use
  * MIDI (never SysEx); Simple Mode's own actions work from a pad there too. A pad mapped to a macro before Session
- * 44 stays in the settings, as the library had it, and does nothing. Placeholder content only.
+ * 44 stays in the settings, as the library had it, and does nothing; one mapped to the Logo before Session 55 works
+ * the Wallpaper, which took the Logo's place (Part 13). Placeholder content only.
  */
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
@@ -55,7 +56,7 @@ const midi = (win: Page, bytes: number[]) =>
     (globalThis as unknown as { fakeMidi: (bytes: number[]) => void }).fakeMidi(b);
   }, bytes);
 
-test('MIDI: only the operator page may use it; Learn maps a note and a controller; they work in Pro Mode and Simple Mode; a pad once mapped to a macro does nothing', async () => {
+test('MIDI: only the operator page may use it; Learn maps a note and a controller; they work in Pro Mode and Simple Mode; a pad once mapped to a macro does nothing, and one mapped to the Logo works the Wallpaper', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -76,13 +77,17 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
   expect(await query(win, true)).not.toBe('granted');
   expect(await query(output, false)).not.toBe('granted');
 
-  // A library from before Session 44: a pad mapped to a macro. Kept as it was, never listed.
+  // A library from before Session 44: a pad mapped to a macro. Kept as it was, never listed. And one from before
+  // Session 55: a pad mapped to the Logo, read as the Wallpaper, which took its place.
   const oldMacro = '00000000-0000-4000-8000-0000000000aa';
   const kept = await win.evaluate(
     (macroId) =>
       (globalThis as PageGlobals).drashti.midi.set({
         deviceName: null,
-        mappings: [{ input: { type: 'note', channel: 0, number: 40 }, action: { kind: 'macro', macroId } }],
+        mappings: [
+          { input: { type: 'note', channel: 0, number: 40 }, action: { kind: 'macro', macroId } },
+          { input: { type: 'note', channel: 0, number: 41 }, action: { kind: 'logo' } },
+        ],
       }),
     oldMacro,
   );
@@ -104,8 +109,9 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
     /^Back/u,
     /^Clear all/u,
     /^Black-out/u,
-    /^Logo/u,
+    /^Wallpaper/u,
   ]);
+  await expect(target('Wallpaper').getByTestId('midi-input')).toHaveText('Note 41, channel 1');
   await target('Next').getByRole('button', { name: 'Learn' }).click();
   await midi(win, [0x90, 36, 100]);
   await expect(target('Next').getByTestId('midi-input')).toHaveText('Note 36, channel 1');
@@ -118,6 +124,7 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
     deviceName: 'Placeholder pad',
     mappings: [
       { input: { type: 'note', channel: 0, number: 40 }, action: { kind: 'macro', macroId: oldMacro } },
+      { input: { type: 'note', channel: 0, number: 41 }, action: { kind: 'wallpaper' } },
       { input: { type: 'note', channel: 0, number: 36 }, action: { kind: 'next' } },
       { input: { type: 'cc', channel: 9, number: 20 }, action: { kind: 'blackout' } },
     ],
@@ -157,6 +164,11 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
   await midi(win, [0xb9, 20, 0]);
   await midi(win, [0xb9, 20, 127]);
   await expect.poll(async () => (await snapshot(win)).state.blackout).toBe(false);
+  // The pad once mapped to the Logo puts the Wallpaper up, and takes it off again.
+  await midi(win, [0x90, 41, 100]);
+  await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(true);
+  await midi(win, [0x90, 41, 100]);
+  await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(false);
 
   // Simple Mode: the pad's Next and Black-out still work; the old macro's pad still does nothing.
   await chooseMenuItem(app, 'switch-mode');
@@ -171,5 +183,7 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
   await midi(win, [0xb9, 20, 0]);
   await midi(win, [0xb9, 20, 127]);
   await expect.poll(async () => (await snapshot(win)).state.blackout).toBe(true);
+  await midi(win, [0x90, 41, 100]);
+  await expect.poll(async () => (await snapshot(win)).state.wallpaper).toBe(true);
   await app.close();
 });

@@ -268,8 +268,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
         if (!practiceKey('back')) void runBack();
       } else if (action.kind === 'clearAll') run('clearAll');
       else if (action.kind === 'blackout') run('toggleBlackout');
-      // A pad mapped to a macro before Session 44, or to the Logo before Session 55, does nothing: both are gone
-      // (the mapping is kept).
+      // The Wallpaper, in the Logo's place (Session 55): a pad mapped to the Logo before then is read as it.
+      else if (action.kind === 'wallpaper') run('toggleWallpaper');
+      // A pad mapped to a macro before Session 44 does nothing: macros are gone (the mapping is kept).
     });
     return () => {
       setMidiHandler(null);

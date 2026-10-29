@@ -103,8 +103,8 @@ import {
   type MidiLearnable,
   type MidiSeen,
   midiSeenSchema,
+  midiSettingsNow,
   midiSettingsSchema,
-  NO_MIDI,
 } from '../shared/midi';
 import { seedLibrary, seedOptions } from './db/seed';
 import { removeUntouchedPlaceholders } from './library/placeholders';
@@ -3750,10 +3750,7 @@ function start(): void {
     return { ok: true as const, ids: back };
   });
   // The MIDI controller's settings: which device, and what its notes and controllers do.
-  const midiNow = () => {
-    const parsed = midiSettingsSchema.safeParse(settings.get('midi'));
-    return parsed.success ? parsed.data : NO_MIDI;
-  };
+  const midiNow = () => midiSettingsNow(settings.get('midi'));
   // The MIDI devices the operator window sees, and what a phone asked it to learn (Session 54: the phone as a full
   // Drashti chooses among this computer's own devices, and learns from a press on its controller).
   let seenMidi: MidiSeen | null = null;

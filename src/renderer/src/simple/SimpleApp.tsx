@@ -622,14 +622,15 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
     [start],
   );
   useKeymap(platform, run, SIMPLE_KEYMAP);
-  // A MIDI controller's pads do Simple Mode's own actions (a pad mapped to a macro before Session 44, or to the Logo
-  // before Session 55, does nothing).
+  // A MIDI controller's pads do Simple Mode's own actions, the Wallpaper's too (a pad mapped to the Logo before
+  // Session 55 is read as it); a pad mapped to a macro before Session 44 does nothing.
   useEffect(() => {
     setMidiHandler((action) => {
       if (action.kind === 'next') run('next');
       else if (action.kind === 'back') run('previous');
       else if (action.kind === 'clearAll') run('clearAll');
       else if (action.kind === 'blackout') run('toggleBlackout');
+      else if (action.kind === 'wallpaper') run('toggleWallpaper');
     });
     return () => {
       setMidiHandler(null);
