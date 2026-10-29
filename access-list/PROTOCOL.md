@@ -70,12 +70,12 @@ old answer or another computer's answer is never believed. Before the list is se
 
 ### Anyone's calls
 
-| op        | adds to the call                   | answers                                                                                                  |
-| --------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `request` | `name` (optional)                  | `{ status: "requested", mailed }`; refused `owner-row`, `already-approved`, `too-many`                   |
-| `status`  |                                    | `{ status, tokenWaiting }`: `requested`, `approved`, `rejected`, `revoked`, or `unknown`                 |
-| `redeem`  | `token`                            | `{ grantId, secret, owner }`; refused `bad-token`, `too-many`                                            |
-| `check`   | `grantId`, `at`, `activity`, `mac` | `{ status, owner, recorded, endsAt, mode, at, why? }`: `in`, `revoked`, `rejected`, `expired`, `unknown` |
+| op        | adds to the call                   | answers                                                                                                           |
+| --------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `request` | `name` (optional)                  | `{ status: "requested", mailed }`; refused `owner-row`, `already-approved`, `too-many`                            |
+| `status`  |                                    | `{ status, tokenWaiting }`: `requested`, `approved`, `rejected`, `revoked`, or `unknown`                          |
+| `redeem`  | `token`                            | `{ grantId, secret, owner }`; refused `bad-token`, `too-many`                                                     |
+| `check`   | `grantId`, `at`, `activity`, `mac` | `{ status, owner, recorded, endsAt, mode, at, grantId, why? }`: `in`, `revoked`, `rejected`, `expired`, `unknown` |
 
 - **request** makes the Gmail's row (or makes it again) **requested**, with a new request id, so the links
   sent before for it are replaced, and emails the approver the Gmail, the name typed, the computer and its
@@ -105,7 +105,11 @@ old answer or another computer's answer is never believed. Before the list is se
   - `mode` (Session 55): `pro` or `simple`, the Gmail's (the owner's own: always `pro`; a computer the list does not
     know: `simple`). A list from before modes came says none, which Drashti reads as `pro`.
   - `at` (Session 55): the call's own `at`, echoed, so the answer Drashti keeps for a start without the internet says,
-    signed, when its check was sent; Drashti counts its 15 days from it.
+    signed, when its check was sent; never later than the list's own clock and 5 minutes (Session 55 review: a
+    computer's clock set forward for one check gains nothing). Drashti counts its 15 days from it, or from the answer's
+    `serverTime` when that is earlier (from `serverTime` alone with a list that echoes none).
+  - `grantId` (Session 55 review): the grant whose check this answers, so Drashti believes a kept answer only for the
+    grant it keeps now (never one kept for an earlier grant on the same computer).
   - `why` (Session 55): `no-contact` with `unknown` when this computer's grant was ended for no check in 15 days
     (see "15 days with no check"), so Drashti says to ask for access again; a Drashti from before reads the
     status alone.
@@ -146,7 +150,9 @@ needs one: `bad-request`); one the list does not give is refused `bad-length`, b
 any mode but `pro`. A mode not `pro` or `simple` (or none, for `mode`) is `bad-request`.
 A Gmail with no row: `not-found`.
 `approve`, `regrant` and Let me in change nothing when the email cannot go: `mail-limit` when the day's
-emails are used up, `mail-failed` when sending fails (the token sent before still works).
+emails are used up, `mail-failed` when sending fails (the token sent before still works). The list's own log (in the
+owner's Apps Script) says "Mail to a Gmail failed", never the Gmail, even where Google's words name it (Session 55
+review).
 
 Each of `list`'s people: `{ gmail, name, status, owner, requestedAt, approvedAt, rejectedAt, revokedAt,
 lastSeen, version, minutes, shows, streams, recordings, imports, note, length, endsAt, ended, endsUnreadable,
@@ -220,9 +226,12 @@ after a revoke or a newer grant, and runs out 3 days after it is sent. Randomnes
 - **Chosen** on the Approve page (Simple Mode only, chosen at first; Pro Mode and Simple Mode when the owner chose it
   adding the Gmail), in Drashti's Access List (Add a Gmail and Approve ask, Simple first; Change the mode… on any row
   but the owner's: the `mode` call), or typed in the Sheet's **Mode** column (Pro or Simple: the Sheet takes no
-  other). A request (`request`, or `add` with none) is made Simple; Give access again keeps the row's.
-- **Read**: `Simple` is Simple; `Pro`, empty (every Gmail let in before modes came) or anything else is Pro. The owner's
-  own row is always Pro, whatever is typed on it.
+  other). A new Gmail asked for (`request`, or `add` with none) is made Simple; a Gmail already on the list keeps its
+  own whoever asks (Session 55 review: anyone may ask for any Gmail). Give access again (`regrant`) takes a mode as
+  Approve does (Drashti's Access List asks), and keeps the row's when none is said.
+- **Read**: only `Pro` is Pro; `Simple`, empty or anything else is Simple (Session 55 review: it fails closed). The
+  owner's own row is always Pro, whatever is typed on it. Every Gmail let in before modes came is written `Pro` when the
+  list first makes the column (below).
 - **Each check's answer carries it**, so a change reaches a computer at its next check: Drashti drops to Simple Mode
   at that answer, and Pro access again brings Pro Mode back by itself when the access had put it in Simple Mode.
 
@@ -239,7 +248,7 @@ after a revoke or a newer grant, and runs out 3 days after it is sent. Randomnes
   and asked again says it is on. Google asks the owner once to allow the scope it needs
   (`https://www.googleapis.com/auth/script.scriptapp`, "Allow this application to run when you are not present").
   Free, as every Apps Script trigger is. A web page the script serves can call `drashtiDailyCheck` by name: it then
-  does only what its rule says, at most once in 10 minutes.
+  does only what its rule says, at most once in 10 minutes, and returns nothing (Session 55 review).
 
 ## Approve and Reject links
 
@@ -270,7 +279,11 @@ Two tabs, made by Drashti › Set up… (which also puts back a column taken awa
 **Access ends** and **Length** came after the first Sheets were set up (28 Oct 2026), and **Mode** after them (29 Oct
 2026): the list adds each itself, after the last column, the first time it reads a Sheet without it (Length hidden,
 Access ends shown as dates and written `Unlimited` for each Gmail approved then; Mode taking Pro or Simple only and
-written `Pro` for each Gmail but a request waiting), so the owner never sets the Sheet up again for them.
+written `Pro` for each Gmail but a request waiting), so the owner never sets the Sheet up again for them. Set up… on a
+Sheet with Gmails in it leaves the Mode column to the list. **Mode is made once** (Session 55 review): the list keeps
+`MODE_COLUMN_MADE` in the script's settings when it, or Set up…, makes it; taken away or renamed after that, the column
+is put back empty, which reads Simple for every Gmail but the owner's (it fails closed, and the list's log says so),
+never `Pro` again for every Gmail.
 
 Columns are found by their headers, so the owner may sort, move or add columns. **A status changed in the
 Sheet counts as the list's own** once the list reads the Sheet again (within 10 seconds of the next call
@@ -283,16 +296,17 @@ computers (`expired`) without ending them, until it is put right. A second row f
 
 ## Keys (Script Properties, in the owner's account only)
 
-| Property         | Made by                                     | What                                           |
-| ---------------- | ------------------------------------------- | ---------------------------------------------- |
-| `APPROVER_EMAIL` | the owner, by hand                          | the approver's (owner's) Gmail                 |
-| `WEB_APP_URL`    | Set up… (pasted by the owner)               | the web app's address, for the links in emails |
-| `SIGNING_KEY`    | Set up…, in the owner's browser (WebCrypto) | RSA 2048 private key, PKCS#8 PEM               |
-| `PUBLIC_KEY`     | Set up…                                     | its public half, SPKI in base64                |
-| `LINK_KEY`       | Set up… (256 random bits, hex)              | signs the Approve and Reject links             |
-| `SECRET_KEY`     | Set up… (256 random bits, hex)              | each computer's secret comes from it           |
-| `SETUP_TICKET`   | Set up…, for its window only (30 minutes)   | the only way the window's two calls are taken  |
-| `REQUESTS_TODAY` | the list, at each request                   | the day's requests counted (see Limits)        |
+| Property           | Made by                                     | What                                           |
+| ------------------ | ------------------------------------------- | ---------------------------------------------- |
+| `APPROVER_EMAIL`   | the owner, by hand                          | the approver's (owner's) Gmail                 |
+| `WEB_APP_URL`      | Set up… (pasted by the owner)               | the web app's address, for the links in emails |
+| `SIGNING_KEY`      | Set up…, in the owner's browser (WebCrypto) | RSA 2048 private key, PKCS#8 PEM               |
+| `PUBLIC_KEY`       | Set up…                                     | its public half, SPKI in base64                |
+| `LINK_KEY`         | Set up… (256 random bits, hex)              | signs the Approve and Reject links             |
+| `SECRET_KEY`       | Set up… (256 random bits, hex)              | each computer's secret comes from it           |
+| `SETUP_TICKET`     | Set up…, for its window only (30 minutes)   | the only way the window's two calls are taken  |
+| `REQUESTS_TODAY`   | the list, at each request                   | the day's requests counted (see Limits)        |
+| `MODE_COLUMN_MADE` | the list or Set up…, once                   | the Mode column was made (see The Sheet)       |
 
 Set up… never replaces a key (every Drashti would stop): opened again, it shows the same line. Before it keeps
 them, its window has Google sign, HMAC and hash a test text and checks each against the browser's own. The
@@ -305,7 +319,8 @@ owner. So `core.js` makes one global object and no function; `Code.js`'s functio
 callable) except `doGet`, `doPost`, `answerLink` (it checks the link's signature), `drashtiTestKeys` and
 `drashtiSaveSetup` (they need Set up…'s one-time ticket), `onOpen`, `drashtiSetUp`, `drashtiLetMeIn` and
 `drashtiDailyOn`, which do nothing outside the Sheet's own window (`SpreadsheetApp.getUi()` fails anywhere else), and
-`drashtiDailyCheck` (the daily trigger's), which does only what its rule says, at most once in 10 minutes.
+`drashtiDailyCheck` (the daily trigger's), which does only what its rule says, at most once in 10 minutes, and returns
+nothing (Session 55 review).
 `src/main/access/list-code.test.ts` keeps that list.
 
 ## Tests

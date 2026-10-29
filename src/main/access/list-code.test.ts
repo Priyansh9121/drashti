@@ -15,6 +15,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   ACCESS_LIST_DIR,
   callBody,
+  core,
   linkParams,
   MemoryCache,
   PLACEHOLDER_APPROVER,
@@ -418,6 +419,8 @@ describe('the list in Apps Script', () => {
       { warningOnly: true, description: expect.stringContaining('access list') as unknown },
     ]);
     expect(list?.frozen).toBe(1);
+    // Its Mode column made (Session 55 review): put back later, it comes back empty, which reads Simple.
+    expect(g.props.get(core.MODE_MADE_PROPERTY)).toBe('1');
     list?.cells[0]?.splice(1, 1);
     g.fn('prepareSheet_');
     expect(list?.header().at(-1)).toBe('Name');
@@ -435,6 +438,7 @@ describe('the list in Apps Script', () => {
     list.formats = new Map();
     list.validation = new Map([[3, ['requested', 'approved', 'rejected', 'revoked']]]);
     list.maxColumns = 22;
+    g.props.delete(core.MODE_MADE_PROPERTY);
     const computer = placeholderComputer('code-old-sheet');
     expect(post(g, callBody('request', computer, { gmail: PERSON }).body)).toMatchObject({ ok: true });
     expect(list.header().slice(-3)).toEqual(['Access ends', 'Mode', 'Length']);
@@ -453,6 +457,31 @@ describe('the list in Apps Script', () => {
     // Found, never added again.
     post(g, callBody('status', computer, { gmail: PERSON }).body);
     expect(list.header().filter((h) => h === 'Access ends')).toHaveLength(1);
+  });
+
+  it('Set up… on a Sheet from before modes came, with Gmails in it, leaves the Mode column to the list, which writes Pro for each one let in before (Session 55 review)', () => {
+    const g = appsScript({ props: setUpProps() });
+    g.fn('prepareSheet_');
+    const list = g.sheets.find((s) => s.name === 'Access List');
+    if (!list) throw new Error('No Access List tab');
+    const computer = placeholderComputer('code-old-modes');
+    post(g, callBody('request', computer, { gmail: PERSON }).body);
+    const link = /Approve: (\S+)/u.exec(g.mails.at(-1)?.body ?? '')?.[1] ?? '';
+    expect(g.fn('answerLink', { ...linkParams(link), mode: 'simple' })).toMatchObject({ kind: 'done' });
+    // The Sheet as it was before modes came: no Mode column, and never one made.
+    const mode = list.header().indexOf('Mode');
+    list.cells = list.cells.map((r) => r.filter((_, i) => i !== mode));
+    list.validation = new Map([[3, ['requested', 'approved', 'rejected', 'revoked']]]);
+    g.props.delete(core.MODE_MADE_PROPERTY);
+    // Set up… chosen again: the Mode column is not made empty under the Gmails already there…
+    g.fn('prepareSheet_');
+    expect(list.header()).not.toContain('Mode');
+    // …the list makes it at its next call, Pro for the Gmail let in before modes came.
+    g.cache.clear();
+    post(g, callBody('status', computer, { gmail: PERSON }).body);
+    expect(list.header().at(-1)).toBe('Mode');
+    expect(list.records()[0]).toMatchObject({ Gmail: PERSON, Status: 'approved', Mode: 'Pro' });
+    expect(g.props.get(core.MODE_MADE_PROPERTY)).toBe('1');
   });
 
   it('Set up…: asks for the approver first, then its window checks Google’s signing and keeps the keys once', () => {
@@ -569,9 +598,10 @@ describe('the list in Apps Script', () => {
     const long = new Date(Date.now() - 16 * 24 * 3_600_000);
     computers.put(2, col('Last seen'), long);
     computers.put(2, col('Token used'), long);
-    expect(g.fn('drashtiDailyCheck')).toEqual({ ran: true, ended: 1 });
+    // It returns nothing (Session 55 review: called by name from a page, it says nothing about the list).
+    expect(g.fn('drashtiDailyCheck')).toBeUndefined();
     expect(computers.records()[0]).toMatchObject({ 'Why ended': 'no-contact' });
-    expect(g.fn('drashtiDailyCheck')).toEqual({ ran: false, ended: 0 });
+    expect(g.fn('drashtiDailyCheck')).toBeUndefined();
   });
 
   it('asks Google for the one scope a trigger needs, beside the three it had', () => {
@@ -610,7 +640,7 @@ describe('the list in Apps Script', () => {
     expect(() => g.fn('drashtiDailyOn')).toThrow(/getUi/u);
     expect(g.triggers).toHaveLength(0);
     // The daily check called by name does only what the daily check does (here, with nothing set up, nothing).
-    expect(g.fn('drashtiDailyCheck')).toMatchObject({ ended: 0 });
+    expect(g.fn('drashtiDailyCheck')).toBeUndefined();
     expect(g.props.has('SETUP_TICKET')).toBe(false);
     expect(g.sheets.map((s) => s.name)).toEqual(['Sheet1']);
     expect(g.mails).toHaveLength(0);

@@ -130,6 +130,8 @@ export interface AccessCore {
   letOwnerIn(env: ListEnv): { ok: true; to: string; runsOut: number };
   /** The daily check (Session 55): every computer with no check for 15 days ended; at most once in 10 minutes. */
   dailyCheck(env: ListEnv): { ran: boolean; ended: number };
+  /** The script property set once the Mode column is made (Session 55 review): put back later, it comes back empty. */
+  MODE_MADE_PROPERTY: string;
   sheetLayout(): { tab: string; columns: SheetColumn[] }[];
   canonicalJson(value: unknown): string;
   gmailKey(address: string): string;
@@ -360,6 +362,8 @@ export class TestList {
     this.t = o.start ?? Date.UTC(2026, 9, 27, 10, 0, 0);
     this.mailQuota = o.mailQuota ?? 100;
     this.cache = new MemoryCache(() => this.t);
+    // The Sheet as Set up… makes it: every tab and column, its Mode column marked made (Session 55 review).
+    this.properties.set(core.MODE_MADE_PROPERTY, '1');
     this.props = {
       approverEmail: o.approver ?? PLACEHOLDER_APPROVER,
       webAppUrl: o.webAppUrl ?? 'https://script.google.com/macros/s/placeholder-list/exec',
@@ -389,7 +393,8 @@ export class TestList {
         send: (m) => {
           if (this.failNextMail) {
             this.failNextMail = false;
-            throw new Error('Placeholder mail failure');
+            // In Google's way: its words may name the address.
+            throw new Error(`Placeholder mail failure: invalid email: ${m.to}`);
           }
           if (this.mailbox.length >= this.mailQuota)
             throw new Error('Service invoked too many times for one day: email.');

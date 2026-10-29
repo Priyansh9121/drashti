@@ -175,10 +175,11 @@ function drashtiDailyOn() {
 
 /**
  * The daily check (the trigger's): every computer with no check for 15 days ended, by the list's clock. Called by name
- * from a web page, it does only that, at most once in 10 minutes (core.js's dailyCheck).
+ * from a web page, it does only that, at most once in 10 minutes (core.js's dailyCheck), and says nothing back (Session
+ * 55 review: not even how many it ended).
  */
 function drashtiDailyCheck() {
-  return DrashtiAccess.dailyCheck(env_());
+  DrashtiAccess.dailyCheck(env_());
 }
 
 // ---- the Set up… window's two calls (Setup.html), each with the window's one-time ticket ----
@@ -283,10 +284,16 @@ function prepareSheet_() {
     t.columns.forEach(function (c) {
       var at = header.indexOf(c.header.toLowerCase());
       if (at < 0) {
+        // The Mode column under Gmails already there is left to the list (Session 55 review), which makes it at its next
+        // call: Pro for each Gmail let in before modes came, or empty (Simple) if it was made before and taken away.
+        if (c.field === 'mode' && sheet.getLastRow() > 1) return;
         at = header.length;
         header.push(c.header.toLowerCase());
         sheet.getRange(1, at + 1).setValue(c.header);
       }
+      // The Mode column made: taken away later, it comes back empty (core.js's MODE_MADE_PROPERTY).
+      if (c.field === 'mode')
+        PropertiesService.getScriptProperties().setProperty(DrashtiAccess.MODE_MADE_PROPERTY, '1');
       var col = at + 1;
       if (c.date) sheet.getRange(2, col, rows, 1).setNumberFormat(DATE_FORMAT_);
       if (c.hidden) sheet.hideColumns(col);
