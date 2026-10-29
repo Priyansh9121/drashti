@@ -9,15 +9,24 @@ import type { LowerThird, LowerThirdInput } from '../../src/shared/lower-thirds'
 import { DEFAULT_LOWER_THIRD_LOOK, shownLines } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { launchApp, openMoreTools, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import {
+  launchApp,
+  openMoreTools,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+  windowShowing,
+} from './helpers';
 
 /*
- * Lower Thirds (Session 44; Priyansh: lower thirds in Macros' place). Made in the panel's editor with up to three
- * lines, a look, where it shows and an animation found by its plain words; Show puts it up on a placeholder hall
- * screen and the same button hides it; Clear all takes it off at once and Put it back brings it back; Black-out
- * covers it; one for the stream never shows in the hall. Every animation in the library is drawn on a hall screen
- * at its first, middle and last frame, in and out, with the screen's clock held there: no error, and it ends
- * where it should. Placeholder words only.
+ * Lower Thirds (Session 44; Priyansh: lower thirds in Macros' place). Made with up to three lines, a look, where it
+ * shows and an animation found by its plain words (Session 55, Part 16: in the Lower Thirds studio, a window of its
+ * own that New… opens); Show puts it up on a placeholder hall screen and the same button hides it; Clear all takes
+ * it off at once and Put it back brings it back; Black-out covers it; one for the stream never shows in the hall.
+ * Every animation in the library (the studio's too) is drawn on a hall screen at its first, middle and last frame,
+ * in and out, with the screen's clock held there: no error, and it ends where it should, at rest (no blur left).
+ * Placeholder words only.
  */
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -53,7 +62,7 @@ async function start(
   return { app, win, out };
 }
 
-test('made in the panel, shown on a placeholder hall screen and hidden with one button; found by their words; many deleted at once with one Undo; axe passes', async () => {
+test('made from the panel (in the studio), shown on a placeholder hall screen and hidden with one button; found by their words; many deleted at once with one Undo; axe passes', async () => {
   test.setTimeout(150_000);
   const { app, win, out } = await start();
   await openMoreTools(win);
@@ -62,16 +71,21 @@ test('made in the panel, shown on a placeholder hall screen and hidden with one 
   await expect(panel).toContainText('No lower thirds yet');
   await expectNoSeriousA11yIssues(win, 'the Lower Thirds panel, empty', '[data-testid="lower-thirds-panel"]');
 
-  // Made: three lines, the hall's screens, centred, and an animation found by its words.
+  // Made: three lines, the hall's screens, centred, and an animation found by its words, in the studio New… opens
+  // (Session 55, Part 16: a window of its own).
   await panel.getByTestId('lower-third-new').click();
-  const editor = win.getByTestId('lower-third-editor');
-  await expect(editor).toBeVisible();
+  const editor = await windowShowing(app, (p) => p.url().includes('lower-thirds.html'), 'the Lower Thirds studio');
+  await expect(editor.getByTestId('lt-studio')).toBeVisible({ timeout: 30_000 });
+  const tab = (name: string) => editor.getByRole('tab', { name }).click();
+  await tab('Words');
   const lines = editor.getByTestId('lower-third-line');
   await lines.nth(0).fill('Placeholder name');
   await lines.nth(1).fill('Placeholder title');
   await lines.nth(2).fill('Placeholder place');
   await editor.getByTestId('lower-third-where').locator('[data-choice="hall"]').click();
+  await tab('Style');
   await editor.getByTestId('lower-third-align').locator('[data-choice="centre"]').click();
+  await tab('Animation');
   const search = editor.getByTestId('lower-third-search');
   const listed = () => editor.getByTestId('lower-third-animation').allTextContents();
   await search.fill('fade');
@@ -95,9 +109,14 @@ test('made in the panel, shown on a placeholder hall screen and hidden with one 
   await expect(editor.getByTestId('lower-third-preview').getByTestId('lower-third-layer')).toContainText(
     'Placeholder name',
   );
-  await expectNoSeriousA11yIssues(win, 'the lower third’s editor', '[data-testid="lower-third-editor"]');
+  await expectNoSeriousA11yIssues(editor, 'the lower third’s studio');
   await editor.getByTestId('lower-third-save').click();
-  await expect(editor).toHaveCount(0);
+  await expect(editor.getByTestId('studio-row').filter({ hasText: 'Placeholder name' })).toHaveAttribute(
+    'data-saved',
+    'true',
+  );
+  await editor.close();
+  await expect.poll(() => app.windows().some((p) => p.url().includes('lower-thirds.html'))).toBe(false);
 
   // Show: on the hall's screen and in LIVE; the same button says Hide.
   const row = panel.getByTestId('lower-third-row');
@@ -178,7 +197,12 @@ test('Clear all takes it off at once, as it takes off the slide, and Put it back
   await app.close();
 });
 
-test('every animation at its first, middle and last frame on a hall screen, in and out: drawn without an error, ending where it should', async () => {
+/**
+ * Every animation of one kind (moving the whole lower third, or line by line, word by word or letter by letter) at
+ * its first, middle and last frame on a hall screen, in and out: one test per kind, each within its own time (the
+ * studio's, Session 55, Part 16, made the library nearly twice as long).
+ */
+async function everyAnimation(unit: 'box' | 'line' | 'word' | 'letter'): Promise<void> {
   test.setTimeout(900_000);
   const { app, win, out } = await start({ DRASHTI_TEST_CLOCK_HOLD: '1' });
   const errors: string[] = [];
@@ -196,7 +220,7 @@ test('every animation at its first, middle and last frame on a hall screen, in a
     root.evaluate((el) => {
       const look = (e: Element) => {
         const s = getComputedStyle(e);
-        return { opacity: s.opacity, transform: s.transform, clip: s.clipPath };
+        return { opacity: s.opacity, transform: s.transform, clip: s.clipPath, filter: s.filter };
       };
       const band = el.querySelector('[data-lt-band]');
       return {
@@ -204,11 +228,11 @@ test('every animation at its first, middle and last frame on a hall screen, in a
         units: [...el.querySelectorAll('[data-lt-unit]')].map(look),
       };
     });
-  const atRest = (l: { opacity: string; transform: string; clip: string }) =>
-    l.opacity === '1' && l.transform === 'none' && l.clip === 'none';
+  const atRest = (l: { opacity: string; transform: string; clip: string; filter: string }) =>
+    l.opacity === '1' && l.transform === 'none' && l.clip === 'none' && l.filter === 'none';
   const lines = ['Placeholder name', 'Placeholder title'];
   let n = 0;
-  for (const a of LOWER_THIRD_ANIMATIONS) {
+  for (const a of LOWER_THIRD_ANIMATIONS.filter((x) => x.unit === unit)) {
     n += 1;
     const units = cutIntoUnits(shownLines(lines), a).units;
     const lt: LowerThird = {
@@ -251,7 +275,24 @@ test('every animation at its first, middle and last frame on a hall screen, in a
     await expect(root, `${a.name}: out, at its end`).toHaveCount(0);
     await hold(null);
   }
-  console.info(`${String(n)} animations drawn at 6 frames each`);
+  console.info(`${String(n)} animations (${unit}) drawn at 6 frames each`);
+  expect(n).toBeGreaterThan(50);
   expect(errors).toEqual([]);
   await app.close();
+}
+
+test('every animation moving the whole lower third at its first, middle and last frame on a hall screen, in and out: drawn without an error, ending where it should', async () => {
+  await everyAnimation('box');
+});
+
+test('every animation line by line at its first, middle and last frame on a hall screen, in and out: drawn without an error, ending where it should', async () => {
+  await everyAnimation('line');
+});
+
+test('every animation word by word at its first, middle and last frame on a hall screen, in and out: drawn without an error, ending where it should', async () => {
+  await everyAnimation('word');
+});
+
+test('every animation letter by letter at its first, middle and last frame on a hall screen, in and out: drawn without an error, ending where it should', async () => {
+  await everyAnimation('letter');
 });

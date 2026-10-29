@@ -52,4 +52,55 @@ describe('lower thirds in the library', () => {
     db.prepare("UPDATE lower_thirds SET look = '{\"text\":1}', lines = '[]' WHERE id = ?").run(id);
     expect(repo.get(id)).toMatchObject({ lines: [''], look: DEFAULT_LOWER_THIRD_LOOK });
   });
+
+  it('keeps the studio’s choices (Session 55, Part 16): a style, an accent, a moving background, a font, an out of its own and the seconds it stays up', () => {
+    const db = openDatabase(':memory:');
+    const repo = new LowerThirdRepo(db);
+    const made: LowerThirdInput = {
+      ...input('Placeholder studio'),
+      look: {
+        ...DEFAULT_LOWER_THIRD_LOOK,
+        style: 'ribbon',
+        accent: '#ff9900',
+        motion: 'sweep',
+        font: 'Hind',
+      },
+      animation: 'reveal-up-steady',
+      outAnimation: 'blinds-quick',
+      seconds: 15,
+    };
+    const id = repo.create(made);
+    expect(repo.get(id)).toEqual({ id, ...made });
+    // Changed back to one that stays until hidden, going out as it came in.
+    const plain: LowerThirdInput = { ...input('Placeholder studio'), look: made.look };
+    expect(repo.update(id, plain)).toBe(true);
+    expect(repo.get(id)).toEqual({ id, ...plain });
+    expect(repo.get(id)).not.toHaveProperty('seconds');
+    expect(repo.get(id)).not.toHaveProperty('outAnimation');
+  });
+
+  it('reads a lower third kept before the studio as it was: no style, no seconds, its out its in played backwards', () => {
+    const db = openDatabase(':memory:');
+    const repo = new LowerThirdRepo(db);
+    const id = repo.create(input('Placeholder'));
+    // As an older Drashti kept it: the look's own fields only.
+    db.prepare('UPDATE lower_thirds SET look = ? WHERE id = ?').run(
+      JSON.stringify({ ...DEFAULT_LOWER_THIRD_LOOK, align: 'centre' }),
+      id,
+    );
+    const read = repo.get(id);
+    expect(read).toEqual({ id, ...input('Placeholder') });
+    expect(read?.look.style).toBeUndefined();
+    // Seconds or an out it cannot use are left out, the rest kept.
+    db.prepare('UPDATE lower_thirds SET look = ? WHERE id = ?').run(
+      JSON.stringify({ ...DEFAULT_LOWER_THIRD_LOOK, style: 'pill', seconds: 400, outAnimation: 'no-such' }),
+      id,
+    );
+    expect(repo.get(id)).toEqual({
+      id,
+      ...input('Placeholder'),
+      look: { ...DEFAULT_LOWER_THIRD_LOOK, style: 'pill' },
+    });
+  });
 });
+
