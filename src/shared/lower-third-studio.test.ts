@@ -337,7 +337,7 @@ describe('fonts', () => {
     expect(new Set(STUDIO_FONT_FILES.map((f) => f.family))).toEqual(families);
     let bytes = 0;
     for (const f of STUDIO_FONT_FILES) {
-      const path = join(APP, 'src/renderer/src/render/fonts', f.file);
+      const path = join(APP, 'src/renderer/src/render/studio-fonts', f.file);
       expect(existsSync(path), f.file).toBe(true);
       const data = readFileSync(path);
       bytes += data.length;
@@ -345,7 +345,7 @@ describe('fonts', () => {
       const sha = createHash('sha256').update(data).digest('hex');
       expect(readme, f.file).toContain(sha);
       expect(readme, f.file).toContain(f.source);
-      expect(css, f.file).toContain(`./fonts/${f.file}`);
+      expect(css, f.file).toContain(`./studio-fonts/${f.file}`);
       expect(existsSync(join(APP, 'LICENSES/fonts', f.licence)), f.licence).toBe(true);
       expect(readFileSync(join(APP, 'LICENSES/fonts', f.licence), 'utf8'), f.licence).toMatch(
         /SIL OPEN FONT LICENSE Version 1\.1/iu,
