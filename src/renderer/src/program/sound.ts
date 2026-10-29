@@ -1,8 +1,10 @@
 import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
+import { musicAside, StepAside } from '../../../shared/sound';
 import type { DeviceChoice } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
 import { soundMoved, soundsOf } from '../audio/sounds';
+import { engineNow } from '../render/clock';
 import { startPlayback } from '../render/playback';
 import { failureState, findDevice, setSoundState } from './camera';
 import { useProgram } from './program-store';
@@ -13,7 +15,13 @@ import { useProgram } from './program-store';
  * Drashti's own sound (videos and audio cues) for mandirs whose mixer
  * cannot send the hall's sound back. All of it is mixed here, in the
  * stream's page, at 48 kHz: none of it reaches a loudspeaker.
+ *
+ * Session 55, Part 7 (shared/sound.ts): Drashti's own sound here plays as the hall's audio player plays it, each file
+ * at its even loudness and the music stepping aside under a video with sound.
  */
+
+/** How often the music's step aside is looked at (ms), as the audio player does. */
+const LEVEL_MS = 50;
 
 export const STREAM_SAMPLE_RATE = 48_000;
 
@@ -38,6 +46,10 @@ export class StreamSound {
   private own = new Map<string, OwnSound>();
   private ownOn = false;
   private readonly samples = new Float32Array(2048);
+  /** The music's own level as it steps aside and comes back (Part 7, K), and the show it follows. */
+  private readonly aside = new StepAside();
+  private state: EngineState | null = null;
+  private levels: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.meter.fftSize = 2048;
@@ -120,6 +132,7 @@ export class StreamSound {
   /** Drashti's own sound in the stream: what the audio player plays, in step with it. */
   setOwnSound(on: boolean, state: EngineState | null): void {
     this.ownOn = on;
+    this.state = state;
     const wanted = new Map((on && state ? soundsOf(state) : []).map((s) => [s.key, s]));
     for (const [key, own] of this.own) {
       if (wanted.has(key)) continue;
@@ -136,18 +149,19 @@ export class StreamSound {
         current.sound = sound;
         if (moved) current.resync();
         current.el.loop = sound.loop && !sound.clip;
-        current.gain.gain.value = sound.volume;
         continue;
       }
       const el = document.createElement('audio');
       el.loop = sound.loop && !sound.clip;
       el.preload = 'auto';
+      // Read by Web Audio: fetched as Drashti's media scheme allows any of its pages to (Part 7).
+      el.crossOrigin = 'anonymous';
       el.dataset['key'] = sound.key;
       document.body.append(el);
       // Into the stream's mix only (an element taken into Web Audio no longer plays out loud).
       const source = this.ctx.createMediaElementSource(el);
       const gain = this.ctx.createGain();
-      gain.gain.value = sound.volume;
+      gain.gain.value = this.levelOf(sound);
       source.connect(gain).connect(this.mix);
       const own: OwnSound = { el, source, gain, sound, stop: () => undefined, resync: () => undefined };
       const playback = startPlayback(el, {
@@ -161,6 +175,34 @@ export class StreamSound {
       own.resync = playback.resync;
       this.own.set(sound.key, own);
     }
+    this.applyLevels();
+    if (this.own.size > 0 && !this.levels)
+      // eslint-disable-next-line no-restricted-syntax -- never decides a frame: how loud Drashti's own sound is in the stream's mix
+      this.levels = setInterval(() => {
+        this.applyLevels();
+      }, LEVEL_MS);
+    else if (this.own.size === 0 && this.levels) {
+      clearInterval(this.levels);
+      this.levels = null;
+    }
+  }
+
+  /** How loud a sound plays in the mix now: its volume, its file's even gain, the music's step aside (Part 7). */
+  private levelOf(sound: Sound, musicLevel = this.musicLevel()): number {
+    return sound.volume * (sound.gain ?? 1) * (sound.aside ? musicLevel : 1);
+  }
+
+  /** The music's level now (Part 7, K), by the engine's time. */
+  private musicLevel(): number {
+    const now = engineNow();
+    return this.aside.levelAt(musicAside(this.state, now), now);
+  }
+
+  /** Every own sound's gain, as the show has it now, eased there so no change clicks. */
+  private applyLevels(): void {
+    const musicLevel = this.musicLevel();
+    for (const own of this.own.values())
+      own.gain.gain.setTargetAtTime(this.levelOf(own.sound, musicLevel), this.ctx.currentTime, 0.015);
   }
 
   /** Whether Drashti's own sound is going in. */

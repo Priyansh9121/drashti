@@ -24,12 +24,14 @@ import { textLang } from './lang';
 import { SlideLayerView } from './SlideLayerView';
 import { SlideLowerThird } from './LowerThird';
 import { LowerThirdView } from './LowerThirdView';
-import { ScreenPictures } from './picture-looks';
+import { BackgroundBox, ScreenPictures } from './picture-looks';
 import { TimerText } from './TimerText';
 import { useLiveHere } from './live-here';
 import { pipMainPlaces, type PipPicture, type PipRun, pipShownFor, pipShowsHere, type PipSlot } from './pip';
 import { PipBox, PipSourcePicture, usePipMainDissolve, usePipRun } from './PipLayerView';
-import { MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
+import { MESSAGE_BAND, MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
+import { AudienceTimerView } from './AudienceTimer';
+import { HallMessages } from './HallMessages';
 
 /** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
 export function samvatText(calendar: CalendarDay | null, lang: CalendarLang): string {
@@ -344,7 +346,7 @@ function MainSlot({
  * The operator preview and every output use this same component; the preview sets `annotate` to mark problems the
  * audience never sees. What a screen shows of it is its group's settings (`look`: its layers, languages and slide
  * style, by its role and its languages in Screens). The stream leaves the ticker out (`ticker`). With nothing up,
- * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black until then).
+ * render/NothingUp.tsx says what shows (Part 6's chosen wallpaper; black with none chosen).
  */
 export const Scene = memo(function Scene({
   state,
@@ -398,7 +400,7 @@ export const Scene = memo(function Scene({
   const [run, refreshRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
   const up = boxHere(layers.pip) ? layers.pip : null;
   // Nothing up on these screens (the box counts): what shows then (Session 55, render/NothingUp.tsx: Part 6's
-  // chosen wallpaper goes there; black until then).
+  // chosen wallpaper; black with none chosen).
   const nothingUp = background === null && (layers.slide === null || !shown('slide')) && up === null;
   const nothingUpNow = nothingUp ? nothingUpShows(state) : null;
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
@@ -470,7 +472,10 @@ export const Scene = memo(function Scene({
             <>
               <div style={{ ...FULL, isolation: dissolving ? 'isolate' : undefined }}>
                 <MainSlot slot={slotOf('background')} swap={swap}>
-                  <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
+                  {/* The canvas, for a turned or cropped picture placed from the first frame (Session 55, Part 5). */}
+                  <BackgroundBox.Provider value={canvas}>
+                    <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
+                  </BackgroundBox.Provider>
                 </MainSlot>
                 {/* The box's own picture in the background's place, once swapped (Session 50), a video between its
                     file's start and end points as in the box (Session 53). */}
@@ -517,15 +522,41 @@ export const Scene = memo(function Scene({
                   place={matte === null ? place : 'stream'}
                   lift={bandHeight}
                 />
-                {shown('messages') && layers.messages.length > 0 && (
+                {/* A timer for the audience (Session 55, Part 15): over what is up, or over the wallpaper. */}
+                <AudienceTimerView
+                  state={state}
+                  layer={layers.timer}
+                  off={state.timerOff}
+                  timers={state.timers}
+                  canvas={canvas}
+                />
+                {/* The band along the bottom: messages with the standard look, as every message was before. */}
+                {shown('messages') && layers.messages.some((m) => !m.look) && (
                   <MessageBanner
-                    messages={layers.messages}
+                    messages={layers.messages.filter((m) => !m.look)}
                     timers={state.timers}
                     calendar={state.calendar}
                     canvas={canvas}
                     at={lowerThirds ? 'top' : 'bottom'}
                     above={lowerThirds ? 0 : bandHeight}
                     movement={look.movement}
+                  />
+                )}
+                {/* Messages with a look of their own (Session 55): each in its place, coming and going as it says. */}
+                {shown('messages') && (
+                  <HallMessages
+                    messages={layers.messages}
+                    leaving={state.messagesOff}
+                    timers={state.timers}
+                    calendar={state.calendar}
+                    canvas={canvas}
+                    // Above the ticker's band, and above the band of standard messages while it is along the bottom.
+                    lift={
+                      bandHeight +
+                      (!lowerThirds && layers.messages.some((m) => !m.look)
+                        ? Math.round(canvas.height * MESSAGE_BAND)
+                        : 0)
+                    }
                   />
                 )}
                 {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}

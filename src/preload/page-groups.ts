@@ -56,11 +56,15 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'screenSwitches',
     'setup',
     'shastra',
+    // Audio's Music steps aside, a file's Even loudness, Trim black and silence (Session 55, Part 7).
+    'sound',
     'stageLayouts',
     'stream',
     'timers',
     'updates',
     'videoInputs',
+    // The wallpapers (Session 55, Part 6).
+    'wallpapers',
     'zoom',
   ],
   // The hall's screens (a video input up now, Session 50: whether this computer has it, and how it stands).

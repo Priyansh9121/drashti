@@ -14,8 +14,9 @@ import {
 /*
  * Timers: the engine sends only start, pause and reset; every window works
  * out the time from the shared clock, so two outputs show the same time
- * without a message every second. Show on the screens puts the timer up alone,
- * in the slide's place (Session 50: before, it went up as a message).
+ * without a message every second. Show for the audience puts the timer up on the
+ * hall's screens in its own look (Session 55, Part 15: before, Show on the screens put it
+ * up alone in the slide's place, and before Session 50 as a message).
  */
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
@@ -45,8 +46,8 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   const row = timers.getByTestId('timer-row');
   await expect(row.getByTestId('timer-value')).toHaveText('5:00');
   await row.getByRole('button', { name: 'Start' }).click();
-  await row.getByRole('button', { name: 'Show on the screens' }).click();
-  const timerOn = (p: Page) => p.locator('[data-layer="slide"] [data-timer-element]');
+  await row.getByRole('button', { name: 'Show for the audience' }).click();
+  const timerOn = (p: Page) => p.locator('[data-layer="timer"] [data-testid="audience-timer-time"]');
   const timeOf = async (p: Page) => (await timerOn(p).getAttribute('data-time')) ?? '';
   for (const p of [a, b]) await expect(timerOn(p)).toHaveAttribute('data-time', /^4:/);
 
@@ -80,8 +81,8 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   await row.getByRole('button', { name: 'Reset' }).click();
   for (const p of [a, b]) await expect(timerOn(p)).toHaveAttribute('data-time', '5:00');
 
-  // Taken off the screens.
-  await row.getByRole('button', { name: 'Take off the screens' }).click();
+  // Taken off the screens (Hide).
+  await row.getByRole('button', { name: 'Hide' }).click();
   for (const p of [a, b]) await expect(timerOn(p)).toHaveCount(0);
 
   await app.close();

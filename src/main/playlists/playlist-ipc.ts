@@ -14,6 +14,7 @@ import {
   timerCuesSchema,
   templateRequestSchema,
 } from '../../shared/playlists';
+import { whenEndsSchema } from '../../shared/wallpapers';
 import type { PlaylistRepo } from '../db/playlists';
 import { handle } from '../ipc/handle';
 import type { StartupReads } from '../ipc/startup-reads';
@@ -267,6 +268,17 @@ export function registerPlaylistIpc({
         : failed('Only a presentation, media or passage item runs timers when it goes up.');
     }),
   );
+  // When it ends (Session 55, Part 6): a video row's Wallpaper, Next item, Loop or Freeze.
+  handle(IPC.playlists.setWhenEnds, (e, itemId, whenEnds) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(itemId);
+      const w = whenEndsSchema.safeParse(whenEnds);
+      if (!id.success || !w.success) return failed('That is not something a video can do when it ends.');
+      return repo.setWhenEnds(id.data, w.data)
+        ? { ok: true, ids: [id.data] }
+        : failed('Only a video’s row says what happens when it ends.');
+    }),
+  );
   // Duplicate (Session 55, Part 4): "<name> copy" beside it, with its rows in their order.
   handle(IPC.playlists.duplicate, (e, playlistId) =>
     change(e, () => {
@@ -276,6 +288,30 @@ export function registerPlaylistIpc({
       return made
         ? { ok: true, ids: [made] }
         : failed('Only a playlist (not a folder or a template) can be duplicated.');
+    }),
+  );
+  // A slide's row dragged out of its deck (Session 55, Part 4b): an item of its own, the deck keeping the rest.
+  handle(IPC.playlists.splitItem, (e, itemId, rest, alone, at) =>
+    change(e, () => {
+      const item = playlistIdSchema.safeParse(itemId);
+      const r = itemOrderSchema.safeParse(rest);
+      const a = itemOrderSchema.safeParse(alone);
+      const where = positionSchema.safeParse(at);
+      if (!item.success || !r.success || !a.success || !where.success)
+        return failed('That slide cannot be moved.');
+      const made = repo.splitItem(item.data, r.data, a.data, where.data);
+      return made ? { ok: true, ids: [made] } : failed('That item, or its presentation, no longer exists.');
+    }),
+  );
+  handle(IPC.playlists.undoSplit, (e, itemId, order, madeId) =>
+    change(e, () => {
+      const item = playlistIdSchema.safeParse(itemId);
+      const o = itemOrderSchema.safeParse(order);
+      const made = playlistIdSchema.safeParse(madeId);
+      if (!item.success || !o.success || !made.success) return failed('That cannot be undone.');
+      return repo.undoSplit(item.data, o.data, made.data)
+        ? { ok: true, ids: [item.data, made.data] }
+        : failed('Those items are no longer there.');
     }),
   );
   // ---- Repeat Slides (Session 26d) --------------------------------------------------------

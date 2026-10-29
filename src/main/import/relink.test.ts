@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
+import { MediaRepo } from '../db/media';
 import { PresentationRepo } from '../db/presentations';
 import { parseFfmpegInfo } from '../convert/plan';
 import { MediaStore, type MediaStoreOptions } from './media-store';
@@ -106,6 +107,34 @@ describe('runRelink', () => {
       id: storedId,
     });
     expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
+  });
+
+  it('a missing file merged into one with the same bytes brings the points its import gave it, told so what is up moves (Session 55, Q20)', async () => {
+    const { db, media, found } = setup();
+    writeFileSync(join(found, 'Same loop.mov'), 'same loop bytes');
+    const stored = await media.importFile(join(found, 'Same loop.mov'), {
+      kind: 'media',
+      path: join(found, 'Same loop.mov'),
+    });
+    const storedId = stored.outcome === 'failed' ? '' : stored.mediaId;
+    media.takeMarkers(storedId, { startMs: 500, endMs: null, markers: [] });
+    // Imported later with points, its file not found then: the points wait on the missing item.
+    const missingId = media.addMissing('/old/Same loop.mov', 'video', { kind: 'pp6', path: '/p' });
+    media.takeMarkers(missingId, { startMs: 2000, endMs: 6500, markers: [] });
+    const told: string[][] = [];
+    const run = await runRelink({
+      db,
+      media,
+      runId: randomUUID(),
+      folder: found,
+      onMarked: (ids) => told.push(ids),
+    });
+    expect(run.totals).toMatchObject({ imported: 1 });
+    expect(new MediaRepo(db).markersOf(storedId)).toMatchObject({ startMs: 2000, endMs: 6500 });
+    expect(told).toEqual([[storedId]]);
+    expect(new ImportRepo(db).report(run.id)?.items[0]?.message).toBe(
+      `Relinked to ${join(found, 'Same loop.mov')}. Already in the library: the start and end points or markers this file was imported with are its own now.`,
+    );
   });
 
   it('keeps a playlist’s item, an audio track and a kirtan’s recording on the missing file when it is merged, on the kept file (Session 51 review)', async () => {

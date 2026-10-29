@@ -1,4 +1,5 @@
 import type { ArrangementInfo, GroupInfo, SlideInfo } from './library';
+import type { ItemOrder } from './playlists';
 
 /*
  * The order slides play in (PLAN.md 4.3): a presentation's arrangement lists
@@ -95,4 +96,63 @@ export function playOrder(
   const groupsWithSlides = new Set(doc.groups.filter((g) => g.slides.length > 0).map((g) => g.id));
   const used = arrangement?.groupIds.some((id) => groupsWithSlides.has(id)) ? arrangement : null;
   return { arrangementId: used?.id ?? null, slides: orderSlides(doc.groups, used) };
+}
+
+/** What an item's own order of slides is called by the engine and goLive (Session 55, Part 4b): "item:<itemId>". */
+const OWN_ORDER = 'item:';
+
+/** The order id of a playlist item's own order of slides (Session 55, Part 4b). */
+export const ownOrderId = (itemId: string): string => `${OWN_ORDER}${itemId}`;
+
+/** The playlist item whose own order of slides an order id names; null for an arrangement's id, or none. */
+export function ownOrderItem(arrangementId: string | null | undefined): string | null {
+  if (!arrangementId?.startsWith(OWN_ORDER)) return null;
+  const itemId = arrangementId.substring(OWN_ORDER.length);
+  return itemId === '' ? null : itemId;
+}
+
+/**
+ * The slides a playlist item plays (Session 55, Part 4b), as `playOrder` gives them: the presentation's own order,
+ * every slide, an arrangement, or the playlist's own order of its slides (the order "item:<itemId>"). An own order
+ * plays its slides by id: one deleted from the presentation since drops out, one named twice plays twice, and with
+ * `known` a slide the presentation has gained since plays at the end, in the presentation's order. Each slide keeps
+ * its group, a new run of the group each time it comes up after another's (its name shown there).
+ */
+export function itemPlayOrder(
+  doc: {
+    groups: readonly GroupInfo[];
+    arrangements: readonly ArrangementInfo[];
+    selectedArrangementId: string | null;
+  },
+  order: ItemOrder,
+  itemId: string,
+): { arrangementId: string | null; slides: OrderedSlide[] } {
+  if (order.mode === 'all') return playOrder(doc, null);
+  if (order.mode === 'arrangement') return playOrder(doc, order.arrangementId);
+  if (order.mode === 'presentation') return playOrder(doc, doc.selectedArrangementId);
+  const where = new Map<string, { group: GroupInfo; slide: SlideInfo }>();
+  for (const group of doc.groups) for (const slide of group.slides) where.set(slide.id, { group, slide });
+  const named = new Set(order.slideIds);
+  const known = order.known ? new Set(order.known) : null;
+  const ids = [
+    ...order.slideIds,
+    ...(known ? [...where.keys()].filter((id) => !known.has(id) && !named.has(id)) : []),
+  ];
+  const slides: OrderedSlide[] = [];
+  const runs = new Map<string, number>();
+  let last: string | null = null;
+  for (const id of ids) {
+    const at = where.get(id);
+    if (!at) continue;
+    const { group, slide } = at;
+    if (last !== group.id) runs.set(group.id, (runs.get(group.id) ?? -1) + 1);
+    last = group.id;
+    slides.push({
+      position: slides.length,
+      group: { id: group.id, name: group.name, color: group.color },
+      occurrence: runs.get(group.id) ?? 0,
+      slide,
+    });
+  }
+  return { arrangementId: ownOrderId(itemId), slides };
 }

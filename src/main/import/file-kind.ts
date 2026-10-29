@@ -178,6 +178,9 @@ const BY_FORMAT: Record<string, string> = {
   'WebP picture': 'webp',
   'AVIF picture': 'avif',
   'HEIC photo': 'heic',
+  // Session 55 (Part 5).
+  'ICO icon': 'ico',
+  'Photoshop picture (PSD)': 'psd',
   'AVI video': 'avi',
   'WAV sound file': 'wav',
   'ADPCM WAV sound file': 'wav',
@@ -200,6 +203,8 @@ const BY_FORMAT: Record<string, string> = {
  * alone (a BMP, an MP3 or AAC without a tag) must hold up as one.
  */
 function mediaExtension(head: Buffer, kind: 'image' | 'video' | 'audio', format: string): string | null {
+  // JPEG 2000 (Session 55): a file with its signature box, or a bare codestream.
+  if (format === 'JPEG 2000 picture') return head[0] === 0xff ? 'j2k' : 'jp2';
   const known = BY_FORMAT[format];
   if (known === 'bmp') return bmp(head) ? known : null;
   if ((known === 'mp3' || known === 'aac') && ascii(head, 0, 3) !== 'ID3')

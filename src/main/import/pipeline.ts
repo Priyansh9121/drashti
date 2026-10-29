@@ -33,6 +33,7 @@ import { diskFreeBytes, type MediaStore, sha256File, type StagedMedia, UPLOADS_D
 import { isInside } from '../media/contained';
 import { withoutOutsideLinks } from './deck/links';
 import { fileNameOf, pathFromReference, resolveMedia } from './media-resolver';
+import type { MediaMarkers } from '../../shared/markers';
 import type { ParsedMediaRef, ParsedPlaylist, ParsedPlaylistDoc, ParsedPresentation } from './model';
 import { MEDIA_REF, slideCount } from './model';
 import { SettingsRepo } from '../db/settings';
@@ -44,6 +45,7 @@ import { CALENDAR_FORMAT, readCalendarFile } from '../../shared/calendar';
 /** "1 day", "182 days". */
 const counted = (n: number, one: string): string => `${n.toLocaleString('en')} ${one}${n === 1 ? '' : 's'}`;
 import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
+import { unreadPictureWords } from '../../shared/media';
 import { playIssues } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
 import type { PicturesResult } from '../../shared/pictures';
@@ -470,6 +472,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
 
   /** Presentations written in this run, to find the ones playlists name. */
   const written = { byPath: new Map<string, string>(), byName: new Map<string, string>() };
+  /** The files given points by this import (Session 55, Q20): within one import, the first points are kept. */
+  const pointed = new Set<string>();
   const remember = (where: Where, file: ScannedFile, id: string) => {
     written.byPath.set(normalizePath(where.sourcePath), id);
     written.byName.set(basename(file.path).toLowerCase(), id);
@@ -514,6 +518,22 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const ids: string[] = [];
     const issues: ImportIssue[] = [];
     const marked: string[] = [];
+    /** Files that had other points, given this import's (Session 55, Q20), by name. */
+    const replaced: string[] = [];
+    /**
+     * An import's points for a file (Session 55: the owner's answer to Session 54's question 20): a file the library
+     * has already takes them in place of its own, so what is up playing it moves to them. Within one import, the
+     * first points a file is given are kept, as before.
+     */
+    const takePoints = (mediaId: string, name: string, markers: MediaMarkers | null | undefined) => {
+      if (!markers || pointed.has(mediaId)) return;
+      const took = ctx.media.takeMarkers(mediaId, markers);
+      if (took === null) return;
+      pointed.add(mediaId);
+      if (took === 'same') return;
+      marked.push(mediaId);
+      if (took === 'replaced') replaced.push(name);
+    };
     for (const s of staged) {
       // A page drawn from a document is a picture Drashti made, from that page.
       const source = {
@@ -523,8 +543,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       if (s.staged) {
         const stored = ctx.media.addStaged(s.staged, source);
         ids.push(stored.mediaId);
-        if (s.ref.markers && ctx.media.keepMarkers(stored.mediaId, s.ref.markers))
-          marked.push(stored.mediaId);
+        takePoints(stored.mediaId, stored.name, s.ref.markers);
         // What cannot play: converted by itself (Session 50), or offered for Convert.
         issues.push(...playIssues(s.staged.name, stored));
         continue;
@@ -533,7 +552,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       ids.push(id);
       // Its points kept for when it is found (Session 54 review: Find missing media… fills the item in, points and
       // all), where they were thrown away and it played whole.
-      if (s.ref.markers && ctx.media.keepMarkers(id, s.ref.markers)) marked.push(id);
+      takePoints(id, fileNameOf(s.ref.originalPath), s.ref.markers);
       if (s.issue) issues.push(s.issue);
       issues.push({
         severity: 'warning',
@@ -550,6 +569,17 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         message: `Start and end points or markers were read for ${plural(marked.length, 'video or sound', 'videos or sounds')}. The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item’s Markers).`,
         fix: null,
       });
+    if (replaced.length > 0) {
+      const shown = replaced.slice(0, 3).join(', ');
+      const more = replaced.length > 3 ? ` and ${plural(replaced.length - 3, 'other', 'others')}` : '';
+      const one = replaced.length === 1;
+      issues.push({
+        severity: 'info',
+        code: 'markers-replaced',
+        message: `${shown}${more} ${one ? 'was' : 'were'} in the library already, with other start and end points or markers: ${one ? 'it has' : 'they have'} this import’s now, and what is up playing ${one ? 'it' : 'them'} moved to them at once.`,
+        fix: null,
+      });
+    }
     return { ids, issues, count: ids.length, marked };
   };
   /** Files given points (storeMedia's `marked`), told once their group is committed (Session 54). */
@@ -1642,9 +1672,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       await importJson(file, where);
       return;
     }
+    // A picture Drashti does not read (Session 55, Part 5: JPEG XL, SVG, a camera's raw picture) says why.
+    const unreadPicture = unreadPictureWords(ext);
     const support =
       SUPPORT_FILES[name] ??
       (SUPPORT_EXTENSIONS[ext] ? { format: 'unknown' as const, message: SUPPORT_EXTENSIONS[ext] } : null) ??
+      (unreadPicture ? { format: 'unknown' as const, message: unreadPicture } : null) ??
       (ext === '' && basename(dirname(file.path)) === 'Configuration' && basename(file.path) !== 'Props'
         ? { format: 'pp7' as const, message: 'Settings are set up again in Drashti (see the audit report).' }
         : null);

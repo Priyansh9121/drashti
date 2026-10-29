@@ -102,6 +102,7 @@ export function LeftColumn({
   head,
   top,
   bottom,
+  wallpapers = null,
   over,
   covered,
   foot,
@@ -110,14 +111,20 @@ export function LeftColumn({
   top: ReactNode;
   /** The open folder playlist's folders, or null. */
   bottom: ReactNode | null;
+  /**
+   * The wallpapers (Session 55, Part 6): under the playlists and the folders, just above the bar of clears, in the
+   * place the library's sheet covers too.
+   */
+  wallpapers?: ReactNode;
   /** Laid over the playlists and folders (the library's sheet); null when shut. */
   over: ReactNode;
   /** The sheet covers them: they take no keyboard or pointer meanwhile (inert), so nothing hidden is reached. */
   covered: boolean;
   foot: ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { height } = useElementSize(ref);
+  // The playlists' and the folders' own height (the wallpapers under them have theirs).
+  const split = useRef<HTMLDivElement>(null);
+  const { height } = useElementSize(split);
   const [share, setShare] = usePersistentState('layout.playlists', PLAYLISTS.initial, isNumber);
   const usable = Math.max(1, height);
   const topHeight = Math.round(clamp(share, PLAYLISTS.min, PLAYLISTS.max) * usable);
@@ -126,32 +133,35 @@ export function LeftColumn({
     // and the library's sheet over them.
     <section aria-label="Playlists" className="flex min-h-0 flex-1 flex-col">
       {head}
-      <div ref={ref} className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1 flex-col" inert={covered}>
-          {bottom === null ? (
-            <div className="flex min-h-0 flex-1 flex-col">{top}</div>
-          ) : (
-            <>
-              <div
-                style={{ height: height > 0 ? topHeight : `${PLAYLISTS.initial * 100}%` }}
-                className="flex min-h-0 shrink-0 flex-col"
-              >
-                {top}
-              </div>
-              <Splitter
-                orientation="horizontal"
-                value={topHeight}
-                onChange={(px) => {
-                  setShare(px / usable);
-                }}
-                min={Math.round(PLAYLISTS.min * usable)}
-                max={Math.round(PLAYLISTS.max * usable)}
-                defaultValue={Math.round(PLAYLISTS.initial * usable)}
-                label="Resize the playlists and the folders"
-              />
-              <div className="flex min-h-0 flex-1 flex-col">{bottom}</div>
-            </>
-          )}
+          <div ref={split} className="flex min-h-0 flex-1 flex-col">
+            {bottom === null ? (
+              <div className="flex min-h-0 flex-1 flex-col">{top}</div>
+            ) : (
+              <>
+                <div
+                  style={{ height: height > 0 ? topHeight : `${PLAYLISTS.initial * 100}%` }}
+                  className="flex min-h-0 shrink-0 flex-col"
+                >
+                  {top}
+                </div>
+                <Splitter
+                  orientation="horizontal"
+                  value={topHeight}
+                  onChange={(px) => {
+                    setShare(px / usable);
+                  }}
+                  min={Math.round(PLAYLISTS.min * usable)}
+                  max={Math.round(PLAYLISTS.max * usable)}
+                  defaultValue={Math.round(PLAYLISTS.initial * usable)}
+                  label="Resize the playlists and the folders"
+                />
+                <div className="flex min-h-0 flex-1 flex-col">{bottom}</div>
+              </>
+            )}
+          </div>
+          {wallpapers}
         </div>
         {over}
       </div>

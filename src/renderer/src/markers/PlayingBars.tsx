@@ -9,6 +9,8 @@ import { IconButton } from '../ui/Button';
 import { Pause, Play } from '../ui/icons';
 import { cx } from '../ui/cx';
 import { TimeBar } from '../ui/TimeBar';
+import { playbackLeftMs } from '../../../shared/media';
+import { inLastSeconds } from '../../../shared/wallpapers';
 import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playingRows } from './playing-rows';
 
 /*
@@ -48,14 +50,21 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
   const bar = barNow(playing, now);
   const known = bar.durationMs !== null;
   const stopped = playing.paused || bar.ended;
+  // The background video's last 10 seconds (Session 55, Part 6, E): its time in amber.
+  const ending =
+    row.which === 'background' &&
+    !playing.clock.loop &&
+    bar.durationMs !== null &&
+    inLastSeconds(playbackLeftMs(playing.clock, bar.durationMs, now));
   return (
     <div
       role="group"
-      aria-label={row.name}
+      aria-label={ending ? `${row.name}, ending` : row.name}
       className="flex min-w-0 items-center gap-1.5"
       data-testid="time-bar-row"
       data-playing={row.which}
       data-paused={playing.paused ? 'true' : undefined}
+      data-last-seconds={ending ? 'true' : undefined}
     >
       {(pro ? stopped : playing.paused) ? (
         <IconButton
@@ -93,6 +102,7 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
         endMs={bar.endMs}
         markers={playing.marks}
         elapsed={pro}
+        warning={ending}
         {...(pro ? { onMove: (ms: number) => void dispatch(moveCommand(playing.ref, ms)) } : {})}
       />
     </div>

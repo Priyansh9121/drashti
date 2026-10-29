@@ -69,6 +69,17 @@ export class MediaRepo {
     return row ? { kind: row.kind, path: row.path, missing: row.missing === 1 } : null;
   }
 
+  /**
+   * Whether a picture is a photo (Session 55, Part 5, D): a picture brought in any way, which has its blurred copy
+   * behind it by itself, and not a page Drashti drew from a deck (its source 'drashti'), which has none unless asked.
+   */
+  photoByDefault(mediaId: string): boolean {
+    const row = this.db
+      .prepare("SELECT source_kind FROM media WHERE id = ? AND kind = 'image'")
+      .get(mediaId) as { source_kind: string | null } | undefined;
+    return row !== undefined && row.source_kind !== 'drashti';
+  }
+
   /** A media item's kind and name, when it is there to play (not missing); null otherwise. */
   kindAndName(mediaId: string): { kind: 'image' | 'video' | 'audio'; name: string } | null {
     const row = this.db
@@ -172,7 +183,14 @@ export class MediaRepo {
    * Pictures whose looks sharpen them (Session 26f), for their sharpened copies: the file and the sharpness.
    * Deleted ones too, until their files go (Undo puts them back as they were).
    */
-  sharpenWants(): { mediaId: string; sha256: string; path: string; sharpness: number; zoom: number }[] {
+  sharpenWants(): {
+    mediaId: string;
+    sha256: string;
+    path: string;
+    sharpness: number;
+    zoom: number;
+    look: PictureLook;
+  }[] {
     const rows = this.db
       .prepare(
         `SELECT id, sha256, path, look FROM media
@@ -182,7 +200,17 @@ export class MediaRepo {
     return rows.flatMap((r) => {
       const look = lookOf(r.look);
       return look && look.sharpness > 0
-        ? [{ mediaId: r.id, sha256: r.sha256, path: r.path, sharpness: look.sharpness, zoom: look.zoom }]
+        ? [
+            {
+              mediaId: r.id,
+              sha256: r.sha256,
+              path: r.path,
+              sharpness: look.sharpness,
+              zoom: look.zoom,
+              // Turned or cropped, its copy is made bigger (Session 55, P5).
+              look,
+            },
+          ]
         : [];
     });
   }

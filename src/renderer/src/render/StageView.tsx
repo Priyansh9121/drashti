@@ -14,6 +14,7 @@ import { TimerText } from './TimerText';
 import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
+import { stageMessageColors, stageMessageData, stageMessagePx } from './StageMessageBanner';
 
 /**
  * What a stage screen says is up when no slide is: the background's kind, never the picture itself (another
@@ -39,8 +40,10 @@ export function screensStateWords(state: EngineState, hall: HallPicture | null |
   if (hall?.off === true) return 'Audience screens off';
   if (state.blackout) return 'Audience screens black';
   if (state.wallpaper) return 'Wallpaper on the audience screens';
-  return state.layers.slide || state.layers.background
-    ? 'Audience screens showing'
+  if (state.layers.slide || state.layers.background) return 'Audience screens showing';
+  // Nothing up: the chosen wallpaper shows (Session 55, Part 6), or black.
+  return (state.chosenWallpaper?.pictures.length ?? 0) > 0
+    ? 'Wallpaper on the audience screens'
     : 'Nothing on the audience screens';
 }
 
@@ -267,10 +270,11 @@ export function StageView({
         <div
           data-testid="stage-message"
           lang={textLang(state.stageMessage)}
+          // Its own size and flash (Session 55, Part 15).
+          {...stageMessageData(state.stageCall)}
           style={{
-            background: '#f5a524',
-            color: '#000000',
-            fontSize: 64,
+            ...stageMessageColors(state.stageCall, now),
+            fontSize: stageMessagePx(state.stageCall),
             fontWeight: 700,
             lineHeight: 1.2,
             padding: '16px 32px',

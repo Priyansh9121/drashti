@@ -41,6 +41,8 @@ export function mediaInState(state: EngineState): { now: string[]; next: string[
   // The picture-in-picture box's picture or video (Session 50); a video input or a window is no media.
   const box = state.layers.pip?.source;
   if (box?.kind === 'media') now.add(box.mediaId);
+  // The chosen wallpaper's pictures (Session 55, Part 6): drawn whenever nothing is up, and under the Wallpaper.
+  for (const id of state.chosenWallpaper?.pictures ?? []) now.add(id);
   const next = new Set<string>();
   const n = state.next;
   if (n?.kind === 'slide') {

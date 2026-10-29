@@ -69,18 +69,34 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.newFromTemplate,
   // Session 55 (Parts 4 and 14): Duplicate, and the one right-click menu's Rename, are Pro Mode's.
   IPC.playlists.duplicate,
+  // Session 55, Part 4b: a slide's row dragged out of its deck (and its Undo), as moving items is.
+  IPC.playlists.splitItem,
+  IPC.playlists.undoSplit,
   IPC.library.renamePresentation,
   IPC.media.rename,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,
   IPC.messages.remove,
+  // Session 55 (Part 15): a message put back (Undo), and Countdown to the start, Pro Mode's.
+  IPC.messages.restore,
   IPC.timers.create,
   IPC.timers.update,
   IPC.timers.remove,
+  IPC.timers.startCountdown,
   IPC.stageLayouts.save,
   IPC.playlists.editSlot,
   IPC.playlists.setTimers,
+  // Session 55, Part 6: a video row's When it ends, and the wallpapers' setup (Part 18 gives Simple Mode its own).
+  IPC.playlists.setWhenEnds,
+  IPC.wallpapers.add,
+  IPC.wallpapers.pickFiles,
+  IPC.wallpapers.rename,
+  IPC.wallpapers.setPictures,
+  IPC.wallpapers.setTiming,
+  IPC.wallpapers.remove,
+  IPC.wallpapers.restore,
+  IPC.wallpapers.choose,
   // Smart playlists (Session 26c): Simple Mode sees what their folders bring, and changes no setup.
   IPC.playlists.createSmart,
   IPC.playlists.removeMissing,
@@ -132,11 +148,17 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.media.setMarkers,
   IPC.media.cancelConversion,
   IPC.media.undoConversion,
-  // Save as MP4… (Session 26e) is Pro Mode's, as are a picture's look and keeping a live zoom.
+  // Save as MP4… (Session 26e) is Pro Mode's, as are a picture's look and keeping a live zoom; and Save picture…
+  // (Session 55, Part 5), from the right-click menu Simple Mode does not have.
   IPC.media.saveTrim,
   IPC.media.stopSave,
   IPC.media.setLook,
   IPC.media.keepLiveZoom,
+  // Session 55, Part 7: Audio's Music steps aside, a file's Even loudness, Trim black and silence: Pro Mode's.
+  IPC.sound.setStepsAside,
+  IPC.sound.setEven,
+  IPC.sound.trimEdges,
+  IPC.media.savePicture,
   IPC.network.setOn,
   IPC.network.setPort,
   IPC.network.startPairing,

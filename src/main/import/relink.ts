@@ -36,6 +36,11 @@ export interface RelinkContext {
   skipDir?: (dir: string) => boolean;
   onProgress?: (progress: ImportProgress) => void;
   isCancelled?: () => boolean;
+  /**
+   * Files given points (Session 55, Q20): a missing item merged into the one with its bytes brings the points its
+   * import gave it, so what is up playing that one moves to them.
+   */
+  onMarked?: (mediaIds: string[]) => void;
 }
 
 export async function runRelink(ctx: RelinkContext): Promise<ImportRunSummary> {
@@ -95,6 +100,7 @@ export async function runRelink(ctx: RelinkContext): Promise<ImportRunSummary> {
           issues: [result.issue],
         });
       } else {
+        if (result.pointsTaken) ctx.onMarked?.([result.mediaId]);
         record({
           sourcePath: found.path,
           format: 'media',
@@ -102,7 +108,7 @@ export async function runRelink(ctx: RelinkContext): Promise<ImportRunSummary> {
           name: m.name,
           target: { kind: 'media', id: result.mediaId },
           counts: { ...NO_COUNTS, media: 1 },
-          message: `Relinked to ${found.path}.`,
+          message: `Relinked to ${found.path}.${result.pointsTaken ? ' Already in the library: the start and end points or markers this file was imported with are its own now.' : ''}`,
           // What cannot play: converted by itself (Session 50), or offered for Convert.
           issues: playIssues(m.name, result),
         });

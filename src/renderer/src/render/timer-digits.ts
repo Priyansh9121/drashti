@@ -1,7 +1,8 @@
 import type { ClockStyle } from '../../../shared/format';
 import type { Movement } from '../../../shared/looks';
-import type { TimerElement } from '../../../shared/model';
-import { changedAt, formatTimer, inLastMinute, type TimerState } from '../../../shared/timers';
+import type { TimerElement, TimerFormat } from '../../../shared/model';
+import { stageTimerText } from '../../../shared/stage-timer';
+import { changedAt, inLastMinute, type TimerState } from '../../../shared/timers';
 import { EASE, lerp, seg } from './easing';
 
 /*
@@ -71,11 +72,14 @@ export function drawnTime(
   now: number,
   style: ClockStyle | null,
   movement: Movement,
+  /** Its format (Session 55, Part 15): as needed when left out. */
+  format: TimerFormat = 'auto',
 ): DrawnTime {
   if (!timer) return { text: '--:--', cells: digitCells('--:--', null), changing: null };
-  const text = formatTimer(timer, now, style);
+  const text = stageTimerText(timer, now, style, format);
   const at = changedAt(timer, now);
-  const was = at !== null && now - at < digitLength(movement) ? formatTimer(timer, at - 1, style) : null;
+  const was =
+    at !== null && now - at < digitLength(movement) ? stageTimerText(timer, at - 1, style, format) : null;
   if (was === null || was === text) return { text, cells: digitCells(text, null), changing: null };
   return { text, cells: digitCells(text, was), changing: at };
 }

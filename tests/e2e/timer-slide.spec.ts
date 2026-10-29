@@ -14,8 +14,9 @@ import {
 import { makeSlides } from './placeholder-slides';
 
 /*
- * A timer alone on the screens (Session 50). Show on the screens, in Pro Mode's Timers panel, puts a timer up
- * alone in the slide's place over whatever background is up, counting on a hall screen; Clear slide takes it
+ * A timer alone on the screens (Session 50). Show on the screens (since Session 55 the engine's showTimer command,
+ * the API's: the Timers panel's Show now puts a timer up for the audience in its own look, audience-timers.spec.ts)
+ * puts a timer up alone in the slide's place over whatever background is up, counting on a hall screen; Clear slide takes it
  * off, and Next goes on from where the show was. New Timer Slide… in a presentation's slide menu adds a slide
  * with a Timer on it, which shows the time live; a countdown on it holds at 0:00, or, when it says so, the next
  * slide comes on at zero. The slide editor's Timer, styled as words, keeps its last minute and its zero.
@@ -52,7 +53,7 @@ const makeCountdown = (win: Page, name: string, durationMs: number) =>
 const timerOn = (output: Page): Locator => output.locator('[data-layer="slide"] [data-timer-element]');
 const timeOn = (output: Page) => timerOn(output).first().getAttribute('data-time');
 
-test('Show on the screens puts a timer up alone, counting; Clear slide takes it off; Next goes on as before', async () => {
+test('the showTimer command puts a timer up alone, counting; Clear slide takes it off; Next goes on as before', async () => {
   // Its own slides only: with the tests' placeholder presentations, the first would be open in the middle, and
   // Next would start it rather than go on in the slides that are up.
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', ...NO_PLACEHOLDERS });
@@ -77,9 +78,17 @@ test('Show on the screens puts a timer up alone, counting; Clear slide takes it 
   const row = win.getByTestId('timers').getByTestId('timer-row').filter({ hasText: 'Placeholder starts in' });
   await row.getByRole('button', { name: 'Start' }).click();
   const library = await presentations(win);
+  /** Show on the screens, as the API's showTimer does it (Session 55: the panel's Show is for the audience). */
+  const showAlone = () =>
+    win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const t = (await d.engine.snapshot()).state.timers.find((x) => x.name === 'Placeholder starts in');
+      if (!t) throw new Error('no timer');
+      await d.engine.dispatch({ type: 'showTimer', timerId: t.id });
+    });
 
   // Show on the screens: the timer alone in the slide's place, over the background, counting down.
-  await row.getByRole('button', { name: 'Show on the screens' }).click();
+  await showAlone();
   await expect(timerOn(output)).toHaveCount(1);
   await expect(output.locator('[data-layer="slide"]')).not.toContainText('Placeholder one');
   await expect(output.locator('[data-layer="background"]')).toHaveCount(1);
@@ -94,13 +103,13 @@ test('Show on the screens puts a timer up alone, counting; Clear slide takes it 
   expect(up.live).toMatchObject({ presentationId: id, slideIndex: 0 });
   expect(await presentations(win)).toEqual(library);
 
-  // Taken off: pressed again (as Clear slide does), the hall screen shows no slide.
-  await row.getByRole('button', { name: 'Take off the screens' }).click();
+  // Taken off: LIVE's Take off (as Clear slide does), the hall screen shows no slide.
+  await win.getByTestId('live-timer-off').click();
   await expect(timerOn(output)).toHaveCount(0);
   expect((await snapshot(win)).layers.slide).toBeNull();
 
   // Up again, then Next: the show goes on from where it was, the presentation's next slide.
-  await row.getByRole('button', { name: 'Show on the screens' }).click();
+  await showAlone();
   await expect(timerOn(output)).toHaveCount(1);
   await win.getByTestId('show-next').click();
   await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder two');
@@ -108,7 +117,7 @@ test('Show on the screens puts a timer up alone, counting; Clear slide takes it 
   expect((await snapshot(win)).live).toMatchObject({ presentationId: id, slideIndex: 1 });
 
   // Clear all takes it off too.
-  await row.getByRole('button', { name: 'Show on the screens' }).click();
+  await showAlone();
   await expect(timerOn(output)).toHaveCount(1);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
   await expect(timerOn(output)).toHaveCount(0);
@@ -216,7 +225,7 @@ test('the slide editor puts a Timer on a slide, styled as words, with its last m
   const section = editor.getByTestId('inspector-timer');
   await expect(section.getByTestId('field-timer')).toHaveValue(/.+/);
   await section.getByTestId('field-timer-size').fill('180');
-  await section.getByTestId('field-last-minute').click();
+  await section.getByTestId('field-timer-warn').check();
   await section.getByTestId('field-at-zero').selectOption('next');
   await editor.getByTestId('save-slides').click();
   await expect(editor).toHaveCount(0);
@@ -228,7 +237,7 @@ test('the slide editor puts a Timer on a slide, styled as words, with its last m
     );
   }, id);
   expect(timers).toMatchObject([
-    { kind: 'timer', style: { fontSize: 180 }, lastMinute: { color: '#f5a524' }, atZero: 'next' },
+    { kind: 'timer', style: { fontSize: 180 }, warn: { fromMs: 60_000, color: '#f5a524' }, atZero: 'next' },
   ]);
 
   await app.close();

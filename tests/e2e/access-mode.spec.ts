@@ -42,9 +42,10 @@ const tryAll = (win: Page) =>
     return {
       // The word typed, as the old way out took it.
       pro: await said(() => d.app.setMode('pro', 'pro')),
-      // A change Simple Mode refuses (a playlist made), and an engine command it refuses (the Look switched).
+      // A change Simple Mode refuses (a playlist made), and an engine command it refuses (picture in picture swapped:
+      // switching the Look, refused here before, went with Looks in Part 12).
       playlist: await said(() => d.playlists.create('Placeholder playlist', null, false)),
-      look: await said(() => d.engine.dispatch({ type: 'setLook', lookId: 'placeholder-look' })),
+      look: await said(() => d.engine.dispatch({ type: 'swapPip' })),
     };
   });
 

@@ -64,6 +64,9 @@ describe('backing up the library', () => {
     // Pictures' sharpened copies (Session 26f): made again after a restore, so left out.
     mkdirSync(join(dir, 'Media', 'sharpened'));
     writeFileSync(join(dir, 'Media', 'sharpened', `${'ab'.repeat(32)}-50.jpg`), 'placeholder copy');
+    // Pictures' blurred copies (Session 55, Part 5): made again too, so left out.
+    mkdirSync(join(dir, 'Media', 'blurred'));
+    writeFileSync(join(dir, 'Media', 'blurred', `${'ab'.repeat(32)}.jpg`), 'placeholder blurred copy');
     const into = mkdtempSync(join(tmpdir(), 'drashti-backups-'));
     const now = new Date(2026, 8, 29, 18, 30);
     const progress: [number, number][] = [];

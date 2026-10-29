@@ -5,6 +5,7 @@ import type { ButtonSize, ButtonVariant } from './Button';
 import { Button, IconButton } from './Button';
 import { cx } from './cx';
 import type { Icon } from './icons';
+import { Check } from './icons';
 import { Kbd } from './Kbd';
 import { leave, useArrival } from './motion';
 
@@ -26,6 +27,14 @@ export interface MenuEntry {
   kbd?: string;
   /** A line above this entry, starting a new group. */
   separatorBefore?: boolean;
+  /**
+   * Ticked or not (Session 55): a switch, said as a checkbox, which choosing turns the other way (Part 7: a file's
+   * Even loudness); or, with `radio`, one of a few choices, ticked when it is the one in use, said as a radio choice
+   * (Part 6: a video's When it ends). A tick shows in the icon's place. Left out: an ordinary entry.
+   */
+  checked?: boolean;
+  /** With `checked`: one of a few choices (a radio choice to a screen reader), not a switch. */
+  radio?: true;
 }
 
 export interface MenuPlace {
@@ -166,13 +175,15 @@ export function Menu({
       className="z-50 min-w-48 rounded-lg border border-line-strong bg-panel-2 p-1 shadow-overlay"
     >
       {entries.map((entry) => {
-        const IconShape = entry.icon;
+        // A switch shows its tick where an icon goes.
+        const IconShape = entry.checked === undefined ? entry.icon : entry.checked ? Check : undefined;
         return (
           <Fragment key={entry.label}>
             {entry.separatorBefore && <div role="separator" className="my-1 h-px bg-line" />}
             <button
               type="button"
-              role="menuitem"
+              role={entry.checked === undefined ? 'menuitem' : entry.radio ? 'menuitemradio' : 'menuitemcheckbox'}
+              aria-checked={entry.checked}
               disabled={entry.disabled}
               className={cx(
                 'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-panel-3 focus-visible:bg-panel-3 disabled:cursor-not-allowed disabled:opacity-40',
@@ -184,7 +195,9 @@ export function Menu({
               }}
             >
               <span className="flex w-4 shrink-0 justify-center">
-                {IconShape && <IconShape size={15} aria-hidden="true" />}
+                {entry.checked === undefined
+                  ? IconShape && <IconShape size={15} aria-hidden="true" />
+                  : entry.checked && <Check size={15} aria-hidden="true" />}
               </span>
               <span className="flex-1">{entry.label}</span>
               {entry.kbd && <Kbd className="text-muted">{entry.kbd}</Kbd>}

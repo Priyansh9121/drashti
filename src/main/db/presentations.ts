@@ -19,7 +19,8 @@ import { deckFromJson, deckToJson } from '../../shared/deck-schema';
 import { cueInputName } from '../../shared/slide-edit';
 import { langsOf } from '../../shared/tracks';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
-import { playOrder } from '../../shared/order';
+import { itemPlayOrder, ownOrderItem, playOrder } from '../../shared/order';
+import type { ItemOrder } from '../../shared/playlists';
 import type { Db } from './database';
 import type { ContentRows } from './content';
 import { readContent, transitionFromJson, transitionToJson, writeContent } from './content';
@@ -857,11 +858,26 @@ export class PresentationRepo {
   }
 }
 
-/** The engine's view of the library: slides in order, cached per presentation. */
+/**
+ * A playlist item's own order of slides (Session 55, Part 4b), by the item's id, with its presentation; null when it
+ * has none.
+ */
+export type OwnOrderLookup = (
+  itemId: string,
+) => { presentationId: string; order: Extract<ItemOrder, { mode: 'slides' }> } | null;
+
+/**
+ * The engine's view of the library: slides in order, cached per presentation. The order "item:<id>" (Session 55,
+ * Part 4b) is a playlist item's own order of the presentation's slides, read from its playlist each time (`ownOrder`):
+ * an item that has none, or is another presentation's, plays the presentation's own order.
+ */
 export class DbSlideSource implements SlideSource {
   private readonly cache = new Map<string, PresentationDoc | null>();
 
-  constructor(private readonly repo: PresentationRepo) {}
+  constructor(
+    private readonly repo: PresentationRepo,
+    private readonly ownOrder: OwnOrderLookup = () => null,
+  ) {}
 
   /** Forget cached slides after a presentation changes (or all of them). */
   invalidate(presentationId?: string): void {
@@ -877,7 +893,15 @@ export class DbSlideSource implements SlideSource {
   order(presentationId: string, arrangementId?: string | null): PlayOrder | null {
     const doc = this.doc(presentationId);
     if (!doc) return null;
-    const played = playOrder(doc, arrangementId === undefined ? doc.selectedArrangementId : arrangementId);
+    const itemId = ownOrderItem(arrangementId);
+    const own = itemId === null ? null : this.ownOrder(itemId);
+    const played =
+      itemId !== null && own?.presentationId === presentationId
+        ? itemPlayOrder(doc, own.order, itemId)
+        : playOrder(
+            doc,
+            itemId !== null || arrangementId === undefined ? doc.selectedArrangementId : arrangementId,
+          );
     return {
       arrangementId: played.arrangementId,
       slides: played.slides.map((o) => ({

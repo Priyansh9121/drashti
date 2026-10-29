@@ -587,6 +587,8 @@ describe('ShowEngine', () => {
         volume: 0.8,
         loop: true,
         startedAt: 2000,
+        // A slide's own sound (Session 55, Part 7): the next slide's own takes its place; the operator's never.
+        cue: true,
       });
       dispatch({ type: 'next' });
       expect(engine.current.layers.audio).toMatchObject({ mediaId: 'A', startedAt: 2000 });

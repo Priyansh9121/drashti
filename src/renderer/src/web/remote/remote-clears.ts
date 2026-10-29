@@ -36,7 +36,9 @@ export function remoteClears(state: EngineState | null, keys: RemoteKeys | null)
   const anything = layers
     ? LAYER_CLEARS.some((c) => !isLayerEmpty(layers, c.layer)) ||
       layers.lowerThird !== null ||
-      layers.pip !== null
+      layers.pip !== null ||
+      // A timer for the audience (Session 55, Part 15).
+      (layers.timer ?? null) !== null
     : false;
   const wallpaper = state?.wallpaper ?? false;
   const blackout = state?.blackout ?? false;

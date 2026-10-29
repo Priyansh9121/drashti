@@ -8,6 +8,7 @@ import type { RenderSlide } from '../../../shared/model';
 import type { ItemOrder, PlaylistItemInfo, TimerCue } from '../../../shared/playlists';
 import type { PresentationDoc } from '../../../shared/library';
 import { repeatPresentationId } from '../../../shared/repeat';
+import { itemPlayOrder } from '../../../shared/order';
 import { SMART_MAX_FILES } from '../../../shared/playlists';
 import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-folders';
 import { useEngine } from '../engine/engine-store';
@@ -67,17 +68,28 @@ import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { plural } from '../ui/text';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
-import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, useDragging } from './drag';
+import {
+  afterDrag,
+  draggedSlide,
+  dragKind,
+  droppedIds,
+  droppedPaths,
+  hasFiles,
+  startDrag,
+  useDragging,
+} from './drag';
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
 import { openSlideEditor } from '../editor/editor-store';
 import { RepeatBar } from './RepeatBar';
+import { useLastSecondsRow } from '../wallpapers/when-ends';
 import { FolderCrumbs } from './PlaylistFolders';
 import { PlaylistsUnread } from './PlaylistsUnread';
 import { type CardClick, clickCard, clickSlideRow, meantPress } from './one-click';
 import {
   addFromLibrary,
   addHeader,
+  chooseItemOrder,
   clickItem,
   closePlaylist,
   duplicatePlaylist,
@@ -87,14 +99,15 @@ import {
   markedItems,
   moveItemBy,
   moveItems,
+  moveSlide,
   newFromTemplate,
   removeMissingItems,
   renameHeader,
   renameNode,
   requestRemoveMarkedItems,
   requestRemoveNode,
-  setItemOrder,
   showsFolders,
+  slideOut,
   startRenaming,
   stopRenaming,
   templateOpen,
@@ -113,7 +126,9 @@ import {
  * A presentation's, a PDF's or a deck's slides are rows under its name, "<name>_1" to "<name>_N", which its name
  * folds; one click on any row puts it up (playlists/one-click.ts), and every row that goes up has a number for
  * jumping to it from the keyboard (operator/jump.ts). Each row has the one right-click menu (Part 14,
- * files/FileMenu.tsx); its Delete takes it out of this playlist only, asking first when it is up.
+ * files/FileMenu.tsx); its Delete takes it out of this playlist only, asking first when it is up. Part 4b: a slide's
+ * row dragged within its deck changes this playlist's own order of its slides; dragged anywhere else in the playlist,
+ * it becomes an item of its own there (playlists/slide-order.ts), each with one Undo.
  */
 
 // ---- the open playlist's items ----------------------------------------------------------
@@ -123,6 +138,14 @@ import {
  * folder at a time (Session 44), the end is the folder's; one with no part of its own gets a header first.
  */
 type DropSpot = { at: number; header?: string } | { fill: string };
+
+/** Where a slide's row dragged within its own deck would land (Session 55, Part 4b): before its row at `before`. */
+interface SlideSpot {
+  itemId: string;
+  before: number;
+}
+const sameSlideSpot = (a: SlideSpot | null, b: SlideSpot | null) =>
+  a === b || (a !== null && b !== null && a.itemId === b.itemId && a.before === b.before);
 
 /** What an item is, in a word or two, on its card (Session 26a). */
 function kindWord(item: PlaylistItemInfo): string {
@@ -173,11 +196,20 @@ function wantSlides(ids: readonly string[]): void {
 const PICTURE_BOX =
   'relative aspect-video w-20 shrink-0 overflow-hidden rounded-sm border border-line bg-black';
 
-/** The picture on an item's card: a presentation's first slide, a picture or a video's still, or an icon. */
+/**
+ * The picture on an item's card: a presentation's first slide (with this playlist's own order of its slides, Part 4b,
+ * the first of those, once they are read), a picture or a video's still, or an icon.
+ */
 function ItemPicture({ item }: { item: PlaylistItemInfo }) {
-  const slide = useCardSlides((s) =>
+  const first = useCardSlides((s) =>
     item.kind === 'presentation' ? s.slides[item.presentationId] : undefined,
   );
+  const ownOrder = item.kind === 'presentation' && item.order.mode === 'slides' ? item.order : null;
+  const doc = useDocs((s) =>
+    ownOrder && item.kind === 'presentation' ? s.docs[item.presentationId] : undefined,
+  );
+  const ownFirst = ownOrder && doc ? itemPlayOrder(doc, ownOrder, item.id).slides[0]?.slide.slide : undefined;
+  const slide = ownFirst ?? first;
   if (item.kind === 'presentation' && slide)
     return (
       <span className={PICTURE_BOX} data-a11y-picture aria-hidden="true">
@@ -302,6 +334,11 @@ function ItemBody({
             </span>
           ) : item.order.mode === 'all' ? (
             <span className="text-xs text-muted">All slides in order</span>
+          ) : item.order.mode === 'slides' ? (
+            // Its slides' rows dragged (Session 55, Part 4b): this playlist's order, never the library's.
+            <span className="block truncate text-xs text-muted" data-testid="item-own-order">
+              In this playlist’s own order
+            </span>
           ) : null)}
         {item.kind === 'shastra' && item.missing && (
           <span className="text-xs text-warning-fg">Its Shastra text is not loaded</span>
@@ -503,7 +540,8 @@ const orderValue = (order: ItemOrder) =>
 /**
  * The order a presentation's row plays it in (its arrangements: the slide grid's picker until Session 55), on the line
  * with Up and Down under the chosen row: the presentation's own, every slide, or one of its arrangements. This
- * playlist only.
+ * playlist only. Part 4b: with this playlist's own order of its slides (its rows dragged), that too, chosen; another
+ * choice sets it aside, with Undo.
  */
 function OrderPicker({
   item,
@@ -512,7 +550,8 @@ function OrderPicker({
   item: Extract<PlaylistItemInfo, { kind: 'presentation' }>;
   doc: PresentationDoc;
 }) {
-  if (doc.arrangements.length === 0) return null;
+  const ownSlides = item.order.mode === 'slides';
+  if (doc.arrangements.length === 0 && !ownSlides) return null;
   const own = doc.arrangements.find((a) => a.id === doc.selectedArrangementId)?.name ?? 'all slides in order';
   return (
     <Field label="Order" layout="inline" className="mr-auto">
@@ -522,8 +561,9 @@ function OrderPicker({
         value={orderValue(item.order)}
         onChange={(e) => {
           const v = e.target.value;
-          void setItemOrder(
-            item.id,
+          if (v === 'slides') return;
+          void chooseItemOrder(
+            item,
             v === 'presentation' || v === 'all'
               ? { mode: v }
               : { mode: 'arrangement', arrangementId: v.slice(2) },
@@ -537,6 +577,7 @@ function OrderPicker({
             {a.name}
           </option>
         ))}
+        {ownSlides && <option value="slides">This playlist’s own order</option>}
       </Select>
     </Field>
   );
@@ -628,6 +669,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   const renaming = usePlaylists((s) => s.renaming);
   const renameIn = usePlaylists((s) => s.renameIn);
   const [spot, setSpot] = useState<DropSpot | null>(null);
+  const [slideSpot, setSlideSpot] = useState<SlideSpot | null>(null);
   // The cards' pictures: each presentation's first slide.
   const presentationIds = items.flatMap((i) => (i.kind === 'presentation' ? [i.presentationId] : []));
   const wanted = presentationIds.join(' ');
@@ -728,6 +770,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     return up ? st.live.playlist.itemId : null;
   });
   const shownItem = useLibrary((s) => (s.item?.playlistId === openId ? s.item.id : null));
+  // A video's last 10 seconds (Session 55, Part 6, E): its row turns amber.
+  const endingItem = useLastSecondsRow();
 
   const spotFor = (e: DragEvent): DropSpot => {
     const row = (e.target as HTMLElement).closest<HTMLElement>('[data-item-index]');
@@ -752,12 +796,44 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   };
   const sameSpot = (a: DropSpot | null, b: DropSpot) =>
     a !== null && ('at' in a && 'at' in b ? a.at === b.at : 'fill' in a && 'fill' in b && a.fill === b.fill);
+  /**
+   * A slide's row over its own deck (Session 55, Part 4b): before which of its rows it lands (by their halves; past
+   * the last, after it), or, on the lower half of the deck's name, first. Null anywhere else: dropped there, it becomes
+   * an item of its own.
+   */
+  const slideSpotFor = (e: DragEvent): SlideSpot | null => {
+    const dragged = draggedSlide();
+    if (!dragged) return null;
+    const target = e.target as HTMLElement;
+    if (target.closest<HTMLElement>('[data-item-row]')?.dataset['itemRow'] !== dragged.itemId) return null;
+    const list = target.closest<HTMLElement>('[data-testid="slide-rows"]');
+    if (list) {
+      const rowsHere = [...list.querySelectorAll<HTMLElement>('[data-testid="slide-thumb"]')];
+      const at = rowsHere.findIndex((r) => {
+        const b = r.getBoundingClientRect();
+        return e.clientY < b.top + b.height / 2;
+      });
+      return { itemId: dragged.itemId, before: at < 0 ? rowsHere.length : at };
+    }
+    const name = target.closest<HTMLElement>('[data-testid="playlist-item"]');
+    if (!name) return null;
+    const box = name.getBoundingClientRect();
+    return (e.clientY - box.top) / Math.max(1, box.height) >= 0.5
+      ? { itemId: dragged.itemId, before: 0 }
+      : null;
+  };
 
   const onDragOver = (e: DragEvent) => {
     const kind = dragKind(e);
     if (!kind && !hasFiles(e)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = kind === 'items' ? 'move' : 'copy';
+    e.dataTransfer.dropEffect = kind === 'items' || kind === 'slide' ? 'move' : 'copy';
+    const within = kind === 'slide' ? slideSpotFor(e) : null;
+    if (!sameSlideSpot(slideSpot, within)) setSlideSpot(within);
+    if (within) {
+      if (spot !== null) setSpot(null);
+      return;
+    }
     const next = spotFor(e);
     if (!sameSpot(spot, next)) setSpot(next);
   };
@@ -778,6 +854,16 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     e.preventDefault();
     const where = spotFor(e);
     setSpot(null);
+    // A slide's row (Session 55, Part 4b): within its deck, a new place there; elsewhere, an item of its own.
+    if (kind === 'slide') {
+      const within = slideSpotFor(e);
+      setSlideSpot(null);
+      const [itemId, position] = droppedIds(e, 'slide');
+      if (itemId === undefined || position === undefined) return;
+      if (within) void moveSlide(itemId, Number(position), within.before);
+      else if ('at' in where) void slideOut(itemId, Number(position), where.at);
+      return;
+    }
     if (kind === 'items') {
       if ('at' in where) void moveItems(droppedIds(e, 'items'), where.at);
       return;
@@ -804,7 +890,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       className="flex min-h-0 flex-1 flex-col"
       onDragOver={onDragOver}
       onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSpot(null);
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setSpot(null);
+        setSlideSpot(null);
       }}
       onDrop={onDrop}
     >
@@ -1030,6 +1118,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
             item.kind === 'presentation' && !isRepeat ? (docs[item.presentationId] ?? undefined) : undefined;
           // One of its slides is up: its name row says LIVE too (folded, its slides are not there to say it).
           const slideUp = slides.some(isSlideLive);
+          const canDragSlides =
+            !isRepeat && item.kind === 'presentation' && item.presentationName !== null && doc !== undefined;
           const menuProps = fileMenuProps(
             () => playlistRow(item, openId),
             () => {
@@ -1086,6 +1176,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 data-item-id={item.id}
                 data-marked={isMarked ? 'true' : undefined}
                 data-live={isLive ? 'true' : undefined}
+                data-last-seconds={endingItem === item.id ? 'true' : undefined}
                 data-row-number={own?.row?.kind === 'item' ? (own.row.number ?? undefined) : undefined}
                 aria-pressed={isMarked}
                 aria-expanded={group ? !group.folded : undefined}
@@ -1130,6 +1221,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   'pr-10 pl-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
+                  endingItem === item.id && 'border-warning! bg-warning-bg!',
                 )}
               >
                 <ItemBody
@@ -1173,6 +1265,24 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 >
                   {slides.map((r) => (
                     <SlideRow
+                      // Dragged within its deck, or out of it (Session 55, Part 4b): a presentation's, not a
+                      // passage's or a Repeat Slides playlist's step.
+                      onDragStart={
+                        canDragSlides
+                          ? (e) => {
+                              startDrag(e, 'slide', [item.id, String(r.at.position)]);
+                            }
+                          : undefined
+                      }
+                      dropLine={
+                        slideSpot?.itemId !== item.id
+                          ? null
+                          : slideSpot.before === r.at.position
+                            ? 'before'
+                            : slideSpot.before === slides.length && r.at.position === slides.length - 1
+                              ? 'after'
+                              : null
+                      }
                       key={r.key}
                       number={r.number}
                       label={r.label}

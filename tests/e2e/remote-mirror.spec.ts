@@ -235,17 +235,18 @@ test('from a phone, as from the operator window: media with its skips, the stage
     await expect.poll(async () => (await snapshot(win)).state.stageMessage).toBeNull();
     await expect(p.getByTestId('remote-stage-message')).toHaveCount(0);
 
-    // A timer alone on the screens (Show on the screens), then taken off the same way.
+    // A timer up for the audience (Show for the audience, Session 55), then taken off the same way (Hide).
     const timer = p.getByTestId('remote-timer').first();
     await timer.getByTestId('remote-timer-show').click();
-    await expect.poll(async () => (await layers(win)).slide?.timer?.name).toBe('Sabha starts in');
-    await expect(timer.getByTestId('remote-timer-show')).toHaveText('Take off the screens');
+    await expect.poll(async () => (await layers(win)).timer?.timerId).toBeTruthy();
+    await expect(timer.getByTestId('remote-timer-show')).toHaveText('Hide');
     // Named under LIVE on the Show tab, as the window's LIVE names it.
     await p.getByTestId('remote-tab-show').click();
-    await expect(p.getByTestId('remote-timer-alone')).toContainText('Sabha starts in');
+    await expect(p.getByTestId('remote-audience-timer')).toContainText('Sabha starts in');
+    await expect(win.getByTestId('live-audience-timer')).toContainText('Sabha starts in');
     await p.getByTestId('remote-tab-more').click();
     await timer.getByTestId('remote-timer-show').click();
-    await expect.poll(async () => (await layers(win)).slide).toBeNull();
+    await expect.poll(async () => (await layers(win)).timer ?? null).toBeNull();
 
     // A lower third made in Drashti appears at once; Show and Hide.
     await win.evaluate((input) => (globalThis as PageGlobals).drashti.lowerThirds.save(null, input), {

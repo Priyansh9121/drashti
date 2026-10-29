@@ -575,7 +575,7 @@ function MediaView({
   // A phone or tablet: pictures and videos as small previews, and no video plays.
   if (usePreviewsOnly())
     return el.kind === 'image' ? (
-      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)}>
+      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)} box={el.frame}>
         {(style, copy) => <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={style} />}
       </Looked>
     ) : deck && deckStep && videoShowsFrom(deck, deckStep) === null ? null : (
@@ -584,7 +584,7 @@ function MediaView({
     );
   if (el.kind === 'image') {
     return (
-      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)}>
+      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)} box={el.frame}>
         {(style, copy) => (
           <img
             key={attempt}
@@ -748,6 +748,7 @@ export const SlideView = memo(function SlideView({
               mediaId={el.mediaId}
               showing={startedAt === undefined ? null : slideShowing(startedAt)}
               style={{ ...frameStyle(el), opacity: el.opacity ?? 1, objectFit: OBJECT_FIT[el.fit] }}
+              box={el.frame}
             >
               {(box) => <DeckStepView deck={deck} timing={step} style={box} fit={OBJECT_FIT[el.fit]} />}
             </Looked>

@@ -32,7 +32,7 @@ const fromTheStudio = (id: string): boolean =>
 
 /** What a pose may set: numbers in range, and only these transforms and a rectangle's clip. */
 const TRANSFORM =
-  /^((translate\(-?[\d.]+(%|em), -?[\d.]+(%|em)\)|scale\([\d.]+(, [\d.]+)?\)|rotate\(-?[\d.]+deg\)|perspective\(900px\) rotate[XY]\(-?[\d.]+deg\))( |$))*$/u;
+  /^((translate\(-?[\d.]+(%|em), -?[\d.]+(%|em)\)|translate\(calc\(var\(--from-(left|right), 100%\) \* -?[\d.]+\), 0\)|translate\(0, calc\(var\(--from-(top|bottom), 100%\) \* -?[\d.]+\)\)|scale\([\d.]+(, [\d.]+)?\)|rotate\(-?[\d.]+deg\)|perspective\(900px\) rotate[XY]\(-?[\d.]+deg\))( |$))*$/u;
 const CLIP = /^(inset\((\d+(\.\d+)?% ){3}\d+(\.\d+)?%\))?$/u;
 
 function valid(pose: Pose, what: string): void {

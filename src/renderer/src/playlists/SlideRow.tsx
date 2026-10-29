@@ -1,5 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import type {
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from 'react';
 import type { MediaBackground } from '../../../shared/engine/state';
 import { type AudioCue, backgroundCueOf, type BackgroundCue, soundCueOf } from '../../../shared/library';
 import type { OrderedSlide } from '../../../shared/order';
@@ -18,7 +22,8 @@ import { useInputNamed } from '../video-inputs/video-inputs-store';
  * in the playlist, or, with none open, the library's chosen presentation's): its number for jumping to it, its
  * group's colour, a small picture of it (with its background, and what is missing marked as the slide grid marked
  * it), "<name>_N", a text slide's first line, its group's name where the group starts, the video input or sound it
- * brings, and LIVE. One click puts it up; a double click opens Edit slides at it (the first click put it up).
+ * brings, and LIVE. One click puts it up; a double click opens Edit slides at it (the first click put it up). In a
+ * playlist it can be dragged (Part 4b): within its deck, or out of it into an item of its own.
  */
 
 /**
@@ -141,6 +146,10 @@ export interface SlideRowProps {
   onKeyDown?: (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
   /** The playlist item it plays from, for its menu and the jump (left out for the library's). */
   itemId?: string;
+  /** It can be dragged (Session 55, Part 4b: a presentation's slide in a playlist), from this. */
+  onDragStart?: (e: ReactDragEvent<HTMLButtonElement>) => void;
+  /** A dragged slide's row would land just above it, or (the last row) just below it. */
+  dropLine?: 'before' | 'after' | null;
 }
 
 export const SlideRow = memo(function SlideRow({
@@ -157,6 +166,8 @@ export const SlideRow = memo(function SlideRow({
   onContextMenu,
   onKeyDown,
   itemId,
+  onDragStart,
+  dropLine = null,
 }: SlideRowProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const info = at.slide;
@@ -180,10 +191,21 @@ export const SlideRow = memo(function SlideRow({
   const [over, setOver] = useState(false);
   const groupName = firstOfRun && group.name !== '' ? group.name : '';
   return (
-    <li hidden={hidden} data-slide-row={itemId}>
+    <li
+      hidden={hidden}
+      data-slide-row={itemId}
+      data-drop={dropLine ?? undefined}
+      className={cx(
+        'rounded-md',
+        dropLine === 'before' && 'shadow-[0_-2px_0_0_var(--color-accent)]',
+        dropLine === 'after' && 'shadow-[0_2px_0_0_var(--color-accent)]',
+      )}
+    >
       <button
         ref={ref}
         type="button"
+        draggable={onDragStart !== undefined}
+        onDragStart={onDragStart}
         data-testid="slide-thumb"
         data-show-control
         data-index={at.position}

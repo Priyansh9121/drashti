@@ -41,7 +41,7 @@ export const PANEL_HELP = {
   live: {
     title: 'LIVE',
     doc: 'operator',
-    text: 'What the hall sees this moment. Under it, each video or sound playing has a time bar, with Play or Pause: click it, or drag along it and let go, to move there on every screen at once; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
+    text: 'What the hall sees this moment: a picture up there zooms on the screens as you scroll or pinch over it, moves as you drag it, and goes back as it was kept with a double-click. Under it, each video or sound playing has a time bar, with Play or Pause: click it, or drag along it and let go, to move there on every screen at once; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
     guide: 'headed **LIVE**',
   },
   lowerthirds: {
@@ -53,19 +53,19 @@ export const PANEL_HELP = {
   stage: {
     title: 'Stage screen',
     doc: 'operator',
-    text: 'What the speaker and the singers see, never the hall: Layout chooses the one layout every stage screen shows, and Video input the input its video box shows. A short message for them, such as “Two minutes left”, goes up with Show and off with its own Clear; the timers in the layout are here too, with Start, Pause and Reset, and what each counts to, changed here at once. Edit layouts… makes, renames and deletes layouts, each with Undo, and New from a Template… makes a ready-made one, such as Pravachan and anchoring; with Stage off every stage screen shows exactly the audience picture.',
+    text: 'What the speaker and the singers see, never the hall: Layout chooses the one layout every stage screen shows, and Video input the input its video box shows. A message for them, such as “Two minutes left”, goes on every stage screen with Show, in its own size and with a flash if ticked, and off with Hide; the last few are a tap away, and the layout’s timers (with what each counts to) and a timer for the audience start, show and hide here too. Edit layouts… makes, renames and deletes layouts, each with Undo, and New from a Template… makes a ready-made one, such as Pravachan and anchoring; with Stage off every stage screen shows exactly the audience picture.',
     guide: '**The stage message.**',
   },
   messages: {
     title: 'Messages',
     doc: 'operator',
-    text: 'A message goes across the bottom of the hall’s screens, such as “Car 12 please move”. Fill in its fields and press Show; Take off removes it.',
+    text: 'A message for the hall’s screens, such as “Car 12 please move”, keeps its own look: where it sits (drag it in the small picture), how it comes in and goes out, how long it stays up, and its font, size, colours and what is behind it. Fill in its fields and press Show; Take off removes it, and Undo brings back a change or a deleted message.',
     guide: '**Messages.**',
   },
   timers: {
     title: 'Timers',
     doc: 'operator',
-    text: 'Countdowns and clocks. Press Start, then Show on the screens to put one up alone in the slide’s place; press it again, or Clear slide, to take it off. The stage screens show every running timer by themselves, or, with a layout of their own, the timers in it.',
+    text: 'Countdowns and clocks. Press Start, then Show for the audience to put one up on the hall’s screens in its own look (How it looks for the audience…: full screen or a corner, over the wallpaper or over what is up, a label, a ring or a bar, a warning, and what it does at zero), and Hide to take it off; Countdown to the start… counts down to the sabha’s time over the wallpaper, on the stage too, and goes by itself. The stage screens show every running timer by themselves, or, with a layout of their own, the timers in it.',
     guide: '**Timers.**',
   },
   playlist: {
@@ -113,7 +113,7 @@ export const PANEL_HELP = {
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha, listed here: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha, listed here: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing; under a video with sound, or a slide’s or a deck’s own sound, the music steps aside (the switch below the lists), and each video and sound plays at an even loudness (right-click one to play it as it is).',
     guide: '**Audio.** In the right column',
   },
   tools: {

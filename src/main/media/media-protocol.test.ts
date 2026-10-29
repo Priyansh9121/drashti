@@ -8,6 +8,9 @@ import {
   playbackOffset,
   playbackPosition,
   sharpenedUrl,
+  blurredUrl,
+  blurMediaId,
+  blurOfId,
   SOUND_EXTENSIONS,
   SOUND_LIMITS,
   stillUrl,
@@ -31,6 +34,7 @@ const BYTES = Uint8Array.from({ length: 100 }, (_, i) => i);
 const SHA = 'ab'.repeat(32);
 const STILL = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
 const COPY = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]);
+const BLUR = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 9, 0xff, 0xd9]);
 
 beforeAll(() => {
   // Not through realpath: on macOS the temp folder is behind a link (/var -> /private/var), as on some machines the media folder may be.
@@ -44,6 +48,8 @@ beforeAll(() => {
   writeFileSync(join(mediaDir, stillPath(SHA)), STILL);
   mkdirSync(join(mediaDir, 'sharpened'));
   writeFileSync(join(mediaDir, 'sharpened', `${SHA}-50.png`), COPY);
+  mkdirSync(join(mediaDir, 'blurred'));
+  writeFileSync(join(mediaDir, 'blurred', `${SHA}.jpg`), BLUR);
   writeFileSync(join(mediaDir, 'cd', 'empty.mp4'), new Uint8Array());
   writeFileSync(join(outside, 'secret.txt'), 'not media');
   symlinkSync(outside, join(mediaDir, 'gh'), 'junction');
@@ -77,6 +83,8 @@ beforeAll(() => {
     lookup: (id) => rows[id] ?? null,
     // The copies that are ready (Session 26f): at 50 % for the picture with SHA only.
     sharpened: (sha256, step) => (sha256 === SHA && step === 50 ? `sharpened/${SHA}-50.png` : null),
+    // The blurred copies that are ready (Session 55): for the picture with SHA only.
+    blurred: (sha256) => (sha256 === SHA ? `blurred/${SHA}.jpg` : null),
     warn: (m) => warnings.push(m),
     warnings,
   };
@@ -130,6 +138,27 @@ describe('drashti-media:// requests', () => {
     // Without the library's copies (a page that has none), none at all.
     const { sharpened: _sharpened, ...none } = deps;
     expect((await handleMediaRequest(new Request(sharpenedUrl('image', 50)), none)).status).toBe(404);
+  });
+
+  it("serves a picture's blurred copy once it is ready (Session 55, Part 5), and only the library's", async () => {
+    const res = await get(blurredUrl('image', 1));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg');
+    expect(await bytesOf(res)).toEqual(BLUR);
+    for (const url of [
+      blurredUrl('noStill'),
+      blurredUrl('stale'),
+      blurredUrl('nobody'),
+      'drashti-media://blur/image/x',
+      'drashti-media://blur/image%2F..%2Fx',
+    ])
+      expect((await get(url)).status, url).toBe(404);
+    const { blurred: _blurred, ...none } = deps;
+    expect((await handleMediaRequest(new Request(blurredUrl('image')), none)).status).toBe(404);
+    // A blurred copy's id names its picture, and nothing else does.
+    expect(blurOfId(blurMediaId('image-1'))).toBe('image-1');
+    expect(blurOfId('image-1_s50')).toBeNull();
+    expect(blurOfId('image-1')).toBeNull();
   });
 
   it('serves byte ranges, which video seeking needs', async () => {

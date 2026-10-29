@@ -28,12 +28,19 @@ import { type LibraryChange, listedKirtan } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor, SINGLE_KEYS_TEXT } from '../shared/keymap';
-import { copyMediaId, copyOfId, MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
+import {
+  blurMediaId,
+  blurOfId,
+  copyMediaId,
+  copyOfId,
+  MEDIA_ID_PATTERN,
+  MEDIA_SCHEME,
+} from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
 import { FileActions } from './library/file-actions';
-import { importableExtensions, SOUND_EXTENSIONS } from './import/scan';
+import { extOf, importableExtensions, mediaKindOf, SOUND_EXTENSIONS } from './import/scan';
 import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlist';
 import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
@@ -42,9 +49,11 @@ import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
 import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
-import { messageTemplateSchema } from '../shared/messages';
+import { keptTemplateSchema, messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
+import { startCountdownFields, startTimeGone } from '../shared/audience-timer';
+import { START_COUNTDOWN_NAME, startTimeSchema } from '../shared/timer-look';
 import type { RecoveryNotice } from '../shared/recovery';
 import { audioDeviceSchema } from '../shared/audio';
 import type { SetupResult } from '../shared/setup';
@@ -82,6 +91,8 @@ import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
 import { oldIdleRotation, QuoteOfTheDay } from './idle/idle-service';
+import { registerWallpapers } from './wallpapers/wallpaper-ipc';
+import type { WallpaperService } from './wallpapers/wallpaper-service';
 import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
@@ -90,6 +101,7 @@ import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
 import type { MediaMarkers } from '../shared/markers';
 import { mediaMarkersSchema, NO_MARKERS } from '../shared/markers';
+import { evenGainDb } from '../shared/sound';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
@@ -118,6 +130,8 @@ import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
 import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
+import { SoundRepo } from './db/sound';
+import { SoundPass } from './sound/sound-pass';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { clearDeckLeftovers } from './import/deck/leftovers';
@@ -140,6 +154,8 @@ import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recove
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
+import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
+import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
 import { runPerformanceTest, seedPerfLibrary } from './perftest';
@@ -1303,12 +1319,13 @@ function start(): void {
   if (perfTest && !userDataOverride && seedPerfLibrary(libraryDb))
     log.info('The performance check added its placeholder presentations');
   const presentations = new PresentationRepo(db);
-  const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
   // A playlist item naming a video input (Session 51) finds this computer's input of that name: the inputs are read
   // further down, before anything is played.
   const playlists = new PlaylistRepo(db, (name) => videoInputs?.named(name) ?? null);
+  // A playlist item's own order of slides (Session 55, Part 4b) is read from its playlist as it plays ("item:<id>").
+  const slides = new DbSlideSource(presentations, (itemId) => playlists.ownOrder(itemId));
   const themes = new ThemeRepo(db);
   themes.defaultId();
   // Shastra passages play like presentations, made from their texts (Session 12).
@@ -1414,10 +1431,25 @@ function start(): void {
   let mediaMarkers: (mediaId: string) => MediaMarkers | null = () => null;
   /** A media item's kind while it is there to play (Session 50, the box's; the media repo, made further down). */
   let mediaKind: (mediaId: string) => 'image' | 'video' | 'audio' | null = () => null;
+  // How each file sounds (Session 55, Part 7: even loudness, main/sound/): from the library, each kept here until it is
+  // measured again or switched, as the engine asks at every change about the files sounding.
+  const soundRepo = new SoundRepo(db);
+  const soundKnown = new Map<string, { gain: number; silent: boolean } | null>();
+  const soundOf = (mediaId: string): { gain: number; silent: boolean } | null => {
+    if (!soundKnown.has(mediaId)) {
+      const s = soundRepo.soundOf(mediaId);
+      soundKnown.set(mediaId, s ? { gain: s.gain, silent: s.silent } : null);
+    }
+    return soundKnown.get(mediaId) ?? null;
+  };
+  /** Music steps aside under a video with sound (Session 55, Part 7, K): Audio's switch, kept with the library; on by default. */
+  let stepsAside = settings.get('music.stepsAside') !== false;
   /** Picture in picture's remembered place (Session 50): where a new box goes, kept in the library. */
   const pipPlaces = new PipPlaces({ settings, write: laterSetting });
   /** Audio playlists (made further down): the media library changing may change them. */
   let musicService: MusicService | null = null;
+  /** The wallpapers (Session 55, Part 6; made further down): the media library changing may change them. */
+  let wallpaperService: WallpaperService | null = null;
   /** Brings folder playlists' sounds into Audio (Session 44); set once the music is ready. */
   let syncAudios = (): void => undefined;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
@@ -1461,6 +1493,9 @@ function start(): void {
       inputNamed: (name) => videoInputs?.named(name) ?? null,
       // A timer shown alone (Session 50) in the words of the library's default theme.
       timerLook: () => themeLook(themes.themeOrDefault(null), 1920, 1080).style,
+      // How the files sounding play (Session 55, Part 7): each one's even loudness, and the music stepping aside.
+      soundOf: (mediaId) => soundOf(mediaId),
+      stepsAside: () => stepsAside,
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -1602,12 +1637,67 @@ function start(): void {
   });
   handle(IPC.sharpen.next, (e) => sharpened.next(e.sender.id));
   handle(IPC.sharpen.made, (e, key, bytes) => sharpened.made(e.sender.id, key, bytes));
+  // ---- pictures' blurred copies (Session 55, Part 5, D): made once each, drawn behind a photo that does not fill ----
+  /** On air or recording (set once the stream is): no blurred copy is made meanwhile. */
+  let blurOnAir: () => boolean = () => false;
+  /** The bundled FFmpeg, for pictures' blurred copies and Save picture… (Session 55, Part 5). */
+  const pictureFfmpeg = () =>
+    findFfmpeg({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      arch: process.arch,
+      override: sw('DRASHTI_FFMPEG'),
+    });
+  const blurred = new BlurredCopies({
+    mediaDir,
+    fileOf: (mediaId) => {
+      const found = media.kindAndFile(mediaId);
+      const file = media.file(mediaId);
+      return found?.kind === 'image' && !found.missing && file?.sha256
+        ? { sha256: file.sha256, path: found.path }
+        : null;
+    },
+    run: ffmpegBlurRun(pictureFfmpeg),
+    onAir: () => blurOnAir(),
+    // A copy is ready: the screens and the nodes' lists follow.
+    changed: () => {
+      engine.refreshPictures();
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  // The copies already made, found (the screens follow once they are).
+  void blurred.scan().then(() => {
+    engine.refreshPictures();
+  });
+  stops.add('blurred copies', () => {
+    blurred.close();
+  });
+  /** Whether a picture is drawn with its blurred copy behind it: its look says, else on for a photo, off for a deck's page. */
+  const fillsWithBlur = (mediaId: string, look: PictureLook | null): boolean =>
+    look?.fill ?? media.photoByDefault(mediaId);
   /** A look as the screens and thumbnails get it: with its sharpened copy, once that is ready. */
   const shownLook = (mediaId: string, look: PictureLook | null): PictureLook | null => {
     const step = look ? sharpenStep(look.sharpness) : 0;
     if (!look || step === 0) return look;
     const ready = sharpened.readyStep(media.file(mediaId)?.sha256 ?? null);
     return ready === step ? { ...look, copy: step } : look;
+  };
+  /**
+   * A look as the screens get it (Session 55, D): with its blurred copy behind it, once that is ready, on for a photo
+   * unless its look says not; a picture coming up or on the screens with none yet has it made now.
+   */
+  const screenLook = (mediaId: string): PictureLook | null => {
+    const look = shownLook(mediaId, media.look(mediaId));
+    if (!fillsWithBlur(mediaId, look)) return look;
+    if (blurred.has(media.file(mediaId)?.sha256 ?? null)) return { ...(look ?? PLAIN), blurred: true };
+    blurred.want([mediaId]);
+    return look;
   };
   const shownLooks = (): Record<string, PictureLook> =>
     Object.fromEntries(
@@ -1616,7 +1706,7 @@ function start(): void {
         return shown ? [[id, shown]] : [];
       }),
     );
-  pictureLook = (mediaId) => shownLook(mediaId, media.look(mediaId));
+  pictureLook = (mediaId) => screenLook(mediaId);
   mediaMarkers = (mediaId) => media.markersOf(mediaId);
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
@@ -1658,10 +1748,57 @@ function start(): void {
     looksChanged();
     // Its sharpened copy made (again), or gone with its sharpness (Session 26f).
     void sharpened.refresh();
+    // Its blurred copy, once its fill is on (Session 55, D).
+    if (fillsWithBlur(mediaId, media.look(mediaId))) blurred.want([mediaId]);
     log.info('Pictures: a picture’s look was kept');
     return { ok: true as const };
   });
   // Keep this zoom: the live zoom kept as the picture's own (its enhancements stay as they were).
+  // ---- Session 55 (Part 5): a photo's blurred fill, and Save picture… ----
+  handle(IPC.media.photo, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.photoByDefault(mediaId) : false,
+  );
+  handle(IPC.media.savePicture, async (e, mediaId, name) => {
+    if (!fromOperator(e) || !operatorWindow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
+      return { ok: false as const, message: 'Only the operator window can save a picture.' };
+    const found = media.kindAndFile(mediaId);
+    if (found?.kind !== 'image' || found.missing || found.path === '' || isAbsolute(found.path))
+      return {
+        ok: false as const,
+        message: 'That picture is not in the library now, so it cannot be saved.',
+      };
+    const ext = extOf(found.path);
+    const jpeg = savesAsJpeg(ext);
+    const last = settings.get('pictures.saveFolder');
+    const folder =
+      typeof last === 'string' && isAbsolute(last) ? last : (testDownloadsDir ?? app.getPath('pictures'));
+    const picked = await dialog.showSaveDialog(operatorWindow, {
+      title: 'Save picture',
+      defaultPath: join(folder, savedName(typeof name === 'string' ? name : 'Picture', jpeg)),
+      buttonLabel: 'Save',
+      filters: [
+        jpeg
+          ? { name: 'JPEG picture', extensions: ['jpg', 'jpeg'] }
+          : { name: 'PNG picture', extensions: ['png'] },
+      ],
+    });
+    if (picked.canceled || !picked.filePath) return { ok: false as const, cancelled: true as const };
+    const wanted = jpeg ? /\.jpe?g$/iu : /\.png$/iu;
+    const target = wanted.test(picked.filePath)
+      ? picked.filePath
+      : `${picked.filePath}.${jpeg ? 'jpg' : 'png'}`;
+    const saved = await savePicture(
+      join(mediaDir, found.path),
+      ext,
+      target,
+      media.look(mediaId),
+      ffmpegBlurRun(pictureFfmpeg),
+    );
+    if (!saved.ok) return saved;
+    settings.set('pictures.saveFolder', dirname(target));
+    log.info('Pictures: a picture was saved where the operator chose');
+    return { ok: true as const, path: target };
+  });
   handle(IPC.media.keepLiveZoom, (e) => {
     const z = engine.current.liveZoom;
     if (!fromOperator(e) || !z)
@@ -1692,6 +1829,7 @@ function start(): void {
         return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
       },
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
+      blurred: (sha256) => blurred.relativePath(sha256),
       // A picture one of the guides shows (only those, from the guides' own folder).
       guidePicture: (name) => {
         const file = guideFiles.picture(name);
@@ -2637,6 +2775,8 @@ function start(): void {
   stops.add('stream', () => {
     streaming.close();
   });
+  // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
+  blurOnAir = () => streaming.inUse() || testOnAir;
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
@@ -2803,6 +2943,8 @@ function start(): void {
       void sharpened.refresh();
       // A sound in an audio playlist may have been converted, found or lost.
       if (musicService) sendToOperator(IPC.music.changed, musicService.view());
+      // A wallpaper's picture may have been deleted, found or lost (Session 55, Part 6).
+      wallpaperService?.mediaChanged();
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -2975,8 +3117,31 @@ function start(): void {
       // What it found Drashti's player cannot play is converted by itself (Session 50): one file at a time,
       // a moment after the import, never while the stream is on air or recording.
       if (run) conversions.convertImported(importRepo.report(run.id));
+      // The photos it brought in have their blurred copies made now, one at a time (Session 55, D).
+      if (run)
+        blurred.want(
+          (importRepo.report(run.id)?.items ?? []).flatMap((item) =>
+            item.target?.kind === 'media' && fillsWithBlur(item.target.id, media.look(item.target.id))
+              ? [item.target.id]
+              : [],
+          ),
+        );
       // Each import, counted for the Access List (Session 54): never what.
       if (run) behind?.service.count('imports');
+      // Its videos and sounds measured a moment later (Session 55, Part 7); a From a Link… import's videos trimmed past
+      // their black and silence too. Bytes it brought back may be new: every file's sound is read from the library again.
+      if (run) {
+        soundKnown.clear();
+        const items = importRepo.report(run.id)?.items ?? [];
+        // By the files' own paths, known before the import began (its run's id comes to the link service after this).
+        const media = (fromLink: boolean) =>
+          items.flatMap((i) =>
+            i.target?.kind === 'media' && linkPaths.has(i.sourcePath) === fromLink ? [i.target.id] : [],
+          );
+        soundPass.imported(media(false), false);
+        soundPass.imported(media(true), true);
+        for (const i of items) linkPaths.delete(i.sourcePath);
+      }
     },
     failRun: (runId, paths, message) => {
       importRepo.failRun(runId, paths, message);
@@ -3072,6 +3237,117 @@ function start(): void {
   });
   stops.add('conversions', () => {
     conversions.close();
+  });
+  // ---- Drashti's own sound with everything else (Session 55, Part 7; main/sound/, shared/sound.ts) ----------------
+  // Each video's and sound's loudness and length read once in the background (an import's first, the library's a
+  // while after the start), and a From a Link… video's points set past its black and silence (never on air).
+  /** The files a From a Link… download gave the import, by path, until the import has read them. */
+  const linkPaths = new Set<string>();
+  const soundView = () => ({ stepsAside, evenOff: soundRepo.evenOff() });
+  // Tests only (never a packaged Drashti): the library's files measured sooner after the start, or not at all ('off').
+  const testSoundPass = app.isPackaged ? undefined : sw('DRASHTI_TEST_SOUND_PASS');
+  const soundPass = new SoundPass({
+    repo: soundRepo,
+    mediaDir,
+    ffmpegPath: () =>
+      testSoundPass === 'off'
+        ? null
+        : findFfmpeg({
+            packaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+            platform: process.platform,
+            arch: process.arch,
+            override: sw('DRASHTI_FFMPEG'),
+          }),
+    busy: () => (streaming.inUse() || testOnAir ? 'the stream is on air or recording' : null),
+    write: (key, run) => {
+      later.write(key, run);
+    },
+    measured: (mediaId, lengthMs) => {
+      soundKnown.delete(mediaId);
+      engine.refreshSound();
+      // Its length known now (P3): what plays it says its time left.
+      if (lengthMs !== null) engine.learnLength(mediaId, lengthMs);
+    },
+    keepPoints: (mediaId, points) => {
+      const was = media.markersOf(mediaId) ?? NO_MARKERS;
+      if (was.startMs !== null || was.endMs !== null) return false;
+      if (!media.setMarkers(mediaId, { ...was, startMs: points.startMs, endMs: points.endMs })) return false;
+      engine.refreshMarkers(mediaId);
+      return true;
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    ...(testSoundPass !== undefined && /^\d+$/u.test(testSoundPass)
+      ? { afterStartMs: Number(testSoundPass) }
+      : {}),
+  });
+  stops.add('sound pass', () => {
+    soundPass.close();
+  });
+  soundPass.startLibrary();
+  handle(IPC.sound.view, () => soundView());
+  /** A video's or sound's loudness as measured, and its own switch (the Even loudness notice, the tests). */
+  const fileSound = (mediaId: string) => {
+    const known = soundRepo.soundOf(mediaId);
+    if (!known) return null;
+    const loudness = known.loudness;
+    return {
+      even: known.even,
+      measured: loudness !== null,
+      lufs: loudness?.lufs ?? null,
+      gainDb: loudness && known.even ? evenGainDb(loudness) : 0,
+    };
+  };
+  handle(IPC.sound.file, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? fileSound(mediaId) : null,
+  );
+  handle(IPC.sound.setStepsAside, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can change Audio’s switches.' };
+    stepsAside = on;
+    laterSetting('music.stepsAside', on);
+    engine.refreshSound();
+    log.info(`Sound: the music ${on ? 'steps aside' : 'no longer steps aside'} under a video with sound`);
+    const view = soundView();
+    sendToOperator(IPC.sound.changed, view);
+    return { ok: true as const, view };
+  });
+  handle(IPC.sound.setEven, (e, mediaId, on) => {
+    if (
+      !fromOperator(e) ||
+      typeof mediaId !== 'string' ||
+      !MEDIA_ID_PATTERN.test(mediaId) ||
+      typeof on !== 'boolean'
+    )
+      return { ok: false as const, message: 'Only the operator window can change a file’s loudness.' };
+    if (!soundRepo.setEven(mediaId, on))
+      return { ok: false as const, message: 'Even loudness is for a video or a sound in the library.' };
+    soundKnown.delete(mediaId);
+    engine.refreshSound();
+    sendToOperator(IPC.sound.changed, soundView());
+    log.info(`Sound: a file plays ${on ? 'at the even loudness' : 'as it is'}`);
+    const now = fileSound(mediaId);
+    return now
+      ? { ok: true as const, ...now }
+      : { ok: false as const, message: 'That file is not in the library.' };
+  });
+  handle(IPC.sound.trimEdges, async (e, mediaId) => {
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
+      return { ok: false as const, message: 'Only the operator window can trim a video.' };
+    const found = await soundPass.edgesNow(mediaId);
+    if (!found.ok) return found;
+    const was = media.markersOf(mediaId) ?? NO_MARKERS;
+    const before = { startMs: was.startMs, endMs: was.endMs };
+    if (!found.points) return { ok: true as const, points: null, before };
+    if (!media.setMarkers(mediaId, { ...was, startMs: found.points.startMs, endMs: found.points.endMs }))
+      return { ok: false as const, message: 'Only a video in the library has black and silence to trim.' };
+    engine.refreshMarkers(mediaId);
+    log.info('Sound: a video’s start and end points were set past its black and silence');
+    return { ok: true as const, points: found.points, before };
   });
   handle(IPC.media.convert, (e, ids) =>
     fromOperator(e)
@@ -3315,6 +3591,15 @@ function start(): void {
         : { ok: false, message: 'That message no longer exists.' };
     }),
   );
+  // Undo of a change or a removal (Session 55): the template as it was, by its id.
+  handle(IPC.messages.restore, (e, template) =>
+    messageChange(e, () => {
+      const t = keptTemplateSchema.safeParse(template);
+      if (!t.success) return badMessage;
+      messageTemplates.put(t.data);
+      return { ok: true, id: t.data.id };
+    }),
+  );
   // ---- audio playlists (Session 14): music on the audio layer, independent of the slides ------------
   const audioPlaylists = new AudioPlaylistRepo(db);
   // Music deleted, or tracks taken out, before this start can no longer be undone (Session 26a).
@@ -3544,7 +3829,11 @@ function start(): void {
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
     importFiles: async (paths) => {
+      // Its videos' start and end points go past their black and silence (Session 55, Part 7): known by their paths,
+      // as the import ends before its run comes back here.
+      for (const path of paths) linkPaths.add(path);
       const result = await imports.start(paths, {});
+      if (!result.ok) for (const path of paths) linkPaths.delete(path);
       return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
     },
     changed: (view) => {
@@ -3700,6 +3989,34 @@ function start(): void {
   log.info(
     `The idle rotation kept (unseen): ${String(idleRotationWas().pictures.length)} picture(s), ${String(quotes.list().length)} quote(s)`,
   );
+  // ---- Wallpapers (Session 55, Part 6, main/wallpapers/) ------------------------------------------------------------
+  // The chosen one on every audience screen whenever nothing is up, and under the Wallpaper; the idle rotation made
+  // into one, once; a quote's picture imported as any picture is.
+  wallpaperService = registerWallpapers({
+    db,
+    settings,
+    media: (id) => media.kindAndName(id),
+    engine,
+    fromOperator,
+    operatorWindow: () => operatorWindow,
+    pictureExtensions: () => IMPORTABLE_EXTENSIONS.filter((ext) => mediaKindOf(`x.${ext}`) === 'image'),
+    importPicture: async (file) => {
+      const done = await importPaths([file], {});
+      if (!done.ok) return null;
+      const made = importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target;
+      return made?.kind === 'media' ? made.id : null;
+    },
+    changed: (view) => {
+      sendToOperator(IPC.wallpapers.changed, view);
+      // Nodes copy the wallpapers' pictures.
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    },
+    idleRotationWas,
+    log: (line) => {
+      log.info(line);
+    },
+  });
   // ---- Lower Thirds (Session 44, shared/lower-thirds.ts): the library's, shown and hidden as engine commands --
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
@@ -3930,6 +4247,11 @@ function start(): void {
             const found = media.file(id);
             return found && !found.missing ? sharpened.relativePath(found.sha256, step) : null;
           },
+          // A picture's blurred copy (Session 55, D): a phone draws it behind a photo as the screens do.
+          blurred: (id) => {
+            const found = media.file(id);
+            return found && !found.missing ? blurred.relativePath(found.sha256) : null;
+          },
         }),
       // A sound plays on a phone only while a playlist shared with phones has it (Session 54, D3).
       sharedSound: (mediaId) =>
@@ -4089,8 +4411,8 @@ function start(): void {
   const nodeRepo = new NodeRepo(db);
   const wanted = new WantedMedia(
     db,
-    // Nothing more since Session 55 (the idle rotation's pictures went with it); Part 6's wallpapers go here.
-    () => [],
+    // The wallpapers' pictures (Session 55, Part 6), so a node shows the chosen one at once.
+    () => wallpaperService.pictureIds(),
     Date.now,
     // A picture's sharpened copy (Session 26f), once it is ready: one more file for the node, copied as
     // media is, right after the picture's own.
@@ -4104,7 +4426,23 @@ function start(): void {
           ? { id: copyMediaId(mediaId, step), sha256: file.hash, bytes: file.bytes, ext: file.ext }
           : null;
       },
+      // A picture's blurred copy (Session 55, D), once it is ready and the picture is drawn with it.
+      blurred: (mediaId) => {
+        const found = media.file(mediaId);
+        if (!found || found.missing || !fillsWithBlur(mediaId, media.look(mediaId))) return null;
+        const file = blurred.fileOf(found.sha256);
+        return file ? { id: blurMediaId(mediaId), sha256: file.hash, bytes: file.bytes, ext: 'jpg' } : null;
+      },
       source: (copyId) => {
+        const blurOf = blurOfId(copyId);
+        if (blurOf) {
+          const found = media.file(blurOf);
+          const relative = found && !found.missing ? blurred.relativePath(found.sha256) : null;
+          const file = found ? blurred.fileOf(found.sha256) : null;
+          return relative && file
+            ? { path: join(mediaDir, relative), sha256: file.hash, bytes: file.bytes, ext: 'jpg' }
+            : null;
+        }
         const copy = copyOfId(copyId);
         const found = copy ? media.file(copy.mediaId) : null;
         if (!copy || !found || found.missing) return null;
@@ -4510,10 +4848,34 @@ function start(): void {
         : { ok: false, message: 'That timer no longer exists.' };
     }),
   );
+  /**
+   * Countdown to the start (Session 55, Part 15): the sabha's time counted down over the wallpaper on the audience and
+   * the stage, gone by itself at zero. Its one timer (by its name) made, or changed to this time, then shown.
+   */
+  const startCountdown = (time: unknown): TimerResult => {
+    const at = startTimeSchema.safeParse(time);
+    if (!at.success)
+      return { ok: false, message: 'Write the sabha’s time as hours and minutes, for example 19:30.' };
+    // A time already come today would go at once.
+    if (startTimeGone(at.data, Date.now()))
+      return { ok: false, message: 'That time has already come today: write the sabha’s time later today.' };
+    const fields = startCountdownFields(at.data);
+    const was = timers.list().find((t) => t.name === START_COUNTDOWN_NAME);
+    const id = was ? (timers.update(was.id, fields) ? was.id : null) : timers.create(fields);
+    if (id === null) return { ok: false, message: 'That timer no longer exists.' };
+    engine.setTimers(timers.list());
+    const shown = engine.dispatch({ type: 'showAudienceTimer', timerId: id });
+    return shown.ok ? { ok: true, id } : { ok: false, message: shown.message };
+  };
+  handle(IPC.timers.startCountdown, (e, time) =>
+    fromOperator(e) ? startCountdown(time) : { ok: false, message: 'Only the operator window can do that.' },
+  );
   const playlistsChanged = () => {
     // A live item's order may have changed, and what comes next may be different.
     engine.reorderLive();
     engine.refreshNext();
+    // A video row's When it ends (Session 55, Part 6), changed while it plays.
+    engine.refreshEnds();
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     net.hint('playlists');
     syncAudios();

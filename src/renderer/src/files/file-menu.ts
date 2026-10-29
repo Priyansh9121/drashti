@@ -45,8 +45,8 @@ export interface FileTarget {
   itemId?: string;
   /** What fits only here, first in the menu. */
   first?: MenuEntry[];
-  /** Edit: the Picture editor, or Edit slides at this slide. */
-  edit?: { label: 'Picture editor…' | 'Edit slides…'; run: () => void };
+  /** Edit: the Picture editor, or Edit slides at this slide, or a wallpaper's pictures and timing (Part 6). */
+  edit?: { label: 'Picture editor…' | 'Edit slides…' | 'Edit wallpaper…'; run: () => void };
   /** Trim: a video's or sound's start, end and markers. */
   trim?: () => void;
   rename?: () => void;

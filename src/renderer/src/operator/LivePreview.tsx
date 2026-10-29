@@ -149,6 +149,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
       {help.card && <div className="-mx-3">{help.card}</div>}
       {state?.repeat && <Repeating run={state.repeat} />}
       {state?.layers.slide?.timer && <TimerAlone shown={state.layers.slide.timer} />}
+      {state?.layers.timer && <AudienceTimerUp state={state} />}
       <div
         className={cx(
           // The live border and its red underglow come and go in the same frame as the screens: no fade.
@@ -243,6 +244,32 @@ function TimerAlone({ shown }: { shown: TimerShow }) {
         onClick={() => void dispatch({ type: 'clearLayer', layer: 'slide' })}
       >
         Take off
+      </Button>
+    </div>
+  );
+}
+
+/** A timer for the audience up (Session 55, Part 15): which, and Hide. */
+function AudienceTimerUp({ state }: { state: EngineState }) {
+  const up = state.layers.timer;
+  const name = up ? (state.timers.find((t) => t.id === up.timerId)?.name ?? 'Timer') : '';
+  return (
+    <div
+      role="status"
+      data-testid="live-audience-timer"
+      className="flex min-h-9 items-center gap-2 rounded-md border border-line bg-panel-2 py-1 pr-1 pl-2 text-xs"
+    >
+      <Timer size={14} aria-hidden="true" className="shrink-0 text-muted" />
+      <span className="min-w-0 flex-1 truncate" title={name}>
+        <span className="font-bold">Timer for the audience</span> · {name}
+      </span>
+      <Button
+        size="sm"
+        icon={Eraser}
+        data-testid="live-audience-timer-off"
+        onClick={() => void dispatch({ type: 'hideAudienceTimer' })}
+      >
+        Hide
       </Button>
     </div>
   );

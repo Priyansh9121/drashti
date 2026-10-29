@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import type { PixelSize } from '../../shared/picture-look';
-import { copyBox, sharpenStep } from '../../shared/picture-look';
+import type { PictureLook, PixelSize } from '../../shared/picture-look';
+import { copyBox, copyBoxOf, sharpenStep } from '../../shared/picture-look';
+import { isJpegExtension } from '../../shared/media';
 import { extOf } from '../import/scan';
 import { sha256File } from '../import/media-store';
 
@@ -48,11 +49,12 @@ const JOB_TIMEOUT_MS = 120_000;
 const SHA256 = /^[0-9a-f]{64}$/u;
 const COPY_NAME = /^([0-9a-f]{64})-(\d{1,3})(?:-(\d{1,5}x\d{1,5}))?\.(jpg|png)$/u;
 
-/** A copy's file type: a JPEG from a JPEG (as small, as quick to draw), else a PNG (it keeps see-through parts). */
-export const copyExtOf = (originalPath: string): 'jpg' | 'png' => {
-  const ext = extOf(originalPath);
-  return ext === 'jpg' || ext === 'jpeg' ? 'jpg' : 'png';
-};
+/**
+ * A copy's file type: a JPEG from a JPEG, by any of its names (as small, as quick to draw), else a PNG (it keeps
+ * see-through parts).
+ */
+export const copyExtOf = (originalPath: string): 'jpg' | 'png' =>
+  isJpegExtension(extOf(originalPath)) ? 'jpg' : 'png';
 
 /** A box as a copy's name says it ("1920x1080"), or '' for a copy at the picture's own size. */
 export const boxKey = (box: PixelSize | null): string =>
@@ -70,7 +72,16 @@ export interface CopyWant {
   sharpness: number;
   /** Its kept zoom (1 to 4): it is drawn that much bigger. */
   zoom: number;
+  /**
+   * Its look (Session 55, P5): turned or cropped, the part kept fills the screen, so the whole picture is drawn
+   * bigger than the screen and its copy is made that big (copyBoxOf).
+   */
+  look?: PictureLook;
 }
+
+/** The box a wanted picture's copy is made for: as the hall draws it (Session 26g; turned or cropped, P5). */
+const boxFor = (screen: PixelSize | null, want: CopyWant): PixelSize | null =>
+  want.look ? copyBoxOf(screen, { ...want.look, zoom: want.zoom }) : copyBox(screen, want.zoom);
 
 /** What the window is given to make one copy. */
 export interface SharpenJob {
@@ -263,7 +274,7 @@ export class SharpenedCopies {
       const step = sharpenStep(want.sharpness);
       if (step === 0 || !SHA256.test(want.sha256) || want.path === '' || isAbsolute(want.path)) continue;
       if (keep.has(want.sha256)) continue;
-      const box = copyBox(screen, want.zoom);
+      const box = boxFor(screen, want);
       keep.set(want.sha256, { step, box: boxKey(box) });
       jobs.push({ want, step, ext: copyExtOf(want.path), box });
     }
@@ -442,7 +453,7 @@ export class SharpenedCopies {
           (w) =>
             w.sha256 === job.want.sha256 &&
             sharpenStep(w.sharpness) === job.step &&
-            boxKey(copyBox(screen, w.zoom)) === box,
+            boxKey(boxFor(screen, w)) === box,
         );
       if (!still) {
         await rm(partial, { force: true });

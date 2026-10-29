@@ -219,6 +219,9 @@ export const REMOTE_COMMANDS = [
   // stage message, and Back 15 s, Forward 15 s and Last 10 s.
   'hideLowerThird',
   'showTimer',
+  // A timer for the audience shown and hidden (Session 55, Part 15).
+  'showAudienceTimer',
+  'hideAudienceTimer',
   'setStageMessage',
   'clearStageMessage',
   'skip',
@@ -227,7 +230,7 @@ export const REMOTE_COMMANDS = [
   'pausePlaying',
   'resumePlaying',
   // The live zoom (Session 54, D2): the zoom of the picture a phone looks at, put on the screens, and Back to Whole
-  // (Simple Mode refuses both, as in the window).
+  // (Simple Mode's too since Session 55, Part 5, as in the window).
   'zoomLive',
   'resetLiveZoom',
   // A video input up as the background, by its id in this computer's list (Session 54, the phone as a full Drashti:

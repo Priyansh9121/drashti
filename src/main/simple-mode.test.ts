@@ -63,9 +63,10 @@ describe('Simple Mode locks', () => {
     // picture-in-picture box (Session 50; taking one off is not refused), choosing a video input (Session 50:
     // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the time bar's move and the
     // skips (Session 54: Simple Mode shows the bar only).
+    // Session 55 (Part 5): the live zoom is Simple Mode's too, from the window and a phone.
+    expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('zoomLive');
+    expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('resetLiveZoom');
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual([
-      'zoomLive',
-      'resetLiveZoom',
       'showPip',
       'swapPip',
       'placePip',

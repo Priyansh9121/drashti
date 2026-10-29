@@ -9,6 +9,10 @@ import type { PlaybackMarker } from '../markers';
 import type { LiveZoom, PictureLook } from '../picture-look';
 import type { LowerThird } from '../lower-thirds';
 import { NO_STAGE, type StageState } from '../stage-layouts';
+import type { SoundState } from '../sound';
+import type { ChosenWallpaper } from '../wallpapers';
+import type { MessageLook } from '../message-look';
+import type { StageCall } from '../stage-message';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -37,20 +41,38 @@ import { NO_STAGE, type StageState } from '../stage-layouts';
  * 55, Part 12): Props, Masks, the Logo and the idle rotation taken out (no `props` or `masks` layer, no `logo`, no
  * `idle`), and the Wallpaper's switch in the Logo's place (`wallpaper`, Part 13); an older node or page would look
  * for what is gone, so it says 'incompatible'. A state 15, 14, 13 or 12 saved is read whole, its props, mask, logo
- * and idle rotation left out (none of them shows after the update) and the wallpaper off.
+ * and idle rotation left out (none of them shows after the update) and the wallpaper off. 17 (Session 55, Part 15): a
+ * message's own look and its time up (`look`, `until`) and the messages leaving (`messagesOff`), the stage message's
+ * size, flash and last few (`stageCall`, `stageRecent`), and a timer for the audience (`layers.timer`, `timerOff`, each
+ * timer's `look`). 18 (Session 55, Part 6): the chosen wallpaper (`chosenWallpaper`), which every audience screen, node
+ * and phone draws whenever nothing is up and under the Wallpaper. 20 (Session 55, Part 5; the lead's numbers, each
+ * Part's own, put together as they merged): a picture's look turns, flips and crops it, and a photo that does not fill
+ * its screen has a blurred copy of itself behind it (`pictures`' `turn`, `flipX`, `flipY`, `crop`, `size`, `fill` and
+ * `blurred`). An older node or page would draw every message as the band along the bottom, no timer, black for the
+ * wallpaper and the picture as it was taken, so it says 'incompatible'. A state 18, 17 or 16 saved is read whole (each
+ * only adds to 16).
  */
-export const ENGINE_STATE_VERSION = 16;
+export const ENGINE_STATE_VERSION = 20;
 
 /**
- * Whether a state saved by this engine version is read whole (Session 52): this version's own, 15 (the Session 55
- * builds before Part 12), 14 (alpha.13's), 13 (alpha.12's) and 12 (alpha.11's), as 15, 14 and 13 each only add fields
- * to the one before (15 leaves the live Look's stage layouts out, which nothing reads any more) and 16 only leaves
- * out what went (Session 55, Part 12: a reader leaves an older state's props, mask, logo and idle rotation out). Any
- * other version's layers are left out, as their shapes may differ.
+ * Whether a state saved by this engine version is read whole (Session 52): this version's own, 16 (Session 55's
+ * Part 12), 15 (the Session 55 builds before Part 12), 14 (alpha.13's), 13 (alpha.12's) and 12 (alpha.11's), as 17,
+ * 15, 14 and 13 each only add fields to the one before (15 leaves the live Look's stage layouts out, which nothing reads
+ * any more) and 16 only leaves out what went (Session 55, Part 12: a reader leaves an older state's props, mask, logo
+ * and idle rotation out). Any other version's layers are left out, as their shapes may differ.
  */
 export function readsEngineVersion(version: unknown): boolean {
   return (
-    version === ENGINE_STATE_VERSION || version === 15 || version === 14 || version === 13 || version === 12
+    version === ENGINE_STATE_VERSION ||
+    // 17, 18 and 20 each only add to 16 (Session 55: Part 15's messages and timers, Part 6's chosen wallpaper, Part 5's
+    // picture looks).
+    version === 18 ||
+    version === 17 ||
+    version === 16 ||
+    version === 15 ||
+    version === 14 ||
+    version === 13 ||
+    version === 12
   );
 }
 
@@ -267,6 +289,19 @@ export interface AudioLayer extends AudioChoice {
   across?: AcrossSlides;
   /** A deck's fades in from its start point and out before its end point (ms; Session 54), as its deck says. */
   fades?: { inMs: number; outMs: number };
+  /**
+   * A slide's own sound cue (Session 55, Part 7): another slide's own sound takes its place, as before. Left out for a
+   * sound the operator started (from Media, a playlist's row, Audio) and an audio playlist's track.
+   */
+  cue?: true;
+  /**
+   * A slide's own sound, or a deck's own soundtrack, playing over the operator's sound (Session 55, Part 7: the owner's
+   * answer of 30 Oct): an audio playlist's track, or a sound the operator started, plays on under it, never stopped for
+   * it, stepping aside as it does under a video (shared/sound.ts) until this one ends. It stays as a slide's sound
+   * does, over the operator's sound's next track, Pause and Play, until another slide's own sound takes its place,
+   * Clear audio or Clear all, or (a deck's, with its `across`) its deck's end. Left out when there is none.
+   */
+  over?: AudioLayer;
 }
 
 /** Where a sound set to play across slides plays (Session 54): its presentation, up to its last slide. */
@@ -382,6 +417,16 @@ export interface MessageItem {
    * (a window's request carries none; a restored message comes back still).
    */
   shownAt?: number;
+  /**
+   * Its own look (Session 55, Part 15, shared/message-look.ts): where it sits, how it comes and goes, its font, size,
+   * colour, weight and what is behind it. Left out: the band along the bottom every message had before, shared with
+   * the others like it.
+   */
+  look?: MessageLook;
+  /** How long it stays up by itself, in seconds, as asked (Session 55); left out, until it is taken off. */
+  seconds?: number;
+  /** When it goes by itself, by the engine's clock (stamped from `seconds` as it goes up; an update keeps it). */
+  until?: number;
 }
 
 /** An announcement in the ticker. */
@@ -477,6 +522,16 @@ export interface PipLayer {
   seeks?: VideoSeeks;
 }
 
+/**
+ * A timer for the audience up (Session 55, Part 15, shared/audience-timer.ts): which of the library's timers, drawn
+ * in its look (the state's `timers` carry each one's), and when it went up, by the engine's clock (it fades in from
+ * then, the same on every screen). One at a time.
+ */
+export interface AudienceTimerLayer {
+  timerId: string;
+  shownAt: number;
+}
+
 export interface Layers {
   audio: AudioLayer | null;
   background: BackgroundLayer | null;
@@ -486,6 +541,11 @@ export interface Layers {
   lowerThird: LowerThirdLayer | null;
   messages: MessageItem[];
   ticker: TickerLayer | null;
+  /**
+   * A timer for the audience (Session 55, Part 15): over the layers below the messages, or over the wallpaper. Left
+   * out (a state saved before 17) or null: none. Clear all takes it off, Put it back and Oops bring it back.
+   */
+  timer?: AudienceTimerLayer | null;
 }
 
 /**
@@ -562,7 +622,7 @@ export interface EngineState {
   blackout: boolean;
   /**
    * The Wallpaper (Session 55, Part 13, in the Logo's place): the chosen wallpaper on the audience screens instead of
-   * the picture (render/NothingUp.tsx: black until Part 6 brings wallpapers). Like black-out it covers the layers
+   * the picture (render/NothingUp.tsx: `chosenWallpaper`, black with none chosen). Like black-out it covers the layers
    * without clearing them, so taking it off brings back exactly what was there; black-out covers it in turn. Stage
    * screens ignore it.
    */
@@ -586,6 +646,20 @@ export interface EngineState {
   upcoming: UpcomingItem[];
   /** A message for the performers on stage screens; the audience never sees it. */
   stageMessage: string | null;
+  /**
+   * How the stage message up was shown (Session 55, Part 15, shared/stage-message.ts): its size, its flash and when.
+   * Left out (a state saved before 17) or null: the standard size, no flash.
+   */
+  stageCall?: StageCall | null;
+  /** The last few stage messages shown (Session 55), the newest first, each a tap away; left out: none yet. */
+  stageRecent?: string[];
+  /**
+   * The messages with a look of their own just taken off (Session 55), and when by the engine's clock: each one's out
+   * plays from then, the same on every screen. Left out or empty: none leaving. Clear all takes them off at once.
+   */
+  messagesOff?: { message: MessageItem; at: number }[];
+  /** The timer for the audience just hidden (Session 55), and when: it fades out from then. Null once another is up. */
+  timerOff?: { layer: AudienceTimerLayer; at: number } | null;
   /** Every timer, with when it was started: windows work out the time themselves. */
   timers: TimerState[];
   /**
@@ -641,6 +715,19 @@ export interface EngineState {
    * the audience screens reads it. Left out (a state saved before 15): the Standard stage screen, Stage on.
    */
   stage?: StageState;
+  /**
+   * How Drashti's own sound plays now (Session 55, Part 7, shared/sound.ts): whether the music steps aside under a video
+   * with sound, the gain each file sounding now plays with (even loudness), and the videos up with no sound of their
+   * own. Only the main process sets it, from the library; the audio player and the stream's page play by it. Left out
+   * (an older state, or an engine with no library): the music steps aside, and every file plays as it is. An optional
+   * field an older page leaves alone, so the state's version stays.
+   */
+  sound?: SoundState;
+   * The chosen wallpaper (Session 55, Part 6, shared/wallpapers.ts): what every audience screen, node and phone shows
+   * whenever nothing is up there, and under the Wallpaper (`wallpaper`); its pictures go round from `since`. Only the
+   * main process sets it, from the library. Left out (a state saved before 18) or null: none chosen, black.
+   */
+  chosenWallpaper?: ChosenWallpaper | null;
 }
 
 export function emptyLayers(): Layers {

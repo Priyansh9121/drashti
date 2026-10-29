@@ -1,5 +1,6 @@
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
+import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type {
@@ -77,7 +78,7 @@ import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-
 import type { PendingScreens } from './keep-screens';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
-import type { SaveStillResult } from './media';
+import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
@@ -101,6 +102,7 @@ import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
+import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -397,8 +399,17 @@ export interface DrashtiBridge {
     editSlot(itemId: string, slot: { label: string; category: string | null }): Promise<PlaylistResult>;
     /** What an item does to timers when it goes up: start, reset or show each (none to take them away). */
     setTimers(itemId: string, cues: TimerCue[]): Promise<PlaylistResult>;
+    /** What a video's row does when it ends (Session 55, Part 6). */
+    setWhenEnds(itemId: string, whenEnds: WhenEnds): Promise<PlaylistResult>;
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;
+    /**
+     * A slide's row dragged out of its deck (Session 55, Part 4b): an item of its own at `at` playing `alone`, the item
+     * keeping `rest` (both own orders of slides). Its ids: the new item's.
+     */
+    splitItem(itemId: string, rest: ItemOrder, alone: ItemOrder, at: number): Promise<PlaylistResult>;
+    /** Its Undo: the item plays `order` again, and the item made is taken out. */
+    undoSplit(itemId: string, order: ItemOrder, madeId: string): Promise<PlaylistResult>;
     /** A slot, at a position or the end. */
     addSlot(
       playlistId: string,
@@ -442,12 +453,19 @@ export interface DrashtiBridge {
     create(template: MessageTemplateFields): Promise<MessageResult>;
     update(templateId: string, template: MessageTemplateFields): Promise<MessageResult>;
     remove(templateId: string): Promise<MessageResult>;
+    /** A template put back as it was, its id too (Session 55: Undo of a change or a removal). */
+    restore(template: MessageTemplate): Promise<MessageResult>;
   };
   /** Making and editing timers (operator window only). Starting and pausing go through the engine. */
   timers: {
     create(fields: TimerFields): Promise<TimerResult>;
     update(timerId: string, fields: TimerFields): Promise<TimerResult>;
     remove(timerId: string): Promise<TimerResult>;
+    /**
+     * Countdown to the start (Session 55, Part 15): a countdown to the sabha's time ("19:30") over the wallpaper on
+     * the audience and the stage, gone by itself at zero; its timer made, or changed when it is there, and shown.
+     */
+    startCountdown(time: string): Promise<TimerResult>;
   };
   media: {
     /**
@@ -481,6 +499,10 @@ export interface DrashtiBridge {
     ): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Keep this zoom: the live zoom kept as the picture's own. */
     keepLiveZoom(): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Session 55 (Part 5): a photo (its blurred fill on by itself), not a deck's page. */
+    photo(mediaId: string): Promise<boolean>;
+    /** Save picture… (Session 55, Part 5): the picture full size, as it shows, where the operator chooses. */
+    savePicture(mediaId: string, name: string): Promise<SavePictureResult>;
     onLooks(listener: (looks: Record<string, PictureLook>) => void): () => void;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;
@@ -495,6 +517,19 @@ export interface DrashtiBridge {
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
+  };
+  /**
+   * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,
+   * and a video's points set past its black and silence (the operator window's).
+   */
+  sound: {
+    view(): Promise<SoundView>;
+    /** A video's or sound's loudness as measured, and its own switch; null for no such file. */
+    file(mediaId: string): Promise<FileSoundView | null>;
+    setStepsAside(on: boolean): Promise<SoundViewResult>;
+    setEven(mediaId: string, on: boolean): Promise<EvenResult>;
+    trimEdges(mediaId: string): Promise<TrimEdgesResult>;
+    onChanged(listener: (view: SoundView) => void): () => void;
   };
   /** Where sound plays. */
   audio: {
@@ -685,6 +720,27 @@ export interface DrashtiBridge {
     onOpen(listener: () => void): () => void;
   };
   /** Lower Thirds (Session 44): changing them is the operator window's, in Pro Mode. */
+  /** The wallpapers (Session 55, Part 6, shared/wallpapers.ts). */
+  wallpapers: {
+    view(): Promise<WallpapersView>;
+    onChanged(listener: (view: WallpapersView) => void): () => void;
+    /** Files offered (a drop, Import…): the pictures, and the rest with why each is not one. */
+    sortFiles(paths: string[]): Promise<WallpaperFiles>;
+    /** The system's dialog for pictures; the paths chosen (none when cancelled). */
+    pickFiles(): Promise<string[]>;
+    /** Pictures in the library as wallpapers, one each, or into one (`into`). */
+    add(mediaIds: string[], into: string | null): Promise<WallpaperResult>;
+    rename(id: string, name: string): Promise<WallpaperResult>;
+    setPictures(id: string, mediaIds: string[]): Promise<WallpaperResult>;
+    setTiming(id: string, timing: { secondsEach: number; fadeMs: number }): Promise<WallpaperResult>;
+    /** Delete one (Undo brings it back, until Drashti next starts). */
+    remove(id: string): Promise<WallpaperResult>;
+    restore(id: string): Promise<WallpaperResult>;
+    /** Choose one, or none (null). */
+    choose(id: string | null): Promise<WallpaperResult>;
+    /** A quote of the idle rotation's, drawn as a picture (PNG), into its wallpaper. */
+    quotePicture(into: string, quoteId: string, png: Uint8Array): Promise<WallpaperResult>;
+  };
   lowerThirds: {
     list(): Promise<LowerThird[]>;
     onChanged(listener: (lowerThirds: LowerThird[]) => void): () => void;

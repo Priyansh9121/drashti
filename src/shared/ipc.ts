@@ -1,5 +1,6 @@
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
+import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
@@ -60,7 +61,7 @@ import type {
   StreamResult,
   StreamStatus,
 } from './stream';
-import type { SaveStillResult } from './media';
+import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
@@ -102,6 +103,7 @@ import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-
 import type { PendingScreens } from './keep-screens';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
+import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
 import type {
   CoverOptions,
   DisplayJob,
@@ -392,6 +394,12 @@ export const IPC = {
     looks: 'media:looks',
     setLook: 'media:set-look',
     keepLiveZoom: 'media:keep-live-zoom',
+    /**
+     * Session 55 (Part 5): whether a picture is a photo (its blurred fill on unless its look says not), and Save
+     * picture… (full size where the operator chooses).
+     */
+    photo: 'media:photo',
+    savePicture: 'media:save-picture',
     /** main -> operator: a picture's look changed. */
     looksChanged: 'media:looks-changed',
     setMarkers: 'media:set-markers',
@@ -420,6 +428,20 @@ export const IPC = {
     testTone: 'audio:test-tone',
     /** main -> operator: the sound output status changed. */
     status: 'audio:status',
+  },
+  /**
+   * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside switch, a file's Even
+   * loudness, and Trim black and silence on a video (each the operator window's).
+   */
+  sound: {
+    view: 'sound:view',
+    /** A video's or sound's loudness as measured, and its own switch. */
+    file: 'sound:file',
+    setStepsAside: 'sound:set-steps-aside',
+    setEven: 'sound:set-even',
+    trimEdges: 'sound:trim-edges',
+    /** main -> operator: Audio's switch or a file's Even loudness changed. */
+    changed: 'sound:changed',
   },
   playlists: {
     tree: 'playlists:tree',
@@ -450,8 +472,13 @@ export const IPC = {
     editSlot: 'playlists:edit-slot',
     /** What an item does to timers when it goes up (Session 12). */
     setTimers: 'playlists:set-timers',
+    /** A video row's When it ends (Session 55, Part 6). */
+    setWhenEnds: 'playlists:set-when-ends',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
+    /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
+    splitItem: 'playlists:split-item',
+    undoSplit: 'playlists:undo-split',
     /** Smart playlists (Session 26c): how following each one's folder goes. */
     smartViews: 'playlists:smart-views',
     /** A smart playlist from a folder chosen in a dialog. */
@@ -494,14 +521,37 @@ export const IPC = {
     create: 'messages:create',
     update: 'messages:update',
     remove: 'messages:remove',
+    /** A template put back as it was, by its id (Session 55: Undo of a change or a removal). */
+    restore: 'messages:restore',
   },
   /** Changing timers (operator window only); what they count comes with the engine state. */
   timers: {
     create: 'timers:create',
     update: 'timers:update',
     remove: 'timers:remove',
+    /** Countdown to the start (Session 55, Part 15): the sabha's time, its timer made or changed, and shown. */
+    startCountdown: 'timers:start-countdown',
   },
   /** Lower Thirds (Session 44; changing them: operator window, Pro Mode). */
+  /** The wallpapers (Session 55, Part 6): changing them, operator window only. */
+  wallpapers: {
+    view: 'wallpapers:view',
+    /** Files offered (a drop, Import…): the pictures, and the rest with why each is not one. */
+    sortFiles: 'wallpapers:sort-files',
+    /** The system's dialog for pictures (Import…). */
+    pickFiles: 'wallpapers:pick-files',
+    add: 'wallpapers:add',
+    rename: 'wallpapers:rename',
+    setPictures: 'wallpapers:set-pictures',
+    setTiming: 'wallpapers:set-timing',
+    remove: 'wallpapers:remove',
+    restore: 'wallpapers:restore',
+    choose: 'wallpapers:choose',
+    /** A quote of the idle rotation's, drawn as a picture by the operator window. */
+    quotePicture: 'wallpapers:quote-picture',
+    /** main -> operator: the wallpapers changed. */
+    changed: 'wallpapers:changed',
+  },
   lowerThirds: {
     list: 'lowerthirds:list',
     save: 'lowerthirds:save',
@@ -1053,7 +1103,16 @@ export interface InvokeContract {
     result: PlaylistResult;
   };
   [IPC.playlists.setTimers]: { args: [itemId: string, cues: TimerCue[]]; result: PlaylistResult };
+  [IPC.playlists.setWhenEnds]: { args: [itemId: string, whenEnds: WhenEnds]; result: PlaylistResult };
   [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
+  [IPC.playlists.splitItem]: {
+    args: [itemId: string, rest: ItemOrder, alone: ItemOrder, at: number];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.undoSplit]: {
+    args: [itemId: string, order: ItemOrder, madeId: string];
+    result: PlaylistResult;
+  };
   [IPC.playlists.smartViews]: { args: []; result: SmartPlaylistView[] };
   [IPC.playlists.createSmart]: { args: []; result: PlaylistResult };
   [IPC.playlists.removeMissing]: { args: [playlistId: string]; result: PlaylistResult };
@@ -1135,10 +1194,17 @@ export interface InvokeContract {
     result: { ok: true } | { ok: false; message: string };
   };
   [IPC.media.keepLiveZoom]: { args: []; result: { ok: true } | { ok: false; message: string } };
+  [IPC.media.photo]: { args: [mediaId: string]; result: boolean };
+  [IPC.media.savePicture]: { args: [mediaId: string, name: string]; result: SavePictureResult };
   [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
   [IPC.media.showSave]: { args: [jobId: string]; result: null };
+  [IPC.sound.view]: { args: []; result: SoundView };
+  [IPC.sound.file]: { args: [mediaId: string]; result: FileSoundView | null };
+  [IPC.sound.setStepsAside]: { args: [on: boolean]; result: SoundViewResult };
+  [IPC.sound.setEven]: { args: [mediaId: string, on: boolean]; result: EvenResult };
+  [IPC.sound.trimEdges]: { args: [mediaId: string]; result: TrimEdgesResult };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
@@ -1149,9 +1215,28 @@ export interface InvokeContract {
     result: MessageResult;
   };
   [IPC.messages.remove]: { args: [templateId: string]; result: MessageResult };
+  [IPC.messages.restore]: { args: [template: MessageTemplate]; result: MessageResult };
   [IPC.timers.create]: { args: [fields: TimerFields]; result: TimerResult };
   [IPC.timers.update]: { args: [timerId: string, fields: TimerFields]; result: TimerResult };
   [IPC.timers.remove]: { args: [timerId: string]; result: TimerResult };
+  [IPC.wallpapers.view]: { args: []; result: WallpapersView };
+  [IPC.wallpapers.sortFiles]: { args: [paths: string[]]; result: WallpaperFiles };
+  [IPC.wallpapers.pickFiles]: { args: []; result: string[] };
+  [IPC.wallpapers.add]: { args: [mediaIds: string[], into: string | null]; result: WallpaperResult };
+  [IPC.wallpapers.rename]: { args: [id: string, name: string]; result: WallpaperResult };
+  [IPC.wallpapers.setPictures]: { args: [id: string, mediaIds: string[]]; result: WallpaperResult };
+  [IPC.wallpapers.setTiming]: {
+    args: [id: string, timing: { secondsEach: number; fadeMs: number }];
+    result: WallpaperResult;
+  };
+  [IPC.wallpapers.remove]: { args: [id: string]; result: WallpaperResult };
+  [IPC.wallpapers.restore]: { args: [id: string]; result: WallpaperResult };
+  [IPC.wallpapers.choose]: { args: [id: string | null]; result: WallpaperResult };
+  [IPC.wallpapers.quotePicture]: {
+    args: [into: string, quoteId: string, png: Uint8Array];
+    result: WallpaperResult;
+  };
+  [IPC.timers.startCountdown]: { args: [time: string]; result: TimerResult };
   [IPC.lowerThirds.list]: { args: []; result: LowerThird[] };
   [IPC.lowerThirds.save]: { args: [id: string | null, input: LowerThirdInput]; result: LowerThirdResult };
   [IPC.lowerThirds.remove]: { args: [ids: string[]]; result: LowerThirdsResult };
@@ -1370,6 +1455,7 @@ export interface EventContract {
   [IPC.midi.ask]: MidiAsk;
   [IPC.midi.changed]: MidiSettings;
   [IPC.lowerThirds.changed]: LowerThird[];
+  [IPC.wallpapers.changed]: WallpapersView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string; label?: string };
@@ -1381,6 +1467,7 @@ export interface EventContract {
   [IPC.audio.testTone]: { deviceId: string };
   [IPC.setup.open]: { at: number };
   [IPC.audio.status]: AudioOutputStatus;
+  [IPC.sound.changed]: SoundView;
   [IPC.stream.changed]: StreamStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.savesChanged]: SaveJob[];

@@ -8,7 +8,7 @@
  * for the top folder, and none for a folder with nothing of its own.
  */
 
-import { SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from './media';
+import { IMAGE_EXTENSIONS, SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from './media';
 
 /** A→Z as people read it: case and accents aside, numbers by their value. */
 export const naturalCompare: (a: string, b: string) => number = new Intl.Collator('en', {
@@ -91,7 +91,8 @@ export function partsInFolderOrder<T>(
 // The videos and sounds the import takes (Session 50: one list, in shared/media.ts).
 const VIDEO = new Set(VIDEO_EXTENSIONS);
 const DECK = new Set(['pptx', 'ppt', 'key', 'pdf']);
-const PICTURE = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'webp', 'avif']);
+// Every picture the import takes (Session 55, Part 5: one list, in shared/media.ts).
+const PICTURE = new Set(IMAGE_EXTENSIONS);
 const SOUND = new Set(SOUND_EXTENSIONS);
 
 const extOf = (path: string): string => {

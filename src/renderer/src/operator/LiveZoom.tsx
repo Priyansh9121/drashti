@@ -19,10 +19,24 @@ import { useMode } from './mode-store';
 /*
  * The live zoom (Session 26e): the picture on the screens zoomed and moved
  * from the LIVE preview, for this showing only (the next slide shows as
- * kept), Pro Mode's. Scroll or pinch over the preview to zoom, drag to move,
+ * kept). Scroll or pinch over the preview to zoom, drag to move,
  * or + / − / Reset; the screens glide there in step (the engine's state).
- * Keep this zoom saves it to the picture.
+ * Keep this zoom saves it to the picture (Pro Mode's).
+ *
+ * Session 55 (Part 5): Simple Mode's too, and on a touch screen two fingers
+ * pinch and move it; a double click or a double tap puts it back as kept.
  */
+
+/** Two taps this close in time and place are a double tap (a double click is two clicks). */
+const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_PX = 24;
+
+/** Where two fingers are: their distance apart and their middle. */
+const spanOf = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+  distance: Math.hypot(a.x - b.x, a.y - b.y),
+  x: (a.x + b.x) / 2,
+  y: (a.y + b.y) / 2,
+});
 
 /** The picture a live zoom would zoom: a slide's own picture, else the background picture (as the engine has it). */
 export function zoomTarget(state: EngineState | null): { mediaId: string; showing: string } | null {
@@ -53,12 +67,22 @@ const send = (to: { zoom: number; x: number; y: number }) => {
   });
 };
 
-/** The LIVE preview with the live zoom's mouse and trackpad (`children`: the preview picture). */
+/**
+ * The LIVE preview with the live zoom's mouse, trackpad and touch (`children`: the preview picture), in Pro Mode
+ * and Simple Mode (Session 55, Part 5).
+ */
 export function ZoomablePreview({ children }: { children: ReactNode }) {
   const state = useEngine((s) => s.state);
-  const pro = useMode((s) => s.mode !== 'simple');
   const box = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; from: { zoom: number; x: number; y: number } } | null>(null);
+  // Touch (Session 55): the fingers down, two of them pinching from where they began, and the last tap.
+  const fingers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{
+    start: { distance: number; x: number; y: number };
+    from: { zoom: number; x: number; y: number };
+  } | null>(null);
+  const lastTap = useRef<{ at: number; x: number; y: number } | null>(null);
+  const moved = useRef(false);
   // At most one zoom a frame: the latest wins.
   const pending = useRef<{ zoom: number; x: number; y: number } | null>(null);
   const queue = (to: { zoom: number; x: number; y: number }) => {
@@ -70,7 +94,7 @@ export function ZoomablePreview({ children }: { children: ReactNode }) {
         pending.current = null;
       });
   };
-  const now = pro ? zoomNow(state) : null;
+  const now = zoomNow(state);
   if (!now) return <>{children}</>;
   const onWheel = (e: WheelEvent<HTMLDivElement>) => {
     const at = pending.current ?? now;
@@ -81,27 +105,86 @@ export function ZoomablePreview({ children }: { children: ReactNode }) {
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { x: e.clientX, y: e.clientY, from: now };
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const at = pending.current ?? now;
+    const [a, b] = [...fingers.current.values()];
+    if (a && b) {
+      // A second finger: a pinch from here, never a drag.
+      drag.current = null;
+      pinch.current = { start: spanOf(a, b), from: at };
+      moved.current = true;
+      return;
+    }
+    moved.current = false;
+    drag.current = { x: e.clientX, y: e.clientY, from: at };
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
+    if (fingers.current.has(e.pointerId)) fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const b = box.current?.getBoundingClientRect();
-    if (!d || !b || b.width === 0) return;
+    if (!b || b.width === 0) return;
+    const p = pinch.current;
+    const [f1, f2] = [...fingers.current.values()];
+    if (p && f1 && f2) {
+      // Two fingers: as far apart as they are now, zoomed that much; moved as their middle moved.
+      const span = spanOf(f1, f2);
+      const zoom = Math.min(
+        ZOOM.max,
+        Math.max(ZOOM.min, p.from.zoom * (span.distance / Math.max(1, p.start.distance))),
+      );
+      queue({
+        zoom,
+        x: p.from.x + (span.x - p.start.x) / b.width,
+        y: p.from.y + (span.y - p.start.y) / b.height,
+      });
+      return;
+    }
+    const d = drag.current;
+    if (!d) return;
+    if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 4) moved.current = true;
     queue({
       ...d.from,
       x: d.from.x + (e.clientX - d.x) / b.width,
       y: d.from.y + (e.clientY - d.y) / b.height,
     });
   };
+  const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    fingers.current.delete(e.pointerId);
+    const wasPinch = pinch.current !== null;
+    if (fingers.current.size < 2) pinch.current = null;
+    drag.current = null;
+    if (wasPinch || moved.current || fingers.current.size > 0) {
+      lastTap.current = null;
+      return;
+    }
+    // A tap, or a click: two close together put it back as kept.
+    const t = lastTap.current;
+    const nowMs = performance.now();
+    if (t && nowMs - t.at < DOUBLE_TAP_MS && Math.hypot(e.clientX - t.x, e.clientY - t.y) < DOUBLE_TAP_PX) {
+      lastTap.current = null;
+      // Only while it is zoomed live: as kept already, nothing changes.
+      const target = zoomTarget(state);
+      const z = state?.liveZoom;
+      if (target && z?.mediaId === target.mediaId && z.showing === target.showing)
+        void window.drashti.engine.dispatch({ type: 'resetLiveZoom' }).then((r) => {
+          if (!r.ok) useNotice.setState({ text: r.message });
+        });
+      return;
+    }
+    lastTap.current = { at: nowMs, x: e.clientX, y: e.clientY };
+  };
   return (
     <div
       ref={box}
       data-testid="live-zoomable"
+      title="Pinch or scroll to zoom the picture on the screens, drag to move it, double-click to put it back"
       className="cursor-grab touch-none active:cursor-grabbing"
       onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={() => {
+      onPointerUp={onPointerUp}
+      onPointerCancel={(e) => {
+        fingers.current.delete(e.pointerId);
+        pinch.current = null;
         drag.current = null;
       }}
     >
@@ -110,11 +193,14 @@ export function ZoomablePreview({ children }: { children: ReactNode }) {
   );
 }
 
-/** Under the LIVE preview, while a picture is up: + / − / Reset, and Keep this zoom once it is zoomed live. */
+/**
+ * Under the LIVE preview, while a picture is up: + / − / Reset, and Keep this zoom once it is zoomed live (Pro Mode's:
+ * Simple Mode zooms the screens and never changes the library, Session 55).
+ */
 export function LiveZoomControls() {
   const state = useEngine((s) => s.state);
   const pro = useMode((s) => s.mode !== 'simple');
-  const now = pro ? zoomNow(state) : null;
+  const now = zoomNow(state);
   const target = zoomTarget(state);
   if (!now || !target || !state) return null;
   const z = state.liveZoom;
@@ -159,7 +245,7 @@ export function LiveZoomControls() {
           void window.drashti.engine.dispatch({ type: 'resetLiveZoom' });
         }}
       />
-      {zoomedLive && (
+      {zoomedLive && pro && (
         <Button
           size="sm"
           data-testid="live-zoom-keep"

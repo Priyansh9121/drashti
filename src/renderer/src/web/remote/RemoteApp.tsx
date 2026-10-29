@@ -3,10 +3,10 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import type { RemotePresentation } from '../../../../shared/network-api';
 import { KIRTAN_FIELD_NAMES, type SearchHit } from '../../../../shared/search';
 import type { EngineState } from '../../../../shared/engine/state';
-import { backgroundCueOf, type PresentationDoc } from '../../../../shared/library';
+import { backgroundCueOf } from '../../../../shared/library';
 import { fieldOf, type MessageTemplate, messageItemId, templateFields } from '../../../../shared/messages';
-import { type OrderedSlide, playOrder } from '../../../../shared/order';
-import type { ItemOrder, PlaylistItemInfo } from '../../../../shared/playlists';
+import { itemPlayOrder, type OrderedSlide, ownOrderItem, playOrder } from '../../../../shared/order';
+import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { isRunning } from '../../../../shared/timers';
 import { useEngine } from '../../engine/engine-store';
 import { PhoneStopped } from '../Stopped';
@@ -115,13 +115,6 @@ import { Timers } from './Timers';
 const CANVAS = { width: 1920, height: 1080 };
 
 const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
-
-const itemArrangement = (order: ItemOrder, doc: PresentationDoc): string | null =>
-  order.mode === 'all'
-    ? null
-    : order.mode === 'arrangement'
-      ? order.arrangementId
-      : doc.selectedArrangementId;
 
 /** The first line of a slide's words, for its name read out. */
 const firstLine = (s: OrderedSlide): string =>
@@ -250,6 +243,30 @@ function LivePicture({ state }: { state: EngineState | null }) {
             onClick={() => void tap(post('/api/v1/clear/pip'))}
           >
             Take off
+          </Button>
+        </div>
+      )}
+      {/* A timer for the audience up (Session 55, Part 15): named, and Hide. */}
+      {state?.layers.timer && (
+        <div
+          role="status"
+          data-testid="remote-audience-timer"
+          className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 py-1 pr-1 pl-3"
+        >
+          <Timer size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate text-base">
+            <span className="font-bold">Timer for the audience:</span>{' '}
+            {state.timers.find((t) => t.id === state.layers.timer?.timerId)?.name ?? 'Timer'}
+          </span>
+          <Button
+            size="lg"
+            className="min-h-12"
+            instant
+            icon={Eraser}
+            data-testid="remote-audience-timer-hide"
+            onClick={() => void tap(post('/api/v1/timers/hide'))}
+          >
+            Hide
           </Button>
         </div>
       )}
@@ -513,6 +530,7 @@ function SlideThumb({
 function Slides() {
   const viewing = useRemote((s) => s.viewing);
   const doc = useRemote((s) => s.doc);
+  const items = useRemote((s) => s.items);
   const focusSlideId = useRemote((s) => s.focusSlideId);
   const live = useEngine((s) => s.state?.live ?? null);
   // The live presentation's slide on the screens; a timer up alone (Session 50) is none of its slides.
@@ -537,13 +555,18 @@ function Slides() {
   const isLiveItem =
     live?.presentationId === viewing.presentationId &&
     (viewing.item ? live.playlist?.itemId === viewing.item.itemId : live.playlist === null);
-  const arrangementId = isLiveItem
-    ? live.arrangementId
-    : viewing.item
-      ? itemArrangement(viewing.item.order, doc)
-      : doc.selectedArrangementId;
-  const order = playOrder(doc, arrangementId);
   const item = viewing.item;
+  // The item's order as the playlist has it now (Session 55, Part 4b: its own order of slides changes as rows are
+  // dragged), else as it was when it was opened.
+  const found = item ? items?.find((i) => i.id === item.itemId) : undefined;
+  const itemNow = found?.kind === 'presentation' ? found.order : item?.order;
+  // The live item's as the engine plays it; its own order of slides ("item:<id>") as the playlist keeps it.
+  const order =
+    isLiveItem && ownOrderItem(live.arrangementId) === null
+      ? playOrder(doc, live.arrangementId)
+      : item && itemNow
+        ? itemPlayOrder(doc, itemNow, item.itemId)
+        : playOrder(doc, doc.selectedArrangementId);
   const otherThanLive = live?.presentationId != null && live.presentationId !== viewing.presentationId;
   return (
     <section className="space-y-2" aria-labelledby="slides-title">

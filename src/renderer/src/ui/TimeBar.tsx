@@ -41,6 +41,8 @@ export interface TimeBarProps {
   size?: 'sm' | 'lg';
   /** The elapsed time before the bar (Simple Mode shows the time left alone). */
   elapsed?: boolean;
+  /** Its last seconds (Session 55, Part 6, E: a video about to end): its times and its fill in amber. */
+  warning?: boolean;
   className?: string;
   /** Tests find the bar itself (the slider) by this; its parts are named after it. */
   testId?: string;
@@ -64,6 +66,7 @@ export function TimeBar({
   onMove,
   size = 'sm',
   elapsed = true,
+  warning = false,
   className,
   testId = 'time-bar',
 }: TimeBarProps) {
@@ -150,7 +153,11 @@ export function TimeBar({
   return (
     <div className={cx('flex min-w-0 items-center tabular-nums', s.box, className)}>
       {elapsed && (
-        <span className="shrink-0 text-muted" aria-hidden="true" data-testid={`${testId}-elapsed`}>
+        <span
+          className={cx('shrink-0', warning ? 'font-semibold text-warning-fg' : 'text-muted')}
+          aria-hidden="true"
+          data-testid={`${testId}-elapsed`}
+        >
           {known ? formatDuration(at) : '–:––'}
         </span>
       )}
@@ -195,7 +202,7 @@ export function TimeBar({
                 style={{ left: left(span.endMs, span.durationMs) }}
               />
               <div
-                className="absolute inset-y-0 bg-accent"
+                className={cx('absolute inset-y-0', warning ? 'bg-warning' : 'bg-accent')}
                 style={{
                   left: left(span.startMs, span.durationMs),
                   width: `${String(Math.max(0, barFraction(at, span.durationMs) - barFraction(span.startMs, span.durationMs)) * 100)}%`,
@@ -262,7 +269,11 @@ export function TimeBar({
           </span>
         )}
       </div>
-      <span className="shrink-0 text-muted" aria-hidden="true" data-testid={`${testId}-left`}>
+      <span
+        className={cx('shrink-0', warning ? 'font-semibold text-warning-fg' : 'text-muted')}
+        aria-hidden="true"
+        data-testid={`${testId}-left`}
+      >
         {known ? leftText(at, span) : '–:––'}
       </span>
     </div>

@@ -143,7 +143,15 @@ async function start(message: StartMessage): Promise<void> {
     const timings = { scan: 0, read: 0, lookup: 0, parse: 0, write: 0, commit: 0, media: 0, total: 0 };
     const run =
       message.job === 'relink'
-        ? await runRelink({ ...common, folder: message.paths[0] ?? '', mediaIds: message.mediaIds })
+        ? await runRelink({
+            ...common,
+            folder: message.paths[0] ?? '',
+            mediaIds: message.mediaIds,
+            // A merged item's points (Session 55, Q20): what is up playing it moves to them.
+            onMarked: (mediaIds) => {
+              post({ type: 'marked', runId: message.runId, mediaIds });
+            },
+          })
         : await runImport({
             ...common,
             paths: message.paths,

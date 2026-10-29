@@ -108,13 +108,23 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
   ['GET', '/api/v1/music', undefined, 'music', {}],
   ['POST', '/api/v1/music/play', { playlistId: 'music-1' }, 'music.play', { playlistId: 'music-1' }],
   ['POST', '/api/v1/music/play', undefined, 'music.play', {}],
-  ['POST', '/api/v1/timers/t-1/show', undefined, 'command', { type: 'showTimer', timerId: 't-1' }],
+  // A timer for the audience shown and hidden (Session 55, Part 15: before, show put a timer alone in the slide's place).
+  ['POST', '/api/v1/timers/t-1/show', undefined, 'command', { type: 'showAudienceTimer', timerId: 't-1' }],
+  ['POST', '/api/v1/timers/hide', undefined, 'command', { type: 'hideAudienceTimer' }],
   [
     'POST',
     '/api/v1/stage-message',
     { text: 'Placeholder: five minutes', type: 'clearAll' },
     'command',
     { type: 'setStageMessage', text: 'Placeholder: five minutes' },
+  ],
+  // Its own size and a flash (Session 55).
+  [
+    'POST',
+    '/api/v1/stage-message',
+    { text: 'Placeholder: five minutes', size: 'large', flash: true },
+    'command',
+    { type: 'setStageMessage', text: 'Placeholder: five minutes', size: 'large', flash: true },
   ],
   ['POST', '/api/v1/stage-message/clear', undefined, 'command', { type: 'clearStageMessage' }],
   [

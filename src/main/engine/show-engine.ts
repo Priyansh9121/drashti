@@ -4,6 +4,7 @@ import type { CommandResult, EngineCommand, EngineCommandType } from '../../shar
 import { diffState } from '../../shared/engine/patch';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import {
+  type AudienceTimerLayer,
   type AudioChoice,
   type AudioLayer,
   type BackgroundChoice,
@@ -40,6 +41,7 @@ import type { LiveLook, Movement } from '../../shared/looks';
 import { CUT, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
+import { type ChosenWallpaper, DEFAULT_WHEN_ENDS, type WhenEnds } from '../../shared/wallpapers';
 import {
   backgroundShowing,
   framed,
@@ -52,12 +54,19 @@ import {
 import { elapsedAt, type TimerDefinition, type TimerRun, zeroAt } from '../../shared/timers';
 import { BUILT_IN_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } from '../../shared/timer-slides';
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
-import { remapPosition } from '../../shared/order';
+import { ownOrderItem, remapPosition } from '../../shared/order';
 import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '../../shared/stage-layouts';
+import { type SoundState, soundFilesOf } from '../../shared/sound';
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
-import { type PlaybackClip, type PlaybackClock, type PlaybackSeek, playbackLeftMs } from '../../shared/media';
+import {
+  type PlaybackClip,
+  type PlaybackClock,
+  type PlaybackSeek,
+  playbackAtMs,
+  playbackLeftMs,
+} from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
 import {
@@ -81,6 +90,8 @@ import {
   startsWith,
 } from './across-slides';
 import { reduce, sameData } from './reducer';
+import { STAGE_RECENT, type StageCall } from '../../shared/stage-message';
+import { dueActions, nextDue } from './timed';
 import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
 
@@ -127,7 +138,22 @@ function missingFile(played: PlayedSlide, up: BackgroundLayer | null): string | 
 function missingSound(played: PlayedSlide, up: AudioLayer | null): string | null {
   const cue = soundCueOf(played.cues);
   if (cue?.missing !== true) return null;
-  return up?.mediaId === cue.mediaId ? null : cue.name;
+  // Playing over the music (Session 55, Part 7) is playing too.
+  return up?.mediaId === cue.mediaId || up?.over?.mediaId === cue.mediaId ? null : cue.name;
+}
+
+/**
+ * The operator's own sound on the audio layer (Session 55, Part 7): an audio playlist's track, or a sound the operator
+ * started (from Media, a playlist's row, Audio); null for none, or for a slide's or a deck's own sound.
+ */
+function operatorSound(up: AudioLayer | null): AudioLayer | null {
+  return up !== null && up.mediaId !== null && up.cue === undefined && up.across === undefined ? up : null;
+}
+
+/** The operator's new sound keeps a slide's or a deck's own sound playing over the one before (Part 7). */
+function keepingOver(next: AudioLayer, was: AudioLayer | null): AudioLayer {
+  const over = operatorSound(was)?.over;
+  return over && operatorSound(next) && next.over === undefined ? { ...next, over } : next;
 }
 
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
@@ -244,6 +270,13 @@ export interface EngineOptions {
   inputNamed?: (name: string) => VideoInput | null;
   /** How a timer shown alone looks (Session 50): the library's default theme's words; Drashti's own when left out. */
   timerLook?: () => TimerLook;
+  /**
+   * How a file sounds (Session 55, Part 7, main/sound/): the gain it plays with for even loudness (1: as it is), and
+   * whether it has no sound of its own; null while the library does not know (not measured yet, or not a file).
+   */
+  soundOf?: (mediaId: string) => { gain: number; silent: boolean } | null;
+  /** Whether the music steps aside under a video with sound (Part 7, K: Audio's switch; on when left out). */
+  stepsAside?: () => boolean;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -291,6 +324,11 @@ export interface RestoreRequest {
   repeat?: { playlistId: string } | null;
   /** A timer shown alone (Session 50): it comes back over the slide, still, while that timer is in the library. */
   timer?: { timerId: string } | null;
+  /** The stage message's size and flash (Session 55), and the last few: they come back with it. */
+  stageCall?: StageCall | null;
+  stageRecent?: readonly string[];
+  /** A timer for the audience (Session 55): it comes back still while its timer is in the library and has not gone. */
+  audienceTimer?: AudienceTimerLayer | null;
 }
 
 /** What restart recovery put back. */
@@ -326,6 +364,8 @@ export interface Restored {
   pipInputGone?: string;
   /** A timer shown alone came back over the slide (Session 50); left out when none did. */
   timer?: boolean;
+  /** A timer for the audience came back (Session 55); left out when none did. */
+  audienceTimer?: boolean;
 }
 
 /**
@@ -343,6 +383,15 @@ interface Step {
 
 /** How many Nexts Back can undo, one after another. */
 const MAX_STEPS = 50;
+
+/** Where a slide is in an order: its place nearest `near` (it can come up more than once); 0 when it is not there. */
+function nearestSlide(slides: readonly PlayedSlide[], slideId: string, near: number): number {
+  let best = -1;
+  slides.forEach((s, i) => {
+    if (s.id === slideId && (best < 0 || Math.abs(i - near) < Math.abs(best - near))) best = i;
+  });
+  return Math.max(0, best);
+}
 
 export class ShowEngine {
   private state: EngineState = initialEngineState();
@@ -366,8 +415,12 @@ export class ShowEngine {
   private musicWait: { key: string; cancel: () => void } | null = null;
   /** The slide up going on when a countdown on it reaches zero (Session 50): its key, and how to cancel the wait. */
   private zeroWait: { key: string; cancel: () => void } | null = null;
+  /** Waiting for something up to go by itself (Session 55: a message's time up, a timer for the audience at zero). */
+  private timedWait: { key: string; cancel: () => void } | null = null;
   /** The last zero that came: it is not waited for again (a slide with nowhere to go holds at 0:00). */
   private zeroDone: string | null = null;
+  /** The background video waited for to end (Session 55, Part 6): its key, and how to cancel the wait. */
+  private endWait: { key: string; cancel: () => void } | null = null;
   /** The time of the change being made, read once (null between changes). */
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
@@ -553,11 +606,24 @@ export class ShowEngine {
     if (request.wallpaper) actions.push({ type: 'wallpaper/set', on: true });
     // The sound keeps its start time and its last jump, so it carries on where it would be now, as a video does.
     if (request.audio) {
-      const { clip: _clip, marks: _marks, ...played } = request.audio;
-      const audio = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
+      const { clip: _clip, marks: _marks, over, ...played } = request.audio;
+      // A slide's or a deck's own sound over the music (Session 55, Part 7) comes back over it, the same way.
+      const above = over
+        ? (({ clip: _c, marks: _m, ...rest }) => ({
+            ...rest,
+            ...this.libraryOf(rest.mediaId, rest.durationMs),
+          }))(over)
+        : null;
+      const audio = {
+        ...played,
+        ...this.libraryOf(played.mediaId, played.durationMs),
+        ...(above ? { over: above } : {}),
+      };
       actions.push({ type: 'audio/set', audio });
     }
-    for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
+    // A message up for a set time comes back for the rest of it (Session 55); one whose time is up by now does not.
+    const back = (request.messages ?? []).filter((m) => m.until === undefined || m.until > this.now());
+    for (const message of back) actions.push({ type: 'message/show', message });
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
     if (request.lowerThird) actions.push({ type: 'lowerThird/show', layer: request.lowerThird });
     // The picture-in-picture box (Session 50): never a window, a video input only while it is in the list (one no
@@ -565,7 +631,17 @@ export class ShowEngine {
     // A video from Media in it carries on between its file's points as the library has them now (Session 53).
     const box = restoredPip(request.pip ?? null, this.options);
     if (box.layer) actions.push({ type: 'pip/set', layer: this.pipClips(box.layer) });
-    if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
+    if (request.stageMessage)
+      actions.push({
+        type: 'stage/message',
+        text: request.stageMessage,
+        // With its size and flash (Session 55); its flash long over.
+        ...(request.stageCall ? { call: request.stageCall } : {}),
+      });
+    // The last few stage messages, a tap away again (Session 55): the one up joins them as it comes back.
+    const recent = (request.stageRecent ?? [])
+      .filter((t) => t !== request.stageMessage)
+      .slice(0, STAGE_RECENT);
     // Timers that still exist: running ones count on from their start, paused ones keep their count.
     let timers = 0;
     for (const t of request.timers ?? []) {
@@ -577,11 +653,22 @@ export class ShowEngine {
       });
       timers++;
     }
+    // A timer for the audience (Session 55) comes back still, while its timer is in the library; one that went by
+    // itself at zero meanwhile is taken off again at once (scheduleTimed).
+    const shownTimer = request.audienceTimer ?? null;
+    const timerBack =
+      shownTimer !== null && this.state.timers.some((t) => t.id === shownTimer.timerId) ? shownTimer : null;
+    if (timerBack) actions.push({ type: 'timer/show', layer: timerBack });
     // Repeat Slides carries on going round, when its slide came back.
     const repeating = request.repeat ? this.repeatRun(request.repeat.playlistId) : null;
     if (slide && repeating && request.slide?.presentationId === repeatPresentationId(repeating.playlistId))
       actions.push({ type: 'repeat/set', repeat: repeating });
     this.apply(actions);
+    if (recent.length > 0) {
+      const stageRecent = [...(this.state.stageRecent ?? []), ...recent].slice(0, STAGE_RECENT);
+      if (!sameData(this.state.stageRecent ?? [], stageRecent))
+        this.apply([{ type: 'stage/recent', recent: stageRecent }]);
+    }
     // A slide that was moving on by itself carries on with the time it had left.
     const advance = request.autoAdvance;
     if (slide && advance && advance.leftMs >= 0 && advance.durationMs > 0) {
@@ -615,6 +702,7 @@ export class ShowEngine {
       inputGone: wasInput && !input ? wasInput.name : null,
       ...(box.inputGone === null ? {} : { pipInputGone: box.inputGone }),
       ...(alone ? { timer: true } : {}),
+      ...(timerBack ? { audienceTimer: true } : {}),
     };
   }
 
@@ -670,6 +758,41 @@ export class ShowEngine {
    * the show: what Back and Put it back would undo stays. Run after Back and Put it back too, for the slide they bring
    * back exactly.
    */
+  /**
+   * The library's word on how files sound changed (Session 55, Part 7: a file measured, its Even loudness switched,
+   * Audio's Music steps aside switched): what plays now follows at once. Not a change to the show: what Back and Put it
+   * back would undo stays.
+   */
+  refreshSound(): CommandResult {
+    const sound = this.soundFor(this.state);
+    if (!sound || sameData(this.state.sound, sound)) return this.unchanged();
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'sound/set', sound }]);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  /**
+   * How the files sounding now play (Session 55, Part 7, shared/sound.ts), from the library: each one's even gain (one
+   * playing as it is left out) and those with no sound of their own; and whether the music steps aside. Undefined for
+   * an engine with no library to ask (then the state never says, and every page plays each file as it is).
+   */
+  private soundFor(state: EngineState): SoundState | undefined {
+    const { soundOf, stepsAside } = this.options;
+    if (!soundOf && !stepsAside) return undefined;
+    const gains: Record<string, number> = {};
+    const silent: string[] = [];
+    for (const mediaId of soundFilesOf(state)) {
+      const known = soundOf?.(mediaId) ?? null;
+      if (!known) continue;
+      if (known.gain !== 1) gains[mediaId] = known.gain;
+      if (known.silent) silent.push(mediaId);
+    }
+    return { stepsAside: stepsAside?.() ?? true, gains, silent };
+  }
+
   refreshFiles(): CommandResult {
     const shown = this.state.layers.slide;
     const now = this.stillMissing(shown, this.state.layers);
@@ -734,22 +857,77 @@ export class ShowEngine {
    * playlist item's). The live position follows the new order, with the same
    * slide on screen: Next then carries on in the new order. Leave out the
    * presentation to check whatever is live.
+   *
+   * Session 55, Part 4b: by the slide on the screens, so a playlist's own order of slides (read anew, never as it
+   * was) moves the live place with it; and when the live item no longer holds that slide (its row dragged out of its
+   * deck into an item of its own, or that item taken back by Undo), the live place goes with it into the item of the
+   * playlist that holds it now.
    */
   reorderLive(presentationId?: string): CommandResult {
     const live = this.state.live;
     if (live.presentationId === null || live.slideIndex === null) return this.unchanged();
     if (presentationId !== undefined && live.presentationId !== presentationId) return this.unchanged();
-    const before = this.source.order(live.presentationId, live.arrangementId);
+    const shown = this.state.layers.slide;
+    const shownId = shown?.presentationId === live.presentationId && !shown.timer ? shown.slide.id : null;
+    const fromItem = live.playlist ? this.checkItem(live.playlist) : null;
+    const inItem =
+      fromItem?.item.kind === 'presentation' && fromItem.item.presentationId === live.presentationId;
     const after = this.source.order(live.presentationId, this.itemArrangement(live));
+    if (live.playlist && shownId !== null && (!inItem || !after?.slides.some((s) => s.id === shownId))) {
+      const moved = this.followShown(live.playlist, shownId);
+      if (moved) return this.apply([moved]);
+    }
+    const before = this.source.order(live.presentationId, live.arrangementId);
     if (!before || !after) return this.unchanged();
-    const slideIndex = remapPosition(
-      before.slides.map((s) => ({ slide: s })),
-      after.slides.map((s) => ({ slide: s })),
-      live.slideIndex,
-    );
+    const slideIndex =
+      shownId !== null && after.slides.some((s) => s.id === shownId)
+        ? nearestSlide(after.slides, shownId, live.slideIndex)
+        : remapPosition(
+            before.slides.map((s) => ({ slide: s })),
+            after.slides.map((s) => ({ slide: s })),
+            live.slideIndex,
+          );
     return this.apply([
       { type: 'live/move', slideIndex, slideCount: after.slides.length, arrangementId: after.arrangementId },
     ]);
+  }
+
+  /**
+   * The item of the live playlist that holds the slide on the screens now, when the live item does not (Session 55,
+   * Part 4b): only where a playlist's own order of slides is involved (the live order, or that item's), so taking an
+   * ordinary item out of a playlist never moves the live place into another. The one nearest the live item; null when
+   * there is none.
+   */
+  private followShown(cursor: PlaylistCursor, shownId: string): EngineAction | null {
+    const live = this.state.live;
+    const items = this.playlists.items(cursor.playlistId);
+    if (!items || live.presentationId === null || live.slideIndex === null) return null;
+    const from = Math.max(
+      0,
+      items.findIndex((i) => i.id === cursor.itemId),
+    );
+    const ownBefore = ownOrderItem(live.arrangementId) !== null;
+    let best: { distance: number; action: EngineAction } | null = null;
+    for (const [index, item] of items.entries()) {
+      if (item.kind !== 'presentation' || item.id === cursor.itemId) continue;
+      if (item.presentationId !== live.presentationId) continue;
+      if (!ownBefore && ownOrderItem(item.arrangementId) === null) continue;
+      const order = this.source.order(item.presentationId, item.arrangementId);
+      if (!order?.slides.some((s) => s.id === shownId)) continue;
+      const distance = Math.abs(index - from);
+      if (best && best.distance <= distance) continue;
+      best = {
+        distance,
+        action: {
+          type: 'live/move',
+          slideIndex: nearestSlide(order.slides, shownId, live.slideIndex),
+          slideCount: order.slides.length,
+          arrangementId: order.arrangementId,
+          playlist: { playlistId: cursor.playlistId, itemId: item.id },
+        },
+      };
+    }
+    return best?.action ?? null;
   }
 
   /**
@@ -801,6 +979,10 @@ export class ShowEngine {
         else if (t.name !== alone.name)
           actions.push({ type: 'slide/put', layer: { ...shown, timer: { ...alone, name: t.name } } });
       }
+      // A timer for the audience whose timer is removed goes, fading out from now (Session 55).
+      const up = this.state.layers.timer;
+      if (up && !timers.some((x) => x.id === up.timerId))
+        actions.push({ type: 'timer/hide', at: this.now() });
       return this.apply(actions);
     });
   }
@@ -809,6 +991,38 @@ export class ShowEngine {
   setQuote(quote: Quote | null): CommandResult {
     if (sameData(this.state.quote, quote)) return this.unchanged();
     return this.apply([{ type: 'quote/set', quote }]);
+  }
+
+  /**
+   * The chosen wallpaper (Session 55, Part 6), as the library has it (main/wallpapers/wallpaper-service.ts), or none:
+   * every audience screen, node and phone shows it whenever nothing is up there, and under the Wallpaper. Changed
+   * pictures or timing go round from now; a new name alone keeps its place; the same again changes nothing. Never a
+   * change to the show: what Back, Put it back and Oops would undo stays.
+   */
+  setChosenWallpaper(wallpaper: Omit<ChosenWallpaper, 'since'> | null): CommandResult {
+    const was = this.state.chosenWallpaper ?? null;
+    const sameRound =
+      was !== null &&
+      wallpaper !== null &&
+      was.id === wallpaper.id &&
+      was.secondsEach === wallpaper.secondsEach &&
+      was.fadeMs === wallpaper.fadeMs &&
+      sameData(was.pictures, wallpaper.pictures);
+    if (wallpaper === null ? was === null : sameRound && was.name === wallpaper.name) return this.unchanged();
+    const chosen: ChosenWallpaper | null = wallpaper && {
+      id: wallpaper.id,
+      name: wallpaper.name,
+      pictures: [...wallpaper.pictures],
+      secondsEach: wallpaper.secondsEach,
+      fadeMs: wallpaper.fadeMs,
+      since: sameRound ? was.since : this.now(),
+    };
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'chosenWallpaper/set', wallpaper: chosen }]);
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
   /** Today's calendar entry: from the loaded calendars, at midnight and when they change. */
@@ -971,8 +1185,12 @@ export class ShowEngine {
     if (bg?.kind === 'media' && bg.mediaId === mediaId && bg.durationMs !== durationMs)
       actions.push({ type: 'background/set', background: { ...bg, durationMs } });
     const audio = this.state.layers.audio;
+    const over = audio?.over;
     if (audio?.mediaId === mediaId && audio.durationMs !== durationMs)
       actions.push({ type: 'audio/set', audio: { ...audio, durationMs } });
+    // The sound over the music (Session 55, Part 7): the music steps aside until it ends.
+    else if (audio && over?.mediaId === mediaId && over.durationMs !== durationMs)
+      actions.push({ type: 'audio/set', audio: { ...audio, over: { ...over, durationMs } } });
     // A video on the slide up or in the box (Session 54): the time bar's length.
     const files = learnedFiles(this.state, mediaId, durationMs);
     if (files) actions.push({ type: 'videoFiles/set', files });
@@ -1243,10 +1461,9 @@ export class ShowEngine {
     if (music) layers.push(music);
     if (sound && soundMissing === null && !isAcrossCue(sound)) {
       const { mediaId, volume, loop } = sound;
-      layers.push({
-        type: 'audio/set',
-        audio: this.audioLayer({ id: mediaId, title: sound.label || sound.name, mediaId, volume, loop }),
-      });
+      layers.push(
+        this.ownSoundAction({ id: mediaId, title: sound.label || sound.name, mediaId, volume, loop }),
+      );
     }
     const actions: EngineAction[] = [
       this.showAction(presentationId, slideIndex, order, played, playlist, {
@@ -1273,7 +1490,7 @@ export class ShowEngine {
    * slide off (it is what the audience should see); a sound goes on the
    * audio layer and leaves the picture as it is.
    */
-  private showMedia(cursor: PlaylistCursor, item: MediaItem): Resolved {
+  private showMedia(cursor: PlaylistCursor, item: MediaItem, moveLive = true): Resolved {
     const cue: EngineAction = { type: 'live/item', playlist: cursor };
     const now = this.now();
     if (item.media === 'audio') {
@@ -1284,10 +1501,14 @@ export class ShowEngine {
       return {
         ok: true,
         actions: [
-          cue,
+          // `moveLive` false (Part 7): the playlist's place stays with the slides up.
+          ...(moveLive ? [cue] : []),
           {
             type: 'audio/set',
-            audio: this.audioLayer({ id: mediaId, title: label, mediaId, volume: 1, loop: false }, again),
+            audio: keepingOver(
+              this.audioLayer({ id: mediaId, title: label, mediaId, volume: 1, loop: false }, again),
+              up,
+            ),
           },
         ],
       };
@@ -1302,7 +1523,8 @@ export class ShowEngine {
         mediaId: item.mediaId,
         media: item.media,
         fit: 'fit',
-        loop: false,
+        // A video whose row says Loop goes round (Session 55, Part 6); any other plays once.
+        loop: item.media === 'video' && item.whenEnds === 'loop',
       },
       undefined,
       again,
@@ -1434,6 +1656,16 @@ export class ShowEngine {
     const found = this.checkItem({ playlistId, itemId });
     if (!found) return { ok: false, error: 'unknown-item', message: 'That playlist item no longer exists' };
     const { item } = found;
+    // A sound's row clicked while slides are up (Session 55, Part 7: a PDF's page, a deck's slide, any presentation's):
+    // the sound plays with them, and the slides stay where they are, so Next goes on with them (before, the playlist's
+    // place moved to the sound's row, and Next went past the rest of the PDF or the deck).
+    if (
+      item.kind === 'media' &&
+      item.media === 'audio' &&
+      this.state.live.presentationId !== null &&
+      this.state.layers.slide !== null
+    )
+      return this.showMedia(found.cursor, item, false);
     const started = this.startItem(playlistId, item, 'first');
     if (started) return started;
     const message =
@@ -1605,11 +1837,14 @@ export class ShowEngine {
     const m = a.music;
     let index = m.index + by;
     if (index >= m.tracks.length) {
-      if (!m.loop) return { type: 'layer/clear', layer: 'audio' };
+      // The playlist's end: a slide's or a deck's own sound over it plays on alone (Session 55, Part 7).
+      if (!m.loop)
+        return a.over ? { type: 'audio/set', audio: a.over } : { type: 'layer/clear', layer: 'audio' };
       index = 0;
     }
     if (index < 0) index = m.loop ? m.tracks.length - 1 : 0;
-    return { type: 'audio/set', audio: this.musicLayer({ ...m, index }, startedAt) };
+    const audio = this.musicLayer({ ...m, index }, startedAt);
+    return { type: 'audio/set', audio: a.over ? { ...audio, over: a.over } : audio };
   }
 
   private musicNow(): MusicLayer | null {
@@ -1843,14 +2078,41 @@ export class ShowEngine {
     slideIndex: number,
     at: number,
   ): EngineAction | null {
+    // Over the operator's sound (Session 55, Part 7: the owner's answer of 30 Oct), the music playing on under it.
+    const up = this.state.layers.audio;
+    const under = operatorSound(up);
     const audio = acrossLayer(
       start,
       { presentationId, slideIndex },
       at,
-      this.state.layers.audio,
+      under ? (under.over ?? null) : up,
       this.libraryOf(start.mediaId, undefined),
     );
-    return audio ? { type: 'audio/set', audio } : null;
+    if (!audio) return null;
+    return { type: 'audio/set', audio: under ? { ...under, over: audio } : audio };
+  }
+
+  /**
+   * A slide's own sound cue going up (Session 55, Part 7: the owner's answer of 30 Oct): over the operator's sound (an
+   * audio playlist's track, or a sound the operator started) it plays over it, the music playing on, stepping aside as
+   * under a video; the same file already over it carries on. With no sound of the operator's, it is the sound, as before.
+   */
+  private ownSoundAction(choice: AudioChoice): EngineAction {
+    const under = operatorSound(this.state.layers.audio);
+    if (!under) return { type: 'audio/set', audio: { ...this.audioLayer(choice), cue: true } };
+    // Its file is the one playing: it carries on, as a slide's sound always carried on a file already playing.
+    if (choice.mediaId === under.mediaId) return { type: 'audio/set', audio: under };
+    const was = under.over;
+    const same = choice.mediaId !== null && was?.mediaId === choice.mediaId;
+    const over: AudioLayer = {
+      ...choice,
+      startedAt: same ? was.startedAt : this.now(),
+      ...this.lengthOf(choice.mediaId),
+      ...this.clipOf(choice.mediaId),
+      ...(same && was.seek ? { seek: was.seek } : {}),
+      cue: true,
+    };
+    return { type: 'audio/set', audio: { ...under, over } };
   }
 
   /**
@@ -2119,11 +2381,29 @@ export class ShowEngine {
           actions: [{ type: 'background/set', background: this.backgroundLayer(command.background) }],
         };
       case 'playAudio':
-        return { ok: true, actions: [{ type: 'audio/set', audio: this.audioLayer(command.audio) }] };
-      case 'showMessage':
-        return { ok: true, actions: [{ type: 'message/show', message: command.message, at: this.now() }] };
+        return {
+          ok: true,
+          actions: [
+            {
+              type: 'audio/set',
+              audio: keepingOver(this.audioLayer(command.audio), this.state.layers.audio),
+            },
+          ],
+        };
+      case 'showMessage': {
+        // Up for a set time (Session 55): it goes by itself then (an update keeps the time it had).
+        const now = this.now();
+        const { seconds } = command.message;
+        const message =
+          seconds === undefined ? command.message : { ...command.message, until: now + seconds * 1000 };
+        return { ok: true, actions: [{ type: 'message/show', message, at: now }] };
+      }
       case 'hideMessage':
-        return { ok: true, actions: [{ type: 'message/hide', messageId: command.messageId }] };
+        // One with a look of its own plays its out from now (Session 55).
+        return {
+          ok: true,
+          actions: [{ type: 'message/hide', messageId: command.messageId, at: this.now() }],
+        };
       case 'showLowerThird':
         return {
           ok: true,
@@ -2140,7 +2420,17 @@ export class ShowEngine {
       case 'resetTimer':
         return this.runTimer(command.timerId, 'reset');
       case 'setStageMessage':
-        return { ok: true, actions: [{ type: 'stage/message', text: command.text }] };
+        // Its own size and flash (Session 55): the standard size, no flash, when not said (an older phone, the API).
+        return {
+          ok: true,
+          actions: [
+            {
+              type: 'stage/message',
+              text: command.text,
+              call: { size: command.size ?? 'standard', flash: command.flash ?? false, shownAt: this.now() },
+            },
+          ],
+        };
       case 'clearStageMessage':
         return { ok: true, actions: [{ type: 'stage/message', text: null }] };
       case 'cueNext': {
@@ -2170,9 +2460,10 @@ export class ShowEngine {
         return this.playCue() ?? { ok: false, error: 'nothing-cued', message: 'Nothing is cued' };
       case 'playMusic': {
         const index = Math.min(command.index, command.music.tracks.length - 1);
+        const audio = this.musicLayer({ ...command.music, index }, this.now());
         return {
           ok: true,
-          actions: [{ type: 'audio/set', audio: this.musicLayer({ ...command.music, index }, this.now()) }],
+          actions: [{ type: 'audio/set', audio: keepingOver(audio, this.state.layers.audio) }],
         };
       }
       case 'pauseMusic': {
@@ -2243,6 +2534,17 @@ export class ShowEngine {
       }
       case 'showTimer':
         return this.showTimer(command.timerId);
+      case 'showAudienceTimer': {
+        // A timer for the audience (Session 55), in place of any other; the same one up stays as it is.
+        const t = this.state.timers.find((x) => x.id === command.timerId);
+        if (!t) return { ok: false, error: 'unknown-timer', message: 'That timer no longer exists' };
+        if (this.state.layers.timer?.timerId === t.id) return NO_CHANGE;
+        return { ok: true, actions: [{ type: 'timer/show', layer: { timerId: t.id, shownAt: this.now() } }] };
+      }
+      case 'hideAudienceTimer':
+        return this.state.layers.timer
+          ? { ok: true, actions: [{ type: 'timer/hide', at: this.now() }] }
+          : NO_CHANGE;
       // Picture in picture (Session 50, pip.ts): what the box holds is looked up here, never taken from a page; a
       // video from Media in it plays between its file's points as the library has them (Session 53).
       case 'showPip': {
@@ -2334,6 +2636,18 @@ export class ShowEngine {
       !playsOn(across, next.live)
     )
       next = reduce(next, { type: 'layer/clear', layer: 'audio' });
+    // The same for a deck's own soundtrack over the music (Session 55, Part 7): it stops, the music playing on.
+    const under = next.layers.audio;
+    const overAcross = under?.over?.across;
+    if (
+      under &&
+      overAcross &&
+      (next.live !== prev.live || under !== prev.layers.audio) &&
+      !playsOn(overAcross, next.live)
+    ) {
+      const { over: _ended, ...alone } = under;
+      next = reduce(next, { type: 'audio/set', audio: alone });
+    }
     // A live zoom lasts for that showing only (Session 26e): another slide or background ends it.
     const zoomed = next.liveZoom;
     if (zoomed) {
@@ -2380,8 +2694,17 @@ export class ShowEngine {
       markersOf: (id) => this.options.mediaMarkers?.(id) ?? null,
     });
     if (!sameData(next.videoFiles ?? null, files)) next = reduce(next, { type: 'videoFiles/set', files });
+    // How the files sounding now play (Session 55, Part 7): each one's even gain, and the music stepping aside.
+    const sound = this.soundFor(next);
+    if (sound) next = reduce(next, { type: 'sound/set', sound });
     // The pictures on the screens and coming next carry their looks (Session 26e).
-    if (next.layers !== prev.layers || next.next !== prev.next || next.pipOff !== prev.pipOff)
+    if (
+      next.layers !== prev.layers ||
+      next.next !== prev.next ||
+      next.pipOff !== prev.pipOff ||
+      // The chosen wallpaper's pictures (Session 55, Part 6).
+      next.chosenWallpaper !== prev.chosenWallpaper
+    )
       next = reduce(next, { type: 'pictures/set', pictures: this.picturesFor(next) });
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
@@ -2402,6 +2725,8 @@ export class ShowEngine {
     this.scheduleAdvance();
     this.scheduleMusic();
     this.scheduleZero();
+    this.scheduleVideoEnd();
+    this.scheduleTimed();
     return { ok: true, changed: true, rev: this.revision };
   }
 
@@ -2638,6 +2963,151 @@ export class ShowEngine {
   }
 
   /**
+   * A playlist changed (Session 55, Part 6): the live row's When it ends is read again. A video up goes round, or
+   * stops going round, as its row now says, carrying on from where it is (paused, it stays paused there); and what
+   * happens at its end follows.
+   */
+  refreshEnds(): CommandResult {
+    return this.atOnce(() => {
+      const bg = this.state.layers.background;
+      const cursor = this.state.live.playlist;
+      if (bg?.kind === 'media' && bg.media === 'video' && cursor && this.state.live.presentationId === null) {
+        const item = this.playlists.items(cursor.playlistId)?.find((i) => i.id === cursor.itemId);
+        const loop = item?.kind === 'media' && item.whenEnds === 'loop';
+        if (item?.kind === 'media' && item.mediaId === bg.mediaId && loop !== bg.loop) {
+          const now = this.now();
+          const seek =
+            bg.durationMs !== undefined && bg.durationMs > 0
+              ? {
+                  seek: {
+                    at: now,
+                    toMs: playbackAtMs(bg, bg.durationMs, now),
+                    ...(bg.seek?.paused === true ? { paused: true } : {}),
+                  },
+                }
+              : {};
+          this.bookkeeping = true;
+          try {
+            return this.apply([{ type: 'background/set', background: { ...bg, loop, ...seek } }]);
+          } finally {
+            this.bookkeeping = false;
+          }
+        }
+      }
+      this.scheduleVideoEnd();
+      return this.unchanged();
+    });
+  }
+
+  /**
+   * What a playlist row says the video up does when it ends (Session 55, Part 6): the live row's, when it is this
+   * video's; any other video (from Media, say) does the default.
+   */
+  private whenEndsOf(state: EngineState, mediaId: string): WhenEnds {
+    const cursor = state.live.playlist;
+    if (!cursor || state.live.presentationId !== null) return DEFAULT_WHEN_ENDS;
+    const item = this.playlists.items(cursor.playlistId)?.find((i) => i.id === cursor.itemId);
+    return item?.kind === 'media' && item.mediaId === mediaId
+      ? (item.whenEnds ?? DEFAULT_WHEN_ENDS)
+      : DEFAULT_WHEN_ENDS;
+  }
+
+  /**
+   * When the background video ends and what then (Session 55, Part 6), while nothing else is up over it (no slide, no
+   * box): the chosen wallpaper (the default, when one is chosen) or the next row. Null when nothing is to happen: no
+   * video, Loop (it goes round) or Freeze (its last picture stays, as with no wallpaper chosen), paused, or its length
+   * not known yet.
+   */
+  private videoEndFor(state: EngineState): { at: number; key: string; then: 'wallpaper' | 'next' } | null {
+    const bg = state.layers.background;
+    if (bg?.kind !== 'media' || bg.media !== 'video' || bg.loop || bg.seek?.paused === true) return null;
+    if (bg.durationMs === undefined || bg.durationMs <= 0) return null;
+    if (state.layers.slide !== null || state.layers.pip !== null || state.stopped) return null;
+    const then = this.whenEndsOf(state, bg.mediaId);
+    if (then === 'loop' || then === 'freeze') return null;
+    if (then === 'wallpaper' && !state.chosenWallpaper) return null;
+    const now = this.now();
+    const key = JSON.stringify([
+      bg.mediaId,
+      bg.startedAt,
+      bg.seek ?? null,
+      bg.clip ?? null,
+      bg.durationMs,
+      then,
+      state.chosenWallpaper ? 1 : 0,
+      state.live.playlist?.itemId ?? null,
+    ]);
+    return { at: now + playbackLeftMs(bg, bg.durationMs, now), key, then };
+  }
+
+  /** Wait for the background video to end (again when that changed), when something is to happen then. */
+  private scheduleVideoEnd(): void {
+    const found = this.videoEndFor(this.state);
+    if ((found?.key ?? null) === (this.endWait?.key ?? null)) return;
+    this.endWait?.cancel();
+    this.endWait = null;
+    if (!found) return;
+    const cancel = this.wait(Math.max(0, found.at - this.now()), () => {
+      if (this.endWait?.key === found.key) this.endWait = null;
+      this.videoEnded(found.key);
+    });
+    this.endWait = { key: found.key, cancel };
+  }
+
+  /**
+   * The background video has ended (Session 55, Part 6): the next row goes up, as Next would bring it, when its row
+   * says Next item and there is one; else, with a wallpaper chosen, the video goes, so nothing is up and the wallpaper
+   * shows (no change of the operator's: Back, Put it back and Oops are as they were). With none chosen it holds.
+   */
+  private videoEnded(key: string): void {
+    this.atOnce(() => {
+      const found = this.videoEndFor(this.state);
+      if (found?.key !== key) return;
+      // A timer can come a moment early (its clock and this one differ by a millisecond or so): wait again.
+      if (this.now() < found.at) {
+        this.scheduleVideoEnd();
+        return;
+      }
+      if (found.then === 'next') {
+        const moved = this.step(1);
+        if (moved.ok && moved.actions.length > 0) {
+          this.apply(moved.actions);
+          return;
+        }
+      }
+      if (!this.state.chosenWallpaper) return;
+      this.bookkeeping = true;
+      try {
+        this.apply([{ type: 'layer/clear', layer: 'background' }]);
+      } finally {
+        this.bookkeeping = false;
+      }
+    });
+  }
+
+  /**
+   * Wait for the soonest thing up that goes by itself (Session 55, timed.ts): a message's time up, a timer for the
+   * audience at its zero. Waited for again whenever what is up, or when it goes, changes.
+   */
+  private scheduleTimed(): void {
+    const due = nextDue(this.state, this.now());
+    if ((due?.key ?? null) === (this.timedWait?.key ?? null)) return;
+    this.timedWait?.cancel();
+    this.timedWait = null;
+    if (!due) return;
+    const cancel = this.wait(Math.max(0, due.at - this.now()), () => {
+      if (this.timedWait?.key === due.key) this.timedWait = null;
+      this.atOnce(() => {
+        const actions = dueActions(this.state, this.now());
+        // A moment early (another clock's millisecond): wait again.
+        if (actions.length === 0) this.scheduleTimed();
+        else this.apply(actions);
+      });
+    });
+    this.timedWait = { key: due.key, cancel };
+  }
+
+  /**
    * Access by Gmail (Session 54): Drashti has stopped. Every screen, node, phone and the stream's picture fades to
    * black from now, by the engine's clock, and nothing changes the show after: no command, nothing moving on by
    * itself. For good: only Quit ends it.
@@ -2653,6 +3123,10 @@ export class ShowEngine {
   dispose(): void {
     this.zeroWait?.cancel();
     this.zeroWait = null;
+    this.endWait?.cancel();
+    this.endWait = null;
+    this.timedWait?.cancel();
+    this.timedWait = null;
     this.cancelScheduled?.();
     this.cancelScheduled = null;
     this.scheduled = null;

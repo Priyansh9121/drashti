@@ -286,6 +286,28 @@ const soundName = (codec: string): string =>
   SOUND_NAMES[codec] ??
   (codec.startsWith('pcm_') ? 'uncompressed' : codec.startsWith('adpcm_') ? 'ADPCM' : codec);
 
+/** Pictures by FFmpeg's names for them (Session 55, Part 5). */
+const PICTURE_FORMATS: Record<string, string> = {
+  hevc: 'HEIC photo',
+  av1: 'AVIF picture',
+  tiff: 'TIFF picture',
+  targa: 'Targa picture',
+  psd: 'Photoshop picture (PSD)',
+  jpeg2000: 'JPEG 2000 picture',
+  mjpeg: 'JPEG picture',
+  png: 'PNG picture',
+  apng: 'PNG picture',
+  gif: 'GIF picture',
+  bmp: 'BMP picture',
+  webp: 'WebP picture',
+};
+
+/** What a picture is, for people (Session 55, Part 5), from what FFmpeg read: "Targa picture". */
+export function describePicture(info: MediaInfo): string {
+  const codec = info.video?.codec ?? '';
+  return PICTURE_FORMATS[codec] ?? (codec ? `${codec} picture` : 'picture');
+}
+
 /**
  * What a video or sound file is, for people (Session 50: the import report and the media list), from what
  * FFmpeg read: "H.264 video with AC-3 sound (Matroska)", "Windows Media Audio sound file", "AIFF sound file".

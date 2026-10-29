@@ -23,6 +23,7 @@ import { fileStamp } from '../../shared/format';
 import type { Db } from '../db/database';
 import { CONVERTING_DIR, UPLOADS_DIR } from '../import/media-store';
 import { SHARPENED_DIR } from '../media/sharpened';
+import { BLURRED_DIR } from '../media/blurred';
 
 /*
  * Backing up and restoring the library. A backup is a folder: the database,
@@ -119,7 +120,8 @@ const errorCode = (error: unknown): string | undefined =>
  * pictures' sharpened copies (Session 26f: made again from the pictures after a restore), and (Session 54) files
  * phones are sending.
  */
-const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR, UPLOADS_DIR]);
+// Blurred copies (Session 55, Part 5) are left out as the sharpened ones are: each can be made again.
+const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR, BLURRED_DIR, UPLOADS_DIR]);
 
 /**
  * The files in a folder and below (regular files only, symbolic links not followed), with their sizes.

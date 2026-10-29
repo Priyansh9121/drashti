@@ -20,6 +20,8 @@ export { Blend, Frame, KeyboardMusic, LayoutTemplate, SwatchBook } from 'lucide-
 export { Captions } from 'lucide-react';
 // The Wallpaper (Session 55, Part 13): the chosen wallpaper up instead of the picture, in the Logo's place.
 export { Wallpaper } from 'lucide-react';
+// Pictures (Session 55, Part 5): the Picture editor's Crop, Turn and Flip, and Save picture….
+export { Crop, FlipHorizontal2, FlipVertical2, ImageDown } from 'lucide-react';
 // Zoom both ways (Session 48): another app's window on the screens, and the window for Zoom to share.
 export { AppWindow, ScreenShare } from 'lucide-react';
 // Picture in picture (Session 50): the box on the screens, and its Swap.
@@ -42,6 +44,8 @@ export { FilePlus, Repeat2, Wrench } from 'lucide-react';
 export { FolderSync } from 'lucide-react';
 // Session 44: back up to a folder playlist's parent folder.
 export { CornerLeftUp } from 'lucide-react';
+// Session 55, Part 7: Trim black and silence in a video's menu.
+export { Scissors } from 'lucide-react';
 // Session 54: a playlist shared with phones and tablets.
 export { Share2 } from 'lucide-react';
 // Session 26e: the Picture editor, and zooming the live picture.

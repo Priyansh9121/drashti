@@ -4,6 +4,7 @@ import type { MediaUsage, UsedIn } from '../../shared/media-removal';
 import { USED_IN_NAMES } from '../../shared/media-removal';
 import { stillPath } from '../media/media-protocol';
 import { removeCopiesOf } from '../media/sharpened';
+import { removeBlurredOf } from '../media/blurred';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
 
@@ -72,6 +73,12 @@ export class MediaRemoval {
       `SELECT name FROM themes WHERE json_extract(definition, '$.background.mediaId') IN (${list})
         ORDER BY name COLLATE NOCASE`,
     );
+    // The wallpapers it is in (Session 55, Part 6): it is left out of them while deleted.
+    const wallpapers = all(
+      `SELECT name FROM wallpapers WHERE deleted_at IS NULL AND id IN (
+         SELECT wallpaper_id FROM wallpaper_pictures WHERE media_id IN (${list}))
+       ORDER BY position, rowid`,
+    );
     const live = this.deps.onScreens();
     return {
       presentations: usedIn(presentationRows),
@@ -79,6 +86,7 @@ export class MediaRemoval {
       music: usedIn(music),
       themes: usedIn(themes),
       live: ids.some((id) => live.has(id)),
+      ...(wallpapers.length > 0 ? { wallpapers: usedIn(wallpapers) } : {}),
     };
   }
 
@@ -152,8 +160,9 @@ export class MediaRemoval {
       await rm(own, { force: true }).catch(() => undefined);
       if (r.sha256) {
         await rm(join(mediaDir, stillPath(r.sha256)), { force: true }).catch(() => undefined);
-        // Its sharpened copies (Session 26f) go with it.
+        // Its sharpened copies (Session 26f), and its blurred copy (Session 55), go with it.
         await removeCopiesOf(mediaDir, r.sha256);
+        await removeBlurredOf(mediaDir, r.sha256);
       }
       gone++;
     }

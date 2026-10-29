@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { PlaylistCursor } from '../../../shared/engine/state';
+import type { PresentationDoc } from '../../../shared/library';
 import type {
   ItemOrder,
   NewItem,
@@ -15,6 +16,9 @@ import { importPaths } from '../library/import-store';
 import { leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
 import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../shared/repeat';
 import { describeSome, pushRemoval } from '../library/undo';
+import { useDocs } from './docs-store';
+import { groupName, itemOrder, rowName } from './rows';
+import { moveSlideWithin, takeSlideOut } from './slide-order';
 import {
   FOLDER_SEPARATOR,
   folderEnd,
@@ -404,6 +408,24 @@ export async function setItemOrder(itemId: string, order: ItemOrder): Promise<vo
   if (settled(await api().setItemOrder(itemId, order))) await loadItems();
 }
 
+/**
+ * The order chosen in a presentation item's Order picker. Setting aside this playlist's own order of its slides
+ * (Session 55, Part 4b: its rows dragged) can be undone.
+ */
+export async function chooseItemOrder(
+  item: Extract<PlaylistItemInfo, { kind: 'presentation' }>,
+  order: ItemOrder,
+): Promise<void> {
+  const before = item.order;
+  if (!settled(await api().setItemOrder(item.id, order))) return;
+  await loadItems();
+  if (before.mode === 'slides')
+    pushRemoval({
+      text: `Changed the order of “${itemName(item)}”`,
+      restore: () => setItemOrder(item.id, before),
+    });
+}
+
 // ---- the tree ------------------------------------------------------------------
 
 export async function openPlaylist(id: string): Promise<void> {
@@ -761,6 +783,76 @@ export async function moveItems(ids: string[], at: number): Promise<void> {
       'item',
     )}`,
     restore: () => putBack(openId, places),
+  });
+}
+
+/** A presentation item of the open playlist, with its slides as read for its rows; null when either is not there. */
+function itemWithSlides(itemId: string) {
+  const item = usePlaylists.getState().items.find((i) => i.id === itemId);
+  if (item?.kind !== 'presentation') return null;
+  const doc = useDocs.getState().docs[item.presentationId];
+  return doc ? { item, doc } : null;
+}
+
+/** The name of the slide's row at `position` in the item ("<name>_N"), for the Undo bar. */
+function slideRowName(
+  item: Extract<PlaylistItemInfo, { kind: 'presentation' }>,
+  doc: PresentationDoc,
+  position: number,
+): string {
+  const at = itemOrder(item, doc).slides[position];
+  return at ? rowName(groupName(item, doc), item, at) : itemName(item);
+}
+
+/**
+ * A slide's row dragged within its deck or presentation (Session 55, Part 4b): this playlist's own order of the item's
+ * slides, the one at `from` now before the one at `to` (the end at the item's length), as one Undo step. The
+ * library's presentation never changes.
+ */
+export async function moveSlide(itemId: string, from: number, to: number): Promise<void> {
+  const found = itemWithSlides(itemId);
+  if (!found) return;
+  const { item, doc } = found;
+  const order = moveSlideWithin(item, doc, from, to);
+  if (!order) return;
+  const name = slideRowName(item, doc, from);
+  const before = item.order;
+  if (!settled(await api().setItemOrder(itemId, order))) return;
+  await loadItems();
+  pushRemoval({
+    text: `Moved “${name}” in this playlist`,
+    restore: async () => {
+      if (settled(await api().setItemOrder(itemId, before))) await loadItems();
+    },
+  });
+}
+
+/**
+ * A slide's row dragged out of its deck or presentation to `at` in the open playlist (Session 55, Part 4b): an item of
+ * its own there (the same presentation, that slide alone), the deck's item keeping the rest, as one Undo step. The
+ * item's only slide: the item itself moves there.
+ */
+export async function slideOut(itemId: string, position: number, at: number): Promise<void> {
+  const found = itemWithSlides(itemId);
+  if (!found) return;
+  const { item, doc } = found;
+  const taken = takeSlideOut(item, doc, position);
+  if (!taken) {
+    await moveItems([itemId], at);
+    return;
+  }
+  const name = slideRowName(item, doc, position);
+  const before = item.order;
+  const result = await api().splitItem(itemId, taken.rest, taken.alone, at);
+  if (!settled(result)) return;
+  const [made] = result.ids;
+  await loadItems();
+  if (made === undefined) return;
+  pushRemoval({
+    text: `Took “${name}” out of “${itemName(item)}”`,
+    restore: async () => {
+      if (settled(await api().undoSplit(itemId, before, made))) await loadItems();
+    },
   });
 }
 

@@ -123,18 +123,18 @@ describe('pictures on the screens', () => {
     expect(engine.current.liveZoom?.zoom).toBe(3);
   });
 
-  it('ends when its look is kept; Simple Mode never zooms', () => {
+  it('ends when its look is kept; Simple Mode zooms too (Session 55, Part 5)', () => {
     const { engine } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
     engine.dispatch({ type: 'zoomLive', zoom: 2, x: 0, y: 0 });
     engine.clearLiveZoom();
     expect(engine.current.liveZoom).toBeNull();
+    // Simple Mode refused it until Session 55: the live zoom and its reset are Simple Mode's too now.
     const simple = setup(true);
     simple.engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
-    expect(simple.engine.dispatch({ type: 'zoomLive', zoom: 2, x: 0, y: 0 })).toMatchObject({
-      ok: false,
-      error: 'forbidden',
-    });
-    expect(simple.engine.current.liveZoom).toBeNull();
+    expect(simple.engine.dispatch({ type: 'zoomLive', zoom: 2, x: 0, y: 0 })).toMatchObject({ ok: true });
+    expect(simple.engine.current.liveZoom).toMatchObject({ zoom: 2, x: 0, y: 0 });
+    expect(simple.engine.dispatch({ type: 'resetLiveZoom' })).toMatchObject({ ok: true });
+    expect(simple.engine.current.liveZoom).toMatchObject({ zoom: 1.5 });
   });
 });
