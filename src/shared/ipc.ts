@@ -1336,7 +1336,10 @@ export interface InvokeContract {
   };
   [IPC.accessList.reject]: { args: [gmail: string]; result: AccessListResult };
   [IPC.accessList.revoke]: { args: [gmail: string]; result: AccessListResult };
-  [IPC.accessList.regrant]: { args: [gmail: string, length: AccessLength]; result: AccessListResult };
+  [IPC.accessList.regrant]: {
+    args: [gmail: string, length: AccessLength, mode: AccessMode];
+    result: AccessListResult;
+  };
   [IPC.accessList.changeLength]: { args: [gmail: string, length: AccessLength]; result: AccessListResult };
   [IPC.accessList.changeMode]: { args: [gmail: string, mode: AccessMode]; result: AccessListResult };
   [IPC.accessList.note]: { args: [gmail: string, note: string]; result: AccessListResult };

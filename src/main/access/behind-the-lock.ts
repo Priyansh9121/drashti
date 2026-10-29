@@ -3,7 +3,7 @@ import { gateChannels } from '../ipc/handle';
 import { log } from '../log';
 import { installLockedMenu } from '../menu';
 import { LOCK_REASON_TEXT } from '../../shared/access';
-import { sw, swMs } from '../switches';
+import { packaged, sw, swMs } from '../switches';
 import { createLockWindow, registerAccessIpc } from './access-ipc';
 import { AccessClient, accessSwitches, accessTarget } from './client';
 import { electronTransport } from './electron-transport';
@@ -61,7 +61,7 @@ export async function prepareTheLock(o: {
   const selfTest = o.selfTest && !perfCheck;
   const accessDir = perfCheck
     ? performanceAccessFolder({
-        packaged: app.isPackaged,
+        packaged: packaged(),
         home: perfCheck.home,
         testFolder: sw('DRASHTI_TEST_ACCESS_HOME'),
       })
@@ -72,12 +72,12 @@ export async function prepareTheLock(o: {
     ? { ok: false as const, reason: 'a self-test asks nothing' }
     : await computerId({
         platform: process.platform,
-        packaged: app.isPackaged,
+        packaged: packaged(),
         switches: accessSwitches,
         // Windows' own folder, where reg.exe is (its MachineGuid), wherever Windows is installed.
         systemRoot: process.env['SystemRoot'],
       });
-  const target = selfTest ? null : accessTarget({ packaged: app.isPackaged, switches: accessSwitches });
+  const target = selfTest ? null : accessTarget({ packaged: packaged(), switches: accessSwitches });
   let calls: AccessClient | null = null;
   if (target && computer.ok)
     try {

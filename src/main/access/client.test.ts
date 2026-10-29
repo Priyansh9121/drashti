@@ -106,6 +106,8 @@ describe('the checks', () => {
       mode: 'simple',
       why: null,
       at: expect.any(Number) as unknown,
+      // The grant it answers (Session 55 review).
+      grantId: grant.grantId,
     });
     const owner = clientOf(s, 'client-owner');
     const me = s.grant(PLACEHOLDER_APPROVER, placeholderComputer('client-owner'));
@@ -121,7 +123,7 @@ describe('the checks', () => {
     const grant = s.grant(PERSON, placeholderComputer('client-kept'), { mode: 'simple' });
     const r = await person.check(grant, NO_ACTIVITY);
     if (!r.ok || !r.signed) throw new Error('No signed answer');
-    const kept = person.readKept(r.signed);
+    const kept = person.readKept(r.signed, grant.grantId);
     expect(kept).toEqual({
       status: 'in',
       owner: false,
@@ -132,14 +134,18 @@ describe('the checks', () => {
     });
     // Its text changed (Simple made Pro), its signature taken away, or read by another computer: not believed.
     expect(
-      person.readKept({ ...r.signed, payload: r.signed.payload.replace('"simple"', '"pro"') }),
+      person.readKept({ ...r.signed, payload: r.signed.payload.replace('"simple"', '"pro"') }, grant.grantId),
     ).toBeNull();
-    expect(person.readKept({ ...r.signed, sig: '' })).toBeNull();
-    expect(clientOf(s, 'client-another').readKept(r.signed)).toBeNull();
+    expect(person.readKept({ ...r.signed, sig: '' }, grant.grantId)).toBeNull();
+    expect(clientOf(s, 'client-another').readKept(r.signed, grant.grantId)).toBeNull();
     // Another call's answer (a status), signed by the list all the same: not a check's, not believed.
     const status = await person.status(PERSON);
     if (!status.ok || !status.signed) throw new Error('No signed answer');
-    expect(person.readKept(status.signed)).toBeNull();
+    expect(person.readKept(status.signed, grant.grantId)).toBeNull();
+    // The answer names its grant (Session 55 review): kept for an earlier grant on this computer, it is not believed
+    // for the grant kept now.
+    expect(JSON.parse(r.signed.payload)).toMatchObject({ grantId: grant.grantId });
+    expect(person.readKept(r.signed, 'f'.repeat(32))).toBeNull();
   });
 
   it('sign each call with a new nonce and a rising `at`, and only the signed calls carry a mac', async () => {

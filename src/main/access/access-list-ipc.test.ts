@@ -45,7 +45,7 @@ function setUp() {
     approve: (t: string, l: unknown, m: unknown) => done(`approve ${t} ${String(l)} ${String(m)}`),
     reject: (t: string) => done(`reject ${t}`),
     revoke: (t: string) => done(`revoke ${t}`),
-    regrant: (t: string, l: unknown) => done(`regrant ${t} ${String(l)}`),
+    regrant: (t: string, l: unknown, m: unknown) => done(`regrant ${t} ${String(l)} ${String(m)}`),
     changeLength: (t: string, l: unknown) => done(`length ${t} ${String(l)}`),
     changeMode: (t: string, m: unknown) => done(`mode ${t} ${String(m)}`),
     note: (t: string, n: string) => done(`note ${t} ${n}`),
@@ -78,7 +78,7 @@ describe('the Access List’s channels', () => {
     await call(IPC.accessList.approve, PAGE, PERSON, 'unlimited', 'pro');
     await call(IPC.accessList.reject, PAGE, PERSON);
     await call(IPC.accessList.revoke, PAGE, PERSON);
-    await call(IPC.accessList.regrant, PAGE, PERSON, 7);
+    await call(IPC.accessList.regrant, PAGE, PERSON, 7, 'simple');
     await call(IPC.accessList.changeLength, PAGE, PERSON, 730);
     await call(IPC.accessList.changeMode, PAGE, PERSON, 'simple');
     await call(IPC.accessList.note, PAGE, PERSON, 'Placeholder note');
@@ -90,7 +90,7 @@ describe('the Access List’s channels', () => {
       `approve ${PERSON} unlimited pro`,
       `reject ${PERSON}`,
       `revoke ${PERSON}`,
-      `regrant ${PERSON} 7`,
+      `regrant ${PERSON} 7 simple`,
       `length ${PERSON} 730`,
       `mode ${PERSON} simple`,
       `note ${PERSON} Placeholder note`,
@@ -136,10 +136,14 @@ describe('the Access List’s channels', () => {
     expect(await call(IPC.accessList.revoke, PAGE, { gmail: PERSON })).toEqual(refused);
     expect(await call(IPC.accessList.revoke, PAGE, 'x'.repeat(400))).toEqual(refused);
     expect(await call(IPC.accessList.note, PAGE, PERSON, 42)).toEqual(refused);
+    // Give access again asks what they may use (Session 55 review): a mode the list does not give, or none, is never
+    // sent on.
+    for (const way of ['Pro', 'admin', null, undefined])
+      expect(await call(IPC.accessList.regrant, PAGE, PERSON, 'unlimited', way)).toEqual(refused);
     // A length the list does not give, or none at all, is never sent on.
     for (const length of [0, 731, 2.5, 'Unlimited', '30', null, undefined]) {
       expect(await call(IPC.accessList.approve, PAGE, PERSON, length, 'simple')).toEqual(refused);
-      expect(await call(IPC.accessList.regrant, PAGE, PERSON, length)).toEqual(refused);
+      expect(await call(IPC.accessList.regrant, PAGE, PERSON, length, 'simple')).toEqual(refused);
       expect(await call(IPC.accessList.changeLength, PAGE, PERSON, length)).toEqual(refused);
       expect(
         await call(IPC.accessList.add, PAGE, {

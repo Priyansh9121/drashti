@@ -1,6 +1,6 @@
 import { app, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
-import { sw } from '../switches';
+import { packaged, sw } from '../switches';
 
 export type RendererPage =
   | 'index'
@@ -17,10 +17,10 @@ export type RendererPage =
 
 export const rendererDir = (): string => join(__dirname, '../renderer');
 export const devServerUrl = (): string | undefined =>
-  app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
+  packaged() ? undefined : process.env['ELECTRON_RENDERER_URL'];
 
 /** Tests only: pages keep the GPU's warm-up drawn, to be looked at (Session 27). Never when packaged. */
-const holdWarmUp = (): boolean => !app.isPackaged && sw('DRASHTI_TEST_HOLD_WARM_UP') === '1';
+const holdWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_HOLD_WARM_UP') === '1';
 
 /**
  * Run translated (an Intel build under Rosetta on an Apple-silicon Mac, x64 under Windows' emulation): pages

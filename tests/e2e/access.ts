@@ -66,7 +66,9 @@ let keys: TestKeys | null = null;
 /** A stand-in list on 127.0.0.1, its clock running with this computer's from the list's own start date. */
 export async function newStandIn(): Promise<AccessStandIn> {
   keys ??= makeTestKeys();
-  const standIn = await accessStandIn({ keys });
+  // Its clock starts at this computer's (Session 55 review: Drashti counts the 15 days and a length from the list's
+  // own time when this computer's is later, so a list clock days behind would shorten both).
+  const standIn = await accessStandIn({ keys, start: Date.now() });
   followTheClock(standIn);
   return standIn;
 }

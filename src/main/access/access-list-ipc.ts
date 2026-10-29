@@ -85,10 +85,14 @@ export function handleAccessList(o: {
     IPC.accessList.revoke,
     one((t) => list.revoke(t)),
   );
-  handle(
-    IPC.accessList.regrant,
-    withLength((t, l) => list.regrant(t, l)),
-  );
+  handle(IPC.accessList.regrant, (e, target, chosen, way) => {
+    const t = gmail.safeParse(target);
+    const l = length.safeParse(chosen);
+    const m = mode.safeParse(way);
+    return isPage(e) && t.success && l.success && m.success
+      ? list.regrant(t.data, l.data, m.data)
+      : refused();
+  });
   handle(
     IPC.accessList.changeLength,
     withLength((t, l) => list.changeLength(t, l)),

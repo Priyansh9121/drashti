@@ -51,22 +51,26 @@ import { grantOf, type KeptAnswer, type StoredAccess, storedAccess } from './sto
  * - A start within the 15 days of an answer that let this computer in (Session 55): Drashti opens at once and asks the
  *   list in the background, whatever it answers heard as any check's (a revoke, a rejection, an unknown computer or an
  *   ended length stops it at that answer). Only the answer as the list signed it is believed (kept in the data folder,
- *   checked with the list's key): an edited one opens nothing at once. The time since it is the longer of this
- *   computer's clock since the check's own time (signed by the list; never earlier than the clock has read before) and
- *   the time Drashti has run since without an answer, and its length must not have ended by then. Older than 15 days:
+ *   checked with the list's key, and for this computer's own grant: Session 55 review): an edited one opens nothing at
+ *   once. The time since it is the longer of this computer's clock since the check's own time or the answer's, as the
+ *   list signed them, whichever is earlier (never earlier than the latest time a check was sent: a clock set back, or
+ *   set forward for a check and put right, gains nothing) and the time Drashti has run since without an answer, and
+ *   its length must not have ended by then. Older than 15 days:
  *   the lock screen says to ask for access again ('no-contact'), asking the list by itself. No such answer: it opens
  *   only once the list says let in, as before.
  * - The mode (Session 55, the owner's decision of 29 Oct 2026): each answer says whether this computer's Gmail may use
  *   Pro Mode and Simple Mode (Pro) or Simple Mode only (Simple), kept in the gate (gate.ts) for src/main/mode-keeper.ts,
  *   and kept with the answer for a start without the internet.
  * - The network coming back (Session 55, network-watch.ts): while the list has not answered, it is asked at once rather
- *   than at the next 15 s check, and a check still waiting on the old network is given up; never two checks closer
- *   together than 5 s, however often the network comes and goes, and never while the list answers.
+ *   than at the next 15 s check, and a check still waiting on the old network is given up once a check has gone
+ *   without an answer, never two in a row (Session 55 review: a slow list on a network that keeps changing is still
+ *   heard); never two checks closer together than 5 s, however often the network comes and goes, and never while the
+ *   list answers.
  * - A length of access (the owner's decision of 28 Oct 2026): each answer says when access ends by the list's
- *   clock; the window's bar counts down to it from the answer's own time, on the monotonic clock, and the next
- *   check comes at the end at the latest. Once the list says the length has ended ('expired'), everything stops
- *   as a revoke stops it; at start, the lock screen says so and asks again by itself, so a new length opens it.
- *   The computer's own clock is never asked when access ends.
+ *   clock; the window's bar counts down to it from the answer's own time, counted as the 15 days are (Session 55
+ *   review: on both clocks, so a Mac's sleep counts and a clock set back gains nothing), and the next check comes at
+ *   the end at the latest. Once the list says the length has ended ('expired'), everything stops as a revoke stops it;
+ *   at start, the lock screen says so and asks again by itself, so a new length opens it.
  * - Its totals (minutes let in, shows, streams, recordings, imports: never content) go with each check.
  * - A self-test (DRASHTI_SELFTEST) never asks the list, and its controls stay locked.
  *
@@ -96,9 +100,9 @@ export interface AccessCalls {
   check(grant: AccessGrant, activity: AccessActivity, stop?: AbortSignal): Promise<AccessResult<CheckAnswer>>;
   /**
    * A check's answer kept in the data folder, read again (Session 55): believed only when the list signed it for this
-   * computer. Without it, nothing kept is believed, and a start waits for the list.
+   * computer and this grant (Session 55 review). Without it, nothing kept is believed, and a start waits for the list.
    */
-  readKept?(kept: SignedAnswer): KeptCheck | null;
+  readKept?(kept: SignedAnswer, grantId: string): KeptCheck | null;
 }
 
 /** Where this computer's access is kept: store.ts's AccessStore. */
@@ -152,6 +156,11 @@ export interface AccessServiceOptions {
 export const ASK_EVERY_MS = 30_000;
 /** The line's time left is said again when the stop has moved more than this (a sleep, or a clock set on, counted). */
 const SAID_AGAIN_MS = 5_000;
+/**
+ * This computer's clock read this far behind where it was at the last answer and the time run since: it was set back
+ * since, or set forward for that answer (Session 55 review). The time since is counted from the list's own time then.
+ */
+const CLOCK_BACK_MS = 60_000;
 /** A stop not due yet when its time came (the two clocks apart) is looked at again after at least this. */
 const DEADLINE_AGAIN_MS = 1_000;
 /** …and at least this often while it waits (a timer never longer than a day: well under setTimeout's 24.8 days). */
@@ -278,12 +287,12 @@ export class AccessService {
   private kept: StoredAccess | null = null;
   private activity: AccessActivity = { ...NO_ACTIVITY };
   /**
-   * When the list last answered let in: on the monotonic clock, and on this computer's clock as high as it has read
-   * (wall()). The time since is the longer of the two (sinceAnswer): a clock set back gains nothing, a sleep counts.
+   * The last answer that let this computer in, for the time since it (sinceAnswer): when it came on the monotonic clock
+   * (`mono`); from when on this computer's clock (`from`: its own time then, or the list's once this computer's clock
+   * is seen to have gone back since); the answer's own time on the list's clock (`serverTime`); and the most counted
+   * since (`counted`: a clock set back gains nothing). A sleep counts, on whichever clock goes on through it.
    */
-  private answered: { mono: number; wall: number } | null = null;
-  /** The highest this computer's clock has read (never lower: a clock set back gains nothing). */
-  private highWall = 0;
+  private answered: { mono: number; from: number; serverTime: number; counted: number } | null = null;
   /** At start, the answer kept let it in, but its 15 days are up: with no answer, the lock says to ask again. */
   private overdue = false;
   private busy: AccessBusy | null = null;
@@ -291,15 +300,20 @@ export class AccessService {
   private request: AccessRequestView | null = null;
   /**
    * When access ends, as the list's last signed answer said it: the end by the list's clock (for its date), and how
-   * long was left then (the end less the answer's serverTime), from that moment on the monotonic clock.
+   * long was left then (the end less the answer's serverTime), counted down from that answer as the 15 days are
+   * (sinceAnswer: Session 55 review, a Mac's sleep counts and a clock set back gains nothing).
    */
-  private ends: { endsAt: number; left: number; at: number } | null = null;
+  private ends: { endsAt: number; left: number } | null = null;
+  /** When the windows were last told the length ends (monotonic): told again when a sleep or a clock set on moved it. */
+  private endTold: number | null = null;
   /** Checks in a row with no answer since the last answer, in this run. */
   private misses = 0;
   /** When the stop comes with no answer (monotonic), as last worked out: 15 days after the last answer. */
   private stopsAt: number | null = null;
-  /** The check on its way: when it began, and how to give it up. */
-  private inFlight: { started: number; give: AbortController } | null = null;
+  /** The check on its way: when it began, how to give it up, and whether it may be (never two in a row). */
+  private inFlight: { started: number; give: AbortController; mayGiveUp: boolean } | null = null;
+  /** The last check was given up when the network came back: the next one runs to its end (Session 55 review). */
+  private gaveUp = false;
   /** When the last check began (monotonic): never another within EARLY_GAP_MS of it when the network comes back. */
   private lastStart: number | null = null;
   /** The network came back while the list had not answered: the list is asked again as soon as the gap allows. */
@@ -319,25 +333,27 @@ export class AccessService {
 
   constructor(private readonly o: AccessServiceOptions) {}
 
-  /** This computer's clock, never read as earlier than it has read before (a clock set back gains nothing). */
-  private wall(): number {
-    this.highWall = Math.max(this.highWall, this.o.now());
-    return this.highWall;
-  }
-
-  /** The list answered let in now. */
-  private heardNow(): void {
-    this.answered = { mono: this.o.monotonic(), wall: this.wall() };
+  /** The list answered let in now, its answer made at `serverTime` by its own clock. */
+  private heardNow(serverTime: number): void {
+    this.answered = { mono: this.o.monotonic(), from: this.o.now(), serverTime, counted: 0 };
   }
 
   /**
-   * How long since the last answer that let this computer in: the longer of the time run (the monotonic clock) and this
-   * computer's clock (a sleep counts on either: a Mac's monotonic clock stands still asleep, its clock does not).
+   * How long since the last answer that let this computer in: the longest of the time run (the monotonic clock), this
+   * computer's clock since then, and the most counted before (a clock set back gains nothing). A sleep counts on either
+   * clock: a Mac's monotonic clock stands still asleep, its own clock does not. Once this computer's clock is seen behind
+   * where it was at the answer and the time run since (set back since, or set forward for that answer and put right:
+   * Session 55 review), its time is counted from the list's own time at the answer, never later; a clock that stays
+   * ahead of the list's, set wrong and never put right, is counted from its own time, as it runs.
    */
   private sinceAnswer(): number {
     const a = this.answered;
     if (!a) return 0;
-    return Math.max(0, this.o.monotonic() - a.mono, this.wall() - a.wall);
+    const now = this.o.now();
+    const ran = this.o.monotonic() - a.mono;
+    if (now < a.from + ran - CLOCK_BACK_MS) a.from = Math.min(a.from, a.serverTime);
+    a.counted = Math.max(a.counted, ran, now - a.from);
+    return a.counted;
   }
 
   private get every(): number {
@@ -415,8 +431,6 @@ export class AccessService {
     }
     this.kept = read.value;
     this.activity = { ...read.value.activity };
-    // The latest time a signed call carried: this computer's clock is never read as earlier than it.
-    this.highWall = Math.max(this.highWall, read.value.lastAt);
     if (!this.madeHere()) {
       this.o.log('warn', 'Access: the access in this data folder was made on another computer: not sent');
       this.lock('copied');
@@ -431,8 +445,9 @@ export class AccessService {
    * The computer's network came back (network-watch.ts: online again, on another network, or awake again; Session
    * 55). While the list has not answered (a check missed or still on its way, or the lock screen with no answer), it
    * is asked at once rather than at the next 15 s check, a check still waiting on the old network given up once it is
-   * 5 s old; never two checks closer together than 5 s, however often the network comes and goes, and nothing at all
-   * while the list answers.
+   * 5 s old, if a check has already gone without an answer and the one before was not given up too (Session 55 review);
+   * never two checks closer together than 5 s, however often the network comes and goes, and nothing at all while the
+   * list answers.
    */
   networkBack(why: string): void {
     if (!this.troubled()) return;
@@ -593,7 +608,7 @@ export class AccessService {
       this.keepAnswer(r.value, r.serverTime, r.signed);
       if (status === 'in' || status === 'expired') this.heardEnds(endsAt, r.serverTime);
       if (status === 'in') {
-        this.letIn(owner, mode);
+        this.letIn(owner, mode, r.serverTime);
         this.afterCheck();
         return;
       }
@@ -631,11 +646,9 @@ export class AccessService {
     const kept = this.kept;
     const known = this.keptLetIn();
     if (!kept || !known) return false;
-    const { since, answer: a } = known;
-    const now = this.o.monotonic();
-    this.answered = { mono: now - since, wall: this.wall() - since };
-    this.ends =
-      a.endsAt === null ? null : { endsAt: a.endsAt, left: a.endsAt - a.serverTime, at: now - since };
+    const { since, from, answer: a } = known;
+    this.answered = { mono: this.o.monotonic() - since, from, serverTime: a.serverTime, counted: since };
+    this.ends = a.endsAt === null ? null : { endsAt: a.endsAt, left: a.endsAt - a.serverTime };
     this.message = null;
     this.request = null;
     this.o.log(
@@ -653,18 +666,21 @@ export class AccessService {
   /**
    * The last answer kept here, when it let this computer in less than 15 days ago and its length had not ended by then:
    * how long ago, and what it said. Only the answer as the list signed it is believed (its status, owner, end and
-   * mode), read again with the list's key: an answer edited in the data folder, or one kept by a Drashti from before
-   * (unsigned), opens nothing at once. The time since it is the longer of this computer's clock since the check's own
-   * time, as the list signed it (never read as earlier than the latest `at` sent: a clock set back changes nothing) and
-   * the time Drashti has run since without an answer (kept as it runs). An answer that let it in but whose 15 days are
-   * up marks the start overdue: with no answer, the lock says to ask for access again.
+   * mode), read again with the list's key, and only for this computer's own grant (Session 55 review): an answer edited
+   * in the data folder, one kept for an earlier grant here, or one kept by a Drashti from before (unsigned), opens
+   * nothing at once. The time since it is the longer of this computer's clock since the list's own time (the check's own
+   * time as the list signed it, or the answer's serverTime if that is earlier, or alone from a list that echoes none:
+   * Session 55 review, a clock set forward for that check gains nothing, and the time this data folder says the answer
+   * was heard, which nothing signs, is never read), never read as earlier than the latest `at` sent (a clock set back
+   * changes nothing), and the time Drashti has run since without an answer (kept as it runs). An answer that let it in
+   * but whose 15 days are up marks the start overdue: with no answer, the lock says to ask for access again.
    */
-  private keptLetIn(): { since: number; answer: KeptCheck } | null {
+  private keptLetIn(): { since: number; from: number; answer: KeptCheck } | null {
     const kept = this.kept;
     const signed = kept?.answer?.signed;
     const readKept = this.o.calls?.readKept?.bind(this.o.calls);
     if (!kept || !signed || !readKept) return null;
-    const a = readKept(signed);
+    const a = readKept(signed, kept.grantId);
     if (!a) {
       this.o.log(
         'warn',
@@ -673,8 +689,8 @@ export class AccessService {
       return null;
     }
     if (a.status !== 'in') return null;
-    const sent = a.at ?? kept.answer?.heardAt ?? 0;
-    const byClock = Math.max(this.o.now(), kept.lastAt, sent) - sent;
+    const from = Math.min(a.at ?? a.serverTime, a.serverTime);
+    const byClock = Math.max(this.o.now(), kept.lastAt, from) - from;
     const since = Math.max(byClock, kept.offlineMs ?? 0);
     if (since >= this.stopAfter) {
       this.overdue = true;
@@ -682,7 +698,7 @@ export class AccessService {
       return null;
     }
     if (a.endsAt !== null && a.serverTime + since >= a.endsAt) return null;
-    return { since, answer: a };
+    return { since, from, answer: a };
   }
 
   /**
@@ -693,7 +709,8 @@ export class AccessService {
   private async ask(calls: AccessCalls, kept: StoredAccess): ReturnType<AccessCalls['check']> {
     const started = this.o.monotonic();
     const give = new AbortController();
-    this.inFlight = { started, give };
+    this.inFlight = { started, give, mayGiveUp: !this.gaveUp };
+    this.gaveUp = false;
     this.lastStart = started;
     const n = (this.checksMade += 1);
     try {
@@ -719,7 +736,7 @@ export class AccessService {
   }
 
   /** The check on its way now (read afresh: it changes while a check waits). */
-  private onItsWay(): { started: number; give: AbortController } | null {
+  private onItsWay(): { started: number; give: AbortController; mayGiveUp: boolean } | null {
     return this.inFlight;
   }
 
@@ -772,23 +789,30 @@ export class AccessService {
 
   /**
    * When access ends, from a signed answer: the end, and how long was left by the list's own clock (its serverTime),
-   * counted on from now on the monotonic clock. Whether the end changed.
+   * counted down from that answer (sinceAnswer). Whether the end changed.
    */
   private heardEnds(endsAt: number | null, serverTime: number): boolean {
     const before = this.ends?.endsAt ?? null;
-    this.ends = endsAt === null ? null : { endsAt, left: endsAt - serverTime, at: this.o.monotonic() };
+    this.ends = endsAt === null ? null : { endsAt, left: endsAt - serverTime };
     return before !== endsAt;
   }
 
   /** How long until access ends, as of now (never below 0); null for no end. */
   private endsInMs(): number | null {
-    return this.ends ? Math.max(0, this.ends.left - (this.o.monotonic() - this.ends.at)) : null;
+    return this.ends ? Math.max(0, this.ends.left - this.sinceAnswer()) : null;
   }
 
-  private letIn(owner: boolean, mode: AccessMode): void {
+  /** The end moved since the windows were told it (a Mac's sleep, or this computer's clock set on): told again. */
+  private tellIfEndMoved(): void {
+    const left = this.endsInMs();
+    if (left === null || this.endTold === null) return;
+    if (Math.abs(this.o.monotonic() + left - this.endTold) > SAID_AGAIN_MS) this.changed();
+  }
+
+  private letIn(owner: boolean, mode: AccessMode, serverTime: number): void {
     this.cancel('ask');
     this.cancel('retry');
-    this.heardNow();
+    this.heardNow(serverTime);
     this.overdue = false;
     this.misses = 0;
     this.message = null;
@@ -836,7 +860,7 @@ export class AccessService {
         this.stop(noContact(r.value) ? 'no-contact' : status);
         return;
       }
-      this.heardNow();
+      this.heardNow(r.serverTime);
       const missed = this.misses;
       this.misses = 0;
       // The 15 days count again from this answer.
@@ -855,8 +879,9 @@ export class AccessService {
       if (s.phase !== 'in' || s.owner !== owner || s.mode !== mode)
         this.set({ phase: 'in', owner, reason: null, stopsAt: null, mode });
       // A new end (a new length, or Unlimited): the windows' bar counts down to it afresh. Otherwise each window counts
-      // down on its own monotonic clock from what it was told.
+      // down on its own monotonic clock from what it was told, told again if a sleep moved it.
       else if (changed) this.changed();
+      else this.tellIfEndMoved();
     } else {
       this.noAnswer(r);
       if (!isLetIn()) return;
@@ -869,7 +894,8 @@ export class AccessService {
   private nextCheckIn(started: number): number {
     const now = this.o.monotonic();
     let due = started + this.every;
-    if (this.ends) due = Math.min(due, Math.max(now, this.ends.at + this.ends.left) + END_MARGIN_MS);
+    const left = this.endsInMs();
+    if (left !== null) due = Math.min(due, now + left + END_MARGIN_MS);
     return Math.max(0, due - now);
   }
 
@@ -896,6 +922,7 @@ export class AccessService {
     const stopsAt = now + left;
     this.keepOffline(since);
     this.misses += 1;
+    this.tellIfEndMoved();
     // The line up: kept right if the stop has moved (a sleep, or a clock set on, counted).
     if (accessState().phase === 'warning') {
       const was = this.stopsAt;
@@ -990,6 +1017,10 @@ export class AccessService {
       this.earlyLater();
       return;
     }
+    // Given up only once a check has gone without an answer, and never two in a row (Session 55 review): on a network
+    // that keeps changing, a list slower than 5 s is still heard. One not given up asks again at its end, if it had no
+    // answer (afterCheck).
+    if (this.inFlight && (!this.inFlight.mayGiveUp || !this.missedOne())) return;
     const say = now - this.backSaid >= BACK_SAID_EVERY_MS;
     if (say) this.backSaid = now;
     if (this.inFlight) {
@@ -999,6 +1030,7 @@ export class AccessService {
           `Access: the network came back (${early.why}): a check waiting on the old network is given up, and the list asked again`,
         );
       // Its end (no answer) asks again: afterCheck.
+      this.gaveUp = true;
       this.inFlight.give.abort();
       return;
     }
@@ -1006,6 +1038,11 @@ export class AccessService {
     if (say) this.o.log('info', `Access: the network came back (${early.why}): the list is asked at once`);
     if (isLetIn()) void this.checkWhileOpen();
     else void this.checkToOpen();
+  }
+
+  /** Whether a check has gone without an answer: one of this run's while let in, or the lock screen's own. */
+  private missedOne(): boolean {
+    return isLetIn() ? this.misses > 0 : accessState().phase === 'locked';
   }
 
   /** A check has ended: the network came back meanwhile, so the list is asked again if it did not answer. */
@@ -1143,6 +1180,7 @@ export class AccessService {
 
   private changed(): void {
     const view = this.view();
+    this.endTold = view.endsInMs === null ? null : this.o.monotonic() + view.endsInMs;
     for (const listener of this.listeners) listener(view);
   }
 

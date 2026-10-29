@@ -323,8 +323,13 @@ test('how each Gmail may use Drashti: the Mode column, Approve and Add asking (S
     );
     await choose(list, PLACEHOLDER_PERSON);
     await list.getByTestId('access-regrant').click();
+    // Give access again asks what they may use, as Approve does (Session 55 review): the row's own, Pro, at first.
+    await expect(list.getByTestId('access-mode-choice')).toHaveValue('pro');
+    await list.getByTestId('access-mode-choice').selectOption('simple');
     await list.getByTestId('access-length-save').click();
     await expect(theirs).toContainText('Token sent', { timeout: 20_000 });
+    await expect(list.getByTestId('access-said')).toContainText('Simple Mode only');
+    expect(s.list.sheet.find('Access List', 'Gmail', PLACEHOLDER_PERSON)?.['Mode']).toBe('Simple');
   } finally {
     await app.close();
   }

@@ -68,6 +68,7 @@ export interface OwnerCalls {
   regrant: (
     target: string,
     length: AccessLength,
+    mode: AccessMode,
   ) => Promise<OwnerResult<{ runsOut: number; endsAt: number | null }>>;
   changeLength: (target: string, length: AccessLength) => Promise<OwnerResult<{ endsAt: number | null }>>;
   /** How a Gmail may use Drashti (Session 55). */
@@ -101,7 +102,7 @@ export function ownerCalls(
     list: () => signed((c, g) => c.list(g)),
     add: (target, o) => signed((c, g) => c.add(g, target, o)),
     approve: (target, length, mode) => signed((c, g) => c.approve(g, target, length, mode)),
-    regrant: (target, length) => signed((c, g) => c.regrant(g, target, length)),
+    regrant: (target, length, mode) => signed((c, g) => c.regrant(g, target, length, mode)),
     changeLength: (target, length) => signed((c, g) => c.length(g, target, length)),
     changeMode: (target, mode) => signed((c, g) => c.mode(g, target, mode)),
     reject: (target) => signed((c, g) => c.reject(g, target)),
@@ -317,20 +318,22 @@ export class AccessList {
   }
 
   /**
-   * Give access again: a new token by email, for one more computer (after a revoke, approved again), and `length`
-   * counted from now (computers stopped by an end come back with it).
+   * Give access again: a new token by email, for one more computer (after a revoke, approved again), `length` counted
+   * from now (computers stopped by an end come back with it), and what they may use, asked as Approve asks (Session 55
+   * review).
    */
-  regrant(target: string, length: AccessLength): Promise<AccessListResult> {
+  regrant(target: string, length: AccessLength, mode: AccessMode): Promise<AccessListResult> {
     return (
       this.lengthRefusal(target, length) ??
+      this.modeRefusal(target, mode) ??
       this.one('gave a Gmail access again', target, false, (calls, gmail, shown) =>
         calls
-          .regrant(gmail, length)
+          .regrant(gmail, length, mode)
           .then((r) =>
             outcome(
               r,
               (v) =>
-                `A new token is on its way to ${shown} by email (${lastsWords(length, v.endsAt)}). It runs out on ${formatDay(v.runsOut)} if it is not used; a token sent before and not used no longer works.`,
+                `A new token is on its way to ${shown} by email (${lastsWords(length, v.endsAt)}; ${modeWords(mode)}). It runs out on ${formatDay(v.runsOut)} if it is not used; a token sent before and not used no longer works.`,
             ),
           ),
       )

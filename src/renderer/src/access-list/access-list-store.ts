@@ -160,8 +160,8 @@ export function edit(
 }
 
 /**
- * Approve, Give access again or Change the length, with the length chosen in its dialog (and for Approve, the mode,
- * Session 55): the dialog closes once it is done, and says why not when it is not.
+ * Approve, Give access again or Change the length, with the length chosen in its dialog (and for Approve and Give access
+ * again, the mode: Session 55): the dialog closes once it is done, and says why not when it is not.
  */
 export async function giveLength(
   kind: LengthEdit,
@@ -172,7 +172,7 @@ export async function giveLength(
   const bridge = window.drashti.accessList;
   const calls = {
     approve: () => bridge.approve(gmail, length, mode),
-    regrant: () => bridge.regrant(gmail, length),
+    regrant: () => bridge.regrant(gmail, length, mode),
     length: () => bridge.changeLength(gmail, length),
   };
   const result = await run(calls[kind], false);

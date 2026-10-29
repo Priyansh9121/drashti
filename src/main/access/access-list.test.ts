@@ -101,7 +101,7 @@ function fakeCalls(
       lengths.push(`approve ${target} ${String(length)}`);
       return answer({ runsOut: new Date(2026, 9, 30, 12).getTime(), endsAt: endFor(length) });
     }),
-    regrant: vi.fn((target: string, length: AccessLength) => {
+    regrant: vi.fn((target: string, length: AccessLength, _mode?: AccessMode) => {
       made.push(`regrant ${target}`);
       lengths.push(`regrant ${target} ${String(length)}`);
       return answer({ runsOut: new Date(2026, 9, 30, 12).getTime(), endsAt: endFor(length) });
@@ -198,7 +198,7 @@ describe('only the owner’s computer, let in', () => {
       await r.list.approve(PERSON, 'unlimited', 'simple'),
       await r.list.reject(PERSON),
       await r.list.revoke(PERSON),
-      await r.list.regrant(PERSON, 'unlimited'),
+      await r.list.regrant(PERSON, 'unlimited', 'pro'),
       await r.list.changeLength(PERSON, 30),
       await r.list.note(PERSON, 'Placeholder note'),
     ];
@@ -311,7 +311,7 @@ describe('each edit', () => {
 
     r.made.length = 0;
     expect((await r.list.reject(PERSON)).message).toMatch(/^Rejected placeholder\.user@example\.com/u);
-    expect((await r.list.regrant(PERSON, 'unlimited')).message).toContain('new token');
+    expect((await r.list.regrant(PERSON, 'unlimited', 'pro')).message).toContain('new token');
     const revoked = await r.list.revoke(PERSON);
     expect(revoked.message).toContain('stops');
     expect((await r.list.note(PERSON, '  Placeholder note  ')).ok).toBe(true);
@@ -436,7 +436,9 @@ describe('each edit', () => {
     const approved = await r.list.approve(PERSON, 7, 'simple');
     expect(approved.ok).toBe(true);
     expect(approved.message).toContain(`7 days, until ${formatDay(LIST_NOW + 7 * DAY)}`);
-    expect((await r.list.regrant(PERSON, 'unlimited')).message).toContain('(Unlimited)');
+    expect((await r.list.regrant(PERSON, 'unlimited', 'pro')).message).toContain(
+      '(Unlimited; Pro Mode and Simple Mode)',
+    );
     const changed = await r.list.changeLength(PERSON, 365);
     expect(changed.message).toContain(`365 days, until ${formatDay(LIST_NOW + 365 * DAY)}`);
     expect((await r.list.changeLength(PERSON, 'unlimited')).message).toContain('Unlimited access');
@@ -460,7 +462,7 @@ describe('each edit', () => {
     for (const bad of [0, 731, 2.5, 'Unlimited', null] as unknown as AccessLength[]) {
       for (const result of [
         await r.list.approve(PERSON, bad, 'simple'),
-        await r.list.regrant(PERSON, bad),
+        await r.list.regrant(PERSON, bad, 'pro'),
         await r.list.changeLength(PERSON, bad),
         await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: bad, mode: 'simple' }),
       ])
@@ -468,11 +470,11 @@ describe('each edit', () => {
     }
     for (const typed of [OWNER, ' OWNER.placeholder@example.com ']) {
       expect((await r.list.changeLength(typed, 'unlimited')).message).toContain('always Unlimited');
-      expect((await r.list.regrant(typed, 30)).message).toContain('always Unlimited');
+      expect((await r.list.regrant(typed, 30, 'pro')).message).toContain('always Unlimited');
     }
     expect(f.lengths).toEqual([]);
     // Unlimited for the owner's own row may go (a new token for another computer of theirs).
-    expect((await r.list.regrant(OWNER, 'unlimited')).ok).toBe(true);
+    expect((await r.list.regrant(OWNER, 'unlimited', 'pro')).ok).toBe(true);
   });
 
   it('says a refusal in the owner’s words, and no answer as no answer, and asks the list again either way', async () => {
@@ -529,6 +531,22 @@ describe('how a Gmail may use Drashti (Session 55)', () => {
     // Approved with a mode: said in the outcome.
     const approved = await r.list.approve(PERSON, 'unlimited', 'pro');
     expect(approved.message).toContain('Pro Mode and Simple Mode');
+  });
+
+  it('Give access again asks what they may use, as Approve does (Session 55 review): sent with the mode and said; a mode the list does not give, or Simple for the owner’s own, refused before anything is sent', async () => {
+    const r = rig();
+    await r.list.refresh();
+    const again = await r.list.regrant(PERSON, 'unlimited', 'simple');
+    expect(again.ok).toBe(true);
+    expect(again.message).toContain('Simple Mode only');
+    expect(r.calls.regrant).toHaveBeenLastCalledWith(PERSON, 'unlimited', 'simple');
+    expect((await r.list.regrant(PERSON, 30, 'pro')).message).toContain('Pro Mode and Simple Mode');
+    expect(r.calls.regrant).toHaveBeenLastCalledWith(PERSON, 30, 'pro');
+    const sent = vi.mocked(r.calls.regrant).mock.calls.length;
+    for (const bad of ['Pro', 'admin', undefined] as unknown as AccessMode[])
+      expect((await r.list.regrant(PERSON, 'unlimited', bad)).ok).toBe(false);
+    expect((await r.list.regrant(OWNER, 'unlimited', 'simple')).ok).toBe(false);
+    expect(vi.mocked(r.calls.regrant).mock.calls.length).toBe(sent);
   });
 });
 
@@ -644,7 +662,7 @@ describe('through Drashti’s client and the stand-in list (the list’s own rul
     const revoked = await list.revoke(PERSON);
     expect(revoked.ok).toBe(true);
     expect(revoked.view.people?.find((p) => p.gmail === PERSON)?.status).toBe('revoked');
-    const again = await list.regrant(PERSON, 90);
+    const again = await list.regrant(PERSON, 90, 'simple');
     expect(again.ok).toBe(true);
     expect(again.view.people?.find((p) => p.gmail === PERSON)).toMatchObject({
       status: 'approved',

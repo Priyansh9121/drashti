@@ -622,7 +622,7 @@ export interface DrashtiBridge {
     approve(gmail: string, length: AccessLength, mode: AccessMode): Promise<AccessListResult>;
     reject(gmail: string): Promise<AccessListResult>;
     revoke(gmail: string): Promise<AccessListResult>;
-    regrant(gmail: string, length: AccessLength): Promise<AccessListResult>;
+    regrant(gmail: string, length: AccessLength, mode: AccessMode): Promise<AccessListResult>;
     /** A new length of access for a Gmail approved, counted from now. */
     changeLength(gmail: string, length: AccessLength): Promise<AccessListResult>;
     /** How a Gmail may use Drashti (Session 55): Pro or Simple, heard at its computers' next check. */

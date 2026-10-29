@@ -181,7 +181,8 @@ export function LengthDialog({ kind, gmail }: { kind: LengthEdit; gmail: string 
       : ACCESS_UNLIMITED,
   );
   const [tried, setTried] = useState(false);
-  // Approve asks what they may use too (Session 55): the mode the request would be approved with, Simple at first.
+  // Approve and Give access again ask what they may use too (Session 55, and its review): the row's own at first (a
+  // request's: Simple, unless the owner chose Pro adding it).
   const [mode, setMode] = useState<AccessMode>(person?.mode ?? 'simple');
   const words = LENGTH_WORDS[kind];
   const now = person && kind === 'length' ? endsCell(person, view?.listTime ?? null) : null;
@@ -219,7 +220,7 @@ export function LengthDialog({ kind, gmail }: { kind: LengthEdit; gmail: string 
         disabled={busy}
         hint="Counted from now. Unlimited lasts until you revoke it. When a length ends, their Drashti stops until you give more time."
       />
-      {kind === 'approve' && (
+      {(kind === 'approve' || kind === 'regrant') && (
         <ModeField
           value={mode}
           onChange={setMode}

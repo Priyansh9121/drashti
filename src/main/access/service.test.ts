@@ -166,9 +166,11 @@ class ScriptedList implements AccessCalls {
     return { payload, sig };
   }
 
-  readKept(kept: SignedAnswer): KeptCheck | null {
+  readKept(kept: SignedAnswer, grantId: string): KeptCheck | null {
     if (this.signed.get(kept.sig) !== kept.payload) return null;
     const p = JSON.parse(kept.payload) as Record<string, unknown>;
+    // Only an answer to this grant's checks (Session 55 review).
+    if (p['grantId'] !== grantId) return null;
     return {
       status: p['status'] as AccessCheckStatus,
       owner: p['owner'] === true,
@@ -216,7 +218,7 @@ class ScriptedList implements AccessCalls {
   }
 
   async check(
-    _grant: AccessGrant,
+    grant: AccessGrant,
     activity: AccessActivity,
     stop?: AbortSignal,
   ): Promise<
@@ -266,7 +268,12 @@ class ScriptedList implements AccessCalls {
       ok: true,
       value,
       serverTime: now,
-      signed: this.sign({ ...value, ...(this.mode === null ? { mode: undefined } : {}), serverTime: now }),
+      signed: this.sign({
+        ...value,
+        ...(this.mode === null ? { mode: undefined } : {}),
+        grantId: grant.grantId,
+        serverTime: now,
+      }),
     };
   }
 
@@ -1043,6 +1050,39 @@ describe('the network coming back (Session 55)', () => {
     expect(list.aborted).toBe(1);
     expect(list.checks).toBe(checks + 1);
     expect(accessState().phase).toBe('in');
+  });
+
+  it('while no check has been missed, a check waiting when the network comes back is never given up: it runs to its end (Session 55 review)', async () => {
+    const s = await startedIn();
+    list.hold = { release: () => undefined };
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    const checks = list.checks;
+    s.networkBack('the computer is on another network');
+    await clock.move(EARLY_GAP_MS + 1_000);
+    expect(list.aborted).toBe(0);
+    expect(list.checks).toBe(checks);
+    list.hold.release();
+    list.hold = null;
+    await clock.move(0);
+    expect(accessState()).toMatchObject({ phase: 'in', stopsAt: null });
+  });
+
+  it('a check given up when the network comes back is never followed by another given up: the next runs to its end, so a slow list is heard (Session 55 review)', async () => {
+    const s = await withTheBar();
+    list.check_ = 'in';
+    list.hold = { release: () => undefined };
+    await clock.move(ACCESS_CHECK_EVERY_MS);
+    s.networkBack('the computer is on another network');
+    await clock.move(EARLY_GAP_MS);
+    expect(list.aborted).toBe(1);
+    // The check asked again at once waits too; the network changes again: not given up.
+    s.networkBack('the computer is online again');
+    await clock.move(EARLY_GAP_MS + 1_000);
+    expect(list.aborted).toBe(1);
+    list.hold.release();
+    list.hold = null;
+    await clock.move(0);
+    expect(accessState()).toMatchObject({ phase: 'in', stopsAt: null });
   });
 
   it('asks nothing more while the list answers, and on a network coming and going many times a second never asks more than once in 5 s', async () => {

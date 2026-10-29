@@ -244,6 +244,12 @@ const checkSchema = z.object({
     .number()
     .optional()
     .transform((a) => a ?? null),
+  /** Which grant's check it answers (Session 55 review); null from a list from before. */
+  grantId: z
+    .string()
+    .regex(HEX32)
+    .optional()
+    .transform((g) => g ?? null),
 });
 const listSchema = z.object({ people: z.array(personSchema) });
 const approvedSchema = z.object({ status: z.literal('approved'), runsOut: z.number(), endsAt: date });
@@ -332,13 +338,15 @@ export class AccessClient {
 
   /**
    * A check's answer kept in the data folder (Session 55), read again: believed only when it is the list's own, signed
-   * with its key, answering a check from this computer; null otherwise (edited, from another computer, or not one).
+   * with its key, answering a check from this computer for this grant (Session 55 review: one kept for an earlier grant
+   * on this computer is not); null otherwise (edited, from another computer or grant, from a list that names no grant,
+   * or not a check's).
    */
-  readKept(kept: SignedAnswer): KeptCheck | null {
+  readKept(kept: SignedAnswer, grantId: string): KeptCheck | null {
     const head = this.verified(kept);
     if (head?.op !== 'check' || !head.ok || head.computerId !== this.o.computer.id) return null;
     const value = checkSchema.safeParse(head.payload);
-    if (!value.success) return null;
+    if (!value.success || value.data.grantId !== grantId) return null;
     const { status, owner, endsAt, mode, at } = value.data;
     return { status, owner, endsAt, mode, serverTime: head.serverTime, at };
   }
@@ -379,13 +387,17 @@ export class AccessClient {
     return this.call('mode', { target, mode }, modeSchema, grant);
   }
 
-  /** The owner's: Give access again (a new token, and `length` from now; after a revoke, with no computer in). */
+  /**
+   * The owner's: Give access again (a new token, and `length` from now; after a revoke, with no computer in), with what
+   * they may use (Session 55 review); with none, the row's.
+   */
   regrant(
     grant: AccessGrant,
     target: string,
     length: AccessLength,
+    mode?: AccessMode,
   ): Promise<AccessResult<{ status: 'approved'; runsOut: number; endsAt: number | null }>> {
-    return this.call('regrant', { target, length }, approvedSchema, grant);
+    return this.call('regrant', { target, length, ...(mode ? { mode } : {}) }, approvedSchema, grant);
   }
 
   /** The owner's: a new length for a Gmail approved, counted from now (its computers stopped by an end come back). */

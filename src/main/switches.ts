@@ -6,9 +6,11 @@ import { posix, win32 } from 'node:path';
  * extra displays) under DRASHTI_SELFTEST=performance. Every other switch, every DRASHTI_TEST_* and
  * DRASHTI_FFMPEG among them, is honoured only when Drashti is not packaged (development and the tests).
  *
- * Whether it is packaged is decided as Electron's app.isPackaged decides it, by the executable's name, so the
- * rule holds where there is no Electron app: a helper run as plain Node by the performance check, and the
- * unit tests. `switchesFor` takes both, for a test or a helper told by its parent.
+ * Whether it is packaged (Session 55 review, packagedRun): its main code runs from an app.asar, as an installed
+ * Drashti's does whatever its executable is called (a copy of the app renamed electron included), or it is not run by
+ * Electron's own executable (Electron's own rule for app.isPackaged, which a helper run as plain Node keeps). The
+ * one answer is packaged(), for this file's switches and everywhere else Drashti asks (src/main/index.ts).
+ * `switchesFor` takes it, for a test or a helper told by its parent.
  */
 
 /** What a packaged Drashti honours: the guides tell admins to use these (README, "Switches"). */
@@ -68,11 +70,28 @@ export function packagedExecutable(execPath: string, platform: NodeJS.Platform):
   return platform === 'win32' ? exe !== 'electron.exe' : exe !== 'electron';
 }
 
+/**
+ * Packaged (Session 55 review): the main code runs from an app.asar (`codeDir`, where this code is), whatever the
+ * executable is called, or Electron's own rule says so. Development, the end-to-end tests and the performance check
+ * run Electron's own executable on the code in out/: not packaged.
+ */
+export function packagedRun(execPath: string, platform: NodeJS.Platform, codeDir: string): boolean {
+  return packagedExecutable(execPath, platform) || /\.asar(?:[\\/]|$)/iu.test(codeDir);
+}
+
+let packagedHere: boolean | null = null;
+
+/** Whether this Drashti is packaged: the one answer for every switch and everywhere Drashti asks. */
+export function packaged(): boolean {
+  packagedHere ??= packagedRun(process.execPath, process.platform, __dirname);
+  return packagedHere;
+}
+
 let here: Switches | null = null;
 
 /** This process's switches. */
 export function sw(name: SwitchName): string | undefined {
-  here ??= switchesFor(packagedExecutable(process.execPath, process.platform), process.env);
+  here ??= switchesFor(packaged(), process.env);
   return here(name);
 }
 
