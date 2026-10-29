@@ -1,6 +1,6 @@
 import type { ElectronApplication } from '@playwright/test';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { accessComputer, computerIdOf } from '../../src/main/access/identity';
 import { ACCESS_FILE, AccessStore, storedAccess } from '../../src/main/access/store';
@@ -312,4 +312,55 @@ export function closedWatch(app: ElectronApplication): { closed: () => boolean; 
     });
   });
   return { closed: () => closed, whenClosed };
+}
+
+/**
+ * A test Drashti whose first access check after it starts gets no answer says so in the test's output, in one line,
+ * from its own log ("Access: check 1: …", service.ts), with what came instead and how long it took (Session 55,
+ * question 36: from the CI Mac's 650th test on, every start took about 15 s more, one check's round). Its log is read
+ * from where it ended before this start, every half second for up to a minute, never holding the test up.
+ */
+export function sayIfFirstCheckMissed(app: ElectronApplication, userData: string): void {
+  const file = join(userData, 'logs', 'drashti.log');
+  let from = 0;
+  try {
+    from = existsSync(file) ? statSync(file).size : 0;
+  } catch {
+    from = 0;
+  }
+  const until = Date.now() + 60_000;
+  let done = false;
+  const look = () => {
+    if (done) return;
+    let text: string;
+    try {
+      const size = statSync(file).size;
+      if (size < from) from = 0;
+      const buffer = Buffer.alloc(Math.min(size - from, 256 * 1024));
+      const fd = openSync(file, 'r');
+      try {
+        readSync(fd, buffer, 0, buffer.length, from);
+      } finally {
+        closeSync(fd);
+      }
+      text = buffer.toString('utf8');
+    } catch {
+      text = '';
+    }
+    const first = /Access: check 1: ([^\n]*)/u.exec(text)?.[1];
+    if (first !== undefined || Date.now() > until) {
+      done = true;
+      clearInterval(timer);
+      // No answer, or a refusal that is none (busy, a server error): an answer (let in, revoked…) is no news.
+      if (first !== undefined && /^(no answer|refused) /u.test(first))
+        console.log(`Access at start: this Drashti’s first check got ${first.trim()}`);
+    }
+  };
+  const timer = setInterval(look, 500);
+  timer.unref();
+  app.once('close', () => {
+    look();
+    done = true;
+    clearInterval(timer);
+  });
 }

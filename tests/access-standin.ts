@@ -50,6 +50,8 @@ export interface AccessStandIn {
   list: TestList;
   /** Every call's op, in order (as the list read it). */
   calls: string[];
+  /** Every call that reached the stand-in, answered or not (a silent or error stand-in's too). */
+  tries: number;
   /** As the list answers; never (Drashti hears nothing); 503; or unsigned. */
   mode: StandInMode;
   /** Answer each POST with Google's redirect (the default), or at once. */
@@ -165,6 +167,7 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? '/', base);
+      if (req.method === 'POST' && url.pathname === EXEC) standIn.tries += 1;
       if (standIn.mode === 'silent') {
         held.add(res);
         res.on('close', () => held.delete(res));
@@ -255,6 +258,7 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
     approver: list.props.approverEmail,
     list,
     calls: [],
+    tries: 0,
     mode: 'answer',
     redirect: true,
     tamper: null,

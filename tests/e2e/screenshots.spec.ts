@@ -2552,11 +2552,13 @@ test('access by Gmail, the lock screen: Request Access with a placeholder Gmail,
 
 test('access by Gmail, live: the bar saying when access ends, the bar with no internet while the show goes on, then the stop once access is removed (Session 54)', async () => {
   test.setTimeout(180_000);
-  // A check every 6 s with 2 s to answer (test switches), and the stop an hour after the last answer, as it is.
+  // A check every 6 s with 2 s to answer (test switches), the stop an hour after the last answer, as it is, and the
+  // line once three checks in a row have had no answer (Session 55: about 2 minutes, a few seconds here).
   const { app, access: list } = await launchApp({
     DRASHTI_TEST_ACCESS_CHECK_MS: '6000',
     DRASHTI_TEST_ACCESS_TIMEOUT_MS: '2000',
     DRASHTI_TEST_ACCESS_STOP_MS: '3600000',
+    DRASHTI_TEST_ACCESS_BAR_MS: '12000',
   });
   const watch = closedWatch(app);
   try {
@@ -2573,9 +2575,9 @@ test('access by Gmail, live: the bar saying when access ends, the bar with no in
       ok: true,
     });
     await expect(win.getByTestId('access-ends-notice')).toHaveCount(0, { timeout: 30_000 });
-    // No answer from the list (as with no internet): the bar under the header, while the show goes on.
+    // No answer from the list (as with no internet): the line under the top bar, while the show goes on.
     stopAnswering(list);
-    await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
+    await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 45_000 });
     await shot(win, 'access-offline');
     // An answer again takes it away; then this Gmail revoked: everything stops at the next check.
     answerAgain(list);

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DrashtiBridge } from '../../src/shared/bridge';
 import type { AccessStandIn } from '../access-standin';
-import { type AccessOptions, letInBeforeStart } from './access';
+import { type AccessOptions, letInBeforeStart, sayIfFirstCheckMissed } from './access';
 import type { EngineState } from '../../src/shared/engine/state';
 
 /** Globals inside our pages, for code passed to page.evaluate(). */
@@ -111,6 +111,8 @@ export async function launchApp(
   });
   sayIfItStops(app);
   sayIfQuittingIsSlow(app, userData);
+  // A first access check with no answer, said in the test's output (Session 55, question 36).
+  sayIfFirstCheckMissed(app, userData);
   followDataFolder(app, userData, running, userDataDir === undefined);
   return { app, userData, access: lock.standIn };
 }

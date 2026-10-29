@@ -14,7 +14,10 @@ export type AccessPhase =
   | 'locked'
   /** Let in, and the last check was answered. */
   | 'in'
-  /** Let in, but the list has not answered for a while (no internet): Drashti keeps working, for up to an hour. */
+  /**
+   * Let in, and the list has not answered for about 2 minutes, three checks in a row (no internet; Session 55): the bar
+   * says so. Drashti keeps working, for up to an hour from the last answer.
+   */
   | 'warning'
   /** Stopped: revoked, rejected, unknown, the length ended, or an hour with no answer. Only Quit works. */
   | 'stopped';
@@ -58,7 +61,7 @@ export interface AccessView {
   /** This computer's Gmail is the owner's: only then the Access List. */
   owner: boolean;
   reason: AccessReason | null;
-  /** While 'warning' (no internet): how long it keeps working until the stop, in ms, as of when this view was made. */
+  /** While 'warning' (the bar): how long it keeps working until the stop, in ms, as of when this view was made. */
   stopsInMs: number | null;
   /** The request made from this computer, while it waits or was answered. */
   request: AccessRequestView | null;
@@ -137,12 +140,12 @@ export const NO_ANSWER_STOP_TEXT =
 export const STOPPED_WHAT_TEXT =
   'The screens, the stream and recording, the nodes and the phones have all stopped. Only Quit works.';
 
-/** While the list does not answer (no internet): how long Drashti keeps working (the owner's decision of 28 Oct 2026). */
+/**
+ * While the list has not answered for about 2 minutes (no internet): how long Drashti keeps working, in the owner's
+ * own words (Session 55, 29 Oct 2026; the hour itself is his decision of 28 Oct 2026). One line under the top bar.
+ */
 export const offlineLine = (ms: number): string =>
-  `No internet: Drashti keeps working for ${leftText(ms)} more, then stops unless it can check your access`;
-/** What to do meanwhile, under that line. */
-export const OFFLINE_TEXT =
-  'The show goes on: the screens, the sound, the second computer and the phones, and the stream waits and carries on by itself once this computer is online again (the recording keeps going). Join another Wi-Fi or a phone’s hotspot: this goes once Drashti can check again.';
+  `Can’t reach the access list: Drashti keeps working for ${leftText(ms)} more.`;
 
 /** What the lock screen says for each reason Drashti is not let in. */
 export const LOCK_REASON_TEXT: Record<AccessReason, string> = {

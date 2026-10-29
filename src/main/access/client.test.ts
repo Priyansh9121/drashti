@@ -8,6 +8,7 @@ import { switchesFor } from '../switches';
 import {
   AccessClient,
   accessTarget,
+  GIVEN_UP,
   nodeTransport,
   type AccessReply,
   type AccessResult,
@@ -131,6 +132,31 @@ describe('the checks', () => {
     });
     // This computer's clock went back a second: `at` still rises.
     expect(Number(second?.['at'])).toBe(Number(first?.['at']) + 1);
+  });
+
+  it('a check can be given up before its time limit (the network came back): no answer, said as such, at once', async () => {
+    const s = await stand();
+    const c = clientOf(s, 'client-given-up', { timeoutMs: 20_000 });
+    const grant = s.grant(PERSON, placeholderComputer('client-given-up'));
+    // The list says nothing: the check waits, as one sent on a network with no internet behind it does.
+    s.mode = 'silent';
+    const give = new AbortController();
+    const started = Date.now();
+    const asked = c.check(grant, NO_ACTIVITY, give.signal);
+    await expect.poll(() => s.tries).toBe(1);
+    give.abort();
+    expect(await asked).toEqual({ ok: false, kind: 'no-answer', reason: 'network', detail: GIVEN_UP });
+    expect(Date.now() - started).toBeLessThan(5000);
+    // A check not given up still has its own time limit, and one given up before it goes is never sent.
+    s.mode = 'answer';
+    const gone = new AbortController();
+    gone.abort();
+    expect(await c.check(grant, NO_ACTIVITY, gone.signal)).toMatchObject({
+      reason: 'network',
+      detail: GIVEN_UP,
+    });
+    expect(s.tries).toBe(1);
+    expect(value(await c.check(grant, NO_ACTIVITY))).toMatchObject({ status: 'in' });
   });
 });
 

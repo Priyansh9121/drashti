@@ -127,6 +127,9 @@ export type AccessResult<T> =
   /** Nothing believable came back: as if the list were not there. */
   | { ok: false; kind: 'no-answer'; reason: AccessNoAnswer; detail: string };
 
+/** A call given up before its time limit (the network came back while it waited on the old one, or a stop). */
+export const GIVEN_UP = 'Given up before it answered.';
+
 const noAnswer = (reason: AccessNoAnswer, detail: string): AccessResult<never> => ({
   ok: false,
   kind: 'no-answer',
@@ -263,14 +266,18 @@ export class AccessClient {
       : r;
   }
 
-  /** Every 15 s: still let in, and until when? With this computer's totals since its token was used. */
+  /**
+   * Every 15 s: still let in, and until when? With this computer's totals since its token was used. `stop` gives it up
+   * before its time limit (the network came back while it waited on the old one: service.ts asks again at once).
+   */
   check(
     grant: AccessGrant,
     activity: AccessActivity,
+    stop?: AbortSignal,
   ): Promise<
     AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean; endsAt: number | null }>
   > {
-    return this.call('check', { activity }, checkSchema, grant);
+    return this.call('check', { activity }, checkSchema, grant, stop);
   }
 
   /** The owner's: every Gmail on the list. */
@@ -340,6 +347,7 @@ export class AccessClient {
     fields: Record<string, unknown>,
     schema: z.ZodType<T>,
     grant?: AccessGrant,
+    stop?: AbortSignal,
   ): Promise<AccessResult<T>> {
     const nonce = randomBytes(16).toString('hex');
     const body: Record<string, unknown> = {
@@ -355,7 +363,7 @@ export class AccessClient {
       body['at'] = this.nextAt();
       body['mac'] = accessMac(grant.secret, body);
     }
-    const sent = await this.send(JSON.stringify(body));
+    const sent = await this.send(JSON.stringify(body), stop);
     return typeof sent === 'string' ? this.believe(sent, op, nonce, schema) : sent;
   }
 
@@ -374,8 +382,9 @@ export class AccessClient {
   }
 
   /** The call sent, and Google's redirect followed: the answer's text, or why there is none. */
-  private async send(body: string): Promise<string | AccessResult<never>> {
-    const signal = AbortSignal.timeout(this.timeoutMs);
+  private async send(body: string, stop?: AbortSignal): Promise<string | AccessResult<never>> {
+    const limit = AbortSignal.timeout(this.timeoutMs);
+    const signal = stop ? AbortSignal.any([limit, stop]) : limit;
     let url = this.o.url;
     let method: 'GET' | 'POST' = 'POST';
     let payload: string | null = body;
@@ -406,6 +415,7 @@ export class AccessClient {
       }
       return noAnswer('redirect', 'Sent on too many times.');
     } catch (error) {
+      if (stop?.aborted) return noAnswer('network', GIVEN_UP);
       if (signal.aborted) return noAnswer('timeout', `No answer within ${String(this.timeoutMs / 1000)} s.`);
       return noAnswer('network', error instanceof Error ? error.message : String(error));
     }
