@@ -21,9 +21,10 @@ import {
 } from './helpers';
 
 /*
- * Audience and Stage (Session 50): two switches, each giving this computer's screens of its kind back to the
- * computer, and taking them again. Off closes those output windows; the show carries on (the engine, LIVE, the
- * other switch's screens). Turning one off asks first while its screens show something; on never asks. The
+ * Audience and Stage (Session 50): two switches. Audience gives this computer's hall screens back to the computer,
+ * and takes them again: off closes those output windows. Stage off (Session 55) keeps the stage screens, which show
+ * exactly the audience picture until it is on again. The show carries on (the engine, LIVE, the other switch's
+ * screens). Turning one off asks first while its screens show something; on never asks. The
  * status bar says "Audience off" or "Stage off" with Turn on, in Simple Mode too (which can only turn them on).
  * Both are on again at every start. Mod+1 and Mod+2 are the page's keys: the View menu's items show them without
  * binding them (Session 51), so one press acts once.
@@ -164,13 +165,15 @@ test('Mod+1 asks first while the hall’s screens show something; off closes onl
   await app.close();
 });
 
-test('Mod+2 asks first whenever a stage screen is open, closes only the stage screens, and the status bar’s Turn on brings them back; a Remote is told', async () => {
+test('Mod+2 asks first whenever a stage screen is open; off, the stage screens stay and show the audience picture; the status bar’s Turn on brings their own view back; a Remote is told', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp({ ...OUTPUTS, ...NETWORK_ENV });
   const win = await operatorPage(app);
   await operatorReady(win);
   const { stage } = await hallAndStage(win, app);
   const hallWindow = await outputWith(app, 'audience');
+  const stageWindow = await outputWith(app, 'stage');
+  const stageShows = () => stageWindow.getByTestId('output-root').getAttribute('data-stage-shows');
   const { port } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder phone');
   const hallAnswer = () => apiCall(port, '/api/v1/hall', { token }).then((r) => r.json['switches']);
@@ -180,24 +183,31 @@ test('Mod+2 asks first whenever a stage screen is open, closes only the stage sc
   const ask = win.getByTestId('screen-switch-ask');
   await win.keyboard.press(`${MOD}+2`);
   await expect(ask).toContainText('Turn Stage off?');
-  await expect(ask).toContainText('The stage screens will show this computer’s desktop.');
+  await expect(ask).toContainText('The stage screens will show the audience picture.');
+  expect(await stageShows()).toBe('standard');
   await ask.getByRole('button', { name: 'Turn off' }).click();
-  await expect.poll(() => openRoles(app)).toEqual(['audience']);
-  // The hall's window is the same one, never closed or opened again.
+  // Session 55: the stage screen stays, the same window, and shows exactly the audience picture.
+  await expect.poll(stageShows).toBe('audience');
+  await expect(stageWindow.getByTestId('stage-audience-picture')).toBeVisible();
+  expect(await openRoles(app)).toEqual(['audience', 'stage']);
+  // Both windows are the same ones, never closed or opened again.
   expect(hallWindow.isClosed()).toBe(false);
-  expect((await standing(win, stage))?.state).toBe('switched-off');
+  expect(stageWindow.isClosed()).toBe(false);
+  expect((await standing(win, stage))?.state).toBe('showing');
   const off = win.getByTestId('switch-off-stage');
   await expect(off).toContainText('Stage off');
   await expect(win.getByTestId('switch-stage')).toContainText('Off');
   // A Remote is told which are off (and since Session 54 turns them as the window does: phone-desktop.spec.ts).
   await expect.poll(hallAnswer).toEqual({ audience: true, stage: false });
 
-  // One click in the status bar: on again, never asked.
+  // One click in the status bar: on again, never asked, the stage view in the same window.
   await off.getByRole('button', { name: 'Turn on Stage' }).click();
-  await expect.poll(() => openRoles(app)).toEqual(['audience', 'stage']);
+  await expect.poll(stageShows).toBe('standard');
+  expect(await openRoles(app)).toEqual(['audience', 'stage']);
   await expect(off).toHaveCount(0);
   await expect(ask).toHaveCount(0);
   expect(hallWindow.isClosed()).toBe(false);
+  expect(stageWindow.isClosed()).toBe(false);
   await expect.poll(hallAnswer).toEqual({ audience: true, stage: true });
   await app.close();
 });

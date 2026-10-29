@@ -353,7 +353,6 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       groupName: s.groupName,
       role: s.role,
       feed: s.feed,
-      testCardUntil: null,
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
       scaling: s.scaling,

@@ -1,5 +1,5 @@
-import { matchDisplays } from '../../shared/display-match';
-import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
+import { keyToSave, matchDisplays, sameKey } from '../../shared/display-match';
+import { CLOSES_WINDOWS, type ScreenSwitch, type ScreenSwitches } from '../../shared/screen-switches';
 import type { DisplayInfo, DisplayKey, ScreenConfig, ScreenStatus } from '../../shared/screens';
 
 /** The parts of an output window the manager needs. */
@@ -47,15 +47,6 @@ const realLater = (fn: () => void, ms: number) => {
   };
 };
 
-const sameKey = (a: DisplayKey, b: DisplayKey) =>
-  a.id === b.id &&
-  a.label === b.label &&
-  a.pixelWidth === b.pixelWidth &&
-  a.pixelHeight === b.pixelHeight &&
-  a.x === b.x &&
-  a.y === b.y &&
-  a.internal === b.internal;
-
 /**
  * Keeps one output window per enabled, assigned screen whose display is
  * connected. Call reconcile() at startup, after every screen change and
@@ -97,11 +88,14 @@ export class OutputManager {
     if (!held.window.isDestroyed()) held.window.close();
   }
 
-  /** Is this screen's switch off (Session 50)? */
+  /**
+   * Is this screen's switch off (Session 50), its window closed? Only Audience closes them: with Stage off (Session
+   * 55) the stage screens stay, showing the audience picture from the engine's state.
+   */
   private switchedOff(screen: ScreenConfig): boolean {
     if (this.off.size === 0 || !this.deps.switchOf) return false;
     const which = this.deps.switchOf(screen);
-    return which !== null && this.off.has(which);
+    return which !== null && this.off.has(which) && CLOSES_WINDOWS[which];
   }
 
   reconcile(): void {
@@ -138,8 +132,10 @@ export class OutputManager {
       const displayId = matches.get(screen.id);
       const display = displays.find((d) => d.id === displayId);
       if (!display) continue;
-      // Remember the display's current fingerprint so the next start matches exactly.
-      if (!sameKey(screen.displayKey, display.key)) this.deps.saveDisplayKey(screen.id, display.key);
+      // Remember the display's current fingerprint so the next start matches exactly: its own identity too
+      // (Session 55), kept as saved while the display's is not known now.
+      const key = keyToSave(screen.displayKey, display);
+      if (!sameKey(screen.displayKey, key)) this.deps.saveDisplayKey(screen.id, key);
       const entry = this.open.get(screen.id);
       const held = this.held.get(screen.id);
       if (entry) entry.window.setBounds(display.bounds);

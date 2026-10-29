@@ -70,7 +70,47 @@ export class StageLayoutRepo {
     );
   }
 
+  /** Its name only (Session 55: Rename…), its boxes as they are. */
+  rename(id: string, name: string): boolean {
+    return (
+      this.db.prepare(`UPDATE stage_layouts SET name = ?, updated_at = ${NOW} WHERE id = ?`).run(name, id)
+        .changes > 0
+    );
+  }
+
   remove(id: string): boolean {
     return this.db.prepare('DELETE FROM stage_layouts WHERE id = ?').run(id).changes > 0;
+  }
+
+  /** Its place in the list (0 first), or -1 when there is none of that id. */
+  placeOf(id: string): number {
+    return this.list().findIndex((l) => l.id === id);
+  }
+
+  /**
+   * One removed put back as it was (Session 55: Undo of Delete), with its own id, at this place in the list (0
+   * first; past the end, last). False when one of that id is there already.
+   */
+  restore(layout: StageLayout, at: number): boolean {
+    return this.db.transaction(() => {
+      if (this.get(layout.id)) return false;
+      const ids = this.list().map((l) => l.id);
+      ids.splice(Math.max(0, Math.min(at, ids.length)), 0, layout.id);
+      this.db
+        .prepare(
+          `INSERT INTO stage_layouts (id, name, definition, source_kind, position) VALUES (?, ?, ?, 'drashti', 0)`,
+        )
+        .run(
+          layout.id,
+          layout.name,
+          JSON.stringify({
+            background: layout.background,
+            boxes: layout.boxes,
+          } satisfies StageLayoutDefinition),
+        );
+      const place = this.db.prepare('UPDATE stage_layouts SET position = ? WHERE id = ?');
+      ids.forEach((id, i) => place.run(i, id));
+      return true;
+    })();
   }
 }

@@ -9,7 +9,6 @@ import { Monitor, Play } from '../ui/icons';
 import { LitLamp } from '../ui/Mark';
 import { useLeaving } from '../ui/motion';
 import { openSetup } from './setup-store';
-import { ShowOnButton, useDisplayOffer } from '../screens/ShowOn';
 
 /*
  * The first start (Session 26g): once per library, the lamp lights (over --dur-light; with reduced
@@ -17,6 +16,7 @@ import { ShowOnButton, useDisplayOffer } from '../screens/ShowOn';
  * wizard, as before, at its Screens step; Try a practice show first puts placeholder slides on this
  * screen only, and leaving it comes back here; Skip for now leaves the empty places to lead, step
  * 1's Import… the one primary. Once set up or skipped, it never comes again for this library.
+ * Session 55: the screens set themselves (a display plugged in is used at once), and it says so; Show on is gone.
  */
 
 export const useWelcome = create<{ open: boolean }>(() => ({ open: false }));
@@ -58,7 +58,6 @@ export function Welcome() {
 
 function WelcomeDialog() {
   const titleId = useId();
-  const offered = useDisplayOffer();
   const panel = useRef<HTMLDivElement>(null);
   // Esc is Skip for now: the window behind is ready, with its empty places leading.
   useFocusTrap(panel, skipForNow);
@@ -92,27 +91,17 @@ function WelcomeDialog() {
           style={{ ['--i' as string]: 1 }}
           className="max-w-lg text-base"
         >
-          Let’s find your screens first. It takes a click or two, and nothing reaches the hall’s screens until
-          you choose a display for them.
+          The screens set themselves: a display plugged in shows the audience picture, and the next one the
+          stage. Each display remembers its job. Set Up Screens… changes them, with the sound and the stream.
         </p>
         <div
           data-motion="words"
           style={{ ['--i' as string]: 2 }}
           className="mt-2 flex flex-wrap items-center justify-center gap-2"
         >
-          {/* Session 44: with a display free for the hall, showing on it is the one obvious step. */}
-          {offered ? (
-            <>
-              <ShowOnButton display={offered} size="lg" first onShown={answer} />
-              <Button size="lg" icon={Monitor} onClick={setUpTheScreens}>
-                Set Up Screens…
-              </Button>
-            </>
-          ) : (
-            <Button variant="primary" size="lg" icon={Monitor} data-autofocus onClick={setUpTheScreens}>
-              Set Up Screens…
-            </Button>
-          )}
+          <Button variant="primary" size="lg" icon={Monitor} data-autofocus onClick={setUpTheScreens}>
+            Set Up Screens…
+          </Button>
           <Button size="lg" icon={Play} onClick={tryPractice} data-testid="welcome-practice">
             Try a practice show first
           </Button>
@@ -123,7 +112,7 @@ function WelcomeDialog() {
         <p data-motion="words" style={{ ['--i' as string]: 3 }} className="max-w-lg text-sm text-muted">
           A practice show uses placeholder slides on this screen only. Later,{' '}
           <b className="text-fg">Set Up Screens…</b> (in <b className="text-fg">View</b>) or{' '}
-          <b className="text-fg">Screens</b> sets the screens up.
+          <b className="text-fg">Screens</b> changes what each display shows.
         </p>
       </div>
     </div>,

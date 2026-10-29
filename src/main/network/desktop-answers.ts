@@ -34,7 +34,7 @@ import {
   SWITCH_NAMES,
 } from '../../shared/screen-switches';
 import type { CoverOptions, ScreensResult, ScreensSnapshot } from '../../shared/screens';
-import { GROUP_ROLES, SCALING_MODES } from '../../shared/screens';
+import { DISPLAY_JOB_WORDS, DISPLAY_JOBS, GROUP_ROLES, SCALING_MODES } from '../../shared/screens';
 import { canvasSizeSchema, displayIdSchema, nameSchema } from '../../shared/screens-schema';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
 import type { AnnouncementResult, AnnouncementsView } from '../../shared/announcements';
@@ -42,6 +42,7 @@ import type { NewFromWordsResult } from '../../shared/library';
 import { MIDI_LEARNABLE, type MidiLearnable, type MidiResult, type MidiSettings } from '../../shared/midi';
 import type { PlaylistResult } from '../../shared/playlists';
 import type { PlaylistChanges } from '../playlists/playlist-ipc';
+import type { StageChoiceResult } from '../../shared/stage-layouts';
 import { DesktopConsent, type ConsentQuestion } from './desktop-consent';
 import { RateLimiter } from './limits';
 
@@ -70,6 +71,8 @@ export interface DesktopScreens {
   /** `options` only ever from the computer's own yes (desktop-consent.ts), never from what a phone sent. */
   assignDisplay(groupId: unknown, displayId: unknown, options?: CoverOptions): ScreensResult;
   updateScreen(id: unknown, patch: unknown, options?: CoverOptions): ScreensResult;
+  /** A display's job (Session 55): Audience, Stage or Not used. */
+  setDisplayJob(displayId: unknown, job: unknown, options?: CoverOptions): ScreensResult;
   removeScreen(id: unknown): ScreensResult;
   /** Each output shows its name for a few seconds. */
   identify(): void;
@@ -139,8 +142,20 @@ export interface DesktopQueue {
   takeOff(input: unknown): AnnouncementResult;
 }
 
+/**
+ * The stage layouts (Session 55): each by its id and name, the one every stage screen shows, and that one chosen as
+ * the Stage screen panel's Layout chooses it (stage-layout-service.ts).
+ */
+export interface DesktopStageLayouts {
+  list(): { id: string; name: string }[];
+  chosenId(): string | null;
+  choose(id: unknown): StageChoiceResult;
+}
+
 /** The Drashti computer's own things a Remote sets up, as the main process does them for the window. */
 export interface DesktopActs {
+  /** The stage layout every stage screen shows (Session 55; left out, a test of something else: a phone cannot). */
+  stageLayouts?: DesktopStageLayouts;
   screens: DesktopScreens;
   switches: DesktopSwitches;
   inputs: DesktopInputs;
@@ -178,6 +193,7 @@ export type DesktopOp =
   | 'screens.deleteGroup'
   | 'screens.useDisplay'
   | 'screens.change'
+  | 'screens.displayJob'
   | 'screens.remove'
   | 'screens.keep'
   | 'screens.goBack'
@@ -207,7 +223,9 @@ export type DesktopOp =
   | 'queue'
   | 'queue.approve'
   | 'queue.reject'
-  | 'queue.takeOff';
+  | 'queue.takeOff'
+  | 'stage.layouts'
+  | 'stage.layout';
 
 /** The library's ops (Session 54): each a change the window makes too. */
 export const LIBRARY_OPS = [
@@ -226,7 +244,7 @@ export const LIBRARY_OPS = [
 export type LibraryOp = (typeof LIBRARY_OPS)[number];
 
 /** The ops that read only (all others are limited per phone; the windows' list too, which takes the computer a while). */
-const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs', 'midi', 'queue']);
+const READS: ReadonlySet<DesktopOp> = new Set(['screens', 'inputs', 'midi', 'queue', 'stage.layouts']);
 
 const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
   status: 200,
@@ -236,10 +254,13 @@ const deny = (status: number, message: string): DeviceAnswer => ({ status, body:
 
 // What each request may carry, and nothing else: a phone's consent to cover the controls is never among them.
 const groupName = z.object({ name: nameSchema }).strict();
+/** The stage layout chosen (Session 55): its id, or null for the Standard stage screen. */
+const stageLayoutRef = z.object({ layoutId: idSchema.nullable() }).strict();
 const groupRef = z.object({ groupId: idSchema }).strict();
 const renamed = z.object({ groupId: idSchema, name: nameSchema }).strict();
 const role = z.object({ groupId: idSchema, role: z.enum(GROUP_ROLES) }).strict();
 const useDisplay = z.object({ groupId: idSchema, displayId: displayIdSchema }).strict();
+const displayJob = z.object({ displayId: displayIdSchema, job: z.enum(DISPLAY_JOBS) }).strict();
 const screenRef = z.object({ screenId: idSchema }).strict();
 const screenChange = z
   .object({
@@ -365,6 +386,7 @@ export class DesktopAnswers {
       groups: snapshot.groups.filter((g) => g.role !== 'stream'),
       status: snapshot.status,
       nodes: snapshot.nodes,
+      uses: snapshot.uses,
       switches: this.acts.switches.get(),
       asksFirst: bothSwitches((which) => this.acts.switches.asksFirst(which)),
       pending: this.acts.screens.pending(),
@@ -427,6 +449,20 @@ export class DesktopAnswers {
             s.assignDisplay(groupId, displayId, { coverOperator: true }),
           );
         return done(result, `put ${what}`);
+      }
+      case 'screens.displayJob': {
+        const a = displayJob.safeParse(args);
+        if (!a.success) return deny(400, 'A display shows the audience picture, the stage, or nothing.');
+        const { displayId, job } = a.data;
+        // Never with the phone's consent: the window's coverOperator is the operator's alone.
+        const result = s.setDisplayJob(displayId, job);
+        const display = s.snapshot().displays.find((d) => d.id === displayId);
+        const what = `${display ? describeDisplay(display) : 'a display'} to ${DISPLAY_JOB_WORDS[job]}`;
+        if (!result.ok && result.confirm === 'covers-operator')
+          return this.askToCover(device.id, who, `to set ${what}`, op, () =>
+            s.setDisplayJob(displayId, job, { coverOperator: true }),
+          );
+        return done(result, `set ${what}`);
       }
       case 'screens.change': {
         const a = screenChange.safeParse(args);
@@ -491,9 +527,33 @@ export class DesktopAnswers {
       case 'queue.reject':
       case 'queue.takeOff':
         return this.queue(op, args, who);
+      case 'stage.layouts':
+      case 'stage.layout':
+        return this.stageLayout(op, args, who);
       default:
         return this.library(op, args, who);
     }
+  }
+
+  /**
+   * The stage layout every stage screen shows, from a phone (Session 55): the layouts by name and the one chosen, and
+   * another chosen (by its id; null for the Standard stage screen), as the Stage screen panel's Layout chooses it.
+   */
+  private stageLayout(
+    op: 'stage.layouts' | 'stage.layout',
+    args: Record<string, unknown>,
+    who: string,
+  ): DeviceAnswer {
+    const layouts = this.acts.stageLayouts;
+    if (!layouts) return deny(404, 'Drashti cannot choose the stage layout from a phone here.');
+    const view = () => ({ layouts: layouts.list(), chosenId: layouts.chosenId() });
+    if (op === 'stage.layouts') return ok(view());
+    const a = stageLayoutRef.safeParse(args);
+    if (!a.success) return deny(400, 'Which stage layout? Send {"layoutId": "…"}, or null for Standard.');
+    const chosen = layouts.choose(a.data.layoutId);
+    if (!chosen.ok) return deny(409, chosen.message);
+    this.ctx.log(`Network: ${who} chose the stage layout every stage screen shows`);
+    return ok(view());
   }
 
   /**

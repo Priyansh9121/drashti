@@ -55,6 +55,7 @@ import { elapsedAt, type TimerDefinition, type TimerRun, zeroAt } from '../../sh
 import { BUILT_IN_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } from '../../shared/timer-slides';
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { remapPosition } from '../../shared/order';
+import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '../../shared/stage-layouts';
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
@@ -358,6 +359,11 @@ export class ShowEngine {
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
   private bookkeeping = false;
+  /**
+   * The chosen video input put up by LIVE's one press (Session 55, toggleInput), as it went up, and the background it
+   * replaced: pressed again while that showing is still up, that background comes back.
+   */
+  private inputWas: { inputId: string; startedAt: number; was: BackgroundLayer | null } | null = null;
 
   constructor(
     private readonly source: SlideSource,
@@ -756,6 +762,30 @@ export class ShowEngine {
     const id = this.state.look.id;
     const look = (id ? looks.look(id) : null) ?? looks.start();
     return this.apply([{ type: 'look/set', look }]);
+  }
+
+  /**
+   * The stage screens (Session 55): the layout chosen for every one, Stage off and the chosen video input, each as the
+   * main process says it changed, the rest kept. Never a change to the audience's show: no layer changes, and what
+   * Back and Put it back would undo stays. Stage on and no input are left out, as a state saved before keeps them.
+   */
+  setStage(change: {
+    layout?: StageLayout | null;
+    off?: boolean;
+    /** The chosen video input, or null: none. */
+    input?: StageInput | null;
+  }): CommandResult {
+    const was = this.state.stage ?? NO_STAGE;
+    const layout = change.layout === undefined ? was.layout : change.layout;
+    const off = change.off ?? was.off === true;
+    const input = change.input === undefined ? was.input : change.input;
+    const stage: StageState = { layout, ...(off ? { off: true } : {}), ...(input ? { input } : {}) };
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'stage/set', stage }]);
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
   /**
@@ -1705,6 +1735,35 @@ export class ShowEngine {
     return { kind: 'input', ...listed, startedAt: at, fade: { at, durationMs: INPUT_FADE_MS } };
   }
 
+  /**
+   * LIVE's one press for the chosen video input (Session 55): up as the audience's background, dissolving in from
+   * what was there, the slide staying over it; pressed while it is up, off again. Put up by this press, the background
+   * it replaced comes back, dissolving in where it can (a picture, a video, another input), while that showing is
+   * still up; put up some other way, or with nothing before, the background is empty. The stage screens never follow
+   * it: only their own switch shows them the audience picture.
+   */
+  private toggleInput(inputId: string): Resolved {
+    const bg = this.state.layers.background;
+    if (bg?.kind === 'input' && bg.inputId === inputId) {
+      const kept = this.inputWas;
+      this.inputWas = null;
+      const was = kept?.inputId === inputId && kept.startedAt === bg.startedAt ? kept.was : null;
+      if (!was) return { ok: true, actions: [{ type: 'layer/clear', layer: 'background' }] };
+      const at = this.now();
+      const back: BackgroundLayer =
+        was.kind === 'media' || was.kind === 'input'
+          ? { ...was, fade: { at, durationMs: INPUT_FADE_MS } }
+          : was;
+      return { ok: true, actions: [{ type: 'background/set', background: back }] };
+    }
+    const input = this.options.videoInput?.(inputId) ?? null;
+    if (!input)
+      return { ok: false, error: 'unknown-input', message: 'That video input is not on this computer.' };
+    const layer = this.inputLayer(input);
+    this.inputWas = { inputId, startedAt: layer.startedAt, was: bg };
+    return { ok: true, actions: [{ type: 'background/set', background: layer }] };
+  }
+
   /** An input background as this computer's list has it now (its time kept), or null when it is not there. */
   private asListed(layer: InputBackground): InputBackground | null {
     const input = this.options.videoInput?.(layer.inputId) ?? null;
@@ -2226,6 +2285,8 @@ export class ShowEngine {
           return { ok: false, error: 'unknown-input', message: 'That video input is not on this computer.' };
         return { ok: true, actions: [{ type: 'background/set', background: this.inputLayer(input) }] };
       }
+      case 'toggleInput':
+        return this.toggleInput(command.inputId);
     }
   }
 

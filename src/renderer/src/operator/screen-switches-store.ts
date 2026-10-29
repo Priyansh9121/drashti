@@ -11,8 +11,9 @@ import { useScreens } from '../screens/screens-store';
 
 /*
  * Audience and Stage (Session 50), as the operator window keeps them: which are on, as the main process says,
- * and the one waiting for its question. Off closes this computer's screens of that kind, so their displays go
- * back to the computer; on opens them again where they were. Turning one off asks first while its screens show
+ * and the one waiting for its question. Audience off closes this computer's hall screens, so their displays go
+ * back to the computer, and Stage off shows the audience picture on its stage screens (Session 55); on opens them
+ * again where they were. Turning one off asks first while its screens show
  * something (the top bar's switch, Mod+1 and Mod+2), and in the window's first moments, before it has the
  * screens (Session 51, S2-4); on never asks. Simple Mode only turns them on. Both are on at every start.
  *

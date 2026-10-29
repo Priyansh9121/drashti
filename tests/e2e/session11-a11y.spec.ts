@@ -67,7 +67,8 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win.getByTestId('looks-section')).toBeVisible();
   await expect(win.getByTestId('keyfill-hint')).toBeVisible();
-  await expect(win.getByTestId('look-stage-layout')).toBeVisible();
+  // Session 55: a stage group's settings say where its layout is chosen (the Stage screen panel), never per Look.
+  await expect(win.getByTestId('look-stage-layout-note')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'Screens with Looks, a stage group and a key and fill group');
   await win.getByTestId('edit-stage-layouts').click();
   const layouts = win.getByTestId('stage-layout-editor');

@@ -29,6 +29,14 @@ export function toDisplayInfo(d: Display, primaryId: number): DisplayInfo {
 
 let extraDisplays = 0;
 
+/** Each display's own identity (Session 55, display-ids.ts), as last read: none until it has been. */
+let identityOf: (d: DisplayInfo) => string | null = () => null;
+
+/** Where listDisplays finds each display's own identity (display-ids.ts's DisplayIds). */
+export function setDisplayIdentities(lookup: (d: DisplayInfo) => string | null): void {
+  identityOf = lookup;
+}
+
 /**
  * Development and tests only, with windowed outputs: pretend there are `n`
  * more displays, copies of the primary one, so several outputs can be tried
@@ -53,7 +61,18 @@ export function changeExtraDisplays(n: number): void {
   pretendChanged?.('pretend displays');
 }
 
+/** Tests only: the pretend displays changed some other way (their own identities: Session 55), as the system says. */
+export function pretendDisplaysChanged(): void {
+  pretendChanged?.('pretend displays');
+}
+
+/** The displays as Electron has them, each with its own identity as last read (Session 55). */
 export function listDisplays(): DisplayInfo[] {
+  return electronDisplays().map((d) => ({ ...d, key: { ...d.key, hardwareId: identityOf(d) } }));
+}
+
+/** The displays as Electron has them (and the tests' pretend ones), without their own identities. */
+export function electronDisplays(): DisplayInfo[] {
   const primaryId = screen.getPrimaryDisplay().id;
   const real = screen.getAllDisplays().map((d) => toDisplayInfo(d, primaryId));
   const primary = real.find((d) => d.primary);

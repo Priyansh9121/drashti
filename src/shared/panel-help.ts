@@ -59,7 +59,7 @@ export const PANEL_HELP = {
   stage: {
     title: 'Stage screen',
     doc: 'operator',
-    text: 'What the speaker and the singers see, never the hall: type a short message for them, such as “Two minutes left”, and send it; its own Clear takes it off. The stage layout’s timers are here too, with Start, Pause and Reset; Edit layout…, then New from a Template…, makes a ready-made timer layout, such as a countdown, and the stage screens show it at once. Edit layout… can also add the box “The audience picture, live”, to show them what the hall sees, on a stage tablet too: it says Audience off in its bottom left corner while the hall’s screens are off, and No audience screens when no group shows that picture, as a box of the audience screens’ state does.',
+    text: 'What the speaker and the singers see, never the hall: Layout chooses the one layout every stage screen shows, and Video input the input its video box shows. A short message for them, such as “Two minutes left”, goes up with Show and off with its own Clear; the timers in the layout are here too, with Start, Pause and Reset, and what each counts to, changed here at once. Edit layouts… makes, renames and deletes layouts, each with Undo, and New from a Template… makes a ready-made one, such as Pravachan and anchoring; with Stage off every stage screen shows exactly the audience picture.',
     guide: '**The stage message.**',
   },
   props: {
@@ -137,7 +137,7 @@ export const PANEL_HELP = {
   statusbar: {
     title: 'The status bar',
     doc: 'operator',
-    text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off or Stage off means this computer’s hall or stage screens are switched off, and Turn on brings them back where they were, asking nothing. After a screen is put on a display, or Shows or Sends is changed in Screens, Keep these screens? undoes the change in 15 seconds unless you press Keep.',
+    text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off means this computer’s hall screens are switched off, and Stage off that its stage screens show the audience picture; Turn on brings them back where they were, asking nothing. A display plugged in sets itself, said in a line under the top bar; when a change made by hand puts a screen on the display with these controls, Keep these screens? undoes it in 15 seconds unless you press Keep.',
     guide: '**Along the bottom:**',
   },
   audio: {

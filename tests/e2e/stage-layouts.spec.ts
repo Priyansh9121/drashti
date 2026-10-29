@@ -17,8 +17,9 @@ import {
 /*
  * Stage layouts (Session 11): with none chosen a stage screen is the Standard
  * stage screen, drawn as before; a layout made in the editor puts each box
- * where it was set; a stage group gets its layout through the live Look; the
- * stage display in a browser shows the same layout. The audience picture box
+ * where it was set; since Session 55 one layout is chosen for every stage
+ * screen in the Stage screen panel (until then a stage group got its layout
+ * through the live Look); the stage display in a browser shows the same layout. The audience picture box
  * (Session 50) draws what the hall's screens draw, black-out and the logo
  * too, under the stage message; the editor makes it no smaller than its line
  * needs, and leaves one saved smaller as it was (Session 53). The seeded
@@ -132,11 +133,15 @@ test('Standard is the stage screen as before; a layout made in the editor puts e
   await expect(editor.getByTestId('stage-layout-list')).toContainText('Placeholder band layout');
   await editor.getByRole('button', { name: 'Close stage layouts' }).click();
 
-  // Not on the stage until the live Look gives it to the stage group.
-  await expect(stage.getByTestId('stage-view')).toBeVisible();
-  const choose = win.getByTestId('screen-group').first().getByTestId('look-stage-layout');
-  await choose.selectOption({ label: 'Placeholder band layout' });
+  // Not on the stage until it is chosen for every stage screen, in the Stage screen panel (Session 55): Screens no
+  // longer offers it per Look.
+  await expect(win.getByTestId('screen-group').first().getByTestId('look-stage-layout')).toHaveCount(0);
   await win.getByRole('button', { name: 'Close screens' }).click();
+  await expect(stage.getByTestId('stage-view')).toBeVisible();
+  await win
+    .getByTestId('stage-message-control')
+    .getByTestId('stage-layout-choice')
+    .selectOption({ label: 'Placeholder band layout' });
   await expect(stage.getByTestId('stage-layout')).toBeVisible();
   await expect(stage.getByTestId('stage-view')).toHaveCount(0);
   const boxes = await boxesOn(stage);
@@ -256,8 +261,9 @@ test('the audience picture, live, as a stage layout box: what the hall shows, bl
   await editor.getByTestId('stage-layout-save').click();
   await expect(editor.getByTestId('stage-layout-list')).toContainText('Placeholder hall picture layout');
   await editor.getByRole('button', { name: 'Close stage layouts' }).click();
-  await win.getByTestId('look-stage-layout').selectOption({ label: 'Placeholder hall picture layout' });
   await win.getByRole('button', { name: 'Close screens' }).click();
+  // Chosen for every stage screen in the Stage screen panel (Session 55).
+  await win.getByTestId('stage-layout-choice').selectOption({ label: 'Placeholder hall picture layout' });
 
   const hall = await outputFor(app, hallId);
   const stage = await outputFor(app, stageId);

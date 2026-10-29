@@ -108,7 +108,9 @@ export const AudienceBox = memo(function AudienceBox({
           </div>
         </Placed>
       )}
-      {sized && view.kind === 'none' && <NoAudienceLine box={size} />}
+      {sized && view.kind === 'none' && (
+        <PictureBoxLine box={size} words={NO_AUDIENCE} testId="stage-audience-none" />
+      )}
     </div>
   );
 });
@@ -241,9 +243,9 @@ function PictureWords({ box, off, unseen }: { box: Size; off: boolean; unseen: r
  * muted grey, as large as Audience off would be there but never below the stage's smallest words, so it still
  * reads in a small box (noAudienceLine). Drawn in the box itself, not on a picture scaled into it, and measured
  * as a layout's boxes fit their words (fittedSize): it wraps at its spaces, and comes down only as far as it
- * must to fit.
+ * must to fit. The video input box (Session 55) says what it cannot draw the same way.
  */
-function NoAudienceLine({ box }: { box: Size }) {
+export function PictureBoxLine({ box, words, testId }: { box: Size; words: string; testId: string }) {
   const room = useRef<HTMLDivElement>(null);
   const line = useRef<HTMLParagraphElement>(null);
   const { size, inset } = noAudienceLine(box);
@@ -258,7 +260,7 @@ function NoAudienceLine({ box }: { box: Size }) {
     });
     p.style.fontSize = `${fitted}px`;
     p.setAttribute('data-fit-size', String(fitted));
-  }, [size, box.width, box.height, fonts]);
+  }, [size, box.width, box.height, fonts, words]);
   return (
     <div
       ref={room}
@@ -276,7 +278,7 @@ function NoAudienceLine({ box }: { box: Size }) {
     >
       <p
         ref={line}
-        data-testid="stage-audience-none"
+        data-testid={testId}
         style={{
           margin: 0,
           color: '#8b93a3',
@@ -288,7 +290,7 @@ function NoAudienceLine({ box }: { box: Size }) {
           overflowWrap: 'normal',
         }}
       >
-        {NO_AUDIENCE}
+        {words}
       </p>
     </div>
   );

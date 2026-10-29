@@ -52,6 +52,11 @@ describe('Simple Mode locks', () => {
       IPC.looks.setGroup,
       IPC.stageLayouts.save,
       IPC.stageLayouts.remove,
+      // Session 55: Rename…, Undo of Delete, and the layout every stage screen shows.
+      IPC.stageLayouts.rename,
+      IPC.stageLayouts.restore,
+      IPC.stageLayouts.choose,
+      IPC.videoInputs.choose,
       IPC.masks.save,
       IPC.masks.remove,
       IPC.midi.set,
@@ -73,6 +78,8 @@ describe('Simple Mode locks', () => {
       'swapPip',
       'placePip',
       'showInput',
+      // LIVE's one press for the chosen video input (Session 55), as showInput.
+      'toggleInput',
       'moveTo',
       'skip',
     ]);

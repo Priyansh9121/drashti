@@ -15,12 +15,7 @@ import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { openSetup } from '../setup/setup-store';
-import {
-  connectStageLayouts,
-  openStageLayouts,
-  STANDARD,
-  useStageLayouts,
-} from '../stage/stage-layouts-store';
+import { connectStageLayouts, openStageLayouts, STANDARD } from '../stage/stage-layouts-store';
 import { LAYOUT_SHOWS, LayoutSwitch } from '../stream/LayoutSwitch';
 import { usePreview } from '../stream/preview';
 import { connectStream, openStreamPanel, streamAction, useStream } from '../stream/stream-store';
@@ -259,12 +254,10 @@ function StageCard({
   onClose: () => void;
 }) {
   const showing = useShowing(groups);
-  const layouts = useStageLayouts((s) => s.layouts);
+  // The layout every stage screen shows (Session 55: chosen in the Stage screen panel, never per Look).
+  const chosen = useEngine((s) => s.state?.stage?.layout ?? null);
   const first = groups[0] ?? null;
   const settings = first && look ? (look.groups[first.id] ?? DEFAULT_GROUP_LOOK) : null;
-  const layoutName =
-    (settings?.stageLayoutId ? layouts?.find((l) => l.id === settings.stageLayoutId)?.name : null) ??
-    'Standard';
   return (
     <Card
       testId="screens-card-stage"
@@ -277,8 +270,8 @@ function StageCard({
         <>
           <LookLine look={look} />
           <p className="text-sm" data-testid="card-shows">
-            The performers’ view in the {layoutName === 'Standard' ? 'Standard' : `“${layoutName}”`} stage
-            layout, in {languageWords(settings.languages)}. The audience never sees it.
+            The performers’ view in the {chosen ? `“${chosen.name}”` : 'Standard'} stage layout, in{' '}
+            {languageWords(settings.languages)}. The audience never sees it.
           </p>
           <GroupsLine groups={groups} showing={showing} />
           <div className="flex flex-wrap gap-2">
@@ -287,7 +280,7 @@ function StageCard({
               icon={LayoutTemplate}
               data-testid="card-edit-stage-layout"
               onClick={() => {
-                openStageLayouts(settings.stageLayoutId ?? STANDARD);
+                openStageLayouts(chosen?.id ?? STANDARD);
               }}
             >
               Edit layout…

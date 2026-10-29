@@ -433,6 +433,7 @@ const bridge: DrashtiBridge = {
     add: (fields) => invoke(IPC.videoInputs.add, fields),
     update: (id, fields) => invoke(IPC.videoInputs.update, id, fields),
     remove: (id) => invoke(IPC.videoInputs.remove, id),
+    choose: (id) => invoke(IPC.videoInputs.choose, id),
     access: () => invoke(IPC.videoInputs.access),
     askAccess: () => invoke(IPC.videoInputs.askAccess),
     openSettings: () => invoke(IPC.videoInputs.openSettings),
@@ -522,6 +523,9 @@ const bridge: DrashtiBridge = {
     onChanged: (listener) => on(IPC.stageLayouts.changed, listener),
     save: (layoutId, layout) => invoke(IPC.stageLayouts.save, layoutId, layout),
     remove: (layoutId) => invoke(IPC.stageLayouts.remove, layoutId),
+    rename: (layoutId, name) => invoke(IPC.stageLayouts.rename, layoutId, name),
+    restore: (layout, at, chosen) => invoke(IPC.stageLayouts.restore, layout, at, chosen),
+    choose: (layoutId) => invoke(IPC.stageLayouts.choose, layoutId),
   },
   looks: {
     list: () => invoke(IPC.looks.list),
@@ -543,6 +547,10 @@ const bridge: DrashtiBridge = {
     assignDisplay: (groupId, displayId, options) =>
       invoke(IPC.screens.assignDisplay, groupId, displayId, options),
     updateScreen: (screenId, patch, options) => invoke(IPC.screens.updateScreen, screenId, patch, options),
+    setJob: (displayId, job, options) => invoke(IPC.screens.setJob, displayId, job, options),
+    lastSaid: () => invoke(IPC.screens.lastSaid),
+    saidClosed: (id) => invoke(IPC.screens.saidClosed, id),
+    onSaid: (listener) => on(IPC.screens.said, listener),
     removeScreen: (screenId) => invoke(IPC.screens.removeScreen, screenId),
     assignNodeDisplay: (groupId, nodeId, displayId) =>
       invoke(IPC.screens.assignNodeDisplay, groupId, nodeId, displayId),

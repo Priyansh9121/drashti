@@ -40,15 +40,42 @@ import { makeTestVideo } from './test-media';
  * tokens made at run time and never printed.
  */
 
-/** Keep these screens? asked (a test about it), the outputs windows on Drashti's pretend displays. */
+/** The first pretend display's id (src/main/outputs/electron-outputs.ts, EXTRA_DISPLAY_ID). */
+const PRETEND = 900_000_000;
+/**
+ * Keep these screens? asked (a test about it), the outputs windows on Drashti's pretend displays, the first counting
+ * as the controls' (Session 55: only an output there asks; DRASHTI_TEST_CONTROLS_DISPLAY).
+ */
 const ASKS = {
   ...NETWORK_ENV,
   DRASHTI_TEST_KEEP_SCREENS: '1',
   DRASHTI_WINDOWED_OUTPUTS: '1',
   DRASHTI_EXTRA_DISPLAYS: '2',
+  DRASHTI_TEST_CONTROLS_DISPLAY: String(PRETEND),
 };
-/** The first pretend display's id (src/main/outputs/electron-outputs.ts, EXTRA_DISPLAY_ID). */
-const PRETEND = 900_000_000;
+
+/** The computer's box, answered as the operator would: Cover the controls (1), or Cancel (0); what it said kept. */
+const answerBoxWith = (app: ElectronApplication, response: number) =>
+  app.evaluate(({ dialog }, r) => {
+    const said = globalThis as unknown as { boxes?: { message: string; detail: string }[] };
+    said.boxes = [];
+    Object.assign(dialog, {
+      showMessageBox: (...args: unknown[]) => {
+        const box = args.find((a) => typeof a === 'object' && a !== null && 'message' in a) as {
+          message: string;
+          detail: string;
+        };
+        said.boxes?.push({ message: box.message, detail: box.detail });
+        return Promise.resolve({ response: r, checkboxChecked: false });
+      },
+    });
+  }, response);
+
+/** What the computer's box said, each time it asked. */
+const boxes = (app: ElectronApplication) =>
+  app.evaluate(
+    () => (globalThis as unknown as { boxes?: { message: string; detail: string }[] }).boxes ?? [],
+  );
 
 const SIZES = [
   { name: 'a phone', width: 375, height: 812, layout: 'phone' },
@@ -118,6 +145,8 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const { app } = await launchApp(ASKS);
     const win = await operatorPage(app);
     await operatorReady(win);
+    // The computer's own box agrees each time a phone asks to cover the (pretend) controls.
+    await answerBoxWith(app, 1);
     const { base } = await networkOn(win);
     const browser = await (engine === 'webkit' ? webkit : chromium).launch();
     try {
@@ -161,8 +190,22 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           ).toHaveCount(1);
           await expect.poll(async () => (await screensNow(win)).groups.map((g) => g.name)).toContain(group);
 
-          // Use this display on a pretend one: it opens, and Keep these screens? asks on the phone, with its
-          // countdown, Keep holding the keyboard as in the window.
+          // A display's job in one tap (Session 55), on the other pretend display: the audience picture at once,
+          // asking nothing; Not used takes it off again.
+          const other = sheet.locator(
+            `[data-testid="remote-display"][data-display-id="${String(PRETEND + 1)}"]`,
+          );
+          await other.getByTestId('remote-display-job-audience').click();
+          await expect(other.getByTestId('remote-display-job')).toHaveAttribute('data-job', 'audience');
+          await expect.poll(() => openOutputs(app)).toBe(1);
+          expect(await pendingNow(win)).toBeNull();
+          await other.getByTestId('remote-display-job-none').click();
+          await expect(other.getByTestId('remote-display-job')).toHaveAttribute('data-job', 'none');
+          await expect.poll(() => openOutputs(app)).toBe(0);
+
+          // Use this display on the pretend one the controls are on: the computer agrees in its own box, it opens,
+          // and Keep these screens? asks on the phone, with its countdown, Keep holding the keyboard as in the
+          // window.
           await pretend.locator('select').selectOption({ label: group });
           await pretend.getByTestId('remote-use-display').click();
           const keep = p.getByTestId('remote-keep-screens');
@@ -173,7 +216,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           expect(Number(await countdown.getAttribute('data-seconds'))).toBeLessThanOrEqual(15);
           await expect(keep.getByTestId('remote-keep-screens-act')).toBeFocused();
           await expect.poll(() => openOutputs(app)).toBe(1);
-          expect(await pendingNow(win)).toMatchObject({ coversControls: false });
+          expect(await pendingNow(win)).toMatchObject({ coversControls: true });
           await expectNoSeriousA11yIssues(
             p,
             `Keep these screens? on ${at}`,
@@ -193,7 +236,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
           expect.soft(await tooSmall(p), `targets under 44 px: the screens on ${at}`).toEqual([]);
           expect.soft(await offTheSide(p), `off the side: the screens on ${at}`).toEqual([]);
 
-          // Off asks nothing; On again asks, and Go back on the phone puts it off again.
+          // Off asks nothing; On again (the computer agreeing) asks, and Go back on the phone puts it off again.
           await screen.getByTestId('remote-screen-on').click();
           await expect.poll(() => openOutputs(app)).toBe(0);
           await expect(keep).toHaveCount(0);
@@ -592,26 +635,6 @@ test('an output a phone would put over the controls is asked in the computer’s
     const made = await (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder Hall');
     if (!made.ok) throw new Error(made.message);
   });
-  // The computer's box, answered as the operator would: Cover the controls (1), or Cancel (0); what it said kept.
-  const answerBoxWith = (response: number) =>
-    app.evaluate(({ dialog }, r) => {
-      const said = globalThis as unknown as { boxes?: { message: string; detail: string }[] };
-      said.boxes = [];
-      Object.assign(dialog, {
-        showMessageBox: (...args: unknown[]) => {
-          const box = args.find((a) => typeof a === 'object' && a !== null && 'message' in a) as {
-            message: string;
-            detail: string;
-          };
-          said.boxes?.push({ message: box.message, detail: box.detail });
-          return Promise.resolve({ response: r, checkboxChecked: false });
-        },
-      });
-    }, response);
-  const boxes = () =>
-    app.evaluate(
-      () => (globalThis as unknown as { boxes?: { message: string; detail: string }[] }).boxes ?? [],
-    );
   const { base } = await networkOn(win);
   const phone = await device('webkit');
   const p = phone.page;
@@ -626,10 +649,10 @@ test('an output a phone would put over the controls is asked in the computer’s
     );
 
     // Agreed on the computer: the output opens over the controls, and the phone answers Keep these screens?.
-    await answerBoxWith(1);
+    await answerBoxWith(app, 1);
     await card.getByTestId('remote-use-display').click();
-    await expect.poll(() => boxes()).toHaveLength(1);
-    const [box] = await boxes();
+    await expect.poll(() => boxes(app)).toHaveLength(1);
+    const [box] = await boxes(app);
     expect(box?.message).toBe('Cover the Drashti controls?');
     expect(box?.detail).toContain('Remote “Placeholder phone” asks to put “Placeholder Hall” on');
     await expect(sheet.getByTestId('remote-screens-asked')).toHaveAttribute('data-state', 'agreed');
@@ -647,13 +670,13 @@ test('an output a phone would put over the controls is asked in the computer’s
       'aria-checked',
       'false',
     );
-    await answerBoxWith(0);
+    await answerBoxWith(app, 0);
     await sheet.getByTestId('remote-screen').getByTestId('remote-screen-on').click();
     await expect(sheet.getByTestId('remote-screens-asked')).toHaveAttribute('data-state', 'refused');
     await expect(sheet.getByTestId('remote-screens-asked')).toContainText(
       'The Drashti computer did not agree, so nothing changed.',
     );
-    expect(await boxes()).toHaveLength(1);
+    expect(await boxes(app)).toHaveLength(1);
     await expect(sheet.getByTestId('remote-screen').getByTestId('remote-screen-on')).toHaveAttribute(
       'aria-checked',
       'false',
@@ -664,7 +687,7 @@ test('an output a phone would put over the controls is asked in the computer’s
     await expect(sheet.getByTestId('remote-screens-problem')).toContainText(
       'The Drashti computer said no just now',
     );
-    expect(await boxes()).toHaveLength(1);
+    expect(await boxes(app)).toHaveLength(1);
   } finally {
     await phone.close();
   }

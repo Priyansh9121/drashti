@@ -84,8 +84,9 @@ export const KEYMAP: readonly KeyBinding[] = [
   // The logo instead of the picture, and back (the prop marked as the logo in Pro Mode): F12, as the operators
   // press it, and L as before.
   { action: 'toggleLogo', keys: ['F12', 'L'], label: 'Logo' },
-  // This computer's audience screens (key and fill too), or its stage screens, off and on (Session 50): off
-  // gives their displays back to the computer; the show carries on. View › Audience and Stage show them.
+  // This computer's audience screens (key and fill too), or its stage screens, off and on (Session 50): Audience off
+  // gives their displays back to the computer, Stage off shows the audience picture on the stage screens (Session 55);
+  // the show carries on. View › Audience and Stage show them.
   { action: 'toggleAudience', keys: ['Mod+1'], label: 'Audience on or off', shownInMenu: true },
   { action: 'toggleStage', keys: ['Mod+2'], label: 'Stage on or off', shownInMenu: true },
   // Repeat Slides going round stops, its slide staying up (Session 26d). Not while a dialog, a menu, the

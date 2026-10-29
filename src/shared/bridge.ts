@@ -99,7 +99,7 @@ import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
-import type { StageLayout, StageLayoutResult } from './stage-layouts';
+import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
@@ -108,11 +108,13 @@ import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
+  DisplayJob,
   OutputContext,
   OutputReport,
   ScreenPatch,
   ScreenRole,
   ScreensResult,
+  ScreensSaid,
   ScreensSnapshot,
 } from './screens';
 
@@ -583,6 +585,8 @@ export interface DrashtiBridge {
     add(fields: VideoInputFields): Promise<VideoInputResult>;
     update(id: string, fields: Partial<VideoInputFields>): Promise<VideoInputResult>;
     remove(id: string): Promise<VideoInputResult>;
+    /** The chosen one (Session 55): a stage layout's video input box and LIVE's one press (operator window only). */
+    choose(id: string): Promise<VideoInputResult>;
     /** May Drashti use the cameras? */
     access(): Promise<CameraAccess>;
     /** A Mac: ask for the camera (the page has said why first). */
@@ -779,8 +783,14 @@ export interface DrashtiBridge {
     onChanged(listener: (layouts: StageLayout[]) => void): () => void;
     /** Make one (no id) or save one. */
     save(layoutId: string | null, layout: Omit<StageLayout, 'id'>): Promise<StageLayoutResult>;
-    /** Groups whose Looks used it show the Standard stage screen. */
+    /** Removed; the one chosen for the stage screens removed, they show the Standard stage screen. */
     remove(layoutId: string): Promise<StageLayoutResult>;
+    /** Its name only (Session 55: Rename…). */
+    rename(layoutId: string, name: string): Promise<StageLayoutResult>;
+    /** A removed one put back as it was, in its place, chosen again if it was (Session 55: Undo of Delete). */
+    restore(layout: StageLayout, at: number, chosen: boolean): Promise<StageLayoutResult>;
+    /** The layout every stage screen shows (Session 55), or null for the Standard stage screen. */
+    choose(layoutId: string | null): Promise<StageChoiceResult>;
   };
   /** Screen setup (operator window only). */
   screens: {
@@ -799,6 +809,16 @@ export interface DrashtiBridge {
     /** May answer `confirm: 'covers-operator'`: ask the operator, then repeat with { coverOperator: true }. */
     assignDisplay(groupId: string, displayId: number, options?: CoverOptions): Promise<ScreensResult>;
     updateScreen(screenId: string, patch: ScreenPatch, options?: CoverOptions): Promise<ScreensResult>;
+    /**
+     * A display's job in one click (Session 55): the audience picture, the stage, or Not used. May answer
+     * `confirm: 'covers-operator'`, as assignDisplay does.
+     */
+    setJob(displayId: number, job: DisplayJob, options?: CoverOptions): Promise<ScreensResult>;
+    /** What the screens did by themselves (Session 55), last said, or null. */
+    lastSaid(): Promise<ScreensSaid | null>;
+    /** That was closed in the window (or its Change… followed): not said again as the window opens again. */
+    saidClosed(id: number): Promise<null>;
+    onSaid(listener: (said: ScreensSaid) => void): () => void;
     removeScreen(screenId: string): Promise<ScreensResult>;
     /** Put one of a node's displays into a group (Session 13). */
     assignNodeDisplay(groupId: string, nodeId: string, displayId: number): Promise<ScreensResult>;
@@ -820,7 +840,7 @@ export interface DrashtiBridge {
   screenSwitches: {
     get(): Promise<ScreenSwitches>;
     onChanged(listener: (switches: ScreenSwitches) => void): () => void;
-    /** Off closes them (their displays go back to the computer); on opens them where they were. */
+    /** Audience off closes them (their displays go back to the computer); Stage off shows the audience picture on the stage screens (Session 55); on opens them where they were. */
     turn(which: ScreenSwitch, on: boolean): Promise<ScreenSwitchResult>;
     /**
      * The window's question before one goes off opened, or went (null), Session 51: an output over the controls

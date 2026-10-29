@@ -6,10 +6,11 @@ import type { Change, KeepEnding } from './keep-screens';
 import { controlsToPutBack, coveringScreens, KeepScreens, putsOutputOn } from './keep-screens';
 
 /*
- * Keep these screens? (Session 50): a change that puts an output on a display waits 15 s for Keep or Go back,
- * and goes back by itself to the screens as they were. Here the screens are a small pretend world (each screen
- * on a display, in a group with a role), the clock the tests' own; going back undoes the changes it is given
- * (only what they changed: screens-setup.test.ts), here back to before the first.
+ * Keep these screens? (Session 50): a change made by hand that puts an output on the display the controls are on
+ * (Session 55: only that one) waits 15 s for Keep or Go back, and goes back by itself to the screens as they were.
+ * Here the screens are a small pretend world (each screen on a display, in a group with a role), the controls on
+ * display 3 unless a test says otherwise, the clock the tests' own; going back undoes the changes it is given (only
+ * what they changed: screens-setup.test.ts), here back to before the first.
  */
 
 interface Screen {
@@ -23,10 +24,12 @@ interface Screen {
 }
 type World = Screen[];
 
-const EMPTY: ScreensSnapshot = { displays: [], groups: [], status: [], nodes: [] };
+const EMPTY: ScreensSnapshot = { displays: [], groups: [], status: [], nodes: [], uses: [] };
 const ok = (): ScreensResult => ({ ok: true, snapshot: EMPTY });
 
 let world: World;
+/** The display the controls are on, as placed() names it (null: none can be covered, as with windowed outputs). */
+let controls: string | null;
 let covers: boolean;
 let now: number;
 let timers: { at: number; fn: () => void; cancelled: boolean }[];
@@ -66,6 +69,7 @@ function keeper(options: { asks?: boolean; waitMs?: number } = {}): KeepScreens<
       new Map(
         world.filter((s) => s.on).map((s) => [`here ${String(s.display)}`, `${s.id} ${s.group} ${s.role}`]),
       ),
+    controls: () => controls,
     coversControls: () => covers,
     snapshot: () => EMPTY,
     changed: (pending) => {
@@ -114,6 +118,7 @@ const change = (fn: () => void) => (): ScreensResult => {
 
 beforeEach(() => {
   world = [{ ...hall }];
+  controls = 'here 3';
   covers = false;
   now = 1_000_000;
   timers = [];
@@ -126,7 +131,7 @@ beforeEach(() => {
 });
 
 describe('Keep these screens?', () => {
-  it('asks after a change that puts an output on a display, with 15 s to answer; Keep keeps it', () => {
+  it('asks after a change that puts an output on the controls’ display, with 15 s to answer; Keep keeps it', () => {
     const keep = keeper();
     expect(keep.current()).toBeNull();
     const result = keep.change(
@@ -192,6 +197,58 @@ describe('Keep these screens?', () => {
     expect(ended).toEqual(['went-back-by-itself']);
   });
 
+  // Session 55 (29 Oct 2026: every Done in Set Up Screens… asked, Esc went back, and it came back to its displays,
+  // again and again): only the controls' display asks.
+  it('a change that puts an output on another display asks nothing, and stands at once', () => {
+    const keep = keeper();
+    const result = keep.change(
+      change(() => {
+        world.push({ ...stage, id: 's3', display: 4 });
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(keep.current()).toBeNull();
+    expect(told).toEqual([]);
+    expect(remembered).toEqual([]);
+    advance(KEEP_SCREENS_MS * 2);
+    expect(restored).toEqual([]);
+    expect(world.map((s) => s.id)).toEqual(['s1', 's3']);
+  });
+
+  it('with no display the controls could be covered on (windowed outputs), nothing asks', () => {
+    controls = null;
+    const keep = keeper();
+    keep.change(
+      change(() => {
+        world.push({ ...stage });
+      }),
+    );
+    expect(keep.current()).toBeNull();
+    expect(told).toEqual([]);
+  });
+
+  it('while one waits, a change that puts an output on another display asks nothing, and Go back leaves it', () => {
+    const keep = keeper();
+    const before = world.map((s) => ({ ...s }));
+    keep.change(
+      change(() => {
+        world.push({ ...stage });
+      }),
+    );
+    const after = world.map((s) => ({ ...s }));
+    const asked = keep.current();
+    advance(5000);
+    keep.change(
+      change(() => {
+        world.push({ ...stage, id: 's3', display: 4 });
+      }),
+    );
+    // The same question, its countdown going on; Go back undoes only the change over the controls.
+    expect(keep.current()).toEqual(asked);
+    expect(keep.goBack()).toMatchObject({ ok: true });
+    expect(restored).toEqual([{ quitting: false, changes: [{ before, after }] }]);
+  });
+
   it('turning an output off needs no question, nor does a change that fails or puts nothing new on a display', () => {
     const keep = keeper();
     keep.change(
@@ -216,7 +273,8 @@ describe('Keep these screens?', () => {
     expect(restored).toEqual([]);
   });
 
-  it('asks when a display shows another screen, group or role than it did', () => {
+  it('asks when the controls’ display shows another screen, group or role than it did', () => {
+    controls = 'here 2';
     const keep = keeper();
     // The same screen, now in the stage group (the setup wizard's "The stage view" on that display).
     keep.change(
@@ -245,9 +303,10 @@ describe('Keep these screens?', () => {
       }),
     );
     advance(10_000);
+    // Another screen on the controls' display.
     keep.change(
       change(() => {
-        world.push({ ...stage, id: 's3', display: 4 });
+        world[1] = { ...stage, id: 's3' };
       }),
     );
     expect(keep.current()).toEqual({ deadline: now + KEEP_SCREENS_MS, coversControls: false });
@@ -362,10 +421,10 @@ describe('Keep these screens?', () => {
     // Renamed some other way meanwhile (Screens): not a change Keep these screens? makes.
     world[0] = { ...hall, name: 'Main Hall' };
     const w1b = world.map((s) => ({ ...s }));
-    // Another output on a display while it waits: asked again, with the first.
+    // Another output on the controls' display while it waits: asked again, with the first.
     keep.change(
       change(() => {
-        world.push({ ...stage, id: 's3', display: 4 });
+        world[1] = { ...stage, id: 's3' };
       }),
     );
     const w2 = world.map((s) => ({ ...s }));
@@ -426,10 +485,10 @@ describe('Keep these screens?', () => {
     );
     expect(remembered).toHaveLength(1);
     const w1b = world.map((s) => ({ ...s }));
-    // Another output on a display while it waits: kept again, with the first.
+    // Another output on the controls' display while it waits: kept again, with the first.
     keep.change(
       change(() => {
-        world.push({ ...stage, id: 's3', display: 4 });
+        world[1] = { ...stage, id: 's3' };
       }),
     );
     const w2 = world.map((s) => ({ ...s }));
@@ -440,7 +499,8 @@ describe('Keep these screens?', () => {
     // Kept: nothing waits on disk any more.
     keep.keep();
     expect(remembered.at(-1)).toBeNull();
-    // Gone back, by the operator or by itself: the same.
+    // Gone back, by the operator or by itself: the same (the controls on display 5 now).
+    controls = 'here 5';
     for (const end of [() => keep.goBack(), () => advance(KEEP_SCREENS_MS)]) {
       remembered = [];
       keep.change(
@@ -478,6 +538,7 @@ describe('Keep these screens?', () => {
         throw new Error('the library is closed');
       },
       placed: () => new Map(world.map((s) => [`here ${String(s.display)}`, s.id])),
+      controls: () => 'here 6',
       coversControls: () => false,
       snapshot: () => EMPTY,
       changed: () => undefined,
@@ -508,6 +569,7 @@ describe('Keep these screens?', () => {
         return ok();
       },
       placed: () => new Map(world.map((s) => [`here ${String(s.display)}`, s.id])),
+      controls: () => 'here 3',
       coversControls: () => false,
       snapshot: () => EMPTY,
       changed: () => undefined,
@@ -545,6 +607,7 @@ describe('Keep these screens?', () => {
         throw new Error('the library is busy');
       },
       placed: () => new Map(world.map((s) => [`here ${String(s.display)}`, s.id])),
+      controls: () => 'here 3',
       coversControls: () => false,
       snapshot: () => EMPTY,
       changed: (pending) => {

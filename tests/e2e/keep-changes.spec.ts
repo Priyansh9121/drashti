@@ -292,7 +292,7 @@ test('the stage layout and mask editors ask the same question, and Save changes 
   await layouts.getByTestId('stage-layout-duplicate').click();
   await layouts.getByTestId('stage-layout-name').fill('Placeholder keep layout');
   await win.keyboard.press('Escape');
-  await escKeepsEditing(win, layouts, { live: 'wherever the live Look uses this layout' });
+  await escKeepsEditing(win, layouts, { live: 'if it is the layout they show' });
   await win.keyboard.press('Escape');
   await answer(win, 'Save changes');
   await expect(layouts).toHaveCount(0);

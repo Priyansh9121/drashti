@@ -160,6 +160,46 @@ describe('a group’s settings in a Look', () => {
   });
 });
 
+describe('Looks and the stage layout (Session 55)', () => {
+  it('no longer choose it: a group’s stage layout is refused, and none reaches the live Look', () => {
+    const t = setup();
+    expect(t.looks.setGroup(t.standard, t.stage, { stageLayoutId: 'placeholder-layout' })).toMatchObject({
+      ok: false,
+    });
+    expect(t.repo.get(t.standard)?.groups[t.stage]?.stageLayoutId).toBeNull();
+    // The other settings still change as before.
+    expect(t.looks.setGroup(t.standard, t.stage, { languages: ['gu'] }).ok).toBe(true);
+    for (const group of Object.values(t.engine.current.look.groups))
+      expect(group).not.toHaveProperty('stageLayout');
+  });
+
+  it('read one kept before without error, and say it once: the live Look’s first stage group’s', () => {
+    const t = setup();
+    expect(t.looks.liveStageLayoutId()).toBeNull();
+    const second = t.screens.createGroup('Side stage', 'stage');
+    // As alpha.13 kept them: the hall's languages, and each stage group's layout.
+    t.db.prepare('UPDATE looks SET definition = ? WHERE id = ?').run(
+      JSON.stringify({
+        groups: {
+          [t.hall]: { languages: ['gu'] },
+          [t.stage]: { stageLayoutId: 'placeholder-first' },
+          [second]: { stageLayoutId: 'placeholder-second' },
+        },
+      }),
+      t.standard,
+    );
+    t.looks.groupsChanged();
+    expect(t.engine.current.look.groups[t.hall]?.languages).toEqual(['gu']);
+    expect(t.engine.current.look.groups[t.stage]).toEqual(DEFAULT_LIVE_GROUP_LOOK);
+    expect(t.looks.liveStageLayoutId()).toBe('placeholder-first');
+    // Another Look live: its own.
+    expect(t.looks.create('Placeholder festival', null).ok).toBe(true);
+    const festival = t.repo.list()[1]?.id ?? '';
+    t.engine.dispatch({ type: 'setLook', lookId: festival });
+    expect(t.looks.liveStageLayoutId()).toBeNull();
+  });
+});
+
 describe('Looks', () => {
   it('start with Standard live, every group with the defaults, in the engine state', () => {
     const t = setup();
@@ -187,7 +227,6 @@ describe('Looks', () => {
         layers: ['slide', 'props', 'messages'],
         languages: null,
         slides: 'lowerThird',
-        stageLayout: null,
         mask: null,
         idle: 'off',
         movement: 'calm',

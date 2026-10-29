@@ -25,6 +25,13 @@ export interface DisplayKey {
   x: number;
   y: number;
   internal: boolean;
+  /**
+   * The display's own identity (Session 55, main/outputs/display-ids.ts): its maker, model and serial number as
+   * its EDID gives them, the same through unplugging, another port and a restart, and different for two displays
+   * of one model. Null when it gives no serial number that tells it apart, or before it has been read; left out
+   * in a key saved before Session 55.
+   */
+  hardwareId?: string | null;
 }
 
 /** A display as the OS reports it right now. Drashti never changes display modes. */
@@ -111,6 +118,52 @@ export interface ScreensSnapshot {
   status: ScreenStatus[];
   /** Paired nodes, with their displays. */
   nodes: NodeDisplays[];
+  /** What each of this computer's connected displays does now (Session 55), in the order of `displays`. */
+  uses: DisplayUse[];
+}
+
+/**
+ * A display's job (Session 55): the audience picture, the stage, or nothing. A display plugged in is given one
+ * by itself (main/outputs/auto-screens.ts); Screens and Set Up Screens… change it, one click each.
+ */
+export type DisplayJob = 'audience' | 'stage' | 'none';
+export const DISPLAY_JOBS = ['audience', 'stage', 'none'] as const satisfies readonly DisplayJob[];
+
+/** A display's job, as Screens, Set Up Screens… and a phone offer it. */
+export const DISPLAY_JOB_WORDS: Readonly<Record<DisplayJob, string>> = {
+  audience: 'Audience',
+  stage: 'Stage',
+  none: 'Not used',
+};
+
+/**
+ * What one of this computer's connected displays does (Session 55): the screen given it, on or off, and its
+ * group's role; none when no screen has it. A key and fill pair's screen sends the audience picture.
+ */
+export interface DisplayUse {
+  displayId: number;
+  screenId: string | null;
+  groupId: string | null;
+  role: ScreenRole | null;
+}
+
+/**
+ * What the screens did by themselves (Session 55), said in the operator window in one line: displays plugged in
+ * given their jobs (with Change…, which opens Screens at them), or once how to extend when the computer mirrors.
+ */
+export interface ScreensSaid {
+  /** A new one each time it says something. */
+  id: number;
+  kind: 'set' | 'mirroring';
+  text: string;
+  /** The displays it is about, in order (Change… opens Screens at the first); none for mirroring. */
+  displayIds: number[];
+}
+
+/** The job a display's use stands for: a stage group's is the stage, any other group's the audience picture. */
+export function jobOf(use: Pick<DisplayUse, 'role'> | undefined): DisplayJob {
+  if (use?.role === undefined || use.role === null) return 'none';
+  return use.role === 'stage' ? 'stage' : 'audience';
 }
 
 export type ScreensResult =
@@ -149,8 +202,6 @@ export interface OutputContext {
   role: ScreenRole;
   /** In a key and fill group: the fill or the key; null otherwise. */
   feed: ScreenFeed | null;
-  /** Until when (ms since the epoch) it shows the setup wizard's test slide; null for none. */
-  testCardUntil: number | null;
   canvasWidth: number;
   canvasHeight: number;
   scaling: ScalingMode;

@@ -89,6 +89,7 @@ async function screensAre(hall: ScreenState, stage: ScreenState): Promise<void> 
   const snapshot: ScreensSnapshot = {
     displays: [],
     nodes: [],
+    uses: [],
     groups: [
       { id: 'hall', name: 'Main Hall', role: 'audience', screens: [screen('hall-1', 'hall')] },
       { id: 'stage', name: 'Stage', role: 'stage', screens: [screen('stage-1', 'stage')] },

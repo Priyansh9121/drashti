@@ -10,7 +10,6 @@ import { UnlitLamp } from '../ui/Mark';
 import { MenuButton } from '../ui/Menu';
 import { useArrival } from '../ui/motion';
 import { CentredPlace } from '../ui/States';
-import { ShowOnButton, useDisplayOffer } from '../screens/ShowOn';
 
 /*
  * The middle of the window with nothing chosen (Session 26g, "Skip for now" on the first start
@@ -21,7 +20,6 @@ import { ShowOnButton, useDisplayOffer } from '../screens/ShowOn';
  */
 export function StartHere() {
   const arriving = useArrival('empty');
-  const offered = useDisplayOffer();
   return (
     <CentredPlace data-testid="start-here">
       <div className="flex flex-col items-center gap-2 px-6 py-8 text-center text-muted">
@@ -67,15 +65,13 @@ export function StartHere() {
               New playlist
             </Button>
           </Step>
+          {/* Session 55: a display plugged in is used at once; Set Up Screens… changes what each shows. */}
           <Step
             n={3}
             arriving={arriving}
-            title="The screens"
-            text="Which screen is the hall’s, and which the stage’s"
+            title="The screens set themselves"
+            text="A display plugged in shows the audience picture, the next the stage"
           >
-            {/* A display connected and no hall screen yet (Session 44): one click shows on it. A secondary:
-                step 1's Import… is the one primary here (the offer under the header has its own). */}
-            {offered && <ShowOnButton display={offered} size="sm" variant="secondary" />}
             <Button size="sm" icon={Monitor} onClick={() => void openSetup(1)}>
               Set Up Screens…
             </Button>

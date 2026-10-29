@@ -207,9 +207,10 @@ describe('the View menu’s own box (Session 51, S2-7)', () => {
       message: 'Turn Audience off?',
       detail: 'The hall’s screens will show this computer’s desktop. The show carries on.',
     });
+    // Session 55: the stage screens stay, showing what the hall's screens show.
     expect(switchOffBox('stage')).toMatchObject({
       message: 'Turn Stage off?',
-      detail: 'The stage screens will show this computer’s desktop. The show carries on.',
+      detail: 'The stage screens will show the audience picture. The show carries on.',
     });
     expect(switchOffBox('stage').buttons[1]).toBe(TURN_OFF);
   });

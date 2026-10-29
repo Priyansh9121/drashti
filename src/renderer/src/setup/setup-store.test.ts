@@ -59,6 +59,7 @@ const after: ScreensSnapshot = {
   groups: [group('hall', 'audience', ['s2']), group('stage', 'stage', ['s3']), group('stream', 'stream', [])],
   status: [showing('s2', 2), showing('s3', 3)],
   nodes: [],
+  uses: [],
 };
 /** As it was before: nothing shown anywhere. */
 const before: ScreensSnapshot = { ...after, groups: [group('stream', 'stream', [])], status: [] };
@@ -147,7 +148,7 @@ describe('Set Up Screens… and Keep these screens?', () => {
       controlsDisplayId: 1,
       outputs: chosen,
       applied: { 1: 'audience', 2: 'audience', 3: 'stage' },
-      finished: { tested: 3 },
+      finished: { showing: 3 },
     });
     // The controls moved off the output put on their display (to display 3, free then), and stay there.
     controlsNowOn(3);
@@ -178,7 +179,7 @@ describe('Set Up Screens… and Keep these screens?', () => {
     (globalThis as { window?: unknown }).window = {
       drashti: {
         setup: {
-          finish: () => Promise.resolve({ ok: true, snapshot: after, tested: 2 }),
+          finish: () => Promise.resolve({ ok: true, snapshot: after, showing: 2 }),
           state: () => Promise.resolve({ operatorDisplayId: 1, controlsDisplayId: 1 }),
         },
         screens: { pending: () => Promise.resolve({ deadline: 5, coversControls: false }) },
@@ -214,13 +215,13 @@ describe('Set Up Screens… and Keep these screens?', () => {
       open: true,
       step: setup.STEPS.indexOf('Screens'),
       applied: { 1: 'none', 2: 'audience', 3: 'stage' },
-      finished: { tested: 2 },
+      finished: { showing: 2 },
     });
     keep.useKeepScreens.setState({ pending: { deadline: 1, coversControls: false } });
     screens.useScreens.setState({ snapshot: after });
     keep.useKeepScreens.setState({ pending: null, answered: 'kept' });
     expect(setup.useSetup.getState()).toMatchObject({
-      finished: { tested: 2 },
+      finished: { showing: 2 },
       wentBack: false,
       applied: null,
     });
@@ -228,7 +229,7 @@ describe('Set Up Screens… and Keep these screens?', () => {
     keep.useKeepScreens.setState({ pending: { deadline: 2, coversControls: false }, answered: null });
     screens.useScreens.setState({ snapshot: before });
     keep.useKeepScreens.setState({ pending: null });
-    expect(setup.useSetup.getState()).toMatchObject({ finished: { tested: 2 }, wentBack: false });
+    expect(setup.useSetup.getState()).toMatchObject({ finished: { showing: 2 }, wentBack: false });
   });
 });
 
@@ -249,7 +250,6 @@ describe('the setup wizard’s steps (Session 54, E5)', () => {
               welcome: false,
               operatorDisplayId: null,
               controlsDisplayId: 1,
-              offer: false,
             }),
         },
         screens: { get: () => Promise.resolve(after) },
@@ -265,5 +265,43 @@ describe('the setup wizard’s steps (Session 54, E5)', () => {
     expect(opened).toMatchObject({ open: true, busy: false, step: 1, problem: null });
     expect(Object.keys(opened)).not.toContain('pins');
     expect(Object.keys(opened)).not.toContain('rolesOn');
+  });
+});
+
+// Session 55: a display plugged in sets itself; the wizard opens on each display's job as it is, choosing nothing
+// for a free one (Show on's "the first free display starts as the hall's" is gone with Show on).
+describe('Set Up Screens… opens on the screens as they are (Session 55)', () => {
+  it('a free display starts as Not used, as it is; one used keeps its job', async () => {
+    (globalThis as { window?: unknown }).window = {
+      drashti: {
+        setup: {
+          state: () =>
+            Promise.resolve({
+              firstRun: false,
+              welcome: false,
+              operatorDisplayId: null,
+              controlsDisplayId: 1,
+            }),
+        },
+        screens: {
+          get: () =>
+            Promise.resolve({
+              ...after,
+              groups: [group('stage', 'stage', ['s3'])],
+              status: [showing('s3', 3)],
+            }),
+        },
+        audio: {
+          getOutput: () => Promise.resolve({ chosen: null, devices: [], state: 'default', checked: true }),
+        },
+        themes: { list: () => Promise.resolve({ themes: [], defaultId: null }) },
+      },
+    };
+    const { setup } = await fresh();
+    await setup.openSetup(1);
+    const uses = Object.fromEntries(
+      Object.entries(setup.useSetup.getState().outputs).map(([id, o]) => [id, o.use]),
+    );
+    expect(uses).toEqual({ 1: 'none', 2: 'none', 3: 'stage' });
   });
 });

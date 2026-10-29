@@ -26,7 +26,7 @@ import { loadTree, usePlaylists, watchPlaylists } from '../playlists/playlist-st
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
-import { connectScreens } from '../screens/screens-store';
+import { connectScreens, focusDisplay } from '../screens/screens-store';
 import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
 import { runAction, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -43,7 +43,7 @@ import { PanelGroup, PanelNote } from '../ui/Panel';
 import { Music, Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
-import { ShowOnOffer } from '../screens/ShowOn';
+import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
@@ -64,12 +64,14 @@ import { RecoveryBanner } from './RecoveryBanner';
 import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { StageMessageControl } from './StageControls';
+import { InputOnAudience } from './InputOnAudience';
 import { NoticeArea, StatusBar } from './StatusBar';
 import { ScreenSwitchAsk } from './ScreenSwitches';
 import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
+import { undoStage, useStageLayouts } from '../stage/stage-layouts-store';
 import { MaskEditor } from '../masks/MaskEditor';
 import { MasksPanel } from './MasksPanel';
 import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
@@ -141,7 +143,9 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // the last removal, or in Simple Mode (which removes nothing) puts back what Clear all took down.
     const offUndo = window.drashti.app.onUndo(() => {
       if (isTyping(document.activeElement)) return;
-      if (useEditor.getState().open) undoEdit();
+      // The stage layout editor's own steps (Session 55).
+      if (useStageLayouts.getState().open) void undoStage();
+      else if (useEditor.getState().open) undoEdit();
       else if (useMode.getState().mode === 'simple') void window.drashti.engine.dispatch({ type: 'putBack' });
       else void undoRemoval();
     });
@@ -315,8 +319,13 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
       <EngineUnread />
       <StoppedScreens />
-      {/* A display connected and no hall screen yet (Session 44): Show on <it>, one click. */}
-      <ShowOnOffer />
+      {/* A display plugged in, given its job by itself (Session 55): said in one line, with Change… (Screens). */}
+      <ScreensSaidNotice
+        onChange={(displayId) => {
+          focusDisplay(displayId);
+          openScreens();
+        }}
+      />
       <NoSoundNotice />
       <StreamPageStopped />
       <LiveWindowNotice />
@@ -354,6 +363,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
               <PlayingBars className="px-3 pt-2" />
               <MarkerJumps />
+              {/* The chosen video input on the audience in one press (Session 55). */}
+              <InputOnAudience />
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
                 tools folded away. */}
               <div className="mt-3 divide-y divide-line border-t border-line">
@@ -430,7 +441,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}
       <StreamSettings />
-      <StageLayoutEditor />
+      <StageLayoutEditor platform={platform} />
       <MaskEditor />
       <LowerThirdEditor />
       <CalendarDialog />

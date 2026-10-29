@@ -171,6 +171,11 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setBackground'), background }),
   /** A video input from this computer's list up as the live background (Session 50), the slide staying over it. */
   z.object({ type: z.literal('showInput'), inputId: id }),
+  /**
+   * LIVE's one press (Session 55): the chosen video input up as the audience's background, or, while it is up,
+   * off again, the background from before it coming back. The stage never follows it.
+   */
+  z.object({ type: z.literal('toggleInput'), inputId: id }),
   z.object({ type: z.literal('playAudio'), audio: audioChoiceSchema }),
   z.object({ type: z.literal('showProp'), prop: propSchema }),
   z.object({ type: z.literal('hideProp'), propId: id }),

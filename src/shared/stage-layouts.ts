@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CALENDAR_LANGS, type CalendarLang } from './calendar';
+import type { LiveFit } from './engine/state';
 import type { Rect } from './model';
 import { hexColorSchema, idSchema } from './model-schema';
 import type { ScalingMode, ScreenRole } from './screens';
@@ -8,10 +9,14 @@ import { SCALING_MODES } from './screens';
 /*
  * Stage layouts (Session 11): what a stage screen shows, as boxes placed on
  * a 1920 x 1080 canvas (screens of another size scale it, as they do
- * slides). Each stage group gets its layout through the live Look; a group
- * with none shows the Standard stage screen, drawn exactly as it was before
- * layouts (render/StageView.tsx). Standard is built in and cannot be
- * changed; Duplicate makes boxes from it to change.
+ * slides). Since Session 55 one layout is chosen for every stage screen (the
+ * Stage screen panel's Layout), kept over a restart, and carried to every
+ * stage screen, node and tablet in the engine's state (`stage`, below); until
+ * then each stage group got its layout through the live Look. With none
+ * chosen a stage screen shows the Standard stage screen, drawn exactly as it
+ * was before layouts (render/StageView.tsx). Standard is built in and cannot
+ * be changed; Duplicate makes boxes from it to change. With Stage off
+ * (Session 55) the stage screens show exactly the audience picture instead.
  */
 
 export const STAGE_WIDTH = 1920;
@@ -46,6 +51,12 @@ export type StageBoxKind =
    * and a line saying so (Session 52).
    */
   | 'audience'
+  /**
+   * The chosen video input, live (Session 55: at the mandir the video mixer's programme output), whatever the
+   * audience screens show: on this computer's stage screens, from the same capture of the device as the hall's
+   * screens use when they show it too (render/video-input.ts). A node's screen and a tablet name it instead.
+   */
+  | 'videoInput'
   /** Words that stay the same. */
   | 'text';
 
@@ -62,6 +73,7 @@ export const STAGE_BOX_KINDS = [
   'mediaLeft',
   'screensState',
   'audience',
+  'videoInput',
   'text',
 ] as const satisfies readonly StageBoxKind[];
 
@@ -78,6 +90,7 @@ export const STAGE_BOX_NAMES: Record<StageBoxKind, string> = {
   mediaLeft: 'Time left on the video or sound',
   screensState: 'The audience screens (black-out, logo)',
   audience: 'The audience picture, live',
+  videoInput: 'The video input, live',
   text: 'Fixed text',
 };
 
@@ -95,6 +108,7 @@ export const STAGE_BOX_LABELS: Record<StageBoxKind, string> = {
   mediaLeft: 'TIME LEFT',
   screensState: '',
   audience: '',
+  videoInput: '',
   text: '',
 };
 
@@ -177,6 +191,9 @@ export interface StageLayout {
 export type StageLayoutResult =
   { ok: true; layouts: StageLayout[]; id: string } | { ok: false; message: string };
 
+/** The Stage screen panel's Layout (Session 55): the layout chosen for every stage screen, or null for Standard. */
+export type StageChoiceResult = { ok: true; chosenId: string | null } | { ok: false; message: string };
+
 export const MAX_STAGE_BOXES = 40;
 
 /** The widest line round a box's letters (canvas pixels, Session 54). */
@@ -254,8 +271,8 @@ export function newStageBox(kind: StageBoxKind, id: string): StageBox {
     kind === 'upcoming' ||
     kind === 'samvat' ||
     kind === 'quote';
-  // The audience picture (Session 50): 16:9, half the canvas each way.
-  const picture = kind === 'audience';
+  // The audience picture (Session 50) and the video input (Session 55): 16:9, half the canvas each way.
+  const picture = isPictureBox(kind);
   const width = picture ? STAGE_WIDTH / 2 : wide ? 1100 : 600;
   const height = picture
     ? STAGE_HEIGHT / 2
@@ -283,10 +300,16 @@ export function newStageBox(kind: StageBoxKind, id: string): StageBox {
     ...(kind === 'text' ? { text: 'Placeholder words' } : {}),
     ...(kind === 'upcoming' ? { count: 4 } : {}),
     ...(kind === 'samvat' ? { lang: 'gu' as const } : {}),
-    // Its words as large as the box holds, when they fit it (Session 54); the audience picture has none.
+    // Its words as large as the box holds, when they fit it (Session 54); a picture box has none.
     ...(picture ? {} : { fitWhole: true }),
   };
 }
+
+/**
+ * The boxes that draw a picture, not words (the audience picture, Session 50; the video input, Session 55): no size,
+ * colour or alignment of their own, under the other boxes as they are added, and no smaller than their line needs.
+ */
+export const isPictureBox = (kind: StageBoxKind): boolean => kind === 'audience' || kind === 'videoInput';
 
 /**
  * The Standard stage screen as boxes, where its parts sit with a stage
@@ -318,11 +341,12 @@ export function standardAsBoxes(newId: () => string): StageLayout['boxes'] {
 }
 
 /**
- * A layout's boxes with one more (bottom to top). The audience picture (Session 50) goes under the boxes
- * already there, so the stage message, the clock and the timers draw over it; any other box goes on top.
+ * A layout's boxes with one more (bottom to top). The audience picture (Session 50) and the video input (Session 55)
+ * go under the boxes already there, so the stage message, the clock and the timers draw over them; any other box goes
+ * on top.
  */
 export function withBoxAdded(boxes: readonly StageBox[], box: StageBox): StageBox[] {
-  return box.kind === 'audience' ? [box, ...boxes] : [...boxes, box];
+  return isPictureBox(box.kind) ? [box, ...boxes] : [...boxes, box];
 }
 
 /** Which way a box goes among the others (Session 54): in front of them all, behind them all, or one step. */
@@ -357,9 +381,12 @@ const BOX_MIN = 8;
  */
 export const AUDIENCE_BOX_MIN = { width: STAGE_WIDTH / 6, height: STAGE_HEIGHT / 6 } as const;
 
-/** The smallest the layout editor makes a box of this kind, by its handles and its fields. */
+/**
+ * The smallest the layout editor makes a box of this kind, by its handles and its fields: a picture box (the video
+ * input's too, Session 55, whose line names it where it cannot be drawn) as the audience picture's.
+ */
 export function smallestBox(kind: StageBoxKind): { width: number; height: number } {
-  return kind === 'audience' ? AUDIENCE_BOX_MIN : { width: BOX_MIN, height: BOX_MIN };
+  return isPictureBox(kind) ? AUDIENCE_BOX_MIN : { width: BOX_MIN, height: BOX_MIN };
 }
 
 /**
@@ -377,6 +404,54 @@ export function typedFrame(box: StageBox, key: keyof Rect, value: number): Rect 
  */
 export function showsHall(layout: StageLayout | null | undefined): boolean {
   return layout?.boxes.some((b) => b.kind === 'audience') ?? false;
+}
+
+/** Whether a layout draws the chosen video input (Session 55). */
+export function showsInput(layout: StageLayout | null | undefined): boolean {
+  return layout?.boxes.some((b) => b.kind === 'videoInput') ?? false;
+}
+
+// ---- the stage screens in the engine's state (Session 55) ---------------------------------------------------------
+
+/** The chosen video input as the stage screens find it: its id in this computer's list, its name and its device. */
+export interface StageInput {
+  inputId: string;
+  /** Its name as the operator gave it ("Input 1"): what a node's screen and a tablet say in its place. */
+  name: string;
+  /** The device's name as this computer gives it (its label), by which each stage screen here finds it. */
+  device: string;
+  fit: LiveFit;
+}
+
+/**
+ * What every stage screen shows (Session 55), in the engine's state, so this computer's stage screens, its nodes',
+ * a tablet's stage page and the operator's preview all draw the same: the layout chosen for them (null for the
+ * Standard stage screen), whether Stage is off (they then show exactly the audience picture), and the chosen video
+ * input for a layout's video input box (left out when this computer has none).
+ */
+export interface StageState {
+  layout: StageLayout | null;
+  /** Stage is off: left out while it is on. */
+  off?: boolean;
+  input?: StageInput;
+}
+
+/** Before anything is chosen: the Standard stage screen, Stage on, no video input. */
+export const NO_STAGE: StageState = { layout: null };
+
+/**
+ * What a stage screen shows now: exactly the audience picture while Stage is off; else the chosen layout, or the
+ * Standard stage screen with none (and for a state saved before Session 55, which has no `stage`).
+ */
+export function stageShows(stage: StageState | undefined): 'audience' | 'layout' | 'standard' {
+  if (stage?.off === true) return 'audience';
+  return stage?.layout ? 'layout' : 'standard';
+}
+
+/** Whether a stage screen draws the hall's picture now (Stage off, or the chosen layout's audience picture box). */
+export function stageDrawsHall(stage: StageState | undefined): boolean {
+  const shows = stageShows(stage);
+  return shows === 'audience' || (shows === 'layout' && showsHall(stage?.layout));
 }
 
 /**

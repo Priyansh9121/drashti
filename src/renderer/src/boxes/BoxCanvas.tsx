@@ -5,6 +5,7 @@ import type {
 } from 'react';
 import { useRef, useState } from 'react';
 import type { Rect } from '../../../shared/model';
+import { Trash2 } from '../ui/icons';
 import type { Size } from '../../../shared/scaling';
 import type { Guides, Handle, Point, SnapLines } from '../editor/geometry';
 import { HANDLE_AT, HANDLES, resizeFrame, snapLines, snapMove, snapResize } from '../editor/geometry';
@@ -19,7 +20,9 @@ import { useElementSize } from '../render/useElementSize';
  * than its own smallest, Session 53). From the keyboard: Tab chooses the
  * next box, the arrows move it (Shift: ten pixels), and with Alt (Option on
  * a Mac) they resize it, right and down larger, left and up smaller (Session
- * 54); sizes are typed in the editor's fields too.
+ * 54); sizes are typed in the editor's fields too. Where boxes can be
+ * deleted (the stage layout editor, Session 55), the chosen one has a delete
+ * button on it, and Delete or Backspace deletes it.
  */
 
 export interface CanvasBox {
@@ -35,6 +38,8 @@ export interface CanvasBox {
 }
 
 const PAD = 24;
+/** The chosen box's delete button (Session 55), in screen pixels: 24 px, a target the mouse finds at once. */
+const DELETE_PX = 24;
 const SNAP_PX = 8;
 const DRAG_PX = 3;
 const HANDLE_PX = 10;
@@ -71,6 +76,7 @@ export function BoxCanvas({
   label,
   testId,
   minSize = 8,
+  onDelete,
 }: {
   size: Size;
   boxes: readonly CanvasBox[];
@@ -84,6 +90,8 @@ export function BoxCanvas({
   label: string;
   testId?: string;
   minSize?: number;
+  /** Delete this box (Session 55): a button on the chosen box, and Delete or Backspace. Left out: none. */
+  onDelete?: (id: string) => void;
 }) {
   const area = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -246,6 +254,11 @@ export function BoxCanvas({
       e.preventDefault();
       e.stopPropagation();
       onSelect(null);
+      return;
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && chosen && onDelete && !e.repeat) {
+      e.preventDefault();
+      onDelete(chosen.id);
     }
   };
 
@@ -305,6 +318,41 @@ export function BoxCanvas({
                   pointerEvents: 'none',
                 }}
               >
+                {on && onDelete && (
+                  // Its delete button (Session 55), inside its top right corner, clear of the corner's handle.
+                  <button
+                    type="button"
+                    aria-label={`Delete the box ${b.name}`}
+                    title={`Delete the box ${b.name}`}
+                    data-testid="canvas-box-delete"
+                    onPointerDown={(e) => {
+                      // Never a drag of the box under it.
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(b.id);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 12 * px,
+                      right: 12 * px,
+                      width: DELETE_PX * px,
+                      height: DELETE_PX * px,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'var(--color-danger-strong)',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 4 * px,
+                      cursor: 'pointer',
+                      pointerEvents: 'auto',
+                    }}
+                  >
+                    <Trash2 aria-hidden="true" style={{ width: 16 * px, height: 16 * px }} />
+                  </button>
+                )}
                 {on &&
                   HANDLES.map((h) => (
                     <span

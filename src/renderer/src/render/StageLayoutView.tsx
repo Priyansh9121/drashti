@@ -7,9 +7,10 @@ import { languageView } from '../../../shared/language-view';
 import { type PlaybackClock, playbackLeftMs } from '../../../shared/media';
 import type { Lang } from '../../../shared/model';
 import type { HallPicture, StageBox, StageLayout, StageVAlign } from '../../../shared/stage-layouts';
-import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
+import { isPictureBox, STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { timerDuration } from '../../../shared/timers';
 import { AudienceBox } from './AudienceBox';
+import { StageInputBox } from './StageInputBox';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
 import { backgroundWords, kindName, screensStateWords, StageText } from './StageView';
 import { textLang } from './lang';
@@ -27,7 +28,8 @@ import { type ClockStyle, formatClock } from '../../../shared/format';
  * fits), colour and alignment. The stage screens, the stage display in a
  * browser and the layout editor's picture all draw it with this. No
  * pictures or videos, as on the Standard stage screen, but in the audience
- * picture box (Session 50, AudienceBox): the hall's own picture.
+ * picture box (Session 50, AudienceBox): the hall's own picture; and in the
+ * video input box (Session 55, StageInputBox): the chosen video input, live.
  */
 
 /** The smallest font size a box tries when it fits its words (canvas pixels); the largest is its own (fitLargest). */
@@ -319,7 +321,8 @@ function BoxContents({
     case 'screensState':
       return <span>{screensStateWords(state, hall)}</span>;
     case 'audience':
-      // Drawn by the box itself (AudienceBox), never as words.
+    case 'videoInput':
+      // Drawn by the box itself (AudienceBox, StageInputBox), never as words.
       return null;
     case 'text':
       return (
@@ -386,9 +389,9 @@ export function StageLayoutView({
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
-            // The hall's picture (Session 50) takes on nothing from around it (a colour, a font, a line
-            // height, an alignment), so it draws exactly as on the hall's own screens.
-            ...(box.kind === 'audience'
+            // The hall's picture (Session 50) and the video input (Session 55) take on nothing from around them (a
+            // colour, a font, a line height, an alignment), so they draw exactly as on the hall's own screens.
+            ...(isPictureBox(box.kind)
               ? {}
               : {
                   color: box.color,
@@ -403,6 +406,8 @@ export function StageLayoutView({
           {box.label !== '' && <BoxLabel label={box.label} />}
           {box.kind === 'audience' ? (
             <AudienceBox state={state} hall={hall} />
+          ) : box.kind === 'videoInput' ? (
+            <StageInputBox input={state.stage?.input} />
           ) : box.kind === 'current' && state.layers.slide?.slide.deck ? (
             // A deck's slide (Session 54, C2): its step, as the hall's screens show it, fitted in the box.
             <StageDeckNow layer={state.layers.slide} />
@@ -465,6 +470,7 @@ function contentKey(box: StageBox, state: EngineState, hall: HallPicture | null 
     case 'quote':
       return state.quote;
     case 'audience':
+    case 'videoInput':
       return null;
     case 'text':
       return box.text;

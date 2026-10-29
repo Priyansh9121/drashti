@@ -63,6 +63,8 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'swapPip',
   'placePip',
   'showInput',
+  // LIVE's one press for the chosen video input (Session 55), as showInput.
+  'toggleInput',
   'moveTo',
   'skip',
 ];

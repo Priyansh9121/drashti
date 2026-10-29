@@ -21,6 +21,12 @@ export interface VideoInput {
 
 export interface VideoInputsView {
   inputs: VideoInput[];
+  /**
+   * The chosen video input (Session 55), by its id: what a stage layout's video input box shows and LIVE's one press
+   * puts up on the audience. The one chosen in the Stage screen panel, else the first in the list; null with none.
+   * Left out by an older page.
+   */
+  chosenId?: string | null;
 }
 
 export type VideoInputResult = { ok: true; view: VideoInputsView } | { ok: false; message: string };

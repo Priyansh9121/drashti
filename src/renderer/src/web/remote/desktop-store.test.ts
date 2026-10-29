@@ -25,6 +25,7 @@ const screens = (pending: RemoteScreens['pending'], asked: RemoteScreens['asked'
   displays: [],
   controlsDisplayId: null,
   groups: [],
+  uses: [],
   status: [],
   nodes: [],
   switches: { audience: true, stage: true },

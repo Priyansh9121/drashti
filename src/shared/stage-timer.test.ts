@@ -10,7 +10,9 @@ import {
   flashDimmed,
   layoutTimerIds,
   stageClockText,
+  stageTimerChange,
   stageTimerColor,
+  stageTimerTarget,
   stageTimerText,
 } from './stage-timer';
 import type { TimerState } from './timers';
@@ -226,5 +228,64 @@ describe('the stage screens’ timers', () => {
     expect(countsToWords(to, { locale: 'de-DE', timeZone: 'UTC' })).toBe('Counts down to 19:30');
     expect(countsToWords({ ...to, targetTime: null }, UTC)).toBeNull();
     expect(countsToWords({ ...countdown, kind: 'clock' }, UTC)).toBeNull();
+  });
+});
+
+// Session 55 (the user's answer to Session 54's question 13): the Stage screen panel changes what a stage timer counts
+// to, at once on every stage screen; the flash at 0:00 stays as it is.
+describe('changing what a stage timer counts to', () => {
+  const toTime: TimerState = {
+    ...countdown,
+    id: 'placeholder-to-time',
+    name: 'Placeholder start',
+    kind: 'countdown_to_time',
+    durationMs: 0,
+    targetTime: '19:30',
+    allowsOverrun: false,
+  };
+  const fieldsOf = ({ name, kind, durationMs, targetTime, allowsOverrun }: TimerState) => ({
+    name,
+    kind,
+    durationMs,
+    targetTime,
+    allowsOverrun,
+  });
+
+  it('a countdown to a time takes the time of day typed, everything else as it was', () => {
+    expect(stageTimerChange(toTime, '20:15')).toEqual({
+      ok: true,
+      fields: { ...fieldsOf(toTime), targetTime: '20:15' },
+    });
+    expect(stageTimerChange(toTime, ' 7:05 ')).toEqual({
+      ok: true,
+      fields: { ...fieldsOf(toTime), targetTime: '07:05' },
+    });
+    for (const bad of ['', '24:00', '7', '7:5', '19:60', 'soon'])
+      expect(stageTimerChange(toTime, bad), bad).toMatchObject({ ok: false });
+  });
+
+  it('a countdown takes the length typed, everything else as it was', () => {
+    expect(stageTimerChange(countdown, '2:30')).toEqual({
+      ok: true,
+      fields: { ...fieldsOf(countdown), durationMs: 150_000 },
+    });
+    expect(stageTimerChange(countdown, '1:00:00')).toMatchObject({
+      ok: true,
+      fields: { durationMs: 3_600_000 },
+    });
+    for (const bad of ['', '0:00', 'five', '25:00:00'])
+      expect(stageTimerChange(countdown, bad), bad).toMatchObject({ ok: false });
+  });
+
+  it('a count up and a clock have nothing to change', () => {
+    expect(stageTimerChange({ ...countdown, kind: 'countup' }, '5:00')).toMatchObject({ ok: false });
+    expect(stageTimerChange({ ...countdown, kind: 'clock' }, '5:00')).toMatchObject({ ok: false });
+  });
+
+  it('what it counts to now, as the field shows it', () => {
+    expect(stageTimerTarget(toTime)).toBe('19:30');
+    expect(stageTimerTarget({ ...toTime, targetTime: '7:05' })).toBe('07:05');
+    expect(stageTimerTarget(countdown)).toBe('5:00');
+    expect(stageTimerTarget({ ...countdown, kind: 'countup' })).toBeNull();
   });
 });

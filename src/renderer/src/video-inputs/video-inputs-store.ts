@@ -21,6 +21,11 @@ interface VideoInputsUi {
    * playlist item's or slide's input reads as missing for that moment (Session 51: useInputNamed).
    */
   inputs: VideoInput[] | null;
+  /**
+   * The chosen video input's id (Session 55): what a stage layout's video input box shows and LIVE's one press puts
+   * up on the audience (the one chosen in the Stage screen panel, else the first); null with none, or not said yet.
+   */
+  chosenId: string | null;
   /** The dialog: adding one (editing null) or changing one; null while shut. */
   dialog: { editing: VideoInput | null } | null;
   /** May Drashti use the cameras: null until the main process has said. */
@@ -33,6 +38,7 @@ export const NO_INPUTS: readonly VideoInput[] = [];
 
 export const useVideoInputs = create<VideoInputsUi>(() => ({
   inputs: null,
+  chosenId: null,
   dialog: null,
   access: null,
   status: { stopped: null, access: 'unknown' },
@@ -56,7 +62,7 @@ export function connectVideoInputs(): void {
   connected = true;
   const inputs = window.drashti.videoInputs;
   inputs.onChanged((view) => {
-    useVideoInputs.setState({ inputs: view.inputs });
+    useVideoInputs.setState({ inputs: view.inputs, chosenId: view.chosenId ?? null });
   });
   inputs.onStatus((status) => {
     const was = useVideoInputs.getState().access;
@@ -70,7 +76,7 @@ export function connectVideoInputs(): void {
     });
   void inputs.list().then(
     (view) => {
-      useVideoInputs.setState({ inputs: view.inputs });
+      useVideoInputs.setState({ inputs: view.inputs, chosenId: view.chosenId ?? null });
     },
     () => undefined,
   );
@@ -132,7 +138,7 @@ export async function saveInput(
   const result = await (editing ? inputs.update(editing.id, fields) : inputs.add(fields)).catch(() => null);
   if (!result) return 'Drashti could not keep it. Try again in a moment.';
   if (!result.ok) return result.message;
-  useVideoInputs.setState({ inputs: result.view.inputs });
+  useVideoInputs.setState({ inputs: result.view.inputs, chosenId: result.view.chosenId ?? null });
   return null;
 }
 
@@ -141,6 +147,28 @@ export async function removeInput(id: string): Promise<string | null> {
   const result = await window.drashti.videoInputs.remove(id).catch(() => null);
   if (!result) return 'Drashti could not remove it. Try again in a moment.';
   if (!result.ok) return result.message;
-  useVideoInputs.setState({ inputs: result.view.inputs });
+  useVideoInputs.setState({ inputs: result.view.inputs, chosenId: result.view.chosenId ?? null });
   return null;
+}
+
+/** The chosen video input (Session 55): this computer's input chosen in the Stage screen panel, or the first. */
+export function useChosenInput(): VideoInput | null {
+  return useVideoInputs((s) => s.inputs?.find((i) => i.id === s.chosenId) ?? s.inputs?.[0] ?? null);
+}
+
+/** Choose the video input for the stage's video input box and LIVE's one press: null once done, or why not. */
+export async function chooseInput(id: string): Promise<string | null> {
+  const result = await window.drashti.videoInputs.choose(id).catch(() => null);
+  if (!result) return 'Drashti could not choose it. Try again in a moment.';
+  if (!result.ok) return result.message;
+  useVideoInputs.setState({ inputs: result.view.inputs, chosenId: result.view.chosenId ?? null });
+  return null;
+}
+
+/**
+ * LIVE's one press (Session 55): the chosen video input up on the audience as the background, the slide staying over
+ * it; pressed while it is up, off again, the background from before coming back. The stage never follows it.
+ */
+export function toggleInputOnAudience(inputId: string): Promise<void> {
+  return dispatch({ type: 'toggleInput', inputId });
 }

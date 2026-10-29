@@ -824,7 +824,7 @@ test('Looks, stage layouts, masks, key and fill, MIDI and the slide editor (Sess
       return id;
     };
     const hall = await group('Placeholder hall', 'audience', [0]);
-    const stage = await group('Placeholder stage', 'stage', [1]);
+    await group('Placeholder stage', 'stage', [1]);
     await group('Placeholder switcher', 'keyfill', [2, 3]);
     const mask = await d.masks.save(null, {
       name: 'Placeholder LED wall',
@@ -902,7 +902,8 @@ test('Looks, stage layouts, masks, key and fill, MIDI and the slide editor (Sess
     const looks = await d.looks.list();
     const standard = looks.liveId;
     await d.looks.setGroup(standard, hall, { maskId: mask.id });
-    await d.looks.setGroup(standard, stage, { stageLayoutId: layout.id });
+    // The layout every stage screen shows (Session 55: chosen for them all, no longer per Look).
+    await d.stageLayouts.choose(layout.id);
     const lower = await d.looks.create('Placeholder lower thirds', standard);
     const lowerId = lower.ok
       ? (lower.view.looks.find((l) => l.name === 'Placeholder lower thirds')?.id ?? '')
@@ -1089,7 +1090,7 @@ test('Shastra, timers in the running order, Samvat and tithi, and the idle rotat
       };
       const hall = await group('Placeholder hall', 'audience', 0);
       const lobby = await group('Placeholder lobby', 'audience', 1);
-      const stage = await group('Placeholder stage', 'stage', 2);
+      await group('Placeholder stage', 'stage', 2);
       const layout = await d.stageLayouts.save(null, {
         name: 'Placeholder day layout',
         background: '#0b0d11',
@@ -1130,7 +1131,7 @@ test('Shastra, timers in the running order, Samvat and tithi, and the idle rotat
       const live = (await d.looks.list()).liveId;
       await d.looks.setGroup(live, hall, { idle: 'started', languages: ['sa-gu', 'translit', 'gu'] });
       await d.looks.setGroup(live, lobby, { idle: 'always' });
-      await d.looks.setGroup(live, stage, { stageLayoutId: layout.id });
+      await d.stageLayouts.choose(layout.id);
       for (const words of [
         { gu: 'આ નમૂનાનું વાક્ય છે.', en: 'This is a placeholder quote.' },
         { en: 'A second placeholder quote.' },

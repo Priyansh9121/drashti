@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEngine } from '../engine/engine-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageScreen } from '../render/StageScreen';
@@ -6,10 +6,18 @@ import { useFirstGroupLook } from '../screens/screens-store';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { TextInput } from '../ui/Field';
+import { Field, Select, TextInput } from '../ui/Field';
 import { LayoutTemplate, Tv } from '../ui/icons';
 import { useHallPicture } from '../stage/hall-picture';
-import { openStageLayouts, STANDARD } from '../stage/stage-layouts-store';
+import {
+  chooseStageLayout,
+  connectStageLayouts,
+  openStageLayouts,
+  STANDARD,
+  useStageLayouts,
+} from '../stage/stage-layouts-store';
+import { chooseInput, useChosenInput, useVideoInputs } from '../video-inputs/video-inputs-store';
+import { Notice } from '../ui/Notice';
 import { Panel } from '../ui/Panel';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
@@ -46,29 +54,92 @@ export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
 }
 
 /**
- * Edit layout… (Session 26a): the stage layout editor, at the layout the stage screens use now (the
- * live Look's first stage group's), as Screens' Edit stage layouts… opens it.
+ * Edit layouts… (Session 26a): the stage layout editor, at the layout every stage screen shows now (Session 55), as
+ * Screens' Edit stage layouts… opens it.
  */
 function EditLayoutButton() {
-  const first = useFirstGroupLook('stage');
+  const chosen = useEngine((s) => s.state?.stage?.layout?.id ?? STANDARD);
   return (
     <Button
       size="sm"
       icon={LayoutTemplate}
       data-testid="stage-edit-layout"
       onClick={() => {
-        openStageLayouts(first?.look.stageLayout?.id ?? STANDARD);
+        openStageLayouts(chosen);
       }}
     >
-      Edit layout…
+      Edit layouts…
     </Button>
+  );
+}
+
+/**
+ * Layout (Session 55): the one stage layout every stage screen shows, chosen here at once, and kept over a restart;
+ * Standard is the stage screen Drashti comes with. No longer chosen per Look.
+ */
+function LayoutPicker({ onProblem }: { onProblem: (problem: string | null) => void }) {
+  const layouts = useStageLayouts((s) => s.layouts);
+  const chosen = useEngine((s) => s.state?.stage?.layout ?? null);
+  useEffect(() => {
+    connectStageLayouts();
+  }, []);
+  // The chosen one is offered even before the list is read, so the field never shows another.
+  const listed = layouts ?? (chosen ? [chosen] : []);
+  return (
+    <Field label="Layout" className="min-w-0 flex-1">
+      <Select
+        data-testid="stage-layout-choice"
+        value={chosen?.id ?? STANDARD}
+        onChange={(e) => {
+          const id = e.target.value === STANDARD ? null : e.target.value;
+          void chooseStageLayout(id).then(onProblem);
+        }}
+      >
+        <option value={STANDARD}>Standard</option>
+        {listed.map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.name}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+/**
+ * Video input (Session 55): the one a stage layout's video input box shows and LIVE's one press puts up on the
+ * audience. Offered only on a computer with video inputs in Media; the first is chosen until another is.
+ */
+function InputPicker({ onProblem }: { onProblem: (problem: string | null) => void }) {
+  const inputs = useVideoInputs((s) => s.inputs);
+  const chosen = useChosenInput();
+  if (!inputs || inputs.length === 0 || !chosen) return null;
+  return (
+    <Field label="Video input" className="min-w-0 flex-1">
+      <Select
+        data-testid="stage-input-choice"
+        value={chosen.id}
+        onChange={(e) => {
+          void chooseInput(e.target.value).then(onProblem);
+        }}
+      >
+        {inputs.map((i) => (
+          <option key={i.id} value={i.id}>
+            {i.name}
+          </option>
+        ))}
+      </Select>
+    </Field>
   );
 }
 
 /** The stage screen: what the performers see, and a message for them only (the audience never sees it). */
 export function StageMessageControl() {
   const shown = useEngine((s) => s.state?.stageMessage ?? null);
+  // Stage off (Session 55): every stage screen shows the audience picture, said here.
+  const off = useEngine((s) => s.state?.stage?.off === true);
   const [text, setText] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
   return (
     <Panel
       help="stage"
@@ -83,6 +154,21 @@ export function StageMessageControl() {
         <StagePreview />
         <EditLayoutButton />
       </div>
+      {off && (
+        <p className="text-xs text-warning-fg" data-testid="stage-off-note">
+          Stage is off: every stage screen shows the audience picture.
+        </p>
+      )}
+      {/* One layout for every stage screen, and the video input (Session 55). */}
+      <div className="flex flex-wrap items-end gap-2">
+        <LayoutPicker onProblem={setProblem} />
+        <InputPicker onProblem={setProblem} />
+      </div>
+      {problem && (
+        <Notice tone="danger" compact>
+          {problem}
+        </Notice>
+      )}
       {/* The stage layout's timers, with Start, Pause and Reset (Session 54). */}
       <StageTimerControls />
       <form

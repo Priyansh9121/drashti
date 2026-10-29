@@ -3,7 +3,7 @@ import type { AudioDevice } from './audio';
 import { audioDeviceSchema } from './audio';
 import type { KirtanLang, Lang, RenderSlide, TextElement } from './model';
 import { idSchema } from './model-schema';
-import type { DisplayInfo, ScreensSnapshot } from './screens';
+import type { DisplayJob, ScreensSnapshot } from './screens';
 import { groupLanguagesSchema } from './screens-schema';
 import { NEW_TEXT_LINE_HEIGHT } from './model';
 
@@ -13,8 +13,8 @@ import { NEW_TEXT_LINE_HEIGHT } from './model';
  * step by step and applied together at Finish. Nothing changes before.
  */
 
-/** What an output is used for. */
-export type OutputUse = 'audience' | 'stage' | 'none';
+/** What an output is used for: its job (Session 55, shared/screens.ts). */
+export type OutputUse = DisplayJob;
 
 export interface SetupOutput {
   displayId: number;
@@ -36,8 +36,8 @@ export type SetupResult =
   | {
       ok: true;
       snapshot: ScreensSnapshot;
-      /** How many screens show the test slide now. */
-      tested: number;
+      /** How many screens show now (Session 55: no test slide; each shows what is up, or nothing). */
+      showing: number;
     }
   /** `confirm`: nothing changed yet; repeat with consent to cover the operator's display. */
   | { ok: false; message: string; confirm?: 'covers-operator' };
@@ -54,28 +54,11 @@ export interface SetupState {
   welcome: boolean;
   /** The display the operator window is on (null when outputs never cover it, as in windowed tests). */
   operatorDisplayId: number | null;
-  /** The display the operator window is on, windowed outputs or not (Session 44: never offered for the hall). */
+  /**
+   * The display the controls are on, windowed outputs or not (Session 44; Session 55: never taken by itself, and
+   * marked wherever a display is offered).
+   */
   controlsDisplayId: number | null;
-  /** Whether the window offers "Show on <display>" (Session 44): Pro Mode, and not in tests unless they ask. */
-  offer: boolean;
-}
-
-/**
- * The display to offer "Show on <its name>" for (Session 44; Priyansh: "creating a screen shouldnt take this
- * long, make obvious stuff obvious"): while no screen of this computer shows the hall's picture yet (an audience
- * or key-and-fill screen), the first connected display that is not the one with the controls and that no
- * screen uses. One click makes it the hall's screen. Null when there is none to offer.
- */
-export function displayToOffer(
-  snapshot: Pick<ScreensSnapshot, 'displays' | 'groups' | 'status'>,
-  controlsDisplayId: number | null,
-): DisplayInfo | null {
-  const hall = snapshot.groups.some(
-    (g) => (g.role === 'audience' || g.role === 'keyfill') && g.screens.some((s) => s.nodeId === null),
-  );
-  if (hall) return null;
-  const used = new Set(snapshot.status.flatMap((st) => (st.displayId === null ? [] : [st.displayId])));
-  return snapshot.displays.find((d) => d.id !== controlsDisplayId && !used.has(d.id)) ?? null;
 }
 
 export const setupPlanSchema: z.ZodType<SetupPlan> = z.object({
@@ -93,10 +76,7 @@ export const setupPlanSchema: z.ZodType<SetupPlan> = z.object({
   themeId: idSchema.nullable(),
 });
 
-/** How long the test slide stays on the screens after Finish. */
-export const TEST_CARD_MS = 8000;
-
-/** Placeholder lines in each language for test slides: written for Drashti, not kirtan text. */
+/** Placeholder lines in each language for a sample slide: written for Drashti, not kirtan text. */
 export const SAMPLE_LINES: Record<KirtanLang, string> = {
   gu: 'પરીક્ષણ સ્લાઇડ',
   hi: 'परीक्षण स्लाइड',
@@ -104,7 +84,7 @@ export const SAMPLE_LINES: Record<KirtanLang, string> = {
   en: 'A test slide',
 };
 
-/** A kirtan slide with a line in each language, for each screen to show in its own languages. */
+/** A kirtan slide with a line in each language (a placeholder: the slides' line heights are checked on it). */
 export function sampleKirtanSlide(width = 1920, height = 1080): RenderSlide {
   const scale = height / 1080;
   const runs = [

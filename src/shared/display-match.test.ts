@@ -79,6 +79,46 @@ describe('matchDisplays', () => {
     expect(m.get('a')).toBeNull();
   });
 
+  // Session 55: a display's own identity (its maker, model and serial number) finds it wherever it is plugged in.
+  describe('by the display’s own identity', () => {
+    const projector = (id: number, hardwareId: string | null, x: number) => {
+      const d = display(id, 'EPSON PJ', 1920, 1080, x, 0);
+      return { ...d, key: { ...d.key, hardwareId } };
+    };
+
+    it('two projectors of one model swapped between ports: each screen follows its own projector', () => {
+      // Saved: A on display 5 at 1440, B on display 6 at 3360. Now A is on the port B was on, and B on A's.
+      const a = projector(5, 'edid:4c2d:1234:n1111', 1440);
+      const b = projector(6, 'edid:4c2d:1234:n2222', 3360);
+      const nowA = projector(6, 'edid:4c2d:1234:n1111', 3360);
+      const nowB = projector(5, 'edid:4c2d:1234:n2222', 1440);
+      const m = matchDisplays([saved('hall', a), saved('stage', b)], [laptop, nowB, nowA]);
+      expect(m.get('hall')).toBe(6);
+      expect(m.get('stage')).toBe(5);
+    });
+
+    it('another port and a new id after a restart: found by its identity alone', () => {
+      const a = projector(5, 'edid:4c2d:1234:n1111', 1440);
+      const m = matchDisplays([saved('hall', a)], [laptop, projector(77, 'edid:4c2d:1234:n1111', 3360)]);
+      expect(m.get('hall')).toBe(77);
+    });
+
+    it('a display known to be another is never taken for it, however alike (same id, label, size and place)', () => {
+      const a = projector(5, 'edid:4c2d:1234:n1111', 1440);
+      const m = matchDisplays([saved('hall', a)], [laptop, projector(5, 'edid:4c2d:1234:n9999', 1440)]);
+      expect(m.get('hall')).toBeNull();
+    });
+
+    it('without an identity on one side (no serial number, not read yet, a key saved before), as before', () => {
+      const old = projector(5, null, 1440);
+      expect(
+        matchDisplays([saved('hall', old)], [laptop, projector(5, 'edid:4c2d:1234:n1111', 1440)]).get('hall'),
+      ).toBe(5);
+      const known = projector(5, 'edid:4c2d:1234:n1111', 1440);
+      expect(matchDisplays([saved('hall', known)], [laptop, projector(9, null, 1440)]).get('hall')).toBe(9);
+    });
+  });
+
   it('describes a display for the UI', () => {
     expect(describeDisplay({ ...hall, refreshHz: 59.94 })).toBe('Hall TV · 1920 × 1080 · 59.94 Hz');
     expect(describeDisplay(display(4, '', 1280, 720))).toBe('Display 4 · 1280 × 720 · 60 Hz');

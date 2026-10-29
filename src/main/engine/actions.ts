@@ -3,6 +3,7 @@ import type { IdleState, Quote } from '../../shared/idle';
 import type { LiveLook } from '../../shared/looks';
 import type { LiveZoom, PictureLook } from '../../shared/picture-look';
 import type { RenderSlide, Transition } from '../../shared/model';
+import type { StageState } from '../../shared/stage-layouts';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
   AudioLayer,
@@ -145,4 +146,6 @@ export type EngineAction =
   /** What the time bar shows of the videos on the slide up, the props, the logo and the box (Session 54); null: none. */
   | { type: 'videoFiles/set'; files: Record<string, VideoFile> | null }
   /** Drashti stopped (Session 54, access by Gmail): the screens fade to black from `at`. */
-  | { type: 'access/stop'; at: number };
+  | { type: 'access/stop'; at: number }
+  /** The stage screens (Session 55): the chosen layout, Stage off, the chosen video input. */
+  | { type: 'stage/set'; stage: StageState };
