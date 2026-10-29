@@ -48,7 +48,9 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
     <Tooltip
       content={
         on
-          ? `Turn off ${WHOSE[which]}: their displays go back to the computer. The show carries on.`
+          ? which === 'stage'
+            ? `Turn off ${WHOSE[which]}: they show the audience picture instead. The show carries on.`
+            : `Turn off ${WHOSE[which]}: their displays go back to the computer. The show carries on.`
           : `Turn on ${WHOSE[which]} again, where they were.`
       }
       kbd={shortcutText(KEY[which], platform)}

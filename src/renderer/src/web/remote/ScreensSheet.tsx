@@ -643,7 +643,8 @@ export function ScreensSheet() {
           Audience and Stage
         </h3>
         <p className="text-base text-muted">
-          Off gives the hall’s or the stage screens’ displays back to the computer; the show carries on.
+          Audience off gives the hall’s displays back to the computer; Stage off shows the audience picture on
+          the stage screens. The show carries on.
         </p>
         <SwitchButtons />
       </section>

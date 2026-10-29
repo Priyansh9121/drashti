@@ -840,7 +840,7 @@ export interface DrashtiBridge {
   screenSwitches: {
     get(): Promise<ScreenSwitches>;
     onChanged(listener: (switches: ScreenSwitches) => void): () => void;
-    /** Off closes them (their displays go back to the computer); on opens them where they were. */
+    /** Audience off closes them (their displays go back to the computer); Stage off shows the audience picture on the stage screens (Session 55); on opens them where they were. */
     turn(which: ScreenSwitch, on: boolean): Promise<ScreenSwitchResult>;
     /**
      * The window's question before one goes off opened, or went (null), Session 51: an output over the controls
