@@ -35,6 +35,9 @@ import { CI_WINDOW } from './window-size';
 
 const isList = (p: Page) => p.url().includes('access-list.html');
 
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
 /** The owner's Drashti (let in as the owner through a stand-in list of its own), its operator window ready. */
 async function owner(env: Record<string, string> = {}) {
   const run = await launchApp(env, undefined, { as: 'owner' });
@@ -117,7 +120,10 @@ test('the owner’s Access List: every Gmail as the list has it, each edit reach
     await choose(list, PLACEHOLDER_PERSON);
     await list.getByTestId('access-revoke').click();
     const question = list.getByTestId('access-revoke-question');
-    await expect(question).toContainText('Their Drashti stops at once, screens and stream included.');
+    // Within one check, as the notice after it says (Session 54's question 21).
+    await expect(question).toContainText(
+      'Their Drashti stops within 15 seconds, screens and stream included.',
+    );
     await expect(question.getByRole('button', { name: 'Cancel' })).toBeFocused();
     await expectNoSeriousA11yIssues(list, 'the Access List’s Revoke question');
     await question.getByRole('button', { name: 'Cancel' }).click();
@@ -261,6 +267,69 @@ test('how long access lasts: Approve, Give access again and Change the length ea
   }
 });
 
+test('how each Gmail may use Drashti: the Mode column, Approve and Add asking (Simple first), Change the mode… on a row and never on the owner’s; a computer with no check for 15 days shown ended, and given access again', async () => {
+  test.setTimeout(180_000);
+  const { app, access: s } = await owner();
+  try {
+    const asker = 'asker.placeholder@example.com';
+    ask(s, asker, computerOf('access-list-mode-asker', 'Placeholder Side Mac'));
+    s.grant(PLACEHOLDER_PERSON, computerOf('access-list-mode-person', 'Placeholder Hall Mac'));
+    const list = await openList(app);
+    await expect(list.getByRole('columnheader', { name: 'Mode' })).toBeVisible();
+    const modeCell = (gmail: string) => row(list, gmail).getByTestId('access-mode-cell');
+    await expect(modeCell(s.approver)).toHaveAttribute('data-mode', 'pro');
+    await expect(modeCell(s.approver)).toContainText('Your own: always');
+    await expect(modeCell(PLACEHOLDER_PERSON)).toHaveText('Pro');
+    await expect(modeCell(asker)).toHaveText('Simple once approved', { timeout: 20_000 });
+    // Approve asks what they may use, Simple chosen first.
+    await choose(list, asker);
+    await list.getByTestId('access-approve').click();
+    await expect(list.getByTestId('access-mode-choice')).toHaveValue('simple');
+    await list.getByTestId('access-length-save').click();
+    await expect(list.getByTestId('access-length-dialog')).toHaveCount(0);
+    await expect(modeCell(asker)).toHaveAttribute('data-mode', 'simple');
+    await expect(modeCell(asker)).toContainText('Simple Mode only');
+    expect(s.list.sheet.find('Access List', 'Gmail', asker)?.['Mode']).toBe('Simple');
+    // Change the mode… on a row: Pro for the asker, said, and in the Sheet.
+    await list.getByTestId('access-mode').click();
+    const dialog = list.getByTestId('access-mode-dialog');
+    await expect(list.getByTestId('access-mode-choice')).toHaveValue('simple');
+    await list.getByTestId('access-mode-choice').selectOption('pro');
+    await expectNoSeriousA11yIssues(list, 'the Access List’s Change the mode…');
+    await list.getByTestId('access-mode-save').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(modeCell(asker)).toHaveText('Pro');
+    await expect(list.getByTestId('access-said')).toContainText('within 15 seconds');
+    expect(s.list.sheet.find('Access List', 'Gmail', asker)?.['Mode']).toBe('Pro');
+    // Never on the owner's own row: always Pro.
+    await choose(list, s.approver);
+    await expect(list.getByTestId('access-mode')).toHaveCount(0);
+    // Add asks too, Simple first.
+    await list.getByTestId('access-search').fill('');
+    await list.getByTestId('access-add-open').click();
+    await expect(list.getByTestId('access-add-mode')).toHaveValue('simple');
+    await list.getByTestId('access-add-gmail').fill('new.placeholder@example.com');
+    await list.getByTestId('access-add-mode').selectOption('pro');
+    await list.getByTestId('access-add-save').click();
+    await expect(list.getByTestId('access-add-dialog')).toHaveCount(0);
+    await expect(modeCell('new.placeholder@example.com')).toHaveText('Pro');
+    // A computer with no check for 15 days (the list's clock moved on, that computer silent): ended, its row saying so;
+    // Give access again sends a new token.
+    moveListClock(s, 15 * DAY + HOUR, { quiet: [PLACEHOLDER_PERSON] });
+    const theirs = row(list, PLACEHOLDER_PERSON);
+    await expect(theirs).toContainText('No contact for 15 days', { timeout: 20_000 });
+    await expect(theirs).toContainText(
+      'Placeholder Hall Mac · 1.0.0-alpha.13 · Mac (no contact for 15 days)',
+    );
+    await choose(list, PLACEHOLDER_PERSON);
+    await list.getByTestId('access-regrant').click();
+    await list.getByTestId('access-length-save').click();
+    await expect(theirs).toContainText('Token sent', { timeout: 20_000 });
+  } finally {
+    await app.close();
+  }
+});
+
 test('a revoke in the Access List stops that Gmail’s own Drashti at its next check', async () => {
   test.setTimeout(180_000);
   const { app, access: s } = await owner();
@@ -359,9 +428,11 @@ test('the Access List sorts, shows one status, searches, and saves the rows show
       .replace(/^\uFEFF/u, '')
       .trimEnd()
       .split('\r\n');
+    // With how each may use Drashti last (Session 55).
     expect(lines[0]).toBe(
-      'Gmail,Name,Status,Requested,Approved,Rejected,Revoked,Length,Access ends,Computers,Last seen,Minutes used,Shows,Streams,Recordings,Imports,Note',
+      'Gmail,Name,Status,Requested,Approved,Rejected,Revoked,Length,Access ends,Computers,Last seen,Minutes used,Shows,Streams,Recordings,Imports,Note,Mode',
     );
+    expect(lines.slice(1).map((l) => l.split(',').at(-1))).toEqual(['Pro', 'Pro', 'Pro', 'Pro']);
     expect(lines.slice(1).map((l) => l.split(',')[0])).toEqual([
       'a.placeholder@example.com',
       'b.placeholder@example.com',

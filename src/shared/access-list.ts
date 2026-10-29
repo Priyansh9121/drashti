@@ -1,4 +1,4 @@
-import { leftText } from './access';
+import { leftText, OFFLINE_DAYS_TEXT } from './access';
 import {
   ACCESS_ERROR_TEXT,
   ACCESS_LENGTH_DAYS,
@@ -6,8 +6,10 @@ import {
   ACCESS_STATUSES,
   ACCESS_UNLIMITED,
   gmailKey,
+  NO_CONTACT,
   type AccessErrorCode,
   type AccessLength,
+  type AccessMode,
   type AccessPerson,
   type AccessStatus,
 } from './access-protocol';
@@ -17,9 +19,10 @@ import { plural } from './text';
  * View › Access List… (Session 54, E4): the owner's own window onto the access list in their Google account
  * (access-list/PROTOCOL.md, "The owner's calls"). Only the owner's computer has it, and only its main process
  * asks the list (src/main/access/access-list.ts). Here: what the window is told, and the rules both sides keep:
- * the columns, sorting, the status filter and the search, which edits a Gmail is offered (never Revoke, Reject or a
- * length on the owner's own row), the lengths of access offered (the owner's decision of 28 Oct 2026: Unlimited
- * first), the words for each, and the CSV the owner saves. Counts only, never content:
+ * the columns, sorting, the status filter and the search, which edits a Gmail is offered (never Revoke, Reject, a
+ * length or Simple on the owner's own row), the lengths of access offered (the owner's decision of 28 Oct 2026:
+ * Unlimited first), the modes (the owner's decision of 29 Oct 2026: Simple first), the words for each, and the CSV the
+ * owner saves. Counts only, never content:
  * the list holds no words, file names or pictures of anyone's shows, so nothing here can.
  */
 
@@ -53,6 +56,26 @@ export interface AccessListAdd {
   note: string;
   approve: boolean;
   length: AccessLength;
+  /** Pro (Pro Mode and Simple Mode) or Simple (Simple Mode only), once approved (Session 55). */
+  mode: AccessMode;
+}
+
+// ---- how a Gmail may use Drashti (the owner's decision of 29 Oct 2026) ----
+
+/** The modes the owner chooses from, in the order offered: Simple first (chosen at first), then Pro. */
+export const MODE_CHOICES: readonly { mode: AccessMode; label: string }[] = [
+  { mode: 'simple', label: 'Simple Mode only' },
+  { mode: 'pro', label: 'Pro Mode and Simple Mode' },
+];
+
+/** A mode in a word: "Pro", "Simple". */
+export const modeWord = (mode: AccessMode): string => (mode === 'simple' ? 'Simple' : 'Pro');
+
+/** What the Mode cell says for a Gmail: its first line, and a second. */
+export function modeCell(p: AccessPerson): { text: string; detail: string } {
+  if (knownStatus(p.status) === 'requested') return { text: `${modeWord(p.mode)} once approved`, detail: '' };
+  if (p.owner) return { text: 'Pro', detail: 'Your own: always' };
+  return { text: modeWord(p.mode), detail: p.mode === 'simple' ? 'Simple Mode only' : '' };
 }
 
 // ---- lengths of access (the owner's decision of 28 Oct 2026) ----
@@ -178,7 +201,11 @@ export function statusDetail(p: AccessPerson): string {
       return p.request.computer === ADDED_BY_OWNER ? 'Added by you' : `Asked from ${p.request.computer}`;
     case 'approved':
       if (p.token) return `Token sent: runs out ${formatDay(p.token.runsOut)}`;
-      return p.computers.some((c) => !c.ended) ? '' : 'No computer in yet';
+      if (p.computers.some((c) => !c.ended)) return '';
+      // Its computers ended for no check in 15 days (Session 55): Give access again lets one in.
+      return p.computers.some((c) => c.endedWhy === NO_CONTACT)
+        ? `No contact for ${OFFLINE_DAYS_TEXT}`
+        : 'No computer in yet';
     case 'rejected':
       return p.rejectedAt === null ? '' : `On ${formatDay(p.rejectedAt)}`;
     case 'revoked':
@@ -214,6 +241,7 @@ export type AccessColumn =
   | 'requested'
   | 'approved'
   | 'ends'
+  | 'mode'
   | 'revoked'
   | 'computers'
   | 'lastSeen'
@@ -231,6 +259,7 @@ export const ACCESS_COLUMNS: readonly { id: AccessColumn; label: string; numeric
   { id: 'requested', label: 'Requested' },
   { id: 'approved', label: 'Approved' },
   { id: 'ends', label: 'Access ends' },
+  { id: 'mode', label: 'Mode' },
   { id: 'revoked', label: 'Revoked' },
   { id: 'computers', label: 'Computer and version' },
   { id: 'lastSeen', label: 'Last seen' },
@@ -255,6 +284,10 @@ export function computersOf(p: AccessPerson): AccessPerson['computers'] {
   return [...p.computers.filter((c) => !c.ended), ...p.computers.filter((c) => c.ended)];
 }
 
+/** How a computer's line says it ended: "no contact for 15 days" (Session 55), or "ended". */
+export const endedWords = (c: AccessPerson['computers'][number]): string =>
+  c.endedWhy === NO_CONTACT ? `no contact for ${OFFLINE_DAYS_TEXT}` : 'ended';
+
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
 /** What a column sorts by; null (no date, no note) always goes last. */
@@ -276,6 +309,8 @@ function sortValue(p: AccessPerson, column: AccessColumn): string | number | nul
       if (knownStatus(p.status) !== 'approved') return null;
       if (p.endsUnreadable) return 0;
       return p.endsAt ?? Number.MAX_SAFE_INTEGER;
+    case 'mode':
+      return modeCell(p).text;
     case 'revoked':
       return p.revokedAt;
     case 'computers':
@@ -341,13 +376,14 @@ export function shownPeople(
 
 // ---- the edits ----
 
-export type AccessEdit = 'approve' | 'reject' | 'regrant' | 'length' | 'revoke' | 'note';
+export type AccessEdit = 'approve' | 'reject' | 'regrant' | 'length' | 'mode' | 'revoke' | 'note';
 
 export const EDIT_WORDS: Record<AccessEdit, string> = {
   approve: 'Approve…',
   reject: 'Reject',
   regrant: 'Give access again…',
   length: 'Change the length…',
+  mode: 'Change the mode…',
   revoke: 'Revoke…',
   note: 'Edit note…',
 };
@@ -356,9 +392,9 @@ export const EDIT_WORDS: Record<AccessEdit, string> = {
  * What the window offers for a Gmail, by its status: a request Approve or Reject; an approved Gmail Give access
  * again (a new token, for one more computer), Change the length and Revoke; a rejected one Approve; a revoked one
  * Give access again; one with a status the list does not know (typed into the Sheet) Give access again, which puts
- * it right. Approve, Give access again and Change the length each ask how long access lasts. Never Revoke, Reject
- * or a length on the owner's own row (always Unlimited; the list refuses them too). Every row may have its note
- * edited.
+ * it right. Approve, Give access again and Change the length each ask how long access lasts, and Approve what they
+ * may use. Every row but the owner's may have its mode changed (Session 55). Never Revoke, Reject, a length or Simple
+ * on the owner's own row (always Unlimited and Pro; the list refuses them too). Every row may have its note edited.
  */
 export function editsFor(p: AccessPerson): AccessEdit[] {
   const edits: AccessEdit[] = [];
@@ -369,7 +405,7 @@ export function editsFor(p: AccessPerson): AccessEdit[] {
       break;
     case 'approved':
       edits.push('regrant');
-      if (!p.owner) edits.push('length', 'revoke');
+      if (!p.owner) edits.push('length');
       break;
     case 'rejected':
       edits.push('approve');
@@ -377,15 +413,20 @@ export function editsFor(p: AccessPerson): AccessEdit[] {
     default:
       edits.push('regrant');
   }
+  if (!p.owner) edits.push('mode');
+  if (!p.owner && knownStatus(p.status) === 'approved') edits.push('revoke');
   edits.push('note');
   return edits;
 }
 
-/** Revoke asks first, in these words. */
+/**
+ * Revoke asks first, in these words: within one check (15 seconds), as the notice after it says (Session 54's question
+ * 21); a computer with no internet when it comes the moment it is back, and within 15 days in any case (Session 55).
+ */
 export const REVOKE_QUESTION = {
   title: (gmail: string) => `Revoke ${gmail}?`,
-  body: 'Their Drashti stops at once, screens and stream included.',
-  more: 'Give access again lets them back in later, with a new token.',
+  body: 'Their Drashti stops within 15 seconds, screens and stream included.',
+  more: `One with no internet stops the moment it is back online, and within ${OFFLINE_DAYS_TEXT} in any case. Give access again lets them back in later, with a new token.`,
   confirm: 'Revoke',
 } as const;
 
@@ -507,6 +548,7 @@ export const CSV_COLUMNS = [
   'Recordings',
   'Imports',
   'Note',
+  'Mode',
 ] as const;
 
 /** A date and time as a spreadsheet reads it, in this computer's time zone: "2026-10-27 18:05". */
@@ -534,7 +576,11 @@ function csvComputers(p: AccessPerson): string {
       const about = [
         platformWord(c.platform),
         c.version,
-        c.ended ? `ended${c.endedWhy ? `: ${c.endedWhy}` : ''}` : '',
+        c.ended
+          ? c.endedWhy === NO_CONTACT
+            ? `ended: ${endedWords(c)}`
+            : `ended${c.endedWhy ? `: ${c.endedWhy}` : ''}`
+          : '',
       ]
         .filter(Boolean)
         .join(', ');
@@ -572,6 +618,7 @@ export function accessListCsv(people: readonly AccessPerson[]): string {
     csvField(p.recordings, false),
     csvField(p.imports, false),
     csvField(p.note, true),
+    p.owner ? 'Pro' : modeWord(p.mode),
   ]);
   return `\uFEFF${[[...CSV_COLUMNS], ...rows].map((r) => r.join(',')).join('\r\n')}\r\n`;
 }

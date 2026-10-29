@@ -161,6 +161,8 @@ export interface NetworkDeps {
   };
   /** Whether Simple Mode refuses this window channel now (the same table the windows' requests go through). */
   refused(channel: InvokeChannel): boolean;
+  /** Simple Mode's refusal in words true for this computer's access (Session 55); left out: SIMPLE_MODE_REFUSAL. */
+  refusal?(): string;
   /** The status changed: the operator window is told. */
   changed(status: NetworkStatus): void;
   log(level: 'info' | 'warn', message: string): void;
@@ -834,7 +836,7 @@ export class NetworkService implements EngineTransport {
     if (!isDeviceOp(request.op) || !deviceMay(device.kind, request.op))
       return deny(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
     const channel = OP_CHANNEL[request.op];
-    if (channel && this.deps.refused(channel)) return deny(403, SIMPLE_MODE_REFUSAL);
+    if (channel && this.deps.refused(channel)) return deny(403, this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL);
     const args = (request.args ?? {}) as Record<string, unknown>;
     return { device, args, who: `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”` };
   }

@@ -40,6 +40,7 @@ import { NextPreview } from '../operator/NextPreview';
 import { RecoveryBanner } from '../operator/RecoveryBanner';
 import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
+import { useAccess } from '../access/access-store';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { EngineUnread } from '../operator/EngineUnread';
@@ -66,7 +67,9 @@ import { useNodes } from '../nodes/nodes-store';
  * it). Nothing here can change the library, the screens or the sound; the
  * main process refuses that too. Leaving takes Switch to Pro Mode… (a small
  * button at the top right since Session 20, or the View menu) and typing the
- * word.
+ * word. With Simple access (Session 55, the owner's decision of 29 Oct 2026)
+ * there is no way to Pro Mode: the button and the menu item go, and the main
+ * process refuses it whatever asks; one line says so in the button's place.
  */
 
 /** What Next says when it has nothing to start because the playlist could not be read (Session 39). */
@@ -250,13 +253,19 @@ function PlaylistColumn() {
   );
 }
 
+/** This computer's access is Simple Mode only, as the list last said (Session 55). */
+const useSimpleAccess = (): boolean => useAccess((s) => s.view?.mode === 'simple');
+
 /**
  * The way out (Switch to Pro Mode…, at the top right or in the View menu,
  * opens it): typing the word on purpose. Never a PIN (Session 54, E5: roles
  * and PINs are gone).
  */
 function LeaveSimpleDialog() {
-  const asking = useMode((s) => s.askingToLeave);
+  // With Simple access (Session 55) the question is never asked: there is no way to Pro Mode.
+  const askingToLeave = useMode((s) => s.askingToLeave);
+  const simpleAccess = useSimpleAccess();
+  const asking = askingToLeave && !simpleAccess;
   const [word, setWord] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   if (!asking) return null;
@@ -448,6 +457,7 @@ function useScrolls(): [(el: HTMLElement | null) => void, boolean] {
 
 export function SimpleApp({ info }: { info: AppInfo | null }) {
   const platform = info?.platform ?? 'darwin';
+  const simpleAccess = useSimpleAccess();
   const [middle, middleScrolls] = useScrolls();
   const dashboardOpen = useNodes((s) => s.dashboard);
   const items = usePlaylists((s) => s.items);
@@ -512,16 +522,27 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </div>
         </HeaderStates>
         {/* The way out on Simple Mode's own screen (Session 20), small and far from the big buttons:
-            Windows hides the menu bar. It asks the same question as View > Switch to Pro Mode…. */}
-        <Button
-          className="shrink-0"
-          data-testid="simple-leave"
-          onClick={() => {
-            useMode.setState({ askingToLeave: true });
-          }}
-        >
-          Switch to Pro Mode…
-        </Button>
+            Windows hides the menu bar. It asks the same question as View > Switch to Pro Mode…. With Simple
+            access (Session 55) there is none: one line says so in its place. */}
+        {simpleAccess ? (
+          <span
+            className="shrink-0 text-sm text-on-header/80"
+            data-testid="simple-access"
+            title="The person who approves access can give this computer Pro access."
+          >
+            Simple Mode only on this computer
+          </span>
+        ) : (
+          <Button
+            className="shrink-0"
+            data-testid="simple-leave"
+            onClick={() => {
+              useMode.setState({ askingToLeave: true });
+            }}
+          >
+            Switch to Pro Mode…
+          </Button>
+        )}
       </header>
       <Band />
       {/* No internet, and when access ends (Session 54): in the flow, never over the big buttons. */}

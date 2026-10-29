@@ -31,6 +31,21 @@ export type ModeResult = { ok: true; mode: OperatorMode } | { ok: false; message
 export const SIMPLE_MODE_REFUSAL =
   'Simple Mode is on, so this cannot be changed. On the Drashti computer, Switch to Pro Mode… leaves it.';
 
+/**
+ * The same while this computer's access is Simple Mode only (Session 55, the owner's decision of 29 Oct 2026): no way
+ * to Pro Mode is offered, in words either.
+ */
+export const SIMPLE_ACCESS_LOCKED_REFUSAL =
+  'Simple Mode is on, and this computer’s access is Simple Mode only, so this cannot be changed here.';
+
+/** Leaving Simple Mode, asked with Simple access: refused, saying why and who can change it. */
+export const SIMPLE_ACCESS_REFUSAL =
+  'This computer’s access is Simple Mode only, so Pro Mode is not available here. The person who approves access can give it Pro access.';
+
+/** Simple Mode's refusal, in words true for this computer's access. */
+export const simpleRefusalText = (simpleOnly: boolean): string =>
+  simpleOnly ? SIMPLE_ACCESS_LOCKED_REFUSAL : SIMPLE_MODE_REFUSAL;
+
 export const isOperatorMode = (value: unknown): value is OperatorMode =>
   value === 'pro' || value === 'simple';
 

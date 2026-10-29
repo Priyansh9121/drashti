@@ -161,16 +161,23 @@ test('the end by the list’s clock, a year ahead of this computer’s: everythi
   }
 });
 
-test('the list’s own Approve page: the lengths offered with Unlimited chosen (or the one chosen adding the Gmail), days typed checked, and the approval for the length chosen', async () => {
+test('the list’s own Approve page: the lengths offered with Unlimited chosen (or the one chosen adding the Gmail), days typed checked, what they may use with Simple Mode only chosen (Session 55), and the approval for the length and the mode chosen', async () => {
   test.setTimeout(120_000);
   const { app, access: s } = await launchApp(FAST);
   try {
     const gmail = 'asker.placeholder@example.com';
     const page = await openPage(app, s.pageUrl(askedFor(s, gmail)));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`Approve ${gmail}?`);
-    await expect(page.getByRole('group', { name: 'How long may they use Drashti?' })).toBeVisible();
+    const lengths = page.getByRole('group', { name: 'How long may they use Drashti?' });
+    await expect(lengths).toBeVisible();
     await expect(page.getByRole('radio', { name: 'Unlimited, until you revoke it' })).toBeChecked();
-    await expect(page.getByRole('radio')).toHaveCount(10);
+    await expect(lengths.getByRole('radio')).toHaveCount(10);
+    // What they may use (Session 55, the owner's decision of 29 Oct 2026): Simple Mode only, chosen first.
+    const modes = page.getByRole('group', { name: 'What may they use?' });
+    await expect(modes.getByRole('radio')).toHaveCount(2);
+    await expect(modes.getByRole('radio', { name: 'Simple Mode only' })).toBeChecked();
+    await expect(modes.getByRole('radio', { name: 'Pro Mode and Simple Mode' })).not.toBeChecked();
+    await expect(page.getByRole('radio')).toHaveCount(12);
     await expectNoSeriousA11yIssues(page, 'the Approve page');
     // Days typed that are not 1 to 730: said on the page, nothing sent.
     await page.getByRole('spinbutton', { name: 'Number of days' }).fill('0');
@@ -186,17 +193,20 @@ test('the list’s own Approve page: the lengths offered with Unlimited chosen (
     await page.getByRole('button', { name: 'Approve' }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Approved');
     await expect(page.locator('#lines')).toContainText('Their access lasts until');
+    await expect(page.locator('#lines')).toContainText('They may use Simple Mode only.');
     await expect(page.getByRole('radio')).toHaveCount(0);
+    expect(s.list.sheet.find('Access List', 'Gmail', gmail)?.['Mode']).toBe('Simple');
     const ends = s.list.sheet.find('Access List', 'Gmail', gmail)?.['Access ends'];
     expect(ends).toBeInstanceOf(Date);
     const end = (ends as Date).getTime();
     expect(end - from).toBeGreaterThanOrEqual(30 * DAY);
     expect(end - from).toBeLessThan(30 * DAY + 60_000);
-    // A Gmail the owner added for 90 days: its Approve page offers 90 days first.
+    // A Gmail the owner added for 90 days, with Pro: its Approve page offers 90 days and Pro first.
     const added = 'added.placeholder@example.com';
-    expect(ownerCall(s, 'add', { target: added, length: 90 })).toMatchObject({ ok: true });
+    expect(ownerCall(s, 'add', { target: added, length: 90, mode: 'pro' })).toMatchObject({ ok: true });
     const theirs = await openPage(app, s.pageUrl(s.list.linksFor(added)?.approve ?? ''));
     await expect(theirs.getByRole('radio', { name: '90 days' })).toBeChecked();
+    await expect(theirs.getByRole('radio', { name: 'Pro Mode and Simple Mode' })).toBeChecked();
   } finally {
     await app.close();
   }

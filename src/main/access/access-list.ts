@@ -7,6 +7,7 @@ import {
   EDIT_NO_ANSWER_TEXT,
   formatDay,
   lengthWord,
+  MODE_CHOICES,
   NO_ANSWER_TEXT,
   NO_VIEW,
   ownerErrorText,
@@ -24,6 +25,7 @@ import {
   type AccessErrorCode,
   type AccessGrant,
   type AccessLength,
+  type AccessMode,
   type AccessPerson,
 } from '../../shared/access-protocol';
 import { cutText, plural } from '../../shared/text';
@@ -56,17 +58,20 @@ export interface OwnerCalls {
   list: () => Promise<OwnerResult<{ people: AccessPerson[] }>>;
   add: (
     target: string,
-    o: { name?: string; note?: string; length: AccessLength },
+    o: { name?: string; note?: string; length: AccessLength; mode: AccessMode },
   ) => Promise<OwnerResult<{ mailed: boolean }>>;
   approve: (
     target: string,
     length: AccessLength,
+    mode: AccessMode,
   ) => Promise<OwnerResult<{ runsOut: number; endsAt: number | null }>>;
   regrant: (
     target: string,
     length: AccessLength,
   ) => Promise<OwnerResult<{ runsOut: number; endsAt: number | null }>>;
   changeLength: (target: string, length: AccessLength) => Promise<OwnerResult<{ endsAt: number | null }>>;
+  /** How a Gmail may use Drashti (Session 55). */
+  changeMode: (target: string, mode: AccessMode) => Promise<OwnerResult<{ mode: AccessMode }>>;
   reject: (target: string) => Promise<OwnerResult<{ mailed: boolean }>>;
   revoke: (target: string) => Promise<OwnerResult<unknown>>;
   note: (target: string, note: string) => Promise<OwnerResult<unknown>>;
@@ -95,9 +100,10 @@ export function ownerCalls(
   return {
     list: () => signed((c, g) => c.list(g)),
     add: (target, o) => signed((c, g) => c.add(g, target, o)),
-    approve: (target, length) => signed((c, g) => c.approve(g, target, length)),
+    approve: (target, length, mode) => signed((c, g) => c.approve(g, target, length, mode)),
     regrant: (target, length) => signed((c, g) => c.regrant(g, target, length)),
     changeLength: (target, length) => signed((c, g) => c.length(g, target, length)),
+    changeMode: (target, mode) => signed((c, g) => c.mode(g, target, mode)),
     reject: (target) => signed((c, g) => c.reject(g, target)),
     revoke: (target) => signed((c, g) => c.revoke(g, target)),
     note: (target, note) => signed((c, g) => c.note(g, target, note)),
@@ -155,6 +161,13 @@ const lastsWords = (length: AccessLength, endsAt: number | null) =>
 const OWN_ALWAYS_UNLIMITED = 'That is your own Gmail: its access is always Unlimited.';
 
 const notOwner = (): string => ACCESS_ERROR_TEXT['not-owner'];
+
+/** The owner's own row: always Pro (the list refuses Simple on it too). */
+const OWN_ALWAYS_PRO = 'That is your own Gmail: it may always use Pro Mode.';
+
+/** What a mode lets them use, in words: "Simple Mode only", "Pro Mode and Simple Mode". */
+const modeWords = (mode: AccessMode): string =>
+  MODE_CHOICES.find((c) => c.mode === mode)?.label ?? 'Pro Mode and Simple Mode';
 
 /** Words a person typed, as the list keeps them: one line, trimmed, cut at the list's length. */
 const typed = (text: string, max: number): string => cutText(text.replace(/\s+/gu, ' ').trim(), max);
@@ -224,16 +237,21 @@ export class AccessList {
    */
   async add(fields: AccessListAdd): Promise<AccessListResult> {
     const gmail = fields.gmail.trim();
-    const refusal = this.refusal(gmail, false) ?? this.lengthRefusal(gmail, fields.length);
+    const refusal =
+      this.refusal(gmail, false) ??
+      this.lengthRefusal(gmail, fields.length) ??
+      this.modeRefusal(gmail, fields.mode);
     if (refusal) return refusal;
     const name = typed(fields.name, ACCESS_NAME_MAX);
     const note = typed(fields.note, ACCESS_NOTE_MAX);
     const length = fields.length;
+    const mode = fields.mode;
     return this.edit('added a Gmail', async (calls) => {
       const added = await calls.add(gmail, {
         ...(name ? { name } : {}),
         ...(note ? { note } : {}),
         length,
+        mode,
       });
       if (!added.ok || !fields.approve)
         return outcome(
@@ -247,11 +265,11 @@ export class AccessList {
               'That Gmail is on the list and approved already: choose it in the list to give access again.',
           },
         );
-      const approved = await calls.approve(gmail, length);
+      const approved = await calls.approve(gmail, length, mode);
       if (approved.ok)
         return {
           ok: true,
-          message: `Added and approved ${gmail} (${lastsWords(length, approved.value.endsAt)}): ${tokenWords(approved.value.runsOut)}`,
+          message: `Added and approved ${gmail} (${lastsWords(length, approved.value.endsAt)}; ${modeWords(mode)}): ${tokenWords(approved.value.runsOut)}`,
           why: '',
         };
       const not = outcome(approved, () => '');
@@ -259,17 +277,39 @@ export class AccessList {
     });
   }
 
-  /** Approved for `length`, counted from now, and a token on its way by email. */
-  approve(target: string, length: AccessLength): Promise<AccessListResult> {
+  /** Approved for `length`, counted from now, Pro or Simple, and a token on its way by email. */
+  approve(target: string, length: AccessLength, mode: AccessMode): Promise<AccessListResult> {
     return (
       this.lengthRefusal(target, length) ??
+      this.modeRefusal(target, mode) ??
       this.one('approved a Gmail', target, false, (calls, gmail, shown) =>
         calls
-          .approve(gmail, length)
+          .approve(gmail, length, mode)
           .then((r) =>
             outcome(
               r,
-              (v) => `Approved ${shown} (${lastsWords(length, v.endsAt)}): ${tokenWords(v.runsOut)}`,
+              (v) =>
+                `Approved ${shown} (${lastsWords(length, v.endsAt)}; ${modeWords(mode)}): ${tokenWords(v.runsOut)}`,
+            ),
+          ),
+      )
+    );
+  }
+
+  /** How a Gmail may use Drashti (Session 55): their Drashti hears it at its next check. */
+  changeMode(target: string, mode: AccessMode): Promise<AccessListResult> {
+    if (mode !== 'pro' && this.ownersOwn(target.trim()))
+      return Promise.resolve({ ok: false, message: OWN_ALWAYS_PRO, view: this.view() });
+    return (
+      this.modeRefusal(target, mode) ??
+      this.one('changed a Gmail’s mode', target, false, (calls, gmail, shown) =>
+        calls
+          .changeMode(gmail, mode)
+          .then((r) =>
+            outcome(
+              r,
+              (v) => `${shown} may now use ${modeWords(v.mode)}: their Drashti hears it within 15 seconds.`,
+              { 'owner-row': OWN_ALWAYS_PRO },
             ),
           ),
       )
@@ -445,6 +485,14 @@ export class AccessList {
     const no = (message: string) => Promise.resolve({ ok: false, message, view: this.view() });
     if (!accessLengthOk(length)) return no(ACCESS_ERROR_TEXT['bad-length']);
     if (length !== ACCESS_UNLIMITED && this.ownersOwn(gmail.trim())) return no(OWN_ALWAYS_UNLIMITED);
+    return null;
+  }
+
+  /** Why a mode is refused before anything is sent, or null: one the list does not give, or Simple on the owner's own. */
+  private modeRefusal(gmail: string, mode: unknown): Promise<AccessListResult> | null {
+    const no = (message: string) => Promise.resolve({ ok: false, message, view: this.view() });
+    if (mode !== 'pro' && mode !== 'simple') return no('That is not a way the list gives to use Drashti.');
+    if (mode !== 'pro' && this.ownersOwn(gmail.trim())) return no(OWN_ALWAYS_PRO);
     return null;
   }
 

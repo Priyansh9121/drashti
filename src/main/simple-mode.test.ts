@@ -188,6 +188,7 @@ describe('Simple Mode locks', () => {
       IPC.accessList.revoke,
       IPC.accessList.regrant,
       IPC.accessList.changeLength,
+      IPC.accessList.changeMode,
       IPC.accessList.note,
     ]) {
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);

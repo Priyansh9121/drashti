@@ -51,13 +51,8 @@ import { audioDeviceSchema } from '../shared/audio';
 import type { SetupResult } from '../shared/setup';
 import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
-import {
-  isOperatorMode,
-  leaveSimpleRefusal,
-  SIMPLE_MODE_REFUSAL,
-  simpleModeRefuses,
-  startingMode,
-} from '../shared/mode';
+import { isOperatorMode, simpleModeRefuses, simpleRefusalText } from '../shared/mode';
+import { ModeKeeper } from './mode-keeper';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
 import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
@@ -323,7 +318,7 @@ import { mainClockStyle } from './clock-style';
 import { STOPPED_REFUSAL } from '../shared/access';
 import { type BehindTheLock, prepareTheLock } from './access/behind-the-lock';
 import { followAccess, showCounter, streamCounter } from './access/effects';
-import { accessState, isLetIn, onAccessChange } from './access/gate';
+import { accessState, isLetIn, onAccessChange, simpleAccess } from './access/gate';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -1455,12 +1450,13 @@ function start(): void {
         look: (id) => lookService?.look(id) ?? null,
         start: () => lookService?.start() ?? NO_LOOK,
       },
-      // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
+      // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API (in words true
+      // for this computer's access: Simple access is offered no way to Pro Mode, Session 55).
       refuse: (command, state) =>
         accessShut()
           ? STOPPED_REFUSAL
           : simpleNow() && simpleModeRefuses(command, state)
-            ? SIMPLE_MODE_REFUSAL
+            ? simpleRefusalText(simpleAccess())
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
@@ -2709,48 +2705,55 @@ function start(): void {
   // quit begins in Pro Mode; after an unexpected stop Drashti comes back in the mode it was in, so the
   // operator carries on. The same answer as restart recovery's: did the last run stop unexpectedly, less
   // than RECOVERY_MAX_AGE_MS ago? A stop longer ago starts like a clean quit (Session 21). Simple Mode
-  // is a way of working, never a lock (Session 54, E5: roles and PINs are gone).
-  const savedMode = settings.get('operatorMode');
-  const wasIn: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
-  let mode: OperatorMode = startingMode({ recentStop: startup.recentStop, wasIn });
-  if (mode !== wasIn) settings.set('operatorMode', mode);
-  if (mode === 'simple') log.info('Starting in Simple Mode, as before the unexpected stop');
-  else if (wasIn === 'simple')
-    log.info(
-      startup.cleanQuit
-        ? 'Starting in Pro Mode after a clean quit'
-        : 'Starting in Pro Mode: the unexpected stop was 3 hours or more ago',
-    );
+  // is a way of working, never a lock (Session 54, E5: roles and PINs are gone), but with Simple access
+  // (Session 55, the list's answer) it is all this computer may use: mode-keeper.ts holds it there, and
+  // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
+  let mode: OperatorMode = 'pro';
+  let rebuildMenu: () => void = () => undefined;
+  const modes = new ModeKeeper({
+    saved: { mode: settings.get('operatorMode'), byAccess: settings.get('simpleByAccess') },
+    recentStop: startup.recentStop,
+    cleanQuit: startup.cleanQuit,
+    access: () => accessState().mode,
+    save: (next, byAccess) => {
+      laterSetting('operatorMode', next);
+      laterSetting('simpleByAccess', byAccess);
+    },
+    changed: (next) => {
+      mode = next;
+      rebuildMenu();
+      sendToOperator(IPC.app.modeChanged, { mode: next });
+    },
+    menu: () => {
+      rebuildMenu();
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  mode = modes.mode;
+  // The list's answer each check: Simple access puts this computer in Simple Mode within one check.
+  onAccessChange(() => {
+    modes.accessChanged();
+  });
   simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
   lockChannels(
     () => mode === 'simple',
-    simpleModeRefusals(() => audioOutput.status),
+    simpleModeRefusals(
+      () => audioOutput.status,
+      () => simpleRefusalText(modes.simpleOnly()),
+    ),
   );
-  let rebuildMenu: () => void = () => undefined;
-  const setMode = (next: OperatorMode) => {
-    if (next === mode) return;
-    mode = next;
-    laterSetting('operatorMode', next);
-    log.info(next === 'simple' ? 'Switched to Simple Mode' : 'Switched to Pro Mode');
-    rebuildMenu();
-    sendToOperator(IPC.app.modeChanged, { mode: next });
-  };
   handle(IPC.app.getMode, () => mode);
   handle(IPC.app.setMode, (e, wanted, word): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
-    if (mode === 'simple' && wanted === 'pro') {
-      // The word, typed on purpose; never a PIN (Session 54, E5: roles and PINs are gone).
-      const refusal = leaveSimpleRefusal(word);
-      if (refusal !== null) return { ok: false, message: refusal };
-    }
-    setMode(wanted);
-    return { ok: true, mode };
+    return modes.request(wanted, word);
   });
   const switchMode = () => {
-    if (mode === 'pro') setMode('simple');
-    else sendToOperator(IPC.app.askLeaveSimple, { at: Date.now() });
+    // Simple at once; Pro asks for the word in the window, and never with Simple access.
+    if (modes.menuSwitch() === 'ask') sendToOperator(IPC.app.askLeaveSimple, { at: Date.now() });
   };
 
   // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
@@ -2837,7 +2840,10 @@ function start(): void {
     if (mode === 'simple' && !guide.simple)
       return {
         ok: false,
-        message: 'That guide is read in Pro Mode: View, then Switch to Pro Mode…, or ask the admin.',
+        // With Simple access (Session 55) no way to Pro Mode is offered, in words either.
+        message: modes.simpleOnly()
+          ? 'That guide is read in Pro Mode, which this computer’s access does not include: ask the person who looks after Drashti.'
+          : 'That guide is read in Pro Mode: View, then Switch to Pro Mode…, or ask the admin.',
       };
     const text = guideFiles.read(guide.id);
     return text === null
@@ -4123,6 +4129,8 @@ function start(): void {
     },
     files: phoneFiles,
     refused: (channel) => refusedNow(channel),
+    // In words true for this computer's access (Session 55).
+    refusal: () => simpleRefusalText(modes.simpleOnly()),
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
     },
@@ -5720,6 +5728,8 @@ function start(): void {
   };
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
     mode,
+    // Simple access (Session 55): no way back to Pro Mode in the menu.
+    simpleOnly: modes.simpleOnly(),
     switchMode,
     setUpScreens: () => {
       if (mode === 'pro') sendToOperator(IPC.setup.open, { at: Date.now() });

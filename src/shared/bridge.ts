@@ -65,7 +65,7 @@ import type {
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
 import type { ZoomProgram } from './zoom';
 import type { AccessListAdd, AccessListResult, AccessListSaved, AccessListView } from './access-list';
-import type { AccessLength } from './access-protocol';
+import type { AccessLength, AccessMode } from './access-protocol';
 import type {
   CameraAccess,
   VideoInputFields,
@@ -618,13 +618,15 @@ export interface DrashtiBridge {
     view(): Promise<AccessListView>;
     refresh(): Promise<AccessListView>;
     add(fields: AccessListAdd): Promise<AccessListResult>;
-    /** Approved for a length of access (Unlimited, or days), counted from now. */
-    approve(gmail: string, length: AccessLength): Promise<AccessListResult>;
+    /** Approved for a length of access (Unlimited, or days), counted from now, Pro or Simple (Session 55). */
+    approve(gmail: string, length: AccessLength, mode: AccessMode): Promise<AccessListResult>;
     reject(gmail: string): Promise<AccessListResult>;
     revoke(gmail: string): Promise<AccessListResult>;
     regrant(gmail: string, length: AccessLength): Promise<AccessListResult>;
     /** A new length of access for a Gmail approved, counted from now. */
     changeLength(gmail: string, length: AccessLength): Promise<AccessListResult>;
+    /** How a Gmail may use Drashti (Session 55): Pro or Simple, heard at its computers' next check. */
+    changeMode(gmail: string, mode: AccessMode): Promise<AccessListResult>;
     note(gmail: string, note: string): Promise<AccessListResult>;
     /** The rows shown, by Gmail in their order, saved as a CSV where the owner chooses. */
     exportCsv(gmails: string[]): Promise<AccessListSaved>;

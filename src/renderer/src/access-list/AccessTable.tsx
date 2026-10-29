@@ -4,10 +4,12 @@ import {
   ACCESS_COLUMNS,
   computerLine,
   computersOf,
+  endedWords,
   endsCell,
   formatDay,
   formatMinutes,
   formatSeen,
+  modeCell,
   statusDetail,
   statusTone,
   statusWord,
@@ -36,6 +38,7 @@ const WIDTHS: Record<AccessColumn, number> = {
   requested: 116,
   approved: 116,
   ends: 150,
+  mode: 130,
   revoked: 116,
   computers: 290,
   lastSeen: 150,
@@ -107,6 +110,7 @@ const Row = memo(function Row({
 }) {
   const computers = computersOf(p);
   const ends = endsCell(p, listTime);
+  const mode = modeCell(p);
   const numbers = 'text-right tabular-nums';
   return (
     <tr
@@ -161,6 +165,10 @@ const Row = memo(function Row({
         <Line text={ends.text} className={ends.warn ? 'font-medium text-warning-fg' : undefined} />
         <Line text={ends.detail} tone="muted" />
       </td>
+      <td className={cell} data-testid="access-mode-cell" data-mode={p.mode}>
+        <Line text={mode.text} />
+        <Line text={mode.detail} tone="muted" />
+      </td>
       <td className={cell}>
         <Line text={formatDay(p.revokedAt)} />
       </td>
@@ -171,7 +179,7 @@ const Row = memo(function Row({
           computers.map((c, i) => (
             <Line
               key={`${String(i)}:${c.name}`}
-              text={c.ended ? `${computerLine(c)} (ended)` : computerLine(c)}
+              text={c.ended ? `${computerLine(c)} (${endedWords(c)})` : computerLine(c)}
               tone={c.ended ? 'faint' : 'fg'}
             />
           ))

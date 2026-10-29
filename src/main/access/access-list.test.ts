@@ -9,7 +9,12 @@ import {
   NO_ANSWER_TEXT,
   ownerErrorText,
 } from '../../shared/access-list';
-import { ACCESS_ERROR_TEXT, type AccessLength, type AccessPerson } from '../../shared/access-protocol';
+import {
+  ACCESS_ERROR_TEXT,
+  type AccessLength,
+  type AccessMode,
+  type AccessPerson,
+} from '../../shared/access-protocol';
 import {
   AccessList,
   ownerCalls,
@@ -35,6 +40,7 @@ const person = (o: Partial<AccessPerson> & { gmail: string }): AccessPerson => (
   name: '',
   status: 'approved',
   owner: false,
+  mode: 'pro',
   requestedAt: null,
   approvedAt: null,
   rejectedAt: null,
@@ -104,6 +110,10 @@ function fakeCalls(
       made.push(`length ${target}`);
       lengths.push(`length ${target} ${String(length)}`);
       return answer({ endsAt: endFor(length) });
+    }),
+    changeMode: vi.fn((target: string, mode: AccessMode) => {
+      made.push(`mode ${target} ${mode}`);
+      return answer({ mode });
     }),
     reject: vi.fn((target: string) => {
       made.push(`reject ${target}`);
@@ -177,8 +187,15 @@ describe('only the owner’s computer, let in', () => {
     expect(view.people).toBeNull();
     expect(view.problem).toBe(ACCESS_ERROR_TEXT['not-owner']);
     const results = [
-      await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: 'unlimited' }),
-      await r.list.approve(PERSON, 'unlimited'),
+      await r.list.add({
+        gmail: PERSON,
+        name: '',
+        note: '',
+        approve: true,
+        length: 'unlimited',
+        mode: 'simple',
+      }),
+      await r.list.approve(PERSON, 'unlimited', 'simple'),
       await r.list.reject(PERSON),
       await r.list.revoke(PERSON),
       await r.list.regrant(PERSON, 'unlimited'),
@@ -285,7 +302,7 @@ describe('the list, while the window is open', () => {
 describe('each edit', () => {
   it('goes to the list as the owner’s call for that Gmail, then the list is asked again', async () => {
     const r = rig();
-    const approved = await r.list.approve(PERSON, 'unlimited');
+    const approved = await r.list.approve(PERSON, 'unlimited', 'simple');
     expect(approved.ok).toBe(true);
     expect(approved.message).toContain(PERSON);
     expect(approved.message).toContain('token');
@@ -318,6 +335,7 @@ describe('each edit', () => {
       note: '',
       approve: false,
       length: 'unlimited',
+      mode: 'simple',
     });
     expect(added.ok).toBe(true);
     expect(added.message).toContain('new.placeholder@example.com');
@@ -330,6 +348,7 @@ describe('each edit', () => {
       note: 'Placeholder note',
       approve: true,
       length: 'unlimited',
+      mode: 'simple',
     });
     expect(both.ok).toBe(true);
     expect(both.message).toContain('token');
@@ -348,7 +367,14 @@ describe('each edit', () => {
         error: 'already-approved',
         message: 'The list’s own words',
       });
-    const again = await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: 'unlimited' });
+    const again = await r.list.add({
+      gmail: PERSON,
+      name: '',
+      note: '',
+      approve: true,
+      length: 'unlimited',
+      mode: 'simple',
+    });
     expect(again).toMatchObject({ ok: false });
     expect(again.message).toContain('give access again');
     expect(r.made).toEqual(['list']);
@@ -377,9 +403,18 @@ describe('each edit', () => {
 
   it('takes only an address, and keeps a name and note to the list’s lengths', async () => {
     const r = rig();
-    expect((await r.list.approve('not an address', 'unlimited')).ok).toBe(false);
+    expect((await r.list.approve('not an address', 'unlimited', 'simple')).ok).toBe(false);
     expect(
-      (await r.list.add({ gmail: '', name: '', note: '', approve: false, length: 'unlimited' })).ok,
+      (
+        await r.list.add({
+          gmail: '',
+          name: '',
+          note: '',
+          approve: false,
+          length: 'unlimited',
+          mode: 'simple',
+        })
+      ).ok,
     ).toBe(false);
     expect(r.made).toEqual([]);
     await r.list.add({
@@ -388,6 +423,7 @@ describe('each edit', () => {
       note: 'n'.repeat(600),
       approve: false,
       length: 'unlimited',
+      mode: 'simple',
     });
     await r.list.note(PERSON, 'm'.repeat(600));
     expect(r.made[0]).toBe(`add ${PERSON} ${'N'.repeat(60)} ${'n'.repeat(500)}`);
@@ -397,14 +433,21 @@ describe('each edit', () => {
   it('carries the length chosen to the list, says until when, and refuses before sending anything a length the list does not give, or one on the owner’s own row', async () => {
     const f = fakeCalls();
     const r = rig({ calls: f });
-    const approved = await r.list.approve(PERSON, 7);
+    const approved = await r.list.approve(PERSON, 7, 'simple');
     expect(approved.ok).toBe(true);
     expect(approved.message).toContain(`7 days, until ${formatDay(LIST_NOW + 7 * DAY)}`);
     expect((await r.list.regrant(PERSON, 'unlimited')).message).toContain('(Unlimited)');
     const changed = await r.list.changeLength(PERSON, 365);
     expect(changed.message).toContain(`365 days, until ${formatDay(LIST_NOW + 365 * DAY)}`);
     expect((await r.list.changeLength(PERSON, 'unlimited')).message).toContain('Unlimited access');
-    await r.list.add({ gmail: 'new.placeholder@example.com', name: '', note: '', approve: true, length: 1 });
+    await r.list.add({
+      gmail: 'new.placeholder@example.com',
+      name: '',
+      note: '',
+      approve: true,
+      length: 1,
+      mode: 'simple',
+    });
     expect(f.lengths).toEqual([
       `approve ${PERSON} 7`,
       `regrant ${PERSON} unlimited`,
@@ -416,10 +459,10 @@ describe('each edit', () => {
     f.lengths.length = 0;
     for (const bad of [0, 731, 2.5, 'Unlimited', null] as unknown as AccessLength[]) {
       for (const result of [
-        await r.list.approve(PERSON, bad),
+        await r.list.approve(PERSON, bad, 'simple'),
         await r.list.regrant(PERSON, bad),
         await r.list.changeLength(PERSON, bad),
-        await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: bad }),
+        await r.list.add({ gmail: PERSON, name: '', note: '', approve: true, length: bad, mode: 'simple' }),
       ])
         expect(result).toMatchObject({ ok: false, message: ACCESS_ERROR_TEXT['bad-length'] });
     }
@@ -437,11 +480,55 @@ describe('each edit', () => {
     f.calls.approve = () => refused('wrong-status');
     f.calls.revoke = () => noAnswer;
     const r = rig({ calls: f });
-    const wrong = await r.list.approve(PERSON, 'unlimited');
+    const wrong = await r.list.approve(PERSON, 'unlimited', 'simple');
     expect(wrong).toMatchObject({ ok: false, message: ownerErrorText('wrong-status') });
     expect(wrong.view.people).toHaveLength(2);
     expect(await r.list.revoke(PERSON)).toMatchObject({ ok: false, message: EDIT_NO_ANSWER_TEXT });
     expect(r.made.filter((m) => m === 'list')).toHaveLength(2);
+  });
+});
+
+describe('how a Gmail may use Drashti (Session 55)', () => {
+  it('Change the mode…: sent as the owner’s call, said with when their Drashti hears it; never Simple on the owner’s own row', async () => {
+    const r = rig();
+    await r.list.refresh();
+    const changed = await r.list.changeMode(PERSON, 'simple');
+    expect(changed).toMatchObject({ ok: true });
+    expect(changed.message).toBe(
+      `${PERSON} may now use Simple Mode only: their Drashti hears it within 15 seconds.`,
+    );
+    expect(r.made).toContain(`mode ${PERSON} simple`);
+    const own = await r.list.changeMode(OWNER, 'simple');
+    expect(own).toMatchObject({ ok: false, message: 'That is your own Gmail: it may always use Pro Mode.' });
+    expect(r.made).not.toContain(`mode ${OWNER} simple`);
+    expect((await r.list.changeMode(OWNER, 'pro')).ok).toBe(true);
+  });
+
+  it('a mode the list does not give, or Simple for the owner’s own, is refused before anything is sent: Approve, Add, Change the mode', async () => {
+    const r = rig();
+    await r.list.refresh();
+    const before = r.made.length;
+    for (const bad of ['Pro', 'admin', undefined] as unknown as AccessMode[]) {
+      expect((await r.list.approve(PERSON, 'unlimited', bad)).ok).toBe(false);
+      expect((await r.list.changeMode(PERSON, bad)).ok).toBe(false);
+      expect(
+        (
+          await r.list.add({
+            gmail: PERSON,
+            name: '',
+            note: '',
+            approve: true,
+            length: 'unlimited',
+            mode: bad,
+          })
+        ).ok,
+      ).toBe(false);
+    }
+    expect((await r.list.approve(OWNER, 'unlimited', 'simple')).ok).toBe(false);
+    expect(r.made.length).toBe(before);
+    // Approved with a mode: said in the outcome.
+    const approved = await r.list.approve(PERSON, 'unlimited', 'pro');
+    expect(approved.message).toContain('Pro Mode and Simple Mode');
   });
 });
 
@@ -540,6 +627,7 @@ describe('through Drashti’s client and the stand-in list (the list’s own rul
       note: '',
       approve: true,
       length: 30,
+      mode: 'simple',
     });
     expect(added.ok).toBe(true);
     expect(added.message).toContain('30 days, until');
