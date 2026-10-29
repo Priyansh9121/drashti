@@ -274,11 +274,18 @@ test('a missing file as a slide’s sound: nothing goes up for it, what is playi
   await expect(win2.getByTestId('live-sound-missing')).toHaveCount(0);
   expect((await state(win2)).layers.slide).not.toHaveProperty('soundMissing');
   expect((await state(win2)).layers.audio).toMatchObject({ mediaId: trackId });
+  // Shown again, it plays over the music, which plays on under it (Session 55, Part 7: the owner's answer of 30 Oct;
+  // until then the slide's own sound took the music's place).
   await dispatch(win2, { type: 'goLive', presentationId, slideIndex: 1 });
-  await expect.poll(async () => (await state(win2)).layers.audio?.mediaId).toBe(hymnId);
+  await expect.poll(async () => (await state(win2)).layers.audio?.over?.mediaId).toBe(hymnId);
+  expect((await state(win2)).layers.audio).toMatchObject({ mediaId: trackId });
   await expect(win2.getByTestId('live-sound-missing')).toHaveCount(0);
-  const hymnUp = (await state(win2)).layers.audio;
-  await plays(await audioPage(second.app), hymnId, hymnUp?.startedAt);
+  const hymnUp = (await state(win2)).layers.audio?.over;
+  const audio2 = await audioPage(second.app);
+  const hymn = audio2.locator(`audio[data-key="over:${hymnId}@${String(hymnUp?.startedAt)}"]`);
+  await expect(hymn).toHaveCount(1);
+  await expect.poll(() => hymn.evaluate((el: HTMLAudioElement) => !el.paused)).toBe(true);
+  await expect(audio2.locator(`audio[data-media-id="${trackId}"]`)).toHaveCount(1);
   await second.app.close();
 });
 
