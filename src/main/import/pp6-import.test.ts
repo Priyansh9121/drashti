@@ -486,7 +486,7 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
 
   // Session 54 (Session 53's question 10): a background, a slide, a prop or the box playing a file an import gave
   // points to moved to them only when it went up again; the main process now hears which, to move it at once.
-  it('say which files an import gave points they had none of, once their group is committed, never one with its own', async () => {
+  it('say which files an import gave points, once their group is committed; one with others takes the new ones (Session 55, Q20)', async () => {
     const t = setup();
     const loop = t.write('Media/Marked Loop.mov', 'placeholder video');
     const marked = (uuid: string, points: { in: number; out: number }) =>
@@ -521,11 +521,59 @@ describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
     await t.run([join(t.source, 'Placeholder Marked.pro6')], {}, tell);
     expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 2000, endMs: 6500 });
     expect(told).toEqual([[row.id]]);
-    // Another with other points: the file keeps its own, and nothing is told.
+    // Another with other points (the owner's answer to Session 54's question 20): the file takes the new ones, its id
+    // is told (so what is up playing it moves to them), and the report says so.
     t.write('Placeholder Marked Again.pro6', marked('P6-MARKED-2', { in: 600, out: 1800 }));
-    await t.run([join(t.source, 'Placeholder Marked Again.pro6')], {}, tell);
+    const again = await t.run([join(t.source, 'Placeholder Marked Again.pro6')], {}, tell);
+    expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 1000, endMs: 3000 });
+    expect(told).toEqual([[row.id], [row.id]]);
+    const item = again.report?.items.find((i) => i.format === 'pp6' && i.target?.kind === 'presentation');
+    expect(item?.issues.find((i) => i.code === 'markers-replaced')).toEqual({
+      severity: 'info',
+      code: 'markers-replaced',
+      message:
+        'Marked Loop.mov was in the library already, with other start and end points or markers: it has this import’s now, and what is up playing it moved to them at once.',
+      fix: null,
+    });
+    // The same points once more: nothing is replaced, nothing told.
+    t.write('Placeholder Marked Third.pro6', marked('P6-MARKED-3', { in: 600, out: 1800 }));
+    const third = await t.run([join(t.source, 'Placeholder Marked Third.pro6')], {}, tell);
+    expect(told).toEqual([[row.id], [row.id]]);
+    const thirdItem = third.report?.items.find(
+      (i) => i.format === 'pp6' && i.target?.kind === 'presentation',
+    );
+    expect(thirdItem?.issues.some((i) => i.code === 'markers-replaced')).toBe(false);
+  });
+
+  it('within one import the first points a file is given are kept, as before (Session 55, Q20)', async () => {
+    const t = setup();
+    const loop = t.write('Media/Marked Loop.mov', 'placeholder video');
+    const marked = (uuid: string, points: { in: number; out: number }) =>
+      pp6Presentation({
+        uuid,
+        groups: [
+          {
+            name: 'Verse',
+            slides: [
+              {
+                background: {
+                  path: loop,
+                  kind: 'video',
+                  loop: true,
+                  points: { timeScale: 600, ...points, end: 6000 },
+                },
+                text: [],
+              },
+            ],
+          },
+        ],
+      });
+    t.write('one/A Marked.pro6', marked('P6-A', { in: 1200, out: 3900 }));
+    t.write('one/B Marked.pro6', marked('P6-B', { in: 600, out: 1800 }));
+    const { report } = await t.run([join(t.source, 'one')]);
+    const row = t.db.prepare("SELECT id FROM media WHERE name = 'Marked Loop.mov'").get() as { id: string };
     expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 2000, endMs: 6500 });
-    expect(told).toEqual([[row.id]]);
+    expect(report?.items.flatMap((i) => i.issues).some((i) => i.code === 'markers-replaced')).toBe(false);
   });
 
   // Session 54 review: told once, as its group is committed, never again for the playlist naming the same file.

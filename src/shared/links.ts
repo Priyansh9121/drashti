@@ -17,6 +17,8 @@
  * downloaded file holds only the video: YouTube sends its ads apart.
  */
 
+import { IMAGE_EXTENSIONS } from './media';
+
 export type LinkKind = 'youtube' | 'dropbox';
 
 /** A file, or a folder (which comes as one zip); a YouTube video. */
@@ -282,10 +284,12 @@ export const MAX_ZIP_BYTES = 250 * 1024 ** 3;
 
 /**
  * A Dropbox folder's PDFs and pictures (Session 26c, PLAN §7): saved, then added with one button, not by
- * themselves.
+ * themselves. Every picture the import takes (Session 55, Part 5: one list, in shared/media.ts).
  */
 export function waitingKind(name: string): boolean {
-  return /\.(pdf|jpe?g|png|webp|heic)$/iu.test(name);
+  const dot = name.lastIndexOf('.');
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+  return ext === 'pdf' || IMAGE_EXTENSIONS.includes(ext);
 }
 
 /**

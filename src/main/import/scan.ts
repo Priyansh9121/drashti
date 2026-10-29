@@ -2,14 +2,14 @@ import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import type { ImportFormat } from '../../shared/import';
-import { SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from '../../shared/media';
+import { IMAGE_EXTENSIONS, SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from '../../shared/media';
 import { PICTURE_EXTENSIONS, pictureSourceOf } from '../../shared/pictures';
 
 export type MediaKind = 'image' | 'video' | 'audio';
 
 const MEDIA: Record<string, MediaKind> = {};
-for (const ext of ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'webp', 'avif'])
-  MEDIA[ext] = 'image';
+// Every picture Drashti takes (Session 55, Part 5: one list, in shared/media.ts).
+for (const ext of IMAGE_EXTENSIONS) MEDIA[ext] = 'image';
 // Every common video and sound FFmpeg reads (Session 50: shared/media.ts lists them).
 for (const ext of VIDEO_EXTENSIONS) MEDIA[ext] = 'video';
 /** Sounds Drashti imports (the Audio panel's Import offers just these, Session 44). */

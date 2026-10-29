@@ -37,9 +37,13 @@ import { NO_STAGE, type StageState } from '../stage-layouts';
  * 55, Part 12): Props, Masks, the Logo and the idle rotation taken out (no `props` or `masks` layer, no `logo`, no
  * `idle`), and the Wallpaper's switch in the Logo's place (`wallpaper`, Part 13); an older node or page would look
  * for what is gone, so it says 'incompatible'. A state 15, 14, 13 or 12 saved is read whole, its props, mask, logo
- * and idle rotation left out (none of them shows after the update) and the wallpaper off.
+ * and idle rotation left out (none of them shows after the update) and the wallpaper off. 20 (Session 55, Part 5;
+ * the lead's number for it, 17 to 19 being other Parts'): a picture's look turns, flips and crops it, and a photo that
+ * does not fill its screen has a blurred copy of itself behind it (`pictures`' `turn`, `flipX`, `flipY`, `crop`,
+ * `size`, `fill` and `blurred`); an older node or page would draw it as it was taken, so it says 'incompatible'. A
+ * state 16 saved is read whole (it only adds to it).
  */
-export const ENGINE_STATE_VERSION = 16;
+export const ENGINE_STATE_VERSION = 20;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 15 (the Session 55
@@ -50,7 +54,13 @@ export const ENGINE_STATE_VERSION = 16;
  */
 export function readsEngineVersion(version: unknown): boolean {
   return (
-    version === ENGINE_STATE_VERSION || version === 15 || version === 14 || version === 13 || version === 12
+    version === ENGINE_STATE_VERSION ||
+    // Session 55, Part 5: 20 only adds to 16.
+    version === 16 ||
+    version === 15 ||
+    version === 14 ||
+    version === 13 ||
+    version === 12
   );
 }
 

@@ -51,3 +51,25 @@ describe('the file a phone’s preview is made from (SEC-10)', () => {
     ).toBeNull();
   });
 });
+
+describe('a blurred copy as a phone’s preview (Session 55, Part 5, D)', () => {
+  it('is the copy itself, inside the media folder, once it is ready; never through a link out of it', () => {
+    const { mediaDir } = folders();
+    mkdirSync(join(mediaDir, 'blurred'));
+    writeFileSync(join(mediaDir, 'blurred', 'copy.jpg'), Buffer.alloc(8, 3));
+    const deps = {
+      mediaDir,
+      kindAndFile: () => ({ kind: 'image' as const, path: 'inside.png', missing: false }),
+      sharpened: () => null,
+      blurred: (id: string) => (id === 'm1' ? 'blurred/copy.jpg' : id === 'm2' ? 'linked/secret.png' : null),
+    };
+    expect(previewSource('m1_b', deps)).toEqual({
+      path: realpathSync.native(join(mediaDir, 'blurred', 'copy.jpg')),
+      kind: 'image',
+    });
+    expect(previewSource('m2_b', deps)).toBeNull();
+    expect(previewSource('m3_b', deps)).toBeNull();
+    // Not one yet: no preview, the picture drawn on black.
+    expect(previewSource('m1_b', { ...deps, blurred: () => null })).toBeNull();
+  });
+});

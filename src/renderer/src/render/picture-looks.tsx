@@ -1,19 +1,25 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { create } from 'zustand';
-import { copyMediaId, sharpenedUrl } from '../../../shared/media';
-import type { LiveZoom, PictureLook } from '../../../shared/picture-look';
+import { blurMediaId, blurredUrl, copyMediaId, sharpenedUrl } from '../../../shared/media';
+import type { EditLayout, LiveZoom, PictureLook, PixelSize } from '../../../shared/picture-look';
 import {
   copyStep,
   cssFilter,
+  editLayout,
+  hasEdit,
+  isPlain,
+  leavesBars,
   liveZoomAt,
+  shownSize,
   sharpenKernel,
   sharpenStep,
   ZOOM_GLIDE_MS,
 } from '../../../shared/picture-look';
 import { engineNow } from './clock';
 import { useMediaAttempt } from './media-attempts';
-import { PreviewsContext } from './previews';
+import { PreviewPicture, PreviewsContext } from './previews';
+import { useElementSize } from './useElementSize';
 
 /*
  * A picture drawn with its look (Session 26e, shared/picture-look.ts): zoomed
@@ -55,6 +61,12 @@ export function connectPictureLooks(): void {
   });
 }
 
+/**
+ * The box a background picture is drawn in (Session 55, Part 5): the screen's canvas, given by the Scene, so a turned
+ * or cropped picture is placed from the first frame, never after measuring.
+ */
+export const BackgroundBox = createContext<PixelSize | null>(null);
+
 /** A picture's look: on the screens the state's, elsewhere the library's. */
 export function usePictureLook(mediaId: string): PictureLook | null {
   const screen = useContext(ScreenPictures);
@@ -67,7 +79,7 @@ export function usePictureLook(mediaId: string): PictureLook | null {
  * seconds after (a picture going from up next to on the screens lets go and takes hold again at once).
  */
 const COPY_GRACE_MS = 5000;
-const loadedCopies = create<Record<string, true>>(() => ({}));
+const loadedCopies = create<Record<string, PixelSize>>(() => ({}));
 const heldCopies = new Map<
   string,
   { img: HTMLImageElement; users: number; drop: ReturnType<typeof setTimeout> | null }
@@ -83,7 +95,9 @@ function holdCopy(url: string): () => void {
     img.src = url;
     img.decode().then(
       () => {
-        if (heldCopies.get(url) === entry) loadedCopies.setState({ [url]: true });
+        // Its size too: a blurred copy's shape is its picture's (Session 55), so a screen knows when it fills.
+        if (heldCopies.get(url) === entry)
+          loadedCopies.setState({ [url]: { width: img.naturalWidth, height: img.naturalHeight } });
       },
       () => {
         // Not there (a node still copying it, say): the picture stays as it is; a later try is a new URL.
@@ -111,7 +125,7 @@ function holdCopy(url: string): () => void {
 
 /** A copy's URL once it is loaded in this page (null until then). */
 function useLoadedCopy(url: string | null): string | null {
-  const loaded = loadedCopies((s) => (url ? s[url] === true : false));
+  const loaded = loadedCopies((s) => (url ? s[url] !== undefined : false));
   useEffect(() => (url ? holdCopy(url) : undefined), [url]);
   return url && loaded ? url : null;
 }
@@ -203,6 +217,43 @@ function boxOf(style: CSSProperties): CSSProperties {
   return box;
 }
 
+/** How a picture fits its box, as editLayout knows it. */
+const fitOf = (style: CSSProperties): 'contain' | 'cover' | 'fill' =>
+  style.objectFit === 'cover' ? 'cover' : style.objectFit === 'fill' ? 'fill' : 'contain';
+
+/** A part of a box, in percent, as a style. */
+const placed = (b: EditLayout['frame']): CSSProperties => ({
+  position: 'absolute',
+  left: `${String(b.left)}%`,
+  top: `${String(b.top)}%`,
+  width: `${String(b.width)}%`,
+  height: `${String(b.height)}%`,
+});
+
+/**
+ * A picture's blurred copy behind it (Session 55, Part 5, D), once Main says it is ready and it has loaded here: its
+ * URL (on a phone, its preview's id), or null.
+ */
+function useBlurredFill(
+  mediaId: string,
+  look: PictureLook | null,
+  wanted: boolean,
+): (SharpCopy & { size: PixelSize | null }) | null {
+  const previews = useContext(PreviewsContext) !== null;
+  const on = wanted && look?.blurred === true;
+  const id = on ? blurMediaId(mediaId) : null;
+  // On a node, a copy that landed after it was first asked for: asked again (a new URL).
+  const attempt = useMediaAttempt(id ?? '');
+  const url = on && !previews ? blurredUrl(mediaId, attempt) : null;
+  const loaded = useLoadedCopy(url);
+  // Its shape is the picture's (FFmpeg keeps it): where that is the box's, the picture fills it and needs none.
+  const size = loadedCopies((s) => (url ? (s[url] ?? null) : null));
+  const previewLoaded = usePreviewLoaded(previews ? id : null);
+  if (!id) return null;
+  if (previews) return previewLoaded ? { url: '', id, size: null } : null;
+  return loaded ? { url: loaded, id, size } : null;
+}
+
 /**
  * A picture with its look. `style`: the box it is drawn in, as the plain picture had it; `showing`: which
  * showing it is on the screens (its live zoom), or null; `children`: the plain picture, given its style and
@@ -212,19 +263,37 @@ export function Looked({
   mediaId,
   showing,
   style,
+  box,
   children,
 }: {
   mediaId: string;
   showing: string | null;
   style: CSSProperties;
+  /**
+   * The box's size in any one unit (Session 55): a turned or cropped picture is placed in it at once. Left out, the
+   * background's (BackgroundBox) where the style is the whole screen, else the box as measured here.
+   */
+  box?: PixelSize;
   children: (style: CSSProperties, copy: SharpCopy | null) => ReactNode;
 }) {
   const look = usePictureLook(mediaId);
   const copy = useSharpCopy(mediaId, look);
   const screen = useContext(ScreenPictures);
+  const background = useContext(BackgroundBox);
   const z = screen?.liveZoom ?? null;
   const live = z && showing !== null && z.mediaId === mediaId && z.showing === showing ? z : null;
   const inner = useRef<HTMLDivElement>(null);
+  const outer = useRef<HTMLDivElement>(null);
+  const measured = useElementSize(outer);
+  const fit = fitOf(style);
+  // Its blurred copy behind it where it is fitted in (Session 55, D): the screens only (the state says so).
+  const blurredFill = useBlurredFill(mediaId, look, fit === 'contain');
+  // Only where it would leave bars: its shape as it shows (turned or cropped: its look's), against its box's.
+  const whole = style.inset === 0 && style.width === '100%' && style.height === '100%';
+  const known = box ?? (whole ? background : null);
+  const shape = look?.size && hasEdit(look) ? shownSize(look, look.size) : (blurredFill?.size ?? null);
+  const fill =
+    blurredFill && leavesBars(shape, known ?? (measured.width > 0 ? measured : null)) ? blurredFill : null;
   // A live zoom glides to where it is going, frame by frame, by the clock every screen shares.
   useLayoutEffect(() => {
     if (!live) return;
@@ -239,15 +308,61 @@ export function Looked({
       cancelAnimationFrame(frame);
     };
   }, [live]);
-  if (!look && !live) return <>{children(style, null)}</>;
+  // The blurred fill alone (Session 55, D): behind the picture, which is drawn exactly as before (the same element,
+  // kept by its key, so a fill that comes once its copy is ready never draws the picture anew).
+  const fillOf = (s: CSSProperties) =>
+    fill ? (
+      fill.url ? (
+        <img src={fill.url} alt="" draggable={false} style={s} />
+      ) : (
+        <PreviewPicture mediaId={fill.id} style={s} />
+      )
+    ) : null;
+  if (!live && (!look || (isPlain(look) && !look.copy)))
+    return (
+      <>
+        {fill && (
+          <div key="fill" data-blurred-fill={fill.id} style={{ ...boxOf(style), overflow: 'hidden' }}>
+            {fillOf({ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' })}
+          </div>
+        )}
+        <Fragment key="picture">{children(style, null)}</Fragment>
+      </>
+    );
   const filter = cssFilter(look);
   const at = live ? liveZoomAt(live, engineNow()) : (look ?? { zoom: 1, x: 0, y: 0 });
+  // Turned, flipped or cropped (Session 55): the part kept fitted in the box, the picture placed behind it, from its
+  // size as the Picture editor read it and the box's (given, the background's, else measured here).
+  const size = look?.size;
+  // Measured only where it is not known (a thumbnail, a phone's page): the screens know their boxes.
+  const frameBox: PixelSize | null = known ?? (measured.width > 0 && measured.height > 0 ? measured : null);
+  const layout = look && size && hasEdit(look) ? editLayout(look, size, frameBox ?? size, fit) : null;
+  const fillLayout =
+    look && size && hasEdit(look) && fill ? editLayout(look, size, frameBox ?? size, 'cover') : null;
+  const fillStyle: CSSProperties = fillLayout
+    ? { ...placed(fillLayout.picture), transform: fillLayout.transform || undefined, objectFit: 'fill' }
+    : { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' };
   return (
-    <div data-look="" data-media-id={mediaId} style={{ ...boxOf(style), overflow: 'hidden' }}>
+    <div
+      ref={known ? undefined : outer}
+      data-look=""
+      data-media-id={mediaId}
+      style={{ ...boxOf(style), overflow: 'hidden' }}
+    >
+      {fill && (
+        // Behind the picture, never zoomed: the bars it would leave are its own picture, blurred and darker.
+        <div
+          data-blurred-fill={fill.id}
+          style={fillLayout ? placed(fillLayout.frame) : { position: 'absolute', inset: 0 }}
+        >
+          {fillOf(fillStyle)}
+        </div>
+      )}
       <div
         ref={inner}
         data-look-picture=""
         data-sharpened={copy ? copy.id : undefined}
+        data-edited={layout ? '' : undefined}
         style={{
           position: 'absolute',
           inset: 0,
@@ -256,15 +371,29 @@ export function Looked({
           filter: filter || undefined,
         }}
       >
-        {children(
-          {
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: style.objectFit,
-          },
-          copy,
+        {layout ? (
+          <div data-look-frame="" style={{ ...placed(layout.frame), overflow: 'hidden' }}>
+            {children(
+              {
+                ...placed(layout.picture),
+                objectFit: 'fill',
+                transformOrigin: '50% 50%',
+                transform: layout.transform || undefined,
+              },
+              copy,
+            )}
+          </div>
+        ) : (
+          children(
+            {
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: style.objectFit,
+            },
+            copy,
+          )
         )}
       </div>
     </div>

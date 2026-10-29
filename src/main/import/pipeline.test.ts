@@ -595,3 +595,56 @@ describe('the import report on words the hall may not read (Sessions 31–36, SL
     expect(readabilityIssues(presentation([translit]))).toEqual([]);
   });
 });
+
+describe('every picture type, every way in (Session 55, Part 5): the report says why one is not taken', () => {
+  it('a JPEG XL, an SVG and a camera’s raw picture say what to do; a “picture” nothing reads is turned down; a Targa is converted', async () => {
+    // The bundled FFmpeg, stood in for by each file's extension: it reads the Targa, and nothing in the broken PNG.
+    const t = setup({
+      readInfo: (file) =>
+        Promise.resolve(
+          parseFfmpegInfo(
+            extname(file) === '.tga'
+              ? [
+                  "Input #0, image2, from '/x.tga':",
+                  '  Stream #0:0: Video: targa, bgr24, 64x48, 25 fps, 25 tbr, 25 tbn',
+                ].join('\n')
+              : '',
+          ),
+        ),
+    });
+    t.write('pictures/Placeholder new phone.jxl', 'placeholder jxl');
+    t.write('pictures/Placeholder drawing.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    t.write('pictures/Placeholder camera.NEF', 'placeholder raw');
+    t.write('pictures/Placeholder broken.png', 'placeholder text, not a picture');
+    t.write('pictures/Placeholder banner.tga', Buffer.alloc(80, 7));
+    const { report } = await t.run([join(t.source, 'pictures')]);
+    const line = (name: string) => report?.items.find((i) => i.name === name);
+    expect(line('Placeholder new phone.jxl')).toMatchObject({
+      outcome: 'unsupported',
+      message: 'Drashti does not read JPEG XL pictures (.jxl): save it as a JPEG or a PNG, then add that.',
+    });
+    expect(line('Placeholder drawing.svg')).toMatchObject({
+      outcome: 'unsupported',
+      message: 'Drashti does not read SVG drawings: save it as a PNG, then add that.',
+    });
+    expect(line('Placeholder camera.NEF')).toMatchObject({
+      outcome: 'unsupported',
+      message: 'Drashti does not read a camera’s raw pictures (.nef): save it as a JPEG, then add that.',
+    });
+    expect(line('Placeholder broken.png')).toMatchObject({
+      outcome: 'failed',
+      message:
+        'Placeholder broken.png is not a picture Drashti can read: what is inside it is not a picture (it may be damaged, or another kind of file with a picture’s name).',
+    });
+    expect(line('Placeholder banner.tga')).toMatchObject({
+      outcome: 'imported',
+      issues: [
+        {
+          code: 'converting-media',
+          message:
+            'Drashti cannot show Placeholder banner.tga as it is: Targa picture. It converts it by itself, and uses the copy wherever this file is; the original stays as it is.',
+        },
+      ],
+    });
+  });
+});

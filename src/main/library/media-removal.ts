@@ -4,6 +4,7 @@ import type { MediaUsage, UsedIn } from '../../shared/media-removal';
 import { USED_IN_NAMES } from '../../shared/media-removal';
 import { stillPath } from '../media/media-protocol';
 import { removeCopiesOf } from '../media/sharpened';
+import { removeBlurredOf } from '../media/blurred';
 import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
 
@@ -152,8 +153,9 @@ export class MediaRemoval {
       await rm(own, { force: true }).catch(() => undefined);
       if (r.sha256) {
         await rm(join(mediaDir, stillPath(r.sha256)), { force: true }).catch(() => undefined);
-        // Its sharpened copies (Session 26f) go with it.
+        // Its sharpened copies (Session 26f), and its blurred copy (Session 55), go with it.
         await removeCopiesOf(mediaDir, r.sha256);
+        await removeBlurredOf(mediaDir, r.sha256);
       }
       gone++;
     }

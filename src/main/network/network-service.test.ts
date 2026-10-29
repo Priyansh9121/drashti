@@ -628,14 +628,22 @@ describe('the network in the main process', () => {
       simple.service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'next' } })
         .status,
     ).toBe(200);
-    // And not zoom the live picture, which is Pro Mode's (the engine refuses it, from anywhere; Session 55: the Look,
-    // refused here before, went).
+    // And zooms the live picture too (Session 55, Part 5), but never jumps what plays, which the engine refuses in
+    // Simple Mode, from anywhere (Session 54: Simple Mode shows the time bar and moves nothing).
     expect(
       simple.service.answer({
         address: PHONE,
         deviceId: remote,
         op: 'command',
         args: { type: 'zoomLive', zoom: 2, x: 0.5, y: 0.5 },
+      }).status,
+    ).toBe(200);
+    expect(
+      simple.service.answer({
+        address: PHONE,
+        deviceId: remote,
+        op: 'command',
+        args: { type: 'skip', layer: 'background', jump: 'forward' },
       }),
     ).toEqual({ status: 403, body: { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL } });
     // And the lock is asked: an action whose window request were locked is refused with Simple Mode's words.
@@ -694,7 +702,7 @@ describe('the network in the main process', () => {
 });
 
 describe('full quality and the zoom from a phone (Session 54, D1 and D2)', () => {
-  it('lets a Remote put its zoom on the screens and back to whole, and Simple Mode refuse both, as in the window', () => {
+  it('lets a Remote put its zoom on the screens and back to whole, in Simple Mode too, as in the window (Session 55, Part 5)', () => {
     const { service, commands } = setup();
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const send = (args: unknown) => service.answer({ address: PHONE, deviceId: remote, op: 'command', args });
@@ -704,14 +712,14 @@ describe('full quality and the zoom from a phone (Session 54, D1 and D2)', () =>
     // Within the live zoom's own limits (100 to 400 %).
     expect(send({ type: 'zoomLive', zoom: 9, x: 0, y: 0 }).status).toBe(400);
     expect(send({ type: 'zoomLive' }).status).toBe(400);
+    // Simple Mode zooms the screens too (Session 55, Part 5: it refused both before).
     const simple = setup({ locked: true });
     const phone = simple.service.pairForCheck('remote', 'Placeholder phone').id;
     for (const args of [{ type: 'zoomLive', zoom: 2, x: 0, y: 0 }, { type: 'resetLiveZoom' }])
-      expect(simple.service.answer({ address: PHONE, deviceId: phone, op: 'command', args })).toEqual({
-        status: 403,
-        body: { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL },
-      });
-    expect(simple.commands).toEqual([]);
+      expect(simple.service.answer({ address: PHONE, deviceId: phone, op: 'command', args }).status).toBe(
+        200,
+      );
+    expect(simple.commands).toEqual([{ type: 'zoomLive', zoom: 2, x: 0, y: 0 }, { type: 'resetLiveZoom' }]);
     // A Stage device never zooms the screens.
     const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
     expect(

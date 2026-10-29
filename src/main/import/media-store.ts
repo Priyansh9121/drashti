@@ -7,7 +7,7 @@ import { formatBytes } from '../../shared/format';
 import type { ImportIssue } from '../../shared/import';
 import type { ImportSource } from '../../shared/library';
 import type { MediaInfo } from '../convert/plan';
-import { atImport, describeMedia } from '../convert/plan';
+import { atImport, describeMedia, describePicture } from '../convert/plan';
 import { copyFinder } from '../convert/relink';
 import type { Db } from '../db/database';
 import type { MediaKind } from './scan';
@@ -54,6 +54,11 @@ export type MediaImportResult =
       probe: MediaProbe;
       /** Converted by itself (Session 50): it cannot play as it is, and FFmpeg can make a copy that does. */
       convert?: boolean;
+      /**
+       * A missing item merged into the one with its bytes took the points its import gave it (Session 55, Q20):
+       * what is up playing that one moves to them.
+       */
+      pointsTaken?: true;
     }
   | { outcome: 'failed'; issue: ImportIssue };
 
@@ -86,6 +91,19 @@ export const CONVERTING_DIR = '.converting';
 
 /** In the media folder: files phones are sending (Session 54, network/uploads.ts), not library content. */
 export const UPLOADS_DIR = '.phone-uploads';
+
+/** Two sets of points alike: the same start, end, and markers' names and times, in order (their ids aside). */
+export function sameMarkers(a: MediaMarkers, b: MediaMarkers): boolean {
+  return (
+    a.startMs === b.startMs &&
+    a.endMs === b.endMs &&
+    a.markers.length === b.markers.length &&
+    a.markers.every((m, i) => {
+      const other = b.markers[i];
+      return m.name === other?.name && m.atMs === other.atMs;
+    })
+  );
+}
 
 /** The media.playable column: 1, 0, or NULL when not sure. */
 const playableValue = (probe: MediaProbe): number | null =>
@@ -191,6 +209,51 @@ export class MediaStore {
   }
 
   /**
+   * What a picture is, read before it is copied (Session 55, Part 5): one whose first bytes a screen shows as it is
+   * is taken as it is; any other is read with the bundled FFmpeg, where it is there, and converted by itself at
+   * import when FFmpeg reads a picture in it (HEIC, TIFF, a Targa, a Photoshop file, JPEG 2000), or turned down
+   * with the reason when nothing reads one (a damaged file, or another kind of file with a picture's name). With no
+   * FFmpeg, or when it fails or takes too long, the stored copy's own header says, as before (`read` null).
+   */
+  private async judgePicture(
+    path: string,
+    name: string,
+  ): Promise<
+    | { ok: true; read: Pick<StagedMedia, 'probe' | 'read' | 'convert'> | null }
+    | { ok: false; issue: ImportIssue }
+  > {
+    const probe = await probeMedia(path);
+    if (probe.kind === 'image' && probe.playable === true) return { ok: true, read: { probe } };
+    const notAPicture = {
+      ok: false as const,
+      issue: {
+        severity: 'error' as const,
+        code: 'not-a-picture',
+        message: `${name} is not a picture Drashti can read: what is inside it is not a picture (it may be damaged, or another kind of file with a picture’s name).`,
+        fix: null,
+      },
+    };
+    // A video or a sound with a picture's name.
+    if (probe.kind === 'video' || probe.kind === 'audio') return notAPicture;
+    if (!this.options.readInfo) return { ok: true, read: null };
+    const info = await this.options.readInfo(path).catch(() => null);
+    if (!info || info.timedOut) return { ok: true, read: null };
+    if (!info.video) return notAPicture;
+    return {
+      ok: true,
+      read: {
+        probe: {
+          playable: false,
+          format: probe.kind === 'image' ? probe.format : describePicture(info),
+          kind: 'image',
+        },
+        read: true,
+        convert: true,
+      },
+    };
+  }
+
+  /**
    * Whether a .ts file is a video at all (Session 50: .ts names an MPEG transport stream, and a TypeScript
    * file too): by its first bytes, or by FFmpeg finding a picture or sound in it.
    */
@@ -249,6 +312,13 @@ export class MediaStore {
           fix: null,
         },
       };
+    // A picture is judged before it is copied (Session 55, Part 5): one nothing can read is turned down, copied nowhere.
+    let picture: Pick<StagedMedia, 'probe' | 'read' | 'convert'> | null = null;
+    if (kind === 'image') {
+      const judged = await this.judgePicture(path, name);
+      if (!judged.ok) return { ok: false, issue: judged.issue };
+      picture = judged.read;
+    }
     let hashed: { sha256: string; bytes: number };
     try {
       hashed = await sha256File(path);
@@ -301,6 +371,7 @@ export class MediaStore {
         };
       }
     }
+    if (picture) return { ok: true, staged: { kind, name, rel, ...hashed, ...picture } };
     const probe = await probeMedia(target);
     return {
       ok: true,
@@ -399,20 +470,26 @@ export class MediaStore {
   }
 
   /**
+   * Start and end points and markers from an imported file (Session 14). Since Session 55 (the owner's answer to
+   * Session 54's question 20) a file the library has already takes the import's new points in place of its own:
+   * 'new' when it had none, 'replaced' when it had others, 'same' when they are its own already (their markers'
+   * names and times, whatever their ids), and null for anything but a video or a sound.
+   */
+  takeMarkers(mediaId: string, markers: MediaMarkers): 'new' | 'replaced' | 'same' | null {
+    const row = this.db
+      .prepare("SELECT markers FROM media WHERE id = ? AND kind IN ('video', 'audio')")
+      .get(mediaId) as { markers: string | null } | undefined;
+    if (!row) return null;
+    const had = row.markers === null ? null : (JSON.parse(row.markers) as MediaMarkers);
+    if (had && sameMarkers(had, markers)) return 'same';
+    this.db.prepare('UPDATE media SET markers = ? WHERE id = ?').run(JSON.stringify(markers), mediaId);
+    return had ? 'replaced' : 'new';
+  }
+
+  /**
    * A media item whose file was not found: kept (path '') so slides can
    * point at it and the operator can relink it later. One per original path.
    */
-  /** Start and end points and markers from an imported file (Session 14), unless the item has its own. */
-  keepMarkers(mediaId: string, markers: MediaMarkers): boolean {
-    return (
-      this.db
-        .prepare(
-          "UPDATE media SET markers = ? WHERE id = ? AND markers IS NULL AND kind IN ('video', 'audio')",
-        )
-        .run(JSON.stringify(markers), mediaId).changes > 0
-    );
-  }
-
   addMissing(originalPath: string, kind: MediaKind, source: MediaSource): string {
     const found = this.db
       .prepare('SELECT id FROM media WHERE missing = 1 AND source_path = ? AND source_kind = ?')
@@ -471,19 +548,28 @@ export class MediaStore {
     if (existing) {
       // Converted already (Session 51): merged into its copy, which everything uses.
       const copy = this.copyOf(existing.id);
-      this.db.transaction(() => {
-        repoint(mediaId, copy?.id ?? existing.id);
+      const into = copy?.id ?? existing.id;
+      // The points its import gave it (kept while it was missing) are the newer: the item it is merged into takes
+      // them (Session 55: the owner's answer to Session 54's question 20), where they were lost with it.
+      const points = (
+        this.db.prepare('SELECT markers FROM media WHERE id = ?').get(mediaId) as
+          { markers: string | null } | undefined
+      )?.markers;
+      const took = this.db.transaction((): ReturnType<MediaStore['takeMarkers']> => {
+        repoint(mediaId, into);
         this.db.prepare('DELETE FROM media WHERE id = ?').run(mediaId);
         this.markPlayable(existing.id, stored);
+        return points ? this.takeMarkers(into, JSON.parse(points) as MediaMarkers) : null;
       })();
       return {
         outcome: 'skipped',
-        mediaId: copy?.id ?? existing.id,
+        mediaId: into,
         sha256: stored.sha256,
         bytes: stored.bytes,
         name: copy?.name ?? existing.name,
         probe: copy?.probe ?? stored.probe,
         ...(copy ? {} : convert),
+        ...(took === 'new' || took === 'replaced' ? { pointsTaken: true as const } : {}),
       };
     }
     this.db

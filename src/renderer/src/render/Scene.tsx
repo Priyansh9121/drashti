@@ -24,7 +24,7 @@ import { textLang } from './lang';
 import { SlideLayerView } from './SlideLayerView';
 import { SlideLowerThird } from './LowerThird';
 import { LowerThirdView } from './LowerThirdView';
-import { ScreenPictures } from './picture-looks';
+import { BackgroundBox, ScreenPictures } from './picture-looks';
 import { TimerText } from './TimerText';
 import { useLiveHere } from './live-here';
 import { pipMainPlaces, type PipPicture, type PipRun, pipShownFor, pipShowsHere, type PipSlot } from './pip';
@@ -470,7 +470,10 @@ export const Scene = memo(function Scene({
             <>
               <div style={{ ...FULL, isolation: dissolving ? 'isolate' : undefined }}>
                 <MainSlot slot={slotOf('background')} swap={swap}>
-                  <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
+                  {/* The canvas, for a turned or cropped picture placed from the first frame (Session 55, Part 5). */}
+                  <BackgroundBox.Provider value={canvas}>
+                    <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
+                  </BackgroundBox.Provider>
                 </MainSlot>
                 {/* The box's own picture in the background's place, once swapped (Session 50), a video between its
                     file's start and end points as in the box (Session 53). */}

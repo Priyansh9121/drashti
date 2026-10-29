@@ -14,7 +14,8 @@ import type { ImportItemReport, ImportOptions } from '../../shared/import';
 import type { Db } from '../db/database';
 import { madeFrom } from '../playlists/folder-playlist';
 import { type Found, heldStill, type Seen } from '../playlists/smart-folders';
-import { mediaKindOf } from './scan';
+import { unreadPictureWords } from '../../shared/media';
+import { extOf, mediaKindOf } from './scan';
 
 /*
  * The drop folder (Session 28, decision 21), built on the smart playlists' looking, settling and watching
@@ -395,14 +396,16 @@ export class DropFolder {
     for (const [name, found] of files) {
       const row = rows.get(name);
       const kind = mediaKindOf(name);
+      // Why one is not taken for its type: a picture Drashti does not read (Session 55, Part 5: JPEG XL, SVG, a
+      // camera's raw picture) says so; anything else, only pictures, videos and sounds are taken.
+      const why = unreadPictureWords(extOf(name)) ?? NOT_MEDIA;
       // As it was when it was taken, or listed as not taken: nothing to do. But one listed for its type alone (not
       // over the size limit) is judged again (Session 51 review: alpha.10 listed sounds, and the videos Session 50
       // added, as not taken), and one still not taken says why in today's words.
       if (row?.size === found.size && row.mtime_ms === found.mtimeMs) {
         const forItsType = row.state === 'not-taken' && found.size <= this.maxBytes;
         if (!forItsType || kind === null) {
-          if (forItsType && row.reason !== NOT_MEDIA)
-            this.record(folder, name, found, 'not-taken', null, NOT_MEDIA);
+          if (forItsType && row.reason !== why) this.record(folder, name, found, 'not-taken', null, why);
           this.pending.delete(name);
           continue;
         }
@@ -410,7 +413,7 @@ export class DropFolder {
       // Pictures, videos and (Session 51) sounds: every media file Drashti takes.
       if (kind === null) {
         this.pending.delete(name);
-        this.record(folder, name, found, 'not-taken', null, NOT_MEDIA);
+        this.record(folder, name, found, 'not-taken', null, why);
         continue;
       }
       if (!heldStill(this.pending, name, found, now, this.deps.settleMs)) continue;

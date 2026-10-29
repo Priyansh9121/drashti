@@ -291,17 +291,16 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
     const hevc = await t.take('Placeholder phone.mov', 'placeholder mov');
     expect(hevc).toMatchObject({ probe: { playable: null, format: 'HEVC (H.265) video (QuickTime)' } });
     expect(hevc.outcome !== 'failed' && hevc.convert).toBeFalsy();
-    // Pictures are not read with FFmpeg.
-    await t.take('Placeholder darshan.png', 'placeholder png');
+    // A picture a screen shows as it is is not read with FFmpeg (Session 55: one nothing can read is turned down).
+    await t.take(
+      'Placeholder darshan.png',
+      Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]),
+    );
     expect(t.asked.sort()).toEqual(['flac', 'mkv', 'mov', 'mp4', 'wma']);
     expect(rows(t.db)).toEqual([
       { name: 'Placeholder bhajan.wma', playable: 0, format: 'Windows Media Audio sound file' },
       { name: 'Placeholder clip.mp4', playable: 1, format: 'H.264 video with AAC sound (MP4)' },
-      {
-        name: 'Placeholder darshan.png',
-        playable: null,
-        format: 'file of a kind Drashti does not recognise',
-      },
+      { name: 'Placeholder darshan.png', playable: 1, format: 'PNG picture' },
       { name: 'Placeholder dhun.flac', playable: 1, format: 'FLAC sound file' },
       { name: 'Placeholder katha.mkv', playable: 0, format: 'H.264 video with AC-3 sound (Matroska)' },
       { name: 'Placeholder phone.mov', playable: null, format: 'HEVC (H.265) video (QuickTime)' },
@@ -395,5 +394,143 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
       convert: true,
       probe: { playable: false, format: 'H.264 video (MPEG transport stream)' },
     });
+  });
+});
+
+/** What the bundled FFmpeg reads in pictures (Session 55, Part 5), as it printed them for tiny generated files. */
+const PICTURE_READS: Record<string, string> = {
+  heic: [
+    "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/x.heic':",
+    '  Duration: N/A, start: 0.000000, bitrate: N/A',
+    '  Stream #0:0[0x1]: Video: hevc (Main Still Picture) (hvc1 / 0x31637668), yuvj420p(pc, smpte170m/unknown/unknown), 64x48, 1 fps, 1 tbr, 1 tbn (default)',
+  ].join('\n'),
+  tga: [
+    "Input #0, image2, from '/x.tga':",
+    '  Duration: 00:00:00.04, start: 0.000000, bitrate: 56 kb/s',
+    '  Stream #0:0: Video: targa, bgra, 64x48, 25 fps, 25 tbr, 25 tbn',
+  ].join('\n'),
+  tif: [
+    "Input #0, tiff_pipe, from '/x.tif':",
+    '  Duration: N/A, bitrate: N/A',
+    '  Stream #0:0: Video: tiff, rgb24, 64x48 [SAR 1:1 DAR 4:3], 25 fps, 25 tbr, 25 tbn',
+  ].join('\n'),
+  // FFmpeg could not open it: no picture, no sound.
+  png: [
+    '[in#0 @ 0x14fe15410] Error opening input: Invalid data found when processing input',
+    'Error opening input file /x.png.',
+  ].join('\n'),
+  // A sound called a picture.
+  jpg: [
+    "Input #0, mp3, from '/x.jpg':",
+    '  Duration: 00:00:01.00, start: 0.000000, bitrate: 128 kb/s',
+    '  Stream #0:0: Audio: mp3 (mp3float), 44100 Hz, mono, fltp, 128 kb/s',
+  ].join('\n'),
+};
+
+describe('every picture type, every way in (Session 55, Part 5)', () => {
+  const HEIC = Buffer.concat([
+    Buffer.from([0, 0, 0, 0x18]),
+    Buffer.from('ftypheic'),
+    Buffer.alloc(4),
+    Buffer.from('mif1heic'),
+    Buffer.alloc(32),
+  ]);
+  const TIFF = Buffer.concat([Buffer.from('II*\0'), Buffer.alloc(64)]);
+  const PNG = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(64),
+  ]);
+
+  it('converts by itself a picture a screen cannot show as it is, once FFmpeg reads it: HEIC, TIFF, a Targa', async () => {
+    const t = checking({ reads: PICTURE_READS });
+    expect(await t.take('Placeholder photo.heic', HEIC)).toMatchObject({
+      outcome: 'imported',
+      convert: true,
+      probe: { playable: false, format: 'HEIC photo', kind: 'image' },
+    });
+    expect(await t.take('Placeholder scan.tif', TIFF)).toMatchObject({
+      convert: true,
+      probe: { playable: false, format: 'TIFF picture', kind: 'image' },
+    });
+    // A Targa has no first bytes of its own: FFmpeg says what it is.
+    expect(await t.take('Placeholder logo.tga', Buffer.alloc(80, 7))).toMatchObject({
+      outcome: 'imported',
+      convert: true,
+      probe: { playable: false, format: 'Targa picture', kind: 'image' },
+    });
+    // One a screen shows as it is is never read with FFmpeg, nor converted.
+    const png = await t.take('Placeholder darshan.png', PNG);
+    expect(png).toMatchObject({ outcome: 'imported', probe: { playable: true, format: 'PNG picture' } });
+    expect(png.outcome !== 'failed' && png.convert).toBeFalsy();
+    expect(t.asked.sort()).toEqual(['heic', 'tga', 'tif']);
+  });
+
+  it('turns down, with the reason, a “picture” nothing can read, copying nothing', async () => {
+    const t = checking({ reads: PICTURE_READS });
+    expect(await t.take('Placeholder broken.png', 'placeholder text, not a picture')).toEqual({
+      outcome: 'failed',
+      issue: {
+        severity: 'error',
+        code: 'not-a-picture',
+        message:
+          'Placeholder broken.png is not a picture Drashti can read: what is inside it is not a picture (it may be damaged, or another kind of file with a picture’s name).',
+        fix: null,
+      },
+    });
+    // A sound called a picture is no picture either.
+    expect(await t.take('Placeholder song.jpg', 'placeholder mp3 bytes')).toMatchObject({
+      outcome: 'failed',
+      issue: { code: 'not-a-picture' },
+    });
+    // A HEIC FFmpeg cannot open (damaged) is turned down too.
+    expect(await checking({ reads: {} }).take('Placeholder photo.heic', HEIC)).toMatchObject({
+      outcome: 'failed',
+      issue: { code: 'not-a-picture' },
+    });
+    expect(storedFiles(t.mediaDir)).toEqual([]);
+  });
+
+  it('keeps the file’s own header’s judgement where there is no FFmpeg to read it', async () => {
+    const { store, file } = setup();
+    expect(
+      await store.importFile(file('Placeholder photo.heic', 'placeholder heic'), {
+        kind: 'media',
+        path: 'x',
+      }),
+    ).toMatchObject({ outcome: 'imported' });
+  });
+});
+
+describe('an import’s new points for a file the library has (Session 55: the owner’s answer to question 20)', () => {
+  it('takes them in place of its own; says new, replaced or the same (their ids aside); never on a picture', async () => {
+    const { db, store, file } = setup();
+    const clip = await store.importFile(file('Placeholder clip.mp4', 'placeholder clip'), {
+      kind: 'media',
+      path: 'x',
+    });
+    const picture = await store.importFile(file('Placeholder photo.png', 'placeholder photo'), {
+      kind: 'media',
+      path: 'y',
+    });
+    if (clip.outcome === 'failed' || picture.outcome === 'failed') throw new Error('not imported');
+    const points = (startMs: number, name: string) => ({
+      startMs,
+      endMs: null,
+      markers: [{ id: `m-${name}-${String(startMs)}`, name, atMs: startMs + 1000 }],
+    });
+    expect(store.takeMarkers(clip.mediaId, points(2000, 'Katha'))).toBe('new');
+    expect(
+      store.takeMarkers(clip.mediaId, {
+        ...points(2000, 'Katha'),
+        markers: [{ id: 'other', name: 'Katha', atMs: 3000 }],
+      }),
+    ).toBe('same');
+    expect(store.takeMarkers(clip.mediaId, points(4000, 'Arti'))).toBe('replaced');
+    expect(new MediaRepo(db).markersOf(clip.mediaId)).toMatchObject({
+      startMs: 4000,
+      markers: [{ name: 'Arti', atMs: 5000 }],
+    });
+    expect(store.takeMarkers(picture.mediaId, points(1000, 'x'))).toBeNull();
+    expect(store.takeMarkers('no-such-item', points(1000, 'x'))).toBeNull();
   });
 });

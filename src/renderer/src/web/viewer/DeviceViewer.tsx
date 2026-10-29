@@ -7,7 +7,17 @@ import { useElementSize } from '../../render/useElementSize';
 import { LiveBadge } from '../../ui/Badge';
 import { Button, IconButton } from '../../ui/Button';
 import { useFocusTrap } from '../../ui/Dialog';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Tv, X, ZoomIn, ZoomOut } from '../../ui/icons';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ImageDown,
+  Maximize2,
+  Minimize2,
+  Tv,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { api } from '../device';
 import { tap, useTapNotice } from '../taps';
@@ -21,6 +31,7 @@ import {
 } from './live-zoom';
 import { backCloses, closeOnStop, closeViewer, turnPage, useViewer } from './viewer-store';
 import { ZoomSurface } from './ZoomSurface';
+import { savePictureHere } from './save-picture';
 import { clampView, type View, WHOLE, zoomedAt } from './zoom-math';
 
 /*
@@ -141,6 +152,26 @@ function Viewer() {
           </p>
         </div>
         {live && <LiveBadge />}
+        {page.save && (
+          // Save picture… (Session 55, Part 5): the phone's Share sheet, or a download where it has none.
+          <Button
+            size="lg"
+            icon={ImageDown}
+            data-testid="viewer-save"
+            onClick={() => {
+              const save = page.save;
+              if (!save) return;
+              const name = 'name' in save ? save.name : `${of ?? 'Slide'}_${String(save.slide)}`;
+              void savePictureHere(save.mediaId, name, state?.pictures[save.mediaId] ?? null).then(
+                (problem) => {
+                  if (problem) useTapNotice.setState({ text: problem });
+                },
+              );
+            }}
+          >
+            Save
+          </Button>
+        )}
         <Button size="lg" icon={X} data-testid="viewer-close" onClick={closeViewer}>
           Close
         </Button>

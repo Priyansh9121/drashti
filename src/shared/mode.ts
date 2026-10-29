@@ -52,11 +52,11 @@ export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode })
  * as any background); and Simple Mode shows the time bar but never moves what
  * plays (Session 54): neither the bar's move nor Back 15 s, Forward 15 s and
  * Last 10 s. The bar's Pause is refused too, but on the audio layer
- * (simpleModeRefuses), and its Play never is.
+ * (simpleModeRefuses), and its Play never is. The live zoom is Simple Mode's
+ * too since Session 55 (Part 5: pinch, drag, a double tap to reset, from the
+ * window and a phone); keeping it as the picture's own stays Pro Mode's.
  */
 export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
-  'zoomLive',
-  'resetLiveZoom',
   'showPip',
   'swapPip',
   'placePip',

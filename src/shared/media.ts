@@ -4,6 +4,8 @@
  * drashti-media:// scheme (src/main/media/media-protocol.ts).
  */
 
+import { cutText } from './text';
+
 export const MEDIA_SCHEME = 'drashti-media';
 
 /** A media id as the library stores it (a UUID); nothing else can name a file. */
@@ -43,6 +45,109 @@ export const VIDEO_EXTENSIONS: string[] = [
   'rm',
   'rmvb',
 ];
+
+/**
+ * The pictures Drashti takes, by extension (Session 55, Part 5): one list, wherever pictures come in (Import…, Add
+ * files…, a drop, the drop folder, a folder playlist, a Dropbox folder, a phone, the wallpapers' Import…). The
+ * eleven of before, and the common ones Chromium or the bundled FFmpeg reads that were missing. A screen shows
+ * those in IMAGE_SHOWN_AS_IS as they are; the rest are converted by themselves at import (src/main/convert/plan.ts:
+ * a JPEG, or a PNG when see-through). Not taken: JPEG XL (the bundled FFmpeg reads none) and SVG (a drawing).
+ */
+export const IMAGE_EXTENSIONS: string[] = [
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'bmp',
+  'tif',
+  'tiff',
+  'heic',
+  'heif',
+  'webp',
+  'avif',
+  // Session 55: a JPEG by its other names (Windows saves a browser's JPEG as .jfif), an animated PNG, an icon,
+  // and pictures from design programs and scanners (Targa, Photoshop, JPEG 2000).
+  'jfif',
+  'jpe',
+  'pjpeg',
+  'pjp',
+  'apng',
+  'ico',
+  'tga',
+  'psd',
+  'jp2',
+  'j2k',
+];
+
+/** The pictures a screen (Chromium) shows as they are: the others are converted at import. */
+const IMAGE_SHOWN_AS_IS = new Set([
+  'jpg',
+  'jpeg',
+  'jfif',
+  'jpe',
+  'pjpeg',
+  'pjp',
+  'png',
+  'apng',
+  'gif',
+  'bmp',
+  'webp',
+  'avif',
+  'ico',
+]);
+
+/** Whether a screen shows a picture of this extension as it is (no dot, any case). */
+export const imageShownAsIs = (ext: string): boolean => IMAGE_SHOWN_AS_IS.has(ext.toLowerCase());
+
+/** A JPEG by any of its names. */
+export const isJpegExtension = (ext: string): boolean =>
+  ['jpg', 'jpeg', 'jfif', 'jpe', 'pjpeg', 'pjp'].includes(ext.toLowerCase());
+
+/** A camera's raw pictures, by their makers' extensions. */
+const RAW_PICTURES = new Set([
+  'dng',
+  'cr2',
+  'cr3',
+  'crw',
+  'nef',
+  'nrw',
+  'arw',
+  'srf',
+  'sr2',
+  'orf',
+  'rw2',
+  'raf',
+  'pef',
+  'srw',
+  'x3f',
+  'erf',
+  'kdc',
+  'mrw',
+  '3fr',
+  'iiq',
+  'rwl',
+]);
+
+/**
+ * Why a picture Drashti does not read is turned down, and what to do instead (Session 55, Part 5): said wherever it
+ * comes in (the import's report, the drop folder's list); null for any other extension.
+ */
+export function unreadPictureWords(ext: string): string | null {
+  const e = ext.toLowerCase();
+  if (e === 'jxl')
+    return 'Drashti does not read JPEG XL pictures (.jxl): save it as a JPEG or a PNG, then add that.';
+  if (e === 'svg' || e === 'svgz')
+    return 'Drashti does not read SVG drawings: save it as a PNG, then add that.';
+  if (RAW_PICTURES.has(e))
+    return `Drashti does not read a camera’s raw pictures (.${e}): save it as a JPEG, then add that.`;
+  return null;
+}
+
+/** A file dialog's filter for pictures alone (the wallpapers' Import…, Part 6), from the one list. */
+export const IMAGE_FILE_FILTER: { name: string; extensions: string[] } = {
+  name: 'Pictures (JPEG, PNG, HEIC, WebP and more)',
+  extensions: IMAGE_EXTENSIONS,
+};
 
 /** The sounds Drashti takes (Audio's Import offers just these, Session 44), as the videos are. */
 export const SOUND_EXTENSIONS: string[] = [
@@ -113,6 +218,23 @@ export function copyOfId(id: string): { mediaId: string; step: number } | null {
   const m = /^([A-Za-z0-9-]{1,100})_s(\d{1,3})$/u.exec(id);
   const step = Number(m?.[2]);
   return m?.[1] && step >= 5 && step <= 100 && step % 5 === 0 ? { mediaId: m[1], step } : null;
+}
+
+/**
+ * The URL of a picture's blurred copy (Session 55, Part 5, D): small, blurred and darker, drawn behind a photo that
+ * does not fill its screen. A later try gets a URL of its own, as mediaUrl's does.
+ */
+export function blurredUrl(mediaId: string, attempt = 0): string {
+  return `${MEDIA_SCHEME}://blur/${mediaId}${attempt > 0 ? `?try=${attempt}` : ''}`;
+}
+
+/** A blurred copy as one more file of its own (a node copies it, a phone's preview is made from it). */
+export const blurMediaId = (mediaId: string): string => `${mediaId}_b`;
+
+/** The picture a blurred copy's id names, or null for any other id. */
+export function blurOfId(id: string): string | null {
+  const m = /^([A-Za-z0-9-]{1,100})_b$/u.exec(id);
+  return m?.[1] ?? null;
 }
 
 /** Stills are at most this wide (thumbnails are smaller), and this many bytes. */
@@ -261,3 +383,32 @@ export function playbackCorrection(
 }
 
 export type SaveStillResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * The file name a picture is saved as (Session 55, Part 5: Save picture…, on the computer and a phone): its name
+ * without a picture's extension, safe on a Mac, Windows and a phone, then its type: "<name>.jpg" for a photo (a JPEG),
+ * "<name>.png" for anything else ("<deck>_3.png" for a deck's slide).
+ */
+export function savedPictureName(name: string, jpeg: boolean): string {
+  const base =
+    name
+      .normalize('NFC')
+      // A file's own extension (a picture's name keeps it): the saved one has its own.
+      .replace(
+        /\.(jpe?g|jfif|jpe|pjpeg|pjp|png|apng|gif|bmp|tiff?|heic|heif|webp|avif|ico|tga|psd|jp2|j2k)$/iu,
+        '',
+      )
+      // Never a folder, nor a character Windows refuses.
+      // eslint-disable-next-line no-control-regex -- control characters are what is taken out
+      .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()
+      // Windows refuses a name ending in a dot or a space.
+      .replace(/[. ]+$/u, '') || 'Picture';
+  // Never a letter split (ક્ષ, क्ष), and never a dot or a space left at its end.
+  return `${cutText(base, 120).replace(/[. ]+$/u, '') || 'Picture'}.${jpeg ? 'jpg' : 'png'}`;
+}
+
+/** What Save picture… came to (Session 55, Part 5): saved where, not saved (why), or the operator chose not to. */
+export type SavePictureResult =
+  { ok: true; path: string } | { ok: false; message: string } | { ok: false; cancelled: true };
