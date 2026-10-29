@@ -2,7 +2,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ffmpegCandidates } from './stream/ffmpeg-path';
-import { ADMIN_SWITCHES, packagedExecutable, switchesFor } from './switches';
+import {
+  ADMIN_SWITCHES,
+  packaged,
+  packagedExecutable,
+  packagedRun,
+  type SwitchName,
+  switchesFor,
+} from './switches';
 
 /*
  * Which DRASHTI_* switches Drashti honours (Session 30, Q5): packaged, the admin's few always and the
@@ -95,6 +102,63 @@ describe('switches', () => {
     expect(packagedExecutable('/Applications/Drashti.app/Contents/MacOS/Drashti', 'darwin')).toBe(true);
     expect(packagedExecutable('C:\\x\\node_modules\\electron\\dist\\electron.exe', 'win32')).toBe(false);
     expect(packagedExecutable('C:\\Program Files\\Drashti\\Drashti.exe', 'win32')).toBe(true);
+  });
+
+  it('packaged wherever its main code runs from an app.asar, whatever its executable is called (Session 55 review): a copy of the installed app named electron honours no test switch', () => {
+    const env = {
+      DRASHTI_TEST_ACCESS_URL: 'http://127.0.0.1:4567/macros/s/placeholder-stand-in/exec',
+      DRASHTI_TEST_HARDWARE_ID: 'placeholder-another-computer',
+      DRASHTI_TEST_ACCESS_STOP_MS: '1',
+      DRASHTI_TEST_NETWORK_FILE: '/placeholder/network.txt',
+    };
+    const copies = [
+      [
+        '/Users/placeholder/Drashti copy.app/Contents/MacOS/electron',
+        'darwin',
+        '/Users/placeholder/Drashti copy.app/Contents/Resources/app.asar/out/main',
+      ],
+      [
+        'C:\\Users\\placeholder\\Drashti copy\\electron.exe',
+        'win32',
+        'C:\\Users\\placeholder\\Drashti copy\\resources\\app.asar\\out\\main\\chunks',
+      ],
+      // Electron's own executable given the installed app.asar to run.
+      [
+        '/placeholder/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron',
+        'darwin',
+        '/Applications/Drashti.app/Contents/Resources/app.asar/out/main',
+      ],
+    ] as const;
+    for (const [exe, platform, code] of copies) {
+      expect(packagedRun(exe, platform, code), exe).toBe(true);
+      const sw = switchesFor(packagedRun(exe, platform, code), env);
+      for (const name of Object.keys(env)) expect(sw(name as SwitchName), `${exe}: ${name}`).toBeUndefined();
+    }
+    // The installed app as it is: packaged, as before.
+    expect(
+      packagedRun(
+        '/Applications/Drashti.app/Contents/MacOS/Drashti',
+        'darwin',
+        '/Applications/Drashti.app/Contents/Resources/app.asar/out/main',
+      ),
+    ).toBe(true);
+    // Development, the end-to-end tests and the performance check: Electron's own executable, the code in out/.
+    expect(
+      packagedRun(
+        '/placeholder/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron',
+        'darwin',
+        '/placeholder/app/out/main',
+      ),
+    ).toBe(false);
+    expect(
+      packagedRun(
+        'C:\\placeholder\\node_modules\\electron\\dist\\electron.exe',
+        'win32',
+        'C:\\placeholder\\app\\out\\main',
+      ),
+    ).toBe(false);
+    // These tests themselves (Electron's own executable, the code in src/): not packaged.
+    expect(packaged()).toBe(false);
   });
 
   it('a packaged Drashti runs its own FFmpeg, whatever DRASHTI_FFMPEG says', () => {

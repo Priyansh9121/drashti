@@ -6,10 +6,18 @@ import {
   endsCell,
   LENGTH_CHOICES,
   LENGTH_MAX_DAYS,
+  MODE_CHOICES,
+  modeCell,
   REVOKE_QUESTION,
   typedDays,
 } from '../../../shared/access-list';
-import { ACCESS_UNLIMITED, gmailKey, gmailShaped, type AccessLength } from '../../../shared/access-protocol';
+import {
+  ACCESS_UNLIMITED,
+  gmailKey,
+  gmailShaped,
+  type AccessLength,
+  type AccessMode,
+} from '../../../shared/access-protocol';
 import { Button } from '../ui/Button';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Field, NumberInput, Select, Textarea, TextInput } from '../ui/Field';
@@ -20,6 +28,7 @@ import {
   closeDialog,
   edit,
   giveLength,
+  giveMode,
   saveNote,
   useAccessList,
   type LengthEdit,
@@ -99,6 +108,46 @@ function LengthField({
   );
 }
 
+/**
+ * What they may use (Session 55, the owner's decision of 29 Oct 2026): Simple Mode only (offered first), or Pro Mode and
+ * Simple Mode.
+ */
+function ModeField({
+  value,
+  onChange,
+  disabled,
+  hint,
+  testId,
+}: {
+  value: AccessMode;
+  onChange: (mode: AccessMode) => void;
+  disabled: boolean;
+  hint: string;
+  testId: string;
+}) {
+  return (
+    <Field label="What may they use?" hint={hint}>
+      <Select
+        value={value}
+        disabled={disabled}
+        data-testid={testId}
+        onChange={(e) => {
+          onChange(e.target.value === 'pro' ? 'pro' : 'simple');
+        }}
+      >
+        {MODE_CHOICES.map((c) => (
+          <option key={c.mode} value={c.mode}>
+            {c.label}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+const MODE_HINT =
+  'Simple Mode runs a sabha from a playlist and changes nothing else; Pro Mode is for whoever looks after Drashti.';
+
 const LENGTH_WORDS: Record<LengthEdit, { title: (gmail: string) => string; button: string; about: string }> =
   {
     approve: {
@@ -132,11 +181,14 @@ export function LengthDialog({ kind, gmail }: { kind: LengthEdit; gmail: string 
       : ACCESS_UNLIMITED,
   );
   const [tried, setTried] = useState(false);
+  // Approve and Give access again ask what they may use too (Session 55, and its review): the row's own at first (a
+  // request's: Simple, unless the owner chose Pro adding it).
+  const [mode, setMode] = useState<AccessMode>(person?.mode ?? 'simple');
   const words = LENGTH_WORDS[kind];
   const now = person && kind === 'length' ? endsCell(person, view?.listTime ?? null) : null;
   const save = () => {
     setTried(true);
-    if (state.length !== null && !busy) void giveLength(kind, gmail, state.length);
+    if (state.length !== null && !busy) void giveLength(kind, gmail, state.length, mode);
   };
   return (
     <Dialog
@@ -168,6 +220,69 @@ export function LengthDialog({ kind, gmail }: { kind: LengthEdit; gmail: string 
         disabled={busy}
         hint="Counted from now. Unlimited lasts until you revoke it. When a length ends, their Drashti stops until you give more time."
       />
+      {(kind === 'approve' || kind === 'regrant') && (
+        <ModeField
+          value={mode}
+          onChange={setMode}
+          disabled={busy}
+          hint={MODE_HINT}
+          testId="access-mode-choice"
+        />
+      )}
+      {busy && (
+        <p role="status" className="text-xs text-muted">
+          Asking the access list…
+        </p>
+      )}
+      {problem && <Notice tone="danger">{problem}</Notice>}
+    </Dialog>
+  );
+}
+
+/** Change the mode… (Session 55): Pro or Simple, their Drashti hearing it at its next check, within 15 seconds. */
+export function ModeDialog({ gmail }: { gmail: string }) {
+  const busy = useAccessList((s) => s.busy);
+  const problem = useAccessList((s) => s.dialogProblem);
+  const view = useAccessList((s) => s.view);
+  const person = view?.people?.find((p) => gmailKey(p.gmail) === gmailKey(gmail)) ?? null;
+  const [mode, setMode] = useState<AccessMode>(person?.mode ?? 'simple');
+  const save = () => {
+    if (!busy) void giveMode(gmail, mode);
+  };
+  return (
+    <Dialog
+      title={`Change the mode for ${gmail}`}
+      size="sm"
+      onClose={busy ? null : closeDialog}
+      testId="access-mode-dialog"
+      bodyClassName="space-y-3"
+      footer={
+        <>
+          <Button onClick={closeDialog} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={save} disabled={busy} data-testid="access-mode-save">
+            Change the mode
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm">
+        Their Drashti hears it at its next check, within 15 seconds. With Simple Mode only, it goes to Simple
+        Mode and has no way to Pro Mode.
+      </p>
+      {person && (
+        <p className="text-sm text-muted" data-testid="access-mode-now">
+          {`Now: ${modeCell(person).text}`}
+        </p>
+      )}
+      <ModeField
+        value={mode}
+        onChange={setMode}
+        disabled={busy}
+        hint={MODE_HINT}
+        testId="access-mode-choice"
+      />
       {busy && (
         <p role="status" className="text-xs text-muted">
           Asking the access list…
@@ -187,11 +302,13 @@ export function AddGmailDialog() {
   const [approve, setApprove] = useState(true);
   const [tried, setTried] = useState(false);
   const length = useLengthChoice(ACCESS_UNLIMITED);
+  // Simple Mode only, at first (Session 55), as the Approve page offers it.
+  const [mode, setMode] = useState<AccessMode>('simple');
   const shaped = gmailShaped(gmail);
   const add = () => {
     setTried(true);
     if (shaped && length.length !== null && !busy)
-      void addGmail({ gmail: gmail.trim(), name, note, approve, length: length.length });
+      void addGmail({ gmail: gmail.trim(), name, note, approve, length: length.length, mode });
   };
   const onEnter = (e: KeyboardEvent) => {
     if (e.key !== 'Enter') return;
@@ -271,6 +388,7 @@ export function AddGmailDialog() {
         disabled={busy}
         hint="Counted from when it is approved. Unlimited lasts until you revoke it."
       />
+      <ModeField value={mode} onChange={setMode} disabled={busy} hint={MODE_HINT} testId="access-add-mode" />
       {busy && (
         <p role="status" className="text-xs text-muted">
           Asking the access list…

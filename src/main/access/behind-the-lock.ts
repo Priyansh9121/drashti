@@ -1,15 +1,16 @@
-import { app, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { app, type BrowserWindow, type IpcMainInvokeEvent, net, powerMonitor } from 'electron';
 import { gateChannels } from '../ipc/handle';
 import { log } from '../log';
 import { installLockedMenu } from '../menu';
 import { LOCK_REASON_TEXT } from '../../shared/access';
-import { sw, swMs } from '../switches';
+import { packaged, sw, swMs } from '../switches';
 import { createLockWindow, registerAccessIpc } from './access-ipc';
 import { AccessClient, accessSwitches, accessTarget } from './client';
 import { electronTransport } from './electron-transport';
 import { isLetIn, onAccessChange } from './gate';
 import { mayRunWhileLocked } from './locked-requests';
 import { accessComputer, computerId } from './identity';
+import { networkAddresses, networkFromFile, type NetworkNow, watchNetwork } from './network-watch';
 import { AccessService, AskedFile, keptAt, performanceAccessFolder } from './service';
 import { AccessStore } from './store';
 
@@ -18,7 +19,8 @@ import { AccessStore } from './store';
  * the stream, the phones, the nodes), this computer's access is checked with the list: let in, Drashti opens as it
  * always has; not let in, the lock window. Every request from a window passes the gate from now on (handle.ts), and
  * the menu has Quit and the editing keys only until Drashti opens. A self-test opens at once with its controls
- * locked, and never asks the list.
+ * locked, and never asks the list. When the computer's network comes back, the list is asked at once if it has not
+ * answered (network-watch.ts, Session 55).
  */
 
 /** Still checking after this long: the lock window shows, saying so. Let in sooner, it never shows. */
@@ -59,7 +61,7 @@ export async function prepareTheLock(o: {
   const selfTest = o.selfTest && !perfCheck;
   const accessDir = perfCheck
     ? performanceAccessFolder({
-        packaged: app.isPackaged,
+        packaged: packaged(),
         home: perfCheck.home,
         testFolder: sw('DRASHTI_TEST_ACCESS_HOME'),
       })
@@ -70,12 +72,12 @@ export async function prepareTheLock(o: {
     ? { ok: false as const, reason: 'a self-test asks nothing' }
     : await computerId({
         platform: process.platform,
-        packaged: app.isPackaged,
+        packaged: packaged(),
         switches: accessSwitches,
         // Windows' own folder, where reg.exe is (its MachineGuid), wherever Windows is installed.
         systemRoot: process.env['SystemRoot'],
       });
-  const target = selfTest ? null : accessTarget({ packaged: app.isPackaged, switches: accessSwitches });
+  const target = selfTest ? null : accessTarget({ packaged: packaged(), switches: accessSwitches });
   let calls: AccessClient | null = null;
   if (target && computer.ok)
     try {
@@ -144,6 +146,34 @@ export async function prepareTheLock(o: {
       }),
   );
   installLockedMenu();
+
+  // The network coming back: the list asked at once while it has not answered (Session 55). Never in a self-test.
+  if (!selfTest && calls) {
+    const file = sw('DRASHTI_TEST_NETWORK_FILE');
+    const read = (): NetworkNow =>
+      file !== undefined && file !== ''
+        ? networkFromFile(file)
+        : { online: net.isOnline(), addresses: networkAddresses() };
+    const stopWatching = watchNetwork({
+      read,
+      every: (ms, run) => {
+        const t = setInterval(run, ms);
+        return () => {
+          clearInterval(t);
+        };
+      },
+      onResume: (run) => {
+        powerMonitor.on('resume', run);
+        return () => {
+          powerMonitor.off('resume', run);
+        };
+      },
+      back: (why) => {
+        service.networkBack(why);
+      },
+    });
+    app.once('will-quit', stopWatching);
+  }
 
   const begin = () => {
     if (selfTest) {
@@ -221,12 +251,17 @@ function timeout(): { timeoutMs?: number } {
   return ms === null ? {} : { timeoutMs: ms };
 }
 
-/** Tests only (never a packaged Drashti): checks more often, and the stop sooner, so a test need not wait minutes. */
-function testTimes(): { checkEveryMs?: number; stopAfterMs?: number } {
+/**
+ * Tests only (never a packaged Drashti): checks more often, the stop sooner and the bar sooner, so a test need not wait
+ * minutes.
+ */
+function testTimes(): { checkEveryMs?: number; stopAfterMs?: number; barAfterMs?: number } {
   const every = swMs('DRASHTI_TEST_ACCESS_CHECK_MS');
   const stop = swMs('DRASHTI_TEST_ACCESS_STOP_MS');
+  const bar = swMs('DRASHTI_TEST_ACCESS_BAR_MS');
   return {
     ...(every === null ? {} : { checkEveryMs: every }),
     ...(stop === null ? {} : { stopAfterMs: stop }),
+    ...(bar === null ? {} : { barAfterMs: bar }),
   };
 }

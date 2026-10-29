@@ -33,6 +33,8 @@ export interface AppearanceItems {
 export interface MenuActions {
   /** Simple Mode leaves out backup and restore, and offers the way back to Pro Mode. */
   mode: OperatorMode;
+  /** This computer's access is Simple Mode only (Session 55): Simple Mode offers no way back to Pro Mode. */
+  simpleOnly?: boolean;
   /** View > Switch to Simple Mode, or Switch to Pro Mode… (which asks for the word in the window). */
   switchMode: () => void;
   /** View > Set Up Screens…: the setup wizard (Pro Mode only). */
@@ -192,11 +194,16 @@ export function installMenu(actions: MenuActions): void {
     {
       label: 'View',
       submenu: [
-        {
-          id: 'switch-mode',
-          label: simple ? 'Switch to Pro Mode…' : 'Switch to Simple Mode',
-          click: actions.switchMode,
-        },
+        // With Simple access (Session 55), no way back to Pro Mode.
+        ...(simple && actions.simpleOnly === true
+          ? []
+          : [
+              {
+                id: 'switch-mode',
+                label: simple ? 'Switch to Pro Mode…' : 'Switch to Simple Mode',
+                click: actions.switchMode,
+              } as MenuItemConstructorOptions,
+            ]),
         // Simple Mode never shows the setup wizard.
         ...(simple
           ? []

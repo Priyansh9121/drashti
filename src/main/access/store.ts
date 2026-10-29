@@ -3,10 +3,12 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import {
   ACCESS_CHECK_STATUSES,
+  ACCESS_MODES,
   NO_ACTIVITY,
   type AccessActivity,
   type AccessCheckStatus,
   type AccessGrant,
+  type AccessMode,
 } from '../../shared/access-protocol';
 import { readStateTwice, type StateRead } from '../state-file';
 
@@ -19,9 +21,11 @@ import { readStateTwice, type StateRead } from '../state-file';
  *
  * It keeps too what each check sends: the last `at` (the next is never at or below it, whatever this
  * computer's clock does) and the totals since the token was used (minutes open, shows, streams, recordings,
- * imports: never content). And, so that Drashti may start without the internet within the hour of an answer that
- * let it in (the owner's decision of 28 Oct 2026), the last answer (what it said, when on this computer's clock,
- * the list's own time, and the end of the length) and how long Drashti has run since without one.
+ * imports: never content). And, so that Drashti may start without the internet within 15 days of an answer that
+ * let it in (the owner's decisions of 28 and 29 Oct 2026), the last answer (what it said, when on this computer's clock,
+ * the list's own time, the end of the length and the mode) and how long Drashti has run since without one. Since
+ * Session 55 the answer is kept as the list signed it too: only that is believed at a start, so editing this file
+ * changes neither the answer nor its mode, and its 15 days count from the check's own time, which the list signed.
  */
 
 export const ACCESS_FILE = 'access.json';
@@ -55,6 +59,10 @@ export interface KeptAnswer {
   serverTime: number;
   /** When access ends by the list's clock, or null for no end. */
   endsAt: number | null;
+  /** Pro or Simple, as it said (Session 55; none kept by Drashti 1.0.0-alpha.13). */
+  mode?: AccessMode;
+  /** The answer as the list signed it (Session 55): what a start believes, checked with the list's key. */
+  signed?: { payload: string; sig: string };
 }
 
 const count = z.number().int().min(0).max(1e9);
@@ -75,6 +83,8 @@ const storedSchema = z.object({
       heardAt: z.number().min(0),
       serverTime: z.number().min(0),
       endsAt: z.number().min(0).nullable(),
+      mode: z.enum(ACCESS_MODES).optional(),
+      signed: z.object({ payload: z.string().max(8192), sig: z.string().max(2048) }).optional(),
     })
     .optional(),
   offlineMs: z.number().min(0).optional(),

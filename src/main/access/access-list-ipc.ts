@@ -1,7 +1,12 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import { NO_VIEW, type AccessListResult, type AccessListSaved } from '../../shared/access-list';
-import { ACCESS_ERROR_TEXT, ACCESS_LENGTH_MAX_DAYS, ACCESS_UNLIMITED } from '../../shared/access-protocol';
+import {
+  ACCESS_ERROR_TEXT,
+  ACCESS_LENGTH_MAX_DAYS,
+  ACCESS_MODES,
+  ACCESS_UNLIMITED,
+} from '../../shared/access-protocol';
 import { IPC } from '../../shared/ipc';
 import { handle } from '../ipc/handle';
 import type { AccessList } from './access-list';
@@ -15,12 +20,15 @@ import type { AccessList } from './access-list';
 const gmail = z.string().max(320);
 /** A length of access: Unlimited, or whole days (the list checks it again). */
 const length = z.union([z.literal(ACCESS_UNLIMITED), z.number().int().min(1).max(ACCESS_LENGTH_MAX_DAYS)]);
+/** How a Gmail may use Drashti (Session 55): Pro or Simple (the list checks it again). */
+const mode = z.enum(ACCESS_MODES);
 const addSchema = z.object({
   gmail,
   name: z.string().max(1000),
   note: z.string().max(5000),
   approve: z.boolean(),
   length,
+  mode,
 });
 const noteSchema = z.string().max(5000);
 const gmailsSchema = z.array(gmail).max(100_000);
@@ -61,10 +69,14 @@ export function handleAccessList(o: {
       const l = length.safeParse(chosen);
       return isPage(e) && t.success && l.success ? edit(t.data, l.data) : refused();
     };
-  handle(
-    IPC.accessList.approve,
-    withLength((t, l) => list.approve(t, l)),
-  );
+  handle(IPC.accessList.approve, (e, target, chosen, way) => {
+    const t = gmail.safeParse(target);
+    const l = length.safeParse(chosen);
+    const m = mode.safeParse(way);
+    return isPage(e) && t.success && l.success && m.success
+      ? list.approve(t.data, l.data, m.data)
+      : refused();
+  });
   handle(
     IPC.accessList.reject,
     one((t) => list.reject(t)),
@@ -73,14 +85,23 @@ export function handleAccessList(o: {
     IPC.accessList.revoke,
     one((t) => list.revoke(t)),
   );
-  handle(
-    IPC.accessList.regrant,
-    withLength((t, l) => list.regrant(t, l)),
-  );
+  handle(IPC.accessList.regrant, (e, target, chosen, way) => {
+    const t = gmail.safeParse(target);
+    const l = length.safeParse(chosen);
+    const m = mode.safeParse(way);
+    return isPage(e) && t.success && l.success && m.success
+      ? list.regrant(t.data, l.data, m.data)
+      : refused();
+  });
   handle(
     IPC.accessList.changeLength,
     withLength((t, l) => list.changeLength(t, l)),
   );
+  handle(IPC.accessList.changeMode, (e, target, way) => {
+    const t = gmail.safeParse(target);
+    const m = mode.safeParse(way);
+    return isPage(e) && t.success && m.success ? list.changeMode(t.data, m.data) : refused();
+  });
   handle(IPC.accessList.note, (e, target, note) => {
     const t = gmail.safeParse(target);
     const n = noteSchema.safeParse(note);

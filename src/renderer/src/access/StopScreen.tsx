@@ -5,8 +5,9 @@ import {
   ENDED_COME_BACK_TEXT,
   ENDED_STOP_TITLE,
   endedStopText,
-  NO_ANSWER_STOP_TEXT,
-  NO_ANSWER_STOP_TITLE,
+  NO_CONTACT_COME_BACK_TEXT,
+  NO_CONTACT_STOP_TEXT,
+  NO_CONTACT_STOP_TITLE,
   STOP_REASON_TEXT,
   STOPPED_WHAT_TEXT,
 } from '../../../shared/access';
@@ -14,19 +15,31 @@ import { Button } from '../ui/Button';
 import { Mark } from '../ui/Mark';
 
 /*
- * The stop (Session 54, access by Gmail: revoked, rejected, unknown, the length ended, or an hour with no answer), in place of the
- * controls, in Pro and Simple Mode alike: one plain message and Quit, the one button that works. The main process
- * has stopped everything already (the screens fade to black, the stream and recording end, the nodes and phones
- * stop) and refuses every other request; this only says so.
+ * The stop (Session 54, access by Gmail: revoked, rejected, unknown, the length ended, or 15 days with no answer), in
+ * place of the controls, in Pro and Simple Mode alike: one plain message and Quit, the one button that works. The main
+ * process has stopped everything already (the screens fade to black, the stream and recording end, the nodes and
+ * phones stop) and refuses every other request; this only says so. After 15 days with no answer (Session 55) it stops
+ * as a revoke stops it, saying to ask for access again (Request Access, once Drashti is started again online).
  */
 export function StopScreen({ view }: { view: AccessView }) {
   const quit = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     quit.current?.focus();
   }, []);
-  const noAnswer = view.reason === 'no-answer';
+  const noContact = view.reason === 'no-contact' || view.reason === 'no-answer';
   const ended = view.reason === 'expired';
-  const why = ended ? endedStopText(view.endsAt) : view.reason ? STOP_REASON_TEXT[view.reason] : undefined;
+  const why = noContact
+    ? NO_CONTACT_STOP_TEXT
+    : ended
+      ? endedStopText(view.endsAt)
+      : view.reason
+        ? STOP_REASON_TEXT[view.reason]
+        : undefined;
+  const comeBack = noContact
+    ? NO_CONTACT_COME_BACK_TEXT
+    : ended
+      ? ENDED_COME_BACK_TEXT
+      : 'To use Drashti again, ask the person who approves access, then start Drashti again.';
   return (
     <main
       className="flex h-full items-center justify-center overflow-y-auto bg-ink px-6 py-8 text-fg"
@@ -40,21 +53,11 @@ export function StopScreen({ view }: { view: AccessView }) {
         </p>
         <div role="alert" className="space-y-3">
           <h1 className="text-2xl font-bold">
-            {noAnswer ? NO_ANSWER_STOP_TITLE : ended ? ENDED_STOP_TITLE : ACCESS_REMOVED_TEXT}
+            {noContact ? NO_CONTACT_STOP_TITLE : ended ? ENDED_STOP_TITLE : ACCESS_REMOVED_TEXT}
           </h1>
-          {noAnswer ? (
-            <p className="text-base">{NO_ANSWER_STOP_TEXT}</p>
-          ) : (
-            why && <p className="text-base">{why}</p>
-          )}
+          {why && <p className="text-base">{why}</p>}
           <p className="text-base text-muted">{STOPPED_WHAT_TEXT}</p>
-          {!noAnswer && (
-            <p className="text-base text-muted">
-              {ended
-                ? ENDED_COME_BACK_TEXT
-                : 'To use Drashti again, ask the person who approves access, then start Drashti again.'}
-            </p>
-          )}
+          <p className="text-base text-muted">{comeBack}</p>
         </div>
         <Button
           ref={quit}

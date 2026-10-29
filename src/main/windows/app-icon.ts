@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { packaged } from '../switches';
 
 /*
  * Drashti's icon on its own windows (Session 19). On Windows the taskbar and Alt+Tab show each window's
@@ -25,7 +26,7 @@ export function windowIconPath(p: IconPlace): string | undefined {
 export function windowIcon(): { icon?: string } {
   const file = windowIconPath({
     platform: process.platform,
-    packaged: app.isPackaged,
+    packaged: packaged(),
     resourcesPath: process.resourcesPath,
     appPath: app.getAppPath(),
   });

@@ -1,6 +1,6 @@
 import { app, type BrowserWindow, dialog, type MessageBoxOptions } from 'electron';
 import { log } from '../log';
-import { sw } from '../switches';
+import { packaged, sw } from '../switches';
 
 /*
  * Quiet test mode, for end-to-end tests on a computer someone is using
@@ -21,7 +21,7 @@ import { sw } from '../switches';
  * for keyboard focus, so the tests see what they need. Tests that need a
  * real full-screen output or real focus run on CI only.
  */
-export const quietTests = sw('DRASHTI_TEST_QUIET') === '1' && !app.isPackaged;
+export const quietTests = sw('DRASHTI_TEST_QUIET') === '1' && !packaged();
 
 const ignore = (): undefined => undefined;
 

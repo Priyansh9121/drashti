@@ -107,6 +107,9 @@ async function runPerformanceTest(
   // switch a packaged Drashti never reads).
   const accessHome = mkdtempSync(join(tmpdir(), 'drashti-perf-access-'));
   const access = (await letInBeforeStart(accessHome)).env;
+  // Never the real list, here or on CI (Session 54's question 8, answered 29 Oct 2026: the stand-in on CI).
+  if (!access['DRASHTI_TEST_ACCESS_URL']?.startsWith('http://127.0.0.1:'))
+    throw new Error('The performance check must be let in through the stand-in list on 127.0.0.1.');
   Object.assign(
     env,
     {

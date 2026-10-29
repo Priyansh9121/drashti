@@ -1,4 +1,9 @@
-import { ACCESS_ENDS_WARN_MS, type AccessRequestStatus } from './access-protocol';
+import {
+  ACCESS_ENDS_WARN_MS,
+  ACCESS_STOP_AFTER_MS,
+  type AccessMode,
+  type AccessRequestStatus,
+} from './access-protocol';
 import { plural } from './text';
 
 /*
@@ -14,9 +19,12 @@ export type AccessPhase =
   | 'locked'
   /** Let in, and the last check was answered. */
   | 'in'
-  /** Let in, but the list has not answered for a while (no internet): Drashti keeps working, for up to an hour. */
+  /**
+   * Let in, and the list has not answered for about 2 minutes, three checks in a row (no internet; Session 55): the line
+   * says so. Drashti keeps working, for up to 15 days from the last answer.
+   */
   | 'warning'
-  /** Stopped: revoked, rejected, unknown, the length ended, or an hour with no answer. Only Quit works. */
+  /** Stopped: revoked, rejected, unknown, the length ended, or 15 days with no answer. Only Quit works. */
   | 'stopped';
 
 /** Why this computer is not let in, or why Drashti stopped. */
@@ -27,8 +35,13 @@ export type AccessReason =
   | 'unknown'
   /** The length of access the owner gave has ended, by the list's clock (the owner's decision of 28 Oct 2026). */
   | 'expired'
-  /** No answer from the list: at start (Try Again), or for an hour while open (the stop). */
+  /** No answer from the list at start (Try Again; it tries by itself too). */
   | 'no-answer'
+  /**
+   * No answer from the list for 15 days (the owner's decision of 29 Oct 2026): Drashti stops as a revoke stops it, and
+   * the list ends this computer's grant too, so the person asks for access again (Request Access).
+   */
+  | 'no-contact'
   /** The access kept in the data folder was made on another computer (a copied folder). */
   | 'copied'
   /** The access kept in the data folder could not be read. */
@@ -58,7 +71,7 @@ export interface AccessView {
   /** This computer's Gmail is the owner's: only then the Access List. */
   owner: boolean;
   reason: AccessReason | null;
-  /** While 'warning' (no internet): how long it keeps working until the stop, in ms, as of when this view was made. */
+  /** While 'warning' (the bar): how long it keeps working until the stop, in ms, as of when this view was made. */
   stopsInMs: number | null;
   /** The request made from this computer, while it waits or was answered. */
   request: AccessRequestView | null;
@@ -77,6 +90,11 @@ export interface AccessView {
   endsAt: number | null;
   /** How long until then as of when this view was made (counted from the list's own answer, never this computer's clock). */
   endsInMs: number | null;
+  /**
+   * How this computer's Gmail may use Drashti, as the list last said (Session 55): Simple holds it in Simple Mode, with
+   * no way to Pro Mode; Pro before any answer.
+   */
+  mode: AccessMode;
 }
 
 /** How long the screens take to fade to black when Drashti stops (render/StopFade.tsx draws it). */
@@ -128,21 +146,47 @@ export const endsBarTitle = (endsAt: number): string => `Your access to Drashti 
 export const endsBarText = (leftMs: number): string =>
   `In ${leftText(leftMs)}. Ask the person who approves access for more time: when it is up, everything stops, the screens and the stream included.`;
 
-/** The stop after an hour with no answer. */
-export const NO_ANSWER_STOP_TITLE = 'Drashti stopped: no internet';
-export const NO_ANSWER_STOP_TEXT =
-  'Drashti could not check your access for an hour, so everything has stopped. Quit, check the internet connection, then start Drashti again.';
+/** How long Drashti keeps working without the list's answer, in words: "15 days" (the owner's decision of 29 Oct 2026). */
+export const OFFLINE_DAYS_TEXT = plural(Math.round(ACCESS_STOP_AFTER_MS / (24 * 60 * 60_000)), 'day');
+
+/**
+ * The stop after 15 days with no answer (the owner's decision of 29 Oct 2026): as a revoke stops it, saying to ask for
+ * access again, as the list itself ends this computer's grant after 15 days with no check.
+ */
+export const NO_CONTACT_STOP_TITLE = `Drashti could not check your access for ${OFFLINE_DAYS_TEXT}`;
+export const NO_CONTACT_STOP_TEXT = `Without the internet, Drashti keeps working for ${OFFLINE_DAYS_TEXT} from the access list’s last answer. That time is up, so your access on this computer has ended.`;
+export const NO_CONTACT_COME_BACK_TEXT =
+  'To use Drashti again: connect to the internet, start Drashti again, and ask the person who approves access for access again with Request Access.';
 
 /** What has stopped, said on the stop screen. */
 export const STOPPED_WHAT_TEXT =
   'The screens, the stream and recording, the nodes and the phones have all stopped. Only Quit works.';
 
-/** While the list does not answer (no internet): how long Drashti keeps working (the owner's decision of 28 Oct 2026). */
+/**
+ * How long Drashti keeps working without the list's answer, in words, shorter as it runs down (Session 55): days and
+ * hours while a day or more is left ("14 days 6 hours"), then hours and minutes ("5 hours 20 minutes"), then minutes
+ * ("58 minutes"), then "less than a minute". Each part rounded down, and a part of none left out ("2 days", "3 hours").
+ */
+export function offlineLeftText(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 1) return 'less than a minute';
+  if (minutes < 60) return plural(minutes, 'minute');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const m = minutes % 60;
+    return m === 0 ? plural(hours, 'hour') : `${plural(hours, 'hour')} ${plural(m, 'minute')}`;
+  }
+  const days = Math.floor(hours / 24);
+  const h = hours % 24;
+  return h === 0 ? plural(days, 'day') : `${plural(days, 'day')} ${plural(h, 'hour')}`;
+}
+
+/**
+ * While the list has not answered for about 2 minutes (no internet): how long Drashti keeps working, in the owner's
+ * own words (Session 55, 29 Oct 2026: "Drashti keeps working for 14 days 6 hours more"). One line under the top bar.
+ */
 export const offlineLine = (ms: number): string =>
-  `No internet: Drashti keeps working for ${leftText(ms)} more, then stops unless it can check your access`;
-/** What to do meanwhile, under that line. */
-export const OFFLINE_TEXT =
-  'The show goes on: the screens, the sound, the second computer and the phones, and the stream waits and carries on by itself once this computer is online again (the recording keeps going). Join another Wi-Fi or a phone’s hotspot: this goes once Drashti can check again.';
+  `Can’t reach the access list: Drashti keeps working for ${offlineLeftText(ms)} more.`;
 
 /** What the lock screen says for each reason Drashti is not let in. */
 export const LOCK_REASON_TEXT: Record<AccessReason, string> = {
@@ -152,8 +196,8 @@ export const LOCK_REASON_TEXT: Record<AccessReason, string> = {
   unknown: 'This computer is not on the access list. Ask for access with your Gmail.',
   expired:
     'Your access to Drashti has ended. Ask the person who approves access for more time: once they give it, Drashti opens here by itself. Or ask for access again.',
-  'no-answer':
-    'No internet: Drashti cannot check your access, so it does not open. Without the internet it opens only within an hour of a check that let it in. Check the connection, then Try Again.',
+  'no-answer': `No internet: Drashti cannot check your access, so it does not open. Without the internet it opens only within ${OFFLINE_DAYS_TEXT} of a check that let it in. Check the connection, then Try Again.`,
+  'no-contact': `This computer could not reach the access list for ${OFFLINE_DAYS_TEXT}, so its access here has ended. Connect to the internet, then ask the person who approves access for access again: Request Access.`,
   copied:
     'This data folder was let in on another computer. Each computer needs its own access: ask for access with your Gmail.',
   unreadable:

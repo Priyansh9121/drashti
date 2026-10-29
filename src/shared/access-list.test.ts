@@ -6,7 +6,9 @@ import {
   CSV_COLUMNS,
   csvTime,
   DEFAULT_SORT,
+  EDIT_WORDS,
   editsFor,
+  endedWords,
   endsCell,
   formatDay,
   LENGTH_CHOICES,
@@ -15,6 +17,8 @@ import {
   formatMinutes,
   formatSeen,
   matchesSearch,
+  MODE_CHOICES,
+  modeCell,
   ownerErrorText,
   REVOKE_QUESTION,
   shownPeople,
@@ -37,6 +41,7 @@ const person = (o: Partial<AccessPerson> & { gmail: string }): AccessPerson => (
   name: '',
   status: 'approved',
   owner: false,
+  mode: 'pro',
   requestedAt: null,
   approvedAt: null,
   rejectedAt: null,
@@ -75,15 +80,17 @@ const at = (y: number, mo: number, d: number, h = 0, mi = 0) => new Date(y, mo -
 const gmails = (people: readonly AccessPerson[]) => people.map((p) => p.gmail);
 
 describe('the edits each Gmail is offered', () => {
-  it('follow its status: a request Approve or Reject, approved Give access again, Change the length or Revoke, and a note for all', () => {
+  it('follow its status: a request Approve or Reject, approved Give access again, Change the length or Revoke, and Change the mode and a note for all', () => {
     expect(editsFor(person({ gmail: 'a@example.com', status: 'requested' }))).toEqual([
       'approve',
       'reject',
+      'mode',
       'note',
     ]);
     expect(editsFor(person({ gmail: 'a@example.com', status: 'approved' }))).toEqual([
       'regrant',
       'length',
+      'mode',
       'revoke',
       'note',
     ]);
@@ -91,29 +98,44 @@ describe('the edits each Gmail is offered', () => {
     expect(editsFor(person({ gmail: 'a@example.com', status: 'approved', ended: true }))).toEqual([
       'regrant',
       'length',
+      'mode',
       'revoke',
       'note',
     ]);
-    expect(editsFor(person({ gmail: 'a@example.com', status: 'rejected' }))).toEqual(['approve', 'note']);
-    expect(editsFor(person({ gmail: 'a@example.com', status: 'revoked' }))).toEqual(['regrant', 'note']);
+    expect(editsFor(person({ gmail: 'a@example.com', status: 'rejected' }))).toEqual([
+      'approve',
+      'mode',
+      'note',
+    ]);
+    expect(editsFor(person({ gmail: 'a@example.com', status: 'revoked' }))).toEqual([
+      'regrant',
+      'mode',
+      'note',
+    ]);
     // A status typed into the Sheet that the list does not know stops that Gmail: Give access again puts it right.
-    expect(editsFor(person({ gmail: 'a@example.com', status: 'paused' }))).toEqual(['regrant', 'note']);
-    expect(editsFor(person({ gmail: 'a@example.com', status: '' }))).toEqual(['regrant', 'note']);
+    expect(editsFor(person({ gmail: 'a@example.com', status: 'paused' }))).toEqual([
+      'regrant',
+      'mode',
+      'note',
+    ]);
+    expect(editsFor(person({ gmail: 'a@example.com', status: '' }))).toEqual(['regrant', 'mode', 'note']);
     // Typed in the Sheet in capitals or with spaces, a status is still the one it says.
     expect(editsFor(person({ gmail: 'a@example.com', status: ' Approved ' }))).toEqual([
       'regrant',
       'length',
+      'mode',
       'revoke',
       'note',
     ]);
   });
 
-  it('never offer Revoke, Reject or a length on the owner’s own row (always Unlimited)', () => {
+  it('never offer Revoke, Reject, a length or Simple on the owner’s own row (always Unlimited and Pro)', () => {
     for (const status of ['requested', 'approved', 'rejected', 'revoked', 'paused']) {
       const edits = editsFor(person({ gmail: 'owner.placeholder@example.com', status, owner: true }));
       expect(edits, status).not.toContain('revoke');
       expect(edits, status).not.toContain('reject');
       expect(edits, status).not.toContain('length');
+      expect(edits, status).not.toContain('mode');
     }
     // The owner may still give their own Gmail access again, for another computer of theirs.
     expect(editsFor(person({ gmail: 'owner.placeholder@example.com', owner: true }))).toEqual([
@@ -126,7 +148,9 @@ describe('the edits each Gmail is offered', () => {
     expect(REVOKE_QUESTION.title('placeholder.user@example.com')).toBe(
       'Revoke placeholder.user@example.com?',
     );
-    expect(REVOKE_QUESTION.body).toBe('Their Drashti stops at once, screens and stream included.');
+    // Within one check, as the notice after it says (Session 54's question 21).
+    expect(REVOKE_QUESTION.body).toBe('Their Drashti stops within 15 seconds, screens and stream included.');
+    expect(REVOKE_QUESTION.more).toContain('15 days');
   });
 
   it('say each refusal in words for the owner, never the list’s own or "something went wrong"', () => {
@@ -457,6 +481,37 @@ describe('lengths of access (the owner’s decision of 28 Oct 2026)', () => {
   });
 });
 
+describe('how each Gmail may use Drashti, and 15 days with no check (Session 55)', () => {
+  it('says each Gmail’s mode, and for a request the one it would be approved with', () => {
+    expect(modeCell(person({ gmail: 'a@example.com', mode: 'pro' }))).toEqual({ text: 'Pro', detail: '' });
+    expect(modeCell(person({ gmail: 'a@example.com', mode: 'simple' }))).toEqual({
+      text: 'Simple',
+      detail: 'Simple Mode only',
+    });
+    expect(modeCell(person({ gmail: 'a@example.com', status: 'requested', mode: 'simple' }))).toEqual({
+      text: 'Simple once approved',
+      detail: '',
+    });
+    expect(modeCell(person({ gmail: 'o@example.com', owner: true, mode: 'pro' }))).toEqual({
+      text: 'Pro',
+      detail: 'Your own: always',
+    });
+    expect(MODE_CHOICES.map((c) => c.mode)).toEqual(['simple', 'pro']);
+    expect(MODE_CHOICES.map((c) => c.label)).toEqual(['Simple Mode only', 'Pro Mode and Simple Mode']);
+    expect(EDIT_WORDS.mode).toBe('Change the mode…');
+  });
+
+  it('says a computer ended for no check in 15 days, and a Gmail with none other in', () => {
+    const p = person({
+      gmail: 'a@example.com',
+      computers: [mac('Placeholder Hall Mac', { ended: true, endedWhy: 'no-contact' })],
+    });
+    expect(endedWords(p.computers[0] ?? mac('x'))).toBe('no contact for 15 days');
+    expect(endedWords(mac('x', { ended: true, endedWhy: 'revoked' }))).toBe('ended');
+    expect(statusDetail(p)).toBe('No contact for 15 days');
+  });
+});
+
 describe('the CSV the owner saves', () => {
   const people = [
     person({
@@ -514,6 +569,7 @@ describe('the CSV the owner saves', () => {
       '1',
       '9',
       'Placeholder note\non two lines',
+      'Pro',
     ]);
     // Words someone typed that a spreadsheet would run as a formula are kept as words.
     expect(rows[2]?.slice(0, 3)).toEqual(['bob.placeholder@example.com', "'=1+2", 'Rejected']);
@@ -547,6 +603,8 @@ describe('the CSV the owner saves', () => {
       'Recordings',
       'Imports',
       'Note',
+      // How each Gmail may use Drashti (Session 55).
+      'Mode',
     ]);
     for (const row of rows) expect(row).toHaveLength(CSV_COLUMNS.length);
     // The counts are whole numbers and nothing else.

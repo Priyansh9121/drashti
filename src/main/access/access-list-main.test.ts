@@ -39,6 +39,7 @@ const state = (o: Partial<AccessState>): AccessState => ({
   phase: 'checking',
   gmail: null,
   owner: false,
+  mode: 'pro',
   reason: null,
   stopsAt: null,
   ...o,
