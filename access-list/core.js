@@ -598,13 +598,32 @@ var DrashtiAccess = (function () {
   }
 
   /**
-   * How a Gmail may use Drashti, and the mode an approval gives when none is chosen: the owner's own always Pro; any
-   * other Pro only when its Mode says Pro. An empty Mode is Simple (Session 55 review: a cell emptied, or the column
-   * taken away and put back, fails closed); every Gmail let in before modes came was written Pro when the list made the
-   * column, and a request is Simple until the owner chooses, unless the owner chose Pro adding the Gmail.
+   * How a Gmail may use Drashti: the owner's own always Pro; any other Pro only when its Mode says Pro. An empty Mode is
+   * Simple (Session 55 review: a cell emptied, or the column taken away and put back, fails closed); every Gmail let in
+   * before modes came was written Pro when the list made the column.
    */
   function modeOf(props, person) {
     return person.key === ownerKey(props) || person.mode === PRO ? PRO : SIMPLE;
+  }
+
+  /** What the list writes as a request's computer when the owner adds a Gmail (Drashti's Add a Gmail…). */
+  var ADDED_BY_OWNER = 'added by the owner';
+
+  /**
+   * The mode an approval gives when none is said, and the one its Approve page and Drashti's Approve… tick first: the
+   * owner's rule, Simple to begin with, unless the owner chose Pro adding this Gmail; the owner's own row always Pro. A
+   * Gmail that had Pro and asks again starts on Simple too (Session 55 review, N2): its row keeps Pro, for Give access
+   * again and until the owner approves it with a mode.
+   */
+  function modeToGive(props, person) {
+    if (person.key === ownerKey(props)) return PRO;
+    var addedByOwner = !person.requestFrom && person.requestComputer === ADDED_BY_OWNER;
+    return addedByOwner && person.mode === PRO ? PRO : SIMPLE;
+  }
+
+  /** A Gmail's mode as the owner's Access List shows it: the one it has, or for a request, the one its approval gives. */
+  function shownMode(props, person) {
+    return statusOf(person) === 'requested' ? modeToGive(props, person) : modeOf(props, person);
   }
 
   function modeWords(mode) {
@@ -1193,8 +1212,8 @@ var DrashtiAccess = (function () {
   /**
    * A row asked (or asked again) for: requested, with a new request id, so links sent before are replaced. Its
    * Length is the one the owner chose adding it (for the approval), or none (Unlimited is offered first); its Mode the
-   * one the owner chose adding it, a new Gmail's Simple (offered first on the Approve page), and one already on the
-   * list keeps its own (Session 55 review).
+   * one the owner chose adding it, a new Gmail's Simple, and one already on the list keeps its own whoever asks (Session
+   * 55 review); its Approve page ticks Simple first all the same, unless the owner chose Pro adding it (modeToGive).
    */
   function newRequest(env, data, person, fields) {
     var now = env.now();
@@ -1565,7 +1584,7 @@ var DrashtiAccess = (function () {
       imports: t.imports,
       note: p.note,
       // Pro or Simple: the one it has, or for a request waiting, the one its approval would give (Session 55).
-      mode: modeOf(props, p),
+      mode: shownMode(props, p),
       // How long access lasts and when it ends, as the list's clock has it (the owner's own: always Unlimited).
       length: p.key === ownerKey(props) ? UNLIMITED : p.length,
       endsAt: endsOf(props, p),
@@ -1650,9 +1669,10 @@ var DrashtiAccess = (function () {
             name: call.name,
             note: call.note,
             requestFrom: '',
-            requestComputer: 'added by the owner',
+            requestComputer: ADDED_BY_OWNER,
             length: call.length,
-            mode: call.mode,
+            // The one chosen, or Simple (a Drashti from before chose none).
+            mode: call.mode || SIMPLE,
           });
           var mailed = false;
           if (remaining(env) >= 1)
@@ -1674,7 +1694,7 @@ var DrashtiAccess = (function () {
           if (call.op === 'approve' && statusOf(p) === 'approved') throw refusal('already-approved');
           // An approval with no mode said gives the row's (Simple for a request, unless the owner chose Pro adding it);
           // Give access again keeps the row's unless one is said (Drashti's Access List asks, Session 55 review).
-          var mode = call.mode || (call.op === 'approve' ? modeOf(props, p) : null);
+          var mode = call.mode || (call.op === 'approve' ? modeToGive(props, p) : null);
           var sent = grant(env, props, data, p, call.length, mode);
           return { ok: true, status: 'approved', runsOut: sent.runsOut, endsAt: sent.endsAt };
         }
@@ -1880,7 +1900,7 @@ var DrashtiAccess = (function () {
         : null,
       // What they may use (the owner's decision of 29 Oct 2026): Simple chosen at first, or Pro when the owner chose it
       // adding the Gmail (the owner's own: always Pro).
-      modes: approve ? { chosen: modeOf(props, p) } : null,
+      modes: approve ? { chosen: modeToGive(props, p) } : null,
     });
   }
 
@@ -1936,7 +1956,7 @@ var DrashtiAccess = (function () {
         if (changedByHand(p)) takeInHandEdit(env, data, p);
         if (l.action === 'approve') {
           if (p.key === ownerKey(props) && length !== UNLIMITED) throw refusal('owner-row');
-          var given = p.key === ownerKey(props) ? PRO : mode || modeOf(props, p);
+          var given = p.key === ownerKey(props) ? PRO : mode || modeToGive(props, p);
           var sent = grant(env, props, data, p, length, given);
           return page('done', {
             title: 'Approved',

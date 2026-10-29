@@ -226,9 +226,12 @@ after a revoke or a newer grant, and runs out 3 days after it is sent. Randomnes
 - **Chosen** on the Approve page (Simple Mode only, chosen at first; Pro Mode and Simple Mode when the owner chose it
   adding the Gmail), in Drashti's Access List (Add a Gmail and Approve ask, Simple first; Change the mode… on any row
   but the owner's: the `mode` call), or typed in the Sheet's **Mode** column (Pro or Simple: the Sheet takes no
-  other). A new Gmail asked for (`request`, or `add` with none) is made Simple; a Gmail already on the list keeps its
-  own whoever asks (Session 55 review: anyone may ask for any Gmail). Give access again (`regrant`) takes a mode as
-  Approve does (Drashti's Access List asks), and keeps the row's when none is said.
+  other). A new Gmail asked for (`request`) is made Simple, and one already on the list keeps its own whoever asks
+  (Session 55 review: anyone may ask for any Gmail, so only the owner changes a mode); `add` writes the one chosen, or
+  Simple when none is said. The Approve page, Drashti's Approve… and an approval with no mode start on Simple all the
+  same, unless the owner chose Pro adding the Gmail (Session 55 review, N2: a Gmail that had Pro and asks again is
+  offered Simple first; its row keeps Pro until the owner approves). Give access again (`regrant`) takes a mode as
+  Approve does (Drashti's Access List asks, the row's own first), and keeps the row's when none is said.
 - **Read**: only `Pro` is Pro; `Simple`, empty or anything else is Simple (Session 55 review: it fails closed). The
   owner's own row is always Pro, whatever is typed on it. Every Gmail let in before modes came is written `Pro` when the
   list first makes the column (below).

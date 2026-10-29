@@ -1658,7 +1658,8 @@ describe('access by mode, and 15 days with no check (the owner’s decisions of 
     const stranger = new Computer(list, placeholderComputer('mac-mode-stranger'));
     expect(stranger.request(PERSON)).toMatchObject({ ok: true, status: 'requested' });
     expect(modeCell(list)).toBe('Pro');
-    expect(pageMode(list)).toEqual({ chosen: 'pro' });
+    // Its Approve page still starts on Simple (the owner's rule; Session 55 review, N2).
+    expect(pageMode(list)).toEqual({ chosen: 'simple' });
     // Give access again, Simple said: Simple, and its email says so.
     expect(owner.owner('regrant', me, { target: PERSON, mode: 'simple' })).toMatchObject({ ok: true });
     expect(modeCell(list)).toBe('Simple');
@@ -1667,6 +1668,48 @@ describe('access by mode, and 15 days with no check (the owner’s decisions of 
     expect(owner.owner('regrant', me, { target: PERSON })).toMatchObject({ ok: true });
     expect(modeCell(list)).toBe('Simple');
     expect(list.mailTo(PERSON).at(-1)?.body).toContain('Simple Mode only');
+  });
+
+  it('a Gmail that had Pro and asks again starts on Simple: its Approve page ticks Simple first, Approve… in the Access List offers Simple, and an approval with no mode gives Simple; Pro first only when the owner chose it adding the Gmail (Session 55 review, N2)', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-returning'));
+    expect(c.request(PERSON)).toMatchObject({ ok: true });
+    const first = list.linksFor(PERSON);
+    if (!first) throw new Error('No links');
+    expect(core.answerLink(list.env, { ...linkParams(first.approve), mode: 'pro' })).toMatchObject({
+      kind: 'done',
+    });
+    expect(modeCell(list)).toBe('Pro');
+    expect(owner.owner('revoke', me, { target: PERSON })).toMatchObject({ ok: true });
+    list.move(DAY);
+    expect(c.request(PERSON)).toMatchObject({ ok: true, status: 'requested' });
+    // The row keeps its mode (nobody but the owner changes one)…
+    expect(modeCell(list)).toBe('Pro');
+    // …but its Approve page, and the Access List's Approve…, start on Simple.
+    expect(pageMode(list)).toEqual({ chosen: 'simple' });
+    const people = owner.owner('list', me)['people'] as Record<string, unknown>[];
+    expect(people.find((p) => p['gmail'] === PERSON)).toMatchObject({ status: 'requested', mode: 'simple' });
+    // Approved on a page from before the update (no mode sent): Simple.
+    const again = list.linksFor(PERSON);
+    if (!again) throw new Error('No links');
+    const done = core.answerLink(list.env, linkParams(again.approve));
+    expect(done.lines.join(' ')).toContain('Simple Mode only');
+    expect(modeCell(list)).toBe('Simple');
+    // The owner's own Approve with no mode (a Drashti from before): Simple too.
+    expect(c.request(OTHER)).toMatchObject({ ok: true });
+    expect(owner.owner('approve', me, { target: OTHER, mode: 'pro' })).toMatchObject({ ok: true });
+    expect(owner.owner('revoke', me, { target: OTHER })).toMatchObject({ ok: true });
+    list.move(DAY);
+    expect(c.request(OTHER)).toMatchObject({ ok: true });
+    expect(owner.owner('approve', me, { target: OTHER })).toMatchObject({ ok: true });
+    expect(modeCell(list, OTHER)).toBe('Simple');
+    // The owner adding a Gmail with Pro chosen: Pro first; added with none (a Drashti from before): Simple.
+    const added = 'placeholder.added@example.com';
+    expect(owner.owner('add', me, { target: added, mode: 'pro' })).toMatchObject({ ok: true });
+    expect(pageMode(list, added)).toEqual({ chosen: 'pro' });
+    const plain = 'placeholder.plain@example.com';
+    expect(owner.owner('add', me, { target: plain })).toMatchObject({ ok: true });
+    expect(pageMode(list, plain)).toEqual({ chosen: 'simple' });
   });
 
   it('a check’s answer names its grant, and echoes its time never later than the list’s clock and 5 minutes (Session 55 review)', () => {
