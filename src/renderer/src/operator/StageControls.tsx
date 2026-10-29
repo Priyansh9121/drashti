@@ -22,6 +22,9 @@ import { Panel } from '../ui/Panel';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 import { StageTimerControls } from './StageTimerControls';
+import { AudienceTimerControls } from './AudienceTimerControls';
+import { Checkbox } from '../ui/Toggle';
+import { STAGE_MESSAGE_SIZES, STAGE_SIZE_NAMES, type StageMessageSize } from '../../../shared/stage-message';
 
 /** What the stage screens show the performers, small (also on the Stage screen's card in Screens). */
 export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
@@ -133,13 +136,25 @@ function InputPicker({ onProblem }: { onProblem: (problem: string | null) => voi
   );
 }
 
-/** The stage screen: what the performers see, and a message for them only (the audience never sees it). */
+const NO_RECENT: string[] = [];
+
+/**
+ * The stage screen: what the performers see, and a message for them only (the audience never sees it). Since Session 55
+ * (Part 15) the message as the old program had its own: its size, a flash as it comes up, Show on every stage screen
+ * and Hide, and the last few a tap away; and a timer for the audience, started, shown and hidden here too.
+ */
 export function StageMessageControl() {
   const shown = useEngine((s) => s.state?.stageMessage ?? null);
+  const recent = useEngine((s) => s.state?.stageRecent) ?? NO_RECENT;
   // Stage off (Session 55): every stage screen shows the audience picture, said here.
   const off = useEngine((s) => s.state?.stage?.off === true);
   const [text, setText] = useState('');
+  const [size, setSize] = useState<StageMessageSize>('standard');
+  const [flash, setFlash] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const show = (words: string) => {
+    if (words.trim() !== '') void dispatch({ type: 'setStageMessage', text: words, size, flash });
+  };
   return (
     <Panel
       help="stage"
@@ -175,7 +190,7 @@ export function StageMessageControl() {
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (text.trim() !== '') void dispatch({ type: 'setStageMessage', text });
+          show(text);
         }}
       >
         <TextInput
@@ -192,15 +207,63 @@ export function StageMessageControl() {
           Show
         </Button>
       </form>
+      {/* Its own size, and a flash as it comes up (Session 55). */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Field label="Size" layout="inline">
+          <Select
+            aria-label="Size of the stage message"
+            value={size}
+            onChange={(e) => {
+              setSize(e.target.value as StageMessageSize);
+            }}
+          >
+            {STAGE_MESSAGE_SIZES.map((s) => (
+              <option key={s} value={s}>
+                {STAGE_SIZE_NAMES[s]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Checkbox
+          label="Flash as it comes up"
+          className="text-xs"
+          checked={flash}
+          onChange={(e) => {
+            setFlash(e.target.checked);
+          }}
+        />
+      </div>
       {shown !== null && (
         <div className="flex items-center gap-2 rounded-md border border-warning/60 bg-warning-bg px-2 py-1 text-sm text-warning-fg">
           <Badge tone="warning">On stage</Badge>
           <Truncate text={shown} className="flex-1" data-testid="stage-message-shown" />
           <Button variant="ghost" size="sm" onClick={() => void dispatch({ type: 'clearStageMessage' })}>
-            Clear
+            Hide
           </Button>
         </div>
       )}
+      {/* The last few, a tap away: one press shows it again on every stage screen (Session 55). */}
+      {recent.length > 0 && (
+        <div data-testid="stage-recent" className="flex flex-wrap items-center gap-1">
+          <span className="text-xs text-muted">Shown before:</span>
+          {recent.map((r) => (
+            <Button
+              key={r}
+              size="sm"
+              variant={r === shown ? 'live' : 'ghost'}
+              className="max-w-full"
+              title={r}
+              onClick={() => {
+                show(r);
+              }}
+            >
+              <span className="max-w-40 truncate">{r}</span>
+            </Button>
+          ))}
+        </div>
+      )}
+      {/* A timer for the audience (Session 55, Part 15), under the stage message. */}
+      <AudienceTimerControls />
     </Panel>
   );
 }

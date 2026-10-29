@@ -464,7 +464,9 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
   const anything = layers
     ? LAYER_CLEARS.some((c) => !isLayerEmpty(layers, c.layer)) ||
       layers.lowerThird !== null ||
-      layers.pip !== null
+      layers.pip !== null ||
+      // A timer for the audience (Session 55, Part 15).
+      (layers.timer ?? null) !== null
     : false;
   // Each shows its keys as they act now (Session 51), as the key line names them: none for Black-out while B, . and
   // ? are turned off; the Wallpaper's F12 always.

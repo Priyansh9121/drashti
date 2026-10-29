@@ -149,7 +149,8 @@ async function running(win: Page) {
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   // Its slides are rows under its name (Session 55).
   await slidesOf(win, KIRTAN).nth(1).click();
-  await win.getByTestId('timers').getByRole('button', { name: 'Start' }).click();
+  // Exactly Start: Countdown to the start… (Session 55) is in the panel too.
+  await win.getByTestId('timers').getByRole('button', { name: 'Start', exact: true }).click();
   await win.getByTestId('messages').getByRole('textbox', { name: 'plate' }).fill('12');
   await win.getByTestId('messages').getByRole('button', { name: 'Show' }).click();
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');

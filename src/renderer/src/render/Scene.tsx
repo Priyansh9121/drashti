@@ -29,7 +29,9 @@ import { TimerText } from './TimerText';
 import { useLiveHere } from './live-here';
 import { pipMainPlaces, type PipPicture, type PipRun, pipShownFor, pipShowsHere, type PipSlot } from './pip';
 import { PipBox, PipSourcePicture, usePipMainDissolve, usePipRun } from './PipLayerView';
-import { MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
+import { MESSAGE_BAND, MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
+import { AudienceTimerView } from './AudienceTimer';
+import { HallMessages } from './HallMessages';
 
 /** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
 export function samvatText(calendar: CalendarDay | null, lang: CalendarLang): string {
@@ -517,15 +519,41 @@ export const Scene = memo(function Scene({
                   place={matte === null ? place : 'stream'}
                   lift={bandHeight}
                 />
-                {shown('messages') && layers.messages.length > 0 && (
+                {/* A timer for the audience (Session 55, Part 15): over what is up, or over the wallpaper. */}
+                <AudienceTimerView
+                  state={state}
+                  layer={layers.timer}
+                  off={state.timerOff}
+                  timers={state.timers}
+                  canvas={canvas}
+                />
+                {/* The band along the bottom: messages with the standard look, as every message was before. */}
+                {shown('messages') && layers.messages.some((m) => !m.look) && (
                   <MessageBanner
-                    messages={layers.messages}
+                    messages={layers.messages.filter((m) => !m.look)}
                     timers={state.timers}
                     calendar={state.calendar}
                     canvas={canvas}
                     at={lowerThirds ? 'top' : 'bottom'}
                     above={lowerThirds ? 0 : bandHeight}
                     movement={look.movement}
+                  />
+                )}
+                {/* Messages with a look of their own (Session 55): each in its place, coming and going as it says. */}
+                {shown('messages') && (
+                  <HallMessages
+                    messages={layers.messages}
+                    leaving={state.messagesOff}
+                    timers={state.timers}
+                    calendar={state.calendar}
+                    canvas={canvas}
+                    // Above the ticker's band, and above the band of standard messages while it is along the bottom.
+                    lift={
+                      bandHeight +
+                      (!lowerThirds && layers.messages.some((m) => !m.look)
+                        ? Math.round(canvas.height * MESSAGE_BAND)
+                        : 0)
+                    }
                   />
                 )}
                 {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}

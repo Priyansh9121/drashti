@@ -53,19 +53,19 @@ export const PANEL_HELP = {
   stage: {
     title: 'Stage screen',
     doc: 'operator',
-    text: 'What the speaker and the singers see, never the hall: Layout chooses the one layout every stage screen shows, and Video input the input its video box shows. A short message for them, such as “Two minutes left”, goes up with Show and off with its own Clear; the timers in the layout are here too, with Start, Pause and Reset, and what each counts to, changed here at once. Edit layouts… makes, renames and deletes layouts, each with Undo, and New from a Template… makes a ready-made one, such as Pravachan and anchoring; with Stage off every stage screen shows exactly the audience picture.',
+    text: 'What the speaker and the singers see, never the hall: Layout chooses the one layout every stage screen shows, and Video input the input its video box shows. A message for them, such as “Two minutes left”, goes on every stage screen with Show, in its own size and with a flash if ticked, and off with Hide; the last few are a tap away, and the layout’s timers (with what each counts to) and a timer for the audience start, show and hide here too. Edit layouts… makes, renames and deletes layouts, each with Undo, and New from a Template… makes a ready-made one, such as Pravachan and anchoring; with Stage off every stage screen shows exactly the audience picture.',
     guide: '**The stage message.**',
   },
   messages: {
     title: 'Messages',
     doc: 'operator',
-    text: 'A message goes across the bottom of the hall’s screens, such as “Car 12 please move”. Fill in its fields and press Show; Take off removes it.',
+    text: 'A message for the hall’s screens, such as “Car 12 please move”, keeps its own look: where it sits (drag it in the small picture), how it comes in and goes out, how long it stays up, and its font, size, colours and what is behind it. Fill in its fields and press Show; Take off removes it, and Undo brings back a change or a deleted message.',
     guide: '**Messages.**',
   },
   timers: {
     title: 'Timers',
     doc: 'operator',
-    text: 'Countdowns and clocks. Press Start, then Show on the screens to put one up alone in the slide’s place; press it again, or Clear slide, to take it off. The stage screens show every running timer by themselves, or, with a layout of their own, the timers in it.',
+    text: 'Countdowns and clocks. Press Start, then Show for the audience to put one up on the hall’s screens in its own look (How it looks for the audience…: full screen or a corner, over the wallpaper or over what is up, a label, a ring or a bar, a warning, and what it does at zero), and Hide to take it off; Countdown to the start… counts down to the sabha’s time over the wallpaper, on the stage too, and goes by itself. The stage screens show every running timer by themselves, or, with a layout of their own, the timers in it.',
     guide: '**Timers.**',
   },
   playlist: {
