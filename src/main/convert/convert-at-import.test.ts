@@ -79,7 +79,7 @@ describe('converting by itself what an import found (Session 50), the queue', ()
     return { mediaDir, library };
   }
 
-  it('takes only the lines that say so, videos and sounds only, each once; asked again, they are being converted', async () => {
+  it('takes only the lines that say so, pictures too (Session 55), each once; asked again, they are being converted', async () => {
     const { mediaDir, library } = seeded();
     let jobs: ConversionJob[] = [];
     const busy = 'Waits while the stream is on air or recording, then carries on by itself.';
@@ -99,29 +99,31 @@ describe('converting by itself what an import found (Session 50), the queue', ()
       items: [
         line('converting-media', 'm-mkv'),
         line('converting-media', 'm-wma'),
-        // A picture is converted only when someone asks; a file that plays never is.
+        // A picture a screen cannot show is converted by itself too (Session 55, Part 5), once; a file that plays
+        // never is, and a line that only offers Convert is not taken.
         line('converting-media', 'm-heic'),
         line('unplayable-media', 'm-heic'),
         line('converting-media', 'm-flac'),
         { issues: [] },
       ],
     };
-    expect(service.convertImported(report)).toBe(2);
+    expect(service.convertImported(report)).toBe(3);
     expect(jobs.map((j) => [j.mediaId, j.state])).toEqual([
       ['m-mkv', 'waiting'],
       ['m-wma', 'waiting'],
+      ['m-heic', 'waiting'],
     ]);
     // On air: they wait, and say why.
     expect(jobs.every((j) => j.note === busy)).toBe(true);
     expect(service.convertImported(report)).toBe(0);
     expect(service.convertImported(null)).toBe(0);
-    expect(jobs).toHaveLength(2);
+    expect(jobs).toHaveLength(3);
     // Asked again by hand (the media list's Convert): they are being converted already.
     expect(service.convert(['m-mkv'])).toMatchObject({ ok: true });
     expect(service.convert(['m-flac'])).toMatchObject({ ok: false });
-    expect(jobs).toHaveLength(2);
+    expect(jobs).toHaveLength(3);
     await sleep(1500);
-    expect(jobs.map((j) => j.state)).toEqual(['waiting', 'waiting']);
+    expect(jobs.map((j) => j.state)).toEqual(['waiting', 'waiting', 'waiting']);
   });
 
   it('starts each one a moment after the import, not at once, and never while the stream is on air', async () => {

@@ -7,7 +7,7 @@ import { MainAccess } from './main-access';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
-import { copyMediaId, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
+import { blurMediaId, copyMediaId, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
 import { sharpenStep } from '../../shared/picture-look';
 import { mediaInState } from '../../shared/node-media';
 import {
@@ -261,7 +261,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     // A picture's sharpened copy that Main has ready (Session 26f) is fetched as soon as the picture is.
     const copies = [...m.now, ...m.next].flatMap((id) => {
       const look = s.pictures[id];
-      return look?.copy && look.copy === sharpenStep(look.sharpness) ? [copyMediaId(id, look.copy)] : [];
+      return [
+        ...(look?.copy && look.copy === sharpenStep(look.sharpness) ? [copyMediaId(id, look.copy)] : []),
+        // Its blurred copy (Session 55, Part 5, D), once Main has it ready.
+        ...(look?.blurred ? [blurMediaId(id)] : []),
+      ];
     });
     return [...m.now, ...m.next, ...copies];
   };
@@ -288,6 +292,12 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     // A picture's sharpened copy (Session 26f) is a file of its own here, copied from Main as media is.
     if (asked?.what === 'sharp') {
       const id = copyMediaId(asked.mediaId, asked.step);
+      request = new Request(mediaUrl(id), { method: request.method, headers: request.headers });
+      asked = { what: 'media', mediaId: id };
+    }
+    // A picture's blurred copy (Session 55, D) is a file of its own here too.
+    if (asked?.what === 'blur') {
+      const id = blurMediaId(asked.mediaId);
       request = new Request(mediaUrl(id), { method: request.method, headers: request.headers });
       asked = { what: 'media', mediaId: id };
     }

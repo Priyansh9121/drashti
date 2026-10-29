@@ -3,6 +3,7 @@ import { stepOf } from '../../../../shared/deck-show';
 import type { EngineState } from '../../../../shared/engine/state';
 import { backgroundCueOf } from '../../../../shared/library';
 import { groupLookIn } from '../../../../shared/looks';
+import { hasEdit, shownSize } from '../../../../shared/picture-look';
 import type { OrderedSlide } from '../../../../shared/order';
 import { useEngine } from '../../engine/engine-store';
 import { OBJECT_FIT } from '../../render/media-style';
@@ -98,7 +99,10 @@ export const slideTitle = (s: OrderedSlide): string =>
 
 /** One slide of a presentation, to look through on this device (a deck's or a PDF's page is one too). */
 export function slidePage(presentationId: string, s: OrderedSlide): ViewerPage {
+  // A slide that is a picture (a deck's or a PDF's page): Save picture… (Session 55, Part 5).
+  const picture = s.slide.slide.elements.find((e) => e.kind === 'image');
   return {
+    ...(picture?.kind === 'image' ? { save: { mediaId: picture.mediaId, slide: s.position + 1 } } : {}),
     key: `slide:${presentationId}:${String(s.position)}:${s.slide.id}`,
     title: slideTitle(s),
     size: { width: s.slide.slide.width, height: s.slide.slide.height },
@@ -182,7 +186,10 @@ function PictureDrawn({ mediaId, pageKey }: { mediaId: string; pageKey: string }
   const own = useViewer((v) => v.sizes[pageKey] ?? null);
   const screen = useMemo(() => ({ pictures: pictures ?? {}, liveZoom: null }), [pictures]);
   const onSize = (natural: { width: number; height: number }) => {
-    setPageSize(pageKey, { width: 1920, height: Math.round((1920 * natural.height) / natural.width) });
+    // Turned or cropped (Session 55, Part 5): the page takes the shape it shows in.
+    const look = pictures?.[mediaId];
+    const shape = look?.size && hasEdit(look) ? shownSize(look, look.size) : natural;
+    setPageSize(pageKey, { width: 1920, height: Math.round((1920 * shape.height) / shape.width) });
   };
   // The background on the screens, its shape known: drawn as they draw it (D1/D2 review), its kept look over their
   // frame (the canvas, the picture fitted into it, here over the picture's own shape), never the live zoom, so this
@@ -221,6 +228,8 @@ function PictureDrawn({ mediaId, pageKey }: { mediaId: string; pageKey: string }
 export function picturePage(mediaId: string, name: string): ViewerPage {
   const key = `picture:${mediaId}`;
   return {
+    // Save picture… (Session 55, Part 5).
+    save: { mediaId, name },
     key,
     title: name,
     size: { width: 1920, height: 1080 },

@@ -368,7 +368,7 @@ export class ConvertService {
 
   /**
    * Convert by itself what an import found Drashti's player cannot play (Session 50): the report's lines that
-   * say so ('converting-media'), videos and sounds only (a picture is converted when someone asks). Each starts
+   * say so ('converting-media'), videos, sounds and (Session 55, Part 5) pictures a screen cannot show. Each starts
    * a moment after the import (AFTER_IMPORT_MS), one at a time, never while the stream is on air or recording.
    * How many were added.
    */
@@ -378,10 +378,7 @@ export class ConvertService {
       for (const issue of item.issues)
         if (issue.code === 'converting-media' && issue.fix?.kind === 'convert-media')
           ids.add(issue.fix.mediaId);
-    const wanted = [...ids].filter((id) => {
-      const row = this.row(id);
-      return row !== null && row.kind !== 'image';
-    });
+    const wanted = [...ids].filter((id) => this.row(id) !== null);
     if (wanted.length === 0) return 0;
     const { added } = this.enqueue(wanted, Date.now() + (this.deps.limits?.afterImportMs ?? AFTER_IMPORT_MS));
     if (added > 0)

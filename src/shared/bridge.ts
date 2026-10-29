@@ -78,7 +78,7 @@ import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-
 import type { PendingScreens } from './keep-screens';
 import type { PipSettingsResult } from './pip';
 import type { PipPlace } from './engine/state';
-import type { SaveStillResult } from './media';
+import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
@@ -492,6 +492,10 @@ export interface DrashtiBridge {
     ): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Keep this zoom: the live zoom kept as the picture's own. */
     keepLiveZoom(): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Session 55 (Part 5): a photo (its blurred fill on by itself), not a deck's page. */
+    photo(mediaId: string): Promise<boolean>;
+    /** Save picture… (Session 55, Part 5): the picture full size, as it shows, where the operator chooses. */
+    savePicture(mediaId: string, name: string): Promise<SavePictureResult>;
     onLooks(listener: (looks: Record<string, PictureLook>) => void): () => void;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;

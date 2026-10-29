@@ -199,6 +199,31 @@ describe('the drop folder', () => {
     expect(h.service.view().notTaken).toEqual([]);
   });
 
+  it('takes every picture Drashti takes (Session 55, Part 5), and says why it does not take a JPEG XL, an SVG or a raw picture', async () => {
+    for (const name of ['Download.jfif', 'Moving.apng', 'Logo.ico', 'Flyer.psd', 'Banner.tga', 'Scan.jp2'])
+      await put(name, `placeholder ${name}`);
+    for (const name of ['New phone.jxl', 'Drawing.svg', 'Camera.CR2']) await put(name, `placeholder ${name}`);
+    const h = setup();
+    await h.service.setFolder(folder);
+    await h.settle();
+    expect(h.imports.map((i) => i.names.sort())).toEqual([
+      ['Banner.tga', 'Download.jfif', 'Flyer.psd', 'Logo.ico', 'Moving.apng', 'Scan.jp2'],
+    ]);
+    const notTaken = () =>
+      Object.fromEntries(h.service.view().notTaken.map((n) => [n.name, n.reason] as const));
+    const said = {
+      'Camera.CR2': 'Drashti does not read a camera’s raw pictures (.cr2): save it as a JPEG, then add that.',
+      'Drawing.svg': 'Drashti does not read SVG drawings: save it as a PNG, then add that.',
+      'New phone.jxl':
+        'Drashti does not read JPEG XL pictures (.jxl): save it as a JPEG or a PNG, then add that.',
+    };
+    expect(notTaken()).toEqual(said);
+    // Looked at again, each still says why.
+    h.clock.now += 60_000;
+    await h.service.scan();
+    expect(notTaken()).toEqual(said);
+  });
+
   it('takes every sound Drashti takes (Session 51), into Media with the drop folder’s mark; the notice says sounds', async () => {
     const names = SOUND_EXTENSIONS.map((ext) => `Placeholder ${ext}.${ext}`);
     for (const name of names) await put(name, `placeholder ${name}`);

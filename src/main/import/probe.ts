@@ -274,6 +274,9 @@ function probeMatroska(head: Buffer): MediaProbe {
 // ---- everything else, by its first bytes ---------------------------------------------
 
 const ASF = Buffer.from([0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11]);
+/** A JPEG 2000 file's signature box, and a bare JPEG 2000 codestream's first marker and its size marker. */
+const JP2_SIGNATURE = Buffer.from([0, 0, 0, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a, 0x87, 0x0a]);
+const J2K_CODESTREAM = Buffer.from([0xff, 0x4f, 0xff, 0x51]);
 
 function probeWav(head: Buffer): MediaProbe {
   const chunks = boxesLittle(head);
@@ -299,6 +302,16 @@ function boxesLittle(buf: Buffer): Box[] {
   return out;
 }
 
+/**
+ * An icon: a reserved 0, type 1, how many pictures it holds (1 to 256), and its first picture's entry with its
+ * reserved byte 0 and 0 or 1 colour planes.
+ */
+function isIcon(head: Buffer): boolean {
+  if (head.length < 22 || head.readUInt16LE(0) !== 0 || head.readUInt16LE(2) !== 1) return false;
+  const count = head.readUInt16LE(4);
+  return count >= 1 && count <= 256 && head[9] === 0 && head.readUInt16LE(10) <= 1;
+}
+
 function probeByMagic(head: Buffer): MediaProbe | null {
   const ascii = (from: number, to: number) => head.toString('latin1', from, to);
   if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff)
@@ -309,6 +322,13 @@ function probeByMagic(head: Buffer): MediaProbe | null {
   if (ascii(0, 2) === 'BM') return { playable: true, format: 'BMP picture', kind: 'image' };
   if (ascii(0, 4) === 'II*\0' || ascii(0, 4) === 'MM\0*')
     return { playable: false, format: 'TIFF picture', kind: 'image' };
+  // Session 55 (Part 5): an icon (a reserved 0, type 1, and how many pictures it holds) a screen shows as it is; a
+  // Photoshop file and JPEG 2000 (its signature box, or a bare codestream), converted at import.
+  if (isIcon(head)) return { playable: true, format: 'ICO icon', kind: 'image' };
+  if (ascii(0, 4) === '8BPS' && head[4] === 0 && (head[5] === 1 || head[5] === 2))
+    return { playable: false, format: 'Photoshop picture (PSD)', kind: 'image' };
+  if (head.subarray(0, 12).equals(JP2_SIGNATURE) || head.subarray(0, 4).equals(J2K_CODESTREAM))
+    return { playable: false, format: 'JPEG 2000 picture', kind: 'image' };
   if (ascii(0, 4) === 'RIFF') {
     const form = ascii(8, 12);
     if (form === 'WEBP') return { playable: true, format: 'WebP picture', kind: 'image' };
@@ -380,7 +400,7 @@ export function unplayableIssue(name: string, probe: MediaProbe, mediaId: string
   return {
     severity: 'warning',
     code: 'unplayable-media',
-    message: `Drashti cannot play ${name} as it is: ${probe.format}. Convert it here (in the report, or in the media list).`,
+    message: `Drashti cannot ${probe.kind === 'image' ? 'show' : 'play'} ${name} as it is: ${probe.format}. Convert it here (in the report, or in the media list).`,
     fix: { kind: 'convert-media', mediaId, advice: unplayableAdvice(probe) },
   };
 }
@@ -393,7 +413,7 @@ export function convertingIssue(name: string, probe: MediaProbe, mediaId: string
   return {
     severity: 'info',
     code: 'converting-media',
-    message: `Drashti cannot play ${name} as it is: ${probe.format}. It converts it by itself, and uses the copy wherever this file is; the original stays as it is.`,
+    message: `Drashti cannot ${probe.kind === 'image' ? 'show' : 'play'} ${name} as it is: ${probe.format}. It converts it by itself, and uses the copy wherever this file is; the original stays as it is.`,
     fix: { kind: 'convert-media', mediaId, advice: unplayableAdvice(probe) },
   };
 }

@@ -49,3 +49,39 @@ describe('a picture’s look in the library', () => {
     db.close();
   });
 });
+
+describe('a picture’s crop, turn, flips and blurred fill (Session 55, Part 5)', () => {
+  it('are kept with the picture, as the sharpened copy wants them; a photo has its fill by default, a deck’s page not', () => {
+    const db = openDatabase(':memory:');
+    const media = new MediaRepo(db);
+    const add = db.prepare(
+      "INSERT INTO media (id, kind, name, path, sha256, source_kind) VALUES (?, 'image', ?, ?, ?, ?)",
+    );
+    add.run('photo', 'Placeholder photo.jpg', 'aa/photo.jpg', 'aa'.repeat(32), 'media');
+    add.run('page', 'Placeholder deck_1', 'bb/page.png', 'bb'.repeat(32), 'drashti');
+    add.run('old', 'Placeholder old.png', 'cc/old.png', 'cc'.repeat(32), null);
+    const size = { width: 4000, height: 3000 };
+    const look = {
+      ...PLAIN,
+      sharpness: 0.5,
+      turn: 90 as const,
+      flipX: true,
+      crop: { x: 0, y: 0, w: 0.5, h: 1 },
+      size,
+    };
+    expect(media.setLook('photo', look)).toBe(true);
+    expect(media.look('photo')).toEqual(look);
+    expect(media.sharpenWants()).toEqual([
+      { mediaId: 'photo', sha256: 'aa'.repeat(32), path: 'aa/photo.jpg', sharpness: 0.5, zoom: 1, look },
+    ]);
+    // The blurred fill switched off on a photo is kept; As it was taken leaves none.
+    expect(media.setLook('photo', { ...PLAIN, fill: false })).toBe(true);
+    expect(media.look('photo')).toEqual({ ...PLAIN, fill: false });
+    expect(media.setLook('photo', PLAIN)).toBe(true);
+    expect(media.look('photo')).toBeNull();
+    expect(media.photoByDefault('photo')).toBe(true);
+    expect(media.photoByDefault('old')).toBe(true);
+    expect(media.photoByDefault('page')).toBe(false);
+    expect(media.photoByDefault('nothing')).toBe(false);
+  });
+});

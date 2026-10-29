@@ -28,12 +28,19 @@ import { type LibraryChange, listedKirtan } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor, SINGLE_KEYS_TEXT } from '../shared/keymap';
-import { copyMediaId, copyOfId, MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
+import {
+  blurMediaId,
+  blurOfId,
+  copyMediaId,
+  copyOfId,
+  MEDIA_ID_PATTERN,
+  MEDIA_SCHEME,
+} from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
 import { FileActions } from './library/file-actions';
-import { importableExtensions, mediaKindOf, SOUND_EXTENSIONS } from './import/scan';
+import { extOf, importableExtensions, mediaKindOf, SOUND_EXTENSIONS } from './import/scan';
 import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlist';
 import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
@@ -145,6 +152,8 @@ import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recove
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
+import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
+import { savedName, savePicture, savesAsJpeg } from './media/save-picture';
 import { installLockedMenu, installMenu, installNodeMenu } from './menu';
 import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
 import { runPerformanceTest, seedPerfLibrary } from './perftest';
@@ -1626,12 +1635,67 @@ function start(): void {
   });
   handle(IPC.sharpen.next, (e) => sharpened.next(e.sender.id));
   handle(IPC.sharpen.made, (e, key, bytes) => sharpened.made(e.sender.id, key, bytes));
+  // ---- pictures' blurred copies (Session 55, Part 5, D): made once each, drawn behind a photo that does not fill ----
+  /** On air or recording (set once the stream is): no blurred copy is made meanwhile. */
+  let blurOnAir: () => boolean = () => false;
+  /** The bundled FFmpeg, for pictures' blurred copies and Save picture… (Session 55, Part 5). */
+  const pictureFfmpeg = () =>
+    findFfmpeg({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      arch: process.arch,
+      override: sw('DRASHTI_FFMPEG'),
+    });
+  const blurred = new BlurredCopies({
+    mediaDir,
+    fileOf: (mediaId) => {
+      const found = media.kindAndFile(mediaId);
+      const file = media.file(mediaId);
+      return found?.kind === 'image' && !found.missing && file?.sha256
+        ? { sha256: file.sha256, path: found.path }
+        : null;
+    },
+    run: ffmpegBlurRun(pictureFfmpeg),
+    onAir: () => blurOnAir(),
+    // A copy is ready: the screens and the nodes' lists follow.
+    changed: () => {
+      engine.refreshPictures();
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  // The copies already made, found (the screens follow once they are).
+  void blurred.scan().then(() => {
+    engine.refreshPictures();
+  });
+  stops.add('blurred copies', () => {
+    blurred.close();
+  });
+  /** Whether a picture is drawn with its blurred copy behind it: its look says, else on for a photo, off for a deck's page. */
+  const fillsWithBlur = (mediaId: string, look: PictureLook | null): boolean =>
+    look?.fill ?? media.photoByDefault(mediaId);
   /** A look as the screens and thumbnails get it: with its sharpened copy, once that is ready. */
   const shownLook = (mediaId: string, look: PictureLook | null): PictureLook | null => {
     const step = look ? sharpenStep(look.sharpness) : 0;
     if (!look || step === 0) return look;
     const ready = sharpened.readyStep(media.file(mediaId)?.sha256 ?? null);
     return ready === step ? { ...look, copy: step } : look;
+  };
+  /**
+   * A look as the screens get it (Session 55, D): with its blurred copy behind it, once that is ready, on for a photo
+   * unless its look says not; a picture coming up or on the screens with none yet has it made now.
+   */
+  const screenLook = (mediaId: string): PictureLook | null => {
+    const look = shownLook(mediaId, media.look(mediaId));
+    if (!fillsWithBlur(mediaId, look)) return look;
+    if (blurred.has(media.file(mediaId)?.sha256 ?? null)) return { ...(look ?? PLAIN), blurred: true };
+    blurred.want([mediaId]);
+    return look;
   };
   const shownLooks = (): Record<string, PictureLook> =>
     Object.fromEntries(
@@ -1640,7 +1704,7 @@ function start(): void {
         return shown ? [[id, shown]] : [];
       }),
     );
-  pictureLook = (mediaId) => shownLook(mediaId, media.look(mediaId));
+  pictureLook = (mediaId) => screenLook(mediaId);
   mediaMarkers = (mediaId) => media.markersOf(mediaId);
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
@@ -1682,10 +1746,57 @@ function start(): void {
     looksChanged();
     // Its sharpened copy made (again), or gone with its sharpness (Session 26f).
     void sharpened.refresh();
+    // Its blurred copy, once its fill is on (Session 55, D).
+    if (fillsWithBlur(mediaId, media.look(mediaId))) blurred.want([mediaId]);
     log.info('Pictures: a picture’s look was kept');
     return { ok: true as const };
   });
   // Keep this zoom: the live zoom kept as the picture's own (its enhancements stay as they were).
+  // ---- Session 55 (Part 5): a photo's blurred fill, and Save picture… ----
+  handle(IPC.media.photo, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.photoByDefault(mediaId) : false,
+  );
+  handle(IPC.media.savePicture, async (e, mediaId, name) => {
+    if (!fromOperator(e) || !operatorWindow || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
+      return { ok: false as const, message: 'Only the operator window can save a picture.' };
+    const found = media.kindAndFile(mediaId);
+    if (found?.kind !== 'image' || found.missing || found.path === '' || isAbsolute(found.path))
+      return {
+        ok: false as const,
+        message: 'That picture is not in the library now, so it cannot be saved.',
+      };
+    const ext = extOf(found.path);
+    const jpeg = savesAsJpeg(ext);
+    const last = settings.get('pictures.saveFolder');
+    const folder =
+      typeof last === 'string' && isAbsolute(last) ? last : (testDownloadsDir ?? app.getPath('pictures'));
+    const picked = await dialog.showSaveDialog(operatorWindow, {
+      title: 'Save picture',
+      defaultPath: join(folder, savedName(typeof name === 'string' ? name : 'Picture', jpeg)),
+      buttonLabel: 'Save',
+      filters: [
+        jpeg
+          ? { name: 'JPEG picture', extensions: ['jpg', 'jpeg'] }
+          : { name: 'PNG picture', extensions: ['png'] },
+      ],
+    });
+    if (picked.canceled || !picked.filePath) return { ok: false as const, cancelled: true as const };
+    const wanted = jpeg ? /\.jpe?g$/iu : /\.png$/iu;
+    const target = wanted.test(picked.filePath)
+      ? picked.filePath
+      : `${picked.filePath}.${jpeg ? 'jpg' : 'png'}`;
+    const saved = await savePicture(
+      join(mediaDir, found.path),
+      ext,
+      target,
+      media.look(mediaId),
+      ffmpegBlurRun(pictureFfmpeg),
+    );
+    if (!saved.ok) return saved;
+    settings.set('pictures.saveFolder', dirname(target));
+    log.info('Pictures: a picture was saved where the operator chose');
+    return { ok: true as const, path: target };
+  });
   handle(IPC.media.keepLiveZoom, (e) => {
     const z = engine.current.liveZoom;
     if (!fromOperator(e) || !z)
@@ -1716,6 +1827,7 @@ function start(): void {
         return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
       },
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
+      blurred: (sha256) => blurred.relativePath(sha256),
       // A picture one of the guides shows (only those, from the guides' own folder).
       guidePicture: (name) => {
         const file = guideFiles.picture(name);
@@ -2661,6 +2773,8 @@ function start(): void {
   stops.add('stream', () => {
     streaming.close();
   });
+  // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
+  blurOnAir = () => streaming.inUse() || testOnAir;
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
@@ -3001,6 +3115,15 @@ function start(): void {
       // What it found Drashti's player cannot play is converted by itself (Session 50): one file at a time,
       // a moment after the import, never while the stream is on air or recording.
       if (run) conversions.convertImported(importRepo.report(run.id));
+      // The photos it brought in have their blurred copies made now, one at a time (Session 55, D).
+      if (run)
+        blurred.want(
+          (importRepo.report(run.id)?.items ?? []).flatMap((item) =>
+            item.target?.kind === 'media' && fillsWithBlur(item.target.id, media.look(item.target.id))
+              ? [item.target.id]
+              : [],
+          ),
+        );
       // Each import, counted for the Access List (Session 54): never what.
       if (run) behind?.service.count('imports');
       // Its videos and sounds measured a moment later (Session 55, Part 7); a From a Link… import's videos trimmed past
@@ -4113,6 +4236,11 @@ function start(): void {
             const found = media.file(id);
             return found && !found.missing ? sharpened.relativePath(found.sha256, step) : null;
           },
+          // A picture's blurred copy (Session 55, D): a phone draws it behind a photo as the screens do.
+          blurred: (id) => {
+            const found = media.file(id);
+            return found && !found.missing ? blurred.relativePath(found.sha256) : null;
+          },
         }),
       // A sound plays on a phone only while a playlist shared with phones has it (Session 54, D3).
       sharedSound: (mediaId) =>
@@ -4287,7 +4415,23 @@ function start(): void {
           ? { id: copyMediaId(mediaId, step), sha256: file.hash, bytes: file.bytes, ext: file.ext }
           : null;
       },
+      // A picture's blurred copy (Session 55, D), once it is ready and the picture is drawn with it.
+      blurred: (mediaId) => {
+        const found = media.file(mediaId);
+        if (!found || found.missing || !fillsWithBlur(mediaId, media.look(mediaId))) return null;
+        const file = blurred.fileOf(found.sha256);
+        return file ? { id: blurMediaId(mediaId), sha256: file.hash, bytes: file.bytes, ext: 'jpg' } : null;
+      },
       source: (copyId) => {
+        const blurOf = blurOfId(copyId);
+        if (blurOf) {
+          const found = media.file(blurOf);
+          const relative = found && !found.missing ? blurred.relativePath(found.sha256) : null;
+          const file = found ? blurred.fileOf(found.sha256) : null;
+          return relative && file
+            ? { path: join(mediaDir, relative), sha256: file.hash, bytes: file.bytes, ext: 'jpg' }
+            : null;
+        }
         const copy = copyOfId(copyId);
         const found = copy ? media.file(copy.mediaId) : null;
         if (!copy || !found || found.missing) return null;

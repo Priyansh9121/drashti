@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PLAIN } from '../../shared/picture-look';
 import type { CopyWant, SharpenJob } from './sharpened';
 import { removeCopiesOf, SHARPENED_DIR, SharpenedCopies } from './sharpened';
 
@@ -169,6 +170,23 @@ describe('sharpened copies', () => {
     await t.drain();
     expect(copiesOnDisk()).toEqual([`${SHA_A}-50.jpg`, `${SHA_B}-50.png`]);
     expect(t.jobs.at(-1)?.box).toBeNull();
+  });
+
+  it('are made at the size a turned or cropped picture is drawn, its part kept filling the screen (Session 55, P5)', async () => {
+    const photo = { width: 4000, height: 3000 };
+    const cropped = { ...PLAIN, sharpness: 0.5, crop: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }, size: photo };
+    const t = setUp([{ ...A(0.5), look: cropped }]);
+    t.library.screen = { width: 1920, height: 1080 };
+    await t.copies.refresh();
+    await t.drain();
+    // Its middle quarter fills the screen as it fits: the whole picture is drawn 2880 x 2160.
+    expect(t.jobs.map((j) => j.box)).toEqual([{ width: 2880, height: 2160 }]);
+    expect(copiesOnDisk()).toEqual([`${SHA_A}-50-2880x2160.jpg`]);
+    // Turned a quarter instead: a 3:4 picture as tall as the screen, its own 4:3 1080 x 810.
+    t.library.wanted = [{ ...A(0.5), look: { ...PLAIN, sharpness: 0.5, turn: 90, size: photo } }];
+    await t.copies.refresh();
+    await t.drain();
+    expect(copiesOnDisk()).toEqual([`${SHA_A}-50-1080x810.jpg`]);
   });
 
   it('are made again when Sharpness changes, and go when it is back at 0', async () => {

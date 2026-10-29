@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { settled } from './a11y';
+import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import {
   closeLibrary,
@@ -264,15 +265,34 @@ test('the live zoom: from LIVE, on two screens in step, for that showing only; K
   await background(win, twoId);
   await expect.poll(async () => (await snapshot(win)).liveZoom).toBeNull();
   for (const s of screens) await expect.poll(() => drawn(s)).toEqual([]);
-  // Simple Mode: no live zoom.
+  // Simple Mode zooms the screens too (Session 55, Part 5), and never keeps a zoom with the picture.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  await expect(win.getByTestId('live-zoom')).toHaveCount(0);
+  await expect(win.getByTestId('live-zoom')).toBeVisible();
   expect(
     await win.evaluate(() =>
       (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'zoomLive', zoom: 2, x: 0, y: 0 }),
     ),
-  ).toMatchObject({ ok: false });
+  ).toMatchObject({ ok: true });
+  await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom).toBe(2);
+  for (const s of screens)
+    await expect.poll(async () => (await drawn(s))[0]?.transform).toMatch(/scale\(2\)/u);
+  await expect(win.getByTestId('live-zoom-keep')).toHaveCount(0);
+  // Its zoom controls under LIVE fit CI's operator window.
+  await win.setViewportSize({ width: 1024, height: 645 });
+  await expectFits(win.getByTestId('live-zoom'), 'Simple Mode’s live zoom at 1024 x 645');
+  await win.setViewportSize({ width: 1280, height: 720 });
+  // Scrolling over LIVE zooms in Simple Mode too, and a double click puts it back as kept.
+  const simplePreview = await win.getByTestId('live-zoomable').boundingBox();
+  if (!simplePreview) throw new Error('no preview in Simple Mode');
+  await win.mouse.move(simplePreview.x + simplePreview.width / 2, simplePreview.y + simplePreview.height / 2);
+  await win.mouse.wheel(0, -100);
+  await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 0).toBeGreaterThan(2.1);
+  await win.mouse.dblclick(
+    simplePreview.x + simplePreview.width / 2,
+    simplePreview.y + simplePreview.height / 2,
+  );
+  await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom).toBe(1);
   await app.close();
 });
 

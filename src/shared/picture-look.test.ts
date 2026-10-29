@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   autoLevels,
   copyBox,
+  copyBoxOf,
+  dragCrop,
+  editLayout,
+  flipAcross,
+  flipUpDown,
+  FULL_CROP,
+  leavesBars,
+  MIN_CROP,
+  shapeRatio,
+  shapedCrop,
+  shownSize,
+  turnClockwise,
+  turnedSize,
   copySize,
   copyStep,
   cssFilter,
@@ -166,5 +179,169 @@ describe('a sharpened copy’s size (Session 26g)', () => {
     // A small picture keeps its own size; with no screen, its own size.
     expect(copySize({ width: 800, height: 600 }, copyBox(screen, 1))).toEqual({ width: 800, height: 600 });
     expect(copySize({ width: 4000, height: 3000 }, null)).toEqual({ width: 4000, height: 3000 });
+  });
+});
+
+describe('crop, turn and flip (Session 55, Part 5)', () => {
+  const photo = { width: 4000, height: 3000 };
+
+  it('are kept with the look only when they change something, a look kept before reading as it was', () => {
+    expect(isPlain({ ...PLAIN, turn: 0, flipX: false, crop: { x: 0, y: 0, w: 1, h: 1 } })).toBe(true);
+    expect(isPlain({ ...PLAIN, turn: 90 })).toBe(false);
+    expect(isPlain({ ...PLAIN, flipY: true })).toBe(false);
+    expect(isPlain({ ...PLAIN, crop: { x: 0.1, y: 0, w: 0.5, h: 1 } })).toBe(false);
+    expect(isPlain({ ...PLAIN, fill: false })).toBe(false);
+    // Its size alone (for drawing it turned before its file is read) changes nothing.
+    expect(isPlain({ ...PLAIN, size: photo })).toBe(true);
+    const edited = {
+      ...PLAIN,
+      turn: 270 as const,
+      flipX: true,
+      crop: { x: 0.25, y: 0, w: 0.5, h: 1 },
+      size: photo,
+    };
+    expect(lookOf(JSON.stringify(edited))).toEqual(edited);
+    // A crop that leaves the picture, or is too small, or a turn that is not a quarter, is not kept.
+    expect(lookOf(JSON.stringify({ ...PLAIN, crop: { x: 0.8, y: 0, w: 0.5, h: 1 } }))).toBeNull();
+    expect(lookOf(JSON.stringify({ ...PLAIN, crop: { x: 0, y: 0, w: 0.01, h: 1 } }))).toBeNull();
+    expect(lookOf(JSON.stringify({ ...PLAIN, turn: 45 }))).toBeNull();
+    // The screens-only marks are never kept.
+    expect(lookOf(JSON.stringify({ ...PLAIN, turn: 90, copy: 20, blurred: true }))).toEqual({
+      ...PLAIN,
+      turn: 90,
+    });
+    // framed leaves out what changes nothing, the size too once nothing is turned or cropped.
+    expect(
+      framed({
+        ...PLAIN,
+        turn: 0,
+        flipX: false,
+        flipY: false,
+        crop: { x: 0, y: 0, w: 1, h: 1 },
+        size: photo,
+      }),
+    ).toEqual(PLAIN);
+    expect(framed({ ...PLAIN, turn: 90, size: photo })).toEqual({ ...PLAIN, turn: 90, size: photo });
+  });
+
+  it('a quarter turn clockwise keeps the same part, a flip as it shows', () => {
+    const crop = { x: 0.1, y: 0.2, w: 0.3, h: 0.4 };
+    const once = turnClockwise({ ...PLAIN, crop });
+    expect(once.turn).toBe(90);
+    // The part's top left (0.1, 0.2) is now at the right: x = 1 - (0.2 + 0.4).
+    expect(once.crop?.x).toBeCloseTo(0.4);
+    expect(once.crop).toMatchObject({ y: 0.1, w: 0.4, h: 0.3 });
+    // Four turns are no turn, the part where it was.
+    const four = turnClockwise(turnClockwise(turnClockwise(once)));
+    expect(four.turn).toBe(0);
+    for (const k of ['x', 'y', 'w', 'h'] as const) expect(four.crop?.[k]).toBeCloseTo(crop[k]);
+    // Flipped across, then turned: flipped up and down.
+    expect(turnClockwise(flipAcross(PLAIN))).toMatchObject({ turn: 90, flipX: false, flipY: true });
+    expect(flipAcross({ ...PLAIN, crop })).toMatchObject({ flipX: true, crop: { x: 0.6, y: 0.2 } });
+    expect(flipUpDown({ ...PLAIN, crop }).crop?.y).toBeCloseTo(0.4);
+    expect(flipUpDown(flipUpDown(PLAIN)).flipY).toBe(false);
+    // A picture turned shows the other way round; cropped, as big as its part.
+    expect(turnedSize(photo, 90)).toEqual({ width: 3000, height: 4000 });
+    expect(shownSize({ ...PLAIN, turn: 270, crop: { x: 0, y: 0, w: 0.5, h: 0.5 } }, photo)).toEqual({
+      width: 1500,
+      height: 2000,
+    });
+  });
+
+  it('crops to a shape: the largest of it in the picture, where the crop was', () => {
+    expect(shapeRatio('free')).toBeNull();
+    // 16:9 of a 4:3 photo: the whole width, three quarters of the height... and 1:1, three quarters of the width.
+    const wide = shapedCrop('16:9', photo);
+    expect(wide).toMatchObject({ x: 0, w: 1 });
+    expect(wide.h).toBeCloseTo(0.75);
+    expect(wide.y).toBeCloseTo(0.125);
+    const square = shapedCrop('1:1', photo);
+    expect(square.w).toBeCloseTo(0.75);
+    expect(square).toMatchObject({ y: 0, h: 1 });
+    // Where a crop was: kept round its centre, inside the picture.
+    expect(shapedCrop('1:1', photo, { x: 0.8, y: 0, w: 0.2, h: 1 }).x).toBeCloseTo(0.25);
+    // A free crop dragged at a corner; a shaped one keeps its shape, inside the picture.
+    expect(dragCrop({ x: 0, y: 0, w: 1, h: 1 }, 'se', -0.5, -0.25, 'free', photo)).toEqual({
+      x: 0,
+      y: 0,
+      w: 0.5,
+      h: 0.75,
+    });
+    const shaped = dragCrop(square, 'e', -0.25, 0, '1:1', photo);
+    expect((shaped.w * photo.width) / (shaped.h * photo.height)).toBeCloseTo(1);
+    expect(dragCrop(square, 'move', 5, 5, '1:1', photo)).toMatchObject({ y: 0 });
+    expect(dragCrop(square, 'move', 5, 5, '1:1', photo).x).toBeCloseTo(0.25);
+    // Never smaller than MIN_CROP.
+    expect(dragCrop(FULL_CROP, 'w', 2, 0, 'free', photo).w).toBeCloseTo(MIN_CROP);
+  });
+
+  it('draws the part kept fitted in its box, the picture turned and flipped behind it', () => {
+    const screen = { width: 1920, height: 1080 };
+    // As it was taken: the whole 4:3 photo fitted in a 16:9 box.
+    expect(editLayout(PLAIN, photo, screen, 'contain')).toEqual({
+      frame: { left: 12.5, top: 0, width: 75, height: 100 },
+      picture: { left: 0, top: 0, width: 100, height: 100 },
+      transform: '',
+    });
+    // Its left half: a 2:3 part, as tall as the box, the whole picture twice the frame's width behind it.
+    expect(editLayout({ ...PLAIN, crop: { x: 0, y: 0, w: 0.5, h: 1 } }, photo, screen, 'contain')).toEqual({
+      frame: { left: 31.25, top: 0, width: 37.5, height: 100 },
+      picture: { left: 0, top: 0, width: 200, height: 100 },
+      transform: '',
+    });
+    // Turned a quarter: a 3:4 picture, its own 4:3 element turned about the same centre, flipped as it shows.
+    const turned = editLayout({ ...PLAIN, turn: 90, flipX: true }, photo, screen, 'contain');
+    expect(turned.frame).toEqual({ left: 28.9063, top: 0, width: 42.1875, height: 100 });
+    expect(turned.picture.width).toBeCloseTo((100 * 4) / 3, 3);
+    expect(turned.picture.height).toBeCloseTo(75, 3);
+    expect(turned.picture.left).toBeCloseTo(-16.6667, 3);
+    expect(turned.picture.top).toBeCloseTo(12.5, 3);
+    expect(turned.transform).toBe('scale(-1, 1) rotate(90deg)');
+    // Filling the box: the part kept covers it; stretched, it is the box.
+    expect(
+      editLayout({ ...PLAIN, crop: { x: 0, y: 0, w: 0.5, h: 1 } }, photo, screen, 'cover').frame.width,
+    ).toBe(100);
+    expect(editLayout({ ...PLAIN, turn: 180 }, photo, screen, 'fill').frame).toEqual({
+      left: 0,
+      top: 0,
+      width: 100,
+      height: 100,
+    });
+  });
+
+  it('a sharpened copy is made at the size the hall draws the picture, its part kept filling the screen (P5)', () => {
+    const screen = { width: 1920, height: 1080 };
+    // Not turned or cropped: as before.
+    expect(copyBoxOf(screen, { ...PLAIN, sharpness: 0.5 })).toEqual(copyBox(screen, 1));
+    // Its middle quarter kept: the whole picture drawn 2880 x 2160, so the part shows as sharp as it is.
+    expect(
+      copyBoxOf(screen, {
+        ...PLAIN,
+        sharpness: 0.5,
+        crop: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 },
+        size: photo,
+      }),
+    ).toEqual({ width: 2880, height: 2160 });
+    // Turned a quarter: a 3:4 picture 1080 tall, its own 4:3 at 1080 x 810.
+    expect(copyBoxOf(screen, { ...PLAIN, sharpness: 0.5, turn: 90, size: photo })).toEqual({
+      width: 1080,
+      height: 810,
+    });
+    expect(copyBoxOf(null, { ...PLAIN, turn: 90, size: photo })).toBeNull();
+  });
+});
+
+describe('the blurred fill, only where a picture leaves bars (Session 55, Part 5, D)', () => {
+  it('is drawn for a portrait photo on a wide screen, never for a picture of the screen’s own shape', () => {
+    const screen = { width: 1920, height: 1080 };
+    // A phone's portrait photo's small copy (72 × 128), and a 16:9 one's (128 × 72).
+    expect(leavesBars({ width: 72, height: 128 }, screen)).toBe(true);
+    expect(leavesBars({ width: 128, height: 72 }, screen)).toBe(false);
+    // A 4:3 picture on a 16:9 screen leaves bars; whole pixels a hair off its shape do not count.
+    expect(leavesBars({ width: 128, height: 96 }, screen)).toBe(true);
+    expect(leavesBars({ width: 128, height: 73 }, screen)).toBe(false);
+    // Not known: drawn.
+    expect(leavesBars(null, screen)).toBe(true);
+    expect(leavesBars({ width: 72, height: 128 }, null)).toBe(true);
   });
 });

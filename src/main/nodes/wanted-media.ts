@@ -1,5 +1,5 @@
 import { extname, isAbsolute, join } from 'node:path';
-import { copyOfId, MEDIA_ID_PATTERN } from '../../shared/media';
+import { blurOfId, copyOfId, MEDIA_ID_PATTERN } from '../../shared/media';
 import { realPlace } from '../media/contained';
 import type { EngineState } from '../../shared/engine/state';
 import type { MediaWant } from '../../shared/nodes';
@@ -31,7 +31,9 @@ import type { Db } from '../db/database';
 export interface CopyFiles {
   /** A picture's copy, if it has one ready. */
   want(mediaId: string): MediaWant | null;
-  /** A copy a node asked for, by its id (shared/media.ts copyMediaId). */
+  /** A picture's blurred copy (Session 55, Part 5, D), if it has one ready and is drawn with it. */
+  blurred?(mediaId: string): MediaWant | null;
+  /** A copy a node asked for, by its id (shared/media.ts copyMediaId, or blurMediaId). */
   source(copyId: string): { path: string; sha256: string; bytes: number; ext: string } | null;
 }
 
@@ -82,7 +84,7 @@ export class WantedMedia {
   ): { path: string; sha256: string; bytes: number; ext: string } | null {
     if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
     // By real paths: a link in the media folder that leads out of it is refused (Sessions 31–36, SEC-10).
-    if (copyOfId(mediaId)) {
+    if (copyOfId(mediaId) || blurOfId(mediaId)) {
       const copy = this.copies?.source(mediaId) ?? null;
       const place = copy ? realPlace(mediaDir, copy.path) : null;
       return copy && place?.inside ? { ...copy, path: place.path } : null;
@@ -215,6 +217,8 @@ export class WantedMedia {
       out.push(want);
       const copy = this.copies?.want(id) ?? null;
       if (copy) out.push(copy);
+      const blur = this.copies?.blurred?.(id) ?? null;
+      if (blur) out.push(blur);
     }
     return out;
   }

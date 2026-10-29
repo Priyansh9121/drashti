@@ -37,6 +37,8 @@ export interface MediaProtocolDeps {
   lookup: (mediaId: string) => MediaFileRow | null;
   /** A picture's sharpened copy at a step, relative to the media folder, if it is ready (Session 26f). */
   sharpened?: (sha256: string, step: number) => string | null;
+  /** A picture's blurred copy, relative to the media folder, if it is ready (Session 55, Part 5, D). */
+  blurred?: (sha256: string) => string | null;
   /**
    * A picture one of the guides shows (Sessions 31–36): its file in the guides' own folder, or null for a
    * name no guide shows. `dir` is that folder: the file must be inside it.
@@ -72,6 +74,18 @@ const CONTENT_TYPES: Record<string, string> = {
   heif: 'image/heif',
   webp: 'image/webp',
   avif: 'image/avif',
+  // The pictures Session 55 added (Part 5): a JPEG by its other names, an animated PNG and an icon a screen shows as
+  // they are, and those converted at import (a Targa, a Photoshop file, JPEG 2000).
+  jfif: 'image/jpeg',
+  jpe: 'image/jpeg',
+  pjpeg: 'image/jpeg',
+  pjp: 'image/jpeg',
+  apng: 'image/apng',
+  ico: 'image/x-icon',
+  tga: 'image/x-tga',
+  psd: 'image/vnd.adobe.photoshop',
+  jp2: 'image/jp2',
+  j2k: 'image/jp2',
   mp4: 'video/mp4',
   m4v: 'video/mp4',
   mov: 'video/quicktime',
@@ -141,6 +155,8 @@ export type MediaRequest =
   | { what: 'still'; mediaId: string }
   /** A picture's sharpened copy (Session 26f), made at a step of 5 %. */
   | { what: 'sharp'; mediaId: string; step: number }
+  /** A picture's blurred copy (Session 55, Part 5, D). */
+  | { what: 'blur'; mediaId: string }
   /** A picture one of the guides shows (the guides inside Drashti, Sessions 31–36). */
   | { what: 'guide'; name: string };
 
@@ -167,7 +183,7 @@ export function mediaRequestOf(url: string): MediaRequest | null {
   }
   const mediaId = parsed.pathname.slice(1);
   if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
-  return what === 'media' || what === 'still' ? { what, mediaId } : null;
+  return what === 'media' || what === 'still' || what === 'blur' ? { what, mediaId } : null;
 }
 
 export interface ByteRange {
@@ -232,7 +248,11 @@ async function fileFor(
   if (asked.what === 'media') row = found;
   else if (!sha) return null;
   else if (asked.what === 'still') row = { path: stillPath(sha) };
-  else {
+  else if (asked.what === 'blur') {
+    const copy = deps.blurred?.(sha) ?? null;
+    if (!copy) return null;
+    row = { path: copy };
+  } else {
     const copy = deps.sharpened?.(sha, asked.step) ?? null;
     if (!copy) return null;
     row = { path: copy };

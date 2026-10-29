@@ -36,6 +36,11 @@ export interface ViewerPage {
   live?: (state: EngineState | null) => boolean;
   /** D2: while this page is what the screens show, its live zoom's picture; null (no button) otherwise. */
   onScreens?: (state: EngineState | null) => OnScreens | null;
+  /**
+   * Save picture… (Session 55, Part 5): the picture this page is (a picture, or a deck's slide's), and its name, or
+   * its slide's number (named after what is looked through: "<deck>_3").
+   */
+  save?: { mediaId: string; name: string } | { mediaId: string; slide: number };
 }
 
 interface Viewer {

@@ -61,7 +61,7 @@ import type {
   StreamResult,
   StreamStatus,
 } from './stream';
-import type { SaveStillResult } from './media';
+import type { SavePictureResult, SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
@@ -394,6 +394,12 @@ export const IPC = {
     looks: 'media:looks',
     setLook: 'media:set-look',
     keepLiveZoom: 'media:keep-live-zoom',
+    /**
+     * Session 55 (Part 5): whether a picture is a photo (its blurred fill on unless its look says not), and Save
+     * picture… (full size where the operator chooses).
+     */
+    photo: 'media:photo',
+    savePicture: 'media:save-picture',
     /** main -> operator: a picture's look changed. */
     looksChanged: 'media:looks-changed',
     setMarkers: 'media:set-markers',
@@ -1184,6 +1190,8 @@ export interface InvokeContract {
     result: { ok: true } | { ok: false; message: string };
   };
   [IPC.media.keepLiveZoom]: { args: []; result: { ok: true } | { ok: false; message: string } };
+  [IPC.media.photo]: { args: [mediaId: string]; result: boolean };
+  [IPC.media.savePicture]: { args: [mediaId: string, name: string]; result: SavePictureResult };
   [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };

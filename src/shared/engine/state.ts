@@ -39,12 +39,15 @@ import type { ChosenWallpaper } from '../wallpapers';
  * 55, Part 12): Props, Masks, the Logo and the idle rotation taken out (no `props` or `masks` layer, no `logo`, no
  * `idle`), and the Wallpaper's switch in the Logo's place (`wallpaper`, Part 13); an older node or page would look
  * for what is gone, so it says 'incompatible'. A state 15, 14, 13 or 12 saved is read whole, its props, mask, logo
- * and idle rotation left out (none of them shows after the update) and the wallpaper off. 18 (Session 55, Part 6; 17
- * is Part 15's): the chosen wallpaper (`chosenWallpaper`), which every audience screen, node and phone draws whenever
- * nothing is up and under the Wallpaper; an older node or page would draw black instead, so it says 'incompatible'. A
- * state 16 saved is read whole (none chosen until Main says which).
+ * and idle rotation left out (none of them shows after the update) and the wallpaper off. 18 (Session 55, Part 6): the
+ * chosen wallpaper (`chosenWallpaper`), which every audience screen, node and phone draws whenever nothing is up and
+ * under the Wallpaper. 20 (Session 55, Part 5; the lead's numbers, 17 and 19 being other Parts'): a picture's look
+ * turns, flips and crops it, and a photo that does not fill its screen has a blurred copy of itself behind it
+ * (`pictures`' `turn`, `flipX`, `flipY`, `crop`, `size`, `fill` and `blurred`). An older node or page would draw black
+ * for the wallpaper and the picture as it was taken, so it says 'incompatible'. A state 18 or 16 saved is read whole
+ * (each only adds to the one before).
  */
-export const ENGINE_STATE_VERSION = 18;
+export const ENGINE_STATE_VERSION = 20;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 15 (the Session 55
@@ -56,7 +59,8 @@ export const ENGINE_STATE_VERSION = 18;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
-    // 18 only adds the chosen wallpaper to 16 (Session 55, Part 6).
+    // 18 only adds the chosen wallpaper to 16 (Session 55, Part 6); 20 only adds a picture's look to them (Part 5).
+    version === 18 ||
     version === 16 ||
     version === 15 ||
     version === 14 ||
