@@ -39,8 +39,9 @@ var DrashtiAccess = (function () {
   var PROTOCOL = {
     version: 1,
     checkEveryMs: 15 * 1000,
-    // Drashti's own: with no answer, it keeps working this long from the last answer (the list never uses it).
-    stopAfterMs: 60 * MINUTE,
+    // With no answer, Drashti keeps working this long from the last answer; and a computer with no check this long
+    // has its grant ended by the list (the owner's decisions of 29 Oct 2026: 15 days).
+    stopAfterMs: 15 * DAY,
     tokenMs: 3 * DAY,
     linkMs: 7 * DAY,
     limits: {
@@ -54,7 +55,7 @@ var DrashtiAccess = (function () {
       cacheMs: 10 * 1000,
     },
     publicOps: ['request', 'status', 'redeem', 'check'],
-    ownerOps: ['list', 'add', 'approve', 'reject', 'revoke', 'regrant', 'note', 'length'],
+    ownerOps: ['list', 'add', 'approve', 'reject', 'revoke', 'regrant', 'note', 'length', 'mode'],
     statuses: ['requested', 'approved', 'rejected', 'revoked'],
     checkStatuses: ['in', 'revoked', 'rejected', 'expired', 'unknown'],
     requestStatuses: ['requested', 'approved', 'rejected', 'revoked', 'unknown'],
@@ -82,6 +83,8 @@ var DrashtiAccess = (function () {
     // How long access lasts (the owner's decision of 28 Oct 2026): these days, any whole number of days up to
     // maxDays typed in, or 'unlimited' (until revoked); each counted from when it is given, by the list's clock.
     lengths: { days: [1, 7, 30, 60, 90, 120, 180, 365], maxDays: 730 },
+    // How a Gmail may use Drashti (the owner's decision of 29 Oct 2026): Pro Mode and Simple Mode, or Simple Mode only.
+    modes: ['pro', 'simple'],
   };
 
   /** The list's own words with each refusal (Drashti shows its own; these are for anyone reading the answer). */
@@ -119,6 +122,9 @@ var DrashtiAccess = (function () {
     // When access ends (a time, or Unlimited); typed in the Sheet, it counts. `added`: the list adds the column
     // itself to a Sheet set up before it came (addColumns), so nobody sets the Sheet up again for it.
     { field: 'endsAt', header: 'Access ends', ends: true, added: true },
+    // How the Gmail may use Drashti: Pro (Pro Mode and Simple Mode) or Simple (Simple Mode only); typed in the Sheet, it
+    // counts. Empty is Pro (every Gmail let in before modes came); a request waiting has Simple until the owner chooses.
+    { field: 'mode', header: 'Mode', mode: true, added: true, choices: ['Pro', 'Simple'] },
     { field: 'computers', header: 'Computers' },
     { field: 'version', header: 'Version' },
     { field: 'lastSeen', header: 'Last seen', date: true },
@@ -560,6 +566,47 @@ var DrashtiAccess = (function () {
     return lengthOk(n) ? n : null;
   }
 
+  // ---- how a Gmail may use Drashti (the owner's decision of 29 Oct 2026) ----
+
+  var PRO = 'pro';
+  var SIMPLE = 'simple';
+  /** How the Sheet writes each. */
+  var MODE_WORDS = { pro: 'Pro', simple: 'Simple' };
+  /** Why a computer's grant ended after 15 days with no check (the Computers tab's Why ended). */
+  var NO_CONTACT = 'no-contact';
+
+  /** A mode the list gives: Pro (Pro Mode and Simple Mode) or Simple (Simple Mode only). */
+  function modeOk(mode) {
+    return mode === PRO || mode === SIMPLE;
+  }
+
+  /** A Mode cell: 'simple', 'pro', or '' when empty (read as Pro; a request waiting is offered Simple first). */
+  function modeFromCell(v) {
+    var s = String(v === null || v === undefined ? '' : v)
+      .trim()
+      .toLowerCase();
+    return s === '' ? '' : s === SIMPLE ? SIMPLE : PRO;
+  }
+
+  /** How a Gmail may use Drashti now: the owner's own always Pro, and so is one let in before modes came (empty). */
+  function modeOf(props, person) {
+    return person.key === ownerKey(props) || person.mode !== SIMPLE ? PRO : SIMPLE;
+  }
+
+  /** The mode an approval gives when none is chosen: the one chosen adding the Gmail, else Simple; the owner's Pro. */
+  function modeToGive(props, person) {
+    return person.key === ownerKey(props) || person.mode === PRO ? PRO : SIMPLE;
+  }
+
+  /** A Gmail's mode as the owner's Access List shows it: the one it has, or for a request, the one it would get. */
+  function shownMode(props, person) {
+    return statusOf(person) === 'requested' ? modeToGive(props, person) : modeOf(props, person);
+  }
+
+  function modeWords(mode) {
+    return mode === SIMPLE ? 'They may use Simple Mode only.' : 'They may use Pro Mode and Simple Mode.';
+  }
+
   // ---- the Sheet ----
 
   function columnOf(tab, field) {
@@ -569,6 +616,7 @@ var DrashtiAccess = (function () {
   }
 
   function fromCell(v, c) {
+    if (c.mode) return modeFromCell(v);
     if (c.ends) return endsFromCell(v);
     if (c.length) return lengthFromCell(v);
     if (c.date) return toMs(v);
@@ -577,6 +625,7 @@ var DrashtiAccess = (function () {
   }
 
   function toCell(v, c) {
+    if (c.mode) return MODE_WORDS[v] || '';
     if (c.ends) return typeof v === 'number' && v > 0 ? new Date(v) : v === null ? UNLIMITED_WORD : '';
     if (c.length) return v === UNLIMITED || typeof v === 'number' ? v : '';
     if (c.date) return v ? new Date(v) : '';
@@ -626,17 +675,24 @@ var DrashtiAccess = (function () {
       var header = headersOf(env.sheet.row(tab, 1));
       missing.forEach(function (c) {
         if (header.indexOf(c.header.toLowerCase()) >= 0) return;
-        var col = env.sheet.addColumn(tab, c.header, {
-          hidden: Boolean(c.hidden),
-          date: Boolean(c.date || c.ends),
-        });
+        var o = { hidden: Boolean(c.hidden), date: Boolean(c.date || c.ends) };
+        if (c.choices) o.choices = c.choices.slice();
+        var col = env.sheet.addColumn(tab, c.header, o);
         header[col - 1] = c.header.toLowerCase();
-        if (c.field !== 'endsAt') return;
+        if (c.field !== 'endsAt' && c.field !== 'mode') return;
         var status = header.indexOf(columnOf(tab, 'status').header.toLowerCase()) + 1;
         var statuses = status > 0 ? env.sheet.column(tab, status) || [] : [];
-        for (var r = 1; r < statuses.length; r++)
-          if (statusOf({ status: statuses[r] }) === 'approved')
-            env.sheet.write(tab, r + 1, col, UNLIMITED_WORD);
+        var gmail = header.indexOf(columnOf(tab, 'gmail').header.toLowerCase()) + 1;
+        var gmails = gmail > 0 ? env.sheet.column(tab, gmail) || [] : [];
+        for (var r = 1; r < statuses.length; r++) {
+          var s = statusOf({ status: statuses[r] });
+          // Access ends: Unlimited for each Gmail approved (let in before lengths came).
+          if (c.field === 'endsAt' && s === 'approved') env.sheet.write(tab, r + 1, col, UNLIMITED_WORD);
+          // Mode: Pro for each Gmail let in before modes came, and so given access again later; a request waiting is
+          // left empty, so its Approve page offers Simple first.
+          if (c.field === 'mode' && s !== 'requested' && gmailKey(gmails[r]) !== '')
+            env.sheet.write(tab, r + 1, col, MODE_WORDS[PRO]);
+        }
       });
     };
     if (lockDepth > 0) add();
@@ -803,6 +859,51 @@ var DrashtiAccess = (function () {
   /** A token sent and not used, ended or run out. */
   function waiting(env, g) {
     return !g.usedAt && !g.endedAt && Boolean(g.sentAt) && env.now() <= g.sentAt + PROTOCOL.tokenMs;
+  }
+
+  /**
+   * A computer let in with no check for 15 days (the owner's decision of 29 Oct 2026), by the list's clock: since its
+   * last check recorded (once a minute while it checks), or since its token was used. Its grant ends at its next check,
+   * when the owner's Access List is asked, or at the daily check, whichever comes first; Give access again lets it in.
+   */
+  function due(env, g) {
+    if (!live(g)) return false;
+    var last = Math.max(Number(g.lastSeen) || 0, Number(g.usedAt) || 0);
+    return last > 0 && env.now() - last >= PROTOCOL.stopAfterMs;
+  }
+
+  /** These grants, if still with no check for 15 days, ended now ('no-contact'), under the lock: how many. */
+  function endQuiet(env, ids) {
+    var end = function () {
+      var data = load(env);
+      var now = env.now();
+      var n = 0;
+      var keys = {};
+      ids.forEach(function (id) {
+        var g = data.byGrant[id];
+        if (!g || !due(env, g)) return;
+        if (writeGrant(env, data, g, { endedAt: now, endedWhy: NO_CONTACT })) {
+          n++;
+          keys[g.key] = true;
+        }
+      });
+      Object.keys(keys).forEach(function (key) {
+        writeTotals(env, data, key);
+      });
+      return n;
+    };
+    return lockDepth > 0 ? end() : withLock(env, end);
+  }
+
+  /** The grants due to end for no check in 15 days, by id. */
+  function quietIds(env, data) {
+    return data.grants
+      .filter(function (g) {
+        return due(env, g);
+      })
+      .map(function (g) {
+        return g.grantId;
+      });
   }
 
   /** The Gmail's row's activity and computers, summed from its computers' rows (shown in the Sheet). */
@@ -973,6 +1074,7 @@ var DrashtiAccess = (function () {
         env.formatTime(expires) +
         '.',
       'On the Approve page you choose how long access lasts: Unlimited (until you revoke it) unless you choose a length.',
+      'There you also choose what they may use: Simple Mode only, unless you choose Pro Mode and Simple Mode.',
       'You can also answer in Drashti on your own computer: View › Access List.',
     );
     return {
@@ -982,7 +1084,7 @@ var DrashtiAccess = (function () {
     };
   }
 
-  function tokenMail(env, person, token, runsOut, endsAt) {
+  function tokenMail(env, person, token, runsOut, endsAt, mode) {
     return {
       to: person.gmail,
       subject: 'Your Drashti token',
@@ -991,6 +1093,7 @@ var DrashtiAccess = (function () {
           person.gmail +
           ' may now use Drashti' +
           (endsAt === null ? '.' : ', until ' + env.formatTime(endsAt) + '.'),
+        mode === SIMPLE ? 'You may use its Simple Mode only.' : 'You may use its Pro Mode and Simple Mode.',
         '',
         'Your one-time token:',
         '',
@@ -1015,16 +1118,18 @@ var DrashtiAccess = (function () {
 
   /**
    * A new grant for a Gmail: a new token emailed to it, and its row approved for `length` from now (the clock
-   * starts at the approval). The newest token is the only one that works: one sent before and not used yet ends.
-   * Computers already in stay in, for the new length. Under the lock.
+   * starts at the approval), with `mode` (Pro or Simple) when one is given, else the row's own. The newest token is the
+   * only one that works: one sent before and not used yet ends. Computers already in stay in, for the new length.
+   * Under the lock.
    */
-  function grant(env, props, data, person, length) {
+  function grant(env, props, data, person, length, mode) {
     if (remaining(env) < 1) throw refusal('mail-limit');
     var now = env.now();
     var endsAt = endsFor(now, length);
     var token = makeToken(env);
+    var given = person.key === ownerKey(props) ? PRO : mode || null;
     // The email first: if it cannot go, nothing changes (the token sent before still works).
-    send(env, tokenMail(env, person, token, now + PROTOCOL.tokenMs, endsAt));
+    send(env, tokenMail(env, person, token, now + PROTOCOL.tokenMs, endsAt, given || modeOf(props, person)));
     grantsOf(data, person.key).forEach(function (g) {
       if (!g.usedAt && !g.endedAt) writeGrant(env, data, g, { endedAt: now, endedWhy: 'replaced' });
     });
@@ -1035,6 +1140,7 @@ var DrashtiAccess = (function () {
       sentAt: now,
     });
     var changes = { status: 'approved', statusSeen: 'approved', endsAt: endsAt, length: length };
+    if (given) changes.mode = given;
     if (statusOf(person) !== 'approved' || !person.approvedAt) changes.approvedAt = now;
     if (person.requestId && !person.answered) changes.answered = 'approved';
     writePerson(env, data, person, changes);
@@ -1066,7 +1172,8 @@ var DrashtiAccess = (function () {
 
   /**
    * A row asked (or asked again) for: requested, with a new request id, so links sent before are replaced. Its
-   * Length is the one the owner chose adding it (for the approval), or none (Unlimited is offered first).
+   * Length is the one the owner chose adding it (for the approval), or none (Unlimited is offered first); its Mode the
+   * one the owner chose adding it, or Simple (offered first on the Approve page).
    */
   function newRequest(env, data, person, fields) {
     var now = env.now();
@@ -1080,6 +1187,8 @@ var DrashtiAccess = (function () {
       requestAt: now,
       answered: '',
       length: fields.length || null,
+      // Simple until the owner chooses: on the Approve page (Simple ticked first), or as they add the Gmail.
+      mode: fields.mode || SIMPLE,
     };
     if (fields.name) changes.name = fields.name;
     if (fields.note) changes.note = fields.note;
@@ -1176,6 +1285,13 @@ var DrashtiAccess = (function () {
       call.length = raw.length === undefined ? UNLIMITED : raw.length;
       if (!lengthOk(call.length)) throw refusal('bad-length');
     }
+    if (op === 'add' || op === 'approve' || op === 'regrant' || op === 'mode') {
+      // How the Gmail may use Drashti: always said for a change of mode; for the others, when not said, Simple for an
+      // Add, the row's own for an approval.
+      if (raw.mode === undefined && op === 'mode') throw refusal('bad-request');
+      if (raw.mode !== undefined && !modeOk(raw.mode)) throw refusal('bad-request');
+      call.mode = raw.mode;
+    }
     return call;
   }
 
@@ -1208,10 +1324,12 @@ var DrashtiAccess = (function () {
       if (p && statusOf(p) === 'approved' && !ended(env, props, p)) {
         var mine = grantsOf(data, p.key);
         // Approved, and a computer in or a token waiting: the person uses it, or the owner gives access
-        // again. Approved with neither (its token ran out unused), or its length ended: asked for again like
-        // any other.
+        // again. Approved with neither (its token ran out unused, or no check came for 15 days), or its length
+        // ended: asked for again like any other.
         if (
-          mine.some(live) ||
+          mine.some(function (g) {
+            return live(g) && !due(env, g);
+          }) ||
           mine.some(function (g) {
             return waiting(env, g);
           })
@@ -1313,7 +1431,13 @@ var DrashtiAccess = (function () {
     var now = env.now();
     var data = snapshot(env);
     var g = signedGrant(env, props, data, call);
-    if (!g) return { ok: true, status: 'unknown', owner: false, recorded: false, endsAt: null };
+    if (!g) return { ok: true, status: 'unknown', owner: false, recorded: false, endsAt: null, mode: SIMPLE };
+    // No check for 15 days (the owner's decision of 29 Oct 2026): its grant ends at this check, for good.
+    if (due(env, g)) {
+      endQuiet(env, [g.grantId]);
+      data = load(env);
+      g = data.byGrant[g.grantId] || g;
+    }
     // At most one check a computer every PROTOCOL.limits.checkGapMs counts (is recorded); one sooner (Drashti
     // quit and started again at once, say) is answered as any other. Only signed ones are counted, so nobody
     // else can use up a computer's checks.
@@ -1341,12 +1465,13 @@ var DrashtiAccess = (function () {
     var lastRecord = state.lastRecord || g.lastSeen || 0;
     if (
       counted &&
-      s === 'in' &&
+      !g.endedAt &&
       (lastRecord > now || now - lastRecord >= PROTOCOL.limits.recordGapMs) &&
       call.at > g.lastAt
     ) {
       // Written without the lock: only this computer's own cells (and its Gmail's totals), which no other
-      // call writes but a revoke's end, kept apart.
+      // call writes but a revoke's end, kept apart. Any computer still in that checks is seen (its length ended
+      // too, as it asks by itself until a new length comes): 15 days with no check end it, never a check refused.
       var changes = {
         lastSeen: now,
         version: call.computer.version,
@@ -1369,14 +1494,23 @@ var DrashtiAccess = (function () {
         JSON.stringify({ lastCheck: now, lastRecord: recorded ? now : state.lastRecord || 0 }),
         600,
       );
-    return {
+    var answer = {
       ok: true,
       status: s,
       owner: s === 'in' && g.key === ownerKey(props),
       recorded: recorded,
       // Drashti's bar counts down to this from the answer's serverTime: the list's clock, never the computer's.
       endsAt: p && (s === 'in' || s === 'expired') ? endsOf(props, p) : null,
+      // How this Gmail may use Drashti (Session 55): Simple holds that computer in Simple Mode.
+      mode: p ? modeOf(props, p) : SIMPLE,
+      // The check's own time on Drashti's clock, echoed and signed (Session 55): Drashti keeps this answer for a start
+      // without the internet, and counts its 15 days from this time, which no edit of its data folder can move.
+      at: call.at,
     };
+    // Ended for no check in 15 days: said, so Drashti can say to ask for access again (a Drashti from before reads
+    // the status alone, unknown).
+    if (g.endedAt && g.endedWhy === NO_CONTACT) answer.why = NO_CONTACT;
+    return answer;
   }
 
   function personAnswer(env, props, data, p) {
@@ -1403,6 +1537,8 @@ var DrashtiAccess = (function () {
       recordings: t.recordings,
       imports: t.imports,
       note: p.note,
+      // Pro or Simple: the one it has, or for a request waiting, the one its approval would give (Session 55).
+      mode: shownMode(props, p),
       // How long access lasts and when it ends, as the list's clock has it (the owner's own: always Unlimited).
       length: p.key === ownerKey(props) ? UNLIMITED : p.length,
       endsAt: endsOf(props, p),
@@ -1433,7 +1569,7 @@ var DrashtiAccess = (function () {
     var verify = function (data) {
       var g = signedGrant(env, props, data, call);
       var me = g && data.byKey[g.key];
-      if (!g || !live(g) || !me || statusOf(me) !== 'approved' || g.key !== ownerKey(props))
+      if (!g || !live(g) || due(env, g) || !me || statusOf(me) !== 'approved' || g.key !== ownerKey(props))
         throw refusal('not-owner');
     };
     if (call.op === 'list') {
@@ -1446,8 +1582,11 @@ var DrashtiAccess = (function () {
         .map(function (p) {
           return p.key;
         });
-      if (edited.length > 0) {
-        takeInHandEdits(env, edited);
+      // Computers with no check for 15 days end as the owner looks (Session 55), so the list shows them ended.
+      var quiet = quietIds(env, data);
+      if (edited.length > 0 || quiet.length > 0) {
+        if (edited.length > 0) takeInHandEdits(env, edited);
+        if (quiet.length > 0) endQuiet(env, quiet);
         data = load(env);
       }
       return {
@@ -1467,8 +1606,14 @@ var DrashtiAccess = (function () {
       var p = data.byKey[call.targetKey];
       if (p && changedByHand(p)) takeInHandEdit(env, data, p);
       var isOwnerRow = call.targetKey === ownerKey(props);
-      // The owner's own row is always Unlimited: a length is never given to it (as it is never revoked).
-      if (isOwnerRow && (call.op === 'length' || (call.length !== undefined && call.length !== UNLIMITED)))
+      // The owner's own row is always Unlimited and Pro: a length or Simple is never given to it (as it is never
+      // revoked).
+      if (
+        isOwnerRow &&
+        (call.op === 'length' ||
+          (call.length !== undefined && call.length !== UNLIMITED) ||
+          (call.mode !== undefined && call.mode !== PRO))
+      )
         throw refusal('owner-row');
       switch (call.op) {
         case 'add': {
@@ -1480,6 +1625,7 @@ var DrashtiAccess = (function () {
             requestFrom: '',
             requestComputer: 'added by the owner',
             length: call.length,
+            mode: call.mode,
           });
           var mailed = false;
           if (remaining(env) >= 1)
@@ -1499,8 +1645,17 @@ var DrashtiAccess = (function () {
         case 'regrant': {
           if (!p) throw refusal('not-found');
           if (call.op === 'approve' && statusOf(p) === 'approved') throw refusal('already-approved');
-          var sent = grant(env, props, data, p, call.length);
+          // An approval with no mode said gives the row's (Simple for a request, unless the owner chose Pro adding it);
+          // Give access again keeps the row's unless one is said.
+          var mode = call.mode || (call.op === 'approve' ? modeToGive(props, p) : null);
+          var sent = grant(env, props, data, p, call.length, mode);
           return { ok: true, status: 'approved', runsOut: sent.runsOut, endsAt: sent.endsAt };
+        }
+        case 'mode': {
+          // Pro or Simple, for any row: an approved Gmail's computers hear it at their next check.
+          if (!p) throw refusal('not-found');
+          writePerson(env, data, p, { mode: call.mode });
+          return { ok: true, status: statusOf(p), mode: modeOf(props, p) };
         }
         case 'length': {
           // A new length for a Gmail approved, counted from now: its computers stopped by an end come back.
@@ -1631,7 +1786,15 @@ var DrashtiAccess = (function () {
 
   function page(kind, extra) {
     var words = LINK_WORDS[kind] || ['', ''];
-    var out = { kind: kind, title: words[0], lines: [words[1]], button: null, params: null, lengths: null };
+    var out = {
+      kind: kind,
+      title: words[0],
+      lines: [words[1]],
+      button: null,
+      params: null,
+      lengths: null,
+      modes: null,
+    };
     Object.keys(extra || {}).forEach(function (k) {
       out[k] = extra[k];
     });
@@ -1688,7 +1851,17 @@ var DrashtiAccess = (function () {
             chosen: p.length === null || p.length === undefined ? UNLIMITED : p.length,
           }
         : null,
+      // What they may use (the owner's decision of 29 Oct 2026): Simple chosen at first, or Pro when the owner chose it
+      // adding the Gmail (the owner's own: always Pro).
+      modes: approve ? { chosen: modeToGive(props, p) } : null,
     });
+  }
+
+  /** The mode an Approve page sent: 'pro' or 'simple'; null when none was sent (a page from before); false when wrong. */
+  function linkMode(params) {
+    var raw = isObject(params) ? params.mode : undefined;
+    if (raw === undefined || raw === null) return null;
+    return modeOk(raw) ? raw : false;
   }
 
   /** The length an Approve page sent ('unlimited' or a number of days, as text); Unlimited when none was. */
@@ -1719,6 +1892,14 @@ var DrashtiAccess = (function () {
     if (l.kind !== 'signed') return page(l.kind);
     var length = l.action === 'approve' ? linkLength(params) : UNLIMITED;
     if (length === null) return page('refused', { title: 'Not done', lines: [MESSAGES['bad-length']] });
+    var mode = l.action === 'approve' ? linkMode(params) : null;
+    if (mode === false)
+      return page('refused', {
+        title: 'Not done',
+        lines: [
+          'That is not a way the list gives to use Drashti: choose Simple Mode only, or Pro Mode and Simple Mode.',
+        ],
+      });
     try {
       return withLock(env, function () {
         var data = load(env);
@@ -1728,12 +1909,14 @@ var DrashtiAccess = (function () {
         if (changedByHand(p)) takeInHandEdit(env, data, p);
         if (l.action === 'approve') {
           if (p.key === ownerKey(props) && length !== UNLIMITED) throw refusal('owner-row');
-          var sent = grant(env, props, data, p, length);
+          var given = p.key === ownerKey(props) ? PRO : mode || modeToGive(props, p);
+          var sent = grant(env, props, data, p, length, given);
           return page('done', {
             title: 'Approved',
             lines: [
               p.gmail + ' was emailed a one-time token. It runs out on ' + env.formatTime(sent.runsOut) + '.',
               lengthWords(env, sent.endsAt),
+              modeWords(given),
             ],
           });
         }
@@ -1772,11 +1955,29 @@ var DrashtiAccess = (function () {
           statusSeen: 'approved',
           requestedAt: env.now(),
           approvedAt: env.now(),
+          mode: PRO,
         });
       } else if (changedByHand(p)) takeInHandEdit(env, data, p);
-      var sent = grant(env, props, data, p, UNLIMITED);
+      var sent = grant(env, props, data, p, UNLIMITED, PRO);
       return { ok: true, to: p.gmail, runsOut: sent.runsOut };
     });
+  }
+
+  /**
+   * The daily check (Code.js's time-driven trigger, the owner's decision of 29 Oct 2026): every computer with no check
+   * for 15 days ended, as its next check or the owner's Access List would end it. At most once in 10 minutes, whoever
+   * calls it (a web page the script serves can call its trigger's function by name): sooner would end nothing more.
+   */
+  function dailyCheck(env) {
+    try {
+      needProps(env);
+    } catch (e) {
+      return { ran: false, ended: 0 };
+    }
+    if (cacheGet(env, 'daily-ran')) return { ran: false, ended: 0 };
+    cachePut(env, 'daily-ran', String(env.now()), 600);
+    var quiet = quietIds(env, load(env));
+    return { ran: true, ended: quiet.length > 0 ? endQuiet(env, quiet) : 0 };
   }
 
   /** What the Sheet's tabs must have, for Set up… (Code.js) and for the stand-in's Sheet. */
@@ -1785,13 +1986,15 @@ var DrashtiAccess = (function () {
       return {
         tab: tab,
         columns: TABLES[tab].map(function (c) {
-          return {
+          var column = {
             field: c.field,
             header: c.header,
             date: Boolean(c.date || c.ends),
             number: Boolean(c.number),
             hidden: Boolean(c.hidden),
           };
+          if (c.choices) column.choices = c.choices.slice();
+          return column;
         }),
       };
     });
@@ -1804,6 +2007,7 @@ var DrashtiAccess = (function () {
     linkPage: linkPage,
     answerLink: answerLink,
     letOwnerIn: letOwnerIn,
+    dailyCheck: dailyCheck,
     sheetLayout: sheetLayout,
     canonicalJson: canonicalJson,
     gmailKey: gmailKey,

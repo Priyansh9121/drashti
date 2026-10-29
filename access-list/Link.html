@@ -4,8 +4,9 @@
   it changes nothing (an email scanner following the link does no harm); pressing the button asks the list
   (answerLink in Code.js, which checks the link's signature again). An Approve page also asks how long access
   lasts (the owner's decision of 28 Oct 2026): Unlimited chosen at first, or the length chosen when the Gmail
-  was added; the list checks the length again. Every text from the list is put in with the template's
-  escaping printer.
+  was added; the list checks the length again. And what they may use (the owner's decision of 29 Oct 2026):
+  Simple Mode only, chosen at first, or Pro Mode and Simple Mode (chosen at first when the owner chose it adding
+  the Gmail); the list checks it again. Every text from the list is put in with the template's escaping printer.
 -->
 <html lang="en">
   <head>
@@ -143,6 +144,17 @@
         </p>
       </fieldset>
       <? } ?>
+      <? if (page.modes) { ?>
+      <fieldset id="modes" data-chosen-mode="<?= page.modes.chosen ?>">
+        <legend>What may they use?</legend>
+        <label class="choice"><input type="radio" name="mode" value="simple" /> Simple Mode only</label>
+        <label class="choice"><input type="radio" name="mode" value="pro" /> Pro Mode and Simple Mode</label>
+        <p class="hint">
+          Simple Mode runs a sabha from a playlist, and nothing in it changes the library, the screens or the
+          sound. Pro Mode is for whoever looks after Drashti.
+        </p>
+      </fieldset>
+      <? } ?>
       <? if (page.button) { ?>
       <button id="go" type="button"><?= page.button ?></button>
       <? } ?>
@@ -155,7 +167,22 @@
         var wait = document.getElementById('wait');
         var lengths = document.getElementById('lengths');
         var typed = document.getElementById('typed');
+        var modes = document.getElementById('modes');
         if (!go) return;
+
+        // An Approve page: the mode chosen at first (Simple, or Pro when the owner chose it adding the Gmail).
+        if (modes) {
+          var presetMode = modes.querySelector(
+            'input[name="mode"][value="' + modes.dataset.chosenMode + '"]',
+          );
+          (presetMode || modes.querySelector('input[name="mode"][value="simple"]')).checked = true;
+        }
+
+        /** The mode chosen, as the list reads it: 'simple' or 'pro'. */
+        function modeChosen() {
+          var picked = modes.querySelector('input[name="mode"]:checked');
+          return picked ? picked.value : 'simple';
+        }
 
         // An Approve page: the length chosen at first (Unlimited, or the one chosen when the Gmail was added).
         if (lengths) {
@@ -195,6 +222,7 @@
           else {
             go.remove();
             if (lengths) lengths.remove();
+            if (modes) modes.remove();
           }
         }
 
@@ -209,6 +237,7 @@
               return;
             }
           }
+          if (modes) params.mode = modeChosen();
           // Pressed once: never twice.
           go.disabled = true;
           wait.textContent = 'One moment…';

@@ -1,14 +1,16 @@
 /*
  * Drashti's access list, Apps Script's side (Session 54, E1): the web app's doGet and doPost, the Sheet's
- * Drashti menu (Set up…, Let me in (the owner)…), and Google's services handed to core.js as `env`. It is
- * pasted into the Sheet's Extensions › Apps Script with core.js, Setup.html, Link.html and appsscript.json
- * (docs/access-setup.md says how), and deployed as a web app that runs as the owner, for anyone.
+ * Drashti menu (Set up…, Let me in (the owner)…, Turn on the daily check…), the daily check itself, and Google's
+ * services handed to core.js as `env`. It is pasted into the Sheet's Extensions › Apps Script with core.js,
+ * Setup.html, Link.html and appsscript.json (docs/access-setup.md says how), and deployed as a web app that runs as
+ * the owner, for anyone.
  *
  * A web page this script serves (an Approve link's page) can call any of its global functions by name
  * (google.script.run), as the owner. So every function here either checks for itself (answerLink: the
  * link's signature; drashtiTestKeys and drashtiSaveSetup: the one-time ticket only the owner's Set up…
  * window has), or does nothing outside the Sheet's own menu (SpreadsheetApp.getUi() fails anywhere else),
- * or ends with "_", which Apps Script never lets a page call. src/main/access/list-code.test.ts keeps it so.
+ * or does only what its own rule says whoever calls it, at most once in 10 minutes (drashtiDailyCheck, the daily
+ * trigger's), or ends with "_", which Apps Script never lets a page call. src/main/access/list-code.test.ts keeps it so.
  */
 
 var PROPS_CACHE_SECONDS_ = 600;
@@ -20,6 +22,9 @@ var URL_SHAPE_ =
 var PEM_LABEL_ = 'PRIVATE' + ' KEY';
 /** How the Sheet shows the list's dates and times. */
 var DATE_FORMAT_ = 'd mmm yyyy, h:mm';
+/** The daily check's function, and the hour of the day it runs (the Sheet's time zone). */
+var DAILY_FUNCTION_ = 'drashtiDailyCheck';
+var DAILY_HOUR_ = 3;
 
 // ---- the web app ----
 
@@ -62,6 +67,7 @@ function onOpen() {
     .createMenu('Drashti')
     .addItem('Set up…', 'drashtiSetUp')
     .addItem('Let me in (the owner)…', 'drashtiLetMeIn')
+    .addItem('Turn on the daily check…', 'drashtiDailyOn')
     .addToUi();
 }
 
@@ -129,6 +135,50 @@ function drashtiLetMeIn() {
       ui.ButtonSet.OK,
     );
   }
+}
+
+/**
+ * Drashti › Turn on the daily check… (Session 55, the owner's decision of 29 Oct 2026): one time-driven trigger, once a
+ * day at about 3 in the morning, that ends the grant of every computer with no check for 15 days. Asked once; asked
+ * again, it says it is on and makes no second. Google asks the owner once to let the script run on a timer.
+ */
+function drashtiDailyOn() {
+  var ui = SpreadsheetApp.getUi();
+  var on = ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === DAILY_FUNCTION_;
+  });
+  if (on) {
+    ui.alert(
+      'The daily check is on',
+      'It is on already: every day at about ' +
+        String(DAILY_HOUR_) +
+        ' in the morning, each computer with no check for 15 days has its access ended. Nothing more to do.',
+      ui.ButtonSet.OK,
+    );
+    return;
+  }
+  var go = ui.alert(
+    'Turn on the daily check',
+    'Every day at about ' +
+      String(DAILY_HOUR_) +
+      ' in the morning, the list ends the access of each computer that has not checked in for 15 days, so the Access List shows it ended ("No contact for 15 days"). You can give access again from the Access List. Google asks you once to let this script run on a timer.',
+    ui.ButtonSet.OK_CANCEL,
+  );
+  if (go !== ui.Button.OK) return;
+  ScriptApp.newTrigger(DAILY_FUNCTION_).timeBased().everyDays(1).atHour(DAILY_HOUR_).create();
+  ui.alert(
+    'The daily check is on',
+    'Every day at about ' + String(DAILY_HOUR_) + ' in the morning. Nothing more to do.',
+    ui.ButtonSet.OK,
+  );
+}
+
+/**
+ * The daily check (the trigger's): every computer with no check for 15 days ended, by the list's clock. Called by name
+ * from a web page, it does only that, at most once in 10 minutes (core.js's dailyCheck).
+ */
+function drashtiDailyCheck() {
+  return DrashtiAccess.dailyCheck(env_());
 }
 
 // ---- the Set up… window's two calls (Setup.html), each with the window's one-time ticket ----
@@ -249,6 +299,16 @@ function prepareSheet_() {
               .setAllowInvalid(false)
               .build(),
           );
+      // The Mode column (Session 55): Pro or Simple only.
+      if (c.choices)
+        sheet
+          .getRange(2, col, rows, 1)
+          .setDataValidation(
+            SpreadsheetApp.newDataValidation()
+              .requireValueInList(c.choices, true)
+              .setAllowInvalid(false)
+              .build(),
+          );
     });
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, header.length).setFontWeight('bold');
@@ -358,14 +418,22 @@ function sheet_(ss) {
       s.appendRow(values);
       return s.getLastRow();
     },
-    // A column core.js adds itself to a Sheet set up before the column came (Access ends, Length): after the
-    // last one, its header bold, and hidden or shown as dates as Set up… would have made it.
+    // A column core.js adds itself to a Sheet set up before the column came (Access ends, Mode, Length): after the
+    // last one, its header bold, and hidden, shown as dates or given its choices as Set up… would have made it.
     addColumn: function (name, header, o) {
       var s = tab(name);
       var col = s.getLastColumn() + 1;
       if (s.getMaxColumns() < col) s.insertColumnsAfter(s.getMaxColumns(), col - s.getMaxColumns());
       s.getRange(1, col).setValue(header).setFontWeight('bold');
-      if (o && o.date) s.getRange(2, col, Math.max(s.getMaxRows() - 1, 1), 1).setNumberFormat(DATE_FORMAT_);
+      var rows = Math.max(s.getMaxRows() - 1, 1);
+      if (o && o.date) s.getRange(2, col, rows, 1).setNumberFormat(DATE_FORMAT_);
+      if (o && o.choices)
+        s.getRange(2, col, rows, 1).setDataValidation(
+          SpreadsheetApp.newDataValidation()
+            .requireValueInList(o.choices, true)
+            .setAllowInvalid(false)
+            .build(),
+        );
       if (o && o.hidden) s.hideColumns(col);
       return col;
     },

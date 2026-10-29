@@ -110,6 +110,18 @@ function ownerIn(list: TestList, computer: Computer): AccessGrant {
 
 const row = (list: TestList, gmail: string) => list.sheet.find(PEOPLE, 'Gmail', gmail);
 
+/**
+ * Time passes on the list's clock, each computer given checking in at the start, at least every 14 days, and at the end
+ * (Session 55: a computer with no check for 15 days has its grant ended).
+ */
+function passChecking(list: TestList, ms: number, ...checks: (() => unknown)[]): void {
+  for (let left = ms; left > 0; left -= 14 * DAY) {
+    for (const check of checks) check();
+    list.move(Math.min(14 * DAY, left));
+  }
+  for (const check of checks) check();
+}
+
 describe('every answer', () => {
   it('is signed, and echoes the op, the nonce and the computer id (ASCII only, whatever was typed)', () => {
     const list = newList();
@@ -1101,7 +1113,10 @@ describe('access lengths (the owner’s decision of 28 Oct 2026)', () => {
       endsAt: null,
     });
     expect(ends(list, OTHER)).toBe('Unlimited');
-    list.move(1000 * DAY);
+    // Unlimited never ends, however long, while the computer checks in (15 days with no check end it, Session 55).
+    passChecking(list, 1000 * DAY, () =>
+      expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null }),
+    );
     expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null });
   });
 
@@ -1160,7 +1175,13 @@ describe('access lengths (the owner’s decision of 28 Oct 2026)', () => {
       endsAt: null,
     });
     expect(ends(list)).toBe('Unlimited');
-    list.move(1000 * DAY);
+    // Unlimited never ends, however long, while the computers check in (15 days with no check end them, Session 55).
+    passChecking(
+      list,
+      1000 * DAY,
+      () => expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null }),
+      () => owner.check(me),
+    );
     expect(c.check(grant)).toMatchObject({ status: 'in', endsAt: null });
     // Only for a Gmail on the list and approved.
     new Computer(list, placeholderComputer('mac-change-asks')).request(OTHER);
@@ -1434,5 +1455,260 @@ describe('a check’s answer once access has ended: a status, never a refusal (2
       throw new Error('Placeholder Sheet failure');
     };
     expect(failing.c.check(failing.grant)).toMatchObject({ ok: false, error: 'server' });
+  });
+});
+
+describe('access by mode, and 15 days with no check (the owner’s decisions of 29 Oct 2026)', () => {
+  function setUp() {
+    const list = newList();
+    const owner = new Computer(list, placeholderComputer('mac-mode-owner'));
+    const me = ownerIn(list, owner);
+    return { list, owner, me };
+  }
+
+  /** A Gmail's Mode cell, as the Sheet shows it. */
+  const modeCell = (list: TestList, gmail = PERSON) => row(list, gmail)?.['Mode'];
+  /** The Approve page's way of using Drashti, chosen at first. */
+  const pageMode = (list: TestList, gmail = PERSON) => {
+    const links = list.linksFor(gmail);
+    if (!links) throw new Error('No links');
+    return core.linkPage(list.env, linkParams(links.approve)).modes;
+  };
+
+  it('a request is Simple until the owner chooses: the Approve page offers Pro or Simple, Simple chosen first, and approves with the one chosen; each check says it', () => {
+    const { list } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-mode-page'));
+    c.request(PERSON);
+    expect(modeCell(list)).toBe('Simple');
+    expect(pageMode(list)).toEqual({ chosen: 'simple' });
+    const links = list.linksFor(PERSON);
+    if (!links) throw new Error('No links');
+    expect(core.linkPage(list.env, linkParams(links.reject)).modes).toBeNull();
+    // A way the list does not give is refused, changing nothing.
+    for (const mode of ['admin', 'PRO ', ''])
+      expect(core.answerLink(list.env, { ...linkParams(links.approve), mode })).toMatchObject({
+        kind: 'refused',
+        title: 'Not done',
+      });
+    expect(row(list, PERSON)?.['Status']).toBe('requested');
+    const done = core.answerLink(list.env, { ...linkParams(links.approve), mode: 'pro' });
+    expect(done).toMatchObject({ kind: 'done', title: 'Approved' });
+    expect(done.lines.join(' ')).toContain('Pro Mode and Simple Mode');
+    expect(modeCell(list)).toBe('Pro');
+    const grant = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+    expect(c.check(grant)).toMatchObject({ status: 'in', mode: 'pro' });
+    // Approved with no way sent (a page from before): the one the request has, Simple.
+    const o = new Computer(list, placeholderComputer('mac-mode-page-2'));
+    o.request(OTHER);
+    const theirs = list.linksFor(OTHER);
+    if (!theirs) throw new Error('No links');
+    const simple = core.answerLink(list.env, linkParams(theirs.approve));
+    expect(simple.lines.join(' ')).toContain('Simple Mode only');
+    expect(modeCell(list, OTHER)).toBe('Simple');
+    expect(o.check(o.letIn(OTHER, list.tokenFor(OTHER) ?? ''))).toMatchObject({
+      status: 'in',
+      mode: 'simple',
+    });
+  });
+
+  it('the owner adds a Gmail with a mode, approves with one, and changes a row’s mode; never the owner’s own, always Pro', () => {
+    const { list, owner, me } = setUp();
+    expect(owner.owner('add', me, { target: PERSON, mode: 'pro' })).toMatchObject({ ok: true });
+    expect(modeCell(list)).toBe('Pro');
+    expect(pageMode(list)).toEqual({ chosen: 'pro' });
+    owner.owner('add', me, { target: OTHER });
+    expect(modeCell(list, OTHER)).toBe('Simple');
+    expect(owner.owner('approve', me, { target: OTHER, mode: 'pro' })).toMatchObject({ ok: true });
+    expect(modeCell(list, OTHER)).toBe('Pro');
+    // Approve with none said keeps the row's.
+    expect(owner.owner('approve', me, { target: PERSON })).toMatchObject({ ok: true });
+    expect(modeCell(list)).toBe('Pro');
+    const c = new Computer(list, placeholderComputer('mac-mode-change'));
+    const grant = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+    expect(c.check(grant)).toMatchObject({ status: 'in', mode: 'pro' });
+    expect(owner.owner('mode', me, { target: PERSON, mode: 'simple' })).toMatchObject({
+      ok: true,
+      mode: 'simple',
+    });
+    expect(modeCell(list)).toBe('Simple');
+    list.move(6 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in', mode: 'simple' });
+    // Give access again keeps the row's mode.
+    expect(owner.owner('regrant', me, { target: PERSON })).toMatchObject({ ok: true });
+    expect(modeCell(list)).toBe('Simple');
+    for (const mode of ['admin', 1, null, undefined])
+      expect(owner.owner('mode', me, { target: PERSON, mode })).toMatchObject({
+        ok: false,
+        error: 'bad-request',
+      });
+    expect(owner.owner('add', me, { target: 'new.placeholder@example.com', mode: 'admin' })).toMatchObject({
+      ok: false,
+      error: 'bad-request',
+    });
+    expect(owner.owner('mode', me, { target: 'nobody.placeholder@example.com', mode: 'pro' })).toMatchObject({
+      ok: false,
+      error: 'not-found',
+    });
+    expect(owner.owner('mode', me, { target: PLACEHOLDER_APPROVER, mode: 'simple' })).toMatchObject({
+      ok: false,
+      error: 'owner-row',
+    });
+    expect(owner.owner('mode', me, { target: PLACEHOLDER_APPROVER, mode: 'pro' })).toMatchObject({
+      ok: true,
+    });
+    // Typed Simple on the owner's own row: still Pro.
+    list.sheet.type(PEOPLE, 'Gmail', PLACEHOLDER_APPROVER, 'Mode', 'Simple');
+    list.move(11 * SECOND);
+    expect(owner.check(me)).toMatchObject({ status: 'in', owner: true, mode: 'pro' });
+    const people = owner.owner('list', me)['people'] as Record<string, unknown>[];
+    expect(people.map((p) => [p['gmail'], p['mode']])).toEqual([
+      [PLACEHOLDER_APPROVER, 'pro'],
+      [PERSON, 'simple'],
+      [OTHER, 'pro'],
+    ]);
+  });
+
+  it('reads a mode typed in the Sheet: Simple is Simple, and Pro or empty is Pro', () => {
+    const { list } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-mode-typed'));
+    const grant = approved(list, c);
+    for (const [typed, mode] of [
+      ['Simple', 'simple'],
+      ['Pro', 'pro'],
+      [' simple ', 'simple'],
+      ['', 'pro'],
+    ] as const) {
+      list.sheet.type(PEOPLE, 'Gmail', PERSON, 'Mode', typed);
+      list.move(11 * SECOND);
+      expect(c.check(grant), typed).toMatchObject({ status: 'in', mode });
+    }
+  });
+
+  it('adds the Mode column to a Sheet set up before it came, by itself: Pro for every Gmail but a request waiting, whose Approve page offers Simple first', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-mode-old-sheet'));
+    expect(c.request(PERSON)).toMatchObject({ ok: true });
+    owner.owner('approve', me, { target: PERSON });
+    const grant = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+    new Computer(list, placeholderComputer('mac-mode-old-asks')).request(OTHER);
+    list.sheet.removeColumn(PEOPLE, 'Mode');
+    list.cache.clear();
+    list.move(6 * SECOND);
+    // Approved before modes came: Pro.
+    expect(c.check(grant)).toMatchObject({ status: 'in', mode: 'pro' });
+    expect(list.sheet.read(PEOPLE)[0]?.at(-1)).toBe('Mode');
+    expect(list.sheet.added).toEqual([
+      { tab: PEOPLE, header: 'Mode', hidden: false, date: false, choices: ['Pro', 'Simple'] },
+    ]);
+    expect(modeCell(list, PLACEHOLDER_APPROVER)).toBe('Pro');
+    expect(modeCell(list)).toBe('Pro');
+    expect(modeCell(list, OTHER)).toBe('');
+    expect(pageMode(list, OTHER)).toEqual({ chosen: 'simple' });
+    list.cache.clear();
+    list.move(6 * SECOND);
+    c.check(grant);
+    expect(list.sheet.added).toHaveLength(1);
+  });
+
+  it('ends a computer with no check for 15 days at its next check (unknown, why: no-contact), as the Access List shows; Give access again lets it in on a new token', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-quiet'));
+    const grant = approved(list, c);
+    // Checking now and then, never 15 days apart: never ended, however long (the owner's own computer checking too).
+    passChecking(
+      list,
+      60 * DAY,
+      () => expect(c.check(grant)).toMatchObject({ status: 'in' }),
+      () => owner.check(me),
+    );
+    list.move(15 * DAY - MINUTE);
+    expect(c.check(grant)).toMatchObject({ status: 'in' });
+    owner.check(me);
+    list.move(14 * DAY);
+    owner.check(me);
+    list.move(DAY);
+    expect(c.check(grant)).toMatchObject({ ok: true, status: 'unknown', why: 'no-contact', owner: false });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PERSON)).toMatchObject({ 'Why ended': 'no-contact' });
+    // Ended for good: the next check too, and a check of a grant ended otherwise says no why.
+    list.move(6 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'unknown', why: 'no-contact' });
+    const people = owner.owner('list', me)['people'] as Record<string, unknown>[];
+    expect(people.find((p) => p['gmail'] === PERSON)).toMatchObject({
+      status: 'approved',
+      computers: [{ ended: true, endedWhy: 'no-contact' }],
+    });
+    expect(owner.owner('regrant', me, { target: PERSON })).toMatchObject({ ok: true, status: 'approved' });
+    const again = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+    list.move(6 * SECOND);
+    expect(c.check(again)).toMatchObject({ status: 'in' });
+    expect(c.check(again)['why']).toBeUndefined();
+  });
+
+  it('a computer whose length has ended keeps checking, so it is never ended for no contact: a new length lets it back in', () => {
+    const { list, owner, me } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-ended-length'));
+    expect(c.request(PERSON)).toMatchObject({ ok: true });
+    owner.owner('approve', me, { target: PERSON, length: 1 });
+    const grant = c.letIn(PERSON, list.tokenFor(PERSON) ?? '');
+    list.move(2 * DAY);
+    owner.check(me);
+    passChecking(
+      list,
+      40 * DAY,
+      () => expect(c.check(grant)).toMatchObject({ status: 'expired' }),
+      () => owner.check(me),
+    );
+    expect(owner.owner('length', me, { target: PERSON, length: 30 })).toMatchObject({ ok: true });
+    list.move(6 * SECOND);
+    expect(c.check(grant)).toMatchObject({ status: 'in' });
+  });
+
+  it('a person whose computers had no check for 15 days may ask again (not already-approved)', () => {
+    const { list } = setUp();
+    const c = new Computer(list, placeholderComputer('mac-quiet-asks'));
+    approved(list, c);
+    expect(c.request(PERSON)).toMatchObject({ ok: false, error: 'already-approved' });
+    list.move(16 * DAY);
+    expect(c.request(PERSON)).toMatchObject({ ok: true, status: 'requested' });
+  });
+
+  it('the daily check ends every computer with no check for 15 days, the owner’s own too, at most once in 10 minutes; the Access List ends them itself as it is asked', () => {
+    const { list, owner, me } = setUp();
+    const a = new Computer(list, placeholderComputer('mac-daily-a'));
+    const b = new Computer(list, placeholderComputer('mac-daily-b'));
+    const ga = approved(list, a);
+    const gb = approved(list, b, OTHER);
+    list.move(10 * DAY);
+    b.check(gb);
+    owner.check(me);
+    list.move(5 * DAY);
+    // a: 15 days with none; b and the owner's: 5 days.
+    expect(core.dailyCheck(list.env)).toEqual({ ran: true, ended: 1 });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PERSON)).toMatchObject({ 'Why ended': 'no-contact' });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', OTHER)?.['Why ended']).toBe('');
+    // Again within 10 minutes (a page calling it by name, say): nothing done at all.
+    list.move(9 * MINUTE);
+    expect(core.dailyCheck(list.env)).toEqual({ ran: false, ended: 0 });
+    list.move(11 * DAY);
+    expect(core.dailyCheck(list.env)).toEqual({ ran: true, ended: 2 });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', OTHER)).toMatchObject({ 'Why ended': 'no-contact' });
+    expect(list.sheet.find(COMPUTERS, 'Gmail', PLACEHOLDER_APPROVER)).toMatchObject({
+      'Why ended': 'no-contact',
+    });
+    // The owner's computer, ended: its calls refused until Let me in lets it in again.
+    expect(owner.owner('list', me)).toMatchObject({ ok: false, error: 'not-owner' });
+    expect(a.check(ga)).toMatchObject({ status: 'unknown', why: 'no-contact' });
+    const meAgain = ownerIn(list, owner);
+    expect(owner.check(meAgain)).toMatchObject({ status: 'in', owner: true });
+    // The Access List, asked, ends those due by itself, before the daily check comes.
+    const c = new Computer(list, placeholderComputer('mac-daily-c'));
+    approved(list, c, 'third.placeholder@example.com');
+    list.move(14 * DAY);
+    owner.check(meAgain);
+    list.move(DAY);
+    const people = owner.owner('list', meAgain)['people'] as Record<string, unknown>[];
+    expect(people.find((p) => p['gmail'] === 'third.placeholder@example.com')).toMatchObject({
+      computers: [{ ended: true, endedWhy: 'no-contact' }],
+    });
   });
 });

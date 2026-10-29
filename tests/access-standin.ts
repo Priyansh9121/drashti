@@ -58,15 +58,21 @@ export interface AccessStandIn {
   redirect: boolean;
   /** Change each answer on its way (a forged or replayed answer). */
   tamper: ((answer: { payload: string; sig: string }) => { payload: string; sig: string }) | null;
-  /** The button on an Approve or Reject link's page, pressed (as the approver would), with a length when given. */
-  press(link: string, length?: string): LinkPage;
+  /**
+   * The button on an Approve or Reject link's page, pressed (as the approver would), with a length and a mode
+   * (Session 55: 'pro' or 'simple') when given; none given, the page's own first choices.
+   */
+  press(link: string, length?: string, mode?: string): LinkPage;
   /** The list's own page (access-list/Link.html) for an Approve or Reject link, as the approver's browser opens it. */
   pageUrl(link: string): string;
   /**
    * A grant for this Gmail on this computer, made the real way (asked for, approved by the link, the
-   * token from its email used; the approver's own through Let me in), for a test that starts Drashti let in.
+   * token from its email used; the approver's own through Let me in), for a test that starts Drashti let in: with Pro
+   * access unless the test asks for Simple (Session 55), so every spec runs in Pro Mode as before.
    */
-  grant(gmail: string, computer: AccessComputer): AccessGrant;
+  grant(gmail: string, computer: AccessComputer, o?: { mode?: 'pro' | 'simple' }): AccessGrant;
+  /** The owner gives a Gmail another mode (the Access List's Change the mode…): its computers hear it at their next check. */
+  setMode(gmail: string, mode: 'pro' | 'simple'): void;
   close(): Promise<void>;
 }
 
@@ -119,9 +125,14 @@ const escapeHtml = (text: string): string =>
 
 function linkHtml(page: LinkPage): string {
   const lines = page.lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('');
+  // The page's own first choices go with its button, as the list's own page sends them (a length, and a mode).
+  const chosen: Record<string, string> = {
+    ...(page.lengths ? { length: String(page.lengths.chosen) } : {}),
+    ...(page.modes ? { mode: page.modes.chosen } : {}),
+  };
   const form =
     page.button && page.params
-      ? `<form method="post" action="${LINK}">${Object.entries(page.params)
+      ? `<form method="post" action="${LINK}">${Object.entries({ ...page.params, ...chosen })
           .map(([k, v]) => `<input type="hidden" name="${escapeHtml(k)}" value="${escapeHtml(v)}">`)
           .join('')}<button type="submit">${escapeHtml(page.button)}</button></form>`
       : '';
@@ -252,6 +263,12 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
     return { gmail, grantId: String(a['grantId']), secret: String(a['secret']) };
   };
 
+  /** One of the owner's calls, from the stand-in's own owner computer (let in the first time it is needed). */
+  const ownerCallOf = (op: string, fields: Record<string, unknown>) => {
+    ownerGrant ??= standIn.grant(list.props.approverEmail, ownerComputer);
+    return call(op, ownerComputer, { at: Math.floor(list.t), ...fields }, ownerGrant);
+  };
+
   const standIn: AccessStandIn = {
     url: `${base}${EXEC}`,
     publicKey: list.keys.publicKey,
@@ -262,26 +279,34 @@ export async function accessStandIn(o: TestListOptions = {}): Promise<AccessStan
     mode: 'answer',
     redirect: true,
     tamper: null,
-    press: (link, length) =>
-      core.answerLink(list.env, { ...linkParams(link), ...(length === undefined ? {} : { length }) }),
+    press: (link, length, mode) =>
+      core.answerLink(list.env, {
+        ...linkParams(link),
+        ...(length === undefined ? {} : { length }),
+        ...(mode === undefined ? {} : { mode }),
+      }),
     pageUrl: (link) => `${base}${PAGE}${new URL(link).search}`,
-    grant: (gmail, computer) => {
+    grant: (gmail, computer, o = {}) => {
       if (core.gmailKey(gmail) === core.gmailKey(list.props.approverEmail)) {
         core.letOwnerIn(list.env);
         return redeem(gmail, computer);
       }
+      const mode = o.mode ?? 'pro';
       const asked = call('request', computer, { gmail });
       if (asked.ok) {
         const links = list.linksFor(gmail);
         if (!links) throw new Error(`No Approve link for ${gmail}`);
-        core.answerLink(list.env, linkParams(links.approve));
+        core.answerLink(list.env, { ...linkParams(links.approve), mode });
       } else {
         // Approved already, with a computer in: the owner gives access again.
-        ownerGrant ??= standIn.grant(list.props.approverEmail, ownerComputer);
-        const a = call('regrant', ownerComputer, { at: list.t, target: gmail }, ownerGrant);
+        const a = ownerCallOf('regrant', { target: gmail, mode });
         if (!a.ok) throw new Error(`The stand-in could not give ${gmail} access again: ${String(a.error)}`);
       }
       return redeem(gmail, computer);
+    },
+    setMode: (gmail, mode) => {
+      const a = ownerCallOf('mode', { target: gmail, mode });
+      if (!a.ok) throw new Error(`The stand-in could not change ${gmail}'s mode: ${String(a.error)}`);
     },
     close: () =>
       new Promise((resolve) => {
