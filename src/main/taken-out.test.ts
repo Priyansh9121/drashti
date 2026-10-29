@@ -60,9 +60,10 @@ describe('taken out (Session 55, Part 12)', () => {
       expect(parseEngineCommand(command).ok, command.type).toBe(false);
     expect(parseEngineCommand({ type: 'toggleWallpaper' }).ok).toBe(true);
     expect(parseEngineCommand({ type: 'setWallpaper', on: true }).ok).toBe(true);
-    // 16: the wallpaper's switch in the logo's place; alpha.13's 15 (and 14, 13, 12) still read whole.
-    expect(ENGINE_STATE_VERSION).toBe(16);
-    for (const version of [16, 15, 14, 13, 12])
+    // 16: the wallpaper's switch in the logo's place; alpha.13's 15 (and 14, 13, 12) still read whole. Part 15's 17
+    // only adds to 16 (messages' looks, the stage message's size, timers for the audience).
+    expect(ENGINE_STATE_VERSION).toBe(17);
+    for (const version of [17, 16, 15, 14, 13, 12])
       expect(readsEngineVersion(version), String(version)).toBe(true);
   });
 

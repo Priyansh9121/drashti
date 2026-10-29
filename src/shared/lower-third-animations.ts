@@ -187,6 +187,32 @@ function boxMoves(): Move[] {
   along('bounce', 'Bounce', bounce, 60, 0.3, ['bounce', 'slide', 'overshoot'], 700);
   along('spring', 'Spring', spring, 45, 0.25, ['spring', 'elastic', 'wobble', 'slide'], 900);
   along('drift', 'Drift', smooth, 12, 1, ['drift', 'float', 'gentle', 'slide'], 700);
+  // Across from the picture's edge (Session 55, Part 15: a message, from the bottom left across to the right, say):
+  // from just past that edge to its place. How far that is the page says, on what moves (--from-left and the others:
+  // its distance from that edge and its own size, in pixels); left out, its own width or height. Unseen only at its
+  // very first frame (it is past the edge then anyway).
+  const across: Record<Direction, { v: string; axis: 'x' | 'y'; sign: 1 | -1; name: string }> = {
+    left: { v: '--from-left', axis: 'x', sign: -1, name: 'Slide in from the left edge' },
+    right: { v: '--from-right', axis: 'x', sign: 1, name: 'Slide in from the right edge' },
+    up: { v: '--from-bottom', axis: 'y', sign: 1, name: 'Slide up from the bottom edge' },
+    down: { v: '--from-top', axis: 'y', sign: -1, name: 'Slide down from the top edge' },
+  };
+  for (const d of DIRECTIONS) {
+    const { v, axis, sign, name } = across[d];
+    moves.push({
+      key: `across-${d}`,
+      name,
+      keywords: ['slide', 'across', 'edge', 'travel', ...directionWords[d]],
+      ms: 900,
+      pose: (p) => {
+        const k = 1 - smooth(p);
+        const shift = `calc(var(${v}, 100%) * ${n(sign * k)})`;
+        return pose(p > 0 ? 1 : 0, {
+          transform: [k < 0.0005 ? '' : axis === 'x' ? `translate(${shift}, 0)` : `translate(0, ${shift})`],
+        });
+      },
+    });
+  }
   // A wipe shows it from one side across (its clip opening that way), hard or with a fade.
   const wipeFrom: Record<Direction, (c: number) => [number, number, number, number]> = {
     right: (c) => [0, c, 0, 0],

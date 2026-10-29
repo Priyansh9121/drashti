@@ -4,6 +4,7 @@ import type { CommandResult, EngineCommand, EngineCommandType } from '../../shar
 import { diffState } from '../../shared/engine/patch';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import {
+  type AudienceTimerLayer,
   type AudioChoice,
   type AudioLayer,
   type BackgroundChoice,
@@ -81,6 +82,8 @@ import {
   startsWith,
 } from './across-slides';
 import { reduce, sameData } from './reducer';
+import { STAGE_RECENT, type StageCall } from '../../shared/stage-message';
+import { dueActions, nextDue } from './timed';
 import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
 
@@ -291,6 +294,11 @@ export interface RestoreRequest {
   repeat?: { playlistId: string } | null;
   /** A timer shown alone (Session 50): it comes back over the slide, still, while that timer is in the library. */
   timer?: { timerId: string } | null;
+  /** The stage message's size and flash (Session 55), and the last few: they come back with it. */
+  stageCall?: StageCall | null;
+  stageRecent?: readonly string[];
+  /** A timer for the audience (Session 55): it comes back still while its timer is in the library and has not gone. */
+  audienceTimer?: AudienceTimerLayer | null;
 }
 
 /** What restart recovery put back. */
@@ -326,6 +334,8 @@ export interface Restored {
   pipInputGone?: string;
   /** A timer shown alone came back over the slide (Session 50); left out when none did. */
   timer?: boolean;
+  /** A timer for the audience came back (Session 55); left out when none did. */
+  audienceTimer?: boolean;
 }
 
 /**
@@ -366,6 +376,8 @@ export class ShowEngine {
   private musicWait: { key: string; cancel: () => void } | null = null;
   /** The slide up going on when a countdown on it reaches zero (Session 50): its key, and how to cancel the wait. */
   private zeroWait: { key: string; cancel: () => void } | null = null;
+  /** Waiting for something up to go by itself (Session 55: a message's time up, a timer for the audience at zero). */
+  private timedWait: { key: string; cancel: () => void } | null = null;
   /** The last zero that came: it is not waited for again (a slide with nowhere to go holds at 0:00). */
   private zeroDone: string | null = null;
   /** The time of the change being made, read once (null between changes). */
@@ -557,7 +569,9 @@ export class ShowEngine {
       const audio = { ...played, ...this.libraryOf(played.mediaId, played.durationMs) };
       actions.push({ type: 'audio/set', audio });
     }
-    for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
+    // A message up for a set time comes back for the rest of it (Session 55); one whose time is up by now does not.
+    const back = (request.messages ?? []).filter((m) => m.until === undefined || m.until > this.now());
+    for (const message of back) actions.push({ type: 'message/show', message });
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
     if (request.lowerThird) actions.push({ type: 'lowerThird/show', layer: request.lowerThird });
     // The picture-in-picture box (Session 50): never a window, a video input only while it is in the list (one no
@@ -565,7 +579,17 @@ export class ShowEngine {
     // A video from Media in it carries on between its file's points as the library has them now (Session 53).
     const box = restoredPip(request.pip ?? null, this.options);
     if (box.layer) actions.push({ type: 'pip/set', layer: this.pipClips(box.layer) });
-    if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
+    if (request.stageMessage)
+      actions.push({
+        type: 'stage/message',
+        text: request.stageMessage,
+        // With its size and flash (Session 55); its flash long over.
+        ...(request.stageCall ? { call: request.stageCall } : {}),
+      });
+    // The last few stage messages, a tap away again (Session 55): the one up joins them as it comes back.
+    const recent = (request.stageRecent ?? [])
+      .filter((t) => t !== request.stageMessage)
+      .slice(0, STAGE_RECENT);
     // Timers that still exist: running ones count on from their start, paused ones keep their count.
     let timers = 0;
     for (const t of request.timers ?? []) {
@@ -577,11 +601,22 @@ export class ShowEngine {
       });
       timers++;
     }
+    // A timer for the audience (Session 55) comes back still, while its timer is in the library; one that went by
+    // itself at zero meanwhile is taken off again at once (scheduleTimed).
+    const shownTimer = request.audienceTimer ?? null;
+    const timerBack =
+      shownTimer !== null && this.state.timers.some((t) => t.id === shownTimer.timerId) ? shownTimer : null;
+    if (timerBack) actions.push({ type: 'timer/show', layer: timerBack });
     // Repeat Slides carries on going round, when its slide came back.
     const repeating = request.repeat ? this.repeatRun(request.repeat.playlistId) : null;
     if (slide && repeating && request.slide?.presentationId === repeatPresentationId(repeating.playlistId))
       actions.push({ type: 'repeat/set', repeat: repeating });
     this.apply(actions);
+    if (recent.length > 0) {
+      const stageRecent = [...(this.state.stageRecent ?? []), ...recent].slice(0, STAGE_RECENT);
+      if (!sameData(this.state.stageRecent ?? [], stageRecent))
+        this.apply([{ type: 'stage/recent', recent: stageRecent }]);
+    }
     // A slide that was moving on by itself carries on with the time it had left.
     const advance = request.autoAdvance;
     if (slide && advance && advance.leftMs >= 0 && advance.durationMs > 0) {
@@ -615,6 +650,7 @@ export class ShowEngine {
       inputGone: wasInput && !input ? wasInput.name : null,
       ...(box.inputGone === null ? {} : { pipInputGone: box.inputGone }),
       ...(alone ? { timer: true } : {}),
+      ...(timerBack ? { audienceTimer: true } : {}),
     };
   }
 
@@ -801,6 +837,10 @@ export class ShowEngine {
         else if (t.name !== alone.name)
           actions.push({ type: 'slide/put', layer: { ...shown, timer: { ...alone, name: t.name } } });
       }
+      // A timer for the audience whose timer is removed goes, fading out from now (Session 55).
+      const up = this.state.layers.timer;
+      if (up && !timers.some((x) => x.id === up.timerId))
+        actions.push({ type: 'timer/hide', at: this.now() });
       return this.apply(actions);
     });
   }
@@ -2120,10 +2160,20 @@ export class ShowEngine {
         };
       case 'playAudio':
         return { ok: true, actions: [{ type: 'audio/set', audio: this.audioLayer(command.audio) }] };
-      case 'showMessage':
-        return { ok: true, actions: [{ type: 'message/show', message: command.message, at: this.now() }] };
+      case 'showMessage': {
+        // Up for a set time (Session 55): it goes by itself then (an update keeps the time it had).
+        const now = this.now();
+        const { seconds } = command.message;
+        const message =
+          seconds === undefined ? command.message : { ...command.message, until: now + seconds * 1000 };
+        return { ok: true, actions: [{ type: 'message/show', message, at: now }] };
+      }
       case 'hideMessage':
-        return { ok: true, actions: [{ type: 'message/hide', messageId: command.messageId }] };
+        // One with a look of its own plays its out from now (Session 55).
+        return {
+          ok: true,
+          actions: [{ type: 'message/hide', messageId: command.messageId, at: this.now() }],
+        };
       case 'showLowerThird':
         return {
           ok: true,
@@ -2140,7 +2190,17 @@ export class ShowEngine {
       case 'resetTimer':
         return this.runTimer(command.timerId, 'reset');
       case 'setStageMessage':
-        return { ok: true, actions: [{ type: 'stage/message', text: command.text }] };
+        // Its own size and flash (Session 55): the standard size, no flash, when not said (an older phone, the API).
+        return {
+          ok: true,
+          actions: [
+            {
+              type: 'stage/message',
+              text: command.text,
+              call: { size: command.size ?? 'standard', flash: command.flash ?? false, shownAt: this.now() },
+            },
+          ],
+        };
       case 'clearStageMessage':
         return { ok: true, actions: [{ type: 'stage/message', text: null }] };
       case 'cueNext': {
@@ -2243,6 +2303,17 @@ export class ShowEngine {
       }
       case 'showTimer':
         return this.showTimer(command.timerId);
+      case 'showAudienceTimer': {
+        // A timer for the audience (Session 55), in place of any other; the same one up stays as it is.
+        const t = this.state.timers.find((x) => x.id === command.timerId);
+        if (!t) return { ok: false, error: 'unknown-timer', message: 'That timer no longer exists' };
+        if (this.state.layers.timer?.timerId === t.id) return NO_CHANGE;
+        return { ok: true, actions: [{ type: 'timer/show', layer: { timerId: t.id, shownAt: this.now() } }] };
+      }
+      case 'hideAudienceTimer':
+        return this.state.layers.timer
+          ? { ok: true, actions: [{ type: 'timer/hide', at: this.now() }] }
+          : NO_CHANGE;
       // Picture in picture (Session 50, pip.ts): what the box holds is looked up here, never taken from a page; a
       // video from Media in it plays between its file's points as the library has them (Session 53).
       case 'showPip': {
@@ -2402,6 +2473,7 @@ export class ShowEngine {
     this.scheduleAdvance();
     this.scheduleMusic();
     this.scheduleZero();
+    this.scheduleTimed();
     return { ok: true, changed: true, rev: this.revision };
   }
 
@@ -2638,6 +2710,28 @@ export class ShowEngine {
   }
 
   /**
+   * Wait for the soonest thing up that goes by itself (Session 55, timed.ts): a message's time up, a timer for the
+   * audience at its zero. Waited for again whenever what is up, or when it goes, changes.
+   */
+  private scheduleTimed(): void {
+    const due = nextDue(this.state, this.now());
+    if ((due?.key ?? null) === (this.timedWait?.key ?? null)) return;
+    this.timedWait?.cancel();
+    this.timedWait = null;
+    if (!due) return;
+    const cancel = this.wait(Math.max(0, due.at - this.now()), () => {
+      if (this.timedWait?.key === due.key) this.timedWait = null;
+      this.atOnce(() => {
+        const actions = dueActions(this.state, this.now());
+        // A moment early (another clock's millisecond): wait again.
+        if (actions.length === 0) this.scheduleTimed();
+        else this.apply(actions);
+      });
+    });
+    this.timedWait = { key: due.key, cancel };
+  }
+
+  /**
    * Access by Gmail (Session 54): Drashti has stopped. Every screen, node, phone and the stream's picture fades to
    * black from now, by the engine's clock, and nothing changes the show after: no command, nothing moving on by
    * itself. For good: only Quit ends it.
@@ -2653,6 +2747,8 @@ export class ShowEngine {
   dispose(): void {
     this.zeroWait?.cancel();
     this.zeroWait = null;
+    this.timedWait?.cancel();
+    this.timedWait = null;
     this.cancelScheduled?.();
     this.cancelScheduled = null;
     this.scheduled = null;

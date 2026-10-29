@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { CALENDAR_LANGS } from '../calendar';
 import { lowerThirdSchema } from '../lower-thirds';
+import { MESSAGE_SECONDS, messageLookSchema } from '../message-look';
+import { STAGE_MESSAGE_SIZES } from '../stage-message';
 import { hexColorSchema, idSchema } from '../model-schema';
 import { playingSchema } from './playing';
 import {
@@ -49,6 +51,9 @@ export const messageSchema: z.ZodType<MessageItem> = z.object({
   id,
   text: z.string().min(1).max(500),
   parts: z.array(messagePart).max(40).optional(),
+  // Its own look, and how long it stays up by itself (Session 55, Part 15); the engine stamps `until`.
+  look: messageLookSchema.optional(),
+  seconds: z.number().int().min(MESSAGE_SECONDS.min).max(MESSAGE_SECONDS.max).optional(),
 });
 
 const playlistCursor = z.object({ playlistId: id, itemId: id });
@@ -185,8 +190,16 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('startTimer'), timerId: id }),
   z.object({ type: z.literal('pauseTimer'), timerId: id }),
   z.object({ type: z.literal('resetTimer'), timerId: id }),
-  /** A message on stage screens only, for the performers. */
-  z.object({ type: z.literal('setStageMessage'), text: z.string().trim().min(1).max(300) }),
+  /**
+   * A message on stage screens only, for the performers; since Session 55 (Part 15) with its own size and a flash as
+   * it comes up (left out: the standard size, no flash). clearStageMessage is its Hide.
+   */
+  z.object({
+    type: z.literal('setStageMessage'),
+    text: z.string().trim().min(1).max(300),
+    size: z.enum(STAGE_MESSAGE_SIZES).optional(),
+    flash: z.boolean().optional(),
+  }),
   z.object({ type: z.literal('clearStageMessage') }),
   /** Put a presentation first in line for Next (the arti at its time); clearCue takes it away. */
   z.object({ type: z.literal('cueNext'), presentationId: id, label: z.string().trim().min(1).max(120) }),
@@ -240,6 +253,12 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resumePlaying'), playing: playingSchema }),
   /** A timer up alone, in the Timer only layout, in the slide's place (Session 50: Show on the screens). */
   z.object({ type: z.literal('showTimer'), timerId: id }),
+  /**
+   * A timer for the audience (Session 55, Part 15): up in its own look, in place of any other up (one at a time), or
+   * taken off (it fades out). Timers, the Stage screen panel and a phone show and hide it.
+   */
+  z.object({ type: z.literal('showAudienceTimer'), timerId: id }),
+  z.object({ type: z.literal('hideAudienceTimer') }),
   /** Picture in picture (Session 50): a box up (or its picture changed), taken off, swapped, or moved. */
   z.object({ type: z.literal('showPip'), source: pipSourceChoice, place: pipPlaceSchema.optional() }),
   z.object({ type: z.literal('hidePip') }),

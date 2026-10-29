@@ -42,9 +42,11 @@ import type { OutputContext, ScreensSaid } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
 import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
-import { messageTemplateSchema } from '../shared/messages';
+import { keptTemplateSchema, messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
+import { startCountdownFields, startTimeGone } from '../shared/audience-timer';
+import { START_COUNTDOWN_NAME, startTimeSchema } from '../shared/timer-look';
 import type { RecoveryNotice } from '../shared/recovery';
 import { audioDeviceSchema } from '../shared/audio';
 import type { SetupResult } from '../shared/setup';
@@ -3312,6 +3314,15 @@ function start(): void {
         : { ok: false, message: 'That message no longer exists.' };
     }),
   );
+  // Undo of a change or a removal (Session 55): the template as it was, by its id.
+  handle(IPC.messages.restore, (e, template) =>
+    messageChange(e, () => {
+      const t = keptTemplateSchema.safeParse(template);
+      if (!t.success) return badMessage;
+      messageTemplates.put(t.data);
+      return { ok: true, id: t.data.id };
+    }),
+  );
   // ---- audio playlists (Session 14): music on the audio layer, independent of the slides ------------
   const audioPlaylists = new AudioPlaylistRepo(db);
   // Music deleted, or tracks taken out, before this start can no longer be undone (Session 26a).
@@ -4504,6 +4515,28 @@ function start(): void {
         ? { ok: true, id: id.data }
         : { ok: false, message: 'That timer no longer exists.' };
     }),
+  );
+  /**
+   * Countdown to the start (Session 55, Part 15): the sabha's time counted down over the wallpaper on the audience and
+   * the stage, gone by itself at zero. Its one timer (by its name) made, or changed to this time, then shown.
+   */
+  const startCountdown = (time: unknown): TimerResult => {
+    const at = startTimeSchema.safeParse(time);
+    if (!at.success)
+      return { ok: false, message: 'Write the sabha’s time as hours and minutes, for example 19:30.' };
+    // A time already come today would go at once.
+    if (startTimeGone(at.data, Date.now()))
+      return { ok: false, message: 'That time has already come today: write the sabha’s time later today.' };
+    const fields = startCountdownFields(at.data);
+    const was = timers.list().find((t) => t.name === START_COUNTDOWN_NAME);
+    const id = was ? (timers.update(was.id, fields) ? was.id : null) : timers.create(fields);
+    if (id === null) return { ok: false, message: 'That timer no longer exists.' };
+    engine.setTimers(timers.list());
+    const shown = engine.dispatch({ type: 'showAudienceTimer', timerId: id });
+    return shown.ok ? { ok: true, id } : { ok: false, message: shown.message };
+  };
+  handle(IPC.timers.startCountdown, (e, time) =>
+    fromOperator(e) ? startCountdown(time) : { ok: false, message: 'Only the operator window can do that.' },
   );
   const playlistsChanged = () => {
     // A live item's order may have changed, and what comes next may be different.

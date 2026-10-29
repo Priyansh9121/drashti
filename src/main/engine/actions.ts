@@ -4,8 +4,10 @@ import type { LiveLook } from '../../shared/looks';
 import type { LiveZoom, PictureLook } from '../../shared/picture-look';
 import type { RenderSlide, Transition } from '../../shared/model';
 import type { StageState } from '../../shared/stage-layouts';
+import type { StageCall } from '../../shared/stage-message';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
+  AudienceTimerLayer,
   AudioLayer,
   BackgroundLayer,
   CuedNext,
@@ -93,7 +95,13 @@ export type EngineAction =
   | { type: 'calendar/set'; calendar: CalendarDay | null }
   | { type: 'quote/set'; quote: Quote | null }
   | { type: 'upcoming/set'; upcoming: UpcomingItem[] }
-  | { type: 'stage/message'; text: string | null }
+  /**
+   * The stage message up, or off (null); since Session 55 (Part 15) how it was shown (its size, flash and when), and
+   * the words join the last few.
+   */
+  | { type: 'stage/message'; text: string | null; call?: StageCall }
+  /** The last few stage messages as restart recovery puts them back (Session 55). */
+  | { type: 'stage/recent'; recent: string[] }
   /** The timers as defined in the library; each keeps its run (start time, counted time). */
   | { type: 'timers/define'; timers: readonly TimerDefinition[] }
   | { type: 'timer/run'; timerId: string; run: TimerRun }
@@ -109,7 +117,12 @@ export type EngineAction =
   | { type: 'audio/set'; audio: AudioLayer }
   /** `at`: when, by the engine's clock (its entrance, Session 27); a message already up keeps its own. */
   | { type: 'message/show'; message: MessageItem; at?: number }
-  | { type: 'message/hide'; messageId: string }
+  /** `at`: when, by the engine's clock (Session 55): a message with its own look plays its out from then. */
+  | { type: 'message/hide'; messageId: string; at?: number }
+  /** A timer for the audience up (Session 55, Part 15), in place of any other. */
+  | { type: 'timer/show'; layer: AudienceTimerLayer }
+  /** The timer for the audience taken off: it fades out from `at` (left out: at once, as Clear all does). */
+  | { type: 'timer/hide'; at?: number }
   /** An announcement joins the ticker (or its words change): it starts again from the right at `at`. */
   | { type: 'ticker/show'; item: TickerItem; at: number }
   /** An announcement leaves the ticker: the rest start again from the right at `at`. */

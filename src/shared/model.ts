@@ -188,9 +188,16 @@ export interface MediaElement extends ElementBase {
   playBar?: boolean;
 }
 
-/** What a countdown on a slide does at zero (Session 50): holds at 0:00, or the next slide comes on. */
-export type TimerAtZero = 'hold' | 'next';
-export const TIMER_AT_ZERO = ['hold', 'next'] as const satisfies readonly TimerAtZero[];
+/**
+ * What a countdown on a slide does at zero (Session 50): holds at 0:00, or the next slide comes on; since Session 55
+ * (Part 15) it can show a message in its place, or go.
+ */
+export type TimerAtZero = 'hold' | 'next' | 'message' | 'gone';
+export const TIMER_AT_ZERO = ['hold', 'next', 'message', 'gone'] as const satisfies readonly TimerAtZero[];
+
+/** How a timer writes a length (Session 55, as a stage layout's timer box does): as needed, m:ss, or h:mm:ss. */
+export type TimerFormat = 'auto' | 'mss' | 'hmmss';
+export const TIMER_FORMATS = ['auto', 'mss', 'hmmss'] as const satisfies readonly TimerFormat[];
 
 /**
  * A timer on a slide (Session 50): one of the library's timers (shared/timers.ts), live, styled as words are
@@ -209,6 +216,19 @@ export interface TimerElement extends ElementBase {
   atZero?: TimerAtZero;
   /** 0 to 1; left out for fully there. */
   opacity?: number;
+  /** How it writes a length (Session 55, Part 15); left out, as needed (a clock writes the time of day). */
+  format?: TimerFormat;
+  /**
+   * A countdown's warning (Session 55): from this much left (ms) the time turns this colour, in place of the last
+   * minute's (an older slide's `lastMinute` is its warning from a minute left). Left out or null: none.
+   */
+  warn?: { fromMs: number; color: string } | null;
+  /** A countdown at 0:00 and past it turns this colour (Session 55). Left out: as it is. */
+  overColor?: string;
+  /** A countdown flashes slowly for ten seconds at zero (Session 55, as a stage timer box does). */
+  flash?: boolean;
+  /** The words a countdown shows at zero in its place, when it says so (`atZero` 'message'; Session 55). */
+  zeroText?: string;
 }
 
 export type SlideElement = TextElement | ShapeElement | MediaElement | TimerElement;

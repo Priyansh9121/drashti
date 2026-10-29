@@ -442,12 +442,19 @@ export interface DrashtiBridge {
     create(template: MessageTemplateFields): Promise<MessageResult>;
     update(templateId: string, template: MessageTemplateFields): Promise<MessageResult>;
     remove(templateId: string): Promise<MessageResult>;
+    /** A template put back as it was, its id too (Session 55: Undo of a change or a removal). */
+    restore(template: MessageTemplate): Promise<MessageResult>;
   };
   /** Making and editing timers (operator window only). Starting and pausing go through the engine. */
   timers: {
     create(fields: TimerFields): Promise<TimerResult>;
     update(timerId: string, fields: TimerFields): Promise<TimerResult>;
     remove(timerId: string): Promise<TimerResult>;
+    /**
+     * Countdown to the start (Session 55, Part 15): a countdown to the sabha's time ("19:30") over the wallpaper on
+     * the audience and the stage, gone by itself at zero; its timer made, or changed when it is there, and shown.
+     */
+    startCountdown(time: string): Promise<TimerResult>;
   };
   media: {
     /**

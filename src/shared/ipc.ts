@@ -494,12 +494,16 @@ export const IPC = {
     create: 'messages:create',
     update: 'messages:update',
     remove: 'messages:remove',
+    /** A template put back as it was, by its id (Session 55: Undo of a change or a removal). */
+    restore: 'messages:restore',
   },
   /** Changing timers (operator window only); what they count comes with the engine state. */
   timers: {
     create: 'timers:create',
     update: 'timers:update',
     remove: 'timers:remove',
+    /** Countdown to the start (Session 55, Part 15): the sabha's time, its timer made or changed, and shown. */
+    startCountdown: 'timers:start-countdown',
   },
   /** Lower Thirds (Session 44; changing them: operator window, Pro Mode). */
   lowerThirds: {
@@ -1147,9 +1151,11 @@ export interface InvokeContract {
     result: MessageResult;
   };
   [IPC.messages.remove]: { args: [templateId: string]; result: MessageResult };
+  [IPC.messages.restore]: { args: [template: MessageTemplate]; result: MessageResult };
   [IPC.timers.create]: { args: [fields: TimerFields]; result: TimerResult };
   [IPC.timers.update]: { args: [timerId: string, fields: TimerFields]; result: TimerResult };
   [IPC.timers.remove]: { args: [timerId: string]; result: TimerResult };
+  [IPC.timers.startCountdown]: { args: [time: string]; result: TimerResult };
   [IPC.lowerThirds.list]: { args: []; result: LowerThird[] };
   [IPC.lowerThirds.save]: { args: [id: string | null, input: LowerThirdInput]; result: LowerThirdResult };
   [IPC.lowerThirds.remove]: { args: [ids: string[]]; result: LowerThirdsResult };

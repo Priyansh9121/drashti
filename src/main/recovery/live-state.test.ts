@@ -342,6 +342,105 @@ describe('restart recovery', () => {
     });
   });
 
+  it('keeps a message’s own look and its time up, the stage message’s size and last few, and a timer for the audience (Session 55); a file saved before has none', async () => {
+    const state = live({ slideIndex: null, withBackground: false });
+    const look = {
+      place: { row: 'top', column: 'left' },
+      animation: 'across-left-steady',
+      font: 'Noto Sans',
+      size: 2,
+      color: '#fde68a',
+      weight: 700,
+      behind: 'box',
+      behindColor: '#000000',
+      behindOpacity: 0.5,
+    } as const;
+    const show: EngineState = {
+      ...state,
+      layers: {
+        ...state.layers,
+        messages: [{ id: 'm', text: 'Placeholder message', look, seconds: 30, shownAt: 10, until: 30_010 }],
+        timer: { timerId: 't1', shownAt: 20 },
+      },
+      stageMessage: 'Placeholder stage',
+      stageCall: { size: 'large', flash: true, shownAt: 15 },
+      stageRecent: ['Placeholder stage', 'Placeholder before'],
+    };
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, show);
+    expect(toRestore(files)).toMatchObject({
+      messages: [{ id: 'm', look, seconds: 30, shownAt: 10, until: 30_010 }],
+      stageMessage: 'Placeholder stage',
+      stageCall: { size: 'large', flash: true, shownAt: 15 },
+      stageRecent: ['Placeholder stage', 'Placeholder before'],
+      audienceTimer: { timerId: 't1', shownAt: 20 },
+    });
+    // A timer for the audience alone is worth putting back.
+    const alone: EngineState = {
+      ...state,
+      layers: { ...state.layers, slide: null, timer: { timerId: 't1', shownAt: 20 } },
+    };
+    const again = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(again, { ...alone, live: { ...alone.live, presentationId: null, slideIndex: null } });
+    expect(toRestore(files)).toMatchObject({ audienceTimer: { timerId: 't1', shownAt: 20 } });
+    // A file saved before Session 55's Part 15 (engine 16): none of them, and its messages as they were.
+    const before = { ...savedFrom(show, 'before'), engineVersion: 16 } as Record<string, unknown>;
+    delete before['stageCall'];
+    delete before['stageRecent'];
+    delete before['audienceTimer'];
+    before['messages'] = [{ id: 'm', text: 'Placeholder message', shownAt: 10 }];
+    writeFileSync(files.state, JSON.stringify(before));
+    const read = toRestore(files);
+    expect(read).toMatchObject({ messages: [{ id: 'm', text: 'Placeholder message', shownAt: 10 }] });
+    expect(read?.stageCall ?? null).toBeNull();
+    expect(read?.stageRecent ?? []).toEqual([]);
+    expect(read?.audienceTimer ?? null).toBeNull();
+  });
+
+  it('after an unexpected stop, a message comes back for the rest of its time (not once it is over), the stage message with its size and last few, and the timer for the audience (Session 55)', () => {
+    const clock = 100_000;
+    const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => clock);
+    engine.setTimers([
+      {
+        id: 't1',
+        name: 'Placeholder',
+        kind: 'countdown',
+        durationMs: 60_000,
+        targetTime: null,
+        allowsOverrun: false,
+      },
+    ]);
+    const look = {
+      place: { x: 0.5, y: 0.5 },
+      animation: 'fade-steady',
+      font: 'Noto Sans',
+      size: 0,
+      color: '#ffffff',
+      weight: 500,
+      behind: 'none',
+      behindColor: '#000000',
+      behindOpacity: 0.72,
+    } as const;
+    const back = engine.restore({
+      slide: null,
+      background: null,
+      blackout: false,
+      messages: [
+        { id: 'on', text: 'Placeholder still up', look, shownAt: 90_000, until: 110_000 },
+        { id: 'over', text: 'Placeholder over', look, shownAt: 50_000, until: 99_000 },
+      ],
+      stageMessage: 'Placeholder stage',
+      stageCall: { size: 'huge', flash: false, shownAt: 95_000 },
+      stageRecent: ['Placeholder stage', 'Placeholder before'],
+      audienceTimer: { timerId: 't1', shownAt: 96_000 },
+    });
+    expect(back.audienceTimer).toBe(true);
+    expect(engine.current.layers.messages.map((m) => [m.id, m.until])).toEqual([['on', 110_000]]);
+    expect(engine.current.stageCall).toEqual({ size: 'huge', flash: false, shownAt: 95_000 });
+    expect(engine.current.stageRecent).toEqual(['Placeholder stage', 'Placeholder before']);
+    expect(engine.current.layers.timer).toEqual({ timerId: 't1', shownAt: 96_000 });
+  });
+
   it('keeps where a video and a sound last jumped to (a marker, Back 15 s, Forward 15 s, Last 10 s), so they come back from there (Session 51)', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const video = {
