@@ -569,6 +569,11 @@ export interface EngineState {
   wallpaper: boolean;
   /** What Clear all took down can be put back: nothing else has gone up since. */
   canPutBack: boolean;
+  /**
+   * Oops can take a change back (Session 55: the slide, the background, the sound and the rest as they were before
+   * each of the operator's last changes, one at a time). Left out (none) by a state saved before it.
+   */
+  canOops?: boolean;
   /** What Next will show, or null when nothing follows. */
   next: UpNext | null;
   /** Put first in line for Next (the arti at its time), or null. */

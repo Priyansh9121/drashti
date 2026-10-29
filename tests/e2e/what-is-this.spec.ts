@@ -11,6 +11,7 @@ import {
   openMoreTools,
   operatorPage,
   operatorReady,
+  slidesOf,
 } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
@@ -23,8 +24,8 @@ import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 /** Open the placeholder playlist and put the kirtan's second slide live. */
 async function showRunning(win: Page) {
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
-  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
-  await win.getByTestId('slide-thumb').nth(1).click();
+  // Its slides are rows under its name (Session 55).
+  await slidesOf(win, KIRTAN).nth(1).click();
   await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 2 of 5`);
 }
 

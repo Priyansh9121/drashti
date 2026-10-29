@@ -26,6 +26,7 @@ import {
   QUIET,
   setUpScreen,
   showExtras,
+  slidesOf,
   windowShowing,
 } from './helpers';
 import {
@@ -146,8 +147,8 @@ const simpleModeButton = (win: Page) =>
 async function running(win: Page) {
   const show = await setUpPlaceholderShow(win);
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
-  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
-  await win.getByTestId('slide-thumb').nth(1).click();
+  // Its slides are rows under its name (Session 55).
+  await slidesOf(win, KIRTAN).nth(1).click();
   await win.getByTestId('timers').getByRole('button', { name: 'Start' }).click();
   await win.getByTestId('messages').getByRole('textbox', { name: 'plate' }).fill('12');
   await win.getByTestId('messages').getByRole('button', { name: 'Show' }).click();
@@ -224,17 +225,18 @@ test('the operator window and its panels', async () => {
   await shot(win, 'operator-1280x720');
 
   await win.setViewportSize({ width: 1600, height: 900 });
-  await win.getByRole('button', { name: 'Edit words' }).click();
-  await expect(win.getByTestId('words-text')).not.toHaveValue('Loading…');
-  await shot(win, 'edit-words');
-  // Closing with the words changed asks first; the kirtan is on the screens, and the question says
-  // saving changes them at once (Session 25).
+  // The words editor: New… from words (Session 55: the open presentation's Edit words went). Closing with words
+  // typed asks first (Session 25).
+  await openLibrary(win);
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'New…' }).click();
   const words = win.getByTestId('words-text');
-  await words.fill(`${await words.inputValue()}\nPlaceholder line added`);
+  await words.fill('Placeholder line\n\nPlaceholder line added');
+  await shot(win, 'new-from-words');
   await win.keyboard.press('Escape');
   await expect(win.getByTestId('keep-changes')).toBeVisible();
   await shot(win, 'keep-changes');
   await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await closeLibrary(win);
 
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win.getByTestId('sound-output')).toBeVisible();
@@ -328,10 +330,8 @@ test('the open playlist in the middle, its items as cards of every kind (Session
     },
   );
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Ravi Sabha' }).click();
-  await win.getByTestId('playlist-item').filter({ hasText: 'Placeholder Katha' }).click();
-  await expect(win.getByTestId('slide-thumb')).toHaveCount(3);
-  // The playlist as tall as it goes, so every card shows.
-  await win.getByRole('separator', { name: 'Resize the playlist and the slides' }).press('End');
+  // Its slides are rows under its name (Session 55): the playlist has the whole middle.
+  await expect(slidesOf(win, 'Placeholder Katha')).toHaveCount(3);
   await win.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
   });
@@ -392,25 +392,7 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
     .getByRole('button', { name: /^Sample kirtan/ })
     .click();
 
-  // The Kirtan dialog, with details filled in.
-  await win.getByTestId('kirtan-button').click();
-  const details = win.getByTestId('kirtan-details');
-  await details.getByTestId('kirtan-kavi').fill('Placeholder Kavi');
-  await details.getByTestId('kirtan-raag').fill('Placeholder Raag');
-  await details.getByTestId('kirtan-occasion').fill('Diwali');
-  await details.getByTestId('kirtan-occasion').press('Enter');
-  await shot(win, 'kirtan-dialog');
-  await win.getByTestId('kirtan-done').click();
-
-  // Edit words, by language: every language side by side, one missing.
-  await win.getByRole('button', { name: 'Edit words' }).click();
-  const editor = win.getByTestId('words-editor');
-  await editor.getByTestId('words-mode-tab-tracks').click();
-  await editor.getByTestId('track-slide').nth(1).getByRole('textbox', { name: 'Slide 2, English' }).fill('');
-  await shot(win, 'words-by-language');
-  // A line was emptied: closing asks first (Session 25).
-  await editor.getByRole('button', { name: 'Cancel' }).click();
-  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  // Session 55 (Part 12): the Kirtan dialog and Edit words by language went; their pictures with them.
 
   // Screens: two groups, each with its own languages; and an output showing them.
   await win.evaluate(async () => {
@@ -1682,9 +1664,8 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
     await expect(items).toHaveCount(2, { timeout: 60_000 });
     await expect(folderRows).toHaveCount(1, { timeout: 60_000 });
     await expect(folderRows).toHaveAttribute('data-path', 'Week 1 › Videos');
-    // Its first deck chosen, as an operator would: its slide in the grid below.
-    await items.first().click();
-    await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toContainText('Katha 2');
+    // Its first deck's slides, rows under its name in the playlist (Session 55: the slides area went).
+    await expect(slidesOf(win, /Katha 2/u).first()).toBeVisible();
     await part(win, 'dropbox-playlist', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
 
     // A smart playlist following a folder of placeholder pictures.
@@ -1706,7 +1687,6 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
     await expect(folderRows).toHaveAttribute('data-path', 'Morning');
     // One click on it puts it up too (Session 54): its card LIVE, as an operator's click leaves it.
     await items.first().click();
-    await expect(win.getByTestId('item-view')).toContainText('Placeholder welcome');
     await expect(items.first()).toHaveAttribute('data-live', 'true');
     await part(win, 'smart-playlist', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
 
@@ -1732,9 +1712,7 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
     await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Lobby pictures' }).click();
     await win.getByTestId('repeat-start').click();
     await expect(win.getByTestId('live-repeating')).toBeVisible();
-    // Its card chosen: the slide grid shows every step.
-    await win.getByTestId('open-playlist').getByTestId('playlist-item').first().click();
-    await expect(win.getByTestId('repeat-note')).toBeVisible();
+    // Its rows in the middle, the step up marked (Session 55: the slides area went).
     await shot(win, 'repeat-slides-1280x720');
     await part(win, 'repeat-slides-live', [
       win.getByTestId('live-repeating'),
@@ -1911,8 +1889,8 @@ test('Lower Thirds: the panel with one up, and its editor finding an animation (
   await operatorReady(win);
   await setUpPlaceholderShow(win);
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
-  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
-  await win.getByTestId('slide-thumb').nth(1).click();
+  // Its slides are rows under its name (Session 55).
+  await slidesOf(win, KIRTAN).nth(1).click();
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');
   await win.evaluate(async (look) => {
     const made = await (globalThis as PageGlobals).drashti.lowerThirds.save(null, {

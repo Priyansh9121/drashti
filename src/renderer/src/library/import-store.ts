@@ -7,6 +7,7 @@ import type {
   ImportResult,
   ImportRunSummary,
 } from '../../../shared/import';
+import type { UsedIn } from '../../../shared/media-removal';
 import { useEngine } from '../engine/engine-store';
 import { usePlaylists } from '../playlists/playlist-store';
 import type { ShownItem } from './library-store';
@@ -46,7 +47,15 @@ interface ImportView {
    * (Session 50: Delete… in the menu of the presentation open there), which then shows nothing chosen;
    * `fromItem`, the playlist's card the middle showed it as (Session 51), for Undo to show again.
    */
-  confirmRemove: (Removal & { live: boolean; closes?: boolean; fromItem?: PresentationCard }) | null;
+  confirmRemove:
+    | (Removal & {
+        live: boolean;
+        closes?: boolean;
+        fromItem?: PresentationCard;
+        /** The playlists that hold them (Session 55, Part 14): the question says which. */
+        playlists?: UsedIn;
+      })
+    | null;
 }
 
 export const useImports = create<ImportView>(() => ({
@@ -150,7 +159,7 @@ export function dismissFinished(): void {
  * Ask before removing the marked presentations (Delete in the list), or `of` (a row's trash button or
  * menu: the marked ones when it is one of them, else that one).
  */
-export function requestRemoval(of?: string): void {
+export function requestRemoval(of?: string): Promise<void> {
   const { marked, selectedId, presentations } = useLibrary.getState();
   const ids =
     of !== undefined && !marked.includes(of)
@@ -160,10 +169,23 @@ export function requestRemoval(of?: string): void {
         : selectedId
           ? [selectedId]
           : [];
-  if (ids.length === 0) return;
+  if (ids.length === 0) return Promise.resolve();
   const names = ids.map((id) => presentations.find((p) => p.id === id)?.name ?? '').filter((n) => n !== '');
+  return askIfUsed({ ids, names, live: false });
+}
+
+/**
+ * Delete asks first only when what it deletes is on the screens or in a playlist, and says which (Session 55, Part
+ * 14, the one right-click menu); otherwise it deletes at once, and Undo brings it back.
+ */
+async function askIfUsed(pending: NonNullable<ImportView['confirmRemove']>): Promise<void> {
+  const usage = await window.drashti.library.presentationUsage(pending.ids).catch(() => null);
   const liveId = useEngine.getState().state?.live.presentationId ?? null;
-  useImports.setState({ confirmRemove: { ids, names, live: liveId !== null && ids.includes(liveId) } });
+  const live = (usage?.live ?? false) || (liveId !== null && pending.ids.includes(liveId));
+  const playlists = usage?.playlists ?? { names: [], count: 0 };
+  useImports.setState({ confirmRemove: { ...pending, live, playlists } });
+  // Used nowhere (or not known: asked, to be safe): deleted at once, with Undo.
+  if (usage !== null && !live && playlists.count === 0) await confirmRemoval();
 }
 
 /**
@@ -171,19 +193,16 @@ export function requestRemoval(of?: string): void {
  * alone, whatever else is marked in the library. The same question and the same Undo as the library's trash;
  * once it is deleted the middle shows nothing chosen, never the next presentation by itself.
  */
-export function requestRemovalOfOpen(id: string, name: string): void {
-  const liveId = useEngine.getState().state?.live.presentationId ?? null;
+export function requestRemovalOfOpen(id: string, name: string): Promise<void> {
   // Open as a playlist's card (Session 51): that card is kept, for Undo.
   const { item } = useLibrary.getState();
   const fromItem = item?.kind === 'presentation' && item.presentationId === id ? item : undefined;
-  useImports.setState({
-    confirmRemove: {
-      ids: [id],
-      names: [name],
-      live: liveId === id,
-      closes: true,
-      ...(fromItem ? { fromItem } : {}),
-    },
+  return askIfUsed({
+    ids: [id],
+    names: [name],
+    live: false,
+    closes: true,
+    ...(fromItem ? { fromItem } : {}),
   });
 }
 

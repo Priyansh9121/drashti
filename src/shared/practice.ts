@@ -59,6 +59,20 @@ export function practiceSlides(): RenderSlide[] {
   }));
 }
 
+/**
+ * A practice card with one line of words (Session 55: a practised playlist's sound or video input, named, as the
+ * practice plays no sound and opens no camera).
+ */
+export function practiceWords(id: string, text: string): RenderSlide {
+  return {
+    id,
+    width: 1920,
+    height: 1080,
+    background: '#000000',
+    elements: [words(`${id}-en`, text, 480, 72, 'en')],
+  };
+}
+
 /** What each practice slide is called in its caption (its group). */
 export const practiceLabels = (): string[] => LINES.map((l) => l.label);
 

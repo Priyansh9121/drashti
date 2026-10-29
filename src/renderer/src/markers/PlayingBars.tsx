@@ -20,7 +20,8 @@ import { barNow, moveCommand, pauseCommand, playCommand, type PlayingRow, playin
  * Each row is its short name and its bar, with its elapsed time and time left, its start and end points and its
  * markers as ticks. In Pro Mode a click or a drag moves it (once, on release) and Play or Pause sits before it; every
  * screen, node, the stream, key and fill and the audio player land there in step, as a jump to a marker does (the
- * engine's moveTo, pausePlaying and resumePlaying). Simple Mode shows the bar and its time left, and moves nothing.
+ * engine's moveTo, pausePlaying and resumePlaying). Simple Mode shows the bar and its time left, and moves nothing;
+ * while something is paused it shows Play (Session 55, the owner's answer to question 14), never Pause.
  * The practice show has none.
  */
 
@@ -56,18 +57,18 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
       data-playing={row.which}
       data-paused={playing.paused ? 'true' : undefined}
     >
-      {pro &&
-        (stopped ? (
-          <IconButton
-            icon={Play}
-            label="Play"
-            size="sm"
-            variant="secondary"
-            disabled={!known}
-            data-testid="time-bar-play"
-            onClick={() => void dispatch(playCommand(playing.ref))}
-          />
-        ) : (
+      {(pro ? stopped : playing.paused) ? (
+        <IconButton
+          icon={Play}
+          label="Play"
+          size="sm"
+          variant="secondary"
+          disabled={!known}
+          data-testid="time-bar-play"
+          onClick={() => void dispatch(playCommand(playing.ref))}
+        />
+      ) : (
+        pro && (
           <IconButton
             icon={Pause}
             label="Pause"
@@ -77,7 +78,8 @@ function Row({ row, pro }: { row: PlayingRow; pro: boolean }) {
             data-testid="time-bar-pause"
             onClick={() => void dispatch(pauseCommand(playing.ref))}
           />
-        ))}
+        )
+      )}
       <span className="w-[4.5rem] shrink-0 truncate text-xs text-muted" title={row.short}>
         {row.short}
       </span>

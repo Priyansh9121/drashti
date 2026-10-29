@@ -5,6 +5,7 @@ import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { expectFits } from './fit';
 import {
   closeLibrary,
+  closePlaylistIfOpen,
   killApp,
   launchApp,
   openLibrary,
@@ -148,27 +149,27 @@ test('a video input as a playlist item and as a slide’s background, each up wi
   await expect(card.getByTestId('item-input-missing')).toHaveCount(0);
   expect((await state(win)).layers.background).toBeNull();
 
-  // Its card shows it in the middle, with its own live picture; a click there puts it up as the background, with
-  // its fixed 1 s fade, and takes the slide off as a picture or video item does.
+  // One click on its row puts it up (Session 55, the owner's answer to question 16: the middle has no view of its
+  // own for it any more), as the background, with its fixed 1 s fade, taking the slide off as a picture or video
+  // item does.
   await card.click();
-  const view = win.getByTestId('item-view');
-  await expect(view.getByTestId('item-input')).toBeVisible();
-  await settled(win);
-  await expectNoSeriousA11yIssues(win, 'a video input item in the middle');
-  await view.getByTestId('item-input').click();
   await expect
     .poll(async () => (await state(win)).layers.background)
     .toMatchObject({ kind: 'input', name: INPUT, device: DEVICE, fade: { durationMs: 1000 } });
   await playsOn(hall);
   await playsOn(win, LIVE);
   expect((await state(win)).layers.slide).toBeNull();
-  await expect(view.getByTestId('item-input')).toHaveAttribute('aria-current', 'true');
+  await expect(card).toHaveAttribute('data-live', 'true');
+  await settled(win);
+  await expectNoSeriousA11yIssues(win, 'a video input item up from its row');
 
   // A slide's background cue: chosen in the slide editor among this computer's video inputs.
   await dispatch(win, { type: 'clearAll' });
   await expect(hall.locator('[data-kind="input"]')).toHaveCount(0);
   const words = await makeWords(win, 'Placeholder words', 2);
-  // The library's sheet opens on the tab it had (Media): its presentations.
+  // The library's sheet opens on the tab it had (Media): its presentations, shown in the middle with no playlist
+  // open (Session 55).
+  await closePlaylistIfOpen(win);
   await (await openLibrary(win)).getByTestId('library-tab-presentations').click();
   await win
     .getByTestId('presentation-list')
@@ -265,16 +266,19 @@ test('an input this computer does not have: its item and slide say so plainly, n
   );
   expect(removed.ok).toBe(true);
 
-  // Its card says so plainly, and the middle says why and what to do.
+  // Its row says so plainly, and why and what to do (Session 55: on the row itself; a click on it says why too).
   await openPlaylist(win, 'Placeholder Sunday');
   const card = win.getByTestId('open-playlist').getByTestId('playlist-item').filter({ hasText: INPUT });
   await expect(card.getByTestId('item-input-missing')).toHaveText('Not on this computer');
-  await card.click();
-  const view = win.getByTestId('item-view');
-  await expect(view).toHaveAttribute('data-missing', 'true');
-  await expect(view).toContainText(
-    `No video input called “${INPUT}” is on this computer, so Next goes past it.`,
+  await expect(card.getByTestId('item-input-missing')).toHaveAttribute(
+    'title',
+    new RegExp(`^No video input called “${INPUT}” is on this computer, so Next goes past it\\.`, 'u'),
   );
+  await card.click();
+  await expect(win.getByTestId('operator-notice')).toContainText(
+    `The video input “${INPUT}” is not on this computer`,
+  );
+  expect((await state(win)).layers.background).toBeNull();
   await settled(win);
   await expectNoSeriousA11yIssues(win, 'a video input item not on this computer');
   // Next on it says why, and puts nothing up.
@@ -295,6 +299,7 @@ test('an input this computer does not have: its item and slide say so plainly, n
 
   // A slide naming it: the background stays as it was (here a colour), and LIVE says why.
   await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#203040' } });
+  await closePlaylistIfOpen(win);
   await (await openLibrary(win)).getByTestId('library-tab-presentations').click();
   await win
     .getByTestId('presentation-list')
@@ -452,6 +457,7 @@ test('renaming an input in Media carries its playlist item and the slide naming 
       background: { kind: 'input', name: RENAMED },
     },
   ]);
+  await closePlaylistIfOpen(win);
   await (await openLibrary(win)).getByTestId('library-tab-presentations').click();
   await win
     .getByTestId('presentation-list')

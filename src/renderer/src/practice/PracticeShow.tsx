@@ -1,7 +1,5 @@
-import { useMemo } from 'react';
 import { shortcutText } from '../../../shared/keymap';
 import { useKeymapNow } from '../operator/single-keys-store';
-import { practiceLabels, practiceSlides } from '../../../shared/practice';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { Button } from '../ui/Button';
@@ -22,27 +20,37 @@ import { runPractice, stopPractice, usePractice } from './practice-store';
  */
 
 export function PracticeShow({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
+  // A playlist practised (Session 55, Part 4), or the first start's placeholder slides.
+  const playlist = usePractice((s) => s.source.playlist);
   return (
     <>
       <div
         role="status"
         data-testid="practice-banner"
+        data-playlist={playlist ?? undefined}
         className="flex shrink-0 items-center gap-3 border-b border-line border-l-4 border-l-accent bg-panel-2 px-4 py-2 text-sm"
       >
-        <p className="min-w-0 flex-1">
-          <b>Practice show.</b> Placeholder slides on this screen only: nothing is on the screens, and nothing
-          is saved.
-        </p>
+        {playlist === null ? (
+          <p className="min-w-0 flex-1">
+            <b>Practice show.</b> Placeholder slides on this screen only: nothing is on the screens, and
+            nothing is saved.
+          </p>
+        ) : (
+          <p className="min-w-0 flex-1">
+            <b>Practising “{playlist}”.</b> In this window only: nothing goes on the screens, the phones or
+            the stream, and nothing is saved.
+          </p>
+        )}
         <Button
           size="sm"
           icon={LogOut}
           data-testid="practice-leave"
           onClick={() => {
             stopPractice();
-            openWelcome();
+            if (playlist === null) openWelcome();
           }}
         >
-          Leave the practice show
+          {playlist === null ? 'Leave the practice show' : 'Stop practising'}
         </Button>
       </div>
       <Columns
@@ -90,15 +98,16 @@ function TryTheKeys({ platform }: { platform: string }) {
   );
 }
 
-/** The placeholder slides, as the slide grid shows a presentation's. */
+/** The placeholder slides, or the practised playlist's rows, as thumbnails to put up. */
 function PracticeSlides() {
-  const slides = useMemo(() => practiceSlides(), []);
-  const labels = useMemo(() => practiceLabels(), []);
+  const slides = usePractice((s) => s.source.slides);
+  const labels = usePractice((s) => s.source.labels);
+  const playlist = usePractice((s) => s.source.playlist);
   const live = usePractice((s) => s.practice.index);
   return (
     <section aria-labelledby="practice-slides" className="flex min-h-0 flex-1 flex-col">
       <h2 id="practice-slides" className="border-b border-line px-4 py-3 text-lg font-bold">
-        Practice slides
+        {playlist === null ? 'Practice slides' : `Practising “${playlist}”`}
       </h2>
       <ol
         className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] content-start gap-3 overflow-y-auto p-4"

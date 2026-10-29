@@ -7,7 +7,7 @@ import { REPEAT_REFUSES } from '../../src/shared/repeat';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { holdStill, importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { holdStill, importAndGetIds, launchApp, operatorPage, operatorReady, slidesOf } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -142,12 +142,10 @@ test('Repeat Slides goes round by itself; Esc and Stop leave its slide up; black
   await win.getByTestId('live-repeat-stop').click();
   await expect.poll(async () => (await snapshot(win)).repeat).toBeNull();
 
-  // A slide of its own put up starts it from there: its card shows its steps, a click on one goes.
-  await win.getByTestId('open-playlist').getByTestId('playlist-item').nth(1).click();
-  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', `repeat:${playlistId}`);
-  await expect(win.getByTestId('repeat-note')).toBeVisible();
-  await expect(win.getByTestId('slide-grid').getByTestId('slide-thumb')).toHaveCount(4);
-  await win.getByTestId('slide-grid').getByTestId('slide-thumb').nth(2).click();
+  // A slide of its own put up starts it from there (Session 55: a presentation's steps are rows under its name in the
+  // playlist, a picture a row of its own): a click on one goes.
+  await expect(win.getByTestId('open-playlist').getByTestId('slide-thumb')).toHaveCount(2);
+  await slidesOf(win, 'Placeholder Repeat Words').nth(1).click();
   await expect.poll(() => stepUp(win)).toMatch(/\/1$/u);
   expect((await snapshot(win)).repeat?.playlistId).toBe(playlistId);
 

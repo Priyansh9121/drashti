@@ -179,6 +179,9 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
       if (problem) useNotice.setState({ text: problem });
       return;
     }
+    // Oops (Session 55): what was up before the last change, one step a press.
+    case 'oops':
+      return dispatch({ type: 'oops' });
     // Esc does nothing when nothing is repeating.
     case 'stopRepeat':
       if (useEngine.getState().state?.repeat) return dispatch({ type: 'stopRepeat' });
@@ -190,7 +193,7 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
       await window.drashti.screens.uncoverOperator();
       return;
     case 'removeSelected':
-      requestRemoval();
+      await requestRemoval();
       return;
     // The playlist item that has the keyboard moves itself (PlaylistPanel).
     case 'moveItemUp':

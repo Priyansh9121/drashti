@@ -1,3 +1,5 @@
+import type { StartMarks } from '../shared/start-marks';
+
 /*
  * The start's phase lines (Sessions 31–36, PERF-1): how long after this process began each part of the
  * start was ready, in the log ("Start: library open at 812 ms"): the main process running, the library
@@ -15,4 +17,14 @@ export const processStartedAt = (): number => Date.now() - process.uptime() * 10
 export function phaseLine(what: string, at?: number): string {
   const ms = at === undefined ? sinceStart() : Math.round(at - processStartedAt());
   return `Start: ${what} at ${String(ms)} ms`;
+}
+
+/**
+ * The operator window's own start in one phase line (question 36 of Session 54): when it drew its controls, and when
+ * it first knew each thing it waits for before it draws them (`began`: when this process began, on this computer's
+ * clock).
+ */
+export function windowStartLine(marks: StartMarks, began: number = processStartedAt()): string {
+  const ms = (at: number) => `${String(Math.round(at - began))} ms`;
+  return `Start: operator window drawn at ${ms(marks.drawn)} (its access known at ${ms(marks.access)}, its mode at ${ms(marks.mode)}, its single-letter keys at ${ms(marks.keys)}, its version at ${ms(marks.info)})`;
 }

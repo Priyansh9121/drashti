@@ -20,9 +20,9 @@ import {
 /*
  * Words say their language (Sessions 31–36, I18N-4): on the hall's screens and the stage (a slide's words, a
  * message, the ticker, a stage message, notes), on a phone's pages (the remote's notes and search, the
- * announcement box) and in Edit words. Transliteration says what it transliterates (hi-Latn for a Hindi
- * kirtan's), and the outputs and the remote are never machine-translated. Every tag passes axe's valid-lang.
- * Placeholder words only.
+ * announcement box), the library's search and a slide's row in the middle. Transliteration says what it transliterates
+ * (hi-Latn for a Hindi kirtan's), and the outputs and the remote are never machine-translated. Every tag passes axe's
+ * valid-lang. Edit words by language went in Session 55 (Part 12). Placeholder words only.
  */
 
 const HINDI = '[Verse]\nनमूना पंक्ति\nNamūnā paṅkti\n';
@@ -167,7 +167,7 @@ test('the remote’s notes, search and slide say their language, and the remote 
   await app.close();
 });
 
-test('Edit words’ fields and the library’s search say their language (Hindi, and hi-Latn for its transliteration)', async () => {
+test('the library’s search says its language (Hindi), and a Hindi kirtan’s slides come up as rows', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1600, height: 900 });
@@ -178,25 +178,14 @@ test('Edit words’ fields and the library’s search say their language (Hindi,
   await win.getByTestId('library-search').fill('नमूना');
   await expect(win.getByTestId('search-line').first()).toHaveAttribute('lang', 'hi');
   await win.getByTestId('library-search').fill('');
-  // Edit words, by language: each field in its language.
+  // Its slides, as rows in the middle (Session 55: Edit words by language went with the Kirtan dialog).
   await win
     .getByTestId('presentation-list')
     .getByTestId('presentation-row')
     .filter({ hasText: 'Placeholder Hindi kirtan' })
     .click();
-  await win.getByTestId('slide-grid').getByRole('button', { name: 'Edit words' }).click();
-  const editor = win.getByTestId('words-editor');
-  await editor.getByTestId('words-mode-tab-tracks').click();
-  await expect(editor.getByTestId('track-slides')).toBeVisible();
-  await expect(editor.locator('[data-testid="track-cell"][data-lang="hi"] textarea')).toHaveAttribute(
-    'lang',
-    'hi',
-  );
-  await expect(editor.locator('[data-testid="track-cell"][data-lang="translit"] textarea')).toHaveAttribute(
-    'lang',
-    'hi-Latn',
-  );
-  expect(await expectValidLang(win, 'Edit words')).toBeGreaterThan(0);
-  await expectNoSeriousA11yIssues(win, 'Edit words by language');
+  await expect(win.getByTestId('slide-grid').getByTestId('slide-thumb')).toHaveCount(1);
+  expect(await expectValidLang(win, 'the library and the slides’ rows')).toBeGreaterThan(0);
+  await expectNoSeriousA11yIssues(win, 'a Hindi kirtan’s rows');
   await app.close();
 });

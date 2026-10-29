@@ -163,7 +163,8 @@ test('axe at 1280 x 720 on the words editor and the slide editor’s picture pic
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Language test slides/u })
     .click();
-  await win.getByRole('button', { name: 'Edit words' }).click();
+  // The words editor: New… from words (Session 55: the open presentation's Edit words went).
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'New…' }).click();
   await expect(win.getByTestId('words-editor')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the words editor');
   await win.keyboard.press('Escape');

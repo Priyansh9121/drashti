@@ -15,6 +15,8 @@ import { TextInput } from '../ui/Field';
 import { cx } from '../ui/cx';
 import { rowClass } from '../ui/ListRow';
 import { MenuButton } from '../ui/Menu';
+import { fileMenuProps } from '../files/FileMenu';
+import { trackTarget } from '../files/targets';
 import { plural } from '../ui/text';
 import {
   ArrowDown,
@@ -602,6 +604,12 @@ function Tracks({
               data-select-id={t.id}
               data-marked={isMarked ? 'true' : undefined}
               data-playing={isPlaying ? 'true' : undefined}
+              // The one right-click menu (Session 55, Part 14): Delete takes it out of this audio playlist only.
+              {...fileMenuProps(() =>
+                trackTarget({ mediaId: t.mediaId, name: t.name, playable: t.playable }, () => {
+                  takeOut(t.id);
+                }),
+              )}
               className={cx(
                 'flex items-center gap-1 rounded-md border px-1.5 py-1',
                 isMarked ? 'border-second/70 bg-panel-3' : 'border-line bg-panel-2',

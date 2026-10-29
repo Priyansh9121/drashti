@@ -35,7 +35,7 @@ export const PANEL_HELP = {
   slides: {
     title: 'Slides',
     doc: 'operator',
-    text: 'The slides of whatever you clicked, in the order they play. Click a slide to put it on the screens at once, or press Space for the next one. Right-click a slide for New Timer Slide…, and the ⋯ menu beside Edit slides has Delete… for the whole presentation, or Delete from the library… while a playlist item is open; in Edit slides, a video can Show the play bar on the screens.',
+    text: 'With no playlist open, the slides of the presentation chosen in the library, a row each in the order they play. Click a row to put it on the screens at once, press Space for the next one, or type its number and press Enter. Right-click a row for Edit slides…, New Timer Slide… and more; the ⋯ menu beside Edit slides has Rename…, Show in Finder and Delete… for the whole presentation.',
     guide: '**Starting.**',
   },
   live: {
@@ -71,7 +71,7 @@ export const PANEL_HELP = {
   playlist: {
     title: 'The open playlist',
     doc: 'operator',
-    text: 'The playlist you opened, its items as cards in the order they play: drag a card to move it, or drop files on it to add them. One click on a video, a picture or a sound puts it on the screens at once, Alt-click (Option-click on a Mac) only shows it below, and Cmd-click (Ctrl-click on Windows) only marks it; a click on a presentation, a deck or a PDF shows its slides below. A video input from Media can be an item too: renaming the input in Media renames its items on this computer, and on a computer with no video input of that name, the card says Not on this computer and Next goes past it.',
+    text: 'The playlist you opened is where things go live: one click on any row puts it on the screens at once (a slide, a picture, a video, a sound or a video input), and a presentation’s, a deck’s or a PDF’s slides are rows under its name, which folds them; type a row’s number and press Enter to put it up. Cmd-click (Ctrl-click on Windows) only marks a row, a drag moves it, and its right-click menu has Delete (out of this playlist only, with Undo), Rename… and more; the playlist’s ⋯ menu has Duplicate and Practise this playlist. A video input from Media can be a row too: on a computer with no video input of that name, it says Not on this computer and Next goes past it.',
     guide: '**Middle:**',
   },
   controls: {
@@ -83,7 +83,7 @@ export const PANEL_HELP = {
   nextback: {
     title: 'Next and Back',
     doc: 'operator',
-    text: 'Next puts up what comes next in the open playlist, as Space or the right arrow does. Back goes to the slide before, as the left arrow does.',
+    text: 'Next puts up what comes next in the open playlist, as Space or the right arrow does; the small picture beside it shows what that is. Back goes to the slide before, as the left arrow does. Oops (F9) puts back what was on the screens before the last change, one step a press.',
     guide: '**Next** or **Back** under LIVE',
   },
   stream: {

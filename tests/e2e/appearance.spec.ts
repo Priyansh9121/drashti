@@ -8,14 +8,15 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import {
   chooseMenuItem,
   launchApp,
-  OWN_APPEARANCE,
   operatorPage,
   operatorReady,
   outputPages,
   outputReady,
+  OWN_APPEARANCE,
+  type PageGlobals,
   relaunchApp,
   setUpScreen,
-  type PageGlobals,
+  slidesOf,
 } from './helpers';
 import { launchNode } from './nodes';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
@@ -182,9 +183,9 @@ for (const id of BUILT_IN.map((a) => a.id)) {
     await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
     await setUpPlaceholderShow(win);
     await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
-    await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
-    await win.getByTestId('slide-thumb').nth(1).click();
-    await expect(win.getByTestId('slide-thumb').nth(1)).toHaveAttribute('aria-current', 'true');
+    // Its slides are rows under its name (Session 55).
+    await slidesOf(win, KIRTAN).nth(1).click();
+    await expect(slidesOf(win, KIRTAN).nth(1)).toHaveAttribute('aria-current', 'true');
     await expectNoSeriousA11yIssues(win, `${id}: Pro Mode in a show`);
     await chooseMenuItem(app, 'keyboard-shortcuts');
     await expect(win.getByTestId('keys-sheet')).toBeVisible();

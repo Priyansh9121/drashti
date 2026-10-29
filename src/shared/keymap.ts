@@ -32,6 +32,7 @@ export type OperatorAction =
   | 'toggleAudience'
   | 'toggleStage'
   | 'stopRepeat'
+  | 'oops'
   | 'openScreens'
   | 'uncoverControls'
   | 'removeSelected'
@@ -89,6 +90,9 @@ export const KEYMAP: readonly KeyBinding[] = [
   // Repeat Slides going round stops, its slide staying up (Session 26d). Not while a dialog, a menu, the
   // slide editor or a field has the keyboard: they keep Esc for themselves.
   { action: 'stopRepeat', keys: ['Escape'], label: 'Stop Repeat Slides' },
+  // Oops (Session 55, the owner's idea B): what was on the screens before the last change comes back, one step a press
+  // (the last 20). F9: a key nothing used, beside the screens' F-keys (F4, F8 and L were freed on purpose: not those).
+  { action: 'oops', keys: ['F9'], label: 'Oops: put back what was up before' },
   { action: 'openScreens', keys: ['Mod+Shift+S'], label: 'Screens' },
   // Turns off any output covering the operator window. Not Ctrl+Shift+Esc (Windows Task Manager)
   // and not plain Esc (too easy to press by accident when a single screen is covered on purpose).
@@ -110,7 +114,10 @@ export const KEYMAP: readonly KeyBinding[] = [
  * action once (a unit test checks), so the sheet never drifts from the keys.
  */
 export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAction[] }[] = [
-  { title: 'Running the show', actions: ['next', 'previous', 'nextItem', 'previousItem', 'stopRepeat'] },
+  {
+    title: 'Running the show',
+    actions: ['next', 'previous', 'nextItem', 'previousItem', 'stopRepeat', 'oops'],
+  },
   {
     title: 'Clearing the screens',
     actions: ['clearAll', 'clearSlide', 'clearBackground', 'clearAudio', 'clearMessages', 'clearTicker'],

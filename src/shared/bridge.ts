@@ -39,7 +39,7 @@ import type { ModeResult, OperatorMode } from './mode';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
-import type { MediaRemovalResult, MediaUsage } from './media-removal';
+import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
@@ -100,6 +100,7 @@ import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
+import type { StartMarks } from './start-marks';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -123,6 +124,8 @@ export interface DrashtiBridge {
     getInfo(): Promise<AppInfo>;
     /** A render error in this window, for the main process's log (Session 23; any of Drashti's windows). */
     renderError(report: RenderErrorReport): Promise<null>;
+    /** The operator window's own start, for the log: when it knew what it waits for, and drew its controls (question 36). */
+    windowStarted(marks: StartMarks): Promise<null>;
     /** Edit > Undo was chosen (operator window). */
     onUndo(listener: () => void): () => void;
     /** Edit > Redo was chosen (operator window). */
@@ -330,6 +333,10 @@ export interface DrashtiBridge {
     /** Remove presentations; restorePresentations brings them back (Undo). */
     removePresentations(ids: string[]): Promise<RemoveResult>;
     restorePresentations(ids: string[]): Promise<RemoveResult>;
+    /** Session 55 (Part 14): the playlists that hold presentations and whether one is up; a rename; Show in Finder. */
+    presentationUsage(ids: string[]): Promise<PresentationUsage>;
+    renamePresentation(id: string, name: string): Promise<RemoveResult>;
+    revealPresentation(id: string): Promise<RevealResult>;
   };
   /** Kirtans: words by language and details; changing them is for the operator window only. */
   kirtans: {
@@ -390,6 +397,8 @@ export interface DrashtiBridge {
     editSlot(itemId: string, slot: { label: string; category: string | null }): Promise<PlaylistResult>;
     /** What an item does to timers when it goes up: start, reset or show each (none to take them away). */
     setTimers(itemId: string, cues: TimerCue[]): Promise<PlaylistResult>;
+    /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
+    duplicate(playlistId: string): Promise<PlaylistResult>;
     /** A slot, at a position or the end. */
     addSlot(
       playlistId: string,
@@ -478,6 +487,9 @@ export interface DrashtiBridge {
     /** Delete media from the library, taking it out of playlists and music; Undo with restore. */
     remove(mediaIds: string[]): Promise<MediaRemovalResult>;
     restore(mediaIds: string[]): Promise<MediaRemovalResult>;
+    /** Session 55 (Part 14): a rename (its playlist rows that had its name follow), and Show in Finder or Explorer. */
+    rename(mediaId: string, name: string): Promise<MediaRemovalResult>;
+    reveal(mediaId: string): Promise<RevealResult>;
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers(mediaId: string): Promise<MediaMarkers>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;

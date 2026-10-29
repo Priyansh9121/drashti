@@ -9,6 +9,7 @@ import { useFirstGroupLanguages } from '../screens/screens-store';
 import { languageView } from '../../../shared/language-view';
 import { deckSlideAt } from '../../../shared/deck-show';
 import { Music } from '../ui/icons';
+import type { UpNext } from '../../../shared/engine/state';
 import { InputPicture, useSmallPicture } from '../video-inputs/InputPicture';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
 
@@ -26,6 +27,48 @@ function NextInput({ name }: { name: string }) {
     <span className="absolute inset-0" data-testid="next-input">
       <InputPicture capture={capture} className="h-full w-full" />
     </span>
+  );
+}
+
+/**
+ * The picture of what Next will put up (Session 55, Part 4: also small beside Next, the owner's idea O): the next
+ * slide with its background, the next picture or video's still, a sound's mark, or a video input live. It fills the
+ * box it is in.
+ */
+export function NextPicture({ next }: { next: UpNext | null }) {
+  // As the live preview: a kirtan's slide in the first audience group's languages.
+  const shownAs = useFirstGroupLanguages('audience');
+  return (
+    <>
+      {next?.kind === 'slide' && (
+        <>
+          {next.input !== undefined && <NextInput name={next.input} />}
+          {next.background && (
+            <MediaStill
+              mediaId={next.background.mediaId}
+              media={next.background.media}
+              fit={next.background.fit}
+            />
+          )}
+          <PlacedInParent content={next.slide} mode="fit" className="absolute inset-0">
+            {/* A deck's slide (Session 54, C2): as the step Next shows ends. */}
+            <SlideView
+              slide={languageView(deckSlideAt(next.slide, next.step ?? 0), shownAs?.languages ?? null)}
+              media="still"
+            />
+          </PlacedInParent>
+        </>
+      )}
+      {next?.kind === 'media' &&
+        (next.media === 'audio' ? (
+          <span className="absolute inset-0 flex items-center justify-center text-muted">
+            <Music size={18} />
+          </span>
+        ) : (
+          <MediaStill mediaId={next.mediaId} media={next.media} />
+        ))}
+      {next?.kind === 'input' && <NextInput name={next.name} />}
+    </>
   );
 }
 

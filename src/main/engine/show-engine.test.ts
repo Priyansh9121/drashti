@@ -120,8 +120,13 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.slide?.slide).toEqual(textSlide('p1s2', 'Two'));
       const patch = transport.last as EnginePatchMessage;
       expect(patch).toMatchObject({ kind: 'patch', version: ENGINE_STATE_VERSION, baseRev: 0, rev: 1 });
-      // What Next shows comes in the same patch.
-      expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual(['layers.slide', 'live', 'next']);
+      // What Next shows comes in the same patch, and (Session 55) that Oops can now take it back.
+      expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual([
+        'canOops',
+        'layers.slide',
+        'live',
+        'next',
+      ]);
       expect(patch.ops.find((o) => o.path[0] === 'live')?.value).toEqual(engine.current.live);
       expect(engine.current.next).toMatchObject({ kind: 'slide', presentationId: 'p1', slideIndex: 2 });
     });
@@ -458,7 +463,9 @@ describe('ShowEngine', () => {
       engine.dispatch(goLive('bg', 0));
       expect(engine.current.layers.background).toEqual({ ...video('A'), startedAt: 2000 });
       const patch = transport.last as EnginePatchMessage;
+      // The first change: Oops can take it back (Session 55).
       expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual([
+        'canOops',
         'layers.background',
         'layers.slide',
         'live',
