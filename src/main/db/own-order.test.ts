@@ -48,7 +48,7 @@ const orderOf = (playlists: PlaylistRepo, list: string, id: string) =>
 
 describe('an item’s own order of slides', () => {
   it('is kept with the item, read back as it was, and played by the engine as "item:<id>"', () => {
-    const { playlists, list, item, slideIds } = library();
+    const { playlists, list, item, slideIds, deck } = library();
     const [s1 = '', s2 = '', s3 = '', s4 = ''] = slideIds;
     const own = { mode: 'slides' as const, slideIds: [s3, s1, s2, s4], known: slideIds };
     expect(playlists.setItemOrder(item, own)).toBe(true);
@@ -58,7 +58,7 @@ describe('an item’s own order of slides', () => {
       arrangementId: `item:${item}`,
     });
     // The item's own order, read for the engine by its id.
-    expect(playlists.ownOrder(item)).toEqual({ presentationId: expect.any(String), order: own });
+    expect(playlists.ownOrder(item)).toEqual({ presentationId: deck, order: own });
     // Back to the presentation's own order: the own order goes.
     expect(playlists.setItemOrder(item, { mode: 'presentation' })).toBe(true);
     expect(orderOf(playlists, list, item)).toEqual({ mode: 'presentation' });
@@ -88,6 +88,27 @@ describe('an item’s own order of slides', () => {
     // Only an own order of slides can be given; a gone item takes nothing.
     expect(playlists.splitItem(item, { mode: 'all' }, alone, 0)).toBeNull();
     expect(playlists.splitItem('missing', rest, alone, 0)).toBeNull();
+  });
+
+  it('takes the slide back into its deck in one write (Undo): the deck plays what it did before, the new item gone', () => {
+    const { playlists, list, item, header, slideIds } = library();
+    const [s1 = '', s2 = '', s3 = '', s4 = ''] = slideIds;
+    const made =
+      playlists.splitItem(
+        item,
+        { mode: 'slides', slideIds: [s1, s3, s4], known: slideIds },
+        { mode: 'slides', slideIds: [s2] },
+        1,
+      ) ?? '';
+    expect(playlists.itemsOf(list).map((i) => i.id)).toEqual([item, made, header]);
+    expect(playlists.undoSplit(item, { mode: 'presentation' }, made)).toBe(true);
+    expect(playlists.itemsOf(list).map((i) => i.id)).toEqual([item, header]);
+    expect(orderOf(playlists, list, item)).toEqual({ mode: 'presentation' });
+    expect(playlists.ownOrder(made)).toBeNull();
+    // Once only; never an item with itself, nor a header.
+    expect(playlists.undoSplit(item, { mode: 'presentation' }, made)).toBe(false);
+    expect(playlists.undoSplit(item, { mode: 'presentation' }, item)).toBe(false);
+    expect(playlists.undoSplit(item, { mode: 'presentation' }, header)).toBe(false);
   });
 
   it('is copied by Duplicate and kept by a template and the playlists made from it', () => {

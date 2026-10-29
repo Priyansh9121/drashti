@@ -4,6 +4,8 @@ import { PlaylistRepo } from '../db/playlists';
 import { DbSlideSource, PresentationRepo } from '../db/presentations';
 import { ShowEngine } from '../engine/show-engine';
 import { RecordingTransport } from '../engine/testing';
+import { repeatPresentationId } from '../../shared/repeat';
+import { RepeatSlides } from './repeat-slides';
 
 /*
  * Session 55, Part 4b: a playlist item's own order of slides, played by the show engine from the library (the slide
@@ -21,7 +23,12 @@ function show() {
   const deck = presentations.insert({
     libraryId,
     name: 'Placeholder deck',
-    groups: [{ name: '', slides: [{ elements: [] }, { elements: [] }, { elements: [] }, { elements: [] }] }],
+    groups: [
+      {
+        name: '',
+        slides: [1, 2, 3, 4].map((n) => ({ elements: [], notes: `Placeholder note ${String(n)}` })),
+      },
+    ],
   });
   const other = presentations.insert({
     libraryId,
@@ -142,6 +149,23 @@ describe('an item’s own order of slides, on the screens', () => {
     expect(source.order(deck, `item:${item}`)?.slides.map((s) => s.id)).toEqual(ids);
     // An item of another presentation's never gives this one its order.
     expect(source.order(deck, 'item:missing')?.slides.map((s) => s.id)).toEqual(ids);
+  });
+
+  it('goes round a Repeat Slides playlist in an item’s own order too', () => {
+    const { playlists, source, deck, ids } = show();
+    const [, s2 = '', , s4 = ''] = ids;
+    const repeat = playlists.createRepeat('Placeholder going round', null) ?? '';
+    const [item = ''] = playlists.addItems(repeat, null, [{ kind: 'presentation', presentationId: deck }]);
+    playlists.setItemOrder(item, { mode: 'slides', slideIds: [s4, s2] });
+    const round = new RepeatSlides({
+      playlist: (id) => playlists.repeatPlaylist(id),
+      items: (id) => playlists.playItems(id),
+      slides: source,
+    });
+    expect(round.order(repeatPresentationId(repeat))?.slides.map((s) => s.notes)).toEqual([
+      'Placeholder note 4',
+      'Placeholder note 2',
+    ]);
   });
 
   it('never changes the library: the presentation plays from the library in its own order', () => {
