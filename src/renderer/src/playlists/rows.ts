@@ -1,6 +1,6 @@
 import type { PresentationDoc } from '../../../shared/library';
 import type { RenderSlide } from '../../../shared/model';
-import { type OrderedSlide, playOrder } from '../../../shared/order';
+import { itemPlayOrder, type OrderedSlide, playOrder } from '../../../shared/order';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
 
 /*
@@ -10,7 +10,9 @@ import type { PlaylistItemInfo } from '../../../shared/playlists';
  * input are a row each; a header and a slot are rows that never go up. One click on a row puts it up (the middle's
  * components do that). Every row that goes up has a number, for jumping to it from the keyboard (operator/jump.ts):
  * folded ones keep theirs, so a number never moves while the playlist stays as it is. With no playlist open, the
- * library's chosen presentation shows as rows the same way (presentationRows).
+ * library's chosen presentation shows as rows the same way (presentationRows). Part 4b: an item's own order of slides
+ * (a slide's row dragged within its deck, or out of it into an item of its own) shows its slides in that order, each
+ * row keeping its name ("<name>_N", N its own place among the presentation's slides) wherever it is dragged.
  */
 
 /** An item whose slides are rows under its name: a presentation, or a Shastra passage. */
@@ -45,7 +47,10 @@ export type MiddleRow =
       /** The item's place in the playlist (-1 for the library's). */
       index: number;
       presentationId: string;
-      /** The order it plays in (an arrangement, or null for every slide), as the engine's goLive takes it. */
+      /**
+       * The order it plays in (an arrangement, null for every slide, or "item:<id>" for its item's own order of
+       * slides), as the engine's goLive takes it.
+       */
       arrangementId: string | null;
       at: OrderedSlide;
       number: number;
@@ -77,12 +82,26 @@ export function firstLine(slide: RenderSlide): string {
   return '';
 }
 
-/** The order a playlist item plays its presentation in (the item's own, else the presentation's). */
-export function itemArrangement(item: GroupItem, doc: PresentationDoc): string | null {
-  if (item.kind === 'shastra') return doc.selectedArrangementId;
-  if (item.order.mode === 'all') return null;
-  if (item.order.mode === 'arrangement') return item.order.arrangementId;
-  return doc.selectedArrangementId;
+/**
+ * The slides a playlist item plays, in its order, as the engine plays them: the item's own (an arrangement, every
+ * slide, or this playlist's own order of its slides, Part 4b), else the presentation's.
+ */
+export function itemOrder(
+  item: GroupItem,
+  doc: PresentationDoc,
+): { arrangementId: string | null; slides: OrderedSlide[] } {
+  return item.kind === 'shastra'
+    ? playOrder(doc, doc.selectedArrangementId)
+    : itemPlayOrder(doc, item.order, item.id);
+}
+
+/**
+ * A slide's row name, "<name>_N": N its place in the order it plays, or, in an item's own order of slides (Part 4b),
+ * its own place among the presentation's slides, so a slide's row keeps its name wherever it is dragged.
+ */
+export function rowName(name: string, item: GroupItem | null, at: OrderedSlide): string {
+  const own = item?.kind === 'presentation' && item.order.mode === 'slides';
+  return slideName(name, own ? at.slide.index : at.position);
 }
 
 /** The library's id of what a group row's slides come from. */
@@ -104,12 +123,11 @@ function slideRows(
   doc: PresentationDoc,
   item: GroupItem | null,
   index: number,
-  arrangementId: string | null,
+  order: { arrangementId: string | null; slides: OrderedSlide[] },
   name: string,
   from: number,
   hidden: boolean,
 ): Extract<MiddleRow, { kind: 'slide' }>[] {
-  const order = playOrder(doc, arrangementId);
   return order.slides.map((at, i) => {
     const before = order.slides[i - 1];
     return {
@@ -121,7 +139,7 @@ function slideRows(
       arrangementId: order.arrangementId,
       at,
       number: from + i,
-      label: slideName(name, at.position),
+      label: rowName(name, item, at),
       line: firstLine(at.slide.slide),
       firstOfRun: before?.group.id !== at.group.id || before.occurrence !== at.occurrence,
       hidden,
@@ -151,7 +169,7 @@ export function playlistRows(
     const read: RowsRead = gone ? 'gone' : doc === undefined ? 'loading' : doc === null ? 'unread' : 'ready';
     const isFolded = folded.has(item.id);
     const slides = doc
-      ? slideRows(doc, item, index, itemArrangement(item, doc), groupName(item, doc), next, isFolded)
+      ? slideRows(doc, item, index, itemOrder(item, doc), groupName(item, doc), next, isFolded)
       : [];
     next += slides.length;
     rows.push({
@@ -221,7 +239,7 @@ export function repeatRows(
 
 /** The library's chosen presentation as rows, with no playlist open: a slide a row, numbered from 1. */
 export function presentationRows(doc: PresentationDoc, arrangementId: string | null): MiddleRow[] {
-  return slideRows(doc, null, -1, arrangementId, doc.name, 1, false);
+  return slideRows(doc, null, -1, playOrder(doc, arrangementId), doc.name, 1, false);
 }
 
 /** Every numbered row, in order: what a typed number puts up. */

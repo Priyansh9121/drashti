@@ -52,7 +52,7 @@ import {
 import { elapsedAt, type TimerDefinition, type TimerRun, zeroAt } from '../../shared/timers';
 import { BUILT_IN_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } from '../../shared/timer-slides';
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
-import { remapPosition } from '../../shared/order';
+import { ownOrderItem, remapPosition } from '../../shared/order';
 import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '../../shared/stage-layouts';
 import { type SoundState, soundFilesOf } from '../../shared/sound';
 import type { EngineAction } from './actions';
@@ -366,6 +366,15 @@ interface Step {
 
 /** How many Nexts Back can undo, one after another. */
 const MAX_STEPS = 50;
+
+/** Where a slide is in an order: its place nearest `near` (it can come up more than once); 0 when it is not there. */
+function nearestSlide(slides: readonly PlayedSlide[], slideId: string, near: number): number {
+  let best = -1;
+  slides.forEach((s, i) => {
+    if (s.id === slideId && (best < 0 || Math.abs(i - near) < Math.abs(best - near))) best = i;
+  });
+  return Math.max(0, best);
+}
 
 export class ShowEngine {
   private state: EngineState = initialEngineState();
@@ -803,22 +812,77 @@ export class ShowEngine {
    * playlist item's). The live position follows the new order, with the same
    * slide on screen: Next then carries on in the new order. Leave out the
    * presentation to check whatever is live.
+   *
+   * Session 55, Part 4b: by the slide on the screens, so a playlist's own order of slides (read anew, never as it
+   * was) moves the live place with it; and when the live item no longer holds that slide (its row dragged out of its
+   * deck into an item of its own, or that item taken back by Undo), the live place goes with it into the item of the
+   * playlist that holds it now.
    */
   reorderLive(presentationId?: string): CommandResult {
     const live = this.state.live;
     if (live.presentationId === null || live.slideIndex === null) return this.unchanged();
     if (presentationId !== undefined && live.presentationId !== presentationId) return this.unchanged();
-    const before = this.source.order(live.presentationId, live.arrangementId);
+    const shown = this.state.layers.slide;
+    const shownId = shown?.presentationId === live.presentationId && !shown.timer ? shown.slide.id : null;
+    const fromItem = live.playlist ? this.checkItem(live.playlist) : null;
+    const inItem =
+      fromItem?.item.kind === 'presentation' && fromItem.item.presentationId === live.presentationId;
     const after = this.source.order(live.presentationId, this.itemArrangement(live));
+    if (live.playlist && shownId !== null && (!inItem || !after?.slides.some((s) => s.id === shownId))) {
+      const moved = this.followShown(live.playlist, shownId);
+      if (moved) return this.apply([moved]);
+    }
+    const before = this.source.order(live.presentationId, live.arrangementId);
     if (!before || !after) return this.unchanged();
-    const slideIndex = remapPosition(
-      before.slides.map((s) => ({ slide: s })),
-      after.slides.map((s) => ({ slide: s })),
-      live.slideIndex,
-    );
+    const slideIndex =
+      shownId !== null && after.slides.some((s) => s.id === shownId)
+        ? nearestSlide(after.slides, shownId, live.slideIndex)
+        : remapPosition(
+            before.slides.map((s) => ({ slide: s })),
+            after.slides.map((s) => ({ slide: s })),
+            live.slideIndex,
+          );
     return this.apply([
       { type: 'live/move', slideIndex, slideCount: after.slides.length, arrangementId: after.arrangementId },
     ]);
+  }
+
+  /**
+   * The item of the live playlist that holds the slide on the screens now, when the live item does not (Session 55,
+   * Part 4b): only where a playlist's own order of slides is involved (the live order, or that item's), so taking an
+   * ordinary item out of a playlist never moves the live place into another. The one nearest the live item; null when
+   * there is none.
+   */
+  private followShown(cursor: PlaylistCursor, shownId: string): EngineAction | null {
+    const live = this.state.live;
+    const items = this.playlists.items(cursor.playlistId);
+    if (!items || live.presentationId === null || live.slideIndex === null) return null;
+    const from = Math.max(
+      0,
+      items.findIndex((i) => i.id === cursor.itemId),
+    );
+    const ownBefore = ownOrderItem(live.arrangementId) !== null;
+    let best: { distance: number; action: EngineAction } | null = null;
+    for (const [index, item] of items.entries()) {
+      if (item.kind !== 'presentation' || item.id === cursor.itemId) continue;
+      if (item.presentationId !== live.presentationId) continue;
+      if (!ownBefore && ownOrderItem(item.arrangementId) === null) continue;
+      const order = this.source.order(item.presentationId, item.arrangementId);
+      if (!order?.slides.some((s) => s.id === shownId)) continue;
+      const distance = Math.abs(index - from);
+      if (best && best.distance <= distance) continue;
+      best = {
+        distance,
+        action: {
+          type: 'live/move',
+          slideIndex: nearestSlide(order.slides, shownId, live.slideIndex),
+          slideCount: order.slides.length,
+          arrangementId: order.arrangementId,
+          playlist: { playlistId: cursor.playlistId, itemId: item.id },
+        },
+      };
+    }
+    return best?.action ?? null;
   }
 
   /**

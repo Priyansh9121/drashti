@@ -400,6 +400,13 @@ export interface DrashtiBridge {
     setTimers(itemId: string, cues: TimerCue[]): Promise<PlaylistResult>;
     /** "<name> copy" beside it, with its rows in their order (Session 55, Part 4). */
     duplicate(playlistId: string): Promise<PlaylistResult>;
+    /**
+     * A slide's row dragged out of its deck (Session 55, Part 4b): an item of its own at `at` playing `alone`, the item
+     * keeping `rest` (both own orders of slides). Its ids: the new item's.
+     */
+    splitItem(itemId: string, rest: ItemOrder, alone: ItemOrder, at: number): Promise<PlaylistResult>;
+    /** Its Undo: the item plays `order` again, and the item made is taken out. */
+    undoSplit(itemId: string, order: ItemOrder, madeId: string): Promise<PlaylistResult>;
     /** A slot, at a position or the end. */
     addSlot(
       playlistId: string,

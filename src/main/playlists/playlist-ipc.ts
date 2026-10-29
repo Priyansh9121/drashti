@@ -278,6 +278,30 @@ export function registerPlaylistIpc({
         : failed('Only a playlist (not a folder or a template) can be duplicated.');
     }),
   );
+  // A slide's row dragged out of its deck (Session 55, Part 4b): an item of its own, the deck keeping the rest.
+  handle(IPC.playlists.splitItem, (e, itemId, rest, alone, at) =>
+    change(e, () => {
+      const item = playlistIdSchema.safeParse(itemId);
+      const r = itemOrderSchema.safeParse(rest);
+      const a = itemOrderSchema.safeParse(alone);
+      const where = positionSchema.safeParse(at);
+      if (!item.success || !r.success || !a.success || !where.success)
+        return failed('That slide cannot be moved.');
+      const made = repo.splitItem(item.data, r.data, a.data, where.data);
+      return made ? { ok: true, ids: [made] } : failed('That item, or its presentation, no longer exists.');
+    }),
+  );
+  handle(IPC.playlists.undoSplit, (e, itemId, order, madeId) =>
+    change(e, () => {
+      const item = playlistIdSchema.safeParse(itemId);
+      const o = itemOrderSchema.safeParse(order);
+      const made = playlistIdSchema.safeParse(madeId);
+      if (!item.success || !o.success || !made.success) return failed('That cannot be undone.');
+      return repo.undoSplit(item.data, o.data, made.data)
+        ? { ok: true, ids: [item.data, made.data] }
+        : failed('Those items are no longer there.');
+    }),
+  );
   // ---- Repeat Slides (Session 26d) --------------------------------------------------------
   handle(IPC.playlists.createRepeat, (e, parentId) =>
     change(e, () => {

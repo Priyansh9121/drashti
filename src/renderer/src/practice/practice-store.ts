@@ -3,7 +3,6 @@ import type { EngineState } from '../../../shared/engine/state';
 import type { OperatorAction } from '../../../shared/keymap';
 import type { PresentationDoc } from '../../../shared/library';
 import type { RenderSlide } from '../../../shared/model';
-import { playOrder } from '../../../shared/order';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
 import type { PracticeAction, Practice } from '../../../shared/practice';
 import {
@@ -16,7 +15,7 @@ import {
 } from '../../../shared/practice';
 import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
-import { itemArrangement, slideName } from '../playlists/rows';
+import { itemOrder, rowName } from '../playlists/rows';
 
 /*
  * The practice show (Session 26g), in this window only: its own little state (shared/practice.ts),
@@ -98,9 +97,9 @@ export function practiceRows(
       const doc = docs.get(id) ?? null;
       if (!doc) continue;
       const name = item.kind === 'presentation' ? (item.presentationName ?? item.label) : doc.name;
-      for (const o of playOrder(doc, itemArrangement(item, doc)).slides) {
+      for (const o of itemOrder(item, doc).slides) {
         slides.push({ ...o.slide.slide, id: `${item.id}/${String(o.position)}` });
-        labels.push(slideName(name, o.position));
+        labels.push(rowName(name, item, o));
       }
     } else if (item.kind === 'media' && !item.missing) {
       if (item.media === 'audio') slides.push(practiceWords(`${item.id}/card`, `Sound: ${item.label}`));

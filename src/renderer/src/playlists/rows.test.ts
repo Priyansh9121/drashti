@@ -226,6 +226,31 @@ describe('the rows of a playlist', () => {
   });
 });
 
+describe('an item’s own order of slides (Session 55, Part 4b)', () => {
+  it('shows its slides’ rows in that order, each named by its own place in the presentation, played as "item:<id>"', () => {
+    const deck: PlaylistItemInfo = {
+      ...presentation('i-katha', 'katha', 'Placeholder katha'),
+      ...{ order: { mode: 'slides', slideIds: ['k3', 'k1'], known: ['k1', 'k2', 'k3'] } },
+    };
+    // The second page, dragged out of the deck into an item of its own.
+    const alone: PlaylistItemInfo = {
+      ...presentation('i-k2', 'katha', 'Placeholder katha'),
+      ...{ order: { mode: 'slides', slideIds: ['k2'] } },
+    };
+    const rows = playlistRows([deck, alone], DOCS, new Set()).flatMap((r) => (r.kind === 'slide' ? [r] : []));
+    expect(
+      rows.map(
+        (r) =>
+          `${String(r.number)} ${r.label} ${String(r.arrangementId)} ${String(r.at.position)} ${r.item?.id ?? ''}`,
+      ),
+    ).toEqual([
+      '1 Placeholder katha_3 item:i-katha 0 i-katha',
+      '2 Placeholder katha_1 item:i-katha 1 i-katha',
+      '3 Placeholder katha_2 item:i-k2 0 i-k2',
+    ]);
+  });
+});
+
 describe('the library’s chosen presentation, with no playlist open', () => {
   it('shows the same rows: its name, then a slide a row, numbered from 1', () => {
     const rows = presentationRows(WORDS, null);

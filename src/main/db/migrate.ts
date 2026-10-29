@@ -49,6 +49,7 @@ import { up as inputItems } from './migrations/047-input-items';
 import { up as phoneFiles } from './migrations/048-phone-files';
 import { up as deckSlides } from './migrations/049-deck-slides';
 import { up as evenLoudness } from './migrations/051-even-loudness';
+import { up as ownOrder } from './migrations/055-own-order';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -119,6 +120,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 49, name: 'a deck shown as it was', up: deckSlides },
   // 50 is Session 55's Part 6 (the lead puts the numbers together as each Part merges).
   { version: 51, name: 'even loudness', up: evenLoudness },
+  { version: 55, name: 'a playlist’s own order of a presentation’s slides', up: ownOrder },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

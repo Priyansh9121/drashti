@@ -69,6 +69,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.newFromTemplate,
   // Session 55 (Parts 4 and 14): Duplicate, and the one right-click menu's Rename, are Pro Mode's.
   IPC.playlists.duplicate,
+  // Session 55, Part 4b: a slide's row dragged out of its deck (and its Undo), as moving items is.
+  IPC.playlists.splitItem,
+  IPC.playlists.undoSplit,
   IPC.library.renamePresentation,
   IPC.media.rename,
   IPC.playlists.addSlot,

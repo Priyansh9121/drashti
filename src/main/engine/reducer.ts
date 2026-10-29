@@ -130,16 +130,18 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case 'live/move': {
       const { slideIndex, slideCount, arrangementId } = action;
       const live = state.live;
+      const playlist = action.playlist ?? live.playlist;
       if (
         live.slideIndex === slideIndex &&
         live.slideCount === slideCount &&
-        live.arrangementId === arrangementId
+        live.arrangementId === arrangementId &&
+        sameData(live.playlist, playlist)
       )
         return state;
       const slide = state.layers.slide;
       return {
         ...state,
-        live: { ...live, slideIndex, slideCount, arrangementId },
+        live: { ...live, slideIndex, slideCount, arrangementId, playlist },
         layers:
           slide?.presentationId === live.presentationId && slide.slideIndex !== slideIndex
             ? { ...state.layers, slide: { ...slide, slideIndex } }

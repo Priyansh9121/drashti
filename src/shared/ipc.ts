@@ -467,6 +467,9 @@ export const IPC = {
     setTimers: 'playlists:set-timers',
     /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
     duplicate: 'playlists:duplicate',
+    /** A slide's row dragged out of its deck into an item of its own (Session 55, Part 4b), and its Undo. */
+    splitItem: 'playlists:split-item',
+    undoSplit: 'playlists:undo-split',
     /** Smart playlists (Session 26c): how following each one's folder goes. */
     smartViews: 'playlists:smart-views',
     /** A smart playlist from a folder chosen in a dialog. */
@@ -1069,6 +1072,14 @@ export interface InvokeContract {
   };
   [IPC.playlists.setTimers]: { args: [itemId: string, cues: TimerCue[]]; result: PlaylistResult };
   [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
+  [IPC.playlists.splitItem]: {
+    args: [itemId: string, rest: ItemOrder, alone: ItemOrder, at: number];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.undoSplit]: {
+    args: [itemId: string, order: ItemOrder, madeId: string];
+    result: PlaylistResult;
+  };
   [IPC.playlists.smartViews]: { args: []; result: SmartPlaylistView[] };
   [IPC.playlists.createSmart]: { args: []; result: PlaylistResult };
   [IPC.playlists.removeMissing]: { args: [playlistId: string]; result: PlaylistResult };
