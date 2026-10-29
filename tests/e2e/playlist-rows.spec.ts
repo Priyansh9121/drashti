@@ -1,0 +1,368 @@
+import type { ElectronApplication, Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
+import { expectNoSeriousA11yIssues } from './a11y';
+import type { PageGlobals } from './helpers';
+import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
+import { makeTestImage, makeTestVideo } from './test-media';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+
+/*
+ * Session 55, Part 4: the playlist is where things go live, with the whole middle (the slides area under it went).
+ * A PDF's pages and a presentation's slides are rows under its name ("<name>_1"…, a text slide's first line after
+ * it), which folds them; one click on any row puts it up, a video's and a video input's too; each row that goes up
+ * has a number, typed and Enter to put it up; a small picture beside Next says what it puts up; Oops (F9) puts back
+ * what was up before the last change; a playlist is duplicated and practised from its menu; Simple Mode's rows go up
+ * with one tap, and its time bar shows Play while something is paused (question 14). Part 14: the one right-click
+ * menu, its Delete with Undo (from a playlist: out of it only, asked first while it is up; from the library: at once
+ * when nothing uses it, never the owner's file). In CI's window, 1024 × 645, and at 1280 × 720. Placeholder files
+ * only, made here.
+ */
+
+const PDF = 'Placeholder notices';
+const WORDS = 'Placeholder words';
+const VIDEO = 'Placeholder clip';
+const PICTURE = 'Placeholder backdrop';
+
+const state = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
+
+interface Show {
+  app: ElectronApplication;
+  win: Page;
+  playlistId: string;
+  items: { pdf: string; words: string; video: string; picture: string };
+  ids: { pdf: string; words: string; video: string; picture: string };
+  dir: string;
+}
+
+/** A playlist of a PDF of two pages, a presentation of two text slides, a video and a picture, open in CI's window. */
+async function start(size: { width: number; height: number } = CI_WINDOW): Promise<Show> {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, size);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-playlist-rows-'));
+  const pdf = join(dir, `${PDF}.pdf`);
+  writeFileSync(
+    pdf,
+    makeTestPdf([
+      { width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder page one' },
+      { width: 960, height: 540, color: [20, 83, 45], text: 'Placeholder page two' },
+    ]),
+  );
+  const files = [
+    pdf,
+    await makeTestVideo(win, join(dir, `${VIDEO}.webm`), { seconds: 2 }),
+    await makeTestImage(win, join(dir, `${PICTURE}.png`), { color: '#1e3a8a' }),
+  ];
+  const [pdfId = '', videoId = '', pictureId = ''] = await importAndGetIds(win, files);
+  const made = await win.evaluate(
+    async (adding) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const words = await d.library.newFromWords(
+        adding.name,
+        'Placeholder first line\nPlaceholder second line\n\nPlaceholder another slide',
+      );
+      if (!words.ok) throw new Error(words.message);
+      const list = await d.playlists.create('Placeholder rows', null, false);
+      if (!list.ok) throw new Error(list.message);
+      const added = await d.playlists.addItems(list.ids[0] ?? '', null, [
+        { kind: 'presentation', presentationId: adding.pdfId },
+        { kind: 'presentation', presentationId: words.id },
+        { kind: 'media', mediaId: adding.videoId },
+        { kind: 'media', mediaId: adding.pictureId },
+      ]);
+      if (!added.ok) throw new Error(added.message);
+      return { playlistId: list.ids[0] ?? '', items: added.ids, wordsId: words.id };
+    },
+    { pdfId, videoId, pictureId, name: WORDS },
+  );
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder rows' }).click();
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(4);
+  const [pdfItem = '', wordsItem = '', videoItem = '', pictureItem = ''] = made.items;
+  return {
+    app,
+    win,
+    playlistId: made.playlistId,
+    items: { pdf: pdfItem, words: wordsItem, video: videoItem, picture: pictureItem },
+    ids: { pdf: pdfId, words: made.wordsId, video: videoId, picture: pictureId },
+    dir,
+  };
+}
+
+const row = (win: Page, itemId: string) =>
+  win.getByTestId('open-playlist').locator(`[data-item-row="${itemId}"]`);
+const slideRows = (win: Page, itemId: string) => row(win, itemId).getByTestId('slide-thumb');
+
+test('the playlist has the whole middle: a PDF’s and a presentation’s slides are rows under their names, and one click puts one up', async () => {
+  test.setTimeout(180_000);
+  const { app, win, items, ids } = await start();
+  // The slides area under the playlist is gone: the playlist has the whole middle.
+  await expect(win.getByTestId('slide-grid')).toHaveCount(0);
+  // A PDF's pages as rows under its name, "<name>_1" and "<name>_2"; a text slide's row says its first line.
+  await expect(slideRows(win, items.pdf)).toHaveCount(2);
+  await expect(slideRows(win, items.pdf).getByTestId('slide-label')).toHaveText([`${PDF}_1`, `${PDF}_2`]);
+  await expect(slideRows(win, items.words)).toHaveCount(2);
+  await expect(slideRows(win, items.words).first().getByTestId('slide-line')).toHaveText(
+    'Placeholder first line',
+  );
+  await expect(slideRows(win, items.words).nth(1).getByTestId('slide-line')).toHaveText(
+    'Placeholder another slide',
+  );
+  // Numbered for jumping: 1 and 2 the PDF's, 3 and 4 the words', 5 the video, 6 the picture.
+  await expect(slideRows(win, items.pdf).nth(1)).toHaveAttribute('data-row-number', '2');
+  await expect(row(win, items.video).getByTestId('playlist-item')).toHaveAttribute('data-row-number', '5');
+
+  // One click on the PDF's second page: up at once, from the playlist.
+  await slideRows(win, items.pdf).nth(1).click();
+  await expect
+    .poll(async () => (await state(win)).live)
+    .toMatchObject({
+      presentationId: ids.pdf,
+      slideIndex: 1,
+      playlist: { itemId: items.pdf },
+    });
+  await expect(slideRows(win, items.pdf).nth(1)).toHaveAttribute('aria-current', 'true');
+  // Next goes on from the live row, on into the next item's first slide.
+  await win.getByTestId('show-next').click();
+  await expect
+    .poll(async () => (await state(win)).live)
+    .toMatchObject({
+      presentationId: ids.words,
+      slideIndex: 0,
+    });
+  await expect(slideRows(win, items.words).first()).toHaveAttribute('aria-current', 'true');
+  // Next up: a small picture beside Next of what it puts up.
+  await expect(win.getByTestId('next-up')).toHaveAttribute('data-kind', 'slide');
+
+  // The PDF's name folds its slides, and opens them again.
+  const pdfName = row(win, items.pdf).getByTestId('playlist-item');
+  await pdfName.click();
+  await expect(pdfName).toHaveAttribute('aria-expanded', 'false');
+  await expect(slideRows(win, items.pdf)).toHaveCount(0);
+  await pdfName.click();
+  await expect(slideRows(win, items.pdf)).toHaveCount(2);
+
+  // One click on the picture's row: up as the background.
+  await row(win, items.picture).getByTestId('playlist-item').click();
+  await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ mediaId: ids.picture });
+  await expectNoSeriousA11yIssues(win, 'the playlist’s rows, a slide up');
+  await app.close();
+});
+
+test('jump by number: a row’s number and Enter put it up, the number showing as it is typed; Esc takes it away', async () => {
+  test.setTimeout(180_000);
+  const { app, win, items, ids } = await start();
+  await win.locator('body').click({ position: { x: 5, y: 5 } });
+  await win.keyboard.press('4');
+  await expect(win.getByTestId('jump-number')).toHaveText('4');
+  await win.keyboard.press('Enter');
+  await expect
+    .poll(async () => (await state(win)).live)
+    .toMatchObject({
+      presentationId: ids.words,
+      slideIndex: 1,
+      playlist: { itemId: items.words },
+    });
+  await expect(win.getByTestId('jump-box')).toHaveCount(0);
+  // Esc takes a number away: nothing more goes up.
+  await win.keyboard.press('6');
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('jump-box')).toHaveCount(0);
+  await win.keyboard.press('Enter');
+  await letTimePass(win, 400, 'an Enter after Esc puts nothing up');
+  expect((await state(win)).live.presentationId).toBe(ids.words);
+  await app.close();
+});
+
+test('Oops (F9) puts back what was up before the last change, step by step; a finished video starts again on a click', async () => {
+  test.setTimeout(180_000);
+  const { app, win, items, ids } = await start();
+  await expect(win.getByTestId('show-oops')).toBeDisabled();
+  // The video, then by mistake the picture.
+  await row(win, items.video).getByTestId('playlist-item').click();
+  await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ mediaId: ids.video });
+  const video = (await state(win)).layers.background;
+  await row(win, items.picture).getByTestId('playlist-item').click();
+  await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ mediaId: ids.picture });
+  // Oops: the video is back, carrying on from when it first went up.
+  await win.keyboard.press('F9');
+  await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ mediaId: ids.video });
+  expect((await state(win)).layers.background).toMatchObject({
+    startedAt: video?.kind === 'media' ? video.startedAt : -1,
+  });
+  // Its button does the same: before the video, nothing was up.
+  await win.getByTestId('show-oops').click();
+  await expect.poll(async () => (await state(win)).layers.background).toBeNull();
+
+  // The two-second video played to its end: a click on its row starts it again from its start point.
+  await row(win, items.video).getByTestId('playlist-item').click();
+  await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ mediaId: ids.video });
+  const first = (await state(win)).layers.background;
+  await expect
+    .poll(async () => {
+      const bg = (await state(win)).layers.background;
+      return bg?.kind === 'media' ? (bg.durationMs ?? 0) : 0;
+    })
+    .toBeGreaterThan(0);
+  await letTimePass(win, 3000, 'the video plays to its end');
+  await row(win, items.video).getByTestId('playlist-item').click();
+  await expect
+    .poll(async () => {
+      const bg = (await state(win)).layers.background;
+      return bg?.kind === 'media' ? bg.startedAt : null;
+    })
+    .toBeGreaterThan(first?.kind === 'media' ? first.startedAt : 0);
+  await app.close();
+});
+
+test('a playlist duplicated and practised from its menu; the one right-click menu takes a row out of the playlist with Undo', async () => {
+  test.setTimeout(180_000);
+  const { app, win, playlistId, items } = await start();
+  const menu = win.getByTestId('open-playlist').getByRole('button', { name: 'Playlist actions' });
+  // Duplicate: "<name> copy", with its rows in their order.
+  await menu.click();
+  await win.getByRole('menuitem', { name: 'Duplicate' }).click();
+  await expect(win.getByTestId('playlist-node').filter({ hasText: 'Placeholder rows copy' })).toHaveCount(1);
+  const copy = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const node = (await d.playlists.tree()).find((n) => n.name === 'Placeholder rows copy');
+    return node ? (await d.playlists.items(node.id)).map((i) => i.label) : [];
+  });
+  expect(copy).toHaveLength(4);
+
+  // Practise it: in the window only, a banner says so, nothing on the screens.
+  await menu.click();
+  await win.getByRole('menuitem', { name: 'Practise this playlist' }).click();
+  await expect(win.getByTestId('practice-banner')).toContainText('Practising “Placeholder rows”');
+  await win.getByTestId('practice-thumb').nth(1).click();
+  await letTimePass(win, 300, 'a practice slide put up');
+  expect((await state(win)).layers.slide).toBeNull();
+  await win.getByTestId('practice-leave').click();
+  await expect(win.getByTestId('practice-banner')).toHaveCount(0);
+
+  // The one right-click menu on the picture's row: its Delete takes it out of this playlist only, with Undo.
+  await row(win, items.picture).getByTestId('playlist-item').click({ button: 'right' });
+  await expect(win.getByRole('menuitem', { name: 'Picture editor…' })).toBeVisible();
+  await expect(win.getByRole('menuitem', { name: 'Rename…' })).toBeVisible();
+  await expect(
+    win.getByRole('menuitem', { name: process.platform === 'win32' ? 'Show in Explorer' : 'Show in Finder' }),
+  ).toBeVisible();
+  await win.getByRole('menuitem', { name: 'Remove from playlist' }).click();
+  await expect(row(win, items.picture)).toHaveCount(0);
+  await win.getByTestId('undo-removal').getByRole('button', { name: 'Undo' }).click();
+  await expect(row(win, items.picture)).toHaveCount(1);
+  expect(
+    await win.evaluate(
+      async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).length,
+      playlistId,
+    ),
+  ).toBe(4);
+  await app.close();
+});
+
+test('Rename and Delete from the library, each with Undo: Delete at once when nothing uses it, never touching the owner’s file', async () => {
+  test.setTimeout(180_000);
+  const { app, win, dir } = await start();
+  const loose = join(dir, 'Placeholder loose.png');
+  await makeTestImage(win, loose, { color: '#14532d' });
+  const [looseId = ''] = await importAndGetIds(win, [loose]);
+  expect(looseId).not.toBe('');
+  await win.getByTestId('library-button').click();
+  await win.getByTestId('library-tab-media').click();
+  // Rename… (the one right-click menu): the library's name changes, with Undo.
+  await win.getByTestId('media-item').filter({ hasText: 'Placeholder loose' }).click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Rename…' }).click();
+  await win.getByTestId('rename-field').fill('Placeholder renamed');
+  await win.getByTestId('rename-save').click();
+  await expect(win.getByTestId('rename-dialog')).toHaveCount(0);
+  await expect(win.getByTestId('media-item').filter({ hasText: 'Placeholder renamed' })).toHaveCount(1);
+  await win.getByTestId('undo-removal').getByRole('button', { name: 'Undo' }).click();
+  const looseRow = win.getByTestId('media-item').filter({ hasText: 'Placeholder loose' });
+  await expect(looseRow).toHaveCount(1);
+  await looseRow.click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Delete…' }).click();
+  // Used nowhere: no question, gone at once, with Undo.
+  await expect(win.getByTestId('media-remove-confirm')).toHaveCount(0);
+  await expect(looseRow).toHaveCount(0);
+  expect(existsSync(loose)).toBe(true);
+  await win.getByTestId('undo-removal').getByRole('button', { name: 'Undo' }).click();
+  await expect(looseRow).toHaveCount(1);
+  await app.close();
+});
+
+test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Play while something is paused', async () => {
+  test.setTimeout(180_000);
+  const { app, win, items, ids } = await start();
+  // A video up and paused (in Pro Mode here; a phone's Pause the same), then Simple Mode, which refuses Pause itself.
+  await row(win, items.video).getByTestId('playlist-item').click();
+  await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ mediaId: ids.video });
+  await expect
+    .poll(async () => {
+      const bg = (await state(win)).layers.background;
+      return bg?.kind === 'media' ? (bg.durationMs ?? 0) : 0;
+    })
+    .toBeGreaterThan(0);
+  await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.engine.dispatch({
+      type: 'pausePlaying',
+      playing: { layer: 'background' },
+    }),
+  );
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  // Its bar shows Play (the owner's answer to question 14), never Pause.
+  await expect(win.getByTestId('time-bar-play')).toBeVisible();
+  await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
+  await win.getByTestId('time-bar-play').click();
+  await expect
+    .poll(async () => {
+      const bg = (await state(win)).layers.background;
+      return bg?.kind === 'media' ? (bg.seek?.paused ?? false) : null;
+    })
+    .toBe(false);
+  await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
+  await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
+
+  // One tap on a slide's row puts it up, from the playlist.
+  await win
+    .getByTestId('simple-slide')
+    .filter({ hasText: `${PDF}_2` })
+    .click();
+  await expect
+    .poll(async () => (await state(win)).live)
+    .toMatchObject({
+      presentationId: ids.pdf,
+      slideIndex: 1,
+      playlist: { itemId: items.pdf },
+    });
+  await expect(win.getByTestId('simple-slide').filter({ hasText: `${PDF}_2` })).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await app.close();
+});
+
+for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
+  test(`the playlist’s rows and the menu fit at ${String(size.width)} × ${String(size.height)}`, async () => {
+    test.setTimeout(120_000);
+    const { app, win, items } = await start(size);
+    const middle = win.getByTestId('column-middle');
+    const box = await middle.boundingBox();
+    const first = await slideRows(win, items.pdf).first().boundingBox();
+    expect(box && first ? first.x + first.width <= box.x + box.width + 1 : false).toBe(true);
+    // Nothing in the middle runs past its right edge.
+    const over = await middle.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(over).toBeLessThanOrEqual(1);
+    await slideRows(win, items.words).first().click({ button: 'right' });
+    const menuBox = await win.getByRole('menu').boundingBox();
+    expect(menuBox ? menuBox.x >= 0 && menuBox.x + menuBox.width <= size.width : false).toBe(true);
+    expect(menuBox ? menuBox.y + menuBox.height <= size.height : false).toBe(true);
+    await win.keyboard.press('Escape');
+    await app.close();
+  });
+}

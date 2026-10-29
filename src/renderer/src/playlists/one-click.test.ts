@@ -2,14 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import type { PlaylistItemInfo, PlaylistNode } from '../../../shared/playlists';
 import { useLibrary } from '../library/library-store';
-import { clickCard, JUST_SHOWN_MS, meantPress, type CardClick } from './one-click';
+import { useFolded } from './fold-store';
+import { clickCard, clickSlideRow, JUST_SHOWN_MS, meantPress, type CardClick } from './one-click';
 import { usePlaylists } from './playlist-store';
+import type { MiddleRow } from './rows';
 
 /*
- * One click puts it live (Session 54, F2): in Pro Mode's open playlist, a click on a video, a picture or a sound
- * puts it up at once, once; Enter does the same; Cmd/Ctrl-click and Shift-click only mark; everything else opens
- * in the middle as before. The main process is stood in for by a fake that keeps the engine commands sent.
- * Placeholder names only.
+ * One click puts it live (Session 54, F2; Session 55, Part 4: the playlist is where things go live): in Pro Mode's
+ * open playlist, a click on any row puts it up at once, once: a video, a picture, a sound, a video input (the owner's
+ * answer to question 16) and each slide of a presentation, a PDF or a deck, which are rows under its name; a click on
+ * that name folds its slides. Enter does the same; Cmd/Ctrl-click and Shift-click only mark. A file that cannot play
+ * goes to the engine too, which says why. The main process is stood in for by a fake that keeps the engine commands
+ * sent. Placeholder names only.
  */
 
 const sent: EngineCommand[] = [];
@@ -95,6 +99,51 @@ const click = (over: Partial<CardClick> = {}): CardClick => ({
 
 /** The items put up, by their ids, in the order the clicks sent them. */
 const putUp = () => sent.flatMap((c) => (c.type === 'playItem' && c.playlistId === 'P' ? [c.itemId] : []));
+/** The slides put up, as "<presentation> <position> <item>". */
+const slidesUp = () =>
+  sent.flatMap((c) =>
+    c.type === 'goLive' ? [`${c.presentationId} ${String(c.slideIndex)} ${c.playlist?.itemId ?? '-'}`] : [],
+  );
+
+/** A slide row of an item (its slide at `position` in the order it plays in). */
+const slideRow = (item: PlaylistItemInfo, position: number): Extract<MiddleRow, { kind: 'slide' }> => {
+  const presentationId = item.kind === 'presentation' ? item.presentationId : 'repeat:P';
+  return {
+    kind: 'slide',
+    key: `${item.id}/${String(position)}`,
+    item: item.kind === 'presentation' || item.kind === 'shastra' ? item : null,
+    index: ITEMS.indexOf(item),
+    presentationId,
+    arrangementId: null,
+    at: {
+      position,
+      group: { id: 'g', name: '', color: null },
+      occurrence: 0,
+      slide: {
+        id: `${presentationId}-s${String(position)}`,
+        index: position,
+        label: '',
+        notes: '',
+        slide: {
+          id: `${presentationId}-s${String(position)}`,
+          width: 1920,
+          height: 1080,
+          background: null,
+          elements: [],
+        },
+        cues: [],
+        transition: null,
+        autoAdvanceMs: null,
+        macroId: null,
+      },
+    },
+    number: 1,
+    label: `Placeholder_${String(position + 1)}`,
+    line: '',
+    firstOfRun: true,
+    hidden: false,
+  };
+};
 
 beforeEach(() => {
   sent.length = 0;
@@ -119,6 +168,7 @@ beforeEach(() => {
     filling: null,
   });
   useLibrary.setState({ item: null, selectedId: null, doc: null });
+  useFolded.setState({ folded: [] });
 });
 
 describe('one click on a playlist’s card', () => {
@@ -174,14 +224,45 @@ describe('one click on a playlist’s card', () => {
     expect(useLibrary.getState().item?.id).toBe('sound');
   });
 
-  it('opens a presentation, a PDF and a deck, a Shastra passage, a video input and a header in the middle, as before', () => {
-    for (const item of [pdf, deck, words, passage, input, header]) {
+  it('puts a video input up at once too (question 16), once for a double click', () => {
+    clickCard(input, click(), 'darwin');
+    clickCard(input, click({ detail: 2 }), 'darwin');
+    expect(putUp()).toEqual(['input']);
+    expect(useLibrary.getState().item?.id).toBe('input');
+  });
+
+  it('folds a presentation’s, a PDF’s, a deck’s and a passage’s slides under its name, and opens them again; a header is only chosen', () => {
+    for (const item of [pdf, deck, words, passage]) {
       clickCard(item, click(), 'darwin');
-      expect(useLibrary.getState().item?.id).toBe(item.id);
+      expect(useFolded.getState().folded).toContain(item.id);
+      expect(usePlaylists.getState().marked).toEqual([item.id]);
+      // A double click's second click never opens it again.
+      clickCard(item, click({ detail: 2 }), 'darwin');
+      expect(useFolded.getState().folded).toContain(item.id);
+      // Enter on it opens it again.
       clickCard(item, click({ detail: 0 }), 'darwin');
+      expect(useFolded.getState().folded).not.toContain(item.id);
     }
+    clickCard(header, click(), 'darwin');
+    expect(usePlaylists.getState().marked).toEqual(['header']);
     expect(putUp()).toEqual([]);
-    expect(useLibrary.getState().selectedId).toBe('passage-1');
+    expect(slidesUp()).toEqual([]);
+  });
+
+  it('puts a slide up from its row, in the item’s order, from the item, so Next goes on through the playlist', () => {
+    clickSlideRow(slideRow(pdf, 1), click(), 'darwin');
+    expect(slidesUp()).toEqual(['presentation-pdf 1 pdf']);
+    expect(usePlaylists.getState().marked).toEqual(['pdf']);
+    expect(useLibrary.getState().item?.id).toBe('pdf');
+    // A double click: once.
+    clickSlideRow(slideRow(deck, 0), click({ detail: 1 }), 'win32');
+    clickSlideRow(slideRow(deck, 0), click({ detail: 2 }), 'win32');
+    expect(slidesUp()).toEqual(['presentation-pdf 1 pdf', 'presentation-deck 0 deck']);
+    // Cmd-click and Shift-click only choose its item.
+    clickSlideRow(slideRow(words, 0), click({ metaKey: true }), 'darwin');
+    clickSlideRow(slideRow(words, 0), click({ altKey: true }), 'darwin');
+    expect(slidesUp()).toHaveLength(2);
+    expect(usePlaylists.getState().marked).toContain('words');
   });
 
   it('asks what goes in a slot, as before', () => {
@@ -190,23 +271,29 @@ describe('one click on a playlist’s card', () => {
     expect(putUp()).toEqual([]);
   });
 
-  it('never puts up a file that cannot play: missing, or being converted (the middle says why)', () => {
+  it('sends a file that cannot play (missing, or being converted) to the engine too, which says why', () => {
     clickCard(missing, click(), 'darwin');
-    expect(useLibrary.getState().item?.id).toBe('missing');
     clickCard(converting, click(), 'darwin');
-    expect(useLibrary.getState().item?.id).toBe('converting');
-    expect(putUp()).toEqual([]);
+    expect(putUp()).toEqual(['missing', 'converting']);
   });
 
-  it('never puts up a Repeat Slides playlist’s item (its steps go round from the grid) or a template’s', () => {
+  it('in a Repeat Slides playlist starts it going round from the row clicked; a template’s rows never go up', async () => {
     usePlaylists.setState({ tree: [node('P', 'repeat')] });
     clickCard(picture, click(), 'darwin');
-    expect(useLibrary.getState().selectedId).toBe('repeat:P');
+    // A step of a presentation in it: its row names the playlist's own slides (repeat:P), which the engine goes round.
+    clickSlideRow({ ...slideRow(words, 3), presentationId: 'repeat:P' }, click(), 'darwin');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sent.map((c) => c.type)).toEqual(expect.arrayContaining(['startRepeat', 'goLive']));
+    expect(slidesUp()).toEqual(['repeat:P 3 -']);
+    expect(putUp()).toEqual([]);
+    sent.length = 0;
     usePlaylists.setState({ tree: [], templates: [{ ...node('P', 'normal'), template: true }] });
     clickCard(video, click(), 'darwin');
     clickCard(sound, click({ detail: 0 }), 'darwin');
-    expect(usePlaylists.getState().marked).toEqual(['sound']);
-    expect(putUp()).toEqual([]);
+    clickSlideRow(slideRow(pdf, 0), click(), 'darwin');
+    expect(usePlaylists.getState().marked).toEqual(['pdf']);
+    expect(sent).toEqual([]);
   });
 });
 

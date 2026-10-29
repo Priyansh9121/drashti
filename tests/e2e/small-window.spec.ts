@@ -138,6 +138,23 @@ const placeNow = (win: Page, testId: string) =>
     return out;
   }, testId);
 
+/** The open playlist's first row as laid out now (Session 55): inside the middle, above the layer bar. */
+const rowPlaced = (win: Page) =>
+  win.evaluate(() => {
+    const out: string[] = [];
+    const row = document.querySelector('[data-testid="open-playlist"] [data-testid="playlist-item"]');
+    const middle = document.querySelector('[data-testid="column-middle"]');
+    const bar = document.querySelector('[data-testid="layer-bar"]');
+    if (!row || !middle || !bar) return ['the row, the middle or the layer bar is missing'];
+    const r = row.getBoundingClientRect();
+    const m = middle.getBoundingClientRect();
+    const floor = Math.min(m.bottom, bar.getBoundingClientRect().top);
+    if (r.top < m.top - 0.5 || r.bottom > floor + 0.5)
+      out.push('it runs out of the middle, or under the bars');
+    if (r.left < m.left - 0.5 || r.right > m.right + 0.5) out.push('it sticks out of the middle');
+    return out;
+  });
+
 const CLEARS = [
   ['slide', 'F2'],
   ['background', 'F3'],
@@ -183,14 +200,14 @@ test('Start here at 1024 × 645 and 1024 × 768 in an empty library: centred or 
   await app.close();
 });
 
-test('a video input item’s view at 1024 × 645 and 1024 × 768, on this computer and not: centred or scrolling from its top, never under the bars, its picture clickable', async () => {
+test('a video input item’s row at 1024 × 645 and 1024 × 768, on this computer and not: never under the bars, clickable, and saying why when it is not here', async () => {
   test.setTimeout(90_000);
   // Chromium's fake camera (a moving test pattern) stands in for the input: never a real camera's picture.
   const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
-  // A playlist of one video input item (Session 51), shown in the middle under the open playlist.
+  // A playlist of one video input item (Session 51): its row in the playlist, which has the whole middle (Session 55).
   const inputId = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const added = await d.videoInputs.add({ name: 'Placeholder input', device: 'fake_device_0', fit: 'fit' });
@@ -204,38 +221,37 @@ test('a video input item’s view at 1024 × 645 and 1024 × 768, on this comput
     return added.view.inputs[0]?.id ?? '';
   });
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sunday' }).click();
-  await win.getByTestId('open-playlist').getByTestId('playlist-item').click();
-  const view = win.getByTestId('item-view');
-  await expect(view.getByTestId('item-input')).toBeVisible();
+  const row = win.getByTestId('open-playlist').getByTestId('playlist-item');
+  await expect(row).toHaveCount(1);
   const sizes = [CI_WINDOW, { width: 1024, height: 768 }];
   for (const size of sizes) {
     const where = `${String(size.width)} × ${String(size.height)}`;
     await sizeOperatorWindow(app, win, size);
-    await expect
-      .poll(() => placeNow(win, 'input-item-place'), { message: `the input item at ${where}` })
-      .toEqual([]);
-    await expectClickable(view.getByRole('button'), `the input item’s picture at ${where}`);
+    await expect.poll(() => rowPlaced(win), { message: `the input item’s row at ${where}` }).toEqual([]);
+    await expectClickable(row, `the input item’s row at ${where}`);
   }
-  // Not on this computer (removed from Media): why, in the same place.
+  // Not on this computer (removed from Media): its row says so, in the same place.
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.videoInputs.remove(id), inputId);
-  await expect(view).toHaveAttribute('data-missing', 'true');
+  await expect(row.getByTestId('item-input-missing')).toHaveText('Not on this computer');
   for (const size of sizes) {
     const where = `${String(size.width)} × ${String(size.height)}`;
     await sizeOperatorWindow(app, win, size);
     await expect
-      .poll(() => placeNow(win, 'input-item-place'), { message: `the missing input item at ${where}` })
+      .poll(() => rowPlaced(win), { message: `the missing input item’s row at ${where}` })
       .toEqual([]);
+    await expectClickable(row, `the missing input item’s row at ${where}`);
   }
   await app.close();
 });
 
-test('the open playlist’s and the slides’ “What is this?” at 1024 × 645 and 1024 × 768, a playlist open: each shrinks and scrolls in its place, its buttons clickable', async () => {
+test('the open playlist’s and the slides’ “What is this?” at 1024 × 645 and 1024 × 768: each shrinks and scrolls in its place, its buttons clickable', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
-  // A playlist of one placeholder presentation, open in the middle, its slides under it.
+  // A playlist of one placeholder presentation, open in the middle, its slides as rows under its name (Session 55);
+  // the slides' own card is the library's chosen presentation's, with no playlist open.
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const [first] = await d.library.listPresentations();
@@ -247,15 +263,17 @@ test('the open playlist’s and the slides’ “What is this?” at 1024 × 645
     ]);
     if (!added.ok) throw new Error(added.message);
   });
-  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sunday' }).click();
-  await win.getByTestId('open-playlist').getByTestId('playlist-item').click();
-  await expect(win.getByTestId('slide-grid')).toBeVisible();
   const card = win.getByTestId('what-is-this');
-  for (const size of [CI_WINDOW, { width: 1024, height: 768 }]) {
-    const where = `${String(size.width)} × ${String(size.height)}`;
-    await sizeOperatorWindow(app, win, size);
-    // In a 1024 × 645 window the open playlist's ran under the slides' strip, and the slides' under the layer bar.
-    for (const topic of ['playlist', 'slides']) {
+  for (const topic of ['playlist', 'slides']) {
+    if (topic === 'playlist')
+      await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sunday' }).click();
+    else await win.getByTestId('open-playlist').getByTestId('playlist-close').click();
+    await expect(win.getByTestId(topic === 'playlist' ? 'open-playlist' : 'slide-grid')).toBeVisible();
+    for (const size of [CI_WINDOW, { width: 1024, height: 768 }]) {
+      const where = `${String(size.width)} × ${String(size.height)}`;
+      await sizeOperatorWindow(app, win, size);
+      // In a 1024 × 645 window the open playlist's once ran under the slides' strip, and the slides' under the layer
+      // bar.
       await win.getByTestId(`what-is-this-${topic}`).click();
       await expect(card).toBeVisible();
       await expectClickable(card.getByRole('button'), `the ${topic}’s What is this? at ${where}`);

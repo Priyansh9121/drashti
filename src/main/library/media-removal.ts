@@ -1,9 +1,10 @@
 import { rm } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
 import { USED_IN_NAMES } from '../../shared/media-removal';
 import { stillPath } from '../media/media-protocol';
 import { removeCopiesOf } from '../media/sharpened';
+import { isInside } from '../media/contained';
 import type { Db } from '../db/database';
 
 /*
@@ -151,10 +152,13 @@ export class MediaRemoval {
     );
     let gone = 0;
     for (const r of rows) {
-      if (keep.has(r.id) || isAbsolute(r.path)) continue;
+      // Only Drashti's own copy, inside its media folder (Session 55, Part 14): never a file of the owner's, named by
+      // its full path or by one that climbs out of the folder.
+      const own = resolve(mediaDir, r.path);
+      if (keep.has(r.id) || isAbsolute(r.path) || !isInside(resolve(mediaDir), own)) continue;
       forget.run(r.id);
       // Another row with the same bytes would share the file (never, one row per sha256), so it can go.
-      await rm(join(mediaDir, r.path), { force: true }).catch(() => undefined);
+      await rm(own, { force: true }).catch(() => undefined);
       if (r.sha256) {
         await rm(join(mediaDir, stillPath(r.sha256)), { force: true }).catch(() => undefined);
         // Its sharpened copies (Session 26f) go with it.

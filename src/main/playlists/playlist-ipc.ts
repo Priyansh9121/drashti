@@ -267,6 +267,17 @@ export function registerPlaylistIpc({
         : failed('Only a presentation, media or passage item runs timers when it goes up.');
     }),
   );
+  // Duplicate (Session 55, Part 4): "<name> copy" beside it, with its rows in their order.
+  handle(IPC.playlists.duplicate, (e, playlistId) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(playlistId);
+      if (!id.success) return failed('That playlist no longer exists.');
+      const made = repo.duplicate(id.data);
+      return made
+        ? { ok: true, ids: [made] }
+        : failed('Only a playlist (not a folder or a template) can be duplicated.');
+    }),
+  );
   // ---- Repeat Slides (Session 26d) --------------------------------------------------------
   handle(IPC.playlists.createRepeat, (e, parentId) =>
     change(e, () => {

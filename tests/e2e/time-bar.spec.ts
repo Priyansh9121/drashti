@@ -355,11 +355,13 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
   await expect(row(win, 'audio').getByRole('slider')).toBeVisible({ timeout: 15_000 });
   await fits('Pro Mode', win.getByTestId('show-next'));
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Pro Mode');
-  // The sound paused in Pro Mode: Simple Mode can play it on (it has no Play of its own), never pause it again.
+  // The sound paused in Pro Mode: Simple Mode can play it on (its bar shows Play while something is paused, the owner's
+  // answer to question 14), never pause it again.
   await row(win, 'audio').getByRole('button', { name: 'Pause' }).click();
   await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
-  // Simple Mode: the bar and its time left, no elapsed time, no Play or Pause, nothing to move.
+  // Simple Mode: the bar and its time left, no elapsed time, never Pause, nothing to move; Play only on what is paused
+  // (Session 55, question 14).
   await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const bg = row(win, 'background');
@@ -369,7 +371,8 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
   await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-\d+:\d\d$/);
   await expect(bg.getByTestId('time-bar-elapsed')).toHaveCount(0);
   await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
-  await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
+  await expect(bg.getByTestId('time-bar-play')).toHaveCount(0);
+  await expect(row(win, 'audio').getByTestId('time-bar-play')).toBeVisible();
   await fits('Simple Mode', win.getByTestId('simple-buttons'));
   const seek = (await backgroundTiming(win)).seek;
   await clickAlong(win, shows, 0.8);
@@ -393,6 +396,9 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
   });
   await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
   await expect(row(win, 'audio').getByTestId('time-bar-paused')).toHaveCount(0);
+  // Playing again: no Play, and never Pause.
+  await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
+  await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Simple Mode');
   await app.close();
 });

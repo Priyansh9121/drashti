@@ -1,15 +1,17 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, DragEvent, MouseEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, DragEvent, MouseEvent, ReactNode } from 'react';
 import { create } from 'zustand';
 import { formatDuration } from '../../../shared/format';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import type { RenderSlide } from '../../../shared/model';
-import type { PlaylistItemInfo, TimerCue } from '../../../shared/playlists';
+import type { ItemOrder, PlaylistItemInfo, TimerCue } from '../../../shared/playlists';
+import type { PresentationDoc } from '../../../shared/library';
+import { repeatPresentationId } from '../../../shared/repeat';
 import { SMART_MAX_FILES } from '../../../shared/playlists';
 import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-folders';
 import { useEngine } from '../engine/engine-store';
-import { leaveItem, selectPresentation, setLibraryTab, useLibrary } from '../library/library-store';
+import { useLibrary } from '../library/library-store';
 import { CannotPlayBadge, mediaKindIcon, mediaProblem } from '../library/MediaList';
 import { useExtras } from '../library/extras-store';
 import { useLandedInView } from '../links/link-playlist';
@@ -26,14 +28,17 @@ import {
   ArrowDown,
   ArrowUp,
   BookOpen,
-  Bookmark,
   BookTemplate,
+  ChevronDown,
+  ChevronRight,
+  CopyPlus,
   FilePlus,
   Folder,
   FolderSync,
   Link2,
+  Play,
   Repeat2,
-  SlidersHorizontal,
+  RotateCcw,
   ListMusic,
   ListPlus,
   MoreHorizontal,
@@ -45,8 +50,16 @@ import {
   Video,
   X,
 } from '../ui/icons';
-import type { MenuEntry, MenuPlace } from '../ui/Menu';
-import { isMenuKey, Menu, MenuButton, menuBelow, menuPlace } from '../ui/Menu';
+import { MenuButton } from '../ui/Menu';
+import { Field, Select } from '../ui/Field';
+import { fileMenuProps } from '../files/FileMenu';
+import { playlistRow, slideRowTarget } from '../files/targets';
+import { setJumpRows } from '../operator/jump';
+import { practisePlaylist } from '../practice/practice-store';
+import { useDocs, readDocAgain, useWantDocs } from './docs-store';
+import { useFolded } from './fold-store';
+import { groupDocId, groupName, type MiddleRow, playlistRows, repeatRows } from './rows';
+import { SlideRow } from './SlideRow';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
 import { RowDelete } from '../ui/RowDelete';
@@ -57,17 +70,17 @@ import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSele
 import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, useDragging } from './drag';
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
-import { markersMedia, openMarkers } from '../markers/MarkersDialog';
-import { openPictureEditor } from '../pictures/PictureEditor';
+import { openSlideEditor } from '../editor/editor-store';
 import { RepeatBar } from './RepeatBar';
 import { FolderCrumbs } from './PlaylistFolders';
 import { PlaylistsUnread } from './PlaylistsUnread';
-import { clickCard, meantPress } from './one-click';
+import { type CardClick, clickCard, clickSlideRow, meantPress } from './one-click';
 import {
   addFromLibrary,
   addHeader,
   clickItem,
   closePlaylist,
+  duplicatePlaylist,
   fillPlaceholder,
   importIntoPlaylist,
   itemName,
@@ -75,11 +88,12 @@ import {
   moveItemBy,
   moveItems,
   newFromTemplate,
-  removeMarkedItems,
   removeMissingItems,
   renameHeader,
   renameNode,
+  requestRemoveMarkedItems,
   requestRemoveNode,
+  setItemOrder,
   showsFolders,
   startRenaming,
   stopRenaming,
@@ -94,6 +108,12 @@ import {
  * each with a picture, its name, what it is and its length or slide count.
  * Drag a card to move it (Up and Down, and Alt+↑ ↓, as before); drop library
  * rows or files anywhere on it.
+ *
+ * Session 55 (Part 4): the playlist is where things go live, and has the whole middle (the slides area under it went).
+ * A presentation's, a PDF's or a deck's slides are rows under its name, "<name>_1" to "<name>_N", which its name
+ * folds; one click on any row puts it up (playlists/one-click.ts), and every row that goes up has a number for
+ * jumping to it from the keyboard (operator/jump.ts). Each row has the one right-click menu (Part 14,
+ * files/FileMenu.tsx); its Delete takes it out of this playlist only, asking first when it is up.
  */
 
 // ---- the open playlist's items ----------------------------------------------------------
@@ -192,8 +212,33 @@ function ItemPicture({ item }: { item: PlaylistItemInfo }) {
   );
 }
 
+/** A row's number, for jumping to it (Session 55): blank where the row never goes up. */
+function RowNumber({ number }: { number: number | null }) {
+  return (
+    <span
+      className="w-6 shrink-0 text-right text-xs text-muted tabular-nums"
+      data-testid={number === null ? undefined : 'row-number'}
+      aria-hidden="true"
+    >
+      {number ?? ''}
+    </span>
+  );
+}
+
 /** An item's card: its picture, its name, what it is and its length or slide count (Session 26a). */
-function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
+function ItemBody({
+  item,
+  live,
+  number = null,
+  fold = null,
+}: {
+  item: PlaylistItemInfo;
+  live: boolean;
+  /** Its number for jumping to it (a picture's, a video's, a sound's, a video input's). */
+  number?: number | null;
+  /** A presentation's name row (Session 55): whether its slides are folded under it. */
+  fold?: boolean | null;
+}) {
   const liveBadge = live ? <LiveBadge /> : null;
   if (item.kind === 'header')
     return (
@@ -218,8 +263,16 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
   const name = item.kind === 'presentation' ? (item.presentationName ?? item.label) : item.label;
   const size = sizeWord(item);
   const problem = item.kind === 'media' ? mediaProblem(item) : null;
+  const Chevron = fold ? ChevronRight : ChevronDown;
   return (
     <span className="flex items-center gap-2.5">
+      {fold === null ? (
+        <RowNumber number={number} />
+      ) : (
+        <span className="flex w-6 shrink-0 justify-end text-muted" data-testid="fold-mark" aria-hidden="true">
+          <Chevron size={16} />
+        </span>
+      )}
       <ItemPicture item={item} />
       <span className="min-w-0 flex-1">
         <span
@@ -345,88 +398,6 @@ function SmartBar({ playlistId }: { playlistId: string }) {
   );
 }
 
-function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
-  const remove = {
-    label: 'Remove from playlist',
-    icon: Trash2,
-    danger: true,
-    separatorBefore: true,
-    onSelect: () => {
-      if (!usePlaylists.getState().marked.includes(item.id))
-        clickItem(item.id, { toggle: false, range: false });
-      void removeMarkedItems();
-    },
-  };
-  if (item.kind === 'header')
-    return [{ label: 'Rename…', icon: Pencil, onSelect: () => startRenaming(item.id) }, remove];
-  // A slot (not a placeholder an import left): its name and where filling it starts.
-  if (item.kind === 'placeholder' && item.hint === null)
-    return [
-      {
-        label: 'Edit slot…',
-        icon: Pencil,
-        onSelect: () => {
-          usePlaylists.setState({ editingSlot: item });
-        },
-      },
-      remove,
-    ];
-  const timers: MenuEntry[] =
-    item.kind === 'presentation' || item.kind === 'media' || item.kind === 'shastra' || item.kind === 'input'
-      ? [
-          {
-            label: 'Timers when it goes up…',
-            icon: Timer,
-            onSelect: () => {
-              usePlaylists.setState({ cuesFor: item });
-            },
-          },
-        ]
-      : [];
-  // A picture's zoom and enhancements (Session 26e).
-  if (item.kind === 'media' && item.media === 'image' && !item.missing && item.unplayable === null)
-    return [
-      {
-        label: 'Picture editor…',
-        icon: SlidersHorizontal,
-        onSelect: () => {
-          openPictureEditor({ id: item.mediaId, name: item.label });
-        },
-      },
-      ...timers,
-      remove,
-    ];
-  // A video's or sound's start, end and markers, on its timeline (Session 26e).
-  if (item.kind === 'media' && item.media !== 'image' && !item.missing && item.unplayable === null)
-    return [
-      {
-        label: 'Start, end and markers…',
-        icon: Bookmark,
-        onSelect: () => {
-          openMarkers(markersMedia(item));
-        },
-      },
-      ...timers,
-      remove,
-    ];
-  if (item.kind === 'presentation' && item.presentationName !== null)
-    return [
-      {
-        label: 'Show in the library',
-        icon: Presentation,
-        onSelect: () => {
-          leaveItem();
-          // The library's sheet opens on it (Session 44).
-          setLibraryTab('presentations');
-          void selectPresentation(item.presentationId);
-        },
-      },
-      ...timers,
-      remove,
-    ];
-  return [...timers, remove];
-}
-
 /** A line under an item that runs timer cues: what it does to which timers. */
 function CuesLine({ cues }: { cues: readonly TimerCue[] }) {
   const timers = useEngine((s) => s.state?.timers);
@@ -470,6 +441,7 @@ function MoveButtons({
   last,
   hidden,
   onMove,
+  before = null,
 }: {
   name: string;
   first: boolean;
@@ -477,6 +449,8 @@ function MoveButtons({
   /** While a drag is under way: hidden, keeping its room (drag.ts). */
   hidden: boolean;
   onMove: (step: -1 | 1, on: 'up' | 'down') => void;
+  /** Before Up and Down on their line: a presentation's order (Session 55). */
+  before?: ReactNode;
 }) {
   // When these appeared: a click on them straight after is a double click's second, on the card they came
   // under (Session 54's review), and moves nothing.
@@ -492,8 +466,9 @@ function MoveButtons({
       role="group"
       aria-label={`Move “${name}”`}
       data-testid="playlist-item-moves"
-      className={cx('mt-1 mb-1 flex justify-end gap-1', hidden && 'invisible')}
+      className={cx('mt-1 mb-1 flex flex-wrap items-center justify-end gap-1', hidden && 'invisible')}
     >
+      {before}
       <Button
         size="sm"
         icon={ArrowUp}
@@ -520,6 +495,70 @@ function MoveButtons({
       </Button>
     </span>
   );
+}
+
+const orderValue = (order: ItemOrder) =>
+  order.mode === 'arrangement' ? `a:${order.arrangementId}` : order.mode;
+
+/**
+ * The order a presentation's row plays it in (its arrangements: the slide grid's picker until Session 55), on the line
+ * with Up and Down under the chosen row: the presentation's own, every slide, or one of its arrangements. This
+ * playlist only.
+ */
+function OrderPicker({
+  item,
+  doc,
+}: {
+  item: Extract<PlaylistItemInfo, { kind: 'presentation' }>;
+  doc: PresentationDoc;
+}) {
+  if (doc.arrangements.length === 0) return null;
+  const own = doc.arrangements.find((a) => a.id === doc.selectedArrangementId)?.name ?? 'all slides in order';
+  return (
+    <Field label="Order" layout="inline" className="mr-auto">
+      <Select
+        data-testid="arrangement"
+        className="max-w-52"
+        value={orderValue(item.order)}
+        onChange={(e) => {
+          const v = e.target.value;
+          void setItemOrder(
+            item.id,
+            v === 'presentation' || v === 'all'
+              ? { mode: v }
+              : { mode: 'arrangement', arrangementId: v.slice(2) },
+          );
+        }}
+      >
+        <option value="presentation">As the presentation plays ({own})</option>
+        <option value="all">All slides in order</option>
+        {doc.arrangements.map((a) => (
+          <option key={a.id} value={`a:${a.id}`}>
+            {a.name}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+/** A click from the keyboard (a jump to a row's number, Session 55): as Enter on it. */
+const KEY_CLICK: CardClick = { metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, detail: 0 };
+
+/** Under a presentation's name: why its slides are not there (still being read, unread, gone). */
+function GroupNote({ row }: { row: Extract<MiddleRow, { kind: 'group' }> }) {
+  if (row.read === 'ready' || row.folded) return null;
+  if (row.read === 'loading') return <p className="py-1 pl-10 text-xs text-muted">Reading its slides…</p>;
+  if (row.read === 'unread')
+    return (
+      <p className="flex items-center gap-2 py-1 pl-10 text-xs text-warning-fg" data-testid="group-unread">
+        Drashti couldn’t read its slides.
+        <Button size="sm" icon={RotateCcw} onClick={() => void readDocAgain(groupDocId(row.item))}>
+          Try again
+        </Button>
+      </p>
+    );
+  return null;
 }
 
 function PlaylistItems({ platform, openId }: { platform: string; openId: string }) {
@@ -595,10 +634,89 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   useEffect(() => {
     wantSlides(wanted === '' ? [] : wanted.split(' '));
   }, [wanted]);
-  const [menu, setMenu] = useState<{ at: MenuPlace; item: PlaylistItemInfo } | null>(null);
   // What is this? (Sessions 31–36): its ? in the playlist's header row, its words under it.
   const help = useWhatIsThis('playlist');
   const markedSet = new Set(marked);
+  // The rows (Session 55): each presentation's slides under its name, read as the playlist shows them; a Repeat Slides
+  // playlist's steps from its own slides.
+  const isRepeat = node?.kind === 'repeat';
+  const repeatId = repeatPresentationId(openId);
+  const docs = useDocs((s) => s.docs);
+  useWantDocs(
+    isRepeat
+      ? [repeatId]
+      : items.flatMap((i) =>
+          i.kind === 'presentation' && i.presentationName !== null
+            ? [i.presentationId]
+            : i.kind === 'shastra' && !i.missing
+              ? [i.passageId]
+              : [],
+        ),
+  );
+  const foldedIds = useFolded((s) => s.folded);
+  const middle = useMemo(() => {
+    const folded = new Set(foldedIds);
+    if (isRepeat) return repeatRows(items, docs[repeatId], folded);
+    return playlistRows(items, new Map(Object.entries(docs)), folded);
+  }, [items, docs, foldedIds, isRepeat, repeatId]);
+  /** Each item's row (its number, or its name row) and its slides' rows. */
+  const byItem = useMemo(() => {
+    const out = new Map<
+      string,
+      {
+        row: Extract<MiddleRow, { kind: 'item' | 'group' }> | null;
+        slides: Extract<MiddleRow, { kind: 'slide' }>[];
+      }
+    >();
+    for (const r of middle) {
+      const id = r.item?.id;
+      if (id === undefined) continue;
+      const at = out.get(id) ?? { row: null, slides: [] };
+      if (r.kind === 'slide') at.slides.push(r);
+      else at.row = r;
+      out.set(id, at);
+    }
+    return out;
+  }, [middle]);
+  // Jump by number (Session 55): every numbered row puts itself up as a click on it does.
+  useEffect(() => {
+    setJumpRows(
+      middle.flatMap((r) =>
+        r.kind === 'slide'
+          ? [{ number: r.number, go: () => clickSlideRow(r, KEY_CLICK, platform) }]
+          : r.kind === 'item' && r.number !== null
+            ? [{ number: r.number, go: () => clickCard(r.item, KEY_CLICK, platform) }]
+            : [],
+      ),
+    );
+    return () => {
+      setJumpRows([]);
+    };
+  }, [middle, platform]);
+  // The slide on the screens, to mark its row LIVE: which presentation, which slide, from which item, in which order.
+  const liveSlide = useEngine((s) => {
+    const st = s.state;
+    const shown = st?.layers.slide;
+    if (!st || !shown || shown.timer) return null;
+    return `${shown.presentationId}|${shown.slide.id}|${st.live.playlist?.itemId ?? ''}|${String(st.live.arrangementId)}|${String(st.live.slideIndex)}`;
+  });
+  const isSlideLive = useCallback(
+    (r: Extract<MiddleRow, { kind: 'slide' }>): boolean => {
+      if (liveSlide === null) return false;
+      const [presentationId, slideId, itemId, arrangementId, slideIndex] = liveSlide.split('|');
+      if (presentationId !== r.presentationId) return false;
+      // A Repeat Slides playlist's step, by its slide.
+      if (isRepeat) return slideId === r.at.slide.id;
+      // Played from this row's item: by its place in the order it plays.
+      if (itemId === r.item?.id)
+        return arrangementId === String(r.arrangementId)
+          ? slideIndex === String(r.at.position)
+          : slideId === r.at.slide.id;
+      // Played from the library (no item): by the slide itself.
+      return itemId === '' && slideId === r.at.slide.id;
+    },
+    [liveSlide, isRepeat],
+  );
   // The item on the screens now: the playlist's place, while something of it is up (not after Clear all).
   const liveItem = useEngine((s) => {
     const st = s.state;
@@ -615,7 +733,10 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     const row = (e.target as HTMLElement).closest<HTMLElement>('[data-item-index]');
     if (!row) return end;
     const index = Number(row.dataset['itemIndex']);
-    const box = row.getBoundingClientRect();
+    // On a presentation's name (Session 55: its slides are rows under it), its halves are the name's own; on its
+    // slides, the whole row's.
+    const name = (e.target as HTMLElement).closest<HTMLElement>('[data-testid="playlist-item"]');
+    const box = (name && row.contains(name) ? name : row).getBoundingClientRect();
     const part = (e.clientY - box.top) / Math.max(1, box.height);
     const item = items[index];
     const kind = dragKind(e);
@@ -785,6 +906,22 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                     },
                   ]
                 : []),
+            // Session 55, Part 4: Practise it in this window only, and Duplicate it (the owner's ideas T and P).
+            ...(isTemplate
+              ? []
+              : [
+                  {
+                    label: 'Practise this playlist',
+                    icon: Play,
+                    separatorBefore: true,
+                    onSelect: () => void practisePlaylist(openId),
+                  },
+                  {
+                    label: 'Duplicate',
+                    icon: CopyPlus,
+                    onSelect: () => void duplicatePlaylist(openId),
+                  },
+                ]),
             {
               label: isTemplate ? 'Rename template…' : 'Rename playlist…',
               icon: Pencil,
@@ -832,7 +969,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
         count={marked.length}
         noun="items"
         deleteLabel="Remove"
-        onDelete={() => void removeMarkedItems()}
+        onDelete={requestRemoveMarkedItems}
         onClear={() => {
           usePlaylists.setState({ marked: [], anchorId: null });
         }}
@@ -849,7 +986,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
             usePlaylists.setState({ marked: ids, anchorId: ids[0] ?? null });
           } else if (e.target === e.currentTarget && isRemoveKey(e, platform) && marked.length > 0) {
             e.preventDefault();
-            void removeMarkedItems();
+            requestRemoveMarkedItems();
           }
         }}
         aria-label={`Items in ${node?.name ?? 'the playlist'}${shownFolder === '' ? '' : `, ${shownFolder}`}`}
@@ -885,6 +1022,21 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 />
               </li>
             );
+          // Its row in the middle's rows (Session 55): its number, or its name row and its slides.
+          const own = byItem.get(item.id);
+          const group = own?.row?.kind === 'group' ? own.row : null;
+          const slides = own?.slides ?? [];
+          const doc =
+            item.kind === 'presentation' && !isRepeat ? (docs[item.presentationId] ?? undefined) : undefined;
+          // One of its slides is up: its name row says LIVE too (folded, its slides are not there to say it).
+          const slideUp = slides.some(isSlideLive);
+          const menuProps = fileMenuProps(
+            () => playlistRow(item, openId),
+            () => {
+              if (!usePlaylists.getState().marked.includes(item.id))
+                clickItem(item.id, { toggle: false, range: false });
+            },
+          );
           const look =
             item.kind !== 'placeholder'
               ? ''
@@ -928,11 +1080,15 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 type="button"
                 draggable
                 data-testid="playlist-item"
+                // One click puts it up (Session 55): a show control, which never fades.
+                data-show-control
                 data-kind={item.kind}
                 data-item-id={item.id}
                 data-marked={isMarked ? 'true' : undefined}
                 data-live={isLive ? 'true' : undefined}
+                data-row-number={own?.row?.kind === 'item' ? (own.row.number ?? undefined) : undefined}
                 aria-pressed={isMarked}
+                aria-expanded={group ? !group.folded : undefined}
                 aria-current={shownItem === item.id ? 'true' : undefined}
                 aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                 aria-label={
@@ -943,30 +1099,21 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                       : `Not found: ${item.label}. Drag a presentation here to replace it.`
                 }
                 onClick={(e) => {
-                  // One click puts a video, a picture or a sound up (Session 54), Enter too; a presentation
-                  // shows its slides in the middle; with Cmd/Ctrl or Shift it only marks.
+                  // One click puts any row up (Session 55: a picture, a video, a sound, a video input), Enter
+                  // too; a presentation's name folds its slides; with Cmd/Ctrl or Shift it only marks.
                   clickCard(item, e, platform);
                 }}
                 onDoubleClick={() => {
                   if (item.kind === 'header') startRenaming(item.id);
                 }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (!markedSet.has(item.id)) clickItem(item.id, { toggle: false, range: false });
-                  setMenu({ at: menuPlace(e), item });
-                }}
+                {...menuProps}
                 onKeyDown={(e) => {
-                  if (isMenuKey(e)) {
-                    e.preventDefault();
-                    if (!markedSet.has(item.id)) clickItem(item.id, { toggle: false, range: false });
-                    setMenu({ at: menuBelow(e.currentTarget), item });
-                    return;
-                  }
-                  if (!isRemoveKey(e, platform)) return;
+                  menuProps.onKeyDown(e);
+                  if (e.defaultPrevented || !isRemoveKey(e, platform)) return;
                   e.preventDefault();
                   if (!usePlaylists.getState().marked.includes(item.id))
                     clickItem(item.id, { toggle: false, range: false });
-                  void removeMarkedItems();
+                  requestRemoveMarkedItems();
                 }}
                 onDragStart={(e) => {
                   const ours = usePlaylists.getState().marked.includes(item.id);
@@ -985,7 +1132,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   look,
                 )}
               >
-                <ItemBody item={item} live={isLive} />
+                <ItemBody
+                  item={item}
+                  live={isLive || slideUp}
+                  number={own?.row?.kind === 'item' ? own.row.number : null}
+                  fold={group ? group.folded : null}
+                />
               </button>
 
               {isMarked && anchorId === item.id && (
@@ -995,10 +1147,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   last={row === rows.length - 1}
                   hidden={dragging}
                   onMove={move}
+                  before={item.kind === 'presentation' && doc ? <OrderPicker item={item} doc={doc} /> : null}
                 />
               )}
               {/* Out of the playlist only (the library keeps it), as Delete does on the item; Undo puts it
-                  back (Session 26a). Last in the Tab order, after Up and Down. */}
+                  back (Session 26a); asked first when it is up (Session 55). Last in the Tab order, after Up and
+                  Down. */}
               <RowDelete
                 label={`Remove “${itemName(item)}” from the playlist`}
                 chosen={isMarked && anchorId === item.id}
@@ -1006,9 +1160,51 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 onDelete={() => {
                   if (!usePlaylists.getState().marked.includes(item.id))
                     clickItem(item.id, { toggle: false, range: false });
-                  void removeMarkedItems();
+                  requestRemoveMarkedItems();
                 }}
               />
+              {/* Its slides, a row each, under its name (Session 55); folded, none shows (each keeps its number). */}
+              {group && <GroupNote row={group} />}
+              {group && !group.folded && slides.length > 0 && (
+                <ul
+                  className="space-y-0.5 pt-0.5 pb-1 pl-4"
+                  data-testid="slide-rows"
+                  aria-label={`Slides of ${itemName(item)}`}
+                >
+                  {slides.map((r) => (
+                    <SlideRow
+                      key={r.key}
+                      number={r.number}
+                      label={r.label}
+                      line={r.line}
+                      at={r.at}
+                      firstOfRun={r.firstOfRun}
+                      live={isSlideLive(r)}
+                      itemId={item.id}
+                      onClick={(e) => {
+                        clickSlideRow(r, e, platform);
+                      }}
+                      onDoubleClick={
+                        r.item && !isRepeat && item.kind === 'presentation' && item.presentationName !== null
+                          ? () =>
+                              void openSlideEditor(
+                                r.presentationId,
+                                groupName(item, doc ?? null),
+                                r.at.slide.id,
+                              )
+                          : undefined
+                      }
+                      {...fileMenuProps(
+                        () => slideRowTarget(r, groupName(group.item, doc ?? null), isRepeat ? null : openId),
+                        () => {
+                          if (!usePlaylists.getState().marked.includes(item.id))
+                            clickItem(item.id, { toggle: false, range: false });
+                        },
+                      )}
+                    />
+                  ))}
+                </ul>
+              )}
             </li>
           );
         })}
@@ -1040,16 +1236,6 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           </li>
         )}
       </ul>
-      {menu && (
-        <Menu
-          at={menu.at}
-          label={menu.item.label}
-          entries={itemMenu(menu.item)}
-          onClose={() => {
-            setMenu(null);
-          }}
-        />
-      )}
     </section>
   );
 }

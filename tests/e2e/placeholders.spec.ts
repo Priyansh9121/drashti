@@ -116,7 +116,7 @@ test('an earlier Drashti’s library: the first start removes each placeholder a
   expect(saidOfPlaceholders(first.userData)).toHaveLength(2);
 });
 
-test('Delete… in the menu of the presentation open in the middle asks first, deletes it, and Undo brings it back', async () => {
+test('Delete… in the menu of the presentation open in the middle: used nowhere, it goes at once with Undo; in a playlist it asks first, saying which', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -131,34 +131,25 @@ test('Delete… in the menu of the presentation open in the middle asks first, d
   const grid = win.getByTestId('slide-grid');
   await expect(grid).toHaveAttribute('data-presentation-id', testId);
   const more = grid.getByRole('button', { name: 'Presentation actions' });
-  // Opened from the library, not a playlist: plain Delete….
+  // The one right-click menu (Session 55, Part 14): Edit slides…, Rename…, Show in Finder and Delete….
   const del = win.getByRole('menuitem', { name: 'Delete…', exact: true });
   const confirm = win.getByTestId('remove-confirm');
 
-  // From the keyboard: the menu takes the focus on Delete…; Esc closes it alone, back on its button.
+  // From the keyboard: the menu takes the focus on its first choice; Esc closes it alone, back on its button.
   await more.focus();
   await win.keyboard.press('Enter');
-  await expect(del).toBeFocused();
+  await expect(win.getByRole('menuitem', { name: 'Edit slides…' })).toBeFocused();
+  await expect(del).toBeVisible();
   await win.keyboard.press('Escape');
   await expect(del).toHaveCount(0);
   await expect(more).toBeFocused();
   await expect(grid).toHaveAttribute('data-presentation-id', testId);
-  // It asks first, in the library's trash's words; Cancel keeps it.
-  await win.keyboard.press('Enter');
-  await expect(del).toBeFocused();
-  await win.keyboard.press('Enter');
-  await expect(confirm).toContainText(`Delete “${TEST_PRESENTATION_NAME}”?`);
-  await expect(confirm).toContainText(CARDS_KEPT);
-  await expect(confirm).toContainText('You can bring it back with Undo');
-  await expectNoSeriousA11yIssues(win, 'the question before deleting the presentation open in the middle');
-  await confirm.getByRole('button', { name: 'Cancel' }).click();
-  await expect(confirm).toHaveCount(0);
-  await expect(grid).toHaveAttribute('data-presentation-id', testId);
 
-  // Delete: that one goes, the middle shows nothing chosen, and Undo is offered.
+  // Used nowhere and not up: Delete… asks nothing (Session 55, Part 14); it goes, the middle shows nothing chosen,
+  // and Undo is offered.
   await more.click();
   await del.click();
-  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(confirm).toHaveCount(0);
   await expect(win.getByTestId('start-here')).toBeVisible();
   await expect(grid).toHaveCount(0);
   const undo = win.getByTestId('undo-removal');
@@ -169,15 +160,36 @@ test('Delete… in the menu of the presentation open in the middle asks first, d
   await undo.getByRole('button', { name: /Undo/u }).click();
   await expect(grid).toHaveAttribute('data-presentation-id', testId);
   expect((await library(app)).presentations).toEqual([TEST_PRESENTATION_NAME, KIRTAN_PRESENTATION_NAME]);
+
+  // In a playlist: it asks first, saying which playlist and what becomes of its card; Cancel keeps it.
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.playlists.create('Placeholder Sunday', null, false);
+    if (!made.ok) throw new Error(made.message);
+    const added = await d.playlists.addItems(made.ids[0] ?? '', null, [
+      { kind: 'presentation', presentationId: id },
+    ]);
+    if (!added.ok) throw new Error(added.message);
+  }, testId);
+  await more.click();
+  await del.click();
+  await expect(confirm).toContainText(`Delete “${TEST_PRESENTATION_NAME}”?`);
+  await expect(confirm.getByTestId('remove-in-playlists')).toHaveText('It is in “Placeholder Sunday”.');
+  await expect(confirm).toContainText(CARDS_KEPT);
+  await expect(confirm).toContainText('You can bring it back with Undo');
+  await expectNoSeriousA11yIssues(win, 'the question before deleting a presentation in a playlist');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(grid).toHaveAttribute('data-presentation-id', testId);
   await app.close();
 });
 
-test('while a playlist item is open the menu says Delete from the library…, the question says its card stays, marked, and Undo shows that card again', async () => {
+test('a playlist’s row takes its presentation out of that playlist only; deleted from the library its card stays, marked, and Undo brings it back', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   // The test presentation in a playlist.
-  const testId = await win.evaluate(async (name) => {
+  await win.evaluate(async (name) => {
     const d = (globalThis as PageGlobals).drashti;
     const id = (await d.library.listPresentations()).find((p) => p.name === name)?.id ?? '';
     const made = await d.playlists.create('Placeholder Sunday', null, false);
@@ -186,10 +198,7 @@ test('while a playlist item is open the menu says Delete from the library…, th
       { kind: 'presentation', presentationId: id },
     ]);
     if (!added.ok) throw new Error(added.message);
-    return id;
   }, TEST_PRESENTATION_NAME);
-
-  // Opened from the playlist: its card is the one the middle shows.
   await win
     .getByTestId('playlists')
     .getByTestId('playlist-node')
@@ -199,34 +208,31 @@ test('while a playlist item is open the menu says Delete from the library…, th
     .getByTestId('open-playlist')
     .getByTestId('playlist-item')
     .filter({ hasText: TEST_PRESENTATION_NAME });
-  await card.click();
-  await expect(card).toHaveAttribute('aria-current', 'true');
-  const grid = win.getByTestId('slide-grid');
-  await expect(grid).toHaveAttribute('data-presentation-id', testId);
+  // Its row's menu (Session 55, Part 14): Remove from playlist (this playlist only), never Delete from the library.
+  await card.click({ button: 'right' });
+  await expect(win.getByRole('menuitem', { name: 'Remove from playlist' })).toBeVisible();
+  await expect(win.getByRole('menuitem', { name: /^Delete/u })).toHaveCount(0);
+  await win.keyboard.press('Escape');
 
-  // Its menu says the library, never plain Delete… (which reads as the card's own trash, out of this playlist).
-  await grid.getByRole('button', { name: 'Presentation actions' }).click();
-  const fromLibrary = win.getByRole('menuitem', { name: 'Delete from the library…', exact: true });
-  await expect(fromLibrary).toBeVisible();
-  await expect(win.getByRole('menuitem', { name: 'Delete…', exact: true })).toHaveCount(0);
-  await fromLibrary.click();
-  // The library's trash's question, saying what becomes of its card.
+  // From the library: it asks first, saying which playlist and that its card stays, marked.
+  await win.getByTestId('library-button').click();
+  await win
+    .getByTestId('presentation-list')
+    .getByTestId('presentation-row')
+    .filter({ hasText: TEST_PRESENTATION_NAME })
+    .click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Delete…', exact: true }).click();
   const confirm = win.getByTestId('remove-confirm');
   await expect(confirm).toContainText(`Delete “${TEST_PRESENTATION_NAME}”?`);
+  await expect(confirm.getByTestId('remove-in-playlists')).toHaveText('It is in “Placeholder Sunday”.');
   await expect(confirm).toContainText(CARDS_KEPT);
-  await expect(confirm).toContainText('You can bring it back with Undo');
   await confirm.getByRole('button', { name: 'Delete' }).click();
-
-  // As it says: out of the library, nothing chosen in the middle, and its card kept, marked.
-  await expect(win.getByTestId('start-here')).toBeVisible();
+  await win.getByTestId('library-close').click();
   await expect(card).toContainText('Removed from the library');
   expect((await library(app)).presentations).toEqual([KIRTAN_PRESENTATION_NAME]);
-  // Undo: back in the library and in the playlist, and the middle shows its card again (a slide clicked plays
-  // in the playlist, as before), not the library's presentation.
+  // Undo: back in the library and in the playlist.
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/u }).click();
   await expect(card).not.toContainText('Removed from the library');
-  await expect(card).toHaveAttribute('aria-current', 'true');
-  await expect(grid).toHaveAttribute('data-presentation-id', testId);
   expect((await library(app)).presentations).toEqual([TEST_PRESENTATION_NAME, KIRTAN_PRESENTATION_NAME]);
   await app.close();
 });

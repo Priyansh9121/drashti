@@ -9,8 +9,9 @@ import { describeSome, pushRemoval } from './undo';
 
 /*
  * Deleting media (Session 26a): the media list's Delete key, its rows' trash
- * buttons and their menus all ask here first, saying where the media is used,
- * then delete with Undo (shared/media-removal.ts).
+ * buttons and their menus all come here, then delete with Undo (shared/media-removal.ts). Since Session 55 (Part 14,
+ * the one right-click menu) it asks first only when the media is on the screens or used (in a playlist, an audio
+ * playlist, a slide…), saying where; used nowhere, it is deleted at once, and Undo brings it back.
  */
 
 interface Pending {
@@ -28,6 +29,11 @@ export async function requestMediaRemoval(of?: string): Promise<void> {
   if (ids.length === 0) return;
   const names = ids.map((id) => media.find((m) => m.id === id)?.name ?? '').filter((n) => n !== '');
   const usage = await window.drashti.media.usage(ids);
+  // Used nowhere and not up: nothing to ask; Undo is there.
+  if (!usage.live && usageLines(usage, ids.length).length === 0) {
+    await confirm({ ids, names, usage });
+    return;
+  }
   usePending.setState({ pending: { ids, names, usage } });
 }
 

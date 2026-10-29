@@ -132,4 +132,24 @@ describe('deleting media from the library', () => {
     expect(removal.restore(['pic'])).toEqual([]);
     expect(removal.restore(['other'])).toEqual(['other']);
   });
+
+  it('never removes a file of the owner’s outside Drashti’s data folder (Session 55, Part 14), whatever its row says', async () => {
+    const { db, removal } = library();
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-media-removal-'));
+    const owner = mkdtempSync(join(tmpdir(), 'drashti-media-removal-owner-'));
+    const kept = join(owner, 'Placeholder owner clip.mp4');
+    const climbing = join(owner, 'Placeholder climbing.png');
+    writeFileSync(kept, 'placeholder');
+    writeFileSync(climbing, 'placeholder');
+    // A row pointing at the owner's own file by its full path, and one whose path climbs out of the media folder.
+    const out = join('..', owner.split(/[\\/]/u).at(-1) ?? '', 'Placeholder climbing.png');
+    db.prepare(
+      `INSERT INTO media (id, kind, name, path, sha256) VALUES ('own', 'video', 'Placeholder own.mp4', ?, 'dd'),
+         ('climb', 'image', 'Placeholder climbing.png', ?, 'ee')`,
+    ).run(kept, out);
+    expect(removal.remove(['own', 'climb'])).toEqual(['own', 'climb']);
+    expect(await removal.purge(dir, new Set())).toBe(0);
+    expect(existsSync(kept)).toBe(true);
+    expect(existsSync(climbing)).toBe(true);
+  });
 });

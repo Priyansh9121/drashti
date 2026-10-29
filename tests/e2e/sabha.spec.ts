@@ -14,6 +14,7 @@ import {
   relaunchApp,
   savedLive,
   setUpScreen,
+  slidesOf,
 } from './helpers';
 import { makeTestImage } from './test-media';
 
@@ -109,13 +110,16 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   const items = await openSunday(win);
   await expect(items).toHaveCount(5);
 
-  // Picking the song shows its slides in its arrangement: the chorus twice.
-  await items.nth(1).click();
-  const grid = win.getByTestId('slide-grid');
-  await expect(grid.getByRole('heading', { level: 2 })).toHaveText('Placeholder Sung Song');
+  // The song's slides are rows under its name, in its arrangement: the chorus twice (Session 55: the slides area under
+  // the playlist went).
+  const song = slidesOf(win, 'Placeholder Sung Song');
+  await expect(song).toHaveCount(4);
   expect(
-    await grid.getByTestId('slide-group').evaluateAll((els) => els.map((e) => e.getAttribute('data-group'))),
+    await song.getByTestId('slide-group').evaluateAll((els) => els.map((e) => e.getAttribute('data-group'))),
   ).toEqual(['Verse 1', 'Chorus', 'Verse 2', 'Chorus']);
+  // Picking the song (its name) chooses it, folding its slides under it.
+  await items.nth(1).click();
+  await expect(items.nth(1)).toHaveAttribute('aria-current', 'true');
 
   // Space starts it; Next plays it through, the chorus each time.
   const slideText = output.locator('[data-layer="slide"]');
@@ -158,12 +162,13 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   await expect.poll(upNext).toEqual({ kind: 'media', media: 'image', label: 'Placeholder Welcome' });
   await expect(output.locator('[data-testid="preload"] img[data-state="ready"]')).toHaveCount(1);
 
-  // Next: the picture goes up as the background and the slide comes off; the grid follows the show.
+  // Next: the picture goes up as the background and the slide comes off; the playlist follows the show (its row is
+  // the chosen one).
   await win.keyboard.press('ArrowRight');
   await expect(items.nth(3)).toHaveAttribute('data-live', 'true');
   await expect(slideText).toHaveCount(0);
   await expect(output.locator('[data-layer="background"] img[data-state="ready"]')).toHaveCount(1);
-  await expect(win.getByTestId('item-media')).toHaveAttribute('aria-current', 'true');
+  await expect(items.nth(3)).toHaveAttribute('aria-current', 'true');
   await expect(liveText).toHaveText('Live: Placeholder Welcome');
 
   // The next song's first slide is next, with its logo loaded ahead.
@@ -185,7 +190,8 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   await win.keyboard.press('ArrowRight');
   await expect(slideText).toHaveText('Placeholder second song, first line');
   await expect(items.nth(4)).toHaveAttribute('data-live', 'true');
-  await expect(grid.getByRole('heading', { level: 2 })).toHaveText('Placeholder Second Song');
+  // The playlist follows the show: the next song's row is the chosen one (Session 55: the slides area went).
+  await expect(items.nth(4)).toHaveAttribute('aria-current', 'true');
   const going = await output.evaluate(
     () =>
       (globalThis as typeof globalThis & { sabhaSeen?: { text: string; logo: boolean | null }[] })
@@ -241,9 +247,8 @@ test('after a crash the playlist and the place in it come back, and Next carries
   // The playlist opens by itself at the song, marked live.
   const items2 = win2.getByTestId('open-playlist').getByTestId('playlist-item');
   await expect(items2.nth(1)).toHaveAttribute('data-live', 'true');
-  await expect(win2.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
-    'Placeholder Sung Song',
-  );
+  // And chosen (Session 55: the slides area that showed it went).
+  await expect(items2.nth(1)).toHaveAttribute('aria-current', 'true');
   await win2.getByTestId('recovery-notice').getByRole('button', { name: 'OK' }).click();
   await win2.keyboard.press('ArrowRight');
   await expect(items2.nth(3)).toHaveAttribute('data-live', 'true');

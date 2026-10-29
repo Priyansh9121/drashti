@@ -95,8 +95,8 @@ test('a library row’s menu holds the keyboard: the arrows and Space never move
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
-  // No playlist open: a presentation's menu has "Add to playlist (open a playlist first)", off, and
-  // Delete… (Session 26a; before, the menu had nothing to choose).
+  // No playlist open: a presentation's menu has "Add to playlist (open a playlist first)", off (Session 26a), then
+  // the one right-click menu's Edit slides…, Rename…, Show in Finder and Delete… (Session 55, Part 14).
   await openLibrary(win);
   const row = win.getByTestId('presentation-list').getByTestId('presentation-row').first();
   await row.click();
@@ -107,28 +107,31 @@ test('a library row’s menu holds the keyboard: the arrows and Space never move
   await expect(menu).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: /Add to playlist/ })).toBeDisabled();
   const remove = menu.getByRole('menuitem', { name: 'Delete…' });
-  // The one choice there is has the keyboard.
-  await expect(remove).toBeFocused();
+  // The first choice that can be chosen has the keyboard (Edit slides…, Session 55: Add to playlist is off).
+  const edit = menu.getByRole('menuitem', { name: 'Edit slides…' });
+  await expect(edit).toBeFocused();
   const live = () =>
     win.evaluate(
       async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.live.presentationId,
     );
   // Arrows in the menu: nothing goes up on the screens, and the keyboard stays in the menu.
   for (const key of ['ArrowDown', 'ArrowUp', 'End', 'Home']) await win.keyboard.press(key);
-  await expect(remove).toBeFocused();
+  await expect(edit).toBeFocused();
   expect(await live()).toBeNull();
   await win.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   await expect(row).toBeFocused();
-  // Space presses the choice (Delete… asks first), never Next.
+  // Space presses the choice, never Next: Delete… (End: the last), which, used nowhere (Session 55, Part 14),
+  // deletes at once with Undo.
   await win.keyboard.press('Shift+F10');
+  await win.keyboard.press('End');
   await expect(remove).toBeFocused();
   await win.keyboard.press('Space');
-  const confirm = win.getByTestId('remove-confirm');
-  await expect(confirm).toBeVisible();
+  const rows = win.getByTestId('presentation-list').getByTestId('presentation-row');
+  await expect(rows).toHaveCount(1);
   expect(await live()).toBeNull();
-  await confirm.getByRole('button', { name: 'Cancel' }).click();
-  await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
+  await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/u }).click();
+  await expect(rows).toHaveCount(2);
   expect(await live()).toBeNull();
   await app.close();
 });

@@ -10,11 +10,10 @@ import { connectSmart } from '../playlists/smart-store';
 import { connectSaves } from '../markers/save-store';
 import { connectPictureLooks } from '../render/picture-looks';
 import { PictureEditor } from '../pictures/PictureEditor';
-import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
+import { RemoveConfirm, RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
-import { KirtanDialog } from '../kirtans/KirtanDialog';
 import { SlideEditor } from '../editor/SlideEditor';
 import { redo as redoEdit, undo as undoEdit, useEditor } from '../editor/editor-store';
 import { ThemesPanel } from '../themes/ThemesPanel';
@@ -22,7 +21,7 @@ import { AppearanceDialog } from '../appearance/AppearanceDialog';
 import { connectAppearance } from '../appearance/appearance-store';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
-import { loadTree, usePlaylists, watchPlaylists } from '../playlists/playlist-store';
+import { loadTree, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
@@ -37,8 +36,10 @@ import { NextBack } from './NextBack';
 import { PracticeShow } from '../practice/PracticeShow';
 import { practiceKey, stopPractice, usePractice } from '../practice/practice-store';
 import { closeWelcome, openWelcome, Welcome } from '../setup/Welcome';
-import { CentreColumn, Columns, LeftColumn } from './Layout';
-import { OpenPlaylist } from '../playlists/OpenPlaylist';
+import { Columns, LeftColumn } from './Layout';
+import { Middle } from './Middle';
+import { JumpBox } from './JumpBox';
+import { FileMenu } from '../files/FileMenu';
 import { PanelGroup, PanelNote } from '../ui/Panel';
 import { Music, Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
@@ -59,7 +60,6 @@ import { showGuides } from '../help/guides-store';
 import { LivePreview } from './LivePreview';
 import { LibraryButton, LibrarySheet } from './LibrarySheet';
 import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
-import { SlideGrid } from './SlideGrid';
 import { RecoveryBanner } from './RecoveryBanner';
 import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
@@ -213,7 +213,6 @@ export function App() {
 
 function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
-  const openId = usePlaylists((s) => s.openId);
   const byFolder = usePlaylistFolders();
   // The library's sheet over the playlists, unless it stands aside for a drag from it (Session 44).
   const libraryOpen = useLibraryTab((s) => s.open);
@@ -351,13 +350,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
             />
           }
           middle={
-            // The open playlist above the chosen item's slides (Session 26a); no playlist open, the slides alone.
-            <main aria-label="Playlist and slides" className="flex min-h-0 flex-1 flex-col">
-              <CentreColumn
-                top={openId ? <OpenPlaylist platform={platform} /> : null}
-                bottom={<SlideGrid />}
-              />
-            </main>
+            // The open playlist, the whole middle (Session 55, Part 4: the slides area under it went); no playlist
+            // open, the library's chosen presentation as rows.
+            <Middle platform={platform} />
           }
           right={
             <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
@@ -430,8 +425,12 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <MediaRemoveConfirm undoKey={shortcutText('undo', platform)} />
+      {/* Session 55 (Part 14): a playlist's rows taken out, asked first when one is up, or a folder. */}
+      <RemoveItemsConfirm undoKey={shortcutText('undo', platform)} />
+      {/* The one right-click menu (Part 14), and jump by number (Part 4). */}
+      <FileMenu platform={platform} />
+      <JumpBox />
       <WordsEditor platform={platform} />
-      <KirtanDialog />
       <SetupWizard platform={platform} />
       <Welcome />
       <SlideEditor platform={platform} />

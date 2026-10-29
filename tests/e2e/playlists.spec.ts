@@ -12,6 +12,7 @@ import {
   launchApp,
   openLibrary,
   operatorPage,
+  slidesOf,
 } from './helpers';
 import { inLibrarySheet, libraryAside } from './mouse-drag';
 import { makeTestImage } from './test-media';
@@ -121,11 +122,8 @@ test('playlists: imported ones with their placeholders, and building one by drag
   );
   await expect(items.nth(2)).toHaveAttribute('data-kind', 'presentation');
   await expect(items.nth(2).locator('[data-label]')).toHaveText('Placeholder Song Two');
-  // Clicking a presentation item shows its slides.
-  await items.nth(1).click();
-  await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
-    'Placeholder Song One',
-  );
+  // A presentation item's slides are rows under its name (Session 55: the slides area under the playlist went).
+  await expect(slidesOf(win, 'Placeholder Song One').first()).toBeVisible();
   await win.getByTestId('playlist-close').click();
   await expect(node('Sunday').getByTestId('node-placeholders')).toHaveCount(0);
 

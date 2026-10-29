@@ -69,3 +69,19 @@ export function usageLines(usage: MediaUsage, count = 1): string[] {
 }
 
 export type MediaRemovalResult = { ok: true; ids: string[] } | { ok: false; message: string };
+
+/**
+ * Where presentations are used, asked before deleting them (Session 55, Part 14: the one right-click menu's Delete
+ * asks first only when what it deletes is on the screens or in a playlist, and says which).
+ */
+export interface PresentationUsage {
+  playlists: UsedIn;
+  /** One of them is on the screens now (it stays up until it is changed). */
+  live: boolean;
+}
+
+/** Show in Finder / Show in Explorer (Session 55, Part 14): shown, or why not. */
+export type RevealResult = { ok: true } | { ok: false; message: string };
+
+/** The longest name a presentation or a media file is given by Rename. */
+export const NAME_MAX = 200;

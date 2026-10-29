@@ -11,9 +11,6 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
-  outputPage,
-  setTicked,
-  setUpScreen,
   showExtras,
 } from './helpers';
 import { makeTestVideo } from './test-media';
@@ -21,14 +18,13 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
 /*
- * A kirtan's language tracks (Session 8): its words by language, slide by
- * slide, in the words editor; a missing line; a presentation made a kirtan
- * and back; a copied slide keeping its lines; and the words never drifting
- * between Edit words, the slide editor and the tracks (they are one copy).
- * The seeded sample kirtan and placeholder words only.
+ * A kirtan's language tracks (Session 8): a copied slide keeping its lines, the words never drifting between the slide
+ * editor and the tracks (they are one copy), lyrics in two scripts coming in as a kirtan, and the library filtering and
+ * searching by kirtan details. Session 55 (Part 12, the owner's decision): the open presentation's Kirtan and Edit
+ * words buttons are gone, with the Kirtan dialog and the words by language; their data stays in the library, unseen,
+ * and a library holding it opens as before. The seeded sample kirtan and placeholder words only.
  */
 
-const saveKey = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
 const KIRTAN = /Sample kirtan/;
 
 async function open(win: Page, name: RegExp | string): Promise<string> {
@@ -52,124 +48,62 @@ async function tracks(win: Page, id: string) {
   }, id);
 }
 
-async function openByLanguage(win: Page) {
-  await win.getByTestId('slide-grid').getByRole('button', { name: 'Edit words' }).click();
-  const editor = win.getByTestId('words-editor');
-  await editor.getByTestId('words-mode-tab-tracks').click();
-  await expect(editor.getByTestId('track-slides')).toBeVisible();
-  return editor;
-}
-
-test('a kirtan by language: one track, then all of them, a missing line, and Undo', async () => {
+test('the open presentation’s Kirtan and Edit words are gone (Session 55): nowhere in the window, its menus or the app’s; a kirtan’s details and words stay in the library, which opens as before', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  await setUpScreen(win);
-  const output = await outputPage(app);
+  await operatorReady(win);
   const id = await open(win, KIRTAN);
-  await win.getByTestId('slide-thumb').first().click();
-  const translit = output.locator('[data-run][data-lang="translit"]');
-  await expect(translit).toHaveText('Namūnānī pahelī paṅkti');
-
-  // The Kirtan dialog: four languages, on every slide.
-  await win.getByTestId('kirtan-button').click();
-  const dialog = win.getByTestId('kirtan-dialog');
-  await expect(dialog.getByTestId('kirtan-track')).toHaveText([
-    /English\s*Every slide \(3\)/,
-    /Gujarati\s*Every slide \(3\)/,
-    /Hindi\s*Every slide \(3\)/,
-    /Transliteration\s*Every slide \(3\)/,
-  ]);
-  await expectNoSeriousA11yIssues(win, 'the Kirtan dialog');
-  await dialog.getByRole('button', { name: 'Done' }).click();
-
-  // One track on its own: the transliteration, slide by slide.
-  let editor = await openByLanguage(win);
-  await editor.getByTestId('words-lang-tab-translit').click();
-  const cells = editor.getByTestId('track-cell');
-  await expect(cells).toHaveCount(3);
-  expect(
-    await cells.locator('textarea').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value)),
-  ).toEqual(['Namūnānī pahelī paṅkti', 'Namūnānī ṭek', 'Namūnānī bījī paṅkti']);
-  await cells.first().locator('textarea').fill('Namuno badlelu');
-  await expect(editor.getByTestId('track-count')).toHaveText('3 slides · 1 change');
-  await cells.first().locator('textarea').press(saveKey);
-  await expect(editor).toHaveCount(0);
-  // The live slide shows it at once; nothing else on the slide changed.
-  await expect(translit).toHaveText('Namuno badlelu');
-  await expect(output.locator('[data-run][data-lang="gu"]')).toHaveText('નમૂનાની પહેલી પંક્તિ');
-  await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/ }).click();
-  await expect(translit).toHaveText('Namūnānī pahelī paṅkti');
-
-  // Every language of each slide together: take the chorus's English away, change a Gujarati line.
-  editor = await openByLanguage(win);
-  await expect(editor.getByTestId('track-slide')).toHaveCount(3);
-  const chorus = editor.getByTestId('track-slide').nth(1);
-  await chorus.getByRole('textbox', { name: 'Slide 2, English' }).fill('');
-  await editor
-    .getByTestId('track-slide')
-    .nth(2)
-    .getByRole('textbox', { name: 'Slide 3, Gujarati' })
-    .fill('નમૂનાની નવી પંક્તિ');
-  await expectNoSeriousA11yIssues(win, 'the words editor, by language');
-  await editor.getByRole('button', { name: 'Save' }).click();
-  await expect(editor).toHaveCount(0);
-  const after = await tracks(win, id);
-  expect(after?.[1]).toEqual({ gu: ['નમૂનાની ટેક'], hi: ['नमूने की टेक'], translit: ['Namūnānī ṭek'] });
-  expect(after?.[2]?.gu).toEqual(['નમૂનાની નવી પંક્તિ']);
-
-  // A slide with no English shows it as missing, not as blank text; typing there adds it back.
-  editor = await openByLanguage(win);
-  const missing = editor
-    .getByTestId('track-slide')
-    .nth(1)
-    .locator('[data-testid="track-cell"][data-lang="en"]');
-  await expect(missing.getByTestId('track-missing')).toHaveText('Missing');
-  await expect(missing.locator('textarea')).toHaveAttribute('data-missing', 'true');
-  await editor.getByTestId('words-lang-tab-en').click();
-  const english = editor.getByTestId('track-cell').nth(1);
-  await expect(english.locator('textarea')).toHaveAttribute('data-missing', 'true');
-  await expect(english.getByTestId('track-missing')).toHaveCount(1);
-  await english.locator('textarea').fill('Placeholder chorus, again');
-  await editor.getByRole('button', { name: 'Save' }).click();
-  await expect(editor).toHaveCount(0);
-  expect((await tracks(win, id))?.[1]?.en).toEqual(['Placeholder chorus, again']);
+  // Its details and its words by language are still there (the library keeps them, unseen).
+  const kept = await win.evaluate(async (pid) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [doc, byLang] = await Promise.all([d.library.getPresentation(pid), d.kirtans.tracks(pid)]);
+    return {
+      kirtan: doc?.kirtan !== null && doc?.kirtan !== undefined,
+      tracks: byLang.ok ? byLang.slides.length : 0,
+    };
+  }, id);
+  expect(kept).toEqual({ kirtan: true, tracks: 3 });
+  // Its slides open as rows, and go up; no Kirtan or Edit words anywhere in the window.
+  const grid = win.getByTestId('slide-grid');
+  await expect(grid.getByTestId('slide-thumb')).toHaveCount(3);
+  await grid.getByTestId('slide-thumb').first().click();
+  await expect
+    .poll(() =>
+      win.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.live.presentationId,
+      ),
+    )
+    .toBe(id);
+  await expect(win.getByTestId('kirtan-button')).toHaveCount(0);
+  await expect(win.getByRole('button', { name: /^(Kirtan|Edit words)/u })).toHaveCount(0);
+  // Its menus: a slide's right-click and the presentation's ⋯ have Edit slides…, never Kirtan or Edit words.
+  await grid.getByTestId('slide-thumb').first().click({ button: 'right' });
+  await expect(win.getByRole('menuitem', { name: 'Edit slides…' })).toBeVisible();
+  await expect(win.getByRole('menuitem', { name: /Kirtan|Edit words/u })).toHaveCount(0);
+  await win.keyboard.press('Escape');
+  await win.getByTestId('presentation-menu').click();
+  await expect(win.getByRole('menuitem', { name: 'Edit slides…' })).toBeVisible();
+  await expect(win.getByRole('menuitem', { name: /Kirtan|Edit words/u })).toHaveCount(0);
+  await win.keyboard.press('Escape');
+  // The app's menus: none either (View's Show Shastra, Templates and Kirtan Details is the library's, and stays).
+  const labels = await app.evaluate(({ Menu }) => {
+    const all: string[] = [];
+    const walk = (menu: Electron.Menu | null | undefined) => {
+      for (const item of menu?.items ?? []) {
+        all.push(item.label);
+        walk(item.submenu);
+      }
+    };
+    walk(Menu.getApplicationMenu());
+    return all;
+  });
+  expect(labels.filter((l) => /^(Kirtan|Edit words)/u.test(l))).toEqual([]);
   await app.close();
 });
 
-test('made a kirtan and back without losing words; a copied slide keeps its lines; one copy of the words', async () => {
+test('a copied slide keeps its lines; one copy of the words', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  const id = await open(win, 'Language test slides');
-  const words = () =>
-    win.evaluate(async (pid) => {
-      const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(pid);
-      return JSON.stringify(doc?.groups.map((g) => g.slides.map((s) => s.slide.elements)));
-    }, id);
-  const before = await words();
-
-  // Not a kirtan: no By language view. Made one, it has its words in their languages.
-  await win.getByTestId('kirtan-button').click();
-  const dialog = win.getByTestId('kirtan-dialog');
-  await dialog.getByTestId('make-kirtan').click();
-  await expect(dialog.getByTestId('kirtan-track')).toHaveText([
-    /English\s*Every slide \(3\)/,
-    /Gujarati\s*2 of 3 slides\s*1 missing/,
-    /Hindi\s*1 of 3 slides\s*2 missing/,
-    /Transliteration\s*1 of 3 slides\s*2 missing/,
-  ]);
-  expect(await words()).toBe(before);
-  await dialog.getByTestId('not-kirtan').click();
-  await expect(dialog.getByTestId('make-kirtan')).toBeVisible();
-  expect(await words()).toBe(before);
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  // Undo makes it a kirtan again (each change is one step).
-  const undo = win.getByTestId('undo-removal');
-  await expect(undo).toContainText('No longer a kirtan');
-  await undo.getByRole('button', { name: /Undo/ }).click();
-  await win.getByTestId('kirtan-button').click();
-  await expect(dialog.getByTestId('not-kirtan')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Done' }).click();
-  expect(await words()).toBe(before);
 
   // A copied slide in the slide editor has the same lines in every language.
   const kirtanId = await open(win, KIRTAN);
@@ -183,15 +117,17 @@ test('made a kirtan and back without losing words; a copied slide keeps its line
   expect(copied).toHaveLength(4);
   expect(copied?.[1]).toEqual(copied?.[0]);
 
-  // Edit words (all of them), the tracks and the slides: always the same words.
-  await win.getByTestId('slide-grid').getByRole('button', { name: 'Edit words' }).click();
-  const editor = win.getByTestId('words-editor');
-  const text = editor.getByTestId('words-text');
-  await text.fill((await text.inputValue()).replace('Placeholder chorus', 'Placeholder chorus, fixed'));
-  await text.press(saveKey);
-  await expect(editor).toHaveCount(0);
+  // The words (all of them, saved through the library's own request: Edit words' button is gone, Session 55), the
+  // tracks and the slides: always the same words.
   const same = await win.evaluate(async (pid) => {
     const d = (globalThis as PageGlobals).drashti;
+    const words = await d.library.words(pid);
+    if (!words.ok) throw new Error(words.message);
+    const saved = await d.library.saveWords(
+      pid,
+      words.text.replace('Placeholder chorus', 'Placeholder chorus, fixed'),
+    );
+    if (!saved.ok) throw new Error('the words were not saved');
     const [all, byLang] = await Promise.all([d.library.words(pid), d.kirtans.tracks(pid)]);
     return {
       all: all.ok ? all.text : '',
@@ -241,82 +177,7 @@ test('lyrics with lines in two scripts come in as a kirtan, and the editor calls
   await app.close();
 });
 
-test('make transliteration: lines made by Drashti, a line changed by hand kept or replaced on asking, Undo', async () => {
-  const { app } = await launchApp();
-  const win = await operatorPage(app);
-  // A kirtan of common words, with no transliteration yet.
-  const id = await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const made = await d.library.newFromWords(
-      'Placeholder Words Kirtan',
-      '[Verse]\nઘર અને મંદિર\n\nભજન અને આરતી\n',
-    );
-    if (!made.ok) throw new Error(made.message);
-    const kirtan = await d.kirtans.setDetails(made.id, {
-      category: 'Kirtan',
-      kavi: null,
-      raag: null,
-      occasions: [],
-      audioMediaId: null,
-    });
-    if (!kirtan.ok) throw new Error(kirtan.message);
-    return made.id;
-  });
-  await open(win, 'Placeholder Words Kirtan');
-  await win.getByTestId('kirtan-button').click();
-  const dialog = win.getByTestId('kirtan-dialog');
-  const section = dialog.getByTestId('make-transliteration');
-  await expect(section.getByTestId('translit-style-plain')).toBeChecked();
-  await section.getByTestId('make-translit').click();
-  await expect(section.getByTestId('translit-result')).toHaveText('Transliteration made: 2 lines filled in.');
-  expect((await tracks(win, id))?.map((l) => l.translit)).toEqual([['Ghar ane mandir'], ['Bhajan ane arti']]);
-  await dialog.getByRole('button', { name: 'Done' }).click();
-
-  // Marked as made by Drashti in Edit words; the first changed by hand becomes the operator's own.
-  let editor = await openByLanguage(win);
-  await editor.getByTestId('words-lang-tab-translit').click();
-  await expect(editor.getByTestId('track-made')).toHaveCount(2);
-  await editor.getByTestId('track-cell').first().locator('textarea').fill('Ghar ne mandir');
-  await editor.getByRole('button', { name: 'Save' }).click();
-  await expect(editor).toHaveCount(0);
-  editor = await openByLanguage(win);
-  await editor.getByTestId('words-lang-tab-translit').click();
-  await expect(editor.getByTestId('track-made')).toHaveCount(1);
-  await editor.getByRole('button', { name: 'Cancel' }).click();
-
-  // Made again with accent marks: it asks about the line changed by hand; kept, the other is made again.
-  await win.getByTestId('kirtan-button').click();
-  await setTicked(section.getByTestId('translit-style-iso'), true);
-  await section.getByTestId('make-translit').click();
-  const ask = win.getByTestId('translit-ask');
-  await expect(ask).toContainText('1 transliteration line was changed by hand.');
-  await expect(ask).toContainText('Slide 1: “Ghar ne mandir” (Drashti would make “Ghar anē maṁdir”)');
-  await expectNoSeriousA11yIssues(win, 'the question about lines changed by hand');
-  await ask.getByRole('button', { name: 'Keep my lines' }).click();
-  await expect(section.getByTestId('translit-result')).toHaveText(
-    'Transliteration made: 1 line made again, 1 line you changed kept as they are.',
-  );
-  expect((await tracks(win, id))?.map((l) => l.translit)).toEqual([['Ghar ne mandir'], ['Bhajan anē ārtī']]);
-
-  // Asked again and told to replace it, the changed line is made too.
-  await section.getByTestId('make-translit').click();
-  await ask.getByRole('button', { name: 'Replace them' }).click();
-  await expect(section.getByTestId('translit-result')).toContainText('1 changed line replaced');
-  expect((await tracks(win, id))?.map((l) => l.translit)).toEqual([['Ghar anē maṁdir'], ['Bhajan anē ārtī']]);
-  await expectNoSeriousA11yIssues(win, 'the Kirtan dialog with its transliteration');
-  await dialog.getByRole('button', { name: 'Done' }).click();
-
-  // Undo puts back the line changed by hand; the style chosen is remembered.
-  const undo = win.getByTestId('undo-removal');
-  await expect(undo).toContainText('Made the transliteration of “Placeholder Words Kirtan”');
-  await undo.getByRole('button', { name: /Undo/ }).click();
-  await expect.poll(async () => (await tracks(win, id))?.[0]?.translit).toEqual(['Ghar ne mandir']);
-  await win.getByTestId('kirtan-button').click();
-  await expect(section.getByTestId('translit-style-iso')).toBeChecked();
-  await app.close();
-});
-
-test('kirtan details: a new category, kavi, raag, occasions and a recording; the library filters by them; search finds kavi and raag', async () => {
+test('kirtan details: a new category, kavi, raag, occasions and a recording, kept; the library filters by them; search finds kavi and raag', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -344,34 +205,23 @@ test('kirtan details: a new category, kavi, raag, occasions and a recording; the
     });
   });
 
+  // Its details, kept with it (Session 55: the Kirtan dialog is gone; the library still has them and filters by them).
   const id = await open(win, KIRTAN);
-  await win.getByTestId('kirtan-button').click();
-  const dialog = win.getByTestId('kirtan-dialog');
-  const details = dialog.getByTestId('kirtan-details');
-  // A category of the mandir's own, added to the list for every kirtan.
-  await details.getByTestId('add-category').click();
-  await details.getByTestId('new-category').fill('Placeholder Category');
-  await details.getByRole('button', { name: 'Add', exact: true }).first().click();
-  await expect(details.getByTestId('kirtan-category')).toHaveValue('Placeholder Category');
-  await details.getByTestId('kirtan-kavi').fill('Placeholder Kavi One');
-  await details.getByTestId('kirtan-raag').fill('Placeholder Raag');
-  for (const o of ['Diwali', 'Placeholder Day']) {
-    await details.getByTestId('kirtan-occasion').fill(o);
-    await details.getByTestId('kirtan-occasion').press('Enter');
-  }
-  await expect(details.getByTestId('kirtan-occasions').getByRole('listitem')).toHaveText([
-    'Diwali',
-    'Placeholder Day',
-  ]);
-  await details.getByTestId('choose-recording').click();
-  await win
-    .getByTestId('media-picker')
-    .getByRole('button', { name: /Placeholder recording/ })
-    .click();
-  await expect(details.getByTestId('kirtan-recording')).toContainText('Placeholder recording');
-  await expectNoSeriousA11yIssues(win, 'the kirtan details');
-  await dialog.getByTestId('kirtan-done').click();
-  await expect(dialog).toHaveCount(0);
+  await win.evaluate(async (pid) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const added = await d.kirtans.addCategory('Placeholder Category');
+    if (!added.ok) throw new Error(added.message);
+    const media = await d.library.listMedia();
+    const recording = media.find((m) => m.name.startsWith('Placeholder recording'))?.id ?? null;
+    const set = await d.kirtans.setDetails(pid, {
+      category: 'Placeholder Category',
+      kavi: 'Placeholder Kavi One',
+      raag: 'Placeholder Raag',
+      occasions: ['Diwali', 'Placeholder Day'],
+      audioMediaId: recording,
+    });
+    if (!set.ok) throw new Error(set.message);
+  }, id);
   const saved = await win.evaluate(
     async (pid) => (await (globalThis as PageGlobals).drashti.library.getPresentation(pid))?.kirtan,
     id,
@@ -423,7 +273,7 @@ for (const [width, height] of [
   [1280, 720],
   [1920, 1080],
 ] as const)
-  test(`the kirtan dialog and the words by language fit at ${width} x ${height}`, async () => {
+  test(`the library’s kirtan filters fit at ${width} x ${height}`, async () => {
     const { app } = await launchApp();
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -431,19 +281,6 @@ for (const [width, height] of [
     await showExtras(win);
     await win.setViewportSize({ width, height });
     await open(win, KIRTAN);
-    await win.getByTestId('kirtan-button').click();
-    await expectFits(win.getByTestId('kirtan-dialog'), `the Kirtan dialog at ${width} x ${height}`);
-    await win.getByTestId('kirtan-dialog').getByRole('button', { name: 'Edit words by language' }).click();
-    const editor = win.getByTestId('words-editor');
-    await expect(editor.getByTestId('track-slides')).toBeVisible();
-    await expectFits(editor, `the words by language at ${width} x ${height}`);
-    // All four languages side by side still leave each field room to type in.
-    const narrowest = await editor
-      .getByTestId('track-cell')
-      .locator('textarea')
-      .evaluateAll((els) => Math.min(...els.map((e) => e.getBoundingClientRect().width)));
-    expect(narrowest).toBeGreaterThan(180);
-    await editor.getByRole('button', { name: 'Cancel' }).click();
     // The library's filters, open, in the left column.
     await openLibrary(win);
     await win.getByTestId('filter-button').click();

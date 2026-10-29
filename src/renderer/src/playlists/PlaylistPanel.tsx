@@ -8,6 +8,7 @@ import {
   BookTemplate,
   ChevronDown,
   ChevronRight,
+  CopyPlus,
   Folder,
   FolderPlus,
   FolderSync,
@@ -38,6 +39,7 @@ import { droppedPaths, hasFiles } from './drag';
 import { startRepeat, stopRepeat } from './repeat-actions';
 import { PlaylistsUnread } from './PlaylistsUnread';
 import { SharedMark, shareEntries } from './share-with-phones';
+import { practisePlaylist } from '../practice/practice-store';
 import { useEngine } from '../engine/engine-store';
 import { droppedItems, fromLibrary, isRemoveKey, RenameField } from './playlist-shared';
 import {
@@ -50,6 +52,7 @@ import {
 import {
   addFromLibrary,
   createNode,
+  duplicatePlaylist,
   createRepeatPlaylist,
   createSmartPlaylist,
   dismissProblem,
@@ -97,6 +100,9 @@ function nodeMenu(node: PlaylistNode): MenuEntry[] {
     return [
       { label: 'Open', icon: ListMusic, onSelect: () => void openPlaylist(node.id) },
       ...shareEntries(node),
+      // Session 55, Part 4: practised in this window only, and duplicated (the owner's ideas T and P).
+      { label: 'Practise this playlist', icon: Play, onSelect: () => void practisePlaylist(node.id) },
+      { label: 'Duplicate', icon: CopyPlus, onSelect: () => void duplicatePlaylist(node.id) },
       rename,
       remove,
     ];

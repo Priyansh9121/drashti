@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { openMarkers } from '../markers/MarkersDialog';
 import type { MediaSummary } from '../../../shared/playlists';
 import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
+import { libraryMedia } from '../files/targets';
 import { afterDrag, startDrag } from '../playlists/drag';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import { RowDelete } from '../ui/RowDelete';
@@ -198,7 +199,7 @@ const MediaRow = memo(function MediaRow({
           onClick={(e) => {
             clickMedia(m.id, { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey });
           }}
-          {...rowMenu(m.name, pick, remove)}
+          {...rowMenu((first) => libraryMedia(m, first), pick)}
           onDragStart={(e) => {
             startDrag(
               e,

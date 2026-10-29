@@ -33,6 +33,8 @@ interface Stored {
 let stored: Stored[] = [];
 /** What the next removal answers instead (a refusal: Simple Mode's). */
 let refuse: RemoveResult | null = null;
+/** The playlists each presentation is in (Session 55, Part 14: Delete asks first only then, or when it is up). */
+let inPlaylists: Record<string, string[]> = {};
 
 const summary = (p: Stored): PresentationSummary => ({
   id: p.id,
@@ -76,6 +78,10 @@ const fake = {
   },
   removePresentations: (ids: string[]) => Promise.resolve(refuse ?? toggle(ids, true)),
   restorePresentations: (ids: string[]) => Promise.resolve(toggle(ids, false)),
+  presentationUsage: (ids: string[]) => {
+    const names = [...new Set(ids.flatMap((id) => inPlaylists[id] ?? []))];
+    return Promise.resolve({ playlists: { names, count: names.length }, live: false });
+  },
 };
 
 const open = () => useLibrary.getState();
@@ -88,6 +94,8 @@ beforeEach(async () => {
     { id: 'C', name: 'Placeholder Charlie', removed: false },
   ];
   refuse = null;
+  // Bravo is in a playlist: deleting it asks first.
+  inPlaylists = { B: ['Placeholder Sunday'] };
   useUndo.setState({ stack: [] });
   useImports.setState({ confirmRemove: null });
   useEngine.setState({ state: null });
@@ -107,27 +115,40 @@ beforeEach(async () => {
 });
 
 describe('Delete… in the middle’s menu (Session 50)', () => {
-  it('asks for the presentation open in the middle alone, whatever else is marked in the library', () => {
-    requestRemovalOfOpen('B', 'Placeholder Bravo');
+  it('asks for the presentation open in the middle alone, whatever else is marked in the library, saying its playlists', async () => {
+    await requestRemovalOfOpen('B', 'Placeholder Bravo');
     expect(useImports.getState().confirmRemove).toEqual({
       ids: ['B'],
       names: ['Placeholder Bravo'],
       live: false,
       closes: true,
+      playlists: { names: ['Placeholder Sunday'], count: 1 },
     });
     // The library's own trash on that row takes the marked ones, as before.
-    requestRemoval('B');
+    await requestRemoval('B');
     expect(useImports.getState().confirmRemove?.ids).toEqual(['A', 'B', 'C']);
   });
 
-  it('says so when it is on the screens', () => {
+  it('says so when it is on the screens', async () => {
+    inPlaylists = {};
     useEngine.setState({ state: { live: { presentationId: 'B' } } as never });
-    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    await requestRemovalOfOpen('B', 'Placeholder Bravo');
     expect(useImports.getState().confirmRemove?.live).toBe(true);
+    expect(stored.some((p) => p.removed)).toBe(false);
+  });
+
+  it('deletes at once, with Undo, one in no playlist and not on the screens: nothing to ask (Session 55, Part 14)', async () => {
+    useLibrary.setState({ marked: ['C'] });
+    await requestRemoval('C');
+    expect(stored.filter((p) => p.removed).map((p) => p.id)).toEqual(['C']);
+    expect(useImports.getState().confirmRemove).toBeNull();
+    expect(useUndo.getState().stack.at(-1)?.text).toBe('Deleted “Placeholder Charlie”');
+    expect(await undoRemoval()).toBe(true);
+    expect(stored.some((p) => p.removed)).toBe(false);
   });
 
   it('deletes it alone, leaves nothing chosen in the middle, and Undo brings it back open there', async () => {
-    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    await requestRemovalOfOpen('B', 'Placeholder Bravo');
     await confirmRemoval();
     expect(stored.filter((p) => p.removed).map((p) => p.id)).toEqual(['B']);
     expect(useUndo.getState().stack.at(-1)?.text).toBe('Deleted “Placeholder Bravo”');
@@ -149,14 +170,14 @@ describe('Delete… in the middle’s menu (Session 50)', () => {
         presentationName: 'Placeholder Bravo',
       } as never,
     });
-    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    await requestRemovalOfOpen('B', 'Placeholder Bravo');
     await confirmRemoval();
     expect(open()).toMatchObject({ selectedId: null, doc: null, item: null, nothingChosen: true });
   });
 
   it('keeps it open when the deletion is refused (Simple Mode)', async () => {
     refuse = { ok: false, message: 'Nothing was removed.' };
-    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    await requestRemovalOfOpen('B', 'Placeholder Bravo');
     await confirmRemoval();
     expect(useUndo.getState().stack).toEqual([]);
     expect(open()).toMatchObject({ selectedId: 'B', nothingChosen: false });
@@ -165,7 +186,7 @@ describe('Delete… in the middle’s menu (Session 50)', () => {
 
   it('the library’s trash still leaves the middle on the first presentation left, as before', async () => {
     useLibrary.setState({ marked: ['B'] });
-    requestRemoval('B');
+    await requestRemoval('B');
     await confirmRemoval();
     expect(open()).toMatchObject({ selectedId: 'A', nothingChosen: false });
   });
@@ -189,7 +210,7 @@ describe('Delete from the library… while a playlist item is open (Session 51)'
   async function deleteFromCard(): Promise<void> {
     usePlaylists.setState({ openId: 'P', items: [bravoCard] });
     useLibrary.setState({ item: bravoItem });
-    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    await requestRemovalOfOpen('B', 'Placeholder Bravo');
     await confirmRemoval();
     expect(open()).toMatchObject({ selectedId: null, item: null, nothingChosen: true });
   }
@@ -208,12 +229,12 @@ describe('Delete from the library… while a playlist item is open (Session 51)'
     );
   });
 
-  it('asks the library’s trash’s question, whether it was opened from a playlist or the library', () => {
+  it('asks the library’s trash’s question, whether it was opened from a playlist or the library', async () => {
     useLibrary.setState({ item: bravoItem });
-    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    await requestRemovalOfOpen('B', 'Placeholder Bravo');
     const asked = useImports.getState().confirmRemove;
     useLibrary.setState({ item: null, marked: ['B'] });
-    requestRemoval('B');
+    await requestRemoval('B');
     // The same presentation, named the same, the same count for the same words; only the middle's closes, and
     // keeps the card it was asked from.
     expect(asked).toEqual({ ...useImports.getState().confirmRemove, closes: true, fromItem: bravoItem });

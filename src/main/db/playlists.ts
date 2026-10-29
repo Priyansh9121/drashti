@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { cutText } from '../../shared/text';
 import type { ImportSource } from '../../shared/library';
 import type {
   ItemOrder,
@@ -916,6 +917,82 @@ export class PlaylistRepo {
           if (r.kind === 'input' && r.input_name !== null)
             return [{ kind: 'input', name: r.input_name, label: r.label, timers: r.timers }];
           if (r.presentation_id && r.presentation_deleted === null)
+            return [
+              {
+                kind: 'presentation',
+                presentationId: r.presentation_id,
+                label: r.label,
+                orderMode: r.order_mode,
+                arrangementId: r.arrangement_id,
+                timers: r.timers,
+              },
+            ];
+          return [];
+        }),
+      );
+      return id;
+    })();
+  }
+
+  /**
+   * A copy of a playlist (Session 55, Part 4: Duplicate, the owner's idea P): "<name> copy", right after it in its
+   * folder, with every row in its order as it is (headers, presentations with their own order, media, passages, video
+   * inputs, slots and what an import could not find, with their timer cues), and its kind and settings (a Repeat Slides
+   * playlist goes round the same; one made from a folder is shown a folder at a time; a smart playlist's copy is an
+   * ordinary playlist of its files as they are now, following no folder). Not shared with phones. Null when it is gone,
+   * or is a folder or a template.
+   */
+  duplicate(playlistId: string): string | null {
+    const row = this.db
+      .prepare(
+        'SELECT name, parent_id, position, kind, settings, is_folder, is_template FROM playlists WHERE id = ? AND deleted_at IS NULL',
+      )
+      .get(playlistId) as
+      | {
+          name: string;
+          parent_id: string | null;
+          position: number;
+          kind: PlaylistKind;
+          settings: string | null;
+          is_folder: number;
+          is_template: number;
+        }
+      | undefined;
+    if (!row || row.is_folder === 1 || row.is_template === 1) return null;
+    return this.db.transaction(() => {
+      const id = randomUUID();
+      // Right after it: the ones after it move down a place.
+      this.db
+        .prepare(
+          'UPDATE playlists SET position = position + 1 WHERE parent_id IS ? AND position > ? AND deleted_at IS NULL',
+        )
+        .run(row.parent_id, row.position);
+      const smart = row.kind === 'smart';
+      this.db
+        .prepare(
+          'INSERT INTO playlists (id, parent_id, name, is_folder, position, is_template, kind, settings) VALUES (?, ?, ?, 0, ?, 0, ?, ?)',
+        )
+        .run(
+          id,
+          row.parent_id,
+          cutText(`${row.name} copy`, 200),
+          row.position + 1,
+          smart ? 'normal' : row.kind,
+          smart ? FROM_FOLDER_SETTINGS : row.settings,
+        );
+      this.copyItems(
+        id,
+        this.storedItems(playlistId).flatMap((r): CopyItem[] => {
+          if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
+          if (r.kind === 'media' && r.media_id)
+            return [{ kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers }];
+          if (r.kind === 'placeholder')
+            return [{ kind: 'placeholder', label: r.label, hint: r.hint, category: r.category }];
+          if (r.kind === 'shastra' && r.passage !== null)
+            return [{ kind: 'shastra', passage: r.passage, label: r.label, timers: r.timers }];
+          if (r.kind === 'input' && r.input_name !== null)
+            return [{ kind: 'input', name: r.input_name, label: r.label, timers: r.timers }];
+          if (r.kind === 'presentation' && r.presentation_id)
             return [
               {
                 kind: 'presentation',

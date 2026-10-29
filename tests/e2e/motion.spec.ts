@@ -107,23 +107,26 @@ test('show controls, thumbnails and the live picture never move, in Pro Mode and
     .getByTestId('playlist-node')
     .filter({ hasText: /^Placeholder motion/u })
     .click();
-  // One click on its card puts it up (Session 54): the middle's picture of it is live.
-  await win.getByTestId('playlist-item').first().click();
-  const card = win.getByTestId('item-media');
-  await expect(card).toHaveAttribute('aria-current', 'true');
-  // The picture's card, live, its border and glow red: still.
+  // One click on its card puts it up (Session 54; Session 55: its row in the playlist says LIVE, the middle having
+  // no picture of its own for it any more).
+  const card = win.getByTestId('playlist-item').first();
+  await card.click();
+  await expect(card).toHaveAttribute('data-live', 'true');
+  // The picture's row, live: still (a show control never fades).
   await card.hover();
-  expect(await moving(win, '[data-testid="item-media"], [data-testid="live-preview"]')).toEqual([]);
+  expect(await moving(win, '[data-testid="playlist-item"], [data-testid="live-preview"]')).toEqual([]);
   const presentation = await win.evaluate(
     async () => (await (globalThis as PageGlobals).drashti.library.listPresentations())[0]?.id ?? '',
   );
+  // With no playlist open, the library's chosen presentation shows in the middle as rows (Session 55).
+  await win.getByTestId('playlist-close').click();
   await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await dispatch(win, { type: 'goLive', presentationId: presentation, slideIndex: 0 });
   await expect(win.getByTestId('slide-thumb').first()).toHaveAttribute('aria-current', 'true');
 
   const SHOW =
-    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="item-media"], [data-testid="live-preview"], [data-testid="look-button"]';
+    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="playlist-item"], [data-testid="live-preview"], [data-testid="look-button"]';
   expect(await moving(win, SHOW)).toEqual([]);
   // Hovered, pressed and lit too.
   await win.getByTestId('blackout-button').hover();
