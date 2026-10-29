@@ -92,6 +92,56 @@ describe('the stand-in list', () => {
     expect(reject).not.toContain('<legend>');
   });
 
+  it('the Approve page offers Pro or Simple, Simple chosen first, and its button sends the one chosen (Session 55)', async () => {
+    const s = (standIn = await accessStandIn());
+    const computer = placeholderComputer('stand-in-page-mode');
+    await post(s, JSON.stringify(callBody('request', computer, { gmail: PERSON }).body));
+    const approve = s.list.linksFor(PERSON)?.approve ?? '';
+    const html = await (await fetch(s.pageUrl(approve))).text();
+    expect(html).toContain('<legend>What may they use?</legend>');
+    expect(html).toContain('data-chosen-mode="simple"');
+    for (const v of ['simple', 'pro']) expect(html).toContain(`name="mode" value="${v}"`);
+    expect(html).toContain('Simple Mode only');
+    expect(html).toContain('Pro Mode and Simple Mode');
+    // The page's own script sends the mode chosen with the button.
+    expect(html).toContain('params.mode = modeChosen()');
+    const params = Object.fromEntries(new URL(approve).searchParams.entries());
+    const run = new URL('/macros/s/stand-in/run', s.url);
+    const done = (await (
+      await fetch(run, {
+        method: 'POST',
+        body: JSON.stringify({ ...params, length: 'unlimited', mode: 'pro' }),
+      })
+    ).json()) as { kind: string; lines: string[] };
+    expect(done).toMatchObject({ kind: 'done' });
+    expect(s.list.sheet.find('Access List', 'Gmail', PERSON)?.['Mode']).toBe('Pro');
+    // A Reject page offers no mode.
+    const reject = await (await fetch(s.pageUrl(s.list.linksFor(PERSON)?.reject ?? ''))).text();
+    expect(reject).not.toContain('id="modes"');
+    expect(reject).not.toContain('<legend>What may they use?</legend>');
+  });
+
+  it('makes grants Pro unless a test asks for Simple, and learns a new mode as the owner gives one (Session 55)', async () => {
+    const s = (standIn = await accessStandIn());
+    const pro = placeholderComputer('stand-in-pro');
+    const simple = placeholderComputer('stand-in-simple');
+    const g1 = s.grant(PERSON, pro);
+    const g2 = s.grant('simple.placeholder@example.com', simple, { mode: 'simple' });
+    const check = async (grant: typeof g1, computer: typeof pro) =>
+      readAnswer(
+        await post(
+          s,
+          JSON.stringify(callBody('check', computer, { at: s.list.t, activity: {} }, grant).body),
+        ),
+        s.publicKey,
+      );
+    expect(await check(g1, pro)).toMatchObject({ status: 'in', mode: 'pro' });
+    expect(await check(g2, simple)).toMatchObject({ status: 'in', mode: 'simple' });
+    s.setMode('simple.placeholder@example.com', 'pro');
+    s.list.move(6_000);
+    expect(await check(g2, simple)).toMatchObject({ status: 'in', mode: 'pro' });
+  });
+
   it('makes grants the real way, for a person, a second computer of theirs, and the owner', async () => {
     const s = (standIn = await accessStandIn());
     const one = placeholderComputer('stand-in-one');

@@ -296,6 +296,8 @@ export default defineConfig(
         LockService: 'readonly',
         MailApp: 'readonly',
         PropertiesService: 'readonly',
+        // The daily check's trigger (Session 55).
+        ScriptApp: 'readonly',
         SpreadsheetApp: 'readonly',
         Utilities: 'readonly',
       },

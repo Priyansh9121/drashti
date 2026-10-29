@@ -313,10 +313,7 @@ test('in Simple Mode a Remote still reads the library and puts a slide up, as th
   await expect.poll(() => where(win)).toEqual({ presentationId: talkId, slideIndex: 2 });
   await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder talk closing');
 
-  // Not switching the Look, which Simple Mode refuses in the window too; and the library is read, never changed.
-  const looks = await apiCall(port, '/api/v1/looks', { token });
-  const lookId = (looks.json['looks'] as { id: string }[])[0]?.id ?? '';
-  expect((await apiCall(port, `/api/v1/looks/${lookId}/live`, { method: 'POST', token })).status).toBe(403);
+  // The library is read, never changed (switching a Look, refused here before Session 55, went with Looks).
   expect((await apiCall(port, '/api/v1/presentations', { method: 'POST', token })).status).toBe(405);
   expect((await apiCall(port, '/api/v1/search?q=talk', { method: 'POST', token })).status).toBe(405);
   await app.close();

@@ -71,8 +71,11 @@ export interface ListEnv {
     column(tab: string, col: number): Cell[];
     write(tab: string, row: number, col: number, value: Cell): void;
     append(tab: string, values: Cell[]): number;
-    /** A column added after the last, its header bold, hidden or shown as dates when asked: its number. */
-    addColumn(tab: string, header: string, o: { hidden: boolean; date: boolean }): number;
+    /**
+     * A column added after the last, its header bold, hidden or shown as dates when asked, and only these values taken
+     * when `choices` are given (the Mode column, Session 55): its number.
+     */
+    addColumn(tab: string, header: string, o: { hidden: boolean; date: boolean; choices?: string[] }): number;
   };
   log?(text: string): void;
 }
@@ -85,6 +88,8 @@ export interface LinkPage {
   params: Record<string, string> | null;
   /** An Approve page's lengths: the days offered, the most typed, and the one chosen at first. */
   lengths: { days: number[]; maxDays: number; chosen: number | 'unlimited' } | null;
+  /** An Approve page's way of using Drashti (Session 55): Pro or Simple, the one chosen at first. */
+  modes: { chosen: 'pro' | 'simple' } | null;
 }
 
 export interface SheetColumn {
@@ -93,6 +98,8 @@ export interface SheetColumn {
   date: boolean;
   number: boolean;
   hidden: boolean;
+  /** The only values the column takes (the Mode column's Pro and Simple), or none. */
+  choices?: string[];
 }
 
 /** access-list/core.js, as it exports itself in Node. */
@@ -114,12 +121,17 @@ export interface AccessCore {
     tokenLength: number;
     macPrefix: string;
     lengths: { days: number[]; maxDays: number };
+    modes: string[];
   };
   MESSAGES: Record<string, string>;
   handle(env: ListEnv, text: string): { payload: string; sig: string };
   linkPage(env: ListEnv, params: Record<string, string>): LinkPage;
   answerLink(env: ListEnv, params: Record<string, string>): LinkPage;
   letOwnerIn(env: ListEnv): { ok: true; to: string; runsOut: number };
+  /** The daily check (Session 55): every computer with no check for 15 days ended; at most once in 10 minutes. */
+  dailyCheck(env: ListEnv): { ran: boolean; ended: number };
+  /** The script property set once the Mode column is made (Session 55 review): put back later, it comes back empty. */
+  MODE_MADE_PROPERTY: string;
   sheetLayout(): { tab: string; columns: SheetColumn[] }[];
   canonicalJson(value: unknown): string;
   gmailKey(address: string): string;
@@ -146,7 +158,7 @@ export class MemorySheet {
   /** Cells written, by the list (a test counts them). */
   writes = 0;
   /** The columns the list added itself, in order. */
-  readonly added: { tab: string; header: string; hidden: boolean; date: boolean }[] = [];
+  readonly added: { tab: string; header: string; hidden: boolean; date: boolean; choices?: string[] }[] = [];
 
   constructor() {
     for (const { tab, columns } of core.sheetLayout()) this.tabs.set(tab, [columns.map((c) => c.header)]);
@@ -185,12 +197,18 @@ export class MemorySheet {
     return rows.length;
   }
 
-  addColumn(tab: string, header: string, o: { hidden: boolean; date: boolean }): number {
+  addColumn(tab: string, header: string, o: { hidden: boolean; date: boolean; choices?: string[] }): number {
     const head = this.rows(tab)[0] ?? [];
     let col = head.length;
     while (col > 0 && (head[col - 1] === '' || head[col - 1] === null)) col--;
     this.write(tab, 1, col + 1, header);
-    this.added.push({ tab, header, hidden: o.hidden, date: o.date });
+    this.added.push({
+      tab,
+      header,
+      hidden: o.hidden,
+      date: o.date,
+      ...(o.choices === undefined ? {} : { choices: [...o.choices] }),
+    });
     return col + 1;
   }
 
@@ -344,6 +362,8 @@ export class TestList {
     this.t = o.start ?? Date.UTC(2026, 9, 27, 10, 0, 0);
     this.mailQuota = o.mailQuota ?? 100;
     this.cache = new MemoryCache(() => this.t);
+    // The Sheet as Set up… makes it: every tab and column, its Mode column marked made (Session 55 review).
+    this.properties.set(core.MODE_MADE_PROPERTY, '1');
     this.props = {
       approverEmail: o.approver ?? PLACEHOLDER_APPROVER,
       webAppUrl: o.webAppUrl ?? 'https://script.google.com/macros/s/placeholder-list/exec',
@@ -373,7 +393,8 @@ export class TestList {
         send: (m) => {
           if (this.failNextMail) {
             this.failNextMail = false;
-            throw new Error('Placeholder mail failure');
+            // In Google's way: its words may name the address.
+            throw new Error(`Placeholder mail failure: invalid email: ${m.to}`);
           }
           if (this.mailbox.length >= this.mailQuota)
             throw new Error('Service invoked too many times for one day: email.');
@@ -400,6 +421,23 @@ export class TestList {
 
   move(ms: number): void {
     this.t += ms;
+  }
+
+  /**
+   * Every computer let in, but those of the Gmails given, seen as if each had kept checking (Session 55: 15 days with
+   * no check end a computer's grant): a test moving the list's clock on as time passes for running Drashtis. Seen a
+   * minute ago at most, so a check now still records (the list writes a computer's last seen once a minute).
+   */
+  inTouch(except: readonly string[] = []): void {
+    const quiet = new Set(except.map((g) => core.gmailKey(g)));
+    const seen = this.t - (core.PROTOCOL.limits['recordGapMs'] ?? 60_000);
+    for (const r of this.sheet.records(COMPUTERS)) {
+      const grant = String(r['Grant'] ?? '');
+      if (!/^[0-9a-f]{32}$/u.test(grant) || !r['Token used'] || r['Ended']) continue;
+      if (quiet.has(core.gmailKey(String(r['Gmail'] ?? '')))) continue;
+      const last = r['Last seen'] instanceof Date ? r['Last seen'].getTime() : 0;
+      if (seen > last) this.sheet.type(COMPUTERS, 'Grant', grant, 'Last seen', new Date(seen));
+    }
   }
 
   /** One call to the list as the web app takes it: JSON text in, { payload, sig } out. */

@@ -50,13 +50,8 @@ import { audioDeviceSchema } from '../shared/audio';
 import type { SetupResult } from '../shared/setup';
 import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
-import {
-  isOperatorMode,
-  leaveSimpleRefusal,
-  SIMPLE_MODE_REFUSAL,
-  simpleModeRefuses,
-  startingMode,
-} from '../shared/mode';
+import { isOperatorMode, simpleModeRefuses, simpleRefusalText } from '../shared/mode';
+import { ModeKeeper } from './mode-keeper';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
 import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
@@ -82,7 +77,7 @@ import { LookRepo } from './db/looks';
 import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
-import { anyTestSwitch, sw, swMs, swOn } from './switches';
+import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
@@ -318,7 +313,7 @@ import { mainClockStyle } from './clock-style';
 import { STOPPED_REFUSAL } from '../shared/access';
 import { type BehindTheLock, prepareTheLock } from './access/behind-the-lock';
 import { followAccess, showCounter, streamCounter } from './access/effects';
-import { accessState, isLetIn, onAccessChange } from './access/gate';
+import { accessState, isLetIn, onAccessChange, simpleAccess } from './access/gate';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -457,7 +452,7 @@ const savedDiagnosticsText = (path: string, crash: CrashFilesChoice) =>
 const windowedOutputs = sw('DRASHTI_WINDOWED_OUTPUTS') === '1' || quietTests;
 if (windowedOutputs) setExtraDisplays(Number(sw('DRASHTI_EXTRA_DISPLAYS') ?? 0) || 0);
 // Tests only (never a packaged Drashti): pretend displays that come and go (Sessions 31–36, ROB-4).
-if (windowedOutputs && !app.isPackaged && sw('DRASHTI_TEST_DISPLAY_CHANGES') === '1')
+if (windowedOutputs && !packaged() && sw('DRASHTI_TEST_DISPLAY_CHANGES') === '1')
   (globalThis as { drashtiTestDisplays?: (n: number) => void }).drashtiTestDisplays = changeExtraDisplays;
 /**
  * Screens that set themselves (Session 55, outputs/auto-screens.ts): a display plugged in is used at once. Always in
@@ -465,16 +460,16 @@ if (windowedOutputs && !app.isPackaged && sw('DRASHTI_TEST_DISPLAY_CHANGES') ===
  * without it (DRASHTI_TEST_AUTO_SCREENS: '0', launchApp's own), and then no display's own identity is read either
  * (no child process at every test's start).
  */
-const autoScreensOn = !selfTestRun && (app.isPackaged || sw('DRASHTI_TEST_AUTO_SCREENS') !== '0');
+const autoScreensOn = !selfTestRun && (packaged() || sw('DRASHTI_TEST_AUTO_SCREENS') !== '0');
 /** Tests only: among the pretend displays alone ('pretend'), so a second real display here never changes a test. */
-const autoPretendOnly = !app.isPackaged && sw('DRASHTI_TEST_AUTO_SCREENS') === 'pretend';
+const autoPretendOnly = !packaged() && sw('DRASHTI_TEST_AUTO_SCREENS') === 'pretend';
 /**
  * Tests only (never a packaged Drashti), with windowed outputs: a display that counts as the one the controls are on
  * (a pretend one), so a quiet test sees what covering the controls asks (Session 55: only that asks Keep these
  * screens?) and that the controls' display is never taken.
  */
 const testControlsDisplay = ((): number | null => {
-  const raw = windowedOutputs && !app.isPackaged ? sw('DRASHTI_TEST_CONTROLS_DISPLAY') : undefined;
+  const raw = windowedOutputs && !packaged() ? sw('DRASHTI_TEST_CONTROLS_DISPLAY') : undefined;
   const n = raw === undefined ? NaN : Number(raw);
   return Number.isSafeInteger(n) ? n : null;
 })();
@@ -483,10 +478,10 @@ const testControlsDisplay = ((): number | null => {
  * A's, the second B's), and a display the computer mirrors onto; a test changes them while Drashti runs
  * (drashtiTestDisplaySerials), as a projector moved to another port.
  */
-let testSerials: string[] | null = !app.isPackaged
+let testSerials: string[] | null = !packaged()
   ? (sw('DRASHTI_TEST_DISPLAY_SERIALS')?.split(',') ?? null)
   : null;
-const testMirroredOnto = !app.isPackaged ? (sw('DRASHTI_TEST_MIRRORED_ONTO') ?? '') : '';
+const testMirroredOnto = !packaged() ? (sw('DRASHTI_TEST_MIRRORED_ONTO') ?? '') : '';
 if (windowedOutputs && testSerials !== null)
   (globalThis as { drashtiTestDisplaySerials?: (serials: string[]) => void }).drashtiTestDisplaySerials = (
     serials,
@@ -590,7 +585,7 @@ const announceMinuteMs = Math.min(
 // Tests only: the schedules (backups; the arti's and macros' too, until Session 44) read this computer's
 // clock moved on by this much (ms), and a test can move it with globalThis.drashtiArtiClock(wallMs).
 // The engine's clock is never moved.
-const artiTestClock = sw('DRASHTI_TEST_ARTI_CLOCK') === '1' && !app.isPackaged;
+const artiTestClock = sw('DRASHTI_TEST_ARTI_CLOCK') === '1' && !packaged();
 let artiClockOffset = artiTestClock ? Number(sw('DRASHTI_TEST_ARTI_OFFSET_MS') ?? 0) || 0 : 0;
 /** The schedules' clock: this computer's, moved by a test only. */
 const scheduleNow = () => Date.now() + artiClockOffset;
@@ -598,23 +593,23 @@ const scheduleNow = () => Date.now() + artiClockOffset;
 // install by writing what they would run into a file; a download goes at this rate; and a test can say
 // the stream is on air (globalThis.drashtiTestOnAir), for updates and link downloads (the drop folder and
 // smart playlists use it too, and Session 50's conversions, which wait while it is).
-const testUpdateBase = app.isPackaged ? undefined : sw('DRASHTI_UPDATE_URL');
+const testUpdateBase = packaged() ? undefined : sw('DRASHTI_UPDATE_URL');
 const updateBase = testUpdateBase ?? UPDATE_BASE;
-const testInstallLog = app.isPackaged ? undefined : sw('DRASHTI_TEST_UPDATE_INSTALL');
-const testUpdateRate = app.isPackaged ? null : Number(sw('DRASHTI_TEST_UPDATE_RATE') ?? 0) || null;
+const testInstallLog = packaged() ? undefined : sw('DRASHTI_TEST_UPDATE_INSTALL');
+const testUpdateRate = packaged() ? null : Number(sw('DRASHTI_TEST_UPDATE_RATE') ?? 0) || null;
 let testOnAir = false;
 // Tests only (never a packaged Drashti): Import from a Link asks this local stand-in instead of Dropbox,
 // saves into this folder by default, and (the guard, which every e2e run sets) refuses any request to
 // anywhere but 127.0.0.1.
-const testLinkOrigin = app.isPackaged ? null : (sw('DRASHTI_TEST_LINK_ORIGIN') ?? null);
-const testLinkGuard = !app.isPackaged && sw('DRASHTI_TEST_LINK_GUARD') === '1';
-const testDownloadsDir = app.isPackaged ? null : (sw('DRASHTI_TEST_DOWNLOADS_DIR') ?? null);
-if (!app.isPackaged && sw('DRASHTI_TEST_ON_AIR_HOOK') === '1')
+const testLinkOrigin = packaged() ? null : (sw('DRASHTI_TEST_LINK_ORIGIN') ?? null);
+const testLinkGuard = !packaged() && sw('DRASHTI_TEST_LINK_GUARD') === '1';
+const testDownloadsDir = packaged() ? null : (sw('DRASHTI_TEST_DOWNLOADS_DIR') ?? null);
+if (!packaged() && sw('DRASHTI_TEST_ON_AIR_HOOK') === '1')
   (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir = (on) => {
     testOnAir = on;
   };
 // Tests only: scheduled backups copy at this rate (bytes a second), so a test can watch one wait.
-const testBackupRate = app.isPackaged ? null : Number(sw('DRASHTI_TEST_BACKUP_RATE') ?? 0) || null;
+const testBackupRate = packaged() ? null : Number(sw('DRASHTI_TEST_BACKUP_RATE') ?? 0) || null;
 // The performance check only: so many devices connected while it measures, and (to compare) the
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(sw('DRASHTI_PERF_DEVICES') ?? 0) || 0));
@@ -641,23 +636,21 @@ const perfNodes = Math.min(50, Math.max(0, Number(sw('DRASHTI_PERF_NODES') ?? 0)
 // Tests only (never a packaged Drashti): the version this copy says it runs, to see Main and a node
 // on different versions refuse each other; a node's clock as if it were this far off; and the port
 // Main listens for nodes on.
-const testVersion = app.isPackaged ? undefined : sw('DRASHTI_TEST_VERSION');
+const testVersion = packaged() ? undefined : sw('DRASHTI_TEST_VERSION');
 const appVersion = () => testVersion ?? app.getVersion();
-const nodeClockSkewMs = app.isPackaged ? 0 : Number(sw('DRASHTI_TEST_CLOCK_SKEW_MS') ?? 0) || 0;
+const nodeClockSkewMs = packaged() ? 0 : Number(sw('DRASHTI_TEST_CLOCK_SKEW_MS') ?? 0) || 0;
 const nodePortOverride = Number(sw('DRASHTI_NODE_PORT') ?? 0) || null;
 // Tests only (never a packaged Drashti): a test can make an output draw an element that throws, to see a
 // render error caught, logged and the output reloaded (Session 23; globalThis.drashtiTestRenderError).
-const testRenderErrors = !app.isPackaged && sw('DRASHTI_TEST_RENDER_ERRORS') === '1';
-const testClockHold = !app.isPackaged && sw('DRASHTI_TEST_CLOCK_HOLD') === '1';
+const testRenderErrors = !packaged() && sw('DRASHTI_TEST_RENDER_ERRORS') === '1';
+const testClockHold = !packaged() && sw('DRASHTI_TEST_CLOCK_HOLD') === '1';
 // Tests only: the computer's name as Main and its nodes show it (screenshots never show a runner's own).
-const testComputerName = app.isPackaged ? undefined : sw('DRASHTI_TEST_COMPUTER_NAME');
+const testComputerName = packaged() ? undefined : sw('DRASHTI_TEST_COMPUTER_NAME');
 // Tests only: copies to nodes at this rate (bytes a second), so a copy can be watched while it goes.
-const testCopyRate = app.isPackaged ? null : Number(sw('DRASHTI_TEST_COPY_RATE') ?? 0) || null;
+const testCopyRate = packaged() ? null : Number(sw('DRASHTI_TEST_COPY_RATE') ?? 0) || null;
 // Tests only: each window's memory in the log this often (Session 17: the outputs' memory measured with
 // nothing attached, tests/soak/devtools.spec.ts).
-const testMemoryEveryMs = app.isPackaged
-  ? 0
-  : Math.max(0, Number(sw('DRASHTI_TEST_MEMORY_EVERY_MS') ?? 0) || 0);
+const testMemoryEveryMs = packaged() ? 0 : Math.max(0, Number(sw('DRASHTI_TEST_MEMORY_EVERY_MS') ?? 0) || 0);
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -1085,7 +1078,7 @@ function startNodeMode(): void {
     updateBase,
     installer: defaultInstaller({
       platform: process.platform,
-      isPackaged: app.isPackaged,
+      isPackaged: packaged(),
       execPath: process.execPath,
       testLog: testInstallLog,
       updater: autoUpdater,
@@ -1118,7 +1111,7 @@ function startNodeMode(): void {
   // Its outputs' watchdog events (Sessions 31–36): one given up on is Stopped, and Main hears of it.
   outputWatchdogEvent = node.watchdogEvent;
   // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would.
-  if (!app.isPackaged && sw('DRASHTI_TEST_GIVE_UP') === '1')
+  if (!packaged() && sw('DRASHTI_TEST_GIVE_UP') === '1')
     (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = node.giveUp;
   /** The node's watchdog self-test, its result in a box (the menu) or printed (headless). */
   const showResult = (result: SelfTestResult) => {
@@ -1158,7 +1151,7 @@ function startNodeMode(): void {
 function start(): void {
   if (ffmpegCheck) {
     const path = findFfmpeg({
-      packaged: app.isPackaged,
+      packaged: packaged(),
       resourcesPath: process.resourcesPath,
       appPath: app.getAppPath(),
       platform: process.platform,
@@ -1167,7 +1160,7 @@ function start(): void {
     });
     // And YouTube's two programs (Session 25c): yt-dlp and Deno run, and Deno is sandboxed.
     const tools = findYoutubeTools({
-      packaged: app.isPackaged,
+      packaged: packaged(),
       resourcesPath: process.resourcesPath,
       appPath: app.getAppPath(),
       platform: process.platform,
@@ -1242,7 +1235,7 @@ function start(): void {
 
   // Tests only (never a packaged Drashti): write a library as an older Drashti kept it, then stop.
   const oldLibrary = sw('DRASHTI_SELFTEST_LIBRARY');
-  if (sw('DRASHTI_SELFTEST') === 'old-library' && oldLibrary && !app.isPackaged) {
+  if (sw('DRASHTI_SELFTEST') === 'old-library' && oldLibrary && !packaged()) {
     try {
       writeOldLibrary(libraryFile(), oldLibrary, listDisplays());
       exitNow(0);
@@ -1451,7 +1444,7 @@ function start(): void {
         accessShut()
           ? STOPPED_REFUSAL
           : simpleNow() && simpleModeRefuses(command, state)
-            ? SIMPLE_MODE_REFUSAL
+            ? simpleRefusalText(simpleAccess())
             : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
@@ -1686,7 +1679,7 @@ function start(): void {
   mediaInfo = (mediaId) => media.asCue(mediaId);
   // The guides inside Drashti (Sessions 31–36): beside an installed Drashti, docs/ in the repository.
   const guideFiles = new GuideFiles(
-    guidesDir({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+    guidesDir({ packaged: packaged(), resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
   );
   const serveMedia = async (request: Request) => {
     const started = performance.now();
@@ -1838,7 +1831,7 @@ function start(): void {
   };
   // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would,
   // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes).
-  if (!app.isPackaged && sw('DRASHTI_TEST_GIVE_UP') === '1')
+  if (!packaged() && sw('DRASHTI_TEST_GIVE_UP') === '1')
     (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = stopOutput;
   let eventsScreensWas: ScreenState[] | null = [];
   const manager = new OutputManager({
@@ -2611,7 +2604,7 @@ function start(): void {
     },
     ffmpegPath: () =>
       findFfmpeg({
-        packaged: app.isPackaged,
+        packaged: packaged(),
         resourcesPath: process.resourcesPath,
         appPath: app.getAppPath(),
         platform: process.platform,
@@ -2648,7 +2641,7 @@ function start(): void {
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
   // apps' (no test may need Screen Recording, or see the computer's own windows).
-  const windowStandIn = app.isPackaged ? undefined : sw('DRASHTI_TEST_WINDOW_STANDIN');
+  const windowStandIn = packaged() ? undefined : sw('DRASHTI_TEST_WINDOW_STANDIN');
   const shownWindows = new LiveWindowService({
     sources: windowStandIn
       ? standInWindowSources(windowStandIn, (line) => {
@@ -2741,48 +2734,55 @@ function start(): void {
   // quit begins in Pro Mode; after an unexpected stop Drashti comes back in the mode it was in, so the
   // operator carries on. The same answer as restart recovery's: did the last run stop unexpectedly, less
   // than RECOVERY_MAX_AGE_MS ago? A stop longer ago starts like a clean quit (Session 21). Simple Mode
-  // is a way of working, never a lock (Session 54, E5: roles and PINs are gone).
-  const savedMode = settings.get('operatorMode');
-  const wasIn: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
-  let mode: OperatorMode = startingMode({ recentStop: startup.recentStop, wasIn });
-  if (mode !== wasIn) settings.set('operatorMode', mode);
-  if (mode === 'simple') log.info('Starting in Simple Mode, as before the unexpected stop');
-  else if (wasIn === 'simple')
-    log.info(
-      startup.cleanQuit
-        ? 'Starting in Pro Mode after a clean quit'
-        : 'Starting in Pro Mode: the unexpected stop was 3 hours or more ago',
-    );
+  // is a way of working, never a lock (Session 54, E5: roles and PINs are gone), but with Simple access
+  // (Session 55, the list's answer) it is all this computer may use: mode-keeper.ts holds it there, and
+  // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
+  let mode: OperatorMode = 'pro';
+  let rebuildMenu: () => void = () => undefined;
+  const modes = new ModeKeeper({
+    saved: { mode: settings.get('operatorMode'), byAccess: settings.get('simpleByAccess') },
+    recentStop: startup.recentStop,
+    cleanQuit: startup.cleanQuit,
+    access: () => accessState().mode,
+    save: (next, byAccess) => {
+      laterSetting('operatorMode', next);
+      laterSetting('simpleByAccess', byAccess);
+    },
+    changed: (next) => {
+      mode = next;
+      rebuildMenu();
+      sendToOperator(IPC.app.modeChanged, { mode: next });
+    },
+    menu: () => {
+      rebuildMenu();
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  mode = modes.mode;
+  // The list's answer each check: Simple access puts this computer in Simple Mode within one check.
+  onAccessChange(() => {
+    modes.accessChanged();
+  });
   simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
   lockChannels(
     () => mode === 'simple',
-    simpleModeRefusals(() => audioOutput.status),
+    simpleModeRefusals(
+      () => audioOutput.status,
+      () => simpleRefusalText(modes.simpleOnly()),
+    ),
   );
-  let rebuildMenu: () => void = () => undefined;
-  const setMode = (next: OperatorMode) => {
-    if (next === mode) return;
-    mode = next;
-    laterSetting('operatorMode', next);
-    log.info(next === 'simple' ? 'Switched to Simple Mode' : 'Switched to Pro Mode');
-    rebuildMenu();
-    sendToOperator(IPC.app.modeChanged, { mode: next });
-  };
   handle(IPC.app.getMode, () => mode);
   handle(IPC.app.setMode, (e, wanted, word): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
-    if (mode === 'simple' && wanted === 'pro') {
-      // The word, typed on purpose; never a PIN (Session 54, E5: roles and PINs are gone).
-      const refusal = leaveSimpleRefusal(word);
-      if (refusal !== null) return { ok: false, message: refusal };
-    }
-    setMode(wanted);
-    return { ok: true, mode };
+    return modes.request(wanted, word);
   });
   const switchMode = () => {
-    if (mode === 'pro') setMode('simple');
-    else sendToOperator(IPC.app.askLeaveSimple, { at: Date.now() });
+    // Simple at once; Pro asks for the word in the window, and never with Simple access.
+    if (modes.menuSwitch() === 'ask') sendToOperator(IPC.app.askLeaveSimple, { at: Date.now() });
   };
 
   // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
@@ -2863,7 +2863,10 @@ function start(): void {
     if (mode === 'simple' && !guide.simple)
       return {
         ok: false,
-        message: 'That guide is read in Pro Mode: View, then Switch to Pro Mode…, or ask the admin.',
+        // With Simple access (Session 55) no way to Pro Mode is offered, in words either.
+        message: modes.simpleOnly()
+          ? 'That guide is read in Pro Mode, which this computer’s access does not include: ask the person who looks after Drashti.'
+          : 'That guide is read in Pro Mode: View, then Switch to Pro Mode…, or ask the admin.',
       };
     const text = guideFiles.read(guide.id);
     return text === null
@@ -2886,12 +2889,12 @@ function start(): void {
   void clearDeckLeftovers();
   // Tests only (never a packaged Drashti): imports judge media by their headers alone, as before Session 50,
   // and nothing is converted by itself, so a test can try Convert as an operator does.
-  const noConvertAtImport = !app.isPackaged && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';
+  const noConvertAtImport = !packaged() && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';
   // Whether this computer plays HEVC video (Session 51): the operator window says once it has opened (below), and
   // each import converts HEVC by itself where it cannot; one starting before the window has said waits for it (a
   // moment at most). Tests only (never a packaged Drashti): the answer given ('1' plays, '0' cannot), as no test can
   // rely on a real HEVC decoder.
-  const testPlaysHevc = app.isPackaged ? undefined : sw('DRASHTI_TEST_PLAYS_HEVC');
+  const testPlaysHevc = packaged() ? undefined : sw('DRASHTI_TEST_PLAYS_HEVC');
   const hevc = new HevcAnswer(testPlaysHevc === '1' ? true : testPlaysHevc === '0' ? false : null);
   const imports = new ImportService({
     spawn: spawnImportWorker,
@@ -2908,7 +2911,7 @@ function start(): void {
       schemaVersion: LATEST_VERSION,
       // Tests only (never a packaged Drashti): as if no Keynote or PowerPoint were installed, or with a
       // stand-in that saves PowerPoint files as PDF (Session 26a).
-      converters: app.isPackaged
+      converters: packaged()
         ? true
         : sw('DRASHTI_TEST_NO_CONVERTER') === '1'
           ? false
@@ -2920,7 +2923,7 @@ function start(): void {
       ffmpeg: noConvertAtImport
         ? null
         : findFfmpeg({
-            packaged: app.isPackaged,
+            packaged: packaged(),
             resourcesPath: process.resourcesPath,
             appPath: app.getAppPath(),
             platform: process.platform,
@@ -2933,7 +2936,7 @@ function start(): void {
     // (never a packaged Drashti): a stand-in makes its movie, or (with the stand-ins or no converter above) no
     // deck's movie is made, as on a computer with no app for it.
     baker: () =>
-      app.isPackaged
+      packaged()
         ? deckAnimations
         : sw('DRASHTI_TEST_DECK_BAKER') === '1'
           ? 'stand-in'
@@ -3027,7 +3030,7 @@ function start(): void {
     },
     ffmpegPath: () =>
       findFfmpeg({
-        packaged: app.isPackaged,
+        packaged: packaged(),
         resourcesPath: process.resourcesPath,
         appPath: app.getAppPath(),
         platform: process.platform,
@@ -3089,7 +3092,7 @@ function start(): void {
   // ---- Save as MP4… (Session 26e): a video's part copied as it is, run as converting is ----
   const saveFfmpeg = () =>
     findFfmpeg({
-      packaged: app.isPackaged,
+      packaged: packaged(),
       resourcesPath: process.resourcesPath,
       appPath: app.getAppPath(),
       platform: process.platform,
@@ -3137,7 +3140,7 @@ function start(): void {
       if (level === 'warn') log.warn(message);
       else log.info(message);
     },
-    readRate: !app.isPackaged && sw('DRASHTI_TEST_SAVE_READRATE') === '1',
+    readRate: !packaged() && sw('DRASHTI_TEST_SAVE_READRATE') === '1',
   });
   const notSaving = { ok: false as const, message: 'Only the operator window can save a video’s part.' };
   handle(IPC.media.keyframe, async (e, mediaId, startMs) => {
@@ -3444,11 +3447,11 @@ function start(): void {
     base: updateBase,
     dir: join(userDataDir, 'Updates'),
     // Packaged, an update's files come from GitHub only (Session 30).
-    packaged: app.isPackaged,
+    packaged: packaged(),
     fetch: (url, init) => electronNet.fetch(url, init),
     installer: defaultInstaller({
       platform: process.platform,
-      isPackaged: app.isPackaged,
+      isPackaged: packaged(),
       execPath: process.execPath,
       testLog: testInstallLog,
       updater: autoUpdater,
@@ -3589,21 +3592,21 @@ function start(): void {
     youtubeLaunch: (work) =>
       youtubeLaunch(
         {
-          packaged: app.isPackaged,
+          packaged: packaged(),
           platform: process.platform,
           testing: anyTestSwitch(),
-          fake: app.isPackaged ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP') ?? null),
-          fakeConfig: app.isPackaged ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP_CONFIG') ?? null),
+          fake: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP') ?? null),
+          fakeConfig: packaged() ? null : (sw('DRASHTI_TEST_FAKE_YT_DLP_CONFIG') ?? null),
           execPath: process.execPath,
           tools: findYoutubeTools({
-            packaged: app.isPackaged,
+            packaged: packaged(),
             resourcesPath: process.resourcesPath,
             appPath: app.getAppPath(),
             platform: process.platform,
             arch: process.arch,
           }),
           ffmpeg: findFfmpeg({
-            packaged: app.isPackaged,
+            packaged: packaged(),
             resourcesPath: process.resourcesPath,
             appPath: app.getAppPath(),
             platform: process.platform,
@@ -3878,7 +3881,7 @@ function start(): void {
       bind: networkLocalOnly || perfTest ? '127.0.0.1' : '0.0.0.0',
       webDir: rendererDir(),
       ffmpeg: findFfmpeg({
-        packaged: app.isPackaged,
+        packaged: packaged(),
         resourcesPath: process.resourcesPath,
         appPath: app.getAppPath(),
         platform: process.platform,
@@ -4060,6 +4063,8 @@ function start(): void {
     },
     files: phoneFiles,
     refused: (channel) => refusedNow(channel),
+    // In words true for this computer's access (Session 55).
+    refusal: () => simpleRefusalText(modes.simpleOnly()),
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
     },
@@ -4410,7 +4415,7 @@ function start(): void {
   // transitions ask (Session 55: Movement went with Looks and every group is Calm; the specs that draw Bold ask here).
   // On the event loop, never inside the test's call itself: that can come between a query's steps, and the library's
   // connection refuses another query then ("This database connection is busy executing a query").
-  if (!app.isPackaged)
+  if (!packaged())
     (globalThis as { drashtiTestMovement?: (movement: Movement) => void }).drashtiTestMovement = (
       movement,
     ) => {
@@ -5605,6 +5610,8 @@ function start(): void {
   };
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
     mode,
+    // Simple access (Session 55): no way back to Pro Mode in the menu.
+    simpleOnly: modes.simpleOnly(),
     switchMode,
     setUpScreens: () => {
       if (mode === 'pro') sendToOperator(IPC.setup.open, { at: Date.now() });
@@ -5858,7 +5865,7 @@ function start(): void {
         },
         ffmpegPath: () =>
           findFfmpeg({
-            packaged: app.isPackaged,
+            packaged: packaged(),
             resourcesPath: process.resourcesPath,
             appPath: app.getAppPath(),
             platform: process.platform,

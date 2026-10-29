@@ -8,6 +8,7 @@ import { switchesFor } from '../switches';
 import {
   AccessClient,
   accessTarget,
+  GIVEN_UP,
   nodeTransport,
   type AccessReply,
   type AccessResult,
@@ -96,11 +97,17 @@ describe('the checks', () => {
     await person.request(PERSON);
     s.press(s.list.linksFor(PERSON)?.approve ?? '');
     const { grant } = value(await person.redeem(PERSON, s.list.tokenFor(PERSON) ?? ''));
+    // With its mode (Session 55: approved by the link as it was first offered, Simple) and its own time, echoed.
     expect(value(await person.check(grant, { ...NO_ACTIVITY, shows: 2 }))).toEqual({
       status: 'in',
       owner: false,
       recorded: false,
       endsAt: null,
+      mode: 'simple',
+      why: null,
+      at: expect.any(Number) as unknown,
+      // The grant it answers (Session 55 review).
+      grantId: grant.grantId,
     });
     const owner = clientOf(s, 'client-owner');
     const me = s.grant(PLACEHOLDER_APPROVER, placeholderComputer('client-owner'));
@@ -108,6 +115,37 @@ describe('the checks', () => {
     expect(value(await owner.revoke(me, PERSON))).toEqual({ status: 'revoked' });
     s.list.move(6000);
     expect(value(await person.check(grant, NO_ACTIVITY))).toMatchObject({ status: 'revoked', owner: false });
+  });
+
+  it('keep the answer as the list signed it, and read it back only when it is the list’s own, for this computer (Session 55)', async () => {
+    const s = await stand();
+    const person = clientOf(s, 'client-kept');
+    const grant = s.grant(PERSON, placeholderComputer('client-kept'), { mode: 'simple' });
+    const r = await person.check(grant, NO_ACTIVITY);
+    if (!r.ok || !r.signed) throw new Error('No signed answer');
+    const kept = person.readKept(r.signed, grant.grantId);
+    expect(kept).toEqual({
+      status: 'in',
+      owner: false,
+      endsAt: null,
+      mode: 'simple',
+      serverTime: r.serverTime,
+      at: r.value.at,
+    });
+    // Its text changed (Simple made Pro), its signature taken away, or read by another computer: not believed.
+    expect(
+      person.readKept({ ...r.signed, payload: r.signed.payload.replace('"simple"', '"pro"') }, grant.grantId),
+    ).toBeNull();
+    expect(person.readKept({ ...r.signed, sig: '' }, grant.grantId)).toBeNull();
+    expect(clientOf(s, 'client-another').readKept(r.signed, grant.grantId)).toBeNull();
+    // Another call's answer (a status), signed by the list all the same: not a check's, not believed.
+    const status = await person.status(PERSON);
+    if (!status.ok || !status.signed) throw new Error('No signed answer');
+    expect(person.readKept(status.signed, grant.grantId)).toBeNull();
+    // The answer names its grant (Session 55 review): kept for an earlier grant on this computer, it is not believed
+    // for the grant kept now.
+    expect(JSON.parse(r.signed.payload)).toMatchObject({ grantId: grant.grantId });
+    expect(person.readKept(r.signed, 'f'.repeat(32))).toBeNull();
   });
 
   it('sign each call with a new nonce and a rising `at`, and only the signed calls carry a mac', async () => {
@@ -131,6 +169,31 @@ describe('the checks', () => {
     });
     // This computer's clock went back a second: `at` still rises.
     expect(Number(second?.['at'])).toBe(Number(first?.['at']) + 1);
+  });
+
+  it('a check can be given up before its time limit (the network came back): no answer, said as such, at once', async () => {
+    const s = await stand();
+    const c = clientOf(s, 'client-given-up', { timeoutMs: 20_000 });
+    const grant = s.grant(PERSON, placeholderComputer('client-given-up'));
+    // The list says nothing: the check waits, as one sent on a network with no internet behind it does.
+    s.mode = 'silent';
+    const give = new AbortController();
+    const started = Date.now();
+    const asked = c.check(grant, NO_ACTIVITY, give.signal);
+    await expect.poll(() => s.tries).toBe(1);
+    give.abort();
+    expect(await asked).toEqual({ ok: false, kind: 'no-answer', reason: 'network', detail: GIVEN_UP });
+    expect(Date.now() - started).toBeLessThan(5000);
+    // A check not given up still has its own time limit, and one given up before it goes is never sent.
+    s.mode = 'answer';
+    const gone = new AbortController();
+    gone.abort();
+    expect(await c.check(grant, NO_ACTIVITY, gone.signal)).toMatchObject({
+      reason: 'network',
+      detail: GIVEN_UP,
+    });
+    expect(s.tries).toBe(1);
+    expect(value(await c.check(grant, NO_ACTIVITY))).toMatchObject({ status: 'in' });
   });
 });
 

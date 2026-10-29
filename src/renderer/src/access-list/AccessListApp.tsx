@@ -22,7 +22,7 @@ import { Download, ListFilter, Search, UserPlus, Users } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { EmptyState, ErrorState, Loading } from '../ui/States';
-import { AddGmailDialog, LengthDialog, NoteDialog, RevokeDialog } from './AccessDialogs';
+import { AddGmailDialog, LengthDialog, ModeDialog, NoteDialog, RevokeDialog } from './AccessDialogs';
 import { AccessTable } from './AccessTable';
 import {
   choose,
@@ -79,6 +79,7 @@ function act(kind: AccessEdit, gmail: string): void {
   else if (kind === 'note') openDialog({ kind: 'note', gmail });
   else if (kind === 'approve' || kind === 'regrant' || kind === 'length')
     openDialog({ kind: 'length', edit: kind, gmail });
+  else if (kind === 'mode') openDialog({ kind: 'mode', gmail });
   else void edit(kind, gmail).then(keyboardBack);
 }
 
@@ -129,7 +130,7 @@ function ChosenBar({ person }: { person: AccessPerson | null }) {
         <>
           <p className="min-w-0 flex-1 text-sm text-muted">
             Choose a Gmail in the list for what you can do with it: approve, reject, revoke, give access
-            again, change how long access lasts, or a note.
+            again, change how long access lasts or what they may use, or a note.
           </p>
           <span role="status" className="text-xs text-muted">
             {busy ? 'Asking the access list…' : ''}
@@ -385,6 +386,7 @@ export function AccessListApp() {
       {dialog?.kind === 'length' && (
         <LengthDialog key={`${dialog.edit}:${dialog.gmail}`} kind={dialog.edit} gmail={dialog.gmail} />
       )}
+      {dialog?.kind === 'mode' && <ModeDialog key={dialog.gmail} gmail={dialog.gmail} />}
     </div>
   );
 }

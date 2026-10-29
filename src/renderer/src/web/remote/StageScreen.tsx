@@ -44,7 +44,7 @@ function LayoutPicker() {
   }, [load]);
   if (layouts === null) return null;
   return (
-    <label className="flex flex-col gap-1 text-sm text-muted">
+    <label className="flex flex-col gap-1 text-base text-muted">
       Layout
       <select
         value={chosen}

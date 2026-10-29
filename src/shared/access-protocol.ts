@@ -18,10 +18,11 @@ export const ACCESS_VERSION = 1;
 /** Drashti checks its access this often while it is open. */
 export const ACCESS_CHECK_EVERY_MS = 15_000;
 /**
- * With no answer for this long, Drashti stops (the owner's decision of 28 Oct 2026: without the internet it keeps
- * working, the stream and recording included, for up to an hour from the last answer, a bar saying how long).
+ * With no answer for this long, Drashti stops (the owner's decisions of 28 and 29 Oct 2026: without the internet it keeps
+ * working, the stream and recording included, for up to 15 days from the last answer, a line saying how long); and a
+ * computer with no check this long has its grant ended by the list itself (access-list/core.js, the same number).
  */
-export const ACCESS_STOP_AFTER_MS = 60 * 60_000;
+export const ACCESS_STOP_AFTER_MS = 15 * 24 * 60 * 60_000;
 /** A token that is not used runs out this long after it is sent: 3 days. */
 export const ACCESS_TOKEN_MS = 3 * 24 * 60 * 60_000;
 /** An Approve or Reject link runs out this long after the request: 7 days. */
@@ -56,6 +57,7 @@ export const ACCESS_OWNER_OPS = [
   'regrant',
   'note',
   'length',
+  'mode',
 ] as const;
 export type AccessPublicOp = (typeof ACCESS_PUBLIC_OPS)[number];
 export type AccessOwnerOp = (typeof ACCESS_OWNER_OPS)[number];
@@ -134,6 +136,16 @@ export function accessLengthOk(length: unknown): length is AccessLength {
   );
 }
 
+/**
+ * How a Gmail may use Drashti (the owner's decision of 29 Oct 2026): Pro (Pro Mode and Simple Mode) or Simple (Simple
+ * Mode only, with no way to Pro Mode). Chosen per Gmail by the owner; every Gmail let in before, and the owner's own, Pro.
+ */
+export const ACCESS_MODES = ['pro', 'simple'] as const;
+export type AccessMode = (typeof ACCESS_MODES)[number];
+
+/** Why the list ended a computer's grant after 15 days with no check (a check's `why`, a computer's `endedWhy`). */
+export const NO_CONTACT = 'no-contact';
+
 /** Drashti's bar says when access ends from this long before the end (so at once for 7 days or less). */
 export const ACCESS_ENDS_WARN_MS = 7 * 24 * 60 * 60_000;
 
@@ -183,6 +195,8 @@ export interface AccessPerson {
   recordings: number;
   imports: number;
   note: string;
+  /** Pro or Simple: the one it has, or for a request waiting, the one its approval would give (Session 55). */
+  mode: AccessMode;
   /** The length last given (or chosen when the owner added the Gmail); null: none given yet. */
   length: AccessLength | null;
   /** When access ends, by the list's clock (ms); null: no end (Unlimited, or the owner's own). */

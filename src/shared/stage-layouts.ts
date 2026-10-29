@@ -88,7 +88,7 @@ export const STAGE_BOX_NAMES: Record<StageBoxKind, string> = {
   stageMessage: 'Stage message',
   upcoming: 'Next items in the playlist',
   mediaLeft: 'Time left on the video or sound',
-  screensState: 'The audience screens (black-out, wallpaper)',
+  screensState: 'The audience screens’ state',
   audience: 'The audience picture, live',
   videoInput: 'The video input, live',
   text: 'Fixed text',

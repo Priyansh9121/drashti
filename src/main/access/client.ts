@@ -12,6 +12,7 @@ import {
   ACCESS_ERRORS,
   ACCESS_LENGTH_MAX_DAYS,
   ACCESS_MAC_PREFIX,
+  ACCESS_MODES,
   ACCESS_REQUEST_STATUSES,
   ACCESS_UNLIMITED,
   ACCESS_VERSION,
@@ -22,6 +23,7 @@ import {
   type AccessErrorCode,
   type AccessGrant,
   type AccessLength,
+  type AccessMode,
   type AccessOp,
   type AccessPerson,
   type AccessRequestStatus,
@@ -120,12 +122,34 @@ export type AccessNoAnswer =
   /** Signed and ours, but not in the form this Drashti knows. */
   | 'unexpected';
 
+/** An answer as the list signed it: its payload's text, and the signature over it (base64). */
+export interface SignedAnswer {
+  payload: string;
+  sig: string;
+}
+
+/** A check's answer kept in the data folder, read again and believed (readKept): what the list said, and when. */
+export interface KeptCheck {
+  status: AccessCheckStatus;
+  owner: boolean;
+  endsAt: number | null;
+  mode: AccessMode;
+  /** The list's own time when it answered. */
+  serverTime: number;
+  /** The check's own time on this computer's clock, as the list echoed and signed it; null from a list from before. */
+  at: number | null;
+}
+
 export type AccessResult<T> =
-  | { ok: true; value: T; serverTime: number }
+  /** `signed`: the answer as the list signed it (a check's is kept for a start without the internet). */
+  | { ok: true; value: T; serverTime: number; signed?: SignedAnswer }
   /** The list answered, signed, and refused: what it said. */
   | { ok: false; kind: 'refused'; error: AccessErrorCode; message: string }
   /** Nothing believable came back: as if the list were not there. */
   | { ok: false; kind: 'no-answer'; reason: AccessNoAnswer; detail: string };
+
+/** A call given up before its time limit (the network came back while it waited on the old one, or a stop). */
+export const GIVEN_UP = 'Given up before it answered.';
 
 const noAnswer = (reason: AccessNoAnswer, detail: string): AccessResult<never> => ({
   ok: false,
@@ -168,6 +192,10 @@ const personSchema = z.object({
   recordings: count,
   imports: count,
   note: z.string(),
+  mode: z
+    .enum(ACCESS_MODES)
+    .optional()
+    .transform((m): AccessMode => m ?? 'pro'),
   length: length.nullable(),
   endsAt: date,
   ended: z.boolean(),
@@ -200,12 +228,35 @@ const checkSchema = z.object({
   recorded: z.boolean(),
   /** When access ends, by the list's clock (the answer's serverTime is its now); null: no end. */
   endsAt: date,
+  /** Pro or Simple (Session 55); a list from before says none: Pro, as every Gmail let in before modes came. */
+  mode: z
+    .enum(ACCESS_MODES)
+    .optional()
+    .transform((m): AccessMode => m ?? 'pro'),
+  /** Why the list ended this computer's grant, with unknown: 'no-contact' after 15 days with no check (Session 55). */
+  why: z
+    .string()
+    .max(40)
+    .optional()
+    .transform((w) => w ?? null),
+  /** The check's own time, echoed (Session 55); null from a list from before. */
+  at: z
+    .number()
+    .optional()
+    .transform((a) => a ?? null),
+  /** Which grant's check it answers (Session 55 review); null from a list from before. */
+  grantId: z
+    .string()
+    .regex(HEX32)
+    .optional()
+    .transform((g) => g ?? null),
 });
 const listSchema = z.object({ people: z.array(personSchema) });
 const approvedSchema = z.object({ status: z.literal('approved'), runsOut: z.number(), endsAt: date });
 const lengthSchema = z.object({ status: z.literal('approved'), endsAt: date });
 const rejectedSchema = z.object({ status: z.literal('rejected'), mailed: z.boolean() });
 const revokedSchema = z.object({ status: z.literal('revoked') });
+const modeSchema = z.object({ status: z.string(), mode: z.enum(ACCESS_MODES) });
 const notedSchema = z.object({});
 
 export interface AccessClientOptions {
@@ -263,14 +314,41 @@ export class AccessClient {
       : r;
   }
 
-  /** Every 15 s: still let in, and until when? With this computer's totals since its token was used. */
+  /**
+   * Every 15 s: still let in, and until when? With this computer's totals since its token was used. `stop` gives it up
+   * before its time limit (the network came back while it waited on the old one: service.ts asks again at once).
+   */
   check(
     grant: AccessGrant,
     activity: AccessActivity,
+    stop?: AbortSignal,
   ): Promise<
-    AccessResult<{ status: AccessCheckStatus; owner: boolean; recorded: boolean; endsAt: number | null }>
+    AccessResult<{
+      status: AccessCheckStatus;
+      owner: boolean;
+      recorded: boolean;
+      endsAt: number | null;
+      mode: AccessMode;
+      why: string | null;
+      at: number | null;
+    }>
   > {
-    return this.call('check', { activity }, checkSchema, grant);
+    return this.call('check', { activity }, checkSchema, grant, stop);
+  }
+
+  /**
+   * A check's answer kept in the data folder (Session 55), read again: believed only when it is the list's own, signed
+   * with its key, answering a check from this computer for this grant (Session 55 review: one kept for an earlier grant
+   * on this computer is not); null otherwise (edited, from another computer or grant, from a list that names no grant,
+   * or not a check's).
+   */
+  readKept(kept: SignedAnswer, grantId: string): KeptCheck | null {
+    const head = this.verified(kept);
+    if (head?.op !== 'check' || !head.ok || head.computerId !== this.o.computer.id) return null;
+    const value = checkSchema.safeParse(head.payload);
+    if (!value.success || value.data.grantId !== grantId) return null;
+    const { status, owner, endsAt, mode, at } = value.data;
+    return { status, owner, endsAt, mode, serverTime: head.serverTime, at };
   }
 
   /** The owner's: every Gmail on the list. */
@@ -278,31 +356,48 @@ export class AccessClient {
     return this.call('list', {}, listSchema, grant);
   }
 
-  /** The owner's: a Gmail added (a request, and the approver's email with its links), the length kept for its approval. */
+  /**
+   * The owner's: a Gmail added (a request, and the approver's email with its links), the length and the mode kept for its
+   * approval.
+   */
   add(
     grant: AccessGrant,
     target: string,
-    o: { name?: string; note?: string; length?: AccessLength } = {},
+    o: { name?: string; note?: string; length?: AccessLength; mode?: AccessMode } = {},
   ): Promise<AccessResult<z.infer<typeof requestedSchema>>> {
     return this.call('add', { target, ...o }, requestedSchema, grant);
   }
 
-  /** The owner's: approved for `length` from now, and a token emailed to the Gmail. */
+  /** The owner's: approved for `length` from now, Pro or Simple (the row's when none), and a token emailed to the Gmail. */
   approve(
     grant: AccessGrant,
     target: string,
     length: AccessLength,
+    mode?: AccessMode,
   ): Promise<AccessResult<{ status: 'approved'; runsOut: number; endsAt: number | null }>> {
-    return this.call('approve', { target, length }, approvedSchema, grant);
+    return this.call('approve', { target, length, ...(mode ? { mode } : {}) }, approvedSchema, grant);
   }
 
-  /** The owner's: Give access again (a new token, and `length` from now; after a revoke, with no computer in). */
+  /** The owner's: how a Gmail may use Drashti (Session 55): its computers hear it at their next check. */
+  mode(
+    grant: AccessGrant,
+    target: string,
+    mode: AccessMode,
+  ): Promise<AccessResult<{ status: string; mode: AccessMode }>> {
+    return this.call('mode', { target, mode }, modeSchema, grant);
+  }
+
+  /**
+   * The owner's: Give access again (a new token, and `length` from now; after a revoke, with no computer in), with what
+   * they may use (Session 55 review); with none, the row's.
+   */
   regrant(
     grant: AccessGrant,
     target: string,
     length: AccessLength,
+    mode?: AccessMode,
   ): Promise<AccessResult<{ status: 'approved'; runsOut: number; endsAt: number | null }>> {
-    return this.call('regrant', { target, length }, approvedSchema, grant);
+    return this.call('regrant', { target, length, ...(mode ? { mode } : {}) }, approvedSchema, grant);
   }
 
   /** The owner's: a new length for a Gmail approved, counted from now (its computers stopped by an end come back). */
@@ -340,6 +435,7 @@ export class AccessClient {
     fields: Record<string, unknown>,
     schema: z.ZodType<T>,
     grant?: AccessGrant,
+    stop?: AbortSignal,
   ): Promise<AccessResult<T>> {
     const nonce = randomBytes(16).toString('hex');
     const body: Record<string, unknown> = {
@@ -355,7 +451,7 @@ export class AccessClient {
       body['at'] = this.nextAt();
       body['mac'] = accessMac(grant.secret, body);
     }
-    const sent = await this.send(JSON.stringify(body));
+    const sent = await this.send(JSON.stringify(body), stop);
     return typeof sent === 'string' ? this.believe(sent, op, nonce, schema) : sent;
   }
 
@@ -374,8 +470,9 @@ export class AccessClient {
   }
 
   /** The call sent, and Google's redirect followed: the answer's text, or why there is none. */
-  private async send(body: string): Promise<string | AccessResult<never>> {
-    const signal = AbortSignal.timeout(this.timeoutMs);
+  private async send(body: string, stop?: AbortSignal): Promise<string | AccessResult<never>> {
+    const limit = AbortSignal.timeout(this.timeoutMs);
+    const signal = stop ? AbortSignal.any([limit, stop]) : limit;
     let url = this.o.url;
     let method: 'GET' | 'POST' = 'POST';
     let payload: string | null = body;
@@ -406,9 +503,37 @@ export class AccessClient {
       }
       return noAnswer('redirect', 'Sent on too many times.');
     } catch (error) {
+      if (stop?.aborted) return noAnswer('network', GIVEN_UP);
       if (signal.aborted) return noAnswer('timeout', `No answer within ${String(this.timeoutMs / 1000)} s.`);
       return noAnswer('network', error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /** Whether the list signed this text with its key (the public key built in). */
+  private signedByTheList(answer: SignedAnswer): boolean {
+    try {
+      return verify(
+        'sha256',
+        Buffer.from(answer.payload, 'utf8'),
+        this.key,
+        Buffer.from(answer.sig, 'base64'),
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** A signed answer's payload and head, when the list signed it; null otherwise. */
+  private verified(answer: SignedAnswer): (z.infer<typeof headSchema> & { payload: unknown }) | null {
+    if (answer.sig === '' || !this.signedByTheList(answer)) return null;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(answer.payload);
+    } catch {
+      return null;
+    }
+    const head = headSchema.safeParse(payload);
+    return head.success && head.data.v === ACCESS_VERSION ? { ...head.data, payload } : null;
   }
 
   /** The answer believed, or not (see the top of this file). */
@@ -422,18 +547,8 @@ export class AccessClient {
     const o = outerSchema.safeParse(outer);
     if (!o.success) return noAnswer('unreadable', 'The answer is not { payload, sig }.');
     if (o.data.sig === '') return noAnswer('unsigned', 'The answer is not signed (is the list set up?).');
-    let good: boolean;
-    try {
-      good = verify(
-        'sha256',
-        Buffer.from(o.data.payload, 'utf8'),
-        this.key,
-        Buffer.from(o.data.sig, 'base64'),
-      );
-    } catch {
-      good = false;
-    }
-    if (!good) return noAnswer('signature', 'The answer is not signed with the list’s key.');
+    if (!this.signedByTheList(o.data))
+      return noAnswer('signature', 'The answer is not signed with the list’s key.');
     let payload: unknown;
     try {
       payload = JSON.parse(o.data.payload);
@@ -457,7 +572,12 @@ export class AccessClient {
     }
     const value = schema.safeParse(payload);
     return value.success
-      ? { ok: true, value: value.data, serverTime: head.data.serverTime }
+      ? {
+          ok: true,
+          value: value.data,
+          serverTime: head.data.serverTime,
+          signed: { payload: o.data.payload, sig: o.data.sig },
+        }
       : noAnswer('unexpected', 'An answer in a form this Drashti does not know.');
   }
 }

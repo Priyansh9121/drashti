@@ -53,7 +53,7 @@ import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
 import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
 import { plural } from '../../shared/text';
-import { sw, swMs } from '../switches';
+import { packaged, sw, swMs } from '../switches';
 import { type ClockStyle, validClockStyle } from '../../shared/format';
 
 /*
@@ -212,7 +212,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     arch: process.arch,
     base: deps.updateBase,
     dir: join(deps.userData, 'Updates'),
-    packaged: app.isPackaged,
+    packaged: packaged(),
     fetch: (url, init) => net.fetch(url, init),
     installer: deps.installer,
     // A node streams nothing; it never waits for that.
@@ -316,7 +316,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const loadedSinceStopped = new Set<string>();
   // Tests only (never a packaged Drashti): a node's outputs held at one moment of the engine's time, as Main's
   // are (Session 27), so a node and Main can be compared pixel for pixel part-way through a transition.
-  if (!app.isPackaged && sw('DRASHTI_TEST_CLOCK_HOLD') === '1')
+  if (!packaged() && sw('DRASHTI_TEST_CLOCK_HOLD') === '1')
     (globalThis as { drashtiTestHoldClock?: (at: number | null) => number }).drashtiTestHoldClock = (at) => {
       let reached = 0;
       for (const win of outputWindows.values())

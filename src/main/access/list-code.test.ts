@@ -15,6 +15,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   ACCESS_LIST_DIR,
   callBody,
+  core,
   linkParams,
   MemoryCache,
   PLACEHOLDER_APPROVER,
@@ -157,6 +158,8 @@ function appsScript(o: { context?: 'sheet' | 'page'; props?: Record<string, stri
   const counts = { propertyReads: 0, rsaCharsets: new Set<unknown>(), hmacCharsets: new Set<unknown>() };
   const ui: Ui = { context: o.context ?? 'sheet', answers: [], alerts: [], dialogs: [], menus: [] };
   const cache = new MemoryCache(() => Date.now());
+  // The project's installable triggers (Session 55: the daily check), as ScriptApp keeps them.
+  const triggers: { fn: string; days: number; hour: number | null }[] = [];
   const Charset = { UTF_8: 'UTF_8', US_ASCII: 'US_ASCII' };
   const spreadsheet = {
     getSheetByName: (n: string) => sheets.find((s) => s.name === n) ?? null,
@@ -241,6 +244,23 @@ function appsScript(o: { context?: 'sheet' | 'page'; props?: Record<string, stri
       }),
     },
     CacheService: { getScriptCache: () => cache },
+    ScriptApp: {
+      getProjectTriggers: () =>
+        triggers.map((t) => ({ getHandlerFunction: () => t.fn, getEventType: () => 'CLOCK' })),
+      newTrigger: (fn: string) => {
+        const t = { fn, days: 0, hour: null as number | null };
+        const api = {
+          timeBased: () => api,
+          everyDays: (n: number) => ((t.days = n), api),
+          atHour: (h: number) => ((t.hour = h), api),
+          create: () => {
+            triggers.push(t);
+            return { getHandlerFunction: () => t.fn };
+          },
+        };
+        return api;
+      },
+    },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => undefined }) },
     MailApp: {
       getRemainingDailyQuota: () => 100 - mails.length,
@@ -290,7 +310,7 @@ function appsScript(o: { context?: 'sheet' | 'page'; props?: Record<string, stri
     runInContext(readFileSync(join(ACCESS_LIST_DIR, file), 'utf8'), context, { filename: file });
   const fn = (name: string, ...args: unknown[]): unknown =>
     (context[name] as (...a: unknown[]) => unknown)(...args);
-  return { context, fn, sheets, props, mails, ui, counts, cache };
+  return { context, fn, sheets, props, mails, ui, counts, cache, triggers };
 }
 
 let keys: { pem: string; publicKey: string };
@@ -385,44 +405,83 @@ describe('the list in Apps Script', () => {
     const computers = g.sheets.find((s) => s.name === 'Computers');
     expect(g.sheets.map((s) => s.name)).toEqual(['Access List', 'Computers']);
     expect(list?.header().slice(0, 4)).toEqual(['Gmail', 'Name', 'Status', 'Requested']);
-    expect(list?.header()).toHaveLength(24);
+    expect(list?.header()).toHaveLength(25);
     expect(list?.header()[7]).toBe('Access ends');
+    // The way each Gmail may use Drashti (Session 55), Pro or Simple only.
+    expect(list?.header()[8]).toBe('Mode');
+    expect(list?.validation.get(9)).toEqual(['Pro', 'Simple']);
     expect(computers?.header()).toHaveLength(18);
     expect(list?.validation.get(3)).toEqual(['requested', 'approved', 'rejected', 'revoked']);
-    expect([...(list?.hidden ?? [])].sort((a, b) => a - b)).toEqual([18, 19, 20, 21, 22, 23, 24]);
+    expect([...(list?.hidden ?? [])].sort((a, b) => a - b)).toEqual([19, 20, 21, 22, 23, 24, 25]);
     expect(list?.formats.get(4)).toBe('d mmm yyyy, h:mm');
     expect(list?.formats.get(8)).toBe('d mmm yyyy, h:mm');
     expect(computers?.protections).toEqual([
       { warningOnly: true, description: expect.stringContaining('access list') as unknown },
     ]);
     expect(list?.frozen).toBe(1);
+    // Its Mode column made (Session 55 review): put back later, it comes back empty, which reads Simple.
+    expect(g.props.get(core.MODE_MADE_PROPERTY)).toBe('1');
     list?.cells[0]?.splice(1, 1);
     g.fn('prepareSheet_');
     expect(list?.header().at(-1)).toBe('Name');
   });
 
-  it('adds Access ends and Length to a Sheet set up before they came, by itself: after its last column, as Set up… would', () => {
+  it('adds Access ends, Mode and Length to a Sheet set up before they came, by itself: after its last column, as Set up… would', () => {
     const g = appsScript({ props: setUpProps() });
     g.fn('prepareSheet_');
     const list = g.sheets.find((s) => s.name === 'Access List');
     if (!list) throw new Error('No Access List tab');
-    // The Sheet as Set up… made it before lengths came: 22 columns, the last 6 hidden, in a Sheet 22 wide.
-    const gone = ['Access ends', 'Length'].map((h) => list.header().indexOf(h));
+    // The Sheet as Set up… made it before lengths and modes came: 22 columns, the last 6 hidden, in a Sheet 22 wide.
+    const gone = ['Access ends', 'Mode', 'Length'].map((h) => list.header().indexOf(h));
     list.cells = list.cells.map((r) => r.filter((_, i) => !gone.includes(i)));
     list.hidden = new Set([17, 18, 19, 20, 21, 22]);
     list.formats = new Map();
+    list.validation = new Map([[3, ['requested', 'approved', 'rejected', 'revoked']]]);
     list.maxColumns = 22;
+    g.props.delete(core.MODE_MADE_PROPERTY);
     const computer = placeholderComputer('code-old-sheet');
     expect(post(g, callBody('request', computer, { gmail: PERSON }).body)).toMatchObject({ ok: true });
-    expect(list.header().slice(-2)).toEqual(['Access ends', 'Length']);
-    expect(list.maxColumns).toBe(24);
+    expect(list.header().slice(-3)).toEqual(['Access ends', 'Mode', 'Length']);
+    expect(list.maxColumns).toBe(25);
     expect(list.formats.get(23)).toBe('d mmm yyyy, h:mm');
-    expect(list.hidden.has(24)).toBe(true);
+    expect(list.validation.get(24)).toEqual(['Pro', 'Simple']);
+    expect(list.hidden.has(25)).toBe(true);
     expect(list.hidden.has(23)).toBe(false);
-    expect(list.records()[0]).toMatchObject({ Gmail: PERSON, Status: 'requested', 'Access ends': '' });
+    expect(list.hidden.has(24)).toBe(false);
+    expect(list.records()[0]).toMatchObject({
+      Gmail: PERSON,
+      Status: 'requested',
+      'Access ends': '',
+      Mode: 'Simple',
+    });
     // Found, never added again.
     post(g, callBody('status', computer, { gmail: PERSON }).body);
     expect(list.header().filter((h) => h === 'Access ends')).toHaveLength(1);
+  });
+
+  it('Set up… on a Sheet from before modes came, with Gmails in it, leaves the Mode column to the list, which writes Pro for each one let in before (Session 55 review)', () => {
+    const g = appsScript({ props: setUpProps() });
+    g.fn('prepareSheet_');
+    const list = g.sheets.find((s) => s.name === 'Access List');
+    if (!list) throw new Error('No Access List tab');
+    const computer = placeholderComputer('code-old-modes');
+    post(g, callBody('request', computer, { gmail: PERSON }).body);
+    const link = /Approve: (\S+)/u.exec(g.mails.at(-1)?.body ?? '')?.[1] ?? '';
+    expect(g.fn('answerLink', { ...linkParams(link), mode: 'simple' })).toMatchObject({ kind: 'done' });
+    // The Sheet as it was before modes came: no Mode column, and never one made.
+    const mode = list.header().indexOf('Mode');
+    list.cells = list.cells.map((r) => r.filter((_, i) => i !== mode));
+    list.validation = new Map([[3, ['requested', 'approved', 'rejected', 'revoked']]]);
+    g.props.delete(core.MODE_MADE_PROPERTY);
+    // Set up… chosen again: the Mode column is not made empty under the Gmails already there…
+    g.fn('prepareSheet_');
+    expect(list.header()).not.toContain('Mode');
+    // …the list makes it at its next call, Pro for the Gmail let in before modes came.
+    g.cache.clear();
+    post(g, callBody('status', computer, { gmail: PERSON }).body);
+    expect(list.header().at(-1)).toBe('Mode');
+    expect(list.records()[0]).toMatchObject({ Gmail: PERSON, Status: 'approved', Mode: 'Pro' });
+    expect(g.props.get(core.MODE_MADE_PROPERTY)).toBe('1');
   });
 
   it('Set up…: asks for the approver first, then its window checks Google’s signing and keeps the keys once', () => {
@@ -502,8 +561,58 @@ describe('the list in Apps Script', () => {
         items: [
           ['Set up…', 'drashtiSetUp'],
           ['Let me in (the owner)…', 'drashtiLetMeIn'],
+          ['Turn on the daily check…', 'drashtiDailyOn'],
         ],
       },
+    ]);
+  });
+
+  it('Turn on the daily check…: asks first, then makes one time-driven trigger a day for drashtiDailyCheck; asked again, says it is on and makes no second', () => {
+    const g = appsScript({ props: setUpProps() });
+    g.fn('prepareSheet_');
+    g.ui.answers.push('CANCEL');
+    g.fn('drashtiDailyOn');
+    expect(g.triggers).toHaveLength(0);
+    expect(g.ui.alerts.at(-1)?.prompt).toContain('15 days');
+    g.fn('drashtiDailyOn');
+    expect(g.triggers).toEqual([{ fn: 'drashtiDailyCheck', days: 1, hour: 3 }]);
+    expect(g.ui.alerts.at(-1)?.title).toBe('The daily check is on');
+    g.fn('drashtiDailyOn');
+    expect(g.triggers).toHaveLength(1);
+    expect(g.ui.alerts.at(-1)?.prompt).toContain('already');
+  });
+
+  it('the daily check ends each computer with no check for 15 days, by the list’s clock, and only once in 10 minutes', () => {
+    const g = appsScript({ props: setUpProps() });
+    g.fn('prepareSheet_');
+    const computer = placeholderComputer('code-daily');
+    post(g, callBody('request', computer, { gmail: PERSON }).body);
+    const link = /Approve: (\S+)/u.exec(g.mails.at(-1)?.body ?? '')?.[1] ?? '';
+    expect(g.fn('answerLink', { ...linkParams(link), mode: 'pro' })).toMatchObject({ kind: 'done' });
+    const token = /\b([0-9A-Z]{4}(?:-[0-9A-Z]{4}){6})\b/u.exec(g.mails.at(-1)?.body ?? '')?.[1] ?? '';
+    expect(post(g, callBody('redeem', computer, { gmail: PERSON, token }).body)).toMatchObject({ ok: true });
+    const computers = g.sheets.find((s) => s.name === 'Computers');
+    if (!computers) throw new Error('No Computers tab');
+    const col = (h: string) => computers.header().indexOf(h) + 1;
+    // Its last check 16 days ago: the daily check ends it.
+    const long = new Date(Date.now() - 16 * 24 * 3_600_000);
+    computers.put(2, col('Last seen'), long);
+    computers.put(2, col('Token used'), long);
+    // It returns nothing (Session 55 review: called by name from a page, it says nothing about the list).
+    expect(g.fn('drashtiDailyCheck')).toBeUndefined();
+    expect(computers.records()[0]).toMatchObject({ 'Why ended': 'no-contact' });
+    expect(g.fn('drashtiDailyCheck')).toBeUndefined();
+  });
+
+  it('asks Google for the one scope a trigger needs, beside the three it had', () => {
+    const manifest = JSON.parse(readFileSync(join(ACCESS_LIST_DIR, 'appsscript.json'), 'utf8')) as {
+      oauthScopes: string[];
+    };
+    expect(manifest.oauthScopes).toEqual([
+      'https://www.googleapis.com/auth/spreadsheets.currentonly',
+      'https://www.googleapis.com/auth/script.send_mail',
+      'https://www.googleapis.com/auth/script.container.ui',
+      'https://www.googleapis.com/auth/script.scriptapp',
     ]);
   });
 
@@ -516,6 +625,8 @@ describe('the list in Apps Script', () => {
       'answerLink',
       'doGet',
       'doPost',
+      'drashtiDailyCheck',
+      'drashtiDailyOn',
       'drashtiLetMeIn',
       'drashtiSaveSetup',
       'drashtiSetUp',
@@ -523,9 +634,13 @@ describe('the list in Apps Script', () => {
       'onOpen',
     ]);
     expect(typeof g.context['DrashtiAccess']).toBe('object');
-    // Outside the Sheet's own window, the menu's two do nothing at all.
+    // Outside the Sheet's own window, the menu's three do nothing at all.
     expect(() => g.fn('drashtiSetUp')).toThrow(/getUi/u);
     expect(() => g.fn('drashtiLetMeIn')).toThrow(/getUi/u);
+    expect(() => g.fn('drashtiDailyOn')).toThrow(/getUi/u);
+    expect(g.triggers).toHaveLength(0);
+    // The daily check called by name does only what the daily check does (here, with nothing set up, nothing).
+    expect(g.fn('drashtiDailyCheck')).toBeUndefined();
     expect(g.props.has('SETUP_TICKET')).toBe(false);
     expect(g.sheets.map((s) => s.name)).toEqual(['Sheet1']);
     expect(g.mails).toHaveLength(0);

@@ -400,7 +400,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   await app.close();
 });
 
-test('in Simple Mode, a phone’s Pause of a sound put up from its Media is refused in words (Simple Mode’s window could never play it on), and its Play still plays on one paused before', async () => {
+test('in Simple Mode, a phone’s Pause of a sound put up from its Media is refused in words, and its Play still plays on one paused before (as the window’s own Play does since Session 55)', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -438,11 +438,13 @@ test('in Simple Mode, a phone’s Pause of a sound put up from its Media is refu
     await phoneRow.getByRole('button', { name: 'Pause' }).click();
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
-    // Simple Mode: its window shows the bar, paused, with no Play of its own; the phone's Play plays it on.
+    // Simple Mode: its window shows the bar, paused, with its Play (Session 54's question 14: Play while paused, Pause
+    // still refused); the phone's Play plays it on.
     await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
-    await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
+    await expect(win.getByTestId('time-bar-play')).toHaveCount(1);
+    await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
     await phoneRow.getByRole('button', { name: 'Play' }).click();
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
     await inStep(heard(first), () => soundTiming(win), 'played on from the phone in Simple Mode');

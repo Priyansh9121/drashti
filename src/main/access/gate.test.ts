@@ -7,11 +7,19 @@ const at = (phase: AccessState['phase'], owner = false): AccessState => ({
   owner,
   reason: null,
   stopsAt: null,
+  mode: 'pro',
 });
 
 describe('whether this computer is let in (Session 54)', () => {
   afterEach(() =>
-    setAccessState({ phase: 'checking', gmail: null, owner: false, reason: null, stopsAt: null }),
+    setAccessState({
+      phase: 'checking',
+      gmail: null,
+      owner: false,
+      reason: null,
+      stopsAt: null,
+      mode: 'pro',
+    }),
   );
 
   it('starts not let in, before the list has answered', () => {

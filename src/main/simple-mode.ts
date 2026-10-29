@@ -16,8 +16,6 @@ import { NO_VIEW } from '../shared/access-list';
  * reading the library and saving diagnostics stay.
  */
 
-const refused = () => ({ ok: false as const, message: SIMPLE_MODE_REFUSAL });
-
 /** The Access List's edits (Session 54, E4). */
 const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
   IPC.accessList.add,
@@ -26,6 +24,8 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
   IPC.accessList.revoke,
   IPC.accessList.regrant,
   IPC.accessList.changeLength,
+  // How a Gmail may use Drashti (Session 55).
+  IPC.accessList.changeMode,
   IPC.accessList.note,
 ];
 
@@ -232,18 +232,25 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.pip.savePlace,
 ];
 
-/** Each locked channel's answer: a refusal in its own result's shape. */
-export function simpleModeRefusals(sound: () => AudioOutputStatus): Map<InvokeChannel, () => unknown> {
+/**
+ * Each locked channel's answer: a refusal in its own result's shape, in `words` (Session 55: true for this computer's
+ * access, so Simple access is never told of a way to Pro Mode).
+ */
+export function simpleModeRefusals(
+  sound: () => AudioOutputStatus,
+  words: () => string = () => SIMPLE_MODE_REFUSAL,
+): Map<InvokeChannel, () => unknown> {
+  const refused = () => ({ ok: false as const, message: words() });
   const answers = new Map<InvokeChannel, () => unknown>(SIMPLE_MODE_LOCKED.map((c) => [c, refused]));
   // These answer in shapes of their own: no files picked, and the sound output as it is.
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.audio.setOutput, sound);
-  answers.set(IPC.events.view, () => ({ available: false, message: SIMPLE_MODE_REFUSAL, addresses: [] }));
+  answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).
   for (const c of ACCESS_LIST_EDITS) answers.set(c, () => ({ ...refused(), view: NO_VIEW }));
-  answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: SIMPLE_MODE_REFUSAL }));
+  answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: words() }));
   answers.set(IPC.liveWindow.access, () => null);
   answers.set(IPC.zoom.open, () => null);
   return answers;

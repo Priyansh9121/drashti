@@ -262,3 +262,25 @@ function setUp(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {
   installMenu(made.a);
   return made;
 }
+
+describe('View › Switch to Pro Mode… with Simple access (Session 55, Part 19)', () => {
+  it.each(PLATFORMS)(
+    'is there in Simple Mode with Pro access, and gone with Simple access (%s)',
+    (platform) => {
+      on(platform, () => {
+        installMenu(actions('simple').a);
+      });
+      expect(item('switch-mode')?.label).toBe('Switch to Pro Mode…');
+      on(platform, () => {
+        installMenu({ ...actions('simple').a, simpleOnly: true });
+      });
+      expect(item('switch-mode')).toBeUndefined();
+      expect(items().filter((i) => String(i.label).includes('Pro Mode'))).toEqual([]);
+      // Pro Mode's own item (to Simple Mode) is never taken away.
+      on(platform, () => {
+        installMenu({ ...actions('pro').a, simpleOnly: true });
+      });
+      expect(item('switch-mode')?.label).toBe('Switch to Simple Mode');
+    },
+  );
+});

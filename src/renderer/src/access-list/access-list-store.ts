@@ -9,7 +9,7 @@ import {
   type AccessSort,
   type StatusFilter,
 } from '../../../shared/access-list';
-import { gmailKey, type AccessLength } from '../../../shared/access-protocol';
+import { gmailKey, type AccessLength, type AccessMode } from '../../../shared/access-protocol';
 
 /*
  * The Access List's page (Session 54, E4): the list as the main process last had it from the owner's Google
@@ -26,6 +26,8 @@ export type AccessDialog =
   | { kind: 'note'; gmail: string }
   | { kind: 'revoke'; gmail: string }
   | { kind: 'length'; edit: LengthEdit; gmail: string }
+  /** Change the mode… (Session 55): Pro or Simple. */
+  | { kind: 'mode'; gmail: string }
   | null;
 
 interface AccessListPage {
@@ -146,7 +148,7 @@ async function run(
 
 /** Reject or Revoke (Revoke is asked first, by its dialog). */
 export function edit(
-  kind: Exclude<AccessEdit, 'note' | LengthEdit>,
+  kind: Exclude<AccessEdit, 'note' | 'mode' | LengthEdit>,
   gmail: string,
 ): Promise<AccessListResult | null> {
   const bridge = window.drashti.accessList;
@@ -158,17 +160,29 @@ export function edit(
 }
 
 /**
- * Approve, Give access again or Change the length, with the length chosen in its dialog: the dialog closes once it is
- * done, and says why not when it is not.
+ * Approve, Give access again or Change the length, with the length chosen in its dialog (and for Approve and Give access
+ * again, the mode: Session 55): the dialog closes once it is done, and says why not when it is not.
  */
-export async function giveLength(kind: LengthEdit, gmail: string, length: AccessLength): Promise<void> {
+export async function giveLength(
+  kind: LengthEdit,
+  gmail: string,
+  length: AccessLength,
+  mode: AccessMode,
+): Promise<void> {
   const bridge = window.drashti.accessList;
   const calls = {
-    approve: () => bridge.approve(gmail, length),
-    regrant: () => bridge.regrant(gmail, length),
+    approve: () => bridge.approve(gmail, length, mode),
+    regrant: () => bridge.regrant(gmail, length, mode),
     length: () => bridge.changeLength(gmail, length),
   };
   const result = await run(calls[kind], false);
+  if (result?.ok) closeDialog();
+  else if (result) useAccessList.setState({ dialogProblem: result.message, said: null });
+}
+
+/** Change the mode… (Session 55): Pro or Simple, from its dialog, which closes once it is done. */
+export async function giveMode(gmail: string, mode: AccessMode): Promise<void> {
+  const result = await run(() => window.drashti.accessList.changeMode(gmail, mode), false);
   if (result?.ok) closeDialog();
   else if (result) useAccessList.setState({ dialogProblem: result.message, said: null });
 }

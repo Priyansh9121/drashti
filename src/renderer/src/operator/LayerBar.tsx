@@ -131,6 +131,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       type="button"
       data-show-control
       data-testid="put-back"
+      data-variant="warning"
       onClick={() => {
         if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
       }}
@@ -144,6 +145,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
     <button
       type="button"
       data-show-control
+      data-variant="strong"
       disabled={!anything}
       onClick={() => {
         run('clearAll');
