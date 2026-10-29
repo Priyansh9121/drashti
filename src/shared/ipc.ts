@@ -6,7 +6,7 @@ import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
-import type { MediaRemovalResult, MediaUsage } from './media-removal';
+import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
@@ -324,6 +324,14 @@ export const IPC = {
     setArrangement: 'library:set-arrangement',
     removePresentations: 'library:remove-presentations',
     restorePresentations: 'library:restore-presentations',
+    /**
+     * Session 55 (Part 14, the one right-click menu): where presentations are used before deleting them (the playlists
+     * that hold them, and whether one is on the screens), a presentation renamed, and its file shown in the Finder or
+     * Explorer (the file it was imported from, while it is still there).
+     */
+    presentationUsage: 'library:presentation-usage',
+    renamePresentation: 'library:rename-presentation',
+    revealPresentation: 'library:reveal-presentation',
     /** main -> operator: how an import is going. */
     importProgress: 'library:import-progress',
     /** main -> operator: presentations, props, messages or themes were added or changed. */
@@ -394,6 +402,12 @@ export const IPC = {
     /** Delete media from the library (with what it is in), and Undo it. */
     remove: 'media:remove',
     restore: 'media:restore',
+    /**
+     * Session 55 (Part 14): a picture, video or sound renamed (its playlist rows that had its name follow), and its
+     * file shown in the Finder or Explorer (the one it was imported from while it is still there, else Drashti's copy).
+     */
+    rename: 'media:rename',
+    reveal: 'media:reveal',
   },
   audio: {
     /** The sound output: the operator's choice, the outputs found, and where sound plays. */
@@ -438,6 +452,8 @@ export const IPC = {
     editSlot: 'playlists:edit-slot',
     /** What an item does to timers when it goes up (Session 12). */
     setTimers: 'playlists:set-timers',
+    /** Duplicate a playlist (Session 55, Part 4): "<name> copy", beside it, with its rows in their order. */
+    duplicate: 'playlists:duplicate',
     /** Smart playlists (Session 26c): how following each one's folder goes. */
     smartViews: 'playlists:smart-views',
     /** A smart playlist from a folder chosen in a dialog. */
@@ -1083,6 +1099,7 @@ export interface InvokeContract {
     result: PlaylistResult;
   };
   [IPC.playlists.setTimers]: { args: [itemId: string, cues: TimerCue[]]; result: PlaylistResult };
+  [IPC.playlists.duplicate]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.smartViews]: { args: []; result: SmartPlaylistView[] };
   [IPC.playlists.createSmart]: { args: []; result: PlaylistResult };
   [IPC.playlists.removeMissing]: { args: [playlistId: string]; result: PlaylistResult };
@@ -1117,6 +1134,9 @@ export interface InvokeContract {
   };
   [IPC.library.removePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.library.restorePresentations]: { args: [ids: string[]]; result: RemoveResult };
+  [IPC.library.presentationUsage]: { args: [ids: string[]]; result: PresentationUsage };
+  [IPC.library.renamePresentation]: { args: [id: string, name: string]; result: RemoveResult };
+  [IPC.library.revealPresentation]: { args: [id: string]; result: RevealResult };
   [IPC.kirtans.tracks]: { args: [presentationId: string]; result: TracksResult };
   [IPC.kirtans.saveTracks]: { args: [presentationId: string, edits: TrackEdit[]]; result: KirtanResult };
   [IPC.kirtans.setDetails]: {
@@ -1147,6 +1167,8 @@ export interface InvokeContract {
   [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
   [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
   [IPC.media.restore]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
+  [IPC.media.rename]: { args: [mediaId: string, name: string]; result: MediaRemovalResult };
+  [IPC.media.reveal]: { args: [mediaId: string]; result: RevealResult };
   [IPC.media.undoConversion]: {
     args: [conversionId: string];
     result: { ok: true } | { ok: false; message: string };

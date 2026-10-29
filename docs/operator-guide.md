@@ -107,6 +107,7 @@ Do these about 30 minutes before the sabha starts.
 | **F12** (or **L**), **Logo**                           | The mandir's logo instead of the picture, and back                                                                                                   |
 | **F1**, **Clear all**                                  | Everything off the hall's screens. Straight after it, **Put it back** brings it all back.                                                            |
 | **F2**, **F3**, **F4**, **F5**, **F6**, **F7**, **F8** | One layer off each, in this order: the slide's words (the background stays), the background, props, the sound, messages, the ticker, the Masks layer |
+| **F9**, **Oops**                                       | What was on the screens before the last change comes back, one step a press (the last 20)                                                            |
 
 The clear buttons along the bottom go in this order too, left to right, each with its key under its word. A clear button is lit, with a dot beside its key, while its layer is on the screens.
 

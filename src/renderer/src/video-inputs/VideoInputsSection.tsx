@@ -63,7 +63,7 @@ function InputRow({
           onChoose();
           void showInput(input.id);
         }}
-        {...rowMenu(input.name, pick)}
+        {...rowMenu(input.name, pick, 'input')}
         onDragStart={(e) => {
           startDrag(e, 'inputs', [input.name]);
         }}

@@ -163,6 +163,11 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clearAll') }),
   /** Put back what Clear all took down, while nothing else has gone up since. */
   z.object({ type: z.literal('putBack') }),
+  /**
+   * Oops (Session 55, the owner's idea B): what was on the screens before the last change put back, one step at a time
+   * (the last OOPS_STEPS at least), a video carrying on where it would be by now, as Put it back's does.
+   */
+  z.object({ type: z.literal('oops') }),
   z.object({ type: z.literal('setBlackout'), on: z.boolean() }),
   z.object({ type: z.literal('toggleBlackout') }),
   /** The logo instead of the picture on the audience screens; hideLogo brings the picture back. */

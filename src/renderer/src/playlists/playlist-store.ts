@@ -15,7 +15,13 @@ import { importPaths } from '../library/import-store';
 import { leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
 import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../shared/repeat';
 import { describeSome, pushRemoval } from '../library/undo';
-import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-folders';
+import {
+  FOLDER_SEPARATOR,
+  folderEnd,
+  hasFolder,
+  pathParts,
+  playlistFolders,
+} from '../../../shared/playlist-folders';
 
 /*
  * Playlists as the operator window shows and edits them: the tree of
@@ -79,6 +85,17 @@ interface PlaylistView {
   editingSlot: Extract<PlaylistItemInfo, { kind: 'placeholder' }> | null;
   /** The item whose timer cues are being set: its dialog is open. */
   cuesFor: Extract<PlaylistItemInfo, { kind: 'presentation' | 'media' | 'shastra' | 'input' }> | null;
+  /**
+   * Rows waiting to be taken out of the open playlist (Session 55, Part 14): Delete asks first when one is on the
+   * screens (`live` names it), and for a folder playlist's folder (`folder` names it, with everything in it).
+   */
+  confirmRemoveItems: {
+    ids: string[];
+    names: string[];
+    playlist: string;
+    live: string | null;
+    folder: string | null;
+  } | null;
 }
 
 export const usePlaylists = create<PlaylistView>(() => ({
@@ -104,6 +121,7 @@ export const usePlaylists = create<PlaylistView>(() => ({
   filling: null,
   editingSlot: null,
   cuesFor: null,
+  confirmRemoveItems: null,
 }));
 
 /** A playlist, folder or template by its id. */
@@ -822,6 +840,121 @@ export async function removeMissingItems(playlistId: string): Promise<void> {
     },
   });
   await reload();
+}
+
+/** The open playlist's item on the screens now, by its id: the playlist's place, while something of it is up. */
+export function liveItemOf(playlistId: string | null): string | null {
+  const st = useEngine.getState().state;
+  if (playlistId === null || st?.live.playlist?.playlistId !== playlistId) return null;
+  const up = st.layers.slide !== null || st.layers.background !== null || st.layers.audio !== null;
+  return up ? st.live.playlist.itemId : null;
+}
+
+/**
+ * Delete on the marked rows (the Delete key, a row's trash, the one right-click menu; Session 55, Part 14): they are
+ * taken out of this playlist only (the library keeps them), with Undo; it asks first when one is on the screens.
+ */
+export function requestRemoveMarkedItems(): void {
+  const { openId } = usePlaylists.getState();
+  const items = markedItems();
+  if (!openId || items.length === 0) return;
+  const live = items.find((i) => i.id === liveItemOf(openId)) ?? null;
+  if (!live) {
+    void removeMarkedItems();
+    return;
+  }
+  usePlaylists.setState({
+    confirmRemoveItems: {
+      ids: items.map((i) => i.id),
+      names: items.map(itemName),
+      playlist: nodeOf(openId)?.name ?? 'the playlist',
+      live: itemName(live),
+      folder: null,
+    },
+  });
+}
+
+/**
+ * Delete on a folder playlist's folder (Session 55, Part 14): everything in it (its folders too, and their headers)
+ * comes out of the playlist with one Undo, asked first.
+ */
+export function requestRemoveFolder(path: string): void {
+  const { openId, items } = usePlaylists.getState();
+  if (!openId || path === '') return;
+  const view = playlistFolders(items);
+  const inside = (folder: string) => folder === path || folder.startsWith(`${path}${FOLDER_SEPARATOR}`);
+  const taken = items.filter((i) => inside(view.folderOf.get(i.id) ?? ''));
+  if (taken.length === 0) return;
+  const liveId = liveItemOf(openId);
+  const live = taken.find((i) => i.id === liveId) ?? null;
+  usePlaylists.setState({
+    confirmRemoveItems: {
+      ids: taken.map((i) => i.id),
+      names: taken.filter((i) => i.kind !== 'header').map(itemName),
+      playlist: nodeOf(openId)?.name ?? 'the playlist',
+      live: live ? itemName(live) : null,
+      folder: path,
+    },
+  });
+}
+
+export function cancelRemoveItems(): void {
+  usePlaylists.setState({ confirmRemoveItems: null });
+}
+
+/** Take out the rows asked about, with one Undo. */
+export async function confirmRemoveItems(): Promise<void> {
+  const pending = usePlaylists.getState().confirmRemoveItems;
+  usePlaylists.setState({ confirmRemoveItems: null });
+  if (!pending) return;
+  const { openId } = usePlaylists.getState();
+  if (pending.folder === null) {
+    usePlaylists.setState({ marked: pending.ids, anchorId: pending.ids[0] ?? null });
+    await removeMarkedItems();
+    return;
+  }
+  if (!openId) return;
+  const result = await api().removeItems(pending.ids);
+  if (!settled(result) || result.ids.length === 0) return;
+  const removed = result.ids;
+  // Out of it: the middle shows the folder above it.
+  const parts = pathParts(pending.folder);
+  const parent = parts.slice(0, -1).join(FOLDER_SEPARATOR);
+  pushRemoval({
+    text: `Removed the folder “${folderName(pending.folder)}” (${describeSome([], pending.names.length, 'item')}) from “${pending.playlist}”`,
+    restore: async () => {
+      await api().restoreItems(removed);
+      if (usePlaylists.getState().openId !== openId) await openPlaylist(openId);
+      await reload();
+    },
+  });
+  await reload();
+  if (usePlaylists.getState().folder.startsWith(pending.folder)) openFolder(parent);
+}
+
+/** A folder's own name, from its path ("Videos" for "Week 1 › Videos"). */
+export const folderName = (path: string): string => pathParts(path).at(-1) ?? path;
+
+/**
+ * Duplicate a playlist (Session 55, Part 4, the owner's idea P): "<name> copy", right after it, with its rows in their
+ * order; Undo deletes the copy.
+ */
+export async function duplicatePlaylist(id: string): Promise<void> {
+  const node = nodeOf(id);
+  const result = await api().duplicate(id);
+  if (!settled(result)) return;
+  const [copy] = result.ids;
+  if (!copy) return;
+  await loadTree();
+  usePlaylists.setState({ selectedNodeId: copy });
+  pushRemoval({
+    text: `Duplicated “${node?.name ?? 'the playlist'}”`,
+    restore: async () => {
+      await api().remove([copy]);
+      if (usePlaylists.getState().openId === copy) closePlaylist();
+      await loadTree();
+    },
+  });
 }
 
 /** Remove the marked items; Undo brings them back where they were. */

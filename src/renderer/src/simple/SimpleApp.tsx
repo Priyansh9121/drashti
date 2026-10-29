@@ -31,7 +31,11 @@ import { Kbd, WordsOverKeys } from '../ui/Kbd';
 import { readPersisted, writePersisted } from '../ui/persist';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
-import { playItem, runSimpleAction, useNotice } from '../operator/actions';
+import { goLive, playItem, runSimpleAction, useNotice } from '../operator/actions';
+import { setJumpRows } from '../operator/jump';
+import { JumpBox } from '../operator/JumpBox';
+import { useDocs, useWantDocs } from '../playlists/docs-store';
+import { type MiddleRow, playlistRows } from '../playlists/rows';
 import { startRepeat, stopRepeat } from '../playlists/repeat-actions';
 import { setMidiHandler } from '../midi/midi-store';
 import { LivePreview } from '../operator/LivePreview';
@@ -123,6 +127,75 @@ function PlaylistColumn() {
   const repeatItem = useEngine((s) =>
     going ? (s.state?.layers.slide?.slide.id.split('/')[0] ?? null) : null,
   );
+  // The rows (Session 55): each presentation's slides, read as the playlist shows them; numbered for jumping to them.
+  const docs = useDocs((s) => s.docs);
+  useWantDocs(
+    repeat
+      ? []
+      : items.flatMap((i) =>
+          i.kind === 'presentation' && i.presentationName !== null
+            ? [i.presentationId]
+            : i.kind === 'shastra' && !i.missing
+              ? [i.passageId]
+              : [],
+        ),
+  );
+  const middle = useMemo(
+    () => (repeat ? [] : playlistRows(items, new Map(Object.entries(docs)), new Set())),
+    [items, docs, repeat],
+  );
+  /** A picture's, video's, sound's or video input's number, for jumping to it. */
+  const numberOf = useMemo(
+    () =>
+      new Map(middle.flatMap((r) => (r.kind === 'item' && r.number !== null ? [[r.item.id, r.number]] : []))),
+    [middle],
+  );
+  const slidesOf = useMemo(() => {
+    const out = new Map<string, Extract<MiddleRow, { kind: 'slide' }>[]>();
+    for (const r of middle)
+      if (r.kind === 'slide' && r.item) out.set(r.item.id, [...(out.get(r.item.id) ?? []), r]);
+    return out;
+  }, [middle]);
+  useEffect(() => {
+    if (!openId) return;
+    setJumpRows(
+      middle.flatMap((r) =>
+        r.kind === 'slide' && r.item
+          ? [
+              {
+                number: r.number,
+                go: () =>
+                  void goLive(r.presentationId, r.at.position, r.arrangementId, {
+                    playlistId: openId,
+                    itemId: r.item?.id ?? '',
+                  }),
+              },
+            ]
+          : r.kind === 'item' && r.number !== null
+            ? [{ number: r.number, go: () => void playItem(openId, r.item.id) }]
+            : [],
+      ),
+    );
+    return () => {
+      setJumpRows([]);
+    };
+  }, [middle, openId]);
+  const liveSlide = useEngine((s) => {
+    const st = s.state;
+    const shown = st?.layers.slide;
+    if (!st || !shown || shown.timer) return null;
+    return `${shown.presentationId}|${shown.slide.id}|${st.live.playlist?.itemId ?? ''}|${String(st.live.arrangementId)}|${String(st.live.slideIndex)}`;
+  });
+  const isSlideLive = (r: Extract<MiddleRow, { kind: 'slide' }>): boolean => {
+    if (liveSlide === null) return false;
+    const [presentationId, slideId, itemId, arrangementId, slideIndex] = liveSlide.split('|');
+    if (presentationId !== r.presentationId) return false;
+    if (itemId === r.item?.id)
+      return arrangementId === String(r.arrangementId)
+        ? slideIndex === String(r.at.position)
+        : slideId === r.at.slide.id;
+    return itemId === '' && slideId === r.at.slide.id;
+  };
   const pathOf = (id: string): string => {
     const node = tree.find((n) => n.id === id);
     if (!node) return '';
@@ -189,6 +262,9 @@ function PlaylistColumn() {
       )}
       <ol className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3" data-testid="simple-items">
         {items.map((item) => {
+          // A presentation's, a PDF's or a deck's slides, a row each under it (Session 55, Part 4): one tap puts one
+          // up, from the playlist, so Next goes on through it.
+          const slides = repeat ? [] : (slidesOf.get(item.id) ?? []);
           if (item.kind === 'header')
             return (
               <li
@@ -222,6 +298,14 @@ function PlaylistColumn() {
                   isLive ? 'border-live bg-panel-3' : 'border-transparent bg-panel-2 hover:border-field',
                 )}
               >
+                {numberOf.has(item.id) && (
+                  <span
+                    className="w-7 shrink-0 text-right text-sm text-muted tabular-nums"
+                    aria-hidden="true"
+                  >
+                    {numberOf.get(item.id)}
+                  </span>
+                )}
                 <KindIcon size={20} aria-hidden="true" className="shrink-0 text-muted" />
                 <span className="min-w-0 flex-1">
                   <Truncate text={name} className="font-medium" />
@@ -242,6 +326,54 @@ function PlaylistColumn() {
                 </span>
                 {isLive && <LiveBadge />}
               </button>
+              {slides.length > 0 && (
+                <ol
+                  className="mt-1 space-y-1 pl-6"
+                  data-testid="simple-slides"
+                  aria-label={`Slides of ${name}`}
+                >
+                  {slides.map((r) => {
+                    const on = isSlideLive(r);
+                    return (
+                      <li key={r.key}>
+                        <button
+                          type="button"
+                          data-testid="simple-slide"
+                          data-show-control
+                          data-row-number={r.number}
+                          aria-current={on ? 'true' : undefined}
+                          aria-label={`${r.label}${r.line !== '' ? `: ${r.line}` : ''}${on ? ' (live)' : ''}`}
+                          onClick={(e) => {
+                            if (e.detail > 1 || !openId) return;
+                            void goLive(r.presentationId, r.at.position, r.arrangementId, {
+                              playlistId: openId,
+                              itemId: item.id,
+                            });
+                          }}
+                          className={cx(
+                            'flex min-h-11 w-full items-center gap-3 rounded-lg border-2 px-3 py-1.5 text-left',
+                            on
+                              ? 'border-live bg-panel-3'
+                              : 'border-transparent bg-panel-2 hover:border-field',
+                          )}
+                        >
+                          <span
+                            className="w-7 shrink-0 text-right text-sm text-muted tabular-nums"
+                            aria-hidden="true"
+                          >
+                            {r.number}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <Truncate text={r.label} className="text-sm font-medium" />
+                            {r.line !== '' && <Truncate text={r.line} className="text-xs text-muted" />}
+                          </span>
+                          {on && <LiveBadge />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
             </li>
           );
         })}
@@ -589,6 +721,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <StatusBar info={info} onOpenScreens={null} />
       <LeaveSimpleDialog />
       <GuidesDialog />
+      {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
+      <JumpBox />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
     </div>
   );

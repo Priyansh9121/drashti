@@ -19,6 +19,8 @@ import { PANEL_HELP } from '../shared/panel-help';
  * keys the operators already press). Every other card names none.
  */
 const KEY_NAMED: Partial<Record<PanelHelpId, OperatorAction>> = {
+  // Session 55: Oops beside Next and Back.
+  nextback: 'oops',
   props: 'clearProps',
   masks: 'clearMasks',
   audio: 'clearAudio',

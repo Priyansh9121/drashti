@@ -59,7 +59,7 @@ import { NO_STAGE, type StageInput, type StageLayout, type StageState } from '..
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
-import type { PlaybackClip, PlaybackSeek } from '../../shared/media';
+import { type PlaybackClip, type PlaybackClock, type PlaybackSeek, playbackLeftMs } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
 import {
@@ -133,7 +133,28 @@ function missingSound(played: PlayedSlide, up: AudioLayer | null): string | null
 }
 
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
-const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousItem']);
+const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousItem', 'oops']);
+
+/** How many of the operator's changes Oops can take back (Session 55: the owner asked for at least the last 10). */
+export const OOPS_STEPS = 20;
+
+/** What was on the screens before one of the operator's changes: Oops puts it back (Session 55). */
+interface OopsStep {
+  live: LiveCursor;
+  layers: Layers;
+  /** A Repeat Slides playlist going round then: it goes round again. */
+  repeat: RepeatRun | null;
+}
+
+/**
+ * A video or sound played to its end point (Session 55): not going round, its length known, and not paused (a paused
+ * one stays paused, wherever it is). A click on its playlist row starts it again from its start point.
+ */
+function playedToEnd(layer: PlaybackClock & { durationMs?: number }, now: number): boolean {
+  const { durationMs } = layer;
+  if (layer.loop || layer.seek?.paused === true || durationMs === undefined || durationMs <= 0) return false;
+  return playbackLeftMs(layer, durationMs, now) <= 0;
+}
 
 /**
  * Audio playlists play independently of the slides (Session 14): starting,
@@ -346,6 +367,8 @@ export class ShowEngine {
   private cleared: { from: Layers; to: Layers; repeat: RepeatRun | null } | null = null;
   /** The Nexts Back can undo, latest last. */
   private steps: Step[] = [];
+  /** What Oops puts back (Session 55), latest last: before each of the operator's last OOPS_STEPS changes. */
+  private oopsSteps: OopsStep[] = [];
   /** The auto-advance waiting to run, and how to cancel it. */
   private scheduled: { startedAt: number; durationMs: number } | null = null;
   private cancelScheduled: (() => void) | null = null;
@@ -426,7 +449,7 @@ export class ShowEngine {
       if (!resolved.ok) return resolved;
       if (!MUSIC_COMMANDS.has(command.type)) {
         const done = this.apply(resolved.actions, command.type);
-        if (command.type !== 'back' && command.type !== 'putBack') return done;
+        if (command.type !== 'back' && command.type !== 'putBack' && command.type !== 'oops') return done;
         // The slide they bring back exactly names a file found since as missing no more (Session 52): afterwards, as
         // bookkeeping, so Back after Back still undoes each Next exactly (the layers it left are those objects).
         const said = this.refreshFiles();
@@ -1288,26 +1311,38 @@ export class ShowEngine {
    */
   private showMedia(cursor: PlaylistCursor, item: MediaItem): Resolved {
     const cue: EngineAction = { type: 'live/item', playlist: cursor };
+    const now = this.now();
     if (item.media === 'audio') {
       const { mediaId, label } = item;
+      // The same sound played to its end starts again from its start point (Session 55); playing, it carries on.
+      const up = this.state.layers.audio;
+      const again = up?.mediaId === mediaId && up.music === undefined && playedToEnd(up, now);
       return {
         ok: true,
         actions: [
           cue,
           {
             type: 'audio/set',
-            audio: this.audioLayer({ id: mediaId, title: label, mediaId, volume: 1, loop: false }),
+            audio: this.audioLayer({ id: mediaId, title: label, mediaId, volume: 1, loop: false }, again),
           },
         ],
       };
     }
-    const background = this.backgroundLayer({
-      kind: 'media',
-      mediaId: item.mediaId,
-      media: item.media,
-      fit: 'fit',
-      loop: false,
-    });
+    // The same video played to its end starts again from its start point (Session 55): one still playing carries on,
+    // and a paused one stays paused, as before.
+    const up = this.state.layers.background;
+    const again = up?.kind === 'media' && up.mediaId === item.mediaId && playedToEnd(up, now);
+    const background = this.backgroundLayer(
+      {
+        kind: 'media',
+        mediaId: item.mediaId,
+        media: item.media,
+        fit: 'fit',
+        loop: false,
+      },
+      undefined,
+      again,
+    );
     return {
       ok: true,
       actions: [
@@ -1684,9 +1719,10 @@ export class ShowEngine {
   }
 
   /** The audio layer for a choice: as with backgrounds, the file already playing carries on. */
-  private audioLayer(choice: AudioChoice): AudioLayer {
+  private audioLayer(choice: AudioChoice, again = false): AudioLayer {
     const current = this.state.layers.audio;
-    const same = choice.mediaId !== null && current?.mediaId === choice.mediaId;
+    // `again`: the same file starts again from its start point (Session 55: a finished sound's row clicked).
+    const same = !again && choice.mediaId !== null && current?.mediaId === choice.mediaId;
     return {
       ...choice,
       startedAt: same ? current.startedAt : this.now(),
@@ -1704,12 +1740,14 @@ export class ShowEngine {
   private backgroundLayer(
     choice: BackgroundChoice,
     fade?: { at: number; durationMs: number },
+    /** The same file starts again from its start point (Session 55: a finished video's row clicked). */
+    again = false,
   ): BackgroundLayer {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
     const length = this.lengthOf(choice.mediaId);
     const clip = this.clipOf(choice.mediaId);
-    if (current?.kind === 'media' && current.mediaId === choice.mediaId)
+    if (!again && current?.kind === 'media' && current.mediaId === choice.mediaId)
       return {
         ...choice,
         startedAt: current.startedAt,
@@ -2080,6 +2118,24 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'layer/clear', layer: command.layer, at: this.now() }] };
       case 'clearAll':
         return { ok: true, actions: [{ type: 'layers/clearAll' }] };
+      case 'oops': {
+        // What was on the screens before the operator's last change (Session 55), a video carrying on where it would
+        // be by now; the step before it is next.
+        const step = this.oopsSteps.pop();
+        if (!step)
+          return {
+            ok: false,
+            error: 'nothing-to-put-back',
+            message: 'There is nothing for Oops to put back.',
+          };
+        return {
+          ok: true,
+          actions: [
+            { type: 'show/put', live: step.live, layers: this.withLengths(step.layers) },
+            { type: 'repeat/set', repeat: step.repeat },
+          ],
+        };
+      }
       case 'putBack': {
         const cleared = this.cleared;
         if (cleared?.to !== this.state.layers)
@@ -2311,6 +2367,12 @@ export class ShowEngine {
       this.cleared = null;
     }
     const moved = next.layers !== prev.layers || next.live !== prev.live;
+    // Oops (Session 55): what was up before each of the operator's own changes (a command's: never a slide moving on
+    // by itself, a file's length learned or an audio playlist's next track), never before an Oops.
+    if (moved && cause !== null && cause !== 'oops') {
+      this.oopsSteps.push({ live: prev.live, layers: prev.layers, repeat: prev.repeat });
+      if (this.oopsSteps.length > OOPS_STEPS) this.oopsSteps.shift();
+    }
     if ((cause === 'next' || cause === 'nextItem') && moved) {
       this.steps.push({ live: prev.live, layers: prev.layers, toLive: next.live, toLayers: next.layers });
       if (this.steps.length > MAX_STEPS) this.steps.shift();
@@ -2318,7 +2380,9 @@ export class ShowEngine {
       this.steps = [];
     }
     const canPutBack = this.cleared !== null;
-    return next.canPutBack === canPutBack ? next : { ...next, canPutBack };
+    if (next.canPutBack !== canPutBack) next = { ...next, canPutBack };
+    const canOops = this.oopsSteps.length > 0;
+    return (next.canOops ?? false) === canOops ? next : { ...next, canOops };
   }
 
   private apply(actions: readonly EngineAction[], cause: EngineCommandType | null = null): CommandResult {

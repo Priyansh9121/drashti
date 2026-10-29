@@ -21,13 +21,8 @@ import { SearchResults } from '../library/SearchResults';
 import { applyFilters, filtering, KirtanFilters, toggleFilters, useFilters } from '../library/KirtanFilters';
 import { newFromWords } from '../library/words-store';
 import { MediaList } from '../library/MediaList';
-import {
-  ADD_LINE_HEIGHT,
-  AddToPlaylistButton,
-  LibraryRowMenu,
-  rowMenu,
-  usePlaylistOpen,
-} from '../playlists/AddToPlaylist';
+import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
+import { libraryPresentation } from '../files/targets';
 import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
@@ -99,7 +94,7 @@ const PresentationRow = memo(function PresentationRow({
 }) {
   const pick = pickPresentations(p.id);
   const remove = () => {
-    requestRemoval(p.id);
+    void requestRemoval(p.id);
   };
   return (
     <div className={`${rowClass({ selected, marked })} group relative flex h-full flex-col`}>
@@ -115,7 +110,7 @@ const PresentationRow = memo(function PresentationRow({
             range: e.shiftKey,
           });
         }}
-        {...rowMenu(p.name, pick, remove)}
+        {...rowMenu((first) => libraryPresentation(p, first), pick)}
         onDragStart={(e) => {
           // Drags the marked presentations when this is one of them, else just this one.
           startDrag(
@@ -409,7 +404,7 @@ export function PresentationList({ platform }: { platform: string }) {
     if (e.repeat) return;
     if (actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP) === 'removeSelected') {
       e.preventDefault();
-      requestRemoval();
+      void requestRemoval();
     }
   };
 
@@ -450,7 +445,7 @@ export function PresentationList({ platform }: { platform: string }) {
           count={marked.length}
           noun="presentations"
           onDelete={() => {
-            requestRemoval();
+            void requestRemoval();
           }}
           onClear={() => {
             useLibrary.setState({ marked: [], anchorId: null });
@@ -533,7 +528,6 @@ export function PresentationList({ platform }: { platform: string }) {
           </ul>
         )}
       </TabPanel>
-      <LibraryRowMenu />
       {dropProblem && (
         <Notice tone="warning" compact className="mx-3 mb-2" onDismiss={() => setDropProblem(null)}>
           {dropProblem}

@@ -5,6 +5,8 @@ import { rowClass } from '../ui/ListRow';
 import { Truncate } from '../ui/Truncate';
 import { plural } from '../ui/text';
 import { openFolder, showsFolders, usePlaylists } from './playlist-store';
+import { fileMenuProps } from '../files/FileMenu';
+import { folderTarget } from '../files/targets';
 
 /*
  * The open folder playlist's folders, in the bottom left (Session 44; Priyansh: "the folders inside the main
@@ -109,6 +111,8 @@ export function PlaylistFolders() {
                 onClick={() => {
                   openFolder(f.path);
                 }}
+                // The one right-click menu (Session 55, Part 14): Delete takes it and all in it out, with one Undo.
+                {...fileMenuProps(() => folderTarget(f.path, f.name, node?.id ?? ''))}
               >
                 <Folder size={15} aria-hidden="true" className="shrink-0 text-muted" />
                 <span className="min-w-0 flex-1">
