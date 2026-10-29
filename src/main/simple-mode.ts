@@ -78,9 +78,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.messages.create,
   IPC.messages.update,
   IPC.messages.remove,
+  // Session 55 (Part 15): a message put back (Undo), and Countdown to the start, Pro Mode's.
+  IPC.messages.restore,
   IPC.timers.create,
   IPC.timers.update,
   IPC.timers.remove,
+  IPC.timers.startCountdown,
   IPC.stageLayouts.save,
   IPC.playlists.editSlot,
   IPC.playlists.setTimers,

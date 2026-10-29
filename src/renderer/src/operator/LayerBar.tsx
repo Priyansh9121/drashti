@@ -116,12 +116,13 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
   const blackout = state?.blackout ?? false;
   const wallpaper = state?.wallpaper ?? false;
   const canPutBack = state?.canPutBack ?? false;
-  // A lower third up counts too (Session 44), and the picture-in-picture box (Session 50): Clear all takes them
-  // off with the rest.
+  // A lower third up counts too (Session 44), and the picture-in-picture box (Session 50), and a timer for the
+  // audience (Session 55): Clear all takes them off with the rest.
   const anything = layers
     ? LAYER_CLEARS.some((c) => !isLayerEmpty(layers, c.layer)) ||
       layers.lowerThird !== null ||
-      layers.pip !== null
+      layers.pip !== null ||
+      (layers.timer ?? null) !== null
     : false;
   // What is this? (Sessions 31–36): its ? in the bar, its words just above it, in the flow (never over a button).
   const help = useWhatIsThis('controls');

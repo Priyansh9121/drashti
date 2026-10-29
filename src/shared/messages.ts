@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { MessageItem, MessagePart } from './engine/state';
+import { keptLook, MESSAGE_SECONDS, type MessageLook, messageLookSchema } from './message-look';
 import { cutText } from './text';
 
 /*
@@ -22,6 +23,13 @@ export interface MessageTemplate {
   template: string;
   /** How each field in the template is filled; a field not listed is typed in. */
   fields: Record<string, MessageField>;
+  /**
+   * Its own look (Session 55, Part 15, shared/message-look.ts); left out, the standard band along the bottom, as every
+   * message had before.
+   */
+  look?: MessageLook;
+  /** How long it stays up by itself, in seconds (Session 55); left out, until it is taken off. */
+  seconds?: number;
 }
 
 export type MessageTemplateFields = Omit<MessageTemplate, 'id'>;
@@ -90,7 +98,18 @@ export function fillMessage(
       text += value;
     }
   }
-  return { message: { id: messageItemId(t.id), text: cutText(text, 500), parts }, missing: [] };
+  // Its own look and its time up go with it (Session 55, Part 15): the standard look is none.
+  const look = keptLook(t.look);
+  return {
+    message: {
+      id: messageItemId(t.id),
+      text: cutText(text, 500),
+      parts,
+      ...(look ? { look } : {}),
+      ...(t.seconds !== undefined ? { seconds: t.seconds } : {}),
+    },
+    missing: [],
+  };
 }
 
 /** The id a template's message has on the messages layer (showing it again replaces it). */
@@ -111,5 +130,22 @@ export const messageTemplateSchema: z.ZodType<MessageTemplateFields> = z
     fields: z
       .record(z.string().min(1).max(40), fieldSchema)
       .refine((f) => Object.keys(f).length <= 20, 'too many fields'),
+    // Session 55 (Part 15): its look and its time up, each left out for the standard.
+    look: messageLookSchema.optional(),
+    seconds: z.number().int().min(MESSAGE_SECONDS.min).max(MESSAGE_SECONDS.max).optional(),
+  })
+  .strict();
+
+/** A template put back as it was (Undo of a change or a removal, Session 55): its id too. */
+export const keptTemplateSchema: z.ZodType<MessageTemplate> = z
+  .object({
+    id: z.string().min(1).max(128),
+    name: z.string().trim().min(1).max(80),
+    template: z.string().trim().min(1).max(300),
+    fields: z
+      .record(z.string().min(1).max(40), fieldSchema)
+      .refine((f) => Object.keys(f).length <= 20, 'too many fields'),
+    look: messageLookSchema.optional(),
+    seconds: z.number().int().min(MESSAGE_SECONDS.min).max(MESSAGE_SECONDS.max).optional(),
   })
   .strict();

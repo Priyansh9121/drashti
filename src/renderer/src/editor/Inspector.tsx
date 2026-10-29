@@ -12,7 +12,17 @@ import type {
   TimerAtZero,
   TimerElement,
 } from '../../../shared/model';
-import { countsDown, TIMER_KIND_NAMES, type TimerState } from '../../../shared/timers';
+import {
+  countsDown,
+  parseDuration,
+  TIMER_KIND_NAMES,
+  TIMER_KINDS,
+  timerDuration,
+  type TimerFields,
+  type TimerKind,
+  type TimerState,
+} from '../../../shared/timers';
+import { slideTimerWarn } from '../../../shared/slide-timer';
 import { useEngine } from '../engine/engine-store';
 import { cueInputName, legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import {
@@ -23,7 +33,7 @@ import {
   INDIC_LINE_HEIGHT_MIN,
   REFERENCE_LINES,
 } from '../../../shared/readable';
-import { isIndic } from '../../../shared/model';
+import { isIndic, TIMER_FORMATS, type TimerFormat } from '../../../shared/model';
 import { wordsContrast, WORDS_CONTRAST_AIM, WORDS_CONTRAST_MIN } from '../../../shared/contrast';
 import { LANG_NAMES } from '../../../shared/themes';
 import { boxLines } from '../../../shared/tracks';
@@ -53,7 +63,7 @@ import {
   Trash2,
 } from '../ui/icons';
 import type { Icon } from '../ui/icons';
-import { Toggle } from '../ui/Toggle';
+import { Checkbox, Toggle } from '../ui/Toggle';
 import { BUNDLED_FAMILIES } from '../render/fonts';
 import { commit, useEditor } from './editor-store';
 import type { Alignment } from './geometry';
@@ -1054,8 +1064,109 @@ function MediaSection({ el, change }: { el: MediaElement; change: Change }) {
 
 const NO_TIMERS: TimerState[] = [];
 
-/** A countdown's last minute in another colour until the operator chooses theirs (Session 50). */
+/** A countdown's warning colour until the operator chooses theirs (Session 50's last minute, Session 55's warning). */
 const LAST_MINUTE_COLOR = '#f5a524';
+
+const FORMAT_NAMES: Record<TimerFormat, string> = {
+  auto: 'As needed (5:00, 1:05:00)',
+  mss: 'Minutes and seconds (65:00)',
+  hmmss: 'Hours too (0:05:00)',
+};
+
+/**
+ * The timer itself, changed from the slide (Session 55, Part 15): its kind, a countdown's length, or the time a
+ * countdown to a time counts to. It is the library's timer, so every slide, message and screen showing it changes.
+ */
+function TimerTime({ timer }: { timer: TimerState }) {
+  const [length, setLength] = useState(timerDuration(timer.durationMs, false));
+  const [at, setAt] = useState(timer.targetTime ?? '19:30');
+  const [problem, setProblem] = useState<string | null>(null);
+  const save = (patch: Partial<TimerFields>) => {
+    const { name, kind, durationMs, targetTime, allowsOverrun } = timer;
+    void window.drashti.timers
+      .update(timer.id, { name, kind, durationMs, targetTime, allowsOverrun, ...patch })
+      .then((r) => {
+        setProblem(r.ok ? null : r.message);
+      });
+  };
+  const saveLength = () => {
+    const ms = parseDuration(length);
+    if (ms === null || ms <= 0) {
+      setProblem('Write the length as minutes and seconds, for example 5:00.');
+      return;
+    }
+    if (ms !== timer.durationMs) save({ durationMs: ms });
+  };
+  const saveAt = (value: string) => {
+    if (/^([01]?\d|2[0-3]):[0-5]\d$/u.test(value) && value !== timer.targetTime) save({ targetTime: value });
+  };
+  return (
+    <div className="space-y-2">
+      <Field label="Kind" layout="inline">
+        <Select
+          className="flex-1"
+          data-testid="field-timer-kind"
+          value={timer.kind}
+          onChange={(e) => {
+            const kind = e.target.value as TimerKind;
+            save({
+              kind,
+              durationMs: kind === 'countdown' ? timer.durationMs || 300_000 : timer.durationMs,
+              targetTime: kind === 'countdown_to_time' ? (timer.targetTime ?? at) : timer.targetTime,
+            });
+          }}
+        >
+          {TIMER_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {TIMER_KIND_NAMES[k]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {timer.kind === 'countdown' && (
+        <Field label="Length" layout="inline">
+          <TextInput
+            className="w-24"
+            data-testid="field-timer-length"
+            value={length}
+            placeholder="5:00"
+            onChange={(e) => {
+              setLength(e.target.value);
+            }}
+            onBlur={saveLength}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveLength();
+            }}
+          />
+        </Field>
+      )}
+      {timer.kind === 'countdown_to_time' && (
+        <Field label="Counts down to" layout="inline">
+          <TextInput
+            type="time"
+            data-testid="field-timer-time"
+            value={at}
+            onChange={(e) => {
+              setAt(e.target.value);
+            }}
+            onBlur={() => {
+              saveAt(at);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveAt(at);
+            }}
+          />
+        </Field>
+      )}
+      <p className="text-xs text-faint">The timer itself changes, everywhere it shows.</p>
+      {problem && (
+        <p role="alert" className="text-xs text-warning-fg">
+          {problem}
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * A Timer's own settings (Session 50): which timer it shows; its look, as words have (font, size, weight,
@@ -1065,6 +1176,8 @@ const LAST_MINUTE_COLOR = '#f5a524';
 function TimerSection({ el, change }: { el: TimerElement; change: Change }) {
   const timers = useEngine((e) => e.state?.timers) ?? NO_TIMERS;
   const timer = timers.find((t) => t.id === el.timerId);
+  // Its warning (Session 55): its own, else an older slide's last minute.
+  const warn = slideTimerWarn(el);
   const s = el.style;
   const own: Shadow | null = typeof s.shadow === 'object' ? s.shadow : null;
   const outline: Outline | null = s.outline ?? null;
@@ -1098,6 +1211,30 @@ function TimerSection({ el, change }: { el: TimerElement; change: Change }) {
           ))}
         </Select>
       </Field>
+      {/* Its time and kind, the timer's own (Session 55, Part 15). */}
+      {timer && <TimerTime key={`${timer.id}:${timer.kind}`} timer={timer} />}
+      {timer?.kind !== 'clock' && (
+        <Field label="Format" layout="inline">
+          <Select
+            className="flex-1"
+            data-testid="field-timer-format"
+            value={el.format ?? 'auto'}
+            onChange={(e) => {
+              const format = e.target.value as TimerFormat;
+              set((t) => {
+                const { format: _was, ...rest } = t;
+                return format === 'auto' ? rest : { ...rest, format };
+              });
+            }}
+          >
+            {TIMER_FORMATS.map((f) => (
+              <option key={f} value={f}>
+                {FORMAT_NAMES[f]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
       <Field label="Font" layout="inline">
         <TextInput
           list="timer-fonts"
@@ -1271,29 +1408,87 @@ function TimerSection({ el, change }: { el: TimerElement; change: Change }) {
             ? 'For a countdown:'
             : 'For a countdown (this timer does not count down, so these change nothing):'}
         </p>
-        <Toggle
-          label="Another colour in the last minute"
-          checked={Boolean(el.lastMinute)}
-          data-testid="field-last-minute"
-          onChange={(on) => {
-            set((e) => {
-              const { lastMinute: _was, ...rest } = e;
-              return on ? { ...rest, lastMinute: { color: LAST_MINUTE_COLOR } } : rest;
+        {/* A warning colour from a time left (Session 55; an older slide's last minute is one from a minute left). */}
+        <Checkbox
+          label="A warning colour near the end"
+          className="text-xs"
+          checked={warn !== null}
+          data-testid="field-timer-warn"
+          onChange={(e) => {
+            const on = e.target.checked;
+            set((t) => {
+              const { lastMinute: _old, warn: _was, ...rest } = t;
+              return on ? { ...rest, warn: { fromMs: 60_000, color: LAST_MINUTE_COLOR } } : rest;
             });
           }}
         />
-        {el.lastMinute && (
-          <Field label="Colour" layout="inline" className="pl-2">
+        {warn && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pl-2">
+            <NumberField
+              label="From (seconds left)"
+              value={Math.round(warn.fromMs / 1000)}
+              min={1}
+              max={3600}
+              testId="field-timer-warn-from"
+              onChange={(v) => {
+                set((t) => {
+                  const { lastMinute: _old, ...rest } = t;
+                  return { ...rest, warn: { ...warn, fromMs: Math.round(v) * 1000 } };
+                }, `timer-warn:${el.id}`);
+              }}
+            />
             <ColorInput
-              data-testid="field-last-minute-color"
-              value={el.lastMinute.color.slice(0, 7)}
+              aria-label="Warning colour"
+              data-testid="field-timer-warn-color"
+              value={warn.color.slice(0, 7)}
               onChange={(e) => {
                 const color = e.target.value;
-                set((t) => ({ ...t, lastMinute: { color } }), `last-minute:${el.id}`);
+                set((t) => {
+                  const { lastMinute: _old, ...rest } = t;
+                  return { ...rest, warn: { ...warn, color } };
+                }, `timer-warn:${el.id}`);
+              }}
+            />
+          </div>
+        )}
+        <Checkbox
+          label="Another colour at zero"
+          className="text-xs"
+          checked={el.overColor !== undefined}
+          data-testid="field-timer-over"
+          onChange={(e) => {
+            const on = e.target.checked;
+            set((t) => {
+              const { overColor: _was, ...rest } = t;
+              return on ? { ...rest, overColor: '#ff6b6b' } : rest;
+            });
+          }}
+        />
+        {el.overColor !== undefined && (
+          <Field label="Colour" layout="inline" className="pl-2">
+            <ColorInput
+              data-testid="field-timer-over-color"
+              value={el.overColor.slice(0, 7)}
+              onChange={(e) => {
+                const overColor = e.target.value;
+                set((t) => ({ ...t, overColor }), `timer-over:${el.id}`);
               }}
             />
           </Field>
         )}
+        <Checkbox
+          label="Flash for ten seconds at zero"
+          className="text-xs"
+          checked={el.flash === true}
+          data-testid="field-timer-flash"
+          onChange={(e) => {
+            const on = e.target.checked;
+            set((t) => {
+              const { flash: _was, ...rest } = t;
+              return on ? { ...rest, flash: true } : rest;
+            });
+          }}
+        />
         <Field label="At zero" layout="inline">
           <Select
             className="flex-1"
@@ -1303,14 +1498,31 @@ function TimerSection({ el, change }: { el: TimerElement; change: Change }) {
               const atZero = e.target.value as TimerAtZero;
               set((t) => {
                 const { atZero: _was, ...rest } = t;
-                return atZero === 'next' ? { ...rest, atZero } : rest;
+                return atZero === 'hold' ? rest : { ...rest, atZero };
               });
             }}
           >
             <option value="hold">Hold at 0:00</option>
             <option value="next">The next slide comes on</option>
+            <option value="message">Show a message in its place</option>
+            <option value="gone">It goes</option>
           </Select>
         </Field>
+        {el.atZero === 'message' && (
+          <Field label="Message at zero" layout="inline" className="pl-2">
+            <TextInput
+              className="flex-1"
+              data-testid="field-timer-zero-text"
+              value={el.zeroText ?? ''}
+              maxLength={200}
+              placeholder="Time is up"
+              onChange={(e) => {
+                const zeroText = e.target.value;
+                set((t) => ({ ...t, zeroText }), `timer-zero-text:${el.id}`);
+              }}
+            />
+          </Field>
+        )}
       </div>
     </Section>
   );

@@ -7,6 +7,26 @@ import {
   type MessageItem,
 } from '../../shared/engine/state';
 import type { EngineAction } from './actions';
+import { withRecent } from '../../shared/stage-message';
+
+/** How long a message taken off stays among those leaving (its out is far shorter): then it is let go. */
+const LEAVING_MS = 10_000;
+
+/**
+ * The messages with a look of their own taken off at `at` join those leaving (Session 55): their outs play from then.
+ * A message with the standard band goes at once, as every message did before.
+ */
+function leaving(state: EngineState, gone: readonly MessageItem[], at: number | undefined): EngineState {
+  const was = state.messagesOff ?? [];
+  const kept = at === undefined ? was : was.filter((m) => at - m.at < LEAVING_MS);
+  const off =
+    at === undefined ? [] : gone.filter((m) => m.look !== undefined).map((message) => ({ message, at }));
+  if (off.length === 0 && kept.length === was.length) return state;
+  return {
+    ...state,
+    messagesOff: [...kept.filter((m) => !off.some((o) => o.message.id === m.message.id)), ...off],
+  };
+}
 
 /** Deep equality for plain JSON data. */
 export function sameData(a: unknown, b: unknown): boolean {
@@ -172,8 +192,21 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return sameData(state.next, action.next) ? state : { ...state, next: action.next };
     case 'upcoming/set':
       return sameData(state.upcoming, action.upcoming) ? state : { ...state, upcoming: action.upcoming };
-    case 'stage/message':
-      return state.stageMessage === action.text ? state : { ...state, stageMessage: action.text };
+    case 'stage/message': {
+      // Its size, flash and time (Session 55); the words join the last few, a tap away. Hidden: the last few stay.
+      const call = action.text === null ? null : (action.call ?? null);
+      if (state.stageMessage === action.text && sameData(state.stageCall ?? null, call)) return state;
+      return {
+        ...state,
+        stageMessage: action.text,
+        stageCall: call,
+        ...(action.text === null ? {} : { stageRecent: withRecent(state.stageRecent, action.text) }),
+      };
+    }
+    case 'stage/recent':
+      return sameData(state.stageRecent ?? [], action.recent)
+        ? state
+        : { ...state, stageRecent: action.recent };
     case 'timers/define': {
       const runs = new Map(state.timers.map((t) => [t.id, t]));
       const timers = action.timers.map((d) => {
@@ -196,6 +229,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         return cleared === state || !state.layers.lowerThird || action.at === undefined
           ? cleared
           : { ...cleared, lowerThirdOff: { layer: state.layers.lowerThird, at: action.at } };
+      // Messages taken off together (Clear messages, Session 55): each with a look of its own plays its out.
+      if (action.layer === 'messages') return leaving(cleared, state.layers.messages, action.at);
       // The picture-in-picture box taken off on its own (Session 50): its out plays from then, as Take off's does.
       if (action.layer === 'pip')
         return cleared === state || !state.layers.pip || action.at === undefined
@@ -208,8 +243,12 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
     case 'layers/clearAll': {
       // Everything at once, and at once: no lower third fades, a Look's or one of the Lower Thirds (Session 44),
-      // and no picture-in-picture box plays its out (Session 50).
-      const cleared = LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
+      // and no picture-in-picture box plays its out (Session 50); no message plays its out and the timer for the
+      // audience goes too (Session 55).
+      let cleared = LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
+      if (cleared.layers.timer) cleared = withLayers(cleared, { timer: null });
+      if ((cleared.messagesOff?.length ?? 0) > 0) cleared = { ...cleared, messagesOff: [] };
+      if (cleared.timerOff) cleared = { ...cleared, timerOff: null };
       return cleared.slideOff === null && cleared.lowerThirdOff === null && cleared.pipOff === null
         ? cleared
         : { ...cleared, slideOff: null, lowerThirdOff: null, pipOff: null };
@@ -251,9 +290,11 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
             ...state,
             live: action.live,
             layers: action.layers,
-            // A lower third put back is up again: no out plays (Session 44); a box too (Session 50).
+            // A lower third put back is up again: no out plays (Session 44); a box too (Session 50), and a timer for
+            // the audience (Session 55).
             lowerThirdOff: action.layers.lowerThird ? null : state.lowerThirdOff,
             pipOff: action.layers.pip ? null : state.pipOff,
+            ...(action.layers.timer ? { timerOff: null } : {}),
           };
     case 'background/set':
       return sameData(state.layers.background, action.background)
@@ -272,16 +313,45 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case 'zoom/set':
       return sameData(state.liveZoom, action.liveZoom) ? state : { ...state, liveZoom: action.liveZoom };
     case 'message/show': {
-      // Its time on the screens: one already up keeps its own (an update never plays the entrance again).
+      // Its time on the screens: one already up keeps its own (an update never plays the entrance again), and its
+      // time to go by itself (Session 55).
       const was = state.layers.messages.find((m) => m.id === action.message.id);
       const shownAt = was?.shownAt ?? action.message.shownAt ?? action.at;
-      const message: MessageItem = shownAt === undefined ? action.message : { ...action.message, shownAt };
+      const until = was ? was.until : action.message.until;
+      const { until: _asked, ...given } = action.message;
+      const message: MessageItem = {
+        ...given,
+        ...(shownAt === undefined ? {} : { shownAt }),
+        ...(until === undefined ? {} : { until }),
+      };
       const messages = upsert(state.layers.messages, message);
-      return messages ? withLayers(state, { messages }) : state;
+      const up = messages ? withLayers(state, { messages }) : state;
+      // Up again: no longer leaving.
+      const off = up.messagesOff ?? [];
+      return off.some((m) => m.message.id === message.id)
+        ? { ...up, messagesOff: off.filter((m) => m.message.id !== message.id) }
+        : up;
     }
     case 'message/hide': {
-      if (!state.layers.messages.some((m) => m.id === action.messageId)) return state;
-      return withLayers(state, { messages: state.layers.messages.filter((m) => m.id !== action.messageId) });
+      const gone = state.layers.messages.filter((m) => m.id === action.messageId);
+      if (gone.length === 0) return state;
+      const kept = withLayers(state, {
+        messages: state.layers.messages.filter((m) => m.id !== action.messageId),
+      });
+      return leaving(kept, gone, action.at);
+    }
+    case 'timer/show': {
+      const was = state.layers.timer ?? null;
+      if (sameData(was, action.layer) && !state.timerOff) return state;
+      return { ...withLayers(state, { timer: action.layer }), timerOff: null };
+    }
+    case 'timer/hide': {
+      const was = state.layers.timer ?? null;
+      if (!was) return state;
+      return {
+        ...withLayers(state, { timer: null }),
+        timerOff: action.at === undefined ? null : { layer: was, at: action.at },
+      };
     }
     case 'ticker/show': {
       const items = upsert(state.layers.ticker?.items ?? [], action.item);

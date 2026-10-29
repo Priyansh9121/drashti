@@ -9,9 +9,10 @@ import { tap } from '../taps';
 /*
  * The timers, as the operator window's Timers panel has them (Session 26a; Session 54, D5): running ones first,
  * each its name and time, then Start, or Pause (Stop for a clock or a countdown to a time, which starts again from
- * the time of day), Reset for a countdown and a count-up, and Show on the screens (Session 50), which puts the timer
- * up alone in the slide's place, in LIVE's red while it is up ("Take off the screens"). Making, changing and
- * deleting a timer stay in Drashti (the library). A3's stage layout timer is in the Stage screen section.
+ * the time of day), Reset for a countdown and a count-up, and Show for the audience (Session 55, Part 15), which puts
+ * the timer up on the hall's screens in its own look, in LIVE's red while it is up (Hide). Making, changing and
+ * deleting a timer, and its look, stay in Drashti (the library). A3's stage layout timer is in the Stage screen
+ * section.
  */
 
 const post = (path: string) => () => api<{ rev?: number }>(path, { method: 'POST' });
@@ -67,16 +68,16 @@ function TimerRow({ timer, shown }: { timer: TimerState; shown: boolean }) {
           Reset
         </Button>
       )}
-      {/* Up alone on the screens (Session 50): again, or Clear slide, takes it off. */}
+      {/* For the audience, in its own look (Session 55): Hide takes it off. */}
       <Button
         size="lg"
         className="min-h-12"
         icon={Monitor}
         variant={shown ? 'live' : 'secondary'}
         data-testid="remote-timer-show"
-        onClick={() => void tap(post(shown ? '/api/v1/clear/slide' : `/api/v1/timers/${id}/show`))}
+        onClick={() => void tap(post(shown ? '/api/v1/timers/hide' : `/api/v1/timers/${id}/show`))}
       >
-        {shown ? 'Take off the screens' : 'Show on the screens'}
+        {shown ? 'Hide' : 'Show for the audience'}
       </Button>
     </li>
   );
@@ -84,8 +85,8 @@ function TimerRow({ timer, shown }: { timer: TimerState; shown: boolean }) {
 
 export function Timers() {
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
-  // The timer up alone on the screens, if one is (Session 50).
-  const alone = useEngine((s) => s.state?.layers.slide?.timer?.timerId ?? null);
+  // The timer up for the audience, if one is (Session 55).
+  const alone = useEngine((s) => s.state?.layers.timer?.timerId ?? null);
   return (
     <section className="space-y-2" aria-labelledby="timers-title" data-testid="remote-timers">
       <h2 id="timers-title" className="text-base font-bold tracking-wider text-muted uppercase">

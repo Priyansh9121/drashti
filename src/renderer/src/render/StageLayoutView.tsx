@@ -21,6 +21,8 @@ import { StageDeckNext, StageDeckNow } from './DeckStep';
 import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
+import { stageMessageColors, stageMessageData } from './StageMessageBanner';
+import { STAGE_SIZE_FACTOR } from '../../../shared/stage-message';
 
 /*
  * A stage layout made in Drashti (shared/stage-layouts.ts): its boxes on a
@@ -263,8 +265,11 @@ function BoxContents({
         <div
           data-testid="stage-box-message"
           lang={textLang(state.stageMessage)}
+          // Its flash and its own size against the box's (Session 55, Part 15; a box that fits its words fills it).
+          {...stageMessageData(state.stageCall)}
           style={{
-            background: '#f5a524',
+            fontSize: `${String(STAGE_SIZE_FACTOR[state.stageCall?.size ?? 'standard'])}em`,
+            background: stageMessageColors(state.stageCall, now).background,
             borderRadius: '0.25em',
             padding: '0.15em 0.4em',
             fontWeight: 700,

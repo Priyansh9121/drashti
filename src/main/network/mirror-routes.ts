@@ -30,8 +30,20 @@ export function mirrorRoutes<R>(route: MakeRoute<R>): R[] {
     route('POST', '/api/v1/lower-thirds/:id/show', 'lowerThird.show', (_b, p) => ({ lowerThirdId: p['id'] })),
     route('POST', '/api/v1/lower-thirds/hide', 'command', command('hideLowerThird')),
     route('GET', '/api/v1/music', 'music'),
-    route('POST', '/api/v1/timers/:id/show', 'command', (_b, p) => ({ type: 'showTimer', timerId: p['id'] })),
-    route('POST', '/api/v1/stage-message', 'command', (b) => ({ type: 'setStageMessage', text: b['text'] })),
+    // A timer for the audience (Session 55, Part 15), in its own look; hide takes it off. (Before, show put the timer
+    // up alone in the slide's place: the engine's showTimer command still does.)
+    route('POST', '/api/v1/timers/:id/show', 'command', (_b, p) => ({
+      type: 'showAudienceTimer',
+      timerId: p['id'],
+    })),
+    route('POST', '/api/v1/timers/hide', 'command', command('hideAudienceTimer')),
+    // With its own size and a flash since Session 55 (both left out: the standard size, no flash).
+    route('POST', '/api/v1/stage-message', 'command', (b) => ({
+      type: 'setStageMessage',
+      text: b['text'],
+      size: b['size'],
+      flash: b['flash'],
+    })),
     route('POST', '/api/v1/stage-message/clear', 'command', command('clearStageMessage')),
     route('POST', '/api/v1/skip', 'command', (b) => ({ type: 'skip', layer: b['layer'], jump: b['jump'] })),
   ];

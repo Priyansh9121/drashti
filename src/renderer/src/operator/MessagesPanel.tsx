@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { CALENDAR_LANG_NAMES, CALENDAR_LANGS } from '../../../shared/calendar';
 import type { MessageItem } from '../../../shared/engine/state';
-import type { MessageField, MessageTemplate } from '../../../shared/messages';
+import type { MessageField, MessageTemplate, MessageTemplateFields } from '../../../shared/messages';
 import { fieldOf, fillMessage, messageItemId, templateFields } from '../../../shared/messages';
+import { DEFAULT_MESSAGE_LOOK, keptLook, type MessageLook, placeWords } from '../../../shared/message-look';
+import { pushRemoval } from '../library/undo';
+import { MessageLookFields } from './MessageLook';
 import type { TimerState } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
 import { Badge } from '../ui/Badge';
@@ -44,17 +47,39 @@ function TemplateForm({
   const [name, setName] = useState(initial?.name ?? '');
   const [template, setTemplate] = useState(initial?.template ?? '');
   const [fields, setFields] = useState<Record<string, MessageField>>(initial?.fields ?? {});
+  // Its look and how long it stays up (Session 55, Part 15): the standard look, until taken off, to begin with.
+  const [look, setLook] = useState<MessageLook>(initial?.look ?? DEFAULT_MESSAGE_LOOK);
+  const [seconds, setSeconds] = useState<number | null>(initial?.seconds ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const names = templateFields(template);
   const save = async () => {
     // Keep only the fields the template still has.
     const kept = Object.fromEntries(names.flatMap((n) => (fields[n] ? [[n, fields[n]]] : [])));
-    const body = { name: name.trim() === '' ? cutText(template, 40) : name, template, fields: kept };
+    // The standard look is kept as none: the message shows in the band along the bottom, as every message did.
+    const own = keptLook(look);
+    const body: MessageTemplateFields = {
+      name: name.trim() === '' ? cutText(template, 40) : name,
+      template,
+      fields: kept,
+      ...(own ? { look: own } : {}),
+      ...(seconds === null ? {} : { seconds }),
+    };
     const result = initial
       ? await window.drashti.messages.update(initial.id, body)
       : await window.drashti.messages.create(body);
-    if (result.ok) onDone(true);
-    else setProblem(result.message);
+    if (!result.ok) {
+      setProblem(result.message);
+      return;
+    }
+    // A change can be undone (Session 55): the message as it was.
+    if (initial)
+      pushRemoval({
+        text: `Changed the message “${initial.name}”`,
+        restore: async () => {
+          await window.drashti.messages.restore(initial);
+        },
+      });
+    onDone(true);
   };
   return (
     <form
@@ -110,6 +135,13 @@ function TemplateForm({
           </Select>
         </label>
       ))}
+      <MessageLookFields
+        words={template}
+        look={look}
+        seconds={seconds}
+        onLook={setLook}
+        onSeconds={setSeconds}
+      />
       {problem && (
         <p role="alert" className="text-xs text-warning-fg">
           {problem}
@@ -129,8 +161,18 @@ function TemplateForm({
             className="ml-auto"
             onClick={() => {
               void window.drashti.messages.remove(initial.id).then((r) => {
-                if (r.ok) onDone(true);
-                else setProblem(r.message);
+                if (!r.ok) {
+                  setProblem(r.message);
+                  return;
+                }
+                // Undo brings it back as it was, its look too (Session 55).
+                pushRemoval({
+                  text: `Deleted the message “${initial.name}”`,
+                  restore: async () => {
+                    await window.drashti.messages.restore(initial);
+                  },
+                });
+                onDone(true);
               });
             }}
           >
@@ -176,6 +218,17 @@ function TemplateRow({
         {shown && <Badge tone="live">On the screens</Badge>}
       </div>
       <Truncate text={t.template} className="text-xs text-muted" />
+      {/* Where its own look puts it, and how long it stays up (Session 55). */}
+      {(t.look !== undefined || t.seconds !== undefined) && (
+        <p className="text-xs text-faint" data-testid="message-row-look">
+          {[
+            t.look ? placeWords(t.look.place) : null,
+            t.seconds === undefined ? null : `up ${String(t.seconds)} s`,
+          ]
+            .filter((w): w is string => w !== null)
+            .join(' · ')}
+        </p>
+      )}
       {names.map((n) => {
         const f = fieldOf(t, n);
         return f.kind === 'timer' ? (

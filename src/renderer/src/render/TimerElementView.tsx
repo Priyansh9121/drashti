@@ -6,7 +6,9 @@ import { changesAt, type TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
 import { ClockStyleContext } from './clock-style';
 import { SlideMovementContext, useSlideTimer } from './slide-timers';
-import { digitFrame, digitLength, drawnTime, lastMinuteColor } from './timer-digits';
+import { digitFrame, digitLength, drawnTime } from './timer-digits';
+import { slideTimerColor, slideTimerDimmed, slideTimerShows } from '../../../shared/slide-timer';
+import { FLASH_DIM } from '../../../shared/stage-timer';
 
 /*
  * A Timer on a slide (Session 50): its timer's time, live, in its box as words are drawn, worked out here from
@@ -116,9 +118,12 @@ export function TimerElementView({
   // A clock in Main's way of writing the time (Sessions 31–36, I18N-8), as a message's timer.
   const style = useContext(ClockStyleContext);
   const now = useTimerNow(timer);
-  const shown = drawnTime(timer, now, style, movement);
+  const shown = drawnTime(timer, now, style, movement, el.format);
   const changing = animate ? shown.changing : null;
-  const color = lastMinuteColor(el, timer, now);
+  // Its warning, its colour at zero, its flash and what it shows at zero (Session 55, Part 15).
+  const color = slideTimerColor(el, timer, now);
+  const shows = slideTimerShows(el, timer, now);
+  const dim = slideTimerDimmed(el, timer, now);
   const digits = useRef<HTMLSpanElement>(null);
   useDigitMotion(digits, changing, movement);
   return (
@@ -127,7 +132,13 @@ export function TimerElementView({
       data-timer-element={el.timerId}
       data-time={shown.text}
       data-last-minute={color === null ? undefined : ''}
-      style={color === null ? box : { ...box, color }}
+      data-warn={color === null ? undefined : 'true'}
+      data-shows={shows}
+      style={{
+        ...box,
+        ...(color === null ? {} : { color }),
+        ...(dim ? { opacity: Number(box.opacity ?? 1) * FLASH_DIM } : {}),
+      }}
     >
       <div
         data-darken={band ? 'band' : undefined}
@@ -142,7 +153,12 @@ export function TimerElementView({
             : {}),
         }}
       >
-        <span ref={digits} data-timer-digits="" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {shows === 'message' && <span data-timer-message="">{el.zeroText ?? ''}</span>}
+        <span
+          ref={digits}
+          data-timer-digits=""
+          style={{ fontVariantNumeric: 'tabular-nums', display: shows === 'time' ? undefined : 'none' }}
+        >
           {shown.cells.map((c) => {
             const moves = changing !== null && c.was !== null;
             return (

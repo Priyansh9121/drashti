@@ -294,11 +294,13 @@ const bridge: DrashtiBridge = {
     create: (template) => invoke(IPC.messages.create, template),
     update: (templateId, template) => invoke(IPC.messages.update, templateId, template),
     remove: (templateId) => invoke(IPC.messages.remove, templateId),
+    restore: (template) => invoke(IPC.messages.restore, template),
   },
   timers: {
     create: (fields) => invoke(IPC.timers.create, fields),
     update: (timerId, fields) => invoke(IPC.timers.update, timerId, fields),
     remove: (timerId) => invoke(IPC.timers.remove, timerId),
+    startCountdown: (time) => invoke(IPC.timers.startCountdown, time),
   },
   media: {
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),

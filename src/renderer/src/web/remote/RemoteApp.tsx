@@ -246,6 +246,30 @@ function LivePicture({ state }: { state: EngineState | null }) {
           </Button>
         </div>
       )}
+      {/* A timer for the audience up (Session 55, Part 15): named, and Hide. */}
+      {state?.layers.timer && (
+        <div
+          role="status"
+          data-testid="remote-audience-timer"
+          className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 py-1 pr-1 pl-3"
+        >
+          <Timer size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate text-base">
+            <span className="font-bold">Timer for the audience:</span>{' '}
+            {state.timers.find((t) => t.id === state.layers.timer?.timerId)?.name ?? 'Timer'}
+          </span>
+          <Button
+            size="lg"
+            className="min-h-12"
+            instant
+            icon={Eraser}
+            data-testid="remote-audience-timer-hide"
+            onClick={() => void tap(post('/api/v1/timers/hide'))}
+          >
+            Hide
+          </Button>
+        </div>
+      )}
       {/* A timer up alone in the slide's place (Session 50): named, and taken off as the slide is. */}
       {state?.layers.slide?.timer && (
         <div

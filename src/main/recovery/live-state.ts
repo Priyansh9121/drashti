@@ -9,6 +9,7 @@ import {
   pipPlaceSchema,
 } from '../../shared/engine/commands';
 import type {
+  AudienceTimerLayer,
   AudioLayer,
   BackgroundLayer,
   EngineState,
@@ -24,6 +25,7 @@ import { lowerThirdSchema } from '../../shared/lower-thirds';
 import type { PlaybackSeek } from '../../shared/media';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
+import { STAGE_MESSAGE_SIZES, STAGE_RECENT, type StageCall } from '../../shared/stage-message';
 
 /*
  * Restart recovery (PLAN.md Phase 1). What is live is saved to a small file
@@ -101,6 +103,11 @@ export interface SavedLive {
    * the screens): it is no presentation's. Left out when none.
    */
   timer?: { timerId: string } | null;
+  /** The stage message's size and flash, and the last few (Session 55): left out by files saved before. */
+  stageCall?: StageCall | null;
+  stageRecent?: string[];
+  /** A timer for the audience up (Session 55): put back still. Left out when none, and by files saved before. */
+  audienceTimer?: AudienceTimerLayer | null;
 }
 
 /**
@@ -160,8 +167,13 @@ const tickerSchema: z.ZodType<TickerLayer> = z.object({
   shownAt: z.number().optional(),
 });
 
-/** A saved message, with the time it went up (Session 27): put back, it comes back still, with no entrance. */
-const savedMessageSchema = messageSchema.and(z.object({ shownAt: z.number().optional() }));
+/**
+ * A saved message, with the time it went up (Session 27): put back, it comes back still, with no entrance; and when
+ * it goes by itself (Session 55): put back for the rest of its time.
+ */
+const savedMessageSchema = messageSchema.and(
+  z.object({ shownAt: z.number().optional(), until: z.number().optional() }),
+);
 /** A saved lower third (Session 44), with the time it went up. */
 const savedLowerThirdSchema: z.ZodType<LowerThirdLayer> = lowerThirdSchema.and(
   z.object({ shownAt: z.number() }),
@@ -242,6 +254,14 @@ const savedSchema = z.object({
   pip: z.unknown().default(null),
   // A timer shown alone (Session 50); files saved without one have none.
   timer: z.object({ timerId: idSchema }).nullable().optional(),
+  // Session 55 (Part 15): the stage message's size and flash, the last few, and a timer for the audience; files saved
+  // before have none.
+  stageCall: z
+    .object({ size: z.enum(STAGE_MESSAGE_SIZES), flash: z.boolean(), shownAt: z.number() })
+    .nullable()
+    .optional(),
+  stageRecent: z.array(z.string().min(1).max(300)).max(STAGE_RECENT).optional(),
+  audienceTimer: z.object({ timerId: idSchema, shownAt: z.number() }).nullable().optional(),
 });
 const soundLayerFields = z.object({
   startedAt: z.number(),
@@ -322,6 +342,10 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     lowerThird: state.layers.lowerThird,
     pip: stillBox(state.layers.pip),
     ...(alone ? { timer: { timerId: alone.timerId } } : {}),
+    // Session 55 (Part 15).
+    ...(state.stageCall ? { stageCall: state.stageCall } : {}),
+    ...((state.stageRecent?.length ?? 0) > 0 ? { stageRecent: state.stageRecent } : {}),
+    ...(state.layers.timer ? { audienceTimer: state.layers.timer } : {}),
   };
 }
 
@@ -402,6 +426,10 @@ function liveIn(s: Saved): SavedLive | null {
   const pip = layer(savedPipSchema.nullable(), s.pip, null);
   const timers = same ? s.timers : [];
   const stageMessage = same ? s.stageMessage : null;
+  // Session 55 (Part 15): kept only with the engine version's layers, as the stage message is.
+  const stageCall = same ? (s.stageCall ?? null) : null;
+  const stageRecent = same ? (s.stageRecent ?? []) : [];
+  const audienceTimer = same ? (s.audienceTimer ?? null) : null;
   const anything = [
     s.slide !== null,
     s.playlist !== null,
@@ -416,6 +444,7 @@ function liveIn(s: Saved): SavedLive | null {
     stageMessage !== null,
     timers.length > 0,
     s.timer != null,
+    audienceTimer !== null,
   ].some(Boolean);
   if (!anything) return null;
   // The schema keeps only what it names: an older file's logo, props, mask and Look are not carried on.
@@ -429,6 +458,9 @@ function liveIn(s: Saved): SavedLive | null {
     pip,
     stageMessage,
     timers,
+    stageCall,
+    stageRecent,
+    audienceTimer,
   };
 }
 

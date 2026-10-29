@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type ClockStyle, formatClock, formatDuration } from './format';
+import { type AudienceTimerLook, audienceTimerLookSchema } from './timer-look';
 
 /*
  * Timers and the clock (PLAN.md 4.3). The engine keeps only when a timer
@@ -33,6 +34,11 @@ export interface TimerDefinition {
   targetTime: string | null;
   /** Keeps counting past zero (shown as -0:12) instead of stopping at 0:00. */
   allowsOverrun: boolean;
+  /**
+   * How it looks on the audience screens (Session 55, Part 15, shared/timer-look.ts): left out, the default (full
+   * screen over what is up). Kept with the timer in the library; an older library's timers have none.
+   */
+  look?: AudienceTimerLook;
 }
 
 /** What starting, pausing and resetting change. */
@@ -195,6 +201,8 @@ export const timerFieldsSchema = z
       .regex(/^([01]?\d|2[0-3]):[0-5]\d$/)
       .nullable(),
     allowsOverrun: z.boolean(),
+    // Its look for the audience (Session 55, Part 15); left out, the one it has stays.
+    look: audienceTimerLookSchema.optional(),
   })
   .strict();
 

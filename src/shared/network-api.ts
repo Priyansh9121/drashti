@@ -219,6 +219,9 @@ export const REMOTE_COMMANDS = [
   // stage message, and Back 15 s, Forward 15 s and Last 10 s.
   'hideLowerThird',
   'showTimer',
+  // A timer for the audience shown and hidden (Session 55, Part 15).
+  'showAudienceTimer',
+  'hideAudienceTimer',
   'setStageMessage',
   'clearStageMessage',
   'skip',

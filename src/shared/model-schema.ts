@@ -5,6 +5,7 @@ import {
   MAX_AUTO_ADVANCE_MS,
   MAX_TRANSITION_MS,
   TIMER_AT_ZERO,
+  TIMER_FORMATS,
   TRANSITION_KINDS,
 } from './model';
 
@@ -149,5 +150,20 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     lastMinute: z.object({ color: hexColorSchema }).nullable().optional(),
     atZero: z.enum(TIMER_AT_ZERO).optional(),
     opacity: num.min(0).max(1).optional(),
+    // Session 55 (Part 15): its format, warning, colour at zero, flash and message at zero.
+    format: z.enum(TIMER_FORMATS).optional(),
+    warn: z
+      .object({
+        fromMs: num
+          .int()
+          .min(1000)
+          .max(24 * 3600 * 1000),
+        color: hexColorSchema,
+      })
+      .nullable()
+      .optional(),
+    overColor: hexColorSchema.optional(),
+    flash: z.boolean().optional(),
+    zeroText: z.string().max(200).optional(),
   }),
 ]);

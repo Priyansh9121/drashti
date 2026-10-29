@@ -162,7 +162,7 @@ test('a stage screen follows Next with the current and next text, notes, clock a
   await expect(view.getByTestId('stage-message')).toHaveText('Placeholder: two minutes left');
   await expect(control.getByTestId('stage-message-shown')).toContainText('Placeholder: two minutes left');
   await expect(audience.getByText('two minutes left')).toHaveCount(0);
-  await control.getByRole('button', { name: 'Clear' }).click();
+  await control.getByRole('button', { name: 'Hide', exact: true }).click();
   await expect(view.getByTestId('stage-message')).toHaveCount(0);
 
   // A running timer shows on the stage too.
@@ -172,7 +172,8 @@ test('a stage screen follows Next with the current and next text, notes, clock a
   await form.getByRole('textbox', { name: 'Timer name' }).fill('Placeholder talk');
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(view.getByTestId('stage-timer')).toHaveCount(0);
-  await timers.getByRole('button', { name: 'Start' }).click();
+  // Exactly Start: Countdown to the start… (Session 55) is in the panel too.
+  await timers.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(view.getByTestId('stage-timer')).toContainText('Placeholder talk');
   await expect(view.getByTestId('stage-timer')).toContainText(/4:5\d/);
 

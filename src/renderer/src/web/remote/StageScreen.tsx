@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import {
+  STAGE_MESSAGE_SIZES,
+  STAGE_SIZE_NAMES,
+  type StageMessageSize,
+} from '../../../../shared/stage-message';
 import { useEngine } from '../../engine/engine-store';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
@@ -13,7 +18,8 @@ import { StageTimerList } from './StageTimers';
  * performers on the stage screens only (the audience never sees it), shown, said while it is up, and cleared.
  * Since Session 55 its Layout too: the one layout every stage screen shows, chosen here at once as in the panel.
  * Making and changing layouts stays in Drashti (stage layouts are the setup). A3's Start, Pause and Reset for the
- * stage layout's own timer go under the message, in this section.
+ * stage layout's own timer go under the message, in this section. Since Session 55 (Part 15) the message as the Stage
+ * screen panel has it: its own size, a flash as it comes up, Show and Hide, and the last few a tap away.
  */
 
 const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
@@ -66,9 +72,17 @@ function LayoutPicker() {
   );
 }
 
+const NO_RECENT: string[] = [];
+
 export function StageScreen() {
   const shown = useEngine((s) => s.state?.stageMessage ?? null);
+  const recent = useEngine((s) => s.state?.stageRecent) ?? NO_RECENT;
   const [text, setText] = useState('');
+  const [size, setSize] = useState<StageMessageSize>('standard');
+  const [flash, setFlash] = useState(false);
+  const show = (words: string) => {
+    if (words.trim() !== '') void tap(post('/api/v1/stage-message', { text: words, size, flash }));
+  };
   return (
     <section className="space-y-2" aria-labelledby="stage-title" data-testid="remote-stage">
       <h2 id="stage-title" className="text-base font-bold tracking-wider text-muted uppercase">
@@ -79,7 +93,7 @@ export function StageScreen() {
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (text.trim() !== '') void tap(post('/api/v1/stage-message', { text }));
+          show(text);
         }}
       >
         <input
@@ -98,6 +112,37 @@ export function StageScreen() {
           Show
         </Button>
       </form>
+      {/* Its own size and a flash (Session 55), as in the Stage screen panel. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-base text-muted">
+          Size
+          <select
+            aria-label="Size of the stage message"
+            value={size}
+            onChange={(e) => {
+              setSize(e.target.value as StageMessageSize);
+            }}
+            className="h-12 rounded-lg border border-field bg-panel-3 px-3 text-base text-fg"
+          >
+            {STAGE_MESSAGE_SIZES.map((s) => (
+              <option key={s} value={s}>
+                {STAGE_SIZE_NAMES[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-h-12 items-center gap-2 text-base text-fg">
+          <input
+            type="checkbox"
+            checked={flash}
+            onChange={(e) => {
+              setFlash(e.target.checked);
+            }}
+            className="size-5"
+          />
+          Flash as it comes up
+        </label>
+      </div>
       {shown !== null && (
         <div
           role="status"
@@ -116,8 +161,31 @@ export function StageScreen() {
             data-testid="remote-stage-clear"
             onClick={() => void tap(post('/api/v1/stage-message/clear'))}
           >
-            Clear
+            Hide
           </Button>
+        </div>
+      )}
+      {/* The last few, a tap away: one tap shows it again on every stage screen (Session 55). */}
+      {recent.length > 0 && (
+        <div data-testid="remote-stage-recent" className="space-y-1">
+          <p className="text-sm text-muted">Shown before, a tap away</p>
+          <div className="flex flex-wrap gap-2">
+            {recent.map((r) => (
+              <Button
+                key={r}
+                size="lg"
+                className="min-h-12 max-w-full"
+                variant={r === shown ? 'live' : 'secondary'}
+                onClick={() => {
+                  show(r);
+                }}
+              >
+                <span className="truncate" translate="no">
+                  {r}
+                </span>
+              </Button>
+            ))}
+          </div>
         </div>
       )}
       <StageTimerList />
