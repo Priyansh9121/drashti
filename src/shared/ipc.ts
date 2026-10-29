@@ -88,6 +88,7 @@ import type { Mask, MaskResult } from './masks';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
+import type { StartMarks } from './start-marks';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
@@ -167,6 +168,8 @@ export const IPC = {
     askLeaveSimple: 'app:ask-leave-simple',
     /** Any of Drashti's windows: a render error, for the log (Session 23). */
     renderError: 'app:render-error',
+    /** The operator window: when it knew what it waits for and drew its controls, for the log (question 36). */
+    windowStarted: 'app:window-started',
     /** main -> operator: Help > Keyboard Shortcuts… was chosen (Session 25). */
     showKeys: 'app:show-keys',
     /** main -> operator: Help > Guides… was chosen (Sessions 31–36), in either mode. */
@@ -965,6 +968,7 @@ export interface InvokeContract {
   [IPC.access.quit]: { args: []; result: null };
   [IPC.app.getInfo]: { args: []; result: AppInfo };
   [IPC.app.renderError]: { args: [report: RenderErrorReport]; result: null };
+  [IPC.app.windowStarted]: { args: [marks: StartMarks]; result: null };
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
   [IPC.app.dismissRecovery]: { args: []; result: null };
   [IPC.app.startNotice]: { args: []; result: string | null };

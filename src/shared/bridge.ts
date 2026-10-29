@@ -104,6 +104,7 @@ import type { Mask, MaskResult } from './masks';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
+import type { StartMarks } from './start-marks';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type {
@@ -128,6 +129,8 @@ export interface DrashtiBridge {
     getInfo(): Promise<AppInfo>;
     /** A render error in this window, for the main process's log (Session 23; any of Drashti's windows). */
     renderError(report: RenderErrorReport): Promise<null>;
+    /** The operator window's own start, for the log: when it knew what it waits for, and drew its controls (question 36). */
+    windowStarted(marks: StartMarks): Promise<null>;
     /** Edit > Undo was chosen (operator window). */
     onUndo(listener: () => void): () => void;
     /** Edit > Redo was chosen (operator window). */

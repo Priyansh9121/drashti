@@ -37,6 +37,7 @@ const bridge: DrashtiBridge = {
   app: {
     getInfo: () => invoke(IPC.app.getInfo),
     renderError: (report) => invoke(IPC.app.renderError, report),
+    windowStarted: (marks) => invoke(IPC.app.windowStarted, marks),
     onUndo: (listener) =>
       on(IPC.app.undo, () => {
         listener();

@@ -143,7 +143,8 @@ import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { phaseLine } from './start-phases';
+import { phaseLine, windowStartLine } from './start-phases';
+import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
@@ -3155,6 +3156,12 @@ function start(): void {
 
   // ---- IPC ----------------------------------------------------------------
   handle(IPC.app.getInfo, () => appInfo());
+  // The operator window's own start in the log (question 36 of Session 54): where a slow start's time went.
+  handle(IPC.app.windowStarted, (e, raw) => {
+    const marks = fromOperator(e) ? parseStartMarks(raw) : null;
+    if (marks) log.info(windowStartLine(marks));
+    return null;
+  });
   handle(IPC.app.recovery, async () => {
     // A video input put back after the restart (Session 50): the notice waits for the first screen to say whether
     // it is on this computer (20 s at most), and names it when it was not (it has come off the screens).
@@ -5413,6 +5420,9 @@ function start(): void {
   appearance.track(operatorWindow);
   operatorWindow.once('show', () => {
     log.info(phaseLine('operator window shown'));
+  });
+  operatorWindow.webContents.once('did-finish-load', () => {
+    log.info(phaseLine('operator window loaded'));
   });
   watchdog.watch(operatorWindow.webContents, 'operator');
   // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads

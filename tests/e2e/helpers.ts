@@ -113,6 +113,7 @@ export async function launchApp(
   });
   sayIfItStops(app);
   sayIfQuittingIsSlow(app, userData);
+  dataFolderOf.set(app, userData);
   followDataFolder(app, userData, running, userDataDir === undefined);
   return { app, userData, access: lock.standIn };
 }
@@ -297,9 +298,16 @@ export async function windowShowing(
  * The operator window's page, found by its page rather than by window order:
  * after a restart the outputs can open first.
  */
-export function operatorPage(app: ElectronApplication): Promise<Page> {
-  return windowShowing(app, (p) => p.url().includes('index.html'), 'operator');
+export async function operatorPage(app: ElectronApplication): Promise<Page> {
+  const page = await windowShowing(app, (p) => p.url().includes('index.html'), 'operator');
+  const folder = dataFolderOf.get(app);
+  if (folder !== undefined) pageDataFolder.set(page, folder);
+  return page;
 }
+
+/** Each Drashti's data folder, as launchApp made it, and each operator page's: for a slow start's log. */
+const dataFolderOf = new WeakMap<ElectronApplication, string>();
+const pageDataFolder = new WeakMap<Page, string>();
 
 /** The lock window's page (Session 54, access by Gmail): Drashti on a computer not let in, before it opens. */
 export function lockPage(app: ElectronApplication): Promise<Page> {
@@ -316,14 +324,53 @@ export async function operatorReady(win: Page): Promise<void> {
   // machine took longer than 10 s for every start once (28 Oct 2026). A start this slow is said in the log,
   // never passed over in silence; here one takes under a second.
   const asked = Date.now();
-  await expect(win.getByRole('contentinfo', { name: 'Status' })).toContainText(/Electron \d/u, {
-    timeout: 30_000,
-  });
+  try {
+    await expect(win.getByRole('contentinfo', { name: 'Status' })).toContainText(/Electron \d/u, {
+      timeout: 30_000,
+    });
+  } catch (error) {
+    sayHowItStarted(
+      win,
+      `The operator window was not ready ${((Date.now() - asked) / 1000).toFixed(1)} s after it was asked for.`,
+    );
+    throw error;
+  }
   const took = Date.now() - asked;
   if (took > SLOW_START_MS)
-    console.log(
+    sayHowItStarted(
+      win,
       `Slow start: the operator window was ready ${(took / 1000).toFixed(1)} s after it was asked for.`,
     );
+}
+
+/**
+ * A slow or failed start says where its time went (question 36 of Session 54: from its 650th test on, every start on
+ * CI's Mac took about 15 s more, and nothing in the test's output said where): this start's own lines in Drashti's
+ * log (its phase lines with their times, the operator window's own, access, and any warning), and anything of
+ * Drashti's still running on the computer (Drashti, Electron, FFmpeg, a crash handler), as one an earlier test left
+ * behind would be.
+ */
+function sayHowItStarted(win: Page, first: string): void {
+  const folder = pageDataFolder.get(win);
+  const file = folder === undefined ? null : join(folder, 'logs', 'drashti.log');
+  let lines = '(no log)';
+  if (file !== null && existsSync(file)) {
+    const all = readFileSync(file, 'utf8').split('\n');
+    const from = all.findLastIndex((l) => l.includes('Start: the main process running'));
+    lines = all.slice(Math.max(0, from), Math.max(0, from) + 80).join('\n');
+  }
+  console.log(
+    `${first}\nThis start in Drashti's log:\n${lines}\nStill running on this computer: ${stillRunning()}`,
+  );
+}
+
+/** Drashti's processes and their helpers running now, with their age (a Mac or Linux; Windows is not looked at). */
+function stillRunning(): string {
+  if (process.platform === 'win32') return '(not looked at on Windows)';
+  const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,etime=,rss=,comm='], { encoding: 'utf8', timeout: 5000 });
+  if (ps.status !== 0) return '(could not be read)';
+  const rows = ps.stdout.split('\n').filter((r) => /electron|drashti|ffmpeg|crashpad|yt-dlp|deno/iu.test(r));
+  return rows.length === 0 ? 'none' : `${String(rows.length)}\n${rows.slice(0, 40).join('\n')}`;
 }
 
 /** A start slower than this is said (operatorReady). */

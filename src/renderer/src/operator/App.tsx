@@ -90,6 +90,7 @@ import { connectKeepScreens } from './keep-screens-store';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
 import { connectSingleKeys, useSingleKeys } from './single-keys-store';
+import { useStartMarks } from './start-marks';
 import { BackupsDialog } from '../backups/BackupsDialog';
 import { EventsOutDialog } from '../events/EventsOutDialog';
 import { DropFolderDialog } from '../drop/DropFolderDialog';
@@ -198,6 +199,8 @@ export function App() {
   // Both always come: a request that fails takes the safe default (Session 38), never a blank window.
   const keysKnown = useSingleKeys((s) => s.on !== null);
   useConnections(setInfo);
+  // Where its start's time went, for the log (question 36 of Session 54).
+  useStartMarks(mode !== null, keysKnown, info !== null);
   if (mode === null || !keysKnown) return null;
   return (
     <>
