@@ -43,8 +43,10 @@ async function importGroupsKirtan(win: Page): Promise<void> {
   await importAndGetIds(win, [file]);
 }
 
-/** Show the groups kirtan's slides. */
+/** Show the groups kirtan's slides (Session 55: the library's chosen presentation shows with no playlist open). */
 async function openGroupsKirtan(win: Page): Promise<void> {
+  const close = win.getByTestId('playlist-close');
+  if ((await close.count()) > 0) await close.click();
   await openLibrary(win);
   await win
     .getByTestId('presentation-list')
@@ -53,33 +55,25 @@ async function openGroupsKirtan(win: Page): Promise<void> {
   await expect(win.getByTestId('slide-thumb')).toHaveCount(10);
 }
 
-/** How many thumbnails each row of the slide grid holds, top to bottom. */
-async function gridRows(win: Page): Promise<number[]> {
-  return win.getByTestId('slide-thumb').evaluateAll((els) => {
-    const rows = new Map<number, number>();
-    for (const el of els) {
-      const top = Math.round(el.getBoundingClientRect().top);
-      rows.set(top, (rows.get(top) ?? 0) + 1);
-    }
-    return [...rows.values()];
-  });
+/** Where each slide's row starts, top to bottom (Session 55: the slides are rows, one a line). */
+async function rowTops(win: Page): Promise<number[]> {
+  return win
+    .getByTestId('slide-thumb')
+    .evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
 }
 
 /**
- * The slides flow on from one group to the next in one grid: every row but
- * the last is full, however few slides a group has, and each group's name
- * and colour mark where it starts.
+ * The slides as rows (Session 55, Part 4: the slide grid went), one slide a row in play order, each group's name where
+ * it starts, and each slide's group colour beside it.
  */
-async function expectContinuousGrid(win: Page, atLeast: number, what: string): Promise<number> {
+async function expectSlideRows(win: Page, what: string): Promise<void> {
   await expect(win.getByTestId('slide-list')).toHaveCount(1);
-  const rows = await gridRows(win);
-  const perRow = rows[0] ?? 0;
-  expect(perRow, `${what}: slides in a row`).toBeGreaterThanOrEqual(atLeast);
+  const tops = await rowTops(win);
+  expect(tops, `${what}: one slide a row`).toHaveLength(10);
   expect(
-    rows.slice(0, -1).every((n) => n === perRow),
-    `${what}: rows ${rows.join(', ')}`,
+    tops.every((top, i) => i === 0 || top > (tops[i - 1] ?? 0)),
+    `${what}: rows ${tops.join(', ')}`,
   ).toBe(true);
-  expect(rows.length, `${what}: rows ${rows.join(', ')}`).toBe(Math.ceil(10 / perRow));
   const markers = win.getByTestId('slide-thumb').filter({ has: win.getByTestId('slide-group') });
   expect(await markers.evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-index'))))).toEqual([
     0, 1, 3, 6,
@@ -96,15 +90,20 @@ async function expectContinuousGrid(win: Page, atLeast: number, what: string): P
   const chorus = 'rgb(18, 165, 148)';
   const bridge = 'rgb(142, 78, 198)';
   expect(strips).toEqual([verse, chorus, chorus, verse, verse, verse, bridge, bridge, bridge, bridge]);
-  return perRow;
 }
 
 /** Open the placeholder playlist and put the kirtan's second slide live. */
 async function showRunning(win: Page) {
   await closeLibrary(win);
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
-  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
-  await win.getByTestId('slide-thumb').nth(1).click();
+  // Its slides are rows under its name in the playlist (Session 55): one click on the second puts it up.
+  await win
+    .getByTestId('open-playlist')
+    .locator('[data-item-row]')
+    .filter({ has: win.getByTestId('playlist-item').filter({ hasText: KIRTAN }) })
+    .getByTestId('slide-thumb')
+    .nth(1)
+    .click();
   await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 2 of 5`);
 }
 
@@ -157,8 +156,12 @@ test('the operator window and every panel pass the accessibility checks', async 
       () => win.getByRole('button', { name: 'Close themes' }).click(),
     ],
     [
-      'Edit words',
-      () => win.getByRole('button', { name: 'Edit words' }).click(),
+      // The words editor (Session 55: New… from words; the open presentation's Edit words went).
+      'the words editor',
+      async () => {
+        await openLibrary(win);
+        await win.getByTestId('library-sheet').getByRole('button', { name: 'New…' }).click();
+      },
       () => win.getByTestId('words-editor').getByRole('button', { name: 'Cancel' }).click(),
     ],
     [
@@ -241,7 +244,7 @@ async function expectLaidOut(win: Page, what: string) {
           out.push(`${name(el)} sticks out of ${id}`);
       }
     }
-    // The slide grid has room for at least two thumbnails side by side.
+    // The middle has room for its rows (Session 55: the slides are rows there).
     const grid = document.querySelector('[data-testid="column-middle"]')?.getBoundingClientRect();
     if (!grid || grid.width < 380) out.push(`the slides have too little room (${grid?.width ?? 0} px)`);
     return out;
@@ -261,10 +264,10 @@ for (const [width, height] of [
     await showRunning(win);
     // A message on the screens and a sound would light more of the bar; the slide is enough here.
     await expectLaidOut(win, `the operator window at ${width} x ${height}`);
-    // At the usual thumbnail size the slides fill the width: three a row at 1280 x 720, five at 1920 x 1080.
+    // The slides as rows, one a line, each group's name where it starts (Session 55).
     await importGroupsKirtan(win);
     await openGroupsKirtan(win);
-    await expectContinuousGrid(win, width === 1280 ? 3 : 5, `the slides at ${width} x ${height}`);
+    await expectSlideRows(win, `the slides at ${width} x ${height}`);
     await expectLaidOut(win, `the groups kirtan at ${width} x ${height}`);
     // With a dialog open too.
     await win.getByRole('button', { name: 'Screens', exact: true }).click();
@@ -284,32 +287,15 @@ for (const [width, height] of [
   });
 }
 
-test('the columns and the thumbnail size change from the keyboard, and are kept after a restart', async () => {
+test('the columns change from the keyboard, and are kept after a restart; the slides are rows, one a line', async () => {
   const first = await launchApp();
   const win = await operatorPage(first.app);
   await win.setViewportSize({ width: 1600, height: 900 });
   await importGroupsKirtan(win);
   await openGroupsKirtan(win);
-  const usual = await expectContinuousGrid(win, 3, 'the usual size');
-  const size = win.getByRole('slider', { name: 'Thumbnail size' });
-  await expect(size).toHaveValue('170');
-  await size.focus();
-  await win.keyboard.press('End');
-  await expect(size).toHaveValue('400');
-  // Bigger thumbnails, fewer in a row, still flowing on from group to group.
-  const big = await expectContinuousGrid(win, 1, 'the biggest size');
-  expect(big).toBeLessThan(usual);
-  const thumbWidth = () =>
-    win
-      .getByTestId('slide-thumb')
-      .first()
-      .evaluate((el) => el.getBoundingClientRect().width);
-  expect(await thumbWidth()).toBeGreaterThanOrEqual(400);
-  await win.keyboard.press('Home');
-  await expect(size).toHaveValue('120');
-  expect(await expectContinuousGrid(win, usual + 1, 'the smallest size')).toBeGreaterThan(usual);
-  for (let i = 0; i < 10; i++) await win.keyboard.press('ArrowRight');
-  await expect(size).toHaveValue('220');
+  // Session 55 (Part 4): the slides are rows, a slide each (the thumbnail size went with the slide grid).
+  await expectSlideRows(win, 'the slides');
+  await expect(win.getByRole('slider', { name: 'Thumbnail size' })).toHaveCount(0);
   const library = win.getByRole('separator', { name: 'Resize the playlists' });
   const live = win.getByRole('separator', { name: 'Resize the live column' });
   await library.focus();
@@ -337,12 +323,7 @@ test('the columns and the thumbnail size change from the keyboard, and are kept 
   const win2 = await operatorPage(second.app);
   await win2.setViewportSize({ width: 1600, height: 900 });
   await openGroupsKirtan(win2);
-  await expect(win2.getByRole('slider', { name: 'Thumbnail size' })).toHaveValue('220');
-  const kept = await win2
-    .getByTestId('slide-thumb')
-    .first()
-    .evaluate((el) => el.getBoundingClientRect().width);
-  expect(kept).toBeGreaterThanOrEqual(220);
+  await expectSlideRows(win2, 'the slides after a restart');
   await expect(win2.getByRole('separator', { name: 'Resize the playlists' })).toHaveAttribute(
     'aria-valuenow',
     '364',

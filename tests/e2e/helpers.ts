@@ -499,6 +499,28 @@ export async function openLibrary(win: Page): Promise<Locator> {
   return sheet;
 }
 
+/**
+ * A presentation's slides in the open playlist (Session 55, Part 4: rows under its name, the slides area under the
+ * playlist having gone), by the presentation's name on its row: one click on one puts it up.
+ */
+export function slidesOf(page: Page, name: string | RegExp): Locator {
+  return page
+    .getByTestId('open-playlist')
+    .locator('[data-item-row]')
+    .filter({ has: page.getByTestId('playlist-item').filter({ hasText: name }) })
+    .getByTestId('slide-thumb');
+}
+
+/**
+ * Close the open playlist, if one is (Session 55: with none open, the library's chosen presentation shows in the
+ * middle as rows; with one open, the playlist has the whole middle).
+ */
+export async function closePlaylistIfOpen(page: Page): Promise<void> {
+  const close = page.getByTestId('playlist-close');
+  if ((await close.count()) > 0) await close.click();
+  await expect(page.getByTestId('open-playlist')).toHaveCount(0);
+}
+
 /** Shut the library's sheet if it is open, so the playlists show again in the left column. */
 export async function closeLibrary(win: Page): Promise<void> {
   const sheet = win.getByTestId('library-sheet');

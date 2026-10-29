@@ -2,7 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { BLACK, builtIn, WHITE } from '../../src/shared/appearance/appearances';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady, slidesOf } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -24,8 +24,9 @@ const style = (l: Locator, prop: string) =>
 async function inAShow(win: Page) {
   await win.setViewportSize({ width: 1280, height: 720 });
   await setUpPlaceholderShow(win);
+  // The playlist open, its kirtan's slides as rows under its name (Session 55).
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
-  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
+  await expect(slidesOf(win, KIRTAN).first()).toBeVisible();
   await openLibrary(win);
 }
 
@@ -257,7 +258,7 @@ for (const id of ['saffron', 'holi', 'black', 'white']) {
     await inAShow(win);
     await win.getByTestId('library-close').click();
     // A slide live: the slide layer's button is lit.
-    await win.getByTestId('slide-thumb').first().click();
+    await slidesOf(win, KIRTAN).first().click();
     await expect(win.getByTestId('layer-bar').locator('[data-lit="true"]')).toHaveCount(1);
     const d = a.decoration;
     const gradient = (from: string, to: string) => `linear-gradient(90deg, ${rgb(from)}, ${rgb(to)})`;

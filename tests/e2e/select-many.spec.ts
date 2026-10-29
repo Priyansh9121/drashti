@@ -135,10 +135,17 @@ test('playlists, the library’s presentations and Audio’s lists and sounds: m
       const made = await d.music.create(name);
       if (made.ok && made.id) await d.music.addTracks(made.id, ids, null);
     }
-    await Promise.all(
+    const words = await Promise.all(
       ['Placeholder words one', 'Placeholder words two'].map((name) =>
         d.library.newFromWords(name, `${name} line\n`),
       ),
+    );
+    // In a playlist (Session 55, Part 14: Delete asks first only then, saying which).
+    const two = (await d.playlists.tree()).find((n) => n.name === 'Placeholder two');
+    await d.playlists.addItems(
+      two?.id ?? '',
+      null,
+      words.flatMap((w) => (w.ok ? [{ kind: 'presentation' as const, presentationId: w.id }] : [])),
     );
   }, toneIds);
 
@@ -178,6 +185,7 @@ test('playlists, the library’s presentations and Audio’s lists and sounds: m
   );
   await sheet.getByTestId('chosen-delete').click();
   await expect(confirm).toContainText(`Delete ${String(before)} presentations?`);
+  await expect(confirm.getByTestId('remove-in-playlists')).toHaveText('They are in “Placeholder two”.');
   // What becomes of their playlists' cards, for several (Session 51).
   await expect(confirm).toContainText(
     'Any playlist they are in keeps their cards, marked Removed from the library, and Next goes past them.',

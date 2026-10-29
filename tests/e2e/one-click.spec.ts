@@ -24,8 +24,9 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * One click puts it live (Session 54, F2; Priyansh: "1 click means its live. only the pdf/pptx open into the
  * middle"): in Pro Mode's open playlist, one click on a video, a picture or a sound puts it on the screens at
  * once, and Enter on its card does the same; a double click puts it up once and never starts it again;
- * Cmd/Ctrl-click and Shift-click only mark, right-click opens the card's menu, and a PDF and a deck open their
- * slides in the middle. Simple Mode keeps its Next. In CI's window, 1024 × 645. Placeholder files only, made here.
+ * Cmd/Ctrl-click and Shift-click only mark, right-click opens the card's menu. Since Session 55 (Part 4) a PDF's and a
+ * deck's slides are rows under their names in the playlist itself (the slides area under it went), which a click on
+ * the name folds. Simple Mode keeps its Next. In CI's window, 1024 × 645. Placeholder files only, made here.
  */
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -152,7 +153,8 @@ test('one click on a playlist’s video, picture or sound puts it up at once; a 
   await expect.poll(async () => (await up(win)).item).toBe(items[VIDEO]);
   expect((await up(win)).background).toBe(ids[VIDEO]);
   await expect(card(win, VIDEO)).toHaveAttribute('data-live', 'true');
-  await expect(win.getByTestId('item-media')).toHaveAttribute('aria-current', 'true');
+  // Chosen as the playlist's item (Session 55: the middle has no view of its own for it any more).
+  await expect(card(win, VIDEO)).toHaveAttribute('aria-current', 'true');
 
   // A double click on it as it plays: it carries on, never from the start again.
   const playing = (await up(win)).startedAt;
@@ -196,21 +198,34 @@ test('one click on a playlist’s video, picture or sound puts it up at once; a 
   await expect(card(win, VIDEO)).toHaveAttribute('data-marked', 'true');
   await holdStill(unchanged, 1000, 'a Cmd/Ctrl-click and a Shift-click put nothing up');
 
-  // Right-click opens the card's menu, putting nothing up.
+  // Right-click opens the card's menu (Session 55: the one right-click menu, its Trim), putting nothing up.
   await card(win, VIDEO).click({ button: 'right' });
-  await expect(win.getByRole('menuitem', { name: 'Start, end and markers…' })).toBeVisible();
+  await expect(win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' })).toBeVisible();
   await win.keyboard.press('Escape');
-  await expect(win.getByRole('menuitem', { name: 'Start, end and markers…' })).toHaveCount(0);
+  await expect(win.getByRole('menuitem', { name: 'Trim (start, end and markers)…' })).toHaveCount(0);
   await holdStill(unchanged, 1000, 'a right-click puts nothing up');
 
-  // A PDF and a deck open their slides in the middle, by a click and by Enter: nothing else goes up.
+  // A PDF's and a deck's slides are rows under their names (Session 55); a click on the name folds them, Enter on it
+  // opens them again: nothing else goes up.
+  const slidesOf = (name: string) =>
+    win
+      .getByTestId('open-playlist')
+      .locator(`[data-item-row="${items[name] ?? ''}"]`)
+      .getByTestId('slide-thumb');
+  await expect(slidesOf(PDF)).toHaveCount(2);
+  await expect(slidesOf(DECK)).toHaveCount(2);
   await card(win, PDF).click();
-  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', ids[PDF] ?? '');
-  await card(win, DECK).focus();
+  await expect(card(win, PDF)).toHaveAttribute('aria-expanded', 'false');
+  await expect(slidesOf(PDF)).toHaveCount(0);
+  await card(win, PDF).focus();
   await win.keyboard.press('Enter');
-  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', ids[DECK] ?? '');
-  await expect(win.getByTestId('slide-thumb')).toHaveCount(2);
-  await holdStill(unchanged, 1000, 'a PDF and a deck open in the middle and put nothing up');
+  await expect(slidesOf(PDF)).toHaveCount(2);
+  await holdStill(
+    unchanged,
+    1000,
+    'a PDF’s and a deck’s names fold and open their slides and put nothing up',
+  );
+  expect(ids[PDF]).not.toBe('');
   await app.close();
 });
 
@@ -244,9 +259,10 @@ test('a double click on the card under the chosen one never lands on its Up or D
   await card(win, SOUND).click({ modifiers: [mod] });
   await expect(win.getByTestId('open-playlist').getByTestId('playlist-item-moves')).toBeVisible();
   // The first click chooses the PDF: the sound's Up and Down go, the PDF's card moves up under the pointer and
-  // its own come under it, where the second click lands. Its slides open in the middle; nothing moves.
+  // its own come under it, where the second click lands. Its slides fold under its name (Session 55, once: the
+  // second click does nothing more); nothing moves.
   await doubleClickLow(PDF);
-  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', ids[PDF] ?? '');
+  await expect(card(win, PDF)).toHaveAttribute('aria-expanded', 'false');
   await holdStill(kept, 1500, 'a double click’s second click never moves the PDF');
 
   // The same over the picture, under the video chosen: up once, and nothing moves.

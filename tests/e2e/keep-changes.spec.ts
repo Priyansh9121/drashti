@@ -62,124 +62,35 @@ async function start(): Promise<{ app: Awaited<ReturnType<typeof launchApp>>['ap
   return { app, win };
 }
 
-/** A presentation made from typed words, chosen in the library. */
-async function presentation(win: Page, name: string, words: string): Promise<string> {
-  const id = await win.evaluate(
-    async ({ name, words }) => {
-      const made = await (globalThis as PageGlobals).drashti.library.newFromWords(name, words);
-      if (!made.ok) throw new Error(made.message);
-      return made.id;
-    },
-    { name, words },
-  );
-  await openLibrary(win);
-  await win
-    .getByTestId('presentation-list')
-    .getByRole('button', { name: new RegExp(`^${name}`, 'u') })
-    .click();
-  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', id);
-  return id;
-}
-
-test('Edit words asks before typed words are lost, and says when saving changes the screens at once', async () => {
+test('New… from words asks before typed words are lost', async () => {
+  // Session 55 (Part 12): the open presentation's Edit words and the Kirtan dialog went, with their questions; the
+  // words editor stays for a new presentation from pasted words, and asks the same question.
   const { app, win } = await start();
-  const id = await presentation(
-    win,
-    'Placeholder Keep Words',
-    'Placeholder line one\n\nPlaceholder line two',
-  );
-  const words = () =>
-    win.evaluate(async (pid) => {
-      const r = await (globalThis as PageGlobals).drashti.library.words(pid);
-      return r.ok ? r.text : '';
-    }, id);
-  const before = await words();
-  const grid = win.getByTestId('slide-grid');
-  // Its first slide goes up: it is the live presentation.
-  await grid.getByTestId('slide-thumb').first().click();
+  const count = () =>
+    win.evaluate(async () => (await (globalThis as PageGlobals).drashti.library.listPresentations()).length);
+  const before = await count();
   await openLibrary(win);
-  await expect(win.getByTestId('presentation-list').getByText('Live', { exact: true })).toBeVisible();
-
-  await grid.getByRole('button', { name: 'Edit words' }).click();
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'New…' }).click();
   const editor = win.getByTestId('words-editor');
   const text = editor.getByTestId('words-text');
-  await expect(text).toHaveValue(before);
-  await text.fill(`${before.trimEnd()}\n\nPlaceholder line three\n`);
+  await editor.getByRole('textbox', { name: 'Name' }).fill('Placeholder Keep Words');
+  await text.fill('Placeholder line one\n\nPlaceholder line two\n');
   await win.keyboard.press('Escape');
-  await escKeepsEditing(win, editor, {
-    live: '“Placeholder Keep Words” is on the screens now: saving changes them at once.',
-  });
-  await expect(text).toHaveValue(/Placeholder line three/u);
-  expect(await words()).toBe(before);
-  // Enter, with Keep editing focused because saving would change the screens now (Session 26h), keeps
-  // editing too: nothing is saved, and the editor stays open.
-  await win.keyboard.press('Escape');
-  await expect(win.getByTestId('keep-changes').getByRole('button', { name: 'Keep editing' })).toBeFocused();
-  await win.keyboard.press('Enter');
-  await expect(win.getByTestId('keep-changes')).toHaveCount(0);
-  await expect(editor).toBeVisible();
-  await expect(text).toHaveValue(/Placeholder line three/u);
-  expect(await words()).toBe(before);
-  // Cancel asks too; Save changes saves and closes.
+  await escKeepsEditing(win, editor);
+  await expect(text).toHaveValue(/Placeholder line two/u);
+  expect(await count()).toBe(before);
+  // Cancel asks too; thrown away: closed, and nothing made.
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await answer(win, 'Save changes');
-  await expect(editor).toHaveCount(0);
-  await expect.poll(words).toContain('Placeholder line three');
-
-  // Typed again, then thrown away: closed, and nothing saved.
-  await grid.getByRole('button', { name: 'Edit words' }).click();
-  await expect(text).toHaveValue(/Placeholder line three/u);
-  await text.fill('Placeholder thrown away\n');
-  await win.keyboard.press('Escape');
   await expect(win.getByTestId('keep-changes')).toBeVisible();
   await answer(win, 'Throw them away');
   await expect(editor).toHaveCount(0);
-  expect(await words()).not.toContain('Placeholder thrown away');
-
+  expect(await count()).toBe(before);
   // Nothing typed: Esc closes at once.
-  await grid.getByRole('button', { name: 'Edit words' }).click();
-  await expect(text).toHaveValue(/Placeholder line three/u);
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'New…' }).click();
+  await expect(editor).toBeVisible();
   await win.keyboard.press('Escape');
   await expect(editor).toHaveCount(0);
   await expect(win.getByTestId('keep-changes')).toHaveCount(0);
-  await app.close();
-});
-
-test('the Kirtan dialog asks before typed details are lost, Edit words by language too', async () => {
-  const { app, win } = await start();
-  const id = await presentation(win, 'Placeholder Keep Kirtan', 'Placeholder kirtan line');
-  const kavi = () =>
-    win.evaluate(
-      async (pid) =>
-        (await (globalThis as PageGlobals).drashti.library.getPresentation(pid))?.kirtan?.kavi ?? null,
-      id,
-    );
-  await win.getByTestId('kirtan-button').click();
-  const dialog = win.getByTestId('kirtan-dialog');
-  await dialog.getByTestId('make-kirtan').click();
-  const field = dialog.getByTestId('kirtan-kavi');
-  await field.fill('Placeholder kavi');
-  await win.keyboard.press('Escape');
-  // Its details are never on the screens: no warning about them.
-  await escKeepsEditing(win, dialog, { live: null });
-  await expect(field).toHaveValue('Placeholder kavi');
-  expect(await kavi()).toBeFalsy();
-  // Enter, with Save changes focused (nothing on the screens changes), saves (Session 26g).
-  await win.keyboard.press('Escape');
-  await expect(win.getByTestId('keep-changes').getByRole('button', { name: 'Save changes' })).toBeFocused();
-  await win.keyboard.press('Enter');
-  await expect(dialog).toHaveCount(0);
-  await expect.poll(kavi).toBe('Placeholder kavi');
-
-  // Changed again, then Edit words by language: it asks first; thrown away, the words editor opens.
-  await win.getByTestId('kirtan-button').click();
-  await field.fill('Placeholder other kavi');
-  await dialog.getByRole('button', { name: 'Edit words by language' }).click();
-  await expect(win.getByTestId('keep-changes')).toBeVisible();
-  await answer(win, 'Throw them away');
-  await expect(dialog).toHaveCount(0);
-  await expect(win.getByTestId('words-editor')).toBeVisible();
-  expect(await kavi()).toBe('Placeholder kavi');
   await app.close();
 });
 

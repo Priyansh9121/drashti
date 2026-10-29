@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, showExtras } from './helpers';
+import { launchApp, operatorPage, operatorReady, showExtras, slidesOf } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -131,9 +131,8 @@ test('a template from a playlist, a playlist from the template, a slot filled fr
       'presentation: Language test slides',
     ]);
 
-  // Run it: the kirtan's slides, then on into the next item.
-  await win.getByTestId('playlist-item').nth(1).click();
-  await win.getByTestId('slide-thumb').first().click();
+  // Run it: the kirtan's slides (rows under its name, Session 55), then on into the next item.
+  await slidesOf(win, 'Sample kirtan').first().click();
   const live = win.getByTestId('live-text');
   await expect(live).toContainText('Sample kirtan (placeholder) · slide 1 of 3');
   for (let i = 0; i < 3; i++) await win.keyboard.press('ArrowRight');
