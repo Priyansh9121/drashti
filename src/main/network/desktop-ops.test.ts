@@ -147,6 +147,12 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     connected: true,
   };
   let midiLearning: MidiLearnable | null = null;
+  // The stage layouts (Session 55): two, and the one every stage screen shows.
+  const layouts = [
+    { id: 'l-1', name: 'Placeholder band' },
+    { id: 'l-2', name: 'Placeholder anchoring' },
+  ];
+  let chosenLayout: string | null = null;
   const snapshot = () => ({ displays: DISPLAYS, groups: GROUPS, status, nodes: [], uses: [] });
   const done = (): ScreensResult => ({ ok: true, snapshot: snapshot() });
   /** As ScreensService answers: an output on the controls' display (1) waits for the operator's consent. */
@@ -234,6 +240,17 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
         pending: () => ({ deadline: 1_015_000, coversControls: false }),
         keep: record('keep'),
         goBack: record('goBack'),
+      },
+      stageLayouts: {
+        list: () => layouts,
+        chosenId: () => chosenLayout,
+        choose: (id) => {
+          calls.push({ what: 'chooseLayout', args: [id] });
+          if (id !== null && !layouts.some((l) => l.id === id))
+            return { ok: false, message: 'That stage layout no longer exists.' };
+          chosenLayout = id as string | null;
+          return { ok: true, chosenId: chosenLayout };
+        },
       },
       switches: {
         get: () => switches,
@@ -1019,5 +1036,53 @@ describe('the announcements’ queue from a phone (Session 54, the phone as a fu
         body: { message: SIMPLE_MODE_REFUSAL },
       });
     expect(calls).toEqual([]);
+  });
+});
+
+describe('the stage layout from a phone (Session 55)', () => {
+  it('reads the layouts by name and the one every stage screen shows, and chooses another as the Stage panel’s Layout does', () => {
+    const t = setup();
+    expect(t.ask(t.remote, 'stage.layouts')).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        layouts: [
+          { id: 'l-1', name: 'Placeholder band' },
+          { id: 'l-2', name: 'Placeholder anchoring' },
+        ],
+        chosenId: null,
+      },
+    });
+    expect(t.ask(t.remote, 'stage.layout', { layoutId: 'l-2' })).toMatchObject({
+      status: 200,
+      body: { ok: true, chosenId: 'l-2' },
+    });
+    expect(t.calls.at(-1)).toEqual({ what: 'chooseLayout', args: ['l-2'] });
+    // Standard, by null.
+    expect(t.ask(t.remote, 'stage.layout', { layoutId: null })).toMatchObject({ body: { chosenId: null } });
+    // One that is gone, or a request that names none properly: refused, and nothing chosen.
+    expect(t.ask(t.remote, 'stage.layout', { layoutId: 'gone' })).toMatchObject({ status: 409 });
+    for (const bad of [{}, { layoutId: 7 }, { layoutId: 'l-1', extra: true }])
+      expect(t.ask(t.remote, 'stage.layout', bad), JSON.stringify(bad)).toMatchObject({ status: 400 });
+    expect(t.calls.filter((c) => c.what === 'chooseLayout')).toHaveLength(3);
+  });
+
+  it('is a Remote’s alone, nothing while Drashti is not let in, and Simple Mode refuses the choice, never the reading', () => {
+    const t = setup();
+    for (const device of [t.stage, t.poster])
+      expect(t.ask(device, 'stage.layout', { layoutId: 'l-1' })).toMatchObject({ status: 403 });
+    t.setLocked(true);
+    expect(t.ask(t.remote, 'stage.layouts')).toMatchObject({ status: 200 });
+    expect(t.ask(t.remote, 'stage.layout', { layoutId: 'l-1' })).toEqual({
+      status: 403,
+      body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+    });
+    t.setLocked(false);
+    t.setLetIn(false);
+    expect(t.ask(t.remote, 'stage.layouts')).toEqual({
+      status: 503,
+      body: { ok: false, message: STOPPED_REFUSAL },
+    });
+    expect(t.calls.filter((c) => c.what === 'chooseLayout')).toEqual([]);
   });
 });

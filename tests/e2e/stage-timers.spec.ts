@@ -76,14 +76,17 @@ function makeStage(win: Page, name: string): Promise<string> {
   }, name);
 }
 
-/** The stage layout the live Look gives this group, or null for the Standard stage screen. */
-const liveLayoutOf = (win: Page, groupId: string): Promise<StageLayout | null> =>
-  win.evaluate(async (groupId) => {
+/**
+ * The stage layout every stage screen shows (Session 55: one chosen for them all, from the engine's state; until then
+ * the live Look gave each stage group its own), as the library has it, or null for the Standard stage screen. The
+ * group is a stage screen's, which shows it.
+ */
+const liveLayoutOf = (win: Page, _groupId: string): Promise<StageLayout | null> =>
+  win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    const looks = await d.looks.list();
-    const id = looks.looks.find((l) => l.id === looks.liveId)?.groups[groupId]?.stageLayoutId ?? null;
+    const id = (await d.engine.snapshot()).state.stage?.layout?.id ?? null;
     return id === null ? null : ((await d.stageLayouts.list()).find((l) => l.id === id) ?? null);
-  }, groupId);
+  });
 
 /** A timer in Timers, made through the bridge; its id. */
 const makeTimer = (win: Page, fields: TimerFields) =>
@@ -93,20 +96,21 @@ const makeTimer = (win: Page, fields: TimerFields) =>
     return made.id;
   }, fields);
 
-/** Save a stage layout of these boxes and give it, in the live Look, to the stage group; the layout's id. */
-const giveLayout = (win: Page, stageGroup: string, name: string, boxes: StageBox[]) =>
+/**
+ * Save a stage layout of these boxes and choose it for every stage screen (Session 55; until then it was given to the
+ * stage group in the live Look); the layout's id.
+ */
+const giveLayout = (win: Page, _stageGroup: string, name: string, boxes: StageBox[]) =>
   win.evaluate(
-    async ({ stageGroup, name, boxes }) => {
+    async ({ name, boxes }) => {
       const d = (globalThis as PageGlobals).drashti;
       const saved = await d.stageLayouts.save(null, { name, background: '#000000', boxes });
       if (!saved.ok) throw new Error(saved.message);
-      const set = await d.looks.setGroup((await d.looks.list()).liveId, stageGroup, {
-        stageLayoutId: saved.id,
-      });
+      const set = await d.stageLayouts.choose(saved.id);
       if (!set.ok) throw new Error(set.message);
       return saved.id;
     },
-    { stageGroup, name, boxes },
+    { name, boxes },
   );
 
 /** Which box of a stage layout on a page is over this point of the 1920 x 1080 canvas: its id. */
@@ -164,7 +168,7 @@ const boxKinds = (page: Page) =>
       [...layout.querySelectorAll<HTMLElement>('[data-stage-box]')].map((b) => b.dataset['stageBox']),
     );
 
-test('New from a Template… makes each of the five with the timer it needs, chosen for the stage screens at once', async () => {
+test('New from a Template… makes each of the six with the timer it needs, chosen for the stage screens at once', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
@@ -263,6 +267,21 @@ test('New from a Template… makes each of the five with the timer it needs, cho
     kind: 'countup',
   });
   expect(await boxKinds(stage)).toEqual(['audience', 'timer', 'clock']);
+
+  // Pravachan and anchoring (Session 55): a new countdown, beside the video input large and the clock, the stage
+  // message under them. This computer has no video input: the box says so.
+  await open('Pravachan and anchoring');
+  await expect(dialog.getByTestId('stage-template-length')).toHaveValue('5:00');
+  await dialog.getByTestId('stage-template-length').fill('20:00');
+  await make('Pravachan and anchoring');
+  expect((await timersNow(win)).find((t) => t.name === 'Stage countdown 2')).toMatchObject({
+    kind: 'countdown',
+    durationMs: 20 * 60_000,
+    allowsOverrun: true,
+  });
+  expect(await boxKinds(stage)).toEqual(['videoInput', 'clock', 'timer', 'stageMessage']);
+  await expect(stage.locator('[data-stage-box="timer"]')).toHaveText('20:00');
+  await expect(stage.getByTestId('stage-video-input-line')).toHaveText('No video input on this computer');
   await app.close();
 });
 
@@ -278,13 +297,15 @@ test('the stage layout editor and New from a Template fit 1024 × 645 and pass t
   await editor.getByTestId('stage-layout-from-template').click();
   const dialog = win.getByTestId('stage-template-dialog');
   await expect(dialog).toBeVisible();
-  // No stage group yet: the layout is made, and chosen for the stage in Screens once there is one.
+  // No stage group yet: the layout is made, and chosen for the stage screens, which show it once there are some.
   await expect(dialog.getByTestId('stage-template-where')).toContainText(
-    'No screens are set up for the stage yet',
+    'though none is set up yet: they show it once there are some',
   );
   // Each template: the dialog in the window, its Make the layout in view without scrolling the window.
   const makeButton = dialog.getByTestId('stage-template-make');
+  // Each template (Pravachan and anchoring, Session 55, first, so the last chosen is the one the keys start from).
   for (const name of [
+    'Pravachan and anchoring',
     'Timer only',
     'Countdown to a time',
     'Countdown',
@@ -828,13 +849,14 @@ test('the Stage panel and the phone start, pause and reset the stage layout’s 
   const first = rows.first();
   await expect(first).toHaveAttribute('data-timer-id', countdown);
   await expect(first).toContainText('Placeholder stage countdown');
-  await expect(first.getByTestId('stage-timer-counts')).toHaveText('Counts down from 5:00');
+  // What each counts to in a field (Session 55, Session 54's question 13), to be changed there.
+  await expect(first.getByTestId('stage-timer-counts')).toHaveText('Counts down from');
+  await expect(first.getByTestId('stage-timer-target')).toHaveValue('5:00');
   await expect(first.getByTestId('stage-timer-value')).toHaveText('5:00');
   const second = rows.nth(1);
   await expect(second).toHaveAttribute('data-timer-id', toTime);
-  await expect(second.getByTestId('stage-timer-counts')).toHaveText(
-    /^Counts down to (19:30|7:30\s?[ap]\.?m\.?)$/iu,
-  );
+  await expect(second.getByTestId('stage-timer-counts')).toHaveText('Counts down to');
+  await expect(second.getByTestId('stage-timer-target')).toHaveValue('19:30');
   // A countdown to a time counts by the clock: it has no Reset, as in Timers.
   await expect(second.getByRole('button', { name: 'Reset' })).toHaveCount(0);
   await first.getByRole('button', { name: 'Start' }).click();
@@ -1156,8 +1178,9 @@ test('a node’s stage screen and a tablet’s stage page flash a timer at 0:00 
   }
 });
 
-// Part A's review: the layout a template makes goes to every stage group in the live Look, and to no other Look.
-test('New from a Template… gives the layout to every stage group in the live Look, and leaves another Look as it was', async () => {
+// Part A's review: the layout a template makes went to every stage group in the live Look, and to no other Look. Since
+// Session 55 it is the one layout every stage screen shows, whatever the Look: no Look holds it.
+test('New from a Template… chooses the layout for every stage screen at once, whichever Look is live', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -1181,14 +1204,14 @@ test('New from a Template… gives the layout to every stage group in the live L
   });
   expect(other).not.toBe('');
   const looks = () => win.evaluate(() => (globalThis as PageGlobals).drashti.looks.list());
-  /** Each stage group's layout in a Look (the live one when none is named). */
+  /** Each stage group's layout as a Look keeps it (none since Session 55). */
   const layoutsIn = async (lookId?: string) => {
     const view = await looks();
     const look = view.looks.find((l) => l.id === (lookId ?? view.liveId));
     return groups.map((g) => look?.groups[g]?.stageLayoutId ?? null);
   };
   expect((await looks()).liveId).not.toBe(other);
-  expect(await layoutsIn()).toEqual([null, null]);
+  expect(await liveLayoutOf(win, groups[0] ?? '')).toBeNull();
 
   await win.getByTestId('stage-edit-layout').click();
   const editor = win.getByTestId('stage-layout-editor');
@@ -1202,12 +1225,20 @@ test('New from a Template… gives the layout to every stage group in the live L
   await expect(dialog).toHaveCount(0);
   await expect(editor.getByTestId('stage-layout-name')).toHaveValue('Count up from 0:00');
 
-  // Both stage groups in the live Look have it; the other Look's are as they were.
+  // Every stage screen shows it; no Look holds it, the live one or the other.
   await expect
     .poll(async () => (await liveLayoutOf(win, groups[0] ?? ''))?.name ?? null)
     .toBe('Count up from 0:00');
   const made = (await liveLayoutOf(win, groups[0] ?? ''))?.id ?? '';
-  await expect.poll(() => layoutsIn()).toEqual([made, made]);
+  expect(await layoutsIn()).toEqual([null, null]);
   expect(await layoutsIn(other)).toEqual([null, null]);
+  // The other Look live: the stage screens show it still.
+  await editor.getByRole('button', { name: 'Close stage layouts' }).click();
+  await win.evaluate(
+    (lookId) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'setLook', lookId }),
+    other,
+  );
+  await expect.poll(async () => (await looks()).liveId).toBe(other);
+  expect((await liveLayoutOf(win, groups[1] ?? ''))?.id).toBe(made);
   await app.close();
 });

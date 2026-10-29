@@ -5,7 +5,6 @@ import { groupLookPatchSchema, lookNameSchema, NO_LOOK, storedGroupLook } from '
 import type { Lang } from '../../shared/model';
 import { idSchema } from '../../shared/model-schema';
 import type { Mask } from '../../shared/masks';
-import type { StageLayout } from '../../shared/stage-layouts';
 import type { LookRepo } from '../db/looks';
 import type { LookSource } from '../engine/show-engine';
 
@@ -18,8 +17,6 @@ import type { LookSource } from '../engine/show-engine';
 
 export interface LookServiceDeps {
   repo: LookRepo;
-  /** A stage layout made in Drashti, or null (gone, or none: the Standard stage screen). */
-  stageLayout?: (id: string) => StageLayout | null;
   /** A mask from the library, or null (gone). */
   mask?: (id: string) => Mask | null;
   engine: { current: EngineState; refreshLook(): unknown };
@@ -28,19 +25,17 @@ export interface LookServiceDeps {
   log(message: string): void;
 }
 
-/** A Look ready to draw: every group's settings, each stage group's layout and each group's mask in full. */
-export function liveLook(
-  info: LookInfo,
-  stageLayout: (id: string) => StageLayout | null = () => null,
-  mask: (id: string) => Mask | null = () => null,
-): LiveLook {
+/**
+ * A Look ready to draw: every group's settings and each group's mask in full. No stage layout since Session 55: one
+ * is chosen for every stage screen, in the engine's own `stage` (main/stage/stage-layout-service.ts).
+ */
+export function liveLook(info: LookInfo, mask: (id: string) => Mask | null = () => null): LiveLook {
   const groups: Record<string, LiveGroupLook> = {};
   for (const [id, g] of Object.entries(info.groups))
     groups[id] = {
       layers: [...g.layers],
       languages: g.languages ? [...g.languages] : null,
       slides: g.slides,
-      stageLayout: g.stageLayoutId ? stageLayout(g.stageLayoutId) : null,
       mask: g.maskId ? mask(g.maskId) : null,
       idle: g.idle,
       movement: g.movement,
@@ -55,7 +50,7 @@ export class LookService implements LookSource {
 
   look(lookId: string): LiveLook | null {
     const info = this.deps.repo.get(lookId);
-    return info ? liveLook(info, this.deps.stageLayout, this.deps.mask) : null;
+    return info ? liveLook(info, this.deps.mask) : null;
   }
 
   start(): LiveLook {
@@ -121,6 +116,11 @@ export class LookService implements LookSource {
   setGroup(rawLookId: unknown, rawGroupId: unknown, rawPatch: unknown): LookResult {
     const lookId = idSchema.safeParse(rawLookId);
     const groupId = idSchema.safeParse(rawGroupId);
+    // A Look no longer chooses a stage layout (Session 55): said plainly, not as a setting it does not know.
+    if (typeof rawPatch === 'object' && rawPatch !== null && 'stageLayoutId' in rawPatch)
+      return this.fail(
+        'A Look no longer chooses the stage layout: choose it for every stage screen in the Stage screen panel.',
+      );
     const patch = groupLookPatchSchema.safeParse(rawPatch);
     if (!patch.success)
       return this.fail(
@@ -129,9 +129,6 @@ export class LookService implements LookSource {
     const look = lookId.success ? this.deps.repo.get(lookId.data) : null;
     if (!look) return this.fail('That Look no longer exists.');
     if (!groupId.success || !(groupId.data in look.groups)) return this.fail('That group no longer exists.');
-    const layoutId = patch.data.stageLayoutId;
-    if (layoutId && !this.deps.stageLayout?.(layoutId))
-      return this.fail('That stage layout no longer exists.');
     const maskId = patch.data.maskId;
     if (maskId && !this.deps.mask?.(maskId)) return this.fail('That mask no longer exists.');
     this.deps.repo.setGroup(look.id, groupId.data, patch.data);
@@ -165,9 +162,13 @@ export class LookService implements LookSource {
     this.done();
   }
 
-  /** Stage layouts changed (made, saved, removed): the live Look's stage groups draw them at once. */
-  layoutsChanged(): void {
-    this.done();
+  /**
+   * The stage layout the live Look gives its first stage group, as Looks chose them before Session 55 (null for the
+   * Standard stage screen): read once, at the first start after the update, as the one chosen for every stage screen.
+   */
+  liveStageLayoutId(): string | null {
+    const live = this.deps.engine.current.look.id || this.deps.repo.firstId();
+    return this.deps.repo.stageLayoutIdOf(live);
   }
 
   /** A group became a key and fill pair: in every Look, the words as a lower third, props and messages. */

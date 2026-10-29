@@ -168,7 +168,7 @@ function added(result: ReturnType<VideoInputsService['add']>, name: string): Vid
 describe('this computer’s video inputs', () => {
   it('are named in Media, kept in the data folder, and the operator window hears of each change', () => {
     const { dir, service, make, views } = setup();
-    expect(service.view()).toEqual({ inputs: [] });
+    expect(service.view()).toEqual({ inputs: [], chosenId: null });
     const one = added(service.add(fields), 'Placeholder input');
     expect(one).toEqual({ id: one.id, ...fields });
     expect(one.id.length).toBeGreaterThan(8);
@@ -273,7 +273,11 @@ describe('this computer’s video inputs', () => {
     expect(cleared()).toBe(0);
     // Cleared: removed.
     setBackground(null);
-    expect(service.remove(one.id)).toEqual({ ok: true, view: { inputs: [{ ...two, fit: 'fill' }] } });
+    // The one left is the chosen one now (Session 55: the first in the list, none being chosen).
+    expect(service.remove(one.id)).toEqual({
+      ok: true,
+      view: { inputs: [{ ...two, fit: 'fill' }], chosenId: two.id },
+    });
     expect(service.remove(one.id)).toEqual({
       ok: false,
       message: 'That video input is no longer on this computer.',
@@ -321,7 +325,7 @@ describe('a video input renamed in Media (Session 52)', () => {
     expect(service.get(one.id)).toEqual(one);
     expect(service.named('Placeholder camera')).toBeNull();
     // Nothing changed: the file as it was, nobody told, the screens left as they are.
-    expect(make().view()).toEqual({ inputs: [one] });
+    expect(make().view()).toEqual({ inputs: [one], chosenId: one.id });
     expect(views).toHaveLength(told);
     expect(refreshed).toEqual([]);
     expect(lines.at(-1)).toBe(
@@ -345,9 +349,9 @@ describe('a video input renamed in Media (Session 52)', () => {
     // Never undone: the list, the file, the operator window and the screens all have the new name, as the library does.
     const renamed = { ...one, name: 'Placeholder camera' };
     expect(service.get(one.id)).toEqual(renamed);
-    expect(make().view()).toEqual({ inputs: [renamed] });
+    expect(make().view()).toEqual({ inputs: [renamed], chosenId: renamed.id });
     expect(views).toHaveLength(told + 1);
-    expect(views.at(-1)).toEqual({ inputs: [renamed] });
+    expect(views.at(-1)).toEqual({ inputs: [renamed], chosenId: renamed.id });
     expect(refreshed).toEqual([renamed]);
   });
 });
@@ -631,5 +635,45 @@ describe('after a restart, a video input put back in the picture-in-picture box 
     expect(await service.boxSettled()).toBeNull();
     service.report(PAGE_LIVE, { inputId: one.id, state: 'missing', box: true });
     expect(takenOff()).toBe(0);
+  });
+});
+
+describe('the chosen video input (Session 55)', () => {
+  it('is the first one Media has until another is chosen; kept on this computer, and followed as it changes', () => {
+    const { service, make, views } = setup();
+    expect(service.chosen()).toBeNull();
+    expect(service.view().chosenId).toBeNull();
+    const one = added(service.add(fields), 'Placeholder input');
+    expect(service.chosen()).toEqual(one);
+    expect(service.view().chosenId).toBe(one.id);
+    const two = added(service.add({ ...fields, name: 'Placeholder mixer' }), 'Placeholder mixer');
+    expect(service.chosen()?.id).toBe(one.id);
+    const told = views.length;
+    expect(service.choose(two.id)).toMatchObject({ ok: true, view: { chosenId: two.id } });
+    expect(views).toHaveLength(told + 1);
+    expect(service.chosen()).toEqual(two);
+    // Kept: the next start has it chosen.
+    expect(make().chosen()?.id).toBe(two.id);
+    // Renamed in Media: the chosen one by its new name.
+    service.update(two.id, { name: 'Placeholder programme' });
+    expect(service.chosen()?.name).toBe('Placeholder programme');
+    // One not in the list is refused, and nothing changes.
+    expect(service.choose('no-such-input')).toMatchObject({ ok: false });
+    expect(service.choose(7)).toMatchObject({ ok: false });
+    expect(service.chosen()?.id).toBe(two.id);
+    // Removed: the first in the list again.
+    expect(service.remove(two.id).ok).toBe(true);
+    expect(service.chosen()?.id).toBe(one.id);
+    expect(make().chosen()?.id).toBe(one.id);
+  });
+
+  it('a list kept before Session 55 reads as it was, its first input chosen', () => {
+    const { dir, service } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    const file = join(dir, VIDEO_INPUTS_FILE);
+    const kept = JSON.parse(readFileSync(file, 'utf8')) as { version: number; inputs: unknown[] };
+    expect(kept.version).toBe(1);
+    expect(Object.keys(kept)).toEqual(['version', 'inputs']);
+    expect(service.chosen()?.id).toBe(one.id);
   });
 });

@@ -59,7 +59,7 @@ import {
   startingMode,
 } from '../shared/mode';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
-import { hallPicture } from '../shared/stage-layouts';
+import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
 import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
@@ -1516,6 +1516,8 @@ function start(): void {
       inputsChanged();
       // A phone naming or putting up an input reads them again (Session 54).
       net.hint('setup');
+      // The chosen one (Session 55), for a stage layout's video input box on every stage screen.
+      showStageInput();
     },
     statusChanged: (status) => {
       sendToPage(operatorWindow, IPC.videoInputs.statusChanged, status);
@@ -1526,6 +1528,16 @@ function start(): void {
     },
   });
   videoInputs = inputs;
+  /** The chosen video input (Session 55) to every stage screen, through the engine's state. */
+  function showStageInput(): void {
+    const chosen = videoInputs?.chosen() ?? null;
+    engine.setStage({
+      input: chosen
+        ? { inputId: chosen.id, name: chosen.name, device: chosen.device, fit: chosen.fit }
+        : null,
+    });
+  }
+  showStageInput();
   engine.onChange(() => {
     inputs.follow();
   });
@@ -1536,7 +1548,6 @@ function start(): void {
   const maskRepo = new MaskRepo(db);
   const looks = new LookService({
     repo: lookRepo,
-    stageLayout: (id) => stageLayoutRepo.get(id),
     mask: (id) => maskRepo.get(id),
     engine,
     changed: (view) => {
@@ -1550,6 +1561,27 @@ function start(): void {
   lookService = looks;
   // The first Look goes live (recovery below may bring back another).
   engine.refreshLook();
+  // Stage layouts, and the one chosen for every stage screen (Session 55), given to the engine once recovery has
+  // put back the Look in use (below): at the first start after the update, that Look's layout becomes the chosen one.
+  /** Tell the operator window the stage layouts changed (set once its window can be told, further down). */
+  let stageLayoutsChanged: (layouts: StageLayout[]) => void = () => undefined;
+  const stageLayouts = new StageLayoutService({
+    repo: stageLayoutRepo,
+    settings,
+    lookLayoutId: () => looks.liveStageLayoutId(),
+    show: (layout) => {
+      engine.setStage({ layout });
+    },
+    forgetInLooks: (id) => {
+      lookRepo.forgetStageLayout(id);
+    },
+    changed: (layouts) => {
+      stageLayoutsChanged(layouts);
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
   const timers = new TimerRepo(db);
   engine.setTimers(timers.list());
 
@@ -2380,6 +2412,8 @@ function start(): void {
       })}`,
     );
   }
+  // The stage screens' layout (Session 55), once the Look in use is the one recovery put back, if any.
+  stageLayouts.start();
   const old = startup.tooOld;
   if (old) {
     // Stopped unexpectedly too long ago (RECOVERY_MAX_AGE_MS): the notice names what was live, and
@@ -4030,6 +4064,12 @@ function start(): void {
         asksFirst: (which) => screenSwitches.asksFirst(which),
         turn: (which, on) => screenSwitches.turn(which, on),
       },
+      // The stage layout every stage screen shows (Session 55), as the Stage screen panel's Layout chooses it.
+      stageLayouts: {
+        list: () => stageLayouts.list().map(({ id, name }) => ({ id, name })),
+        chosenId: () => stageLayouts.chosenId(),
+        choose: (id) => stageLayouts.choose(id),
+      },
       inputs: {
         view: () => inputs.view(),
         access: () => inputs.access(),
@@ -4864,20 +4904,12 @@ function start(): void {
     if (fromAudioPlayer(e)) audioOutput.report(devices, state);
     return null;
   });
-  // ---- stage layouts (a stage group gets one through the live Look) ----------------------------------
-  const stageLayouts = new StageLayoutService({
-    repo: stageLayoutRepo,
-    forgetInLooks: (id) => {
-      lookRepo.forgetStageLayout(id);
-    },
-    changed: (layouts) => {
-      sendToOperator(IPC.stageLayouts.changed, layouts);
-      looks.layoutsChanged();
-    },
-    log: (message) => {
-      log.info(message);
-    },
-  });
+  // ---- stage layouts (Session 55: one chosen for every stage screen, made further up) ------------------------
+  stageLayoutsChanged = (layouts) => {
+    sendToOperator(IPC.stageLayouts.changed, layouts);
+    // A phone's Layout picker reads them again (Session 55).
+    net.hint('setup');
+  };
   const notLayoutOperator = {
     ok: false as const,
     message: 'Only the operator window can change stage layouts.',
@@ -4887,6 +4919,13 @@ function start(): void {
     fromOperator(e) ? stageLayouts.save(id, layout) : notLayoutOperator,
   );
   handle(IPC.stageLayouts.remove, (e, id) => (fromOperator(e) ? stageLayouts.remove(id) : notLayoutOperator));
+  handle(IPC.stageLayouts.rename, (e, id, name) =>
+    fromOperator(e) ? stageLayouts.rename(id, name) : notLayoutOperator,
+  );
+  handle(IPC.stageLayouts.restore, (e, layout, at, chosen) =>
+    fromOperator(e) ? stageLayouts.restore({ layout, at, chosen }) : notLayoutOperator,
+  );
+  handle(IPC.stageLayouts.choose, (e, id) => (fromOperator(e) ? stageLayouts.choose(id) : notLayoutOperator));
 
   // ---- the mask library (a group's own in a Look; one up on the Masks layer) ---------------------
   const masks = new MaskService({
@@ -5073,6 +5112,8 @@ function start(): void {
     return null;
   });
   screenSwitches.onChanged((switches) => {
+    // Stage off (Session 55): every stage screen shows exactly the audience picture, from the engine's state.
+    engine.setStage({ off: !switches.stage });
     sendToOperator(IPC.screenSwitches.changed, switches);
     // The View menu's ticks, and a Remote's word on which are off.
     rebuildMenu();
@@ -5212,6 +5253,8 @@ function start(): void {
     fromOperator(e) ? inputs.update(id, fields) : notOperatorInputs,
   );
   handle(IPC.videoInputs.remove, (e, id) => (fromOperator(e) ? inputs.remove(id) : notOperatorInputs));
+  // The chosen one (Session 55): the stage's video input box and LIVE's one press.
+  handle(IPC.videoInputs.choose, (e, id) => (fromOperator(e) ? inputs.choose(id) : notOperatorInputs));
   // Whether Drashti may use the cameras; a Mac asks only from the operator window, in Pro Mode, after it said why.
   handle(IPC.videoInputs.access, () => inputs.access());
   handle(IPC.videoInputs.askAccess, (e) =>

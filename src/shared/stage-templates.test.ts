@@ -12,7 +12,10 @@ import {
 } from './stage-templates';
 import { timerFieldsSchema } from './timers';
 
-/* New from a Template… (Session 54): five ready-made stage layouts, each with the timer it needs. */
+/*
+ * New from a Template… (Session 54): ready-made stage layouts, each with the timer it needs; since Session 55 six, the
+ * sixth for pravachan and anchoring: the video input large, with the clock and a countdown.
+ */
 
 const ids = () => {
   let n = 0;
@@ -20,14 +23,46 @@ const ids = () => {
 };
 
 describe('the stage layout templates', () => {
-  it('are five, by their names', () => {
+  it('are six, by their names', () => {
     expect(STAGE_TEMPLATES.map((t) => STAGE_TEMPLATE_NAMES[t])).toEqual([
       'Timer only',
       'Countdown to a time',
       'Countdown',
       'Count up from 0:00',
       'Timer and clock over the audience',
+      'Pravachan and anchoring',
     ]);
+  });
+
+  // Session 55: the video mixer's programme output large for the speaker and the anchor, the time beside it.
+  it('put the video input large, with the clock and a countdown beside it and the stage message under them', () => {
+    const boxes = templateBoxes('pravachan', 'placeholder-timer', ids());
+    expect(boxes.map((b) => b.kind)).toEqual(['videoInput', 'clock', 'timer', 'stageMessage']);
+    const [input, clock, timer, message] = boxes;
+    // The largest box by far, 16:9, at the top left.
+    expect(input?.frame).toEqual({ x: 48, y: 48, width: 1312, height: 738 });
+    expect((input?.frame.width ?? 0) / (input?.frame.height ?? 1)).toBeCloseTo(16 / 9, 2);
+    for (const other of [clock, timer, message])
+      expect((other?.frame.width ?? 0) * (other?.frame.height ?? 0), other?.kind).toBeLessThan(
+        ((input?.frame.width ?? 0) * (input?.frame.height ?? 0)) / 2,
+      );
+    // The clock above the countdown, beside the picture, never over it.
+    for (const side of [clock, timer]) {
+      expect(side?.frame.x, side?.kind).toBeGreaterThan((input?.frame.x ?? 0) + (input?.frame.width ?? 0));
+      expect((side?.frame.x ?? 0) + (side?.frame.width ?? 0), side?.kind).toBe(STAGE_WIDTH - 48);
+    }
+    expect((clock?.frame.y ?? 0) + (clock?.frame.height ?? 0)).toBeLessThan(timer?.frame.y ?? 0);
+    expect(clock).toMatchObject({ size: 'fit', bold: true, align: 'center', valign: 'middle' });
+    // The countdown in the Countdown's colours: amber from 1:00 left, red past 0:00.
+    expect(timer).toMatchObject({
+      timerId: 'placeholder-timer',
+      warn: { color: '#f5a524', fromMs: 60_000 },
+      overColor: '#ef4444',
+    });
+    // The stage message along the bottom, under the picture.
+    expect(message?.frame.y).toBeGreaterThan((input?.frame.y ?? 0) + (input?.frame.height ?? 0));
+    expect(message?.frame.width).toBe(STAGE_WIDTH - 96);
+    expect(templateTimerKinds('pravachan')).toEqual(['countdown']);
   });
 
   it('each makes boxes a layout keeps, on the stage canvas, its timer box showing the timer given', () => {
@@ -86,7 +121,7 @@ describe('the stage layout templates', () => {
     for (const t of STAGE_TEMPLATES) {
       const timer = templateBoxes(t, 'placeholder-timer', ids()).find((b) => b.kind === 'timer');
       expect(timer, t).toMatchObject({ bold: true, valign: 'middle', fitWhole: true });
-      if (t !== 'countdown') expect(timer, t).not.toHaveProperty('overColor');
+      if (t !== 'countdown' && t !== 'pravachan') expect(timer, t).not.toHaveProperty('overColor');
     }
     expect(templateBoxes('countdown', 'placeholder-timer', ids())[0]).toMatchObject({
       warn: { color: '#f5a524', fromMs: 60_000 },
@@ -146,6 +181,12 @@ describe('the stage layout templates', () => {
       durationMs: 300_000,
       allowsOverrun: false,
     });
+    // Pravachan and anchoring's countdown runs on past 0:00 too, in red (Session 55): the speaker sees the time over.
+    expect(templateTimer('pravachan', 'countdown', asked)).toMatchObject({
+      kind: 'countdown',
+      durationMs: 300_000,
+      allowsOverrun: true,
+    });
     // What the main process takes from the window.
     for (const t of STAGE_TEMPLATES)
       for (const kind of templateTimerKinds(t))
@@ -157,7 +198,10 @@ describe('the stage layout templates', () => {
     const held = { kind: 'countdown' as const, allowsOverrun: false };
     expect(stopsAtZeroFor('countdown', held)).toBe(true);
     expect(stopsAtZeroFor('countdown', { ...held, allowsOverrun: true })).toBe(false);
-    for (const t of STAGE_TEMPLATES.filter((x) => x !== 'countdown'))
+    // Pravachan and anchoring's countdown goes past 0:00 in red too (Session 55).
+    expect(stopsAtZeroFor('pravachan', held)).toBe(true);
+    expect(stopsAtZeroFor('pravachan', { ...held, allowsOverrun: true })).toBe(false);
+    for (const t of STAGE_TEMPLATES.filter((x) => x !== 'countdown' && x !== 'pravachan'))
       expect(stopsAtZeroFor(t, held), t).toBe(false);
     expect(stopsAtZeroFor('countdown', { kind: 'countup', allowsOverrun: false })).toBe(false);
   });

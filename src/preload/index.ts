@@ -433,6 +433,7 @@ const bridge: DrashtiBridge = {
     add: (fields) => invoke(IPC.videoInputs.add, fields),
     update: (id, fields) => invoke(IPC.videoInputs.update, id, fields),
     remove: (id) => invoke(IPC.videoInputs.remove, id),
+    choose: (id) => invoke(IPC.videoInputs.choose, id),
     access: () => invoke(IPC.videoInputs.access),
     askAccess: () => invoke(IPC.videoInputs.askAccess),
     openSettings: () => invoke(IPC.videoInputs.openSettings),
@@ -522,6 +523,9 @@ const bridge: DrashtiBridge = {
     onChanged: (listener) => on(IPC.stageLayouts.changed, listener),
     save: (layoutId, layout) => invoke(IPC.stageLayouts.save, layoutId, layout),
     remove: (layoutId) => invoke(IPC.stageLayouts.remove, layoutId),
+    rename: (layoutId, name) => invoke(IPC.stageLayouts.rename, layoutId, name),
+    restore: (layout, at, chosen) => invoke(IPC.stageLayouts.restore, layout, at, chosen),
+    choose: (layoutId) => invoke(IPC.stageLayouts.choose, layoutId),
   },
   looks: {
     list: () => invoke(IPC.looks.list),

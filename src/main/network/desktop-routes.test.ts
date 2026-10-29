@@ -184,6 +184,9 @@ const ASKED: [method: string, path: string, body: unknown, op: string, args: unk
   ],
   ['GET', '/api/v1/windows', undefined, 'windows', {}],
   ['POST', '/api/v1/windows/show', { id: 'window:7:0' }, 'window.show', { id: 'window:7:0' }],
+  // The stage layout every stage screen shows (Session 55).
+  ['GET', '/api/v1/stage-layouts', undefined, 'stage.layouts', {}],
+  ['POST', '/api/v1/stage-layouts/choose', { layoutId: 'l-1' }, 'stage.layout', { layoutId: 'l-1' }],
 ];
 
 describe('the phone as a full Drashti’s requests (Session 54)', () => {

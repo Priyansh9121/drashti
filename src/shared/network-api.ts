@@ -174,6 +174,12 @@ export const DEVICE_OPS = {
   'queue.approve': ['remote'],
   'queue.reject': ['remote'],
   'queue.takeOff': ['remote'],
+  /**
+   * The stage layouts by name and the one every stage screen shows (Session 55), and that one chosen, as the Stage
+   * screen panel's Layout does. Simple Mode refuses the choice, as in the window.
+   */
+  'stage.layouts': ['remote'],
+  'stage.layout': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;

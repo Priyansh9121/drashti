@@ -625,6 +625,8 @@ describe('the network in the main process', () => {
       'queue.approve',
       'queue.reject',
       'queue.takeOff',
+      // The stage layout every stage screen shows (Session 55), chosen as the Stage screen panel's Layout does.
+      'stage.layout',
     ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });

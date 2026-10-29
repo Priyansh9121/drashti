@@ -2,9 +2,11 @@ import { type EngineState, isLayerEmpty, LAYER_NAMES } from './engine/state';
 import type { ScreenRole, ScreensSnapshot, ScreenState } from './screens';
 
 /*
- * Audience and Stage (Session 50): two switches, each closing this computer's output windows of its kind so their
- * displays go back to the computer, and opening them again where they were. The show carries on. Both are on
- * again at every start; off is never remembered.
+ * Audience and Stage (Session 50): two switches. Audience off closes this computer's output windows of its kind so
+ * their displays go back to the computer, and on opens them again where they were. Stage off (Session 55) keeps the
+ * stage screens, and they show exactly the audience picture instead of their layout, every stage screen alike (a
+ * node's and a tablet's too, from the engine's state); on, their layout again. The show carries on, and nothing the
+ * stage does changes the audience screens. Both are on again at every start; off is never remembered.
  */
 
 export type ScreenSwitch = 'audience' | 'stage';
@@ -27,8 +29,15 @@ export const SWITCH_NAMES: Readonly<Record<ScreenSwitch, string>> = { audience: 
 /** What turning one off does, said before it happens (the user's words). */
 export const SWITCH_OFF_WORDS: Readonly<Record<ScreenSwitch, string>> = {
   audience: 'The hall’s screens will show this computer’s desktop.',
-  stage: 'The stage screens will show this computer’s desktop.',
+  // Session 55: the stage screens stay, and show what the hall's screens show.
+  stage: 'The stage screens will show the audience picture.',
 };
+
+/**
+ * Whether turning it off closes its screens' windows, giving their displays back to the computer (Session 55):
+ * Audience's do; Stage's stay, showing exactly the audience picture (render/StageScreen.tsx).
+ */
+export const CLOSES_WINDOWS: Readonly<Record<ScreenSwitch, boolean>> = { audience: true, stage: false };
 
 /**
  * The question before one goes off and its button, the same words in the window, on an output over the controls

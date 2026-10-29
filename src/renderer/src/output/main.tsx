@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
-import { showsHall } from '../../../shared/stage-layouts';
+import { stageDrawsHall, stageShows } from '../../../shared/stage-layouts';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow, holdClock } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
@@ -216,6 +216,8 @@ function Output() {
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
       data-role={context?.role ?? 'audience'}
+      // What a stage screen shows (Session 55): the chosen layout, Standard, or the audience picture with Stage off.
+      data-stage-shows={stage ? stageShows(state?.stage) : undefined}
       data-feed={matte ?? undefined}
       data-look={state?.look.id ?? ''}
       data-languages={look.languages?.join(',') ?? 'all'}
@@ -256,8 +258,9 @@ function Output() {
       )}
       {stop.cover}
       {/* Stage screens show no pictures, so they load none ahead: but for a layout's audience picture
-          (Session 50), which loads what comes next as the hall's screens do. */}
-      {state && (!stage || showsHall(look.stageLayout)) && (
+          (Session 50) and the audience picture with Stage off (Session 55), which load what comes next as the
+          hall's screens do. */}
+      {state && (!stage || stageDrawsHall(state.stage)) && (
         <Preloader next={state.next} pictures={state.pictures} />
       )}
       <IdentifyOverlay />

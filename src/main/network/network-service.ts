@@ -276,6 +276,10 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'queue.approve': IPC.announcements.approve,
   'queue.reject': IPC.announcements.reject,
   'queue.takeOff': IPC.announcements.takeOff,
+  // The stage layout every stage screen shows (Session 55): read as the window lists them; chosen as its Layout does
+  // (Simple Mode refuses that, as in the window).
+  'stage.layouts': IPC.stageLayouts.list,
+  'stage.layout': IPC.stageLayouts.choose,
 };
 
 const ON_SETTING = 'network.on';
@@ -994,6 +998,8 @@ export class NetworkService implements EngineTransport {
       case 'queue.approve':
       case 'queue.reject':
       case 'queue.takeOff':
+      case 'stage.layouts':
+      case 'stage.layout':
         return this.desktop
           ? this.desktop.answer(request.op, args, device, who)
           : deny(404, 'Drashti cannot set that up from a phone here.');

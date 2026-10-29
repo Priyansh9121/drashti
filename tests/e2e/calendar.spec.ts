@@ -110,8 +110,9 @@ test('a calendar loads; today shows in the operator window, on the stage and in 
       ],
     });
     if (!layout.ok) throw new Error(layout.message);
-    const looks = await d.looks.list();
-    await d.looks.setGroup(looks.liveId, stage, { stageLayoutId: layout.id });
+    // The layout every stage screen shows (Session 55: chosen for them all, no longer per Look).
+    const chosen = await d.stageLayouts.choose(layout.id);
+    if (!chosen.ok) throw new Error(chosen.message);
   });
   const hall = await outputFor(app, hallId);
   const stage = await outputFor(app, stageId);

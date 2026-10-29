@@ -99,7 +99,7 @@ import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
-import type { StageLayout, StageLayoutResult } from './stage-layouts';
+import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
@@ -585,6 +585,8 @@ export interface DrashtiBridge {
     add(fields: VideoInputFields): Promise<VideoInputResult>;
     update(id: string, fields: Partial<VideoInputFields>): Promise<VideoInputResult>;
     remove(id: string): Promise<VideoInputResult>;
+    /** The chosen one (Session 55): a stage layout's video input box and LIVE's one press (operator window only). */
+    choose(id: string): Promise<VideoInputResult>;
     /** May Drashti use the cameras? */
     access(): Promise<CameraAccess>;
     /** A Mac: ask for the camera (the page has said why first). */
@@ -781,8 +783,14 @@ export interface DrashtiBridge {
     onChanged(listener: (layouts: StageLayout[]) => void): () => void;
     /** Make one (no id) or save one. */
     save(layoutId: string | null, layout: Omit<StageLayout, 'id'>): Promise<StageLayoutResult>;
-    /** Groups whose Looks used it show the Standard stage screen. */
+    /** Removed; the one chosen for the stage screens removed, they show the Standard stage screen. */
     remove(layoutId: string): Promise<StageLayoutResult>;
+    /** Its name only (Session 55: Rename…). */
+    rename(layoutId: string, name: string): Promise<StageLayoutResult>;
+    /** A removed one put back as it was, in its place, chosen again if it was (Session 55: Undo of Delete). */
+    restore(layout: StageLayout, at: number, chosen: boolean): Promise<StageLayoutResult>;
+    /** The layout every stage screen shows (Session 55), or null for the Standard stage screen. */
+    choose(layoutId: string | null): Promise<StageChoiceResult>;
   };
   /** Screen setup (operator window only). */
   screens: {

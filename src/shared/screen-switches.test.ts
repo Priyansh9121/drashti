@@ -4,6 +4,7 @@ import type { ScreenConfig, ScreenGroupConfig, ScreenRole, ScreenState, ScreensS
 import {
   ALL_ON,
   asksFirst,
+  CLOSES_WINDOWS,
   openUnder,
   pictureWhile,
   showsSomething,
@@ -67,7 +68,12 @@ describe('Audience and Stage (Session 50)', () => {
 
   it('says, in the words asked for, what turning one off does', () => {
     expect(SWITCH_OFF_WORDS.audience).toBe('The hall’s screens will show this computer’s desktop.');
-    expect(SWITCH_OFF_WORDS.stage).toBe('The stage screens will show this computer’s desktop.');
+    // Session 55: the stage screens stay, and show exactly what the hall's screens show.
+    expect(SWITCH_OFF_WORDS.stage).toBe('The stage screens will show the audience picture.');
+  });
+
+  it('Audience off closes its windows; Stage off keeps them, showing the audience picture (Session 55)', () => {
+    expect(CLOSES_WINDOWS).toEqual({ audience: true, stage: false });
   });
 
   it('counts the open windows each covers: this computer’s, showing or stopped, never a node’s', () => {
@@ -150,7 +156,6 @@ describe('Audience and Stage (Session 50)', () => {
             layers: [],
             languages: null,
             slides: 'designed',
-            stageLayout: null,
             mask: null,
             idle: 'always',
             movement: 'calm',

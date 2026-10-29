@@ -64,12 +64,14 @@ import { RecoveryBanner } from './RecoveryBanner';
 import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { StageMessageControl } from './StageControls';
+import { InputOnAudience } from './InputOnAudience';
 import { NoticeArea, StatusBar } from './StatusBar';
 import { ScreenSwitchAsk } from './ScreenSwitches';
 import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
+import { undoStage, useStageLayouts } from '../stage/stage-layouts-store';
 import { MaskEditor } from '../masks/MaskEditor';
 import { MasksPanel } from './MasksPanel';
 import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
@@ -141,7 +143,9 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // the last removal, or in Simple Mode (which removes nothing) puts back what Clear all took down.
     const offUndo = window.drashti.app.onUndo(() => {
       if (isTyping(document.activeElement)) return;
-      if (useEditor.getState().open) undoEdit();
+      // The stage layout editor's own steps (Session 55).
+      if (useStageLayouts.getState().open) void undoStage();
+      else if (useEditor.getState().open) undoEdit();
       else if (useMode.getState().mode === 'simple') void window.drashti.engine.dispatch({ type: 'putBack' });
       else void undoRemoval();
     });
@@ -359,6 +363,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
               <PlayingBars className="px-3 pt-2" />
               <MarkerJumps />
+              {/* The chosen video input on the audience in one press (Session 55). */}
+              <InputOnAudience />
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
                 tools folded away. */}
               <div className="mt-3 divide-y divide-line border-t border-line">
@@ -435,7 +441,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}
       <StreamSettings />
-      <StageLayoutEditor />
+      <StageLayoutEditor platform={platform} />
       <MaskEditor />
       <LowerThirdEditor />
       <CalendarDialog />

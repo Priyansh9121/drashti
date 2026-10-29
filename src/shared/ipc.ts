@@ -83,7 +83,7 @@ import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
-import type { StageLayout, StageLayoutResult } from './stage-layouts';
+import type { StageChoiceResult, StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
 import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
@@ -579,6 +579,10 @@ export const IPC = {
     list: 'stage:layouts',
     save: 'stage:save-layout',
     remove: 'stage:remove-layout',
+    /** Session 55: its name only (Rename…), a removed one put back (Undo), and the one every stage screen shows. */
+    rename: 'stage:rename-layout',
+    restore: 'stage:restore-layout',
+    choose: 'stage:choose-layout',
     /** main -> operator: the layouts changed. */
     changed: 'stage:layouts-changed',
   },
@@ -722,6 +726,8 @@ export const IPC = {
     add: 'videoinput:add',
     update: 'videoinput:update',
     remove: 'videoinput:remove',
+    /** The chosen one (Session 55): the stage's video input box and LIVE's one press (operator window only). */
+    choose: 'videoinput:choose',
     /** main -> operator: the list changed. */
     changed: 'videoinput:changed',
     /** Whether Drashti may use the cameras (a Mac's Camera setting; Windows' camera privacy setting). */
@@ -1221,6 +1227,12 @@ export interface InvokeContract {
     result: StageLayoutResult;
   };
   [IPC.stageLayouts.remove]: { args: [layoutId: string]; result: StageLayoutResult };
+  [IPC.stageLayouts.rename]: { args: [layoutId: string, name: string]; result: StageLayoutResult };
+  [IPC.stageLayouts.restore]: {
+    args: [layout: StageLayout, at: number, chosen: boolean];
+    result: StageLayoutResult;
+  };
+  [IPC.stageLayouts.choose]: { args: [layoutId: string | null]; result: StageChoiceResult };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
@@ -1302,6 +1314,7 @@ export interface InvokeContract {
     result: VideoInputResult;
   };
   [IPC.videoInputs.remove]: { args: [id: string]; result: VideoInputResult };
+  [IPC.videoInputs.choose]: { args: [id: string]; result: VideoInputResult };
   [IPC.videoInputs.access]: { args: []; result: CameraAccess };
   [IPC.videoInputs.askAccess]: { args: []; result: CameraAccess };
   [IPC.videoInputs.openSettings]: { args: []; result: null };

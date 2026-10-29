@@ -63,7 +63,7 @@ test('the preview is headed LIVE with no Next under it; Edit layout… opens the
   await expect(win.getByTestId('next-preview')).toHaveCount(0);
   await expect(win.getByTestId('live-preview')).toBeVisible();
 
-  // A stage group whose layout, in the live Look, is a placeholder one.
+  // A stage group, every stage screen showing a placeholder layout (Session 55: chosen for them all).
   await setUpScreen(win, 'Stage', 0);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
@@ -74,9 +74,7 @@ test('the preview is headed LIVE with no Next under it; Edit layout… opens the
       background: '#000000',
       boxes: [],
     });
-    const looks = await d.looks.list();
-    const look = looks.looks.find((l) => l.id === looks.liveId);
-    if (saved.ok && look && group) await d.looks.setGroup(look.id, group.id, { stageLayoutId: saved.id });
+    if (saved.ok) await d.stageLayouts.choose(saved.id);
   });
   // Edit layout…, from the stage screen's panel: the editor at that layout.
   const panel = win.getByTestId('stage-message-control');

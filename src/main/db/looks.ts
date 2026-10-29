@@ -162,7 +162,17 @@ export class LookRepo {
         if (g.maskId === maskId) this.setGroup(look.id, groupId, { maskId: null });
   }
 
-  /** A stage layout was removed: groups that used it show the Standard stage screen. */
+  /**
+   * The stage layout a Look gives its first stage group, in Screens' order, as Looks chose them before Session 55; null
+   * for none (or no such Look). Read once, at the first start after the update (shared/looks.ts, GroupLook).
+   */
+  stageLayoutIdOf(lookId: string): string | null {
+    const look = this.get(lookId);
+    const stage = this.groups().find((g) => g.role === 'stage');
+    return (stage && look?.groups[stage.id]?.stageLayoutId) ?? null;
+  }
+
+  /** A stage layout was removed: no Look names it any more (kept tidy, though no Look chooses one since Session 55). */
   forgetStageLayout(layoutId: string): void {
     for (const look of this.list())
       for (const [groupId, g] of Object.entries(look.groups))

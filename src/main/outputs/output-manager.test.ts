@@ -343,16 +343,23 @@ describe('OutputManager', () => {
     expect(saved).toEqual([]);
   });
 
-  it('Stage off closes only the stage windows; each switch is on and off on its own', () => {
+  // Session 55: Stage off no longer gives the stage's displays back to the computer; its screens stay, and show
+  // exactly the audience picture (render/StageScreen.tsx), from the engine's state.
+  it('Stage off keeps every window, the stage’s the same ones, showing; each switch is on and off on its own', () => {
     show();
-    manager.setSwitch('stage', false);
-    expect(live()).toEqual(['hall@2', 'fill@4', 'key@5']);
-    expect(manager.status()[3]).toEqual({ screenId: 'stage', state: 'switched-off', displayId: 3 });
+    const before = opened.length;
+    expect(manager.setSwitch('stage', false)).toBe(true);
+    expect(live()).toEqual(['hall@2', 'fill@4', 'key@5', 'stage@3']);
+    expect(opened).toHaveLength(before);
+    expect(opened.find((w) => w.screenId === 'stage')?.closed).toBe(false);
+    expect(manager.status()[3]).toEqual({ screenId: 'stage', state: 'showing', displayId: 3 });
+    expect(manager.switches()).toEqual({ audience: true, stage: false });
     manager.setSwitch('audience', false);
-    expect(live()).toEqual([]);
+    expect(live()).toEqual(['stage@3']);
     expect(manager.switches()).toEqual({ audience: false, stage: false });
     manager.setSwitch('stage', true);
     expect(live()).toEqual(['stage@3']);
+    expect(opened).toHaveLength(before);
     expect(manager.switches()).toEqual({ audience: false, stage: true });
   });
 

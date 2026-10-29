@@ -4,7 +4,6 @@ import type { Lang } from './model';
 import { idSchema } from './model-schema';
 import type { Mask } from './masks';
 import type { ScreenRole } from './screens';
-import type { StageLayout } from './stage-layouts';
 import { groupLanguagesSchema } from './screens-schema';
 
 /*
@@ -18,8 +17,11 @@ import { groupLanguagesSchema } from './screens-schema';
  * Simple Mode, which cannot switch Looks, never starts on last week's
  * festival Look); after an unexpected stop, recovery brings back the Look
  * that was live. A Look lists only what a group changes from the defaults:
- * every layer, every language, slides as designed, no mask and the Standard
- * stage layout. A group a Look does not mention has the defaults.
+ * every layer, every language, slides as designed and no mask. A group a Look
+ * does not mention has the defaults. Since Session 55 a Look no longer chooses
+ * a stage group's layout: one layout is chosen for every stage screen
+ * (shared/stage-layouts.ts); a Look kept with one still reads, and the live
+ * Look's was read once, at the first start after the update, as the one chosen.
  *
  * The stream group takes its languages and its Movement from a Look: its
  * layout stays the Stream panel's, and the Program keeps its own rules
@@ -96,7 +98,11 @@ export interface GroupLook {
   /** A kirtan's languages on its screens, in this order; null for every language in each slide's order. */
   languages: Lang[] | null;
   slides: SlideStyle;
-  /** A stage group's layout (shared/stage-layouts.ts); null for the Standard stage screen. */
+  /**
+   * A stage group's layout as a Look chose it before Session 55 (null for the Standard stage screen): read, and kept
+   * as it was, but no longer chosen nor drawn. The live Look's first stage group's became the one layout chosen for
+   * every stage screen, once, at the first start after the update (main/stage/stage-layout-service.ts).
+   */
   stageLayoutId: string | null;
   /** The group's screens' own shape: a mask from the library always over them in this Look (shared/masks.ts). */
   maskId: string | null;
@@ -137,8 +143,6 @@ export interface LiveGroupLook {
   layers: readonly LookLayer[];
   languages: readonly Lang[] | null;
   slides: SlideStyle;
-  /** A stage group's layout, ready to draw; null for the Standard stage screen (or a layout since removed). */
-  stageLayout: StageLayout | null;
   /** The group's own mask, ready to draw (over everything on its screens); null for none. */
   mask: Mask | null;
   /** When nothing is up: the idle rotation, once started or always; or nothing. */
@@ -152,7 +156,6 @@ export const DEFAULT_LIVE_GROUP_LOOK: LiveGroupLook = {
   layers: LOOK_LAYERS,
   languages: null,
   slides: 'designed',
-  stageLayout: null,
   mask: null,
   idle: 'off',
   movement: 'calm',
@@ -193,13 +196,15 @@ const laterLayersSchema = z
   .max(LATER_LOOK_LAYERS.length)
   .refine((list) => new Set(list).size === list.length, 'a layer is listed twice');
 
-/** A change to one group's settings in a Look (only what is given changes). */
+/**
+ * A change to one group's settings in a Look (only what is given changes). A stage layout is no longer one of them
+ * (Session 55): one is chosen for every stage screen, and a change naming one is refused.
+ */
 export const groupLookPatchSchema = z
   .object({
     layers: lookLayersSchema,
     languages: groupLanguagesSchema,
     slides: z.enum(SLIDE_STYLES),
-    stageLayoutId: idSchema.nullable(),
     maskId: idSchema.nullable(),
     idle: z.enum(IDLE_WHENS),
     movement: z.enum(MOVEMENTS),

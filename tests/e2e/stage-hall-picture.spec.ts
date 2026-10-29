@@ -143,8 +143,8 @@ function stageWithHallPicture(
         boxes,
       });
       if (!saved.ok) throw new Error(saved.message);
-      const looks = await d.looks.list();
-      const set = await d.looks.setGroup(looks.liveId, stage.id, { stageLayoutId: saved.id });
+      // The layout every stage screen shows (Session 55: chosen for them all, no longer per Look).
+      const set = await d.stageLayouts.choose(saved.id);
       if (!set.ok) throw new Error(set.message);
       return { hallGroup: hall.id, stageGroup: stage.id };
     },
@@ -153,17 +153,17 @@ function stageWithHallPicture(
 }
 
 /**
- * Save a stage layout of these boxes (again, given its id) and give it, in the live Look, to the stage group; the
- * layout's id.
+ * Save a stage layout of these boxes (again, given its id) and choose it for every stage screen (Session 55; until
+ * then it was given to the stage group in the live Look); the layout's id.
  */
 function giveLayout(
   win: Page,
-  stageGroup: string,
+  _stageGroup: string,
   boxes: StageBox[],
   layoutId: string | null = null,
 ): Promise<string> {
   return win.evaluate(
-    async ({ boxes, stageGroup, layoutId }) => {
+    async ({ boxes, layoutId }) => {
       const d = (globalThis as PageGlobals).drashti;
       const saved = await d.stageLayouts.save(layoutId, {
         name: 'Placeholder stage box layout',
@@ -171,13 +171,11 @@ function giveLayout(
         boxes,
       });
       if (!saved.ok) throw new Error(saved.message);
-      const set = await d.looks.setGroup((await d.looks.list()).liveId, stageGroup, {
-        stageLayoutId: saved.id,
-      });
+      const set = await d.stageLayouts.choose(saved.id);
       if (!set.ok) throw new Error(set.message);
       return saved.id;
     },
-    { boxes, stageGroup, layoutId },
+    { boxes, layoutId },
   );
 }
 
@@ -800,7 +798,7 @@ test('a tablet’s box names a window it cannot draw, whole and at 30 px at leas
     stateUnder,
   ];
   await win.evaluate(
-    async ({ boxes, stageGroup }) => {
+    async ({ boxes }) => {
       const d = (globalThis as PageGlobals).drashti;
       const saved = await d.stageLayouts.save(null, {
         name: 'Placeholder hall picture and state layout',
@@ -808,12 +806,11 @@ test('a tablet’s box names a window it cannot draw, whole and at 30 px at leas
         boxes,
       });
       if (!saved.ok) throw new Error(saved.message);
-      const set = await d.looks.setGroup((await d.looks.list()).liveId, stageGroup, {
-        stageLayoutId: saved.id,
-      });
+      // The layout every stage screen shows (Session 55).
+      const set = await d.stageLayouts.choose(saved.id);
       if (!set.ok) throw new Error(set.message);
     },
-    { boxes, stageGroup },
+    { boxes },
   );
   // Another app's window (the placeholder) as the hall's background.
   const meeting = await openPlaceholder(app);

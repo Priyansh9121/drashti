@@ -16,7 +16,7 @@ import {
   type VideoInputStatus,
 } from '../../shared/video-inputs';
 import type { CameraSystem } from './camera';
-import { readVideoInputs, writeVideoInputs } from './video-inputs-file';
+import { readVideoInputsKept, writeVideoInputs } from './video-inputs-file';
 
 /*
  * Video inputs as the main process keeps them (Session 50): this computer's list (named in Pro Mode's Media, kept
@@ -120,6 +120,11 @@ interface Pending {
 
 export class VideoInputsService {
   private inputs: VideoInput[];
+  /**
+   * The input chosen in the Stage screen panel (Session 55), by its id, or null: then the first in the list is the
+   * chosen one (chosen()).
+   */
+  private chosenOne: string | null;
   /** The showing of the input up now, or null. */
   private following: string | null = null;
   /** What each page drawing it said last, by the page's id. */
@@ -135,17 +140,44 @@ export class VideoInputsService {
   };
 
   constructor(private readonly deps: VideoInputsDeps) {
-    this.inputs = readVideoInputs(
+    const kept = readVideoInputsKept(
       deps.userData,
       (line) => {
         deps.log('warn', line);
       },
       deps.retryMs === undefined ? {} : { retryMs: deps.retryMs },
     );
+    this.inputs = kept.inputs;
+    this.chosenOne = kept.chosen;
   }
 
   view(): VideoInputsView {
-    return { inputs: this.inputs.map((i) => ({ ...i })) };
+    return { inputs: this.inputs.map((i) => ({ ...i })), chosenId: this.chosen()?.id ?? null };
+  }
+
+  /**
+   * The chosen video input (Session 55): what a stage layout's video input box shows and LIVE's one press puts up on
+   * the audience. The one chosen in the Stage screen panel while the list has it, else the first in the list; null
+   * with none.
+   */
+  chosen(): VideoInput | null {
+    const found = this.inputs.find((i) => i.id === this.chosenOne) ?? this.inputs[0];
+    return found ? { ...found } : null;
+  }
+
+  /** The Stage screen panel's Video input (Session 55): this one chosen, and kept on this computer. */
+  choose(id: unknown): VideoInputResult {
+    const input = typeof id === 'string' ? this.inputs.find((i) => i.id === id) : undefined;
+    if (!input) return { ok: false, message: GONE };
+    const was = this.chosenOne;
+    this.chosenOne = input.id;
+    const kept = this.keep(this.inputs);
+    if (kept) {
+      this.chosenOne = was;
+      return kept;
+    }
+    this.deps.log('info', 'Video input chosen for the stage and LIVE’s one press');
+    return { ok: true, view: this.view() };
   }
 
   /** An input by its id, for the engine's showInput (and a picture-in-picture box's), or null. */
@@ -221,8 +253,14 @@ export class VideoInputsService {
         ok: false,
         message: `“${input.name}” is in the picture-in-picture box: take it off first, then remove it.`,
       };
+    // The chosen one removed (Session 55): the first in the list is chosen again.
+    const was = this.chosenOne;
+    if (was === input.id) this.chosenOne = null;
     const kept = this.keep(this.inputs.filter((i) => i.id !== input.id));
-    if (kept) return kept;
+    if (kept) {
+      this.chosenOne = was;
+      return kept;
+    }
     this.deps.log('info', `Video input removed (${String(this.inputs.length)} on this computer)`);
     return { ok: true, view: this.view() };
   }
@@ -409,7 +447,7 @@ export class VideoInputsService {
    */
   private keep(inputs: VideoInput[], renamed?: { from: string; to: string }): VideoInputResult | null {
     try {
-      writeVideoInputs(this.deps.userData, inputs);
+      writeVideoInputs(this.deps.userData, inputs, this.chosenOne);
     } catch (error) {
       this.deps.log('warn', `The video inputs could not be saved: ${String(error)}`);
       return { ok: false, message: 'The video inputs could not be saved on this computer. Try again.' };
@@ -442,7 +480,7 @@ export class VideoInputsService {
         `A renamed video input’s playlist items and slides could not be changed, so it keeps its name: ${String(error)}`,
       );
       try {
-        writeVideoInputs(this.deps.userData, before);
+        writeVideoInputs(this.deps.userData, before, this.chosenOne);
       } catch (again) {
         this.deps.log('warn', `The video inputs could not be put back as they were: ${String(again)}`);
       }

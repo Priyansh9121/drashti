@@ -22,12 +22,7 @@ import { cx } from '../ui/cx';
 import { useSavedSetting } from '../ui/saved-setting';
 import { Checkbox } from '../ui/Toggle';
 import { LanguagePicker } from './LanguagePicker';
-import {
-  connectStageLayouts,
-  openStageLayouts,
-  STANDARD,
-  useStageLayouts,
-} from '../stage/stage-layouts-store';
+import { openStageLayouts, STANDARD } from '../stage/stage-layouts-store';
 import { Frame, LayoutTemplate } from '../ui/icons';
 import { connectMasks, openMasks, useMasks } from '../masks/masks-store';
 import { useScreens } from './screens-store';
@@ -207,7 +202,8 @@ export function GroupLookSettings({
   groupId: string;
   role: ScreenRole;
 }) {
-  const layouts = useStageLayouts((s) => s.layouts);
+  // The layout every stage screen shows (Session 55): chosen in the Stage screen panel, never per Look.
+  const stageLayoutId = useEngine((s) => s.state?.stage?.layout?.id ?? null);
   const masks = useMasks((s) => s.masks);
   const group = useScreens((s) => s.snapshot?.groups.find((g) => g.id === groupId));
   const settings: GroupLook | undefined = look.groups[groupId];
@@ -355,32 +351,17 @@ export function GroupLookSettings({
         </div>
       )}
       {role === 'stage' && (
+        // Session 55: one layout for every stage screen, chosen in the Stage screen panel under LIVE, not per Look.
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
-            Stage layout
-            <Select
-              aria-label="Stage layout"
-              data-testid="look-stage-layout"
-              value={settings.stageLayoutId ?? STANDARD}
-              onFocus={connectStageLayouts}
-              onChange={(e) => {
-                set({ stageLayoutId: e.target.value === STANDARD ? null : e.target.value });
-              }}
-            >
-              <option value={STANDARD}>Standard</option>
-              {(layouts ?? []).map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </Select>
-          </label>
+          <p className="text-xs text-muted" data-testid="look-stage-layout-note">
+            The stage layout is chosen for every stage screen in the Stage screen panel, under LIVE.
+          </p>
           <Button
             size="sm"
             icon={LayoutTemplate}
             data-testid="edit-stage-layouts"
             onClick={() => {
-              openStageLayouts(settings.stageLayoutId ?? STANDARD);
+              openStageLayouts(stageLayoutId ?? STANDARD);
             }}
           >
             Edit stage layouts…

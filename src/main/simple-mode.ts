@@ -115,6 +115,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
   IPC.midi.set,
   IPC.stageLayouts.remove,
+  // Session 55: renaming one, putting one back (Undo), and the one every stage screen shows: Pro Mode's setup.
+  IPC.stageLayouts.rename,
+  IPC.stageLayouts.restore,
+  IPC.stageLayouts.choose,
   IPC.screens.createGroup,
   IPC.screens.renameGroup,
   IPC.screens.setGroupRole,
@@ -241,6 +245,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.videoInputs.add,
   IPC.videoInputs.update,
   IPC.videoInputs.remove,
+  // The chosen one (Session 55), as the Stage screen panel chooses it.
+  IPC.videoInputs.choose,
   IPC.pip.savePlace,
 ];
 

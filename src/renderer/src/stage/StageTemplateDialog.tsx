@@ -19,7 +19,6 @@ import { TIMER_WORDS } from '../../../shared/timer-slides';
 import type { TimerState } from '../../../shared/timers';
 import { parseDuration, TIMER_KIND_NAMES, timerDuration } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
-import { lookAction, useLooks } from '../looks/looks-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageLayoutView } from '../render/StageLayoutView';
 import { connectScreens, useScreens } from '../screens/screens-store';
@@ -32,15 +31,15 @@ import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Checkbox } from '../ui/Toggle';
 import { useHallPicture } from './hall-picture';
-import { save, startLayout, useStageLayouts } from './stage-layouts-store';
+import { save, startLayout, templateMade, useStageLayouts } from './stage-layouts-store';
 
 /*
- * New from a Template… (Session 54), in the stage layout editor: the five ready-made stage layouts
- * (shared/stage-templates.ts) as a list of choices, beside a live picture of what the stage would show with the
- * one chosen; and the timer it shows: a new one, with the length or the time of day asked (5:00 and 7:30 pm until
- * another is typed; placeholder names), or one already in Timers. Make the layout makes the timer, then the
- * layout, shows it in the editor, and chooses it at once for the stage screens: every stage group's layout in the
- * live Look.
+ * New from a Template… (Session 54), in the stage layout editor: the ready-made stage layouts
+ * (shared/stage-templates.ts; since Session 55 six, pravachan and anchoring the sixth) as a list of choices, beside a
+ * live picture of what the stage would show with the one chosen; and the timer it shows: a new one, with the length
+ * or the time of day asked (5:00 and 7:30 pm until another is typed; placeholder names), or one already in Timers.
+ * Make the layout makes the timer, then the layout, shows it in the editor, and chooses it at once for every stage
+ * screen (Session 55: the one layout they all show). Undo takes all of it back.
  */
 
 const NO_TIMERS: TimerState[] = [];
@@ -54,24 +53,16 @@ const TIME_OF_DAY = /^([01]?\d|2[0-3]):[0-5]\d$/u;
 /** The longest a countdown may be: a day, as Timers allows. */
 const LONGEST_MS = 24 * 3600 * 1000;
 
-/**
- * The layout chosen for every stage group in the live Look, as Screens' Stage layout does it: null, or why it
- * could not be.
- */
+/** The layout chosen for every stage screen (Session 55): null, or why it could not be. */
 async function chooseForStage(layoutId: string): Promise<string | null> {
-  const [looks, screens] = await Promise.all([window.drashti.looks.list(), window.drashti.screens.get()]);
-  for (const group of screens.groups.filter((g) => g.role === 'stage')) {
-    const set = () => window.drashti.looks.setGroup(looks.liveId, group.id, { stageLayoutId: layoutId });
-    if (!(await lookAction(set)))
-      return `The layout is made, but the stage screens could not be given it: ${useLooks.getState().error ?? 'choose it in Screens.'}`;
-  }
-  return null;
+  const chosen = await window.drashti.stageLayouts.choose(layoutId).catch(() => null);
+  if (chosen?.ok) return null;
+  return `The layout is made, but the stage screens could not be given it: ${chosen?.message ?? 'choose it in the Stage screen panel.'}`;
 }
 
 export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
   const state = useEngine((s) => s.state);
   const timers = state?.timers ?? NO_TIMERS;
-  const lookName = state?.look.name ?? '';
   const snapshot = useScreens((s) => s.snapshot);
   const hall = useHallPicture();
   const stages = snapshot?.groups.filter((g) => g.role === 'stage').length ?? 0;
@@ -144,6 +135,9 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
     if (making) return;
     setProblem(null);
     let timerId: string;
+    // For Undo (Session 55): the timer made, if one was, and the layout the stage screens showed before.
+    let madeTimer: string | null = null;
+    const before = useEngine.getState().state?.stage?.layout?.id ?? null;
     if (ownChosen) {
       timerId = ownChosen.id;
       // Let it run on past 0:00, as asked: in Timers too, where it is the same timer.
@@ -181,6 +175,7 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
         return;
       }
       timerId = made.id;
+      madeTimer = made.id;
     }
     setMaking(true);
     const taken = (useStageLayouts.getState().layouts ?? []).map((l) => l.name);
@@ -192,8 +187,11 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
     const saved = await save();
     onClose();
     if (!saved) return;
-    const wrong = await chooseForStage(useStageLayouts.getState().shownId);
+    const shown = useStageLayouts.getState();
+    const layoutId = shown.shownId;
+    const wrong = await chooseForStage(layoutId);
     if (wrong !== null) useStageLayouts.setState({ problem: wrong });
+    templateMade({ id: layoutId, name: shown.editing?.name ?? '' }, before, madeTimer);
   };
 
   return (
@@ -426,8 +424,8 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
         </div>
         <Notice tone="info" compact data-testid="stage-template-where">
           {stages > 0
-            ? `Made, it is chosen at once for the stage screens in the live Look, “${lookName}”.`
-            : 'No screens are set up for the stage yet: the layout is made; choose it for them in Screens once there are some.'}
+            ? 'Made, it is chosen at once for the stage screens: every one shows it.'
+            : 'Made, it is chosen at once for the stage screens, though none is set up yet: they show it once there are some.'}
         </Notice>
       </div>
     </Dialog>

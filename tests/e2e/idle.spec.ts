@@ -117,7 +117,8 @@ test('a lobby shows the rotation whenever nothing is up; started, the hall shows
       const live = (await d.looks.list()).liveId;
       await d.looks.setGroup(live, id('Hall'), { idle: 'started' });
       await d.looks.setGroup(live, id('Lobby'), { idle: 'always' });
-      await d.looks.setGroup(live, id('Stage'), { stageLayoutId: layout.id });
+      // The layout every stage screen shows (Session 55: chosen for them all, no longer per Look).
+      await d.stageLayouts.choose(layout.id);
       return (await d.idle.view()).quoteOfTheDay;
     },
     { ids: pictures },

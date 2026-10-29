@@ -53,6 +53,9 @@ export function desktopRoutes<R>(route: MakeRoute<R>): R[] {
       groupId: p['id'],
     })),
     route('POST', '/api/v1/switches/:id', 'switch', (b, p) => ({ ...b, which: p['id'] }), SWITCH_PARAM),
+    // The stage layout every stage screen shows (Session 55), as the Stage screen panel's Layout chooses it.
+    route('GET', '/api/v1/stage-layouts', 'stage.layouts'),
+    route('POST', '/api/v1/stage-layouts/choose', 'stage.layout', (b) => b),
     // Media's video inputs and Show a Window….
     route('GET', '/api/v1/video-inputs', 'inputs'),
     route('POST', '/api/v1/video-inputs', 'input.add', (b) => b),

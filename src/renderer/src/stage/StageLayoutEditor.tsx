@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { CALENDAR_LANG_NAMES, CALENDAR_LANGS } from '../../../shared/calendar';
+import { shortcutText } from '../../../shared/keymap';
 import type { StageBox, StageBoxKind } from '../../../shared/stage-layouts';
 import {
   AUDIENCE_BOX_MIN,
+  isPictureBox,
   MAX_STAGE_BOXES,
   smallestBox,
   STAGE_BOX_KINDS,
@@ -19,16 +21,18 @@ import { StageLayoutView } from '../render/StageLayoutView';
 import { StageView } from '../render/StageView';
 import { PlacedInParent } from '../render/Placed';
 import { useFirstGroupLook } from '../screens/screens-store';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { ConfirmDialog, Dialog } from '../ui/Dialog';
+import { Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
 import { plural } from '../ui/text';
 import { ColorInput, Field, Select, Textarea, TextInput } from '../ui/Field';
-import { CopyPlus, LayoutTemplate, Plus, Trash2 } from '../ui/icons';
+import { CopyPlus, FilePlus, LayoutTemplate, Pencil, Plus, Trash2, Undo2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
+import { Truncate } from '../ui/Truncate';
 import { useHallPicture } from './hall-picture';
 import { BoxLookFields, BoxOrderButtons, ClockBoxFields, TimerBoxFields } from './StageBoxFields';
 import { StageTemplateDialog } from './StageTemplateDialog';
@@ -38,23 +42,32 @@ import {
   change,
   chooseBox,
   closeStageLayouts,
+  deleteBox,
   duplicate,
   isDirty,
+  lastStep,
+  newLayout,
   remove,
+  rename,
   save,
   show,
   STANDARD,
+  undoStage,
   useStageLayouts,
 } from './stage-layouts-store';
 
 /*
- * The stage layout editor (Screens, a stage group, Edit stage layouts…): the
- * layouts on the left (Standard, built in, first), the one shown in the
- * middle with what the stage shows now, and the chosen box's settings on the
- * right. Changes are kept until Save; a stage group whose live Look uses the
- * layout shows them then. New from a Template… (Session 54) makes a ready-made
- * layout and its timer, and chooses it for the stage screens at once.
+ * The stage layout editor (the Stage screen panel's Edit layouts…, or Screens): the layouts on the left (Standard,
+ * built in, first; the one every stage screen shows marked), the one shown in the middle with what the stage shows
+ * now, and the chosen box's settings on the right. Changes to the boxes are kept until Save; the stage screens show
+ * them then, if it is the layout they show. Since Session 55 New, New from a Template…, Duplicate, Rename… and
+ * Delete act at once, and every step, those and each change to the boxes, has Undo (the button, or Mod+Z); a box
+ * is deleted by its button on the canvas, by Delete or Backspace, or in its settings. New from a Template…
+ * (Session 54) makes a ready-made layout and its timer, and chooses it for every stage screen at once.
  */
+
+/** The layout every stage screen shows now (Session 55, the engine's state): its id, or null for Standard. */
+const chosenNow = () => useEngine.getState().state?.stage?.layout?.id ?? null;
 
 const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
 
@@ -65,7 +78,11 @@ function BoxSettings({ box }: { box: StageBox }) {
   // A timer box's timer: every running timer (none chosen) or one no longer in Timers counts as counting down.
   const chosenTimer = box.timerId ? timers?.find((t) => t.id === box.timerId) : undefined;
   const set = (patch: Partial<StageBox>) => {
-    change((e) => ({ ...e, boxes: e.boxes.map((b) => (b.id === box.id ? { ...b, ...patch } : b)) }));
+    change(
+      (e) => ({ ...e, boxes: e.boxes.map((b) => (b.id === box.id ? { ...b, ...patch } : b)) }),
+      `Changed the box ${STAGE_BOX_NAMES[box.kind]}`,
+      `box:${box.id}:${Object.keys(patch).join(',')}`,
+    );
   };
   const smallest = smallestBox(box.kind);
   return (
@@ -95,6 +112,14 @@ function BoxSettings({ box }: { box: StageBox }) {
           it in the list draw over it. Resized here, it goes no smaller than {AUDIENCE_BOX_MIN.width} ×{' '}
           {AUDIENCE_BOX_MIN.height}, so “Audience off” and “No audience screens” can be read in it.
         </p>
+      ) : box.kind === 'videoInput' ? (
+        // The chosen video input (Session 55): a picture too, with no words of its own.
+        <p className="text-xs text-muted" data-testid="stage-box-input-note">
+          The video input chosen in the Stage screen panel, live, whatever the audience screens show: at the
+          mandir, the video mixer’s programme. When the audience shows it too, both use the same picture from
+          the device. A node’s screen and a stage tablet name it instead. The boxes after it in the list draw
+          over it.
+        </p>
       ) : (
         <Checkbox
           label="Words as large as fit"
@@ -106,7 +131,7 @@ function BoxSettings({ box }: { box: StageBox }) {
           }}
         />
       )}
-      {box.kind !== 'audience' && box.size !== 'fit' && (
+      {!isPictureBox(box.kind) && box.size !== 'fit' && (
         // What is typed shows as typed, the box taking it within 8 to 600 px (Session 54, G4: "4" became 8).
         <TypedNumberField
           label="Text size"
@@ -120,7 +145,7 @@ function BoxSettings({ box }: { box: StageBox }) {
           }}
         />
       )}
-      {box.kind !== 'audience' && (
+      {!isPictureBox(box.kind) && (
         <>
           <Field label="Colour">
             <ColorInput
@@ -249,42 +274,114 @@ function BoxSettings({ box }: { box: StageBox }) {
         variant="danger"
         size="sm"
         icon={Trash2}
+        data-testid="stage-box-delete"
         onClick={() => {
-          change((e) => ({ ...e, boxes: e.boxes.filter((b) => b.id !== box.id) }));
-          chooseBox(null);
+          deleteBox(box.id);
         }}
       >
-        Remove this box
+        Delete this box
       </Button>
     </div>
   );
 }
 
-export function StageLayoutEditor() {
+/** Rename… (Session 55): the layout shown, a new name typed; Enter or Rename keeps it, Esc or Cancel does not. */
+function RenameDialog({ id, name, onClose }: { id: string; name: string; onClose: () => void }) {
+  const [text, setText] = useState(name);
+  const problem = useStageLayouts((s) => s.problem);
+  const [tried, setTried] = useState(false);
+  const keep = () => {
+    setTried(true);
+    void rename(id, text).then((ok) => {
+      if (ok) onClose();
+    });
+  };
+  return (
+    <Dialog
+      title="Rename the layout"
+      size="sm"
+      onClose={onClose}
+      closeButton={false}
+      testId="stage-layout-rename-dialog"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" data-testid="stage-layout-rename-keep" onClick={keep}>
+            Rename
+          </Button>
+        </>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          keep();
+        }}
+      >
+        <Field label="Its name" error={tried ? problem : null}>
+          <TextInput
+            data-autofocus
+            data-testid="stage-layout-rename-name"
+            value={text}
+            maxLength={60}
+            onFocus={(e) => {
+              e.currentTarget.select();
+            }}
+            onChange={(e) => {
+              setText(e.target.value);
+            }}
+          />
+        </Field>
+      </form>
+    </Dialog>
+  );
+}
+
+export function StageLayoutEditor({ platform = '' }: { platform?: string }) {
   const s = useStageLayouts();
   const state = useEngine((x) => x.state);
   const stage = useFirstGroupLook('stage');
+  // The layout every stage screen shows (Session 55): marked in the list.
+  const chosenId = useEngine((x) => x.state?.stage?.layout?.id ?? STANDARD);
   // The audience picture box's picture (Session 50): the hall's, as the stage screens are told it.
   const hall = useHallPicture();
   const [kind, setKind] = useState<StageBoxKind>('current');
   const [ask, setAsk] = useState<
-    null | { why: 'switch'; to: string } | { why: 'close' } | { why: 'remove' } | { why: 'template' }
+    | null
+    | { why: 'switch'; to: string }
+    | { why: 'close' }
+    | { why: 'template' }
+    | { why: 'new' }
+    | { why: 'duplicate' }
   >(null);
   // New from a Template… (Session 54): its dialog, over the editor.
   const [templates, setTemplates] = useState(false);
+  // Rename… (Session 55): its dialog, over the editor.
+  const [renaming, setRenaming] = useState(false);
+  // A box being dragged (Session 55): the layout as it was when the drag began, for one Undo step at its end.
+  const dragFrom = useRef<typeof s.editing>(null);
   if (!s.open) return null;
   const e = s.editing;
   const dirty = isDirty(s);
   const languages = stage?.look.languages ?? DEFAULT_LIVE_GROUP_LOOK.languages;
   const box = e?.boxes.find((b) => b.id === s.boxId) ?? null;
+  const step = lastStep(s);
   const go = (to: string) => {
     if (dirty) setAsk({ why: 'switch', to });
     else show(to);
   };
+  const doNew = () => {
+    if (dirty) setAsk({ why: 'new' });
+    else void newLayout();
+  };
+  const doDuplicate = () => {
+    if (dirty) setAsk({ why: 'duplicate' });
+    else void duplicate();
+  };
   return (
     <Dialog
       title="Stage layouts"
-      subtitle="What a stage screen shows. A stage group gets its layout in each Look (Screens)."
+      subtitle="What a stage screen shows. The Stage screen panel’s Layout chooses the one every stage screen shows."
       size="full"
       onClose={() => {
         if (dirty) setAsk({ why: 'close' });
@@ -294,28 +391,28 @@ export function StageLayoutEditor() {
       testId="stage-layout-editor"
       bodyClassName="flex gap-4 overflow-hidden"
       footer={
-        e && (
-          <>
-            {e.id && (
-              <Button
-                variant="danger"
-                icon={Trash2}
-                className="mr-auto"
-                onClick={() => {
-                  setAsk({ why: 'remove' });
-                }}
-              >
-                Remove layout
-              </Button>
+        <>
+          {/* Undo (Session 55): the last step, said, and taken back by the button or Mod+Z. */}
+          <div
+            className="mr-auto flex min-w-0 flex-1 items-center gap-2"
+            data-testid="stage-layout-undo-line"
+          >
+            {step && (
+              <>
+                <Button
+                  size="sm"
+                  icon={Undo2}
+                  kbd={platform ? shortcutText('undo', platform) : undefined}
+                  data-testid="stage-layout-undo"
+                  onClick={() => void undoStage()}
+                >
+                  Undo
+                </Button>
+                <Truncate text={step.text} className="min-w-0 flex-1 text-xs text-muted" />
+              </>
             )}
-            <Button
-              disabled={!dirty || e.id === null}
-              onClick={() => {
-                show(e.id ?? STANDARD);
-              }}
-            >
-              Undo changes
-            </Button>
+          </div>
+          {e && (
             <Button
               variant="primary"
               disabled={!dirty}
@@ -324,29 +421,37 @@ export function StageLayoutEditor() {
             >
               Save
             </Button>
-          </>
-        )
+          )}
+        </>
       }
     >
       <nav aria-label="Stage layouts" className="flex w-56 shrink-0 flex-col gap-2 overflow-y-auto">
         <ul className="space-y-1" data-testid="stage-layout-list">
           {[{ id: STANDARD, name: 'Standard (built in)' }, ...(s.layouts ?? [])].map((l) => {
             const on = (s.shownId || '') === l.id;
+            const inUse = chosenId === l.id;
             return (
-              <li key={l.id}>
+              <li key={l.id} className="flex items-center gap-1">
                 <button
                   type="button"
                   aria-current={on ? 'true' : undefined}
+                  aria-describedby={inUse ? 'stage-layout-in-use' : undefined}
+                  data-in-use={inUse ? 'true' : undefined}
                   onClick={() => {
                     go(l.id);
                   }}
                   className={cx(
-                    'w-full truncate rounded-md px-2 py-1.5 text-left text-sm',
+                    'min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm',
                     on ? 'bg-panel-3 font-medium text-fg' : 'text-muted hover:bg-panel-2 hover:text-fg',
                   )}
                 >
                   {l.name}
                 </button>
+                {inUse && (
+                  <Badge tone="info" data-testid="stage-layout-in-use">
+                    On stage
+                  </Badge>
+                )}
               </li>
             );
           })}
@@ -358,8 +463,11 @@ export function StageLayoutEditor() {
             </li>
           )}
         </ul>
-        <Button icon={CopyPlus} onClick={duplicate} data-testid="stage-layout-duplicate">
-          {e ? 'Duplicate' : 'Duplicate Standard'}
+        <p id="stage-layout-in-use" className="sr-only">
+          On the stage screens now
+        </p>
+        <Button icon={FilePlus} onClick={doNew} data-testid="stage-layout-new">
+          New
         </Button>
         <Button
           icon={LayoutTemplate}
@@ -371,6 +479,30 @@ export function StageLayoutEditor() {
         >
           New from a Template…
         </Button>
+        <Button icon={CopyPlus} onClick={doDuplicate} data-testid="stage-layout-duplicate">
+          {e ? 'Duplicate' : 'Duplicate Standard'}
+        </Button>
+        {e?.id && (
+          <>
+            <Button
+              icon={Pencil}
+              data-testid="stage-layout-rename"
+              onClick={() => {
+                setRenaming(true);
+              }}
+            >
+              Rename…
+            </Button>
+            <Button
+              variant="danger"
+              icon={Trash2}
+              data-testid="stage-layout-delete"
+              onClick={() => void remove(chosenNow)}
+            >
+              Delete
+            </Button>
+          </>
+        )}
       </nav>
 
       {e ? (
@@ -385,9 +517,24 @@ export function StageLayoutEditor() {
           }))}
           selected={s.boxId}
           onSelect={chooseBox}
-          onChange={(id, frame) => {
-            change((x) => ({ ...x, boxes: x.boxes.map((b) => (b.id === id ? { ...b, frame } : b)) }));
+          onChange={(id, frame, done) => {
+            const place = (x: NonNullable<typeof e>) => ({
+              ...x,
+              boxes: x.boxes.map((b) => (b.id === id ? { ...b, frame } : b)),
+            });
+            // A drag is one step for Undo (Session 55): the layout as it began, kept until it ends.
+            if (!done) {
+              dragFrom.current ??= useStageLayouts.getState().editing;
+              useStageLayouts.setState((x) => (x.editing ? { editing: place(x.editing) } : {}));
+              return;
+            }
+            const from = dragFrom.current;
+            dragFrom.current = null;
+            const name = STAGE_BOX_NAMES[e.boxes.find((b) => b.id === id)?.kind ?? 'text'];
+            if (from) useStageLayouts.setState({ editing: from });
+            change(place, `Moved or resized the box ${name}`, `frame:${id}`);
           }}
+          onDelete={deleteBox}
           picture={
             state && (
               <StageLayoutView
@@ -398,7 +545,7 @@ export function StageLayoutEditor() {
               />
             )
           }
-          label="The stage layout. Tab chooses the next box, the arrow keys move it (Shift for ten pixels), and with Alt or Option they make it larger or smaller."
+          label="The stage layout. Tab chooses the next box, the arrow keys move it (Shift for ten pixels), and with Alt or Option they make it larger or smaller. Delete or Backspace deletes it."
           testId="stage-layout-canvas"
         />
       ) : (
@@ -434,7 +581,7 @@ export function StageLayoutEditor() {
               data-testid="stage-layout-name"
               onChange={(ev) => {
                 const name = ev.target.value;
-                change((x) => ({ ...x, name }));
+                change((x) => ({ ...x, name }), 'Changed the layout’s name', 'name');
               }}
             />
           </Field>
@@ -443,7 +590,7 @@ export function StageLayoutEditor() {
               value={e.background}
               onChange={(ev) => {
                 const background = ev.target.value;
-                change((x) => ({ ...x, background }));
+                change((x) => ({ ...x, background }), 'Changed the background', 'background');
               }}
             />
           </Field>
@@ -506,23 +653,7 @@ export function StageLayoutEditor() {
         </aside>
       )}
 
-      {ask?.why === 'remove' && (
-        <ConfirmDialog
-          title={`Remove “${e?.name ?? ''}”?`}
-          confirmLabel="Remove"
-          onCancel={() => {
-            setAsk(null);
-          }}
-          onConfirm={() => {
-            setAsk(null);
-            void remove();
-          }}
-          testId="stage-layout-confirm"
-        >
-          <p>Stage groups that use it in a Look show the Standard stage screen instead.</p>
-        </ConfirmDialog>
-      )}
-      {ask && ask.why !== 'remove' && (
+      {ask && (
         <KeepChangesDialog
           name={<>the stage layout “{e?.name ?? ''}”</>}
           lost={
@@ -530,7 +661,7 @@ export function StageLayoutEditor() {
               ? 'This new layout is not saved yet.'
               : `You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`
           }
-          live="Saving changes the stage screens at once wherever the live Look uses this layout."
+          live="Saving changes the stage screens at once if it is the layout they show."
           onKeepEditing={() => {
             setAsk(null);
           }}
@@ -541,6 +672,8 @@ export function StageLayoutEditor() {
               if (!ok) return;
               if (was.why === 'close') closeStageLayouts();
               else if (was.why === 'template') setTemplates(true);
+              else if (was.why === 'new') void newLayout();
+              else if (was.why === 'duplicate') void duplicate();
               else show(was.to);
             });
           }}
@@ -548,10 +681,22 @@ export function StageLayoutEditor() {
             const was = ask;
             setAsk(null);
             if (was.why === 'close') closeStageLayouts();
-            else if (was.why === 'template') {
+            else if (was.why === 'switch') show(was.to);
+            else {
               show(e?.id ?? STANDARD);
-              setTemplates(true);
-            } else show(was.to);
+              if (was.why === 'template') setTemplates(true);
+              else if (was.why === 'new') void newLayout();
+              else void duplicate();
+            }
+          }}
+        />
+      )}
+      {renaming && e?.id && (
+        <RenameDialog
+          id={e.id}
+          name={s.layouts?.find((l) => l.id === e.id)?.name ?? e.name}
+          onClose={() => {
+            setRenaming(false);
           }}
         />
       )}

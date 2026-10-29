@@ -10,6 +10,7 @@ import type { PlaybackClip, PlaybackSeek } from '../media';
 import type { PlaybackMarker } from '../markers';
 import type { LiveZoom, PictureLook } from '../picture-look';
 import type { LowerThird } from '../lower-thirds';
+import { NO_STAGE, type StageState } from '../stage-layouts';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -30,17 +31,22 @@ import type { LowerThird } from '../lower-thirds';
  * still before any release read 13) a slide's sound file that is missing (`soundMissing`), and a video from Media in
  * the picture-in-picture box playing between its points too (the box's `clips`). 13 only adds to 12, so a state saved
  * by alpha.11 (its recovery file, a node's last picture) is read as it is: `readsEngineVersion`. 14 (Session 54,
- * after alpha.12 had published 13) only adds to 13, so a state alpha.12 saved is read as it is too.
+ * after alpha.12 had published 13) only adds to 13, so a state alpha.12 saved is read as it is too. 15 (Session 55,
+ * after alpha.13 had published 14): the stage screens' own `stage` (the one layout chosen for every stage screen,
+ * Stage off showing the audience picture, the chosen video input), and no stage layout in the live Look's groups any
+ * more; an older node or page would draw the Look's layout instead, so it says 'incompatible'. A state alpha.13 saved
+ * is read as it is (its `stage` left out: the Standard stage screen until Main says otherwise, Stage on).
  */
-export const ENGINE_STATE_VERSION = 14;
+export const ENGINE_STATE_VERSION = 15;
 
 /**
- * Whether a state saved by this engine version is read whole (Session 52): this version's own, 13 (alpha.12's) and
- * 12 (alpha.11's), as 14 and 13 each only add fields to the one before. Any other version's layers are left out, as
- * their shapes may differ.
+ * Whether a state saved by this engine version is read whole (Session 52): this version's own, 14 (alpha.13's), 13
+ * (alpha.12's) and 12 (alpha.11's), as 15, 14 and 13 each only add fields to the one before (15 leaves the live
+ * Look's stage layouts out, which nothing reads any more). Any other version's layers are left out, as their shapes
+ * may differ.
  */
 export function readsEngineVersion(version: unknown): boolean {
-  return version === ENGINE_STATE_VERSION || version === 13 || version === 12;
+  return version === ENGINE_STATE_VERSION || version === 14 || version === 13 || version === 12;
 }
 
 export type LayerName =
@@ -650,6 +656,12 @@ export interface EngineState {
    * nothing after, and the show changes no more. Left out (an older state) or null: not stopped.
    */
   stopped?: { at: number } | null;
+  /**
+   * The stage screens (Session 55, shared/stage-layouts.ts): the one layout chosen for all of them, Stage off (they
+   * then show exactly the audience picture) and the chosen video input. Only the main process sets it; nothing on
+   * the audience screens reads it. Left out (a state saved before 15): the Standard stage screen, Stage on.
+   */
+  stage?: StageState;
 }
 
 export function emptyLayers(): Layers {
@@ -690,6 +702,7 @@ export function initialEngineState(): EngineState {
     slideOff: null,
     lowerThirdOff: null,
     pipOff: null,
+    stage: NO_STAGE,
   };
 }
 

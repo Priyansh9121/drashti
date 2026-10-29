@@ -6,14 +6,18 @@ import {
   hallPicture,
   hallPictureOfScreens,
   hallPictureSchema,
+  isPictureBox,
   newStageBox,
   showsHall,
+  showsInput,
   smallestBox,
   STAGE_BOX_KINDS,
   STAGE_BOX_LABELS,
   STAGE_BOX_NAMES,
   stageBoxSchema,
+  stageDrawsHall,
   stageLayoutDefinitionSchema,
+  stageShows,
   standardAsBoxes,
   typedFrame,
   withBoxAdded,
@@ -79,7 +83,8 @@ describe('the audience picture box', () => {
   // "Audience off") cannot keep to the stage's smallest words (30 px).
   it('is made no smaller in the editor than a sixth of the stage each way, where its line keeps to 30 px', () => {
     expect(smallestBox('audience')).toEqual({ width: 320, height: 180 });
-    for (const kind of STAGE_BOX_KINDS.filter((k) => k !== 'audience'))
+    // The video input box (Session 55) is a picture with a line of its own too: the same.
+    for (const kind of STAGE_BOX_KINDS.filter((k) => k !== 'audience' && k !== 'videoInput'))
       expect(smallestBox(kind), kind).toEqual({ width: 8, height: 8 });
     // A new one is larger already.
     const hall = newStageBox('audience', 'hall');
@@ -109,6 +114,65 @@ describe('the audience picture box', () => {
     expect(showsHall(null)).toBe(false);
     expect(showsHall(layout([newStageBox('clock', 'clock')]))).toBe(false);
     expect(showsHall(layout([newStageBox('audience', 'hall'), newStageBox('clock', 'clock')]))).toBe(true);
+  });
+});
+
+describe('the video input box (Session 55)', () => {
+  it('is a kind of box of its own, made 16:9 in the middle of the canvas, with no label, no smaller than the audience picture', () => {
+    expect(STAGE_BOX_KINDS).toContain('videoInput');
+    expect(STAGE_BOX_NAMES.videoInput).toBe('The video input, live');
+    expect(STAGE_BOX_LABELS.videoInput).toBe('');
+    const box = newStageBox('videoInput', 'input');
+    expect(box).toMatchObject({ kind: 'videoInput', label: '' });
+    expect(box.frame).toEqual({ x: 480, y: 270, width: 960, height: 540 });
+    expect(box).not.toHaveProperty('fitWhole');
+    expect(stageBoxSchema.safeParse(box).success).toBe(true);
+    expect(smallestBox('videoInput')).toEqual(smallestBox('audience'));
+    expect(typedFrame(box, 'width', 10)).toEqual({ ...box.frame, width: 320 });
+  });
+
+  it('goes under the boxes already there, as the audience picture does, so the clock and a timer draw over it', () => {
+    const clock = newStageBox('clock', 'clock');
+    const timer = newStageBox('timer', 'timer');
+    const input = newStageBox('videoInput', 'input');
+    expect(withBoxAdded([clock, timer], input).map((b) => b.id)).toEqual(['input', 'clock', 'timer']);
+  });
+
+  it('is kept in a stored layout, and marks a layout that draws the video input', () => {
+    const def = {
+      background: '#000000',
+      boxes: [newStageBox('videoInput', 'input'), newStageBox('clock', 'c')],
+    };
+    expect(stageLayoutDefinitionSchema.parse(JSON.parse(JSON.stringify(def)))).toEqual(def);
+    expect(showsInput(null)).toBe(false);
+    expect(showsInput(layout([newStageBox('clock', 'clock')]))).toBe(false);
+    expect(showsInput(layout(def.boxes))).toBe(true);
+  });
+});
+
+describe('what a stage screen shows (Session 55)', () => {
+  const chosen = layout([newStageBox('clock', 'clock')]);
+
+  it('is the layout chosen for every stage screen, or the Standard stage screen with none', () => {
+    expect(stageShows({ layout: chosen })).toBe('layout');
+    expect(stageShows({ layout: null })).toBe('standard');
+    // A state saved before Session 55 has no stage at all: the Standard stage screen, Stage on.
+    expect(stageShows(undefined)).toBe('standard');
+  });
+
+  it('is exactly the audience picture while Stage is off, whatever the layout', () => {
+    expect(stageShows({ layout: chosen, off: true })).toBe('audience');
+    expect(stageShows({ layout: null, off: true })).toBe('audience');
+    expect(stageShows({ layout: chosen, off: false })).toBe('layout');
+  });
+
+  it('draws the hall’s picture with Stage off or an audience picture box, and the video input with a video input box', () => {
+    const hallBox = layout([newStageBox('audience', 'hall')]);
+    expect(stageDrawsHall({ layout: null })).toBe(false);
+    expect(stageDrawsHall({ layout: chosen })).toBe(false);
+    expect(stageDrawsHall({ layout: hallBox })).toBe(true);
+    expect(stageDrawsHall({ layout: chosen, off: true })).toBe(true);
+    expect(stageDrawsHall(undefined)).toBe(false);
   });
 });
 
@@ -346,8 +410,10 @@ describe('a box’s own settings', () => {
   });
 
   it('make a new box’s words as large as its box holds when they fit; one saved before keeps to 400 px', () => {
-    for (const kind of STAGE_BOX_KINDS.filter((k) => k !== 'audience'))
+    // A picture box (the audience picture; the video input, Session 55) has no words to fit.
+    for (const kind of STAGE_BOX_KINDS.filter((k) => !isPictureBox(k)))
       expect(newStageBox(kind, kind).fitWhole, kind).toBe(true);
+    expect(newStageBox('videoInput', 'input')).not.toHaveProperty('fitWhole');
     expect(newStageBox('audience', 'hall')).not.toHaveProperty('fitWhole');
     expect(before).not.toHaveProperty('fitWhole');
   });

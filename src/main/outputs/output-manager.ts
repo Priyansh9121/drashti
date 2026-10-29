@@ -1,5 +1,5 @@
 import { keyToSave, matchDisplays, sameKey } from '../../shared/display-match';
-import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
+import { CLOSES_WINDOWS, type ScreenSwitch, type ScreenSwitches } from '../../shared/screen-switches';
 import type { DisplayInfo, DisplayKey, ScreenConfig, ScreenStatus } from '../../shared/screens';
 
 /** The parts of an output window the manager needs. */
@@ -88,11 +88,14 @@ export class OutputManager {
     if (!held.window.isDestroyed()) held.window.close();
   }
 
-  /** Is this screen's switch off (Session 50)? */
+  /**
+   * Is this screen's switch off (Session 50), its window closed? Only Audience closes them: with Stage off (Session
+   * 55) the stage screens stay, showing the audience picture from the engine's state.
+   */
   private switchedOff(screen: ScreenConfig): boolean {
     if (this.off.size === 0 || !this.deps.switchOf) return false;
     const which = this.deps.switchOf(screen);
-    return which !== null && this.off.has(which);
+    return which !== null && this.off.has(which) && CLOSES_WINDOWS[which];
   }
 
   reconcile(): void {

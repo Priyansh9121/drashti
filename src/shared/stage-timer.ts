@@ -1,6 +1,15 @@
 import { type ClockStyle, formatClock, formatDuration } from './format';
 import type { StageBox, StageLayout, StageTimerFormat } from './stage-layouts';
-import { countsDown, formatTimer, timerDuration, type TimerState, timerValue, zeroAt } from './timers';
+import {
+  countsDown,
+  formatTimer,
+  parseDuration,
+  timerDuration,
+  type TimerFields,
+  type TimerState,
+  timerValue,
+  zeroAt,
+} from './timers';
 
 /*
  * A stage layout's timer and clock boxes as they draw (Session 54), as pure functions of the box, the timer and
@@ -149,4 +158,57 @@ export function countsToWords(timer: TimerState, style: ClockStyle | null | unde
     case 'clock':
       return null;
   }
+}
+
+// ---- what a stage timer counts to, changed from the Stage panel (Session 55, Session 54's question 13) -------------
+
+/** The longest a countdown may be: a day, as Timers allows. */
+const LONGEST_MS = 24 * 3600 * 1000;
+
+/** A time of day as typed or as a time field gives it: "7:05", "19:30". */
+const TIME_OF_DAY = /^([01]?\d|2[0-3]):([0-5]\d)$/u;
+
+/**
+ * What the Stage panel's field shows of a stage timer (Session 55): the time of day a countdown to a time counts to
+ * ("19:30", as a time field takes it), or a countdown's length ("5:00"); null for a count up or a clock, which have
+ * nothing to change.
+ */
+export function stageTimerTarget(
+  timer: Pick<TimerState, 'kind' | 'durationMs' | 'targetTime'>,
+): string | null {
+  if (timer.kind === 'countdown') return timerDuration(timer.durationMs, false);
+  if (timer.kind !== 'countdown_to_time' || timer.targetTime === null) return null;
+  const m = TIME_OF_DAY.exec(timer.targetTime.trim());
+  return m ? `${(m[1] ?? '').padStart(2, '0')}:${m[2] ?? '00'}` : null;
+}
+
+/**
+ * A stage timer with what it counts to changed as typed in the Stage panel (Session 55): a countdown to a time takes
+ * the time of day, a countdown its length; everything else about it stays (its name, its kind, whether it runs on
+ * past 0:00), and so does how it runs (the engine keeps when it was started). Every stage screen draws the change at
+ * once, from the engine's state, and its flash at 0:00 is the same as before (flashDimmed). Why not, in a few words,
+ * when what is typed is not a time, a length or a timer that counts to one.
+ */
+export function stageTimerChange(
+  timer: TimerState,
+  typed: string,
+): { ok: true; fields: TimerFields } | { ok: false; message: string } {
+  const { name, kind, durationMs, targetTime, allowsOverrun } = timer;
+  const fields: TimerFields = { name, kind, durationMs, targetTime, allowsOverrun };
+  const text = typed.trim();
+  if (kind === 'countdown_to_time') {
+    const m = TIME_OF_DAY.exec(text);
+    if (!m) return { ok: false, message: 'Write the time of day it counts down to, for example 19:30.' };
+    return {
+      ok: true,
+      fields: { ...fields, targetTime: `${(m[1] ?? '').padStart(2, '0')}:${m[2] ?? '00'}` },
+    };
+  }
+  if (kind === 'countdown') {
+    const ms = parseDuration(text);
+    if (ms === null || ms <= 0 || ms > LONGEST_MS)
+      return { ok: false, message: 'Write the length as minutes and seconds, for example 5:00.' };
+    return { ok: true, fields: { ...fields, durationMs: ms } };
+  }
+  return { ok: false, message: 'Only a countdown counts to a time or from a length.' };
 }

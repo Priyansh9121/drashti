@@ -15,10 +15,12 @@ import {
 import type { ScreensSnapshot } from '../../shared/screens';
 
 /*
- * Audience and Stage (Session 50), as the main process runs them. Off closes this computer's output windows the
- * switch covers, so their displays go back to the computer; on opens them again where they were (the output
- * manager does both). Nothing else changes: the engine, LIVE, the other switch's screens, the stream and
- * recording, and nodes' screens carry on. Both are on at every start, as nothing is saved.
+ * Audience and Stage (Session 50), as the main process runs them. Audience off closes this computer's output windows
+ * it covers, so their displays go back to the computer; on opens them again where they were (the output manager does
+ * both). Stage off (Session 55) closes nothing: the stage screens show exactly the audience picture, every stage
+ * screen alike, from the engine's state (src/main/index.ts tells it). Nothing else changes: LIVE, the other switch's
+ * screens, the stream and recording, and nodes' audience screens carry on. Both are on at every start, as nothing is
+ * saved.
  *
  * Every request is checked here. Simple Mode may only turn them on (a volunteer gives a screen back to the hall,
  * never takes it away); Pro Mode turns them either way, so the projector can be given back to the laptop in a
@@ -52,7 +54,17 @@ const whichSchema = z.enum(SCREEN_SWITCHES);
 /** The screens a switch covers, as the log says them. */
 const covered: Record<ScreenSwitch, string> = {
   audience: 'the hall’s screens on this computer (key and fill too)',
-  stage: 'the stage screens on this computer',
+  stage: 'the stage screens',
+};
+
+/** What turning one off or on does, as the log says it (Session 55: the stage screens stay, showing the hall's picture). */
+const offLine: Record<ScreenSwitch, string> = {
+  audience: `${covered.audience} closed, their displays the computer’s until it is on again`,
+  stage: `${covered.stage} show the audience picture until it is on again`,
+};
+const onLine: Record<ScreenSwitch, string> = {
+  audience: `${covered.audience} open again`,
+  stage: `${covered.stage} show their layout again`,
 };
 
 export class ScreenSwitchService {
@@ -81,9 +93,7 @@ export class ScreenSwitchService {
     if (!rawOn && this.deps.simple()) return { ok: false, message: ONLY_ON_IN_SIMPLE_MODE };
     if (this.deps.outputs.setSwitch(which.data, rawOn)) {
       this.deps.log(
-        rawOn
-          ? `Screens: ${SWITCH_NAMES[which.data]} turned on: ${covered[which.data]} open again`
-          : `Screens: ${SWITCH_NAMES[which.data]} turned off: ${covered[which.data]} closed, their displays the computer’s until it is on again`,
+        `Screens: ${SWITCH_NAMES[which.data]} turned ${rawOn ? 'on' : 'off'}: ${(rawOn ? onLine : offLine)[which.data]}`,
       );
       const now = this.get();
       for (const listener of this.listeners) listener(now);

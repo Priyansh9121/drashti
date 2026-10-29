@@ -1,6 +1,12 @@
 import { useId, useState } from 'react';
 import type { BoxOrder, StageBox, StageTimerFormat, StageVAlign } from '../../../shared/stage-layouts';
-import { arrangeBoxes, MAX_OUTLINE, STAGE_TIMER_FORMATS, STAGE_VALIGNS } from '../../../shared/stage-layouts';
+import {
+  arrangeBoxes,
+  MAX_OUTLINE,
+  STAGE_BOX_NAMES,
+  STAGE_TIMER_FORMATS,
+  STAGE_VALIGNS,
+} from '../../../shared/stage-layouts';
 import { FLASH_FOR_MS } from '../../../shared/stage-timer';
 import { parseDuration, timerDuration } from '../../../shared/timers';
 import { IconButton } from '../ui/Button';
@@ -18,9 +24,13 @@ import { TypedNumberField } from './TypedNumberField';
  * Each is left out of the box until it is set, so a layout saved before is saved as it was.
  */
 
-/** A box's settings changed: the layout shown, with this box as `fn` makes it. */
+/** A box's settings changed: the layout shown, with this box as `fn` makes it (one step for Undo, Session 55). */
 function changeBox(id: string, fn: (box: StageBox) => StageBox): void {
-  change((e) => ({ ...e, boxes: e.boxes.map((b) => (b.id === id ? fn(b) : b)) }));
+  change(
+    (e) => ({ ...e, boxes: e.boxes.map((b) => (b.id === id ? fn(b) : b)) }),
+    'Changed a box',
+    `box:${id}`,
+  );
 }
 
 /** The box without these settings (left out, as a box saved before has none). */
@@ -50,7 +60,11 @@ export const OVER_COLOR = '#ef4444';
 /** Which box is over which (the list is bottom to top): to the front or the back, or one step. */
 export function BoxOrderButtons({ box }: { box: StageBox }) {
   const move = (how: BoxOrder) => {
-    change((e) => ({ ...e, boxes: arrangeBoxes(e.boxes, box.id, how) }));
+    change(
+      (e) => ({ ...e, boxes: arrangeBoxes(e.boxes, box.id, how) }),
+      `Moved the box ${STAGE_BOX_NAMES[box.kind]} in front or behind`,
+      `order:${box.id}:${how}`,
+    );
   };
   const buttons: [BoxOrder, string, typeof ArrowUp][] = [
     ['front', 'Bring to the front', BringToFront],

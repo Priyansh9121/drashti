@@ -8,7 +8,6 @@ import { Button } from '../../ui/Button';
 import { Pause, Play, RotateCcw, Square } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
-import { useRemote } from './remote-store';
 
 /*
  * The stage screens' timers on the phone remote (Session 54, Part A3), as the Stage screen panel has them in
@@ -80,10 +79,12 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
   );
 }
 
-/** The stage layout's timers shown now, each once, in its order: none for the Standard stage screen. */
+/**
+ * The stage layout's timers shown now, each once, in its order: none for the Standard stage screen. The layout every
+ * stage screen shows (Session 55), from the engine's state, with or without a stage group set up.
+ */
 function useStageTimers(): TimerState[] {
-  const groupId = useRemote((s) => s.hall?.stageGroupId ?? null);
-  const layout = useEngine((s) => (groupId ? s.state?.look.groups[groupId]?.stageLayout : null) ?? null);
+  const layout = useEngine((s) => s.state?.stage?.layout ?? null);
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
   return layoutTimerIds(layout).flatMap((id) => timers.filter((t) => t.id === id));
 }
