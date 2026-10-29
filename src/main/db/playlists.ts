@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import { ownOrderId } from '../../shared/order';
 import { cutText } from '../../shared/text';
 import type { ImportSource } from '../../shared/library';
 import type {
@@ -44,6 +46,8 @@ interface ItemRow {
   media_id: string | null;
   order_mode: 'presentation' | 'arrangement' | 'all';
   arrangement_id: string | null;
+  /** Its own order of the presentation's slides (Session 55, Part 4b, migration 55), as JSON; null for none. */
+  own_order: string | null;
   presentation_name: string | null;
   presentation_deleted: string | null;
   arrangement_name: string | null;
@@ -83,6 +87,34 @@ function keyOf(json: string | null): PassageKey | null {
   }
 }
 
+/** How an item's own order of slides is stored (migration 55): `known` only for the item holding the deck's slides. */
+const storedOwnOrder = z
+  .object({ slideIds: z.array(z.string()).min(1), known: z.array(z.string()).optional() })
+  .strip();
+
+/** A stored own order of slides; null for none, or one that does not read (the item then plays as before). */
+function ownOrderOf(json: string | null): Extract<ItemOrder, { mode: 'slides' }> | null {
+  if (json === null) return null;
+  try {
+    const parsed = storedOwnOrder.safeParse(JSON.parse(json));
+    if (!parsed.success) return null;
+    const { slideIds, known } = parsed.data;
+    return known === undefined ? { mode: 'slides', slideIds } : { mode: 'slides', slideIds, known };
+  } catch {
+    return null;
+  }
+}
+
+/** An own order of slides as stored; null for every other order. */
+const storedOrder = (order: ItemOrder): string | null =>
+  order.mode !== 'slides'
+    ? null
+    : JSON.stringify(
+        order.known === undefined
+          ? { slideIds: order.slideIds }
+          : { slideIds: order.slideIds, known: order.known },
+      );
+
 function itemInfo(
   r: ItemRow,
   passageThere: (key: PassageKey) => boolean,
@@ -112,12 +144,14 @@ function itemInfo(
       };
     }
     case 'presentation': {
+      // Its own order of slides (Session 55, Part 4b) first: the column is empty for every other order.
       const order: ItemOrder =
-        r.order_mode === 'all'
+        ownOrderOf(r.own_order) ??
+        (r.order_mode === 'all'
           ? { mode: 'all' }
           : r.order_mode === 'arrangement' && r.arrangement_id
             ? { mode: 'arrangement', arrangementId: r.arrangement_id }
-            : { mode: 'presentation' };
+            : { mode: 'presentation' });
       return {
         id: r.id,
         kind: 'presentation',
@@ -127,7 +161,8 @@ function itemInfo(
         order,
         arrangementName: order.mode === 'arrangement' ? r.arrangement_name : null,
         timers: cuesOf(r.timers),
-        slideCount: r.presentation_slides ?? 0,
+        // Its own order of slides (Part 4b): as many as it names (one deleted since still counts until it is read).
+        slideCount: order.mode === 'slides' ? order.slideIds.length : (r.presentation_slides ?? 0),
         deck: r.presentation_source === 'pictures',
         ...(r.smart_gone === 1 ? { gone: true } : {}),
         ...(r.presentation_device === null ? {} : { fromDevice: r.presentation_device }),
@@ -163,6 +198,8 @@ type CopyItem = (
       label: string;
       orderMode: string;
       arrangementId: string | null;
+      /** Its own order of slides, as stored (Session 55, Part 4b); null for none. */
+      ownOrder: string | null;
     }
   | { kind: 'media'; mediaId: string; label: string }
   | { kind: 'placeholder'; label: string; hint: string | null; category: string | null }
@@ -422,7 +459,7 @@ export class PlaylistRepo {
       this.db
         .prepare(
           `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                  i.passage, i.timers, i.input_name,
+                  i.own_order, i.passage, i.timers, i.input_name,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
                   p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration,
@@ -460,12 +497,15 @@ export class PlaylistRepo {
             presentationId: item.presentationId,
             label: item.label,
             timers: item.timers,
+            // Its own order of slides (Session 55, Part 4b) as "item:<id>", which the engine's slide source reads.
             arrangementId:
               item.order.mode === 'presentation'
                 ? undefined
                 : item.order.mode === 'all'
                   ? null
-                  : item.order.arrangementId,
+                  : item.order.mode === 'slides'
+                    ? ownOrderId(item.id)
+                    : item.order.arrangementId,
           };
         case 'media':
           if (item.missing)
@@ -773,7 +813,8 @@ export class PlaylistRepo {
       return (
         this.db
           .prepare(
-            `UPDATE playlist_items SET presentation_id = @to
+            `UPDATE playlist_items SET presentation_id = @to,
+                    own_order = CASE WHEN presentation_id = @to THEN own_order ELSE NULL END
               WHERE id = @item AND kind = 'presentation' AND EXISTS (SELECT 1 FROM presentations WHERE id = @to)`,
           )
           .run({ to: to.presentationId, item: itemId }).changes === 1
@@ -784,8 +825,8 @@ export class PlaylistRepo {
   /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */
   private copyItems(to: string, items: readonly CopyItem[]): void {
     const insert = this.db.prepare(
-      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage, timers, input_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, own_order, passage, timers, input_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     // An item on a converted original (added before Session 51) is copied onto its copy.
     const copy = copyFinder(this.db);
@@ -804,6 +845,7 @@ export class PlaylistRepo {
         item.kind === 'placeholder' ? item.category : null,
         item.kind === 'presentation' ? item.orderMode : 'presentation',
         item.kind === 'presentation' ? item.arrangementId : null,
+        item.kind === 'presentation' ? item.ownOrder : null,
         item.kind === 'shastra' ? item.passage : null,
         item.kind === 'header' || item.kind === 'placeholder' ? null : (item.timers ?? null),
         item.kind === 'input' ? item.name : null,
@@ -816,7 +858,7 @@ export class PlaylistRepo {
     return this.db
       .prepare(
         `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                i.passage, i.timers, i.input_name, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
+                i.own_order, i.passage, i.timers, i.input_name, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
            FROM playlist_items i
            LEFT JOIN presentations p ON p.id = i.presentation_id
            LEFT JOIN kirtans k ON k.presentation_id = i.presentation_id
@@ -833,6 +875,7 @@ export class PlaylistRepo {
       media_id: string | null;
       order_mode: string;
       arrangement_id: string | null;
+      own_order: string | null;
       passage: string | null;
       timers: string | null;
       input_name: string | null;
@@ -884,6 +927,7 @@ export class PlaylistRepo {
                 label: r.label,
                 orderMode: r.order_mode,
                 arrangementId: r.arrangement_id,
+                ownOrder: r.own_order,
                 timers: r.timers,
               },
             ];
@@ -924,6 +968,7 @@ export class PlaylistRepo {
                 label: r.label,
                 orderMode: r.order_mode,
                 arrangementId: r.arrangement_id,
+                ownOrder: r.own_order,
                 timers: r.timers,
               },
             ];
@@ -1000,6 +1045,7 @@ export class PlaylistRepo {
                 label: r.label,
                 orderMode: r.order_mode,
                 arrangementId: r.arrangement_id,
+                ownOrder: r.own_order,
                 timers: r.timers,
               },
             ];
@@ -1220,7 +1266,7 @@ export class PlaylistRepo {
       this.db
         .prepare(
           `UPDATE playlist_items SET kind = 'presentation', presentation_id = ?, label = ?, hint = NULL, category = NULL,
-                  order_mode = 'presentation', arrangement_id = NULL
+                  order_mode = 'presentation', arrangement_id = NULL, own_order = NULL
             WHERE id = ? AND kind = 'placeholder' AND deleted_at IS NULL`,
         )
         .run(presentationId, row.name, itemId).changes === 1
@@ -1249,7 +1295,11 @@ export class PlaylistRepo {
     );
   }
 
-  /** The order a presentation item plays in: the presentation's own, every slide, or one of its arrangements. */
+  /**
+   * The order a presentation item plays in: the presentation's own, every slide, one of its arrangements, or this
+   * playlist's own order of its slides (Session 55, Part 4b; the library's presentation never changes). An own order
+   * keeps order_mode at the presentation's own, so nothing else reads it as an arrangement.
+   */
   setItemOrder(itemId: string, order: ItemOrder): boolean {
     const item = this.db
       .prepare(
@@ -1264,9 +1314,73 @@ export class PlaylistRepo {
       if (!own) return false;
     }
     this.db
-      .prepare('UPDATE playlist_items SET order_mode = ?, arrangement_id = ? WHERE id = ?')
-      .run(order.mode, order.mode === 'arrangement' ? order.arrangementId : null, itemId);
+      .prepare('UPDATE playlist_items SET order_mode = ?, arrangement_id = ?, own_order = ? WHERE id = ?')
+      .run(
+        order.mode === 'slides' ? 'presentation' : order.mode,
+        order.mode === 'arrangement' ? order.arrangementId : null,
+        storedOrder(order),
+        itemId,
+      );
     return true;
+  }
+
+  /**
+   * A slide's row dragged out of its deck or presentation (Session 55, Part 4b): an item of its own at `at` in the
+   * playlist (as addItems places one), the same presentation playing `alone` (that slide), named as the item it came
+   * from; the item keeps `rest`. One write. The new item's id; null when either order is not an own order of slides,
+   * or the item (or its presentation) is gone. Its timer cues stay with the item it came from.
+   */
+  splitItem(itemId: string, rest: ItemOrder, alone: ItemOrder, at: number): string | null {
+    if (rest.mode !== 'slides' || alone.mode !== 'slides') return null;
+    const item = this.db
+      .prepare(
+        "SELECT playlist_id, presentation_id, label FROM playlist_items WHERE id = ? AND kind = 'presentation' AND deleted_at IS NULL",
+      )
+      .get(itemId) as { playlist_id: string; presentation_id: string; label: string } | undefined;
+    if (!item) return null;
+    return this.db.transaction(() => {
+      const [made] = this.addItems(item.playlist_id, at, [
+        { kind: 'presentation', presentationId: item.presentation_id },
+      ]);
+      if (made === undefined) return null;
+      this.db.prepare('UPDATE playlist_items SET label = ? WHERE id = ?').run(item.label, made);
+      this.setItemOrder(made, alone);
+      this.setItemOrder(itemId, rest);
+      return made;
+    })();
+  }
+
+  /**
+   * Undo of splitItem (Session 55, Part 4b): the item it came from plays `order` again (what it played before), and
+   * the item made is taken out. One write. False when either is gone, or they are not in the same playlist.
+   */
+  undoSplit(itemId: string, order: ItemOrder, madeId: string): boolean {
+    const both = this.db
+      .prepare(
+        "SELECT COUNT(DISTINCT playlist_id) AS lists, COUNT(*) AS items FROM playlist_items WHERE id IN (?, ?) AND kind = 'presentation' AND deleted_at IS NULL",
+      )
+      .get(itemId, madeId) as { lists: number; items: number };
+    if (itemId === madeId || both.items !== 2 || both.lists !== 1) return false;
+    return this.db.transaction(() => {
+      // An arrangement it played since removed from the presentation: the presentation's own order.
+      if (!this.setItemOrder(itemId, order)) this.setItemOrder(itemId, { mode: 'presentation' });
+      this.removeItems([madeId]);
+      return true;
+    })();
+  }
+
+  /**
+   * An item's own order of slides (Session 55, Part 4b), with its presentation: what the engine's "item:<id>" plays.
+   * Null when the item is gone or plays another order.
+   */
+  ownOrder(itemId: string): { presentationId: string; order: Extract<ItemOrder, { mode: 'slides' }> } | null {
+    const row = this.db
+      .prepare(
+        "SELECT presentation_id, own_order FROM playlist_items WHERE id = ? AND kind = 'presentation' AND deleted_at IS NULL",
+      )
+      .get(itemId) as { presentation_id: string | null; own_order: string | null } | undefined;
+    const order = ownOrderOf(row?.own_order ?? null);
+    return row?.presentation_id && order ? { presentationId: row.presentation_id, order } : null;
   }
 
   /** Rename a header. */

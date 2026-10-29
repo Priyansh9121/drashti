@@ -1310,12 +1310,13 @@ function start(): void {
   if (perfTest && !userDataOverride && seedPerfLibrary(libraryDb))
     log.info('The performance check added its placeholder presentations');
   const presentations = new PresentationRepo(db);
-  const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
   // A playlist item naming a video input (Session 51) finds this computer's input of that name: the inputs are read
   // further down, before anything is played.
   const playlists = new PlaylistRepo(db, (name) => videoInputs?.named(name) ?? null);
+  // A playlist item's own order of slides (Session 55, Part 4b) is read from its playlist as it plays ("item:<id>").
+  const slides = new DbSlideSource(presentations, (itemId) => playlists.ownOrder(itemId));
   const themes = new ThemeRepo(db);
   themes.defaultId();
   // Shastra passages play like presentations, made from their texts (Session 12).

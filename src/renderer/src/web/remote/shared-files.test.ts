@@ -118,6 +118,11 @@ describe('a shared playlist looked through on a phone (Session 54, D3)', () => {
       'slide kirtan Placeholder Kirtan 1 v2',
       'slide kirtan Placeholder Kirtan 2 c1',
     ]);
+    // The playlist's own order of its slides (Session 55, Part 4b), as Drashti plays it.
+    expect(slides({ mode: 'slides', slideIds: ['c1', 'v1'] })).toEqual([
+      'slide kirtan Placeholder Kirtan 0 c1',
+      'slide kirtan Placeholder Kirtan 1 v1',
+    ]);
   });
 
   it('leaves out a presentation Drashti could not give, and opens nothing when it is the one tapped', () => {

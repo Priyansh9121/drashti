@@ -70,7 +70,19 @@ export type ItemOrder =
   | { mode: 'presentation' }
   /** Every slide in order. */
   | { mode: 'all' }
-  | { mode: 'arrangement'; arrangementId: string };
+  | { mode: 'arrangement'; arrangementId: string }
+  /**
+   * This playlist's own order of the presentation's slides (Session 55, Part 4b): a slide's row dragged within its
+   * deck or presentation, or out of it into an item of its own. Its slides by id, so it lasts through the
+   * presentation's edits (a slide deleted since drops out); the library's presentation never changes. `known`: every
+   * slide the presentation had when the order was made, kept by the item that holds the deck's slides, so a slide
+   * added to the presentation later plays at its end; an item made of a slide dragged out has none, and never takes
+   * one added later.
+   */
+  | { mode: 'slides'; slideIds: string[]; known?: string[] };
+
+/** The most slides an item's own order names (Session 55, Part 4b): far past any presentation's. */
+export const OWN_ORDER_MAX = 10_000;
 
 /**
  * What a playlist item does to a timer when it goes up (Session 12): start
@@ -232,4 +244,11 @@ export const itemOrderSchema: z.ZodType<ItemOrder> = z.discriminatedUnion('mode'
   z.object({ mode: z.literal('presentation') }).strict(),
   z.object({ mode: z.literal('all') }).strict(),
   z.object({ mode: z.literal('arrangement'), arrangementId: id }).strict(),
+  z
+    .object({
+      mode: z.literal('slides'),
+      slideIds: z.array(id).min(1).max(OWN_ORDER_MAX),
+      known: z.array(id).max(OWN_ORDER_MAX).optional(),
+    })
+    .strict(),
 ]);

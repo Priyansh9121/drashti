@@ -3,8 +3,9 @@ import { create } from 'zustand';
 
 /*
  * Dragging inside the operator window: presentations, media, Shastra
- * passages and video inputs (Session 51) from the library into a playlist, and items within a playlist. Only the
- * kind of drag can be read while it is under way; the ids arrive with the drop.
+ * passages and video inputs (Session 51) from the library into a playlist, and items within a playlist; a slide's row
+ * within its deck or out of it (Session 55, Part 4b). Only the kind of drag can be read while it is under way; the ids
+ * arrive with the drop (a slide's row also says where it came from while it is dragged: draggedSlide).
  */
 
 const TYPES = {
@@ -15,6 +16,8 @@ const TYPES = {
   passages: 'application/x-drashti-passages',
   /** This computer's video inputs (Session 51), by their names, from Media's Video inputs. */
   inputs: 'application/x-drashti-inputs',
+  /** A slide's row in a playlist (Session 55, Part 4b): its item's id and its place in the item's order. */
+  slide: 'application/x-drashti-slide-row',
 } as const;
 
 export type DragKind = keyof typeof TYPES;
@@ -56,22 +59,36 @@ export const droppedPaths = (e: DragEvent): string[] =>
     .map((f) => window.drashti.files.pathFor(f))
     .filter((p) => p !== '');
 
+/** The slide's row being dragged (Session 55, Part 4b): its item and its place there; null when none is. */
+let slideRow: { itemId: string; position: number } | null = null;
+
+/** The slide's row being dragged, read while the drag is under way (where its drop would land). */
+export const draggedSlide = (): { itemId: string; position: number } | null => slideRow;
+
 /** Call first in a dragstart handler, before anything that changes what the rows show. */
 export function startDrag(e: DragEvent, kind: DragKind, ids: readonly string[]): void {
   e.dataTransfer.setData(TYPES[kind], JSON.stringify(ids));
-  e.dataTransfer.effectAllowed = kind === 'items' ? 'move' : 'copy';
+  // Within the playlist: a move. From the library: a copy.
+  const within = kind === 'items' || kind === 'slide';
+  e.dataTransfer.effectAllowed = within ? 'move' : 'copy';
+  const [itemId, position] = ids;
+  slideRow =
+    kind === 'slide' && itemId !== undefined && position !== undefined
+      ? { itemId, position: Number(position) }
+      : null;
   useDragging.setState({ on: true });
   // From the library: its sheet stands aside once the drag has started (see `aside`).
   const aside = () => {
     window.removeEventListener('dragover', aside, true);
     if (useDragging.getState().on) useDragging.setState({ aside: true });
   };
-  if (kind !== 'items') window.addEventListener('dragover', aside, true);
+  if (!within) window.addEventListener('dragover', aside, true);
   // Over when it ends (after the drop has been placed: a reset at the drop itself would bring the
   // buttons back, and move the rows, before the list reads where it landed), or, should the row it
   // came from be gone, at the next mouse move.
   const over = () => {
     useDragging.setState({ on: false, aside: false });
+    slideRow = null;
     window.removeEventListener('dragover', aside, true);
     for (const type of ['dragend', 'mousemove'] as const) window.removeEventListener(type, over, true);
   };

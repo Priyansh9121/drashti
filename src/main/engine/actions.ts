@@ -83,8 +83,17 @@ export type EngineAction =
    * Next goes on from there.
    */
   | { type: 'slide/put'; layer: SlideLayer }
-  /** The live position moves (the order changed) while the same slide stays on screen. */
-  | { type: 'live/move'; slideIndex: number; slideCount: number; arrangementId: string | null }
+  /**
+   * The live position moves (the order changed) while the same slide stays on screen; with `playlist`, into another
+   * item of the playlist (Session 55, Part 4b: the slide's row dragged out of its deck into an item of its own).
+   */
+  | {
+      type: 'live/move';
+      slideIndex: number;
+      slideCount: number;
+      arrangementId: string | null;
+      playlist?: PlaylistCursor;
+    }
   /** The cursor moves to a playlist item that is not a presentation (a picture, video or sound). */
   | { type: 'live/item'; playlist: PlaylistCursor }
   | { type: 'next/set'; next: UpNext | null }

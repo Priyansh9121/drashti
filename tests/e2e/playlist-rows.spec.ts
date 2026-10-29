@@ -3,10 +3,11 @@ import { expect, test } from '@playwright/test';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
+import { makeTestPdf, type TestPdfPage } from '../../src/main/import/testing/make-pdf';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
+import { mouseDrag } from './mouse-drag';
 import { makeTestImage, makeTestVideo } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -18,14 +19,22 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * what was up before the last change; a playlist is duplicated and practised from its menu; Simple Mode's rows go up
  * with one tap, and its time bar shows Play while something is paused (question 14). Part 14: the one right-click
  * menu, its Delete with Undo (from a playlist: out of it only, asked first while it is up; from the library: at once
- * when nothing uses it, never the owner's file). In CI's window, 1024 × 645, and at 1280 × 720. Placeholder files
- * only, made here.
+ * when nothing uses it, never the owner's file). In CI's window, 1024 × 645, and at 1280 × 720. Part 4b: a slide's row
+ * dragged within its deck changes this playlist's own order of its slides, and out of it, anywhere else in the
+ * playlist, becomes an item of its own, each with one Undo, never changing the library's presentation. Placeholder
+ * files only, made here.
  */
 
 const PDF = 'Placeholder notices';
 const WORDS = 'Placeholder words';
 const VIDEO = 'Placeholder clip';
 const PICTURE = 'Placeholder backdrop';
+/** The PDF's pages (the first two, unless a test asks for three). */
+const PAGES: TestPdfPage[] = [
+  { width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder page one' },
+  { width: 960, height: 540, color: [20, 83, 45], text: 'Placeholder page two' },
+  { width: 960, height: 540, color: [127, 29, 29], text: 'Placeholder page three' },
+];
 
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
@@ -39,21 +48,18 @@ interface Show {
   dir: string;
 }
 
-/** A playlist of a PDF of two pages, a presentation of two text slides, a video and a picture, open in CI's window. */
-async function start(size: { width: number; height: number } = CI_WINDOW): Promise<Show> {
+/**
+ * A playlist of a PDF of two pages (or `pages`), a presentation of two text slides, a video and a picture, open in CI's
+ * window.
+ */
+async function start(size: { width: number; height: number } = CI_WINDOW, pages = 2): Promise<Show> {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, size);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-playlist-rows-'));
   const pdf = join(dir, `${PDF}.pdf`);
-  writeFileSync(
-    pdf,
-    makeTestPdf([
-      { width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder page one' },
-      { width: 960, height: 540, color: [20, 83, 45], text: 'Placeholder page two' },
-    ]),
-  );
+  writeFileSync(pdf, makeTestPdf(PAGES.slice(0, pages)));
   const files = [
     pdf,
     await makeTestVideo(win, join(dir, `${VIDEO}.webm`), { seconds: 2 }),
@@ -344,6 +350,93 @@ test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Pla
     'aria-current',
     'true',
   );
+  await app.close();
+});
+
+/** The PDF's pages' ids, in the library's own order. */
+const pageIds = (win: Page, pdfId: string) =>
+  win.evaluate(async (id) => {
+    const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(id);
+    return doc ? doc.groups.flatMap((g) => g.slides.map((s) => s.id)) : [];
+  }, pdfId);
+const shownSlide = async (win: Page) => (await state(win)).layers.slide?.slide.id ?? null;
+const undo = (win: Page) => win.getByTestId('undo-removal').getByRole('button', { name: /Undo/ }).click();
+
+test('a slide’s row dragged within its deck changes this playlist’s order only, with Undo; a click and Next follow it', async () => {
+  test.setTimeout(180_000);
+  const { app, win, playlistId, items, ids } = await start(CI_WINDOW, 3);
+  const pages = await pageIds(win, ids.pdf);
+  expect(pages).toHaveLength(3);
+  const labels = slideRows(win, items.pdf).getByTestId('slide-label');
+  await expect(labels).toHaveText([`${PDF}_1`, `${PDF}_2`, `${PDF}_3`]);
+  // The third page dragged above the first: each row keeps its name.
+  await mouseDrag(win, slideRows(win, items.pdf).nth(2), slideRows(win, items.pdf).first(), 'top');
+  await expect(labels).toHaveText([`${PDF}_3`, `${PDF}_1`, `${PDF}_2`]);
+  // This playlist's own order; the library's presentation as it was.
+  expect(await pageIds(win, ids.pdf)).toEqual(pages);
+  // A click on the first row puts page three up; Next goes on to page one, in the playlist's order.
+  await slideRows(win, items.pdf).first().click();
+  await expect.poll(() => shownSlide(win)).toBe(pages[2]);
+  await win.getByTestId('show-next').click();
+  await expect.poll(() => shownSlide(win)).toBe(pages[0]);
+  await expect(slideRows(win, items.pdf).nth(1)).toHaveAttribute('aria-current', 'true');
+  // Undo: the presentation's order again, page one still up, its row (now the first) live.
+  await undo(win);
+  await expect(labels).toHaveText([`${PDF}_1`, `${PDF}_2`, `${PDF}_3`]);
+  await expect(slideRows(win, items.pdf).first()).toHaveAttribute('aria-current', 'true');
+  expect((await state(win)).live).toMatchObject({ slideIndex: 0, playlist: { itemId: items.pdf } });
+  expect(
+    await win.evaluate(
+      async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id))[0],
+      playlistId,
+    ),
+  ).toMatchObject({ order: { mode: 'presentation' } });
+  await app.close();
+});
+
+test('a slide’s row dragged out of its deck becomes an item of its own where it lands, the deck keeping the rest, with one Undo', async () => {
+  test.setTimeout(180_000);
+  const { app, win, playlistId, items, ids } = await start(CI_WINDOW, 3);
+  const pages = await pageIds(win, ids.pdf);
+  // Page two up from the deck, then its row dragged out, below the picture (the end of the playlist).
+  await slideRows(win, items.pdf).nth(1).click();
+  await expect
+    .poll(async () => (await state(win)).live)
+    .toMatchObject({ slideIndex: 1, playlist: { itemId: items.pdf } });
+  await mouseDrag(win, slideRows(win, items.pdf).nth(1), row(win, items.picture), 'bottom');
+  const all = win.getByTestId('open-playlist').getByTestId('playlist-item');
+  await expect(all).toHaveCount(5);
+  const made = (await all.last().getAttribute('data-item-id')) ?? '';
+  await expect(slideRows(win, items.pdf).getByTestId('slide-label')).toHaveText([`${PDF}_1`, `${PDF}_3`]);
+  await expect(slideRows(win, made).getByTestId('slide-label')).toHaveText([`${PDF}_2`]);
+  // Still up as it was, from its own item now.
+  await expect
+    .poll(async () => (await state(win)).live)
+    .toMatchObject({ slideIndex: 0, slideCount: 1, playlist: { itemId: made } });
+  expect(await shownSlide(win)).toBe(pages[1]);
+  await expect(slideRows(win, made).first()).toHaveAttribute('aria-current', 'true');
+  // The library's presentation as it was; nothing in the middle runs past its right edge in CI's window.
+  expect(await pageIds(win, ids.pdf)).toEqual(pages);
+  expect(
+    await win.getByTestId('column-middle').evaluate((el) => el.scrollWidth - el.clientWidth),
+  ).toBeLessThanOrEqual(1);
+  // One Undo: the deck has its three pages again and the new item is gone; page two stays up, in the deck.
+  await undo(win);
+  await expect(all).toHaveCount(4);
+  await expect(slideRows(win, items.pdf).getByTestId('slide-label')).toHaveText([
+    `${PDF}_1`,
+    `${PDF}_2`,
+    `${PDF}_3`,
+  ]);
+  await expect
+    .poll(async () => (await state(win)).live)
+    .toMatchObject({ slideIndex: 1, playlist: { itemId: items.pdf } });
+  expect(
+    await win.evaluate(
+      async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).length,
+      playlistId,
+    ),
+  ).toBe(4);
   await app.close();
 });
 

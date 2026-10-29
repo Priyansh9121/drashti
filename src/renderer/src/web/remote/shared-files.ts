@@ -1,5 +1,5 @@
 import type { PresentationDoc } from '../../../../shared/library';
-import { type OrderedSlide, playOrder } from '../../../../shared/order';
+import { itemPlayOrder, type OrderedSlide, playOrder } from '../../../../shared/order';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
 
 /*
@@ -42,15 +42,14 @@ export function slidesToRead(files: readonly PlaylistItemInfo[]): string[] {
   return [...new Set(files.flatMap((f) => slidesOf(f) ?? []))];
 }
 
-/** The slides an item plays, in its order: its own arrangement, its presentation's chosen one, or every slide. */
+/**
+ * The slides an item plays, in its order: its own arrangement, its presentation's chosen one, every slide, or the
+ * playlist's own order of its slides (Session 55, Part 4b), as Drashti plays them.
+ */
 function itemSlides(item: PlaylistItemInfo, doc: PresentationDoc): OrderedSlide[] {
-  const arrangementId =
-    item.kind !== 'presentation' || item.order.mode === 'all'
-      ? null
-      : item.order.mode === 'arrangement'
-        ? item.order.arrangementId
-        : doc.selectedArrangementId;
-  return playOrder(doc, arrangementId).slides;
+  return item.kind === 'presentation'
+    ? itemPlayOrder(doc, item.order, item.id).slides
+    : playOrder(doc, null).slides;
 }
 
 /** What makes each kind of page: D1's viewer pages (shared-pages.tsx), plain words in the tests. */
