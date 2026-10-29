@@ -97,11 +97,15 @@ describe('the checks', () => {
     await person.request(PERSON);
     s.press(s.list.linksFor(PERSON)?.approve ?? '');
     const { grant } = value(await person.redeem(PERSON, s.list.tokenFor(PERSON) ?? ''));
+    // With its mode (Session 55: approved by the link as it was first offered, Simple) and its own time, echoed.
     expect(value(await person.check(grant, { ...NO_ACTIVITY, shows: 2 }))).toEqual({
       status: 'in',
       owner: false,
       recorded: false,
       endsAt: null,
+      mode: 'simple',
+      why: null,
+      at: expect.any(Number) as unknown,
     });
     const owner = clientOf(s, 'client-owner');
     const me = s.grant(PLACEHOLDER_APPROVER, placeholderComputer('client-owner'));
@@ -109,6 +113,33 @@ describe('the checks', () => {
     expect(value(await owner.revoke(me, PERSON))).toEqual({ status: 'revoked' });
     s.list.move(6000);
     expect(value(await person.check(grant, NO_ACTIVITY))).toMatchObject({ status: 'revoked', owner: false });
+  });
+
+  it('keep the answer as the list signed it, and read it back only when it is the list’s own, for this computer (Session 55)', async () => {
+    const s = await stand();
+    const person = clientOf(s, 'client-kept');
+    const grant = s.grant(PERSON, placeholderComputer('client-kept'), { mode: 'simple' });
+    const r = await person.check(grant, NO_ACTIVITY);
+    if (!r.ok || !r.signed) throw new Error('No signed answer');
+    const kept = person.readKept(r.signed);
+    expect(kept).toEqual({
+      status: 'in',
+      owner: false,
+      endsAt: null,
+      mode: 'simple',
+      serverTime: r.serverTime,
+      at: r.value.at,
+    });
+    // Its text changed (Simple made Pro), its signature taken away, or read by another computer: not believed.
+    expect(
+      person.readKept({ ...r.signed, payload: r.signed.payload.replace('"simple"', '"pro"') }),
+    ).toBeNull();
+    expect(person.readKept({ ...r.signed, sig: '' })).toBeNull();
+    expect(clientOf(s, 'client-another').readKept(r.signed)).toBeNull();
+    // Another call's answer (a status), signed by the list all the same: not a check's, not believed.
+    const status = await person.status(PERSON);
+    if (!status.ok || !status.signed) throw new Error('No signed answer');
+    expect(person.readKept(status.signed)).toBeNull();
   });
 
   it('sign each call with a new nonce and a rising `at`, and only the signed calls carry a mac', async () => {

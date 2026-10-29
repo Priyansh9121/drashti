@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { accessComputer, computerIdOf } from '../../src/main/access/identity';
-import { ACCESS_FILE, AccessStore, storedAccess } from '../../src/main/access/store';
+import { ACCESS_FILE, AccessStore, grantOf, storedAccess } from '../../src/main/access/store';
 import type { AccessComputer, AccessGrant } from '../../src/shared/access-protocol';
 import {
   callBody,
@@ -39,6 +39,8 @@ export interface AccessOptions {
   hardwareId?: string;
   /** The version this Drashti says it is (a test's DRASHTI_TEST_VERSION); by default the app's own. */
   version?: string;
+  /** How its Gmail may use Drashti (Session 55): Pro (the default, so every spec runs as before) or Simple. */
+  mode?: 'pro' | 'simple';
 }
 
 /** The version of the Drashti the tests start (an earlier build's, when DRASHTI_E2E_APP_DIR names one). */
@@ -167,7 +169,7 @@ export async function letInBeforeStart(
   // the list keeps what a token used in that Drashti would have kept.
   const computer = accessComputer(computerIdOf(hardwareId), o.version ?? appVersion(), process.platform);
   if (as !== 'locked' && (wasForgotten !== undefined || !existsSync(join(userData, ACCESS_FILE))))
-    letIn(userData, standIn, computer, gmailFor(as, standIn), as === 'owner');
+    letIn(userData, standIn, computer, gmailFor(as, standIn), as === 'owner', o.mode ?? 'pro');
   return {
     env: {
       DRASHTI_TEST_ACCESS_URL: standIn.url,
@@ -190,8 +192,9 @@ function letIn(
   computer: AccessComputer,
   gmail: string,
   owner: boolean,
+  mode: 'pro' | 'simple',
 ): AccessGrant {
-  const grant = standIn.grant(gmail, computer);
+  const grant = standIn.grant(gmail, computer, { mode });
   new AccessStore(userData).save(storedAccess({ grant, computerId: computer.id, owner, since: Date.now() }));
   return grant;
 }
@@ -222,9 +225,49 @@ export function hardwareIdOf(userData: string): string {
   return k.hardwareId;
 }
 
-/** Move the list's clock on (a token or link running out). Drashti's own clock and its 2 minutes are untouched. */
-export function moveListClock(standIn: AccessStandIn, ms: number): void {
+/**
+ * Move the list's clock on (a token or link running out, a length ending, the list a year ahead of this computer).
+ * Drashti's own clock and its 2 minutes are untouched. Every computer let in is seen as the clock moves, as the Drashtis
+ * running on it would have checked meanwhile (Session 55: 15 days with no check end a computer's grant), but those of
+ * the Gmails in `quiet`, which stay silent through it.
+ */
+export function moveListClock(standIn: AccessStandIn, ms: number, o: { quiet?: string[] } = {}): void {
   standIn.list.move(ms);
+  standIn.list.inTouch(o.quiet ?? []);
+}
+
+/**
+ * The list's answer that this data folder's Drashti keeps (access.json) made one heard `agoMs` ago (Session 55): a
+ * check signed by the stand-in list for this computer, made then by this computer's clock, as a start that long after
+ * its last answer finds it.
+ */
+export function answerHeardAgo(userData: string, agoMs: number): void {
+  const k = known.get(userData);
+  if (!k) throw new Error('That data folder was never started by launchApp.');
+  const store = new AccessStore(userData);
+  const read = store.read();
+  if (read.status !== 'ok') throw new Error('No access kept in that data folder.');
+  const kept = read.value;
+  const computer = accessComputer(computerIdOf(k.hardwareId), appVersion(), process.platform);
+  const at = Date.now() - agoMs;
+  const { body } = callBody('check', computer, { at, activity: kept.activity }, grantOf(kept));
+  const signed = k.standIn.list.handle(JSON.stringify(body));
+  const a = readAnswer(signed, k.standIn.publicKey);
+  if (a['status'] !== 'in')
+    throw new Error(`The stand-in did not let that computer in: ${String(a['status'])}`);
+  store.save({
+    ...kept,
+    answer: {
+      status: 'in',
+      owner: a['owner'] === true,
+      heardAt: at,
+      serverTime: a.serverTime,
+      endsAt: typeof a['endsAt'] === 'number' ? a['endsAt'] : null,
+      mode: a['mode'] === 'simple' ? 'simple' : 'pro',
+      signed,
+    },
+    offlineMs: 0,
+  });
 }
 
 /** The list stops answering (as with no internet): every call waits for an answer that never comes. */

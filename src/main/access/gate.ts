@@ -1,4 +1,5 @@
 import type { AccessPhase, AccessReason } from '../../shared/access';
+import type { AccessMode } from '../../shared/access-protocol';
 
 /*
  * Whether this computer is let in (Session 54, access by Gmail): the one answer every part of the main process asks
@@ -21,9 +22,21 @@ export interface AccessState {
   reason: AccessReason | null;
   /** While 'warning': when the stop comes, in ms on the main process's monotonic clock (never the computer's). */
   stopsAt: number | null;
+  /**
+   * How this computer's Gmail may use Drashti, as the list last said (Session 55, the owner's decision of 29 Oct 2026):
+   * Simple holds it in Simple Mode, with no way to Pro Mode (src/main/mode-keeper.ts). Pro before any answer.
+   */
+  mode: AccessMode;
 }
 
-let state: AccessState = { phase: 'checking', gmail: null, owner: false, reason: null, stopsAt: null };
+let state: AccessState = {
+  phase: 'checking',
+  gmail: null,
+  owner: false,
+  reason: null,
+  stopsAt: null,
+  mode: 'pro',
+};
 const listeners = new Set<(state: AccessState) => void>();
 
 export function accessState(): AccessState {
@@ -38,6 +51,11 @@ export function isLetIn(): boolean {
 /** The owner's computer, let in: the only one that sees the Access List. */
 export function isOwner(): boolean {
   return isLetIn() && state.owner;
+}
+
+/** This computer may use Simple Mode only (Session 55): the list's last answer said Simple. */
+export function simpleAccess(): boolean {
+  return state.mode === 'simple';
 }
 
 /** Hear of every change; returns a way to stop hearing. */

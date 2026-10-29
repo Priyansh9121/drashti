@@ -10,6 +10,7 @@ import {
   ACCESS_LIMITS,
   ACCESS_LINK_MS,
   ACCESS_MAC_PREFIX,
+  ACCESS_MODES,
   ACCESS_OWNER_OPS,
   ACCESS_PUBLIC_OPS,
   ACCESS_REQUEST_STATUSES,
@@ -33,13 +34,13 @@ import {
  */
 
 describe('the access list’s copy of the protocol', () => {
-  it('keeps Drashti’s numbers: checks every 15 s, stop after an hour with no answer, tokens 3 days, links 7 days, the limits', () => {
+  it('keeps Drashti’s numbers: checks every 15 s, 15 days with no answer (the list’s own too, Session 55), tokens 3 days, links 7 days, the limits', () => {
     const p = core.PROTOCOL;
     expect(p.version).toBe(ACCESS_VERSION);
     expect(p.checkEveryMs).toBe(ACCESS_CHECK_EVERY_MS);
     expect(p.checkEveryMs).toBe(15_000);
     expect(p.stopAfterMs).toBe(ACCESS_STOP_AFTER_MS);
-    expect(p.stopAfterMs).toBe(3_600_000);
+    expect(p.stopAfterMs).toBe(15 * 24 * 3_600_000);
     expect(p.tokenMs).toBe(ACCESS_TOKEN_MS);
     expect(p.tokenMs).toBe(3 * 24 * 3600_000);
     expect(p.linkMs).toBe(ACCESS_LINK_MS);
@@ -51,6 +52,8 @@ describe('the access list’s copy of the protocol', () => {
     const p = core.PROTOCOL;
     expect(p.publicOps).toEqual(ACCESS_PUBLIC_OPS);
     expect(p.ownerOps).toEqual(ACCESS_OWNER_OPS);
+    expect(p.ownerOps).toContain('mode');
+    expect(p.modes).toEqual(ACCESS_MODES);
     expect(p.statuses).toEqual(ACCESS_STATUSES);
     expect(p.checkStatuses).toEqual(ACCESS_CHECK_STATUSES);
     expect(p.requestStatuses).toEqual(ACCESS_REQUEST_STATUSES);

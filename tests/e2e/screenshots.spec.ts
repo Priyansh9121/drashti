@@ -2553,12 +2553,13 @@ test('access by Gmail, the lock screen: Request Access with a placeholder Gmail,
 
 test('access by Gmail, live: the bar saying when access ends, the bar with no internet while the show goes on, then the stop once access is removed (Session 54)', async () => {
   test.setTimeout(180_000);
-  // A check every 6 s with 2 s to answer (test switches), the stop an hour after the last answer, as it is, and the
-  // line once three checks in a row have had no answer (Session 55: about 2 minutes, a few seconds here).
+  // A check every 6 s with 2 s to answer (test switches), the stop 15 days after the last answer, as it is (the line
+  // says "14 days 23 hours"), and the line once three checks in a row have had no answer (Session 55: about 2
+  // minutes, a few seconds here).
   const { app, access: list } = await launchApp({
     DRASHTI_TEST_ACCESS_CHECK_MS: '6000',
     DRASHTI_TEST_ACCESS_TIMEOUT_MS: '2000',
-    DRASHTI_TEST_ACCESS_STOP_MS: '3600000',
+    DRASHTI_TEST_ACCESS_STOP_MS: String(15 * 24 * 3_600_000),
     DRASHTI_TEST_ACCESS_BAR_MS: '12000',
   });
   const watch = closedWatch(app);

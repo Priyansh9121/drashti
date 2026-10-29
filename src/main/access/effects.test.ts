@@ -18,10 +18,11 @@ const at = (phase: AccessState['phase']): AccessState => ({
   owner: false,
   reason: phase === 'stopped' ? 'revoked' : null,
   stopsAt: null,
+  mode: 'pro',
 });
 
 afterEach(() => {
-  setAccessState({ phase: 'checking', gmail: null, owner: false, reason: null, stopsAt: null });
+  setAccessState({ phase: 'checking', gmail: null, owner: false, reason: null, stopsAt: null, mode: 'pro' });
 });
 
 function setup(o: { live?: boolean; recording?: boolean; failing?: string } = {}) {

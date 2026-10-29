@@ -12,9 +12,9 @@ const TWO_MINUTES = 2 * 60_000;
  */
 
 describe('the node’s own 2 minutes', () => {
-  it('are 2 minutes, whatever Main keeps working for without the internet (an hour, 28 Oct 2026)', () => {
+  it('are 2 minutes, whatever Main keeps working for without the internet (15 days since 29 Oct 2026; an hour from 28 Oct)', () => {
     expect(NODE_HEARD_MAIN_WITHIN_MS).toBe(TWO_MINUTES);
-    expect(ACCESS_STOP_AFTER_MS).toBe(60 * 60_000);
+    expect(ACCESS_STOP_AFTER_MS).toBe(15 * 24 * 60 * 60_000);
   });
 });
 

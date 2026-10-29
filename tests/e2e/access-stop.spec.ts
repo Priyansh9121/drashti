@@ -6,15 +6,20 @@ import { expect, test } from '@playwright/test';
 import {
   ACCESS_REMOVED_TEXT,
   LOCK_REASON_TEXT,
-  NO_ANSWER_STOP_TITLE,
+  NO_CONTACT_COME_BACK_TEXT,
+  NO_CONTACT_STOP_TEXT,
+  NO_CONTACT_STOP_TITLE,
   STOPPED_REFUSAL,
 } from '../../src/shared/access';
 import { expectNoSeriousA11yIssues } from './a11y';
 import {
   answerAgain,
+  answerHeardAgo,
   closedWatch,
   holdListClock,
+  moveListClock,
   newStandIn,
+  ownerCall,
   PLACEHOLDER_PERSON,
   revoke,
   standInOf,
@@ -41,20 +46,21 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Live checks (Session 54, access by Gmail, E3): Drashti checks its access before it opens and while open; revoked
  * (in the Access List or typed into the Sheet), rejected or unknown, everything stops at once in the main process
  * (the controls behind one plain message with only Quit, every request refused whatever page asks, the screens fading
- * to black, the stream and recording ended). With no answer (no internet; the owner's decision of 28 Oct 2026), Drashti
- * keeps working, the stream and recording included, a bar in the window's flow over Pro and Simple Mode saying how
- * long, for up to an hour from the last answer, then the same stop; started with no answer, it opens only within that
- * hour of an answer that let it in (Try Again otherwise); quit and started again at once it opens at once; a data folder
- * copied to another computer does not let that computer in. The stand-in list on 127.0.0.1; checks every 6 s and "the
- * hour" 20 s here (test switches a packaged Drashti never reads), so no test waits an hour.
+ * to black, the stream and recording ended). With no answer (no internet; the owner's decisions of 28 and 29 Oct 2026),
+ * Drashti keeps working, the stream and recording included, a line under the top bar in Pro and Simple Mode saying how
+ * long, for up to 15 days from the last answer, then it stops as a revoke stops it, saying to ask for access again;
+ * started with no answer, it opens only within those 15 days of an answer that let it in; quit and started again at once
+ * it opens at once; a data folder copied to another computer does not let that computer in. The stand-in list on
+ * 127.0.0.1; checks every 6 s and "the 15 days" 20 s here (test switches a packaged Drashti never reads), so no test
+ * waits; the list's own 15 days are moved on its clock.
  *
- * Session 55 (the owner's decision of 29 Oct 2026): a start within the hour of an answer that let it in opens at once,
- * the list asked in the background (a revoke heard then stops it at that answer); the bar is one line under the top
- * bar, "Can’t reach the access list: Drashti keeps working for N minutes more.", only once there has been no answer for
- * about 2 minutes (a few seconds here) and three checks in a row have had none, in a strip kept for it, so nothing in
- * the window moves when it comes or goes and it is never over a control; and when the computer's network comes back
- * (a file stands in for the network here, DRASHTI_TEST_NETWORK_FILE), the list is asked at once, a check waiting on the
- * old network given up.
+ * Session 55 (the owner's decisions of 29 Oct 2026): a start within the 15 days of an answer that let it in opens at
+ * once, the list asked in the background (a revoke heard then stops it at that answer); the line, "Can’t reach the
+ * access list: Drashti keeps working for 14 days 6 hours more.", shorter as it runs down, only once there has been no
+ * answer for about 2 minutes (a few seconds here) and three checks in a row have had none, in a strip kept for it, so
+ * nothing in the window moves when it comes or goes and it is never over a control; and when the computer's network
+ * comes back (a file stands in for the network here, DRASHTI_TEST_NETWORK_FILE), the list is asked at once, a check
+ * waiting on the old network given up.
  */
 
 const FAST = {
@@ -105,9 +111,12 @@ async function expectStopped(win: Page, title: string, timeout = 20_000): Promis
     expect(await tryIt(win, what), what).toContain(STOPPED_REFUSAL);
 }
 
-/** The line's words, the owner's own (Session 55). */
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
+/** The line's words, the owner's own (Session 55): days and hours, hours and minutes, minutes, or less than a minute. */
 const LINE =
-  /^Can’t reach the access list: Drashti keeps working for (\d+ minutes?|less than a minute) more\.$/u;
+  /^Can’t reach the access list: Drashti keeps working for (\d+ days?( \d+ hours?)?|\d+ hours?( \d+ minutes?)?|\d+ minutes?|less than a minute) more\.$/u;
 
 /**
  * Checks every 2 s, each given 1 s, and the bar only after 12 s with no answer (and three checks missed): so two missed
@@ -308,33 +317,83 @@ test('with no answer: no bar at the first missed checks; after 2 minutes (12 s h
   }
 });
 
-test('with no answer for the hour (30 s here), the stop, the line said first; the list answering later opens nothing', async () => {
-  test.setTimeout(150_000);
-  const {
-    app,
-    win,
-    access: list,
-  } = await showing({
-    ...QUICK,
-    DRASHTI_TEST_ACCESS_BAR_MS: '6000',
-    DRASHTI_TEST_ACCESS_STOP_MS: '30000',
-  });
+test('with no answer for 15 days (30 s here), it stops as a revoke stops it, saying to ask for access again, the line said first; the list answering later opens nothing; started again, its lock screen says so with Request Access, and given access again it opens', async () => {
+  test.setTimeout(180_000);
+  const env = { ...QUICK, DRASHTI_TEST_ACCESS_BAR_MS: '6000', DRASHTI_TEST_ACCESS_STOP_MS: '30000' };
+  const { app, win, userData, access: list } = await showing(env);
   const watch = closedWatch(app);
   try {
     stopAnswering(list);
     await expect(win.getByTestId('access-offline-notice')).toHaveText(LINE, { timeout: 20_000 });
-    await expectStopped(win, NO_ANSWER_STOP_TITLE, 40_000);
-    await expect(win.getByTestId('access-stopped')).toHaveAttribute('data-reason', 'no-answer');
+    await expectStopped(win, NO_CONTACT_STOP_TITLE, 40_000);
+    const stopped = win.getByTestId('access-stopped');
+    await expect(stopped).toHaveAttribute('data-reason', 'no-contact');
+    await expect(stopped).toContainText(NO_CONTACT_STOP_TEXT);
+    await expect(stopped).toContainText(NO_CONTACT_COME_BACK_TEXT);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    await expectFits(stopped, 'the stop after 15 days at 1024 × 645');
+    await expectNoSeriousA11yIssues(win, 'the stop after 15 days at 1024 × 645');
     // The list answering again later opens nothing.
     answerAgain(list);
-    await holdStill(
-      () => win.getByTestId('access-stopped').isVisible(),
-      8000,
-      'the list answering again opens nothing',
-    );
+    await holdStill(() => stopped.isVisible(), 8000, 'the list answering again opens nothing');
     await quitFromTheStop(watch, win);
   } finally {
     if (!watch.closed()) await app.close();
+  }
+  // The list's own 15 days pass with no check from this computer: its grant ends there too ("No contact for 15 days").
+  moveListClock(list, 15 * DAY + HOUR, { quiet: [PLACEHOLDER_PERSON] });
+  const again = await relaunchApp(userData, env);
+  try {
+    const lock = await lockPage(again.app);
+    const reason = lock.getByTestId('access-reason');
+    await expect(reason).toHaveAttribute('data-reason', 'no-contact', { timeout: 20_000 });
+    await expect(reason).toContainText(LOCK_REASON_TEXT['no-contact']);
+    // Request Access is there to ask again; Try Again would change nothing.
+    await expect(lock.getByTestId('access-request')).toBeVisible();
+    await expect(lock.getByTestId('access-retry')).toHaveCount(0);
+    expect(list.list.sheet.find('Computers', 'Gmail', PLACEHOLDER_PERSON)).toMatchObject({
+      'Why ended': 'no-contact',
+    });
+    await expectFits(lock.getByTestId('access-lock'), 'the lock screen after 15 days');
+    await expectNoSeriousA11yIssues(lock, 'the lock screen after 15 days');
+    // The owner gives access again: the new token lets this computer in.
+    expect(ownerCall(list, 'regrant', { target: PLACEHOLDER_PERSON }).ok).toBe(true);
+    const token = list.list.tokenFor(PLACEHOLDER_PERSON) ?? '';
+    await lock.getByRole('tab', { name: 'I Have a Token' }).click();
+    await lock.getByTestId('access-gmail').fill(PLACEHOLDER_PERSON);
+    await lock.getByTestId('access-token').fill(token);
+    await lock.getByTestId('access-redeem').click();
+    await operatorReady(await operatorPage(again.app));
+  } finally {
+    await again.app.close();
+  }
+});
+
+test('the line in days and hours: started with no internet 18 hours after an answer that let it in, Drashti opens at once and says it keeps working for 14 days 5 hours more', async () => {
+  test.setTimeout(150_000);
+  // The real 15 days (the other tests here make them shorter).
+  const env = { ...QUICK, DRASHTI_TEST_ACCESS_BAR_MS: '6000', DRASHTI_TEST_ACCESS_STOP_MS: String(15 * DAY) };
+  const first = await launchApp(env);
+  await operatorReady(await operatorPage(first.app));
+  await first.app.close();
+  const list = standInOf(first.userData);
+  // Its last answer heard 18 hours ago (a check the list signed then), and no internet now.
+  answerHeardAgo(first.userData, 18 * HOUR);
+  stopAnswering(list);
+  const { app } = await relaunchApp(first.userData, env);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    expect(app.windows().filter((w) => w.url().includes('lock.html'))).toEqual([]);
+    const line = win.getByTestId('access-offline-notice');
+    await expect(line).toHaveText(
+      'Can’t reach the access list: Drashti keeps working for 14 days 5 hours more.',
+      { timeout: 30_000 },
+    );
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    await oneLineOverNothing(win, 'the line in days and hours at 1024 × 645');
+  } finally {
+    await app.close();
   }
 });
 
@@ -424,7 +483,7 @@ test('the network coming back: the list asked at once, a check waiting on the ol
   }
 });
 
-test('started again with no internet within the hour of an answer that let it in: Drashti opens at once, with no lock window and no wait, and says so in one line once three checks in a row had no answer', async () => {
+test('started again with no internet within the 15 days of an answer that let it in: Drashti opens at once, with no lock window and no wait, and says so in one line once three checks in a row had no answer', async () => {
   test.setTimeout(150_000);
   const env = { ...QUICK, DRASHTI_TEST_ACCESS_BAR_MS: '6000', DRASHTI_TEST_ACCESS_STOP_MS: '600000' };
   const first = await launchApp(env);
@@ -454,7 +513,7 @@ test('started again with no internet within the hour of an answer that let it in
   }
 });
 
-test('started again within the hour after a revoke: Drashti opens at once, and stops at the list’s first answer', async () => {
+test('started again within the 15 days after a revoke: Drashti opens at once, and stops at the list’s first answer', async () => {
   test.setTimeout(120_000);
   const first = await launchApp(FAST);
   await operatorReady(await operatorPage(first.app));
@@ -475,32 +534,31 @@ test('started again within the hour after a revoke: Drashti opens at once, and s
   }
 });
 
-test('started with no internet after the hour, Drashti does not open: Try Again opens it once the list answers', async () => {
+test('started with no internet after the 15 days (20 s here), Drashti does not open: its lock screen says to ask for access again; still let in by the list, it opens by itself once the list answers', async () => {
   test.setTimeout(150_000);
   const first = await launchApp(FAST);
   await operatorReady(await operatorPage(first.app));
   await first.app.close();
   const list = standInOf(first.userData);
   stopAnswering(list);
-  // "The hour" (20 s here) passes, Drashti closed: nothing asks the list meanwhile.
+  // "The 15 days" (20 s here) pass, Drashti closed: nothing asks the list meanwhile.
   const asked = list.calls.length;
   await holdStill(() => list.calls.length === asked, 21_000, 'Drashti closed asks the list nothing');
   const { app } = await relaunchApp(first.userData, FAST);
   try {
     const lock = await lockPage(app);
-    await expect(lock.getByTestId('access-reason')).toHaveAttribute('data-reason', 'no-answer', {
+    await expect(lock.getByTestId('access-reason')).toHaveAttribute('data-reason', 'no-contact', {
       timeout: 20_000,
     });
-    await expect(lock.getByTestId('access-reason')).toContainText(LOCK_REASON_TEXT['no-answer']);
+    await expect(lock.getByTestId('access-reason')).toContainText(LOCK_REASON_TEXT['no-contact']);
     expect(app.windows().filter((w) => !w.url().includes('lock.html'))).toEqual([]);
-    await expectFits(lock.getByTestId('access-lock'), 'the lock screen with no answer');
-    await expectNoSeriousA11yIssues(lock, 'the lock screen with no answer');
-    // Try Again with still no answer: still not open.
-    await lock.getByTestId('access-retry').click();
-    await expect(lock.getByTestId('access-retry')).toHaveText('Try Again', { timeout: 20_000 });
+    await expectFits(lock.getByTestId('access-lock'), 'the lock screen after 15 days with no answer');
+    await expectNoSeriousA11yIssues(lock, 'the lock screen after 15 days with no answer');
+    // Still no answer: still not open (it asks by itself every 6 s here).
+    await letTimePass(lock, 7000, 'a try with no answer');
     expect(app.windows().filter((w) => !w.url().includes('lock.html'))).toEqual([]);
+    // The list answers, and its own 15 days are not up: it lets this computer in, and Drashti opens by itself.
     answerAgain(list);
-    await lock.getByTestId('access-retry').click();
     await operatorReady(await operatorPage(app));
   } finally {
     await app.close();
@@ -614,7 +672,7 @@ test('a data folder copied to another computer does not let that computer in, an
   await back.app.close();
 });
 
-test('with no internet the stream and the recording go on, until the hour (45 s here) is up', async () => {
+test('with no internet the stream and the recording go on, until the 15 days (45 s here) are up', async () => {
   test.setTimeout(180_000);
   const ffmpeg = testFfmpeg();
   // CI fetches FFmpeg first (scripts/fetch-ffmpeg.mjs): there, a missing one is a failure, not a skip.
@@ -661,8 +719,8 @@ test('with no internet the stream and the recording go on, until the hour (45 s 
     expect(s.recording.state).toBe('recording');
     expect(statSync(received).size).toBeGreaterThan(before.sent);
     expect(recorded()).toBeGreaterThan(before.kept);
-    // The hour up: the stop, the stream and the recording ended.
-    await expectStopped(win, NO_ANSWER_STOP_TITLE, 60_000);
+    // The 15 days up: the stop, the stream and the recording ended.
+    await expectStopped(win, NO_CONTACT_STOP_TITLE, 60_000);
     const kept = () =>
       JSON.parse(readFileSync(join(userData, 'stream-state.json'), 'utf8')) as {
         live: boolean;
