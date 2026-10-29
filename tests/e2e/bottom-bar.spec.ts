@@ -1,16 +1,22 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { dropboxStandIn, fileLink } from './dropbox-stand-in';
 import type { PageGlobals } from './helpers';
 import { launchApp, openLibrary, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import { makeTestTone } from './test-media';
 
 /*
- * The bottom bar (Session 55, Part 13). The bar of clears is smaller, in one row at 1024 × 645
+ * The bottom bar and the Audio panel (Session 55, Part 13). The bar of clears is smaller, in one row at 1024 × 645
  * (CI's operator window) and at 1280 × 720, with room above it for Part 8's quick bar: Clear all F1, Slide F2,
  * Background F3, Audio F5, Messages F6, Ticker F7, Wallpaper F12 and Black-out B; F4 and F8 do nothing. A button
  * whose layer has nothing up is dimmed, so what is live shows at a glance. The Wallpaper puts the chosen wallpaper
  * up instead of the picture (black until Part 6 brings wallpapers) and takes it off, as the Logo did; Simple
- * Mode's too. Placeholder slides only.
+ * Mode's too. Audio lists its audio playlists directly, with no Music heading and no ? of its own; with none it
+ * asks for one: Create playlist, Import sounds…, From a Link…, or sounds dropped there. Placeholder slides only.
  */
 
 const BAR = [
@@ -147,4 +153,89 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(wallpaper).not.toHaveText(/is on/u);
   await app.close();
+});
+
+test('Audio lists its audio playlists directly, with no Music heading or ? of its own; with none it asks for one', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  for (const [width, height] of [
+    [1024, 645],
+    [1280, 720],
+  ] as const) {
+    await win.setViewportSize({ width, height });
+    const group = win.getByTestId('audio-group');
+    await expect(group.getByRole('heading', { name: 'Music' })).toHaveCount(0);
+    await expect(group.getByRole('button', { name: /^What is this\? Music/u })).toHaveCount(0);
+    // None yet: it asks for one, in so many words.
+    const empty = group.getByTestId('music-empty');
+    await expect(empty).toBeVisible();
+    for (const name of ['Create playlist', 'Import sounds…', 'From a Link…'])
+      await expect(empty.getByRole('button', { name }), name).toBeVisible();
+    await expect(empty).toContainText('drop');
+  }
+  await expectNoSeriousA11yIssues(win, 'Audio with no audio playlists');
+  // From a Link…: the link dialog, for a sound.
+  await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
+  await expect(win.getByTestId('link-kind-youtube')).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('link-kind-youtube')).toHaveCount(0);
+  // Create playlist: one, named in place, then listed straight under Audio.
+  await win.getByTestId('music-empty').getByRole('button', { name: 'Create playlist' }).click();
+  const name = win.getByRole('textbox', { name: 'Name of the audio playlist' });
+  await expect(name).toBeFocused();
+  await name.fill('Placeholder before sabha');
+  await name.press('Enter');
+  await expect(
+    win
+      .getByTestId('audio-group')
+      .getByTestId('music-playlist')
+      .filter({ hasText: 'Placeholder before sabha' }),
+  ).toHaveAttribute('aria-current', 'true');
+  await expect(win.getByTestId('music-empty')).toHaveCount(0);
+  await app.close();
+});
+
+test('From a Link… in Audio: a sound from a Dropbox link goes into a new audio playlist (a local stand-in, never the internet)', async () => {
+  test.setTimeout(150_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-audio-link-'));
+  const tone = makeTestTone(join(work, 'Placeholder link tone.wav'), { seconds: 3, hz: 440 });
+  const standIn = await dropboxStandIn(
+    { toneAAAAAAAAAAA: { name: 'Placeholder link tone.wav', body: readFileSync(tone), type: 'audio/wav' } },
+    {},
+  );
+  try {
+    const { app } = await launchApp({
+      DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+      DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Downloads'),
+    });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await win.setViewportSize({ width: 1280, height: 720 });
+    await win.getByTestId('music-empty').getByRole('button', { name: 'From a Link…' }).click();
+    const dialog = win.getByTestId('link-dialog');
+    await expect(dialog).toBeVisible();
+    await win.getByTestId('link-kind-dropbox').click();
+    await win.getByTestId('link-text').fill(fileLink('toneAAAAAAAAAAA', 'Placeholder link tone.wav'));
+    await expect(win.getByTestId('link-name')).toHaveText('Placeholder link tone.wav');
+    // Where it goes: into Audio, never a playlist of the slides.
+    await expect(win.getByTestId('link-into-audio')).toContainText('a new audio playlist');
+    await win.getByTestId('link-download').click();
+    // Downloaded and imported: in a new audio playlist, listed straight under Audio.
+    await expect
+      .poll(
+        async () =>
+          (await win.evaluate(() => (globalThis as PageGlobals).drashti.music.view())).playlists.map((p) =>
+            p.tracks.map((t) => t.name),
+          ),
+        { timeout: 60_000 },
+      )
+      .toEqual([[expect.stringMatching(/^Placeholder link tone/u)]]);
+    await expect(win.getByTestId('audio-group').getByTestId('music-playlist')).toHaveCount(1);
+    expect(standIn.requests.every((r) => r.host.includes('dropbox'))).toBe(true);
+    await app.close();
+  } finally {
+    await standIn.close();
+  }
 });

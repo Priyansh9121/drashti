@@ -110,16 +110,10 @@ export const PANEL_HELP = {
     text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off means this computer’s hall screens are switched off, and Stage off that its stage screens show the audience picture; Turn on brings them back where they were, asking nothing. A display plugged in sets itself, said in a line under the top bar; when a change made by hand puts a screen on the display with these controls, Keep these screens? undoes it in 15 seconds unless you press Keep.',
     guide: '**Along the bottom:**',
   },
-  music: {
-    title: 'Music',
-    doc: 'operator',
-    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play: the time bar shows the track’s time left, and a click or a drag along it moves in the track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). A slide with its own sound stops the music.',
-    guide: '**Music before the sabha.**',
-  },
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha, listed here: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and a click or a drag along its time bar moves in its track, as Back 15 s, Forward 15 s and Last 10 s do (small icons in the row with Play and Pause). Clear audio along the bottom, or F5, stops whatever sound is playing.',
     guide: '**Audio.** In the right column',
   },
   tools: {

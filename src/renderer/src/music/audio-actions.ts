@@ -1,5 +1,6 @@
 import type { DragEvent } from 'react';
 import { itemsMadeBy } from '../../../shared/import-items';
+import type { NewItem } from '../../../shared/playlists';
 import { useConvert } from '../library/convert-store';
 import { copyFor } from '../library/converting';
 import { importPaths } from '../library/import-store';
@@ -47,20 +48,26 @@ export async function addSoundsTo(playlistId: string | null, mediaIds: readonly 
     });
 }
 
+/**
+ * The sounds an import made, into the audio playlist (a new one when null): a sound Drashti converted by itself goes
+ * in as its copy (Session 50); one still converting moves to its copy once that is done, as everything that uses it
+ * does. A download from Audio's From a Link… too (Session 55, links/link-store.ts).
+ */
+export async function addSoundsMade(playlistId: string | null, made: readonly NewItem[]): Promise<void> {
+  const jobs = useConvert.getState().jobs;
+  await addSoundsTo(
+    playlistId,
+    made.flatMap((i) => (i.kind === 'media' ? [copyFor(i.mediaId, jobs)] : [])),
+  );
+}
+
 /** Files from the computer: imported as any import is, then the sounds among them into the audio playlist. */
 export async function importSoundsInto(playlistId: string | null, paths: readonly string[]): Promise<void> {
   if (paths.length === 0) return;
   const result = await importPaths([...paths], undefined, { report: false });
   if (!result?.ok) return;
   const report = await window.drashti.library.getImportReport(result.run.id);
-  const made = itemsMadeBy(report?.items ?? [], [...paths]);
-  // A sound Drashti converted by itself goes in as its copy (Session 50); one still converting moves to its
-  // copy once that is done, as everything that uses it does.
-  const jobs = useConvert.getState().jobs;
-  await addSoundsTo(
-    playlistId,
-    made.flatMap((i) => (i.kind === 'media' ? [copyFor(i.mediaId, jobs)] : [])),
-  );
+  await addSoundsMade(playlistId, itemsMadeBy(report?.items ?? [], [...paths]));
 }
 
 /** Import (Audio's +): the system's dialog for sounds, then into the audio playlist shown (a new one when none). */

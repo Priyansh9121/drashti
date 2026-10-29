@@ -268,6 +268,8 @@ function SaveIn({ view, locked }: { view: LinkView; locked: boolean }) {
  */
 function AddWhenImported({ view }: { view: LinkView }) {
   const addTo = useLinks((s) => s.addTo);
+  // From Audio's From a Link… (Session 55, Part 13): its sounds go into Audio, never a playlist of the slides.
+  const forAudio = useLinks((s) => s.forAudio);
   const tree = usePlaylists((s) => s.tree);
   // The playlists could not be read (Session 39): said, with Try again, never "There are no playlists yet".
   const unread = usePlaylists((s) => s.unread.playlists);
@@ -279,6 +281,13 @@ function AddWhenImported({ view }: { view: LinkView }) {
       <p className="text-xs text-muted" data-testid="link-folder-playlist">
         When it’s imported, the folder becomes a playlist of its own, “{view.look.name}”, in its folders’
         order: each folder’s videos, then its PowerPoint files, with a header for each folder inside.
+      </p>
+    );
+  if (forAudio)
+    return (
+      <p className="text-xs text-muted" data-testid="link-into-audio">
+        When it’s imported, its sound goes into Audio
+        {forAudio.playlistId === null ? ', in a new audio playlist' : ', in the audio playlist shown'}.
       </p>
     );
   const target = addToNow({ addTo, view });
@@ -673,6 +682,7 @@ export function LinkDialog({ platform }: { platform: string }) {
   const error = useLinks((s) => s.error);
   const choice = useLinks((s) => s.choice);
   const addTo = useLinks((s) => s.addTo);
+  const forAudio = useLinks((s) => s.forAudio);
   const simple = useMode((s) => s.mode === 'simple');
   // Read so where the download goes, to begin with, follows the playlists (Session 54).
   usePlaylists((s) => s.tree);
@@ -690,8 +700,8 @@ export function LinkDialog({ platform }: { platform: string }) {
   const youtubeReady =
     !video ||
     (choice.permission && (choice.type === 'mp3' || video.heights.some((h) => h.height <= view.maxHeight)));
-  // A new playlist for it is named first (Session 54); a folder makes its own.
-  const named = view.look?.shape === 'folder' || !unnamed(addToNow({ addTo, view }));
+  // A new playlist for it is named first (Session 54); a folder makes its own; from Audio, Audio takes it (Session 55).
+  const named = view.look?.shape === 'folder' || forAudio !== null || !unnamed(addToNow({ addTo, view }));
   const canDownload =
     !busy &&
     view.saved === null &&

@@ -112,8 +112,9 @@ for (const id of ['dhaja', 'tiranga']) {
  * DRASHTI_E2E_APP_DIR) and written here; this build must draw the same. Session 44 moved one thing on purpose:
  * the left column is one section now (the playlists have it all, the library in a sheet over them), so the
  * first section under the header is the whole column, 587 px tall at 1280 by 720 (247 before). Session 55 moved
- * two on purpose: the top bar's Themes button went (Part 12), so LIVE's line is longer, 625 px (516 before); and the
- * bar of clears is 16 px less tall (Part 13), so that column is 603 px tall. Their colours are as they were.
+ * three on purpose: the top bar's Themes button went (Part 12), so LIVE's line is longer, 625 px (516 before); the
+ * bar of clears is 16 px less tall (Part 13), so that column is 603 px tall; and Audio's Music heading went (Part
+ * 13), so the first panel heading is the Stage screen panel's. Their colours are as they were.
  */
 const AT_9ED5D00: Record<string, unknown> = {
   black: {
@@ -126,7 +127,7 @@ const AT_9ED5D00: Record<string, unknown> = {
     row: ['oklab(0.76608 -0.0191589 -0.106575 / 0.7)', 'rgb(38, 38, 43)'],
     heading: ['rgb(200, 200, 207)'],
     under: [0, 48, 300, 603],
-    headingText: 'Music',
+    headingText: 'Stage screen',
   },
   white: {
     header: ['rgb(248, 248, 250)', 'rgb(17, 18, 22)', 'rgb(212, 214, 220)', [0, 0, 1280, 48]],
@@ -138,7 +139,7 @@ const AT_9ED5D00: Record<string, unknown> = {
     row: ['oklab(0.488178 -0.0212675 -0.21611 / 0.7)', 'rgb(223, 225, 230)'],
     heading: ['rgb(67, 70, 78)'],
     under: [0, 48, 300, 603],
-    headingText: 'Music',
+    headingText: 'Stage screen',
   },
 };
 
