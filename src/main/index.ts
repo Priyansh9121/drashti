@@ -90,6 +90,7 @@ import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
 import type { MediaMarkers } from '../shared/markers';
 import { mediaMarkersSchema, NO_MARKERS } from '../shared/markers';
+import { evenGainDb } from '../shared/sound';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
@@ -118,6 +119,8 @@ import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
 import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
+import { SoundRepo } from './db/sound';
+import { SoundPass } from './sound/sound-pass';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { clearDeckLeftovers } from './import/deck/leftovers';
@@ -1414,6 +1417,19 @@ function start(): void {
   let mediaMarkers: (mediaId: string) => MediaMarkers | null = () => null;
   /** A media item's kind while it is there to play (Session 50, the box's; the media repo, made further down). */
   let mediaKind: (mediaId: string) => 'image' | 'video' | 'audio' | null = () => null;
+  // How each file sounds (Session 55, Part 7: even loudness, main/sound/): from the library, each kept here until it is
+  // measured again or switched, as the engine asks at every change about the files sounding.
+  const soundRepo = new SoundRepo(db);
+  const soundKnown = new Map<string, { gain: number; silent: boolean } | null>();
+  const soundOf = (mediaId: string): { gain: number; silent: boolean } | null => {
+    if (!soundKnown.has(mediaId)) {
+      const s = soundRepo.soundOf(mediaId);
+      soundKnown.set(mediaId, s ? { gain: s.gain, silent: s.silent } : null);
+    }
+    return soundKnown.get(mediaId) ?? null;
+  };
+  /** Music steps aside under a video with sound (Session 55, Part 7, K): Audio's switch, kept with the library; on by default. */
+  let stepsAside = settings.get('music.stepsAside') !== false;
   /** Picture in picture's remembered place (Session 50): where a new box goes, kept in the library. */
   const pipPlaces = new PipPlaces({ settings, write: laterSetting });
   /** Audio playlists (made further down): the media library changing may change them. */
@@ -1461,6 +1477,9 @@ function start(): void {
       inputNamed: (name) => videoInputs?.named(name) ?? null,
       // A timer shown alone (Session 50) in the words of the library's default theme.
       timerLook: () => themeLook(themes.themeOrDefault(null), 1920, 1080).style,
+      // How the files sounding play (Session 55, Part 7): each one's even loudness, and the music stepping aside.
+      soundOf: (mediaId) => soundOf(mediaId),
+      stepsAside: () => stepsAside,
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -2977,6 +2996,20 @@ function start(): void {
       if (run) conversions.convertImported(importRepo.report(run.id));
       // Each import, counted for the Access List (Session 54): never what.
       if (run) behind?.service.count('imports');
+      // Its videos and sounds measured a moment later (Session 55, Part 7); a From a Link… import's videos trimmed past
+      // their black and silence too. Bytes it brought back may be new: every file's sound is read from the library again.
+      if (run) {
+        soundKnown.clear();
+        const items = importRepo.report(run.id)?.items ?? [];
+        // By the files' own paths, known before the import began (its run's id comes to the link service after this).
+        const media = (fromLink: boolean) =>
+          items.flatMap((i) =>
+            i.target?.kind === 'media' && linkPaths.has(i.sourcePath) === fromLink ? [i.target.id] : [],
+          );
+        soundPass.imported(media(false), false);
+        soundPass.imported(media(true), true);
+        for (const i of items) linkPaths.delete(i.sourcePath);
+      }
     },
     failRun: (runId, paths, message) => {
       importRepo.failRun(runId, paths, message);
@@ -3072,6 +3105,117 @@ function start(): void {
   });
   stops.add('conversions', () => {
     conversions.close();
+  });
+  // ---- Drashti's own sound with everything else (Session 55, Part 7; main/sound/, shared/sound.ts) ----------------
+  // Each video's and sound's loudness and length read once in the background (an import's first, the library's a
+  // while after the start), and a From a Link… video's points set past its black and silence (never on air).
+  /** The files a From a Link… download gave the import, by path, until the import has read them. */
+  const linkPaths = new Set<string>();
+  const soundView = () => ({ stepsAside, evenOff: soundRepo.evenOff() });
+  // Tests only (never a packaged Drashti): the library's files measured sooner after the start, or not at all ('off').
+  const testSoundPass = app.isPackaged ? undefined : sw('DRASHTI_TEST_SOUND_PASS');
+  const soundPass = new SoundPass({
+    repo: soundRepo,
+    mediaDir,
+    ffmpegPath: () =>
+      testSoundPass === 'off'
+        ? null
+        : findFfmpeg({
+            packaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+            platform: process.platform,
+            arch: process.arch,
+            override: sw('DRASHTI_FFMPEG'),
+          }),
+    busy: () => (streaming.inUse() || testOnAir ? 'the stream is on air or recording' : null),
+    write: (key, run) => {
+      later.write(key, run);
+    },
+    measured: (mediaId, lengthMs) => {
+      soundKnown.delete(mediaId);
+      engine.refreshSound();
+      // Its length known now (P3): what plays it says its time left.
+      if (lengthMs !== null) engine.learnLength(mediaId, lengthMs);
+    },
+    keepPoints: (mediaId, points) => {
+      const was = media.markersOf(mediaId) ?? NO_MARKERS;
+      if (was.startMs !== null || was.endMs !== null) return false;
+      if (!media.setMarkers(mediaId, { ...was, startMs: points.startMs, endMs: points.endMs })) return false;
+      engine.refreshMarkers(mediaId);
+      return true;
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    ...(testSoundPass !== undefined && /^\d+$/u.test(testSoundPass)
+      ? { afterStartMs: Number(testSoundPass) }
+      : {}),
+  });
+  stops.add('sound pass', () => {
+    soundPass.close();
+  });
+  soundPass.startLibrary();
+  handle(IPC.sound.view, () => soundView());
+  /** A video's or sound's loudness as measured, and its own switch (the Even loudness notice, the tests). */
+  const fileSound = (mediaId: string) => {
+    const known = soundRepo.soundOf(mediaId);
+    if (!known) return null;
+    const loudness = known.loudness;
+    return {
+      even: known.even,
+      measured: loudness !== null,
+      lufs: loudness?.lufs ?? null,
+      gainDb: loudness && known.even ? evenGainDb(loudness) : 0,
+    };
+  };
+  handle(IPC.sound.file, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? fileSound(mediaId) : null,
+  );
+  handle(IPC.sound.setStepsAside, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can change Audio’s switches.' };
+    stepsAside = on;
+    laterSetting('music.stepsAside', on);
+    engine.refreshSound();
+    log.info(`Sound: the music ${on ? 'steps aside' : 'no longer steps aside'} under a video with sound`);
+    const view = soundView();
+    sendToOperator(IPC.sound.changed, view);
+    return { ok: true as const, view };
+  });
+  handle(IPC.sound.setEven, (e, mediaId, on) => {
+    if (
+      !fromOperator(e) ||
+      typeof mediaId !== 'string' ||
+      !MEDIA_ID_PATTERN.test(mediaId) ||
+      typeof on !== 'boolean'
+    )
+      return { ok: false as const, message: 'Only the operator window can change a file’s loudness.' };
+    if (!soundRepo.setEven(mediaId, on))
+      return { ok: false as const, message: 'Even loudness is for a video or a sound in the library.' };
+    soundKnown.delete(mediaId);
+    engine.refreshSound();
+    sendToOperator(IPC.sound.changed, soundView());
+    log.info(`Sound: a file plays ${on ? 'at the even loudness' : 'as it is'}`);
+    const now = fileSound(mediaId);
+    return now
+      ? { ok: true as const, ...now }
+      : { ok: false as const, message: 'That file is not in the library.' };
+  });
+  handle(IPC.sound.trimEdges, async (e, mediaId) => {
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
+      return { ok: false as const, message: 'Only the operator window can trim a video.' };
+    const found = await soundPass.edgesNow(mediaId);
+    if (!found.ok) return found;
+    const was = media.markersOf(mediaId) ?? NO_MARKERS;
+    const before = { startMs: was.startMs, endMs: was.endMs };
+    if (!found.points) return { ok: true as const, points: null, before };
+    if (!media.setMarkers(mediaId, { ...was, startMs: found.points.startMs, endMs: found.points.endMs }))
+      return { ok: false as const, message: 'Only a video in the library has black and silence to trim.' };
+    engine.refreshMarkers(mediaId);
+    log.info('Sound: a video’s start and end points were set past its black and silence');
+    return { ok: true as const, points: found.points, before };
   });
   handle(IPC.media.convert, (e, ids) =>
     fromOperator(e)
@@ -3544,7 +3688,11 @@ function start(): void {
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
     importFiles: async (paths) => {
+      // Its videos' start and end points go past their black and silence (Session 55, Part 7): known by their paths,
+      // as the import ends before its run comes back here.
+      for (const path of paths) linkPaths.add(path);
       const result = await imports.start(paths, {});
+      if (!result.ok) for (const path of paths) linkPaths.delete(path);
       return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
     },
     changed: (view) => {

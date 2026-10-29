@@ -101,6 +101,7 @@ import type { MidiAsk, MidiResult, MidiSeen, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { StartMarks } from './start-marks';
+import type { EvenResult, FileSoundView, SoundView, SoundViewResult, TrimEdgesResult } from './sound';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -495,6 +496,19 @@ export interface DrashtiBridge {
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
+  };
+  /**
+   * Drashti's own sound with everything else (Session 55, Part 7): Audio's Music steps aside, a file's Even loudness,
+   * and a video's points set past its black and silence (the operator window's).
+   */
+  sound: {
+    view(): Promise<SoundView>;
+    /** A video's or sound's loudness as measured, and its own switch; null for no such file. */
+    file(mediaId: string): Promise<FileSoundView | null>;
+    setStepsAside(on: boolean): Promise<SoundViewResult>;
+    setEven(mediaId: string, on: boolean): Promise<EvenResult>;
+    trimEdges(mediaId: string): Promise<TrimEdgesResult>;
+    onChanged(listener: (view: SoundView) => void): () => void;
   };
   /** Where sound plays. */
   audio: {

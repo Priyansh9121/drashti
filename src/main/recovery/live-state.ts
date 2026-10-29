@@ -243,21 +243,23 @@ const savedSchema = z.object({
   // A timer shown alone (Session 50); files saved without one have none.
   timer: z.object({ timerId: idSchema }).nullable().optional(),
 });
+const soundLayerFields = z.object({
+  startedAt: z.number(),
+  durationMs: z.number().positive().optional(),
+  // An audio playlist's track (Session 14): it comes back where it would be by now, or paused where it was.
+  music: musicStartSchema.extend({ index: z.number().int().min(0).max(999) }).optional(),
+  pausedAtMs: z.number().min(0).optional(),
+  seek: seekSchema.optional(),
+  // A sound set to play across slides (Session 54): it comes back with its slides, and its deck's fades.
+  across: z.object({ presentationId: idSchema, lastIndex: z.number().int().min(0).max(100_000) }).optional(),
+  fades: z.object({ inMs: z.number().min(0), outMs: z.number().min(0) }).optional(),
+  // A slide's own sound (Session 55, Part 7).
+  cue: z.literal(true).optional(),
+});
 const audioLayerSchema = z.intersection(
-  audioChoiceSchema,
-  z.object({
-    startedAt: z.number(),
-    durationMs: z.number().positive().optional(),
-    // An audio playlist's track (Session 14): it comes back where it would be by now, or paused where it was.
-    music: musicStartSchema.extend({ index: z.number().int().min(0).max(999) }).optional(),
-    pausedAtMs: z.number().min(0).optional(),
-    seek: seekSchema.optional(),
-    // A sound set to play across slides (Session 54): it comes back with its slides, and its deck's fades.
-    across: z
-      .object({ presentationId: idSchema, lastIndex: z.number().int().min(0).max(100_000) })
-      .optional(),
-    fades: z.object({ inMs: z.number().min(0), outMs: z.number().min(0) }).optional(),
-  }),
+  z.intersection(audioChoiceSchema, soundLayerFields),
+  // A slide's own sound or a deck's own soundtrack over the music (Session 55, Part 7): it comes back over it.
+  z.object({ over: z.intersection(audioChoiceSchema, soundLayerFields).optional() }),
 );
 const markSchema = z.object({ session: z.string().min(1).max(64) });
 

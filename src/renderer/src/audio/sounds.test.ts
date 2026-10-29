@@ -154,12 +154,65 @@ describe('the sounds the show makes', () => {
       soundsOf(
         state({ audio: { id: 'x', title: 'Dhun', mediaId: 'dhun', volume: 0.4, loop: true, startedAt: 9 } }),
       ),
-    ).toEqual([{ key: 'audio:dhun@9', mediaId: 'dhun', startedAt: 9, loop: true, volume: 0.4 }]);
+      // The music steps aside under a video with sound (Session 55, Part 7).
+    ).toEqual([{ key: 'audio:dhun@9', mediaId: 'dhun', startedAt: 9, loop: true, volume: 0.4, aside: true }]);
     expect(
       soundsOf(
         state({ audio: { id: 'x', title: 'Silent', mediaId: null, volume: 1, loop: false, startedAt: 9 } }),
       ),
     ).toEqual([]);
+  });
+
+  it('plays each file at its even loudness, as the engine says (Session 55, Part 7)', () => {
+    const playing = state({
+      audio: { id: 'x', title: 'Dhun', mediaId: 'dhun', volume: 0.4, loop: true, startedAt: 9 },
+      background: { kind: 'media', mediaId: 'bg', media: 'video', fit: 'fill', loop: false, startedAt: 1 },
+    });
+    const sounds = soundsOf({
+      ...playing,
+      sound: { stepsAside: true, gains: { dhun: 0.5, bg: 2.512 }, silent: [] },
+    });
+    expect(sounds.map((s) => [s.mediaId, s.gain, s.aside])).toEqual([
+      ['dhun', 0.5, true],
+      ['bg', 2.512, undefined],
+    ]);
+    // A state that says nothing (an older one): as it is.
+    expect(soundsOf(playing).map((s) => s.gain)).toEqual([undefined, undefined]);
+  });
+
+  it('plays a slide’s or a deck’s own sound over the music, the music stepping aside (Session 55, Part 7)', () => {
+    const sounds = soundsOf(
+      state({
+        audio: {
+          id: 'x',
+          title: 'Dhun',
+          mediaId: 'dhun',
+          volume: 0.4,
+          loop: true,
+          startedAt: 9,
+          over: {
+            id: 'cue',
+            title: 'Placeholder cue',
+            mediaId: 'cue',
+            volume: 0.8,
+            loop: false,
+            startedAt: 20,
+            clip: { startMs: 500, endMs: null },
+          },
+        },
+      }),
+    );
+    expect(sounds).toEqual([
+      { key: 'audio:dhun@9', mediaId: 'dhun', startedAt: 9, loop: true, volume: 0.4, aside: true },
+      {
+        key: 'over:cue@20',
+        mediaId: 'cue',
+        startedAt: 20,
+        loop: false,
+        volume: 0.8,
+        clip: { startMs: 500, endMs: null },
+      },
+    ]);
   });
 
   it('makes no sound for images, and keeps sound through black-out', () => {

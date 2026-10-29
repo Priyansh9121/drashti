@@ -71,6 +71,8 @@ import { MessagesPanel } from './MessagesPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { undoStage, useStageLayouts } from '../stage/stage-layouts-store';
 import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
+import { MusicStepsAside } from '../sound/MusicStepsAside';
+import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
 import { LowerThirdEditor } from '../lower-thirds/LowerThirdEditor';
@@ -129,6 +131,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectSingleKeys();
     connectMode();
     connectAppearance();
+    // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
+    connectSound();
     void startMidi();
     // The window opens settled with what its first data shows (ui/motion.ts).
     void Promise.allSettled([loadLibrary(), loadTree()]).then(firstData);
@@ -368,6 +372,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   data-testid="audio-group"
                 >
                   <MusicPanel platform={platform} />
+                  {/* Music steps aside under a video with sound (Session 55, Part 7). */}
+                  <MusicStepsAside />
                 </PanelGroup>
                 <StageMessageControl />
                 <MessagesPanel />

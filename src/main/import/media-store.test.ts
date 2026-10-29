@@ -369,6 +369,29 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
     ]);
   });
 
+  it('keeps each video’s and sound’s length FFmpeg read, before it has played (Session 55, Part 7, P3)', async () => {
+    const t = checking();
+    await t.take('Placeholder clip.mp4', 'placeholder mp4');
+    await t.take('Placeholder dhun.flac', 'placeholder flac');
+    await t.take('Placeholder darshan.png', 'placeholder png');
+    const lengths = () => t.db.prepare('SELECT name, duration_ms FROM media ORDER BY name').all();
+    expect(lengths()).toEqual([
+      { name: 'Placeholder clip.mp4', duration_ms: 1000 },
+      { name: 'Placeholder darshan.png', duration_ms: null },
+      { name: 'Placeholder dhun.flac', duration_ms: 1000 },
+    ]);
+    // Imported before (no length then): the same bytes again keep the length read now, never a length known already.
+    t.db.prepare("UPDATE media SET duration_ms = NULL WHERE name = 'Placeholder clip.mp4'").run();
+    t.db.prepare("UPDATE media SET duration_ms = 999 WHERE name = 'Placeholder dhun.flac'").run();
+    await t.take('Placeholder clip.mp4', 'placeholder mp4');
+    await t.take('Placeholder dhun.flac', 'placeholder flac');
+    expect(lengths()).toEqual([
+      { name: 'Placeholder clip.mp4', duration_ms: 1000 },
+      { name: 'Placeholder darshan.png', duration_ms: null },
+      { name: 'Placeholder dhun.flac', duration_ms: 999 },
+    ]);
+  });
+
   it('turns down a .ts file that is no video (TypeScript, say), copying nothing; takes a transport stream', async () => {
     const t = checking({ reads: {} });
     expect(await t.take('Placeholder notes.ts', 'export const placeholder = 1;\n')).toEqual({

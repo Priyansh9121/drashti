@@ -77,6 +77,11 @@ export interface StagedMedia {
   read?: boolean;
   /** To be converted by itself once it is in the library (Session 50). */
   convert?: boolean;
+  /**
+   * How long it is, as FFmpeg read it (Session 55, Part 7, P3): kept with it at import, so a stage layout's time left
+   * and the last 10 seconds know it before it has played. Left out where FFmpeg did not say.
+   */
+  durationMs?: number;
 }
 
 const GiB = 1024 ** 3;
@@ -172,7 +177,7 @@ export class MediaStore {
     kind: MediaKind,
     file: string,
     probe: MediaProbe,
-  ): Promise<Pick<StagedMedia, 'probe' | 'read' | 'convert'>> {
+  ): Promise<Pick<StagedMedia, 'probe' | 'read' | 'convert' | 'durationMs'>> {
     if (kind === 'image' || !this.options.readInfo) return { probe };
     const info = await this.options.readInfo(file).catch(() => null);
     if (!info || info.timedOut) return { probe };
@@ -187,7 +192,17 @@ export class MediaStore {
       },
       read: true,
       ...(verdict === 'convert' ? { convert: true } : {}),
+      // Its length, kept with it (Session 55, P3).
+      ...(info.durationMs !== null && info.durationMs > 0 ? { durationMs: info.durationMs } : {}),
     };
+  }
+
+  /** A video's or sound's length FFmpeg read at import (Session 55, P3), kept where the library knows none yet. */
+  private keepLength(id: string, staged: StagedMedia): void {
+    if (staged.durationMs === undefined || staged.kind === 'image') return;
+    this.db
+      .prepare('UPDATE media SET duration_ms = ? WHERE id = ? AND duration_ms IS NULL')
+      .run(staged.durationMs, id);
   }
 
   /**
@@ -330,6 +345,7 @@ export class MediaStore {
     if (existing) {
       // Imported before playability was known (or, Session 50, read by FFmpeg now): record it.
       this.markPlayable(existing.id, staged);
+      this.keepLength(existing.id, staged);
       // Converted already (Session 51): its copy, which plays, is what this import adds.
       const copy = this.copyOf(existing.id);
       // Imported as media this time (a deck's page dropped in on its own): it shows in the Media list
@@ -387,6 +403,7 @@ export class MediaStore {
         // A page Drashti drew from a deck is the deck's, not the Media list's (migration 37).
         source.kind === 'drashti' ? 0 : 1,
       );
+    this.keepLength(id, staged);
     return {
       outcome: 'imported',
       mediaId: id,
@@ -498,6 +515,7 @@ export class MediaStore {
         stored.probe.format,
         mediaId,
       );
+    this.keepLength(mediaId, stored);
     return {
       outcome: 'imported',
       mediaId,
