@@ -333,7 +333,7 @@ test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the orig
 
   // From the library's Import menu this time.
   await openLibrary(win);
-  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'From a Link…' }).click();
   await win.getByTestId('link-kind-dropbox').click();
   await win.getByTestId('link-text').fill(fileLink('bigAAAAAAAAAAAA', 'Placeholder 2160p.mp4'));

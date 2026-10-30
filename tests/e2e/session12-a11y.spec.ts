@@ -121,6 +121,11 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   // Simple Mode, with today's line.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode').getByTestId('today-calendar')).toBeVisible();
+  // Its empty playlist settles as it arrives (ui/motion.ts, Session 55's Simple Mode): checked once it has, never part
+  // way through (axe reads a word fading in as a word too faint to read).
+  const empty = win.getByTestId('simple-mode').locator('.lamp-empty');
+  await expect(empty.first()).toBeVisible();
+  for (const place of await empty.all()) await expect(place).toHaveCSS('opacity', '1');
   await expectNoSeriousA11yIssues(win, 'Simple Mode with today’s line');
   await app.close();
 });

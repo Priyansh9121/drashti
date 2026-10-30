@@ -38,7 +38,7 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
   await expect(templatesTab).toHaveCount(0);
   await expect(filters).toHaveCount(0);
   await expect(win.getByTestId('playlists').getByRole('heading', { name: 'Playlists' })).toBeVisible();
-  await expect(win.getByRole('button', { name: 'Import…' })).toBeVisible();
+  await expect(win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' })).toBeVisible();
   expect(await menuChecked(app)).toBe(false);
   // A playlist's menu has no slots or templates either.
   await closeLibrary(win);
@@ -101,7 +101,7 @@ test('Import… offers Files… (everything Drashti imports), A Folder… and Fr
         (globalThis as { asked?: { properties?: string[]; filters?: { extensions: string[] }[] }[] }).asked ??
         [],
     );
-  const importButton = win.getByRole('button', { name: 'Import…' });
+  const importButton = win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' });
   await importButton.click();
   const menu = win.getByRole('menu');
   await expect(menu.getByRole('menuitem')).toHaveText(['Files…', 'A Folder…', 'From a Link…']);

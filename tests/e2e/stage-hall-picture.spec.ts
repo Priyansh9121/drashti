@@ -668,7 +668,11 @@ test('a tablet’s stage page draws the box from pictures at the width it draws 
     await expect(box.getByTestId('stage-audience')).toHaveAttribute('data-hall-group', hallGroup);
     // The picture at the width the tablet draws it (Session 54, D1; its small preview before), as the phone
     // remote's live picture draws it: never a file in pieces.
-    await expect(box.locator(`img[data-preview="shown"][data-media-id^="${pictureId}"]`)).toHaveCount(1, {
+    // The picture itself, not the blurred fill behind it (Session 55, Part 5: on a phone or tablet the fill is a
+    // preview of its own, in [data-blurred-fill]).
+    await expect(
+      box.locator(`img[data-preview="shown"][data-media-id^="${pictureId}"]:not([data-blurred-fill] *)`),
+    ).toHaveCount(1, {
       timeout: 30_000,
     });
     expect(loads.some((p) => p.startsWith(`/api/v1/media/${pictureId}`) && p.endsWith('/picture'))).toBe(
@@ -679,7 +683,7 @@ test('a tablet’s stage page draws the box from pictures at the width it draws 
     // Audience off on Drashti's computer: said in the box's corner, the picture kept.
     await audience(win, false);
     await expect(box.getByTestId('stage-audience-off')).toHaveText('Audience off');
-    await expect(box.locator('img[data-preview="shown"]')).toHaveCount(1);
+    await expect(box.locator('img[data-preview="shown"]:not([data-blurred-fill] *)')).toHaveCount(1);
     await audience(win, true);
     await expect(box.getByTestId('stage-audience-off')).toHaveCount(0);
 
