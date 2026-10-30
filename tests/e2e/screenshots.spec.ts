@@ -96,17 +96,23 @@ const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 // taking them (the operator window's display, or a real second one). Set only while this file's tests run:
 // loading the file to list its tests, as every run does, must change nothing, and the worker goes on to the
 // other files (where it would hide the appearance a test chose).
-const appearanceBefore = process.env['DRASHTI_TEST_APPEARANCE'];
-const windowedBefore = process.env['DRASHTI_WINDOWED_OUTPUTS'];
+//
+// One more, for what the pictures show (Session 55): a new library has the sample kirtan without the tests' Language
+// test slides, which Part 1 took out of Drashti (DRASHTI_TEST_NO_TEST_SLIDES).
+const PICTURES_ENV: Record<string, string> = {
+  DRASHTI_TEST_APPEARANCE: 'black',
+  DRASHTI_WINDOWED_OUTPUTS: '1',
+  DRASHTI_TEST_NO_TEST_SLIDES: '1',
+};
+const envBefore = Object.fromEntries(Object.keys(PICTURES_ENV).map((k) => [k, process.env[k]]));
 test.beforeAll(() => {
-  process.env['DRASHTI_TEST_APPEARANCE'] = 'black';
-  process.env['DRASHTI_WINDOWED_OUTPUTS'] = '1';
+  Object.assign(process.env, PICTURES_ENV);
 });
 test.afterAll(() => {
-  if (appearanceBefore === undefined) delete process.env['DRASHTI_TEST_APPEARANCE'];
-  else process.env['DRASHTI_TEST_APPEARANCE'] = appearanceBefore;
-  if (windowedBefore === undefined) delete process.env['DRASHTI_WINDOWED_OUTPUTS'];
-  else process.env['DRASHTI_WINDOWED_OUTPUTS'] = windowedBefore;
+  for (const [k, v] of Object.entries(envBefore)) {
+    if (v === undefined) Reflect.deleteProperty(process.env, k);
+    else process.env[k] = v;
+  }
 });
 
 /**
@@ -1931,11 +1937,14 @@ test('a stopped screen’s notice at the top of the window (Session 26h)', async
   const screenId = await setUpScreen(win, 'Placeholder hall', 0);
   const out = await outputPage(app);
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  // The sample kirtan up (Session 55: the tests' Language test slides are never in a picture).
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
+    const id =
+      (await d.library.listPresentations()).find((p) => p.name.startsWith('Sample kirtan'))?.id ?? '';
     await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
   });
+  await expect(win.getByTestId('live-text')).toContainText('Live: Sample kirtan (placeholder) · slide 1 of');
   // As a screen that kept failing does: given up on, until Try again.
   await app.evaluate((_electron, id) => {
     (globalThis as unknown as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp?.(id);
