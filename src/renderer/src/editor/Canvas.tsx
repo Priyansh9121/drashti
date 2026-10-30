@@ -1,6 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Rect, SlideElement } from '../../../shared/model';
+import type { Rect, SlideElement, TextElement, TextRun } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
@@ -37,6 +37,7 @@ import {
   snapResize,
   unionOf,
 } from './geometry';
+import type { TextPatch } from './ops';
 import {
   deleteElements,
   duplicateElements,
@@ -45,6 +46,7 @@ import {
   moveElements,
   rotateElements,
   scaleElements,
+  styleBox,
 } from './ops';
 import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
@@ -501,6 +503,38 @@ export function Canvas({ platform }: { platform: string }) {
     if (mod && e.key.toLowerCase() === 'a') {
       e.preventDefault();
       select(elements.map((x) => x.id));
+      return;
+    }
+    // ⌘B, ⌘I and ⌘U (Ctrl on Windows): the text boxes selected, bold, italic or underlined, and back (Session 55,
+    // Part 17a, as the Words group's buttons; while typing, the words selected: TextBoxEditor's keys).
+    const toggle = { b: 'bold', i: 'italic', u: 'underline' } as const;
+    const which =
+      mod && !e.altKey && !e.shiftKey ? toggle[e.key.toLowerCase() as keyof typeof toggle] : undefined;
+    if (which) {
+      const boxes = elements.filter(
+        (el): el is TextElement =>
+          el.kind === 'text' && selection.includes(el.id) && legacyFontOf(el) === null,
+      );
+      const first = boxes[0];
+      if (!first) return;
+      e.preventDefault();
+      const every = (has: (run: TextRun) => boolean) =>
+        (first.runs ?? []).some((r) => r.text.trim() !== '') &&
+        (first.runs ?? []).filter((r) => r.text.trim() !== '').every(has);
+      const patch: TextPatch =
+        which === 'bold'
+          ? { weight: first.style.fontWeight >= 650 ? 400 : 700 }
+          : which === 'italic'
+            ? { italic: !every((r) => r.italic === true) }
+            : { underline: !every((r) => r.underline === true) };
+      commit(
+        mapElements(
+          now.doc,
+          slide.id,
+          boxes.map((b) => b.id),
+          (el) => (el.kind === 'text' ? styleBox(el, patch) : el),
+        ),
+      );
       return;
     }
     if (mod && e.key.toLowerCase() === 'd' && selection.length > 0) {

@@ -251,6 +251,33 @@ describe('putting edited slides back', () => {
     expect(shown?.[1]).not.toHaveProperty('darken');
   });
 
+  it('keeps the Words group’s looks: underlined, struck through, glowing words and lines of a list, for the editor and the screens (Session 55, Part 17a)', () => {
+    const { repo, id } = stored();
+    const before = repo.content(id);
+    if (!before) throw new Error('missing');
+    const { doc } = editDocOf(before, 'Placeholder edit');
+    const box = slidesOf(doc)[1]?.elements[0];
+    if (box?.kind !== 'text') throw new Error('no box');
+    const styled: TextElement = {
+      ...box,
+      text: 'Placeholder one\nPlaceholder two',
+      style: { ...box.style, glow: { color: '#00ffcc', size: 20 } },
+      runs: [
+        { text: 'Placeholder one\n', underline: true, strike: true, list: 'gu' },
+        { text: 'Placeholder two', glow: null, list: 'gu', level: 1 },
+      ],
+    };
+    const slide = slidesOf(doc)[1];
+    if (slide) slide.elements = [styled];
+    repo.setContent(applySlideEdit(before, asSaved(doc)));
+    const after = repo.content(id);
+    if (!after) throw new Error('missing');
+    // The editor reads them back, and the screens get them with the slide.
+    expect(slidesOf(editDocOf(after, 'Placeholder edit').doc)[1]?.elements[0]).toEqual(styled);
+    const shown = repo.get(id)?.groups.flatMap((g) => g.slides.map((s) => s.slide));
+    expect(shown?.[1]?.elements[0]).toMatchObject({ style: styled.style, runs: styled.runs });
+  });
+
   it('keeps a deck’s slide as its import stored it, saving only Drashti’s transitions on it and its clicks (Session 54, C2)', () => {
     const { repo, id } = stored();
     const before = repo.content(id);

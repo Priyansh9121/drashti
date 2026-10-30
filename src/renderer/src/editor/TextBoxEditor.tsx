@@ -34,6 +34,7 @@ import {
   sameWords,
   splitLine,
   textSchema,
+  toggleWords,
   unlistAtStart,
   withRuns,
 } from './runs-doc';
@@ -263,6 +264,10 @@ export function TextBoxEditor({
               // A list's line further in, and back out (Session 55, Part 17a); elsewhere Tab is as it was.
               Tab: indentLine,
               'Shift-Tab': outdentLine,
+              // The words selected (or what is typed next) bold, italic, underlined, and back.
+              'Mod-b': toggleWords('bold', () => boxNow.current.style.fontWeight),
+              'Mod-i': toggleWords('italic', () => boxNow.current.style.fontWeight),
+              'Mod-u': toggleWords('underline', () => boxNow.current.style.fontWeight),
             }),
             keymap(baseKeymap),
             lists,

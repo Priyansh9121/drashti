@@ -17,6 +17,7 @@ import {
   selectedLook,
   splitLine,
   textSchema,
+  toggleWords,
   unlistAtStart,
   withRuns,
 } from './runs-doc';
@@ -370,5 +371,30 @@ describe('a box typed in and left as it was (Session 55, Part 17a)', () => {
         ]),
       ),
     ).toBe(false);
+  });
+});
+
+describe('⌘B, ⌘I and ⌘U while typing (Session 55, Part 17a)', () => {
+  it('turn the selected words bold, italic, underlined or struck through, and back', () => {
+    const el = box([{ text: 'Placeholder words here' }]);
+    let state = EditorState.create({ doc: docOf(schema, el), schema });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 13, 18)));
+    const press = (command: ReturnType<typeof toggleWords>) => {
+      command(state, (tr) => {
+        state = state.apply(tr);
+      });
+    };
+    const boxWeight = () => 500;
+    press(toggleWords('bold', boxWeight));
+    press(toggleWords('underline', boxWeight));
+    expect(runsOf(state.doc)[1]).toEqual({ text: 'words', weight: 700, underline: true });
+    press(toggleWords('bold', boxWeight));
+    press(toggleWords('italic', boxWeight));
+    press(toggleWords('strike', boxWeight));
+    press(toggleWords('underline', boxWeight));
+    expect(runsOf(state.doc)[1]).toEqual({ text: 'words', italic: true, strike: true });
+    // In a bold box, bold off is regular.
+    press(toggleWords('bold', () => 700));
+    expect(runsOf(state.doc)[1]).toEqual({ text: 'words', italic: true, strike: true, weight: 400 });
   });
 });

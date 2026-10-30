@@ -275,6 +275,31 @@ export function selectedLook(state: EditorState): Look {
   return looks[0] ?? {};
 }
 
+/**
+ * ⌘B, ⌘I and ⌘U while typing (Session 55, Part 17a): the selected words (or what is typed next) bold, italic or
+ * underlined, or struck through, and back. Bold off is the box's weight when that is not bold (the words follow the
+ * box), else regular.
+ */
+export function toggleWords(
+  which: 'bold' | 'italic' | 'underline' | 'strike',
+  boxWeight: () => number,
+): Command {
+  return (state, dispatch) => {
+    const look = selectedLook(state);
+    const box = boxWeight();
+    const patch: TextPatch =
+      which === 'bold'
+        ? { weight: (look.weight ?? box) >= 650 ? (box < 650 ? undefined : 400) : 700 }
+        : which === 'italic'
+          ? { italic: look.italic ? undefined : true }
+          : which === 'underline'
+            ? { underline: look.underline ? undefined : true }
+            : { strike: look.strike ? undefined : true };
+    dispatch?.(restyle(state, patch));
+    return true;
+  };
+}
+
 // ---- lists, line by line (Session 55, Part 17a) ------------------------------------------------
 
 /** Each line the selection touches: where it starts, and its attrs. */
