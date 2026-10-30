@@ -2,7 +2,7 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.14 (30 Oct 2026)
 
 A sabha runs differently now: the screens set themselves, the playlist is where things go live, and Simple Mode is for one projector. Some parts are taken out (the last line); nothing is deleted from a library. Sound now plays at one even level: set the mixer's channel once with a typical file. Update after a sabha, never on the day of one, and the node computers the same evening.
 
