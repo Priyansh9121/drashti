@@ -83,8 +83,8 @@ test('the wallpapers on a phone: listed under the playlist, one tap chooses one,
     // One tap chooses it, as the window's one click does; the window hears of it.
     await tile('Placeholder dusk').click();
     await expect.poll(async () => (await view(win)).chosenId).not.toBeNull();
-    const chosen = (await view(win)).wallpapers.find((w) => w.id === (await view(win)).chosenId);
-    expect(chosen?.name).toBe('Placeholder dusk');
+    const now = await view(win);
+    expect(now.wallpapers.find((w) => w.id === now.chosenId)?.name).toBe('Placeholder dusk');
     await expect(tile('Placeholder dusk')).toHaveAttribute('aria-pressed', 'true');
     // Chosen in the window: the phone follows.
     await win.evaluate(async () => {
