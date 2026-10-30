@@ -13,6 +13,7 @@ import {
   switchTo,
   useEditor,
 } from '../editor-store';
+import { keepCopiesWith, setCopied } from '../clipboard';
 import { SlideEditor } from '../SlideEditor';
 import { redoAny, undoAny } from '../TextBoxEditor';
 
@@ -38,6 +39,13 @@ export function EditorWindow() {
     });
     setCloseWindow(() => {
       void window.drashti.slideEditor.close();
+    });
+    // What was copied in an editor window before this one pastes here; what is copied here is kept for the next.
+    keepCopiesWith((copied) => {
+      void window.drashti.slideEditor.copy(copied);
+    });
+    void window.drashti.slideEditor.copied().then((copied) => {
+      if (copied) setCopied(copied);
     });
     const query = new URLSearchParams(location.search);
     const presentationId = query.get('presentation');

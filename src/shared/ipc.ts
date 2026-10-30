@@ -55,7 +55,14 @@ import type {
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Lang, RenderSlide, Transition } from './model';
-import type { EditDoc, EditSlidesOpen, EditSlidesResult, SaveSlidesResult, SlidesSaved } from './slide-edit';
+import type {
+  CopiedElements,
+  EditDoc,
+  EditSlidesOpen,
+  EditSlidesResult,
+  SaveSlidesResult,
+  SlidesSaved,
+} from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
@@ -604,6 +611,9 @@ export const IPC = {
     askClose: 'slideeditor:ask-close',
     /** main -> operator: slides were saved in the editor's window. */
     saved: 'slideeditor:saved',
+    /** The editor's elements copied, kept by main for the next window (and what is kept). */
+    copy: 'slideeditor:copy',
+    copied: 'slideeditor:copied',
   },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
@@ -1313,6 +1323,8 @@ export interface InvokeContract {
     result: { ok: true } | { ok: false; message: string };
   };
   [IPC.slideEditor.dirty]: { args: [dirty: boolean]; result: null };
+  [IPC.slideEditor.copy]: { args: [copied: CopiedElements]; result: null };
+  [IPC.slideEditor.copied]: { args: []; result: CopiedElements | null };
   [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };

@@ -6,12 +6,15 @@ import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import {
   dropFiles,
+  editorGroup,
   importAndGetIds,
   launchApp,
   openLibrary,
   operatorPage,
   operatorReady,
   showExtras,
+  slideEditorClosed,
+  slideEditorWindow,
 } from './helpers';
 import { makeTestVideo } from './test-media';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -108,11 +111,13 @@ test('a copied slide keeps its lines; one copy of the words', async () => {
   // A copied slide in the slide editor has the same lines in every language.
   const kirtanId = await open(win, KIRTAN);
   await win.getByTestId('edit-slides').click();
-  const slideEditor = win.getByTestId('slide-editor');
+  // The editor's own window (Session 55, Part 17a); Duplicate is in its Slides group.
+  const { ed, editor: slideEditor } = await slideEditorWindow(app);
   await expect(slideEditor.getByTestId('slide-panel')).toBeVisible();
+  await editorGroup(ed, 'Slides');
   await slideEditor.getByTestId('slide-duplicate').click();
   await slideEditor.getByTestId('save-slides').click();
-  await expect(slideEditor).toHaveCount(0);
+  await slideEditorClosed(app);
   const copied = await tracks(win, kirtanId);
   expect(copied).toHaveLength(4);
   expect(copied?.[1]).toEqual(copied?.[0]);
@@ -170,7 +175,7 @@ test('lyrics with lines in two scripts come in as a kirtan, and the editor calls
 
   // In the slide editor the box is in several languages, not one of them.
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
+  const { editor } = await slideEditorWindow(app);
   await editor.getByTestId('editor-canvas').locator('[data-element]').first().click();
   const lang = editor.getByTestId('field-lang');
   await expect(lang.locator('option:checked')).toHaveText('Several');

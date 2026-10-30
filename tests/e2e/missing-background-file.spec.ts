@@ -18,6 +18,8 @@ import {
   relaunchApp,
   savedLive,
   setUpScreen,
+  slideEditorClosed,
+  slideEditorWindow,
 } from './helpers';
 import { makeTestImage } from './test-media';
 
@@ -128,12 +130,13 @@ test('a missing file behind a slide: the background stays as it was, never black
 
   // The slide editor says so (a double-click on the live thumbnail opens it there); with nothing changed, Esc closes.
   await thumbs.nth(1).dblclick();
-  const editor = win.getByTestId('slide-editor');
+  // Its own window (Session 55, Part 17a).
+  const { ed, editor } = await slideEditorWindow(first.app);
   await expect(editor.getByTestId('background-file-missing')).toHaveText(
     `The file “${FILE}” is missing: the background stays as it was when this slide goes up.`,
   );
-  await win.keyboard.press('Escape');
-  await expect(editor).toHaveCount(0);
+  await ed.keyboard.press('Escape');
+  await slideEditorClosed(first.app);
 
   // Simple Mode: its picture of what is next says so before it goes up, and its LIVE says why, as Pro Mode's does.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));

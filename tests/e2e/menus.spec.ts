@@ -1,7 +1,15 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import {
+  editorGroup,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  slideEditorClosed,
+  slideEditorWindow,
+} from './helpers';
 
 /*
  * Menus from the keyboard (Session 25): the choice with the focus shows the focus ring, closing
@@ -73,20 +81,21 @@ test('Esc in a menu over the slide editor closes only the menu', async () => {
   await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  // The editor's own window (Session 55, Part 17a); Shape is in its Insert group.
+  const { ed, editor } = await slideEditorWindow(app);
+  await editorGroup(ed, 'Insert');
   // Nothing changed or chosen in the editor: an Esc that reached it would close it.
   const shape = editor.getByTestId('add-shape');
   await shape.focus();
-  await win.keyboard.press('Enter');
-  await expect(win.getByRole('menu', { name: 'Add a shape' })).toBeVisible();
-  await win.keyboard.press('Escape');
-  await expect(win.getByRole('menu')).toHaveCount(0);
+  await ed.keyboard.press('Enter');
+  await expect(ed.getByRole('menu', { name: 'Add a shape' })).toBeVisible();
+  await ed.keyboard.press('Escape');
+  await expect(ed.getByRole('menu')).toHaveCount(0);
   await expect(editor).toBeVisible();
   await expect(shape).toBeFocused();
   // The next Esc is the editor's own, and closes it (nothing changed).
-  await win.keyboard.press('Escape');
-  await expect(editor).toHaveCount(0);
+  await ed.keyboard.press('Escape');
+  await slideEditorClosed(app);
   await app.close();
 });
 

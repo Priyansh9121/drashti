@@ -1,7 +1,12 @@
 import { BrowserWindow, type IpcMainInvokeEvent, type Rectangle, type WebContents } from 'electron';
 import { type EventChannel, type EventContract, IPC } from '../../shared/ipc';
 import { idSchema } from '../../shared/model-schema';
-import { type EditSlidesOpen, SLIDE_EDITOR_TITLE } from '../../shared/slide-edit';
+import {
+  type CopiedElements,
+  copiedElementsSchema,
+  type EditSlidesOpen,
+  SLIDE_EDITOR_TITLE,
+} from '../../shared/slide-edit';
 import { isShownMenuKey } from '../shown-keys';
 import { handle } from '../ipc/handle';
 import { windowIcon } from '../windows/app-icon';
@@ -188,4 +193,14 @@ export function handleSlideEditor(o: {
     if (o.editor.isPage(e.sender)) o.editor.closeAsked();
     return null;
   });
+  // What the editor copied, kept while Drashti runs: it pastes into the next presentation's slides, in a window made
+  // for them (as it did between presentations when the editor was in the operator window).
+  let copied: CopiedElements | null = null;
+  handle(IPC.slideEditor.copy, (e, raw) => {
+    if (!o.editor.isPage(e.sender)) return null;
+    const parsed = copiedElementsSchema.safeParse(raw);
+    if (parsed.success) copied = parsed.data;
+    return null;
+  });
+  handle(IPC.slideEditor.copied, (e) => (o.editor.isPage(e.sender) ? copied : null));
 }

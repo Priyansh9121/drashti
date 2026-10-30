@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Locator, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +17,9 @@ import {
   outputPages,
   outputReady,
   setUpScreen,
+  sizeSlideEditor,
+  slideEditorClosed,
+  slideEditorWindow,
 } from './helpers';
 import { holdClock } from './placeholder-slides';
 import { makeTestTone, makeTestVideo } from './test-media';
@@ -510,8 +513,8 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
   });
 }
 
-/** Open the slide editor on a presentation, by its row in the library. */
-async function openEditor(win: Page, name: string): Promise<Locator> {
+/** Open the slide editor on a presentation, by its row in the library: its own window (Session 55, Part 17a). */
+async function openEditor(app: ElectronApplication, win: Page, name: string): Promise<{ ed: Page; editor: Locator }> {
   await openLibrary(win);
   await win
     .getByTestId('presentation-list')
@@ -519,28 +522,28 @@ async function openEditor(win: Page, name: string): Promise<Locator> {
     .filter({ hasText: name })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
-  return editor;
+  const opened = await slideEditorWindow(app);
+  await sizeSlideEditor(app, opened.ed, { width: 1600, height: 900 });
+  return opened;
 }
 
 /** In the slide editor: the video's own "Show the play bar on the screens", set as asked, then saved. */
-async function setPlayBar(win: Page, on: boolean): Promise<void> {
-  const editor = await openEditor(win, 'Placeholder Play Bar');
+async function setPlayBar(app: ElectronApplication, win: Page, on: boolean): Promise<void> {
+  const { ed, editor } = await openEditor(app, win, 'Placeholder Play Bar');
   // The video sits in the slide's top right quarter, over the words: a click in its middle chooses it.
   const canvas = editor.getByTestId('editor-canvas');
   const box = await canvas.boundingBox();
   const scale = Number(await canvas.getAttribute('data-scale'));
   if (!box) throw new Error('no canvas');
-  await win.mouse.click(box.x + 1440 * scale, box.y + 270 * scale);
+  await ed.mouse.click(box.x + 1440 * scale, box.y + 270 * scale);
   await expect(editor.getByTestId('inspector-media')).toBeVisible();
   const toggle = editor.getByTestId('field-play-bar');
   await expect(toggle).toHaveAttribute('aria-checked', String(!on));
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', String(on));
-  if (on) await expectNoSeriousA11yIssues(win, 'a video’s settings with its play bar');
+  if (on) await expectNoSeriousA11yIssues(ed, 'a video’s settings with its play bar');
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
 }
 
 test('the play bar on the screens: off unless ticked; ticked in the slide editor, both screens draw it along the bottom of the slide’s video, the same at the same moment, its mark following Pause and Play; unticked, gone', async () => {
@@ -573,7 +576,7 @@ test('the play bar on the screens: off unless ticked; ticked in the slide editor
   for (const o of screens) await expect(playBar(o)).toHaveCount(0);
 
   // Ticked: both screens draw it along the bottom of the video, playing (a pause mark, as a deck's video shows).
-  await setPlayBar(win, true);
+  await setPlayBar(app, win, true);
   const element = await win.evaluate(async (id) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(id);
     return doc?.groups[0]?.slides[0]?.slide.elements.find((e) => e.kind === 'video') ?? null;
@@ -620,7 +623,7 @@ test('the play bar on the screens: off unless ticked; ticked in the slide editor
   for (const o of screens) await expect(playBar(o)).toHaveAttribute('data-state', 'playing');
 
   // Unticked: gone from both screens, the video playing on.
-  await setPlayBar(win, false);
+  await setPlayBar(app, win, false);
   for (const o of screens) await expect(playBar(o)).toHaveCount(0);
   for (const o of screens) await expect(video(o)).toHaveCount(1);
   await app.close();

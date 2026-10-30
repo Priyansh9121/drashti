@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
 import {
+  editorGroup,
   holdStill,
   launchApp,
   NO_PLACEHOLDERS,
@@ -10,6 +11,8 @@ import {
   outputPage,
   outputReady,
   setUpScreen,
+  slideEditorClosed,
+  slideEditorWindow,
 } from './helpers';
 import { makeSlides } from './placeholder-slides';
 
@@ -213,11 +216,13 @@ test('the slide editor puts a Timer on a slide, styled as words, with its last m
     .getByRole('button', { name: /^Placeholder Editor Timer/ })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
+  // The editor's own window (Session 55, Part 17a); a Timer from its Insert group.
+  const { ed, editor } = await slideEditorWindow(app);
 
   // Timer, then the timer: on the slide, its time live, and chosen for the inspector.
+  await editorGroup(ed, 'Insert');
   await editor.getByTestId('add-timer').click();
-  await win.getByRole('menuitem', { name: 'Placeholder editor countdown (Countdown)' }).click();
+  await ed.getByRole('menuitem', { name: 'Placeholder editor countdown (Countdown)' }).click();
   await expect(editor.getByTestId('editor-slide').locator('[data-timer-element]')).toHaveAttribute(
     'data-time',
     '1:30',
@@ -228,7 +233,7 @@ test('the slide editor puts a Timer on a slide, styled as words, with its last m
   await section.getByTestId('field-timer-warn').check();
   await section.getByTestId('field-at-zero').selectOption('next');
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
 
   const timers = await win.evaluate(async (pid) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(pid);

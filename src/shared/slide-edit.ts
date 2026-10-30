@@ -160,6 +160,19 @@ export interface SlidesSaved {
   revisionId: string;
 }
 
+/** Elements copied in the slide editor, with the size of the slides they came from (Session 55: kept by main). */
+export interface CopiedElements {
+  elements: SlideElement[];
+  width: number;
+  height: number;
+}
+
+export const copiedElementsSchema: z.ZodType<CopiedElements> = z.object({
+  elements: z.array(slideElementSchema).max(500),
+  width: z.number().int().min(16).max(16384),
+  height: z.number().int().min(16).max(16384),
+});
+
 /** A slide as the editor has it, for "Make a theme from this slide". */
 export interface ThemeSlide {
   width: number;

@@ -56,7 +56,14 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { Lang, RenderSlide, Transition } from './model';
-import type { EditDoc, EditSlidesOpen, EditSlidesResult, SaveSlidesResult, SlidesSaved } from './slide-edit';
+import type {
+  CopiedElements,
+  EditDoc,
+  EditSlidesOpen,
+  EditSlidesResult,
+  SaveSlidesResult,
+  SlidesSaved,
+} from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
@@ -770,6 +777,9 @@ export interface DrashtiBridge {
     close(): Promise<null>;
     onAskClose(listener: () => void): () => void;
     onSaved(listener: (saved: SlidesSaved) => void): () => void;
+    /** What the editor copied, kept for the next editor window, and what is kept. */
+    copy(copied: CopiedElements): Promise<null>;
+    copied(): Promise<CopiedElements | null>;
   };
   lowerThirds: {
     list(): Promise<LowerThird[]>;

@@ -13,7 +13,7 @@ import { findSlide, mapSlide, newId } from './ops';
  * keep their place and size in proportion, their words scaled with them.
  */
 
-interface Copied {
+export interface Copied {
   elements: SlideElement[];
   /** The size of the slides they came from. */
   width: number;
@@ -21,6 +21,22 @@ interface Copied {
 }
 
 let copied: Copied | null = null;
+
+/**
+ * Since Session 55 (Part 17a) the editor has a window of its own, made for each presentation edited: what is copied is
+ * kept by the main process too (its window's page says so here), so it pastes into the next presentation's slides.
+ */
+let keep: ((c: Copied) => void) | null = null;
+
+/** Where copies are kept besides this page (the editor's window: the main process). */
+export function keepCopiesWith(kept: (c: Copied) => void): void {
+  keep = kept;
+}
+
+/** What was copied in an editor window before this one (the main process kept it). */
+export function setCopied(c: Copied | null): void {
+  copied = c === null ? null : structuredClone(c);
+}
 
 /** How far Paste moves elements whose place is taken (slide pixels). */
 const OFFSET = 24;
@@ -31,6 +47,7 @@ export function copyElements(doc: EditDoc, slideId: string, ids: readonly string
   const elements = slide?.elements.filter((el) => ids.includes(el.id)) ?? [];
   if (elements.length === 0) return 0;
   copied = { elements: structuredClone(elements), width: doc.width, height: doc.height };
+  keep?.(copied);
   return elements.length;
 }
 
