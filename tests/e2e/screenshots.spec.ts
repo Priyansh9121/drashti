@@ -97,12 +97,15 @@ const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 // loading the file to list its tests, as every run does, must change nothing, and the worker goes on to the
 // other files (where it would hide the appearance a test chose).
 //
-// One more, for what the pictures show (Session 55): a new library has the sample kirtan without the tests' Language
-// test slides, which Part 1 took out of Drashti (DRASHTI_TEST_NO_TEST_SLIDES).
+// Two more, for what the pictures show (Session 55): a new library has the sample kirtan without the tests' Language
+// test slides, which Part 1 took out of Drashti (DRASHTI_TEST_NO_TEST_SLIDES); and the Phones panel shows this computer
+// at a placeholder address and name, http://192.168.1.20:<port> and http://placeholder-mac.local:<port>, never the
+// real ones of the computer taking them (DRASHTI_TEST_NETWORK_SHOWN).
 const PICTURES_ENV: Record<string, string> = {
   DRASHTI_TEST_APPEARANCE: 'black',
   DRASHTI_WINDOWED_OUTPUTS: '1',
   DRASHTI_TEST_NO_TEST_SLIDES: '1',
+  DRASHTI_TEST_NETWORK_SHOWN: '192.168.1.20 placeholder-mac',
 };
 const envBefore = Object.fromEntries(Object.keys(PICTURES_ENV).map((k) => [k, process.env[k]]));
 test.beforeAll(() => {
