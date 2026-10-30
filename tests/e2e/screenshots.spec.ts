@@ -64,6 +64,7 @@ import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } from './nodes';
 import { releaseServer } from './release-server';
+import { holdClock } from './placeholder-slides';
 import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../../src/main/import/testing/make-deck';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
@@ -120,9 +121,12 @@ test.afterAll(() => {
 
 /**
  * A picture of the page; `hide` covers parts that must not be kept (a pairing
- * code and its QR code); `whole` takes all of a page that scrolls.
+ * code and its QR code); `whole` takes all of a page that scrolls; `held` takes
+ * what moves where it is now, held there by the screens' clock (a ticker's words:
+ * with its animation stopped for the picture, they go back to before they came
+ * in, and the band is empty, Session 55).
  */
-async function shot(page: Page, name: string, hide: Locator[] = [], whole = false) {
+async function shot(page: Page, name: string, hide: Locator[] = [], whole = false, held = false) {
   mkdirSync(folder, { recursive: true });
   await letTimePass(page, 700, 'the docs’ picture: thumbnails and still frames settle');
   await page.screenshot({
@@ -132,7 +136,7 @@ async function shot(page: Page, name: string, hide: Locator[] = [], whole = fals
     maskColor: '#2a2f3a',
     fullPage: whole,
     // Settled (Session 26g): anything still arriving is shown in its place.
-    animations: 'disabled',
+    animations: held ? 'allow' : 'disabled',
   });
 }
 
@@ -688,7 +692,12 @@ test('converting media: the import report, then the media list while converting 
 
 test('the local network: the Phones panel, announcements, the ticker, and the pages on a phone and a tablet', async () => {
   test.setTimeout(240_000);
-  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  // The screens' clock can be held (a test switch), to take the ticker with its words in view.
+  const { app } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+  });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
@@ -744,8 +753,23 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     await shot(win, 'announcements-queue');
     await win.keyboard.press('Escape');
 
-    // An audience screen with the ticker; the pages.
-    await shot(output, 'output-ticker');
+    // An audience screen with the ticker, its words held a little in from the left edge (Session 55: the picture had
+    // the band empty), then let go; the pages.
+    const words = output.getByTestId('ticker-words');
+    const inView = await words.evaluate((el) => {
+      const effect = el.getAnimations()[0]?.effect;
+      const frames = effect instanceof KeyframeEffect ? effect.getKeyframes() : [];
+      const x = (i: number) =>
+        Number(/translateX\((-?[\d.]+)px\)/u.exec(String(frames[i]?.['transform'] ?? ''))?.[1] ?? NaN);
+      // From the right edge (the canvas's width) to the words' width past the left: a pass, from when it started.
+      const [from, to] = [x(0), x(1)];
+      return Number(el.dataset['startedAt']) + (Number(el.dataset['passMs']) * from * 0.97) / (from - to);
+    });
+    expect(Number.isFinite(inView)).toBe(true);
+    await holdClock(app, inView);
+    await expect.poll(() => words.evaluate((el) => el.getAnimations()[0]?.playState)).toBe('paused');
+    await shot(output, 'output-ticker', [], false, true);
+    await holdClock(app, null);
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
     await shot(phone.page, 'phone-remote');
     await phone.page.getByTestId('remote-tab-playlist').click();
