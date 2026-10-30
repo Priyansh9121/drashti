@@ -2,6 +2,26 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+A sabha runs differently now: the screens set themselves, the playlist is where things go live, and Simple Mode is for one projector. Some parts are taken out (the last line); nothing is deleted from a library. Sound now plays at one even level: set the mixer's channel once with a typical file. Update after a sabha, never on the day of one, and the node computers the same evening.
+
+- Screens set themselves: a display plugged in is used at once (the first that is not the controls' for the audience, the next for the stage), said in one line with Change…, and remembered in any port. Extend the projector, don't mirror it. Keep these screens? asks only when a change by hand covers the controls.
+- The slides area is gone: a presentation, PDF or deck is a row per slide (Name_1, Name_2…) under its name, and one click on any row puts it up. Drag rows, a deck's slides too, with Undo. A finished video starts again when clicked. Oops (F9) puts back what was up before the last change. Practise and Duplicate are in a playlist's menu.
+- Simple Mode, for one projector: one playlist, the wallpapers, Next and Back, Clear all, Black-out, the Wallpaper and the time bar (Play when paused). Add files…, From a Link… or drop files in; right-click to rename or delete. Double-click Pro Mode to go back.
+- Access by mode: the owner gives each Gmail Pro (both modes) or Simple (Simple Mode only), and a change comes within 15 seconds. Drashti opens at once, online or not, and works without the internet for 15 days from the list's last answer, a line counting them down after about 2 minutes with no answer; it asks again once the network is back. A computer unused for 15 days needs access again.
+- Ready?, in the top bar, checks the screens, the sound, the video input, access, the playlist's missing files, the charger, sleep and notifications: green, or amber with what to do.
+- Wallpapers, under the playlists (drop pictures there, or Import…): the one chosen shows whenever nothing is up, and the Wallpaper (F12) puts it over what is up. One can be several pictures going round; the idle rotation became one. A video's When it ends: Wallpaper, Next item, Loop or Freeze.
+- A smaller bar of clears, each dimmed with nothing up: F12 is the Wallpaper, and F4 and F8 do nothing. Above it, the quick bar: up to 8 pins, Alt+1 to Alt+8.
+- Right-click (or a long press) on any file or row: Edit, Trim, Rename, Save picture…, When it ends, Show in Finder or Explorer, and Delete with Undo, which never removes your own file.
+- Pictures: HEIC, TIFF and more converted by themselves; Crop, Rotate and Flip in the Picture editor; a blurred fill behind a photo that does not fill the screen; two-finger live zoom, Simple Mode too.
+- Sound plays on whatever goes up, and music steps down under a video with sound or a slide's own sound. Every video and sound plays at one even loudness, a tick per file turning it off. Trim black and silence sets a video's points.
+- The stage: one layout for every stage screen, chosen in the Stage screen panel; Stage off shows the audience picture there; a video input box. The stage message has a size, a flash and the last five, never in the hall.
+- Messages have their own place, look, animation and time. A timer can show for the audience, full screen or in a corner. Countdown to the start is in Timers.
+- The Lower Thirds studio: its own window and preview, many more animations, styles, moving backgrounds and fonts, and lower thirds that hide after 5 to 60 seconds.
+- QR code… makes a slide of a link's code, offline. A phone's Add photos puts pictures into the open playlist.
+- Taken out: Props, Looks (a screen group's languages are in Screens), masks, Themes (presentations keep their look), the Logo and L, the idle rotation, Edit words and the Kirtan dialog (words change in Edit slides), Show on, the test slide and typing pro. An older library or backup opens with them kept, unseen.
+
 ## 1.0.0-alpha.13 (29 Oct 2026)
 
 From this version, Drashti opens only for people the owner has let in, and needs the internet to check. Each computer is let in once, under one Gmail (a mandir computer under the Gmail the owner chooses, an operator's own computer under their own), with a one-time token from the owner's email, and roles and PINs are gone. Update after a sabha, never on the day of one, and the node computers the same evening.
