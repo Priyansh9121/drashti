@@ -41,8 +41,8 @@ const WIDTHS: Record<AccessColumn, number> = {
   // "Simple once approved", whole.
   mode: 160,
   revoked: 116,
-  // A computer's name, its version and its system ("Placeholder office Mac · 1.0.0-alpha.14 · Mac"), whole.
-  computers: 340,
+  // A computer's name, its version and its system ("Placeholder owner computer · 1.0.0-alpha.14 · Mac"), whole.
+  computers: 380,
   lastSeen: 150,
   minutes: 104,
   shows: 80,
