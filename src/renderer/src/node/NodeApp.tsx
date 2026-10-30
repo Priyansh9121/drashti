@@ -118,11 +118,22 @@ function MatchMain({ view }: { view: NodeView }) {
   );
 }
 
-function PairForm({ onPaired }: { onPaired: (view: NodeView) => void }) {
+/**
+ * Pairing with Main: its address and code. Why a try was refused is said here, by the button pressed, until the next
+ * answer (Session 55: kept by the Main section, so its notice above never says the same again).
+ */
+function PairForm({
+  onPaired,
+  error,
+  setError,
+}: {
+  onPaired: (view: NodeView) => void;
+  error: string | null;
+  setError: (error: string | null) => void;
+}) {
   const [address, setAddress] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   return (
     <form
       className="space-y-3"
@@ -130,11 +141,10 @@ function PairForm({ onPaired }: { onPaired: (view: NodeView) => void }) {
       onSubmit={(e) => {
         e.preventDefault();
         setBusy(true);
-        setError(null);
         void window.drashti.node.pair(address, code).then((r) => {
           setBusy(false);
+          setError(r.ok ? null : r.message);
           if (r.ok) onPaired(r.view);
-          else setError(r.message);
         });
       }}
     >
@@ -184,6 +194,9 @@ function PairForm({ onPaired }: { onPaired: (view: NodeView) => void }) {
 
 function MainSection({ view, setView }: { view: NodeView; setView: (v: NodeView) => void }) {
   const [confirm, setConfirm] = useState<'unpair' | 'main' | null>(null);
+  // Why the last try to pair was refused, said by the form. A refusal for the version is the link's why as well: said
+  // once, there (Session 55: the same sentence showed twice, above the form and under it).
+  const [pairError, setPairError] = useState<string | null>(null);
   const paired = view.paired;
   if (!paired)
     return (
@@ -194,8 +207,8 @@ function MainSection({ view, setView }: { view: NodeView; setView: (v: NodeView)
         <SectionTitle>
           <span id="node-main-title">Main</span>
         </SectionTitle>
-        {view.link.why && <Notice tone="warning">{view.link.why}</Notice>}
-        <PairForm onPaired={setView} />
+        {view.link.why && view.link.why !== pairError && <Notice tone="warning">{view.link.why}</Notice>}
+        <PairForm onPaired={setView} error={pairError} setError={setPairError} />
         <div className="border-t border-line pt-3">
           <Button
             variant="ghost"

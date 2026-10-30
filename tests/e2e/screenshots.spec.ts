@@ -1398,13 +1398,18 @@ test('updates: the Updates dialog, the status bar, and a node offering to match 
   } finally {
     release.close();
   }
-  const mains = await releaseServer({ '1.0.0-test.1': randomBytes(256 * 1024) }, '1.0.0-test.1');
+  // Main on this Drashti's own version, the node on the one before (Session 55: the picture showed test versions), as
+  // when Main was updated first.
+  const own = (
+    JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8')) as { version: string }
+  ).version;
+  const mains = await releaseServer({ [own]: randomBytes(256 * 1024) }, own);
   const main = await launchMain({
-    DRASHTI_TEST_VERSION: '1.0.0-test.1',
+    DRASHTI_TEST_VERSION: own,
     DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Mandir Mac',
   });
   const node = await launchNode({
-    DRASHTI_TEST_VERSION: '1.0.0-test.2',
+    DRASHTI_TEST_VERSION: '1.0.0-alpha.13',
     DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Lobby PC',
     DRASHTI_UPDATE_URL: mains.base,
     DRASHTI_TEST_UPDATE_INSTALL: installLog,
@@ -1413,7 +1418,7 @@ test('updates: the Updates dialog, the status bar, and a node offering to match 
     await node.page.setViewportSize({ width: 1280, height: 720 });
     await typePairing(node.page, main.port, await nodeCode(main.win));
     const offer = node.page.getByTestId('node-update');
-    await expect(offer).toContainText('Main runs Drashti 1.0.0-test.1');
+    await expect(offer).toContainText(`Main runs Drashti ${own}; this node runs 1.0.0-alpha.13`);
     await offer.getByTestId('node-update-check').click();
     await expect(offer.getByTestId('node-update-download')).toBeVisible();
     await shot(node.page, 'node-update-offer', [node.page.getByTestId('node-pair-form').getByLabel('Code')]);
