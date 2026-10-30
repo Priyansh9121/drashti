@@ -505,7 +505,9 @@ test('the Access List at CI’s 1024 × 645 and wider: everything in reach, by k
         const head = box.querySelector('[data-column="computers"]')?.closest('th');
         if (!head) return 'no Computer and version column';
         const right = head.getBoundingClientRect().right - box.getBoundingClientRect().left;
-        return right <= box.clientWidth ? 'in view' : `to ${String(Math.round(right))} of ${String(box.clientWidth)} px`;
+        return right <= box.clientWidth
+          ? 'in view'
+          : `to ${String(Math.round(right))} of ${String(box.clientWidth)} px`;
       }),
     ).toBe('in view');
     await sizeList(app, list, CI_WINDOW);

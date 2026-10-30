@@ -252,16 +252,20 @@ export type AccessColumn =
   | 'imports'
   | 'note';
 
-/** The table's columns, left to right; `numeric` ones are counts, right-aligned. */
+/**
+ * The table's columns, left to right; `numeric` ones are counts, right-aligned. What each Gmail may do comes first,
+ * up to its computers and their versions, and the days it was asked for, approved and revoked after them (Session
+ * 55): with Mode in, a window 1280 wide shows every column up to Computer and version whole.
+ */
 export const ACCESS_COLUMNS: readonly { id: AccessColumn; label: string; numeric?: true }[] = [
   { id: 'gmail', label: 'Gmail and name' },
   { id: 'status', label: 'Status' },
-  { id: 'requested', label: 'Requested' },
-  { id: 'approved', label: 'Approved' },
   { id: 'ends', label: 'Access ends' },
   { id: 'mode', label: 'Mode' },
-  { id: 'revoked', label: 'Revoked' },
   { id: 'computers', label: 'Computer and version' },
+  { id: 'requested', label: 'Requested' },
+  { id: 'approved', label: 'Approved' },
+  { id: 'revoked', label: 'Revoked' },
   { id: 'lastSeen', label: 'Last seen' },
   { id: 'minutes', label: 'Time used', numeric: true },
   { id: 'shows', label: 'Shows', numeric: true },
