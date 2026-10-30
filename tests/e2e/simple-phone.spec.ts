@@ -78,8 +78,9 @@ test('a phone on a computer in Simple Mode does only what Simple Mode’s window
   const output = await outputPage(app);
   // The network and the phone's pairing are Pro Mode's (Simple Mode changes neither).
   const { base, port } = await networkOn(win);
-  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  // A script's token first: a pairing code is one at a time.
   const script = await pairToken(win, port, 'remote', 'Placeholder script');
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
   // The placeholder playlist open as Drashti switches: Simple Mode's one playlist (Part 18).
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
@@ -201,8 +202,9 @@ test('with Simple access, a phone is refused the same in words naming no way to 
     const output = await outputPage(app);
     // Pro access to begin with: the network on and the phone paired; the placeholder playlist open.
     const { base, port } = await networkOn(win);
-    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    // A script's token first: a pairing code is one at a time.
     const script = await pairToken(win, port, 'remote', 'Placeholder script');
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
     await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
     await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
     const phone = await device('chromium');
