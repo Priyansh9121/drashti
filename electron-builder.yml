@@ -41,6 +41,7 @@ extraResources:
       - screenshots/live-zoom.png
       - screenshots/lock-request.png
       - screenshots/lock-token.png
+      - screenshots/lower-thirds-studio.png
       - screenshots/lower-thirds.png
       - screenshots/marker-jumps.png
       - screenshots/markers-dialog.png
@@ -63,6 +64,8 @@ extraResources:
       - screenshots/playlist-cards.png
       - screenshots/playlist-up-down.png
       - screenshots/practice-show.png
+      - screenshots/quick-bar.png
+      - screenshots/ready.png
       - screenshots/repeat-slides-1280x720.png
       - screenshots/scheduled-backups.png
       - screenshots/screen-stopped-notice.png
@@ -83,6 +86,7 @@ extraResources:
       - screenshots/time-bar.png
       - screenshots/updates-offer.png
       - screenshots/video-timeline.png
+      - screenshots/wallpapers.png
       - screenshots/what-is-this.png
       - screenshots/window-picker.png
       - screenshots/zoom-window.png
