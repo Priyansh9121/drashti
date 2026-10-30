@@ -1,5 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { LOWER_THIRD_FONT_CHOICES } from '../../src/shared/lower-third-fonts';
 import { MOVEMENTS } from '../../src/shared/looks';
 import { TRANSITION_KINDS } from '../../src/shared/model';
 import { launchApp, operatorPage, operatorReady, outputPage, outputPages, setUpScreen } from './helpers';
@@ -14,6 +15,24 @@ import { goLive, makeSlides } from './placeholder-slides';
  */
 
 const HOLD = { DRASHTI_TEST_HOLD_WARM_UP: '1' };
+
+/** The Lower Thirds studio's font families (Session 55, Part 16), bundled with Drashti. */
+const STUDIO_FAMILIES = LOWER_THIRD_FONT_CHOICES.filter((c) => c.bundled === 'studio').flatMap(
+  (c) => c.families,
+);
+
+/**
+ * How many of the studio's font faces a page has, by how far each has loaded ("unloaded": never asked for). A page
+ * asks for them once it has drawn, never with its start (Session 55: with an output's start they kept its show from its
+ * screen longer, PERF-1).
+ */
+const studioFonts = (page: Page) =>
+  page.evaluate((families) => {
+    const by: Record<string, number> = {};
+    for (const face of Array.from(document.fonts))
+      if (families.includes(face.family.replace(/["']/gu, ''))) by[face.status] = (by[face.status] ?? 0) + 1;
+    return by;
+  }, STUDIO_FAMILIES);
 
 /**
  * The brightest any pixel is (0 to 255, any channel) in a page's screenshot, or in one element's box of it,
@@ -126,10 +145,18 @@ test('before a screen first draws the show it draws every kind in both Movements
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'loading');
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-warm-up', 'warming');
   expect(await brightest(out), 'the whole output').toBe(0);
+  // Its own Noto fonts are in, and none of the Lower Thirds studio's is asked for while it starts (Session 55).
+  expect(Object.keys(await studioFonts(out)), 'an output’s start: the studio’s fonts').toEqual(['unloaded']);
+  expect(Object.keys(await studioFonts(win)), 'the LIVE picture’s start: the studio’s fonts').toEqual([
+    'unloaded',
+  ]);
   await win.getByTestId('open-stream').click();
   const program = await streamPage(app);
   // The stream draws no ticker.
   await expectWarmUp(program, '[data-testid="program-root"]', 'the stream’s page', false);
+  expect(Object.keys(await studioFonts(program)), 'the stream’s page’s start: the studio’s fonts').toEqual([
+    'unloaded',
+  ]);
   await app.close();
 });
 
@@ -201,5 +228,8 @@ test('the warm-up passes by itself and the show is drawn after it; the screen is
   // Then the show draws as ever.
   await goLive(win, id, 0);
   await expect.poll(() => brightest(out), { timeout: 15_000 }).toBeGreaterThan(40);
+  // And once it has drawn, every face of the Lower Thirds studio's fonts comes (Session 55), as in the LIVE picture.
+  await expect.poll(async () => Object.keys(await studioFonts(out)), { timeout: 15_000 }).toEqual(['loaded']);
+  await expect.poll(async () => Object.keys(await studioFonts(win)), { timeout: 15_000 }).toEqual(['loaded']);
   await app.close();
 });
