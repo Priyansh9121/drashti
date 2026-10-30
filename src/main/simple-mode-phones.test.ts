@@ -4,7 +4,7 @@ import { initialEngineState, LAYER_NAMES } from '../shared/engine/state';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../shared/network-api';
 import { SIMPLE_MODE_REFUSED_COMMANDS } from '../shared/mode';
 import { repeatPresentationId } from '../shared/repeat';
-import { OP_CHANNEL } from './network/network-service';
+import { OP_CHANNEL, WINDOW_ARGS } from './network/network-service';
 import {
   COMMANDS_IN_SIMPLE_MODE,
   PHONE_OPS_IN_SIMPLE_MODE,
@@ -12,7 +12,7 @@ import {
   phoneMayInSimpleMode,
   type SimplePhoneScope,
 } from './simple-mode-phones';
-import { simpleModeRefusesWhole } from './simple-mode';
+import { SIMPLE_MODE_LOCKED, simpleModeRefusesWhole } from './simple-mode';
 
 /*
  * A paired phone in Simple Mode (Session 55, the owner's answer of 30 Oct 2026): it may do only what Simple Mode's
@@ -233,18 +233,57 @@ describe('a paired phone in Simple Mode (Session 55, the owner’s answer of 30 
       'upload.piece',
       'announce',
       'announcement',
+      // The phone's own reads (Part 9): the wallpapers, the quick bar's pins, a picture's look.
+      'wallpapers',
+      'quickBar',
+      'media.look',
     ])
       expect(mayOp(op), op).toBe(true);
   });
 
-  it('refuses everything Simple Mode’s lock refuses the window, and a phone’s change to a playlist (Part 18: its window’s alone)', () => {
+  it('refuses everything Simple Mode’s lock refuses the window; what it bounds only within the window’s own bounds, with the phone’s own arguments (Part 9: its rows’ Rename and Remove, the wallpapers); a phone adds to or moves in no playlist', () => {
     for (const op of Object.keys(DEVICE_OPS) as DeviceOp[]) {
       const channel = OP_CHANNEL[op];
-      if (channel !== null && simpleModeRefusesWhole(channel))
-        expect(PHONE_OPS_IN_SIMPLE_MODE[op], op).toBe('pro');
+      if (channel === null) continue;
+      if (SIMPLE_MODE_LOCKED.includes(channel)) expect(PHONE_OPS_IN_SIMPLE_MODE[op], op).toBe('pro');
+      // A bounded one: weighed with the arguments the window's request would have (network-service.ts WINDOW_ARGS),
+      // or refused whole when the phone has none of them.
+      else if (simpleModeRefusesWhole(channel)) {
+        if (WINDOW_ARGS[op] === undefined) expect(PHONE_OPS_IN_SIMPLE_MODE[op], op).toBe('pro');
+        else expect(['within', 'simple'], op).toContain(PHONE_OPS_IN_SIMPLE_MODE[op]);
+      }
     }
-    for (const op of ['playlist.add', 'playlist.move', 'playlist.removeItems', 'playlist.restoreItems'])
+    for (const op of ['playlist.add', 'playlist.move'])
       expect(mayOp(op, { playlistId: 'one', ids: ['one-picture'] }), op).toBe(false);
+    // Its one playlist's rows, taken out and put back (its window's Delete and Undo, Part 18): only its own.
+    for (const op of ['playlist.removeItems', 'playlist.restoreItems']) {
+      expect(mayOp(op, { ids: ['one-picture'] }), op).toBe(true);
+      expect(mayOp(op, { ids: ['one-picture', 'one-talk'] }), op).toBe(true);
+      expect(mayOp(op, { ids: ['other-kirtan'] }), op).toBe(false);
+      expect(mayOp(op, { ids: ['one-picture', 'other-kirtan'] }), op).toBe(false);
+      expect(mayOp(op, { ids: [] }), op).toBe(false);
+      expect(mayOp(op, {}), op).toBe(false);
+    }
+  });
+
+  it('weighs the phone’s own requests (Part 9) as Simple Mode’s window does them: the wallpapers, and Rename… of a file its playlist holds; the quick bar’s changes, the Picture editor and When it ends are Pro Mode’s', () => {
+    for (const op of ['wallpapers', 'quickBar', 'media.look'])
+      expect(PHONE_OPS_IN_SIMPLE_MODE[op as DeviceOp], op).toBe('reads');
+    for (const op of ['wallpaper.choose', 'wallpaper.rename', 'wallpaper.remove', 'wallpaper.restore'])
+      expect(mayOp(op, { wallpaperId: 'wallpaper-1', name: 'Placeholder' }), op).toBe(true);
+    for (const op of ['quickBar.set', 'media.setLook', 'playlist.whenEnds'])
+      expect(PHONE_OPS_IN_SIMPLE_MODE[op as DeviceOp], op).toBe('pro');
+    expect(mayOp('media.rename', { mediaId: 'picture', name: 'Placeholder' })).toBe(true);
+    expect(mayOp('media.rename', { mediaId: 'video-elsewhere', name: 'Placeholder' })).toBe(false);
+    expect(mayOp('presentation.rename', { presentationId: 'talk', name: 'Placeholder' })).toBe(true);
+    expect(mayOp('presentation.rename', { presentationId: 'kirtan', name: 'Placeholder' })).toBe(false);
+    expect(mayOp('presentation.rename', {})).toBe(false);
+    // Before Simple Mode has a playlist: none of its rows.
+    const none = scope(null);
+    expect(phoneMayInSimpleMode('media.rename', { mediaId: 'picture' }, none, NOTHING_PLAYING)).toBe(false);
+    expect(
+      phoneMayInSimpleMode('playlist.removeItems', { ids: ['one-picture'] }, none, NOTHING_PLAYING),
+    ).toBe(false);
   });
 
   it('refuses what it does not know, and every command a phone can send is weighed (fail closed)', () => {

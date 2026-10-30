@@ -401,7 +401,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
   await app.close();
 });
 
-test('in Simple Mode, a phone’s Pause of a sound is refused in words, and its Play still plays on one paused before (as the window’s own Play does since Session 55); a sound from its Media is refused there, one of Simple Mode’s playlist goes up', async () => {
+test('in Simple Mode, a phone’s Pause of a sound is dimmed (Part 9: refused in the main process, so not offered), and its Play still plays on one paused before (as the window’s own Play does since Session 55); a sound from its Media is dimmed there, one of Simple Mode’s playlist goes up', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -450,22 +450,21 @@ test('in Simple Mode, a phone’s Pause of a sound is refused in words, and its 
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
     await inStep(heard(first), () => soundTiming(win), 'played on from the phone in Simple Mode');
 
-    // The second tone from the phone's Media in Simple Mode: refused in words, the first playing on (Session 55, the
-    // owner's answer of 30 Oct 2026: a phone does only what Simple Mode's window does, which puts up its playlist's
-    // rows, never Media's).
+    // The second tone from the phone's Media in Simple Mode: dimmed, the first playing on (Session 55, the owner's
+    // answer of 30 Oct 2026: a phone does only what Simple Mode's window does, which puts up its playlist's rows, never
+    // Media's; Part 9: the phone says why once, and dims what it may not do, the main process refusing it all the same).
+    await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
     await p.getByTestId('remote-tab-library').click();
     await p.getByTestId('remote-library-media').click();
     await p.getByTestId('remote-media-search').fill('Placeholder second tone');
-    await p
-      .getByTestId('remote-media-item')
-      .filter({ hasText: 'Placeholder second tone' })
-      .getByRole('button')
-      .first()
-      .click();
-    const refused = p.getByRole('alert').filter({ hasText: 'Simple Mode on Drashti’s computer' });
-    await expect(refused).toBeVisible();
+    await expect(
+      p
+        .getByTestId('remote-media-item')
+        .filter({ hasText: 'Placeholder second tone' })
+        .getByRole('button')
+        .first(),
+    ).toBeDisabled();
     expect((await snapshot(win)).layers.audio?.mediaId).toBe(first);
-    await refused.getByRole('button', { name: 'Dismiss' }).click();
     // A row of Simple Mode's playlist (brought in as its window brings files in), tapped on the phone: up.
     const one = await win.evaluate(async (mediaId) => {
       const d = (globalThis as PageGlobals).drashti;
@@ -475,18 +474,17 @@ test('in Simple Mode, a phone’s Pause of a sound is refused in words, and its 
       if (!added.ok) throw new Error(added.message);
       return id;
     }, second);
+    // The phone opens Simple Mode's playlist by itself (Part 9).
     await p.getByTestId('remote-tab-playlist').click();
-    await p.getByTestId('remote-playlist').selectOption(one);
+    await expect(p.getByTestId('remote-playlist')).toHaveValue(one);
     await p.getByTestId('remote-item').filter({ hasText: 'Placeholder second tone' }).click();
     await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(second);
     await p.getByTestId('remote-tab-show').click();
-    // Its Pause refused in words, and it plays on.
-    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeEnabled({ timeout: 15_000 });
+    // Its Pause dimmed (Simple Mode's bar has Play only, while paused), and it plays on.
+    await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeDisabled({ timeout: 15_000 });
     const playing = (await soundTiming(win)).seek;
-    await phoneRow.getByRole('button', { name: 'Pause' }).click();
-    await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
     expect((await soundTiming(win)).seek).toEqual(playing);
-    await inStep(heard(second), () => soundTiming(win), 'still playing after the refused Pause');
+    await inStep(heard(second), () => soundTiming(win), 'still playing, its Pause not offered');
   } finally {
     await phone.close();
   }
