@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../../render/fonts.css';
 import '../../styles/app.css';
 import { preloadFonts } from '../../render/fonts';
+import { preloadStudioFonts } from '../../render/studio-fonts';
 import { reportRenderError } from '../../ui/render-errors';
 import { WindowBoundary } from '../../ui/WindowBoundary';
 import { StudioApp } from './StudioApp';
@@ -14,8 +15,9 @@ import { StudioApp } from './StudioApp';
  */
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
-// Its own fonts first, then the studio's, so the preview draws each font from its first frame.
+// Its own fonts and the studio's at once (it shows them all), so the preview draws each font from its first frame.
 void preloadFonts();
+preloadStudioFonts();
 const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
   window.drashti.app.renderError(report);
 createRoot(root, {

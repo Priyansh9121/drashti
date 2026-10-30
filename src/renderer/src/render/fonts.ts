@@ -1,6 +1,5 @@
 import { fontChoice, LOWER_THIRD_FONTS } from '../../../shared/lower-third-fonts';
 import type { Lang } from '../../../shared/model';
-import { preloadStudioFonts } from './studio-fonts';
 
 export const BUNDLED_FAMILIES = ['Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari'] as const;
 export const BUNDLED_WEIGHTS = [400, 500, 700] as const;
@@ -58,16 +57,15 @@ let loading: Promise<void> | null = null;
 
 /**
  * Load every bundled font before anything is shown, so an output never
- * flashes a fallback font when the first slide goes live.
+ * flashes a fallback font when the first slide goes live. Drashti's own Noto
+ * fonts only: the Lower Thirds studio's are asked for by each page once it has
+ * drawn (render/studio-fonts.ts), never with its start (Session 55, PERF-1).
  */
 export function preloadFonts(): Promise<void> {
   loading ??= Promise.all(
     BUNDLED_FAMILIES.flatMap((family) =>
       BUNDLED_WEIGHTS.map((weight) => document.fonts.load(`${weight} 48px "${family}"`, SAMPLES[family])),
     ),
-  ).then(() => {
-    // Then the Lower Thirds studio's (Session 55, Part 16), unwaited for, in Drashti's own windows.
-    preloadStudioFonts();
-  });
+  ).then(() => undefined);
   return loading;
 }

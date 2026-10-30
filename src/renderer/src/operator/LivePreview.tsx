@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePractice, useShowRev, useShowState } from '../practice/practice-store';
 import { preloadFonts } from '../render/fonts';
+import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
 import { SceneBoundary } from '../render/SceneBoundary';
@@ -110,6 +111,11 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // Once something has been drawn, it never warms up again.
   if (drawsSomething && !warmed) setWarmed(true);
   const warming = !warmed && !drawsSomething && !practising;
+  // The Lower Thirds studio's fonts once the LIVE picture draws the show (Session 55): never with the window's start.
+  useEffect(() => {
+    if (warming) return;
+    return preloadStudioFontsOnceDrawn();
+  }, [warming]);
   const picture = (
     <>
       {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of

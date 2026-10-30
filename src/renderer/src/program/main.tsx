@@ -8,6 +8,7 @@ import { connectEngine, useEngine } from '../engine/engine-store';
 import { holdClock } from '../render/clock';
 import { watchGpuRestarts } from '../render/media-attempts';
 import { preloadFonts } from '../render/fonts';
+import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { WarmUp } from '../render/WarmUp';
@@ -82,6 +83,11 @@ function Program() {
     setWarmed(true);
   }, []);
   const ready = fontsReady && warmed;
+  // The Lower Thirds studio's fonts once the stream's picture is drawn (Session 55): never with this page's own start.
+  useEffect(() => {
+    if (!ready) return;
+    return preloadStudioFontsOnceDrawn();
+  }, [ready]);
   // Tests only: the clock held at one moment, as the outputs' are, so the stream's picture can be compared
   // with the hall's part-way through a transition (Session 27).
   useEffect(() => window.drashti.output.onTestClock(holdClock), []);
