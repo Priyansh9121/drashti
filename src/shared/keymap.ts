@@ -40,7 +40,26 @@ export type OperatorAction =
   | 'moveItemDown'
   | 'findInLibrary'
   | 'undo'
-  | 'showKeys';
+  | 'showKeys'
+  | 'quickBar';
+
+/** The quick bar's keys (Session 55, Part 8): its first to eighth pin, Alt+1 to Alt+8 (Option+1 to Option+8 on a Mac). */
+export const QUICK_KEYS: readonly string[] = ['1', '2', '3', '4', '5', '6', '7', '8'].map((d) => `Alt+${d}`);
+
+/**
+ * Which of the quick bar's pins (0 to 7) a press of one of its keys puts up: by the key's place on the keyboard
+ * (`code`, "Digit3"), else the digit it typed; null for any other press.
+ */
+export function quickSlotFor(input: Pick<KeyInput, 'key' | 'code'>): number | null {
+  const digit =
+    /^Digit([1-8])$/u.exec(input.code ?? '')?.[1] ?? (/^[1-8]$/u.test(input.key) ? input.key : null);
+  return digit === null ? null : Number(digit) - 1;
+}
+
+/** The quick bar's key for its pin at `slot` (0 to 7), as Alt+1 is written in the keymap. */
+export function quickKey(slot: number): string {
+  return QUICK_KEYS[slot] ?? '';
+}
 
 export interface KeyBinding {
   action: OperatorAction;
@@ -51,6 +70,8 @@ export interface KeyBinding {
   global?: boolean;
   /** Only while a list (presentations, playlists, a playlist's items) has the keyboard focus. */
   scope?: 'library';
+  /** Pro Mode's only (Session 55, Part 8: the quick bar): Simple Mode never hears it. */
+  proOnly?: true;
   /**
    * Handled by the application menu, not by the page: text fields keep
    * their own meaning for the key (Undo in a field undoes typing).
@@ -107,6 +128,11 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'undo', keys: ['Mod+Z'], label: 'Undo', menuOnly: true },
   // The keys sheet (Help > Keyboard Shortcuts…, Session 25): Pro Mode only, as no field has the focus.
   { action: 'showKeys', keys: ['?'], label: 'This list of keys' },
+  // The quick bar (Session 55, Part 8): its first to eighth pin, one press each (quickSlotFor says which). Alt and a
+  // digit: never a key typed by itself, nothing the operators press already (Cmd/Ctrl+1 and +2 are Audience and Stage),
+  // and on a Mac Option+1 to Option+8, matched by the key's place on the keyboard (keyMatches), since Option+1 types
+  // "¡". Pro Mode's only, as the bar is.
+  { action: 'quickBar', keys: QUICK_KEYS, label: 'The quick bar’s pins, first to eighth', proOnly: true },
 ];
 
 /**
@@ -116,7 +142,7 @@ export const KEYMAP: readonly KeyBinding[] = [
 export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAction[] }[] = [
   {
     title: 'Running the show',
-    actions: ['next', 'previous', 'nextItem', 'previousItem', 'stopRepeat', 'oops'],
+    actions: ['next', 'previous', 'nextItem', 'previousItem', 'stopRepeat', 'oops', 'quickBar'],
   },
   {
     title: 'Clearing the screens',
@@ -141,7 +167,7 @@ export const LIBRARY_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => b.scop
  * Keys Simple Mode listens for: the page's keys and Undo (which puts back what Clear all took
  * down). The Edit menu still owns Undo's key, and tells the page when it is chosen.
  */
-export const SIMPLE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope);
+export const SIMPLE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope && b.proOnly !== true);
 
 /**
  * A key of one character with no Cmd, Ctrl or Alt (Shift or not): B, . and ? (L went with the Logo, Session 55).
@@ -182,6 +208,8 @@ export function withoutSingleKeys(keymap: readonly KeyBinding[]): readonly KeyBi
 
 export interface KeyInput {
   key: string;
+  /** The key's place on the keyboard ("Digit1"), whatever it types: a KeyboardEvent's `code` (Session 55). */
+  code?: string;
   metaKey: boolean;
   ctrlKey: boolean;
   altKey: boolean;
@@ -205,6 +233,10 @@ export function keyMatches(input: KeyInput, binding: string, platform: string): 
   const mod = platform === 'darwin' ? input.metaKey : input.ctrlKey;
   const otherMod = platform === 'darwin' ? input.ctrlKey : input.metaKey;
   if (mod !== want.mod || otherMod || input.altKey !== want.alt) return false;
+  // Alt and a digit (the quick bar's, Session 55): by the key's place, as a Mac's Option+1 types "¡" and a French
+  // keyboard's 1 is "&"; Shift with it is another key.
+  if (want.alt && /^[0-9]$/u.test(want.key) && input.code !== undefined)
+    return input.code === `Digit${want.key}` && input.shiftKey === want.shift;
   const key = normalise(input.key);
   // Shift only matters when the binding asks for it, for named keys (Shift+Space is not Space), and for a letter
   // with Cmd, Ctrl or Alt (Session 51: Shift+Cmd+Z is Redo's key, not Mod+Z). A letter alone matches with Shift

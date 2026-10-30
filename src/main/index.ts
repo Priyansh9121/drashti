@@ -17,14 +17,14 @@ import {
   session,
   systemPreferences,
 } from 'electron';
-import { mkdirSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
 import type { ImportOptions, ImportResult } from '../shared/import';
-import { type LibraryChange, listedKirtan } from '../shared/library';
+import { type LibraryChange, listedKirtan, type NewFromWordsResult } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor, SINGLE_KEYS_TEXT } from '../shared/keymap';
@@ -258,7 +258,7 @@ import { FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
-import { CHECK_EVERY_MS, OutputHeartbeat } from './outputs/heartbeat';
+import { CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './outputs/heartbeat';
 import {
   quitDetail,
   RendererWatchdog,
@@ -297,6 +297,12 @@ import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/place
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
 import { Leftovers, leftoversFile } from './system/leftovers';
+import { runPowerShell } from './system/powershell';
+import { type ReadyDeps, readyReport } from './ready/ready-facts';
+import type { ReadyOutput } from '../shared/ready';
+import { QUICK_BAR_MAX, quickPinsSchema, readQuickBar } from '../shared/quick-bar';
+import { QR_TEXT_MAX, qrPng, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
+import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
@@ -2934,6 +2940,8 @@ function start(): void {
       rebuildMenu();
       if (next === 'simple') closeStudio();
       sendToOperator(IPC.app.modeChanged, { mode: next });
+      // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist only: the phones hear of the change.
+      network?.uploadsChanged();
     },
     menu: () => {
       rebuildMenu();
@@ -3596,6 +3604,50 @@ function start(): void {
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
   });
+  // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
+  // the library through an import as any picture is, and one slide holding it large with the words under it.
+  handle(IPC.library.newQrSlide, async (e, text): Promise<NewFromWordsResult> => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can make a slide.' };
+    const words = typeof text === 'string' ? nfc(text) : '';
+    if (words.trim() === '') return { ok: false, message: 'Paste a link or type the words first.' };
+    if (qrWords(words) === null)
+      return {
+        ok: false,
+        message: `That is too long for a code a phone can read across the hall: ${String(QR_TEXT_MAX)} letters at most.`,
+      };
+    const png = qrPng(words);
+    if (!png) return { ok: false, message: 'Those words cannot be made into a QR code.' };
+    const dir = await fsPromises.mkdtemp(join(tmpdir(), 'drashti-qr-'));
+    const mediaId = await (async (): Promise<string | null> => {
+      try {
+        const file = join(dir, 'QR code.png');
+        await fsPromises.writeFile(file, png);
+        const done = await importPaths([file], {});
+        const made = done.ok
+          ? importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target
+          : undefined;
+        return made?.kind === 'media' ? made.id : null;
+      } finally {
+        // Gone once the import has its copy (Windows may hold it a moment: the system empties its temporary folder).
+        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    })();
+    if (mediaId === null) return { ok: false, message: 'The code’s picture could not be kept: try again.' };
+    const libraryId = presentations.ensureLibrary('Default');
+    const look = themeLook(themes.themeOrDefault(null), 1920, 1080);
+    const id = presentations.insert(
+      qrSlidePresentation(
+        libraryId,
+        presentations.uniqueName(libraryId, qrSlideName(words)),
+        words,
+        mediaId,
+        look,
+      ),
+    );
+    contentChanged([id]);
+    log.info('Library: a QR-code slide made');
+    return { ok: true, id };
+  });
   registerKirtansIpc({
     presentations,
     revisions,
@@ -4242,6 +4294,8 @@ function start(): void {
   // Files between Drashti and its phones (Session 54): playlists shared with them, and files a phone adds, sent into
   // the media folder's uploads folder and imported as a dropped file is (network/phone-files.ts).
   const phoneDevices = new DeviceRepo(db);
+  /** The playlist open in Pro Mode's window, as it says (Session 55, Part 8: a phone's Add photos go there). */
+  let openInPro: string | null = null;
   const phoneFiles = new PhoneFiles({
     db: libraryDb,
     settings,
@@ -4274,6 +4328,8 @@ function start(): void {
     maxBytes: Number(sw('DRASHTI_TEST_UPLOAD_MAX_BYTES') ?? 0) || undefined,
     // No file is taken while Drashti is not let in (Session 54).
     letIn: isLetIn,
+    // A phone's Add photos (Session 55, Part 8): the playlist open in Pro Mode's window; none in Simple Mode.
+    openPlaylist: () => (mode === 'pro' ? openInPro : null),
   });
   // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
   // below, where the window's own requests for them are registered.
@@ -5120,6 +5176,11 @@ function start(): void {
     opened: (playlistId) => {
       // Pro Mode's window says which it has open, or that it closed it: Simple Mode takes that one (Session 55).
       if (mode === 'pro') simplePlaylist.opened(playlistId);
+      // A phone's Add photos go to it (Session 55, Part 8): the phones hear which.
+      if (mode === 'pro' && playlistId !== openInPro) {
+        openInPro = playlistId;
+        network.uploadsChanged();
+      }
       if (playlistId === null) return;
       // Opened on Main, a playlist from an earlier week counts as this week's: nodes copy its media.
       const since = new Date(Date.now() - RECENT_DAYS * 24 * 3600 * 1000).toISOString();
@@ -5696,6 +5757,112 @@ function start(): void {
       log.info('Simple Mode: its first steps were seen');
     }
     return null;
+  });
+  // ---- Ready? (Session 55, Part 8, H): read only when pressed, never at start and never the keychain; the files on
+  // the disk and the notifications' state are read asynchronously, so nothing here holds up the show ----------------
+  const readyDeps: ReadyDeps = {
+    platform: process.platform,
+    home: app.getPath('home'),
+    now: Date.now,
+    screens: () => {
+      const here = controlsDisplay();
+      const snapshot = screens.snapshot();
+      const known = new Map(
+        snapshot.groups.flatMap((g) =>
+          g.screens.map((sc) => [sc.id, { name: sc.name, role: g.role, node: sc.nodeId !== null }] as const),
+        ),
+      );
+      const now = Date.now();
+      const outputs = snapshot.status.flatMap((st): ReadyOutput[] => {
+        const sc = known.get(st.screenId);
+        if (!sc) return [];
+        // Open for a while and not heard from: its page is not drawing (the heartbeat restarts it by itself too).
+        const seen = sc.node || st.state !== 'showing' ? null : heartbeat.lastSeen(st.screenId);
+        const quiet =
+          seen !== null &&
+          now - seen.since > OPEN_GRACE_MS &&
+          (seen.reportAt === null || now - seen.reportAt > REPORT_STALE_MS);
+        return [{ name: sc.name, role: sc.role, state: quiet ? 'not-drawing' : st.state, node: sc.node }];
+      });
+      return {
+        others: listDisplays().filter((d) => d.id !== here).length,
+        mirrored: displayIds.mirroredOnto().length > 0,
+        switches: screenSwitches.get(),
+        outputs,
+      };
+    },
+    sound: () => {
+      const st = audioOutput.status;
+      return {
+        state: st.state,
+        checked: st.checked,
+        chosen: st.chosen?.label ?? null,
+        playerRunning: pageAlive(audioWindow),
+      };
+    },
+    videoInput: () => {
+      const chosen = inputs.chosen();
+      return {
+        chosen: chosen ? { name: chosen.name, device: chosen.device } : null,
+        access: inputs.access(),
+        seen: seenCameras,
+      };
+    },
+    access: () => {
+      const view = behind?.service.view();
+      return {
+        phase: view?.phase ?? accessState().phase,
+        stopsInMs: view?.stopsInMs ?? null,
+        endsInMs: view?.endsInMs ?? null,
+      };
+    },
+    playlist: (id) => {
+      const found = playlists.list().find((p) => p.id === id);
+      return found ? { name: found.name, rows: playlists.itemsOf(id) } : null;
+    },
+    mediaFile: (mediaId) => {
+      const found = media.kindAndFile(mediaId);
+      if (!found || found.path === '') return null;
+      return isAbsolute(found.path) ? found.path : join(mediaDir, found.path);
+    },
+    exists: (path) =>
+      fsPromises.access(path).then(
+        () => true,
+        () => false,
+      ),
+    onBattery: () => powerMonitor.isOnBatteryPower(),
+    keptAwake: () => sleepGuard.held,
+    readFile: (path) => fsPromises.readFile(path, 'utf8'),
+    powershell: (script) => runPowerShell(script, {}, 15_000),
+  };
+  handle(IPC.ready.check, async (e, openPlaylistId) => {
+    if (!fromOperator(e)) return null;
+    const open = typeof openPlaylistId === 'string' && openPlaylistId.length <= 200 ? openPlaylistId : null;
+    const report = await readyReport(readyDeps, open);
+    log.info(
+      `Ready?: ${report.lines.map((l) => `${l.id} ${l.ok ? 'green' : l.unknown === true ? 'amber (can’t tell)' : 'amber'}`).join(', ')}`,
+    );
+    return report;
+  });
+  // ---- The quick bar (Session 55, Part 8, F): up to 8 pinned items, kept in the library's settings ------------------
+  // A pin that can't be read is left out as it is read; a change is the whole bar, checked whole (at most 8, each once).
+  // Simple Mode refuses changing it (simple-mode.ts), and its window shows none.
+  let quickPins = readQuickBar(settings.get('quickBar'));
+  handle(IPC.quickBar.view, () => quickPins);
+  handle(IPC.quickBar.set, (e, pins) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can change the quick bar.' };
+    const parsed = quickPinsSchema.safeParse(pins);
+    if (!parsed.success)
+      return {
+        ok: false as const,
+        message: `The quick bar holds at most ${String(QUICK_BAR_MAX)} things, each once.`,
+      };
+    quickPins = parsed.data;
+    laterSetting('quickBar', quickPins);
+    sendToOperator(IPC.quickBar.changed, quickPins);
+    log.info(`Quick bar: ${String(quickPins.length)} pinned`);
+    return { ok: true as const, pins: quickPins };
   });
   handle(IPC.setup.identifyDisplays, (e) => {
     if (!fromOperator(e)) return { shown: 0 };

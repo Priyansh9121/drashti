@@ -1,4 +1,5 @@
 import {
+  type INTO_OPEN,
   UPLOAD_PIECE_FIRST,
   UPLOAD_PIECE_MAX,
   UPLOAD_PIECE_MIN,
@@ -20,9 +21,11 @@ export type Answer<T> =
 
 /** How the page talks to Drashti (upload-transport.ts; a stand-in in the tests). */
 export interface Transport {
+  /** `into`: Add photos (Session 55, Part 8), for the playlist open on Drashti; left out, Added from Phones. */
   begin(
     name: string,
     size: number,
+    into?: typeof INTO_OPEN,
   ): Promise<Answer<{ upload: UploadStatus; pieces: { first: number; max: number } }>>;
   /** A piece of the file at `offset`; `sent` hears how much of it has gone, as it goes. */
   piece(
@@ -55,6 +58,8 @@ export interface Sending {
 export interface SendOptions {
   wait?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** Add photos (Session 55, Part 8): for the playlist open on Drashti. */
+  into?: typeof INTO_OPEN;
 }
 
 const ENDED = new Set<SendingState>(['added', 'failed', 'cancelled']);
@@ -134,7 +139,7 @@ export function sendFile(
     // Begun: Drashti makes room for it (the size limit and the free space said in words when there is none).
     let begun: Awaited<ReturnType<Transport['begin']>>;
     for (let tries = 0; ; tries++) {
-      begun = await transport.begin(file.name, file.size);
+      begun = await transport.begin(file.name, file.size, options.into);
       if (begun.ok || !tryAgain(begun.status) || stopped()) break;
       show({ state: 'waiting', message: 'Drashti cannot be reached: trying again…' });
       await wait(RETRY_MS[Math.min(tries, RETRY_MS.length - 1)] ?? 15_000);

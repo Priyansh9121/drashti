@@ -9,9 +9,11 @@ import { MessageLookFields } from './MessageLook';
 import type { TimerState } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
 import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
 import { Select, TextInput } from '../ui/Field';
-import { MessageSquare, Plus } from '../ui/icons';
+import { MessageSquare, Pin, PinOff, Plus } from '../ui/icons';
+import { pinIt, unpin, useQuickBar } from '../quick-bar/quick-bar-store';
+import { pinKey, type QuickPin } from '../../../shared/quick-bar';
 import { Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -198,6 +200,9 @@ function TemplateRow({
   const [values, setValues] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const names = templateFields(t.template);
+  // On the quick bar (Session 55, Part 8): one press shows it, as Show does.
+  const pin: QuickPin = { kind: 'message', templateId: t.id, label: t.name };
+  const pinned = useQuickBar((s) => s.pins.some((p) => p.kind === 'message' && p.templateId === t.id));
   const show = () => {
     const filled = fillMessage(t, values, (id) => timers.find((x) => x.id === id)?.name ?? 'timer');
     if (!filled.message) {
@@ -216,6 +221,13 @@ function TemplateRow({
       <div className="flex items-center gap-2">
         <Truncate text={t.name} className="flex-1 text-sm font-medium" />
         {shown && <Badge tone="live">On the screens</Badge>}
+        <IconButton
+          icon={pinned ? PinOff : Pin}
+          size="sm"
+          label={pinned ? `Unpin “${t.name}” from the quick bar` : `Pin “${t.name}” to the quick bar`}
+          data-testid="message-pin"
+          onClick={() => void (pinned ? unpin(pinKey(pin)) : pinIt(pin))}
+        />
       </div>
       <Truncate text={t.template} className="text-xs text-muted" />
       {/* Where its own look puts it, and how long it stays up (Session 55). */}

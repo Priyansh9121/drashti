@@ -1,3 +1,5 @@
+import type { ReadyReport } from './ready';
+import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
   LowerThird,
@@ -295,6 +297,8 @@ export interface DrashtiBridge {
     saveWords(presentationId: string, text: string): Promise<SaveWordsResult>;
     /** A new presentation from pasted words, in the default look. */
     newFromWords(name: string, text: string): Promise<NewFromWordsResult>;
+    /** New › QR code… (Session 55, Part 8): one slide, a large code of the link or words and the words under it. */
+    newQrSlide(text: string): Promise<NewFromWordsResult>;
     /** Undo a change to a presentation's content: write back the copy kept before it. */
     restoreRevision(revisionId: string): Promise<RevisionResult>;
     /** Presentations with slide text in legacy fonts, which search cannot read yet. */
@@ -928,5 +932,16 @@ export interface DrashtiBridge {
     redeem(gmail: string, token: string): Promise<AccessView>;
     retry(): Promise<AccessView>;
     quit(): Promise<null>;
+  };
+  /** Ready? (Session 55, Part 8): the check, with the playlist open in the window (its files are checked). */
+  ready: {
+    check(openPlaylistId: string | null): Promise<ReadyReport | null>;
+  };
+  /** The quick bar (Session 55, Part 8): its pins, kept with the library; changed in Pro Mode only. */
+  quickBar: {
+    view(): Promise<QuickPin[]>;
+    /** The whole bar as it should be now: at most 8, each once. */
+    set(pins: QuickPin[]): Promise<QuickBarResult>;
+    onChanged(listener: (pins: QuickPin[]) => void): () => void;
   };
 }

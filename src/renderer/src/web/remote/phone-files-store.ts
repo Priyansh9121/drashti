@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AddFilesView, SharedPlaylist } from '../../../../shared/phone-files';
+import type { AddFilesView, INTO_OPEN, SharedPlaylist } from '../../../../shared/phone-files';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { api } from '../device';
 import { oneAtATime } from '../one-at-a-time';
@@ -108,7 +108,7 @@ async function loadAdding(): Promise<void> {
 
 // ---- sending files -------------------------------------------------------------------------------
 
-const queue: { key: string; file: File }[] = [];
+const queue: { key: string; file: File; into?: typeof INTO_OPEN }[] = [];
 const cancels = new Map<string, () => void>();
 let made = 0;
 let busy = false;
@@ -122,7 +122,13 @@ async function sendInTurn(): Promise<void> {
   busy = true;
   try {
     for (let next = queue.shift(); next; next = queue.shift()) {
-      const job = sendFile(next.file, deviceTransport, next.key, changed);
+      const job = sendFile(
+        next.file,
+        deviceTransport,
+        next.key,
+        changed,
+        next.into ? { into: next.into } : {},
+      );
       cancels.set(next.key, job.cancel);
       await job.done;
       cancels.delete(next.key);
@@ -133,10 +139,10 @@ async function sendInTurn(): Promise<void> {
 }
 
 /** Files chosen on this phone: sent whole, one after another, each with its own row. */
-export function addFiles(files: readonly File[]): void {
+export function addFiles(files: readonly File[], into?: typeof INTO_OPEN): void {
   const rows: Sending[] = files.map((file) => {
     const key = `file-${String(++made)}`;
-    queue.push({ key, file });
+    queue.push(into ? { key, file, into } : { key, file });
     return {
       key,
       name: file.name,

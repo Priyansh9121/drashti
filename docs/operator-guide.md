@@ -119,6 +119,7 @@ Do these about 30 minutes before the sabha starts.
 | **F1**, **Clear all**                  | Everything off the hall's screens. Straight after it, **Put it back** brings it all back.                                                           |
 | **F2**, **F3**, **F5**, **F6**, **F7** | One layer off each, in this order: the slide's words (the background stays), the background, the sound, messages, the ticker. F4 and F8 do nothing. |
 | **F9**, **Oops**                       | What was on the screens before the last change comes back, one step a press (the last 20)                                                           |
+| **Alt+1** to **Alt+8**                 | The quick bar’s pins, first to eighth, each up with one press (on a Mac, Alt is the ⌥ Option key)                                                   |
 
 The clear buttons along the bottom go in this order too, left to right, each with its key beside its word. A clear button is lit, with a dot beside its key, while its layer is on the screens, and dimmed while its layer has nothing up; **Wallpaper** and **Black-out** are dimmed while off, and in LIVE's red while on. **Oops**, under **Back**, puts back the slide, the background, the sound and every other layer as they were before the last change, a video carrying on where it would be by now; it is dimmed while there is nothing to put back.
 

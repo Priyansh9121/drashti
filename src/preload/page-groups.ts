@@ -52,6 +52,9 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'output',
     'pip',
     'playlists',
+    // Ready? and the quick bar (Session 55, Part 8).
+    'quickBar',
+    'ready',
     'screens',
     // Audience and Stage (Session 50).
     'screenSwitches',

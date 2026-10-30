@@ -9,6 +9,7 @@ import {
   type AddFilesView,
   type ArrivedFile,
   type ArrivedOutcome,
+  INTO_OPEN,
   nameWithoutExtension,
   type SharedPlaylist,
   UPLOAD_ID_PATTERN,
@@ -82,6 +83,11 @@ export interface PhoneFilesDeps {
    * from a phone. Left out: always.
    */
   letIn?: () => boolean;
+  /**
+   * Add photos (Session 55, Part 8, J): the playlist open in Pro Mode's window, by its id; null with none open, and in
+   * Simple Mode. Left out: none.
+   */
+  openPlaylist?: () => string | null;
 }
 
 const plainWord = (kind: ArrivedFile['kind']) =>
@@ -133,14 +139,30 @@ export class PhoneFiles {
     return this.deps.letIn?.() ?? true;
   }
 
-  /** What the network's worker is told (the switch, and Drashti let in). */
+  /** What the network's worker is told (the switch, and Drashti let in; the open playlist, for the phone's words). */
   policy(): UploadPolicy {
     return {
       on: this.on && this.letIn(),
       maxBytes: this.deps.maxBytes ?? UPLOAD_MAX_BYTES,
       reserveBytes: UPLOAD_RESERVE_BYTES,
       slowed: this.deps.onAir(),
+      openPlaylist: this.openPlaylist()?.name ?? null,
     };
+  }
+
+  /**
+   * Add photos (Session 55, Part 8, J): the playlist open in Pro Mode's window, while it is an ordinary playlist (never
+   * a folder of playlists, a template, a smart or Repeat Slides playlist, or one deleted); else null.
+   */
+  private openPlaylist(): { id: string; name: string } | null {
+    const id = this.deps.openPlaylist?.() ?? null;
+    if (id === null) return null;
+    const row = this.deps.db
+      .prepare(
+        "SELECT id, name FROM playlists WHERE id = ? AND deleted_at IS NULL AND is_folder = 0 AND is_template = 0 AND kind = 'normal'",
+      )
+      .get(id) as { id: string; name: string } | undefined;
+    return row ?? null;
   }
 
   /** Look every 2 s whether the stream went on or off air: the worker is told (its pieces come slower on air). */
@@ -268,7 +290,10 @@ export class PhoneFiles {
     // same file added before, from anywhere) stays as it was.
     const fresh = item?.outcome === 'imported' || item?.outcome === 'kept-both';
     const renamed: string[] = [];
-    const playlist = this.addedPlaylist();
+    // Add photos (Session 55, Part 8): a picture asked for the open playlist goes to its end; anything else, or with
+    // none open, to Added from Phones as before.
+    const playlist =
+      (file.into === INTO_OPEN && file.kind === 'image' ? this.openPlaylist() : null) ?? this.addedPlaylist();
     this.deps.db.transaction(() => {
       if (fresh && made.kind === 'media')
         this.deps.db

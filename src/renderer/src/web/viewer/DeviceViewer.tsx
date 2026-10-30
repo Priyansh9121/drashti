@@ -172,7 +172,8 @@ function Viewer() {
             Save
           </Button>
         )}
-        <Button size="lg" icon={X} data-testid="viewer-close" onClick={closeViewer}>
+        {/* Close takes the keyboard first, as it did before Save came beside it (Session 55, Part 5). */}
+        <Button size="lg" icon={X} data-testid="viewer-close" data-autofocus onClick={closeViewer}>
           Close
         </Button>
       </header>
