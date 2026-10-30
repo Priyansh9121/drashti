@@ -171,6 +171,21 @@ describe('switches', () => {
     ]);
   });
 
+  it('Drashti asks whether it is packaged only through packaged(), never app.isPackaged, which a copy of the installed app named electron answers no to (Session 55 review)', () => {
+    const asks: string[] = [];
+    for (const file of sources(src)) {
+      const rel = relative(src, file).split('\\').join('/');
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          // Code only: a comment may name it.
+          if (/\bapp\.isPackaged\b/u.test(line.replace(/^\s*(?:\*|\/\/).*$/u, '')))
+            asks.push(`${rel}:${String(i + 1)}`);
+        });
+    }
+    expect(asks).toEqual([]);
+  });
+
   it('every DRASHTI_ switch in src is read through switches.ts', () => {
     const bypass: string[] = [];
     const unread = new Set<string>();

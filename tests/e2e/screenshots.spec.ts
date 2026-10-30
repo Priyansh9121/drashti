@@ -2,7 +2,15 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUILT_IN } from '../../src/shared/appearance/appearances';
@@ -23,6 +31,7 @@ import {
   operatorReady,
   outputPage,
   outputPages,
+  outputReady,
   QUIET,
   setUpScreen,
   showExtras,
@@ -40,7 +49,16 @@ import {
   stopAnswering,
 } from './access';
 import { callBody, COMPUTERS, PEOPLE, placeholderComputer } from '../access-core';
-import { KIRTAN, NOTE_ONE, placeholderTalk, PLAYLIST, setUpPlaceholderShow, TALK } from './placeholder-show';
+import {
+  KIRTAN,
+  NOTE_ONE,
+  PICTURE,
+  placeholderTalk,
+  PLAYLIST,
+  setUpPlaceholderShow,
+  TALK,
+  WELCOME,
+} from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } from './nodes';
@@ -2574,4 +2592,135 @@ test('access by Gmail, the owner’s Access List: placeholder Gmails with their 
   } finally {
     await app.close();
   }
+});
+
+test('Ready?: the dialog open before the sabha, its lines green and amber (Session 55, Part 8)', async () => {
+  test.setTimeout(120_000);
+  const { app, userData } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  // The placeholder sabha with a clip at its end, its playlist open, and the hall's screen showing.
+  const show = await setUpPlaceholderShow(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-ready-'));
+  const [clipId = ''] = await importAndGetIds(win, [
+    await makeTestVideo(win, join(dir, 'Placeholder closing clip.webm'), { seconds: 1 }),
+  ]);
+  await win.evaluate(
+    async ({ playlistId, mediaId }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const added = await d.playlists.addItems(playlistId, null, [{ kind: 'media', mediaId }]);
+      if (!added.ok) throw new Error(added.message);
+    },
+    { playlistId: show.playlistId, mediaId: clipId },
+  );
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
+  await setUpScreen(win);
+  await outputReady(await outputPage(app));
+  // The clip's own copy taken from the disk behind Drashti's back (the one video in its Media folder, kept by its
+  // sha256 in a folder of its first two letters), so a line is amber with what to do, as ready.spec.ts does.
+  const mediaDir = join(userData, 'Media');
+  const copies = readdirSync(mediaDir, { recursive: true, encoding: 'utf8' }).filter((f) =>
+    f.endsWith('.webm'),
+  );
+  expect(copies).toHaveLength(1);
+  rmSync(join(mediaDir, copies[0] ?? ''));
+  await win.getByTestId('open-ready').click();
+  const dialog = win.getByTestId('ready-dialog');
+  await expect(dialog.getByTestId('ready-again')).toHaveText('Check again');
+  await expect(dialog.getByTestId('ready-lines').getByRole('listitem')).toHaveCount(8);
+  // Green where all is well (the hall's screen showing), amber with what to do (the clip missing, Find missing media…).
+  await expect(dialog.getByTestId('ready-screens')).toHaveAttribute('data-ready', 'green');
+  await expect(dialog.getByTestId('ready-files')).toHaveAttribute('data-ready', 'amber');
+  await expect(dialog.getByTestId('ready-files-said')).toContainText('Placeholder closing clip');
+  await expect(dialog.getByTestId('ready-find-missing')).toBeVisible();
+  await shot(win, 'ready');
+  await app.close();
+});
+
+test('the quick bar: four pins just above the bar of clears in a sabha, a press each (Session 55, Part 8)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const show = await running(win);
+  // Two slides' rows of the open playlist, the picture from Media and the message, as their right-clicks and
+  // Messages' pin button pin them (each named as the row or the library names it).
+  await win.evaluate(
+    async ({ s, names }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const items = await d.playlists.items(s.playlistId);
+      const rowOf = (presentationId: string) =>
+        items.find((i) => i.kind === 'presentation' && i.presentationId === presentationId)?.id ?? null;
+      const welcome = await d.library.getPresentation(s.welcomeId);
+      const message = (await d.messages.list()).find((m) => m.name === names.message);
+      const set = await d.quickBar.set([
+        {
+          kind: 'slide',
+          presentationId: s.welcomeId,
+          slideId: welcome?.groups[0]?.slides[0]?.id ?? '',
+          playlistId: s.playlistId,
+          itemId: rowOf(s.welcomeId),
+          label: `${names.welcome}_1`,
+        },
+        {
+          kind: 'slide',
+          presentationId: s.kirtanId,
+          slideId: s.kirtanOrder[1] ?? '',
+          playlistId: s.playlistId,
+          itemId: rowOf(s.kirtanId),
+          label: `${names.kirtan}_2`,
+        },
+        { kind: 'media', mediaId: s.pictureMediaId, media: 'image', label: names.picture },
+        { kind: 'message', templateId: message?.id ?? '', label: names.message },
+      ]);
+      if (!set.ok) throw new Error(set.message);
+    },
+    { s: show, names: { welcome: WELCOME, kirtan: KIRTAN, picture: PICTURE, message: 'Car parking' } },
+  );
+  const pins = win.getByTestId('quick-bar').getByTestId('quick-pin');
+  await expect(pins).toHaveCount(4);
+  await expect(pins).toContainText([`${WELCOME}_1`, `${KIRTAN}_2`, PICTURE, 'Car parking']);
+  // The live column from its top (starting the timer and showing the message scrolled it).
+  await win.getByRole('complementary', { name: 'Live' }).evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await shot(win, 'quick-bar');
+  await app.close();
+});
+
+test('the wallpapers: three in the Playlists panel, one chosen to show whenever nothing is up (Session 55, Part 6)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await setUpPlaceholderShow(win);
+  // Three generated pictures, each a wallpaper named as its file is; the second chosen.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-wallpapers-'));
+  const size = { width: 1280, height: 720 };
+  const pictures = [
+    await makeTestImage(win, join(dir, 'Placeholder sunrise.png'), { ...size, color: '#b45309' }),
+    await makeTestImage(win, join(dir, 'Placeholder evening.png'), { ...size, color: '#1e3a8a' }),
+    await makeTestImage(win, join(dir, 'Placeholder festival.png'), { ...size, color: '#7f1d1d' }),
+  ];
+  const mediaIds = await importAndGetIds(win, pictures);
+  await win.evaluate(async (ids) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const added = await d.wallpapers.add(ids, null);
+    if (!added.ok) throw new Error(added.message);
+    const chosen = await d.wallpapers.choose(added.ids[1] ?? null);
+    if (!chosen.ok) throw new Error(chosen.message);
+  }, mediaIds);
+  const tiles = win
+    .getByRole('region', { name: 'Playlists' })
+    .getByTestId('wallpapers')
+    .getByTestId('wallpaper-tile');
+  await expect(tiles).toHaveCount(3);
+  await expect(tiles).toHaveText([/Placeholder sunrise/u, /Placeholder evening/u, /Placeholder festival/u]);
+  await expect(tiles.filter({ hasText: 'Placeholder evening' })).toHaveAttribute('aria-pressed', 'true');
+  await shot(win, 'wallpapers');
+  await app.close();
 });

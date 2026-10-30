@@ -465,12 +465,30 @@ test('Audience and Stage from a phone as from the window’s top bar: off asks t
     await expect.poll(() => openOutputs(app)).toBe(0);
     await expect(audience).toHaveAttribute('aria-checked', 'false');
     await expect(win.getByTestId('switch-off-audience')).toBeVisible();
+    // The live picture (Show) says what the screens switched off show meanwhile (Session 55: the stage screens the
+    // audience picture, never the desktop).
+    const offLine = p.getByTestId('remote-switched-off');
+    const offLineSays = async (words: string) => {
+      await p.getByTestId('remote-tab-show').click();
+      await expect(offLine).toHaveText(words);
+      await p.getByTestId('remote-tab-more').click();
+    };
+    await offLineSays(
+      'Audience off on Drashti’s computer: the hall’s screens show its desktop until Audience is on again.',
+    );
     // Stage has no screens open: it goes off at once, asking nothing.
     await p.getByTestId('remote-switch-stage').click();
     await expect.poll(() => switchesNow(win)).toEqual({ audience: false, stage: false });
     await expect(ask).toHaveCount(0);
+    await offLineSays(
+      'Audience and Stage off on Drashti’s computer: the hall’s screens show its desktop, and the stage screens the audience picture, until they are on again.',
+    );
     // On puts them back where they were, asking nothing.
     await audience.click();
+    await expect.poll(() => switchesNow(win)).toEqual({ audience: true, stage: false });
+    await offLineSays(
+      'Stage off on Drashti’s computer: the stage screens show the audience picture until Stage is on again.',
+    );
     await p.getByTestId('remote-switch-stage').click();
     await expect.poll(() => switchesNow(win)).toEqual({ audience: true, stage: true });
     await expect.poll(() => openOutputs(app)).toBe(1);

@@ -1667,7 +1667,7 @@ function start(): void {
   /** The bundled FFmpeg, for pictures' blurred copies and Save picture… (Session 55, Part 5). */
   const pictureFfmpeg = () =>
     findFfmpeg({
-      packaged: app.isPackaged,
+      packaged: packaged(),
       resourcesPath: process.resourcesPath,
       appPath: app.getAppPath(),
       platform: process.platform,
@@ -3313,7 +3313,7 @@ function start(): void {
   const linkPaths = new Set<string>();
   const soundView = () => ({ stepsAside, evenOff: soundRepo.evenOff() });
   // Tests only (never a packaged Drashti): the library's files measured sooner after the start, or not at all ('off').
-  const testSoundPass = app.isPackaged ? undefined : sw('DRASHTI_TEST_SOUND_PASS');
+  const testSoundPass = packaged() ? undefined : sw('DRASHTI_TEST_SOUND_PASS');
   const soundPass = new SoundPass({
     repo: soundRepo,
     mediaDir,
@@ -3321,7 +3321,7 @@ function start(): void {
       testSoundPass === 'off'
         ? null
         : findFfmpeg({
-            packaged: app.isPackaged,
+            packaged: packaged(),
             resourcesPath: process.resourcesPath,
             appPath: app.getAppPath(),
             platform: process.platform,
