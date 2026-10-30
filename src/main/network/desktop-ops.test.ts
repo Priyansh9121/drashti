@@ -376,6 +376,19 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
     },
     // As refusedNow answers a request with none of its arguments (Session 55, Part 18).
     refused: (channel: InvokeChannel) => locked && simpleModeRefusesWhole(channel),
+    // And a phone does only what Simple Mode's window does (Session 55, the owner's answer of 30 Oct 2026): here, before
+    // Simple Mode has a playlist.
+    simple: () =>
+      locked
+        ? {
+            playlistId: null,
+            playlistOf: () => null,
+            holdsMedia: () => false,
+            holdsPresentation: () => false,
+            plays: () => false,
+            refusal: () => 'Simple Mode on Drashti’s computer: placeholder words.',
+          }
+        : null,
     changed: () => undefined,
     log: () => undefined,
     now: () => clock,

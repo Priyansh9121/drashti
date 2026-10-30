@@ -9,6 +9,7 @@ import type { RemoteMedia } from '../../shared/network-mirror';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { SIMPLE_MODE_LOCKED } from '../simple-mode';
+import type { SimplePhoneScope } from '../simple-mode-phones';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
 /*
@@ -20,6 +21,23 @@ import { NetworkService, OP_CHANNEL } from './network-service';
  */
 
 const PHONE = '192.168.1.20';
+
+/** What a phone is told in Simple Mode for what its window does not do (shared/mode.ts simplePhoneRefusalText). */
+const PHONE_WORDS =
+  'Simple Mode on Drashti’s computer: a phone does only what Simple Mode does there (its playlist “Placeholder Hall Pictures”, Next and Back, Clear all, Black-out and the Wallpaper). On the Drashti computer, a double-click on Pro Mode leaves it.';
+
+/**
+ * Simple Mode's one playlist (Session 55, Part 18): here the Repeat Slides playlist "repeat-1", adopted from Pro Mode,
+ * with a picture (m-pic) in it. A phone does only what Simple Mode's window does (the owner's answer of 30 Oct 2026).
+ */
+const ONE: SimplePhoneScope = {
+  playlistId: 'repeat-1',
+  playlistOf: (itemId) => (['item-1', 'item-2'].includes(itemId) ? 'repeat-1' : null),
+  holdsMedia: (mediaId) => mediaId === 'm-pic',
+  holdsPresentation: () => false,
+  plays: () => false,
+  refusal: () => PHONE_WORDS,
+};
 
 const MEDIA: RemoteMedia[] = [
   { id: 'm-pic', name: 'Placeholder picture', kind: 'image', missing: false, unplayable: null },
@@ -106,6 +124,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     },
     refused: (channel: InvokeChannel) =>
       options.lockEverything === true || (options.locked === true && SIMPLE_MODE_LOCKED.includes(channel)),
+    // Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026).
+    simple: () => (options.locked === true ? ONE : null),
     changed: () => undefined,
     log: () => undefined,
     now: () => 1_000_000,
@@ -224,13 +244,60 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         { type: 'skip', layer: 'background', jump: 'forward' },
         { type: 'skip', layer: 'audio', jump: 'last' },
       ];
-      // In Simple Mode too: running the show, as its window does; but Back 15 s and the rest, which move what plays,
-      // are Pro Mode's (Session 54's review: Simple Mode shows the time bar and moves nothing).
-      const refused = (args: Record<string, unknown>) => locked && args['type'] === 'skip';
+      // In Simple Mode: taking them off, as anything comes off the screens there. Back 15 s and the rest, which move
+      // what plays, are Pro Mode's (Session 54's review: Simple Mode shows the time bar and moves nothing), and so are
+      // a timer alone and the stage message since Session 55 (the owner's answer of 30 Oct 2026: a phone does only
+      // what Simple Mode's window does, and its window has neither).
+      const refused = (args: Record<string, unknown>) =>
+        locked && ['skip', 'showTimer', 'setStageMessage'].includes(String(args['type']));
       for (const args of sent)
         expect(ask(remote, 'command', args).status, JSON.stringify(args)).toBe(refused(args) ? 403 : 200);
       expect(commands).toEqual(sent.filter((args) => !refused(args)));
     }
+  });
+
+  it('in Simple Mode puts up no lower third, Media or music a phone chooses, in words and with nothing taken off first; plays on the music paused (Session 55, the owner’s answer of 30 Oct 2026)', () => {
+    const { ask, remote, commands, played, state } = setup({ locked: true });
+    for (const [op, args] of [
+      ['lowerThird.show', { lowerThirdId: 'lt-1' }],
+      // Even a picture its one playlist has: Simple Mode's window puts up its rows, never Media's.
+      ['media.show', { mediaId: 'm-pic' }],
+      ['media.show', { mediaId: 'm-tune' }],
+      ['music.play', { playlistId: 'music-1' }],
+      // Nothing paused: "on" would start the one played last.
+      ['music.play', {}],
+    ] as const)
+      expect(ask(remote, op, args), `${op} ${JSON.stringify(args)}`).toEqual({
+        status: 403,
+        body: { ok: false, message: PHONE_WORDS },
+      });
+    // Not even Media's first step, the slide taken off.
+    expect(commands).toEqual([]);
+    expect(played).toEqual([]);
+    // The music paused (from Pro Mode, say): on from there, as the time bar's Play does (question 14).
+    state.layers.audio = {
+      id: 'track',
+      title: 'Placeholder tune',
+      mediaId: 'm-tune',
+      volume: 1,
+      loop: false,
+      startedAt: 1,
+      music: {
+        playlistId: 'music-1',
+        name: 'Placeholder tunes',
+        tracks: [],
+        index: 0,
+        loop: false,
+        shuffle: false,
+      },
+      pausedAtMs: 2000,
+    };
+    expect(ask(remote, 'music.play', {}).status).toBe(200);
+    expect(ask(remote, 'music.play', { playlistId: 'music-1' }).status).toBe(403);
+    expect(played).toEqual([null]);
+    // Taking a lower third off stays, so nothing can stay stuck on the screens.
+    expect(ask(remote, 'command', { type: 'hideLowerThird' }).status).toBe(200);
+    expect(commands).toEqual([{ type: 'hideLowerThird' }]);
   });
 
   it('never lets a Stage or Announcements device read or do any of it', () => {
@@ -277,8 +344,15 @@ describe('the phone as a mirror of the operator window (Session 54, D5)', () => 
         { type: 'startRepeat', playlistId: 'repeat-1', slideIndex: 2 },
         { type: 'startRepeat', playlistId: 'repeat-1', slideIndex: 0 },
       ]);
-      expect(ask(remote, 'repeat.start', { slideIndex: 1 }).status).toBe(404);
+      expect(ask(remote, 'repeat.start', { slideIndex: 1 }).status).toBe(locked ? 403 : 404);
       expect(ask(stage, 'repeat.start', { playlistId: 'repeat-1' }).status).toBe(403);
+      // In Simple Mode its one playlist only (here repeat-1), as its window starts it (Session 55, the owner's answer
+      // of 30 Oct 2026); another is refused in words.
+      if (locked)
+        expect(ask(remote, 'repeat.start', { playlistId: 'repeat-2' })).toEqual({
+          status: 403,
+          body: { ok: false, message: PHONE_WORDS },
+        });
       expect(commands).toHaveLength(4);
     }
     expect(DEVICE_OPS['repeat.start']).toEqual(['remote']);
