@@ -119,6 +119,8 @@ export default defineConfig({
           lock: resolve('src/renderer/lock.html'),
           // View › Access List… (Session 54, E4): the owner's window onto the access list.
           'access-list': resolve('src/renderer/access-list.html'),
+          // The Lower Thirds studio (Session 55, Part 16): a window of its own for making lower thirds.
+          'lower-thirds': resolve('src/renderer/lower-thirds.html'),
         },
       },
     },

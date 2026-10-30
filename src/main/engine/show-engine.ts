@@ -2,6 +2,7 @@ import { STOPPED_REFUSAL } from '../../shared/access';
 import { randomUUID } from 'node:crypto';
 import type { CommandResult, EngineCommand, EngineCommandType } from '../../shared/engine/commands';
 import { diffState } from '../../shared/engine/patch';
+import { lowerThirdGoesAt } from '../../shared/lower-thirds';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import {
   type AudienceTimerLayer,
@@ -417,6 +418,8 @@ export class ShowEngine {
   private zeroWait: { key: string; cancel: () => void } | null = null;
   /** Waiting for something up to go by itself (Session 55: a message's time up, a timer for the audience at zero). */
   private timedWait: { key: string; cancel: () => void } | null = null;
+  /** Waiting for a lower third that hides itself to go (Session 55, Part 16, R): its key, and how to cancel. */
+  private lowerThirdWait: { key: string; cancel: () => void } | null = null;
   /** The last zero that came: it is not waited for again (a slide with nowhere to go holds at 0:00). */
   private zeroDone: string | null = null;
   /** The background video waited for to end (Session 55, Part 6): its key, and how to cancel the wait. */
@@ -2697,6 +2700,10 @@ export class ShowEngine {
     // How the files sounding now play (Session 55, Part 7): each one's even gain, and the music stepping aside.
     const sound = this.soundFor(next);
     if (sound) next = reduce(next, { type: 'sound/set', sound });
+    // A lower third that hides itself (Session 55, Part 16, R) and is past its time by now (Put it back, a restart, the
+    // wait for it come due): it goes, its out from the moment it was due, the same on every screen.
+    const goes = lowerThirdGoesAt(next.layers.lowerThird);
+    if (goes !== null && goes <= this.now()) next = reduce(next, { type: 'lowerThird/hide', at: goes });
     // The pictures on the screens and coming next carry their looks (Session 26e).
     if (
       next.layers !== prev.layers ||
@@ -2727,6 +2734,7 @@ export class ShowEngine {
     this.scheduleZero();
     this.scheduleVideoEnd();
     this.scheduleTimed();
+    this.scheduleLowerThird();
     return { ok: true, changed: true, rev: this.revision };
   }
 
@@ -3108,6 +3116,29 @@ export class ShowEngine {
   }
 
   /**
+   * Wait for the lower third up to go by itself (Session 55, Part 16, R): at its seconds from when it went up. Waited
+   * for again whenever another goes up or its time changes; none when it is hidden, replaced or cleared first.
+   */
+  private scheduleLowerThird(): void {
+    const up = this.state.layers.lowerThird;
+    const goes = lowerThirdGoesAt(up);
+    const key = up && goes !== null ? `${up.id}@${String(up.shownAt)}>${String(goes)}` : null;
+    if (key === (this.lowerThirdWait?.key ?? null)) return;
+    this.lowerThirdWait?.cancel();
+    this.lowerThirdWait = null;
+    if (key === null || goes === null) return;
+    const cancel = this.wait(Math.max(0, goes - this.now()), () => {
+      if (this.lowerThirdWait?.key === key) this.lowerThirdWait = null;
+      this.atOnce(() => {
+        // A moment early (another clock's millisecond): wait again; else it goes (applyAt), from its time.
+        if (this.now() < goes) this.scheduleLowerThird();
+        else this.apply([]);
+      });
+    });
+    this.lowerThirdWait = { key, cancel };
+  }
+
+  /**
    * Access by Gmail (Session 54): Drashti has stopped. Every screen, node, phone and the stream's picture fades to
    * black from now, by the engine's clock, and nothing changes the show after: no command, nothing moving on by
    * itself. For good: only Quit ends it.
@@ -3132,5 +3163,7 @@ export class ShowEngine {
     this.scheduled = null;
     this.musicWait?.cancel();
     this.musicWait = null;
+    this.lowerThirdWait?.cancel();
+    this.lowerThirdWait = null;
   }
 }

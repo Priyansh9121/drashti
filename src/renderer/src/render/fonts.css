@@ -8,6 +8,8 @@
 @import '@fontsource/noto-sans-devanagari/400.css';
 @import '@fontsource/noto-sans-devanagari/500.css';
 @import '@fontsource/noto-sans-devanagari/700.css';
+/* The Lower Thirds studio's fonts (Session 55, Part 16), each file loaded only when its letters are drawn. */
+@import './studio-fonts.css';
 
 /*
  * Noto Sans by subset, without its own Devanagari (Sessions 31–36, I18N-7): Hindi and Sanskrit are drawn by

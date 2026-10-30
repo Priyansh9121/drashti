@@ -174,15 +174,16 @@ test('a folder playlist shows a folder at a time: its own items in the middle, i
   await expect(shownFolder(win)).toHaveAttribute('data-folder', 'Week 2 › Pictures');
   await expect(item('Cover.png')).toHaveAttribute('data-live', 'true');
 
-  // Simple Mode: the whole playlist as before, headers and all.
+  // Simple Mode, on the playlist open in Pro Mode (Session 55, Part 18): the whole playlist, headers and all (it has no
+  // folders to go through).
   await chooseMenuItem(app, 'switch-mode');
-  await win.getByTestId('simple-playlist').selectOption({ label: 'Placeholder Sabha' });
-  await expect(win.getByTestId('simple-header')).toHaveText([
+  const simple = win.getByTestId('simple-mode');
+  await expect(simple.locator('[data-testid="playlist-item"][data-kind="header"] [data-label]')).toHaveText([
     'Week 1',
     'Week 1 › Videos',
     'Week 2 › Pictures',
   ]);
-  await expect(win.getByTestId('simple-item')).toHaveCount(5);
+  await expect(simple.locator('[data-testid="playlist-item"]:not([data-kind="header"])')).toHaveCount(5);
   await expectNoSeriousA11yIssues(win, 'Simple Mode with a folder playlist');
   await app.close();
 });

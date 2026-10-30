@@ -5,7 +5,7 @@ import { clickedMany } from '../music/music-store';
 import { isRemoveKey } from '../playlists/playlist-shared';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { Captions, Pencil, Plus, Trash2 } from '../ui/icons';
+import { Captions, Palette, Pencil, Plus, Trash2 } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
 import { Panel } from '../ui/Panel';
 import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
@@ -13,15 +13,16 @@ import { Truncate } from '../ui/Truncate';
 import {
   connectLowerThirds,
   deleteLowerThirds,
-  editLowerThird,
+  openStudio,
   showOrHide,
   useLowerThirds,
 } from './lower-thirds-store';
 
 /*
  * Lower Thirds (Session 44), in More tools in Macros' place: each lower third a row with its first lines and where
- * it shows, and one button that shows it and hides it again (a show control: it changes the screens at once,
- * and says it is up in LIVE's colour). New… and Edit open the editor; several can be chosen together (a box
+ * it shows (and how long, one that hides itself), and one button that shows it and hides it again (a show control:
+ * it changes the screens at once, and says it is up in LIVE's colour). Studio, New… and Edit open the Lower Thirds
+ * studio, a window of its own with a live preview (Session 55, Part 16); several can be chosen together (a box
  * dragged over them, Shift and Cmd or Ctrl clicks, Cmd or Ctrl-A) and deleted at once, with one Undo.
  */
 export function LowerThirdsPanel({ platform, nested = false }: { platform: string; nested?: boolean }) {
@@ -62,23 +63,33 @@ export function LowerThirdsPanel({ platform, nested = false }: { platform: strin
       bodyClassName="space-y-2 px-3 pb-3"
       data-testid="lower-thirds-panel"
       actions={
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={Plus}
-          data-testid="lower-third-new"
-          onClick={() => {
-            editLowerThird(null);
-          }}
-        >
-          New…
-        </Button>
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Palette}
+            data-testid="lower-third-studio"
+            onClick={() => void openStudio(null)}
+          >
+            Studio
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Plus}
+            data-testid="lower-third-new"
+            onClick={() => void openStudio({ make: true })}
+          >
+            New…
+          </Button>
+        </>
       }
     >
       {items.length === 0 ? (
         <p className="text-xs text-muted">
-          No lower thirds yet. <strong>New…</strong> makes one: up to three lines (a name, a title and a
-          place), how it looks, where it shows and how it comes in.
+          No lower thirds yet. <strong>New…</strong> opens the Lower Thirds studio: up to three lines (a name,
+          a title and a place), the style they sit in, how it comes in and goes out, a moving background and
+          how long it stays up.
         </p>
       ) : (
         <>
@@ -148,9 +159,7 @@ export function LowerThirdsPanel({ platform, nested = false }: { platform: strin
                       }
                       useLowerThirds.setState({ marked: [lt.id], anchor: lt.id });
                     }}
-                    onDoubleClick={() => {
-                      editLowerThird(lt);
-                    }}
+                    onDoubleClick={() => void openStudio({ id: lt.id })}
                     onKeyDown={(e) => {
                       if (!isRemoveKey(e, platform)) return;
                       e.preventDefault();
@@ -159,7 +168,10 @@ export function LowerThirdsPanel({ platform, nested = false }: { platform: strin
                   >
                     <Truncate text={name} className="w-full text-sm font-medium text-fg" />
                     <span className="flex w-full min-w-0 items-center gap-1.5 text-xs text-muted">
-                      <span className="shrink-0">{WHERE_NAMES[lt.where]}</span>
+                      <span className="shrink-0">
+                        {WHERE_NAMES[lt.where]}
+                        {lt.seconds === undefined ? '' : ` · ${String(lt.seconds)} s`}
+                      </span>
                       {rest && <Truncate text={`· ${rest}`} className="min-w-0" />}
                     </span>
                   </button>
@@ -178,9 +190,7 @@ export function LowerThirdsPanel({ platform, nested = false }: { platform: strin
                     label={`Edit “${name}”`}
                     size="sm"
                     data-testid="lower-third-edit"
-                    onClick={() => {
-                      editLowerThird(lt);
-                    }}
+                    onClick={() => void openStudio({ id: lt.id })}
                   />
                   <IconButton
                     icon={Trash2}

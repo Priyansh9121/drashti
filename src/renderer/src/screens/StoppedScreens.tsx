@@ -9,7 +9,7 @@ import { connectScreens, useScreens } from './screens-store';
  * the middle of a sabha. So a notice rises in the window, in Pro Mode and in Simple Mode alike, naming the
  * screen, with Try again as its one primary. It stays until the screen is back or the operator closes it,
  * and comes again if the screen stops again later. It sits in the window's flow under the header, so it
- * never covers the show controls (Next, Back, the layer bar, Simple Mode's big buttons).
+ * never covers the show controls (Next, Back, the layer bar, Simple Mode's too).
  */
 
 const NONE: ReadonlySet<string> = new Set();

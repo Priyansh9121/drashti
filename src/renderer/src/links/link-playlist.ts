@@ -54,7 +54,7 @@ export async function landInPlaylist(target: AddTarget, items: NewItem[]): Promi
 
 /** Open the playlist a download went into, its new items chosen, the first brought into view. */
 async function showLanded(playlistId: string, itemIds: readonly string[]): Promise<void> {
-  // Simple Mode's playlist is the volunteer's to choose: it never changes by itself.
+  // Simple Mode shows its one playlist only, which the download went into (Session 55, Part 18): nothing to open.
   if (useMode.getState().mode === 'simple') return;
   if (usePlaylists.getState().openId !== playlistId) await openPlaylist(playlistId);
   const state = usePlaylists.getState();

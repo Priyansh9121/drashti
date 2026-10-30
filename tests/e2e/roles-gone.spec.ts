@@ -71,19 +71,19 @@ function sessionIn(userData: string, file: string): string | null {
   }
 }
 
-/** Leave Simple Mode by its own Switch to Pro Mode…: an old PIN is a wrong word; the word pro leaves. */
-async function leaveWithTheWord(win: Page): Promise<void> {
-  const dialog = win.getByTestId('leave-simple');
+/**
+ * Leave Simple Mode by its own Pro Mode (Session 55, Part 18: a double-click, nothing typed, replacing the word pro):
+ * nothing asks for a PIN or a word on the way.
+ */
+async function leaveWithoutAPin(win: Page): Promise<void> {
   await win.getByTestId('simple-leave').click();
-  await expect(dialog).toContainText('Type pro to switch');
-  await dialog.getByRole('textbox').fill('481526');
-  await dialog.getByRole('button', { name: 'Switch to Pro Mode' }).click();
-  await expect(dialog).toContainText('Type pro to switch to Pro Mode.');
   expect(await modeOf(win)).toBe('simple');
-  await dialog.getByRole('textbox').fill('pro');
-  await dialog.getByRole('button', { name: 'Switch to Pro Mode' }).click();
+  await expect(win.getByTestId('leave-simple')).toHaveCount(0);
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  await win.getByTestId('simple-leave').dblclick();
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
   expect(await modeOf(win)).toBe('pro');
+  await noRoles(win);
 }
 
 test('an alpha.12 data folder with roles on opens straight into Pro Mode with no PIN asked; its roles.json is gone, never read; Simple Mode’s button with no PIN', async () => {
@@ -121,7 +121,7 @@ test('an alpha.12 data folder with roles on opens straight into Pro Mode with no
   await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await noRoles(win);
-  await leaveWithTheWord(win);
+  await leaveWithoutAPin(win);
   await run.app.close();
   // Nothing writes one again, as it runs or as it quits.
   expect(rolesFilesIn(userData)).toEqual([]);
@@ -154,7 +154,7 @@ test('roles alpha.12 held locked (its PIN file unreadable) hold nothing: Pro Mod
   await run.app.close();
 });
 
-test('stopped dead in Simple Mode with roles on, it comes back in Simple Mode, left by the word alone; roles.json gone', async () => {
+test('stopped dead in Simple Mode with roles on, it comes back in Simple Mode, left by Pro Mode’s double-click alone (no PIN, nothing typed); roles.json gone', async () => {
   test.setTimeout(120_000);
   const first = await launchApp();
   const userData = first.userData;
@@ -178,7 +178,7 @@ test('stopped dead in Simple Mode with roles on, it comes back in Simple Mode, l
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await noRoles(win);
   expect(rolesFilesIn(userData)).toEqual([]);
-  await leaveWithTheWord(win);
+  await leaveWithoutAPin(win);
   await run.app.close();
 });
 

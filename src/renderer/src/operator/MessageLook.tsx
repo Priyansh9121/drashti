@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { MessageItem } from '../../../shared/engine/state';
-import { LOWER_THIRD_ANIMATIONS } from '../../../shared/lower-third-animations';
+import { animationById } from '../../../shared/lower-third-animations';
+import { isOffered, OFFERED_ANIMATIONS } from '../../../shared/lower-third-studio';
 import { LOWER_THIRD_FONTS, type LowerThirdFont } from '../../../shared/lower-thirds';
 import {
   BEHIND_NAMES,
@@ -147,8 +148,12 @@ function MessagePreview({
   );
 }
 
-/** Every animation the Lower Thirds have, after the ones a message offers first. */
-const MORE_ANIMATIONS = LOWER_THIRD_ANIMATIONS.filter(
+/**
+ * The ones a message offers first, and every other the Lower Thirds studio offers (Session 55, Part 16: its one table,
+ * OFFERED, of what is smooth on a two-core computer without a graphics chip).
+ */
+const FIRST_ANIMATIONS = MESSAGE_FIRST_ANIMATIONS.filter(isOffered);
+const MORE_ANIMATIONS = OFFERED_ANIMATIONS.filter(
   (a) => !(MESSAGE_FIRST_ANIMATIONS as readonly string[]).includes(a.id),
 );
 
@@ -241,11 +246,15 @@ export function MessageLookFields({
                 set({ animation: e.target.value });
               }}
             >
-              {MESSAGE_FIRST_ANIMATIONS.map((id) => (
+              {FIRST_ANIMATIONS.map((id) => (
                 <option key={id} value={id}>
-                  {LOWER_THIRD_ANIMATIONS.find((a) => a.id === id)?.name ?? id}
+                  {animationById(id).name}
                 </option>
               ))}
+              {/* One chosen before that is no longer offered: it is kept, and still listed. */}
+              {!isOffered(look.animation) && (
+                <option value={look.animation}>{animationById(look.animation).name}</option>
+              )}
               <optgroup label="More, as the Lower Thirds have them">
                 {MORE_ANIMATIONS.map((a) => (
                   <option key={a.id} value={a.id}>

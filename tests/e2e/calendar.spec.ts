@@ -177,7 +177,7 @@ test('a calendar loads; today shows in the operator window, on the stage and in 
     return d.calendar.remove(id);
   });
   expect(refused).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
 
   // Loaded again by its name, without today: today shows nothing anywhere.

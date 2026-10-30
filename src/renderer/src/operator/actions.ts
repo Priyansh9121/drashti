@@ -228,6 +228,15 @@ export function runBack(): Promise<void> {
   return inTurn(() => dispatch({ type: 'back' }));
 }
 
+/**
+ * Simple Mode's Undo (Edit › Undo, its key): what Clear all took down while Put it back is offered (right after it),
+ * else the Undo bar's last step (Session 55, Part 18: a row deleted, renamed or dragged in its playlist).
+ */
+export async function undoSimple(): Promise<void> {
+  if (useEngine.getState().state?.canPutBack === true) return dispatch({ type: 'putBack' });
+  await undoRemoval();
+}
+
 export function runSimpleAction(action: OperatorAction, start: () => Promise<void>): Promise<void> {
   return inTurn(() => performSimple(action, start));
 }
@@ -243,7 +252,7 @@ async function performSimple(action: OperatorAction, start: () => Promise<void>)
     case 'previous':
       return dispatch({ type: 'back' });
     case 'undo':
-      return dispatch({ type: 'putBack' });
+      return undoSimple();
     // Audience and Stage (Session 50): Simple Mode turns them on, never off.
     case 'toggleAudience':
     case 'toggleStage': {
@@ -251,7 +260,7 @@ async function performSimple(action: OperatorAction, start: () => Promise<void>)
       if (problem) useNotice.setState({ text: problem });
       return;
     }
-    // Simple Mode keeps its key line; the keys sheet is Pro Mode's.
+    // The keys sheet is Pro Mode's (Simple Mode's buttons show their keys).
     case 'openScreens':
     case 'findInLibrary':
     case 'removeSelected':

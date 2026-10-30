@@ -16,7 +16,7 @@ const FRESH = { ...FIRST_RUN, DRASHTI_TEST_SEED_PLACEHOLDERS: '' };
 const toSimple = (win: Awaited<ReturnType<typeof operatorPage>>) =>
   win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
 const toPro = (win: Awaited<ReturnType<typeof operatorPage>>) =>
-  win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
 const stillToCome = (win: Awaited<ReturnType<typeof operatorPage>>) =>
   win.evaluate(() => (globalThis as PageGlobals).drashti.app.simpleFirstRun());
 
@@ -30,8 +30,10 @@ test('a fresh library’s Simple Mode shows the three first steps once; Skip end
   const steps = win.getByTestId('simple-first-run');
   await expect(steps).toBeVisible();
   await expect(steps).toHaveAttribute('data-step', '1');
-  await expect(steps).toContainText('First steps, 1 of 3: Choose tonight’s playlist');
-  // In the flow, above the big buttons and never over them.
+  // What Simple Mode is now (Session 55, Part 18): Pro Mode's window with only what a one-projector sabha needs.
+  await expect(steps).toContainText('First steps, 1 of 3: This is Simple Mode');
+  await expect(steps).toContainText('Add files…');
+  // In the flow, above the show's controls along the bottom and never over them.
   const [box, buttons] = await Promise.all([
     steps.boundingBox(),
     win.getByTestId('simple-buttons').boundingBox(),
@@ -42,6 +44,7 @@ test('a fresh library’s Simple Mode shows the three first steps once; Skip end
   await steps.getByTestId('simple-first-run-next').click();
   await expect(steps).toHaveAttribute('data-step', '2');
   await expect(steps).toContainText('Next and Back');
+  await expect(steps).toContainText('right-click it to rename or delete it');
   // Skip ends them, and says so to the main process.
   await steps.getByTestId('simple-first-run-skip').click();
   await expect(steps).toBeHidden();

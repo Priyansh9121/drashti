@@ -10,6 +10,7 @@ import type { PictureLook } from '../shared/picture-look';
 import type { Db } from './db/database';
 import { PresentationRepo } from './db/presentations';
 import { FIRST_BOLD_MARK } from '../shared/perf-marks';
+import { lowerThirdsScenario } from './lower-thirds/perf-lower-thirds';
 import type { PerfCheck } from './perftest';
 import { cutText, plural } from '../shared/text';
 
@@ -45,6 +46,11 @@ import { cutText, plural } from '../shared/text';
  *   packaged). Each screen must draw it live; how many of its frames each drew
  *   is said. With DRASHTI_PERF_NO_WINDOW=1 the same, with no window put up: what it
  *   costs is the difference.
+ * - lower-thirds (Session 55, Part 16; main/lower-thirds/perf-lower-thirds.ts): after
+ *   the import, every row of the Lower Thirds studio's offered set in turn (each
+ *   family of animation, each way a band comes in, each style, each moving
+ *   background) on every screen and the stream's page, and how many of its frames
+ *   each drew: with the handicap on Windows, one not smooth is left out of OFFERED.
  *
  * The videos are FFmpeg's test pattern with a tone, made by the bundled
  * FFmpeg in the check's throwaway library. Besides the usual checks, each
@@ -64,6 +70,7 @@ export const PERF_SCENARIOS = [
   'enhanced-pictures',
   'bold-transitions',
   'live-window',
+  'lower-thirds',
 ] as const;
 export type PerfScenario = (typeof PERF_SCENARIOS)[number];
 
@@ -455,6 +462,8 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
       return boldTransitions(deps);
     case 'live-window':
       return liveWindow(deps);
+    case 'lower-thirds':
+      return lowerThirdsScenario(deps);
   }
   return {
     slides,

@@ -16,7 +16,7 @@ import { IPC } from '../../shared/ipc';
 import { DEFAULT_LINK_MAX_HEIGHT, type LinkHeight, type LinkView } from '../../shared/links';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { lockChannels, refusalFor, refusedNow } from '../ipc/handle';
-import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from '../simple-mode';
+import { SIMPLE_MODE_LOCKED, simpleModeBounds, simpleModeRefusals } from '../simple-mode';
 import { toolEnv, toolFolders } from './youtube-tools';
 import { makeDropboxLikeZip, makeZip } from '../import/testing/zip-writer';
 import { nodeGet } from './http';
@@ -809,14 +809,26 @@ describe('the playlist a download went into last (Session 54, F1)', () => {
     expect(h.service.view().lastPlaylist).toBeNull();
   });
 
-  it('is every person’s in Pro Mode, and refused in Simple Mode, as the rest of Import from a Link is', () => {
-    expect(SIMPLE_MODE_LOCKED).toContain(IPC.links.setPlaylist);
+  it('is every person’s in Pro Mode; in Simple Mode only its one playlist (Session 55, Part 18), as From a Link… goes there', () => {
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.links.setPlaylist);
     let simple = true;
     lockChannels(
       () => simple,
       simpleModeRefusals(() => ({ chosen: null, devices: [], state: 'default' as const, checked: true })),
+      simpleModeBounds(() => ({
+        playlistId: 'placeholder-one',
+        playlistOf: () => null,
+        holdsMedia: () => false,
+        holdsPresentation: () => false,
+      })),
     );
-    expect(refusalFor(IPC.links.setPlaylist)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(refusalFor(IPC.links.setPlaylist, ['placeholder-one'])).toBeUndefined();
+    expect(refusalFor(IPC.links.setPlaylist, ['placeholder-other'])?.()).toEqual({
+      ok: false,
+      message: SIMPLE_MODE_REFUSAL,
+    });
+    // A request with none of the window's arguments (a phone's, Companion's) is refused.
+    expect(refusedNow(IPC.links.setPlaylist)).toBe(true);
     simple = false;
     expect(refusedNow(IPC.links.setPlaylist)).toBe(false);
   });

@@ -131,17 +131,21 @@ export function StageScreen() {
             ))}
           </select>
         </label>
-        <label className="flex min-h-12 items-center gap-2 text-base text-fg">
-          <input
-            type="checkbox"
-            checked={flash}
-            onChange={(e) => {
-              setFlash(e.target.checked);
-            }}
-            className="size-5"
-          />
-          Flash as it comes up
-        </label>
+        {/* A switch a finger finds (44 px or more, as every phone target), as the phone's screen switches are. */}
+        <Button
+          size="lg"
+          className="min-h-12"
+          role="switch"
+          aria-checked={flash}
+          aria-label="Flash as it comes up"
+          variant="secondary"
+          data-testid="remote-stage-flash"
+          onClick={() => {
+            setFlash(!flash);
+          }}
+        >
+          <span aria-hidden="true">Flash as it comes up: {flash ? 'On' : 'Off'}</span>
+        </Button>
       </div>
       {shown !== null && (
         <div

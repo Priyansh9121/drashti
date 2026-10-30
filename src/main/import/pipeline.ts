@@ -17,6 +17,7 @@ import type {
 } from '../../shared/import';
 import { emptyTotals, NO_COUNTS } from '../../shared/import';
 import type { ImportSource } from '../../shared/library';
+import { SIMPLE_IMPORT_LEFT_OUT } from '../../shared/mode';
 import type { SlideElement } from '../../shared/model';
 import { slideElementSchema } from '../../shared/model-schema';
 import type { Db } from '../db/database';
@@ -1668,6 +1669,21 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   async function importOne(file: ScannedFile, where: Where): Promise<void> {
     const name = basename(file.path).toLowerCase();
     const ext = extOf(file.path);
+    // Simple Mode (Session 55, Part 18): what its one playlist plays, nothing else (lyrics, the other program's files,
+    // a Shastra text or a calendar), each said.
+    if (ctx.options.simple === true && file.format !== 'media' && file.format !== 'pictures') {
+      record({
+        sourcePath: where.sourcePath,
+        format: file.format,
+        outcome: 'unsupported',
+        name: basename(file.path),
+        target: null,
+        counts: NO_COUNTS,
+        message: SIMPLE_IMPORT_LEFT_OUT,
+        issues: [],
+      });
+      return;
+    }
     if (ext === 'json') {
       await importJson(file, where);
       return;

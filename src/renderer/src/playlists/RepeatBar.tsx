@@ -33,8 +33,57 @@ function useDraft(shown: string): [string, (typed: string | null) => void] {
   return [draft ?? shown, setDraft];
 }
 
-export function RepeatBar({ playlistId, settings }: { playlistId: string; settings: RepeatSettings }) {
+export function RepeatBar({
+  playlistId,
+  settings,
+  simple = false,
+}: {
+  playlistId: string;
+  settings: RepeatSettings;
+  /** Simple Mode (Session 26d; its one playlist since Session 55, Part 18): Start and Stop alone, no setting. */
+  simple?: boolean;
+}) {
   const going = useEngine((s) => s.state?.repeat?.playlistId === playlistId);
+  if (simple)
+    return (
+      <div data-testid="repeat-bar" className="flex shrink-0 border-b border-line px-3 py-2">
+        {going ? (
+          <Button
+            size="lg"
+            icon={Square}
+            className="w-full"
+            data-testid="simple-repeat-stop"
+            onClick={() => void stopRepeat()}
+          >
+            Stop going round (Esc)
+          </Button>
+        ) : (
+          <Button
+            size="lg"
+            variant="primary"
+            icon={Play}
+            className="w-full"
+            data-testid="simple-repeat-start"
+            onClick={() => void startRepeat(playlistId)}
+          >
+            Start going round
+          </Button>
+        )}
+      </div>
+    );
+  return <RepeatSettingsBar playlistId={playlistId} settings={settings} going={going} />;
+}
+
+/** Pro Mode's line: the seconds each, the transition and its length, and Start or Stop. */
+function RepeatSettingsBar({
+  playlistId,
+  settings,
+  going,
+}: {
+  playlistId: string;
+  settings: RepeatSettings;
+  going: boolean;
+}) {
   const [seconds, setSeconds] = useDraft(String(settings.secondsEach));
   const [length, setLength] = useDraft(String(settings.transition.durationMs / 1000));
   const save = (next: RepeatSettings) => {

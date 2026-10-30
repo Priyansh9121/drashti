@@ -10,7 +10,7 @@ import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import type { ScreenSwitches } from '../../shared/screen-switches';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
-import { SIMPLE_MODE_LOCKED } from '../simple-mode';
+import { simpleModeRefusesWhole } from '../simple-mode';
 import type { NetworkWorker } from './network-worker';
 import { NetworkService, OP_CHANNEL } from './network-service';
 import { hashToken } from './tokens';
@@ -147,8 +147,9 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
       },
       statusFor: () => ({ status: 404, body: { ok: false } }),
     },
+    // As refusedNow answers a request with none of its arguments: every channel Simple Mode locks or bounds.
     refused: (channel: InvokeChannel) =>
-      options.lockEverything === true || (options.locked === true && SIMPLE_MODE_LOCKED.includes(channel)),
+      options.lockEverything === true || (options.locked === true && simpleModeRefusesWhole(channel)),
     changed: (s) => statuses.push(s),
     log: () => undefined,
     now: () => now,
@@ -581,7 +582,9 @@ describe('the network in the main process', () => {
     // gone).
     const locked = (Object.keys(DEVICE_OPS) as DeviceOp[]).filter((op) => {
       const channel = OP_CHANNEL[op];
-      return channel !== null && SIMPLE_MODE_LOCKED.includes(channel);
+      // Locked, or one Simple Mode's window may use within bounds (Session 55, Part 18: its one playlist's rows),
+      // which a phone, asking with none of the window's arguments, is refused.
+      return channel !== null && simpleModeRefusesWhole(channel);
     });
     expect(locked).toEqual([
       'screens.addGroup',

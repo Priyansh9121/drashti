@@ -19,7 +19,8 @@ export type BridgePage =
   | 'gallery'
   | 'zoom'
   | 'lock'
-  | 'access-list';
+  | 'access-list'
+  | 'lower-thirds';
 
 export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // The operator window: everything but the node's window, the PDF window and the sharpening window.
@@ -87,6 +88,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   lock: ['access', 'app'],
   // The Access List (Session 54, E4): the owner's window onto the access list.
   'access-list': ['accessList', 'app'],
+  // The Lower Thirds studio (Session 55, Part 16): the lower thirds, and what is up (the engine's state, read only).
+  'lower-thirds': ['app', 'engine', 'lowerThirds'],
 };
 
 /** The page a window shows, from its address (its file's name; Vite's root is the operator's), or null. */

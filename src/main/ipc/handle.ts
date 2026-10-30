@@ -25,26 +25,45 @@ export function gateChannels(mayRun: ((channel: string, event: IpcMainInvokeEven
   access = mayRun;
 }
 
-/** While `locked()` is true, these channels answer their refusal instead of running (Simple Mode). */
-let lock: { locked: () => boolean; refusals: ReadonlyMap<string, () => unknown> } | null = null;
+/**
+ * While `locked()` is true, these channels answer their refusal instead of running (Simple Mode), but a request a
+ * channel's bounds say is within them (Simple Mode's offers since Session 55, Part 18).
+ */
+let lock: {
+  locked: () => boolean;
+  refusals: ReadonlyMap<string, () => unknown>;
+  bounds: ReadonlyMap<string, (args: readonly unknown[]) => boolean>;
+} | null = null;
 
-/** Refuse the listed channels while `locked()` says so; each answers what its refusal gives. */
+/**
+ * Refuse the listed channels while `locked()` says so; each answers what its refusal gives. `bounds`: of those, the
+ * ones that run while locked when a request (its arguments as sent) is within their bounds. Left out, none runs: the
+ * lock fails closed.
+ */
 export function lockChannels(
   locked: () => boolean,
   refusals: ReadonlyMap<InvokeChannel, () => unknown>,
+  bounds: ReadonlyMap<InvokeChannel, (args: readonly unknown[]) => boolean> = new Map(),
 ): void {
-  lock = { locked, refusals };
+  lock = { locked, refusals, bounds };
 }
 
 /**
  * What a request on this channel gets instead of running now, or undefined when it may run: Simple Mode's
- * refusal (Session 54, E5: roles, and their admin lock, are gone).
+ * refusal (Session 54, E5: roles, and their admin lock, are gone). A bounded channel's request runs when its
+ * arguments (`args`, as sent) are within its bounds; asked with none (the network's refusedNow), it is refused.
  */
-export function refusalFor(channel: string): (() => unknown) | undefined {
-  return lock?.locked() ? lock.refusals.get(channel) : undefined;
+export function refusalFor(channel: string, args?: readonly unknown[]): (() => unknown) | undefined {
+  if (!lock?.locked()) return undefined;
+  const within = lock.bounds.get(channel);
+  if (within && args !== undefined && within(args)) return undefined;
+  return lock.refusals.get(channel);
 }
 
-/** Whether a request on this channel would be refused now (Simple Mode): the network asks the same. */
+/**
+ * Whether a request on this channel would be refused now (Simple Mode): the network asks the same, with no arguments,
+ * so a bounded channel is refused to a phone or Companion (Simple Mode's offers are its window's).
+ */
 export function refusedNow(channel: InvokeChannel): boolean {
   return refusalFor(channel) !== undefined;
 }
@@ -89,7 +108,7 @@ export function handle<C extends InvokeChannel>(
       throw new Error(`Refused ${channel} from ${url || 'an unknown frame'}`);
     }
     if (access && !access(channel, event)) throw new Error(STOPPED_REFUSAL);
-    const refusal = refusalFor(channel);
+    const refusal = refusalFor(channel, args);
     if (refusal) return refusal();
     const run = () => {
       const started = performance.now();

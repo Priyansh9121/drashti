@@ -144,11 +144,11 @@ test('a missing file behind a slide: the background stays as it was, never black
   await expect(win.getByTestId('next-caption')).toHaveText(
     `Placeholder Missing Backdrop, slide 2, over the file “${FILE}”, which is missing: the background stays as it is`,
   );
-  await win.getByTestId('simple-buttons').getByRole('button', { name: /^Next/u }).click();
+  await win.getByTestId('simple-mode').getByTestId('show-next').click();
   await expect.poll(async () => (await state(win)).live.slideIndex).toBe(1);
   await expect(win.getByTestId('live-file-missing')).toHaveText(LINE);
   expect((await state(win)).layers.background).toEqual(COLOUR);
-  const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   expect(pro.ok).toBe(true);
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
 

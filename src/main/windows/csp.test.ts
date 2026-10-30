@@ -115,7 +115,28 @@ describe('page security policies', () => {
     for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
   });
 
-  const ownRules = new Set(['pdf.html', 'sharpen.html', 'zoom.html', 'lock.html', 'access-list.html']);
+  // The Lower Thirds studio (Session 55, Part 16): the lower thirds come through the bridge, its preview draws them
+  // over a plain backdrop, so the page fetches nothing and shows no media.
+  it('lower-thirds.html (the Lower Thirds studio): app scripts only, no fetching, no media', () => {
+    const policy = policyOf(readFileSync(join(RENDERER, 'lower-thirds.html'), 'utf8'));
+    expect(policy.get('default-src')).toEqual(["'self'"]);
+    expect(policy.get('script-src')).toEqual(["'self'"]);
+    expect(policy.get('connect-src')).toEqual(["'self'"]);
+    expect(policy.get('media-src')).toEqual(["'none'"]);
+    expect(policy.get('object-src')).toEqual(["'none'"]);
+    expect(policy.get('base-uri')).toEqual(["'none'"]);
+    expect(policy.get('form-action')).toEqual(["'none'"]);
+    for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
+  });
+
+  const ownRules = new Set([
+    'pdf.html',
+    'sharpen.html',
+    'zoom.html',
+    'lock.html',
+    'access-list.html',
+    'lower-thirds.html',
+  ]);
   for (const page of pages.filter((p) => !NETWORK_PAGES.has(p) && !ownRules.has(p))) {
     it(`${page}: app scripts only, no fetching, media only as images and media`, () => {
       const policy = policyOf(readFileSync(join(RENDERER, page), 'utf8'));

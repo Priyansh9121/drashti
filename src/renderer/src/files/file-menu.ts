@@ -77,9 +77,28 @@ export function revealLabel(platform: string): string {
 
 /**
  * The menu's entries, in one order everywhere: the place's own first, then Edit, Trim, a later Part's items, Rename,
- * Show in Finder (Explorer), and Delete last, apart.
+ * Show in Finder (Explorer), and Delete last, apart. In Simple Mode (Session 55, Part 18: "Right-click Delete and
+ * Rename"), those two alone: a file's Rename (never a header's, which names a part of the playlist), and Delete.
  */
-export function fileMenuEntries(target: FileTarget, platform: string): MenuEntry[] {
+export function fileMenuEntries(
+  target: FileTarget,
+  platform: string,
+  { simple = false }: { simple?: boolean } = {},
+): MenuEntry[] {
+  if (simple) {
+    const out: MenuEntry[] = [];
+    if (target.rename && target.kind !== 'header')
+      out.push({ label: 'Rename…', icon: Pencil, onSelect: target.rename });
+    if (target.remove)
+      out.push({
+        label: target.remove.label,
+        icon: Trash2,
+        danger: true,
+        separatorBefore: out.length > 0,
+        onSelect: target.remove.run,
+      });
+    return out;
+  }
   const entries: MenuEntry[] = [...(target.first ?? [])];
   const group = (more: MenuEntry[]) => {
     const [head, ...rest] = more;

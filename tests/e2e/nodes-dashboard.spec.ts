@@ -148,7 +148,7 @@ test('the dashboard: pictures, status, Identify, the warning when a node goes, a
     await warning.click();
     await expect(dashboard.getByTestId('dashboard-node-online')).toHaveText('Offline');
     await expect(dashboard.getByTestId('dashboard-warnings')).toContainText('offline since');
-    await main.win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+    await main.win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
     // Pairing again works in Pro Mode (a code is offered).
     expect(await nodeCode(main.win)).toMatch(/^\d{6}$/u);
   } finally {

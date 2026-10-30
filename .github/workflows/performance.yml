@@ -54,6 +54,7 @@ on:
             three-outputs,
             enhanced-pictures,
             bold-transitions,
+            lower-thirds,
           ]
         default: none
       handicap:

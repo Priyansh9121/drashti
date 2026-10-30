@@ -1,5 +1,12 @@
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
-import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
+import type {
+  LowerThird,
+  LowerThirdDone,
+  LowerThirdInput,
+  LowerThirdResult,
+  LowerThirdsResult,
+  StudioOpen,
+} from './lower-thirds';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -154,11 +161,14 @@ export interface DrashtiBridge {
     onProgress(listener: (progress: TaskProgress | null) => void): () => void;
     /** Simple Mode or Pro Mode. */
     getMode(): Promise<OperatorMode>;
-    /** Into Simple Mode at once; back to Pro Mode only with the word typed (operator window only). */
-    setMode(mode: OperatorMode, word?: string): Promise<ModeResult>;
+    /**
+     * Into Simple Mode, or back to Pro Mode, at once (operator window only): nothing typed since Session 55, Part 18
+     * (Pro Mode's double-click); never Pro Mode with Simple access.
+     */
+    setMode(mode: OperatorMode): Promise<ModeResult>;
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
-    /** View > Switch to Pro Mode… was chosen: ask for the word. */
-    onAskLeaveSimple(listener: () => void): () => void;
+    /** Simple Mode's one playlist (Session 55, Part 18): the one it shows; null in Pro Mode. */
+    simplePlaylist(): Promise<string | null>;
     /** Help > Keyboard Shortcuts… was chosen (Pro Mode). */
     onShowKeys(listener: () => void): () => void;
     /** Help > Guides… was chosen (Sessions 31–36), in either mode. */
@@ -372,8 +382,11 @@ export interface DrashtiBridge {
     items(playlistId: string): Promise<PlaylistItemInfo[]>;
     /** Presentations' first slides, for the open playlist's cards (Session 26a). */
     firstSlides(presentationIds: string[]): Promise<Record<string, RenderSlide | null>>;
-    /** The operator opened it: it counts as this week's for output nodes (Session 14). */
-    opened(playlistId: string): Promise<null>;
+    /**
+     * The operator opened it: it counts as this week's for output nodes (Session 14); null, Pro Mode's window closed it
+     * (Session 55, Part 18: Simple Mode then takes a new playlist).
+     */
+    opened(playlistId: string | null): Promise<null>;
     create(name: string, parentId: string | null, isFolder: boolean): Promise<PlaylistResult>;
     rename(playlistId: string, name: string): Promise<PlaylistResult>;
     /** Remove playlists or folders (with what they hold); restore brings them back (Undo). */
@@ -749,6 +762,17 @@ export interface DrashtiBridge {
     /** Delete these (Undo brings them back, until Drashti next starts). */
     remove(ids: string[]): Promise<LowerThirdsResult>;
     restore(ids: string[]): Promise<LowerThirdsResult>;
+    /** The Lower Thirds studio (Session 55, Part 16): open it (the operator window), on one or a new one. */
+    studio(open: StudioOpen): Promise<LowerThirdDone>;
+    /** Show one as the library has it, or hide the one up (the operator window or the studio). */
+    show(id: string): Promise<LowerThirdDone>;
+    hide(): Promise<LowerThirdDone>;
+    /** The studio, told which to open while it is open. */
+    onEdit(listener: (open: NonNullable<StudioOpen>) => void): () => void;
+    /** The studio says whether it has changes not saved; asked to close with some, it asks first, then closes. */
+    dirty(dirty: boolean): Promise<null>;
+    close(): Promise<null>;
+    onAskClose(listener: () => void): () => void;
   };
   /** The MIDI controller: which device, and what its notes and controllers do. */
   midi: {

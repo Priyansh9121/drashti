@@ -61,10 +61,11 @@ describe('taken out (Session 55, Part 12)', () => {
     expect(parseEngineCommand({ type: 'toggleWallpaper' }).ok).toBe(true);
     expect(parseEngineCommand({ type: 'setWallpaper', on: true }).ok).toBe(true);
     // 16: the wallpaper's switch in the logo's place; 17 (Part 15) messages' looks, the stage message's size, timers for
-    // the audience; 18 (Part 6) the chosen wallpaper; 20 (Part 5) a picture's crop, turn, flips and blurred fill; each
-    // only adds to 16, which with alpha.13's 15 (and 14, 13, 12) is still read whole.
-    expect(ENGINE_STATE_VERSION).toBe(20);
-    for (const version of [20, 18, 17, 16, 15, 14, 13, 12])
+    // the audience; 18 (Part 6) the chosen wallpaper; 20 (Part 5) a picture's crop, turn, flips and blurred fill; 22
+    // (Part 16) the Lower Thirds studio's lower thirds; each only adds to 16, which with alpha.13's 15 (and 14, 13, 12)
+    // is still read whole.
+    expect(ENGINE_STATE_VERSION).toBe(22);
+    for (const version of [22, 20, 18, 17, 16, 15, 14, 13, 12])
       expect(readsEngineVersion(version), String(version)).toBe(true);
   });
 

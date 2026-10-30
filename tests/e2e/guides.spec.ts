@@ -159,6 +159,6 @@ test('Simple Mode’s Help › Guides… shows only the operator’s and the pre
   expect(read).toEqual([false, false]);
   await win.keyboard.press('Escape');
   await expect(guides).toBeHidden();
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await app.close();
 });

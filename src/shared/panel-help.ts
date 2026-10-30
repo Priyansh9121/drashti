@@ -47,7 +47,7 @@ export const PANEL_HELP = {
   lowerthirds: {
     title: 'Lower Thirds',
     doc: 'operator',
-    text: 'A name, a title and a place across the bottom of the hall’s screens, the stream or both. New… makes one with its look and how it comes in; Show puts it up and Hide takes it off again.',
+    text: 'A name, a title and a place across the bottom of the hall’s screens, the stream or both. Studio and New… open the Lower Thirds studio, a window with a live preview: the words, the style they sit in, the font and colours, how it comes in and goes out, a moving background, and whether it hides itself after a few seconds. Show puts it up and Hide takes it off again.',
     guide: '**Lower Thirds.**',
   },
   stage: {

@@ -3,6 +3,7 @@ import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react';
 import { create } from 'zustand';
 import { NAME_MAX } from '../../../shared/media-removal';
 import { useNotice } from '../operator/actions';
+import { useMode } from '../operator/mode-store';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, TextInput } from '../ui/Field';
@@ -180,13 +181,16 @@ function RenameDialog() {
 /** The menu (and Rename's question), once for the window. */
 export function FileMenu({ platform }: { platform: string }) {
   const open = useFileMenu((s) => s.open);
+  // Simple Mode's has Rename and Delete only (Session 55, Part 18).
+  const simple = useMode((s) => s.mode === 'simple');
+  const entries = open ? fileMenuEntries(open.target, platform, { simple }) : [];
   return (
     <>
-      {open && (
+      {open && entries.length > 0 && (
         <Menu
           at={open.at}
           label={open.target.name}
-          entries={fileMenuEntries(open.target, platform)}
+          entries={entries}
           onClose={() => {
             useFileMenu.setState({ open: null });
           }}

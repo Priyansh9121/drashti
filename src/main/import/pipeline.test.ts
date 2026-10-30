@@ -10,6 +10,7 @@ import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
 import { parseFfmpegInfo } from '../convert/plan';
 import { MediaStore, type MediaStoreOptions } from './media-store';
+import { SIMPLE_IMPORT_LEFT_OUT } from '../../shared/mode';
 import { MAX_TEXT_BYTES, readabilityIssues, runImport } from './pipeline';
 import { makeTestDocx } from './testing/make-docx';
 import { cocoaRtf, pp6Presentation } from './testing/pp6-fixtures';
@@ -173,6 +174,26 @@ describe('runImport', () => {
     expect(progress[0]?.phase).toBe('scanning');
     expect(progress.at(-1)).toMatchObject({ phase: 'finished', done: 9, total: 9 });
     expect(new ImportRepo(t.db).listRuns().map((r) => r.id)).toEqual([summary.id]);
+  });
+
+  it('in Simple Mode (Session 55, Part 18) brings in only sounds, videos, pictures, PDFs and decks, saying why it leaves the rest out', async () => {
+    const t = setup();
+    t.write('Song A.txt', SONG_A);
+    t.write('media/Loop.mp4', 'placeholder video');
+    t.write('Old Song.pro6', '<xml/>');
+    t.write('Placeholder text.json', '{"format":"placeholder"}');
+    const { summary, report } = await t.run([t.source], { simple: true });
+    expect(summary.status).toBe('done');
+    const line = (name: string) => report?.items.find((i) => i.name === name);
+    // The video comes in as ever; nothing else made a presentation.
+    expect(line('Loop.mp4')).toMatchObject({ format: 'media', outcome: 'imported' });
+    expect(names(t.db)).toEqual([]);
+    for (const name of ['Song A.txt', 'Old Song.pro6', 'Placeholder text.json'])
+      expect(line(name), name).toMatchObject({ outcome: 'unsupported', message: SIMPLE_IMPORT_LEFT_OUT });
+    expect(SIMPLE_IMPORT_LEFT_OUT).toMatch(/sounds, videos, pictures, PDFs and PowerPoint or Keynote decks/u);
+    // In Pro Mode the same lyrics are a presentation.
+    const pro = await t.run([join(t.source, 'Song A.txt')]);
+    expect(pro.report?.items[0]).toMatchObject({ format: 'text', outcome: 'imported' });
   });
 
   it('finds media that cannot play, marks it in the library, and says what to do', async () => {
