@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { PresentationDoc, SlideInfo } from '../../../shared/library';
 import type { RenderSlide } from '../../../shared/model';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
-import { moveSlideWithin, takeSlideOut } from './slide-order';
+import { moveSlideWithin, placeOfRow, slideRowAt, stepSlideWithin, takeSlideOut } from './slide-order';
 
 /*
  * Session 55, Part 4b: a slide's row dragged in the playlist. Within its deck or presentation it changes this item's
  * own order of slides; out of it, anywhere else in the playlist, it becomes an item of its own (the same
  * presentation, that slide alone), the deck's item keeping the rest. What is sent to the main process: the item's new
- * own order (and the new item's); never the library's presentation. Placeholder names only.
+ * own order (and the new item's); never the library's presentation. Part 4b's keyboard move: Alt+↑ ↓ on a slide's row
+ * moves it a place within its deck as its drag there would, staying put at the deck's first or last row. Placeholder
+ * names only.
  */
 
 const slide = (id: string): RenderSlide => ({
@@ -125,5 +127,48 @@ describe('a slide’s row dragged out of its deck', () => {
 
   it('has nothing to split when it is the item’s only slide: the item itself moves', () => {
     expect(takeSlideOut(item({ mode: 'slides', slideIds: ['s3'] }), DOC, 0)).toBeNull();
+  });
+});
+
+describe('a slide’s row moved a place from the keyboard (Alt+↑ ↓)', () => {
+  it('moves it a place up or down within its deck, as its drag there would; the item knows every slide', () => {
+    expect(stepSlideWithin(item({ mode: 'presentation' }), DOC, 1, 1)).toEqual({
+      mode: 'slides',
+      slideIds: ['s1', 's3', 's2', 's4'],
+      known: ALL,
+    });
+    expect(stepSlideWithin(item({ mode: 'presentation' }), DOC, 1, -1)).toEqual({
+      mode: 'slides',
+      slideIds: ['s2', 's1', 's3', 's4'],
+      known: ALL,
+    });
+    // An item made of slides dragged out keeps from taking slides added later.
+    expect(stepSlideWithin(item({ mode: 'slides', slideIds: ['s2', 's4'] }), DOC, 0, 1)).toEqual({
+      mode: 'slides',
+      slideIds: ['s4', 's2'],
+    });
+  });
+
+  it('stays put at its deck’s first or last row: a key never takes it into another item', () => {
+    expect(stepSlideWithin(item({ mode: 'presentation' }), DOC, 0, -1)).toBeNull();
+    expect(stepSlideWithin(item({ mode: 'presentation' }), DOC, 3, 1)).toBeNull();
+    expect(stepSlideWithin(item({ mode: 'slides', slideIds: ['s3'] }), DOC, 0, 1)).toBeNull();
+    expect(stepSlideWithin(item({ mode: 'slides', slideIds: ['s3'] }), DOC, 0, -1)).toBeNull();
+  });
+
+  it('finds a row again by its slide and which time it comes, after the item’s order changed (a slide can come twice)', () => {
+    const arranged = item({ mode: 'arrangement', arrangementId: 'a' });
+    // s1 s2 s3 s4 s1 s2 s3 s4: the sixth row is s2's second time.
+    const row = slideRowAt(arranged, DOC, 5);
+    expect(row).toEqual({ slideId: 's2', time: 1 });
+    const order = stepSlideWithin(arranged, DOC, 5, -1);
+    expect(order?.slideIds).toEqual(['s1', 's2', 's3', 's4', 's2', 's1', 's3', 's4']);
+    if (!row || !order) throw new Error('no row');
+    expect(placeOfRow(item(order), DOC, row)).toBe(4);
+    // Its first time is where it was.
+    expect(placeOfRow(item(order), DOC, { slideId: 's2', time: 0 })).toBe(1);
+    // Gone (its slide taken out of the item): nowhere.
+    expect(placeOfRow(item({ mode: 'slides', slideIds: ['s1'] }), DOC, row)).toBe(-1);
+    expect(slideRowAt(arranged, DOC, 8)).toBeNull();
   });
 });

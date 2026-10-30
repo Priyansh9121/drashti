@@ -7,7 +7,8 @@ import type { ItemOrder, PlaylistItemInfo } from '../../../shared/playlists';
  * own order of slides; out of it, anywhere else in the playlist, it becomes an item of its own (the same presentation,
  * that slide alone), the deck's item keeping the rest. These work out the orders sent to the main process: the item's
  * (and the new item's), never the library's presentation. Each starts from the order the item plays now (an
- * arrangement's repeats too), so what the operator sees is what moves.
+ * arrangement's repeats too), so what the operator sees is what moves. The keyboard's way (Alt+↑ ↓ on a slide's row, a
+ * place within its deck) lands it as its drag there would.
  */
 
 type PresentationItem = Extract<PlaylistItemInfo, { kind: 'presentation' }>;
@@ -43,6 +44,47 @@ export function moveSlideWithin(
   if (moved === undefined || to === from || to === from + 1 || to < 0 || to > ids.length) return null;
   const rest = ids.filter((_, i) => i !== from);
   return ownOrder(item, doc, rest.toSpliced(to > from ? to - 1 : to, 0, moved));
+}
+
+/**
+ * The slide at `from` a place up (-1) or down (1) within its item (Alt+↑ ↓ on its row), landing as its drag there
+ * would: the item's new own order, or null at the item's first or last row, where it stays put (a key never takes it
+ * into another item).
+ */
+export function stepSlideWithin(
+  item: PresentationItem,
+  doc: PresentationDoc,
+  from: number,
+  step: -1 | 1,
+): OwnOrder | null {
+  return moveSlideWithin(item, doc, from, step < 0 ? from - 1 : from + 2);
+}
+
+/**
+ * A slide's row known by what it plays, not by where it is: its slide, and which time (from 0) that slide comes in the
+ * item's order (an arrangement plays a slide more than once). It finds the row again once the order has changed.
+ */
+export interface SlideRowAt {
+  slideId: string;
+  time: number;
+}
+
+/** The row at `position` in the order the item plays now, or null past its end. */
+export function slideRowAt(
+  item: PresentationItem,
+  doc: PresentationDoc,
+  position: number,
+): SlideRowAt | null {
+  const ids = playedIds(item, doc);
+  const slideId = ids[position];
+  if (slideId === undefined) return null;
+  return { slideId, time: ids.slice(0, position).filter((id) => id === slideId).length };
+}
+
+/** Where that row is in the order the item plays now: -1 when it is not there (its slide deleted, or taken out). */
+export function placeOfRow(item: PresentationItem, doc: PresentationDoc, row: SlideRowAt): number {
+  let seen = 0;
+  return playedIds(item, doc).findIndex((id) => id === row.slideId && seen++ === row.time);
 }
 
 /**

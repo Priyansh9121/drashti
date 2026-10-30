@@ -54,13 +54,14 @@ import {
 import { MenuButton } from '../ui/Menu';
 import { Field, Select } from '../ui/Field';
 import { fileMenuProps } from '../files/FileMenu';
-import { playlistRow, slideRowTarget } from '../files/targets';
+import { playlistRow, slideOutEntry, slideRowTarget } from '../files/targets';
 import { setJumpRows } from '../operator/jump';
 import { practisePlaylist } from '../practice/practice-store';
 import { useDocs, readDocAgain, useWantDocs } from './docs-store';
 import { useFolded } from './fold-store';
 import { groupDocId, groupName, type MiddleRow, playlistRows, repeatRows } from './rows';
 import { SlideRow } from './SlideRow';
+import { slideRowAt, type SlideRowAt } from './slide-order';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
 import { RowDelete } from '../ui/RowDelete';
@@ -100,6 +101,7 @@ import {
   moveItemBy,
   moveItems,
   moveSlide,
+  moveSlideBy,
   newFromTemplate,
   removeMissingItems,
   renameHeader,
@@ -108,6 +110,7 @@ import {
   requestRemoveNode,
   showsFolders,
   slideOut,
+  slideOutBelow,
   startRenaming,
   stopRenaming,
   templateOpen,
@@ -128,7 +131,9 @@ import {
  * jumping to it from the keyboard (operator/jump.ts). Each row has the one right-click menu (Part 14,
  * files/FileMenu.tsx); its Delete takes it out of this playlist only, asking first when it is up. Part 4b: a slide's
  * row dragged within its deck changes this playlist's own order of its slides; dragged anywhere else in the playlist,
- * it becomes an item of its own there (playlists/slide-order.ts), each with one Undo.
+ * it becomes an item of its own there (playlists/slide-order.ts), each with one Undo. From the keyboard: Alt+↑ ↓ on the
+ * row moves it a place within its deck (at its first or last row it stays put), and its menu's Make it an item of its
+ * own (Shift+F10) puts it straight after its deck; the keyboard goes with the row.
  */
 
 // ---- the open playlist's items ----------------------------------------------------------
@@ -468,6 +473,30 @@ function keepFocus(id: string, on: 'item' | 'up' | 'down'): void {
   (button ?? row.querySelector<HTMLElement>('[data-testid="playlist-item"]'))?.focus();
 }
 
+/** An item's slide rows, as the middle shows them. */
+const slideRowsOf = (itemId: string) =>
+  document.querySelector(`[data-item-row="${CSS.escape(itemId)}"] [data-testid="slide-rows"]`);
+
+/**
+ * After a slide's row moved from the keyboard (Part 4b): the keyboard on that row where it is now, in `itemId`'s slides
+ * (its deck's, or the item it was made into), found by what it plays. Only while the keyboard is where `still` says it
+ * was left, or lost as the list was drawn again: never taken from where the operator has gone since. The row it is on.
+ */
+function keepSlideFocus(
+  itemId: string,
+  row: SlideRowAt,
+  still: (now: Element) => boolean,
+): HTMLElement | null {
+  const now = document.activeElement;
+  if (now !== null && now !== document.body && !still(now)) return null;
+  const there =
+    slideRowsOf(itemId)?.querySelectorAll<HTMLElement>(
+      `[data-testid="slide-thumb"][data-slide-id="${CSS.escape(row.slideId)}"]`,
+    )[row.time] ?? null;
+  if (there && there !== now) there.focus();
+  return there;
+}
+
 /**
  * Up and Down on the chosen item, on a line under it so its name keeps its room: it moves a place,
  * as one Undo step, without dragging (Alt+↑ ↓ too).
@@ -617,10 +646,19 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
   const slideFrom = useRef<Map<string, number> | null>(null);
   /** Where the keyboard was before a move, put back in the same commit as the list's new order. */
   const focusFrom = useRef<{ id: string; on: 'item' | 'up' | 'down' } | null>(null);
+  /**
+   * A slide's row moved from the keyboard (Alt+↑ ↓, Part 4b), while its moves are under way: the keyboard goes with it
+   * in the same commit as each new order, so a key pressed straight after lands on the row that moved.
+   */
+  const slideFocus = useRef<{ itemId: string; row: SlideRowAt; on: Element } | null>(null);
+  /** How many of those moves are under way: the keyboard stops following once the last has landed. */
+  const slideMoves = useRef(0);
   useLayoutEffect(() => {
     const keep = focusFrom.current;
     focusFrom.current = null;
     if (keep) keepFocus(keep.id, keep.on);
+    const slide = slideFocus.current;
+    if (slide) slide.on = keepSlideFocus(slide.itemId, slide.row, (now) => now === slide.on) ?? slide.on;
     const before = slideFrom.current;
     if (!before) return;
     slideFrom.current = null;
@@ -1130,8 +1168,35 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
             item.kind === 'presentation' && !isRepeat ? (docs[item.presentationId] ?? undefined) : undefined;
           // One of its slides is up: its name row says LIVE too (folded, its slides are not there to say it).
           const slideUp = slides.some(isSlideLive);
-          const canDragSlides =
+          // A presentation's slide rows move (Part 4b), by a drag or from the keyboard: not a passage's, nor a Repeat
+          // Slides playlist's steps.
+          const canMoveSlides =
             !isRepeat && item.kind === 'presentation' && item.presentationName !== null && doc !== undefined;
+          // Alt+↑ ↓ on a slide's row: a place within its deck, the keyboard going with the row in each new order.
+          const moveSlideRow = (position: number, step: -1 | 1, pressed: Element) => {
+            const at = item.kind === 'presentation' && doc ? slideRowAt(item, doc, position) : null;
+            if (!at) return;
+            slideFocus.current = { itemId: item.id, row: at, on: pressed };
+            slideMoves.current += 1;
+            void moveSlideBy(item.id, position, step).finally(() => {
+              slideMoves.current -= 1;
+              if (slideMoves.current === 0) slideFocus.current = null;
+            });
+          };
+          // Make it an item of its own, from the row's menu: the keyboard goes with the row to the new item (the menu
+          // gave it back to the row it was opened on, which now shows another slide, or is gone).
+          const makeOwnItem = (position: number) => {
+            const at = item.kind === 'presentation' && doc ? slideRowAt(item, doc, position) : null;
+            if (!at) return;
+            void slideOutBelow(item.id, position).then((made) => {
+              if (made === null) return;
+              requestAnimationFrame(() => {
+                keepSlideFocus(made, { slideId: at.slideId, time: 0 }, (now) =>
+                  Boolean(slideRowsOf(item.id)?.contains(now)),
+                );
+              });
+            });
+          };
           const menuProps = fileMenuProps(
             () => playlistRow(item, openId),
             () => {
@@ -1171,6 +1236,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
               style={arriving ? ({ '--i': index } as CSSProperties) : undefined}
               className={cx('group relative rounded-md', line)}
               onKeyDown={(e) => {
+                // A key a slide's row has used itself (Part 4b: Alt+↑ ↓ moves the row within its deck) moves no item.
+                if (e.defaultPrevented) return;
                 const action = actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP);
                 if (action !== 'moveItemUp' && action !== 'moveItemDown') return;
                 e.preventDefault();
@@ -1280,61 +1347,87 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                   data-testid="slide-rows"
                   aria-label={`Slides of ${itemName(item)}`}
                 >
-                  {slides.map((r) => (
-                    <SlideRow
-                      // Dragged within its deck, or out of it (Session 55, Part 4b): a presentation's, not a
-                      // passage's or a Repeat Slides playlist's step.
-                      onDragStart={
-                        canDragSlides
-                          ? (e) => {
-                              startDrag(e, 'slide', [item.id, String(r.at.position)]);
-                            }
-                          : undefined
-                      }
-                      dropLine={
-                        slideSpot?.itemId !== item.id
-                          ? null
-                          : slideSpot.before === r.at.position
-                            ? 'before'
-                            : slideSpot.before === slides.length && r.at.position === slides.length - 1
-                              ? 'after'
-                              : null
-                      }
-                      key={r.key}
-                      number={r.number}
-                      label={r.label}
-                      line={r.line}
-                      at={r.at}
-                      firstOfRun={r.firstOfRun}
-                      live={isSlideLive(r)}
-                      itemId={item.id}
-                      onClick={(e) => {
-                        clickSlideRow(r, e, platform);
-                      }}
-                      onDoubleClick={
-                        // Edit slides is Pro Mode's (Simple Mode has none).
-                        !simple &&
-                        r.item &&
-                        !isRepeat &&
-                        item.kind === 'presentation' &&
-                        item.presentationName !== null
-                          ? () =>
-                              void openSlideEditor(
-                                r.presentationId,
-                                groupName(item, doc ?? null),
-                                r.at.slide.id,
-                              )
-                          : undefined
-                      }
-                      {...fileMenuProps(
-                        () => slideRowTarget(r, groupName(group.item, doc ?? null), isRepeat ? null : openId),
-                        () => {
-                          if (!usePlaylists.getState().marked.includes(item.id))
-                            clickItem(item.id, { toggle: false, range: false });
-                        },
-                      )}
-                    />
-                  ))}
+                  {slides.map((r) => {
+                    const menu = fileMenuProps(
+                      () =>
+                        slideRowTarget(
+                          r,
+                          groupName(group.item, doc ?? null),
+                          isRepeat ? null : openId,
+                          // Part 4b's keyboard move: what its drag out of the deck does (one of more than one slide).
+                          canMoveSlides && slides.length > 1
+                            ? [
+                                slideOutEntry(() => {
+                                  makeOwnItem(r.at.position);
+                                }),
+                              ]
+                            : [],
+                        ),
+                      () => {
+                        if (!usePlaylists.getState().marked.includes(item.id))
+                          clickItem(item.id, { toggle: false, range: false });
+                      },
+                    );
+                    return (
+                      <SlideRow
+                        // Dragged within its deck, or out of it (Session 55, Part 4b): a presentation's, not a
+                        // passage's or a Repeat Slides playlist's step.
+                        onDragStart={
+                          canMoveSlides
+                            ? (e) => {
+                                startDrag(e, 'slide', [item.id, String(r.at.position)]);
+                              }
+                            : undefined
+                        }
+                        dropLine={
+                          slideSpot?.itemId !== item.id
+                            ? null
+                            : slideSpot.before === r.at.position
+                              ? 'before'
+                              : slideSpot.before === slides.length && r.at.position === slides.length - 1
+                                ? 'after'
+                                : null
+                        }
+                        key={r.key}
+                        number={r.number}
+                        label={r.label}
+                        line={r.line}
+                        at={r.at}
+                        firstOfRun={r.firstOfRun}
+                        live={isSlideLive(r)}
+                        itemId={item.id}
+                        onClick={(e) => {
+                          clickSlideRow(r, e, platform);
+                        }}
+                        onDoubleClick={
+                          // Edit slides is Pro Mode's (Simple Mode has none).
+                          !simple &&
+                          r.item &&
+                          !isRepeat &&
+                          item.kind === 'presentation' &&
+                          item.presentationName !== null
+                            ? () =>
+                                void openSlideEditor(
+                                  r.presentationId,
+                                  groupName(item, doc ?? null),
+                                  r.at.slide.id,
+                                )
+                            : undefined
+                        }
+                        {...menu}
+                        keyShortcuts={canMoveSlides ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
+                        onKeyDown={(e) => {
+                          menu.onKeyDown(e);
+                          if (e.defaultPrevented || !canMoveSlides) return;
+                          const action = actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP);
+                          if (action !== 'moveItemUp' && action !== 'moveItemDown') return;
+                          // Within its deck only: at its first or last row it stays put, and no item moves.
+                          e.preventDefault();
+                          moveSlideRow(r.at.position, action === 'moveItemUp' ? -1 : 1, e.currentTarget);
+                        }}
+                      />
+                    );
+                  })}
                 </ul>
               )}
             </li>
