@@ -473,22 +473,28 @@ function keepFocus(id: string, on: 'item' | 'up' | 'down'): void {
   (button ?? row.querySelector<HTMLElement>('[data-testid="playlist-item"]'))?.focus();
 }
 
+/** An item's slide rows, as the middle shows them. */
+const slideRowsOf = (itemId: string) =>
+  document.querySelector(`[data-item-row="${CSS.escape(itemId)}"] [data-testid="slide-rows"]`);
+
 /**
- * After a slide's row moved from the keyboard (Part 4b): the keyboard on that row where it is now, in `to`'s slides
- * (its deck's, or the item it was made into), found by what it plays. Only while the keyboard is still on one of
- * `from`'s slide rows, or lost as the list was drawn again: never taken from where the operator has gone since.
+ * After a slide's row moved from the keyboard (Part 4b): the keyboard on that row where it is now, in `itemId`'s slides
+ * (its deck's, or the item it was made into), found by what it plays. Only while the keyboard is where `still` says it
+ * was left, or lost as the list was drawn again: never taken from where the operator has gone since. The row it is on.
  */
-function keepSlideFocus(from: string, to: string, row: SlideRowAt): void {
-  const slidesOf = (id: string) =>
-    document.querySelector(`[data-item-row="${CSS.escape(id)}"] [data-testid="slide-rows"]`);
+function keepSlideFocus(
+  itemId: string,
+  row: SlideRowAt,
+  still: (now: Element) => boolean,
+): HTMLElement | null {
   const now = document.activeElement;
-  const lost = now === null || now === document.body;
-  if (!lost && !(slidesOf(from)?.contains(now) ?? false)) return;
-  const rows = slidesOf(to)?.querySelectorAll<HTMLElement>(
-    `[data-testid="slide-thumb"][data-slide-id="${CSS.escape(row.slideId)}"]`,
-  );
-  const there = rows?.[row.time];
+  if (now !== null && now !== document.body && !still(now)) return null;
+  const there =
+    slideRowsOf(itemId)?.querySelectorAll<HTMLElement>(
+      `[data-testid="slide-thumb"][data-slide-id="${CSS.escape(row.slideId)}"]`,
+    )[row.time] ?? null;
   if (there && there !== now) there.focus();
+  return there;
 }
 
 /**
@@ -644,7 +650,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
    * A slide's row moved from the keyboard (Alt+↑ ↓, Part 4b), while its moves are under way: the keyboard goes with it
    * in the same commit as each new order, so a key pressed straight after lands on the row that moved.
    */
-  const slideFocus = useRef<{ itemId: string; row: SlideRowAt } | null>(null);
+  const slideFocus = useRef<{ itemId: string; row: SlideRowAt; on: Element } | null>(null);
   /** How many of those moves are under way: the keyboard stops following once the last has landed. */
   const slideMoves = useRef(0);
   useLayoutEffect(() => {
@@ -652,7 +658,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
     focusFrom.current = null;
     if (keep) keepFocus(keep.id, keep.on);
     const slide = slideFocus.current;
-    if (slide) keepSlideFocus(slide.itemId, slide.itemId, slide.row);
+    if (slide) slide.on = keepSlideFocus(slide.itemId, slide.row, (now) => now === slide.on) ?? slide.on;
     const before = slideFrom.current;
     if (!before) return;
     slideFrom.current = null;
@@ -1167,10 +1173,10 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           const canMoveSlides =
             !isRepeat && item.kind === 'presentation' && item.presentationName !== null && doc !== undefined;
           // Alt+↑ ↓ on a slide's row: a place within its deck, the keyboard going with the row in each new order.
-          const moveSlideRow = (position: number, step: -1 | 1) => {
+          const moveSlideRow = (position: number, step: -1 | 1, pressed: Element) => {
             const at = item.kind === 'presentation' && doc ? slideRowAt(item, doc, position) : null;
             if (!at) return;
-            slideFocus.current = { itemId: item.id, row: at };
+            slideFocus.current = { itemId: item.id, row: at, on: pressed };
             slideMoves.current += 1;
             void moveSlideBy(item.id, position, step).finally(() => {
               slideMoves.current -= 1;
@@ -1185,7 +1191,9 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
             void slideOutBelow(item.id, position).then((made) => {
               if (made === null) return;
               requestAnimationFrame(() => {
-                keepSlideFocus(item.id, made, { slideId: at.slideId, time: 0 });
+                keepSlideFocus(made, { slideId: at.slideId, time: 0 }, (now) =>
+                  Boolean(slideRowsOf(item.id)?.contains(now)),
+                );
               });
             });
           };
@@ -1415,7 +1423,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                           if (action !== 'moveItemUp' && action !== 'moveItemDown') return;
                           // Within its deck only: at its first or last row it stays put, and no item moves.
                           e.preventDefault();
-                          moveSlideRow(r.at.position, action === 'moveItemUp' ? -1 : 1);
+                          moveSlideRow(r.at.position, action === 'moveItemUp' ? -1 : 1, e.currentTarget);
                         }}
                       />
                     );
