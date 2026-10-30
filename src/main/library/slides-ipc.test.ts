@@ -87,6 +87,8 @@ describe('the slide editor’s guard', () => {
     expect(t.save(opened, 'Placeholder from the editor')).toMatchObject({
       ok: false,
       changedElsewhere: true,
+      // What "Save over the other change?" says (Session 55: Edit words went, so it is no longer named).
+      message: 'This presentation was changed somewhere else since the editor opened it (an import, say).',
     });
     expect(t.stored()).toBe('Placeholder one');
   });

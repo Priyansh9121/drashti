@@ -18,7 +18,12 @@ import { Scene } from '../../render/Scene';
 import { textLang } from '../../render/lang';
 import { useNow } from '../../render/useNow';
 import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
-import { SCREEN_SWITCHES, type ScreenSwitches, SWITCH_NAMES } from '../../../../shared/screen-switches';
+import {
+  SCREEN_SWITCHES,
+  type ScreenSwitch,
+  type ScreenSwitches,
+  SWITCH_NAMES,
+} from '../../../../shared/screen-switches';
 import { languageView } from '../../../../shared/language-view';
 import { deckSlideAt } from '../../../../shared/deck-show';
 import { nextCaption } from '../../../../shared/next-caption';
@@ -133,19 +138,37 @@ function useHallLook(state: EngineState | null): LiveGroupLook {
   return groupLookIn(state?.look, groupId);
 }
 
+/** What a switch's screens show while it is off (Session 55: the stage screens stay, showing the audience picture). */
+const OFF_SHOWS: Readonly<Record<ScreenSwitch, string>> = {
+  audience: 'the hall’s screens show its desktop',
+  stage: 'the stage screens show the audience picture',
+};
+
 /**
  * Which of Main's screens are off, Audience and Stage (Session 50), in words: "Audience off", "Stage off" or
- * both; null while both are on. A phone says so, and cannot turn them (the operator does, in Drashti).
+ * both, and what those screens show until they are on again; null while both are on. A phone says so beside its
+ * live picture (More turns them on again, Session 54, as the operator does in Drashti).
  */
-function switchedOffWords(switches: ScreenSwitches | undefined): string | null {
+function switchedOffWords(switches: ScreenSwitches | undefined): { title: string; shows: string } | null {
   if (!switches) return null;
-  const off = SCREEN_SWITCHES.filter((which) => !switches[which]).map((which) => SWITCH_NAMES[which]);
-  return off.length === 0 ? null : `${off.join(' and ')} off`;
+  const off = SCREEN_SWITCHES.filter((which) => !switches[which]);
+  const [only] = off;
+  if (only === undefined) return null;
+  if (off.length === 1)
+    return {
+      title: `${SWITCH_NAMES[only]} off`,
+      shows: `${OFF_SHOWS[only]} until ${SWITCH_NAMES[only]} is on again.`,
+    };
+  return {
+    title: `${off.map((which) => SWITCH_NAMES[which]).join(' and ')} off`,
+    shows: `${OFF_SHOWS.audience}, and the stage screens the audience picture, until they are on again.`,
+  };
 }
 
 function LivePicture({ state }: { state: EngineState | null }) {
   const hallLook = useHallLook(state);
-  const switchedOff = useRemote((s) => switchedOffWords(s.hall?.switches));
+  // The switches as the store has them (one object until the next answer), put in words here.
+  const switchedOff = switchedOffWords(useRemote((s) => s.hall?.switches));
   const up = state
     ? state.layers.slide !== null || state.layers.background !== null || state.layers.pip !== null
     : false;
@@ -189,8 +212,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
         >
           <MonitorOff size={18} aria-hidden="true" className="shrink-0" />
           <span className="min-w-0 flex-1 text-base">
-            <span className="font-bold">{switchedOff}</span> on Drashti’s computer: those screens show its
-            desktop until the operator turns them on again.
+            <span className="font-bold">{switchedOff.title}</span> on Drashti’s computer: {switchedOff.shows}
           </span>
         </div>
       )}

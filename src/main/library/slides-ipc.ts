@@ -84,8 +84,7 @@ export function registerSlidesIpc({
       return {
         ok: false,
         changedElsewhere: true,
-        message:
-          'This presentation was changed somewhere else since the editor opened it (an import or Edit words).',
+        message: 'This presentation was changed somewhere else since the editor opened it (an import, say).',
       };
     // Every picture, video and sound must be in the library.
     const media = mediaIdsOf(doc.data);

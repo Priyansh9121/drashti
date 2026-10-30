@@ -480,8 +480,8 @@ function PipDialogBody() {
             columns={3}
           />
           <p className="text-xs text-muted">
-            Swap and moving it move the same way, Calm or Bold as each group’s Look says. The box makes no
-            sound: a video in it plays muted.
+            Swap and moving it move the same way on every screen. The box makes no sound: a video in it plays
+            muted.
           </p>
         </section>
       </div>

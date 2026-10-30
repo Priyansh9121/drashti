@@ -178,6 +178,8 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await dialog.getByTestId('pip-corner-top-left').click();
   await dialog.getByTestId('pip-size-small').click();
   await dialog.getByTestId('pip-motion-scale').click();
+  // Session 55: Movement went with Looks, so the box swaps and moves alike on every screen, as the dialog says.
+  await expect(dialog).toContainText('Swap and moving it move the same way on every screen.');
   expect(await pipNow(win)).toBeNull();
   // The library remembers where the box goes, for next time.
   await expect
