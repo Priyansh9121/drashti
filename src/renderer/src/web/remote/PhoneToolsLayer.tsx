@@ -59,6 +59,9 @@ function MenuSheet({ title, entries }: { title: string; entries: MenuEntry[] }) 
                     data-testid={`remote-menu-${e.id}`}
                     aria-pressed={e.pressed}
                     onClick={() => {
+                      // Its entry in the page's history used up here, not taken back: what the entry opens next (the
+                      // viewer, the Picture editor, Rename…) pushes its own, which a Back still in flight would pop.
+                      history.replaceState({ drashtiMenuUsed: true }, '');
                       closeMenu();
                       e.run();
                     }}
