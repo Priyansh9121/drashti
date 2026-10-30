@@ -609,8 +609,8 @@ export const IPC = {
     close: 'slideeditor:close',
     /** main -> the editor: its window was asked to close with changes not saved (ask first). */
     askClose: 'slideeditor:ask-close',
-    /** main -> operator: slides were saved in the editor's window. */
-    saved: 'slideeditor:saved',
+    /** main -> operator: slides were edited (saved) in the editor's window. */
+    edited: 'slideeditor:edited',
     /** The editor's elements copied, kept by main for the next window (and what is kept). */
     copy: 'slideeditor:copy',
     copied: 'slideeditor:copied',
@@ -1543,7 +1543,7 @@ export interface EventContract {
   [IPC.lowerThirds.askClose]: null;
   [IPC.slideEditor.edit]: EditSlidesOpen;
   [IPC.slideEditor.askClose]: null;
-  [IPC.slideEditor.saved]: SlidesSaved;
+  [IPC.slideEditor.edited]: SlidesSaved;
   [IPC.wallpapers.changed]: WallpapersView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.output.context]: OutputContext;

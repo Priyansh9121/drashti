@@ -3668,7 +3668,7 @@ function start(): void {
     changed: contentChanged,
     // A save in the editor's window: one change for the operator window's Undo.
     saved: (saved) => {
-      sendToOperator(IPC.slideEditor.saved, saved);
+      sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
   // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in

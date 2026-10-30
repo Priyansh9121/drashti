@@ -521,7 +521,7 @@ const bridge: DrashtiBridge = {
       on(IPC.slideEditor.askClose, () => {
         listener();
       }),
-    onSaved: (listener) => on(IPC.slideEditor.saved, listener),
+    onSaved: (listener) => on(IPC.slideEditor.edited, listener),
     copy: (copied) => invoke(IPC.slideEditor.copy, copied),
     copied: () => invoke(IPC.slideEditor.copied),
   },
