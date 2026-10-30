@@ -1140,7 +1140,7 @@ test('Shastra, timers in the running order, Samvat and tithi (Session 12; the id
   const passage = win.getByTestId('slide-grid');
   await expect(passage).toHaveAttribute('data-presentation-id', 'shastra:pg#14-15');
   await passage.getByTestId('slide-thumb').first().click();
-  await expect(win.getByTestId('live-text')).toHaveText(/^Live: Placeholder Granth 14.15 · slide 1 of \d+$/u);
+  await expect(win.getByTestId('live-text')).toHaveText(/^Live: Placeholder Granth 14–15 · slide 1 of \d+$/u);
   await shot(win, 'shastra-tab');
   await panel.getByTestId('open-shastra-texts').click();
   await expect(win.getByTestId('shastra-texts-dialog')).toBeVisible();
@@ -2623,7 +2623,9 @@ test('access by Gmail, the owner’s Access List: placeholder Gmails with their 
     await list.getByTestId('access-revoke').click();
     const question = list.getByTestId('access-revoke-question');
     // Within one check, 15 seconds (Session 55, Parts 3 and 19); one with no internet once it is back, within 15 days.
-    await expect(question).toContainText('Their Drashti stops within 15 seconds, screens and stream included.');
+    await expect(question).toContainText(
+      'Their Drashti stops within 15 seconds, screens and stream included.',
+    );
     await expect(question).toContainText(
       'One with no internet stops the moment it is back online, and within 15 days in any case.',
     );
