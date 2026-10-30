@@ -396,9 +396,9 @@ function smartState(view: { state: string; adding: number }): string {
 
 /**
  * A smart playlist's settings (Session 26c): the folder it follows, how that goes, and the one button
- * for the items whose files are gone.
+ * for the items whose files are gone (Pro Mode's: `simple` leaves it out).
  */
-function SmartBar({ playlistId }: { playlistId: string }) {
+function SmartBar({ playlistId, simple }: { playlistId: string; simple: boolean }) {
   const view = useSmart((s) => s.views[playlistId]);
   if (!view) return null;
   return (
@@ -420,7 +420,7 @@ function SmartBar({ playlistId }: { playlistId: string }) {
       >
         {smartState(view)}
       </span>
-      {view.missing > 0 && (
+      {view.missing > 0 && !simple && (
         <Button
           size="sm"
           icon={Trash2}
@@ -602,7 +602,7 @@ function GroupNote({ row }: { row: Extract<MiddleRow, { kind: 'group' }> }) {
   return null;
 }
 
-function PlaylistItems({ platform, openId }: { platform: string; openId: string }) {
+function PlaylistItems({ platform, openId, simple }: { platform: string; openId: string; simple: boolean }) {
   const node = usePlaylists(
     (s) => s.tree.find((n) => n.id === openId) ?? s.templates.find((n) => n.id === openId),
   );
@@ -628,8 +628,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   }, [items]);
   const marked = usePlaylists((s) => s.marked);
   const anchorId = usePlaylists((s) => s.anchorId);
-  // Made from a folder (Session 44): the folder shown has its own items here, its folders in the bottom left.
-  const byFolder = usePlaylists(showsFolders);
+  // Made from a folder (Session 44): the folder shown has its own items here, its folders in the bottom left. Simple
+  // Mode has no folders to go through (Session 55, Part 18): it shows the whole playlist, headers and all.
+  const byFolder = usePlaylists(showsFolders) && !simple;
   const folder = usePlaylists((s) => s.folder);
   const view = useMemo(() => playlistFolders(items), [items]);
   const shownFolder = byFolder && hasFolder(view, folder) ? folder : '';
@@ -922,9 +923,10 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           <h2
             className="min-w-40 flex-1 truncate text-base font-bold"
             data-testid="playlist-title"
-            title={`${node?.name ?? ''} (double-click to rename)`}
+            // Simple Mode renames no playlist (Session 55, Part 18).
+            title={simple ? (node?.name ?? '') : `${node?.name ?? ''} (double-click to rename)`}
             onDoubleClick={() => {
-              startRenaming(openId, 'centre');
+              if (!simple) startRenaming(openId, 'centre');
             }}
           >
             {node?.name ?? ''}
@@ -956,88 +958,95 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           </>
         )}
         {help.button}
-        <MenuButton
-          label="Playlist"
-          title="Playlist actions"
-          icon={MoreHorizontal}
-          entries={[
-            { label: 'Add a header', icon: ListPlus, onSelect: () => void addHeader() },
-            ...(extras
-              ? [
-                  {
-                    label: 'Add a slot…',
-                    icon: SquareDashed,
-                    onSelect: () => {
-                      usePlaylists.setState({ addingSlot: true });
-                    },
-                  },
-                ]
-              : []),
-            ...(isTemplate
-              ? [
-                  {
-                    label: 'New playlist from this',
-                    icon: ListPlus,
-                    separatorBefore: true,
-                    onSelect: () => void newFromTemplate(openId),
-                  },
-                ]
-              : extras
+        {/* Simple Mode's one playlist (Session 55, Part 18): no menu of the playlist's own, and never closed. */}
+        {!simple && (
+          <MenuButton
+            label="Playlist"
+            title="Playlist actions"
+            icon={MoreHorizontal}
+            entries={[
+              { label: 'Add a header', icon: ListPlus, onSelect: () => void addHeader() },
+              ...(extras
                 ? [
                     {
-                      label: 'Save as template…',
-                      icon: BookTemplate,
-                      separatorBefore: true,
+                      label: 'Add a slot…',
+                      icon: SquareDashed,
                       onSelect: () => {
-                        usePlaylists.setState({ savingTemplate: openId });
+                        usePlaylists.setState({ addingSlot: true });
                       },
                     },
                   ]
                 : []),
-            // Session 55, Part 4: Practise it in this window only, and Duplicate it (the owner's ideas T and P).
-            ...(isTemplate
-              ? []
-              : [
-                  {
-                    label: 'Practise this playlist',
-                    icon: Play,
-                    separatorBefore: true,
-                    onSelect: () => void practisePlaylist(openId),
-                  },
-                  {
-                    label: 'Duplicate',
-                    icon: CopyPlus,
-                    onSelect: () => void duplicatePlaylist(openId),
-                  },
-                ]),
-            {
-              label: isTemplate ? 'Rename template…' : 'Rename playlist…',
-              icon: Pencil,
-              onSelect: () => startRenaming(openId, 'centre'),
-            },
-            {
-              label: isTemplate ? 'Delete template…' : 'Delete playlist…',
-              icon: Trash2,
-              danger: true,
-              separatorBefore: true,
-              onSelect: () => requestRemoveNode(openId),
-            },
-          ]}
-        />
-        <IconButton
-          icon={X}
-          label="Close the playlist"
-          size="sm"
-          data-testid="playlist-close"
-          onClick={closePlaylist}
-        />
+              ...(isTemplate
+                ? [
+                    {
+                      label: 'New playlist from this',
+                      icon: ListPlus,
+                      separatorBefore: true,
+                      onSelect: () => void newFromTemplate(openId),
+                    },
+                  ]
+                : extras
+                  ? [
+                      {
+                        label: 'Save as template…',
+                        icon: BookTemplate,
+                        separatorBefore: true,
+                        onSelect: () => {
+                          usePlaylists.setState({ savingTemplate: openId });
+                        },
+                      },
+                    ]
+                  : []),
+              // Session 55, Part 4: Practise it in this window only, and Duplicate it (the owner's ideas T and P).
+              ...(isTemplate
+                ? []
+                : [
+                    {
+                      label: 'Practise this playlist',
+                      icon: Play,
+                      separatorBefore: true,
+                      onSelect: () => void practisePlaylist(openId),
+                    },
+                    {
+                      label: 'Duplicate',
+                      icon: CopyPlus,
+                      onSelect: () => void duplicatePlaylist(openId),
+                    },
+                  ]),
+              {
+                label: isTemplate ? 'Rename template…' : 'Rename playlist…',
+                icon: Pencil,
+                onSelect: () => startRenaming(openId, 'centre'),
+              },
+              {
+                label: isTemplate ? 'Delete template…' : 'Delete playlist…',
+                icon: Trash2,
+                danger: true,
+                separatorBefore: true,
+                onSelect: () => requestRemoveNode(openId),
+              },
+            ]}
+          />
+        )}
+        {!simple && (
+          <IconButton
+            icon={X}
+            label="Close the playlist"
+            size="sm"
+            data-testid="playlist-close"
+            onClick={closePlaylist}
+          />
+        )}
       </div>
       {byFolder && <FolderCrumbs path={shownFolder} top={node?.name ?? ''} />}
       {/* Its words shrink and scroll in the playlist's share of the middle (Session 51: in a 1024 × 645 window its
           buttons had run under the slides' strip below). */}
       {help.card && <div className="min-h-0 overflow-y-auto pt-2">{help.card}</div>}
-      {node?.kind === 'smart' && <SmartBar playlistId={openId} />}
-      {node?.kind === 'repeat' && node.repeat && <RepeatBar playlistId={openId} settings={node.repeat} />}
+      {node?.kind === 'smart' && <SmartBar playlistId={openId} simple={simple} />}
+      {node?.kind === 'repeat' && node.repeat && (
+        <RepeatBar playlistId={openId} settings={node.repeat} simple={simple} />
+      )}
       {isTemplate && (
         <Notice
           tone="info"
@@ -1053,15 +1062,18 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           A template: make a playlist from it to run a sabha. It never goes on the screens itself.
         </Notice>
       )}
-      <ChosenBar
-        count={marked.length}
-        noun="items"
-        deleteLabel="Remove"
-        onDelete={requestRemoveMarkedItems}
-        onClear={() => {
-          usePlaylists.setState({ marked: [], anchorId: null });
-        }}
-      />
+      {/* Simple Mode's Delete is in a row's right-click menu (and its Delete key): no bar of chosen items. */}
+      {!simple && (
+        <ChosenBar
+          count={marked.length}
+          noun="items"
+          deleteLabel="Remove"
+          onDelete={requestRemoveMarkedItems}
+          onClear={() => {
+            usePlaylists.setState({ marked: [], anchorId: null });
+          }}
+        />
+      )}
       <ul
         ref={listRef}
         tabIndex={-1}
@@ -1195,7 +1207,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   clickCard(item, e, platform);
                 }}
                 onDoubleClick={() => {
-                  if (item.kind === 'header') startRenaming(item.id);
+                  // Simple Mode renames no header (it names a part of the playlist, not a file).
+                  if (item.kind === 'header' && !simple) startRenaming(item.id);
                 }}
                 {...menuProps}
                 onKeyDown={(e) => {
@@ -1232,7 +1245,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 />
               </button>
 
-              {isMarked && anchorId === item.id && (
+              {/* Simple Mode moves rows by dragging (and Alt+↑ ↓): no Up, Down or order under the chosen one. */}
+              {isMarked && anchorId === item.id && !simple && (
                 <MoveButtons
                   name={itemName(item)}
                   first={row === 0}
@@ -1245,16 +1259,19 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               {/* Out of the playlist only (the library keeps it), as Delete does on the item; Undo puts it
                   back (Session 26a); asked first when it is up (Session 55). Last in the Tab order, after Up and
                   Down. */}
-              <RowDelete
-                label={`Remove “${itemName(item)}” from the playlist`}
-                chosen={isMarked && anchorId === item.id}
-                className={cx('absolute right-1.5', item.kind === 'header' ? 'top-0.5' : 'top-2')}
-                onDelete={() => {
-                  if (!usePlaylists.getState().marked.includes(item.id))
-                    clickItem(item.id, { toggle: false, range: false });
-                  requestRemoveMarkedItems();
-                }}
-              />
+              {/* Simple Mode's Delete is the right-click menu's (Session 55, Part 18): no trash button. */}
+              {!simple && (
+                <RowDelete
+                  label={`Remove “${itemName(item)}” from the playlist`}
+                  chosen={isMarked && anchorId === item.id}
+                  className={cx('absolute right-1.5', item.kind === 'header' ? 'top-0.5' : 'top-2')}
+                  onDelete={() => {
+                    if (!usePlaylists.getState().marked.includes(item.id))
+                      clickItem(item.id, { toggle: false, range: false });
+                    requestRemoveMarkedItems();
+                  }}
+                />
+              )}
               {/* Its slides, a row each, under its name (Session 55); folded, none shows (each keeps its number). */}
               {group && <GroupNote row={group} />}
               {group && !group.folded && slides.length > 0 && (
@@ -1295,7 +1312,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                         clickSlideRow(r, e, platform);
                       }}
                       onDoubleClick={
-                        r.item && !isRepeat && item.kind === 'presentation' && item.presentationName !== null
+                        // Edit slides is Pro Mode's (Simple Mode has none).
+                        !simple &&
+                        r.item &&
+                        !isRepeat &&
+                        item.kind === 'presentation' &&
+                        item.presentationName !== null
                           ? () =>
                               void openSlideEditor(
                                 r.presentationId,
@@ -1340,8 +1362,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
             )}
           >
             <EmptyState icon={ListPlus} title="This playlist is empty" compact lamp>
-              Drag presentations, pictures, videos or files here, use Add files… or From a Link… above, or
-              choose one in the library and press Add to playlist.
+              {simple
+                ? 'Drop files here (sounds, videos, pictures, PDFs and PowerPoint or Keynote decks), or use Add files… or From a Link… above.'
+                : 'Drag presentations, pictures, videos or files here, use Add files… or From a Link… above, or choose one in the library and press Add to playlist.'}
             </EmptyState>
           </li>
         )}
@@ -1358,10 +1381,13 @@ async function addFilesTo(playlistId: string): Promise<void> {
 
 /**
  * The open playlist (Session 26a: in the centre, above the chosen item's slides): its items as cards, in
- * order, to drag about, drop library rows and files on, and download into.
+ * order, to drag about, drop library rows and files on, and download into. `simple`: Simple Mode's one playlist
+ * (Session 55, Part 18), with only what Simple Mode offers: its rows, one click, dragging, Add files…, From a Link…
+ * and files dropped, and the right-click menu's Rename and Delete; no menu of the playlist's own, no Close, no Up,
+ * Down or order under a row, no trash buttons, no bar of chosen rows, nothing renamed in place, no Edit slides.
  */
-export function OpenPlaylist({ platform }: { platform: string }) {
+export function OpenPlaylist({ platform, simple = false }: { platform: string; simple?: boolean }) {
   const openId = usePlaylists((s) => s.openId);
   if (!openId) return null;
-  return <PlaylistItems platform={platform} openId={openId} />;
+  return <PlaylistItems platform={platform} openId={openId} simple={simple} />;
 }

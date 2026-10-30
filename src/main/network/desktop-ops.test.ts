@@ -30,7 +30,7 @@ import type {
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { ONLY_ON_IN_SIMPLE_MODE } from '../outputs/screen-switches';
-import { SIMPLE_MODE_LOCKED } from '../simple-mode';
+import { simpleModeRefusesWhole } from '../simple-mode';
 import { opensOverControls } from './desktop-answers';
 import { NetworkService, OP_CHANNEL } from './network-service';
 
@@ -374,7 +374,8 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
       submit: () => ({ status: 202, body: { ok: true } }),
       statusFor: () => ({ status: 404, body: { ok: false } }),
     },
-    refused: (channel: InvokeChannel) => locked && SIMPLE_MODE_LOCKED.includes(channel),
+    // As refusedNow answers a request with none of its arguments (Session 55, Part 18).
+    refused: (channel: InvokeChannel) => locked && simpleModeRefusesWhole(channel),
     changed: () => undefined,
     log: () => undefined,
     now: () => clock,
@@ -516,14 +517,14 @@ describe('the phone as a full Drashti: the computer’s screens and Audience and
     for (const [op, args] of OPS) {
       const channel = OP_CHANNEL[op];
       const answer = t.ask(t.remote, op, args);
-      if (channel !== null && SIMPLE_MODE_LOCKED.includes(channel))
+      if (channel !== null && simpleModeRefusesWhole(channel))
         expect(answer, op).toEqual({ status: 403, body: { ok: false, message: SIMPLE_MODE_REFUSAL } });
       else if (op !== 'switch') expect(answer.status, op).toBe(200);
     }
     // The setup's changes are each refused; reading, Keep, Go back and Identify are not.
     const refused = OPS.filter(([op]) => {
       const channel = OP_CHANNEL[op];
-      return channel !== null && SIMPLE_MODE_LOCKED.includes(channel);
+      return channel !== null && simpleModeRefusesWhole(channel);
     }).map(([op]) => op);
     expect(refused).toEqual([
       'screens.addGroup',

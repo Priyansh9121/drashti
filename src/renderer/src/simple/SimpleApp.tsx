@@ -1,86 +1,89 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { PlaylistItemInfo } from '../../../shared/playlists';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
+import type { AppInfo } from '../../../shared/app-info';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
-import { useKeymapNow } from '../operator/single-keys-store';
-import { LAYER_CLEARS } from '../operator/layer-clears';
-import { isLayerEmpty } from '../../../shared/engine/state';
-import { useEngine } from '../engine/engine-store';
-import { mediaKindIcon, mediaKindLabel } from '../library/MediaList';
-import { openPlaylist, playlistsUnread, usePlaylists } from '../playlists/playlist-store';
-import { PlaylistsUnread } from '../playlists/PlaylistsUnread';
-import { WordMark } from '../ui/Mark';
-import { Badge, LiveBadge } from '../ui/Badge';
-import { Button } from '../ui/Button';
-import { Band, HeaderStates } from '../ui/Decoration';
-import { cx } from '../ui/cx';
-import { Dialog } from '../ui/Dialog';
-import { Field, Select, TextInput } from '../ui/Field';
-import {
-  BlackOut,
-  ListMusic,
-  Play,
-  Presentation,
-  RotateCcw,
-  SkipBack,
-  SkipForward,
-  Square,
-  Wallpaper,
-  Eraser,
-  Video,
-} from '../ui/icons';
-import { Kbd, WordsOverKeys } from '../ui/Kbd';
-import { readPersisted, writePersisted } from '../ui/persist';
-import { EmptyState } from '../ui/States';
-import { Truncate } from '../ui/Truncate';
-import { goLive, playItem, runSimpleAction, useNotice } from '../operator/actions';
-import { setJumpRows } from '../operator/jump';
-import { JumpBox } from '../operator/JumpBox';
-import { useDocs, useWantDocs } from '../playlists/docs-store';
-import { type MiddleRow, playlistRows } from '../playlists/rows';
-import { startRepeat, stopRepeat } from '../playlists/repeat-actions';
-import { setMidiHandler } from '../midi/midi-store';
-import { LivePreview } from '../operator/LivePreview';
-import { leaveSimpleMode, useMode } from '../operator/mode-store';
-import { NextPreview } from '../operator/NextPreview';
-import { RecoveryBanner } from '../operator/RecoveryBanner';
+import type { PlaylistItemInfo } from '../../../shared/playlists';
 import { AccessEndsNotice } from '../access/AccessEndsNotice';
 import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { useAccess } from '../access/access-store';
-import { StoppedScreens } from '../screens/StoppedScreens';
-import { ScreensSaidNotice } from '../screens/ScreensSaid';
-import { EngineUnread } from '../operator/EngineUnread';
-import { NoSoundNotice } from '../stream/NoSoundNotice';
-import { StreamPageStopped } from '../stream/StreamPageStopped';
-import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
-import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
-import { SimpleFirstRun } from './SimpleFirstRun';
+import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
-import { LiveStatus } from '../operator/StatusLine';
-import { NoticeArea, StatusBar } from '../operator/StatusBar';
-import { useKeymap } from '../operator/useKeymap';
-import type { AppInfo } from '../../../shared/app-info';
-import { OnAirBadges } from '../stream/OnAirBadges';
+import { useLibrary } from '../library/library-store';
+import { RemoveItemsConfirm } from '../library/RemoveConfirm';
+import { UndoBar } from '../library/UndoBar';
+import { LinkDialog } from '../links/LinkDialog';
+import { PlayingBars } from '../markers/PlayingBars';
+import { setMidiHandler } from '../midi/midi-store';
 import { NetworkBadge } from '../network/NetworkBadge';
-import { MusicStrip } from '../music/MusicPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { useNodes } from '../nodes/nodes-store';
+import { playItem, runSimpleAction, useNotice } from '../operator/actions';
+import { EngineUnread } from '../operator/EngineUnread';
+import { JumpBox } from '../operator/JumpBox';
+import { LayerBar } from '../operator/LayerBar';
+import { Columns } from '../operator/Layout';
+import { LivePreview } from '../operator/LivePreview';
+import { leaveSimpleMode } from '../operator/mode-store';
+import { NextBack } from '../operator/NextBack';
+import { RecoveryBanner } from '../operator/RecoveryBanner';
+import { NoticeArea, StatusBar } from '../operator/StatusBar';
+import { LiveStatus } from '../operator/StatusLine';
+import { useKeymap } from '../operator/useKeymap';
+import { useKeymapNow } from '../operator/single-keys-store';
+import { Kbd } from '../ui/Kbd';
+import { OpenPlaylist } from '../playlists/OpenPlaylist';
+import {
+  closePlaylist,
+  importIntoPlaylist,
+  openPlaylist,
+  playlistsUnread,
+  usePlaylists,
+} from '../playlists/playlist-store';
+import { PlaylistsUnread } from '../playlists/PlaylistsUnread';
+import { startRepeat } from '../playlists/repeat-actions';
+import { ScreensSaidNotice } from '../screens/ScreensSaid';
+import { StoppedScreens } from '../screens/StoppedScreens';
+import { NoSoundNotice } from '../stream/NoSoundNotice';
+import { OnAirBadges } from '../stream/OnAirBadges';
+import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
+import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { Band, HeaderStates } from '../ui/Decoration';
+import { WordMark } from '../ui/Mark';
+import { Loading } from '../ui/States';
+import { Tooltip } from '../ui/Tooltip';
+import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
+import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
+import { SimpleFirstRun } from './SimpleFirstRun';
 
 /*
- * Simple Mode (PLAN.md section 3): one uncluttered screen for a volunteer.
- * The playlist, what is on the screens and what comes next, and big
- * buttons: Next and Back, Black-out, the Wallpaper (Session 55, in the Logo's
- * place), Clear all (and Put it back after it). Nothing here can change the library, the screens or the sound; the
- * main process refuses that too. Leaving takes Switch to Pro Mode… (a small
- * button at the top right since Session 20, or the View menu) and typing the
- * word. With Simple access (Session 55, the owner's decision of 29 Oct 2026)
- * there is no way to Pro Mode: the button and the menu item go, and the main
- * process refuses it whatever asks; one line says so in the button's place.
+ * Simple Mode (PLAN.md section 3; Session 55, Part 18: for a small sabha in the hall, or anywhere with one projector):
+ * Pro Mode's window with everything taken out but what such a sabha needs, so a volunteer who has seen Pro Mode finds
+ * everything where it was.
+ * - The middle: ONE playlist (the one open when Drashti switched to Simple Mode, or a new one when there was none: the
+ *   main process says which, main/simple-playlist.ts), as Pro Mode's middle shows it: PDFs and decks as rows, pictures,
+ *   videos and sounds; one click puts a row up; rows dragged about, with Undo; Add files… and From a Link… above it,
+ *   and files dropped on it (or anywhere on the window: at its end) bring things in; a row's right-click menu has
+ *   Rename and Delete.
+ * - The left: the wallpapers (Part 6), and the Undo bar under them.
+ * - The right: LIVE, Next and Back, and the time bar (Play while something is paused: Session 54's question 14).
+ * - Along the bottom: Clear all (and Put it back after it), the Wallpaper and Black-out.
+ * - Nothing else: no stream, no stage controls, no messages, timers or lower thirds, no screen setup (the screens set
+ *   themselves, Part 1). The main process refuses the rest too (main/simple-mode.ts), and lets Simple Mode change its
+ *   one playlist only.
+ * Back to Pro Mode: a double-click on Pro Mode at the top right, nothing typed (the owner's answer to question 12,
+ * changed on 29 Oct 2026); from the keyboard, Enter twice. With Simple access (Part 19) there is no way to Pro Mode:
+ * one line says so in its place, and the main process refuses it whatever asks.
  */
 
 /** What Next says when it has nothing to start because the playlist could not be read (Session 39). */
 const NEXT_UNREAD =
   'Next has nothing to start: Drashti couldn’t read the playlist. Press Try again beside it.';
+
+/** How soon the second press of Enter must come to count as Pro Mode's double-click (ms). */
+const AGAIN_MS = 2000;
 
 // A video input item (Session 51) goes up through the playlist, as its Next does; Simple Mode never chooses one in
 // Media (the engine refuses showInput).
@@ -89,301 +92,27 @@ const playable = (i: PlaylistItemInfo) =>
   (i.kind === 'media' && !i.missing) ||
   (i.kind === 'input' && !i.missing);
 
-/** Which playlist: the one played last, else the one that was open, else the first. */
-function usePlaylistChoice() {
-  const tree = usePlaylists((s) => s.tree);
-  const openId = usePlaylists((s) => s.openId);
-  const livePlaylist = useEngine((s) => s.state?.live.playlist?.playlistId ?? null);
-  const lists = useMemo(() => tree.filter((n) => !n.isFolder), [tree]);
-  useEffect(() => {
-    if (lists.length === 0) return;
-    const want =
-      livePlaylist ??
-      openId ??
-      readPersisted<string | null>('simple.playlist', null, (v): v is string => typeof v === 'string');
-    const pick = lists.find((n) => n.id === want) ?? lists[0];
-    if (pick && pick.id !== openId) void openPlaylist(pick.id);
-  }, [lists, openId, livePlaylist]);
-  const choose = (id: string) => {
-    writePersisted('simple.playlist', id);
-    void openPlaylist(id);
-  };
-  return { lists, openId, choose };
-}
-
-function PlaylistColumn() {
-  const { lists, openId, choose } = usePlaylistChoice();
-  const items = usePlaylists((s) => s.items);
-  // A read that failed is said, with Try again (Session 39): never "No playlists" when there are some.
-  const treeUnread = usePlaylists((s) => s.unread.playlists);
-  const itemsUnread = usePlaylists((s) => s.openId !== null && s.unread.itemsOf === s.openId);
-  // The item on the screens now: the playlist's place, while something of it is up.
-  const liveItem = useEngine((s) => {
-    const st = s.state;
-    if (st?.live.playlist?.playlistId !== openId) return null;
-    const up = st.layers.slide !== null || st.layers.background !== null || st.layers.audio !== null;
-    return up ? st.live.playlist.itemId : null;
-  });
-  const tree = usePlaylists((s) => s.tree);
-  // Repeat Slides (Session 26d): Simple Mode starts and stops it, and its settings stay as they are.
-  const repeat = tree.find((n) => n.id === openId)?.kind === 'repeat';
-  const going = useEngine((s) => openId !== null && s.state?.repeat?.playlistId === openId);
-  // While it goes round, the item whose slide is up (its steps are named by their items).
-  const repeatItem = useEngine((s) =>
-    going ? (s.state?.layers.slide?.slide.id.split('/')[0] ?? null) : null,
-  );
-  // The rows (Session 55): each presentation's slides, read as the playlist shows them; numbered for jumping to them.
-  const docs = useDocs((s) => s.docs);
-  useWantDocs(
-    repeat
-      ? []
-      : items.flatMap((i) =>
-          i.kind === 'presentation' && i.presentationName !== null
-            ? [i.presentationId]
-            : i.kind === 'shastra' && !i.missing
-              ? [i.passageId]
-              : [],
-        ),
-  );
-  const middle = useMemo(
-    () => (repeat ? [] : playlistRows(items, new Map(Object.entries(docs)), new Set())),
-    [items, docs, repeat],
-  );
-  /** A picture's, video's, sound's or video input's number, for jumping to it. */
-  const numberOf = useMemo(
-    () =>
-      new Map(middle.flatMap((r) => (r.kind === 'item' && r.number !== null ? [[r.item.id, r.number]] : []))),
-    [middle],
-  );
-  const slidesOf = useMemo(() => {
-    const out = new Map<string, Extract<MiddleRow, { kind: 'slide' }>[]>();
-    for (const r of middle)
-      if (r.kind === 'slide' && r.item) out.set(r.item.id, [...(out.get(r.item.id) ?? []), r]);
-    return out;
-  }, [middle]);
-  useEffect(() => {
-    if (!openId) return;
-    setJumpRows(
-      middle.flatMap((r) =>
-        r.kind === 'slide' && r.item
-          ? [
-              {
-                number: r.number,
-                go: () =>
-                  void goLive(r.presentationId, r.at.position, r.arrangementId, {
-                    playlistId: openId,
-                    itemId: r.item?.id ?? '',
-                  }),
-              },
-            ]
-          : r.kind === 'item' && r.number !== null
-            ? [{ number: r.number, go: () => void playItem(openId, r.item.id) }]
-            : [],
-      ),
-    );
-    return () => {
-      setJumpRows([]);
-    };
-  }, [middle, openId]);
-  const liveSlide = useEngine((s) => {
-    const st = s.state;
-    const shown = st?.layers.slide;
-    if (!st || !shown || shown.timer) return null;
-    return `${shown.presentationId}|${shown.slide.id}|${st.live.playlist?.itemId ?? ''}|${String(st.live.arrangementId)}|${String(st.live.slideIndex)}`;
-  });
-  const isSlideLive = (r: Extract<MiddleRow, { kind: 'slide' }>): boolean => {
-    if (liveSlide === null) return false;
-    const [presentationId, slideId, itemId, arrangementId, slideIndex] = liveSlide.split('|');
-    if (presentationId !== r.presentationId) return false;
-    if (itemId === r.item?.id)
-      return arrangementId === String(r.arrangementId)
-        ? slideIndex === String(r.at.position)
-        : slideId === r.at.slide.id;
-    return itemId === '' && slideId === r.at.slide.id;
-  };
-  const pathOf = (id: string): string => {
-    const node = tree.find((n) => n.id === id);
-    if (!node) return '';
-    const parent = node.parentId ? pathOf(node.parentId) : '';
-    return parent ? `${parent} › ${node.name}` : node.name;
-  };
+/**
+ * The keys, in a line at the foot of the live column (Session 51; Simple Mode has no keys sheet): only keys that act,
+ * not B or . while they are turned off (Session 37), the clicker's Page Down and Page Up too.
+ */
+function KeysLine({ platform }: { platform: string }) {
+  const keymap = useKeymapNow(SIMPLE_KEYMAP);
+  const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
+  const covering = key('toggleBlackout') !== '';
   return (
-    <section
-      aria-label="Playlist"
-      className="flex min-h-0 flex-col border-r border-line bg-panel"
-      data-zone="left"
-    >
-      <div className="shrink-0 space-y-2 p-3">
-        {treeUnread && <PlaylistsUnread what="playlists" size="lg" />}
-        {lists.length > 0 ? (
-          <Field label="Playlist">
-            <Select
-              data-testid="simple-playlist"
-              value={openId ?? ''}
-              onChange={(e) => {
-                choose(e.target.value);
-              }}
-              className="w-full"
-            >
-              {lists.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {pathOf(n.id)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : treeUnread ? null : (
-          <EmptyState icon={ListMusic} title="No playlists" compact>
-            The sabha’s playlist is made in Pro Mode.
-          </EmptyState>
-        )}
-        {itemsUnread && <PlaylistsUnread what="items" size="lg" />}
-      </div>
-      {repeat && openId && (
-        <div className="shrink-0 px-3 pb-2">
-          {going ? (
-            <Button
-              size="lg"
-              icon={Square}
-              className="w-full"
-              data-testid="simple-repeat-stop"
-              onClick={() => void stopRepeat()}
-            >
-              Stop going round (Esc)
-            </Button>
-          ) : (
-            <Button
-              size="lg"
-              variant="primary"
-              icon={Play}
-              className="w-full"
-              data-testid="simple-repeat-start"
-              onClick={() => void startRepeat(openId)}
-            >
-              Start going round
-            </Button>
-          )}
-        </div>
+    <p className="mt-auto px-3 pt-3 text-xs leading-6 text-muted" data-testid="simple-keys">
+      Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·{' '}
+      {covering && (
+        <>
+          Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> ·{' '}
+        </>
       )}
-      <ol className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3" data-testid="simple-items">
-        {items.map((item) => {
-          // A presentation's, a PDF's or a deck's slides, a row each under it (Session 55, Part 4): one tap puts one
-          // up, from the playlist, so Next goes on through it.
-          const slides = repeat ? [] : (slidesOf.get(item.id) ?? []);
-          if (item.kind === 'header')
-            return (
-              <li
-                key={item.id}
-                className="px-2 pt-3 pb-1 text-base font-bold text-muted"
-                data-testid="simple-header"
-              >
-                <Truncate text={item.label} />
-              </li>
-            );
-          const isLive = liveItem === item.id || repeatItem === item.id;
-          const can = playable(item);
-          const KindIcon =
-            item.kind === 'media' ? mediaKindIcon[item.media] : item.kind === 'input' ? Video : Presentation;
-          const name = item.kind === 'presentation' ? (item.presentationName ?? item.label) : item.label;
-          return (
-            <li key={item.id}>
-              <button
-                type="button"
-                disabled={!can}
-                data-testid="simple-item"
-                data-show-control
-                data-live={isLive ? 'true' : undefined}
-                aria-current={isLive ? 'true' : undefined}
-                onClick={() => {
-                  // In Repeat Slides an item starts it going round from there.
-                  if (openId) void (repeat ? startRepeat(openId, item.id) : playItem(openId, item.id));
-                }}
-                className={cx(
-                  'flex min-h-14 w-full items-center gap-3 rounded-lg border-2 px-3 py-2 text-left text-base disabled:cursor-not-allowed disabled:opacity-50',
-                  isLive ? 'border-live bg-panel-3' : 'border-transparent bg-panel-2 hover:border-field',
-                )}
-              >
-                {numberOf.has(item.id) && (
-                  <span
-                    className="w-7 shrink-0 text-right text-sm text-muted tabular-nums"
-                    aria-hidden="true"
-                  >
-                    {numberOf.get(item.id)}
-                  </span>
-                )}
-                <KindIcon size={20} aria-hidden="true" className="shrink-0 text-muted" />
-                <span className="min-w-0 flex-1">
-                  <Truncate text={name} className="font-medium" />
-                  {item.kind === 'media' && (
-                    <span className="text-xs text-muted">{mediaKindLabel[item.media]}</span>
-                  )}
-                  {item.kind === 'input' && (
-                    <span
-                      className={cx('text-xs', can ? 'text-muted' : 'text-warning-fg')}
-                      data-testid="simple-input-note"
-                    >
-                      {can ? 'Video input' : 'Video input · not on this computer'}
-                    </span>
-                  )}
-                  {!can && item.kind !== 'input' && (
-                    <span className="text-xs text-warning-fg">Cannot play</span>
-                  )}
-                </span>
-                {isLive && <LiveBadge />}
-              </button>
-              {slides.length > 0 && (
-                <ol
-                  className="mt-1 space-y-1 pl-6"
-                  data-testid="simple-slides"
-                  aria-label={`Slides of ${name}`}
-                >
-                  {slides.map((r) => {
-                    const on = isSlideLive(r);
-                    return (
-                      <li key={r.key}>
-                        <button
-                          type="button"
-                          data-testid="simple-slide"
-                          data-show-control
-                          data-row-number={r.number}
-                          aria-current={on ? 'true' : undefined}
-                          aria-label={`${r.label}${r.line !== '' ? `: ${r.line}` : ''}${on ? ' (live)' : ''}`}
-                          onClick={(e) => {
-                            if (e.detail > 1 || !openId) return;
-                            void goLive(r.presentationId, r.at.position, r.arrangementId, {
-                              playlistId: openId,
-                              itemId: item.id,
-                            });
-                          }}
-                          className={cx(
-                            'flex min-h-11 w-full items-center gap-3 rounded-lg border-2 px-3 py-1.5 text-left',
-                            on
-                              ? 'border-live bg-panel-3'
-                              : 'border-transparent bg-panel-2 hover:border-field',
-                          )}
-                        >
-                          <span
-                            className="w-7 shrink-0 text-right text-sm text-muted tabular-nums"
-                            aria-hidden="true"
-                          >
-                            {r.number}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <Truncate text={r.label} className="text-sm font-medium" />
-                            {r.line !== '' && <Truncate text={r.line} className="text-xs text-muted" />}
-                          </span>
-                          {on && <LiveBadge />}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </section>
+      Wallpaper <Kbd>{key('toggleWallpaper')}</Kbd> · Clear all <Kbd>{key('clearAll')}</Kbd> · Put it back{' '}
+      <Kbd>{key('undo')}</Kbd>
+      {/* Left with no key: its button does it. */}
+      {!covering && ' · Black-out: its button'}
+    </p>
   );
 }
 
@@ -391,231 +120,116 @@ function PlaylistColumn() {
 const useSimpleAccess = (): boolean => useAccess((s) => s.view?.mode === 'simple');
 
 /**
- * The way out (Switch to Pro Mode…, at the top right or in the View menu,
- * opens it): typing the word on purpose. Never a PIN (Session 54, E5: roles
- * and PINs are gone).
+ * Simple Mode's one playlist, as the main process keeps it (asked again whenever the playlists change), opened in the
+ * middle and kept open there.
  */
-function LeaveSimpleDialog() {
-  // With Simple access (Session 55) the question is never asked: there is no way to Pro Mode.
-  const askingToLeave = useMode((s) => s.askingToLeave);
-  const simpleAccess = useSimpleAccess();
-  const asking = askingToLeave && !simpleAccess;
-  const [word, setWord] = useState('');
-  const [problem, setProblem] = useState<string | null>(null);
-  if (!asking) return null;
-  const close = () => {
-    setWord('');
-    setProblem(null);
-    useMode.setState({ askingToLeave: false });
-  };
-  return (
-    <Dialog
-      title="Switch to Pro Mode?"
-      size="sm"
-      onClose={close}
-      closeButton={false}
-      testId="leave-simple"
-      footer={
-        <>
-          <Button onClick={close}>Stay in Simple Mode</Button>
-          <Button
-            variant="primary"
-            type="submit"
-            form="leave-simple-form"
-            data-testid="leave-simple-switch"
-            disabled={word.trim() === ''}
-          >
-            Switch to Pro Mode
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="leave-simple-form"
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void leaveSimpleMode(word).then((message) => {
-            setProblem(message);
-            if (!message) setWord('');
-          });
-        }}
-      >
-        <p className="text-sm text-muted">
-          Pro Mode can change the library, the playlists, the screens and the sound. It is for whoever looks
-          after Drashti. The show on the screens carries on as it is.
-        </p>
-        <Field label="Type pro to switch" error={problem}>
-          <TextInput
-            autoFocus
-            value={word}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(e) => {
-              setWord(e.target.value);
-            }}
-          />
-        </Field>
-      </form>
-    </Dialog>
+function useOnePlaylist(): void {
+  const [one, setOne] = useState<string | null>(null);
+  // What Pro Mode had open as Simple Mode came (null: none), for when it goes.
+  const proHad = useRef(usePlaylists.getState().openId);
+  const tree = usePlaylists((s) => s.tree);
+  const openId = usePlaylists((s) => s.openId);
+  useEffect(() => {
+    let current = true;
+    void window.drashti.app.simplePlaylist().then((id) => {
+      if (current) setOne(id);
+    });
+    return () => {
+      current = false;
+    };
+  }, [tree]);
+  useEffect(() => {
+    if (one !== null && openId !== one && tree.some((n) => n.id === one)) void openPlaylist(one);
+  }, [one, openId, tree]);
+  // Leaving Simple Mode with the playlist it made still empty (nothing brought in), Pro Mode shows what it had open
+  // before rather than an empty new playlist; one with rows stays open there, what the volunteer worked on.
+  useEffect(
+    () => () => {
+      const { openId: open, items, unread } = usePlaylists.getState();
+      const had = proHad.current;
+      if (open === null || open === had || items.length > 0 || unread.itemsOf === open) return;
+      if (had === null) closePlaylist();
+      else void openPlaylist(had);
+    },
+    [],
   );
 }
 
-/** The big buttons along the bottom. */
-function BigButtons({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
-  const state = useEngine((s) => s.state);
-  const blackout = state?.blackout ?? false;
-  const wallpaper = state?.wallpaper ?? false;
-  const canPutBack = state?.canPutBack ?? false;
-  // Clear all is dimmed with nothing up, as the bar of clears' is (Session 55, Part 13): a lower third and the
-  // picture-in-picture box count too. Dimmed, it stays a stop of the Tab key's, where the big buttons always are.
-  const layers = state?.layers;
-  const anything = layers
-    ? LAYER_CLEARS.some((c) => !isLayerEmpty(layers, c.layer)) ||
-      layers.lowerThird !== null ||
-      layers.pip !== null ||
-      // A timer for the audience (Session 55, Part 15).
-      (layers.timer ?? null) !== null
-    : false;
-  // Each shows its keys as they act now (Session 51), as the key line names them: none for Black-out while B, . and
-  // ? are turned off; the Wallpaper's F12 always.
-  const keymap = useKeymapNow(SIMPLE_KEYMAP);
-  const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
-  return (
-    <div
-      className="flex shrink-0 items-stretch gap-3 border-t border-line bg-panel p-3"
-      data-testid="simple-buttons"
-      data-zone="bar"
-    >
-      <Button
-        size="xxl"
-        instant
-        icon={SkipBack}
-        onClick={() => run('previous')}
-        className="flex-1"
-        kbd={key('previous')}
-      >
-        Back
-      </Button>
-      <Button
-        size="xxl"
-        variant="primary"
-        instant
-        iconEnd={SkipForward}
-        onClick={() => run('next')}
-        className="flex-[2]"
-        kbd={key('next')}
-      >
-        Next
-      </Button>
-      {/* Room for "Black-out is on" and "Wallpaper is on" side by side, each in its half (Session 51: at 22rem they
-          ran out of the window with both on), their keys under their words, so Back and Next still fit a 1008-wide
-          window beside them. */}
-      <div className="flex w-[28rem] shrink-0 flex-col gap-2">
-        <div className="flex gap-2">
-          <Button
-            size="xl"
-            variant={blackout ? 'live' : 'secondary'}
-            instant
-            icon={BlackOut}
-            data-testid="simple-blackout"
-            onClick={() => run('toggleBlackout')}
-            className="flex-1"
-          >
-            <WordsOverKeys
-              words={blackout ? 'Black-out is on' : 'Black-out'}
-              keys={[key('toggleBlackout')]}
-            />
-          </Button>
-          <Button
-            size="xl"
-            variant={wallpaper ? 'live' : 'secondary'}
-            instant
-            icon={Wallpaper}
-            data-testid="simple-wallpaper"
-            onClick={() => run('toggleWallpaper')}
-            className="flex-1"
-          >
-            <WordsOverKeys
-              words={wallpaper ? 'Wallpaper is on' : 'Wallpaper'}
-              keys={[key('toggleWallpaper')]}
-            />
-          </Button>
-        </div>
-        {canPutBack ? (
-          <Button
-            size="xl"
-            variant="warning"
-            instant
-            icon={RotateCcw}
-            data-testid="simple-put-back"
-            onClick={() => run('undo')}
-          >
-            <WordsOverKeys words="Put it back" keys={[key('undo')]} />
-          </Button>
-        ) : (
-          <Button
-            size="xl"
-            instant
-            icon={Eraser}
-            data-testid="simple-clear-all"
-            aria-disabled={anything ? undefined : true}
-            data-dimmed={anything ? undefined : 'true'}
-            className={anything ? undefined : 'cursor-not-allowed opacity-40'}
-            onClick={() => {
-              if (anything) run('clearAll');
-            }}
-          >
-            <WordsOverKeys words="Clear all" keys={[key('clearAll')]} />
-          </Button>
-        )}
-      </div>
-    </div>
-  );
+/** Files dropped anywhere on the window (not on a row, or on the wallpapers, which take their own): at the end. */
+function useDropsIntoPlaylist(): void {
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') === true;
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e) || !e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e) || !e.dataTransfer) return;
+      e.preventDefault();
+      const playlistId = usePlaylists.getState().openId;
+      const paths = Array.from(e.dataTransfer.files)
+        .map((f) => window.drashti.files.pathFor(f))
+        .filter((p) => p !== '');
+      if (playlistId !== null && paths.length > 0) void importIntoPlaylist(playlistId, null, paths);
+    };
+    window.addEventListener('dragover', over);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('drop', drop);
+    };
+  }, []);
 }
 
 /**
- * Whether a place scrolls, its content taller than it is (Session 52), told again as it or anything in it changes
- * size: while it does it takes the keyboard's focus too, as a place that scrolls must be reachable from the keyboard
- * (with nothing in it to focus, the keys could not scroll it), and otherwise it is no stop of the Tab key's.
+ * The way back to Pro Mode (Session 55, Part 18): a double-click, nothing typed. One click says to double-click it; from
+ * the keyboard, Enter pressed twice (a second press within two seconds), the first saying to press it again. Small and
+ * at the top right, far from the show's controls (Session 20).
  */
-function useScrolls(): [(el: HTMLElement | null) => void, boolean] {
-  const [el, setEl] = useState<HTMLElement | null>(null);
-  const [scrolls, setScrolls] = useState(false);
-  useEffect(() => {
-    if (!el) return;
-    const check = () => {
-      setScrolls(el.scrollHeight > el.clientHeight + 1);
-    };
-    const sizes = new ResizeObserver(check);
-    const watch = () => {
-      sizes.disconnect();
-      sizes.observe(el);
-      for (const child of el.children) sizes.observe(child);
-      check();
-    };
-    // A line or the music strip coming or going is a child coming or going.
-    const children = new MutationObserver(watch);
-    children.observe(el, { childList: true });
-    watch();
-    return () => {
-      children.disconnect();
-      sizes.disconnect();
-    };
-  }, [el]);
-  return [setEl, scrolls];
+function ProModeButton() {
+  const pressedAt = useRef(-Infinity);
+  const leave = () => {
+    pressedAt.current = -Infinity;
+    useNotice.setState({ text: null });
+    void leaveSimpleMode().then((message) => {
+      if (message !== null) useNotice.setState({ text: message });
+    });
+  };
+  const click = (e: MouseEvent<HTMLButtonElement>) => {
+    // A double-click's first click says what to do; its second waits for the double-click itself.
+    if (e.detail === 1) useNotice.setState({ text: 'Double-click Pro Mode to switch to Pro Mode.' });
+    if (e.detail !== 0) return;
+    // From the keyboard (Enter; Space is Next everywhere in the window): twice.
+    const now = performance.now();
+    if (now - pressedAt.current <= AGAIN_MS) {
+      leave();
+      return;
+    }
+    pressedAt.current = now;
+    useNotice.setState({ text: 'Press Enter again to switch to Pro Mode.' });
+  };
+  return (
+    <Tooltip content="Double-click (or press Enter twice) to switch to Pro Mode" side="bottom">
+      <Button className="shrink-0" data-testid="simple-leave" onClick={click} onDoubleClick={leave}>
+        Pro Mode
+      </Button>
+    </Tooltip>
+  );
 }
 
 export function SimpleApp({ info }: { info: AppInfo | null }) {
   const platform = info?.platform ?? 'darwin';
   const simpleAccess = useSimpleAccess();
-  const [middle, middleScrolls] = useScrolls();
   const dashboardOpen = useNodes((s) => s.dashboard);
+  useOnePlaylist();
+  useDropsIntoPlaylist();
   const items = usePlaylists((s) => s.items);
   const openId = usePlaylists((s) => s.openId);
+  const treeUnread = usePlaylists((s) => s.unread.playlists);
   const repeating = usePlaylists((s) => s.tree.find((n) => n.id === s.openId)?.kind === 'repeat');
-  // Next with nothing live starts the playlist at its first item that can play; a Repeat Slides
-  // playlist (Session 26d) starts going round.
+  // Next with nothing live starts the playlist: the row chosen (a click on a presentation's name chooses it, as in Pro
+  // Mode), else its first that can play; a Repeat Slides playlist (Session 26d) starts going round.
   const unread = usePlaylists(playlistsUnread);
   const start = useCallback(async () => {
     // Nothing to start while the playlist could not be read (Session 39): say why, never nothing at all.
@@ -624,7 +238,10 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       return;
     }
     if (openId && repeating) return startRepeat(openId);
-    const first = items.find(playable);
+    const chosen = useLibrary.getState().item;
+    const first =
+      (chosen?.playlistId === openId ? items.find((i) => i.id === chosen.id && playable(i)) : undefined) ??
+      items.find(playable);
     if (openId && first) await playItem(openId, first.id);
   }, [items, openId, repeating, unread]);
   const run = useCallback(
@@ -648,33 +265,27 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       setMidiHandler(null);
     };
   }, [run]);
-  // Its key line names only keys that act: not B or . while they are turned off (Session 37). The Wallpaper keeps
-  // F12, the Logo's key (Session 55).
-  const keymap = useKeymapNow(SIMPLE_KEYMAP);
-  const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
-  const covering = key('toggleBlackout') !== '';
-  // Left with no key: its button does it.
-  const buttonsOnly = covering ? [] : ['Black-out'];
   return (
-    <div className="flex h-full min-h-0 flex-col bg-ink" data-testid="simple-mode">
+    // As Pro Mode's (Session 15): never narrower or shorter than the columns need.
+    <div className="flex h-full min-h-[540px] min-w-[960px] flex-col bg-ink" data-testid="simple-mode">
       <header
-        className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-header px-4 text-on-header"
+        className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-header px-4 text-on-header"
         data-header=""
       >
-        <h1 className="shrink-0 text-lg font-bold tracking-wide">
-          <WordMark size={26} />
+        <h1 className="shrink-0 text-base font-bold tracking-wide">
+          <WordMark />
         </h1>
         <HeaderStates>
           <Badge tone="info">Simple Mode</Badge>
-          <OnAirBadges size="lg" />
-          <NetworkBadge />
-          <div className="min-w-0 flex-1">
+          <OnAirBadges />
+          <NetworkBadge waiting={false} />
+          {/* Its end is cut, if it must be, rather than drawn over the way out beside it. */}
+          <div className="min-w-0 flex-1 overflow-hidden">
             <LiveStatus />
           </div>
         </HeaderStates>
-        {/* The way out on Simple Mode's own screen (Session 20), small and far from the big buttons:
-            Windows hides the menu bar. It asks the same question as View > Switch to Pro Mode…. With Simple
-            access (Session 55) there is none: one line says so in its place. */}
+        {/* The way back to Pro Mode (Session 20: small, at the top, far from the show's controls; Windows hides the
+            menu bar). With Simple access (Session 55) there is none: one line says so in its place. */}
         {simpleAccess ? (
           <span
             className="shrink-0 text-sm text-on-header/80"
@@ -684,24 +295,16 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             Simple Mode only on this computer
           </span>
         ) : (
-          <Button
-            className="shrink-0"
-            data-testid="simple-leave"
-            onClick={() => {
-              useMode.setState({ askingToLeave: true });
-            }}
-          >
-            Switch to Pro Mode…
-          </Button>
+          <ProModeButton />
         )}
       </header>
       <Band />
-      {/* No internet, and when access ends (Session 54): in the flow, never over the big buttons. */}
+      {/* No internet, and when access ends (Session 54): in the flow, never over the show's controls. */}
       <AccessOfflineNotice />
       <AccessEndsNotice />
       <RecoveryBanner />
       {/* A hall screen that stopped (Session 26h), or no sound on the stream (Session 31): in the flow, so
-          they never cover the big buttons. */}
+          they never cover the show's controls. */}
       <EngineUnread />
       <StoppedScreens />
       {/* A display plugged in, given its job by itself (Session 55): said here too; Simple Mode changes no screen. */}
@@ -711,44 +314,48 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <LiveWindowNotice />
       <VideoInputNotice platform={platform} />
       <SimpleFirstRun platform={platform} />
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
-        <PlaylistColumn />
-        {/* LIVE and Next keep their height, the lines under LIVE saying why (a file or a video input not here) too:
-            in a window too short for them all (CI's 1024 × 645 with the music strip, Session 52) the middle scrolls,
-            the keys' reminder going under, never under the music strip; it takes the keyboard while it scrolls. */}
-        <main
-          ref={middle}
-          aria-label="On the screens"
-          className="flex min-h-0 flex-col overflow-y-auto pb-3"
-          tabIndex={middleScrolls ? 0 : undefined}
-        >
-          <div className="flex shrink-0 items-start gap-2">
-            <div className="min-w-0 flex-[3]">
-              <LivePreview bars />
+      <Columns
+        left={
+          // The wallpapers (Part 6) have the whole column; Undo under them, as in Pro Mode.
+          <section aria-label="Wallpapers" className="flex min-h-0 flex-1 flex-col">
+            <WallpapersPanel fill />
+            <UndoBar platform={platform} />
+          </section>
+        }
+        middle={
+          <main aria-label="Playlist" className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col bg-panel" data-testid="centre-playlist">
+              {openId !== null ? (
+                <OpenPlaylist platform={platform} simple />
+              ) : treeUnread ? (
+                <div className="p-3">
+                  <PlaylistsUnread what="playlists" size="lg" />
+                </div>
+              ) : (
+                <Loading label="Opening the playlist…" className="flex-1" />
+              )}
             </div>
-            <div className="min-w-0 flex-[2]">
-              <NextPreview stacked />
-            </div>
-          </div>
-          <MusicStrip />
-          <p className="mt-auto px-3 pt-3 text-xs leading-6 text-muted" data-testid="simple-keys">
-            Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·{' '}
-            {covering && (
-              <>
-                Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> ·{' '}
-              </>
-            )}
-            Wallpaper <Kbd>{key('toggleWallpaper')}</Kbd> · Clear all <Kbd>{key('clearAll')}</Kbd> · Put it
-            back <Kbd>{key('undo')}</Kbd>
-            {buttonsOnly.length > 0 &&
-              ` · ${buttonsOnly.join(' and ')}: ${buttonsOnly.length > 1 ? 'their buttons' : 'its button'}`}
-          </p>
-        </main>
-      </div>
+          </main>
+        }
+        right={
+          <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
+            <LivePreview />
+            {/* Oops's key (F9) still acts here; its button is Pro Mode's. */}
+            {/* What Next puts up, in words under them (Session 54: a file it misses named before it goes up). */}
+            <NextBack platform={platform} run={run} oops={false} canStart={items.some(playable)} caption />
+            {/* The time bar for what plays (Session 54), under Next and Back: Play while paused (question 14). */}
+            <PlayingBars className="px-3 pt-2" />
+            <KeysLine platform={platform} />
+          </aside>
+        }
+      />
       <NoticeArea />
-      <BigButtons platform={platform} run={run} />
+      <LayerBar platform={platform} run={run} simple />
       <StatusBar info={info} onOpenScreens={null} />
-      <LeaveSimpleDialog />
+      {/* A row's right-click menu (Rename and Delete), its Delete's question when it is up, and From a Link…. */}
+      <FileMenu platform={platform} />
+      <RemoveItemsConfirm undoKey={shortcutText('undo', platform)} />
+      <LinkDialog platform={platform} />
       <GuidesDialog />
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />

@@ -103,4 +103,31 @@ describe('the one right-click menu', () => {
     off2();
     expect(labels(video)).not.toContain('When it ends');
   });
+
+  it('in Simple Mode (Session 55, Part 18): Rename and Delete only, whatever else fits the thing or a later Part adds', () => {
+    const off = addFileMenuItems(() => [{ label: 'Save picture…', onSelect: noop }]);
+    const simple = (target: FileTarget) =>
+      fileMenuEntries(target, 'darwin', { simple: true }).map(
+        (e) => `${e.separatorBefore === true ? '— ' : ''}${e.label}`,
+      );
+    expect(simple({ ...video, edit: { label: 'Picture editor…', run: noop } })).toEqual([
+      'Rename…',
+      '— Remove from playlist',
+    ]);
+    // A slide's row, or a video input's: Delete alone (neither is a file to rename).
+    expect(
+      simple({ kind: 'slide', name: 'Placeholder deck_2', place: 'playlist', remove: video.remove }),
+    ).toEqual(['Remove from playlist']);
+    // A header names a part of the playlist, not a file: Simple Mode never renames it.
+    expect(
+      simple({
+        kind: 'header',
+        name: 'Placeholder part',
+        place: 'playlist',
+        rename: noop,
+        remove: video.remove,
+      }),
+    ).toEqual(['Remove from playlist']);
+    off();
+  });
 });

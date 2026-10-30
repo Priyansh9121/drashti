@@ -1,7 +1,6 @@
 import type { AccessMode } from '../shared/access-protocol';
 import {
   isOperatorMode,
-  leaveSimpleRefusal,
   type ModeResult,
   type OperatorMode,
   SIMPLE_ACCESS_REFUSAL,
@@ -15,12 +14,14 @@ import {
  * use Pro Mode and Simple Mode (Pro access) or Simple Mode only (Simple access).
  *
  * - With Simple access, Drashti is in Simple Mode: at a start, and at the answer that says so (within one check, 15 s,
- *   online), and leaving it is refused whoever asks: the operator window (with the word or not), the View menu (whose
- *   item goes), and so a key or a MIDI pad, which only ever reach those. Everything Simple Mode refuses stays refused
+ *   online), and leaving it is refused whoever asks: the operator window (its Pro Mode, double-clicked), the View menu
+ *   (whose item goes), and so a key or a MIDI pad, which only ever reach those. Everything Simple Mode refuses stays refused
  *   (simple-mode.ts's channels for the window and the phones' API, which Companion uses too; the engine's commands from
  *   anywhere): index.ts asks this keeper's mode for each.
- * - With Pro access, as before. If the access put this computer in Simple Mode, Pro access again brings Pro Mode back
- *   by itself; if the operator chose Simple Mode, it stays. Which it was is kept with the mode, for a restart.
+ * - With Pro access, either mode at once: nothing to type since Session 55, Part 18 (the owner's answer to question
+ *   12, changed on 29 Oct 2026: a double-click on Pro Mode). If the access put this computer in Simple Mode, Pro access
+ *   again brings Pro Mode back by itself; if the operator chose Simple Mode, it stays. Which it was is kept with the
+ *   mode, for a restart.
  *
  * The one place the mode changes: index.ts makes one, and hears each change (the menu, the window).
  */
@@ -43,8 +44,8 @@ export interface ModeKeeperOptions {
   log: (line: string) => void;
 }
 
-/** What View › Switch… did: to Simple Mode at once, the window asked for the word, or refused (Simple access). */
-export type MenuSwitch = 'switched' | 'ask' | 'refused';
+/** What View › Switch… did: switched at once, or refused (Pro Mode, with Simple access). */
+export type MenuSwitch = 'switched' | 'refused';
 
 export class ModeKeeper {
   private current: OperatorMode;
@@ -86,36 +87,24 @@ export class ModeKeeper {
   }
 
   /**
-   * The operator window asks: Simple Mode at once; Pro Mode with the word, and never with Simple access (refused, saying
-   * why). A choice the operator makes is theirs: Pro access again never undoes it.
+   * The operator window asks: Simple Mode at once, and Pro Mode at once (its Pro Mode double-clicked: nothing typed,
+   * never a PIN), but never with Simple access (refused, saying why). A choice the operator makes is theirs: Pro access
+   * again never undoes it.
    */
-  request(wanted: OperatorMode, word: unknown): ModeResult {
+  request(wanted: OperatorMode): ModeResult {
     if (wanted === this.current) return { ok: true, mode: this.current };
-    if (wanted === 'pro') {
-      if (this.simpleOnly()) {
-        this.o.log('Pro Mode refused: this computer’s access is Simple Mode only');
-        return { ok: false, message: SIMPLE_ACCESS_REFUSAL };
-      }
-      // The word, typed on purpose; never a PIN (Session 54, E5: roles and PINs are gone).
-      const refusal = leaveSimpleRefusal(word);
-      if (refusal !== null) return { ok: false, message: refusal };
+    if (wanted === 'pro' && this.simpleOnly()) {
+      this.o.log('Pro Mode refused: this computer’s access is Simple Mode only');
+      return { ok: false, message: SIMPLE_ACCESS_REFUSAL };
     }
     this.byAccess = false;
     this.set(wanted, wanted === 'simple' ? 'Switched to Simple Mode' : 'Switched to Pro Mode');
     return { ok: true, mode: this.current };
   }
 
-  /** View › Switch to Simple Mode (at once), or Switch to Pro Mode… (the window asks for the word; never with Simple access). */
+  /** View › Switch to Simple Mode, or Switch to Pro Mode (never with Simple access, whose menu has no such item). */
   menuSwitch(): MenuSwitch {
-    if (this.current === 'pro') {
-      this.request('simple', undefined);
-      return 'switched';
-    }
-    if (this.simpleOnly()) {
-      this.o.log('Pro Mode refused: this computer’s access is Simple Mode only');
-      return 'refused';
-    }
-    return 'ask';
+    return this.request(this.current === 'pro' ? 'simple' : 'pro').ok ? 'switched' : 'refused';
   }
 
   /**

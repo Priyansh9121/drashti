@@ -27,7 +27,7 @@ import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
 import { connectScreens, focusDisplay } from '../screens/screens-store';
 import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
-import { runAction, useNotice, useTaskProgress } from './actions';
+import { runAction, undoSimple, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
 import { Header } from './Header';
@@ -138,13 +138,14 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // The window opens settled with what its first data shows (ui/motion.ts).
     void Promise.allSettled([loadLibrary(), loadTree()]).then(firstData);
     // Edit > Undo: in a text field the window undoes the typing itself; elsewhere it brings back
-    // the last removal, or in Simple Mode (which removes nothing) puts back what Clear all took down.
+    // the last removal, or in Simple Mode puts back what Clear all took down while Put it back is offered, else (Session
+    // 55, Part 18: Simple Mode deletes, renames and drags its playlist's rows too) brings back the last of those.
     const offUndo = window.drashti.app.onUndo(() => {
       if (isTyping(document.activeElement)) return;
       // The stage layout editor's own steps (Session 55).
       if (useStageLayouts.getState().open) void undoStage();
       else if (useEditor.getState().open) undoEdit();
-      else if (useMode.getState().mode === 'simple') void window.drashti.engine.dispatch({ type: 'putBack' });
+      else if (useMode.getState().mode === 'simple') void undoSimple();
       else void undoRemoval();
     });
     // Edit > Redo: the slide editor's last undone step (typing in a field redoes itself).
@@ -169,7 +170,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
       if (text) useNotice.setState({ text });
     });
     // Files dropped where nothing takes them are never opened as a page (Pro Mode imports them,
-    // below; Simple Mode ignores them).
+    // below; Simple Mode into its one playlist, Session 55, Part 18).
     const ignoreDrop = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
     };
