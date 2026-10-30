@@ -64,15 +64,15 @@ Do these about 30 minutes before the sabha starts.
 
 **Going through it:**
 
-| Key                                      | What it does                                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **Space**, **→**, **↓** or **Page Down** | The next slide; at the end of an item, on into the next (headers are stepped over)          |
-| **←**, **↑** or **Page Up**              | The slide before                                                                            |
-| **Shift+→** or **Shift+↓**               | The start of the next item                                                                  |
-| **Shift+←** or **Shift+↑**               | The start of the item before                                                                |
-| **Next** or **Back** under LIVE          | The same as **Space** and **←**, at once                                                    |
-| A click on a row                         | That row, at once: a slide, a picture, a video, a sound or a video input                    |
-| A row's number, then Enter               | That row, at once (Esc puts the number away)                                                |
+| Key                                      | What it does                                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Space**, **→**, **↓** or **Page Down** | The next slide; at the end of an item, on into the next (headers are stepped over)           |
+| **←**, **↑** or **Page Up**              | The slide before                                                                             |
+| **Shift+→** or **Shift+↓**               | The start of the next item                                                                   |
+| **Shift+←** or **Shift+↑**               | The start of the item before                                                                 |
+| **Next** or **Back** under LIVE          | The same as **Space** and **←**, at once                                                     |
+| A click on a row                         | That row, at once: a slide, a picture, a video, a sound or a video input                     |
+| A row's number, then Enter               | That row, at once (Esc puts the number away)                                                 |
 | A click on a presentation's name         | Its slides fold away, or open again; with nothing up, **Next** then starts it from its first |
 
 - What the next press will bring shows beside **Next** (its small picture), on the stage screen (its **Next**), on a presenter's phone or tablet, and in Simple Mode.
@@ -128,7 +128,7 @@ The clear buttons along the bottom go in this order too, left to right, each wit
 
 If the single-letter keys are turned off (**Keys at a glance**, below), **B** and **.** do nothing: use the **Black-out** button. **F12** still puts the wallpaper up.
 
-**Messages.** In **Messages**, fill in a message's fields (for example the car's number in "Car {plate} please move") and press **Show** (or Enter in the field). It goes on the hall's screens, across the bottom unless its look says otherwise; **Take off** removes it, and **F6** removes them all. **Edit** gives each message a look of its own, kept with it: where it sits (top, middle or bottom, and left, centre or right, or dragged anywhere in its small picture), how it **Comes in and goes out** (sliding in from an edge, a fade, or one of the Lower Thirds' animations), **How long** it stays up (**Until it is taken off**, or a set time, after which it goes by itself), its **Font**, **Weight** and **Size** (**Smaller**, **Bigger**), its **Words colour**, and what is **Behind the words** (a band, a box or nothing, with **Its colour** and how **See-through** it is). The small picture shows it as it will look; **Undo** brings back a change, or a message deleted.
+**Messages.** In **Messages**, fill in a message's fields (for example the car's number in "Car {plate} please move") and press **Show** (or Enter in the field). It goes on the hall's screens, across the bottom unless its look says otherwise. While it is up, its **Show** says **Update**, which puts changed words up; **Take off** removes it, and **F6** removes them all. **Edit** gives each message a look of its own, kept with it: where it sits (top, middle or bottom, and left, centre or right, or dragged anywhere in its small picture), how it **Comes in and goes out** (sliding in from an edge, a fade, or one of the Lower Thirds' animations), **How long** it stays up (**Until it is taken off**, or a set time, after which it goes by itself), its **Font**, **Weight** and **Size** (**Smaller**, **Bigger**), its **Words colour**, and what is **Behind the words** (a band, a box or nothing, with **Its colour** and how **See-through** it is). The small picture shows it as it will look, and **Play** there shows it coming in; **Undo** brings back a change, or a message deleted.
 
 **Timers.** In **Timers**: **Start**, **Pause**, **Reset**, and **Show for the audience**, which puts that timer on the hall's screens in its own look, coming on with a fade; **Hide** takes it off. **How it looks for the audience…** sets that look: **Where** (full screen, or a corner), **Behind it** (over the wallpaper, or over what is up), a **Label above it** ("Activity ends in"), its **Font**, **Format**, size and colours, the **Time left** as a ring or a bar, **A warning colour near the end** and **Flash near the end**, what it does **At zero** (it stays, shows a message, shows the wallpaper, or goes by itself), and whether it shows **On the stage screens too**. One timer at a time is up for the audience: LIVE names it, with **Hide**, and **Clear all** takes it off (**Put it back** and **Oops** bring it back). The **Stage screen** panel has the same under its message (**Timer for the audience**: choose it, then start, reset, show and hide it). The stage screens show every running timer by themselves (a stage layout of their own shows the timers in it: below).
 

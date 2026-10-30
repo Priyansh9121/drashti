@@ -23,7 +23,7 @@ export const PANEL_HELP = {
   playlists: {
     title: 'Playlists',
     doc: 'operator',
-    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it, then click its first item: a presentation’s slides appear in the middle, and a video, a picture or a sound goes on the screens at once. While a phone or tablet is paired as a remote, right-click a playlist for Share with Phones and Tablets: remotes then show its files under Shared from Drashti until you choose Stop Sharing.',
+    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it in the middle, then click its first row: a slide, a picture, a video or a sound goes on the screens at once. While a phone or tablet is paired as a remote, right-click a playlist for Share with Phones and Tablets: remotes then show its files under Shared from Drashti until you choose Stop Sharing.',
     guide: "**Open tonight's playlist.**",
   },
   library: {
