@@ -65,9 +65,10 @@ import { audioDeviceSchema } from '../shared/audio';
 import type { SetupResult } from '../shared/setup';
 import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
-import { isOperatorMode, simpleModeRefuses, simpleRefusalText } from '../shared/mode';
+import { isOperatorMode, simpleModeRefuses, simplePhoneRefusalText, simpleRefusalText } from '../shared/mode';
 import { ModeKeeper } from './mode-keeper';
 import { SimplePlaylist, simplePlaylistName } from './simple-playlist';
+import type { SimplePhoneScope } from './simple-mode-phones';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
 import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
@@ -2970,6 +2971,32 @@ function start(): void {
         rows().some((i) => i.kind === 'presentation' && i.presentationId === presentationId),
     };
   };
+  /**
+   * Simple Mode as a paired phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026: a phone does only
+   * what Simple Mode's window does, simple-mode-phones.ts): the same, with what its playlist plays (a Shastra passage's
+   * row too) and the phone's words, true for this computer's access and naming that playlist. Null in Pro Mode.
+   */
+  const simplePhones = (): SimplePhoneScope | null => {
+    if (mode !== 'simple') return null;
+    const scope = simpleScope();
+    const one = scope.playlistId;
+    let rows: ReturnType<typeof playlists.itemsOf> | null = null;
+    const items = () => (rows ??= one === null ? [] : playlists.itemsOf(one));
+    return {
+      ...scope,
+      plays: (presentationId) =>
+        items().some(
+          (i) =>
+            (i.kind === 'presentation' && i.presentationId === presentationId) ||
+            (i.kind === 'shastra' && i.passageId === presentationId),
+        ),
+      refusal: () =>
+        simplePhoneRefusalText(
+          modes.simpleOnly(),
+          one === null ? null : (playlists.tree().find((n) => n.id === one)?.name ?? null),
+        ),
+    };
+  };
   // While it is on, every request that would change the library, screens or sound is refused here, but what Simple
   // Mode offers (Session 55, Part 18), each within its bounds.
   lockChannels(
@@ -4543,6 +4570,8 @@ function start(): void {
     refused: (channel) => refusedNow(channel),
     // In words true for this computer's access (Session 55).
     refusal: () => simpleRefusalText(modes.simpleOnly()),
+    // In Simple Mode a phone does only what its window does (Session 55, the owner's answer of 30 Oct 2026).
+    simple: simplePhones,
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
     },

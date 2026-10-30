@@ -9,7 +9,7 @@ import type { PresentationDoc } from '../../shared/library';
 import type { Lang } from '../../shared/model';
 import { fillMessage, type MessageTemplate, messageItemId } from '../../shared/messages';
 import { STOPPED_REFUSAL } from '../../shared/access';
-import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
+import { SIMPLE_MODE_REFUSAL, simpleModeRefuses } from '../../shared/mode';
 import { idSchema } from '../../shared/model-schema';
 import {
   DEFAULT_NETWORK_PORT,
@@ -62,6 +62,7 @@ import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
 import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { type DesktopActs, DesktopAnswers } from './desktop-answers';
+import { phoneCommandInSimpleMode, phoneMayInSimpleMode, type SimplePhoneScope } from '../simple-mode-phones';
 import { cutText } from '../../shared/text';
 import { nfcDeep } from '../../shared/nfc';
 
@@ -158,6 +159,12 @@ export interface NetworkDeps {
   refused(channel: InvokeChannel): boolean;
   /** Simple Mode's refusal in words true for this computer's access (Session 55); left out: SIMPLE_MODE_REFUSAL. */
   refusal?(): string;
+  /**
+   * Simple Mode as a phone's request is weighed (Session 55, the owner's answer of 30 Oct 2026: a paired phone does
+   * only what Simple Mode's window does, main/simple-mode-phones.ts): while it is on, its one playlist, what it holds
+   * and the words a phone is told; null in Pro Mode. Left out (a test of something else): never on.
+   */
+  simple?: () => SimplePhoneScope | null;
   /** The status changed: the operator window is told. */
   changed(status: NetworkStatus): void;
   log(level: 'info' | 'warn', message: string): void;
@@ -331,10 +338,12 @@ export class NetworkService implements EngineTransport {
           // At the computer's yes, long after the ask: still let in, the phone still paired, Simple Mode not refusing.
           mayStill: (deviceId, op) => {
             const channel = OP_CHANNEL[op];
+            const simple = this.deps.simple?.() ?? null;
             return (
               this.letIn() &&
               this.deps.devices.get(deviceId) !== null &&
-              !(channel !== null && this.deps.refused(channel))
+              !(channel !== null && this.deps.refused(channel)) &&
+              (simple === null || phoneMayInSimpleMode(op, {}, simple, this.deps.engine.state()))
             );
           },
           changed: () => {
@@ -813,7 +822,11 @@ export class NetworkService implements EngineTransport {
 
   // ---- what devices ask for ------------------------------------------------------------------
 
-  /** Every request's checks: Drashti let in, the device still paired, its kind, Simple Mode's lock. */
+  /**
+   * Every request's checks: Drashti let in, the device still paired, its kind, Simple Mode's lock (in the window's
+   * words), and in Simple Mode what a phone may ask for there (Session 55: only what its window does, in the phone's
+   * words), each before anything runs.
+   */
   private checked(
     request: DeviceRequest,
   ): { device: DeviceRow; args: Record<string, unknown>; who: string } | DeviceAnswer {
@@ -825,6 +838,9 @@ export class NetworkService implements EngineTransport {
     const channel = OP_CHANNEL[request.op];
     if (channel && this.deps.refused(channel)) return deny(403, this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL);
     const args = (request.args ?? {}) as Record<string, unknown>;
+    const simple = this.deps.simple?.() ?? null;
+    if (simple && !phoneMayInSimpleMode(request.op, args, simple, this.deps.engine.state()))
+      return deny(403, simple.refusal());
     return { device, args, who: `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”` };
   }
 
@@ -1007,6 +1023,9 @@ export class NetworkService implements EngineTransport {
   }
 
   private run(command: EngineCommand, who: string, did: string): DeviceAnswer {
+    // In Simple Mode, a command its window does not send: refused before the engine hears it, as the engine refuses.
+    const refused = this.simpleRefusal(command);
+    if (refused !== null) return { status: 403, body: { ok: false, error: 'forbidden', message: refused } };
     const result = this.deps.engine.dispatch(command);
     if (!result.ok)
       return {
@@ -1015,6 +1034,19 @@ export class NetworkService implements EngineTransport {
       };
     this.deps.log('info', `Network: ${who} ${did}`);
     return ok({ changed: result.changed, rev: result.rev });
+  }
+
+  /**
+   * Why Simple Mode refuses a phone this engine command (null: it may send it; Session 55, the owner's answer of 30 Oct
+   * 2026): in the window's own words when the engine refuses the window it too (shared/mode.ts simpleModeRefuses),
+   * else in the phone's.
+   */
+  private simpleRefusal(command: EngineCommand): string | null {
+    const simple = this.deps.simple?.() ?? null;
+    if (simple === null || phoneCommandInSimpleMode(command, simple)) return null;
+    return simpleModeRefuses(command, this.deps.engine.state())
+      ? (this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL)
+      : simple.refusal();
   }
 
   private command(args: Record<string, unknown>, who: string): DeviceAnswer {
