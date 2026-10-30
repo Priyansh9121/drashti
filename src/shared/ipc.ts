@@ -1,3 +1,4 @@
+import type { ReadyReport } from './ready';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
@@ -953,10 +954,15 @@ export const IPC = {
     /** Quit, the one button that always works. */
     quit: 'access:quit',
   },
+  /** Ready? (Session 55, Part 8, H): one press before the sabha checks the screens, sound, files, power and more. */
+  ready: {
+    check: 'ready:check',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
   [IPC.appearance.view]: { args: []; result: AppearanceView };
   [IPC.appearance.choose]: { args: [choice: string]; result: { ok: true } | { ok: false; message: string } };
   [IPC.appearance.make]: {

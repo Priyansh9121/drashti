@@ -622,6 +622,9 @@ const bridge: DrashtiBridge = {
     retry: () => invoke(IPC.access.retry),
     quit: () => invoke(IPC.access.quit),
   },
+  ready: {
+    check: (openPlaylistId) => invoke(IPC.ready.check, openPlaylistId),
+  },
 };
 
 // Each page gets only its own groups of the bridge (Sessions 31–36, ARCH-7; page-groups.ts), known by its address.

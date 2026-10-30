@@ -1,3 +1,4 @@
+import type { ReadyReport } from './ready';
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
@@ -904,5 +905,9 @@ export interface DrashtiBridge {
     redeem(gmail: string, token: string): Promise<AccessView>;
     retry(): Promise<AccessView>;
     quit(): Promise<null>;
+  };
+  /** Ready? (Session 55, Part 8): the check, with the playlist open in the window (its files are checked). */
+  ready: {
+    check(openPlaylistId: string | null): Promise<ReadyReport | null>;
   };
 }

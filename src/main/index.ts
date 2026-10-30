@@ -17,7 +17,7 @@ import {
   session,
   systemPreferences,
 } from 'electron';
-import { mkdirSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -244,7 +244,7 @@ import { FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
-import { CHECK_EVERY_MS, OutputHeartbeat } from './outputs/heartbeat';
+import { CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './outputs/heartbeat';
 import {
   quitDetail,
   RendererWatchdog,
@@ -283,6 +283,9 @@ import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/place
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
 import { Leftovers, leftoversFile } from './system/leftovers';
+import { runPowerShell } from './system/powershell';
+import { type ReadyDeps, readyReport } from './ready/ready-facts';
+import type { ReadyOutput } from '../shared/ready';
 import { GuideFiles, guidesDir } from './guides';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
@@ -5588,6 +5591,92 @@ function start(): void {
       log.info('Simple Mode: its first steps were seen');
     }
     return null;
+  });
+  // ---- Ready? (Session 55, Part 8, H): read only when pressed, never at start and never the keychain; the files on
+  // the disk and the notifications' state are read asynchronously, so nothing here holds up the show ----------------
+  const readyDeps: ReadyDeps = {
+    platform: process.platform,
+    home: app.getPath('home'),
+    now: Date.now,
+    screens: () => {
+      const here = controlsDisplay();
+      const snapshot = screens.snapshot();
+      const known = new Map(
+        snapshot.groups.flatMap((g) =>
+          g.screens.map((sc) => [sc.id, { name: sc.name, role: g.role, node: sc.nodeId !== null }] as const),
+        ),
+      );
+      const now = Date.now();
+      const outputs = snapshot.status.flatMap((st): ReadyOutput[] => {
+        const sc = known.get(st.screenId);
+        if (!sc) return [];
+        // Open for a while and not heard from: its page is not drawing (the heartbeat restarts it by itself too).
+        const seen = sc.node || st.state !== 'showing' ? null : heartbeat.lastSeen(st.screenId);
+        const quiet =
+          seen !== null &&
+          now - seen.since > OPEN_GRACE_MS &&
+          (seen.reportAt === null || now - seen.reportAt > REPORT_STALE_MS);
+        return [{ name: sc.name, role: sc.role, state: quiet ? 'not-drawing' : st.state, node: sc.node }];
+      });
+      return {
+        others: listDisplays().filter((d) => d.id !== here).length,
+        mirrored: displayIds.mirroredOnto().length > 0,
+        switches: screenSwitches.get(),
+        outputs,
+      };
+    },
+    sound: () => {
+      const st = audioOutput.status;
+      return {
+        state: st.state,
+        checked: st.checked,
+        chosen: st.chosen?.label ?? null,
+        playerRunning: pageAlive(audioWindow),
+      };
+    },
+    videoInput: () => {
+      const chosen = inputs.chosen();
+      return {
+        chosen: chosen ? { name: chosen.name, device: chosen.device } : null,
+        access: inputs.access(),
+        seen: seenCameras,
+      };
+    },
+    access: () => {
+      const view = behind?.service.view();
+      return {
+        phase: view?.phase ?? accessState().phase,
+        stopsInMs: view?.stopsInMs ?? null,
+        endsInMs: view?.endsInMs ?? null,
+      };
+    },
+    playlist: (id) => {
+      const found = playlists.list().find((p) => p.id === id);
+      return found ? { name: found.name, rows: playlists.itemsOf(id) } : null;
+    },
+    mediaFile: (mediaId) => {
+      const found = media.kindAndFile(mediaId);
+      if (!found || found.path === '') return null;
+      return isAbsolute(found.path) ? found.path : join(mediaDir, found.path);
+    },
+    exists: (path) =>
+      fsPromises.access(path).then(
+        () => true,
+        () => false,
+      ),
+    onBattery: () => powerMonitor.isOnBatteryPower(),
+    keptAwake: () => sleepGuard.held,
+    readFile: (path) => fsPromises.readFile(path, 'utf8'),
+    powershell: (script) => runPowerShell(script, {}, 15_000),
+  };
+  handle(IPC.ready.check, async (e, openPlaylistId) => {
+    if (!fromOperator(e)) return null;
+    const open = typeof openPlaylistId === 'string' && openPlaylistId.length <= 200 ? openPlaylistId : null;
+    const report = await readyReport(readyDeps, open);
+    log.info(
+      `Ready?: ${report.lines.map((l) => `${l.id} ${l.ok ? 'green' : l.unknown === true ? 'amber (can’t tell)' : 'amber'}`).join(', ')}`,
+    );
+    return report;
   });
   handle(IPC.setup.identifyDisplays, (e) => {
     if (!fromOperator(e)) return { shown: 0 };

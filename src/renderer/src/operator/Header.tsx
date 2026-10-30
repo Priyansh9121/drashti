@@ -4,13 +4,14 @@ import { shortcutText } from '../../../shared/keymap';
 import { Band, HeaderStates } from '../ui/Decoration';
 import { Button } from '../ui/Button';
 import { WordMark } from '../ui/Mark';
-import { Inbox, LayoutGrid, Monitor, Radio, Smartphone } from '../ui/icons';
+import { Inbox, LayoutGrid, ListChecks, Monitor, Radio, Smartphone } from '../ui/icons';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { openNetwork, useNetwork } from '../network/network-store';
 import { openAnnouncements, useAnnouncements } from '../network/announcements-store';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { openStreamPanel } from '../stream/stream-store';
 import { enterSimpleMode } from './mode-store';
+import { openReady } from './ready-store';
 import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
 import { LiveStatus } from './StatusLine';
@@ -144,6 +145,21 @@ export function Header({
             <Help crowded={crowded}>{phones.button}</Help>
           </span>
           <AnnouncementsButton help={announcements.button} crowded={crowded} />
+          {/* Ready? (Session 55, Part 8): one press before the sabha checks the screens, sound, files and power. */}
+          <Tooltip
+            content="Before the sabha: check the screens, sound, files, access and power"
+            side="bottom"
+          >
+            <Button
+              variant="ghost"
+              icon={ListChecks}
+              onClick={openReady}
+              data-testid="open-ready"
+              className={cx(crowded && ICON_IF_NARROW)}
+            >
+              <Words crowded={crowded}>Ready?</Words>
+            </Button>
+          </Tooltip>
           <Tooltip content="Screens and sound" kbd={shortcutText('openScreens', platform)} side="bottom">
             <Button variant="secondary" icon={Monitor} onClick={onOpenScreens}>
               Screens

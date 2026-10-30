@@ -20,6 +20,8 @@ export { Blend, Frame, KeyboardMusic, LayoutTemplate, SwatchBook } from 'lucide-
 export { Captions } from 'lucide-react';
 // The Wallpaper (Session 55, Part 13): the chosen wallpaper up instead of the picture, in the Logo's place.
 export { Wallpaper } from 'lucide-react';
+// Ready? and the quick bar (Session 55, Part 8): the check before the sabha, an item pinned and taken off.
+export { ListChecks, Pin, PinOff } from 'lucide-react';
 // Pictures (Session 55, Part 5): the Picture editor's Crop, Turn and Flip, and Save picture….
 export { Crop, FlipHorizontal2, FlipVertical2, ImageDown } from 'lucide-react';
 // Zoom both ways (Session 48): another app's window on the screens, and the window for Zoom to share.
