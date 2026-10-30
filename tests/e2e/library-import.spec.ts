@@ -130,7 +130,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
   }, songTwo);
-  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
   await expect(list.getByRole('button', { name: /^Placeholder Song Two/ })).toBeVisible();
 
@@ -174,7 +174,7 @@ test('Word lyrics (Session 26f): Files… offers a .docx and imports it as lyric
       return Promise.resolve({ canceled: false, filePaths: [path] });
     };
   }, song);
-  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
   await expect(list.getByRole('button', { name: /^Placeholder Word Song/ })).toBeVisible();
   const offered = await app.evaluate(() => (globalThis as { offered?: string[] }).offered ?? []);

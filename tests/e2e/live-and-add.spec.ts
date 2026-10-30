@@ -108,7 +108,7 @@ test('the import report adds what an import made to the open playlist, another, 
     [a, b],
   );
   await openLibrary(win);
-  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
   const report = win.getByTestId('import-report');
   await expect(report).toBeVisible();
@@ -136,7 +136,7 @@ test('the import report adds what an import made to the open playlist, another, 
     [c],
   );
   await openLibrary(win);
-  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
   await expect(report).toBeVisible();
   await report.getByTestId('report-add-target').selectOption('new');
@@ -238,7 +238,7 @@ test('a folder imported with Import › A Folder… goes into a playlist in its 
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, root);
   await openLibrary(win);
-  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByTestId('library-sheet').getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'A Folder…' }).click();
   const report = win.getByTestId('import-report');
   await expect(report).toBeVisible({ timeout: 60_000 });
