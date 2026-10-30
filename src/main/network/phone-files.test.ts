@@ -44,6 +44,8 @@ let changed: string[][] = [];
 let onAir = false;
 let simple = false;
 let letIn = true;
+/** The playlist open in Pro Mode's window (Session 55, Part 8: Add photos). */
+let open: { id: string; name: string } | null = null;
 const reports = new Map<string, ImportItemReport[]>();
 
 const DEVICES: Record<string, { name: string; kind: 'remote' | 'stage' }> = {
@@ -111,6 +113,7 @@ beforeEach(() => {
   onAir = false;
   simple = false;
   letIn = true;
+  open = null;
   files = new PhoneFiles({
     db,
     settings,
@@ -133,6 +136,7 @@ beforeEach(() => {
     log: () => undefined,
     waitMs: 10,
     letIn: () => letIn,
+    openPlaylist: () => open?.id ?? null,
   });
   files.setOn(true);
 });
@@ -308,6 +312,41 @@ describe('a file a phone added', () => {
   });
 });
 
+describe('Add photos (Session 55, Part 8): pictures from a phone into the playlist open on Drashti', () => {
+  it('a picture goes to the end of the open playlist, imported as a dropped one; Add from this Phone… still goes to Added from Phones', async () => {
+    const sabha = playlists.create('Placeholder sabha', null, false) ?? '';
+    open = { id: sabha, name: 'Placeholder sabha' };
+    // The network is told which, for the phone's words.
+    expect(files.policy()).toMatchObject({ on: true, openPlaylist: 'Placeholder sabha' });
+    const photo = { ...sent(JPEG, 'IMG_0002.HEIC'), into: 'open' as const };
+    expect(await files.arrived(photo)).toEqual({
+      ok: true,
+      message: 'Added to Drashti, in Media and the playlist “Placeholder sabha”.',
+    });
+    expect(imported).toEqual([photo.file]);
+    expect(playlists.itemsOf(sabha)).toMatchObject([
+      { kind: 'media', label: 'IMG_0002.HEIC', fromDevice: 'Placeholder phone' },
+    ]);
+    expect(notices).toEqual(['A picture from “Placeholder phone” is in the playlist “Placeholder sabha”.']);
+    // The next after it, at the end.
+    await files.arrived({ ...sent(Buffer.concat([JPEG, Buffer.from('b')]), 'IMG_0003.HEIC'), into: 'open' });
+    expect(playlists.itemsOf(sabha).map((i) => i.label)).toEqual(['IMG_0002.HEIC', 'IMG_0003.HEIC']);
+    expect(added()).toEqual([]);
+    // Add from this Phone… (no playlist asked for): Added from Phones, as before.
+    await files.arrived(sent(Buffer.concat([JPEG, Buffer.from('c')]), 'Other.jpg'));
+    expect(added().map((p) => [p.name, p.itemCount])).toEqual([['Added from Phones', 1]]);
+  });
+
+  it('with no playlist open (or Simple Mode, which tells none), a picture goes to Added from Phones and says so', async () => {
+    expect(files.policy()).toMatchObject({ openPlaylist: null });
+    expect(await files.arrived({ ...sent(JPEG, 'IMG_0004.HEIC'), into: 'open' })).toEqual({
+      ok: true,
+      message: 'Added to Drashti, in Media and the playlist “Added from Phones”.',
+    });
+    expect(added().map((p) => p.itemCount)).toEqual([1]);
+  });
+});
+
 describe('what the network is told', () => {
   it('the switch, the size limit, 2 GB kept free, and slower on air; told when the stream goes on or off air', async () => {
     expect(files.policy()).toEqual({
@@ -315,6 +354,8 @@ describe('what the network is told', () => {
       maxBytes: 2 * 1024 ** 3,
       reserveBytes: 2 * 1024 ** 3,
       slowed: false,
+      // Add photos (Session 55, Part 8): no playlist open.
+      openPlaylist: null,
     });
     files.setOn(false);
     expect(files.view()).toEqual({ on: false, maxBytes: 2 * 1024 ** 3 });

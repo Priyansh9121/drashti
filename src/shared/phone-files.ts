@@ -55,6 +55,11 @@ export interface UploadStatus {
 export interface AddFilesView {
   on: boolean;
   maxBytes: number;
+  /**
+   * Add photos (Session 55, Part 8, J): the name of the playlist open in Pro Mode's window, where a phone's pictures go,
+   * or null with none open (or in Simple Mode): they go to "Added from Phones" then. Left out by an older Drashti.
+   */
+  openPlaylist?: string | null;
 }
 
 /** What the worker taking the pieces is told by the main process (the switch, the limits, on air). */
@@ -64,7 +69,12 @@ export interface UploadPolicy {
   reserveBytes: number;
   /** On air or recording: pieces are taken at UPLOAD_ON_AIR_BYTES_PER_SECOND at most. */
   slowed: boolean;
+  /** The playlist open in Pro Mode's window, for the phone's words (Session 55, Part 8: Add photos); null for none. */
+  openPlaylist?: string | null;
 }
+
+/** Add photos (Session 55, Part 8): what a phone asks for its pictures, the playlist open on Drashti. */
+export const INTO_OPEN = 'open';
 
 /** A file that has all arrived and is what it should be: the main process imports it. */
 export interface ArrivedFile {
@@ -76,6 +86,8 @@ export interface ArrivedFile {
   file: string;
   ext: string;
   kind: FileKind;
+  /** Add photos (Session 55, Part 8): a picture for the playlist open on Drashti; left out, Added from Phones. */
+  into?: typeof INTO_OPEN;
 }
 
 /** What a file is, read from its bytes. */

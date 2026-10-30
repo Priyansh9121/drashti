@@ -73,10 +73,10 @@ function sendPiece(
 }
 
 export const deviceTransport: Transport = {
-  begin: (name, size) =>
+  begin: (name, size, into) =>
     api<{ upload: UploadStatus; pieces: { first: number; max: number } }>('/api/v1/uploads', {
       method: 'POST',
-      body: { name, size },
+      body: into === undefined ? { name, size } : { name, size, into },
     }),
   piece: sendPiece,
   status: (id) => api<{ upload: UploadStatus }>(`/api/v1/uploads/${encodeURIComponent(id)}`),

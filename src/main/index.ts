@@ -2940,6 +2940,8 @@ function start(): void {
       rebuildMenu();
       if (next === 'simple') closeStudio();
       sendToOperator(IPC.app.modeChanged, { mode: next });
+      // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist only: the phones hear of the change.
+      network?.uploadsChanged();
     },
     menu: () => {
       rebuildMenu();
@@ -4292,6 +4294,8 @@ function start(): void {
   // Files between Drashti and its phones (Session 54): playlists shared with them, and files a phone adds, sent into
   // the media folder's uploads folder and imported as a dropped file is (network/phone-files.ts).
   const phoneDevices = new DeviceRepo(db);
+  /** The playlist open in Pro Mode's window, as it says (Session 55, Part 8: a phone's Add photos go there). */
+  let openInPro: string | null = null;
   const phoneFiles = new PhoneFiles({
     db: libraryDb,
     settings,
@@ -4324,6 +4328,8 @@ function start(): void {
     maxBytes: Number(sw('DRASHTI_TEST_UPLOAD_MAX_BYTES') ?? 0) || undefined,
     // No file is taken while Drashti is not let in (Session 54).
     letIn: isLetIn,
+    // A phone's Add photos (Session 55, Part 8): the playlist open in Pro Mode's window; none in Simple Mode.
+    openPlaylist: () => (mode === 'pro' ? openInPro : null),
   });
   // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
   // below, where the window's own requests for them are registered.
@@ -5170,6 +5176,11 @@ function start(): void {
     opened: (playlistId) => {
       // Pro Mode's window says which it has open, or that it closed it: Simple Mode takes that one (Session 55).
       if (mode === 'pro') simplePlaylist.opened(playlistId);
+      // A phone's Add photos go to it (Session 55, Part 8): the phones hear which.
+      if (mode === 'pro' && playlistId !== openInPro) {
+        openInPro = playlistId;
+        network.uploadsChanged();
+      }
       if (playlistId === null) return;
       // Opened on Main, a playlist from an earlier week counts as this week's: nodes copy its media.
       const since = new Date(Date.now() - RECENT_DAYS * 24 * 3600 * 1000).toISOString();

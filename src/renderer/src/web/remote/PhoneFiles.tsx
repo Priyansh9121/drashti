@@ -3,6 +3,7 @@ import { formatBytes } from '../../../../shared/format';
 import {
   ADD_ACCEPT,
   ADDED_FROM_PHONES,
+  INTO_OPEN,
   type SharedPlaylist,
   sizeWords,
 } from '../../../../shared/phone-files';
@@ -10,7 +11,7 @@ import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
-import { ChevronLeft, ImagePlus } from '../../ui/icons';
+import { Camera, ChevronLeft, ImagePlus } from '../../ui/icons';
 import { Progress } from '../../ui/Progress';
 import { addFiles, cancelSending, openShared, usePhoneFiles } from './phone-files-store';
 import { itemWord, viewable } from './shared-files';
@@ -218,7 +219,10 @@ export function AddToDrashti() {
   const adding = usePhoneFiles((s) => s.adding);
   const sending = usePhoneFiles((s) => s.sending);
   const picker = useRef<HTMLInputElement>(null);
+  const photos = useRef<HTMLInputElement>(null);
   if (!adding?.on && sending.length === 0) return null;
+  // Add photos (Session 55, Part 8): the playlist open on Drashti, or Added from Phones with none open.
+  const into = adding?.openPlaylist ?? null;
   return (
     <section className="space-y-2" aria-labelledby="remote-add-title" data-testid="remote-add">
       <h2 id="remote-add-title" className={HEADING}>
@@ -253,6 +257,36 @@ export function AddToDrashti() {
               // The same file can be chosen again later.
               e.target.value = '';
               if (chosen.length > 0) addFiles(chosen);
+            }}
+          />
+          {/* Add photos (Session 55, Part 8): pictures from the camera roll into the playlist open on Drashti. */}
+          <p className="text-base text-muted" data-testid="remote-photos-words">
+            {into === null
+              ? `No playlist is open on Drashti: Add photos puts pictures into “${ADDED_FROM_PHONES}”.`
+              : `Add photos puts pictures at the end of the playlist open on Drashti, “${into}”. They never go on the screens by themselves.`}
+          </p>
+          <Button
+            size="xl"
+            icon={Camera}
+            className="w-full"
+            data-testid="remote-photos-button"
+            onClick={() => photos.current?.click()}
+          >
+            Add photos
+          </Button>
+          <input
+            ref={photos}
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+            data-testid="remote-photos-input"
+            onChange={(e) => {
+              const chosen = [...(e.target.files ?? [])];
+              e.target.value = '';
+              if (chosen.length > 0) addFiles(chosen, INTO_OPEN);
             }}
           />
         </>
