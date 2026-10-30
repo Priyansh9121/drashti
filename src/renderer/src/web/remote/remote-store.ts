@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { PresentationDoc } from '../../../../shared/library';
 import type { MessageTemplate } from '../../../../shared/messages';
 import type { RemoteLibraryPage, RemotePresentation } from '../../../../shared/network-api';
+import type { RemoteSimple } from '../../../../shared/network-phone';
 import type { ItemOrder, PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
 import { ALL_ON, type ScreenSwitches } from '../../../../shared/screen-switches';
 import type { SearchHit, SearchResult } from '../../../../shared/search';
@@ -69,7 +70,14 @@ interface RemoteView {
     switches: ScreenSwitches;
     /** The stage screens' group, whose layout's timers the remote runs (Session 54); null for none. */
     stageGroupId: string | null;
+    /**
+     * Simple Mode on Drashti's computer (Session 55, Part 9): its one playlist and the words this phone shows once;
+     * null in Pro Mode (or from a Drashti before Part 9).
+     */
+    simple: RemoteSimple | null;
   } | null;
+  /** The once-said words of Simple Mode put away (Part 9): until Simple Mode next comes on. */
+  simpleSaid: boolean;
 }
 
 const NOTES_KEY = 'drashti.remote.notes';
@@ -106,6 +114,7 @@ export const useRemote = create<RemoteView>(() => ({
   templates: null,
   shastra: null,
   hall: null,
+  simpleSaid: false,
 }));
 
 /** The playlists, as Drashti's "changed" asks for them again: one read at a time (one-at-a-time.ts). */
@@ -116,10 +125,16 @@ async function readPlaylists(): Promise<void> {
   if (!r.ok) return;
   const lists = r.playlists.filter((p) => !p.isFolder && !p.template);
   useRemote.setState({ playlists: lists });
-  const { playlistId } = useRemote.getState();
+  const { playlistId, hall } = useRemote.getState();
   const live = useEngine.getState().state?.live.playlist?.playlistId ?? null;
+  // In Simple Mode (Part 9): its one playlist, the only one it shows.
+  const simple = hall?.simple?.playlistId ?? null;
   const chosen =
-    playlistId && lists.some((p) => p.id === playlistId) ? playlistId : (live ?? lists[0]?.id ?? null);
+    simple !== null && lists.some((p) => p.id === simple)
+      ? simple
+      : playlistId && lists.some((p) => p.id === playlistId)
+        ? playlistId
+        : (live ?? lists[0]?.id ?? null);
   await showPlaylist(chosen);
 }
 
@@ -202,16 +217,24 @@ async function loadHall(): Promise<void> {
     clock: { locale: string; timeZone: string };
     switches?: ScreenSwitches;
     stageGroupId?: string | null;
+    simple?: RemoteSimple | null;
   }>('/api/v1/hall');
-  if (r.ok)
-    useRemote.setState({
-      hall: {
-        groupId: r.groupId,
-        clock: r.clock,
-        switches: r.switches ?? { ...ALL_ON },
-        stageGroupId: r.stageGroupId ?? null,
-      },
-    });
+  if (!r.ok) return;
+  const before = useRemote.getState().hall?.simple ?? null;
+  const simple = r.simple ?? null;
+  useRemote.setState({
+    hall: {
+      groupId: r.groupId,
+      clock: r.clock,
+      switches: r.switches ?? { ...ALL_ON },
+      stageGroupId: r.stageGroupId ?? null,
+      simple,
+    },
+    // Simple Mode come on: said once again (Part 9).
+    ...(simple !== null && before === null ? { simpleSaid: false } : {}),
+  });
+  // Simple Mode's one playlist opened (Part 9), as its window shows it.
+  if (simple?.playlistId && simple.playlistId !== useRemote.getState().playlistId) void loadPlaylists();
 }
 
 /** What is live, as the slides to show: the live presentation, with its playlist item when it has one. */
@@ -285,7 +308,7 @@ export function startRemote(): void {
       if (library.query !== '') void searchLibrary(library.query);
     }
     if (what === 'messages') void loadTemplates();
-    if (what === 'screens') void loadHall();
+    if (what === 'screens' || what === 'mode') void loadHall();
     if (what === 'shastra') void loadShastra();
   });
 }

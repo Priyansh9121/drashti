@@ -693,6 +693,18 @@ describe('the network in the main process', () => {
       'queue.takeOff',
       // The stage layout every stage screen shows (Session 55), chosen as the Stage screen panel's Layout does.
       'stage.layout',
+      // The phone's own (Session 55, Part 9): the wallpapers (bounded: Simple Mode's window has them, so with the
+      // phone's arguments they run), the quick bar's changes, a picture's look, Rename… (bounded to Simple Mode's
+      // playlist) and When it ends.
+      'wallpaper.choose',
+      'wallpaper.rename',
+      'wallpaper.remove',
+      'wallpaper.restore',
+      'quickBar.set',
+      'media.setLook',
+      'media.rename',
+      'presentation.rename',
+      'playlist.whenEnds',
     ]);
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });

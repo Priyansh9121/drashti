@@ -349,6 +349,8 @@ function EditorForm({ mediaId, start, photo }: { mediaId: string; start: Picture
               className={cx('min-h-12', shape === s.id && 'ring-2 ring-accent')}
               variant={shape === s.id ? 'strong' : 'secondary'}
               aria-pressed={shape === s.id}
+              // A shape is cut from the picture's own shape: once it has loaded.
+              disabled={!natural}
               data-testid={`remote-pe-crop-${s.id}`}
               onClick={() => {
                 chooseShape(s.id);

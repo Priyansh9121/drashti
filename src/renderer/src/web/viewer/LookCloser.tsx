@@ -29,13 +29,17 @@ export function LookCloser() {
  * Over the live picture, which is hidden from screen readers: a tap opens it too (Look closer above it is the way
  * for the keyboard and a screen reader).
  */
-export function LookOverlay() {
+export function LookOverlay({ ignore }: { ignore?: (at: number) => boolean } = {}) {
   return (
     <div
       aria-hidden="true"
       className="absolute inset-0 cursor-zoom-in"
       data-testid="remote-live-look"
-      onClick={openScreens}
+      onClick={(e) => {
+        // A swipe's own click (Session 55, Part 9: the page turned) opens nothing.
+        if (ignore?.(e.timeStamp) === true) return;
+        openScreens();
+      }}
     />
   );
 }

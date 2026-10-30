@@ -130,15 +130,16 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       await fingers(p, engine, [{ x: m.x - reach / 2, y: m.y }], [reach], [0]);
       await expect.poll(() => slideNow(win)).toBe(1);
 
-      // Two fingers spreading apart, one of them moving left: zooming, never a swipe.
+      // Two fingers coming together (zooming out, which a page already whole leaves as it is), the second moving well
+      // to the left: never a swipe.
       await fingers(
         p,
         engine,
         [
-          { x: m.x - 20, y: m.y },
-          { x: m.x + 20, y: m.y },
+          { x: m.x - 60, y: m.y },
+          { x: m.x + 60, y: m.y },
         ],
-        [-reach / 2, reach / 2],
+        [0, -100],
         [0, 0],
       );
       // A drag mostly up or down: the page's own scroll, never a swipe.

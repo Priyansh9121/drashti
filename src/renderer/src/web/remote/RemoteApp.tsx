@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useContext, useEffect, useMemo, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { RemotePresentation } from '../../../../shared/network-api';
 import { KIRTAN_FIELD_NAMES, type SearchHit } from '../../../../shared/search';
 import type { EngineState } from '../../../../shared/engine/state';
@@ -59,7 +59,7 @@ import { networkPreviews } from '../previews';
 import { tap, useTapNotice } from '../taps';
 import { startPhoneFiles } from './phone-files-store';
 import { DeviceViewer } from '../viewer/DeviceViewer';
-import { LookAtMedia, LookCloser, LookOverlay, LookThrough } from '../viewer/LookCloser';
+import { LookCloser, LookOverlay, LookThrough } from '../viewer/LookCloser';
 import {
   loadLibrary,
   loadPlaylists,
@@ -67,10 +67,8 @@ import {
   type RemoteTab,
   searchLibrary,
   setNotesOpen,
-  showPlaylist,
   startRemote,
   useRemote,
-  view,
   viewLive,
 } from './remote-store';
 import { ClockStyleContext } from '../../render/clock-style';
@@ -78,7 +76,6 @@ import { namedBackground } from '../../render/named-background';
 import { formatClock, validClockStyle } from '../../../../shared/format';
 import { Clears } from './Clears';
 import { DesktopLayer, DesktopTools } from './DesktopTools';
-import { itemLine } from './item-line';
 import { LibraryPanel } from './LibraryPanel';
 import { LiveLines } from './LiveLines';
 import { MessageFields } from './MessageFields';
@@ -87,9 +84,13 @@ import { MoreTools } from './MoreTools';
 import { MusicList } from './MusicList';
 import { Playing } from './Playing';
 import { RemotePlaying } from './RemotePlaying';
-import { isRepeatPlaylist, repeatItemUp, startGoingRound } from './repeat';
-import { RepeatStart } from './RepeatStart';
+import { isRepeatPlaylist, startGoingRound } from './repeat';
 import { useLayout } from './layout';
+import { PhoneToolsLayer } from './PhoneToolsLayer';
+import { PlaylistTab } from './PlaylistTab';
+import { QuickBar } from './QuickBar';
+import { useSimple } from './simple';
+import { Swipes, type SwipeWay } from './swipe';
 import { StageScreen } from './StageScreen';
 import { Timers } from './Timers';
 
@@ -165,8 +166,57 @@ function switchedOffWords(switches: ScreenSwitches | undefined): { title: string
   };
 }
 
+/**
+ * Swipes on the live picture (Session 55, Part 9): the finger moving left is Next, moving right is Back, like turning
+ * a page; two fingers (zooming) never count, nor a drag up or down (the page scrolls: touch-action keeps that the
+ * browser's), and a tap still looks closer. The buttons stay. Each goes in turn, as the buttons' taps do.
+ */
+function useSwipes(): {
+  handlers: Record<
+    'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel',
+    (e: ReactPointerEvent<HTMLElement>) => void
+  >;
+  swiped: SwipeWay | null;
+  justSwiped: (at: number) => boolean;
+} {
+  const swipes = useRef(new Swipes());
+  const [swiped, setSwiped] = useState<SwipeWay | null>(null);
+  useEffect(() => {
+    if (!swiped) return;
+    const timer = setTimeout(() => {
+      setSwiped(null);
+    }, 450);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [swiped]);
+  return {
+    swiped,
+    justSwiped: (at) => swipes.current.justSwiped(at),
+    handlers: {
+      onPointerDown: (e) => {
+        swipes.current.down(e);
+      },
+      onPointerMove: (e) => {
+        swipes.current.move(e);
+      },
+      onPointerUp: (e) => {
+        const way = swipes.current.up(e);
+        if (!way) return;
+        setSwiped(way);
+        if (way === 'next') void next();
+        else void tap(post('/api/v1/trigger/back'));
+      },
+      onPointerCancel: (e) => {
+        swipes.current.cancel(e);
+      },
+    },
+  };
+}
+
 function LivePicture({ state }: { state: EngineState | null }) {
   const hallLook = useHallLook(state);
+  const { handlers, swiped, justSwiped } = useSwipes();
   // The switches as the store has them (one object until the next answer), put in words here.
   const switchedOff = switchedOffWords(useRemote((s) => s.hall?.switches));
   const up = state
@@ -191,17 +241,29 @@ function LivePicture({ state }: { state: EngineState | null }) {
       </div>
       <div
         className={cx(
-          'relative overflow-hidden rounded-lg border-2 bg-black',
+          'relative overflow-hidden rounded-lg border-2 bg-black [touch-action:pan-y_pinch-zoom] select-none',
           up && !state?.blackout ? 'border-live' : 'border-line-strong',
         )}
         data-testid="remote-live"
         data-a11y-picture
         aria-hidden="true"
+        {...handlers}
       >
         <PlacedInParent content={CANVAS} mode="fit" className="relative aspect-video w-full">
           {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
         </PlacedInParent>
-        <LookOverlay />
+        <LookOverlay ignore={justSwiped} />
+        {/* The page turned: said for a moment over the picture (the buttons say it to a screen reader). */}
+        {swiped && (
+          <span
+            className="pointer-events-none absolute top-1/2 rounded-full bg-black/70 px-4 py-2 text-base font-bold text-white motion-safe:animate-pulse"
+            style={swiped === 'next' ? { right: '0.75rem' } : { left: '0.75rem' }}
+            data-testid="remote-swiped"
+            data-way={swiped}
+          >
+            {swiped === 'next' ? 'Next ›' : '‹ Back'}
+          </span>
+        )}
       </div>
       {/* Audience or Stage off on Main's computer (Session 50): said, with no button (the operator turns it on). */}
       {switchedOff && (
@@ -480,12 +542,15 @@ function SlideThumb({
   live,
   focus,
   onTap,
+  dimmed = false,
 }: {
   s: OrderedSlide;
   live: boolean;
   /** The slide a search found: brought into view and outlined. */
   focus: boolean;
   onTap: () => void;
+  /** Not to be put up from here (Simple Mode, Part 9: a slide of a presentation its playlist does not play). */
+  dimmed?: boolean;
 }) {
   // The background cue it plays: its last, when it has more than one (Session 52).
   const bg = backgroundCueOf(s.slide.cues);
@@ -495,6 +560,7 @@ function SlideThumb({
       <button
         type="button"
         onClick={onTap}
+        disabled={dimmed}
         aria-pressed={live}
         aria-label={`${s.group.name} ${s.position + 1}${words ? `: ${words}` : ''}${live ? ', on the screens' : ''}`}
         data-testid="remote-slide"
@@ -503,7 +569,7 @@ function SlideThumb({
         data-live={live ? 'true' : undefined}
         data-focus={focus ? 'true' : undefined}
         className={cx(
-          'block w-full overflow-hidden rounded-lg border-2 bg-panel-2 text-left',
+          'block w-full overflow-hidden rounded-lg border-2 bg-panel-2 text-left disabled:opacity-50',
           live ? 'border-live' : focus ? 'border-accent' : 'border-line',
         )}
       >
@@ -555,6 +621,7 @@ function Slides() {
   const items = useRemote((s) => s.items);
   const focusSlideId = useRemote((s) => s.focusSlideId);
   const live = useEngine((s) => s.state?.live ?? null);
+  const simple = useSimple();
   // The live presentation's slide on the screens; a timer up alone (Session 50) is none of its slides.
   const shownIndex = useEngine((s) => {
     const shown = s.state?.layers.slide;
@@ -590,6 +657,16 @@ function Slides() {
         ? itemPlayOrder(doc, itemNow, item.itemId)
         : playOrder(doc, doc.selectedArrangementId);
   const otherThanLive = live?.presentationId != null && live.presentationId !== viewing.presentationId;
+  // Simple Mode (Part 9): only what its playlist plays goes up from here, as its window puts up its own rows.
+  const allowed =
+    simple === null ||
+    (item
+      ? item.playlistId === simple.playlistId
+      : (items ?? []).some(
+          (i) =>
+            (i.kind === 'presentation' && i.presentationId === doc.id) ||
+            (i.kind === 'shastra' && i.passageId === doc.id),
+        ));
   return (
     <section className="space-y-2" aria-labelledby="slides-title">
       <div className="flex flex-wrap items-center gap-2">
@@ -612,7 +689,7 @@ function Slides() {
               : (order.slides.find((s) => s.slide.id === focusSlideId)?.position ?? 0)
           }
         />
-        {item && !isLiveItem && (
+        {item && !isLiveItem && allowed && (
           <Button
             size="lg"
             icon={Play}
@@ -637,6 +714,7 @@ function Slides() {
             s={s}
             live={isLiveItem && shownIndex === s.position}
             focus={focusSlideId === s.slide.id}
+            dimmed={!allowed}
             onTap={() =>
               void tap(
                 post('/api/v1/trigger/slide', {
@@ -662,105 +740,6 @@ const playable = (i: PlaylistItemInfo) =>
   (i.kind === 'media' && !i.missing && i.unplayable === null) ||
   // A video input item (Session 51), while Main's computer has one of its name: tapped, it goes up there.
   (i.kind === 'input' && !i.missing);
-
-function Playlist() {
-  const playlists = useRemote((s) => s.playlists);
-  const playlistId = useRemote((s) => s.playlistId);
-  const items = useRemote((s) => s.items);
-  const live = useEngine((s) => s.state?.live.playlist ?? null);
-  // A Repeat Slides playlist goes round, from the item tapped (Session 54, D5 review); its item up is marked.
-  const repeat = useRemote((s) => isRepeatPlaylist(s.playlists, s.playlistId));
-  const repeatItem = useEngine((s) => repeatItemUp(s.state, playlistId));
-  return (
-    <section className="space-y-3" aria-labelledby="playlist-title">
-      <h2 id="playlist-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Playlist
-      </h2>
-      {playlists && playlists.length > 0 ? (
-        <select
-          aria-label="Which playlist"
-          value={playlistId ?? ''}
-          onChange={(e) => void showPlaylist(e.target.value)}
-          className="h-12 w-full rounded-lg border border-field bg-panel-2 px-3 text-base text-fg"
-          data-testid="remote-playlist"
-        >
-          {playlists.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      ) : playlists ? (
-        <p className="text-base text-muted">
-          There are no playlists yet: they are made in Drashti on the computer, in Pro Mode.
-        </p>
-      ) : (
-        <p role="status" className="text-base text-muted">
-          Loading the playlists…
-        </p>
-      )}
-      {repeat && playlistId && <RepeatStart playlistId={playlistId} />}
-      <ul className="space-y-1.5" data-testid="remote-items">
-        {(items ?? []).map((i) => {
-          if (i.kind === 'header')
-            return (
-              <li key={i.id} className="pt-2 text-base font-bold text-muted">
-                {i.label}
-              </li>
-            );
-          const isLive = (live?.playlistId === playlistId && live.itemId === i.id) || repeatItem === i.id;
-          const can = playable(i);
-          return (
-            <li key={i.id} className="flex gap-2">
-              <button
-                type="button"
-                disabled={!can}
-                data-testid="remote-item"
-                data-live={isLive ? 'true' : undefined}
-                onClick={() => {
-                  if (!playlistId) return;
-                  if (repeat) void tap(() => startGoingRound(playlistId, i.id));
-                  else if (i.kind === 'presentation')
-                    view({
-                      presentationId: i.presentationId,
-                      item: { playlistId, itemId: i.id, order: i.order },
-                    });
-                  // A Shastra passage plays like a presentation, its slides in order.
-                  else if (i.kind === 'shastra')
-                    view({
-                      presentationId: i.passageId,
-                      item: { playlistId, itemId: i.id, order: { mode: 'all' } },
-                    });
-                  else void tap(post('/api/v1/trigger/item', { playlistId, itemId: i.id }));
-                }}
-                className={cx(
-                  'flex min-h-12 w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-base disabled:opacity-50',
-                  isLive ? 'border-live bg-panel-2' : 'border-line bg-panel-2',
-                )}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-fg">{i.label}</span>
-                  <span className="block truncate text-muted">{itemLine(i)}</span>
-                </span>
-                {i.kind === 'input' && (
-                  <Badge tone={i.missing ? 'warning' : 'neutral'} data-testid="remote-item-input">
-                    {i.missing ? 'Not on Drashti’s computer' : 'Video input'}
-                  </Badge>
-                )}
-                {i.kind === 'placeholder' && <Badge tone="warning">Empty</Badge>}
-                {isLive && <LiveBadge />}
-              </button>
-              {/* Session 54 (D1): a picture looked at, or a video played, on this device only. */}
-              {i.kind === 'media' && i.media !== 'audio' && !i.missing && (
-                <LookAtMedia mediaId={i.mediaId} media={i.media} name={i.label} />
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
 
 // ---- the library (Session 18) -----------------------------------------------------------------------
 
@@ -960,7 +939,7 @@ function SidePanel() {
         })}
       </div>
       <div role="tabpanel" aria-label={side === 'playlist' ? 'Playlist' : 'Library'}>
-        {side === 'playlist' ? <Playlist /> : <LibraryPanel presentations={<Library />} />}
+        {side === 'playlist' ? <PlaylistTab /> : <LibraryPanel presentations={<Library />} />}
       </div>
     </div>
   );
@@ -1103,6 +1082,15 @@ function Shastra() {
 function TimersAndMessages() {
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const templates = useRemote((s) => s.templates);
+  const simple = useSimple();
+  // Simple Mode (Part 9): none of what its window has not (the music, the stage screen, messages, timers, Shastra, the
+  // lower thirds, the computer's setup); Audience and Stage turned on stay, as its window turns them.
+  if (simple)
+    return (
+      <div className="space-y-5" data-testid="remote-more-columns">
+        <DesktopTools />
+      </div>
+    );
   return (
     // The operator window's right column in its order (Session 54, D5): Music, the stage screen, messages, timers and
     // Shastra, then its More tools; in two columns where a tablet has the width for them.
@@ -1147,6 +1135,32 @@ function TimersAndMessages() {
 }
 
 // ---- the page ----------------------------------------------------------------------------------
+
+/**
+ * Simple Mode on Drashti's computer (Session 55, Part 9), said once: what this phone does there (its playlist, Next and
+ * Back, Clear all, Black-out and the Wallpaper), and, unless the access is Simple Mode only, the way back to Pro Mode.
+ * What Simple Mode's window does not have is hidden here, and what it may not do dimmed; put away, this stays away
+ * until Simple Mode next comes on.
+ */
+function SimpleNote() {
+  const simple = useSimple();
+  const said = useRemote((s) => s.simpleSaid);
+  if (!simple || said) return null;
+  return (
+    <div className="shrink-0 px-4 pt-3">
+      <Notice
+        tone="info"
+        role="status"
+        data-testid="remote-simple"
+        onDismiss={() => {
+          useRemote.setState({ simpleSaid: true });
+        }}
+      >
+        {simple.words}
+      </Notice>
+    </div>
+  );
+}
 
 /**
  * Next, or, with nothing live, the shown playlist from its first item that can play (as Simple Mode
@@ -1276,6 +1290,8 @@ function Layout() {
       <Playing />
       <Notes state={state} />
       <NextLine state={state} />
+      {/* The quick bar's pins (Part 9, from Part 8), just above the clears as the window has them. */}
+      <QuickBar />
       <Clears state={state} />
       <Slides />
     </div>
@@ -1298,6 +1314,7 @@ function Layout() {
           </Notice>
         </div>
       )}
+      <SimpleNote />
       {layout === 'landscape' ? (
         // Held sideways: the live picture, the notes and what comes next beside the slides.
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] gap-6 p-4">
@@ -1308,6 +1325,7 @@ function Layout() {
             <Playing />
             <Notes state={state} />
             <NextLine state={state} />
+            <QuickBar />
             <Clears state={state} />
           </div>
           <div className="flex min-h-0 flex-col gap-3">
@@ -1318,7 +1336,7 @@ function Layout() {
               aria-label={PANEL_TABS.find((t) => t.id === tab)?.label}
             >
               {tab === 'show' && <Slides />}
-              {tab === 'playlist' && <Playlist />}
+              {tab === 'playlist' && <PlaylistTab />}
               {tab === 'library' && <LibraryPanel presentations={<Library />} />}
               {tab === 'more' && <TimersAndMessages />}
             </div>
@@ -1339,7 +1357,7 @@ function Layout() {
           aria-label={TABS.find((t) => t.id === tab)?.label}
         >
           {tab === 'show' && show}
-          {tab === 'playlist' && <Playlist />}
+          {tab === 'playlist' && <PlaylistTab />}
           {tab === 'library' && <LibraryPanel presentations={<Library />} />}
           {tab === 'more' && <TimersAndMessages />}
         </main>
@@ -1368,6 +1386,7 @@ export function RemoteApp() {
         <Layout />
         <DeviceViewer />
         <DesktopLayer />
+        <PhoneToolsLayer />
         <PhoneStopped />
       </ClockStyleContext.Provider>
     </PreviewsContext.Provider>

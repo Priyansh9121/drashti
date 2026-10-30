@@ -10,6 +10,7 @@ import { api } from '../device';
 import { tap } from '../taps';
 import { LookAtMedia } from '../viewer/LookCloser';
 import { loadMedia, useMirror } from './mirror-store';
+import { useSimple } from './simple';
 
 /*
  * Media on the phone (Session 54, D5): the library's pictures, videos and sounds, as the operator window's library
@@ -43,6 +44,8 @@ function useUp(): { background: string | null; sound: string | null } {
 function MediaRow({ m, up }: { m: RemoteMedia; up: 'background' | 'audio' | null }) {
   const KindIcon = KIND_ICON[m.kind];
   const can = !m.missing && m.unplayable === null;
+  // Simple Mode (Session 55, Part 9): its window puts up its playlist's rows, never Media's: dimmed here.
+  const simple = useSimple() !== null;
   return (
     <li
       className={cx(
@@ -55,7 +58,7 @@ function MediaRow({ m, up }: { m: RemoteMedia; up: 'background' | 'audio' | null
     >
       <button
         type="button"
-        disabled={!can}
+        disabled={!can || simple}
         onClick={() => void tap(post(`/api/v1/media/${encodeURIComponent(m.id)}/show`))}
         className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-lg py-1.5 pl-2 text-left disabled:cursor-not-allowed"
       >

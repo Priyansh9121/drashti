@@ -198,6 +198,7 @@ function setup(options: { simple?: boolean; letIn?: boolean } = {}) {
             calls.push({ what: 'restoreItems', args: [ids] });
             return { ok: true, ids: ids as string[] };
           },
+          setWhenEnds: () => ({ ok: false, message: 'No.' }),
         }),
       },
       simple: () => simple,

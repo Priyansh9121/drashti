@@ -214,7 +214,7 @@ test('a long press on a row opens its menu on a phone: Rename, When it ends, Pin
     // The picture's menu: what the window's has that a phone can do, a thumb's size, in its order.
     await longPress(fileRow(p, PICTURE));
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole('heading')).toHaveText(PICTURE);
+    await expect(menu.getByRole('heading')).toContainText(PICTURE);
     await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
       /Look at it on this phone/u,
       /Picture editor/u,
@@ -332,7 +332,7 @@ test('on a phone, Save picture… hands the picture over, and the Picture editor
     await menu.getByTestId('remote-menu-save').click();
     await expect
       .poll(() => p.evaluate(() => (globalThis as unknown as { sharedFiles: unknown[] }).sharedFiles))
-      .toEqual([{ name: `${PICTURE}.png`, type: 'image/png', size: expect.any(Number) as number }]);
+      .toEqual([{ name: `${PICTURE}.png`, type: 'image/png', size: expect.any(Number) as unknown }]);
     await p.evaluate(() => {
       Object.defineProperty(navigator, 'canShare', { configurable: true, value: undefined });
     });

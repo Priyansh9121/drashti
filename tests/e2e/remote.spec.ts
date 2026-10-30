@@ -251,9 +251,13 @@ test('the remote on a tablet shows the playlist beside the show, and an item tap
     // Wide: no tabs; the playlist and the show side by side.
     await expect(t.getByTestId('remote-tab-show')).toHaveCount(0);
     await expect(t.getByTestId('remote-items')).toBeVisible();
-    await t.getByTestId('remote-item').filter({ hasText: WELCOME }).click();
+    // The playlist is rows (Session 55, Part 9): the welcome's slide row, tapped, goes up, and its slides show beside.
+    await t
+      .getByTestId('remote-row')
+      .filter({ hasText: `${WELCOME}_1` })
+      .click();
     await expect(t.getByTestId('remote-slides')).toBeVisible();
-    await expect(t.getByRole('button', { name: 'Start this item' })).toBeVisible();
+    await expect(t.getByTestId('remote-slide').nth(0)).toHaveAttribute('data-live', 'true');
     await expect(t.getByTestId('remote-playlist')).toHaveText(new RegExp(PLAYLIST, 'u'));
     await expectNoSeriousA11yIssues(t, 'the remote on a tablet');
   } finally {
