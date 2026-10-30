@@ -135,6 +135,18 @@ export default defineConfig(
               'a colour, #rrggbb without its opacity',
             ],
             ['src/renderer/src/editor/SlidePanel.tsx', 'background.slice(0, 7)', 'a colour, #rrggbb'],
+            // The slide editor's groups along its top (Session 55, Part 17a): colours, and find and replace's matches.
+            [
+              'src/renderer/src/editor/WordsGroup.tsx',
+              '.slice(0, 7)',
+              'a colour, #rrggbb without its opacity',
+            ],
+            ['src/renderer/src/editor/Ribbon.tsx', '.slice(0, 7)', 'a colour, #rrggbb'],
+            [
+              'src/renderer/src/editor/find-replace.ts',
+              '.slice(0, Math.max(0, start - from))',
+              'the words before a match: the match was found there',
+            ],
             [
               'src/main/import/media-store.ts',
               'sha256.slice(0, 2)',

@@ -218,7 +218,11 @@ test('Words: a bundled font, size, colour, bold, italic, underline, strike throu
   await expect(gujaratiOnScreen.locator('[data-list-marker]')).toHaveText(['૧.', '૨.']);
   await expect.poll(() => drawn(gujaratiOnScreen)).toEqual(gujaratiInEditor);
   // Its words whole, each line its own, the numbers apart from them (never inside the words, where they would join).
-  expect(await gujaratiOnScreen.locator('[data-line]').evaluateAll((lines) => lines.map((l) => l.querySelector('[data-run]')?.textContent))).toEqual(['નમૂના એક', 'નમૂના બે']);
+  expect(
+    await gujaratiOnScreen
+      .locator('[data-line]')
+      .evaluateAll((lines) => lines.map((l) => l.querySelector('[data-run]')?.textContent)),
+  ).toEqual(['નમૂના એક', 'નમૂના બે']);
   await app.close();
 });
 
@@ -290,7 +294,9 @@ test('find and replace across the presentation: counted, gone to, replaced one a
   await slideEditorClosed(app);
   const words = await win.evaluate(async (pid) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(pid);
-    return doc?.groups.flatMap((g) => g.slides.map((s) => s.slide.elements.map((e) => ('text' in e ? e.text : ''))));
+    return doc?.groups.flatMap((g) =>
+      g.slides.map((s) => s.slide.elements.map((e) => ('text' in e ? e.text : ''))),
+    );
   }, id);
   expect(words).toEqual([
     ['Placeholder gamma words'],

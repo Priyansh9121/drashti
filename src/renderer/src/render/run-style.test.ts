@@ -88,7 +88,9 @@ describe('the Words group’s looks, as every screen draws them (Session 55, Par
   it('underlines and strikes through a run, both at once too', () => {
     expect(runStyle({ underline: true }, box).textDecorationLine).toBe('underline');
     expect(runStyle({ strike: true }, box).textDecorationLine).toBe('line-through');
-    expect(runStyle({ underline: true, strike: true }, box).textDecorationLine).toBe('underline line-through');
+    expect(runStyle({ underline: true, strike: true }, box).textDecorationLine).toBe(
+      'underline line-through',
+    );
     // Gujarati and Hindi too: a line under or through them never changes how their letters join.
     expect(runStyle({ lang: 'gu', underline: true }, box).textDecorationLine).toBe('underline');
     expect(runStyle({}, box).textDecorationLine).toBeUndefined();
@@ -107,7 +109,9 @@ describe('the Words group’s looks, as every screen draws them (Session 55, Par
     const glowing = { ...box, style: { ...box.style, glow: { color: '#00ffcc', size: 20 } } };
     const own = { color: '#000000', blur: 4, x: 2, y: 2 };
     expect(runStyle({ shadow: own }, glowing).textShadow).toBe('0 0 20px #00ffcc, 2px 2px 4px #000000');
-    expect(runStyle({ glow: { color: '#ff0000', size: 8 } }, box).textShadow).toBe(`0 0 8px #ff0000, ${TEXT_SHADOW}`);
+    expect(runStyle({ glow: { color: '#ff0000', size: 8 } }, box).textShadow).toBe(
+      `0 0 8px #ff0000, ${TEXT_SHADOW}`,
+    );
     // A run with no glow of its own in a glowing box: none.
     expect(runStyle({ glow: null }, glowing).textShadow).toBe(TEXT_SHADOW);
     // Nothing of its own: the box's, by inheritance.
@@ -118,9 +122,15 @@ describe('the Words group’s looks, as every screen draws them (Session 55, Par
   });
 
   it('a list’s marks: a bullet is a shape, a number its words, in the line’s colour', () => {
-    expect(listMarkerStyle('disc', { color: '#ffcc00' })).toMatchObject({ borderRadius: '50%', background: '#ffcc00' });
+    expect(listMarkerStyle('disc', { color: '#ffcc00' })).toMatchObject({
+      borderRadius: '50%',
+      background: '#ffcc00',
+    });
     expect(listMarkerStyle('circle', {})).toMatchObject({ borderRadius: '50%', background: 'transparent' });
     expect(listMarkerStyle('square', {})).toMatchObject({ background: 'currentColor' });
-    expect(listMarkerStyle('1', { color: '#ffcc00' })).toMatchObject({ color: '#ffcc00', textAlign: 'right' });
+    expect(listMarkerStyle('1', { color: '#ffcc00' })).toMatchObject({
+      color: '#ffcc00',
+      textAlign: 'right',
+    });
   });
 });

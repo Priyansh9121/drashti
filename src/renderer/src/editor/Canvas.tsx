@@ -55,7 +55,7 @@ import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ZoomIn, ZoomOut } from '../ui/icons';
 import type { Zoom } from './zoom';
-import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut } from './zoom';
+import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut, zoomScroll } from './zoom';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -173,14 +173,40 @@ export function Canvas({ platform }: { platform: string }) {
     el.scrollLeft = keep.left;
     el.scrollTop = keep.top;
   });
-  // A pinch on the trackpad (the wheel with Ctrl) zooms about the pointer; the page itself never zooms.
+  // A pinch on the trackpad (the wheel with Ctrl) zooms about the pointer; the page itself never zooms. Read from the
+  // editor and the area as it is when the wheel turns.
   const hasDoc = doc !== null;
-  const pinch = useRef<(e: WheelEvent) => void>(() => undefined);
   useEffect(() => {
     const el = area.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      pinch.current(e);
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const now = useEditor.getState();
+      const d = now.doc;
+      if (!d) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      const fit = Math.max(0.05, Math.min((w - 2 * PAD) / d.width, (h - 2 * PAD) / d.height));
+      const scale = scaleFor(now.zoom, fit);
+      const next = zoomBy(now.zoom, fit, Math.exp(-e.deltaY * 0.01));
+      if (Math.abs(next - scale) < 1e-4) return;
+      const r = el.getBoundingClientRect();
+      const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+      const keep = (pointer: number, scroll: number, area: number, length: number) =>
+        zoomScroll({
+          pointer,
+          scroll,
+          offset: Math.max(PAD, (area - length * scale) / 2),
+          offsetAfter: Math.max(PAD, (area - length * next) / 2),
+          from: scale,
+          to: next,
+        });
+      keepPoint.current = {
+        left: keep(at.x, el.scrollLeft, w, d.width),
+        top: keep(at.y, el.scrollTop, h, d.height),
+      };
+      useEditor.setState({ zoom: next });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => {
@@ -197,33 +223,16 @@ export function Canvas({ platform }: { platform: string }) {
   if (!doc || !slide) return <div ref={area} className="min-w-0 flex-1 bg-ink" />;
 
   // Fitted to the area, as the editor always opened; zoomed, a size of its own (Session 55, Part 17a).
-  const fit = Math.max(0.05, Math.min((size.width - 2 * PAD) / doc.width, (size.height - 2 * PAD) / doc.height));
+  const fit = Math.max(
+    0.05,
+    Math.min((size.width - 2 * PAD) / doc.width, (size.height - 2 * PAD) / doc.height),
+  );
   const scale = scaleFor(zoom, fit);
   const width = doc.width * scale;
   const height = doc.height * scale;
   // Where the slide sits: in the middle while it fits, else PAD in from the scrolled area's edges.
   const left = Math.max(PAD, (size.width - width) / 2);
   const top = Math.max(PAD, (size.height - height) / 2);
-  pinch.current = (e: WheelEvent) => {
-    if (!e.ctrlKey) return;
-    e.preventDefault();
-    const el = area.current;
-    if (!el) return;
-    const next = zoomBy(zoom, fit, Math.exp(-e.deltaY * 0.01));
-    if (Math.abs(next - scale) < 1e-4) return;
-    const r = el.getBoundingClientRect();
-    const nextLeft = Math.max(PAD, (size.width - doc.width * next) / 2);
-    const nextTop = Math.max(PAD, (size.height - doc.height * next) / 2);
-    const point = {
-      x: (e.clientX - r.left + el.scrollLeft - left) / scale,
-      y: (e.clientY - r.top + el.scrollTop - top) / scale,
-    };
-    keepPoint.current = {
-      left: Math.max(0, nextLeft + point.x * next - (e.clientX - r.left)),
-      top: Math.max(0, nextTop + point.y * next - (e.clientY - r.top)),
-    };
-    useEditor.setState({ zoom: next });
-  };
   const elements = slide.elements;
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
   const wholeUnder = slide.darken?.kind === 'whole' ? elements.find(darkensBehind)?.id : undefined;
@@ -551,118 +560,120 @@ export function Canvas({ platform }: { platform: string }) {
 
   return (
     <div className="relative min-w-0 flex-1 bg-ink">
-    <div
-      ref={area}
-      className={cx('absolute inset-0', zoom === 'fit' ? 'overflow-hidden' : 'overflow-auto')}
-      data-testid="editor-canvas-area"
-    >
-      {/* Zoomed in, the room the slide takes (with PAD round it): the area scrolls over it. */}
-      {zoom !== 'fit' && (
-        <div aria-hidden="true" style={{ width: left + width + PAD, height: top + height + PAD }} />
-      )}
       <div
-        ref={stage}
-        role="application"
-        aria-roledescription="slide"
-        aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes. Copy, Cut and Paste work on elements; Shift with Paste puts them exactly where they were."
-        aria-describedby="editor-canvas-status"
-        tabIndex={0}
-        data-testid="editor-canvas"
-        data-scale={scale.toFixed(4)}
-        data-fit={fit.toFixed(4)}
-        className="absolute touch-none outline-offset-4 select-none"
-        style={{ left, top, width, height }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onDoubleClick={onDoubleClick}
-        onKeyDown={onKeyDown}
-        onCopy={onCopy}
-        onCut={onCut}
-        onPaste={onPaste}
+        ref={area}
+        className={cx('absolute inset-0', zoom === 'fit' ? 'overflow-hidden' : 'overflow-auto')}
+        data-testid="editor-canvas-area"
       >
+        {/* Zoomed in, the room the slide takes (with PAD round it): the area scrolls over it. */}
+        {zoom !== 'fit' && (
+          <div aria-hidden="true" style={{ width: left + width + PAD, height: top + height + PAD }} />
+        )}
         <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            width: doc.width,
-            height: doc.height,
-            transform: `scale(${scale})`,
-            transformOrigin: '0 0',
-          }}
+          ref={stage}
+          role="application"
+          aria-roledescription="slide"
+          aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes. Copy, Cut and Paste work on elements; Shift with Paste puts them exactly where they were."
+          aria-describedby="editor-canvas-status"
+          tabIndex={0}
+          data-testid="editor-canvas"
+          data-scale={scale.toFixed(4)}
+          data-fit={fit.toFixed(4)}
+          className="absolute touch-none outline-offset-4 select-none"
+          style={{ left, top, width, height }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onDoubleClick={onDoubleClick}
+          onKeyDown={onKeyDown}
+          onCopy={onCopy}
+          onCut={onCut}
+          onPaste={onPaste}
         >
           <div
-            data-a11y-picture
-            data-testid="editor-slide"
             style={{
               position: 'absolute',
-              inset: 0,
-              overflow: 'hidden',
-              background: slide.background ?? '#000000',
+              left: 0,
+              top: 0,
+              width: doc.width,
+              height: doc.height,
+              transform: `scale(${scale})`,
+              transformOrigin: '0 0',
             }}
           >
-            {background?.mediaId && <CueStill mediaId={background.mediaId} props={background.props} />}
-            {/* Each text box's measure, for the inspector (words past the box, the size drawn); what the
-                slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4). */}
-            <TranslitSourceContext.Provider value={translitSource(elements)}>
-              <MeasureContext.Provider value={keepMeasure}>
-                {elements.map((el) => [
-                  // Darkening behind the words (Sessions 31–36, SLD-3), as the screens draw it.
-                  el.id === wholeUnder && slide.darken ? (
-                    <div
-                      key="darken"
-                      data-darken="whole"
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: `rgba(0, 0, 0, ${String(slide.darken.strength)})`,
-                        pointerEvents: 'none',
-                      }}
-                    />
-                  ) : null,
-                  el.id === editing && el.kind === 'text' ? (
-                    <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
-                  ) : (
-                    <ElementView
-                      key={el.id}
-                      el={el}
-                      media="still"
-                      band={
-                        slide.darken?.kind === 'band' && darkensBehind(el) ? slide.darken.strength : undefined
-                      }
-                    />
-                  ),
-                ])}
-              </MeasureContext.Provider>
-            </TranslitSourceContext.Provider>
-          </div>
-          <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
-          {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}
-          {guides && <GuideLines guides={guides} doc={doc} scale={scale} />}
-          <SafeAreas slide={doc} scale={scale} />
-          {marquee && (
             <div
-              data-testid="editor-marquee"
+              data-a11y-picture
+              data-testid="editor-slide"
               style={{
                 position: 'absolute',
-                left: marquee.x,
-                top: marquee.y,
-                width: marquee.width,
-                height: marquee.height,
-                border: `${1 / scale}px solid var(--color-accent)`,
-                background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
-                pointerEvents: 'none',
+                inset: 0,
+                overflow: 'hidden',
+                background: slide.background ?? '#000000',
               }}
-            />
-          )}
+            >
+              {background?.mediaId && <CueStill mediaId={background.mediaId} props={background.props} />}
+              {/* Each text box's measure, for the inspector (words past the box, the size drawn); what the
+                slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4). */}
+              <TranslitSourceContext.Provider value={translitSource(elements)}>
+                <MeasureContext.Provider value={keepMeasure}>
+                  {elements.map((el) => [
+                    // Darkening behind the words (Sessions 31–36, SLD-3), as the screens draw it.
+                    el.id === wholeUnder && slide.darken ? (
+                      <div
+                        key="darken"
+                        data-darken="whole"
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: `rgba(0, 0, 0, ${String(slide.darken.strength)})`,
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    ) : null,
+                    el.id === editing && el.kind === 'text' ? (
+                      <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
+                    ) : (
+                      <ElementView
+                        key={el.id}
+                        el={el}
+                        media="still"
+                        band={
+                          slide.darken?.kind === 'band' && darkensBehind(el)
+                            ? slide.darken.strength
+                            : undefined
+                        }
+                      />
+                    ),
+                  ])}
+                </MeasureContext.Provider>
+              </TranslitSourceContext.Provider>
+            </div>
+            <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
+            {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}
+            {guides && <GuideLines guides={guides} doc={doc} scale={scale} />}
+            <SafeAreas slide={doc} scale={scale} />
+            {marquee && (
+              <div
+                data-testid="editor-marquee"
+                style={{
+                  position: 'absolute',
+                  left: marquee.x,
+                  top: marquee.y,
+                  width: marquee.width,
+                  height: marquee.height,
+                  border: `${1 / scale}px solid var(--color-accent)`,
+                  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+          </div>
         </div>
+        <p id="editor-canvas-status" className="sr-only" aria-live="polite" data-testid="editor-status">
+          {status}
+        </p>
       </div>
-      <p id="editor-canvas-status" className="sr-only" aria-live="polite" data-testid="editor-status">
-        {status}
-      </p>
-    </div>
       <ZoomBar zoom={zoom} fit={fit} />
     </div>
   );

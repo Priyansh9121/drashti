@@ -116,7 +116,9 @@ describe('lines made into a list, and back', () => {
   it('gives a box of plain text runs to carry the mark', () => {
     const plain: TextElement = { ...box([]), text: 'one\ntwo', lang: 'en' };
     delete plain.runs;
-    expect(withLinesListed(plain, 'all', { mark: 'square' }).runs).toEqual([{ text: 'one\ntwo', list: 'square' }]);
+    expect(withLinesListed(plain, 'all', { mark: 'square' }).runs).toEqual([
+      { text: 'one\ntwo', list: 'square' },
+    ]);
   });
 
   it('a line keeps its mark when the language view moves lines about', () => {
@@ -125,7 +127,10 @@ describe('lines made into a list, and back', () => {
       { text: 'Namūnā', lang: 'translit', list: 'disc', italic: true },
     ]);
     const lines = boxLines(el);
-    const swapped = withLines(el, [lines[1], lines[0]].filter((l) => l !== undefined));
+    const swapped = withLines(
+      el,
+      [lines[1], lines[0]].filter((l) => l !== undefined),
+    );
     expect(lineMarks(boxLines(swapped).map((l) => l.runs)).map((m) => m.mark)).toEqual(['disc', 'disc']);
   });
 });
@@ -142,9 +147,12 @@ describe('the new looks of words are kept', () => {
         { text: 'f', list: 'disc', level: 1 },
       ]).map((r) => r.text),
     ).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
-    expect(mergeRuns([{ text: 'a', underline: true }, { text: 'b', underline: true }])).toEqual([
-      { text: 'ab', underline: true },
-    ]);
+    expect(
+      mergeRuns([
+        { text: 'a', underline: true },
+        { text: 'b', underline: true },
+      ]),
+    ).toEqual([{ text: 'ab', underline: true }]);
   });
 
   it('a run’s underline, strike through, glow, list and level, and a box’s glow, pass the checks whole', () => {

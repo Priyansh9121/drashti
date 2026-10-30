@@ -1,3 +1,4 @@
+import type { Transaction } from 'prosemirror-state';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { describe, expect, it } from 'vitest';
 import type { TextElement, TextRun } from '../../../shared/model';
@@ -207,10 +208,7 @@ describe('a list, line by line, in the text editor (Session 55, Part 17a)', () =
     return state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
   };
   /** Run a command, as a key would. */
-  const run = (
-    state: EditorState,
-    command: (s: EditorState, d?: (tr: import('prosemirror-state').Transaction) => void) => boolean,
-  ) => {
+  const run = (state: EditorState, command: (s: EditorState, d?: (tr: Transaction) => void) => boolean) => {
     let next = state;
     const done = command(state, (tr) => {
       next = state.apply(tr);
@@ -288,7 +286,12 @@ describe('a list, line by line, in the text editor (Session 55, Part 17a)', () =
   it('styles the selected words with the Words group’s new looks', () => {
     const state = stateOf([{ text: 'Placeholder words here', size: 70 }], undefined, 13, 18);
     const styled = state.apply(
-      restyle(state, { underline: true, strike: true, glow: { color: '#00ffcc', size: 12 }, letterSpacing: 2 }),
+      restyle(state, {
+        underline: true,
+        strike: true,
+        glow: { color: '#00ffcc', size: 12 },
+        letterSpacing: 2,
+      }),
     );
     expect(runsOf(styled.doc)[1]).toEqual({
       text: 'words',
@@ -304,18 +307,32 @@ describe('a list, line by line, in the text editor (Session 55, Part 17a)', () =
 describe('the Words group on a whole box (Session 55, Part 17a)', () => {
   it('underlines and strikes through every word: plain words become a run to carry it', () => {
     const plain = box(undefined, 'Placeholder words');
-    expect(styleBox(plain, { underline: true }).runs).toEqual([{ text: 'Placeholder words', underline: true }]);
-    const struck = styleBox(box([{ text: 'a', size: 50 }, { text: 'b', underline: true }]), { strike: true });
+    expect(styleBox(plain, { underline: true }).runs).toEqual([
+      { text: 'Placeholder words', underline: true },
+    ]);
+    const struck = styleBox(
+      box([
+        { text: 'a', size: 50 },
+        { text: 'b', underline: true },
+      ]),
+      { strike: true },
+    );
     expect(struck.runs).toEqual([
       { text: 'a', size: 50, strike: true },
       { text: 'b', underline: true, strike: true },
     ]);
     // Off again: the runs no longer carry it.
-    expect(styleBox(struck, { strike: false, underline: false }).runs).toEqual([{ text: 'a', size: 50 }, { text: 'b' }]);
+    expect(styleBox(struck, { strike: false, underline: false }).runs).toEqual([
+      { text: 'a', size: 50 },
+      { text: 'b' },
+    ]);
   });
 
   it('gives the box a glow, its words following it; and spaces every word’s letters', () => {
-    const el = box([{ text: 'a', glow: null }, { text: 'b', size: 50 }]);
+    const el = box([
+      { text: 'a', glow: null },
+      { text: 'b', size: 50 },
+    ]);
     const glowing = styleBox(el, { glow: { color: '#00ffcc', size: 20 } });
     expect(glowing.style.glow).toEqual({ color: '#00ffcc', size: 20 });
     expect(glowing.runs).toEqual([{ text: 'a' }, { text: 'b', size: 50 }]);

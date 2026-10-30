@@ -95,7 +95,14 @@ export class SlideEditorWindow {
         return;
       }
       const mac = process.platform === 'darwin';
-      if (mac && input.meta && !input.control && !input.alt && !input.shift && input.key.toLowerCase() === 'w') {
+      if (
+        mac &&
+        input.meta &&
+        !input.control &&
+        !input.alt &&
+        !input.shift &&
+        input.key.toLowerCase() === 'w'
+      ) {
         event.preventDefault();
         win.close();
       }
@@ -177,7 +184,8 @@ export function handleSlideEditor(o: {
   exists: (presentationId: string) => boolean;
 }): void {
   handle(IPC.slideEditor.open, (e, presentationId, slideId) => {
-    if (!o.fromOperator(e)) return { ok: false as const, message: 'Only the operator window can open the slide editor.' };
+    if (!o.fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can open the slide editor.' };
     const id = idSchema.safeParse(presentationId);
     const slide = idSchema.nullable().safeParse(slideId ?? null);
     if (!id.success || !slide.success || !o.exists(id.data))

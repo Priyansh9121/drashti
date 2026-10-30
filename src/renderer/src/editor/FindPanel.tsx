@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { slidesOf } from '../../../shared/slide-edit';
 import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
@@ -28,15 +28,16 @@ export function FindPanel({ onClose }: { onClose: () => void }) {
     [doc, query, matchCase, wholeWords],
   );
   const numbers = useMemo(() => new Map(doc ? slidesOf(doc).map((s, i) => [s.id, i + 1]) : []), [doc]);
-  // A new search starts at the slide shown (its first match there or after it).
-  useEffect(() => {
+  // A new search starts at the slide shown (its first match there or after it); replacing keeps the place.
+  const searching = `${query}\u0000${String(matchCase)}\u0000${String(wholeWords)}`;
+  const [searched, setSearched] = useState(searching);
+  if (searched !== searching) {
+    setSearched(searching);
     const s = useEditor.getState();
-    const here = s.doc && s.slideId ? (numbers.get(s.slideId) ?? 1) : 1;
+    const here = s.slideId ? (numbers.get(s.slideId) ?? 1) : 1;
     const from = matches.findIndex((m) => (numbers.get(m.slideId) ?? 0) >= here);
     setCurrent(from < 0 ? 0 : from);
-    // Only when what is looked for changes: replacing keeps the place.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, matchCase, wholeWords]);
+  }
   const at = matches.length === 0 ? -1 : Math.min(current, matches.length - 1);
   const match = at >= 0 ? matches[at] : undefined;
   const context = match && doc ? matchContext(doc, match) : null;
@@ -62,7 +63,12 @@ export function FindPanel({ onClose }: { onClose: () => void }) {
     commit(replaceMatches(now, which, replacement));
     setSaid(`Replaced ${String(which.length)}.`);
   };
-  const count = query.trim() === '' ? '' : matches.length === 0 ? 'None found' : `${String(at + 1)} of ${String(matches.length)}`;
+  const count =
+    query.trim() === ''
+      ? ''
+      : matches.length === 0
+        ? 'None found'
+        : `${String(at + 1)} of ${String(matches.length)}`;
   return (
     <div
       role="search"
@@ -131,7 +137,13 @@ export function FindPanel({ onClose }: { onClose: () => void }) {
             step(1);
           }}
         />
-        <IconButton icon={X} size="sm" label="Close find and replace" data-testid="find-close" onClick={onClose} />
+        <IconButton
+          icon={X}
+          size="sm"
+          label="Close find and replace"
+          data-testid="find-close"
+          onClick={onClose}
+        />
       </div>
       <div className="flex items-center gap-1">
         <TextInput

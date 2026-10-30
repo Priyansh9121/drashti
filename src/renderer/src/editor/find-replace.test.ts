@@ -21,7 +21,12 @@ const style: TextElement['style'] = {
   shadow: true,
 };
 
-const words = (id: string, text: string, lang: TextElement['lang'] = 'en', runs?: TextRun[]): TextElement => ({
+const words = (
+  id: string,
+  text: string,
+  lang: TextElement['lang'] = 'en',
+  runs?: TextRun[],
+): TextElement => ({
   id,
   kind: 'text',
   frame: { x: 0, y: 0, width: 1600, height: 300 },
@@ -77,7 +82,14 @@ const doc: EditDoc = {
         slide('s4', [words('e4', 'નમૂના શબ્દ', 'gu')]),
         slide('s5', [words('e5', '', null, [{ text: 'alpha', font: 'Gopika', legacy: true }])]),
         slide('s6', [
-          { id: 'shape', kind: 'shape', frame: { x: 0, y: 0, width: 10, height: 10 }, fill: null, cornerRadius: 0, opacity: 1 },
+          {
+            id: 'shape',
+            kind: 'shape',
+            frame: { x: 0, y: 0, width: 10, height: 10 },
+            fill: null,
+            cornerRadius: 0,
+            opacity: 1,
+          },
           words('e6', '', 'en', [
             { text: 'Place', size: 60 },
             { text: 'holder', size: 80 },
@@ -156,7 +168,11 @@ describe('replacing', () => {
   });
 
   it('a match across two runs takes the first one’s look', () => {
-    const next = replaceMatches(doc, findMatches(doc, 'Placeholder', { matchCase: true, wholeWords: true }), 'Sample');
+    const next = replaceMatches(
+      doc,
+      findMatches(doc, 'Placeholder', { matchCase: true, wholeWords: true }),
+      'Sample',
+    );
     expect(textOf(next, 's6', 'e6')?.runs).toEqual([{ text: 'Sample', size: 60 }]);
     expect(textOf(next, 's6', 'e6')?.text).toBe('Sample');
   });

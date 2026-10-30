@@ -7,9 +7,21 @@ import { cx } from '../ui/cx';
  */
 
 /** A cluster of a group's tools. */
-export function Cluster({ name, children, className }: { name: string; children: ReactNode; className?: string }) {
+export function Cluster({
+  name,
+  children,
+  className,
+}: {
+  name: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div role="group" aria-label={name} className={cx('flex shrink-0 flex-col items-center gap-0.5', className)}>
+    <div
+      role="group"
+      aria-label={name}
+      className={cx('flex shrink-0 flex-col items-center gap-0.5', className)}
+    >
       <div className="flex items-center gap-1">{children}</div>
       <span aria-hidden="true" className="text-2xs leading-none whitespace-nowrap text-faint">
         {name}

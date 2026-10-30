@@ -514,7 +514,11 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
 }
 
 /** Open the slide editor on a presentation, by its row in the library: its own window (Session 55, Part 17a). */
-async function openEditor(app: ElectronApplication, win: Page, name: string): Promise<{ ed: Page; editor: Locator }> {
+async function openEditor(
+  app: ElectronApplication,
+  win: Page,
+  name: string,
+): Promise<{ ed: Page; editor: Locator }> {
   await openLibrary(win);
   await win
     .getByTestId('presentation-list')

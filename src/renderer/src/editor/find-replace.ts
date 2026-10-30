@@ -81,14 +81,23 @@ function boxOf(doc: EditDoc, match: Match): TextElement | undefined {
   return el?.kind === 'text' ? el : undefined;
 }
 
-/** The words round a match on its line, for saying where it is. */
+/** Letters as they are written (a letter with its marks, a conjunct): never cut inside one. */
+const LETTERS = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/** The words round a match on its line, for saying where it is: up to 40 letters each side. */
 export function matchContext(doc: EditDoc, match: Match): { before: string; words: string; after: string } {
   const text = boxOf(doc, match)?.text ?? '';
   const lineStart = text.lastIndexOf('\n', match.start - 1) + 1;
   const lineEnd = text.indexOf('\n', match.end);
-  const before = text.slice(Math.max(lineStart, match.start - 40), match.start);
-  const after = text.slice(match.end, lineEnd < 0 ? Math.min(text.length, match.end + 40) : Math.min(lineEnd, match.end + 40));
-  return { before, words: text.slice(match.start, match.end), after };
+  const before = [...LETTERS.segment(text.slice(lineStart, match.start))].map((s) => s.segment);
+  const after = [...LETTERS.segment(text.slice(match.end, lineEnd < 0 ? text.length : lineEnd))].map(
+    (s) => s.segment,
+  );
+  return {
+    before: before.slice(-40).join(''),
+    words: text.slice(match.start, match.end),
+    after: after.slice(0, 40).join(''),
+  };
 }
 
 /** Which script a language is written in. */

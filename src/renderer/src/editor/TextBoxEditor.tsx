@@ -73,7 +73,7 @@ export function finishTextEditing(): void {
  */
 export function undoAny(): void {
   const typing = useEditor.getState().editing !== null ? active : null;
-  if (typing && undoDepth(typing.view.state) > 0) {
+  if (typing && Number(undoDepth(typing.view.state)) > 0) {
     undo(typing.view.state, typing.view.dispatch);
     typing.view.focus();
     return;
@@ -85,7 +85,7 @@ export function undoAny(): void {
 /** Redo, as Undo: the typing's last undone step while typing, else the editor's (once typing has ended). */
 export function redoAny(): void {
   const typing = useEditor.getState().editing !== null ? active : null;
-  if (typing && redoDepth(typing.view.state) > 0) {
+  if (typing && Number(redoDepth(typing.view.state)) > 0) {
     redo(typing.view.state, typing.view.dispatch);
     typing.view.focus();
     return;
@@ -183,7 +183,11 @@ function listDecorations(doc: PMNode, el: TextElement): DecorationSet {
           }
           return dom;
         },
-        { side: -1, key: `${String(i)}:${mark}:${String(label)}:${String(size)}:${String(first.color)}`, ignoreSelection: true },
+        {
+          side: -1,
+          key: `${String(i)}:${mark}:${String(label)}:${String(size)}:${String(first.color)}`,
+          ignoreSelection: true,
+        },
       ),
     );
   });
@@ -277,7 +281,7 @@ export function TextBoxEditor({
           pm.updateState(pm.state.apply(tr));
           setTyped((n) => n + 1);
           // How far the typing's own Undo and Redo go (the editor's buttons offer them: Session 55, Part 17a).
-          const typing = { undo: undoDepth(pm.state), redo: redoDepth(pm.state) };
+          const typing = { undo: Number(undoDepth(pm.state)), redo: Number(redoDepth(pm.state)) };
           useEditor.setState((s) => ({ textTick: s.textTick + 1, typing }));
         },
         // Pasted text arrives as plain text, its lines as lines (a list going on through them), in the look at the caret.

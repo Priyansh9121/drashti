@@ -15,16 +15,7 @@ import { plural } from '../ui/text';
 import { useEngine } from '../engine/engine-store';
 import type { TabItem } from '../ui/Tabs';
 import { TabPanel, Tabs } from '../ui/Tabs';
-import {
-  ArrowLeftRight,
-  LayoutTemplate,
-  ListPlus,
-  Palette,
-  Redo2,
-  Sparkles,
-  Type,
-  Undo2,
-} from '../ui/icons';
+import { ArrowLeftRight, LayoutTemplate, ListPlus, Palette, Redo2, Sparkles, Type, Undo2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';

@@ -117,7 +117,7 @@ export function lineMarks(lines: readonly (readonly TextRun[])[]): LineMark[] {
       return { mark, level, label: null };
     }
     const was = counts[level];
-    const n = was && was.mark === mark ? was.n + 1 : 1;
+    const n = was?.mark === mark ? was.n + 1 : 1;
     counts[level] = { mark, n };
     return { mark, level, label: listLabel(n, mark) };
   });

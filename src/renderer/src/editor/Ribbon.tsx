@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { DARKEN_STRENGTHS, TRANSITION_KINDS, TRANSITION_NAMES, type TransitionKind } from '../../../shared/model';
+import {
+  DARKEN_STRENGTHS,
+  TRANSITION_KINDS,
+  TRANSITION_NAMES,
+  type TransitionKind,
+} from '../../../shared/model';
 import { slidesOf } from '../../../shared/slide-edit';
 import { TIMER_KIND_NAMES } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
@@ -394,7 +399,10 @@ export function DesignGroup() {
           onChange={(e) => {
             const kind = e.target.value;
             set({
-              darken: kind === 'band' || kind === 'whole' ? { kind, strength: slide?.darken?.strength ?? 0.6 } : null,
+              darken:
+                kind === 'band' || kind === 'whole'
+                  ? { kind, strength: slide?.darken?.strength ?? 0.6 }
+                  : null,
             });
           }}
         >
@@ -493,7 +501,7 @@ export function MotionGroup() {
           min={0.5}
           max={3600}
           step={0.5}
-          disabled={!slide || slide.autoAdvanceMs === null}
+          disabled={(slide?.autoAdvanceMs ?? null) === null}
           value={seconds ?? String((slide?.autoAdvanceMs ?? 5000) / 1000)}
           onFocus={() => {
             setSeconds(String((slide?.autoAdvanceMs ?? 5000) / 1000));
@@ -522,7 +530,12 @@ export function SlidesGroup() {
   const slide = doc ? findSlide(doc, current) : undefined;
   const all = doc ? slidesOf(doc) : [];
   const numbers = new Map(all.map((s, i) => [s.id, i + 1]));
-  const act = (fn: (d: NonNullable<typeof doc>, slideId: string) => { doc: NonNullable<typeof doc>; show?: string } | null) => {
+  const act = (
+    fn: (
+      d: NonNullable<typeof doc>,
+      slideId: string,
+    ) => { doc: NonNullable<typeof doc>; show?: string } | null,
+  ) => {
     finishTextEditing();
     const s = useEditor.getState();
     if (!s.doc || !s.slideId) return;

@@ -38,7 +38,15 @@ import { Cluster, Divider } from './RibbonParts';
 import { commit, useEditor } from './editor-store';
 import type { BoxPatch, TextPatch } from './ops';
 import { findSlide, mapElements, styleBox } from './ops';
-import { indentLine, listLines, outdentLine, restyle, restyleAll, selectedList, selectedLook } from './runs-doc';
+import {
+  indentLine,
+  listLines,
+  outdentLine,
+  restyle,
+  restyleAll,
+  selectedList,
+  selectedLook,
+} from './runs-doc';
 import { activeText } from './TextBoxEditor';
 
 /*
@@ -53,7 +61,10 @@ import { activeText } from './TextBoxEditor';
  */
 
 /** The sizes Bigger and Smaller step through (slide pixels: a slide is 1080 lines tall). */
-const SIZES = [12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 88, 96, 108, 120, 132, 144, 160, 180, 200, 240, 280, 320, 400];
+const SIZES = [
+  12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 88, 96, 108, 120, 132, 144, 160, 180, 200, 240,
+  280, 320, 400,
+];
 
 /** A bullet's and a number's name, as offered. */
 export const LIST_NAMES: Record<ListMark, string> = {
@@ -175,8 +186,8 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
   // The look at the caret changes as words are typed and selected.
   useEditor((s) => s.textTick);
   const [listMenu, setListMenu] = useState<{ at: MenuPlace; kind: 'bullets' | 'numbers' } | null>(null);
-  const [effects, setEffects] = useState(false);
-  const effectsButton = useRef<HTMLButtonElement>(null);
+  // Effects open: under their button (where it was when pressed).
+  const [effects, setEffects] = useState<MenuPlace | null>(null);
   // The bullet and the numbering chosen last, for the buttons' next press.
   const [lastBullet, setLastBullet] = useState<ListMark>('disc');
   const [lastNumber, setLastNumber] = useState<ListMark>('1');
@@ -244,7 +255,8 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
       if ('italic' in patch) clear.italic = patch.italic ? true : undefined;
       if ('underline' in patch) clear.underline = patch.underline ? true : undefined;
       if ('strike' in patch) clear.strike = patch.strike ? true : undefined;
-      if ('letterSpacing' in patch) clear.letterSpacing = patch.letterSpacing || undefined;
+      if ('letterSpacing' in patch)
+        clear.letterSpacing = patch.letterSpacing === 0 ? undefined : patch.letterSpacing;
       active.view.dispatch(restyleAll(active.view.state, clear));
     }
   };
@@ -307,7 +319,8 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
   };
   const step = (by: 1 | -1) => {
     const now = shown.size;
-    const next = by > 0 ? SIZES.find((x) => x > now + 0.01) : [...SIZES].reverse().find((x) => x < now - 0.01);
+    const next =
+      by > 0 ? SIZES.find((x) => x > now + 0.01) : [...SIZES].reverse().find((x) => x < now - 0.01);
     if (next !== undefined) apply({ size: next });
   };
   const fontKnown = shown.font === null || (LOWER_THIRD_FONTS as readonly string[]).includes(shown.font);
@@ -556,17 +569,17 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
       <Divider />
       <Cluster name="Effects, find">
         <IconButton
-          ref={effectsButton}
           icon={Sparkles}
           size="sm"
           label="Effects: shadow, outline, glow, letter spacing"
           aria-haspopup="dialog"
-          aria-expanded={effects}
+          aria-expanded={effects !== null}
           variant={effects ? 'secondary' : 'ghost'}
           disabled={none}
           data-testid="words-effects"
-          onClick={() => {
-            setEffects((on) => !on);
+          onClick={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            setEffects((open) => (open ? null : { x: box.left, y: box.bottom + 6 }));
           }}
         />
         <IconButton
@@ -599,13 +612,13 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
       )}
       {effects && !none && (
         <EffectsPanel
-          anchor={effectsButton.current}
+          at={effects}
           shown={shown}
           allIndic={allIndic}
           apply={apply}
           coalesceKey={first.id}
           onClose={() => {
-            setEffects(false);
+            setEffects(null);
           }}
         />
       )}
@@ -614,7 +627,10 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
 }
 
 /** Whether every run of a box with words has a setting (false for a box without runs). */
-function allRuns(el: TextElement | undefined, has: (r: NonNullable<TextElement['runs']>[number]) => boolean): boolean {
+function allRuns(
+  el: TextElement | undefined,
+  has: (r: NonNullable<TextElement['runs']>[number]) => boolean,
+): boolean {
   const runs = el?.runs?.filter((r) => r.text.trim() !== '') ?? [];
   return runs.length > 0 && runs.every(has);
 }
@@ -627,14 +643,15 @@ const firstRun = (el: TextElement | undefined) => el?.runs?.find((r) => r.text.t
  * letters, a glow, and space between the letters: what every screen draws alike. Under its button; Esc closes it.
  */
 function EffectsPanel({
-  anchor,
+  at,
   shown,
   allIndic,
   apply,
   coalesceKey,
   onClose,
 }: {
-  anchor: HTMLElement | null;
+  /** Under the Effects button, where it was when pressed. */
+  at: MenuPlace;
   shown: {
     size: number;
     shadow: TextShadow;
@@ -649,7 +666,6 @@ function EffectsPanel({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, onClose);
-  const box = anchor?.getBoundingClientRect();
   const own: Shadow | null = typeof shown.shadow === 'object' ? shown.shadow : null;
   const outline = shown.outline;
   const glow = shown.glow;
@@ -660,7 +676,7 @@ function EffectsPanel({
       aria-label="Effects"
       data-testid="words-effects-panel"
       className="fixed z-50 w-72 space-y-3 rounded-lg border border-line-strong bg-panel-2 p-3 shadow-overlay"
-      style={{ left: Math.max(8, Math.min((box?.left ?? 8) - 120, window.innerWidth - 296)), top: (box?.bottom ?? 0) + 6 }}
+      style={{ left: Math.max(8, Math.min(at.x - 120, window.innerWidth - 296)), top: at.y }}
     >
       <Field label="Shadow" layout="inline">
         <Select
@@ -675,7 +691,12 @@ function EffectsPanel({
                   ? false
                   : v === 'soft'
                     ? true
-                    : { color: '#000000d9', blur: Math.round(shown.size * 0.18), x: 0, y: Math.round(shown.size * 0.06) },
+                    : {
+                        color: '#000000d9',
+                        blur: Math.round(shown.size * 0.18),
+                        x: 0,
+                        y: Math.round(shown.size * 0.06),
+                      },
             });
           }}
         >
@@ -691,7 +712,10 @@ function EffectsPanel({
             className="col-span-3"
             value={own.color.slice(0, 7)}
             onChange={(e) => {
-              apply({ shadow: { ...own, color: withSameAlpha(e.target.value, own.color) } }, `shadow:${coalesceKey}`);
+              apply(
+                { shadow: { ...own, color: withSameAlpha(e.target.value, own.color) } },
+                `shadow:${coalesceKey}`,
+              );
             }}
           />
           <NumberTool
@@ -734,7 +758,9 @@ function EffectsPanel({
         checked={outline !== null}
         data-testid="field-outline"
         onChange={(on) => {
-          apply({ outline: on ? { color: '#000000', width: Math.max(1, Math.round(shown.size / 30)) } : null });
+          apply({
+            outline: on ? { color: '#000000', width: Math.max(1, Math.round(shown.size / 30)) } : null,
+          });
         }}
       />
       {outline && (
@@ -777,7 +803,10 @@ function EffectsPanel({
             data-testid="field-glow-color"
             value={glow.color.slice(0, 7)}
             onChange={(e) => {
-              apply({ glow: { ...glow, color: withSameAlpha(e.target.value, glow.color) } }, `glow:${coalesceKey}`);
+              apply(
+                { glow: { ...glow, color: withSameAlpha(e.target.value, glow.color) } },
+                `glow:${coalesceKey}`,
+              );
             }}
           />
           <NumberTool

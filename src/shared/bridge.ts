@@ -771,7 +771,10 @@ export interface DrashtiBridge {
    * told of a save there (for its Undo).
    */
   slideEditor: {
-    open(presentationId: string, slideId: string | null): Promise<{ ok: true } | { ok: false; message: string }>;
+    open(
+      presentationId: string,
+      slideId: string | null,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
     onEdit(listener: (open: EditSlidesOpen) => void): () => void;
     dirty(dirty: boolean): Promise<null>;
     close(): Promise<null>;

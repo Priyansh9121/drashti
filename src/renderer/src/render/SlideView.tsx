@@ -64,7 +64,10 @@ const glowing = (glow: Glow | null | undefined): glow is Glow => glow != null &&
  * CSS for a shadow and a glow together (Session 55, Part 17a): the glow first, all round the letters, then the
  * shadow; a text shadow alone as it always was (textShadowCss) when there is no glow.
  */
-export function textEffectsCss(shadow: TextShadow | undefined, glow: Glow | null | undefined): string | undefined {
+export function textEffectsCss(
+  shadow: TextShadow | undefined,
+  glow: Glow | null | undefined,
+): string | undefined {
   if (!glowing(glow)) return textShadowCss(shadow);
   const own = `0 0 ${String(glow.size)}px ${glow.color}`;
   const behind = shadow === undefined || shadow === false ? undefined : textShadowCss(shadow);
@@ -79,7 +82,7 @@ export function textEffectsCss(shadow: TextShadow | undefined, glow: Glow | null
 function runEffectsCss(run: Pick<TextRun, 'shadow' | 'glow'>, el: TextElement): string | undefined {
   if (run.glow === undefined && !glowing(el.style.glow)) return textShadowCss(run.shadow);
   if (run.shadow === undefined && run.glow === undefined) return undefined;
-  const shadow = run.shadow !== undefined ? run.shadow : el.style.shadow;
+  const shadow = run.shadow ?? el.style.shadow;
   const glow = run.glow !== undefined ? run.glow : el.style.glow;
   return textEffectsCss(shadow, glow) ?? 'none';
 }
@@ -211,7 +214,14 @@ export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color'>): C
   const color = look.color ?? 'currentColor';
   switch (mark) {
     case 'disc':
-      return { display: 'inline-block', width: '0.34em', height: '0.34em', borderRadius: '50%', background: color, verticalAlign: 'middle' };
+      return {
+        display: 'inline-block',
+        width: '0.34em',
+        height: '0.34em',
+        borderRadius: '50%',
+        background: color,
+        verticalAlign: 'middle',
+      };
     case 'circle':
       return {
         display: 'inline-block',
@@ -224,9 +234,21 @@ export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color'>): C
         verticalAlign: 'middle',
       };
     case 'square':
-      return { display: 'inline-block', width: '0.3em', height: '0.3em', background: color, verticalAlign: 'middle' };
+      return {
+        display: 'inline-block',
+        width: '0.3em',
+        height: '0.3em',
+        background: color,
+        verticalAlign: 'middle',
+      };
     case 'dash':
-      return { display: 'inline-block', width: '0.55em', height: '0.09em', background: color, verticalAlign: 'middle' };
+      return {
+        display: 'inline-block',
+        width: '0.55em',
+        height: '0.09em',
+        background: color,
+        verticalAlign: 'middle',
+      };
     case 'arrow':
       return {
         display: 'inline-block',
@@ -238,12 +260,21 @@ export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color'>): C
         verticalAlign: 'middle',
       };
     default:
-      return { color: look.color, textAlign: 'right', paddingRight: '0.3em', whiteSpace: 'nowrap', boxSizing: 'border-box' };
+      return {
+        color: look.color,
+        textAlign: 'right',
+        paddingRight: '0.3em',
+        whiteSpace: 'nowrap',
+        boxSizing: 'border-box',
+      };
   }
 }
 
 /** A list's line (Session 55, Part 17a): in by its level and its mark's room, in its first words' size. */
-export function listLineStyle(line: { mark: ListMark | null; level: number; label: string | null }, size: number): CSSProperties {
+export function listLineStyle(
+  line: { mark: ListMark | null; level: number; label: string | null },
+  size: number,
+): CSSProperties {
   if (line.mark === null) return {};
   const room = line.label === null ? BULLET_ROOM : NUMBER_ROOM;
   return { paddingLeft: fitted((line.level * LEVEL_STEP + room) * size) };
@@ -305,7 +336,11 @@ function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly Text
             style={{ position: reveal ? 'relative' : undefined, ...listLineStyle(line.mark, size) }}
           >
             {mark !== null && (
-              <span aria-hidden="true" data-list-marker={mark} style={listMarkerBoxStyle({ mark, label }, first, el)}>
+              <span
+                aria-hidden="true"
+                data-list-marker={mark}
+                style={listMarkerBoxStyle({ mark, label }, first, el)}
+              >
                 {label ?? <span style={listMarkerStyle(mark, first)} />}
               </span>
             )}

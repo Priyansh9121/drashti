@@ -475,7 +475,9 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
   await thumbs.nth(2).dblclick();
   const removedOne = await slideEditorWindow(app);
   await expect(removedOne.editor.getByTestId('sound-cue')).toHaveText('Placeholder tune.wav');
-  await expect(removedOne.editor.getByTestId('sound-file-missing')).toHaveText(editorSays('Placeholder tune.wav'));
+  await expect(removedOne.editor.getByTestId('sound-file-missing')).toHaveText(
+    editorSays('Placeholder tune.wav'),
+  );
   await removedOne.ed.keyboard.press('Escape');
   await slideEditorClosed(app);
   await app.close();

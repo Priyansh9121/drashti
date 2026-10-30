@@ -184,8 +184,8 @@ export function Inspector() {
       {selected.length === 0 ? (
         <>
           <p className="px-3 pt-3 text-xs text-faint">
-            Choose something on the slide to change it, or add a text box, a shape, a picture or a video from Insert
-            along the top.
+            Choose something on the slide to change it, or add a text box, a shape, a picture or a video from
+            Insert along the top.
           </p>
           <SlidePanel doc={doc} slide={slide} />
         </>

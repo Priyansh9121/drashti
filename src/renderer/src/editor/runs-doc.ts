@@ -410,14 +410,18 @@ export const joinLineUp: Command = (state, dispatch) => {
 
 export const joinLineDown: Command = (state, dispatch) => {
   const { $from, empty } = state.selection;
-  if (!empty || $from.parent.type.name !== 'line' || $from.parentOffset !== $from.parent.content.size) return false;
+  if (!empty || $from.parent.type.name !== 'line' || $from.parentOffset !== $from.parent.content.size)
+    return false;
   const index = $from.index(0);
   if (index >= state.doc.childCount - 1) return false;
   const after = state.doc.child(index + 1);
   const start = $from.before();
   if (dispatch) {
     const tr = state.tr.join($from.after());
-    tr.setNodeMarkup(start, undefined, { ...($from.parent.attrs as LineAttrs), brk: (after.attrs as LineAttrs).brk });
+    tr.setNodeMarkup(start, undefined, {
+      ...($from.parent.attrs as LineAttrs),
+      brk: (after.attrs as LineAttrs).brk,
+    });
     dispatch(tr.scrollIntoView());
   }
   return true;

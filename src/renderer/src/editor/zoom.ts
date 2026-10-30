@@ -45,9 +45,17 @@ export function zoomLabel(zoom: Zoom, fit: number): string {
 /**
  * Where the area scrolls to (along one axis) so the point of the slide under the pointer stays under it, the size
  * going from `from` to `to`: `pointer` is where the pointer is in the area, `scroll` how far the area is scrolled,
- * and `offset` where the slide starts in the area's content.
+ * `offset` where the slide starts in the area's content, and `offsetAfter` where it starts at the new size (the slide
+ * sits in the middle while it is smaller than its area); left out, where it was.
  */
-export function zoomScroll(o: { pointer: number; scroll: number; offset: number; from: number; to: number }): number {
+export function zoomScroll(o: {
+  pointer: number;
+  scroll: number;
+  offset: number;
+  offsetAfter?: number;
+  from: number;
+  to: number;
+}): number {
   const point = (o.pointer + o.scroll - o.offset) / o.from;
-  return Math.max(0, Math.round(o.offset + point * o.to - o.pointer));
+  return Math.max(0, Math.round((o.offsetAfter ?? o.offset) + point * o.to - o.pointer));
 }

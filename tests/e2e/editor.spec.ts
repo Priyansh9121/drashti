@@ -47,12 +47,7 @@ async function clickSlide(ed: Page, x: number, y: number): Promise<void> {
 }
 
 /** Drag on the slide from one point to another (slide pixels), in small steps, optionally holding Alt. */
-async function dragSlide(
-  ed: Page,
-  from: [number, number],
-  to: [number, number],
-  alt = false,
-): Promise<void> {
+async function dragSlide(ed: Page, from: [number, number], to: [number, number], alt = false): Promise<void> {
   const a = await onCanvas(ed, ...from);
   const b = await onCanvas(ed, ...to);
   await ed.mouse.move(a.x, a.y);

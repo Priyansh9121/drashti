@@ -331,8 +331,14 @@ const RUN_KEYS: Record<keyof TextPatch, keyof TextRun> = {
  * Settings words have and a box has not (Session 55, Part 17a: italic since Session 7): set for the whole box, every
  * word gets them; a box of plain words gets a run to carry them.
  */
-const WORD_ONLY = ['italic', 'underline', 'strike', 'letterSpacing'] as const satisfies readonly (keyof TextPatch)[];
-const wordOnly = (k: keyof TextPatch): k is (typeof WORD_ONLY)[number] => (WORD_ONLY as readonly string[]).includes(k);
+const WORD_ONLY = [
+  'italic',
+  'underline',
+  'strike',
+  'letterSpacing',
+] as const satisfies readonly (keyof TextPatch)[];
+const wordOnly = (k: keyof TextPatch): k is (typeof WORD_ONLY)[number] =>
+  (WORD_ONLY as readonly string[]).includes(k);
 
 /** A run look with a change: set keys, and drop the ones changed to undefined (so they follow the box). */
 export function patchRun(run: TextRun, patch: TextPatch): TextRun {
@@ -371,7 +377,8 @@ export function styleBox(el: TextElement, patch: TextPatch, box: BoxPatch = {}):
   // the words follow the box.
   const forWords: TextPatch = {};
   for (const k of Object.keys(patch) as (keyof TextPatch)[]) {
-    if (k === 'letterSpacing') forWords.letterSpacing = patch.letterSpacing || undefined;
+    if (k === 'letterSpacing')
+      forWords.letterSpacing = patch.letterSpacing === 0 ? undefined : patch.letterSpacing;
     else if (wordOnly(k)) forWords[k] = patch[k] ? true : undefined;
     else forWords[k] = undefined;
   }

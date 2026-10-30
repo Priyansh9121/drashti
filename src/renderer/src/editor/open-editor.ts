@@ -9,7 +9,11 @@ import { useNotice } from '../operator/actions';
  */
 
 /** Open the slide editor's window on a presentation, at a slide (or its first). */
-export async function openSlideEditor(presentationId: string, _name: string, slideId: string | null = null): Promise<void> {
+export async function openSlideEditor(
+  presentationId: string,
+  _name: string,
+  slideId: string | null = null,
+): Promise<void> {
   const done = await window.drashti.slideEditor.open(presentationId, slideId);
   if (!done.ok) useNotice.setState({ text: done.message });
 }

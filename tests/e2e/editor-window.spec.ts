@@ -136,7 +136,15 @@ for (const size of [CI_WINDOW, { width: 1280, height: 720 }] as const)
       Arrange: ['arrange-left', 'arrange-front', 'arrange-back'],
       Design: ['design-color', 'design-darken'],
       Motion: ['motion-transition', 'motion-auto'],
-      Slides: ['slide-new', 'slide-new-timer', 'group-new', 'slide-duplicate', 'slide-up', 'slide-down', 'slide-delete'],
+      Slides: [
+        'slide-new',
+        'slide-new-timer',
+        'group-new',
+        'slide-duplicate',
+        'slide-up',
+        'slide-down',
+        'slide-delete',
+      ],
     };
     // A box selected: the Words group and Arrange act on it.
     const p = await onCanvas(ed, 960, 540);
