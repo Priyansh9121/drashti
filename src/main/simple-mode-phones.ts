@@ -27,7 +27,10 @@ export type InSimpleMode =
   | 'simple'
   /** Takes something off the screens: never refused, so nothing can stay stuck there. */
   | 'down'
-  /** What Simple Mode's window does within its bounds: its one playlist (and, for the music, Play while paused). */
+  /**
+   * What Simple Mode's window does within its bounds: its one playlist (and, for the music, Play while paused); since
+   * Part 9 also its rows' right-click Rename and Delete (with Undo), on that playlist's rows and the files it holds.
+   */
   | 'within'
   /**
    * Puts nothing on the screens and changes nothing Simple Mode shows: an announcement sent to wait for Pro Mode's
@@ -122,11 +125,12 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'playlist.rename': 'pro',
   'playlist.remove': 'pro',
   'playlist.restore': 'pro',
-  // Its one playlist's rows change from its window only (Part 18: a phone changes no playlist in Simple Mode).
+  // Its one playlist's rows are added to and moved from its window only (Part 18). Part 9: taken out and put back
+  // (Undo) from a phone's long press as its window's right-click Delete does, its own rows only.
   'playlist.add': 'pro',
   'playlist.move': 'pro',
-  'playlist.removeItems': 'pro',
-  'playlist.restoreItems': 'pro',
+  'playlist.removeItems': 'within',
+  'playlist.restoreItems': 'within',
   midi: 'reads',
   'midi.device': 'pro',
   'midi.forget': 'pro',
@@ -137,6 +141,22 @@ export const PHONE_OPS_IN_SIMPLE_MODE: Readonly<Record<DeviceOp, InSimpleMode>> 
   'queue.takeOff': 'pro',
   'stage.layouts': 'reads',
   'stage.layout': 'pro',
+  // The phone's own (Session 55, Part 9). The wallpapers: Simple Mode's window has them (Part 18), chosen, renamed,
+  // deleted and put back. The quick bar: its window has none, and never changes its pins. A picture's look is the
+  // Picture editor's, and When it ends a video row's menu's: Pro Mode's. Rename… of a file its playlist holds: its
+  // window's right-click Rename.
+  wallpapers: 'reads',
+  'wallpaper.choose': 'simple',
+  'wallpaper.rename': 'simple',
+  'wallpaper.remove': 'simple',
+  'wallpaper.restore': 'simple',
+  quickBar: 'reads',
+  'quickBar.set': 'pro',
+  'media.look': 'reads',
+  'media.setLook': 'pro',
+  'media.rename': 'within',
+  'presentation.rename': 'within',
+  'playlist.whenEnds': 'pro',
 };
 
 /**
@@ -226,6 +246,10 @@ const theOne = (scope: SimpleScope, playlistId: unknown): boolean =>
 const itsItem = (scope: SimpleScope, itemId: unknown): boolean =>
   scope.playlistId !== null && typeof itemId === 'string' && scope.playlistOf(itemId) === scope.playlistId;
 
+/** Items, every one of them the one playlist's (one taken out too, for its Undo), at least one. */
+const itsItems = (scope: SimpleScope, ids: unknown): boolean =>
+  Array.isArray(ids) && ids.length > 0 && ids.every((id) => itsItem(scope, id));
+
 /**
  * Whether a request on its own (not an engine command's: phoneCommandInSimpleMode weighs those, as each is sent) is
  * one Simple Mode lets a phone make, with its arguments as sent and the show as it is. Anything not listed: no.
@@ -245,6 +269,22 @@ export function phoneMayInSimpleMode(
       return true;
     case 'within':
       if (op === 'repeat.start') return theOne(scope, args['playlistId']);
+      // Its rows' Delete and Undo (Part 9): every one of them its one playlist's.
+      if (op === 'playlist.removeItems' || op === 'playlist.restoreItems')
+        return itsItems(scope, args['ids']);
+      // Its rows' Rename… (Part 9): a file, or a presentation, its one playlist holds.
+      if (op === 'media.rename')
+        return (
+          scope.playlistId !== null &&
+          typeof args['mediaId'] === 'string' &&
+          scope.holdsMedia(args['mediaId'])
+        );
+      if (op === 'presentation.rename')
+        return (
+          scope.playlistId !== null &&
+          typeof args['presentationId'] === 'string' &&
+          scope.holdsPresentation(args['presentationId'])
+        );
       if (op === 'music.play') {
         // On from where the audio playlist was paused, as the time bar's Play: never one chosen (that starts it).
         const audio = state?.layers.audio;

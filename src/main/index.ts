@@ -132,7 +132,7 @@ import {
   handleSync,
   hearHandled,
   lockChannels,
-  refusedNow,
+  refusalFor,
   setGiveWay,
 } from './ipc/handle';
 import { readOrDefault } from './ipc/read-or-default';
@@ -301,7 +301,13 @@ import { Leftovers, leftoversFile } from './system/leftovers';
 import { runPowerShell } from './system/powershell';
 import { type ReadyDeps, readyReport } from './ready/ready-facts';
 import type { ReadyOutput } from '../shared/ready';
-import { QUICK_BAR_MAX, quickPinsSchema, readQuickBar } from '../shared/quick-bar';
+import {
+  QUICK_BAR_MAX,
+  type QuickBarResult,
+  type QuickPin,
+  quickPinsSchema,
+  readQuickBar,
+} from '../shared/quick-bar';
 import { QR_TEXT_MAX, qrPng, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
 import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
@@ -1773,12 +1779,9 @@ function start(): void {
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.look(mediaId) : null,
   );
   handle(IPC.media.looks, () => shownLooks());
-  handle(IPC.media.setLook, (e, mediaId, raw) => {
-    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
-      return { ok: false as const, message: 'Only the operator window can change a picture.' };
-    const look = raw === null ? null : pictureLookSchema.safeParse(raw);
-    if (look && !look.success) return { ok: false as const, message: 'That look cannot be kept.' };
-    if (!media.setLook(mediaId, look ? framed(look.data) : null))
+  /** A picture's look kept (framed already), from the window's Picture editor or a phone's (Session 55, Part 9). */
+  const keepLook = (mediaId: string, look: PictureLook | null) => {
+    if (!MEDIA_ID_PATTERN.test(mediaId) || !media.setLook(mediaId, look))
       return { ok: false as const, message: 'Only a picture in the library has a look.' };
     looksChanged();
     // Its sharpened copy made (again), or gone with its sharpness (Session 26f).
@@ -1787,6 +1790,13 @@ function start(): void {
     if (fillsWithBlur(mediaId, media.look(mediaId))) blurred.want([mediaId]);
     log.info('Pictures: a picture’s look was kept');
     return { ok: true as const };
+  };
+  handle(IPC.media.setLook, (e, mediaId, raw) => {
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
+      return { ok: false as const, message: 'Only the operator window can change a picture.' };
+    const look = raw === null ? null : pictureLookSchema.safeParse(raw);
+    if (look && !look.success) return { ok: false as const, message: 'That look cannot be kept.' };
+    return keepLook(mediaId, look ? framed(look.data) : null);
   });
   // Keep this zoom: the live zoom kept as the picture's own (its enhancements stay as they were).
   // ---- Session 55 (Part 5): a photo's blurred fill, and Save picture… ----
@@ -2672,17 +2682,21 @@ function start(): void {
     shell.showItemInFolder(path);
     return { ok: true as const };
   };
-  handle(IPC.media.rename, (e, mediaId, name) => {
-    const id = idSchema.safeParse(mediaId);
-    if (!fromOperator(e) || !id.success || !MEDIA_ID_PATTERN.test(id.data))
-      return { ok: false as const, message: 'Only the operator window can rename media.' };
-    if (!fileActions.renameMedia(id.data, typeof name === 'string' ? name : ''))
+  /** Rename… of a picture, video or sound, from the window or a phone (Session 55, Part 9). */
+  const renameMediaFile = (mediaId: string, name: string) => {
+    if (!MEDIA_ID_PATTERN.test(mediaId) || !fileActions.renameMedia(mediaId, name))
       return {
         ok: false as const,
         message: 'A name needs 1 to 200 characters, for media still in the library.',
       };
     mediaRemovalChanged();
-    return { ok: true as const, ids: [id.data] };
+    return { ok: true as const, ids: [mediaId] };
+  };
+  handle(IPC.media.rename, (e, mediaId, name) => {
+    const id = idSchema.safeParse(mediaId);
+    if (!fromOperator(e) || !id.success || !MEDIA_ID_PATTERN.test(id.data))
+      return { ok: false as const, message: 'Only the operator window can rename media.' };
+    return renameMediaFile(id.data, typeof name === 'string' ? name : '');
   });
   handle(IPC.media.reveal, (e, mediaId) => {
     const id = idSchema.safeParse(mediaId);
@@ -2696,21 +2710,25 @@ function start(): void {
       ? fileActions.presentationUsage(parsed.data)
       : { playlists: { names: [], count: 0 }, live: false };
   });
-  handle(IPC.library.renamePresentation, (e, presentationId, name) => {
-    const id = idSchema.safeParse(presentationId);
-    if (!fromOperator(e) || !id.success)
-      return { ok: false as const, message: 'Only the operator window can rename a presentation.' };
-    if (!fileActions.renamePresentation(id.data, typeof name === 'string' ? name : ''))
+  /** Rename… of a presentation, from the window or a phone (Session 55, Part 9). */
+  const renamePresentationNamed = (presentationId: string, name: string) => {
+    if (!fileActions.renamePresentation(presentationId, name))
       return {
         ok: false as const,
         message: 'A name needs 1 to 200 characters, for a presentation in the library.',
       };
-    slides.invalidate(id.data);
+    slides.invalidate(presentationId);
     engine.refreshNext();
     libraryChanged(true);
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     network?.hint('playlists');
-    return { ok: true as const, ids: [id.data] };
+    return { ok: true as const, ids: [presentationId] };
+  };
+  handle(IPC.library.renamePresentation, (e, presentationId, name) => {
+    const id = idSchema.safeParse(presentationId);
+    if (!fromOperator(e) || !id.success)
+      return { ok: false as const, message: 'Only the operator window can rename a presentation.' };
+    return renamePresentationNamed(id.data, typeof name === 'string' ? name : '');
   });
   handle(IPC.library.revealPresentation, (e, presentationId) => {
     const id = idSchema.safeParse(presentationId);
@@ -2953,6 +2971,8 @@ function start(): void {
       sendToOperator(IPC.app.modeChanged, { mode: next });
       // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist only: the phones hear of the change.
       network?.uploadsChanged();
+      // And (Part 9) a phone shows only what Simple Mode allows, and opens its playlist: it reads the hall again.
+      network?.hint('mode');
     },
     menu: () => {
       rebuildMenu();
@@ -4164,6 +4184,8 @@ function start(): void {
     },
     changed: (view) => {
       sendToOperator(IPC.wallpapers.changed, view);
+      // The phones list them too (Session 55, Part 9).
+      network?.hint('wallpapers');
       // Nodes copy the wallpapers' pictures.
       wantedMedia?.invalidate();
       nodeService?.libraryChanged();
@@ -4371,6 +4393,13 @@ function start(): void {
   // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
   // below, where the window's own requests for them are registered.
   let playlistChanges: PlaylistChanges | null = null;
+  // The phone's own (Session 55, Part 9): the wallpapers (made above), and the quick bar's pins (set further down).
+  const wallpapers = (): WallpaperService => {
+    if (!wallpaperService) throw new Error('The wallpapers are not ready yet.');
+    return wallpaperService;
+  };
+  let quickBarNow: { view(): QuickPin[]; set(pins: QuickPin[]): QuickBarResult } | null = null;
+  const STILL_STARTING = { ok: false as const, message: 'Drashti is still starting: try again in a moment.' };
   let presentationChanges: Pick<DesktopLibrary, 'removePresentations' | 'restorePresentations'> | null = null;
   const net = new NetworkService({
     // Phones and tablets work only while Drashti is let in (Session 54): every request, pairing and file refused.
@@ -4578,7 +4607,32 @@ function start(): void {
       },
     },
     files: phoneFiles,
-    refused: (channel) => refusedNow(channel),
+    // The phone's own (Session 55, Part 9): each the very function the window's own request calls.
+    phone: {
+      wallpapers: {
+        view: () => wallpapers().view(),
+        choose: (id) => wallpapers().choose(id),
+        rename: (id, name) => wallpapers().rename(id, name),
+        remove: (id) => wallpapers().remove(id),
+        restore: (id) => wallpapers().restore(id),
+      },
+      quickBar: {
+        view: () => quickBarNow?.view() ?? [],
+        set: (pins) => quickBarNow?.set(pins) ?? STILL_STARTING,
+      },
+      looks: {
+        look: (mediaId) => (MEDIA_ID_PATTERN.test(mediaId) ? media.look(mediaId) : null),
+        photo: (mediaId) => MEDIA_ID_PATTERN.test(mediaId) && media.photoByDefault(mediaId),
+        set: (mediaId, look) => keepLook(mediaId, look),
+      },
+      rename: {
+        media: (mediaId, name) => renameMediaFile(mediaId, name),
+        presentation: (presentationId, name) => renamePresentationNamed(presentationId, name),
+      },
+      whenEnds: (itemId, whenEnds) => playlistChanges?.setWhenEnds(itemId, whenEnds) ?? STILL_STARTING,
+    },
+    // With the window request's own arguments where a phone's has them (Session 55, Part 9: Simple Mode's bounds).
+    refused: (channel, args) => refusalFor(channel, args) !== undefined,
     // In words true for this computer's access (Session 55).
     refusal: () => simpleRefusalText(modes.simpleOnly()),
     // In Simple Mode a phone does only what its window does (Session 55, the owner's answer of 30 Oct 2026).
@@ -5888,6 +5942,16 @@ function start(): void {
   // A pin that can't be read is left out as it is read; a change is the whole bar, checked whole (at most 8, each once).
   // Simple Mode refuses changing it (simple-mode.ts), and its window shows none.
   let quickPins = readQuickBar(settings.get('quickBar'));
+  /** The whole bar, checked already, from the window or a phone (Session 55, Part 9): kept, and everyone told. */
+  const setQuickPins = (pins: QuickPin[]) => {
+    quickPins = pins;
+    laterSetting('quickBar', quickPins);
+    sendToOperator(IPC.quickBar.changed, quickPins);
+    net.hint('quickBar');
+    log.info(`Quick bar: ${String(quickPins.length)} pinned`);
+    return { ok: true as const, pins: quickPins };
+  };
+  quickBarNow = { view: () => quickPins, set: setQuickPins };
   handle(IPC.quickBar.view, () => quickPins);
   handle(IPC.quickBar.set, (e, pins) => {
     if (!fromOperator(e))
@@ -5898,11 +5962,7 @@ function start(): void {
         ok: false as const,
         message: `The quick bar holds at most ${String(QUICK_BAR_MAX)} things, each once.`,
       };
-    quickPins = parsed.data;
-    laterSetting('quickBar', quickPins);
-    sendToOperator(IPC.quickBar.changed, quickPins);
-    log.info(`Quick bar: ${String(quickPins.length)} pinned`);
-    return { ok: true as const, pins: quickPins };
+    return setQuickPins(parsed.data);
   });
   handle(IPC.setup.identifyDisplays, (e) => {
     if (!fromOperator(e)) return { shown: 0 };

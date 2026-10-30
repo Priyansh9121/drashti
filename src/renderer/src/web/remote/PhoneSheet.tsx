@@ -20,7 +20,7 @@ const sheetEntry = (state: unknown): boolean =>
   typeof state === 'object' && state !== null && 'drashtiSheet' in state;
 
 /** While a sheet is open, the phone's own Back closes it, and the remote stays. */
-function useBackCloses(onClose: () => void): void {
+export function useBackCloses(onClose: () => void): void {
   const close = useRef(onClose);
   useEffect(() => {
     close.current = onClose;

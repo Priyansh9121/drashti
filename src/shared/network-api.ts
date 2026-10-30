@@ -167,6 +167,24 @@ export const DEVICE_OPS = {
    */
   'stage.layouts': ['remote'],
   'stage.layout': ['remote'],
+  /**
+   * The phone (Session 55, Part 9; shared/network-phone.ts), as the window's own requests do each: the wallpapers
+   * read, one chosen, renamed, deleted and put back (Undo); the quick bar's pins read and changed (the whole bar);
+   * a picture's look read and kept (the Picture editor); Rename… of a picture, video, sound or presentation; a video
+   * row's When it ends. A Remote's only: never a Stage device or the poster's.
+   */
+  wallpapers: ['remote'],
+  'wallpaper.choose': ['remote'],
+  'wallpaper.rename': ['remote'],
+  'wallpaper.remove': ['remote'],
+  'wallpaper.restore': ['remote'],
+  quickBar: ['remote'],
+  'quickBar.set': ['remote'],
+  'media.look': ['remote'],
+  'media.setLook': ['remote'],
+  'media.rename': ['remote'],
+  'presentation.rename': ['remote'],
+  'playlist.whenEnds': ['remote'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;

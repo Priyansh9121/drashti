@@ -63,6 +63,7 @@ import { COULD_NOT } from './messages';
 import { mirrorAnswer, type MirrorReads } from './mirror-answers';
 import { type DesktopActs, DesktopAnswers } from './desktop-answers';
 import { phoneCommandInSimpleMode, phoneMayInSimpleMode, type SimplePhoneScope } from '../simple-mode-phones';
+import { type PhoneActs, PhoneAnswers } from './phone-answers';
 import { cutText } from '../../shared/text';
 import { nfcDeep } from '../../shared/nfc';
 
@@ -152,6 +153,11 @@ export interface NetworkDeps {
    * window's own requests do them. Left out (a test of something else): a phone cannot.
    */
   desktop?: DesktopActs;
+  /**
+   * The phone's own (Session 55, Part 9: phone-answers.ts): the wallpapers, the quick bar, a picture's look, Rename… and
+   * When it ends, as the window's own requests do them. Left out (a test of something else): a phone cannot.
+   */
+  phone?: PhoneActs;
   /** Files between Drashti and its phones (Session 54, phone-files.ts): shared playlists, and files phones add. */
   files?: {
     view(): AddFilesView;
@@ -162,8 +168,12 @@ export interface NetworkDeps {
     /** `note`: what the phone reads meanwhile (a deck waiting for the stream to end). */
     arrived(file: ArrivedFile, note: (message: string) => void): Promise<ArrivedOutcome>;
   };
-  /** Whether Simple Mode refuses this window channel now (the same table the windows' requests go through). */
-  refused(channel: InvokeChannel): boolean;
+  /**
+   * Whether Simple Mode refuses this window channel now (the same table the windows' requests go through): with the
+   * window request's own arguments when a phone's request has them (WINDOW_ARGS, Session 55, Part 9: a channel Simple
+   * Mode bounds is weighed within its bounds), else with none (a bounded channel is then refused whole).
+   */
+  refused(channel: InvokeChannel, args?: readonly unknown[]): boolean;
   /** Simple Mode's refusal in words true for this computer's access (Session 55); left out: SIMPLE_MODE_REFUSAL. */
   refusal?(): string;
   /**
@@ -284,6 +294,37 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   // (Simple Mode refuses that, as in the window).
   'stage.layouts': IPC.stageLayouts.list,
   'stage.layout': IPC.stageLayouts.choose,
+  // The phone's own (Session 55, Part 9): each the window's own request, so Simple Mode's lock is asked of each as of
+  // the window's (a bounded one with the phone's arguments, WINDOW_ARGS).
+  wallpapers: IPC.wallpapers.view,
+  'wallpaper.choose': IPC.wallpapers.choose,
+  'wallpaper.rename': IPC.wallpapers.rename,
+  'wallpaper.remove': IPC.wallpapers.remove,
+  'wallpaper.restore': IPC.wallpapers.restore,
+  quickBar: IPC.quickBar.view,
+  'quickBar.set': IPC.quickBar.set,
+  'media.look': IPC.media.look,
+  'media.setLook': IPC.media.setLook,
+  'media.rename': IPC.media.rename,
+  'presentation.rename': IPC.library.renamePresentation,
+  'playlist.whenEnds': IPC.playlists.setWhenEnds,
+};
+
+/**
+ * A phone's request as the window's own would carry its arguments (Session 55, Part 9), for the channels Simple Mode
+ * bounds (simple-mode.ts SIMPLE_MODE_BOUNDED): its one playlist's rows taken out and put back, Rename… of a file that
+ * playlist holds, and the wallpapers. Weighed within those very bounds, so a phone in Simple Mode does what Simple
+ * Mode's window does, never more. A bounded request left out here is refused to a phone whole, as before.
+ */
+export const WINDOW_ARGS: Partial<Record<DeviceOp, (args: Record<string, unknown>) => readonly unknown[]>> = {
+  'playlist.removeItems': (a) => [a['ids']],
+  'playlist.restoreItems': (a) => [a['ids']],
+  'media.rename': (a) => [a['mediaId'], a['name']],
+  'presentation.rename': (a) => [a['presentationId'], a['name']],
+  'wallpaper.choose': (a) => [a['wallpaperId']],
+  'wallpaper.rename': (a) => [a['wallpaperId'], a['name']],
+  'wallpaper.remove': (a) => [a['wallpaperId']],
+  'wallpaper.restore': (a) => [a['wallpaperId']],
 };
 
 const ON_SETTING = 'network.on';
@@ -338,6 +379,8 @@ export class NetworkService implements EngineTransport {
   private seenNotice: NodeJS.Timeout | null = null;
   /** The computer's own things a phone sets up (Session 54), or null where it cannot. */
   private readonly desktop: DesktopAnswers | null;
+  /** The phone's own (Session 55, Part 9), or null where it cannot. */
+  private readonly phone: PhoneAnswers | null;
 
   constructor(private readonly deps: NetworkDeps) {
     this.desktop = deps.desktop
@@ -356,6 +399,14 @@ export class NetworkService implements EngineTransport {
           changed: () => {
             this.hint('setup');
           },
+          log: (message) => {
+            this.deps.log('info', message);
+          },
+          now: () => this.deps.now(),
+        })
+      : null;
+    this.phone = deps.phone
+      ? new PhoneAnswers(deps.phone, {
           log: (message) => {
             this.deps.log('info', message);
           },
@@ -843,8 +894,10 @@ export class NetworkService implements EngineTransport {
     if (!isDeviceOp(request.op) || !deviceMay(device.kind, request.op))
       return deny(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
     const channel = OP_CHANNEL[request.op];
-    if (channel && this.deps.refused(channel)) return deny(403, this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL);
     const args = (request.args ?? {}) as Record<string, unknown>;
+    // A bounded window request with the phone's arguments as the window's would carry them (Part 9), else none.
+    if (channel && this.deps.refused(channel, WINDOW_ARGS[request.op]?.(args)))
+      return deny(403, this.deps.refusal?.() ?? SIMPLE_MODE_REFUSAL);
     const simple = this.deps.simple?.() ?? null;
     if (simple && !phoneMayInSimpleMode(request.op, args, simple, this.deps.engine.state()))
       return deny(403, simple.refusal());
@@ -878,14 +931,18 @@ export class NetworkService implements EngineTransport {
           hall: hallPicture(this.deps.reads.hallGroups(), this.deps.reads.switches().audience),
         });
       }
-      case 'hall':
+      case 'hall': {
+        // Simple Mode (Session 55, Part 9): its one playlist and the words a phone shows once for what it dims.
+        const simple = this.deps.simple?.() ?? null;
         return ok({
           groupId: this.deps.reads.hall().groupId,
           clock: this.deps.reads.clockStyle(),
           switches: this.deps.reads.switches(),
           // The stage screens' group (Session 54): a Remote runs the timers of its layout in the live Look.
           stageGroupId: this.deps.reads.stage().groupId,
+          simple: simple ? { playlistId: simple.playlistId, words: simple.refusal() } : null,
         });
+      }
       case 'shastra.texts':
         return ok({ texts: this.deps.reads.shastraTexts() });
       case 'shastra': {
@@ -1003,6 +1060,21 @@ export class NetworkService implements EngineTransport {
         return this.desktop
           ? this.desktop.answer(request.op, args, device, who)
           : deny(404, 'Drashti cannot set that up from a phone here.');
+      case 'wallpapers':
+      case 'wallpaper.choose':
+      case 'wallpaper.rename':
+      case 'wallpaper.remove':
+      case 'wallpaper.restore':
+      case 'quickBar':
+      case 'quickBar.set':
+      case 'media.look':
+      case 'media.setLook':
+      case 'media.rename':
+      case 'presentation.rename':
+      case 'playlist.whenEnds':
+        return this.phone
+          ? this.phone.answer(request.op, args, device, who)
+          : deny(404, 'Drashti cannot do that from a phone here.');
       case 'announce':
         return this.deps.announcements.submit(device, request.address, args);
       case 'announcement':
