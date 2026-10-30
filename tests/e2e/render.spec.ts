@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { near, pixels } from './pixels';
 import { makeSlides } from './placeholder-slides';
+import { LOWER_THIRD_FONT_CHOICES } from '../../src/shared/lower-third-fonts';
 import type { SlideElement } from '../../src/shared/model';
 import { TEST_LINES } from '../../src/main/db/seed';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
@@ -111,7 +112,13 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   });
   expect(fonts.urls.length).toBeGreaterThan(0);
   for (const url of fonts.urls) expect(url).toMatch(/^file:.*\.woff2?$/);
-  expect(fonts.loadedFamilies).toEqual(['Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Gujarati']);
+  // Drashti's own Noto fonts, loaded before anything shows; and, unwaited for, nothing but the Lower Thirds studio's
+  // bundled ones (Session 55, Part 16: they load after the Noto fonts, so some may still be on their way): never a
+  // font of this computer's.
+  const NOTO = ['Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Gujarati'];
+  const studio = LOWER_THIRD_FONT_CHOICES.filter((c) => c.bundled === 'studio').flatMap((c) => c.families);
+  expect(fonts.loadedFamilies).toEqual(expect.arrayContaining(NOTO));
+  expect(fonts.loadedFamilies.filter((f) => !NOTO.includes(f) && !studio.includes(f))).toEqual([]);
   expect(fonts).toMatchObject({ gujarati: true, devanagari: true, latin: true });
 
   // Chromium reports which font actually drew each line (once it has laid the line out: asked
