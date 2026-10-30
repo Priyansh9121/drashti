@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { makeTestPdf, type TestPdfPage } from '../../src/main/import/testing/make-pdf';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
+import { holdStill, importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
 import { mouseDrag } from './mouse-drag';
 import { makeTestImage, makeTestVideo } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -21,8 +21,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * menu, its Delete with Undo (from a playlist: out of it only, asked first while it is up; from the library: at once
  * when nothing uses it, never the owner's file). In CI's window, 1024 × 645, and at 1280 × 720. Part 4b: a slide's row
  * dragged within its deck changes this playlist's own order of its slides, and out of it, anywhere else in the
- * playlist, becomes an item of its own, each with one Undo, never changing the library's presentation. Placeholder
- * files only, made here.
+ * playlist, becomes an item of its own, each with one Undo, never changing the library's presentation. Its keyboard
+ * move: Alt+↑ ↓ on a slide's row moves it a place within its deck (staying put at the deck's first or last row), and
+ * "Make it an item of its own" in its menu (Shift+F10) does what the drag out does, each said and with Undo, the
+ * keyboard staying on the moved row; Simple Mode too, as its drag is. Placeholder files only, made here.
  */
 
 const PDF = 'Placeholder notices';
@@ -435,6 +437,121 @@ test('a slide’s row dragged out of its deck becomes an item of its own where i
       playlistId,
     ),
   ).toBe(4);
+  await app.close();
+});
+
+/** The open playlist's items' ids, in its order. */
+const itemIds = (win: Page) =>
+  win
+    .getByTestId('open-playlist')
+    .getByTestId('playlist-item')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-item-id') ?? ''));
+/** The open playlist's first item as the library keeps it. */
+const firstItem = (win: Page, playlistId: string) =>
+  win.evaluate(async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id))[0], playlistId);
+
+for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
+  test(`a slide’s row moved from the keyboard at ${String(size.width)} × ${String(size.height)}: Alt+↓ within its deck and “Make it an item of its own”, each said and with Undo`, async () => {
+    test.setTimeout(180_000);
+    const { app, win, playlistId, items, ids } = await start(size, 3);
+    const pages = await pageIds(win, ids.pdf);
+    const deck = slideRows(win, items.pdf);
+    const labels = deck.getByTestId('slide-label');
+    const said = win.getByTestId('undo-said');
+    const order = [items.pdf, items.words, items.video, items.picture];
+    const three = [`${PDF}_1`, `${PDF}_2`, `${PDF}_3`];
+    await expect(labels).toHaveText(three);
+
+    // Alt+↓ on its second row: a place down within its deck, keeping its name; the keyboard stays on it, and the
+    // move is said as an item's is.
+    await deck.nth(1).focus();
+    await win.keyboard.press('Alt+ArrowDown');
+    const moved = [`${PDF}_1`, `${PDF}_3`, `${PDF}_2`];
+    await expect(labels).toHaveText(moved);
+    await expect(deck.nth(2)).toBeFocused();
+    await expect(said).toHaveText(`Moved “${PDF}_2” down in this playlist`);
+    expect(await firstItem(win, playlistId)).toMatchObject({
+      order: { mode: 'slides', slideIds: [pages[0], pages[2], pages[1]] },
+    });
+    // At its deck's last row it stays put: the deck never moves, and nothing crosses into the next item.
+    await win.keyboard.press('Alt+ArrowDown');
+    await holdStill(
+      async () =>
+        (await labels.allTextContents()).join('|') === moved.join('|') &&
+        (await itemIds(win)).join('|') === order.join('|'),
+      600,
+      'Alt+↓ on the deck’s last row moves nothing',
+    );
+    await expect(deck.nth(2)).toBeFocused();
+    // And at its first, Alt+↑.
+    await deck.first().focus();
+    await win.keyboard.press('Alt+ArrowUp');
+    await holdStill(
+      async () =>
+        (await labels.allTextContents()).join('|') === moved.join('|') &&
+        (await itemIds(win)).join('|') === order.join('|'),
+      600,
+      'Alt+↑ on the deck’s first row moves nothing',
+    );
+    // The library's presentation as it was. Undo: the presentation's own order again.
+    expect(await pageIds(win, ids.pdf)).toEqual(pages);
+    await undo(win);
+    await expect(labels).toHaveText(three);
+    await expect(said).toHaveText(`Undone: Moved “${PDF}_2” down in this playlist`);
+    await expect.poll(() => firstItem(win, playlistId)).toMatchObject({ order: { mode: 'presentation' } });
+
+    // “Make it an item of its own” from the keyboard's menu (Shift+F10) on its second row: an item of its own straight
+    // after the deck, the deck keeping the rest; the keyboard on its row, and it is said.
+    await deck.nth(1).focus();
+    await win.keyboard.press('Shift+F10');
+    const menu = win.getByRole('menu');
+    await expect(menu).toBeVisible();
+    const menuBox = await menu.boundingBox();
+    expect(menuBox ? menuBox.x >= 0 && menuBox.x + menuBox.width <= size.width : false).toBe(true);
+    expect(menuBox ? menuBox.y + menuBox.height <= size.height : false).toBe(true);
+    await menu.getByRole('menuitem', { name: 'Make it an item of its own' }).press('Enter');
+    const all = win.getByTestId('open-playlist').getByTestId('playlist-item');
+    await expect(all).toHaveCount(5);
+    const made = (await all.nth(1).getAttribute('data-item-id')) ?? '';
+    expect(order).not.toContain(made);
+    await expect(labels).toHaveText([`${PDF}_1`, `${PDF}_3`]);
+    await expect(slideRows(win, made).getByTestId('slide-label')).toHaveText([`${PDF}_2`]);
+    await expect(slideRows(win, made).first()).toBeFocused();
+    await expect(said).toHaveText(`Took “${PDF}_2” out of “${PDF}”`);
+    // The library's presentation as it was; nothing in the middle runs past its right edge.
+    expect(await pageIds(win, ids.pdf)).toEqual(pages);
+    expect(
+      await win.getByTestId('column-middle').evaluate((el) => el.scrollWidth - el.clientWidth),
+    ).toBeLessThanOrEqual(1);
+    // One Undo: the deck has its three pages again and the new item is gone.
+    await undo(win);
+    await expect(all).toHaveCount(4);
+    await expect(labels).toHaveText(three);
+    await expect.poll(() => itemIds(win)).toEqual(order);
+    await expect.poll(() => firstItem(win, playlistId)).toMatchObject({ order: { mode: 'presentation' } });
+    await app.close();
+  });
+}
+
+test('Simple Mode: Alt+↓ moves a slide’s row within its deck as its drag does there, with Undo; its menu stays Rename and Delete', async () => {
+  test.setTimeout(180_000);
+  const { app, win, items } = await start(CI_WINDOW, 3);
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  const deck = slideRows(win, items.pdf);
+  const labels = deck.getByTestId('slide-label');
+  await deck.nth(1).focus();
+  await win.keyboard.press('Alt+ArrowDown');
+  await expect(labels).toHaveText([`${PDF}_1`, `${PDF}_3`, `${PDF}_2`]);
+  await expect(deck.nth(2)).toBeFocused();
+  await expect(win.getByTestId('undo-said')).toHaveText(`Moved “${PDF}_2” down in this playlist`);
+  await undo(win);
+  await expect(labels).toHaveText([`${PDF}_1`, `${PDF}_2`, `${PDF}_3`]);
+  // A slide's row's menu in Simple Mode: Delete alone (Rename and Delete only, as the owner asked for Simple Mode).
+  await deck.nth(1).focus();
+  await win.keyboard.press('Shift+F10');
+  await expect(win.getByRole('menu').getByRole('menuitem')).toHaveText([`Remove “${PDF}” from playlist`]);
+  await win.keyboard.press('Escape');
   await app.close();
 });
 
