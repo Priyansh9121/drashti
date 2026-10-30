@@ -1,6 +1,6 @@
 # Setting up Drashti's access list in your Google account
 
-From version 1.0.0-alpha.13, Drashti opens only for a Gmail that is on its **access list**. The list is a Google Sheet in **your approver Gmail** (the account that approves requests), with a small program behind it (a Google Apps Script "web app") that answers each Drashti, sends the emails from that account, and takes the **Approve** and **Reject** links. Everything is free and stays in your account.
+From version 1.0.0-alpha.13, Drashti opens only for a Gmail that is on its **access list**. From alpha.14, the list also says what each Gmail may use (Pro Mode and Simple Mode, or Simple Mode only), and a computer that has not checked in for 15 days must ask for access again (section 10). The list is a Google Sheet in **your approver Gmail** (the account that approves requests), with a small program behind it (a Google Apps Script "web app") that answers each Drashti, sends the emails from that account, and takes the **Approve** and **Reject** links. Everything is free and stays in your account.
 
 This guide is for you, the owner. It takes about 30 minutes, once. You do every step yourself: Claude never signs in to any Google account. Nothing here needs any programming; you copy and paste five files.
 
@@ -67,12 +67,12 @@ This is where your approver's address lives, and the only place.
 4. **Execute as:** **Me** (your approver Gmail).
 5. **Who has access:** **Anyone**.
 6. Click **Deploy**.
-7. Google asks you to authorize the script. Click **Authorize access** and choose your approver Gmail. Google then says **Google hasn't verified this app**: this is your own script, and Google says it of every script it has not reviewed. Click **Advanced**, then **Go to Drashti access list (unsafe)**. Google lists what the script may do (see and edit this spreadsheet, send email as you, show its windows in the Sheet). Click **Allow**.
+7. Google asks you to authorize the script. Click **Authorize access** and choose your approver Gmail. Google then says **Google hasn't verified this app**: this is your own script, and Google says it of every script it has not reviewed. Click **Advanced**, then **Go to Drashti access list (unsafe)**. Google lists what the script may do (see and edit this spreadsheet, send email as you, show its windows in the Sheet, and run when you are not present, for the daily check in section 8). Click **Allow**.
 8. Google shows the **Web app URL**: it starts `https://script.google.com/macros/s/` and ends `/exec`. Click **Copy**, and keep it for the next step. Click **Done**.
 
 > **From now on, never click Deploy › New deployment again.** A new deployment has a new address, and every Drashti knows only the first one: they would all stop. To put in a change later, see section 11.
 
-## 8. Run Drashti › Set up… in the Sheet
+## 8. Run Drashti › Set up… in the Sheet, then turn on the daily check
 
 1. Go back to the Sheet's browser tab and **reload** it (so the new menu appears). A menu **Drashti** appears after **Help** (it can take a few seconds).
 2. Choose **Drashti › Set up…**. The first time, Google asks you to authorize again: the same steps as in step 7.7. If no window opens after you allow it, choose **Drashti › Set up…** again.
@@ -85,31 +85,53 @@ The Sheet now has two tabs: **Access List** (one row per Gmail) and **Computers*
 
 Claude puts that line into the release of Drashti. Until then, Drashti cannot use your list.
 
+Then turn on **the daily check**, once. Every day, it ends the access of each computer that has not checked in for 15 days (section 10).
+
+7. Choose **Drashti › Turn on the daily check…**. If Google asks you to authorize again (it does after an update, section 11), do as in step 7.7. Its list then has one more line, "Allow this application to run when you are not present": the daily check runs while you are away. Click **Allow**. If no window opens after, choose **Drashti › Turn on the daily check…** again.
+8. The window **Turn on the daily check** says what it does. Click **OK**.
+9. It says **The daily check is on**. Click **OK**.
+
+The daily check is free, like everything here. It sends no email and changes no Gmail's status or mode: it only ends those computers' access. Chosen again later, it only says it is on, and never makes a second.
+
 ## 9. Let yourself in first, as the owner
 
 1. In the Sheet, choose **Drashti › Let me in (the owner)…** and click **OK**.
 2. A token arrives in your approver Gmail's inbox: an email **Your Drashti token** from your own address, with a token like `ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-2345`.
 3. When you have the Drashti with your list built in, open it. On its lock screen, choose **I Have a Token**, and type your approver Gmail and that token.
-4. That computer is then the owner's: it has **View › Access List**, where you see and change everyone.
+4. That computer is then the owner's: it has **View › Access List…** (in Pro Mode), where you see and change everyone. Your own row is always Pro.
 
-A token works once, for one computer, and runs out after **3 days**. If yours runs out, or for another computer of your own, choose **Let me in (the owner)…** again: you get a new token (a token not yet used stops working; computers already in stay in). Your own Gmail never uses **Request Access** on the lock screen: the list refuses it, and **Let me in** is its way in. **Never paste a token into the chat.**
+A token works once, for one computer, and runs out after **3 days**. If yours runs out, for another computer of your own, or when your computer has not checked in for 15 days (section 10), choose **Let me in (the owner)…** again: you get a new token (a token not yet used stops working; computers already in stay in). Your own Gmail never uses **Request Access** on the lock screen: the list refuses it, and **Let me in** is its way in. **Never paste a token into the chat.**
 
 ---
 
 ## 10. Using the list
 
 - **Someone asks for access** from their Drashti's lock screen: you get an email **Drashti: … asks for access**, with their Gmail, the name they typed, their computer and Drashti's version, and an **Approve** and a **Reject** link. Each link opens a page with **one button**: nothing happens until you press it. The links work once, and for **7 days**.
-- **Approve:** the page asks **How long may they use Drashti?** (below), then they get an email from your approver Gmail with their one-time token (it works once, on one computer, for 3 days).
+- **Approve:** the page asks **How long may they use Drashti?** and **What may they use?** (both below), then they get an email from your approver Gmail with their one-time token (it works once, on one computer, for 3 days) and what they may use.
 - **Reject:** they are told plainly, by email and on their lock screen, and nothing more happens.
-- **In Drashti, View › Access List** (your computer only): add a Gmail, approve, reject, revoke, give access again (a new token), change how long access lasts, and a note.
+- **In Drashti, View › Access List…** (your computer only): add a Gmail, approve, reject, revoke, give access again (a new token), change how long access lasts, change the mode, and a note.
 - **How long access lasts** (from 28 Oct 2026). Approving (on the Approve page, or **Approve…** and **Add a Gmail…** in the Access List), **Give access again…** and **Change the length…** each ask how long: **Unlimited** (until you revoke it, chosen at first, so nobody is cut off by a slip), **1 day** (24 hours), **7, 30, 60, 90, 120, 180 or 365 days**, or **a number of days** you type (1 to 730, two years; for longer, choose Unlimited). A length counts from the moment you give it, by the list's clock (Google's), never by anyone's computer.
   - **When it ends** shows in the Sheet's **Access ends** column and in the Access List. From 7 days before (at once for 7 days or less), a bar in their Drashti says when it ends. When the time is up, their Drashti stops exactly as a revoke stops it, and its lock screen says their access has ended and how to come back.
   - **To give more time,** before or after the end: **Change the length…** (or **Give access again…**) in the Access List. A new length counts from that moment. Given before the end, nothing stops. After it, a Drashti showing its lock screen opens by itself within 15 seconds; one that stopped while open is quit and started again.
   - **Your own row is always Unlimited:** no length can be set on it, as it can never be revoked.
   - **Give each mandir computer's Gmail Unlimited**, so a date never cuts off a sabha. Lengths are for operators' own computers.
   - **Typed in the Sheet,** **Access ends** counts too: a date and time is the new end, and empty or `Unlimited` is no end. Anything else the list cannot read stops that Gmail's Drashtis until you put it right.
+- **What each Gmail may use** (from alpha.14): **Pro** (**Pro Mode and Simple Mode**) or **Simple** (**Simple Mode only**). With Simple, their Drashti opens in Simple Mode and stays there: it says **Simple Mode only on this computer** where **Pro Mode** would be, and Drashti refuses what Pro Mode does, not just its buttons. Only a Drashti of alpha.14 or later knows modes.
+  - **You choose it** on the Approve page (**What may they use?**, with **Simple Mode only** chosen at first), in the Access List (**Add a Gmail…**, **Approve…** and **Give access again…** ask; **Change the mode…** on any row but yours), or in the Sheet's **Mode** column.
+  - **Give each mandir computer's Gmail Pro:** with Simple, nobody could set up its screens, backups or stream there. Simple is for a computer that runs a hall with one projector.
+  - **When a Gmail asks again, approving starts on Simple Mode only**, even for one that had Pro (after 15 days with no check, say). Choose **Pro Mode and Simple Mode** where it should keep Pro. **Give access again…** offers the Gmail's own mode first.
+  - **A change reaches their Drashti at its next check:** within 15 seconds while it is online. Moved to Simple, it goes to Simple Mode. Given Pro again, it goes back to Pro Mode by itself, if the change had put it in Simple Mode.
+  - **Every Gmail let in before alpha.14 has Pro**, and your own row is always Pro.
+  - **Approve only from the email's Approve page or from alpha.14's Access List.** The Access List of an alpha.13 Drashti sends no mode, so a Gmail it approves or adds gets Simple Mode only.
+  - **Typed in the Sheet,** the **Mode** column takes `Pro` or `Simple` (a list to choose from). Only `Pro` is Pro: `Simple` or an empty cell is Simple Mode only (your own row is always Pro). Their Drashti hears it within about 30 seconds.
+  - **The list adds the Mode column by itself**, at its first call once alpha.14's files are in (section 11), with `Pro` for every Gmail let in before. **Never delete or rename it:** it comes back empty, and every Gmail but yours may then use Simple Mode only until its **Mode** says `Pro` again.
+- **15 days with no check** (from alpha.14, in place of alpha.13's hour):
+  - **Without the internet, Drashti keeps working** for up to 15 days from the list's last answer. After about 2 minutes with no answer, a line under the top bar counts down ("Can’t reach the access list: Drashti keeps working for 14 days 6 hours more."). Within those 15 days, Drashti also opens at once as it starts, online or not.
+  - **After 15 days with no answer, it stops**, saying "Drashti could not check your access for 15 days". That computer must ask for access again with **Request Access** on its lock screen, or you press **Give access again…** in the Access List. For your own computer, choose **Drashti › Let me in (the owner)…** in the Sheet (section 9).
+  - **The list ends it too.** A computer that has not checked in for 15 days has its access ended at its next check, when your Access List is open, or by the daily check (section 8), whichever comes first. The Access List then says **No contact for 15 days** on that Gmail's row, and the Sheet's **Computers** tab says `no-contact` under **Why ended**.
+  - **With no internet, a computer hears nothing.** A revoke, a rejection or a change of mode reaches it the moment it is back online. Kept offline, a revoked computer can run for up to 15 days after the revoke.
 - **In the Sheet:** to stop someone at once, set their **Status** to **revoked** (it is a list to choose from). Their Drashti stops within about 30 seconds, and their computers stay out even if you set **approved** again later: to let them back in, use **Give access again** in Drashti's Access List. Setting **approved** in the Sheet sends no token: use the Approve link or the Access List.
-- **Leave alone:** the **Computers** tab (Google warns you before a change), the hidden columns, and the column headers. Do not add a second row for a Gmail that has one. In **Script Properties**, the list keeps its own settings beside your `APPROVER_EMAIL` (`WEB_APP_URL`, the keys, and `REQUESTS_TODAY`, its count of the day's requests): leave them as they are, except as section 13 says.
+- **Leave alone:** the **Computers** tab (Google warns you before a change), the hidden columns, and the column headers. Do not add a second row for a Gmail that has one. In **Script Properties**, the list keeps its own settings beside your `APPROVER_EMAIL` (`WEB_APP_URL`, the keys, `REQUESTS_TODAY`, its count of the day's requests, and `MODE_COLUMN_MADE`, set once the **Mode** column is made): leave them as they are, except as section 13 says.
 - **Never share the Sheet or the script** with anyone: whoever can edit them can let people in.
 - Times in the emails follow the Sheet's time zone (**File › Settings**).
 
@@ -117,7 +139,7 @@ A token works once, for one computer, and runs out after **3 days**. If yours ru
 
 When a new Drashti needs a change in the list, Claude names the files to paste again (only those):
 
-1. In **Extensions › Apps Script**, open each file named, select all its text, and paste the new text over it, as in step 5. Save (the disk icon, or Cmd+S / Ctrl+S).
+1. In **Extensions › Apps Script**, open each file named, select all its text, and paste the new text over it, as in step 5. Save (the disk icon, or Cmd+S / Ctrl+S). Claude can put each file on your Mac's clipboard for you, one at a time, checked byte for byte against the release first, and clears the clipboard after each.
 2. **Deploy › Manage deployments**. Click your deployment (`Drashti access list`), then the pencil (**Edit**).
 3. **Version:** choose **New version**. Click **Deploy**.
 
@@ -125,6 +147,7 @@ The address and the key stay the same, so the line built into Drashti keeps work
 
 - **Never use New deployment** (it makes a new address).
 - **Never touch the keys** in **Project Settings › Script Properties**, and **never choose Drashti › Set up…** for a change.
+- **Modes and the daily check (alpha.14, 30 Oct 2026):** paste `core.js`, `Code.js`, `Link.html` and `appsscript.json` again (`Setup.html` is unchanged), and save. Before step 2, reload the Sheet's tab and choose **Drashti › Turn on the daily check…** (steps 8.7 to 8.9): Google asks once for its one new permission. Then do steps 2 and 3. Your Sheet needs nothing more: the list adds its **Mode** column by itself at its first call, with `Pro` for every Gmail let in before. Until this new version is deployed, an alpha.14 Drashti waits for the list's answer at each start: it cannot open at once without the internet.
 - **Lengths of access (28 Oct 2026):** paste `core.js`, `Code.js` and `Link.html` again (`appsscript.json` and `Setup.html` are unchanged). Your Sheet needs nothing: the list adds its two new columns, **Access ends** (shown) and **Length** (hidden), by itself at its first call, with **Unlimited** for everyone approved before.
 
 ## 12. The limits of a free Google account
@@ -133,7 +156,7 @@ Google's own figures (its quota page, https://developers.google.com/apps-script/
 
 | Google's limit                        | Free account              | What it means for the list                                                                                                                                                                                                                |
 | ------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Email recipients a day (MailApp)      | **100**                   | Each request emails you once; each approval, rejection and Let me in emails one person. About **50 new people a day** (a request and an approval each).                                                                                   |
+| Email recipients a day (MailApp)      | **100**                   | Each request emails you once; each approval, rejection and Let me in emails one person; the daily check emails nobody. About **50 new people a day** (a request and an approval each).                                                    |
 | Simultaneous executions (per account) | **30** at the same moment | The list runs as you, so every Drashti's check counts against your 30. A check takes well under a second (the list reads the Sheet at most every 10 seconds), so about **400 Drashtis open at the same time** can check every 15 seconds. |
 | Script runtime                        | 6 minutes per call        | A call takes about a second.                                                                                                                                                                                                              |
 | Script Properties reads and writes    | 50,000 a day              | The list reads its settings at most once every 10 minutes: never near it.                                                                                                                                                                 |
@@ -143,12 +166,15 @@ The list's own limits, so that requests never use up the emails tokens need: **5
 **If a limit is hit:**
 
 - **The day's emails are used up:** a request is still kept (you see it in the Sheet and in the Access List), but no email comes; approving says **The access list has sent all the emails it may send today. Try again tomorrow.**, and nothing changes. Wait until the next day. When many people join at once, approve them over several days, about 50 a day.
-- **Too many Drashtis checking at once:** some checks are answered late or not at all. Each Drashti keeps working up to **an hour** without an answer (a bar says so), so a busy moment does no harm. If it happens often, tell Claude: the time between checks can be made longer in a new release.
+- **Too many Drashtis checking at once:** some checks are answered late or not at all. Each Drashti keeps working up to **15 days** without an answer (after about 2 minutes, a line under the top bar says so), so a busy moment does no harm. If it happens often, tell Claude: the time between checks can be made longer in a new release.
 - **Google says "Service invoked too many times":** the same; wait, and it clears.
 
 ## 13. If something goes wrong
 
 - **No Drashti menu in the Sheet:** reload the Sheet's tab and wait a few seconds; check that all five files were saved (step 5).
+- **No Turn on the daily check… in the Drashti menu:** reload the Sheet's tab; check that alpha.14's `Code.js` was pasted and saved (section 11).
+- **Not sure the daily check is on:** choose **Drashti › Turn on the daily check…**. If it is on, it says **The daily check is on**, and makes no second.
+- **The Mode column was deleted or renamed:** the list puts it back empty at its next call, and every Gmail but yours may then use Simple Mode only. For each Gmail that should have Pro, type `Pro` in its **Mode** again, or use **Change the mode…** in the Access List.
 - **Set up… asks for APPROVER_EMAIL:** do step 6, then choose **Drashti › Set up…** again.
 - **The line was not copied, or the window was closed:** choose **Drashti › Set up…** again. It shows the same line (it never makes new keys once it has them).
 - **The wrong web app address was pasted:** in **Project Settings › Script Properties**, click **Edit script properties**, put the right address (ending `/exec`) in `WEB_APP_URL`, and save. **Drashti › Set up…** then shows the corrected line: send it again.
