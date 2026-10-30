@@ -450,6 +450,9 @@ test('Simple Mode', async () => {
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await setUpPlaceholderShow(win);
+  // The playlist open in Pro Mode is Simple Mode's one playlist (Session 55, Part 18).
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
   await simpleModeButton(win).click();
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('PageDown');
@@ -552,7 +555,7 @@ test('the stream: the panel on air and recording, its settings, and the Program 
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(win.getByTestId('on-air')).toBeVisible();
     await shot(win, 'simple-mode-on-air');
-    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
     await win.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
       await d.stream.end({ confirmed: true });
@@ -1291,10 +1294,16 @@ test('music, markers, scheduled backups, and Simple Mode with music (Session 14)
   await shot(win, 'scheduled-backups', [backups.getByTestId('backups-folder')]);
   await backups.getByRole('button', { name: 'Close', exact: true }).click();
 
-  // Simple Mode with the music (roles and their PINs, pictured here until Session 54, are gone: E5).
+  // Simple Mode with music playing (roles and their PINs, pictured here until Session 54, are gone: E5): its time bar
+  // under Next and Back says what plays (Session 55, Part 18: no Audio panel or music strip of its own).
   await win.setViewportSize({ width: 1280, height: 720 });
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const list = (await d.music.view()).playlists.find((p) => p.name === 'Placeholder before sabha');
+    if (list) await d.music.play(list.id);
+  });
   await simpleModeButton(win).click();
-  await expect(win.getByTestId('simple-music')).toContainText('Placeholder before sabha');
+  await expect(win.getByTestId('simple-mode').getByTestId('time-bars')).toBeVisible();
   await shot(win, 'simple-mode-music');
   await app.close();
 });

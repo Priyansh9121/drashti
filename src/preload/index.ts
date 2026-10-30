@@ -71,15 +71,12 @@ const bridge: DrashtiBridge = {
         listener(progress);
       }),
     getMode: () => invoke(IPC.app.getMode),
-    setMode: (mode, word) => invoke(IPC.app.setMode, mode, word),
+    setMode: (mode) => invoke(IPC.app.setMode, mode),
     onModeChanged: (listener) =>
       on(IPC.app.modeChanged, ({ mode }) => {
         listener(mode);
       }),
-    onAskLeaveSimple: (listener) =>
-      on(IPC.app.askLeaveSimple, () => {
-        listener();
-      }),
+    simplePlaylist: () => invoke(IPC.app.simplePlaylist),
     onShowKeys: (listener) =>
       on(IPC.app.showKeys, () => {
         listener();

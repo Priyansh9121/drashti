@@ -389,13 +389,14 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
     await phone.close();
   }
 
-  // Simple Mode: the same five, each whole under its LIVE picture, its big buttons in view.
+  // Simple Mode: the same five, each whole under its Next and Back (Pro Mode's layout since Session 55, Part 18), its
+  // bar of clears in view.
   await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(rows(win)).toHaveCount(5);
   await rowsFit(win, rows(win), 1024, 'Simple Mode');
   const buttons = await win.getByTestId('simple-buttons').boundingBox();
-  expect((buttons?.y ?? 9999) + (buttons?.height ?? 0), 'the big buttons in view').toBeLessThanOrEqual(645);
+  expect((buttons?.y ?? 9999) + (buttons?.height ?? 0), 'the bar of clears in view').toBeLessThanOrEqual(645);
   await expectNoSeriousA11yIssues(win, 'every kind playing at 1024 × 645, Simple Mode');
   await app.close();
 });

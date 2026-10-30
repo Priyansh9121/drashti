@@ -164,12 +164,15 @@ export const IPC = {
     progress: 'app:progress',
     /** Simple Mode or Pro Mode. */
     getMode: 'app:get-mode',
-    /** Switch: into Simple Mode at once; out of it only with the word typed (operator window only). */
+    /**
+     * Switch, either way at once (operator window only); nothing typed since Session 55, Part 18 (Pro Mode's
+     * double-click), and never to Pro Mode with Simple access.
+     */
     setMode: 'app:set-mode',
     /** main -> operator: the mode changed. */
     modeChanged: 'app:mode-changed',
-    /** main -> operator: View > Switch to Pro Mode… was chosen; ask for the word. */
-    askLeaveSimple: 'app:ask-leave-simple',
+    /** Simple Mode's one playlist (Session 55, Part 18): the one it shows; null in Pro Mode. */
+    simplePlaylist: 'app:simple-playlist',
     /** Any of Drashti's windows: a render error, for the log (Session 23). */
     renderError: 'app:render-error',
     /** The operator window: when it knew what it waits for and drew its controls, for the log (question 36). */
@@ -455,7 +458,10 @@ export const IPC = {
     items: 'playlists:items',
     /** Presentations' first slides, for the open playlist's cards (Session 26a). */
     firstSlides: 'playlists:first-slides',
-    /** The operator opened a playlist: it counts as this week's for output nodes (Session 14). */
+    /**
+     * The operator opened a playlist: it counts as this week's for output nodes (Session 14); and Pro Mode's window
+     * says which it has open, or that it closed it (null), for Simple Mode's one playlist (Session 55, Part 18).
+     */
     opened: 'playlists:opened',
     /** The rest change playlists (operator window only). */
     create: 'playlists:create',
@@ -1016,7 +1022,8 @@ export interface InvokeContract {
     result: { ok: true; on: boolean } | { ok: false; message: string };
   };
   [IPC.app.getMode]: { args: []; result: OperatorMode };
-  [IPC.app.setMode]: { args: [mode: OperatorMode, word?: string]; result: ModeResult };
+  [IPC.app.setMode]: { args: [mode: OperatorMode]; result: ModeResult };
+  [IPC.app.simplePlaylist]: { args: []; result: string | null };
   [IPC.backups.view]: { args: []; result: ScheduledBackupsView };
   [IPC.backups.save]: { args: [schedule: BackupSchedule]; result: BackupsResult };
   [IPC.backups.pickFolder]: { args: []; result: PickFolderResult };
@@ -1083,7 +1090,7 @@ export interface InvokeContract {
     args: [presentationIds: string[]];
     result: Record<string, RenderSlide | null>;
   };
-  [IPC.playlists.opened]: { args: [playlistId: string]; result: null };
+  [IPC.playlists.opened]: { args: [playlistId: string | null]; result: null };
   [IPC.playlists.create]: {
     args: [name: string, parentId: string | null, isFolder: boolean];
     result: PlaylistResult;
@@ -1460,7 +1467,6 @@ export interface EventContract {
   [IPC.app.notice]: { text: string };
   [IPC.app.progress]: { progress: TaskProgress | null };
   [IPC.app.modeChanged]: { mode: OperatorMode };
-  [IPC.app.askLeaveSimple]: { at: number };
   [IPC.backups.changed]: ScheduledBackupsView;
   [IPC.backups.open]: { at: number };
   [IPC.events.changed]: EventsOutView;

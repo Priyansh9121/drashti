@@ -287,6 +287,7 @@ test('Pro Mode: a whole sabha by keyboard alone', async () => {
 });
 
 test('Simple Mode: every button by Tab, in order, its focus seen; Enter on them runs the sabha', async () => {
+  test.setTimeout(120_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
@@ -294,9 +295,19 @@ test('Simple Mode: every button by Tab, in order, its focus seen; Enter on them 
   await setUp(win);
   await setUpScreen(win, 'Main Hall', 0);
   const output = await outputPage(app);
+  // The playlist open in Pro Mode is Simple Mode's one playlist (Session 55, Part 18).
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await expect(win.getByTestId('simple-mode').getByTestId('playlist-item')).toHaveCount(5);
   await expectNoSeriousA11yIssues(win, 'Simple Mode, before Tab');
+  // Next's key starts the playlist: the welcome slide. Then Back is a stop too (with nothing up it waits, not
+  // pressable, as Pro Mode's does).
+  await win.keyboard.press('ArrowRight');
+  await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder welcome to the sabha');
+  // The round from the top of the window (its header's Pro Mode), wherever the keyboard was.
+  await win.getByTestId('simple-leave').focus();
   const stops = await tabRound(win);
   expect(
     stops.filter((s) => !s.ring).map((s) => s.name),
@@ -306,25 +317,26 @@ test('Simple Mode: every button by Tab, in order, its focus seen; Enter on them 
     stops.filter((s) => !s.inView).map((s) => s.name),
     'stops out of sight',
   ).toEqual([]);
-  // The playlist first (its choice, then its items), then the big buttons, as laid out.
+  // As laid out (Session 55, Part 18: Pro Mode's columns): the playlist (its Add files…, then its rows), then LIVE's
+  // Back and Next, then the bar along the bottom (Clear all, then Black-out).
   const at = (find: (f: Focus) => boolean) => stops.findIndex(find);
-  const picker = at((s) => s.testid === 'simple-playlist');
+  const addFiles = at((s) => s.testid === 'playlist-add-files');
   const item = at((s) => s.name.includes(WELCOME));
   const back = at((s) => /^Back\b/u.test(s.name));
   const next = at((s) => /^Next\b/u.test(s.name));
-  const blackout = at((s) => s.testid === 'simple-blackout');
   const clear = at((s) => s.testid === 'simple-clear-all');
-  expect([picker, item, back, next, blackout, clear].every((i) => i >= 0)).toBe(true);
-  expect(picker).toBeLessThan(item);
+  const blackout = at((s) => s.testid === 'simple-blackout');
+  expect([addFiles, item, back, next, clear, blackout].every((i) => i >= 0)).toBe(true);
+  expect(addFiles).toBeLessThan(item);
   expect(item).toBeLessThan(back);
   expect(back).toBeLessThan(next);
-  expect(next).toBeLessThan(blackout);
-  expect(blackout).toBeLessThan(clear);
+  expect(next).toBeLessThan(clear);
+  expect(clear).toBeLessThan(blackout);
 
-  // Next, by Tab and Enter: the welcome slide.
+  // Next, by Tab and Enter: on into the kirtan.
   await tabTo(win, (f) => /^Next\b/u.test(f.name));
   await win.keyboard.press('Enter');
-  await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder welcome to the sabha');
+  await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
   await tabTo(win, (f) => f.testid === 'simple-blackout');
   await win.keyboard.press('Enter');
   await expect(output.getByTestId('blackout')).toHaveCount(1);

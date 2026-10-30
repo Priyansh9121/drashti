@@ -263,14 +263,15 @@ function setUp(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {
   return made;
 }
 
-describe('View › Switch to Pro Mode… with Simple access (Session 55, Part 19)', () => {
+describe('View › Switch to Pro Mode with Simple access (Session 55, Part 19)', () => {
   it.each(PLATFORMS)(
     'is there in Simple Mode with Pro access, and gone with Simple access (%s)',
     (platform) => {
       on(platform, () => {
         installMenu(actions('simple').a);
       });
-      expect(item('switch-mode')?.label).toBe('Switch to Pro Mode…');
+      // No "…": it asks nothing since Session 55, Part 18 (nothing typed: the owner's answer to question 12).
+      expect(item('switch-mode')?.label).toBe('Switch to Pro Mode');
       on(platform, () => {
         installMenu({ ...actions('simple').a, simpleOnly: true });
       });

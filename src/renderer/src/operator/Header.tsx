@@ -154,8 +154,8 @@ export function Header({
           <Tooltip
             content={
               crowded
-                ? 'Simple Mode: one screen with big buttons, for volunteers. Nothing can be changed there.'
-                : 'One screen with big buttons, for volunteers. Nothing can be changed there.'
+                ? 'Simple Mode: this window with only what a sabha with one projector needs, for volunteers.'
+                : 'This window with only what a sabha with one projector needs, for volunteers.'
             }
             side="bottom"
           >

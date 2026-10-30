@@ -138,9 +138,22 @@ test('show controls, thumbnails and the live picture never move, in Pro Mode and
   expect(await moving(win, SHOW)).toEqual([]);
   await win.getByTestId('put-back').click();
 
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  // Simple Mode, on the playlist opened again in Pro Mode (its one playlist, Session 55, Part 18): its show's controls
+  // (Pro Mode's, fewer) and its rows still.
+  await closeLibrary(win);
+  await win
+    .getByTestId('playlist-node')
+    .filter({ hasText: /^Placeholder motion/u })
+    .click();
+  await win.getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  expect(await moving(win, '[data-testid="simple-buttons"] button, [data-testid="simple-item"]')).toEqual([]);
+  await expect(win.getByTestId('simple-mode').getByTestId('playlist-item')).toHaveCount(1);
+  expect(
+    await moving(
+      win,
+      '[data-testid="simple-buttons"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="playlist-item"], [data-testid="live-preview"]',
+    ),
+  ).toEqual([]);
   await app.close();
 });
 

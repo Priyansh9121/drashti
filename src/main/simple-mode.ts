@@ -14,6 +14,13 @@ import { NO_VIEW } from '../shared/access-list';
  * backup and restore leave the menu. Running the show
  * (the engine's commands, except those SIMPLE_MODE_REFUSED_COMMANDS lists),
  * reading the library and saving diagnostics stay.
+ *
+ * Since Session 55 (Part 18, Simple Mode for a one-projector sabha) Simple Mode also offers, each only within its
+ * bounds (SIMPLE_MODE_BOUNDED): bringing things in (the main process gives Simple Mode's import its own limits: only
+ * sounds, videos, pictures, PDFs and decks, and a changed file kept beside the old one, never replacing it), its one
+ * playlist's rows (added to, moved in, taken out of and put back in that playlist only: main/simple-playlist.ts says
+ * which), Rename of a file that playlist holds, and From a Link… into it. Everything else stays locked. This is the
+ * one list for Simple access too (Session 55, Part 19): the mode keeper holds the mode in Simple, and so this lock.
  */
 
 /** The Access List's edits (Session 54, E4). */
@@ -43,8 +50,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.appearance.remove,
   IPC.appearance.setMotion,
   IPC.library.restoreRevision,
-  IPC.library.importPaths,
-  IPC.library.pickImportPaths,
   IPC.library.relinkMedia,
   IPC.library.setArrangement,
   IPC.library.removePresentations,
@@ -58,22 +63,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.rename,
   IPC.playlists.remove,
   IPC.playlists.restore,
-  IPC.playlists.addItems,
-  IPC.playlists.moveItems,
-  IPC.playlists.removeItems,
-  IPC.playlists.restoreItems,
   IPC.playlists.fillPlaceholder,
-  IPC.playlists.setItemOrder,
   IPC.playlists.renameHeader,
   IPC.playlists.saveAsTemplate,
   IPC.playlists.newFromTemplate,
-  // Session 55 (Parts 4 and 14): Duplicate, and the one right-click menu's Rename, are Pro Mode's.
+  // Session 55 (Parts 4 and 14): Duplicate is Pro Mode's (the one right-click menu's Rename is bounded since Part 18).
   IPC.playlists.duplicate,
-  // Session 55, Part 4b: a slide's row dragged out of its deck (and its Undo), as moving items is.
-  IPC.playlists.splitItem,
-  IPC.playlists.undoSplit,
-  IPC.library.renamePresentation,
-  IPC.media.rename,
   IPC.playlists.addSlot,
   IPC.messages.create,
   IPC.messages.update,
@@ -87,16 +82,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stageLayouts.save,
   IPC.playlists.editSlot,
   IPC.playlists.setTimers,
-  // Session 55, Part 6: a video row's When it ends, and the wallpapers' setup (Part 18 gives Simple Mode its own).
+  // Session 55, Part 6: a video row's When it ends; and a wallpaper's seconds and fade, its editor's (Simple Mode has the
+  // wallpapers since Part 18, bounded below, without the editor).
   IPC.playlists.setWhenEnds,
-  IPC.wallpapers.add,
-  IPC.wallpapers.pickFiles,
-  IPC.wallpapers.rename,
-  IPC.wallpapers.setPictures,
   IPC.wallpapers.setTiming,
-  IPC.wallpapers.remove,
-  IPC.wallpapers.restore,
-  IPC.wallpapers.choose,
   // Smart playlists (Session 26c): Simple Mode sees what their folders bring, and changes no setup.
   IPC.playlists.createSmart,
   IPC.playlists.removeMissing,
@@ -226,16 +215,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.updates.setInstallOnQuit,
   IPC.updates.setAutoCheck,
   IPC.updates.showFile,
-  // Import from a Link (Session 25b): Simple Mode never sees it.
-  IPC.links.look,
+  // Import from a Link (Session 25b): Simple Mode downloads into its one playlist since Session 55 (bounded below);
+  // where downloads are saved and the highest video quality stay Pro Mode's, and so does showing a saved one.
   IPC.links.pickFolder,
-  IPC.links.download,
-  IPC.links.stop,
-  IPC.links.reset,
-  IPC.links.addWaiting,
   IPC.links.showSaved,
   IPC.links.setMaxHeight,
-  IPC.links.setPlaylist,
   // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
   IPC.announcements.edit,
   IPC.announcements.approve,
@@ -259,17 +243,128 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
 ];
 
 /**
- * Each locked channel's answer: a refusal in its own result's shape, in `words` (Session 55: true for this computer's
- * access, so Simple access is never told of a way to Pro Mode).
+ * Simple Mode's one playlist and what it holds, as the lock reads them (index.ts, from the library), for the bounds of
+ * what Simple Mode offers.
+ */
+export interface SimpleScope {
+  /** The one playlist (Session 55, Part 18), or null before Simple Mode has needed one. */
+  playlistId: string | null;
+  /** The playlist an item is in (one taken out too), or null. */
+  playlistOf(itemId: string): string | null;
+  /** Whether the one playlist has a row of this picture, video or sound. */
+  holdsMedia(mediaId: string): boolean;
+  /** Whether the one playlist has a row of this presentation (a PDF's or a deck's too). */
+  holdsPresentation(presentationId: string): boolean;
+}
+
+/** Whether a request on a bounded channel, with its arguments as sent, stays within Simple Mode's bounds. */
+export type SimpleBound = (args: readonly unknown[], scope: SimpleScope) => boolean;
+
+const anything: SimpleBound = () => true;
+const theOne = (scope: SimpleScope, playlistId: unknown): boolean =>
+  scope.playlistId !== null && playlistId === scope.playlistId;
+/** Every one an item of the one playlist (one taken out too, for its Undo). */
+const itsItems = (scope: SimpleScope, ids: unknown): boolean =>
+  scope.playlistId !== null &&
+  Array.isArray(ids) &&
+  ids.length > 0 &&
+  ids.every((id) => typeof id === 'string' && scope.playlistOf(id) === scope.playlistId);
+/** What Simple Mode's imports add: a presentation (a PDF's or a deck's), a picture, video or sound, a folder's part. */
+const SIMPLE_ADDS: ReadonlySet<unknown> = new Set(['presentation', 'media', 'header']);
+const itsAdds = (items: unknown): boolean =>
+  Array.isArray(items) &&
+  items.length > 0 &&
+  items.every((i) => typeof i === 'object' && i !== null && SIMPLE_ADDS.has((i as { kind?: unknown }).kind));
+
+/**
+ * What Simple Mode offers since Session 55 (Part 18), each with its bounds. Never also in SIMPLE_MODE_LOCKED. Each has
+ * a refusal as a locked channel has (simpleModeRefusals), so the lock fails closed: a request runs only when its bounds
+ * say it is within them (simpleModeBounds); one with none of its arguments (the phones' and Companion's API asks
+ * refusedNow) is outside them: a phone changes no playlist in Simple Mode, as before.
+ */
+export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new Map<
+  InvokeChannel,
+  SimpleBound
+>([
+  // Bringing things in: Add files… and files dropped. The main process gives Simple Mode's import its own limits.
+  [IPC.library.importPaths, anything],
+  [IPC.library.pickImportPaths, anything],
+  // The one playlist's rows: what its imports made added to it, dragged about, taken out (Delete) and put back (Undo).
+  [IPC.playlists.addItems, ([playlistId, , items], scope) => theOne(scope, playlistId) && itsAdds(items)],
+  [IPC.playlists.moveItems, ([playlistId], scope) => theOne(scope, playlistId)],
+  [IPC.playlists.removeItems, ([ids], scope) => itsItems(scope, ids)],
+  [IPC.playlists.restoreItems, ([ids], scope) => itsItems(scope, ids)],
+  // A slide's row dragged within its deck or out of it (Part 4b), and its Undo: the one playlist's items.
+  [IPC.playlists.setItemOrder, ([itemId], scope) => itsItems(scope, [itemId])],
+  [IPC.playlists.splitItem, ([itemId], scope) => itsItems(scope, [itemId])],
+  [IPC.playlists.undoSplit, ([itemId, , madeId], scope) => itsItems(scope, [itemId, madeId])],
+  // Rename… on a row: a file the one playlist holds.
+  [
+    IPC.library.renamePresentation,
+    ([id], scope) => scope.playlistId !== null && typeof id === 'string' && scope.holdsPresentation(id),
+  ],
+  [
+    IPC.media.rename,
+    ([id], scope) => scope.playlistId !== null && typeof id === 'string' && scope.holdsMedia(id),
+  ],
+  // From a Link… (YouTube and Dropbox), into the one playlist; a Dropbox folder too (index.ts adds its files there).
+  [IPC.links.look, anything],
+  [IPC.links.download, anything],
+  [IPC.links.stop, anything],
+  [IPC.links.reset, anything],
+  [IPC.links.addWaiting, anything],
+  [IPC.links.setPlaylist, ([playlistId], scope) => theOne(scope, playlistId)],
+  // The wallpapers (Part 6): added (Import…, or pictures dropped), chosen, renamed, deleted and put back (Undo), and
+  // pictures dropped on one to go round. They belong to no playlist: nothing bounds them but what they are.
+  [IPC.wallpapers.add, anything],
+  [IPC.wallpapers.pickFiles, anything],
+  [IPC.wallpapers.rename, anything],
+  [IPC.wallpapers.setPictures, anything],
+  [IPC.wallpapers.remove, anything],
+  [IPC.wallpapers.restore, anything],
+  [IPC.wallpapers.choose, anything],
+]);
+
+/**
+ * Whether Simple Mode refuses a request on this channel that comes with none of its arguments (a phone's or Companion's,
+ * as the network asks refusedNow): every locked channel, and every bounded one (its bounds are the window's).
+ */
+export function simpleModeRefusesWhole(channel: InvokeChannel): boolean {
+  return SIMPLE_MODE_LOCKED.includes(channel) || SIMPLE_MODE_BOUNDED.has(channel);
+}
+
+/**
+ * Each bounded channel's test as the lock asks it (ipc/handle.ts): whether a request, its arguments as sent, is within
+ * its bounds, the one playlist read as each request comes (`scope`).
+ */
+export function simpleModeBounds(
+  scope: () => SimpleScope,
+): Map<InvokeChannel, (args: readonly unknown[]) => boolean> {
+  return new Map(
+    [...SIMPLE_MODE_BOUNDED].map(
+      ([channel, bound]): [InvokeChannel, (args: readonly unknown[]) => boolean] => [
+        channel,
+        (args) => bound(args, scope()),
+      ],
+    ),
+  );
+}
+
+/**
+ * Each locked channel's answer, and each bounded one's outside its bounds: a refusal in its own result's shape, in
+ * `words` (Session 55: true for this computer's access, so Simple access is never told of a way to Pro Mode).
  */
 export function simpleModeRefusals(
   sound: () => AudioOutputStatus,
   words: () => string = () => SIMPLE_MODE_REFUSAL,
 ): Map<InvokeChannel, () => unknown> {
   const refused = () => ({ ok: false as const, message: words() });
-  const answers = new Map<InvokeChannel, () => unknown>(SIMPLE_MODE_LOCKED.map((c) => [c, refused]));
+  const answers = new Map<InvokeChannel, () => unknown>(
+    [...SIMPLE_MODE_LOCKED, ...SIMPLE_MODE_BOUNDED.keys()].map((c) => [c, refused]),
+  );
   // These answer in shapes of their own: no files picked, and the sound output as it is.
   answers.set(IPC.library.pickImportPaths, () => []);
+  answers.set(IPC.wallpapers.pickFiles, () => []);
   answers.set(IPC.audio.setOutput, sound);
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));

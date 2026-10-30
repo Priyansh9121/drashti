@@ -174,7 +174,8 @@ function DeleteQuestion() {
   );
 }
 
-export function WallpapersPanel() {
+/** `fill`: the whole of its column (Simple Mode's left column, Session 55, Part 18), not a part under the playlists. */
+export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
   const view = useWallpapers((s) => s.view);
   // The editor drawn afresh for each wallpaper edited: what was typed for one never shows for the next.
   const editing = useWallpapers((s) => s.editing);
@@ -190,7 +191,11 @@ export function WallpapersPanel() {
       role="group"
       aria-labelledby={headingId}
       data-testid="wallpapers"
-      className={cx('flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-line', over && 'bg-panel-2')}
+      className={cx(
+        'flex min-h-0 flex-col',
+        fill ? 'flex-1' : 'max-h-[45%] shrink-0 border-t border-line',
+        over && 'bg-panel-2',
+      )}
       onDragOver={(e) => {
         if (!takes(e)) return;
         e.preventDefault();

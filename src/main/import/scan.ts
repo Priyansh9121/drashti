@@ -31,6 +31,14 @@ export function importableExtensions(): string[] {
   return ['txt', 'docx', ...Object.keys(MEDIA), ...PP6, ...PP7, ...PICTURE_EXTENSIONS];
 }
 
+/**
+ * What Simple Mode brings in (Session 55, Part 18; its Add files… offers just these): sounds, videos and pictures,
+ * and PDF, PowerPoint and Keynote files.
+ */
+export function simpleImportExtensions(): string[] {
+  return [...Object.keys(MEDIA), ...PICTURE_EXTENSIONS];
+}
+
 export function extOf(path: string): string {
   return extname(path).slice(1).toLowerCase();
 }

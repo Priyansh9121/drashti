@@ -3,7 +3,8 @@ import type { AudioOutputStatus } from '../shared/audio';
 import { allChannels, IPC } from '../shared/ipc';
 import { initialEngineState } from '../shared/engine/state';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../shared/mode';
-import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
+import type { InvokeChannel } from '../shared/ipc';
+import { SIMPLE_MODE_BOUNDED, SIMPLE_MODE_LOCKED, type SimpleScope, simpleModeRefusals } from './simple-mode';
 
 describe('Simple Mode locks', () => {
   const status = {
@@ -33,7 +34,13 @@ describe('Simple Mode locks', () => {
       IPC.media.saves,
       IPC.media.savesChanged,
     ]);
-    for (const c of changes) if (!open.has(c)) expect(SIMPLE_MODE_LOCKED, c).toContain(c);
+    // Locked, or (Session 55, Part 18) what Simple Mode offers now, each only within its bounds.
+    for (const c of changes)
+      if (!open.has(c))
+        expect(
+          SIMPLE_MODE_LOCKED.includes(c as InvokeChannel) || SIMPLE_MODE_BOUNDED.has(c as InvokeChannel),
+          c,
+        ).toBe(true);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.engine.command);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.screens.uncoverOperator);
     // Simple Mode's own first steps (Sessions 31–36) are kept seen through channels it allows; the welcome's
@@ -159,11 +166,13 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.app.singleKeys);
   });
 
-  it('answers each in the shape its caller expects', () => {
+  it('answers each in the shape its caller expects, a bounded one outside its bounds too (the lock fails closed)', () => {
     expect(answers.get(IPC.messages.create)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     expect(answers.get(IPC.library.pickImportPaths)?.()).toEqual([]);
+    expect(answers.get(IPC.wallpapers.pickFiles)?.()).toEqual([]);
+    expect(answers.get(IPC.playlists.addItems)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     expect(answers.get(IPC.audio.setOutput)?.()).toBe(status);
-    expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length);
+    expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length + SIMPLE_MODE_BOUNDED.size);
   });
 
   it('the Access List’s edits, answered in their own shape; reading the list and saving its CSV are not (Session 54, E4)', () => {
@@ -203,5 +212,137 @@ describe('Simple Mode locks', () => {
     for (const channel of [IPC.nodes.status, IPC.nodes.watch, IPC.nodes.identify, IPC.output.report])
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
     expect(answers.get(IPC.nodes.remove)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  });
+
+  /** The one playlist and what is in it, as index.ts tells the lock from the library. */
+  const scope: SimpleScope = {
+    playlistId: 'one',
+    playlistOf: (itemId) => ({ 'i-one': 'one', 'i-gone': 'one', 'i-other': 'other' })[itemId] ?? null,
+    holdsMedia: (mediaId) => mediaId === 'm-in',
+    holdsPresentation: (presentationId) => presentationId === 'p-in',
+  };
+  const within = (channel: InvokeChannel, ...args: unknown[]): boolean => {
+    const bound = SIMPLE_MODE_BOUNDED.get(channel);
+    if (!bound) throw new Error(`${channel} has no bounds`);
+    return bound(args, scope);
+  };
+
+  it('what Simple Mode offers since Session 55 (Part 18) runs within its bounds, never locked; the rest stays locked', () => {
+    // Bringing things in, the one playlist's rows, Rename and Delete, and From a Link….
+    for (const channel of [
+      IPC.library.importPaths,
+      IPC.library.pickImportPaths,
+      IPC.playlists.addItems,
+      IPC.playlists.moveItems,
+      IPC.playlists.removeItems,
+      IPC.playlists.restoreItems,
+      IPC.library.renamePresentation,
+      IPC.media.rename,
+      IPC.links.look,
+      IPC.links.download,
+      IPC.links.stop,
+      IPC.links.reset,
+      IPC.links.addWaiting,
+      IPC.links.setPlaylist,
+      // A slide's row dragged within its deck or out of it (Part 4b), and its Undo.
+      IPC.playlists.setItemOrder,
+      IPC.playlists.splitItem,
+      IPC.playlists.undoSplit,
+      // The wallpapers (Part 6).
+      IPC.wallpapers.add,
+      IPC.wallpapers.pickFiles,
+      IPC.wallpapers.rename,
+      IPC.wallpapers.setPictures,
+      IPC.wallpapers.remove,
+      IPC.wallpapers.restore,
+      IPC.wallpapers.choose,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(true);
+    }
+    // Nothing is both.
+    for (const channel of SIMPLE_MODE_BOUNDED.keys())
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+    // A playlist of its own, other playlists, a header's name, Duplicate, a video's When it ends, a wallpaper's seconds
+    // and fade, the highest quality and the folder for downloads, a file's points and looks, and deleting a file from
+    // the library stay Pro Mode's.
+    for (const channel of [
+      IPC.playlists.create,
+      IPC.playlists.rename,
+      IPC.playlists.remove,
+      IPC.playlists.restore,
+      IPC.playlists.duplicate,
+      IPC.playlists.renameHeader,
+      IPC.playlists.fillPlaceholder,
+      IPC.playlists.setWhenEnds,
+      IPC.wallpapers.setTiming,
+      IPC.links.setMaxHeight,
+      IPC.links.pickFolder,
+      IPC.media.remove,
+      IPC.media.restore,
+      IPC.media.setMarkers,
+      IPC.media.setLook,
+      IPC.library.removePresentations,
+      IPC.library.relinkMedia,
+    ])
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+  });
+
+  it('the one playlist’s rows only: added to, moved in, taken out of and put back in it, and nothing else of a playlist', () => {
+    expect(within(IPC.playlists.addItems, 'one', null, [{ kind: 'media', mediaId: 'x' }])).toBe(true);
+    // An import of a folder brings its parts' headers with its files.
+    expect(
+      within(IPC.playlists.addItems, 'one', 2, [
+        { kind: 'header', label: 'Placeholder part' },
+        { kind: 'presentation', presentationId: 'p' },
+      ]),
+    ).toBe(true);
+    expect(within(IPC.playlists.addItems, 'other', null, [{ kind: 'media', mediaId: 'x' }])).toBe(false);
+    // What Simple Mode never brings in: a Shastra passage, a video input, a slot.
+    expect(within(IPC.playlists.addItems, 'one', null, [{ kind: 'shastra', passageId: 'x' }])).toBe(false);
+    expect(within(IPC.playlists.addItems, 'one', null, [{ kind: 'input', name: 'x' }])).toBe(false);
+    expect(within(IPC.playlists.addItems, 'one', null, 'not a list')).toBe(false);
+    expect(within(IPC.playlists.moveItems, 'one', ['i-one'], 0)).toBe(true);
+    expect(within(IPC.playlists.moveItems, 'other', ['i-other'], 0)).toBe(false);
+    expect(within(IPC.playlists.removeItems, ['i-one'])).toBe(true);
+    expect(within(IPC.playlists.removeItems, ['i-one', 'i-other'])).toBe(false);
+    expect(within(IPC.playlists.removeItems, 'i-one')).toBe(false);
+    expect(within(IPC.playlists.restoreItems, ['i-gone'])).toBe(true);
+    expect(within(IPC.playlists.restoreItems, ['i-other'])).toBe(false);
+    expect(within(IPC.links.setPlaylist, 'one')).toBe(true);
+    expect(within(IPC.links.setPlaylist, 'other')).toBe(false);
+    // Part 4b's drags of a slide's row: an item of the one playlist (and, for Undo, the item the drag made).
+    expect(within(IPC.playlists.setItemOrder, 'i-one', { mode: 'all' })).toBe(true);
+    expect(within(IPC.playlists.setItemOrder, 'i-other', { mode: 'all' })).toBe(false);
+    expect(within(IPC.playlists.splitItem, 'i-one', { mode: 'all' }, { mode: 'all' }, 0)).toBe(true);
+    expect(within(IPC.playlists.splitItem, 'i-other', { mode: 'all' }, { mode: 'all' }, 0)).toBe(false);
+    expect(within(IPC.playlists.undoSplit, 'i-one', { mode: 'all' }, 'i-gone')).toBe(true);
+    expect(within(IPC.playlists.undoSplit, 'i-one', { mode: 'all' }, 'i-other')).toBe(false);
+    // With no one playlist yet, nothing of a playlist is within.
+    const none = { ...scope, playlistId: null };
+    const bound = SIMPLE_MODE_BOUNDED.get(IPC.playlists.addItems);
+    expect(bound?.(['one', null, [{ kind: 'media', mediaId: 'x' }]], none)).toBe(false);
+    expect(SIMPLE_MODE_BOUNDED.get(IPC.playlists.removeItems)?.([['i-one']], none)).toBe(false);
+  });
+
+  it('Rename: only a file the one playlist holds', () => {
+    expect(within(IPC.library.renamePresentation, 'p-in', 'Placeholder new name')).toBe(true);
+    expect(within(IPC.library.renamePresentation, 'p-out', 'Placeholder new name')).toBe(false);
+    expect(within(IPC.media.rename, 'm-in', 'Placeholder new name')).toBe(true);
+    expect(within(IPC.media.rename, 'm-out', 'Placeholder new name')).toBe(false);
+    expect(within(IPC.media.rename, 42, 'Placeholder new name')).toBe(false);
+  });
+
+  it('bringing things in: the main process sets the import’s own limits (what it takes, nothing replaced), so any is within', () => {
+    for (const channel of [
+      IPC.library.importPaths,
+      IPC.library.pickImportPaths,
+      IPC.links.look,
+      IPC.links.download,
+      IPC.links.stop,
+      IPC.links.reset,
+      IPC.links.addWaiting,
+    ])
+      expect(within(channel, ['/placeholder/x.txt']), channel).toBe(true);
   });
 });

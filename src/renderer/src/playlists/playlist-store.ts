@@ -10,9 +10,11 @@ import type {
   TimerCue,
 } from '../../../shared/playlists';
 import { POSITION_MAX } from '../../../shared/playlists';
-import { itemsMadeBy } from '../../../shared/import-items';
+import { itemsMadeBy, leftOutLine } from '../../../shared/import-items';
 import { useEngine } from '../engine/engine-store';
 import { importPaths } from '../library/import-store';
+import { useNotice } from '../operator/actions';
+import { useMode } from '../operator/mode-store';
 import { leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
 import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../shared/repeat';
 import { describeSome, pushRemoval } from '../library/undo';
@@ -333,6 +335,9 @@ export function setView(view: PlaylistView['view']): void {
     anchorId: null,
     renaming: null,
   });
+  void api()
+    .opened(null)
+    .catch(() => undefined);
 }
 
 /** Save a playlist as a template, with these items as slots; then show the template. */
@@ -447,6 +452,10 @@ export async function openPlaylist(id: string): Promise<void> {
 
 export function closePlaylist(): void {
   usePlaylists.setState({ openId: null, items: [], folder: '', marked: [], anchorId: null, renaming: null });
+  // None open now: Simple Mode would take a new playlist (Session 55, Part 18).
+  void api()
+    .opened(null)
+    .catch(() => undefined);
 }
 
 export function selectNode(id: string): void {
@@ -706,9 +715,13 @@ export async function importIntoPlaylist(
     return openId === playlistId && at !== null ? (items[at]?.id ?? null) : null;
   };
   const beforeId = before();
-  const result = await importPaths(paths);
+  // Simple Mode (Session 55, Part 18) has no import report to open: a line says what was left out, and why.
+  const simple = useMode.getState().mode === 'simple';
+  const result = await importPaths(paths, undefined, { report: !simple });
   if (!result?.ok) return;
   const report = await window.drashti.library.getImportReport(result.run.id);
+  const leftOut = simple ? leftOutLine(report?.items ?? []) : null;
+  if (leftOut !== null) useNotice.setState({ text: leftOut });
   const made = itemsMadeBy(report?.items ?? [], paths);
   if (made.length === 0) return;
   // The import may have taken a while: the place is found again by the item it went before.

@@ -58,7 +58,8 @@ import { openLinkForAudio } from '../links/link-store';
  * one track after another, independent of the slides (music before the
  * sabha). Choose a list, play from a track, pause, next and previous, go
  * round again, shuffle; make lists from the library's sounds. Simple Mode
- * has only Play and Pause (MusicStrip). Session 55 (Part 13): the lists are
+ * has none since Session 55 (Part 18: its one playlist's sounds are rows, and
+ * music playing shows in its time bar). Session 55 (Part 13): the lists are
  * straight under Audio, with no Music heading or ? of their own; with none,
  * Audio asks for one: Create playlist, Import sounds…, From a Link… (YouTube
  * as MP3, Dropbox), or sounds dropped there.
@@ -746,51 +747,5 @@ function AddSoundsDialog({ playlistId }: { playlistId: string | null }) {
         </ul>
       )}
     </Dialog>
-  );
-}
-
-/** Simple Mode's music: Play and Pause, for the list played last (or the first). */
-export function MusicStrip() {
-  const view = useMusic((s) => s.view);
-  const playing = useMusicPlaying();
-  useEffect(() => {
-    connectMusic();
-  }, []);
-  const lists = view?.playlists ?? [];
-  if (lists.length === 0) return null;
-  const name = playing?.music?.name ?? lists.find((p) => p.id === view?.lastId)?.name ?? lists[0]?.name ?? '';
-  const paused = playing?.pausedAtMs !== undefined;
-  return (
-    <div
-      className="mx-3 mt-3 flex items-center gap-3 rounded-lg border border-line bg-panel-2 p-2"
-      data-testid="simple-music"
-    >
-      <ListMusic size={22} aria-hidden="true" className="shrink-0 text-muted" />
-      <div className="min-w-0 flex-1">
-        <Truncate text={`Music: ${name}`} className="text-base font-medium" />
-        {playing && (
-          <Truncate text={`${paused ? 'Paused: ' : ''}${playing.title}`} className="text-sm text-muted" />
-        )}
-      </div>
-      {playing && !paused ? (
-        <Button
-          size="lg"
-          icon={Pause}
-          data-testid="simple-music-pause"
-          onClick={() => void dispatch('pauseMusic')}
-        >
-          Pause music
-        </Button>
-      ) : (
-        <Button
-          size="lg"
-          icon={Play}
-          data-testid="simple-music-play"
-          onClick={() => void musicAction(() => window.drashti.music.play(null))}
-        >
-          Play music
-        </Button>
-      )}
-    </div>
   );
 }

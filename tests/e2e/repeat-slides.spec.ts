@@ -185,17 +185,21 @@ test('Simple Mode starts and stops Repeat Slides, and changes none of its settin
     },
     { oneId, twoId },
   );
+  // Open in Pro Mode, it is Simple Mode's one playlist (Session 55, Part 18).
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Hall Pictures' }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder Hall Pictures');
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  await win.getByTestId('simple-playlist').selectOption(playlistId);
   await expect(win.getByTestId('simple-repeat-start')).toBeVisible();
+  // Start and Stop alone: its settings are Pro Mode's.
+  await expect(win.getByTestId('repeat-seconds')).toHaveCount(0);
   // Next with nothing up starts it going round, as its Start does.
   await win.locator('body').focus();
   await win.keyboard.press('Space');
   await expect.poll(async () => (await snapshot(win)).repeat?.playlistId).toBe(playlistId);
   const first = await stepUp(win);
   await expect.poll(() => stepUp(win), { timeout: 10_000 }).not.toBe(first);
-  await expect(win.getByTestId('simple-items').locator('[data-live="true"]')).toHaveCount(1);
+  await expect(win.getByTestId('playlist-items').locator('[data-live="true"]')).toHaveCount(1);
   await win.keyboard.press('Escape');
   await expect.poll(async () => (await snapshot(win)).repeat).toBeNull();
   await win.getByTestId('simple-repeat-start').click();

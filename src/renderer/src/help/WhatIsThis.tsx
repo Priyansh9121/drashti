@@ -35,7 +35,7 @@ export function useWhatIsThis(
   const [open, setOpen] = useState(false);
   const id = useId();
   const opener = useRef<HTMLButtonElement>(null);
-  // Pro Mode's: Simple Mode (which shows the live picture too) keeps to its big buttons.
+  // Pro Mode's: Simple Mode (Pro Mode's window with less in it, Session 55, Part 18) has no ? of its own.
   const simple = useMode((s) => s.mode === 'simple');
   if (topic === null || simple) return { button: null, card: null };
   const help = PANEL_HELP[topic];
