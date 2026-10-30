@@ -278,7 +278,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         <HeaderStates>
           <Badge tone="info">Simple Mode</Badge>
           <OnAirBadges />
-          <NetworkBadge waiting={false} />
+          <NetworkBadge />
           {/* Its end is cut, if it must be, rather than drawn over the way out beside it. */}
           <div className="min-w-0 flex-1 overflow-hidden">
             <LiveStatus />

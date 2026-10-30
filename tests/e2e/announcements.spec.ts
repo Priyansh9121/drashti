@@ -1,6 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { holdClock } from './placeholder-slides';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, networkOn, NETWORK_ENV, TABLET } from './devices';
 import { expectFits } from './fit';
@@ -247,6 +248,14 @@ test('an announcement comes off by itself when its time is up; Simple Mode refus
     await send(p, 'Placeholder: waiting for Pro Mode');
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await expect(win.getByTestId('network-badge')).toContainText('1 announcement waiting');
+    // Said whole in Simple Mode's header (it has no Announcements button to say it), at CI's 1024 × 645 and at
+    // 1280 × 720, nothing cut off.
+    for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
+      const at = `${String(size.width)} × ${String(size.height)}`;
+      await sizeOperatorWindow(app, win, size);
+      await expect(win.getByTestId('network-badge'), at).toBeInViewport({ ratio: 1 });
+      await expectFits(win.getByTestId('simple-mode'), `Simple Mode at ${at}, an announcement waiting`);
+    }
     const [second] = (await q.list()).waiting;
     const refused = await q.approve(second?.id ?? '', 'ticker');
     expect(refused).toMatchObject({ ok: false });
