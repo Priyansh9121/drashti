@@ -10,6 +10,7 @@ import { Monitor, MonitorOff, Music } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { lastStep, stepOf } from '../../../shared/deck-show';
+import { repeatPlaylistOf } from '../../../shared/repeat';
 
 /** A deck's slide's click, in words, after "slide N of M" (Session 54, C2): "click 1 of 2", "2 clicks to come". */
 export function clickWords(layer: SlideLayer | null | undefined): string {
@@ -36,13 +37,20 @@ export function LiveStatus() {
   const name = useLibrary((s) => s.presentations.find((p) => p.id === live?.presentationId)?.name);
   // A Shastra passage is not in the library's list: its reference instead.
   const passage = usePassageName(live?.presentationId);
+  // Nor are Repeat Slides' slides (`repeat:<playlistId>`): its playlist's name, going round or stopped with its slide
+  // left up (Session 55: it said "presentation").
+  const repeatName = usePlaylists((s) => {
+    const playlistId = live?.presentationId ? repeatPlaylistOf(live.presentationId) : null;
+    return playlistId === null ? undefined : s.tree.find((n) => n.id === playlistId)?.name;
+  });
+  const repeating = useEngine((s) => s.state?.repeat?.name);
   // A picture, video or sound from a playlist: its name, when that playlist is open.
   const itemLabel = usePlaylists((s) => s.items.find((i) => i.id === live?.playlist?.itemId)?.label);
   let text = 'Nothing live';
   if (timerAlone !== null) {
     text = `Live: Timer · ${timerAlone}`;
   } else if (live?.presentationId && live.slideIndex !== null) {
-    text = `Live: ${name ?? passage ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? click : ' (cleared)'}`;
+    text = `Live: ${name ?? passage ?? repeatName ?? repeating ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? click : ' (cleared)'}`;
   } else if (live?.playlist) {
     text = `Live: ${itemLabel ?? 'playlist item'}`;
   }
