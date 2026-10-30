@@ -407,7 +407,7 @@ function OtherPlaces({
           </Button>
         )}
         <p className="text-xs text-muted" data-testid="stream-upload-needed">
-          {places > 1 ? `${String(places)} places at once: ` : ''}needs an upload of about{' '}
+          {places > 1 ? `${String(places)} places at once: needs` : 'Needs'} an upload of about{' '}
           {String(uploadNeededMbps(preset, places))} Mbps (compare it with a speed test on this computer).
           {places > 1 && draft.preset !== 'several' ? ' The Several platforms preset needs less.' : ''}
         </p>
