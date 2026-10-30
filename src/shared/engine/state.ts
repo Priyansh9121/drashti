@@ -50,9 +50,12 @@ import type { StageCall } from '../stage-message';
  * its screen has a blurred copy of itself behind it (`pictures`' `turn`, `flipX`, `flipY`, `crop`, `size`, `fill` and
  * `blurred`). An older node or page would draw every message as the band along the bottom, no timer, black for the
  * wallpaper and the picture as it was taken, so it says 'incompatible'. A state 18, 17 or 16 saved is read whole (each
- * only adds to 16).
+ * only adds to 16). 22 (Session 55, Part 16, the Lower Thirds studio): a lower third's style, second colour and moving
+ * background (its look's `style`, `accent`, `motion`), its own out (`outAnimation`), the seconds it stays up
+ * (`seconds`, Part 8's R) and the studio's fonts; an older node or page would draw it as a plain box going out the way
+ * it came, so it says 'incompatible'. A state 20 saved is read whole (22 only adds to it).
  */
-export const ENGINE_STATE_VERSION = 20;
+export const ENGINE_STATE_VERSION = 22;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 16 (Session 55's
@@ -64,8 +67,9 @@ export const ENGINE_STATE_VERSION = 20;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
-    // 17, 18 and 20 each only add to 16 (Session 55: Part 15's messages and timers, Part 6's chosen wallpaper, Part 5's
-    // picture looks).
+    // 22 only adds to 20 (Session 55, Part 16's lower thirds); 17, 18 and 20 each only add to 16 (Session 55: Part 15's
+    // messages and timers, Part 6's chosen wallpaper, Part 5's picture looks).
+    version === 20 ||
     version === 18 ||
     version === 17 ||
     version === 16 ||
@@ -723,6 +727,7 @@ export interface EngineState {
    * field an older page leaves alone, so the state's version stays.
    */
   sound?: SoundState;
+  /**
    * The chosen wallpaper (Session 55, Part 6, shared/wallpapers.ts): what every audience screen, node and phone shows
    * whenever nothing is up there, and under the Wallpaper (`wallpaper`); its pictures go round from `since`. Only the
    * main process sets it, from the library. Left out (a state saved before 18) or null: none chosen, black.

@@ -90,13 +90,16 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   const studio = await openStudio(app, win);
   await expectNoSeriousA11yIssues(studio, 'the studio, with no lower thirds yet');
 
-  // From a template: placeholder words, its look, its animation; the live preview plays it.
+  // From a template with a style of its own: placeholder words, its look, its animation; the live preview plays it.
+  // (What is chosen here is read from what the studio offers: a row the Performance run leaves out changes nothing.)
   await studio.getByTestId('studio-templates').click();
-  await studio.locator('[data-testid="studio-template"][data-template="ribbon"]').click();
+  const template = studio.locator('[data-testid="studio-template"]:not([data-style="box"])').first();
+  const templateStyle = (await template.getAttribute('data-style')) ?? '';
+  await template.click();
   const preview = studio.getByTestId('lower-third-preview');
   const drawn = preview.getByTestId('lower-third-layer');
-  await expect(drawn).toHaveAttribute('data-lt-style', 'ribbon');
-  await expect(drawn).toContainText('Placeholder');
+  await expect(drawn).toHaveAttribute('data-lt-style', templateStyle);
+  await expect(drawn).toContainText(/Placeholder|નમૂના|नमूना/u);
   await tab(studio, 'Words');
   const lines = studio.getByTestId('lower-third-line');
   await lines.nth(0).fill('Placeholder speaker');
@@ -104,10 +107,15 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   await expect(drawn).toContainText('Placeholder speaker');
   await studio.getByTestId('lower-third-where').locator('[data-choice="hall"]').click();
 
-  // Its style, accent and font: the preview follows at once.
+  // Another style, and a font of the studio's: the preview follows at once.
   await tab(studio, 'Style');
-  await studio.getByTestId('lower-third-style').locator('[data-choice="pill"]').click();
-  await expect(drawn).toHaveAttribute('data-lt-style', 'pill');
+  const otherStyle = studio
+    .getByTestId('lower-third-style')
+    .locator('[data-choice]:not([aria-checked="true"])')
+    .first();
+  const style = (await otherStyle.getAttribute('data-choice')) ?? '';
+  await otherStyle.click();
+  await expect(drawn).toHaveAttribute('data-lt-style', style);
   await studio.getByTestId('lower-third-font').selectOption('Mukta');
   await expect(drawn).toHaveAttribute('data-lt-font', 'Mukta');
   await studio.getByTestId('lower-third-align').locator('[data-choice="centre"]').click();
@@ -115,19 +123,32 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
 
   // In and out, each found by its words.
   await tab(studio, 'Animation');
-  await studio.getByTestId('lower-third-search').fill('reveal up');
-  await studio.locator('[data-testid="lower-third-animation"][data-id="reveal-up-steady"]').click();
-  await expect(studio.getByTestId('lower-third-animation-chosen')).toHaveText('Reveal up');
+  await studio.getByTestId('lower-third-search').fill('from left');
+  const inItem = studio.getByTestId('lower-third-animation').nth(1);
+  const inId = (await inItem.getAttribute('data-id')) ?? '';
+  const inName = (await inItem.textContent()) ?? '';
+  expect(inName).toMatch(/left/iu);
+  await inItem.click();
+  await expect(studio.getByTestId('lower-third-animation-chosen')).toHaveText(inName);
   await expect(preview).toHaveAttribute('data-playing', 'true');
-  await studio.getByTestId('lower-third-out-search').fill('blinds');
-  await studio.locator('[data-testid="lower-third-out-animation"][data-id="blinds-quick"]').click();
-  await expect(studio.getByTestId('lower-third-out-chosen')).toHaveText('Blinds out, quick');
+  await studio.getByTestId('lower-third-out-search').fill('right');
+  const outItem = studio.locator('[data-testid="lower-third-out-animation"]:not([data-id=""])').first();
+  const outId = (await outItem.getAttribute('data-id')) ?? '';
+  const outLabel = (await outItem.textContent()) ?? '';
+  expect(outLabel).toMatch(/right/iu);
+  await outItem.click();
+  await expect(studio.getByTestId('lower-third-out-chosen')).toHaveText(outLabel);
   await expectNoSeriousA11yIssues(studio, 'the studio: Animation');
 
   // A moving background: it moves in the preview while the lower third is up.
   await tab(studio, 'Background');
-  await studio.getByTestId('lower-third-motion').locator('[data-choice="shine"]').click();
-  await expect(drawn).toHaveAttribute('data-lt-motion', 'shine');
+  const moving = studio
+    .getByTestId('lower-third-motion')
+    .locator('[data-choice]:not([data-choice="none"])')
+    .first();
+  const motion = (await moving.getAttribute('data-choice')) ?? '';
+  await moving.click();
+  await expect(drawn).toHaveAttribute('data-lt-motion', motion);
 
   await studio.getByTestId('lower-third-save').click();
   const row = studio.getByTestId('studio-row').filter({ hasText: 'Placeholder speaker' });
@@ -141,11 +162,14 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   await studio.getByTestId('studio-show').click();
   const onScreen = out.getByTestId('lower-third-layer');
   await expect(onScreen).toContainText('Placeholder speaker');
-  await expect(onScreen).toHaveAttribute('data-lt-style', 'pill');
-  await expect(onScreen).toHaveAttribute('data-lt-motion', 'shine');
-  await expect(onScreen).toHaveAttribute('data-lt-animation', 'reveal-up-steady');
+  await expect(onScreen).toHaveAttribute('data-lt-style', style);
+  await expect(onScreen).toHaveAttribute('data-lt-motion', motion);
+  await expect(onScreen).toHaveAttribute('data-lt-animation', inId);
   expect(
-    await onScreen.locator('[data-lt-line]').first().evaluate((el) => getComputedStyle(el).fontFamily),
+    await onScreen
+      .locator('[data-lt-line]')
+      .first()
+      .evaluate((el) => getComputedStyle(el).fontFamily),
   ).toMatch(/^"?Mukta"?, "?Mukta Vaani"?/u);
   await expect(panelRow.getByTestId('lower-third-show')).toHaveText('Hide');
   await expect(studio.getByTestId('studio-show')).toHaveText('Hide');
@@ -154,9 +178,9 @@ test('Lower Thirds opens the studio, a window of its own with a live preview: on
   const movedAt = await onScreen.getAttribute('data-lt-motion-at');
   await expect.poll(() => onScreen.getAttribute('data-lt-motion-at')).not.toBe(movedAt);
 
-  // Hidden from the studio: it goes out as the blinds, then it is gone.
+  // Hidden from the studio: it goes out as chosen, then it is gone.
   await studio.getByTestId('studio-show').click();
-  await expect(onScreen).toHaveAttribute('data-lt-animation', 'blinds-quick');
+  await expect(onScreen).toHaveAttribute('data-lt-animation', outId);
   await expect(onScreen).toHaveCount(0);
   expect((await snapshot(win)).state.layers.lowerThird).toBeNull();
   await expect(panelRow.getByTestId('lower-third-show')).toHaveText('Show');
@@ -219,7 +243,7 @@ test('R: one set to hide itself after 5 seconds goes by itself, playing its out;
   await app.close();
 });
 
-test('the studio at CI’s 1024 × 645 and at 1280 × 720: the preview, every tab’s controls and Save in reach, nothing sideways; axe passes', async () => {
+test('the studio at CI’s 1024 × 645 and at 1280 × 720: the preview, every tab’s controls and Save in reach, nothing sideways, axe passes; closed with changes not saved, it asks first', async () => {
   test.setTimeout(180_000);
   const { app, win } = await start();
   const studio = await openStudio(app, win);
@@ -257,5 +281,23 @@ test('the studio at CI’s 1024 × 645 and at 1280 × 720: the preview, every ta
       await expectNoSeriousA11yIssues(studio, `${what}: ${name}`);
     }
   }
+  // Its window closed with changes not saved (the template, never saved) asks first: Keep editing keeps it open,
+  // Throw them away closes it.
+  const closeIt = () =>
+    app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().includes('lower-thirds.html'))
+        ?.close();
+    });
+  await closeIt();
+  const ask = studio.getByTestId('keep-changes');
+  await expect(ask).toBeVisible();
+  await expectNoSeriousA11yIssues(studio, 'the studio asking before it closes');
+  await ask.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(ask).toHaveCount(0);
+  expect(app.windows().some(isStudio)).toBe(true);
+  await closeIt();
+  await studio.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await expect.poll(() => app.windows().some(isStudio)).toBe(false);
   await app.close();
 });

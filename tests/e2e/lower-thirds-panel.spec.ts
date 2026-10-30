@@ -74,7 +74,11 @@ test('made from the panel (in the studio), shown on a placeholder hall screen an
   // Made: three lines, the hall's screens, centred, and an animation found by its words, in the studio New… opens
   // (Session 55, Part 16: a window of its own).
   await panel.getByTestId('lower-third-new').click();
-  const editor = await windowShowing(app, (p) => p.url().includes('lower-thirds.html'), 'the Lower Thirds studio');
+  const editor = await windowShowing(
+    app,
+    (p) => p.url().includes('lower-thirds.html'),
+    'the Lower Thirds studio',
+  );
   await expect(editor.getByTestId('lt-studio')).toBeVisible({ timeout: 30_000 });
   const tab = (name: string) => editor.getByRole('tab', { name }).click();
   await tab('Words');
@@ -97,7 +101,7 @@ test('made from the panel (in the studio), shown on a placeholder hall screen an
   await search.fill('bounce');
   expect(await listed()).toEqual(expect.arrayContaining(['Bounce up', 'Pop in']));
   await search.fill('zzzqqq');
-  await expect(editor).toContainText('No animation is called that.');
+  await expect(editor.getByTestId('lower-third-animations')).toContainText('No animation is called that.');
   await search.fill('pop in');
   // Chosen: it plays in the small picture.
   await editor

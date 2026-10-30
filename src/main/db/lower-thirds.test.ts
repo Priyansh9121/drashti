@@ -103,4 +103,3 @@ describe('lower thirds in the library', () => {
     });
   });
 });
-

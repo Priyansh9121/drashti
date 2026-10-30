@@ -1879,10 +1879,11 @@ test('a stopped screen’s notice at the top of the window (Session 26h)', async
 
 /*
  * Lower Thirds (Session 44, in Macros' place), for the operator's guide (Session 45): the panel open under More
- * tools with a placeholder lower third up over the kirtan (its button says Hide, and LIVE shows it), and its
- * editor in front, finding an animation by its words, the chosen one held in the small picture.
+ * tools with a placeholder lower third up over the kirtan (its button says Hide, and LIVE shows it); and the Lower
+ * Thirds studio (Session 55, Part 16), a window of its own, finding an animation by its words, the lower third held
+ * in its live preview.
  */
-test('Lower Thirds: the panel with one up, and its editor finding an animation (Session 44)', async () => {
+test('Lower Thirds: the panel with one up, and the studio finding an animation (Sessions 44 and 55)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -1913,18 +1914,31 @@ test('Lower Thirds: the panel with one up, and its editor finding an animation (
     'data-lt-phase',
     'still',
   );
-  await row.getByTestId('lower-third-edit').click();
-  const editor = win.getByTestId('lower-third-editor');
-  await expect(editor).toBeVisible();
-  await editor.getByTestId('lower-third-search').fill('slide');
-  await expect(editor.getByTestId('lower-third-animation').first()).toBeVisible();
-  await expect(editor.getByTestId('lower-third-animation-chosen')).toHaveText('Slide in from left');
-  await letTimePass(win, 700, 'the docs’ picture: the editor and the live picture settle');
-  // The small picture plays it in, holds it 1.2 s, then takes it out: the picture is taken while it is held.
-  const preview = editor.getByTestId('lower-third-preview').getByTestId('lower-third-layer');
-  await editor.getByRole('button', { name: 'Play again' }).click();
-  await expect(preview).toHaveAttribute('data-lt-phase', 'still');
+  await letTimePass(win, 700, 'the docs’ picture: the panel and the live picture settle');
   await win.screenshot({ path: join(folder, 'lower-thirds.png'), scale: 'css', animations: 'disabled' });
+  // Edit opens the studio, a window of its own (Session 55, Part 16), on this one.
+  await row.getByTestId('lower-third-edit').click();
+  const studio = await windowShowing(
+    app,
+    (p) => p.url().includes('lower-thirds.html'),
+    'the Lower Thirds studio',
+  );
+  await studio.setViewportSize({ width: 1280, height: 800 });
+  await expect(studio.getByTestId('lt-studio')).toBeVisible();
+  await studio.getByRole('tab', { name: 'Animation' }).click();
+  await studio.getByTestId('lower-third-search').fill('slide');
+  await expect(studio.getByTestId('lower-third-animation').first()).toBeVisible();
+  await expect(studio.getByTestId('lower-third-animation-chosen')).toHaveText('Slide in from left');
+  await letTimePass(studio, 700, 'the docs’ picture: the studio settles');
+  // The preview plays it in, holds it, then takes it out: the picture is taken while it is held.
+  const preview = studio.getByTestId('lower-third-preview').getByTestId('lower-third-layer');
+  await studio.getByRole('button', { name: 'Play again' }).click();
+  await expect(preview).toHaveAttribute('data-lt-phase', 'still');
+  await studio.screenshot({
+    path: join(folder, 'lower-thirds-studio.png'),
+    scale: 'css',
+    animations: 'disabled',
+  });
   await expect(preview, 'still held when the picture was taken').toHaveAttribute('data-lt-phase', 'still', {
     timeout: 1,
   });

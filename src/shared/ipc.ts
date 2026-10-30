@@ -1,5 +1,12 @@
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
-import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
+import type {
+  LowerThird,
+  LowerThirdDone,
+  LowerThirdInput,
+  LowerThirdResult,
+  LowerThirdsResult,
+  StudioOpen,
+} from './lower-thirds';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
@@ -557,8 +564,20 @@ export const IPC = {
     save: 'lowerthirds:save',
     remove: 'lowerthirds:remove',
     restore: 'lowerthirds:restore',
-    /** main -> operator: the lower thirds changed. */
+    /** main -> operator (and the studio): the lower thirds changed. */
     changed: 'lowerthirds:changed',
+    /** The Lower Thirds studio (Session 55, Part 16): the operator window opens it, on one or a new one. */
+    studio: 'lowerthirds:studio',
+    /** Show one as the library has it, or hide the one up: the operator window or the studio. */
+    show: 'lowerthirds:show',
+    hide: 'lowerthirds:hide',
+    /** main -> the studio: open this one (the studio was open already). */
+    edit: 'lowerthirds:edit',
+    /** The studio says whether it has changes not saved, and closes once its question is answered. */
+    dirty: 'lowerthirds:dirty',
+    close: 'lowerthirds:close',
+    /** main -> the studio: its window was asked to close with changes not saved (ask first). */
+    askClose: 'lowerthirds:ask-close',
   },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
@@ -1241,6 +1260,11 @@ export interface InvokeContract {
   [IPC.lowerThirds.save]: { args: [id: string | null, input: LowerThirdInput]; result: LowerThirdResult };
   [IPC.lowerThirds.remove]: { args: [ids: string[]]; result: LowerThirdsResult };
   [IPC.lowerThirds.restore]: { args: [ids: string[]]; result: LowerThirdsResult };
+  [IPC.lowerThirds.studio]: { args: [open: StudioOpen]; result: LowerThirdDone };
+  [IPC.lowerThirds.show]: { args: [id: string]; result: LowerThirdDone };
+  [IPC.lowerThirds.hide]: { args: []; result: LowerThirdDone };
+  [IPC.lowerThirds.dirty]: { args: [dirty: boolean]; result: null };
+  [IPC.lowerThirds.close]: { args: []; result: null };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.midi.report]: { args: [seen: MidiSeen]; result: null };
@@ -1455,6 +1479,8 @@ export interface EventContract {
   [IPC.midi.ask]: MidiAsk;
   [IPC.midi.changed]: MidiSettings;
   [IPC.lowerThirds.changed]: LowerThird[];
+  [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
+  [IPC.lowerThirds.askClose]: null;
   [IPC.wallpapers.changed]: WallpapersView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.output.context]: OutputContext;

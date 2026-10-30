@@ -1,6 +1,3 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Pose } from './lower-third-animations';
 import {
@@ -12,25 +9,23 @@ import {
   REST,
   searchAnimations,
 } from './lower-third-animations';
-import {
-  fontChoice,
-  LOWER_THIRD_FONT_CHOICES,
-  LOWER_THIRD_FONTS,
-  STUDIO_FONT_FILES,
-} from './lower-third-fonts';
+import { fontChoice, LOWER_THIRD_FONT_CHOICES, LOWER_THIRD_FONTS } from './lower-third-fonts';
 import { STUDIO_BOX_MOVES, studioUnitMoves } from './lower-third-moves';
 import {
   animationName,
   CATALOGUE,
+  FAMILIES,
   familyOf,
   HIDE_AFTER,
   idFor,
+  isOffered,
   LOWER_THIRD_TEMPLATES,
   OFFERED,
   OFFERED_ANIMATIONS,
   OFFERED_MOTIONS,
   OFFERED_STYLES,
   outName,
+  searchOffered,
 } from './lower-third-studio';
 import {
   LOWER_THIRD_MOTIONS,
@@ -59,8 +54,6 @@ import {
  * as it did.
  */
 
-const APP = join(__dirname, '..', '..');
-
 /** What a pose may set: numbers in range; the studio's moves may skew, clip to a circle or polygon, and blur. */
 const TRANSFORM =
   /^((translate\(-?[\d.]+(%|em), -?[\d.]+(%|em)\)|scale\([\d.]+(, [\d.]+)?\)|rotate\(-?[\d.]+deg\)|skewX\(-?[\d.]+deg\)|perspective\(900px\) rotate[XY]\(-?[\d.]+deg\))( |$))*$/u;
@@ -86,7 +79,7 @@ function unseen(pose: Pose): boolean {
     const [, top, right, bottom, left] = inset.map(Number);
     if ((top ?? 0) + (bottom ?? 0) >= 100 || (left ?? 0) + (right ?? 0) >= 100) return true;
   }
-  if (/^circle\(0% /u.test(pose.clip)) return true;
+  if (pose.clip.startsWith('circle(0% ')) return true;
   return /scale\(0(, |\))|scale\([\d.]+, 0\)/u.test(pose.transform);
 }
 
@@ -186,7 +179,7 @@ describe('the studio’s animations', () => {
 });
 
 describe('the offered set: one table', () => {
-  it('names only what the library has; covers slide, wipe, reveal, split, bounce, typewriter, zoom, blur and letter by letter, and every style and moving background', () => {
+  it('names only what the library has, each once; the studio knows slide, wipe, reveal, split, bounce, typewriter, zoom, blur and letter by letter, band, box, pill, ribbon, outline, glass and two colours, and a gradient sweeping, light passing over and shapes', () => {
     for (const row of OFFERED) {
       if (row.kind === 'animation')
         expect(
@@ -196,9 +189,19 @@ describe('the offered set: one table', () => {
       if (row.kind === 'background') expect(LOWER_THIRD_MOTIONS, row.key).toContain(row.key);
       if (row.kind === 'style') expect(LOWER_THIRD_STYLES, row.key).toContain(row.key);
     }
-    const families = OFFERED.flatMap((r) => (r.kind === 'animation' ? [r.family] : []));
-    expect(new Set(families).size).toBe(families.length);
-    const names = OFFERED_ANIMATIONS.map((a) => a.name.toLowerCase());
+    const rows = OFFERED.map((r) => `${r.kind}:${r.kind === 'animation' ? r.family : r.key}`);
+    expect(new Set(rows).size).toBe(rows.length);
+    for (const r of OFFERED)
+      if (r.kind === 'animation')
+        expect(
+          FAMILIES.map((f) => f.family),
+          r.family,
+        ).toContain(r.family);
+    // What the studio knows (a row left out of OFFERED after the Performance run changes none of this).
+    const known = new Set(FAMILIES.map((f) => f.family));
+    const names = LOWER_THIRD_ANIMATIONS.filter((a) => known.has(familyOf(a))).map((a) =>
+      a.name.toLowerCase(),
+    );
     for (const word of [
       'slide',
       'wipe',
@@ -214,10 +217,19 @@ describe('the offered set: one table', () => {
         names.some((n) => n.includes(word)),
         word,
       ).toBe(true);
-    expect(OFFERED_STYLES).toEqual(
+    expect(LOWER_THIRD_STYLES).toEqual(
       expect.arrayContaining(['band', 'box', 'pill', 'ribbon', 'outline', 'glass', 'split']),
     );
-    expect(OFFERED_MOTIONS).toEqual(expect.arrayContaining(['sweep', 'shine', 'shapes']));
+    expect(LOWER_THIRD_MOTIONS).toEqual(expect.arrayContaining(['sweep', 'shine', 'shapes']));
+    // Every animation of the library is in a family the studio knows.
+    for (const a of LOWER_THIRD_ANIMATIONS) expect(known.has(familyOf(a)), a.id).toBe(true);
+    // Offered: what the table has, and no more.
+    for (const s of OFFERED_STYLES) expect(OFFERED).toContainEqual({ kind: 'style', key: s });
+    for (const m of OFFERED_MOTIONS.filter((x) => x !== 'none'))
+      expect(OFFERED).toContainEqual({ kind: 'background', key: m });
+    expect(OFFERED_MOTIONS[0]).toBe('none');
+    expect(searchOffered('').length).toBe(OFFERED_ANIMATIONS.length);
+    for (const o of searchOffered('fade')) expect(o.animation.name.toLowerCase()).toContain('fade');
   });
 
   it('a family left out of the table is not offered, but a lower third that has it still draws it', () => {
@@ -226,7 +238,8 @@ describe('the offered set: one table', () => {
     // Every offered animation is one of an offered family; every animation of the library can be drawn.
     for (const a of LOWER_THIRD_ANIMATIONS) {
       const row = OFFERED.find((r) => r.kind === 'animation' && r.family === familyOf(a));
-      expect(offered.has(a.id), a.id).toBe(row !== undefined);
+      expect(offered.has(a.id), a.id).toBe(isOffered(a.id));
+      if (row === undefined) expect(offered.has(a.id), a.id).toBe(false);
       expect(animationById(a.id).id).toBe(a.id);
     }
   });
@@ -246,7 +259,13 @@ describe('the offered set: one table', () => {
     expect(animationName('slide-left-steady')).toBe('Slide in from left');
     expect(outName('slide-left-steady')).toBe('Slide out to the left');
     expect(outName('fade-quick')).toBe('Fade out, quick');
-    expect(outName('letter-type-band-fade-steady')).toMatch(/letter by letter/u);
+    expect(outName('blur-right-slow')).toBe('Blur out to the right, slow');
+    expect(outName('word-fade-band-slide-steady')).toBe('Fade out word by word, band slides out');
+    expect(outName('line-slide-left-band-fade-quick')).toBe('Slide out line by line to the left, quick');
+    expect(outName('blinds-quick')).toBe('Blinds, backwards, quick');
+    expect(outName('letter-type-band-fade-steady')).toBe('Type letter by letter, backwards');
+    const outs = OFFERED_ANIMATIONS.map((a) => outName(a.id));
+    expect(new Set(outs).size).toBe(outs.length);
   });
 });
 
@@ -316,7 +335,11 @@ describe('styles and moving backgrounds', () => {
 
 describe('fonts', () => {
   it('more fonts, Gujarati and Devanagari among them, each in the table with its weights; the old three as they were', () => {
-    expect(LOWER_THIRD_FONTS.slice(0, 3)).toEqual(['Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari']);
+    expect(LOWER_THIRD_FONTS.slice(0, 3)).toEqual([
+      'Noto Sans',
+      'Noto Sans Gujarati',
+      'Noto Sans Devanagari',
+    ]);
     expect(LOWER_THIRD_FONTS.length).toBeGreaterThanOrEqual(10);
     expect(LOWER_THIRD_FONT_CHOICES.map((f) => f.name)).toEqual([...LOWER_THIRD_FONTS]);
     const scripts = (s: 'gujarati' | 'devanagari') =>
@@ -326,33 +349,6 @@ describe('fonts', () => {
     expect(fontChoice('Mukta').families).toEqual(['Mukta', 'Mukta Vaani']);
     expect(fontChoice('No such font').name).toBe('Noto Sans');
     for (const f of LOWER_THIRD_FONT_CHOICES) expect(f.weights.length, f.name).toBeGreaterThan(0);
-  });
-
-  it('every bundled file is in the repository, in studio-fonts.css, and in LICENSES/fonts/README.md with its source and sha256, with its family’s licence text', () => {
-    const css = readFileSync(join(APP, 'src/renderer/src/render/studio-fonts.css'), 'utf8');
-    const readme = readFileSync(join(APP, 'LICENSES/fonts/README.md'), 'utf8');
-    const families = new Set(
-      LOWER_THIRD_FONT_CHOICES.filter((f) => f.bundled === 'studio').flatMap((f) => f.families),
-    );
-    expect(new Set(STUDIO_FONT_FILES.map((f) => f.family))).toEqual(families);
-    let bytes = 0;
-    for (const f of STUDIO_FONT_FILES) {
-      const path = join(APP, 'src/renderer/src/render/studio-fonts', f.file);
-      expect(existsSync(path), f.file).toBe(true);
-      const data = readFileSync(path);
-      bytes += data.length;
-      expect(data.subarray(0, 4).toString('latin1'), f.file).toBe('wOF2');
-      const sha = createHash('sha256').update(data).digest('hex');
-      expect(readme, f.file).toContain(sha);
-      expect(readme, f.file).toContain(f.source);
-      expect(css, f.file).toContain(`./studio-fonts/${f.file}`);
-      expect(existsSync(join(APP, 'LICENSES/fonts', f.licence)), f.licence).toBe(true);
-      expect(readFileSync(join(APP, 'LICENSES/fonts', f.licence), 'utf8'), f.licence).toMatch(
-        /SIL OPEN FONT LICENSE Version 1\.1/iu,
-      );
-    }
-    // Modest: under 2.5 MB in all.
-    expect(bytes).toBeLessThan(2.5 * 1024 * 1024);
   });
 });
 

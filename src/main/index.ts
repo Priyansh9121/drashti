@@ -96,6 +96,7 @@ import type { WallpaperService } from './wallpapers/wallpaper-service';
 import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
+import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
@@ -2879,6 +2880,8 @@ function start(): void {
   // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
   let mode: OperatorMode = 'pro';
   let rebuildMenu: () => void = () => undefined;
+  // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
+  let closeStudio: () => void = () => undefined;
   const modes = new ModeKeeper({
     saved: { mode: settings.get('operatorMode'), byAccess: settings.get('simpleByAccess') },
     recentStop: startup.recentStop,
@@ -2891,6 +2894,7 @@ function start(): void {
     changed: (next) => {
       mode = next;
       rebuildMenu();
+      if (next === 'simple') closeStudio();
       sendToOperator(IPC.app.modeChanged, { mode: next });
     },
     menu: () => {
@@ -4021,19 +4025,52 @@ function start(): void {
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
   lowerThirds.purge();
+  // The Lower Thirds studio (Session 55, Part 16): a window of its own, where they are made, shown and hidden.
+  const studio = new LowerThirdsStudio({
+    workArea: () =>
+      (operatorWindow && !operatorWindow.isDestroyed()
+        ? electronScreen.getDisplayMatching(operatorWindow.getBounds())
+        : electronScreen.getPrimaryDisplay()
+      ).workArea,
+    background: () => appearance.background(),
+    track: (win) => {
+      appearance.track(win);
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  closeStudio = () => {
+    studio.close();
+  };
+  stops.add('Lower Thirds studio', () => {
+    studio.close();
+  });
+  handleStudio({
+    studio,
+    fromOperator,
+    get: (id) => lowerThirds.get(id),
+    engine,
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  const fromLowerThirds = (e: IpcMainInvokeEvent) => fromOperator(e) || studio.isPage(e.sender);
   const lowerThirdsChanged = () => {
-    sendToOperator(IPC.lowerThirds.changed, lowerThirds.list());
+    const list = lowerThirds.list();
+    sendToOperator(IPC.lowerThirds.changed, list);
+    studio.send(list);
     // A phone lists them too (Session 54, D5).
     network?.hint('lowerThirds');
   };
   const notLowerThirdOperator = {
     ok: false as const,
-    message: 'Only the operator window can change lower thirds.',
+    message: 'Only the operator window and the Lower Thirds studio can change lower thirds.',
   };
   const lowerThirdIds = z.array(idSchema).max(500);
   handle(IPC.lowerThirds.list, () => lowerThirds.list());
   handle(IPC.lowerThirds.save, (e, id, raw) => {
-    if (!fromOperator(e)) return notLowerThirdOperator;
+    if (!fromLowerThirds(e)) return notLowerThirdOperator;
     const which = idSchema.nullable().safeParse(id);
     const input = lowerThirdInputSchema.safeParse(raw);
     if (!which.success || !input.success)
@@ -4054,7 +4091,7 @@ function start(): void {
     return { ok: true as const, id: saved };
   });
   handle(IPC.lowerThirds.remove, (e, raw) => {
-    if (!fromOperator(e)) return notLowerThirdOperator;
+    if (!fromLowerThirds(e)) return notLowerThirdOperator;
     const ids = lowerThirdIds.safeParse(raw);
     if (!ids.success) return { ok: false as const, message: 'Those lower thirds cannot be deleted.' };
     const removed = lowerThirds.remove(ids.data);
@@ -4062,7 +4099,7 @@ function start(): void {
     return { ok: true as const, ids: removed };
   });
   handle(IPC.lowerThirds.restore, (e, raw) => {
-    if (!fromOperator(e)) return notLowerThirdOperator;
+    if (!fromLowerThirds(e)) return notLowerThirdOperator;
     const ids = lowerThirdIds.safeParse(raw);
     if (!ids.success) return { ok: false as const, message: 'Those lower thirds cannot be brought back.' };
     const back = lowerThirds.restore(ids.data);
@@ -5740,6 +5777,7 @@ function start(): void {
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
     streaming.quitting();
+    studio.quitting();
   });
 
   const runSelfTest = () =>

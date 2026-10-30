@@ -46,9 +46,7 @@ function timed() {
   const elapse = (ms: number) => {
     const until = clock + ms;
     for (;;) {
-      const due = waiting
-        .filter((j) => !j.cancelled && j.at <= until)
-        .sort((a, b) => a.at - b.at)[0];
+      const due = waiting.filter((j) => !j.cancelled && j.at <= until).sort((a, b) => a.at - b.at)[0];
       if (!due) break;
       waiting.splice(waiting.indexOf(due), 1);
       clock = Math.max(clock, due.at);
@@ -136,7 +134,10 @@ describe('a lower third in the engine', () => {
 
   it('one that hides itself (Session 55, Part 16, R): goes at the seconds chosen from when it went up, playing its out from then, the same on every screen', () => {
     const { engine, elapse, now } = timed();
-    engine.dispatch({ type: 'showLowerThird', lowerThird: { ...lowerThird('a', 'Placeholder name'), seconds: 5 } });
+    engine.dispatch({
+      type: 'showLowerThird',
+      lowerThird: { ...lowerThird('a', 'Placeholder name'), seconds: 5 },
+    });
     const shownAt = engine.current.layers.lowerThird?.shownAt ?? 0;
     expect(shownAt).toBe(now());
     elapse(4999);
@@ -180,7 +181,10 @@ describe('a lower third in the engine', () => {
   it('one past its time when Put it back brings it back stays off; one still in its time comes back for the rest of it', () => {
     const { engine, elapse } = timed();
     engine.dispatch({ type: 'goLive', presentationId: 'kirtan', slideIndex: 0 });
-    engine.dispatch({ type: 'showLowerThird', lowerThird: { ...lowerThird('a', 'Placeholder name'), seconds: 5 } });
+    engine.dispatch({
+      type: 'showLowerThird',
+      lowerThird: { ...lowerThird('a', 'Placeholder name'), seconds: 5 },
+    });
     const shownAt = engine.current.layers.lowerThird?.shownAt ?? 0;
     elapse(2000);
     engine.dispatch({ type: 'clearAll' });
@@ -191,7 +195,10 @@ describe('a lower third in the engine', () => {
     expect(engine.current.layers.lowerThird).toBeNull();
     expect(engine.current.lowerThirdOff?.at).toBe(shownAt + 5000);
     // Past its time by the time it comes back: it never shows again (no change on the screens, no out).
-    engine.dispatch({ type: 'showLowerThird', lowerThird: { ...lowerThird('b', 'Placeholder other'), seconds: 5 } });
+    engine.dispatch({
+      type: 'showLowerThird',
+      lowerThird: { ...lowerThird('b', 'Placeholder other'), seconds: 5 },
+    });
     elapse(1000);
     engine.dispatch({ type: 'clearAll' });
     elapse(10_000);
@@ -202,12 +209,13 @@ describe('a lower third in the engine', () => {
 
   it('a window, a phone or the API asking: 5 to 60 seconds, whole, or none', () => {
     const ask = (seconds: unknown) =>
-      parseEngineCommand({ type: 'showLowerThird', lowerThird: { ...lowerThird('a', 'Placeholder'), seconds } })
-        .ok;
+      parseEngineCommand({
+        type: 'showLowerThird',
+        lowerThird: { ...lowerThird('a', 'Placeholder'), seconds },
+      }).ok;
     expect(ask(5)).toBe(true);
     expect(ask(60)).toBe(true);
     expect(ask(undefined)).toBe(true);
     for (const wrong of [4, 61, 2.5, '10', null]) expect(ask(wrong), String(wrong)).toBe(false);
   });
 });
-

@@ -100,8 +100,9 @@ const background = (e: ShowEngine) => {
 describe('the chosen wallpaper in the engine’s state (engine state 18)', () => {
   it('is set by the main process alone, from when it was chosen; the same again is no change, and none is null', () => {
     const { engine, now, elapse } = setup();
-    expect(ENGINE_STATE_VERSION).toBe(18);
-    expect([18, 16, 15, 14, 13, 12].every((v) => readsEngineVersion(v))).toBe(true);
+    // 18 then (Part 6); 22 now (Part 16), which still reads 18 whole.
+    expect(ENGINE_STATE_VERSION).toBe(22);
+    expect([22, 20, 18, 16, 15, 14, 13, 12].every((v) => readsEngineVersion(v))).toBe(true);
     expect(engine.current.chosenWallpaper ?? null).toBeNull();
     expect(engine.setChosenWallpaper(WALL)).toMatchObject({ ok: true, changed: true });
     expect(engine.current.chosenWallpaper).toEqual({ ...WALL, since: now() });
