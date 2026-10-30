@@ -5758,7 +5758,10 @@ function start(): void {
     message: 'Only the operator window can change the video inputs.',
   };
   // The list: the operator window's Media, and every screen's page, which opens only an input listed here.
-  handle(IPC.videoInputs.list, (e) => (screenPage(e) ? inputs.view() : { inputs: [] }));
+  // The slide editor's window too (Session 55, Part 17a): a slide's background is a video input by its name.
+  handle(IPC.videoInputs.list, (e) =>
+    screenPage(e) || (slideEditor?.isPage(e.sender) ?? false) ? inputs.view() : { inputs: [] },
+  );
   handle(IPC.videoInputs.add, (e, fields) => (fromOperator(e) ? inputs.add(fields) : notOperatorInputs));
   handle(IPC.videoInputs.update, (e, id, fields) =>
     fromOperator(e) ? inputs.update(id, fields) : notOperatorInputs,

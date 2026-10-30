@@ -39,12 +39,12 @@ async function start(): Promise<{ app: ElectronApplication; win: Page }> {
   return { app, win };
 }
 
-/** A placeholder kirtan of three slides, imported; its id. */
+/** A placeholder kirtan of three slides (its words its own), imported; its id. */
 async function importPlaceholder(win: Page, name: string): Promise<string> {
   const file = join(mkdtempSync(join(tmpdir(), 'drashti-editor-window-')), `${name}.txt`);
   writeFileSync(
     file,
-    '[Verse]\nPlaceholder line one\n\nPlaceholder line two\n\n[Chorus]\nPlaceholder chorus line\n',
+    `[Verse]\nPlaceholder line one\n\nPlaceholder line two\n\n[Chorus]\nPlaceholder chorus line of ${name}\n`,
   );
   const [id = ''] = await importAndGetIds(win, [file]);
   return id;

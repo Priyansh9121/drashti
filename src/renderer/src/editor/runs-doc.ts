@@ -207,7 +207,16 @@ function linesOf(runs: readonly TextRun[]): TextRun[] {
 
 /** Whether two text boxes have the same words and looks. */
 export const sameWords = (a: TextElement, b: TextElement): boolean =>
-  a.text === b.text && JSON.stringify(a.runs ?? null) === JSON.stringify(b.runs ?? null);
+  a.text === b.text && canonical(a.runs ?? null) === canonical(b.runs ?? null);
+
+/** Data as words, its objects' keys in order (Session 55, Part 17a): settings written in another order are the same. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v !== null && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)))
+      : v,
+  );
+}
 
 /**
  * A transaction giving the selected words a new look. With nothing selected

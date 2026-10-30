@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { slideEditorTitle, SLIDE_EDITOR_TITLE } from '../../../../shared/slide-edit';
 import { connectEngine } from '../../engine/engine-store';
-import { loadMedia } from '../../library/library-store';
+import { loadMedia, selectPresentation } from '../../library/library-store';
 import { connectPictureLooks } from '../../render/picture-looks';
 import { connectScreens } from '../../screens/screens-store';
 import { connectInputsList } from '../../video-inputs/video-inputs-store';
@@ -82,6 +82,13 @@ export function EditorWindow() {
   useEffect(() => {
     void window.drashti.slideEditor.dirty(dirty);
   }, [dirty]);
+
+  // The library's own copy of the presentation: the names of files its slides play that the library's list leaves out
+  // (a sound deleted from Media is still named: Session 54 review).
+  const presentationId = useEditor((s) => s.open?.presentationId ?? null);
+  useEffect(() => {
+    if (presentationId) void selectPresentation(presentationId);
+  }, [presentationId]);
 
   // The window's name: the presentation's, once its slides are read.
   useEffect(() => {

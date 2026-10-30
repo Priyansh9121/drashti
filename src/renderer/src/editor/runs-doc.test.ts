@@ -12,6 +12,7 @@ import {
   pasteText,
   restyle,
   runsOf,
+  sameWords,
   selectedList,
   selectedLook,
   splitLine,
@@ -340,5 +341,34 @@ describe('the Words group on a whole box (Session 55, Part 17a)', () => {
     const spaced = styleBox(box(undefined, 'Placeholder'), { letterSpacing: 4 });
     expect(spaced.runs).toEqual([{ text: 'Placeholder', letterSpacing: 4 }]);
     expect(styleBox(spaced, { letterSpacing: undefined }).runs).toBeUndefined();
+  });
+});
+
+describe('a box typed in and left as it was (Session 55, Part 17a)', () => {
+  it('is the same box, however its runs’ settings were ordered: no change to undo, nothing to save', () => {
+    const styledLater: TextRun[] = [
+      { text: 'one\n', list: 'disc', color: '#ffcc00' },
+      { text: 'two', list: 'disc' },
+    ];
+    const el = box(styledLater);
+    expect(sameWords(el, box(runsOf(docOf(schema, el))))).toBe(true);
+    expect(
+      sameWords(
+        el,
+        box([
+          { text: 'one\n', color: '#ffcc00', list: 'disc' },
+          { text: 'two', list: 'disc' },
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      sameWords(
+        el,
+        box([
+          { text: 'one\n', color: '#ffcc00' },
+          { text: 'two', list: 'disc' },
+        ]),
+      ),
+    ).toBe(false);
   });
 });
