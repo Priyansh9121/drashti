@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { KeyBinding, KeyInput, OperatorAction } from '../../../shared/keymap';
-import { actionFor, PAGE_KEYMAP } from '../../../shared/keymap';
+import { actionFor, PAGE_KEYMAP, quickSlotFor } from '../../../shared/keymap';
 import { useKeymapNow } from './single-keys-store';
 
 export function isTyping(target: unknown): boolean {
@@ -28,7 +28,7 @@ export interface KeyPress extends KeyInput {
 export function keyListener(
   platform: string,
   keymap: readonly KeyBinding[],
-  run: (action: OperatorAction) => void,
+  run: (action: OperatorAction, slot?: number) => void,
 ): (event: KeyPress) => void {
   return (event) => {
     if (event.defaultPrevented) return;
@@ -42,7 +42,11 @@ export function keyListener(
       (action !== 'openScreens' && action !== 'uncoverControls' && dialogOpen());
     if (!letGo) {
       event.preventDefault();
-      run(action);
+      // The quick bar's keys (Session 55, Part 8) say which pin: Alt+1 the first.
+      if (action === 'quickBar') {
+        const slot = quickSlotFor(event);
+        if (slot !== null) run(action, slot);
+      } else run(action);
     } else if (keymap.some((b) => b.action === action && b.shownInMenu === true)) event.preventDefault();
   };
 }
@@ -53,7 +57,7 @@ export function keyListener(
  */
 export function useKeymap(
   platform: string,
-  run: (action: OperatorAction) => void,
+  run: (action: OperatorAction, slot?: number) => void,
   keymap: readonly KeyBinding[] = PAGE_KEYMAP,
 ): void {
   const runRef = useRef(run);
@@ -62,8 +66,8 @@ export function useKeymap(
   });
   const keys = useKeymapNow(keymap);
   useEffect(() => {
-    const onKey = keyListener(platform, keys, (action) => {
-      runRef.current(action);
+    const onKey = keyListener(platform, keys, (action, slot) => {
+      runRef.current(action, slot);
     });
     window.addEventListener('keydown', onKey);
     return () => {

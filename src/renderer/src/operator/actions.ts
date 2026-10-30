@@ -81,6 +81,11 @@ function inTurn(run: () => Promise<void>): Promise<void> {
   return mine;
 }
 
+/** A step of the show taken in turn with the keys and buttons (Session 55, Part 8: a quick bar's pin put up). */
+export function runInTurn(run: () => Promise<void>): Promise<void> {
+  return inTurn(run);
+}
+
 /**
  * Go live at a position in an order (an arrangement, or null for every slide
  * in order), from a playlist item when one is given, so Next carries on into
@@ -125,6 +130,8 @@ export function runAction(action: OperatorAction, ui: OperatorUi): Promise<void>
 }
 
 async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
+  // The quick bar's keys (Session 55, Part 8) are its own (quick-bar-store.ts): Pro Mode's window sends them there.
+  if (action === 'quickBar') return;
   const live = useEngine.getState().state?.live;
   const { selectedId, doc, item } = useLibrary.getState();
   const somethingLive = live?.presentationId != null || live?.playlist != null;

@@ -1,4 +1,5 @@
 import type { ReadyReport } from './ready';
+import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
   LowerThird,
@@ -933,5 +934,12 @@ export interface DrashtiBridge {
   /** Ready? (Session 55, Part 8): the check, with the playlist open in the window (its files are checked). */
   ready: {
     check(openPlaylistId: string | null): Promise<ReadyReport | null>;
+  };
+  /** The quick bar (Session 55, Part 8): its pins, kept with the library; changed in Pro Mode only. */
+  quickBar: {
+    view(): Promise<QuickPin[]>;
+    /** The whole bar as it should be now: at most 8, each once. */
+    set(pins: QuickPin[]): Promise<QuickBarResult>;
+    onChanged(listener: (pins: QuickPin[]) => void): () => void;
   };
 }

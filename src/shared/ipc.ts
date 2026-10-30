@@ -1,4 +1,5 @@
 import type { ReadyReport } from './ready';
+import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
   LowerThird,
@@ -983,11 +984,21 @@ export const IPC = {
   ready: {
     check: 'ready:check',
   },
+  /** The quick bar (Session 55, Part 8, F): up to 8 pinned items, kept with the library; Pro Mode changes them. */
+  quickBar: {
+    view: 'quickbar:view',
+    /** The whole bar as it should be now (the operator window only; Simple Mode refuses it). */
+    set: 'quickbar:set',
+    /** main -> operator: the bar changed. */
+    changed: 'quickbar:changed',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
   [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
+  [IPC.quickBar.view]: { args: []; result: QuickPin[] };
+  [IPC.quickBar.set]: { args: [pins: QuickPin[]]; result: QuickBarResult };
   [IPC.appearance.view]: { args: []; result: AppearanceView };
   [IPC.appearance.choose]: { args: [choice: string]; result: { ok: true } | { ok: false; message: string } };
   [IPC.appearance.make]: {
@@ -1506,6 +1517,7 @@ export interface EventContract {
   [IPC.setup.open]: { at: number };
   [IPC.audio.status]: AudioOutputStatus;
   [IPC.sound.changed]: SoundView;
+  [IPC.quickBar.changed]: QuickPin[];
   [IPC.stream.changed]: StreamStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.savesChanged]: SaveJob[];

@@ -300,6 +300,7 @@ import { Leftovers, leftoversFile } from './system/leftovers';
 import { runPowerShell } from './system/powershell';
 import { type ReadyDeps, readyReport } from './ready/ready-facts';
 import type { ReadyOutput } from '../shared/ready';
+import { QUICK_BAR_MAX, quickPinsSchema, readQuickBar } from '../shared/quick-bar';
 import { GuideFiles, guidesDir } from './guides';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
@@ -5785,6 +5786,26 @@ function start(): void {
       `Ready?: ${report.lines.map((l) => `${l.id} ${l.ok ? 'green' : l.unknown === true ? 'amber (can’t tell)' : 'amber'}`).join(', ')}`,
     );
     return report;
+  });
+  // ---- The quick bar (Session 55, Part 8, F): up to 8 pinned items, kept in the library's settings ------------------
+  // A pin that can't be read is left out as it is read; a change is the whole bar, checked whole (at most 8, each once).
+  // Simple Mode refuses changing it (simple-mode.ts), and its window shows none.
+  let quickPins = readQuickBar(settings.get('quickBar'));
+  handle(IPC.quickBar.view, () => quickPins);
+  handle(IPC.quickBar.set, (e, pins) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can change the quick bar.' };
+    const parsed = quickPinsSchema.safeParse(pins);
+    if (!parsed.success)
+      return {
+        ok: false as const,
+        message: `The quick bar holds at most ${String(QUICK_BAR_MAX)} things, each once.`,
+      };
+    quickPins = parsed.data;
+    laterSetting('quickBar', quickPins);
+    sendToOperator(IPC.quickBar.changed, quickPins);
+    log.info(`Quick bar: ${String(quickPins.length)} pinned`);
+    return { ok: true as const, pins: quickPins };
   });
   handle(IPC.setup.identifyDisplays, (e) => {
     if (!fromOperator(e)) return { shown: 0 };
