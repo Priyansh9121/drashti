@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { create } from 'zustand';
 import type { ReactNode } from 'react';
 import {
   BOLD_ONLY_KINDS,
@@ -21,7 +22,7 @@ import { ColorInput, Field, NumberInput, Select, Slider, Textarea, TextInput } f
 import { Check, Music, Trash2, X } from '../ui/icons';
 import { Toggle } from '../ui/Toggle';
 import { ConfirmDialog } from '../ui/Dialog';
-import { commit, select, tell, useEditor } from './editor-store';
+import { commit, noteOutside, select, tell, useEditor } from './editor-store';
 import { MediaPicker } from './MediaPicker';
 import type { EditCue } from '../../../shared/slide-edit';
 import {
@@ -183,15 +184,40 @@ const describe = (t: Transition) =>
       : `${TRANSITION_NAMES[t.kind].toLowerCase()} of ${t.durationMs / 1000} s`;
 
 /** What Drashti does for presentations without a transition of their own (a setting, saved at once). */
+/** Drashti's default transition, as last read or set (one for every page of the editor: Undo sets it back too). */
+const useAppDefault = create<{ value: Transition | null }>(() => ({ value: null }));
+
+/** Set Drashti's default transition (saved at once); shown as it is. */
+async function setAppDefaultTransition(t: Transition): Promise<Transition | null> {
+  const r = await window.drashti.library.setDefaultTransition(t);
+  if (!r.ok) {
+    tell(r.message);
+    return null;
+  }
+  useAppDefault.setState({ value: r.transition });
+  return r.transition;
+}
+
+/**
+ * Drashti's default transition, for presentations without their own (a setting, saved at once): read as the panel
+ * opens; changed here, one step for the editor's Undo and Redo too (Session 55, Part 17a), though it is not the
+ * presentation's.
+ */
 function useDefaultTransition(): [Transition | null, (t: Transition) => void] {
-  const [value, setValue] = useState<Transition | null>(null);
+  const value = useAppDefault((s) => s.value);
   useEffect(() => {
-    void window.drashti.library.getDefaultTransition().then(setValue);
+    void window.drashti.library.getDefaultTransition().then((t) => {
+      useAppDefault.setState({ value: t });
+    });
   }, []);
   const set = (t: Transition) => {
-    void window.drashti.library.setDefaultTransition(t).then((r) => {
-      if (r.ok) setValue(r.transition);
-      else tell(r.message);
+    const before = useAppDefault.getState().value;
+    void setAppDefaultTransition(t).then((after) => {
+      if (!after || !before) return;
+      noteOutside({
+        undo: () => void setAppDefaultTransition(before),
+        redo: () => void setAppDefaultTransition(after),
+      });
     });
   };
   return [value, set];

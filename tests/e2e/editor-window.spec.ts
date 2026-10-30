@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues, settled } from './a11y';
+import type { PageGlobals } from './helpers';
 import {
   editorGroup,
   importAndGetIds,
@@ -104,6 +105,14 @@ test('Edit slides opens a window of its own: the show goes on in the operator wi
   });
   await win.keyboard.press('ArrowRight');
   await expect(slideLayer).toContainText('Placeholder line two');
+  // And the show's F-keys pressed in the editor's window act there too: F1, Clear all, takes the slide off.
+  await ed.keyboard.press('F1');
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).state.layers.slide,
+    )
+    .toBeNull();
 
   // The editor still has its change; saved, its window closes, and the operator window has the one Undo.
   await expect(elements).toHaveCount(0);
@@ -289,5 +298,50 @@ test('Undo and Redo for every change, by keys and by buttons, typing too; zoom t
   // Zoomed in, the slide scrolls in its area; a change still lands where it should.
   await ed.keyboard.press(`${mod}+0`);
   await expect.poll(scale).toBeCloseTo(fit, 3);
+  await app.close();
+});
+
+test('closing the window with changes asks first; another presentation asked for while this one has changes asks first, then opens in the same window', async () => {
+  test.setTimeout(150_000);
+  const { app, win } = await start();
+  await importPlaceholder(win, 'Placeholder Close Kirtan');
+  await importPlaceholder(win, 'Placeholder Other Kirtan');
+  const { ed, editor } = await editSlides(app, win, /^Placeholder Close Kirtan/u);
+  const elements = editor.getByTestId('editor-slide').locator('[data-element]');
+  const p = await onCanvas(ed, 960, 540);
+  await ed.mouse.click(p.x, p.y);
+  await ed.keyboard.press('Delete');
+  await expect(elements).toHaveCount(0);
+
+  // The window's own close (its close button, ⌘W): it stays, and asks.
+  const closeWindow = () =>
+    app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().includes('slide-editor.html'))
+        ?.close();
+    });
+  await closeWindow();
+  const ask = ed.getByTestId('keep-changes');
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(elements).toHaveCount(0);
+
+  // Another presentation's Edit slides: the same window asks about these changes first, then opens it.
+  await openLibrary(win);
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Placeholder Other Kirtan/u })
+    .click();
+  await win.getByTestId('edit-slides').click();
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Throw them away' }).click();
+  await expect(ed).toHaveTitle(/Placeholder Other Kirtan/u);
+  await expect(editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(1);
+  expect(app.windows().filter((w) => w.url().includes('slide-editor.html'))).toHaveLength(1);
+
+  // Nothing changed now: the window's close closes it.
+  await closeWindow();
+  await slideEditorClosed(app);
   await app.close();
 });

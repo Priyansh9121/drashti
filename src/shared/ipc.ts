@@ -614,6 +614,8 @@ export const IPC = {
     /** The editor's elements copied, kept by main for the next window (and what is kept). */
     copy: 'slideeditor:copy',
     copied: 'slideeditor:copied',
+    /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
+    showKey: 'slideeditor:show-key',
   },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
@@ -1325,6 +1327,7 @@ export interface InvokeContract {
   [IPC.slideEditor.dirty]: { args: [dirty: boolean]; result: null };
   [IPC.slideEditor.copy]: { args: [copied: CopiedElements]; result: null };
   [IPC.slideEditor.copied]: { args: []; result: CopiedElements | null };
+  [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
   [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { slideEditorTitle, SLIDE_EDITOR_TITLE } from '../../../../shared/slide-edit';
 import { connectEngine } from '../../engine/engine-store';
+import { loadMedia } from '../../library/library-store';
 import { connectPictureLooks } from '../../render/picture-looks';
 import { connectScreens } from '../../screens/screens-store';
 import { connectInputsList } from '../../video-inputs/video-inputs-store';
@@ -37,8 +38,11 @@ export function EditorWindow() {
     void window.drashti.app.getInfo().then((info) => {
       setPlatform(info.platform);
     });
+    // Closed once the key or click that closed the editor is done with (a key's coming up never meets a page gone).
     setCloseWindow(() => {
-      void window.drashti.slideEditor.close();
+      setTimeout(() => {
+        void window.drashti.slideEditor.close();
+      }, 0);
     });
     // What was copied in an editor window before this one pastes here; what is copied here is kept for the next.
     keepCopiesWith((copied) => {
@@ -50,6 +54,10 @@ export function EditorWindow() {
     const query = new URLSearchParams(location.search);
     const presentationId = query.get('presentation');
     if (presentationId) void openSlideEditor(presentationId, '', query.get('slide'));
+    // The library's pictures, videos and sounds, as files come and go (an import while the slides are edited).
+    const offLibrary = window.drashti.library.onChanged((what) => {
+      if (what === 'presentations') void loadMedia();
+    });
     const offEdit = window.drashti.slideEditor.onEdit((open) => {
       switchTo(open);
     });
@@ -62,6 +70,7 @@ export function EditorWindow() {
       if (!isTyping(document.activeElement)) redoAny();
     });
     return () => {
+      offLibrary();
       offEdit();
       offAsk();
       offUndo();

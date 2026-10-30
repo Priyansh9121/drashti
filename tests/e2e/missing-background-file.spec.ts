@@ -7,6 +7,7 @@ import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fix
 import { expectNoSeriousA11yIssues, settled } from './a11y';
 import {
   closeLibrary,
+  closeSlideEditorByKey,
   importAndGetIds,
   killApp,
   launchApp,
@@ -18,7 +19,6 @@ import {
   relaunchApp,
   savedLive,
   setUpScreen,
-  slideEditorClosed,
   slideEditorWindow,
 } from './helpers';
 import { makeTestImage } from './test-media';
@@ -135,8 +135,7 @@ test('a missing file behind a slide: the background stays as it was, never black
   await expect(editor.getByTestId('background-file-missing')).toHaveText(
     `The file “${FILE}” is missing: the background stays as it was when this slide goes up.`,
   );
-  await ed.keyboard.press('Escape');
-  await slideEditorClosed(first.app);
+  await closeSlideEditorByKey(first.app, ed);
 
   // Simple Mode: its picture of what is next says so before it goes up, and its LIVE says why, as Pro Mode's does.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { RenderSlide } from '../../../shared/model';
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
+import { SHOW_F_KEYS } from '../../../shared/keymap';
 import { isTyping } from '../operator/useKeymap';
 import { loadMedia } from '../library/library-store';
 import { PlacedInParent } from '../render/Placed';
@@ -122,6 +123,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   // The window's keys: Save, Undo and Redo, Find, and zoom; typing in a field or a text box keeps its own keys.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // The show's F-keys (Clear all, Oops, the Wallpaper...): the operator window acts on them (Session 55, 17a).
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && SHOW_F_KEYS.includes(e.key)) {
+        e.preventDefault();
+        void window.drashti.slideEditor.showKey(e.key);
+        return;
+      }
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();

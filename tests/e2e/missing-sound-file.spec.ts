@@ -8,6 +8,7 @@ import { expectNoSeriousA11yIssues, settled } from './a11y';
 import {
   closeLibrary,
   closePlaylistIfOpen,
+  closeSlideEditorByKey,
   importAndGetIds,
   killApp,
   launchApp,
@@ -17,7 +18,6 @@ import {
   type PageGlobals,
   relaunchApp,
   savedLive,
-  slideEditorClosed,
   slideEditorWindow,
 } from './helpers';
 import { makeTestTone } from './test-media';
@@ -430,8 +430,7 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
     else await expect(editor.getByTestId('sound-file-missing')).toHaveCount(0);
     // The first of two sounds is never "kept as it is": a change to the sound takes both off (the review).
     await expect(editor.getByTestId('other-cues')).toHaveCount(0);
-    await ed.keyboard.press('Escape');
-    await slideEditorClosed(app);
+    await closeSlideEditorByKey(app, ed);
   }
 
   // Simple Mode: its picture of what is next names a missing sound before it goes up; of two sounds, the last.
@@ -478,7 +477,6 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
   await expect(removedOne.editor.getByTestId('sound-file-missing')).toHaveText(
     editorSays('Placeholder tune.wav'),
   );
-  await removedOne.ed.keyboard.press('Escape');
-  await slideEditorClosed(app);
+  await closeSlideEditorByKey(app, removedOne.ed);
   await app.close();
 });

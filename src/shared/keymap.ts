@@ -137,6 +137,15 @@ export const KEYMAP: readonly KeyBinding[] = [
 ];
 
 /**
+ * The show's own keys that never type a letter: its F-keys (Clear all F1 to Clear ticker F7, Oops F9, the Wallpaper
+ * F12). The slide editor's window passes them to the operator window (Session 55, Part 17a), so the show is cleared,
+ * put back or covered while slides are edited, without leaving the editor.
+ */
+export const SHOW_F_KEYS: readonly string[] = KEYMAP.flatMap((b) =>
+  b.keys.filter((k) => /^F\d{1,2}$/u.test(k)),
+);
+
+/**
  * The keys sheet, built from KEYMAP and grouped by what the operator is doing (Session 25): every
  * action once (a unit test checks), so the sheet never drifts from the keys.
  */

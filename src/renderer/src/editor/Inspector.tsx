@@ -43,8 +43,8 @@ import { ColorInput, Field, NumberInput, Select, Slider, TextInput } from '../ui
 import { AlignCenter, AlignLeft, AlignRight, CopyPlus, Trash2 } from '../ui/icons';
 import type { Icon } from '../ui/icons';
 import { Checkbox, Toggle } from '../ui/Toggle';
-import { BUNDLED_FAMILIES } from '../render/fonts';
-import { commit, useEditor } from './editor-store';
+import { LOWER_THIRD_FONTS } from '../../../shared/lower-third-fonts';
+import { commit, noteOutside, useEditor } from './editor-store';
 import type { BoxPatch, TextPatch } from './ops';
 import { deleteElements, duplicateElements, findSlide, mapElements, styleBox } from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
@@ -763,11 +763,18 @@ function TimerTime({ timer }: { timer: TimerState }) {
   const [problem, setProblem] = useState<string | null>(null);
   const save = (patch: Partial<TimerFields>) => {
     const { name, kind, durationMs, targetTime, allowsOverrun } = timer;
-    void window.drashti.timers
-      .update(timer.id, { name, kind, durationMs, targetTime, allowsOverrun, ...patch })
-      .then((r) => {
-        setProblem(r.ok ? null : r.message);
-      });
+    const before: TimerFields = { name, kind, durationMs, targetTime, allowsOverrun };
+    const after: TimerFields = { ...before, ...patch };
+    const id = timer.id;
+    void window.drashti.timers.update(id, after).then((r) => {
+      setProblem(r.ok ? null : r.message);
+      // One step for the editor's Undo and Redo too (Session 55, Part 17a), though the timer is the library's.
+      if (r.ok)
+        noteOutside({
+          undo: () => void window.drashti.timers.update(id, before),
+          redo: () => void window.drashti.timers.update(id, after),
+        });
+    });
   };
   const saveLength = () => {
     const ms = parseDuration(length);
@@ -892,7 +899,12 @@ function TimerSection({ el, change }: { el: TimerElement; change: Change }) {
         </Select>
       </Field>
       {/* Its time and kind, the timer's own (Session 55, Part 15). */}
-      {timer && <TimerTime key={`${timer.id}:${timer.kind}`} timer={timer} />}
+      {timer && (
+        <TimerTime
+          key={`${timer.id}:${timer.kind}:${String(timer.durationMs)}:${timer.targetTime ?? ''}`}
+          timer={timer}
+        />
+      )}
       {timer?.kind !== 'clock' && (
         <Field label="Format" layout="inline">
           <Select
@@ -915,25 +927,28 @@ function TimerSection({ el, change }: { el: TimerElement; change: Change }) {
           </Select>
         </Field>
       )}
+      {/* Drashti's bundled fonts only (Session 55, Part 17a), as the Words group offers them. */}
       <Field label="Font" layout="inline">
-        <TextInput
-          list="timer-fonts"
+        <Select
           className="flex-1"
           data-testid="field-timer-font"
-          placeholder="Drashti’s own"
           value={s.fontFamily ?? ''}
           onChange={(e) => {
-            setStyle(
-              { fontFamily: e.target.value.trim() === '' ? null : e.target.value },
-              `timer-font:${el.id}`,
-            );
+            setStyle({ fontFamily: e.target.value === '' ? null : e.target.value });
           }}
-        />
-        <datalist id="timer-fonts">
-          {BUNDLED_FAMILIES.map((f) => (
-            <option key={f} value={f} />
+        >
+          <option value="">Drashti’s own</option>
+          {s.fontFamily !== null && !(LOWER_THIRD_FONTS as readonly string[]).includes(s.fontFamily) && (
+            <option value={s.fontFamily} disabled>
+              {s.fontFamily} (not one of Drashti’s)
+            </option>
+          )}
+          {LOWER_THIRD_FONTS.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
           ))}
-        </datalist>
+        </Select>
       </Field>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <NumberField

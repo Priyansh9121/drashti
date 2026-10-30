@@ -1560,6 +1560,8 @@ function start(): void {
     renamed: (from, to) => inputRenamed(from, to),
     changed: (view) => {
       sendToPage(operatorWindow, IPC.videoInputs.changed, view);
+      // The slide editor's own window names them for a slide's background (Session 55, Part 17a).
+      slideEditor?.send(IPC.videoInputs.changed, view);
       inputsChanged();
       // A phone naming or putting up an input reads them again (Session 54).
       net.hint('setup');
@@ -1761,6 +1763,7 @@ function start(): void {
   const looksChanged = () => {
     engine.refreshPictures();
     sendToOperator(IPC.media.looksChanged, shownLooks());
+    slideEditor?.send(IPC.media.looksChanged, shownLooks());
   };
   handle(IPC.media.look, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.look(mediaId) : null,
@@ -2070,6 +2073,8 @@ function start(): void {
       eventsOut.emit(screenEvents(eventsScreensWas, screensNow));
       eventsScreensWas = screensNow;
       if (pageAlive(operatorWindow)) sendToPage(operatorWindow, IPC.screens.changed, screens.snapshot());
+      // The slide editor's safe areas and crop lines (Session 55, Part 17a: its own window).
+      slideEditor?.send(IPC.screens.changed, screens.snapshot());
       // And a phone setting them up (Session 54).
       net.hint('setup');
       for (const [screenId, win] of outputWindows) {
@@ -2790,6 +2795,7 @@ function start(): void {
       // The stream's group was made: the live Look covers it.
       looks.groupsChanged();
       sendToOperator(IPC.screens.changed, screens.snapshot());
+      slideEditor?.send(IPC.screens.changed, screens.snapshot());
     },
     programChanged: () => {
       zoomWindow?.programChanged();
@@ -3038,6 +3044,8 @@ function start(): void {
       if (db === null) return;
       lastChanged = Date.now();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
+      // The slide editor's own window: its pictures, videos and sounds to choose from (Session 55, Part 17a).
+      slideEditor?.send(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       network?.hint('presentations');
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
@@ -3656,6 +3664,13 @@ function start(): void {
     editor: editorWindow,
     fromOperator,
     exists: (presentationId) => presentations.content(presentationId) !== null,
+    // The show's F-keys from the editor's window: pressed in the operator window's page, which acts on them.
+    showKey: (key) => {
+      const page = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null;
+      if (!page || page.isDestroyed()) return;
+      page.sendInputEvent({ type: 'keyDown', keyCode: key });
+      page.sendInputEvent({ type: 'keyUp', keyCode: key });
+    },
   });
   registerSlidesIpc({
     db,
@@ -4754,6 +4769,7 @@ function start(): void {
     },
     screensChanged: () => {
       sendToOperator(IPC.screens.changed, screens.snapshot());
+      slideEditor?.send(IPC.screens.changed, screens.snapshot());
       // A node's displays or screens changed: copies follow the screens' size, a node's included (Session 26h).
       void sharpened.screensChanged();
     },

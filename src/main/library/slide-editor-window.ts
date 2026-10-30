@@ -7,6 +7,7 @@ import {
   type EditSlidesOpen,
   SLIDE_EDITOR_TITLE,
 } from '../../shared/slide-edit';
+import { SHOW_F_KEYS } from '../../shared/keymap';
 import { isShownMenuKey } from '../shown-keys';
 import { handle } from '../ipc/handle';
 import { windowIcon } from '../windows/app-icon';
@@ -182,6 +183,8 @@ export function handleSlideEditor(o: {
   fromOperator: (e: IpcMainInvokeEvent) => boolean;
   /** Whether a presentation is in the library (and so can be edited). */
   exists: (presentationId: string) => boolean;
+  /** One of the show's F-keys, for the operator window to act on as if pressed there. */
+  showKey: (key: string) => void;
 }): void {
   handle(IPC.slideEditor.open, (e, presentationId, slideId) => {
     if (!o.fromOperator(e))
@@ -211,4 +214,9 @@ export function handleSlideEditor(o: {
     return null;
   });
   handle(IPC.slideEditor.copied, (e) => (o.editor.isPage(e.sender) ? copied : null));
+  // The show's F-keys pressed in the editor (Clear all, Oops, the Wallpaper...): the operator window acts on them.
+  handle(IPC.slideEditor.showKey, (e, key) => {
+    if (o.editor.isPage(e.sender) && typeof key === 'string' && SHOW_F_KEYS.includes(key)) o.showKey(key);
+    return null;
+  });
 }

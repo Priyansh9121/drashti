@@ -2,12 +2,12 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
 import {
+  closeSlideEditorByKey,
   editorGroup,
   launchApp,
   openLibrary,
   operatorPage,
   operatorReady,
-  slideEditorClosed,
   slideEditorWindow,
 } from './helpers';
 
@@ -94,8 +94,7 @@ test('Esc in a menu over the slide editor closes only the menu', async () => {
   await expect(editor).toBeVisible();
   await expect(shape).toBeFocused();
   // The next Esc is the editor's own, and closes it (nothing changed).
-  await ed.keyboard.press('Escape');
-  await slideEditorClosed(app);
+  await closeSlideEditorByKey(app, ed);
   await app.close();
 });
 

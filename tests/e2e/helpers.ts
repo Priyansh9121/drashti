@@ -826,3 +826,17 @@ export async function sizeSlideEditor(
   await ed.setViewportSize(size);
   await expect.poll(() => ed.evaluate(() => [innerWidth, innerHeight])).toEqual([size.width, size.height]);
 }
+
+/**
+ * A key that closes the slide editor's window as it goes down (Esc with nothing changed): the window is gone before
+ * the key comes up, which then meets no page.
+ */
+export async function closeSlideEditorByKey(
+  app: ElectronApplication,
+  ed: Page,
+  key = 'Escape',
+): Promise<void> {
+  await ed.keyboard.down(key);
+  await slideEditorClosed(app);
+  await ed.keyboard.up(key).catch(() => undefined);
+}

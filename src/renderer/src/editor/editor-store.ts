@@ -17,6 +17,22 @@ import type { Zoom } from './zoom';
 /** The editor's groups along its top (Session 55, Part 17a). */
 export type EditorGroup = 'words' | 'insert' | 'arrange' | 'design' | 'motion' | 'slides';
 
+/**
+ * A change the editor makes outside the presentation (Session 55, Part 17a): Drashti's default transition, a slide
+ * timer's own time and kind (the library's timer). Saved at once, it is a step of the editor's Undo and Redo all the
+ * same, in its turn: taken back and given again by its own two.
+ */
+export interface OutsideStep {
+  outside: true;
+  undo: () => void;
+  redo: () => void;
+}
+
+/** A step for Undo: the document as it was before it, or a change outside the presentation. */
+export type EditStep = EditDoc | OutsideStep;
+
+const isOutside = (step: EditStep): step is OutsideStep => 'outside' in step;
+
 /** How many steps the editor's Undo remembers. */
 const HISTORY = 200;
 /** Arrow-key nudges this close together are one step for Undo. */
@@ -38,8 +54,8 @@ export interface EditorView {
   selection: string[];
   /** The text box being typed in. */
   editing: string | null;
-  past: EditDoc[];
-  future: EditDoc[];
+  past: EditStep[];
+  future: EditStep[];
   /** The last step that later ones may join (arrow-key nudges). */
   coalesce: { key: string; at: number } | null;
   /** The document before a drag started: the drag is one step. */
@@ -240,6 +256,11 @@ export function undo(): void {
   const s = useEditor.getState();
   const prev = s.past.at(-1);
   if (!prev || !s.doc || s.editing) return;
+  if (isOutside(prev)) {
+    prev.undo();
+    useEditor.setState({ past: s.past.slice(0, -1), future: [prev, ...s.future], coalesce: null });
+    return;
+  }
   const slideId = findSlide(prev, s.slideId) ? s.slideId : (slidesOf(prev)[0]?.id ?? null);
   useEditor.setState({
     doc: prev,
@@ -255,6 +276,11 @@ export function redo(): void {
   const s = useEditor.getState();
   const next = s.future[0];
   if (!next || !s.doc || s.editing) return;
+  if (isOutside(next)) {
+    next.redo();
+    useEditor.setState({ past: [...s.past, next], future: s.future.slice(1), coalesce: null });
+    return;
+  }
   const slideId = findSlide(next, s.slideId) ? s.slideId : (slidesOf(next)[0]?.id ?? null);
   useEditor.setState({
     doc: next,
@@ -263,6 +289,16 @@ export function redo(): void {
     coalesce: null,
     slideId,
     selection: validSelection(next, slideId, s.selection),
+  });
+}
+
+/** A change made outside the presentation, now (Session 55, Part 17a): one step for Undo, nothing left to redo. */
+export function noteOutside(step: { undo: () => void; redo: () => void }): void {
+  const s = useEditor.getState();
+  useEditor.setState({
+    past: [...s.past.slice(1 - HISTORY), { outside: true, ...step }],
+    future: [],
+    coalesce: null,
   });
 }
 

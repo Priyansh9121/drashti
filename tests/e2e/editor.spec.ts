@@ -8,6 +8,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
+  closeSlideEditorByKey,
   editorGroup,
   importAndGetIds,
   launchApp,
@@ -279,8 +280,7 @@ test('words past their box and words too small for the hall are marked and said 
   await expect(editor.getByTestId('inspector-overset')).toHaveCount(0);
   // The operator's slide grid marks the same slide.
   await ed.keyboard.press('Escape');
-  await ed.keyboard.press('Escape');
-  await slideEditorClosed(app);
+  await closeSlideEditorByKey(app, ed);
   const grid = win.getByTestId('slide-thumb');
   await expect(grid.nth(0).getByTestId('thumb-overset')).toBeVisible();
   await expect(grid.nth(1).getByTestId('thumb-overset')).toHaveCount(0);
@@ -447,8 +447,7 @@ test('Cancel keeps nothing: Esc lets go of the selection, then asks before throw
   const again = await slideEditorWindow(app);
   await expect(again.editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(count);
   // With no changes, Esc closes at once.
-  await again.ed.keyboard.press('Escape');
-  await slideEditorClosed(app);
+  await closeSlideEditorByKey(app, again.ed);
   await app.close();
 });
 
