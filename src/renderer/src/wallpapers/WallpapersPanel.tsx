@@ -3,6 +3,7 @@ import type { DragEvent } from 'react';
 import type { Wallpaper } from '../../../shared/wallpapers';
 import type { FileTarget } from '../files/file-menu';
 import { fileMenuProps } from '../files/FileMenu';
+import { useWhatIsThis } from '../help/WhatIsThis';
 import { dragKind, droppedIds, droppedPaths, hasFiles } from '../playlists/drag';
 import { MediaStill } from '../render/MediaStill';
 import { Button } from '../ui/Button';
@@ -181,6 +182,8 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
   const editing = useWallpapers((s) => s.editing);
   const [over, setOver] = useState(false);
   const headingId = useId();
+  // What is this? (Pro Mode's: Simple Mode has no ? of its own).
+  const help = useWhatIsThis('wallpapers');
   useEffect(() => {
     watchWallpapers();
     addWhenEndsToMenu();
@@ -224,7 +227,9 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
         >
           Import…
         </Button>
+        {help.button}
       </div>
+      {help.card}
       {wallpapers.length === 0 ? (
         <div className="min-h-0 overflow-y-auto px-2 pb-2">
           <EmptyState icon={WallpaperIcon} title="No wallpapers yet" compact data-testid="wallpapers-empty">
