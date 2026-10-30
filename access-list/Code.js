@@ -165,7 +165,12 @@ function drashtiDailyOn() {
     ui.ButtonSet.OK_CANCEL,
   );
   if (go !== ui.Button.OK) return;
-  ScriptApp.newTrigger(DAILY_FUNCTION_).timeBased().everyDays(1).atHour(DAILY_HOUR_).create();
+  ScriptApp.newTrigger(DAILY_FUNCTION_)
+    .timeBased()
+    .everyDays(1)
+    .atHour(DAILY_HOUR_)
+    .inTimezone(SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone())
+    .create();
   ui.alert(
     'The daily check is on',
     'Every day at about ' + String(DAILY_HOUR_) + ' in the morning. Nothing more to do.',

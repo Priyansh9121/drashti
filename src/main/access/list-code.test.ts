@@ -150,8 +150,15 @@ interface Ui {
   menus: { name: string; items: [string, string][] }[];
 }
 
+/** The script's own time zone, from its manifest (Etc/UTC): a trigger's hour is in it unless it says another. */
+const SCRIPT_TIME_ZONE = (
+  JSON.parse(readFileSync(join(ACCESS_LIST_DIR, 'appsscript.json'), 'utf8')) as { timeZone: string }
+).timeZone;
+
 /** core.js and Code.js in one global scope, with Google's services made in memory. */
-function appsScript(o: { context?: 'sheet' | 'page'; props?: Record<string, string> } = {}) {
+function appsScript(
+  o: { context?: 'sheet' | 'page'; props?: Record<string, string>; sheetTimeZone?: string } = {},
+) {
   const sheets: FakeSheet[] = [new FakeSheet('Sheet1')];
   const props = new Map(Object.entries(o.props ?? {}));
   const mails: { to: string; subject: string; body: string; name: string }[] = [];
@@ -159,7 +166,7 @@ function appsScript(o: { context?: 'sheet' | 'page'; props?: Record<string, stri
   const ui: Ui = { context: o.context ?? 'sheet', answers: [], alerts: [], dialogs: [], menus: [] };
   const cache = new MemoryCache(() => Date.now());
   // The project's installable triggers (Session 55: the daily check), as ScriptApp keeps them.
-  const triggers: { fn: string; days: number; hour: number | null }[] = [];
+  const triggers: { fn: string; days: number; hour: number | null; timeZone: string }[] = [];
   const Charset = { UTF_8: 'UTF_8', US_ASCII: 'US_ASCII' };
   const spreadsheet = {
     getSheetByName: (n: string) => sheets.find((s) => s.name === n) ?? null,
@@ -169,7 +176,7 @@ function appsScript(o: { context?: 'sheet' | 'page'; props?: Record<string, stri
       sheets.push(s);
       return s;
     },
-    getSpreadsheetTimeZone: () => 'Etc/UTC',
+    getSpreadsheetTimeZone: () => o.sheetTimeZone ?? 'Etc/UTC',
   };
   const Button = { OK: 'OK', CANCEL: 'CANCEL' };
   const getUi = () => {
@@ -248,11 +255,12 @@ function appsScript(o: { context?: 'sheet' | 'page'; props?: Record<string, stri
       getProjectTriggers: () =>
         triggers.map((t) => ({ getHandlerFunction: () => t.fn, getEventType: () => 'CLOCK' })),
       newTrigger: (fn: string) => {
-        const t = { fn, days: 0, hour: null as number | null };
+        const t = { fn, days: 0, hour: null as number | null, timeZone: SCRIPT_TIME_ZONE };
         const api = {
           timeBased: () => api,
           everyDays: (n: number) => ((t.days = n), api),
           atHour: (h: number) => ((t.hour = h), api),
+          inTimezone: (zone: string) => ((t.timeZone = zone), api),
           create: () => {
             triggers.push(t);
             return { getHandlerFunction: () => t.fn };
@@ -568,14 +576,17 @@ describe('the list in Apps Script', () => {
   });
 
   it('Turn on the daily check…: asks first, then makes one time-driven trigger a day for drashtiDailyCheck; asked again, says it is on and makes no second', () => {
-    const g = appsScript({ props: setUpProps() });
+    // The Sheet's time zone is not the script's (Etc/UTC): "about 3 in the morning" is the Sheet's 3, as it says.
+    const g = appsScript({ props: setUpProps(), sheetTimeZone: 'Asia/Kolkata' });
+    expect(SCRIPT_TIME_ZONE).toBe('Etc/UTC');
     g.fn('prepareSheet_');
     g.ui.answers.push('CANCEL');
     g.fn('drashtiDailyOn');
     expect(g.triggers).toHaveLength(0);
     expect(g.ui.alerts.at(-1)?.prompt).toContain('15 days');
+    expect(g.ui.alerts.at(-1)?.prompt).toContain('Every day at about 3 in the morning');
     g.fn('drashtiDailyOn');
-    expect(g.triggers).toEqual([{ fn: 'drashtiDailyCheck', days: 1, hour: 3 }]);
+    expect(g.triggers).toEqual([{ fn: 'drashtiDailyCheck', days: 1, hour: 3, timeZone: 'Asia/Kolkata' }]);
     expect(g.ui.alerts.at(-1)?.title).toBe('The daily check is on');
     g.fn('drashtiDailyOn');
     expect(g.triggers).toHaveLength(1);
