@@ -16,7 +16,7 @@ import {
   relaunchApp,
   setUpScreen,
 } from './helpers';
-import { setUpPlaceholderShow } from './placeholder-show';
+import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
  * Simple Mode, run with the keys only (the ones a presentation clicker sends
@@ -25,7 +25,16 @@ import { setUpPlaceholderShow } from './placeholder-show';
  * things right after Clear all, checking the audience and stage screens at
  * each step. Nothing that can change the library, the screens or the sound
  * can be reached, and after a forced stop Drashti comes back in Simple Mode (a clean start is Pro Mode).
+ * Since Session 55 (Part 18) Simple Mode is Pro Mode's window with only what a one-projector sabha needs (its own
+ * spec: simple-sabha.spec.ts), on the playlist open when Drashti switched to it; leaving it is a double-click on
+ * Pro Mode, nothing typed (the owner's answer to question 12, changed on 29 Oct 2026).
  */
+
+/** Open the placeholder sabha's playlist in Pro Mode: Simple Mode takes the playlist open when it switches. */
+async function openTheSabha(win: Page): Promise<void> {
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
+}
 
 const outputs = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -97,10 +106,13 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   const words = audience.locator('[data-layer="slide"]');
   const now = stage.getByTestId('stage-current');
 
-  // Into Simple Mode from the View menu.
+  // Into Simple Mode from the View menu, on the playlist open in Pro Mode: its four items (and two headers).
+  await openTheSabha(win);
   await chooseMenuItem(first.app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  await expect(win.getByTestId('simple-items').getByTestId('simple-item')).toHaveCount(4);
+  await expect(
+    win.getByTestId('playlist-items').locator('[data-testid="playlist-item"]:not([data-kind="header"])'),
+  ).toHaveCount(4);
 
   // Next starts the playlist: the welcome slide, on both screens.
   await win.keyboard.press('ArrowRight');
@@ -189,9 +201,10 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   expect((await state(win)).layers.background).toEqual(playing);
   await expect(stage.getByTestId('stage-view')).toBeVisible();
 
-  // Nothing that can change the library, the screens or the sound is in the window...
+  // Nothing that can change the library, the screens or the sound is in the window (bringing things into its one
+  // playlist and the wallpapers' Import…, and a row's Rename and Delete in its right-click menu, are Simple Mode's
+  // since Session 55, Part 18)...
   for (const name of [
-    'Import…',
     'Edit words',
     'Edit slides',
     'Remove',
@@ -203,7 +216,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     'New timer',
   ])
     await expect(win.getByRole('button', { name, exact: true })).toHaveCount(0);
-  // No trash button anywhere (Session 26a's visible deletes are Pro Mode's).
+  // No trash button anywhere (Session 26a's visible deletes are Pro Mode's; Simple Mode's Delete is in the menu).
   await expect(win.getByTestId('row-delete')).toHaveCount(0);
   await expect(win.getByRole('button', { name: /^(Delete|Remove) / })).toHaveCount(0);
   await expect(win.getByRole('textbox', { name: 'Search presentations' })).toHaveCount(0);
@@ -222,7 +235,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
       switchLabel: m?.getMenuItemById('switch-mode')?.label ?? '',
     };
   });
-  expect(menu).toEqual({ backup: null, restore: null, link: null, switchLabel: 'Switch to Pro Mode…' });
+  expect(menu).toEqual({ backup: null, restore: null, link: null, switchLabel: 'Switch to Pro Mode' });
   // ...and the main process refuses it even if asked directly.
   const refused = await win.evaluate(
     async ({ welcomeId }) => {
@@ -238,7 +251,6 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
           return d.library.saveSlides(welcomeId, { ...opened.doc, loop: true }, opened.stamp, true);
         })(),
         transition: await d.library.setDefaultTransition({ kind: 'dissolve', durationMs: 500 }),
-        import: await d.library.importPaths(['/placeholder.txt']),
         playlist: await d.playlists.create('Placeholder new', null, false),
         timer: await d.timers.create({
           name: 'x',
@@ -261,11 +273,13 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         fromTemplate: await d.playlists.newFromTemplate('x', 'Placeholder', null),
         slot: await d.playlists.addSlot('x', null, { label: 'Placeholder', category: null }),
         setup: await d.setup.finish({ outputs: [], sound: 'skip' }),
-        // Session 25b: Import from a Link (a made-up link).
-        link: await d.links.look('dropbox', 'https://www.dropbox.com/scl/fi/placeholder/x.mp4?dl=0'),
-        linkDownload: await d.links.download(),
-        // Session 25c: the highest video quality, an admin's setting.
+        // Session 25c: the highest video quality, an admin's setting (From a Link… itself is Simple Mode's since
+        // Part 18, into its one playlist: simple-sabha.spec.ts, through a local stand-in).
         linkQuality: await d.links.setMaxHeight(2160),
+        // Another playlist's rows (Part 18: Simple Mode changes its one playlist only).
+        otherRows: await d.playlists.addItems('placeholder-other-playlist', null, [
+          { kind: 'presentation', presentationId: welcomeId },
+        ]),
       };
     },
     { welcomeId: show.welcomeId },
@@ -276,7 +290,6 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     words: no,
     slides: no,
     transition: no,
-    import: no,
     playlist: no,
     timer: no,
     screens: no,
@@ -291,9 +304,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     fromTemplate: no,
     slot: no,
     setup: no,
-    link: no,
-    linkDownload: no,
     linkQuality: no,
+    otherRows: no,
   });
 
   // A forced stop: Drashti comes back in Simple Mode, with the show put back.
@@ -321,47 +333,30 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   await second.app.close();
 });
 
-test('leaving Simple Mode takes the word typed on purpose', async () => {
+test('leaving Simple Mode asks nothing (Session 55, Part 18): the View menu’s Switch to Pro Mode goes at once; Simple Mode passes the accessibility checks', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await setUpPlaceholderShow(win);
+  await openTheSabha(win);
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'Simple Mode');
 
-  // Only the View menu leads out, and it asks for the word.
-  const ask = () => chooseMenuItem(app, 'switch-mode');
-  await ask();
-  const dialog = win.getByTestId('leave-simple');
-  await expect(dialog).toBeVisible();
-  await expectNoSeriousA11yIssues(win, 'the Switch to Pro Mode question');
-  // Enter on its own, or the wrong word, changes nothing.
-  await win.keyboard.press('Enter');
-  await win.keyboard.type('yes');
-  await win.keyboard.press('Enter');
-  await expect(dialog).toContainText('Type pro to switch to Pro Mode.');
-  await expect(win.getByTestId('simple-mode')).toBeVisible();
-  // Esc stays in Simple Mode, and so does a direct request without the word.
-  await win.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'))).toMatchObject({
-    ok: false,
-  });
-  await expect(win.getByTestId('simple-mode')).toBeVisible();
-  // The word: back to Pro Mode.
-  await ask();
-  await dialog.getByRole('textbox').fill('PRO');
-  await dialog.getByRole('button', { name: 'Switch to Pro Mode' }).click();
+  // The View menu leads out at once: no question, no word.
+  await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  expect(await modeOf(win)).toBe('pro');
   await expect(win.getByRole('button', { name: 'Screens', exact: true })).toBeVisible();
   await app.close();
 });
 
-test('Simple Mode fits a 1280 x 720 operator display, its way out at the top', async () => {
+test('Simple Mode fits a 1280 x 720 operator display, its way out at the top, far from the show’s controls', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await setUpPlaceholderShow(win);
+  await openTheSabha(win);
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('PageDown');
@@ -372,12 +367,16 @@ test('Simple Mode fits a 1280 x 720 operator display, its way out at the top', a
     const vh = window.innerHeight;
     if (document.documentElement.scrollWidth > vw) out.push('the page scrolls sideways');
     if (document.documentElement.scrollHeight > vh) out.push('the page scrolls down');
-    const buttons = [...document.querySelectorAll('[data-testid="simple-buttons"] button')];
+    // The show's controls: the bar along the bottom (Clear all, the Wallpaper, Black-out), and Next and Back.
+    const buttons = [
+      ...document.querySelectorAll('[data-testid="simple-buttons"] button'),
+      ...document.querySelectorAll('[data-testid="show-next"], [data-testid="show-back"]'),
+    ];
     const boxes = buttons.map((el) => ({ el, r: el.getBoundingClientRect() }));
     for (const { el, r } of boxes) {
       const name = el.textContent.trim();
       if (r.left < 0 || r.top < 0 || r.right > vw || r.bottom > vh) out.push(`${name} is cut off`);
-      if (r.height < 56) out.push(`${name} is not big (${r.height} px)`);
+      if (r.height < 28) out.push(`${name} is too small (${r.height} px)`);
       if (el.scrollWidth > el.clientWidth + 1) out.push(`${name}: its words do not fit`);
     }
     boxes.forEach((a, i) => {
@@ -389,16 +388,19 @@ test('Simple Mode fits a 1280 x 720 operator display, its way out at the top', a
       }
     });
     const live = document.querySelector('[data-testid="live-preview"]')?.getBoundingClientRect();
-    if (!live || live.bottom > vh || live.width < 320) out.push('the live picture does not fit');
-    // Session 20: the way out, at the top, well away from the big buttons.
+    if (!live || live.bottom > vh || live.width < 280) out.push('the live picture does not fit');
+    // Session 20: the way out, at the top, well away from the show's controls (Session 55: Pro Mode, double-clicked).
     const leave = document.querySelector('[data-testid="simple-leave"]');
     const lr = leave?.getBoundingClientRect();
-    const bigTop = Math.min(...boxes.map(({ r }) => r.top));
-    if (!leave || !lr || lr.left < 0 || lr.top < 0 || lr.right > vw)
-      out.push('Switch to Pro Mode… is cut off');
-    else if (lr.bottom > bigTop - 100) out.push('Switch to Pro Mode… is near the big buttons');
-    if (leave && leave.scrollWidth > leave.clientWidth + 1)
-      out.push('Switch to Pro Mode…: its words do not fit');
+    const barTop = Math.min(
+      ...[...document.querySelectorAll('[data-testid="simple-buttons"] button')].map(
+        (el) => el.getBoundingClientRect().top,
+      ),
+    );
+    if (!leave || !lr || lr.left < 0 || lr.top < 0 || lr.right > vw) out.push('Pro Mode is cut off');
+    else if (lr.bottom > barTop - 100) out.push('Pro Mode is near the bar of clears');
+    else if (lr.bottom > 80) out.push('Pro Mode is not at the top');
+    if (leave && leave.scrollWidth > leave.clientWidth + 1) out.push('Pro Mode: its words do not fit');
     return out;
   });
   expect(problems).toEqual([]);
@@ -448,38 +450,23 @@ test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode a
   await run.app.close();
 });
 
-test('Switch to Pro Mode… on Simple Mode’s own screen asks for the word, by mouse and by keyboard alone', async () => {
+test('Pro Mode on Simple Mode’s own screen, by keyboard alone: one press of Enter stays (saying to press again), two go', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const leave = win.getByTestId('simple-leave');
-  const dialog = win.getByTestId('leave-simple');
 
-  // By mouse: a wrong word keeps Simple Mode, and so does Stay in Simple Mode.
-  await leave.click();
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('textbox').fill('yes');
-  await dialog.getByRole('button', { name: 'Switch to Pro Mode' }).click();
-  await expect(dialog).toContainText('Type pro to switch to Pro Mode.');
-  await expect(win.getByTestId('simple-mode')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Stay in Simple Mode' }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(await modeOf(win)).toBe('simple');
-
-  // By keyboard alone: Tab to it, Enter, a wrong word and Enter, then pro and Enter.
+  // Tab to it, Enter: it says to press again, and stays (nothing typed, no question).
   for (let i = 0; i < 60 && !(await leave.evaluate((el) => el === document.activeElement)); i++)
     await win.keyboard.press('Tab');
   await expect(leave).toBeFocused();
   await win.keyboard.press('Enter');
-  await expect(dialog).toBeVisible();
-  await win.keyboard.type('nope');
-  await win.keyboard.press('Enter');
-  await expect(dialog).toContainText('Type pro to switch to Pro Mode.');
+  await expect(win.getByTestId('operator-notice')).toContainText('again');
   expect(await modeOf(win)).toBe('simple');
-  for (let i = 0; i < 4; i++) await win.keyboard.press('Backspace');
-  await win.keyboard.type('pro');
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  // Enter again, straight after: Pro Mode.
   await win.keyboard.press('Enter');
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
   expect(await modeOf(win)).toBe('pro');

@@ -10,6 +10,11 @@ import {
   operatorReady,
   type PageGlobals,
 } from './helpers';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { SIMPLE_ACCESS_LOCKED_REFUSAL } from '../../src/shared/mode';
+import { makeTestImage } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
@@ -40,8 +45,8 @@ const tryAll = (win: Page) =>
       }
     };
     return {
-      // The word typed, as the old way out took it.
-      pro: await said(() => d.app.setMode('pro', 'pro')),
+      // Pro Mode asked for, as its double-click asks (Session 55, Part 18: nothing typed).
+      pro: await said(() => d.app.setMode('pro')),
       // A change Simple Mode refuses (a playlist made), and an engine command it refuses (picture in picture swapped:
       // switching the Look, refused here before, went with Looks in Part 12).
       playlist: await said(() => d.playlists.create('Placeholder playlist', null, false)),
@@ -98,14 +103,14 @@ test('Simple access: Simple Mode only, with no way to Pro Mode in the window, th
     expect(await modeOf(win)).toBe('simple');
     await expect(win.getByTestId('simple-leave')).toHaveCount(0);
     expect(
-      JSON.stringify(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'))),
+      JSON.stringify(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'))),
     ).toContain('"ok":false');
   } finally {
     await app.close();
   }
 });
 
-test('Pro access: Simple Mode the operator chose stays when the owner gives Simple and then Pro again; and Pro Mode’s Switch to Pro Mode… is back with Pro access', async () => {
+test('Pro access: Simple Mode the operator chose stays when the owner gives Simple and then Pro again; and its Pro Mode is back with Pro access', async () => {
   test.setTimeout(150_000);
   const { app, access: s } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON } });
   try {
@@ -128,6 +133,48 @@ test('Pro access: Simple Mode the operator chose stays when the owner gives Simp
       3000,
       'Simple Mode chosen by the operator stays',
     );
+  } finally {
+    await app.close();
+  }
+});
+
+test('Simple access refuses exactly what Simple Mode refuses (Session 55, Parts 18 and 19, one list): its one playlist takes files, and nothing beyond it, in words with no way to Pro Mode', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON }, mode: 'simple' });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const simple = win.getByTestId('simple-mode');
+    await expect(simple).toBeVisible();
+    // Started in Simple Mode by the access: a playlist of its own (none was kept), as Simple Mode makes one.
+    const one = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist());
+    expect(one).not.toBeNull();
+    await expect(simple.getByTestId('playlist-title')).toHaveText(/^Sabha, /u);
+    // Add files…: a picture into it, as with Pro access.
+    const picture = await makeTestImage(
+      win,
+      join(mkdtempSync(join(tmpdir(), 'drashti-simple-access-')), 'Placeholder access picture.png'),
+      { color: '#4c1d95' },
+    );
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [file] });
+    }, picture);
+    await simple.getByTestId('playlist-add-files').click();
+    await expect(simple.getByTestId('playlist-item')).toHaveCount(1);
+    // Beyond it, refused in Simple access's words, which offer no way to Pro Mode.
+    const refused = await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      return {
+        other: await d.playlists.addItems('placeholder-other-playlist', null, [
+          { kind: 'header', label: 'Placeholder' },
+        ]),
+        made: await d.playlists.create('Placeholder playlist', null, false),
+      };
+    });
+    expect(refused).toEqual({
+      other: { ok: false, message: SIMPLE_ACCESS_LOCKED_REFUSAL },
+      made: { ok: false, message: SIMPLE_ACCESS_LOCKED_REFUSAL },
+    });
   } finally {
     await app.close();
   }

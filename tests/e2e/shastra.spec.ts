@@ -192,8 +192,8 @@ test('a text loads from its file, again unchanged, and updated; references, nons
     const d = (globalThis as PageGlobals).drashti;
     await d.app.setMode('simple');
     const r = [await d.shastra.remove(id)];
-    // Leaving Simple Mode takes the word.
-    await d.app.setMode('pro', 'pro');
+    // Leaving Simple Mode: nothing typed since Session 55, Part 18.
+    await d.app.setMode('pro');
     return r;
   }, textId);
   expect(refused).toEqual([{ ok: false, message: SIMPLE_MODE_REFUSAL }]);

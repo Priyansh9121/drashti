@@ -315,7 +315,7 @@ test('both are on again at every start; Simple Mode only turns them on: Mod+1 an
   // Stage off from Pro Mode is still Simple Mode's to turn on, from the status bar.
   await next.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    const leave = await d.app.setMode('pro', 'pro');
+    const leave = await d.app.setMode('pro');
     if (!leave.ok) throw new Error(leave.message);
     const turned = await d.screenSwitches.turn('stage', false);
     if (!turned.ok) throw new Error(turned.message);

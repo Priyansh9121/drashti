@@ -955,9 +955,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect(p.getByTestId('remote-midi-problem')).toContainText('Simple Mode');
       expect((await midiNow(win)).mappings).toHaveLength(1);
       // Pro Mode again: None chosen from the phone.
-      expect(
-        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro')),
-      ).toMatchObject({
+      expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'))).toMatchObject({
         ok: true,
       });
       await expect(win.getByTestId('simple-mode')).toHaveCount(0);

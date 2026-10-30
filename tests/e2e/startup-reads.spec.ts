@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { launchApp, operatorPage, operatorReady, relaunchApp, type PageGlobals } from './helpers';
+import { killApp, launchApp, operatorPage, operatorReady, relaunchApp, type PageGlobals } from './helpers';
 
 /*
  * The reads a window needs as it opens say what they could not read, with Try again (Session 39): the
@@ -30,6 +30,49 @@ async function libraryWithPlaylist(): Promise<string> {
     ]);
   });
   await app.close();
+  return userData;
+}
+
+/** The run named in the restart-recovery file, or null (as simple-mode.spec.ts reads it). */
+function savedRun(userData: string): string | null {
+  try {
+    return (
+      (JSON.parse(readFileSync(join(userData, 'live-state.json'), 'utf8')) as { session?: string }).session ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same library, stopped dead in Simple Mode on that playlist (as a computer that lost power mid-sabha): the next
+ * start comes back in Simple Mode, on its one playlist (Session 55, Part 18: the playlist open when it switched).
+ */
+async function stoppedInSimpleMode(): Promise<string> {
+  const userData = await libraryWithPlaylist();
+  const { app } = await relaunchApp(userData);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win
+    .getByTestId('playlist-node')
+    .filter({ hasText: /^Placeholder sabha/u })
+    .click();
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect(win.getByTestId('simple-mode').getByTestId('playlist-item')).toHaveCount(2);
+  // This run has saved the show under its own name (from its start): only then is a stop dead this run's.
+  const clean = (() => {
+    try {
+      return (
+        (JSON.parse(readFileSync(join(userData, 'live-state.clean'), 'utf8')) as { session?: string })
+          .session ?? null
+      );
+    } catch {
+      return null;
+    }
+  })();
+  await expect.poll(() => [null, clean].includes(savedRun(userData))).toBe(false);
+  await killApp(app);
   return userData;
 }
 
@@ -83,9 +126,10 @@ test('Pro Mode: playlists that could not be read say so with Try again, never â€
 });
 
 test('Simple Mode: playlists that could not be read say so, Next says why it does nothing, and Try again brings them', async () => {
-  const userData = await libraryWithPlaylist();
+  test.setTimeout(150_000);
+  const userData = await stoppedInSimpleMode();
   const { app, win } = await opened({ DRASHTI_TEST_UNREADABLE: 'playlists' }, userData);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  // Back in Simple Mode after the stop, its playlist unread.
   const simple = win.getByTestId('simple-mode');
   await expect(simple).toBeVisible();
   const unread = simple.getByTestId('playlists-unread');
@@ -105,11 +149,11 @@ test('Simple Mode: playlists that could not be read say so, Next says why it doe
   await readable(app, 'playlists');
   await simple.getByTestId('playlists-try-again').click();
   await expect(unread).toHaveCount(0);
-  await expect(simple.getByTestId('simple-playlist')).toBeVisible();
-  await expect(simple.getByTestId('simple-item')).toHaveCount(2);
+  await expect(simple.getByTestId('playlist-title')).toHaveText('Placeholder sabha');
+  await expect(simple.getByTestId('playlist-item')).toHaveCount(2);
   // Now Next starts the playlist.
   await simple.getByRole('button', { name: /^Next/u }).click();
-  await expect(simple.getByTestId('simple-item').first()).toHaveAttribute('aria-current', 'true');
+  await expect(simple.getByTestId('playlist-item').first()).toHaveAttribute('data-live', 'true');
   await app.close();
 });
 
@@ -128,10 +172,10 @@ test('an open playlist whose items could not be read says so in both modes, neve
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   const simple = win.getByTestId('simple-mode');
   await expect(simple.getByTestId('playlist-items-unread')).toBeVisible();
-  await expect(simple.getByTestId('simple-item')).toHaveCount(0);
+  await expect(simple.getByTestId('playlist-item')).toHaveCount(0);
   await readable(app, 'playlist-items');
   await simple.getByTestId('playlist-items-try-again').click();
-  await expect(simple.getByTestId('simple-item')).toHaveCount(2);
+  await expect(simple.getByTestId('playlist-item')).toHaveCount(2);
   await expect(simple.getByTestId('playlist-items-unread')).toHaveCount(0);
   await expect.poll(logged(userData, 'a playlistâ€™s items')).toHaveLength(1);
   await app.close();

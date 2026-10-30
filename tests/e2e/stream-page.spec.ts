@@ -82,7 +82,7 @@ test('the stream’s page crashing a sixth time in a minute stays stopped, with 
   const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
   expect(log).toContain('for the sixth time in a minute');
   expect(log).toContain("The stream's page is tried again");
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.stopRecording());
   await app.close();
 });

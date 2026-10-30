@@ -334,11 +334,12 @@ test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Pla
   await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
   await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
 
-  // One tap on a slide's row puts it up, from the playlist.
-  await win
-    .getByTestId('simple-slide')
-    .filter({ hasText: `${PDF}_2` })
-    .click();
+  // One tap on a slide's row puts it up, from the playlist (Pro Mode's rows since Session 55, Part 18).
+  const simpleRow = win
+    .getByTestId('simple-mode')
+    .getByTestId('slide-thumb')
+    .filter({ hasText: `${PDF}_2` });
+  await simpleRow.click();
   await expect
     .poll(async () => (await state(win)).live)
     .toMatchObject({
@@ -346,10 +347,7 @@ test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Pla
       slideIndex: 1,
       playlist: { itemId: items.pdf },
     });
-  await expect(win.getByTestId('simple-slide').filter({ hasText: `${PDF}_2` })).toHaveAttribute(
-    'aria-current',
-    'true',
-  );
+  await expect(simpleRow).toHaveAttribute('aria-current', 'true');
   await app.close();
 });
 
