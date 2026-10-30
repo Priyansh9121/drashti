@@ -317,7 +317,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
         <Select
           aria-label="Font"
           title="Font"
-          className="w-36"
+          className="w-32"
           data-testid="field-font"
           disabled={none}
           value={shown.font ?? ''}
@@ -500,7 +500,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
             aria-haspopup="menu"
             disabled={none}
             data-testid="words-bullets-menu"
-            className="w-4!"
+            className="w-6!"
             onClick={(e) => {
               setListMenu({ at: menuBelow(e.currentTarget), kind: 'bullets' });
             }}
@@ -524,7 +524,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
             aria-haspopup="menu"
             disabled={none}
             data-testid="words-numbers-menu"
-            className="w-4!"
+            className="w-6!"
             onClick={(e) => {
               setListMenu({ at: menuBelow(e.currentTarget), kind: 'numbers' });
             }}
@@ -554,7 +554,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
         />
       </Cluster>
       <Divider />
-      <Cluster name="Effects">
+      <Cluster name="Effects, find">
         <IconButton
           ref={effectsButton}
           icon={Sparkles}
@@ -569,9 +569,6 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
             setEffects((on) => !on);
           }}
         />
-      </Cluster>
-      <Divider />
-      <Cluster name="Find">
         <IconButton
           icon={TextSearch}
           size="sm"

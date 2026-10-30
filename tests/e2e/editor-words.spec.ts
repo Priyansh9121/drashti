@@ -158,6 +158,7 @@ test('Words: a bundled font, size, colour, bold, italic, underline, strike throu
   await expect(effects).toHaveCount(0);
 
   // Words of their own: the first word, typed in, italic and struck through.
+  await editor.getByTestId('editor-canvas').focus();
   await ed.keyboard.press('Enter');
   const typing = editor.getByTestId('text-editing');
   await expect(typing).toBeFocused();
@@ -216,7 +217,8 @@ test('Words: a bundled font, size, colour, bold, italic, underline, strike throu
   const gujaratiOnScreen = slideLayer.locator('[data-element]').first();
   await expect(gujaratiOnScreen.locator('[data-list-marker]')).toHaveText(['૧.', '૨.']);
   await expect.poll(() => drawn(gujaratiOnScreen)).toEqual(gujaratiInEditor);
-  expect(await gujaratiOnScreen.locator('[data-run]').allTextContents()).toEqual(['નમૂના એક\n', 'નમૂના બે']);
+  // Its words whole, each line its own, the numbers apart from them (never inside the words, where they would join).
+  expect(await gujaratiOnScreen.locator('[data-line]').evaluateAll((lines) => lines.map((l) => l.querySelector('[data-run]')?.textContent))).toEqual(['નમૂના એક', 'નમૂના બે']);
   await app.close();
 });
 

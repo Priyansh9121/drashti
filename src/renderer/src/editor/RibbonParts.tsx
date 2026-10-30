@@ -20,5 +20,5 @@ export function Cluster({ name, children, className }: { name: string; children:
 
 /** A thin line between clusters. */
 export function Divider() {
-  return <span aria-hidden="true" className="mx-1.5 h-9 w-px shrink-0 bg-line" />;
+  return <span aria-hidden="true" className="mx-1 h-9 w-px shrink-0 bg-line" />;
 }
