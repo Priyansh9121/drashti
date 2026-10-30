@@ -33,7 +33,6 @@ extraResources:
       - screenshots/deck-transitions.png
       - screenshots/dropbox-playlist.png
       - screenshots/first-start-welcome.png
-      - screenshots/idle-dialog.png
       - screenshots/import-link-dropbox.png
       - screenshots/import-link-report.png
       - screenshots/import-link-youtube.png
@@ -69,11 +68,11 @@ extraResources:
       - screenshots/screen-stopped-notice.png
       - screenshots/screens-cards.png
       - screenshots/screens-dashboard-1280x720.png
-      - screenshots/screens-looks.png
       - screenshots/screens-pair-node.png
       - screenshots/setup-wizard.png
       - screenshots/share-with-phones.png
       - screenshots/shastra-texts.png
+      - screenshots/simple-mode-1280x720.png
       - screenshots/smart-playlist.png
       - screenshots/stage-panel-timers.png
       - screenshots/stage-template-dialog.png
@@ -81,17 +80,6 @@ extraResources:
       - screenshots/start-here.png
       - screenshots/tablet-remote-more.png
       - screenshots/tablet-remote-sideways.png
-      - screenshots/theme-charcoal.png
-      - screenshots/theme-forest.png
-      - screenshots/theme-high-contrast-black-on-white.png
-      - screenshots/theme-high-contrast-white-on-black.png
-      - screenshots/theme-ivory.png
-      - screenshots/theme-maroon-and-gold.png
-      - screenshots/theme-midnight.png
-      - screenshots/theme-ocean.png
-      - screenshots/theme-plum-and-flame.png
-      - screenshots/theme-saffron.png
-      - screenshots/themes-builtin.png
       - screenshots/time-bar.png
       - screenshots/updates-offer.png
       - screenshots/video-timeline.png

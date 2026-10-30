@@ -23,7 +23,7 @@ export const PANEL_HELP = {
   playlists: {
     title: 'Playlists',
     doc: 'operator',
-    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it, then click its first item: a presentation’s slides appear in the middle, and a video, a picture or a sound goes on the screens at once. While a phone or tablet is paired as a remote, right-click a playlist for Share with Phones and Tablets: remotes then show its files under Shared from Drashti until you choose Stop Sharing.',
+    text: 'A playlist is the running order for one sabha. Click tonight’s playlist to open it in the middle, then click its first row: a slide, a picture, a video or a sound goes on the screens at once. While a phone or tablet is paired as a remote, right-click a playlist for Share with Phones and Tablets: remotes then show its files under Shared from Drashti until you choose Stop Sharing.',
     guide: "**Open tonight's playlist.**",
   },
   library: {
@@ -68,6 +68,12 @@ export const PANEL_HELP = {
     text: 'Countdowns and clocks. Press Start, then Show for the audience to put one up on the hall’s screens in its own look (How it looks for the audience…: full screen or a corner, over the wallpaper or over what is up, a label, a ring or a bar, a warning, and what it does at zero), and Hide to take it off; Countdown to the start… counts down to the sabha’s time over the wallpaper, on the stage too, and goes by itself. The stage screens show every running timer by themselves, or, with a layout of their own, the timers in it.',
     guide: '**Timers.**',
   },
+  wallpapers: {
+    title: 'Wallpapers',
+    doc: 'operator',
+    text: 'The pictures the hall sees whenever nothing is up: click one to use it, and click it again to use none (black). Drop pictures here, from the computer or from Media, or press Import…; pictures dropped on a wallpaper go round in it, each fading into the next. Its right-click menu has Edit wallpaper… (their order, seconds and fade), Rename… and Delete…, each with Undo.',
+    guide: '**Wallpapers.** Under the playlists',
+  },
   playlist: {
     title: 'The open playlist',
     doc: 'operator',
@@ -95,7 +101,7 @@ export const PANEL_HELP = {
   phones: {
     title: 'Phones',
     doc: 'operator',
-    text: 'Phones and tablets on the mandir’s Wi-Fi, paired as a remote, a stage display or for announcements: turn on Let paired phones and tablets connect, then check each one says Connected. A playlist shared from its right-click menu (Share with Phones and Tablets) shows on a remote under Shared from Drashti. To let a remote add pictures, videos, sounds and decks with Add from this Phone…, turn on Phones and tablets may add files, off until then: they come into Media and the playlist Added from Phones, never onto the screens by themselves.',
+    text: 'Phones and tablets on the mandir’s Wi-Fi, paired as a remote, a stage display or for announcements: turn on Let paired phones and tablets connect, then check each one says Connected. A playlist shared from its right-click menu (Share with Phones and Tablets) shows on a remote under Shared from Drashti. To let a remote add files, turn on Phones and tablets may add files, off until then: Add from this Phone… brings pictures, videos, sounds and decks into Media and the playlist Added from Phones, and Add photos brings photos to the end of the open playlist, never onto the screens by themselves.',
     guide: '**Phones** (if a phone remote or a stage tablet is used)',
   },
   announcements: {
