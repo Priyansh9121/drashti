@@ -164,6 +164,6 @@ export type EngineAction =
   /** The stage screens (Session 55): the chosen layout, Stage off, the chosen video input. */
   | { type: 'stage/set'; stage: StageState }
   /** How Drashti's own sound plays now (Session 55, Part 7): the music stepping aside, each file's even gain. */
-  | { type: 'sound/set'; sound: SoundState };
+  | { type: 'sound/set'; sound: SoundState }
   /** The chosen wallpaper (Session 55, Part 6), as the library has it, or none. */
   | { type: 'chosenWallpaper/set'; wallpaper: ChosenWallpaper | null };

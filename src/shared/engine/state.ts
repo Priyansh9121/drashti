@@ -723,6 +723,7 @@ export interface EngineState {
    * field an older page leaves alone, so the state's version stays.
    */
   sound?: SoundState;
+  /**
    * The chosen wallpaper (Session 55, Part 6, shared/wallpapers.ts): what every audience screen, node and phone shows
    * whenever nothing is up there, and under the Wallpaper (`wallpaper`); its pictures go round from `since`. Only the
    * main process sets it, from the library. Left out (a state saved before 18) or null: none chosen, black.
