@@ -2,8 +2,8 @@
  * The Lower Thirds studio's fonts (Session 55, Part 16; src/shared/lower-third-fonts.ts): free fonts with an open
  * licence (SIL OFL 1.1, see LICENSES/fonts), bundled with Drashti and never fetched from the internet. Each file
  * draws only the letters of its unicode range, so a page loads only what its words use. Shown blank for the moment
- * a file takes to load (font-display: block), never in another font: Drashti's own windows load them all soon after
- * they open (render/studio-fonts.ts).
+ * a file takes to load (font-display: block), never in another font: Drashti's own windows load them all once they
+ * have drawn, never with their start (render/studio-fonts.ts).
  */
 /* mukta-latin-400-normal */
 @font-face {

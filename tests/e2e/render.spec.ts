@@ -113,7 +113,7 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   expect(fonts.urls.length).toBeGreaterThan(0);
   for (const url of fonts.urls) expect(url).toMatch(/^file:.*\.woff2?$/);
   // Drashti's own Noto fonts, loaded before anything shows; and, unwaited for, nothing but the Lower Thirds studio's
-  // bundled ones (Session 55, Part 16: they load after the Noto fonts, so some may still be on their way): never a
+  // bundled ones (Session 55, Part 16: they load once the screen has drawn, so some may still be on their way): never a
   // font of this computer's.
   const NOTO = ['Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Gujarati'];
   const studio = LOWER_THIRD_FONT_CHOICES.filter((c) => c.bundled === 'studio').flatMap((c) => c.families);
