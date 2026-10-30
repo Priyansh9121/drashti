@@ -120,7 +120,7 @@ A click on a column's heading sorts by it, a second the other way (it opens with
 **Changing the list.** Choose a Gmail's row, and the bar under the table offers what can be done with it:
 
 - a request: **Approve…** (how long and what they may use, then their token goes to them by email) or **Reject** (they are told);
-- an approved Gmail: **Give access again…** (a new token, for one more computer, how long from now and what they may use), **Change the length…** (how long from now: before the end nothing stops; after it, their Drashti comes back), or **Revoke…**, which asks first: "Their Drashti stops at once, screens and stream included.";
+- an approved Gmail: **Give access again…** (a new token, for one more computer, how long from now and what they may use), **Change the length…** (how long from now: before the end nothing stops; after it, their Drashti comes back), or **Revoke…**, which asks first: "Their Drashti stops within 15 seconds, screens and stream included.";
 - a rejected Gmail: **Approve…**; a revoked one: **Give access again…**;
 - every row but the owner's: **Change the mode…** (Pro or Simple; their Drashti hears it at its next check, within 15 seconds);
 - every row: **Edit note…**.
@@ -129,7 +129,7 @@ A click on a column's heading sorts by it, a second the other way (it opens with
 
 **Add a Gmail…** puts someone on the list before they ask: their Gmail, a name, a note, how long (counted from the approval) and what they may use (**Simple Mode only** at first). With **Approve it now: their token goes to them by email** ticked, it is **Add and approve**; without it, the Gmail waits as a request, as if they had asked. The owner's own row is never offered **Revoke…**, **Reject**, **Change the length…** or **Change the mode…**: it is always Unlimited and Pro.
 
-![Revoke… asking first: their Drashti stops at once, screens and stream included](screenshots/access-revoke.png)
+![Revoke… asking first: their Drashti stops within 15 seconds, screens and stream included](screenshots/access-revoke.png)
 
 **In the Sheet.** The owner may also set a Gmail's **Status** in the Sheet (a list to choose from). Set to **revoked** (or **rejected**), its computers stop within about 30 seconds, and stay out even if it is set to **approved** again later: **Give access again** lets them back in. Set to **approved** by hand, it sends no token: use the email's Approve link, or the Access List. A status typed there that the list does not know stops its computers too, until it is put right. **Access ends** typed there counts as well: a date and time is the new end, empty or `Unlimited` is no end, and anything the list cannot read stops that Gmail's computers until it is put right (the Access List says **Can't be read**). **Mode** typed there counts too: `Pro` is Pro Mode and Simple Mode; `Simple`, empty or anything else is Simple Mode only (the owner's own row is always Pro). Once the list has its alpha.14 files (`docs/access-setup.md`), it makes the column itself at its first call, writing `Pro` for every Gmail let in before. A **Mode** column deleted or renamed comes back empty, and every Gmail but the owner's is then Simple until its **Mode** says Pro again. In the script's settings (**Script Properties**), leave the list's own as they are: `WEB_APP_URL`, the keys, `REQUESTS_TODAY`, its count of the day's requests, and `MODE_COLUMN_MADE` (`docs/access-setup.md`, section 10).
 
