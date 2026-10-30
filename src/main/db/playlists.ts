@@ -417,12 +417,15 @@ export class PlaylistRepo {
   tree(templates = false): PlaylistNode[] {
     // Made from a folder (Session 44): shown a folder at a time. Templates never are.
     const fromFolder = templates ? new Set<string>() : this.fromFolderIds();
+    // Its placeholders the import could not find (a hint says why): never a slot waiting to be filled, a placeholder
+    // with no hint (Session 55: a playlist from a template counted its slots as missing).
     const rows = this.db
       .prepare(
         `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind, p.settings, p.shared_at,
                 (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id AND i.deleted_at IS NULL) AS item_count,
                 (SELECT COUNT(*) FROM playlist_items i
-                  WHERE i.playlist_id = p.id AND i.deleted_at IS NULL AND i.kind = 'placeholder') AS placeholders
+                  WHERE i.playlist_id = p.id AND i.deleted_at IS NULL AND i.kind = 'placeholder'
+                    AND i.hint IS NOT NULL) AS placeholders
            FROM playlists p WHERE p.deleted_at IS NULL AND p.is_template = ? ORDER BY p.position, p.rowid`,
       )
       .all(templates ? 1 : 0) as {
