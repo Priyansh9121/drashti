@@ -209,6 +209,49 @@ test('the quick bar: hidden when empty; a picture, a slide row, a video row and 
   await again.app.close();
 });
 
+test('a full quick bar of 8, long names cut, fits one row above the bar of clears at 1024 × 645 and 1280 × 720; a 9th is refused', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  const eight = Array.from({ length: 8 }, (_, i) => ({
+    kind: 'message' as const,
+    templateId: `placeholder-message-${String(i + 1)}`,
+    label: `Placeholder message with a long name to cut, number ${String(i + 1)}`,
+  }));
+  const set = await win.evaluate((pinned) => (globalThis as PageGlobals).drashti.quickBar.set(pinned), eight);
+  expect(set.ok).toBe(true);
+  await expect(pins(win)).toHaveCount(8);
+  await expect(pins(win).last().getByTestId('quick-key')).toHaveText(/^(⌥8|Alt\+8)$/u);
+  await expectFits(win, '8 pins at 1024 × 645');
+  // A pin's own menu moves it a place: the first to second, its key with it.
+  await menuChoose(win, pins(win).first(), 'Move right');
+  await expect(pins(win).nth(1)).toContainText('number 1');
+  await expect(pins(win).first()).toContainText('number 2');
+  // The first can't move left, nor the last right.
+  await pins(win).first().click({ button: 'right' });
+  await expect(win.getByRole('menuitem', { name: 'Move left' })).toBeDisabled();
+  await win.keyboard.press('Escape');
+  await pins(win).last().click({ button: 'right' });
+  await expect(win.getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
+  await win.keyboard.press('Escape');
+  await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
+  await expectFits(win, '8 pins at 1280 × 720');
+  // A 9th is refused by the main process: the bar stays as it was.
+  const nine = await win.evaluate(
+    (pinned) =>
+      (globalThis as PageGlobals).drashti.quickBar.set([
+        ...pinned,
+        { kind: 'message', templateId: 'placeholder-message-9', label: 'Placeholder nine' },
+      ]),
+    eight,
+  );
+  expect(nine.ok).toBe(false);
+  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.quickBar.view())).toHaveLength(8);
+  await app.close();
+});
+
 test('Simple Mode has no quick bar: none shows, its keys do nothing, and the main process refuses changing it', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp();

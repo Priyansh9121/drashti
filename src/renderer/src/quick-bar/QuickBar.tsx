@@ -55,9 +55,11 @@ export function QuickBar({
   run: (action: OperatorAction, slot?: number) => void;
 }) {
   const pins = useQuickBar((s) => s.pins);
-  const [menu, setMenu] = useState<{ at: MenuPlace; key: string; index: number } | null>(null);
+  const [menu, setMenu] = useState<{ at: MenuPlace; key: string } | null>(null);
   if (pins.length === 0) return null;
-  const menuPin = menu ? pins[menu.index] : undefined;
+  // The pin its menu is for, found by what it is (the bar may change while the menu is open).
+  const menuIndex = menu ? pins.findIndex((p) => pinKey(p) === menu.key) : -1;
+  const menuPin = pins[menuIndex];
   return (
     <nav
       aria-label="Quick bar"
@@ -82,12 +84,12 @@ export function QuickBar({
             }}
             onContextMenu={(e) => {
               e.preventDefault();
-              setMenu({ at: menuPlace(e), key: pinKey(pin), index: i });
+              setMenu({ at: menuPlace(e), key: pinKey(pin) });
             }}
             onKeyDown={(e) => {
               if (!isMenuKey(e)) return;
               e.preventDefault();
-              setMenu({ at: menuBelow(e.currentTarget), key: pinKey(pin), index: i });
+              setMenu({ at: menuBelow(e.currentTarget), key: pinKey(pin) });
             }}
             className="inline-flex h-7 min-w-0 shrink basis-44 items-center gap-1.5 rounded-md border border-line bg-panel-2 px-2 text-sm font-medium text-fg hover:bg-panel-3"
           >
@@ -110,13 +112,13 @@ export function QuickBar({
             {
               label: 'Move left',
               icon: ArrowLeft,
-              disabled: menu.index === 0,
+              disabled: menuIndex === 0,
               onSelect: () => void movePin(menu.key, -1),
             },
             {
               label: 'Move right',
               icon: ArrowRight,
-              disabled: menu.index === pins.length - 1,
+              disabled: menuIndex === pins.length - 1,
               onSelect: () => void movePin(menu.key, 1),
             },
             {
