@@ -110,6 +110,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.lowerThirds.save,
   IPC.lowerThirds.remove,
   IPC.lowerThirds.restore,
+  // The Lower Thirds studio (Session 55, Part 16): Pro Mode's; it closes in Simple Mode.
+  IPC.lowerThirds.studio,
+  IPC.lowerThirds.show,
+  IPC.lowerThirds.hide,
   // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
   IPC.midi.set,
   IPC.stageLayouts.remove,

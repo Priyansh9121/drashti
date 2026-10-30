@@ -1,5 +1,12 @@
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
-import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
+import type {
+  LowerThird,
+  LowerThirdDone,
+  LowerThirdInput,
+  LowerThirdResult,
+  LowerThirdsResult,
+  StudioOpen,
+} from './lower-thirds';
 import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from './wallpapers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -749,6 +756,17 @@ export interface DrashtiBridge {
     /** Delete these (Undo brings them back, until Drashti next starts). */
     remove(ids: string[]): Promise<LowerThirdsResult>;
     restore(ids: string[]): Promise<LowerThirdsResult>;
+    /** The Lower Thirds studio (Session 55, Part 16): open it (the operator window), on one or a new one. */
+    studio(open: StudioOpen): Promise<LowerThirdDone>;
+    /** Show one as the library has it, or hide the one up (the operator window or the studio). */
+    show(id: string): Promise<LowerThirdDone>;
+    hide(): Promise<LowerThirdDone>;
+    /** The studio, told which to open while it is open. */
+    onEdit(listener: (open: NonNullable<StudioOpen>) => void): () => void;
+    /** The studio says whether it has changes not saved; asked to close with some, it asks first, then closes. */
+    dirty(dirty: boolean): Promise<null>;
+    close(): Promise<null>;
+    onAskClose(listener: () => void): () => void;
   };
   /** The MIDI controller: which device, and what its notes and controllers do. */
   midi: {

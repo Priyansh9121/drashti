@@ -76,7 +76,6 @@ import { MusicStepsAside } from '../sound/MusicStepsAside';
 import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
-import { LowerThirdEditor } from '../lower-thirds/LowerThirdEditor';
 import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
 import { runBack } from './actions';
 import { CalendarDialog } from '../calendar/CalendarDialog';
@@ -434,7 +433,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {announcementsOpen && <AnnouncementsPanel />}
       <StreamSettings />
       <StageLayoutEditor platform={platform} />
-      <LowerThirdEditor />
       <CalendarDialog />
       <BackupsDialog />
       <EventsOutDialog />

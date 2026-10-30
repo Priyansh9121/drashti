@@ -91,6 +91,8 @@ function put(el: HTMLElement, pose: Pose): void {
   el.style.transform = pose.transform;
   el.style.clipPath = pose.clip;
   el.style.transformOrigin = pose.origin;
+  // The Lower Thirds studio's blurs (Session 55, Part 16).
+  el.style.filter = pose.filter ?? '';
 }
 
 /** The message `t` ms into its in or out (else at rest), set straight on its band and units. */

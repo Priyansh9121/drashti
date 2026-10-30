@@ -503,6 +503,16 @@ const bridge: DrashtiBridge = {
     save: (id, input) => invoke(IPC.lowerThirds.save, id, input),
     remove: (ids) => invoke(IPC.lowerThirds.remove, ids),
     restore: (ids) => invoke(IPC.lowerThirds.restore, ids),
+    studio: (open) => invoke(IPC.lowerThirds.studio, open),
+    show: (id) => invoke(IPC.lowerThirds.show, id),
+    hide: () => invoke(IPC.lowerThirds.hide),
+    onEdit: (listener) => on(IPC.lowerThirds.edit, listener),
+    dirty: (dirty) => invoke(IPC.lowerThirds.dirty, dirty),
+    close: () => invoke(IPC.lowerThirds.close),
+    onAskClose: (listener) =>
+      on(IPC.lowerThirds.askClose, () => {
+        listener();
+      }),
   },
   midi: {
     get: () => invoke(IPC.midi.get),
@@ -634,7 +644,15 @@ contextBridge.exposeInMainWorld('drashti', bridgeFor(bridge, pageOf(here)));
  * so no frame shows another colour; then every change, at once. The audience screens, the stream's page and
  * the stage display never take one (body.output keeps its own colours).
  */
-const OWN_WINDOWS: readonly (string | null)[] = ['index', 'gallery', 'node', 'lock', 'access-list'];
+const OWN_WINDOWS: readonly (string | null)[] = [
+  'index',
+  'gallery',
+  'node',
+  'lock',
+  'access-list',
+  // The Lower Thirds studio (Session 55, Part 16).
+  'lower-thirds',
+];
 /** The page's document and MutationObserver, as far as this needs them (the preload has no DOM types). */
 const dom = globalThis as unknown as {
   document: { documentElement: AppearanceRoot | null };

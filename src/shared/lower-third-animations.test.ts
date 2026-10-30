@@ -12,6 +12,17 @@ import {
   searchAnimations,
 } from './lower-third-animations';
 import { lowerThirdInputSchema, NEW_LOWER_THIRD } from './lower-thirds';
+import { STUDIO_BOX_MOVES, studioUnitMoves } from './lower-third-moves';
+
+/** The studio's moves (Session 55, Part 16): they may also skew, blur and clip to a circle or a polygon, so
+ * lower-third-studio.test.ts holds them to its own rules; every other one keeps these. */
+const STUDIO_KEYS = new Set([
+  ...STUDIO_BOX_MOVES.map((m) => m.key),
+  ...(['line', 'word', 'letter'] as const).flatMap((u) => studioUnitMoves(u).map((m) => `${u}-${m.key}`)),
+]);
+const fromTheStudio = (id: string): boolean =>
+  STUDIO_KEYS.has(id.replace(/-(quick|steady|slow)$/u, '')) ||
+  STUDIO_KEYS.has(id.replace(/-band-(fade|slide|wipe)-(quick|steady|slow)$/u, ''));
 
 /*
  * The lower thirds' animations (Session 44): 200 to 500 of them, each with a plain name of its own, found by
@@ -97,7 +108,7 @@ describe('the lower thirds’ animations', () => {
   });
 
   it('every one at its first, middle and last frame, in and out, for one line, a few words and many letters: only opacity, transform and clip-path, starting hidden and ending where it should', () => {
-    for (const a of LOWER_THIRD_ANIMATIONS)
+    for (const a of LOWER_THIRD_ANIMATIONS.filter((x) => !fromTheStudio(x.id)))
       for (const units of [1, 4, 40]) {
         for (const phase of ['in', 'out'] as const)
           for (const at of ['first', 'middle', 'last'] as const) {
