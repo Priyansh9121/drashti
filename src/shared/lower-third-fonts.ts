@@ -44,15 +44,18 @@ export type LowerThirdFont = (typeof LOWER_THIRD_FONTS)[number];
 
 const ALL: readonly FontScript[] = ['latin', 'gujarati', 'devanagari'];
 
+/** Drashti's own Noto Sans: the first choice, and the one drawn for a name this Drashti does not know. */
+const NOTO_SANS: LowerThirdFontChoice = {
+  name: 'Noto Sans',
+  families: ['Noto Sans'],
+  weights: [400, 500, 700],
+  scripts: ALL,
+  kind: 'sans',
+  bundled: 'noto',
+};
+
 export const LOWER_THIRD_FONT_CHOICES: readonly LowerThirdFontChoice[] = [
-  {
-    name: 'Noto Sans',
-    families: ['Noto Sans'],
-    weights: [400, 500, 700],
-    scripts: ALL,
-    kind: 'sans',
-    bundled: 'noto',
-  },
+  NOTO_SANS,
   {
     name: 'Noto Sans Gujarati',
     families: ['Noto Sans Gujarati'],
@@ -152,7 +155,7 @@ const BY_NAME = new Map(LOWER_THIRD_FONT_CHOICES.map((f) => [f.name, f]));
 
 /** A choice by its name (Drashti's own Noto Sans for one this Drashti does not know). */
 export function fontChoice(name: string): LowerThirdFontChoice {
-  return BY_NAME.get(name) ?? (LOWER_THIRD_FONT_CHOICES[0] as LowerThirdFontChoice);
+  return BY_NAME.get(name) ?? NOTO_SANS;
 }
 
 /** The weight a choice draws for the one asked: the nearest it has (the lighter of two as near). */
