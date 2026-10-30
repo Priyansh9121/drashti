@@ -21,9 +21,9 @@ import { KIRTAN, NOTE_ONE, NOTE_TWO, placeholderTalk, setUpPlaceholderShow, TALK
  * slides put up, the screens following; the live slide's notes and the next
  * one's under the live picture; on an iPad held sideways, the live picture,
  * the notes and Next beside the slides. In Simple Mode the remote reads the
- * library and puts slides up as the window may, and no more. The talk is
- * outside the playlist on purpose. Placeholder words; codes and tokens are
- * made at run time and never printed.
+ * library and puts up the slides of Simple Mode's playlist only, as its window
+ * may (Session 55), and no more. The talk is outside the playlist on purpose.
+ * Placeholder words; codes and tokens are made at run time and never printed.
  */
 
 const TABLET_SIDEWAYS = 'iPad (gen 7) landscape';
@@ -278,7 +278,7 @@ test('a presenter’s iPad held sideways: the live picture, the notes and Next b
   await app.close();
 });
 
-test('in Simple Mode a Remote still reads the library and puts a slide up, as the window may, and no more', async () => {
+test('in Simple Mode a Remote still reads the library, and puts up a slide of Simple Mode’s playlist only, as the window may, and no more', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -303,12 +303,31 @@ test('in Simple Mode a Remote still reads the library and puts a slide up, as th
   ]);
   expect((await apiCall(port, `/api/v1/presentations/${talkId}`, { token })).status).toBe(200);
 
-  // Putting one of its slides up: running the show, which Simple Mode keeps.
-  const up = await apiCall(port, '/api/v1/trigger/slide', {
-    method: 'POST',
-    token,
-    body: { presentationId: talkId, slideIndex: 2 },
-  });
+  // Putting one of its slides up from the library: refused in words, nothing up (Session 55, the owner's answer of
+  // 30 Oct 2026: a phone does only what Simple Mode's window does, which puts up its one playlist's rows, never the
+  // library's).
+  const slide = () =>
+    apiCall(port, '/api/v1/trigger/slide', {
+      method: 'POST',
+      token,
+      body: { presentationId: talkId, slideIndex: 2 },
+    });
+  const refused = await slide();
+  expect(refused.status).toBe(403);
+  expect(String(refused.json['message'])).toMatch(
+    /^Simple Mode on Drashti’s computer: a phone does only what/u,
+  );
+  expect((await where(win)).presentationId).toBeNull();
+  await expect(output.locator('[data-layer="slide"]')).toHaveCount(0);
+  // Once in Simple Mode's playlist (brought in as its window does), running the show, which Simple Mode keeps.
+  await win.evaluate(async (presentationId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const one = await d.app.simplePlaylist();
+    if (one === null) throw new Error('Simple Mode has no playlist');
+    const added = await d.playlists.addItems(one, null, [{ kind: 'presentation', presentationId }]);
+    if (!added.ok) throw new Error(added.message);
+  }, talkId);
+  const up = await slide();
   expect(up.status).toBe(200);
   await expect.poll(() => where(win)).toEqual({ presentationId: talkId, slideIndex: 2 });
   await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder talk closing');
