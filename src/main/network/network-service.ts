@@ -121,7 +121,14 @@ export interface NetworkDeps {
   spawn(): NetworkWorker;
   /** How the server is set up for this port (where the pages are, FFmpeg, the address to listen on). */
   serverOptions(port: number): ServerOptions;
+  /** This computer's name on the local network as shown (name.local), or null. */
   localName(): string | null;
+  /**
+   * This computer's addresses on its local networks as shown, and in its pairing and poster links: its own
+   * (localInterfaceAddresses) unless given. A test's placeholders (Session 55): the guides' pictures never show a real
+   * computer's address.
+   */
+  interfaceAddresses?(): string[];
   engine: {
     dispatch(command: EngineCommand): CommandResult;
     snapshot(): EngineSnapshotMessage;
@@ -376,7 +383,7 @@ export class NetworkService implements EngineTransport {
   status(): NetworkStatus {
     const port = this.boundPort ?? this.port;
     const localName = this.deps.localName();
-    const addresses = localInterfaceAddresses()
+    const addresses = (this.deps.interfaceAddresses?.() ?? localInterfaceAddresses())
       .filter((a) => !a.includes(':'))
       .map((a) => `http://${a}:${port}`);
     const devices: DeviceInfo[] = this.deps.devices.list().map((d) => ({

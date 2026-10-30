@@ -64,6 +64,7 @@ import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } from './nodes';
 import { releaseServer } from './release-server';
+import { holdClock } from './placeholder-slides';
 import { makeDeckMedia, makeTestDeck, TRIAL_SLIDES } from '../../src/main/import/testing/make-deck';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
@@ -96,24 +97,36 @@ const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 // taking them (the operator window's display, or a real second one). Set only while this file's tests run:
 // loading the file to list its tests, as every run does, must change nothing, and the worker goes on to the
 // other files (where it would hide the appearance a test chose).
-const appearanceBefore = process.env['DRASHTI_TEST_APPEARANCE'];
-const windowedBefore = process.env['DRASHTI_WINDOWED_OUTPUTS'];
+//
+// Two more, for what the pictures show (Session 55): a new library has the sample kirtan without the tests' Language
+// test slides, which Part 1 took out of Drashti (DRASHTI_TEST_NO_TEST_SLIDES); and the Phones panel shows this computer
+// at a placeholder address and name, http://192.168.1.20:<port> and http://placeholder-mac.local:<port>, never the
+// real ones of the computer taking them (DRASHTI_TEST_NETWORK_SHOWN).
+const PICTURES_ENV: Record<string, string> = {
+  DRASHTI_TEST_APPEARANCE: 'black',
+  DRASHTI_WINDOWED_OUTPUTS: '1',
+  DRASHTI_TEST_NO_TEST_SLIDES: '1',
+  DRASHTI_TEST_NETWORK_SHOWN: '192.168.1.20 placeholder-mac',
+};
+const envBefore = Object.fromEntries(Object.keys(PICTURES_ENV).map((k) => [k, process.env[k]]));
 test.beforeAll(() => {
-  process.env['DRASHTI_TEST_APPEARANCE'] = 'black';
-  process.env['DRASHTI_WINDOWED_OUTPUTS'] = '1';
+  Object.assign(process.env, PICTURES_ENV);
 });
 test.afterAll(() => {
-  if (appearanceBefore === undefined) delete process.env['DRASHTI_TEST_APPEARANCE'];
-  else process.env['DRASHTI_TEST_APPEARANCE'] = appearanceBefore;
-  if (windowedBefore === undefined) delete process.env['DRASHTI_WINDOWED_OUTPUTS'];
-  else process.env['DRASHTI_WINDOWED_OUTPUTS'] = windowedBefore;
+  for (const [k, v] of Object.entries(envBefore)) {
+    if (v === undefined) Reflect.deleteProperty(process.env, k);
+    else process.env[k] = v;
+  }
 });
 
 /**
  * A picture of the page; `hide` covers parts that must not be kept (a pairing
- * code and its QR code); `whole` takes all of a page that scrolls.
+ * code and its QR code); `whole` takes all of a page that scrolls; `held` takes
+ * what moves where it is now, held there by the screens' clock (a ticker's words:
+ * with its animation stopped for the picture, they go back to before they came
+ * in, and the band is empty, Session 55).
  */
-async function shot(page: Page, name: string, hide: Locator[] = [], whole = false) {
+async function shot(page: Page, name: string, hide: Locator[] = [], whole = false, held = false) {
   mkdirSync(folder, { recursive: true });
   await letTimePass(page, 700, 'the docs’ picture: thumbnails and still frames settle');
   await page.screenshot({
@@ -123,7 +136,7 @@ async function shot(page: Page, name: string, hide: Locator[] = [], whole = fals
     maskColor: '#2a2f3a',
     fullPage: whole,
     // Settled (Session 26g): anything still arriving is shown in its place.
-    animations: 'disabled',
+    animations: held ? 'allow' : 'disabled',
   });
 }
 
@@ -679,7 +692,12 @@ test('converting media: the import report, then the media list while converting 
 
 test('the local network: the Phones panel, announcements, the ticker, and the pages on a phone and a tablet', async () => {
   test.setTimeout(240_000);
-  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  // The screens' clock can be held (a test switch), to take the ticker with its words in view.
+  const { app } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+  });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
@@ -735,8 +753,23 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     await shot(win, 'announcements-queue');
     await win.keyboard.press('Escape');
 
-    // An audience screen with the ticker; the pages.
-    await shot(output, 'output-ticker');
+    // An audience screen with the ticker, its words held a little in from the left edge (Session 55: the picture had
+    // the band empty), then let go; the pages.
+    const words = output.getByTestId('ticker-words');
+    const inView = await words.evaluate((el) => {
+      const effect = el.getAnimations()[0]?.effect;
+      const frames = effect instanceof KeyframeEffect ? effect.getKeyframes() : [];
+      const x = (i: number) =>
+        Number(/translateX\((-?[\d.]+)px\)/u.exec(String(frames[i]?.['transform'] ?? ''))?.[1] ?? NaN);
+      // From the right edge (the canvas's width) to the words' width past the left: a pass, from when it started.
+      const [from, to] = [x(0), x(1)];
+      return Number(el.dataset['startedAt']) + (Number(el.dataset['passMs']) * from * 0.97) / (from - to);
+    });
+    expect(Number.isFinite(inView)).toBe(true);
+    await holdClock(app, inView);
+    await expect.poll(() => words.evaluate((el) => el.getAnimations()[0]?.playState)).toBe('paused');
+    await shot(output, 'output-ticker', [], false, true);
+    await holdClock(app, null);
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
     await shot(phone.page, 'phone-remote');
     await phone.page.getByTestId('remote-tab-playlist').click();
@@ -1398,13 +1431,18 @@ test('updates: the Updates dialog, the status bar, and a node offering to match 
   } finally {
     release.close();
   }
-  const mains = await releaseServer({ '1.0.0-test.1': randomBytes(256 * 1024) }, '1.0.0-test.1');
+  // Main on this Drashti's own version, the node on the one before (Session 55: the picture showed test versions), as
+  // when Main was updated first.
+  const own = (
+    JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8')) as { version: string }
+  ).version;
+  const mains = await releaseServer({ [own]: randomBytes(256 * 1024) }, own);
   const main = await launchMain({
-    DRASHTI_TEST_VERSION: '1.0.0-test.1',
+    DRASHTI_TEST_VERSION: own,
     DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Mandir Mac',
   });
   const node = await launchNode({
-    DRASHTI_TEST_VERSION: '1.0.0-test.2',
+    DRASHTI_TEST_VERSION: '1.0.0-alpha.13',
     DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Lobby PC',
     DRASHTI_UPDATE_URL: mains.base,
     DRASHTI_TEST_UPDATE_INSTALL: installLog,
@@ -1413,7 +1451,7 @@ test('updates: the Updates dialog, the status bar, and a node offering to match 
     await node.page.setViewportSize({ width: 1280, height: 720 });
     await typePairing(node.page, main.port, await nodeCode(main.win));
     const offer = node.page.getByTestId('node-update');
-    await expect(offer).toContainText('Main runs Drashti 1.0.0-test.1');
+    await expect(offer).toContainText(`Main runs Drashti ${own}; this node runs 1.0.0-alpha.13`);
     await offer.getByTestId('node-update-check').click();
     await expect(offer.getByTestId('node-update-download')).toBeVisible();
     await shot(node.page, 'node-update-offer', [node.page.getByTestId('node-pair-form').getByLabel('Code')]);
@@ -1926,11 +1964,14 @@ test('a stopped screen’s notice at the top of the window (Session 26h)', async
   const screenId = await setUpScreen(win, 'Placeholder hall', 0);
   const out = await outputPage(app);
   await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  // The sample kirtan up (Session 55: the tests' Language test slides are never in a picture).
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
-    const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
+    const id =
+      (await d.library.listPresentations()).find((p) => p.name.startsWith('Sample kirtan'))?.id ?? '';
     await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
   });
+  await expect(win.getByTestId('live-text')).toContainText('Live: Sample kirtan (placeholder) · slide 1 of');
   // As a screen that kept failing does: given up on, until Try again.
   await app.evaluate((_electron, id) => {
     (globalThis as unknown as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp?.(id);

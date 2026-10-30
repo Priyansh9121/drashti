@@ -89,6 +89,13 @@ test('the dashboard: pictures, status, Identify, the warning when a node goes, a
       nodeCard.locator('[data-testid="dashboard-display"][data-screen]:not([data-screen=""])'),
     ).toHaveCount(1);
     await expect(nodeCard.getByTestId('dashboard-frames')).toHaveCount(1);
+    // A name longer than its card has room for ends in "…", the whole name its tip (Session 55: it was cut off
+    // mid-letter).
+    const nameBox = nodeCard
+      .locator('[data-testid="dashboard-display"][data-screen]:not([data-screen=""])')
+      .getByRole('textbox');
+    await expect(nameBox).toHaveCSS('text-overflow', 'ellipsis');
+    await expect(nameBox).toHaveAttribute('title', await nameBox.inputValue());
     await expectNoSeriousA11yIssues(main.win, 'the screens dashboard');
 
     // Identify the node's display: its output says which it is.

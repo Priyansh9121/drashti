@@ -46,6 +46,10 @@ const STATE: Record<ScreenState, { text: string; tone: BadgeTone }> = {
 const timeOf = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
+/**
+ * A name renamed in place. One longer than its room ends in "…", its whole name its tip (Session 55: a node's
+ * display's name was cut off mid-letter beside its state).
+ */
 function Rename({ name, label, onSave }: { name: string; label: string; onSave: (name: string) => void }) {
   const [text, setText] = useState(name);
   const [shown, setShown] = useState(name);
@@ -56,7 +60,8 @@ function Rename({ name, label, onSave }: { name: string; label: string; onSave: 
   return (
     <TextInput
       aria-label={label}
-      className="min-w-32 flex-1 border-transparent bg-transparent font-medium hover:border-field focus:border-accent"
+      title={text}
+      className="min-w-32 flex-1 border-transparent bg-transparent font-medium text-ellipsis hover:border-field focus:border-accent"
       value={text}
       onChange={(e) => {
         setText(e.target.value);

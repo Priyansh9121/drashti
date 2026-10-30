@@ -81,9 +81,11 @@ test('a deck comes in with its animations: each slide its steps, its one picture
   const item = lineUnder(report, WITH_NOTES);
   await expect(item).toHaveAttribute('data-outcome', 'imported');
   await expect(lineUnder(report, IMPORTED)).toHaveCount(1);
+  // The stand-in makes it as PowerPoint does, and the report says PowerPoint, as a real computer's (Session 55).
   await expect(item).toContainText(
-    /The stand-in made this deck’s movie with its animations in \d+ s: 5 slides with 8 clicks\./u,
+    /PowerPoint made this deck’s movie with its animations in \d+ s: 5 slides with 8 clicks\./u,
   );
+  await expect(item).not.toContainText('stand-in');
   await expect(item).toContainText('Next and Back step through the clicks as in its slide show');
   await expect(item).toContainText('Every step was found where it should be in the movie');
   await expect(item).toContainText('Its 2 videos and sound came in as real media');

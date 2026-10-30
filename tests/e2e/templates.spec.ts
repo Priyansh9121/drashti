@@ -116,6 +116,11 @@ test('a template from a playlist, a playlist from the template, a slot filled fr
   await expect(fill.getByTestId('slot-choice')).toContainText('Sample kirtan');
   await fill.getByTestId('slot-search').fill('language');
   await expect(fill.getByTestId('slot-choice')).toHaveCount(0);
+  // Nothing found says what can be done here, and points nowhere else (Session 55: the Kirtan dialog, where a kirtan
+  // was given its category, went).
+  await expect(fill.getByText(/^No kirtan in Kirtan/u)).toHaveText(
+    'No kirtan in Kirtan has those words: choose Every presentation.',
+  );
   await fill.getByTestId('slot-filter').selectOption('');
   await expect(fill.getByTestId('slot-choice')).toContainText('Language test slides');
   await expectNoSeriousA11yIssues(win, 'filling a slot');

@@ -45,10 +45,14 @@ export interface DeckFlowRequest {
   bakers: Baker[];
 }
 
+/**
+ * Each app by its name. The tests' stand-in makes a deck's movie as PowerPoint does (its plan is PowerPoint's), and is
+ * named as PowerPoint, as a real computer's report says (Session 55: the guides' pictures never show the tests' words).
+ */
 const APP: Record<Baker, string> = {
   powerpoint: 'PowerPoint',
   keynote: 'Keynote',
-  'stand-in': 'The stand-in',
+  'stand-in': 'PowerPoint',
 };
 
 export async function runDeck(

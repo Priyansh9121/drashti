@@ -113,10 +113,11 @@ function ButtonsSection() {
           </Button>
         </Row>
       ))}
+      {/* Buttons the window has now (Session 55: props, Edit words and their buttons went). */}
       <Row label="With an icon and a key hint">
         <Button icon={Import}>Import…</Button>
         <Button icon={Plus} variant="ghost" size="sm">
-          Prop
+          New
         </Button>
         <Button variant="primary" icon={Eraser} kbd="F1">
           Clear all
@@ -135,8 +136,8 @@ function ButtonsSection() {
         {SIZES.map((size) => (
           <IconButton key={size} icon={MoreHorizontal} label="More for this playlist" size={size} />
         ))}
-        <IconButton icon={Pencil} label="Edit words" variant="secondary" />
-        <IconButton icon={Trash2} label="Delete this prop" variant="danger" />
+        <IconButton icon={Pencil} label="Rename this playlist" variant="secondary" />
+        <IconButton icon={Trash2} label="Delete this playlist" variant="danger" />
         <IconButton icon={X} label="Close" kbd="Esc" />
       </Row>
       {/* Each with its keys (Session 51): beside the words on Back and Next, under them on the narrower ones. */}

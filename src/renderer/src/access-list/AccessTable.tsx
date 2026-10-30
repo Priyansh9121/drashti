@@ -38,9 +38,11 @@ const WIDTHS: Record<AccessColumn, number> = {
   requested: 116,
   approved: 116,
   ends: 150,
-  mode: 130,
+  // "Simple once approved", whole.
+  mode: 160,
   revoked: 116,
-  computers: 290,
+  // A computer's name, its version and its system ("Placeholder owner computer · 1.0.0-alpha.14 · Mac"), whole.
+  computers: 380,
   lastSeen: 150,
   minutes: 104,
   shows: 80,
@@ -155,12 +157,6 @@ const Row = memo(function Row({
         </span>
         <Line text={statusDetail(p)} tone="muted" />
       </td>
-      <td className={cell}>
-        <Line text={formatDay(p.requestedAt)} />
-      </td>
-      <td className={cell}>
-        <Line text={formatDay(p.approvedAt)} />
-      </td>
       <td className={cell} data-testid="access-ends" data-ended={p.ended ? 'true' : undefined}>
         <Line text={ends.text} className={ends.warn ? 'font-medium text-warning-fg' : undefined} />
         <Line text={ends.detail} tone="muted" />
@@ -168,9 +164,6 @@ const Row = memo(function Row({
       <td className={cell} data-testid="access-mode-cell" data-mode={p.mode}>
         <Line text={mode.text} />
         <Line text={mode.detail} tone="muted" />
-      </td>
-      <td className={cell}>
-        <Line text={formatDay(p.revokedAt)} />
       </td>
       <td className={cell}>
         {computers.length === 0 ? (
@@ -184,6 +177,15 @@ const Row = memo(function Row({
             />
           ))
         )}
+      </td>
+      <td className={cell}>
+        <Line text={formatDay(p.requestedAt)} />
+      </td>
+      <td className={cell}>
+        <Line text={formatDay(p.approvedAt)} />
+      </td>
+      <td className={cell}>
+        <Line text={formatDay(p.revokedAt)} />
       </td>
       <td className={cell}>
         <Line text={formatSeen(p.lastSeen, now)} />
