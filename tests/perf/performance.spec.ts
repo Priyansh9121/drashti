@@ -220,6 +220,11 @@ test('slide changes keep reaching the screen within a frame while streaming and 
 
 test('after a crash the screens come back: the recovery figure (Sessions 31–36, PERF-1)', async () => {
   test.setTimeout(360_000);
+  // On Windows' two cores under the handicap, as the checks before it ran: a check that fails ends its worker, and
+  // Playwright starts the next test in a new one, which never had their affinity (alpha.14's run of 30 Oct 2026
+  // measured this figure on every core after the streaming check failed, alpha.13's on two). A Mac's handicap is the
+  // checks' own busy processes, stopped as each check ends: none here, as before.
+  if (HANDICAP && process.platform === 'win32') console.log(handicap().what);
   // Kill, start again, screens back, read from the start's phase lines: the same as the end-to-end test's,
   // against the same budget.
   await recoveryAgainstBudget((line) => {

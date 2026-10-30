@@ -7,6 +7,7 @@ import { stageDrawsHall, stageShows } from '../../../shared/stage-layouts';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow, holdClock } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
+import { preloadStudioFontsOnceDrawn } from '../render/studio-fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { Scene } from '../render/Scene';
@@ -190,6 +191,12 @@ function Output() {
   const ready = fontsReady && (warmed || stage);
   usePaintTiming(rootRef, ready);
   useFrameReports(context?.display?.refreshHz ?? 60, ready);
+  // The Lower Thirds studio's fonts once the show is drawn here (Session 55): never with this screen's own start, which
+  // they kept from its screen longer (PERF-1).
+  useEffect(() => {
+    if (!ready) return;
+    return preloadStudioFontsOnceDrawn();
+  }, [ready]);
   useEffect(() => {
     connectOutput();
     // Fonts first, so the first live slide never shows a fallback font.
