@@ -9,6 +9,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { Check, ImagePlus, Repeat2, Wallpaper as WallpaperIcon } from '../ui/icons';
+import { useScrolls } from '../ui/scrolls';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { WallpaperEditor } from './WallpaperEditor';
@@ -186,6 +187,8 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
     addWhenEndsToMenu();
   }, []);
   const wallpapers = view?.wallpapers ?? [];
+  // With the text large, the empty card scrolls with nothing focusable in it: it takes the keyboard while it does.
+  const [emptyBox, emptyScrolls] = useScrolls();
   return (
     <div
       role="group"
@@ -226,7 +229,13 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
         </Button>
       </div>
       {wallpapers.length === 0 ? (
-        <div className="min-h-0 overflow-y-auto px-2 pb-2">
+        <div
+          ref={emptyBox}
+          role="group"
+          aria-label="No wallpapers yet"
+          className="min-h-0 overflow-y-auto px-2 pb-2"
+          tabIndex={emptyScrolls ? 0 : undefined}
+        >
           <EmptyState icon={WallpaperIcon} title="No wallpapers yet" compact data-testid="wallpapers-empty">
             Drop pictures here, or Import…. The one you choose shows on the screens whenever nothing is up.
           </EmptyState>
