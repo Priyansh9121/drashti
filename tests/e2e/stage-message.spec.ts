@@ -154,7 +154,10 @@ test('a phone shows the stage message with its size and flash, hides it, and has
     await section
       .getByRole('combobox', { name: 'Size of the stage message' })
       .selectOption({ label: 'Very large' });
-    await section.getByRole('checkbox', { name: 'Flash as it comes up' }).check();
+    // The phone's flash is a switch a finger finds (44 px or more, as every phone target).
+    const flash = section.getByRole('switch', { name: 'Flash as it comes up' });
+    await flash.click();
+    await expect(flash).toHaveAttribute('aria-checked', 'true');
     await section.getByRole('button', { name: 'Show', exact: true }).click();
     await expect(stage.getByTestId('stage-message')).toHaveText(WORDS);
     await expect(stage.getByTestId('stage-message')).toHaveAttribute('data-size', 'huge');

@@ -175,7 +175,7 @@ test('only Pro Mode turns the network on or off or pairs devices', async () => {
       (globalThis as PageGlobals).drashti.network.startPairing('remote', 'Placeholder'),
     ),
   ).toMatchObject({ ok: false });
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await app.close();
 });
 

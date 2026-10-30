@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { OutputGlobals, PageGlobals } from './helpers';
 import { launchApp, openLibrary, operatorPage } from './helpers';
-import { KIRTAN, setUpPlaceholderShow } from './placeholder-show';
+import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -234,8 +234,13 @@ test('in Simple Mode, the first quick Next starts the playlist and the ones afte
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await setUpPlaceholderShow(win);
+  // Its playlist open in Pro Mode: Simple Mode's one playlist (Session 55, Part 18). Three items, and two headers.
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-  await expect(win.getByTestId('simple-items').getByTestId('simple-item')).toHaveCount(3);
+  await expect(
+    win.getByTestId('simple-mode').locator('[data-testid="playlist-item"]:not([data-kind="header"])'),
+  ).toHaveCount(3);
   await hearLate(app);
   // The welcome slide, then the kirtan's first and second slides.
   for (let i = 0; i < 3; i++) await win.keyboard.press('ArrowRight');

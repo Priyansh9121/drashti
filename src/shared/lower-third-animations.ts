@@ -1,3 +1,5 @@
+import { STUDIO_BOX_MOVES, studioUnitMoves } from './lower-third-moves';
+
 /*
  * The lower thirds' animations (Session 44): a library made from a few moves (fade, slide, wipe, reveal,
  * scale, flip and rotate, and line by line, word by word or letter by letter), each with its directions,
@@ -30,6 +32,8 @@ export interface Pose {
   transform: string;
   clip: string;
   origin: string;
+  /** A blur (Session 55, Part 16: the studio's blurs, lower-third-moves.ts); left out by every other move. */
+  filter?: string;
 }
 
 /** At rest: where every in ends. */
@@ -51,8 +55,8 @@ export interface LowerThirdAnimation {
   speed: AnimationSpeed;
   /** More words the search finds it by (its move's other names). */
   keywords: readonly string[];
-  /** Its pose `p` of the way in (0 to 1, by time; easing is its own), for the box or one unit. */
-  pose(p: number): Pose;
+  /** Its pose `p` of the way in (0 to 1, by time; easing is its own), for the box or one unit (its place, `unit`). */
+  pose(p: number, unit?: number): Pose;
   /** For a box move, how long its in takes (ms); for a unit move, its own timing. */
   timing: Timing;
 }
@@ -341,6 +345,8 @@ function boxMoves(): Move[] {
       pose: (p) => pose(fadeIn(p, 0.3), { transform: [rotate(-14 * (1 - bounce(p)))], origin: 'left top' }),
     },
   );
+  // The Lower Thirds studio's (Session 55, Part 16).
+  moves.push(...STUDIO_BOX_MOVES);
   return moves;
 }
 
@@ -351,7 +357,8 @@ interface UnitMove {
   /** "Rise", to make "Rise word by word". */
   verb: string;
   keywords: string[];
-  pose: (p: number) => Pose;
+  /** `i`: the unit's place in reading order (the studio's split and gather, Session 55). */
+  pose: (p: number, i?: number) => Pose;
 }
 
 const unitMoves = (unit: 'line' | 'word' | 'letter'): UnitMove[] => {
@@ -411,6 +418,8 @@ const unitMoves = (unit: 'line' | 'word' | 'letter'): UnitMove[] => {
       keywords: ['type', 'typewriter', 'typing', 'write'],
       pose: (p) => pose(p > 0 ? 1 : 0, {}),
     });
+  // The Lower Thirds studio's (Session 55, Part 16).
+  all.push(...studioUnitMoves(unit));
   return all;
 };
 
@@ -546,7 +555,7 @@ export function animationFrame(
   const start = timing.box * 0.5 + (timing.lead ?? 0);
   return {
     box: band,
-    unit: (i) => a.pose(clamp01((at - start - i * (timing.stagger ?? 0)) / (timing.each ?? 1))),
+    unit: (i) => a.pose(clamp01((at - start - i * (timing.stagger ?? 0)) / (timing.each ?? 1)), i),
   };
 }
 

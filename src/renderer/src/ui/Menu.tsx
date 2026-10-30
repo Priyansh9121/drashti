@@ -182,7 +182,9 @@ export function Menu({
             {entry.separatorBefore && <div role="separator" className="my-1 h-px bg-line" />}
             <button
               type="button"
-              role={entry.checked === undefined ? 'menuitem' : entry.radio ? 'menuitemradio' : 'menuitemcheckbox'}
+              role={
+                entry.checked === undefined ? 'menuitem' : entry.radio ? 'menuitemradio' : 'menuitemcheckbox'
+              }
               aria-checked={entry.checked}
               disabled={entry.disabled}
               className={cx(

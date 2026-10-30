@@ -374,7 +374,7 @@ test('Simple Mode shows ON AIR and REC, and refuses starting, ending or changing
   const after = await bridge(win).status();
   expect([after.live.state, after.recording.state, after.layout]).toEqual(['live', 'recording', 'camera']);
   await expectNoSeriousA11yIssues(win, 'Simple Mode on air and recording');
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     await d.stream.end({ confirmed: true });

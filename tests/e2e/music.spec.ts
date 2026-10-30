@@ -179,7 +179,7 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
   await second2.app.close();
 });
 
-test('Simple Mode plays and pauses the music, and changes no list', async () => {
+test('Simple Mode (Session 55, Part 18: no Audio panel) shows the music playing in its time bar, takes it off with Clear all, and changes no list', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -200,14 +200,19 @@ test('Simple Mode plays and pauses the music, and changes no list', async () => 
     await d.music.addTracks(list.id, [media[0]?.id ?? ''], null);
     return list.id;
   });
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
-  const strip = win.getByTestId('simple-music');
-  await expect(strip).toContainText('Music: Placeholder before sabha');
-  await expectNoSeriousA11yIssues(win, 'Simple Mode with music');
-  await strip.getByTestId('simple-music-play').click();
+  // Started in Pro Mode, as Audio's Play starts it.
+  await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id), made);
   await expect.poll(async () => (await audioLayer(win))?.music?.playlistId).toBe(made);
-  await strip.getByTestId('simple-music-pause').click();
-  await expect.poll(async () => (await audioLayer(win))?.pausedAtMs).toBeGreaterThanOrEqual(0);
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  const simple = win.getByTestId('simple-mode');
+  // No Audio panel and no strip of its own: the track's time bar under Next and Back says what plays.
+  await expect(simple.getByTestId('simple-music')).toHaveCount(0);
+  await expect(simple.getByTestId('group-audio-toggle')).toHaveCount(0);
+  await expect(simple.getByTestId('time-bars')).toBeVisible();
+  await expectNoSeriousA11yIssues(win, 'Simple Mode with music');
+  // Clear all takes it off (and Put it back would bring it back).
+  await simple.getByTestId('simple-clear-all').click();
+  await expect.poll(async () => (await audioLayer(win))?.music?.playlistId ?? null).toBeNull();
   // No list can be changed in Simple Mode.
   const refused = await win.evaluate(
     (id) => (globalThis as PageGlobals).drashti.music.rename(id, 'Changed'),

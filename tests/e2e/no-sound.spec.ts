@@ -101,7 +101,7 @@ test('No sound shows beside ON AIR, in Pro and Simple Mode, with no microphone; 
   await expect(simple.getByTestId('no-sound')).toBeVisible();
   await expect(simple.getByTestId('no-sound-notice')).toBeVisible();
   await clearOfShowControls(win, simple.getByTestId('no-sound-notice'));
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await expect(win.getByTestId('simple-mode')).toBeHidden();
 
   // A microphone (the fake one's beep): No sound goes, and the notice with it.

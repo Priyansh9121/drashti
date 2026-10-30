@@ -1,4 +1,6 @@
+import { fontChoice, LOWER_THIRD_FONTS } from '../../../shared/lower-third-fonts';
 import type { Lang } from '../../../shared/model';
+import { preloadStudioFonts } from './studio-fonts';
 
 export const BUNDLED_FAMILIES = ['Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari'] as const;
 export const BUNDLED_WEIGHTS = [400, 500, 700] as const;
@@ -36,6 +38,11 @@ export const HTML_LANG: Record<Lang, string> = {
 export function fontFamilyFor(family: string | null, lang: Lang | null): string {
   const stack = LANG_FONT_STACK[lang ?? 'default'];
   if (!family) return stack;
+  // One of the Lower Thirds studio's fonts (Session 55, Part 16): its fonts for each script, first.
+  if ((LOWER_THIRD_FONTS as readonly string[]).includes(family))
+    return `${fontChoice(family)
+      .families.map((f) => `"${f}"`)
+      .join(', ')}, ${stack}`;
   const quoted = /^["'].*["']$/.test(family) ? family : `"${family.replace(/"/g, '')}"`;
   return `${quoted}, ${stack}`;
 }
@@ -58,6 +65,9 @@ export function preloadFonts(): Promise<void> {
     BUNDLED_FAMILIES.flatMap((family) =>
       BUNDLED_WEIGHTS.map((weight) => document.fonts.load(`${weight} 48px "${family}"`, SAMPLES[family])),
     ),
-  ).then(() => undefined);
+  ).then(() => {
+    // Then the Lower Thirds studio's (Session 55, Part 16), unwaited for, in Drashti's own windows.
+    preloadStudioFonts();
+  });
   return loading;
 }

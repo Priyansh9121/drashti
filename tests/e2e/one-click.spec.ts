@@ -232,9 +232,10 @@ test('one click on a playlist’s video, picture or sound puts it up at once; a 
 test('Simple Mode keeps its Next: it starts the playlist and goes on through it, the video, then the picture', async () => {
   test.setTimeout(180_000);
   const { app, win, items } = await start();
+  // The playlist open in Pro Mode is Simple Mode's one playlist (Session 55, Part 18).
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  await expect(win.getByTestId('simple-items').getByTestId('simple-item')).toHaveCount(5);
+  await expect(win.getByTestId('simple-mode').getByTestId('playlist-item')).toHaveCount(5);
   await win.keyboard.press('ArrowRight');
   await expect.poll(async () => (await up(win)).item).toBe(items[VIDEO]);
   await win.keyboard.press('ArrowRight');

@@ -14,6 +14,12 @@ export interface ImportOptions {
   onConflict?: 'ask' | ConflictChoice;
   /** Choices for single files, by source path (the answers to an earlier run's conflicts). */
   decisions?: Record<string, ConflictChoice>;
+  /**
+   * Simple Mode's import (Session 55, Part 18): only sounds, videos, pictures, PDFs and decks; every other file is left
+   * out, saying why. Set by the main process alone while Simple Mode is on: a window's request never carries it
+   * (import-schema.ts takes no such field).
+   */
+  simple?: true;
 }
 
 /** How Drashti read a file. */

@@ -372,7 +372,11 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
     const t = checking();
     await t.take('Placeholder clip.mp4', 'placeholder mp4');
     await t.take('Placeholder dhun.flac', 'placeholder flac');
-    await t.take('Placeholder darshan.png', 'placeholder png');
+    // A real PNG's first bytes (Part 5 turns down a "picture" nothing can read).
+    await t.take(
+      'Placeholder darshan.png',
+      Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]),
+    );
     const lengths = () => t.db.prepare('SELECT name, duration_ms FROM media ORDER BY name').all();
     expect(lengths()).toEqual([
       { name: 'Placeholder clip.mp4', duration_ms: 1000 },

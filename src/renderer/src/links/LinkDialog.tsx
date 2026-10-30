@@ -562,7 +562,7 @@ function Going({ view }: { view: LinkView }) {
 }
 
 /** What was saved, what was not taken, and the way to the files and the report. */
-function Saved({ view, platform }: { view: LinkView; platform: string }) {
+function Saved({ view, platform, simple }: { view: LinkView; platform: string; simple: boolean }) {
   const saved = view.saved;
   if (!saved) return null;
   return (
@@ -604,12 +604,18 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
           </ul>
         </div>
       )}
-      {view.playlist && (
-        <p className="text-sm" data-testid="link-playlist">
-          The folder is now the playlist <strong>{view.playlist.name}</strong>, in its folders’ order: open in
-          the middle of the window.
-        </p>
-      )}
+      {view.playlist &&
+        (simple ? (
+          <p className="text-sm" data-testid="link-playlist">
+            Its files are at the end of this playlist, <strong>{view.playlist.name}</strong>, in its folders’
+            order.
+          </p>
+        ) : (
+          <p className="text-sm" data-testid="link-playlist">
+            The folder is now the playlist <strong>{view.playlist.name}</strong>, in its folders’ order: open
+            in the middle of the window.
+          </p>
+        ))}
       {view.waiting.length > 0 && (
         <div className="space-y-1.5" data-testid="link-waiting">
           <p className="text-sm font-medium">Saved, not added yet</p>
@@ -656,22 +662,40 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
           </ul>
         </div>
       )}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          icon={FolderOpen}
-          data-testid="link-show-saved"
-          onClick={() => void window.drashti.links.showSaved(null)}
-        >
-          {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
-        </Button>
-        {view.runId && (
-          <Button size="sm" data-testid="link-open-report" onClick={() => seeLinkReport(view.runId ?? '')}>
-            See the import report
+      {/* Showing the saved files and the import report are Pro Mode's (Simple Mode has neither). */}
+      {!simple && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            icon={FolderOpen}
+            data-testid="link-show-saved"
+            onClick={() => void window.drashti.links.showSaved(null)}
+          >
+            {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
           </Button>
-        )}
-      </div>
+          {view.runId && (
+            <Button size="sm" data-testid="link-open-report" onClick={() => seeLinkReport(view.runId ?? '')}>
+              See the import report
+            </Button>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Where a download goes in Simple Mode (Session 55, Part 18): its one playlist, at the end, with nothing to choose; a
+ * Dropbox folder's files there too, never a playlist of their own.
+ */
+function IntoSimplePlaylist({ view }: { view: LinkView }) {
+  const name = usePlaylists((s) => s.tree.find((n) => n.id === s.openId)?.name ?? 'this playlist');
+  return (
+    <p className="text-xs text-muted" data-testid="link-into-simple">
+      {view.look?.shape === 'folder'
+        ? `When it’s imported, the folder’s files go at the end of this playlist, “${name}”, in its folders’ order.`
+        : `When it’s imported, it goes at the end of this playlist, “${name}”.`}
+    </p>
   );
 }
 
@@ -689,7 +713,7 @@ export function LinkDialog({ platform }: { platform: string }) {
   useEffect(() => {
     connectLinks();
   }, []);
-  if (!open || !view || simple) return null;
+  if (!open || !view) return null;
   const busy = linkBusy(view);
   const finished = view.phase === 'done' || view.saved !== null;
   // While a download goes (or once one is finished) the dialog shows that one's kind and link.
@@ -745,7 +769,8 @@ export function LinkDialog({ platform }: { platform: string }) {
     >
       <div className="space-y-4" data-testid="link-body" data-phase={view.phase}>
         <KindChoice kind={kind} locked={locked} />
-        <HighestQuality view={view} locked={busy} />
+        {/* The highest quality and where downloads are saved are Pro Mode's settings (Session 55, Part 18). */}
+        {!simple && <HighestQuality view={view} locked={busy} />}
         {kind && (
           // A new kind starts the link box afresh.
           <LinkField
@@ -759,8 +784,11 @@ export function LinkDialog({ platform }: { platform: string }) {
         {/* While it downloads, the progress says what was chosen: the choices step aside, so the progress
             and Stop stay in view. */}
         {view.look?.video && !finished && !busy && <YouTubeChoices video={view.look.video} view={view} />}
-        {view.look && !finished && <SaveIn view={view} locked={locked} />}
-        {view.look && !finished && !busy && <AddWhenImported view={view} />}
+        {view.look && !finished && !simple && <SaveIn view={view} locked={locked} />}
+        {view.look &&
+          !finished &&
+          !busy &&
+          (simple ? <IntoSimplePlaylist view={view} /> : <AddWhenImported view={view} />)}
         {busy && <Going view={view} />}
         {(view.phase === 'failed' || view.phase === 'stopped') && view.message && (
           <Notice tone={view.phase === 'failed' ? 'warning' : 'info'} role="alert" data-testid="link-message">
@@ -772,7 +800,7 @@ export function LinkDialog({ platform }: { platform: string }) {
             {view.message}
           </Notice>
         )}
-        <Saved view={view} platform={platform} />
+        <Saved view={view} platform={platform} simple={simple} />
         {error && (
           <p role="alert" className="text-sm text-warning-fg" data-testid="link-error">
             {error}
@@ -783,14 +811,14 @@ export function LinkDialog({ platform }: { platform: string }) {
   );
 }
 
-/** The status bar's word about a download from a link (Pro Mode): a press opens the dialog. */
+/** The status bar's word about a download from a link (either mode): a press opens the dialog. */
 export function LinkStatus() {
   const view = useLinks((s) => s.view);
-  const simple = useMode((s) => s.mode === 'simple');
   useEffect(() => {
     connectLinks();
   }, []);
-  if (simple || !view) return null;
+  // In both modes (Simple Mode downloads into its one playlist since Session 55, Part 18).
+  if (!view) return null;
   const p = view.progress;
   const percent = p?.total ? ` ${String(Math.round((p.done / p.total) * 100))}%` : '';
   const text =

@@ -23,7 +23,7 @@ import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
-import type { ImportResult } from '../shared/import';
+import type { ImportOptions, ImportResult } from '../shared/import';
 import { type LibraryChange, listedKirtan } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
@@ -40,8 +40,14 @@ import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
 import { FileActions } from './library/file-actions';
-import { extOf, importableExtensions, mediaKindOf, SOUND_EXTENSIONS } from './import/scan';
-import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlist';
+import {
+  extOf,
+  importableExtensions,
+  mediaKindOf,
+  simpleImportExtensions,
+  SOUND_EXTENSIONS,
+} from './import/scan';
+import { addFolderAtEnd, addToFolderParts, freeName, makeFolderPlaylist } from './playlists/folder-playlist';
 import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
@@ -61,6 +67,7 @@ import { setupPlanSchema } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import { isOperatorMode, simpleModeRefuses, simpleRefusalText } from '../shared/mode';
 import { ModeKeeper } from './mode-keeper';
+import { SimplePlaylist, simplePlaylistName } from './simple-playlist';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
 import { hallPicture, type StageLayout } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
@@ -96,6 +103,7 @@ import type { WallpaperService } from './wallpapers/wallpaper-service';
 import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
+import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
@@ -197,7 +205,13 @@ import { registerWordsIpc } from './library/words-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest, type SelfTestResult } from './selftest';
-import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
+import {
+  SIMPLE_MODE_BOUNDED,
+  SIMPLE_MODE_LOCKED,
+  type SimpleScope,
+  simpleModeBounds,
+  simpleModeRefusals,
+} from './simple-mode';
 import { applyPriority, describePriorities, describePriority, readPriority, writePriority } from './priority';
 import { whenFree, writeLockFree } from './db/write-lock';
 import { writeOldLibrary } from './old-library-selftest';
@@ -845,6 +859,10 @@ const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operator
 const idListSchema = z.array(idSchema).min(1).max(10_000);
 /** What the import's file dialog offers: everything Drashti imports (one list, the scanner's). */
 const IMPORTABLE_EXTENSIONS = importableExtensions();
+/** What Simple Mode's Add files… offers (Session 55, Part 18): sounds, videos, pictures, PDFs and decks. */
+const SIMPLE_IMPORT_EXTENSIONS = simpleImportExtensions();
+/** Simple Mode's import: only what its one playlist plays, and a changed file kept beside the old, never replacing it. */
+const SIMPLE_IMPORT: ImportOptions = { onConflict: 'keep-both', simple: true };
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
 
 /**
@@ -2882,6 +2900,27 @@ function start(): void {
   // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
   let mode: OperatorMode = 'pro';
   let rebuildMenu: () => void = () => undefined;
+  // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
+  let closeStudio: () => void = () => undefined;
+  // Simple Mode's one playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple
+  // Mode, or a new one when there was none (simple-playlist.ts); Simple Mode changes that one only.
+  const simplePlaylist = new SimplePlaylist({
+    saved: settings.get('simplePlaylist'),
+    save: (id) => {
+      laterSetting('simplePlaylist', id);
+    },
+    usable: (id) => playlists.tree().some((n) => n.id === id && !n.isFolder),
+    empty: (id) => playlists.tree().find((n) => n.id === id)?.itemCount === 0,
+    create: () => {
+      const id = playlists.createAtTop(freeName(playlists, simplePlaylistName(new Date())));
+      sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      network?.hint('playlists');
+      return id;
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
   const modes = new ModeKeeper({
     saved: { mode: settings.get('operatorMode'), byAccess: settings.get('simpleByAccess') },
     recentStop: startup.recentStop,
@@ -2893,7 +2932,10 @@ function start(): void {
     },
     changed: (next) => {
       mode = next;
+      // Its one playlist first, so the window opens it as it shows Simple Mode.
+      if (next === 'simple') simplePlaylist.adopt();
       rebuildMenu();
+      if (next === 'simple') closeStudio();
       sendToOperator(IPC.app.modeChanged, { mode: next });
     },
     menu: () => {
@@ -2904,28 +2946,46 @@ function start(): void {
     },
   });
   mode = modes.mode;
+  // A start in Simple Mode (after an unexpected stop in it, or with Simple access): its playlist from before.
+  if (mode === 'simple') simplePlaylist.keep();
   // The list's answer each check: Simple access puts this computer in Simple Mode within one check.
   onAccessChange(() => {
     modes.accessChanged();
   });
   simpleNow = () => mode === 'simple';
-  // While it is on, every request that would change the library, screens or sound is refused here.
+  /** Simple Mode's one playlist and what it holds, read as each request comes (simple-mode.ts's bounds). */
+  const simpleScope = (): SimpleScope => {
+    const one = simplePlaylist.current();
+    const rows = () => (one === null ? [] : playlists.itemsOf(one));
+    return {
+      playlistId: one,
+      playlistOf: (itemId) => playlists.playlistOf(itemId),
+      holdsMedia: (mediaId) => rows().some((i) => i.kind === 'media' && i.mediaId === mediaId),
+      holdsPresentation: (presentationId) =>
+        rows().some((i) => i.kind === 'presentation' && i.presentationId === presentationId),
+    };
+  };
+  // While it is on, every request that would change the library, screens or sound is refused here, but what Simple
+  // Mode offers (Session 55, Part 18), each within its bounds.
   lockChannels(
     () => mode === 'simple',
     simpleModeRefusals(
       () => audioOutput.status,
       () => simpleRefusalText(modes.simpleOnly()),
     ),
+    simpleModeBounds(simpleScope),
   );
   handle(IPC.app.getMode, () => mode);
-  handle(IPC.app.setMode, (e, wanted, word): ModeResult => {
+  // The playlist Simple Mode shows (Session 55, Part 18): null in Pro Mode.
+  handle(IPC.app.simplePlaylist, () => (mode === 'simple' ? simplePlaylist.current() : null));
+  handle(IPC.app.setMode, (e, wanted): ModeResult => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
-    return modes.request(wanted, word);
+    return modes.request(wanted);
   });
   const switchMode = () => {
-    // Simple at once; Pro asks for the word in the window, and never with Simple access.
-    if (modes.menuSwitch() === 'ask') sendToOperator(IPC.app.askLeaveSimple, { at: Date.now() });
+    // Either way at once (nothing to type since Session 55, Part 18); Pro Mode never with Simple access.
+    modes.menuSwitch();
   };
 
   // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
@@ -3011,7 +3071,7 @@ function start(): void {
         // With Simple access (Session 55) no way to Pro Mode is offered, in words either.
         message: modes.simpleOnly()
           ? 'That guide is read in Pro Mode, which this computer’s access does not include: ask the person who looks after Drashti.'
-          : 'That guide is read in Pro Mode: View, then Switch to Pro Mode…, or ask the admin.',
+          : 'That guide is read in Pro Mode: double-click Pro Mode at the top right, or ask the admin.',
       };
     const text = guideFiles.read(guide.id);
     return text === null
@@ -3167,7 +3227,7 @@ function start(): void {
   // An operator's edit during an import (Session 16): every request that changes something (the
   // ones Simple Mode refuses) waits, without holding up the main process, for the import to give
   // way between files, then writes with nothing in its way. Starting or stopping an import does not.
-  const edits = new Set<string>(SIMPLE_MODE_LOCKED);
+  const edits = new Set<string>([...SIMPLE_MODE_LOCKED, ...SIMPLE_MODE_BOUNDED.keys()]);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
   setGiveWay((channel) => {
@@ -3456,7 +3516,8 @@ function start(): void {
     if (!options.success) return { ok: false, message: 'Those import options are not valid.' };
     if (!paths.data.every((p) => isAbsolute(p)))
       return { ok: false, message: 'Import needs full file paths.' };
-    return imports.start(paths.data, options.data);
+    // Simple Mode's own limits (Session 55, Part 18), whatever the window asked.
+    return imports.start(paths.data, mode === 'simple' ? SIMPLE_IMPORT : options.data);
   };
 
   // ---- IPC ----------------------------------------------------------------
@@ -3789,9 +3850,14 @@ function start(): void {
         leftovers.forget(pid);
       },
     },
-    // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts).
+    // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts); in Simple Mode (Session
+    // 55, Part 18) its files at the end of Simple Mode's one playlist, never a playlist of their own.
     folderPlaylist: ({ name, runId, files }) => {
-      const made = makeFolderPlaylist(playlists, name, importRepo.report(runId)?.items ?? [], files);
+      const one = mode === 'simple' ? simplePlaylist.current() : null;
+      const made =
+        one === null
+          ? makeFolderPlaylist(playlists, name, importRepo.report(runId)?.items ?? [], files)
+          : addFolderAtEnd(playlists, one, importRepo.report(runId)?.items ?? [], files);
       if (made) {
         sendToOperator(IPC.playlists.changed, { at: Date.now() });
         syncAudios();
@@ -3835,7 +3901,8 @@ function start(): void {
       // Its videos' start and end points go past their black and silence (Session 55, Part 7): known by their paths,
       // as the import ends before its run comes back here.
       for (const path of paths) linkPaths.add(path);
-      const result = await imports.start(paths, {});
+      // Simple Mode's own limits (Session 55, Part 18), as its Add files… has them.
+      const result = await imports.start(paths, mode === 'simple' ? SIMPLE_IMPORT : {});
       if (!result.ok) for (const path of paths) linkPaths.delete(path);
       return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
     },
@@ -4024,19 +4091,52 @@ function start(): void {
   const lowerThirds = new LowerThirdRepo(db);
   // Those deleted before this start can no longer be undone.
   lowerThirds.purge();
+  // The Lower Thirds studio (Session 55, Part 16): a window of its own, where they are made, shown and hidden.
+  const studio = new LowerThirdsStudio({
+    workArea: () =>
+      (operatorWindow && !operatorWindow.isDestroyed()
+        ? electronScreen.getDisplayMatching(operatorWindow.getBounds())
+        : electronScreen.getPrimaryDisplay()
+      ).workArea,
+    background: () => appearance.background(),
+    track: (win) => {
+      appearance.track(win);
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  closeStudio = () => {
+    studio.close();
+  };
+  stops.add('Lower Thirds studio', () => {
+    studio.close();
+  });
+  handleStudio({
+    studio,
+    fromOperator,
+    get: (id) => lowerThirds.get(id),
+    engine,
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  const fromLowerThirds = (e: IpcMainInvokeEvent) => fromOperator(e) || studio.isPage(e.sender);
   const lowerThirdsChanged = () => {
-    sendToOperator(IPC.lowerThirds.changed, lowerThirds.list());
+    const list = lowerThirds.list();
+    sendToOperator(IPC.lowerThirds.changed, list);
+    studio.send(list);
     // A phone lists them too (Session 54, D5).
     network?.hint('lowerThirds');
   };
   const notLowerThirdOperator = {
     ok: false as const,
-    message: 'Only the operator window can change lower thirds.',
+    message: 'Only the operator window and the Lower Thirds studio can change lower thirds.',
   };
   const lowerThirdIds = z.array(idSchema).max(500);
   handle(IPC.lowerThirds.list, () => lowerThirds.list());
   handle(IPC.lowerThirds.save, (e, id, raw) => {
-    if (!fromOperator(e)) return notLowerThirdOperator;
+    if (!fromLowerThirds(e)) return notLowerThirdOperator;
     const which = idSchema.nullable().safeParse(id);
     const input = lowerThirdInputSchema.safeParse(raw);
     if (!which.success || !input.success)
@@ -4057,7 +4157,7 @@ function start(): void {
     return { ok: true as const, id: saved };
   });
   handle(IPC.lowerThirds.remove, (e, raw) => {
-    if (!fromOperator(e)) return notLowerThirdOperator;
+    if (!fromLowerThirds(e)) return notLowerThirdOperator;
     const ids = lowerThirdIds.safeParse(raw);
     if (!ids.success) return { ok: false as const, message: 'Those lower thirds cannot be deleted.' };
     const removed = lowerThirds.remove(ids.data);
@@ -4065,7 +4165,7 @@ function start(): void {
     return { ok: true as const, ids: removed };
   });
   handle(IPC.lowerThirds.restore, (e, raw) => {
-    if (!fromOperator(e)) return notLowerThirdOperator;
+    if (!fromLowerThirds(e)) return notLowerThirdOperator;
     const ids = lowerThirdIds.safeParse(raw);
     if (!ids.success) return { ok: false as const, message: 'Those lower thirds cannot be brought back.' };
     const back = lowerThirds.restore(ids.data);
@@ -5021,6 +5121,9 @@ function start(): void {
       refresh: () => smartFolders.refresh(),
     },
     opened: (playlistId) => {
+      // Pro Mode's window says which it has open, or that it closed it: Simple Mode takes that one (Session 55).
+      if (mode === 'pro') simplePlaylist.opened(playlistId);
+      if (playlistId === null) return;
       // Opened on Main, a playlist from an earlier week counts as this week's: nodes copy its media.
       const since = new Date(Date.now() - RECENT_DAYS * 24 * 3600 * 1000).toISOString();
       later.write(`opened:${playlistId}`, () => {
@@ -5097,10 +5200,15 @@ function start(): void {
             filters: [
               sounds
                 ? { name: 'Sounds (MP3, M4A, WAV and more)', extensions: SOUND_EXTENSIONS }
-                : {
-                    name: 'Presentations, PDFs, PowerPoint, Keynote, pictures, videos, sounds and lyrics (text or Word)',
-                    extensions: IMPORTABLE_EXTENSIONS,
-                  },
+                : mode === 'simple'
+                  ? {
+                      name: 'Sounds, videos, pictures, PDFs and PowerPoint or Keynote decks',
+                      extensions: SIMPLE_IMPORT_EXTENSIONS,
+                    }
+                  : {
+                      name: 'Presentations, PDFs, PowerPoint, Keynote, pictures, videos, sounds and lyrics (text or Word)',
+                      extensions: IMPORTABLE_EXTENSIONS,
+                    },
               { name: 'All files', extensions: ['*'] },
             ],
           }),
@@ -5829,6 +5937,7 @@ function start(): void {
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
     streaming.quitting();
+    studio.quitting();
   });
 
   const runSelfTest = () =>

@@ -264,6 +264,6 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
     { mediaId: idOf(lastDone), conversionId },
   );
   for (const a of answers) expect(a).toBe(SIMPLE_MODE_REFUSAL);
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await app.close();
 });

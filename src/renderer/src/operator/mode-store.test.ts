@@ -26,7 +26,6 @@ async function connected(getMode: () => Promise<OperatorMode>): Promise<{
           listener = l;
           return () => undefined;
         },
-        onAskLeaveSimple: () => () => undefined,
       },
     },
   };

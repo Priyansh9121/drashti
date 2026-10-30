@@ -13,7 +13,8 @@ export type RendererPage =
   | 'sharpen'
   | 'zoom'
   | 'lock'
-  | 'access-list';
+  | 'access-list'
+  | 'lower-thirds';
 
 export const rendererDir = (): string => join(__dirname, '../renderer');
 export const devServerUrl = (): string | undefined =>

@@ -373,7 +373,9 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
   await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
   await expect(bg.getByTestId('time-bar-play')).toHaveCount(0);
   await expect(row(win, 'audio').getByTestId('time-bar-play')).toBeVisible();
-  await fits('Simple Mode', win.getByTestId('simple-buttons'));
+  // Pro Mode's layout since Session 55 (Part 18): the bars under Next and Back there too, the bar of clears in view.
+  await fits('Simple Mode', win.getByTestId('simple-mode').getByTestId('show-next'));
+  await expect(win.getByTestId('simple-buttons')).toBeInViewport({ ratio: 1 });
   const seek = (await backgroundTiming(win)).seek;
   await clickAlong(win, shows, 0.8);
   await letTimePass(win, 500, 'a click on Simple Mode’s bar moves nothing');

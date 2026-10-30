@@ -375,13 +375,10 @@ test('a header typed in Hindi or Gujarati keeps its letters: no capitals and no 
   await expect(headers).toHaveCount(2);
   expect(await drawn(headers)).toEqual(['नमूना शीर्षक|none|normal', 'નમૂના|none|normal']);
 
-  // Simple Mode's playlist, the same.
+  // Simple Mode's playlist (the one open in Pro Mode, Session 55, Part 18), the same.
   await chooseMenuItem(app, 'switch-mode');
-  await win.getByTestId('simple-playlist').selectOption({ label: 'Placeholder Script Sabha' });
-  await expect(win.getByTestId('simple-header')).toHaveCount(2);
-  expect(await drawn(win.getByTestId('simple-header'))).toEqual([
-    'नमूना शीर्षक|none|normal',
-    'નમૂના|none|normal',
-  ]);
+  const simpleHeaders = win.getByTestId('simple-mode').getByTestId('playlist-item').locator('[data-label]');
+  await expect(simpleHeaders).toHaveCount(2);
+  expect(await drawn(simpleHeaders)).toEqual(['नमूना शीर्षक|none|normal', 'નમૂના|none|normal']);
   await app.close();
 });

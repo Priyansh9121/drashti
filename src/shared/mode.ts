@@ -2,34 +2,33 @@ import type { EngineCommand } from './engine/commands';
 import type { EngineState } from './engine/state';
 
 /*
- * Simple Mode and Pro Mode (PLAN.md section 3). Simple Mode is one screen
- * with big buttons for running a sabha from a playlist; nothing in it can
- * change the library, the screens or the sound, and the main process
- * refuses such requests while it is on. Leaving it takes a deliberate step:
- * Switch to Pro Mode… (on Simple Mode's own screen, or in the View menu),
- * then typing the word below. Never a PIN (Session 54, E5: roles and PINs
- * are gone): it is a way of working, not a lock.
+ * Simple Mode and Pro Mode (PLAN.md section 3). Simple Mode (Session 55, Part 18: for a small sabha, or anywhere
+ * with one projector) is Pro Mode's window with everything taken out but one playlist, bringing things into it (Add
+ * files…, files dropped, From a Link…), the wallpapers, Next and Back, Clear all, Black-out, the Wallpaper and the time
+ * bar, and a row's Rename and Delete; the main process refuses everything else while it is on (main/simple-mode.ts).
+ * Leaving it takes a deliberate step with nothing to type (the owner's answer to question 12, changed on 29 Oct
+ * 2026): a double-click on Pro Mode at the top of its window, or View › Switch to Pro Mode. Never a PIN (Session 54,
+ * E5: roles and PINs are gone): it is a way of working, not a lock, but with Simple access (Part 19) it is all this
+ * computer may use.
  */
 
 export type OperatorMode = 'pro' | 'simple';
 
 export const OPERATOR_MODES = ['pro', 'simple'] as const satisfies readonly OperatorMode[];
 
-/** The word typed to leave Simple Mode (letter case does not matter). */
-export const LEAVE_SIMPLE_WORD = 'pro';
-
-/** The word was typed (spaces around it and letter case do not matter). */
-export const isLeaveWord = (typed: string): boolean => typed.trim().toLowerCase() === LEAVE_SIMPLE_WORD;
-
-/** Why a request to leave Simple Mode may not go, or null when the word was typed (a PIN is no way out). */
-export const leaveSimpleRefusal = (typed: unknown): string | null =>
-  typeof typed === 'string' && isLeaveWord(typed) ? null : 'Type pro to switch to Pro Mode.';
-
 export type ModeResult = { ok: true; mode: OperatorMode } | { ok: false; message: string };
 
 /** What a request that would change something gets while Simple Mode is on. */
 export const SIMPLE_MODE_REFUSAL =
-  'Simple Mode is on, so this cannot be changed. On the Drashti computer, Switch to Pro Mode… leaves it.';
+  'Simple Mode is on, so this cannot be changed. On the Drashti computer, a double-click on Pro Mode leaves it.';
+
+/**
+ * A file Simple Mode's import leaves out (Session 55, Part 18): it brings in what its one playlist plays, nothing a
+ * presentation, a playlist or the library's setup is made of (lyrics, the other program's files, a Shastra text, a
+ * calendar).
+ */
+export const SIMPLE_IMPORT_LEFT_OUT =
+  'Simple Mode brings in sounds, videos, pictures, PDFs and PowerPoint or Keynote decks, so this was left out.';
 
 /**
  * The same while this computer's access is Simple Mode only (Session 55, the owner's decision of 29 Oct 2026): no way

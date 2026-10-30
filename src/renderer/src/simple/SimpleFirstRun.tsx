@@ -9,9 +9,10 @@ import { Kbd } from '../ui/Kbd';
 /*
  * Simple Mode's first steps (Sessions 31–36): three short steps for a volunteer the first time Simple Mode
  * opens on this library, never while a slide is live. They sit in the window's own flow, under the header,
- * so they never cover the big buttons, and they take no keys: the show's keys work all along. Skip ends
+ * so they never cover the show's controls, and they take no keys: the show's keys work all along. Skip ends
  * them, and so do Done and a slide going up (the volunteer has begun); then they never come again. The
- * main process keeps "seen" in the library's settings, through a channel Simple Mode allows.
+ * main process keeps "seen" in the library's settings, through a channel Simple Mode allows. Since Session 55
+ * (Part 18) they say what Simple Mode is now: Pro Mode's window with only what a sabha with one projector needs.
  */
 
 interface Step {
@@ -21,20 +22,24 @@ interface Step {
 
 const STEPS: readonly Step[] = [
   {
-    title: 'Choose tonight’s playlist',
+    title: 'This is Simple Mode',
     text: () => (
       <>
-        Under <b className="text-fg">Playlist</b> on the left, choose tonight’s. Its items show under it: a
-        click on one puts it on the screens.
+        Only what a sabha with one projector needs: <b className="text-fg">the playlist</b> in the middle, the{' '}
+        <b className="text-fg">wallpapers</b> on the left, and what is on the screens on the right.{' '}
+        <b className="text-fg">Add files…</b> and <b className="text-fg">From a Link…</b> above the playlist
+        bring things into it, and so do files dropped on the window.
       </>
     ),
   },
   {
-    title: 'Next and Back',
+    title: 'Rows, Next and Back',
     text: (key) => (
       <>
-        <b className="text-fg">Next</b> (<Kbd>{key('next')}</Kbd>) puts up the next slide, and the first one
-        when nothing is up. <b className="text-fg">Back</b> (<Kbd>{key('previous')}</Kbd>) goes back one.
+        A click on a row puts it on the screens. <b className="text-fg">Next</b> (<Kbd>{key('next')}</Kbd>)
+        puts up the next, and the first when nothing is up; <b className="text-fg">Back</b> (
+        <Kbd>{key('previous')}</Kbd>) goes back one. Drag a row to move it; right-click it to rename or delete
+        it.
       </>
     ),
   },
@@ -50,8 +55,9 @@ const STEPS: readonly Step[] = [
           </>
         )}{' '}
         darkens every screen at once. <b className="text-fg">Clear all</b> (<Kbd>{key('clearAll')}</Kbd>)
-        takes everything off, and <b className="text-fg">Put it back</b> brings it back.{' '}
-        <b className="text-fg">Help</b>, then <b className="text-fg">Guides…</b> has the rest.
+        takes everything off, and <b className="text-fg">Put it back</b> brings it back; with nothing up, the
+        screens show the wallpaper chosen on the left. <b className="text-fg">Help</b>, then{' '}
+        <b className="text-fg">Guides…</b> has the rest.
       </>
     ),
   },

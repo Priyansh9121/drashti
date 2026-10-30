@@ -7,6 +7,7 @@ import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fix
 import { expectNoSeriousA11yIssues, settled } from './a11y';
 import {
   closeLibrary,
+  closePlaylistIfOpen,
   importAndGetIds,
   killApp,
   launchApp,
@@ -87,12 +88,9 @@ const playMusic = (win: Page, trackId: string) =>
     return list.id;
   }, trackId);
 
-/** Simple Mode, or Pro Mode again (with the word that leaving Simple Mode asks for), the window drawn so. */
+/** Simple Mode, or Pro Mode again (nothing typed since Session 55, Part 18), the window drawn so. */
 async function switchTo(win: Page, mode: 'simple' | 'pro'): Promise<void> {
-  const done = await win.evaluate(
-    (m) => (globalThis as PageGlobals).drashti.app.setMode(m, m === 'pro' ? 'pro' : undefined),
-    mode,
-  );
+  const done = await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
   expect(done.ok).toBe(true);
   if (mode === 'simple') await expect(win.getByTestId('simple-mode')).toBeVisible();
   else await expect(win.getByTestId('simple-mode')).toHaveCount(0);
@@ -341,15 +339,16 @@ test('a slide whose background and sound files are both missing: LIVE’s two li
   );
   await expectInWindow(win, [...LINES, 'next-caption'], null, 'Simple Mode, no music');
 
-  // An audio playlist playing: Pro Mode again, then Simple Mode, whose music strip says what plays, clear of them.
+  // An audio playlist playing: Pro Mode again, then Simple Mode, whose time bar under Next and Back says what plays
+  // (Session 55, Part 18: its music strip went with the Audio panel), clear of them.
   await switchTo(win, 'pro');
   const listId = await playMusic(win, trackId);
   await expect.poll(async () => (await state(win)).layers.audio?.music?.playlistId).toBe(listId);
   await expectInWindow(win, [...LINES, 'show-next'], null, 'Pro Mode, the music playing');
   await switchTo(win, 'simple');
-  await expect(win.getByTestId('simple-music')).toContainText('Music: Placeholder before sabha');
-  await expect(win.getByTestId('simple-music-pause')).toBeVisible();
-  await expectInWindow(win, [...LINES, 'next-caption'], 'simple-music', 'Simple Mode, the music playing');
+  await expect(win.getByTestId('simple-music')).toHaveCount(0);
+  await expect(win.getByTestId('time-bars')).toBeVisible();
+  await expectInWindow(win, [...LINES, 'next-caption'], 'time-bars', 'Simple Mode, the music playing');
   // Both still said, and the music never stopped for the slide's sound.
   expect((await state(win)).layers.slide).toMatchObject({ fileMissing: BACKDROP, soundMissing: FILE });
   expect((await state(win)).layers.audio).toMatchObject({ mediaId: trackId, music: { playlistId: listId } });
@@ -444,7 +443,7 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
   await expect(caption).toHaveText(`Placeholder Named Sounds, slide 4${nextSays(FILE)}`);
   // Next puts it up: the tune plays on, and LIVE says why.
   const tuneUp = (await state(win)).layers.audio;
-  await win.getByTestId('simple-buttons').getByRole('button', { name: /^Next/u }).click();
+  await win.getByTestId('simple-mode').getByTestId('show-next').click();
   await expect.poll(async () => (await state(win)).live.slideIndex).toBe(3);
   expect((await state(win)).layers.audio).toMatchObject({
     mediaId: tuneUp?.mediaId,
@@ -452,6 +451,9 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
   });
   await expect(win.getByTestId('live-sound-missing')).toHaveText(LINE);
   await switchTo(win, 'pro');
+  // Pro Mode shows the playlist Simple Mode used (Session 55, Part 18: a new one, none being open): closed, the
+  // library's presentation shows as rows again.
+  await closePlaylistIfOpen(win);
 
   // The tune deleted from the library (Media's Delete, which Undo brings back): the slide whose last sound it is says
   // it is missing, as one not found at import does, in its thumbnail and in the slide editor, by the file's name (the

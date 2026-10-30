@@ -29,8 +29,11 @@ export interface PlaylistIpcDeps {
   fromOperator: (event: IpcMainInvokeEvent) => boolean;
   /** Tell the operator window (and the engine) that playlists changed. */
   changed: () => void;
-  /** The operator opened a playlist (Session 14: it counts as this week's for nodes). */
-  opened: (playlistId: string) => void;
+  /**
+   * The operator opened a playlist (Session 14: it counts as this week's for nodes), or closed it (null: Session 55,
+   * Part 18, for Simple Mode's one playlist).
+   */
+  opened: (playlistId: string | null) => void;
   /** A presentation's first slide in its order, for a playlist card (Session 26a); null when it has none. */
   firstSlide: (presentationId: string) => RenderSlide | null;
   /** The windows' start-up reads (Session 39): a failure fails the request and is logged once. */
@@ -94,9 +97,9 @@ export function registerPlaylistIpc({
     if (!ids.success) return {};
     return Object.fromEntries(ids.data.map((id) => [id, firstSlide(id)]));
   });
-  // Opening is not a change to the playlist: Simple Mode's picker counts too.
+  // Opening is not a change to the playlist: Simple Mode's counts too. Closing one says null.
   handle(IPC.playlists.opened, (e, playlistId) => {
-    const id = playlistIdSchema.safeParse(playlistId);
+    const id = playlistIdSchema.nullable().safeParse(playlistId);
     if (fromOperator(e) && id.success) opened(id.data);
     return null;
   });

@@ -35,7 +35,7 @@ export interface MenuActions {
   mode: OperatorMode;
   /** This computer's access is Simple Mode only (Session 55): Simple Mode offers no way back to Pro Mode. */
   simpleOnly?: boolean;
-  /** View > Switch to Simple Mode, or Switch to Pro Mode… (which asks for the word in the window). */
+  /** View > Switch to Simple Mode, or Switch to Pro Mode: at once, nothing asked (Session 55, Part 18). */
   switchMode: () => void;
   /** View > Set Up Screens…: the setup wizard (Pro Mode only). */
   setUpScreens: () => void;
@@ -200,7 +200,8 @@ export function installMenu(actions: MenuActions): void {
           : [
               {
                 id: 'switch-mode',
-                label: simple ? 'Switch to Pro Mode…' : 'Switch to Simple Mode',
+                // Nothing asked either way since Session 55, Part 18: no "…".
+                label: simple ? 'Switch to Pro Mode' : 'Switch to Simple Mode',
                 click: actions.switchMode,
               } as MenuItemConstructorOptions,
             ]),

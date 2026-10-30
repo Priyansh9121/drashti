@@ -88,6 +88,23 @@ export function makeFolderPlaylist(
 }
 
 /**
+ * A Dropbox folder's files in Simple Mode (Session 55, Part 18): at the end of its one playlist, in folder order, a
+ * header before each subfolder's part, never a playlist of their own. The playlist and its name, as a folder's
+ * playlist would be told; null when nothing was made.
+ */
+export function addFolderAtEnd(
+  repo: PlaylistRepo,
+  playlistId: string,
+  items: readonly ImportItemReport[],
+  files: readonly FolderFile[],
+): { id: string; name: string } | null {
+  const ordered = folderItems(madeFrom(items, files));
+  if (ordered.length === 0 || repo.addItems(playlistId, null, ordered).length === 0) return null;
+  const name = repo.tree().find((n) => n.id === playlistId)?.name ?? '';
+  return { id: playlistId, name };
+}
+
+/**
  * Add files later (the PDFs and pictures, one button): each at the end of its folder's part, found by its
  * header ("Week 1 › Videos"); a folder that had no part gets one at the end, with its header. How many
  * went in.

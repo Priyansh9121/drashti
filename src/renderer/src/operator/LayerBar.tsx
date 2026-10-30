@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { isLayerEmpty } from '../../../shared/engine/state';
 import type { OperatorAction } from '../../../shared/keymap';
-import { shortcutText } from '../../../shared/keymap';
+import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import { practiceKey, useShowState } from '../practice/practice-store';
 import { useKeymapNow } from './single-keys-store';
 import { dispatch } from './actions';
@@ -37,6 +37,10 @@ import { Tooltip } from '../ui/Tooltip';
  * aria-pressed besides), and are dimmed while off, pressable all the same. Right after Clear all, Put it back takes
  * Clear all's place (nothing is left to clear then). Every one changes in the same frame as the screens, with no colour
  * fade (Session 25).
+ *
+ * Simple Mode's (Session 55, Part 18: Pro Mode's window with only what a one-projector sabha needs) is the same bar
+ * with Clear all (and Put it back after it), the Wallpaper and Black-out alone; its dimmed Clear all stays a stop of
+ * the Tab key's (Part 13's answer: a volunteer's Tab order never changes).
  */
 
 const icons: Record<ClearedLayer, Icon> = {
@@ -106,11 +110,20 @@ function CoverButton({
   );
 }
 
-export function LayerBar({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
+export function LayerBar({
+  platform,
+  run,
+  simple = false,
+}: {
+  platform: string;
+  run: (action: OperatorAction) => void;
+  /** Simple Mode's: Clear all, the Wallpaper and Black-out only, with its own test ids. */
+  simple?: boolean;
+}) {
   // The show, or the practice show while it is on (Session 26g).
   const state = useShowState();
   // The keys on its buttons, as they act now: none for Black-out while B, . and ? are off; the Wallpaper keeps F12.
-  const keymap = useKeymapNow();
+  const keymap = useKeymapNow(simple ? SIMPLE_KEYMAP : undefined);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
   const layers = state?.layers;
   const blackout = state?.blackout ?? false;
@@ -131,7 +144,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
     <button
       type="button"
       data-show-control
-      data-testid="put-back"
+      data-testid={simple ? 'simple-put-back' : 'put-back'}
       data-variant="warning"
       onClick={() => {
         if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
@@ -147,9 +160,13 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       type="button"
       data-show-control
       data-variant="strong"
-      disabled={!anything}
+      data-testid={simple ? 'simple-clear-all' : undefined}
+      // Simple Mode's stays a Tab stop, dimmed (Part 13's answer); Pro Mode's is not pressable.
+      disabled={!simple && !anything}
+      aria-disabled={simple && !anything ? true : undefined}
+      data-dimmed={anything ? undefined : 'true'}
       onClick={() => {
-        run('clearAll');
+        if (anything) run('clearAll');
       }}
       className={cx(
         BAR_BUTTON,
@@ -169,50 +186,52 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       <section
         aria-label="Show controls"
         className="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-line bg-panel px-3 py-1 min-[1280px]:gap-1.5"
-        data-testid="layer-bar"
+        data-testid={simple ? 'simple-buttons' : 'layer-bar'}
         data-zone="bar"
       >
         {clearAll}
-        <div
-          role="group"
-          aria-label="Clear one layer"
-          className="flex items-center gap-1 min-[1280px]:gap-1.5"
-        >
-          {LAYER_CLEARS.map((c) => {
-            const on = layers ? !isLayerEmpty(layers, c.layer) : false;
-            return (
-              <Tooltip
-                key={c.layer}
-                content={`Clear ${c.label.toLowerCase()}`}
-                kbd={key(c.action)}
-                describes={false}
-              >
-                <button
-                  type="button"
-                  disabled={!on}
-                  data-lit={on ? 'true' : undefined}
-                  data-show-control
-                  onClick={() => {
-                    run(c.action);
-                  }}
-                  aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
-                  // Wide enough that the lit dot keeps clear of its key.
-                  className={cx(BAR_BUTTON, 'pr-3.5', on ? LIT : cx(DIMMED, 'cursor-not-allowed'))}
+        {!simple && (
+          <div
+            role="group"
+            aria-label="Clear one layer"
+            className="flex items-center gap-1 min-[1280px]:gap-1.5"
+          >
+            {LAYER_CLEARS.map((c) => {
+              const on = layers ? !isLayerEmpty(layers, c.layer) : false;
+              return (
+                <Tooltip
+                  key={c.layer}
+                  content={`Clear ${c.label.toLowerCase()}`}
+                  kbd={key(c.action)}
+                  describes={false}
                 >
-                  <BarIcon shape={icons[c.layer]} />
-                  <WordsAndKey words={c.label} keyText={key(c.action)} />
-                  {/* In the corner beside its key. */}
-                  {on && (
-                    <span
-                      aria-hidden="true"
-                      className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live"
-                    />
-                  )}
-                </button>
-              </Tooltip>
-            );
-          })}
-        </div>
+                  <button
+                    type="button"
+                    disabled={!on}
+                    data-lit={on ? 'true' : undefined}
+                    data-show-control
+                    onClick={() => {
+                      run(c.action);
+                    }}
+                    aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
+                    // Wide enough that the lit dot keeps clear of its key.
+                    className={cx(BAR_BUTTON, 'pr-3.5', on ? LIT : cx(DIMMED, 'cursor-not-allowed'))}
+                  >
+                    <BarIcon shape={icons[c.layer]} />
+                    <WordsAndKey words={c.label} keyText={key(c.action)} />
+                    {/* In the corner beside its key. */}
+                    {on && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live"
+                      />
+                    )}
+                  </button>
+                </Tooltip>
+              );
+            })}
+          </div>
+        )}
         {/* The ? and the two covers at the far end. */}
         <span className="ml-auto flex">{help.button}</span>
         <CoverButton
@@ -221,7 +240,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           onWords="Wallpaper is on"
           keyText={key('toggleWallpaper')}
           icon={Wallpaper}
-          testId="wallpaper-button"
+          testId={simple ? 'simple-wallpaper' : 'wallpaper-button'}
           onClick={() => {
             run('toggleWallpaper');
           }}
@@ -232,7 +251,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           onWords="Black-out is on"
           keyText={key('toggleBlackout')}
           icon={BlackOut}
-          testId="blackout-button"
+          testId={simple ? 'simple-blackout' : 'blackout-button'}
           onClick={() => {
             run('toggleBlackout');
           }}

@@ -1,4 +1,3 @@
-import { useEngine } from '../engine/engine-store';
 import { nextCaption } from '../../../shared/next-caption';
 import { useLibrary } from '../library/library-store';
 import { usePlaylists } from '../playlists/playlist-store';
@@ -73,13 +72,11 @@ export function NextPicture({ next }: { next: UpNext | null }) {
 }
 
 /**
- * What Next will put up: the next slide (with its background), or the next picture, video or sound; or a video
- * input (Session 51), as an item or behind the next slide.
+ * What Next will put up, in words (shared/next-caption.ts), as a phone says it too (Session 54, D5 review): its
+ * presentation's (or row's) name, and a file it misses, before it goes up. Next up's picture beside Next says the same
+ * (Session 55), and Simple Mode shows it in a line under Next and Back.
  */
-export function NextPreview({ stacked = false }: { stacked?: boolean }) {
-  const next = useEngine((s) => s.state?.next ?? null);
-  // As the live preview: a kirtan's slide in the first audience group's languages.
-  const shownAs = useFirstGroupLanguages('audience');
+export function useNextCaption(next: UpNext | null): string {
   const name = useLibrary((s) =>
     next?.kind === 'slide' ? s.presentations.find((p) => p.id === next.presentationId)?.name : undefined,
   );
@@ -89,64 +86,5 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   // The video input behind the next slide (Session 51): whether this computer has one of its name (counted as there
   // until the list has been read).
   const behind = useInputNamed(next?.kind === 'slide' ? (next.input ?? null) : null) !== null;
-  // In words (shared/next-caption.ts), as a phone says it too (Session 54, D5 review).
-  const caption = nextCaption(next, { label: itemLabel ?? name ?? null, inputHere: behind });
-  const heading = (
-    <h2
-      id="next-preview-title"
-      className={`text-2xs font-bold tracking-wider text-heading uppercase ${stacked ? 'flex h-6 items-center' : ''}`}
-    >
-      Next
-    </h2>
-  );
-  return (
-    <section
-      aria-labelledby="next-preview-title"
-      className={stacked ? 'space-y-2 px-3 pt-3' : 'flex items-start gap-3 px-3 pt-3'}
-      data-testid="next-preview"
-      data-kind={next?.kind ?? 'none'}
-    >
-      {stacked && heading}
-      <div
-        className={`relative aspect-video shrink-0 overflow-hidden rounded-md border border-line-strong bg-black ${stacked ? 'w-full' : 'w-[45%]'}`}
-        data-a11y-picture
-        aria-hidden="true"
-      >
-        {next?.kind === 'slide' && (
-          <>
-            {next.input !== undefined && <NextInput name={next.input} />}
-            {next.background && (
-              <MediaStill
-                mediaId={next.background.mediaId}
-                media={next.background.media}
-                fit={next.background.fit}
-              />
-            )}
-            <PlacedInParent content={next.slide} mode="fit" className="absolute inset-0">
-              {/* A deck's slide (Session 54, C2): as the step Next shows ends. */}
-              <SlideView
-                slide={languageView(deckSlideAt(next.slide, next.step ?? 0), shownAs?.languages ?? null)}
-                media="still"
-              />
-            </PlacedInParent>
-          </>
-        )}
-        {next?.kind === 'media' &&
-          (next.media === 'audio' ? (
-            <span className="absolute inset-0 flex items-center justify-center text-muted">
-              <Music size={28} />
-            </span>
-          ) : (
-            <MediaStill mediaId={next.mediaId} media={next.media} />
-          ))}
-        {next?.kind === 'input' && <NextInput name={next.name} />}
-      </div>
-      <div className="min-w-0 pt-0.5 text-xs">
-        {!stacked && heading}
-        <p className="mt-1 break-words text-sm text-fg" data-testid="next-caption">
-          {caption}
-        </p>
-      </div>
-    </section>
-  );
+  return nextCaption(next, { label: itemLabel ?? name ?? null, inputHere: behind });
 }

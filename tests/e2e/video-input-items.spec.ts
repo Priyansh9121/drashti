@@ -218,16 +218,19 @@ test('a video input as a playlist item and as a slide’s background, each up wi
   expect((await state(win)).layers.background).toEqual(up);
   await expect(win.getByTestId('live-input-missing')).toHaveCount(0);
 
-  // Simple Mode: its Next puts the input up through the playlist, while choosing one directly stays refused.
+  // Simple Mode, on the playlist open in Pro Mode (Session 55, Part 18): its Next puts the input up through the
+  // playlist, while choosing one directly stays refused.
   await dispatch(win, { type: 'clearAll' });
+  await openPlaylist(win, 'Placeholder Sunday');
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-  await expect(win.getByTestId('simple-mode')).toBeVisible();
-  const items = win.getByTestId('simple-items');
-  const simpleInput = items.getByTestId('simple-item').filter({ hasText: INPUT });
-  await expect(simpleInput.getByTestId('simple-input-note')).toHaveText('Video input');
-  await items.getByTestId('simple-item').filter({ hasText: 'Placeholder opening' }).click();
+  const simple = win.getByTestId('simple-mode');
+  await expect(simple).toBeVisible();
+  const simpleInput = simple.getByTestId('playlist-item').filter({ hasText: INPUT });
+  await expect(simpleInput.getByTestId('item-what')).toHaveText('Video input');
+  // The opening's slide, by its row (its name's row folds it, as in Pro Mode).
+  await simple.getByTestId('slide-thumb').filter({ hasText: 'Placeholder opening_1' }).click();
   await expect.poll(async () => (await state(win)).live.presentationId).toBe(opening);
-  await win.getByTestId('simple-buttons').getByRole('button', { name: /^Next/u }).click();
+  await simple.getByTestId('show-next').click();
   await expect
     .poll(async () => (await state(win)).layers.background)
     .toMatchObject({ kind: 'input', name: INPUT });

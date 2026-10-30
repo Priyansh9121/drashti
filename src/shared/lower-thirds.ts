@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import { DEFAULT_ANIMATION, isAnimation } from './lower-third-animations';
+import { LOWER_THIRD_FONTS, type LowerThirdFont } from './lower-third-fonts';
+import {
+  LOWER_THIRD_MOTIONS,
+  LOWER_THIRD_STYLES,
+  type LowerThirdMotion,
+  type LowerThirdStyle,
+} from './lower-third-styles';
 import { idSchema } from './model-schema';
 
 /*
@@ -23,9 +30,12 @@ export const WHERE_NAMES: Record<LowerThirdWhere, string> = {
 export type LowerThirdAlign = 'left' | 'centre' | 'right';
 export const LOWER_THIRD_ALIGNS: readonly LowerThirdAlign[] = ['left', 'centre', 'right'];
 
-/** Drashti's own fonts (render/fonts.ts): the words take the others too, for the letters this one lacks. */
-export const LOWER_THIRD_FONTS = ['Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari'] as const;
-export type LowerThirdFont = (typeof LOWER_THIRD_FONTS)[number];
+/**
+ * The fonts (lower-third-fonts.ts): Drashti's own three, and the Lower Thirds studio's (Session 55, Part 16). The words
+ * take Drashti's own too, for the letters a font lacks (render/fonts.ts).
+ */
+export { LOWER_THIRD_FONTS };
+export type { LowerThirdFont };
 export const LOWER_THIRD_WEIGHTS = [400, 500, 700] as const;
 export type LowerThirdWeight = (typeof LOWER_THIRD_WEIGHTS)[number];
 
@@ -43,9 +53,17 @@ export interface LowerThirdLook {
   align: LowerThirdAlign;
   /** From the bottom of the picture to the band, as a share of its height (percent). */
   bottom: number;
+  /** The style the words sit in (Session 55, Part 16, lower-third-styles.ts); left out: a box, as before. */
+  style?: LowerThirdStyle;
+  /** The style's second colour, "#rrggbb": two colours' second part, an accent bar, an outline. */
+  accent?: string;
+  /** A moving background behind the words; left out: none. */
+  motion?: LowerThirdMotion;
 }
 
 export const LOWER_THIRD_SIZE = { min: 2, max: 12 } as const;
+/** How long one that hides itself stays up (seconds, whole). */
+export const LOWER_THIRD_SECONDS = { min: 5, max: 60 } as const;
 export const LOWER_THIRD_BOTTOM = { min: 0, max: 40 } as const;
 /** The most lines, and the most letters in one. */
 export const LOWER_THIRD_LINES = 3;
@@ -71,6 +89,10 @@ export interface LowerThird {
   where: LowerThirdWhere;
   /** Its animation, in and out (an id in lower-third-animations.ts). */
   animation: string;
+  /** How it goes out (Session 55, Part 16): another animation played backwards; left out: its in played backwards. */
+  outAnimation?: string;
+  /** It hides itself this many seconds after it went up (Part 8's R, in the studio); left out: until hidden. */
+  seconds?: number;
 }
 
 export type LowerThirdInput = Omit<LowerThird, 'id'>;
@@ -94,14 +116,26 @@ export const lowerThirdLookSchema = z
     size: z.number().min(LOWER_THIRD_SIZE.min).max(LOWER_THIRD_SIZE.max),
     align: z.enum(['left', 'centre', 'right']),
     bottom: z.number().min(LOWER_THIRD_BOTTOM.min).max(LOWER_THIRD_BOTTOM.max),
+    style: z.enum(LOWER_THIRD_STYLES).optional(),
+    accent: hex.optional(),
+    motion: z.enum(LOWER_THIRD_MOTIONS).optional(),
   })
   .strict();
+
+/** How long one that hides itself stays up: 5 to 60 whole seconds. */
+export const lowerThirdSecondsSchema = z
+  .number()
+  .int()
+  .min(LOWER_THIRD_SECONDS.min)
+  .max(LOWER_THIRD_SECONDS.max);
 
 const fields = {
   lines: z.array(z.string().max(LOWER_THIRD_LINE_MAX)).min(1).max(LOWER_THIRD_LINES),
   look: lowerThirdLookSchema,
   where: z.enum(['hall', 'stream', 'both']),
   animation: z.string().refine(isAnimation, 'an animation from the library'),
+  outAnimation: z.string().refine(isAnimation, 'an animation from the library').optional(),
+  seconds: lowerThirdSecondsSchema.optional(),
 };
 const hasWords = (v: { lines: readonly string[] }) => v.lines.some((l) => l.trim() !== '');
 const NO_WORDS = 'a lower third needs words on one line at least';
@@ -114,6 +148,13 @@ export const lowerThirdSchema = z
   .refine(hasWords, NO_WORDS);
 
 export type LowerThirdResult = { ok: true; id: string } | { ok: false; message: string };
+/** Shown, hidden, or the studio opened (Session 55, Part 16), or why not. */
+export type LowerThirdDone = { ok: true } | { ok: false; message: string };
+
+/** The Lower Thirds studio's window (Session 55, Part 16): its title. */
+export const STUDIO_TITLE = 'Drashti Lower Thirds';
+/** Which lower third the studio opens on: one by its id, a new one, or as it is (null). */
+export type StudioOpen = { id: string } | { make: true } | null;
 export type LowerThirdsResult = { ok: true; ids: string[] } | { ok: false; message: string };
 
 /** Its lines with words, trimmed (blank lines take no room). */
@@ -122,6 +163,13 @@ export const shownLines = (lines: readonly string[]): string[] =>
 
 /** What a lower third is called in a list: its first line with words. */
 export const lowerThirdName = (lines: readonly string[]): string => shownLines(lines)[0] ?? 'Lower third';
+
+/**
+ * When a lower third that hides itself goes (Session 55, Part 16, R), by the engine's clock: its seconds from when it
+ * went up; null for one up until hidden.
+ */
+export const lowerThirdGoesAt = (up: { shownAt: number; seconds?: number } | null): number | null =>
+  up?.seconds !== undefined ? up.shownAt + up.seconds * 1000 : null;
 
 /** Whether a lower third shows on a picture of this kind. */
 export const showsOn = (where: LowerThirdWhere, place: 'hall' | 'stream'): boolean =>
