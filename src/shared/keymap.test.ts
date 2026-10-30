@@ -10,6 +10,8 @@ import {
   shortcutText,
   SIMPLE_KEYMAP,
   SINGLE_KEYS,
+  quickKey,
+  quickSlotFor,
   toAccelerator,
   withoutSingleKeys,
 } from './keymap';
@@ -221,5 +223,46 @@ describe('keymap', () => {
     expect(withoutSingleKeys(KEYMAP).map((b) => b.action)).toEqual(
       KEYMAP.filter((b) => !['toggleBlackout', 'showKeys'].includes(b.action)).map((b) => b.action),
     );
+  });
+
+  // The quick bar (Session 55, Part 8): Alt+1 to Alt+8, Option+1 to Option+8 on a Mac, matched by the key's place on the
+  // keyboard, since a Mac's Option+1 types "¡" (and a French keyboard's 1 is "&").
+  it('puts the quick bar’s pins up with Alt+1 to Alt+8, by the key’s place, in Pro Mode only', () => {
+    for (let n = 1; n <= 8; n++) {
+      const code = `Digit${String(n)}`;
+      // Windows: Alt+1 types nothing, the key says 1.
+      const win = { ...press(String(n), { altKey: true }), code };
+      expect(actionFor(win, 'win32', PAGE_KEYMAP), code).toBe('quickBar');
+      expect(quickSlotFor(win), code).toBe(n - 1);
+      // A Mac: Option+1 says "¡", Option+2 "™"…; its place on the keyboard is the digit's.
+      const mac = { ...press('¡', { altKey: true }), code };
+      expect(actionFor(mac, 'darwin', PAGE_KEYMAP), code).toBe('quickBar');
+      expect(quickSlotFor(mac), code).toBe(n - 1);
+      expect(keyText(quickKey(n - 1), 'darwin')).toBe(`⌥${String(n)}`);
+      expect(keyText(quickKey(n - 1), 'win32')).toBe(`Alt+${String(n)}`);
+    }
+    // The digits alone, with Cmd or Ctrl (Audience and Stage), and Alt+9 or Alt+0 are not the quick bar's.
+    expect(actionFor({ ...press('1'), code: 'Digit1' }, 'win32', PAGE_KEYMAP)).toBeNull();
+    expect(actionFor({ ...press('1', { metaKey: true }), code: 'Digit1' }, 'darwin', PAGE_KEYMAP)).toBe(
+      'toggleAudience',
+    );
+    expect(actionFor({ ...press('9', { altKey: true }), code: 'Digit9' }, 'win32', PAGE_KEYMAP)).toBeNull();
+    expect(actionFor({ ...press('º', { altKey: true }), code: 'Digit0' }, 'darwin', PAGE_KEYMAP)).toBeNull();
+    // Shift with it is another key (a Mac's Shift+Option+1 is "⁄").
+    expect(
+      actionFor({ ...press('⁄', { altKey: true, shiftKey: true }), code: 'Digit1' }, 'darwin', PAGE_KEYMAP),
+    ).toBeNull();
+    // Simple Mode has no quick bar: none of its keys.
+    expect(SIMPLE_KEYMAP.some((b) => b.action === 'quickBar')).toBe(false);
+    expect(KEYMAP.find((b) => b.action === 'quickBar')?.keys).toEqual([
+      'Alt+1',
+      'Alt+2',
+      'Alt+3',
+      'Alt+4',
+      'Alt+5',
+      'Alt+6',
+      'Alt+7',
+      'Alt+8',
+    ]);
   });
 });

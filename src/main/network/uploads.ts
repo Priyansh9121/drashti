@@ -8,6 +8,7 @@ import {
   type AddFilesView,
   type ArrivedFile,
   type ArrivedOutcome,
+  INTO_OPEN,
   noRoomWords,
   shownFileName,
   tooLargeWords,
@@ -95,6 +96,8 @@ interface Upload {
   at: number;
   /** The piece arriving now: a newer one for the same place, Cancel or the switch let it go. */
   piece: { gone: boolean; stop: () => void } | null;
+  /** Add photos (Session 55, Part 8): for the playlist open on Drashti; null, Added from Phones. */
+  into: typeof INTO_OPEN | null;
 }
 
 const answer = (status: number, body: Record<string, unknown>): UploadAnswer => ({ status, body });
@@ -272,7 +275,11 @@ export class Uploads {
   /** Whether phones may add files now, and how large, as the phone's page reads it (once the folder is ready). */
   async adding(): Promise<AddFilesView> {
     await this.starting;
-    return { on: this.policy.on && this.ready, maxBytes: this.policy.maxBytes };
+    return {
+      on: this.policy.on && this.ready,
+      maxBytes: this.policy.maxBytes,
+      openPlaylist: this.policy.openPlaylist ?? null,
+    };
   }
 
   /** This phone's files, newest first. */
@@ -315,6 +322,7 @@ export class Uploads {
       file: join(this.deps.dir, `${id}${PART}`),
       at: this.now(),
       piece: null,
+      into: given['into'] === INTO_OPEN ? INTO_OPEN : null,
     };
     try {
       // Made here, new: never a file (or a link) that was there before.
@@ -460,6 +468,7 @@ export class Uploads {
       file: whole,
       ext: what.ext,
       kind: what.kind,
+      ...(up.into ? { into: up.into } : {}),
     });
   }
 

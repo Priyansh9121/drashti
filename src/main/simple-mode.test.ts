@@ -345,4 +345,17 @@ describe('Simple Mode locks', () => {
     ])
       expect(within(channel, ['/placeholder/x.txt']), channel).toBe(true);
   });
+
+  it('the quick bar (Session 55, Part 8) is Pro Mode’s: its pins are read in either mode, never changed in Simple Mode', () => {
+    expect(SIMPLE_MODE_LOCKED).toContain(IPC.quickBar.set);
+    expect(SIMPLE_MODE_BOUNDED.has(IPC.quickBar.set)).toBe(false);
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.quickBar.view);
+    expect(answers.get(IPC.quickBar.set)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  });
+
+  it('New › QR code… (Session 55, Part 8) is Pro Mode’s: Simple Mode makes no slide', () => {
+    expect(SIMPLE_MODE_LOCKED).toContain(IPC.library.newQrSlide);
+    expect(SIMPLE_MODE_BOUNDED.has(IPC.library.newQrSlide)).toBe(false);
+    expect(answers.get(IPC.library.newQrSlide)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  });
 });

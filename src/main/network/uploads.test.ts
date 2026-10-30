@@ -385,4 +385,25 @@ describe('what a phone may add', () => {
     expect(listed.map((u) => u.id)).toEqual([id]);
     expect(uploads.list(OTHER)).toEqual([]);
   });
+
+  // Session 55, Part 8 (J): Add photos sends pictures into the playlist open on Drashti.
+  it('Add photos: a picture asked for the open playlist is handed on saying so, and the phone reads which playlist is open', async () => {
+    expect(await uploads.adding()).toMatchObject({ on: true, openPlaylist: null });
+    uploads.setPolicy({ ...ON, openPlaylist: 'Placeholder sabha' });
+    expect(await uploads.adding()).toMatchObject({ on: true, openPlaylist: 'Placeholder sabha' });
+    const bytes = picture(3000);
+    const id = upload(
+      await uploads.begin(PHONE, { name: 'IMG_0002.HEIC', size: bytes.length, into: 'open' }),
+    ).id;
+    await sendAll(id, bytes, 3000);
+    // Anything else asked for is as before: Added from Phones.
+    const other = upload(
+      await uploads.begin(PHONE, { name: 'Other.jpg', size: bytes.length, into: 'elsewhere' }),
+    ).id;
+    await sendAll(other, bytes, 3000);
+    expect(arrived.map((a) => [a.name, a.into ?? null])).toEqual([
+      ['IMG_0002.HEIC', 'open'],
+      ['Other.jpg', null],
+    ]);
+  });
 });

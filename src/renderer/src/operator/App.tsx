@@ -30,6 +30,9 @@ import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
 import { runAction, undoSimple, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
+import { addFileMenuItems } from '../files/file-menu';
+import { QuickBar } from '../quick-bar/QuickBar';
+import { connectQuickBar, pressQuick, quickMenuItems } from '../quick-bar/quick-bar-store';
 import { Header } from './Header';
 import { LayerBar } from './LayerBar';
 import { NextBack } from './NextBack';
@@ -50,6 +53,8 @@ import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { WindowPicker } from '../live-window/WindowPicker';
+import { ReadyDialog } from './ReadyDialog';
+import { QrSlideDialog } from '../library/QrSlideDialog';
 import { PipDialog } from './PipDialog';
 import { connectLiveWindow } from '../live-window/live-window-store';
 import { VideoInputDialog } from '../video-inputs/VideoInputDialog';
@@ -133,6 +138,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectAppearance();
     // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
     connectSound();
+    // The quick bar's pins (Session 55, Part 8): Pro Mode shows them; kept with the library.
+    connectQuickBar();
     void startMidi();
     // The window opens settled with what its first data shows (ui/motion.ts).
     void Promise.allSettled([loadLibrary(), loadTree()]).then(firstData);
@@ -226,7 +233,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
   }, []);
   const practising = usePractice((s) => s.on);
   const run = useCallback(
-    (action: OperatorAction) => {
+    (action: OperatorAction, slot?: number) => {
       // The practice show takes the show's keys while it is on (Session 26g): never the engine's. Screens, the keys
       // sheet, Uncover, and Audience and Stage (Session 50: real displays, not a step of the show) still act.
       const windowOnly =
@@ -236,11 +243,18 @@ function ProApp({ info }: { info: AppInfo | null }) {
         action === 'toggleAudience' ||
         action === 'toggleStage';
       if (!windowOnly && practiceKey(action)) return;
+      // The quick bar's pins (Session 55, Part 8): a click on one, or Alt+1 to Alt+8.
+      if (action === 'quickBar') {
+        if (slot !== undefined) void pressQuick(slot);
+        return;
+      }
       void runAction(action, { openScreens, showKeys: showKeysSheet });
     },
     [openScreens],
   );
   useKeymap(platform, run);
+  // Pin to the quick bar (Session 55, Part 8) in the one right-click menu, while Pro Mode's window is up.
+  useEffect(() => addFileMenuItems(quickMenuItems), []);
   // Files dropped anywhere on the window are imported, as on the presentation list (which takes
   // its own drops): an operator drags a deck onto Drashti, wherever it lands (Session 16).
   useEffect(() => {
@@ -408,7 +422,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
         />
       )}
       <NoticeArea />
-      {/* Part 8's quick bar goes here, just above the bar of clears (Session 55, Part 13 left it room). */}
+      {/* The quick bar (Session 55, Part 8), just above the bar of clears: hidden when empty. */}
+      <QuickBar platform={platform} run={run} />
       <LayerBar platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
 
@@ -429,6 +444,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <WindowPicker />
       <VideoInputDialog platform={platform} />
       <PipDialog />
+      {/* Ready? and New › QR code… (Session 55, Part 8). */}
+      <ReadyDialog />
+      <QrSlideDialog />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}

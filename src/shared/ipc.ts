@@ -1,3 +1,5 @@
+import type { ReadyReport } from './ready';
+import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
   LowerThird,
@@ -312,6 +314,8 @@ export const IPC = {
     /** The rest change presentations (operator window only). */
     saveWords: 'library:save-words',
     newFromWords: 'library:new-from-words',
+    /** New › QR code… (Session 55, Part 8, G): a link or words as one slide, the code large and the words under it. */
+    newQrSlide: 'library:new-qr-slide',
     restoreRevision: 'library:restore-revision',
     legacyPresentations: 'library:legacy-presentations',
     getPresentation: 'library:get-presentation',
@@ -978,10 +982,25 @@ export const IPC = {
     /** Quit, the one button that always works. */
     quit: 'access:quit',
   },
+  /** Ready? (Session 55, Part 8, H): one press before the sabha checks the screens, sound, files, power and more. */
+  ready: {
+    check: 'ready:check',
+  },
+  /** The quick bar (Session 55, Part 8, F): up to 8 pinned items, kept with the library; Pro Mode changes them. */
+  quickBar: {
+    view: 'quickbar:view',
+    /** The whole bar as it should be now (the operator window only; Simple Mode refuses it). */
+    set: 'quickbar:set',
+    /** main -> operator: the bar changed. */
+    changed: 'quickbar:changed',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
+  [IPC.quickBar.view]: { args: []; result: QuickPin[] };
+  [IPC.quickBar.set]: { args: [pins: QuickPin[]]; result: QuickBarResult };
   [IPC.appearance.view]: { args: []; result: AppearanceView };
   [IPC.appearance.choose]: { args: [choice: string]; result: { ok: true } | { ok: false; message: string } };
   [IPC.appearance.make]: {
@@ -1082,6 +1101,7 @@ export interface InvokeContract {
   [IPC.library.words]: { args: [presentationId: string]; result: WordsResult };
   [IPC.library.saveWords]: { args: [presentationId: string, text: string]; result: SaveWordsResult };
   [IPC.library.newFromWords]: { args: [name: string, text: string]; result: NewFromWordsResult };
+  [IPC.library.newQrSlide]: { args: [text: string]; result: NewFromWordsResult };
   [IPC.library.restoreRevision]: { args: [revisionId: string]; result: RevisionResult };
   [IPC.library.legacyPresentations]: { args: []; result: { id: string; name: string }[] };
   [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };
@@ -1500,6 +1520,7 @@ export interface EventContract {
   [IPC.setup.open]: { at: number };
   [IPC.audio.status]: AudioOutputStatus;
   [IPC.sound.changed]: SoundView;
+  [IPC.quickBar.changed]: QuickPin[];
   [IPC.stream.changed]: StreamStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.savesChanged]: SaveJob[];

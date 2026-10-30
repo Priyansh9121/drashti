@@ -39,6 +39,8 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.saveWords,
   IPC.library.newFromWords,
+  // New › QR code… (Session 55, Part 8): Pro Mode's.
+  IPC.library.newQrSlide,
   IPC.library.saveSlides,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
@@ -240,6 +242,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // The chosen one (Session 55), as the Stage screen panel chooses it.
   IPC.videoInputs.choose,
   IPC.pip.savePlace,
+  // The quick bar (Session 55, Part 8): Pro Mode's; Simple Mode shows none and never changes its pins.
+  IPC.quickBar.set,
 ];
 
 /**

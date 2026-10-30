@@ -66,6 +66,12 @@ export class OutputHeartbeat {
     this.seen.delete(screenId);
   }
 
+  /** When an output opened (or was last judged) and last reported, for Ready? (Session 55, Part 8); null if unknown. */
+  lastSeen(screenId: string): { since: number; reportAt: number | null } | null {
+    const s = this.seen.get(screenId);
+    return s ? { since: s.since, reportAt: s.reportAt } : null;
+  }
+
   /** The engine changed (its revision now). */
   changed(rev: number): void {
     this.revAt.set(rev, this.deps.now());

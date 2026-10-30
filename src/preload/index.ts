@@ -187,6 +187,7 @@ const bridge: DrashtiBridge = {
     words: (presentationId) => invoke(IPC.library.words, presentationId),
     saveWords: (presentationId, text) => invoke(IPC.library.saveWords, presentationId, text),
     newFromWords: (name, text) => invoke(IPC.library.newFromWords, name, text),
+    newQrSlide: (text) => invoke(IPC.library.newQrSlide, text),
     restoreRevision: (revisionId) => invoke(IPC.library.restoreRevision, revisionId),
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
@@ -628,6 +629,14 @@ const bridge: DrashtiBridge = {
     redeem: (gmail, token) => invoke(IPC.access.redeem, gmail, token),
     retry: () => invoke(IPC.access.retry),
     quit: () => invoke(IPC.access.quit),
+  },
+  ready: {
+    check: (openPlaylistId) => invoke(IPC.ready.check, openPlaylistId),
+  },
+  quickBar: {
+    view: () => invoke(IPC.quickBar.view),
+    set: (pins) => invoke(IPC.quickBar.set, pins),
+    onChanged: (listener) => on(IPC.quickBar.changed, listener),
   },
 };
 
