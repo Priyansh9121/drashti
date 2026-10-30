@@ -101,7 +101,7 @@ export const PANEL_HELP = {
   phones: {
     title: 'Phones',
     doc: 'operator',
-    text: 'Phones and tablets on the mandir’s Wi-Fi, paired as a remote, a stage display or for announcements: turn on Let paired phones and tablets connect, then check each one says Connected. A playlist shared from its right-click menu (Share with Phones and Tablets) shows on a remote under Shared from Drashti. To let a remote add pictures, videos, sounds and decks with Add from this Phone…, turn on Phones and tablets may add files, off until then: they come into Media and the playlist Added from Phones, never onto the screens by themselves.',
+    text: 'Phones and tablets on the mandir’s Wi-Fi, paired as a remote, a stage display or for announcements: turn on Let paired phones and tablets connect, then check each one says Connected. A playlist shared from its right-click menu (Share with Phones and Tablets) shows on a remote under Shared from Drashti. To let a remote add files, turn on Phones and tablets may add files, off until then: Add from this Phone… brings pictures, videos, sounds and decks into Media and the playlist Added from Phones, and Add photos brings photos to the end of the open playlist, never onto the screens by themselves.',
     guide: '**Phones** (if a phone remote or a stage tablet is used)',
   },
   announcements: {
