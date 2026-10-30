@@ -28,6 +28,7 @@ async function where(win: Page) {
 
 /** A finger held on it (the pointer events a phone's touch makes), long enough to open its menu. */
 async function longPress(target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
   await target.scrollIntoViewIfNeeded();
   await target.evaluate(async (el) => {
     const r = el.getBoundingClientRect();
@@ -171,6 +172,7 @@ test('on a tablet, upright and sideways, the playlist beside the show is rows to
     // Upright: the playlist beside the show.
     await expect(t.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
     await t.getByTestId('remote-playlist').selectOption(show.playlistId);
+    await expect(slideRow(t, `${KIRTAN}_2`)).toBeVisible();
     await slideRow(t, `${KIRTAN}_2`).click();
     await expect.poll(async () => (await where(win)).slideIndex).toBe(1);
     expect(await tooSmall(rows(t))).toEqual([]);

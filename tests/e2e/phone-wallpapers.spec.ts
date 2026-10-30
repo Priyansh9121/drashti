@@ -19,6 +19,7 @@ import { makeTestImage } from './test-media';
 const view = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.wallpapers.view());
 
 async function longPress(target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
   await target.scrollIntoViewIfNeeded();
   await target.evaluate(async (el) => {
     const r = el.getBoundingClientRect();

@@ -259,6 +259,7 @@ test('with Simple access, a phone is refused the same in words naming no way to 
 
 /** A finger held on it (the pointer events a phone's touch makes), long enough to open its menu. */
 async function longPress(target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
   await target.scrollIntoViewIfNeeded();
   await target.evaluate(async (el) => {
     const r = el.getBoundingClientRect();
