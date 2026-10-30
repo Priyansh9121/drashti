@@ -77,6 +77,19 @@ describe('seedOptions (Session 50: the placeholders behind a test switch)', () =
     expect(seedOptions(switchesFor(true, {}))).toEqual({ placeholders: false });
   });
 
+  it('leaves the Language test slides out under DRASHTI_TEST_NO_TEST_SLIDES=1, the sample kirtan in (the guides’ pictures, Session 55)', () => {
+    const guides = { ...asked, DRASHTI_TEST_NO_TEST_SLIDES: '1' };
+    expect(seedOptions(switchesFor(false, guides))).toEqual({ placeholders: true, testSlides: false });
+    // A packaged Drashti ignores both.
+    expect(seedOptions(switchesFor(true, guides))).toEqual({ placeholders: false });
+    const db = openDatabase(':memory:');
+    expect(seedLibrary(db, seedOptions(switchesFor(false, guides))).placeholders).toBe(true);
+    expect(new PresentationRepo(db).list().map((p) => p.name)).toEqual([KIRTAN_PRESENTATION_NAME]);
+    // Once, as ever: a later start with the test slides asked for adds nothing.
+    expect(seedLibrary(db, seedOptions(switchesFor(false, asked))).placeholders).toBe(false);
+    expect(new PresentationRepo(db).list().map((p) => p.name)).toEqual([KIRTAN_PRESENTATION_NAME]);
+  });
+
   it('never seeds them for a self-test: the watchdog’s brings slides of its own to an empty library', () => {
     // scripts/check-installers.mjs runs it on the installed app, in a data folder of its own: it leaves nothing.
     for (const packaged of [true, false])

@@ -339,6 +339,20 @@ describe('sabha templates', () => {
     expect(playlists.newFromTemplate(next, 'Not from a playlist', null)).toBeNull();
   });
 
+  it('counts only what an import could not find as missing in the playlist list, never a slot waiting to be filled (Session 55)', () => {
+    const template = playlists.saveAsTemplate(week(), 'Sunday template', []) ?? '';
+    playlists.addSlot(template, 1, 'Kirtan', 'Kirtan');
+    const next = playlists.newFromTemplate(template, 'Next Sunday', null) ?? '';
+    // Its slot and the template's own wait to be filled: nothing is missing.
+    expect(playlists.tree().find((p) => p.id === next)).toMatchObject({ itemCount: 5, placeholders: 0 });
+    expect(playlists.tree(true).find((p) => p.id === template)).toMatchObject({ placeholders: 0 });
+    // An item an import could not find is.
+    db.prepare(
+      "INSERT INTO playlist_items (id, playlist_id, position, kind, label, hint) VALUES ('lost', ?, 9, 'placeholder', 'Missing Song', 'Not found when the playlist was imported.')",
+    ).run(next);
+    expect(playlists.tree().find((p) => p.id === next)).toMatchObject({ itemCount: 6, placeholders: 1 });
+  });
+
   it('keeps an item’s timer cues in its template and the playlists made from it; a slot is renamed and re-categorised', () => {
     const id = week();
     const [, , hymnItem, loopItem] = playlists.itemsOf(id);

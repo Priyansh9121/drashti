@@ -203,8 +203,10 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           'deck-transition-sounds',
         ]),
       );
+      // The tests' stand-in makes the movie as PowerPoint does, and the report names PowerPoint, as a real computer's
+      // says (Session 55: the guides' pictures never show the tests' own words).
       expect(item?.issues.find((i) => i.code === 'deck-animations')?.message).toMatch(
-        /^The stand-in made this deck’s movie with its animations in \d+ s: 5 slides with 8 clicks\./u,
+        /^PowerPoint made this deck’s movie with its animations in \d+ s: 5 slides with 8 clicks\./u,
       );
       expect(item?.issues.find((i) => i.code === 'pictures-hidden')?.message).toBe(
         '1 slide is hidden in the file and left out, as in its slide show.',

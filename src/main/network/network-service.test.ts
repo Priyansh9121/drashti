@@ -47,7 +47,15 @@ const ONE: SimplePhoneScope = {
   refusal: () => PHONE_WORDS,
 };
 
-function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { now: boolean } } = {}) {
+function setup(
+  options: {
+    locked?: boolean;
+    lockEverything?: boolean;
+    letIn?: { now: boolean };
+    /** This computer's addresses and name on the network as a test gives them (the guides' pictures, Session 55). */
+    shown?: { addresses: string[]; localName: string };
+  } = {},
+) {
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
   const settings = new Map<string, unknown>();
@@ -80,7 +88,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean; letIn?: { 
       previewDir: '',
       localName: null,
     }),
-    localName: () => null,
+    localName: () => options.shown?.localName ?? null,
+    ...(options.shown ? { interfaceAddresses: () => options.shown?.addresses ?? [] } : {}),
     engine: {
       dispatch: (c): CommandResult => {
         // As the engine does in Simple Mode (show-engine.ts, refuse).
@@ -254,6 +263,20 @@ describe('the network in the main process', () => {
     tick(PAIRING_CODE_TTL_MS + 1);
     expect(service.pair(again.status.pairing.code, '192.168.1.50')).toMatchObject({ ok: false });
     expect(service.status().pairing).toBeNull();
+  });
+
+  it('shows the address and name it is given in place of this computer’s own, in its pairing and poster links too (the guides’ pictures, Session 55)', () => {
+    const { service } = setup({ shown: { addresses: ['192.168.1.20'], localName: 'placeholder-mac.local' } });
+    expect(service.status()).toMatchObject({
+      addresses: ['http://192.168.1.20:8740'],
+      localName: 'http://placeholder-mac.local:8740',
+    });
+    const offered = service.startPairing('remote', 'Placeholder phone');
+    if (!offered.ok || !offered.status.pairing) throw new Error('no code');
+    expect(offered.status.pairing.url).toMatch(/^http:\/\/192\.168\.1\.20:8740\/pair#c=\d{6}$/u);
+    const poster = service.makePoster();
+    if (!poster.ok) throw new Error(poster.message);
+    expect(poster.status.poster?.url).toMatch(/^http:\/\/192\.168\.1\.20:8740\/announce#k=/u);
   });
 
   it('drops a code after ten wrong tries, from anyone', () => {

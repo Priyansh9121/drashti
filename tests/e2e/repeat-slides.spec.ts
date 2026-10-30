@@ -103,6 +103,8 @@ test('Repeat Slides goes round by itself; Esc and Stop leave its slide up; black
   await expect.poll(() => stepUp(win)).toMatch(/\/picture$/u);
   const first = await stepUp(win);
   await expect(win.getByTestId('live-repeating')).toContainText('Repeating · Placeholder Lobby');
+  // The top bar names it too (Session 55: it said "Live: presentation").
+  await expect(win.getByTestId('live-text')).toContainText('Live: Placeholder Lobby · slide ');
   await expect(win.getByTestId('repeat-row-stop')).toBeVisible();
   const state = await snapshot(win);
   expect(state.repeat).toEqual({ playlistId, name: 'Placeholder Lobby' });
@@ -121,6 +123,8 @@ test('Repeat Slides goes round by itself; Esc and Stop leave its slide up; black
   const kept = await stepUp(win);
   expect(kept).not.toBeNull();
   await expect(win.getByTestId('live-repeating')).toHaveCount(0);
+  // Its slide still up, still named.
+  await expect(win.getByTestId('live-text')).toContainText('Live: Placeholder Lobby · slide ');
   await holdStill(
     async () => (await stepUp(win)) === kept,
     4000,
