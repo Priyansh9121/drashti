@@ -23,7 +23,8 @@ import { useInputNamed } from '../video-inputs/video-inputs-store';
  * group's colour, a small picture of it (with its background, and what is missing marked as the slide grid marked
  * it), "<name>_N", a text slide's first line, its group's name where the group starts, the video input or sound it
  * brings, and LIVE. One click puts it up; a double click opens Edit slides at it (the first click put it up). In a
- * playlist it can be dragged (Part 4b): within its deck, or out of it into an item of its own.
+ * playlist it can be dragged (Part 4b): within its deck, or out of it into an item of its own; from the keyboard,
+ * Alt+↑ ↓ moves it within its deck.
  */
 
 /**
@@ -150,6 +151,8 @@ export interface SlideRowProps {
   onDragStart?: (e: ReactDragEvent<HTMLButtonElement>) => void;
   /** A dragged slide's row would land just above it, or (the last row) just below it. */
   dropLine?: 'before' | 'after' | null;
+  /** The keys that move it, said to a screen reader (Part 4b: Alt+↑ ↓ within its deck in a playlist). */
+  keyShortcuts?: string;
 }
 
 export const SlideRow = memo(function SlideRow({
@@ -168,6 +171,7 @@ export const SlideRow = memo(function SlideRow({
   itemId,
   onDragStart,
   dropLine = null,
+  keyShortcuts,
 }: SlideRowProps) {
   const ref = useRef<HTMLButtonElement>(null);
   const info = at.slide;
@@ -213,6 +217,7 @@ export const SlideRow = memo(function SlideRow({
         data-row-number={number}
         data-found={found ? 'true' : undefined}
         aria-current={live ? 'true' : undefined}
+        aria-keyshortcuts={keyShortcuts}
         aria-label={`${label}${line !== '' ? `: ${line}` : ''}${groupName !== '' ? `, ${groupName}` : ''}${live ? ' (live)' : ''}${over ? ', words run past a box' : ''}${fileGone !== null ? `, its background file “${fileGone}” is missing` : ''}${soundGone !== null ? `, its sound file “${soundGone}” is missing` : ''}`}
         onClick={onClick}
         onDoubleClick={onDoubleClick}

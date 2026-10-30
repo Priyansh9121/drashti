@@ -20,7 +20,14 @@ import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../
 import { describeSome, pushRemoval } from '../library/undo';
 import { useDocs } from './docs-store';
 import { groupName, itemOrder, rowName } from './rows';
-import { moveSlideWithin, takeSlideOut } from './slide-order';
+import {
+  moveSlideWithin,
+  type OwnOrder,
+  placeOfRow,
+  slideRowAt,
+  stepSlideWithin,
+  takeSlideOut,
+} from './slide-order';
 import {
   FOLDER_SEPARATOR,
   folderEnd,
@@ -818,6 +825,30 @@ function slideRowName(
 }
 
 /**
+ * The item's new own order of its slides, the row at `from` moved (by a drag or a key), written as one Undo step that
+ * the Undo bar says (`says` gets the row's name). False when it was not written.
+ */
+async function writeSlideOrder(
+  item: Extract<PlaylistItemInfo, { kind: 'presentation' }>,
+  doc: PresentationDoc,
+  from: number,
+  order: OwnOrder,
+  says: (name: string) => string,
+): Promise<boolean> {
+  const name = slideRowName(item, doc, from);
+  const before = item.order;
+  if (!settled(await api().setItemOrder(item.id, order))) return false;
+  await loadItems();
+  pushRemoval({
+    text: says(name),
+    restore: async () => {
+      if (settled(await api().setItemOrder(item.id, before))) await loadItems();
+    },
+  });
+  return true;
+}
+
+/**
  * A slide's row dragged within its deck or presentation (Session 55, Part 4b): this playlist's own order of the item's
  * slides, the one at `from` now before the one at `to` (the end at the item's length), as one Undo step. The
  * library's presentation never changes.
@@ -828,45 +859,49 @@ export async function moveSlide(itemId: string, from: number, to: number): Promi
   const { item, doc } = found;
   const order = moveSlideWithin(item, doc, from, to);
   if (!order) return;
-  const name = slideRowName(item, doc, from);
-  const before = item.order;
-  if (!settled(await api().setItemOrder(itemId, order))) return;
-  await loadItems();
-  pushRemoval({
-    text: `Moved “${name}” in this playlist`,
-    restore: async () => {
-      if (settled(await api().setItemOrder(itemId, before))) await loadItems();
-    },
-  });
+  await writeSlideOrder(item, doc, from, order, (name) => `Moved “${name}” in this playlist`);
 }
 
 /**
  * A slide's row dragged out of its deck or presentation to `at` in the open playlist (Session 55, Part 4b): an item of
  * its own there (the same presentation, that slide alone), the deck's item keeping the rest, as one Undo step. The
- * item's only slide: the item itself moves there.
+ * item's only slide: the item itself moves there. The new item's id (null when none was made).
  */
-export async function slideOut(itemId: string, position: number, at: number): Promise<void> {
+export async function slideOut(itemId: string, position: number, at: number): Promise<string | null> {
   const found = itemWithSlides(itemId);
-  if (!found) return;
+  if (!found) return null;
   const { item, doc } = found;
   const taken = takeSlideOut(item, doc, position);
   if (!taken) {
     await moveItems([itemId], at);
-    return;
+    return null;
   }
   const name = slideRowName(item, doc, position);
   const before = item.order;
   const result = await api().splitItem(itemId, taken.rest, taken.alone, at);
-  if (!settled(result)) return;
+  if (!settled(result)) return null;
   const [made] = result.ids;
   await loadItems();
-  if (made === undefined) return;
+  if (made === undefined) return null;
   pushRemoval({
     text: `Took “${name}” out of “${itemName(item)}”`,
     restore: async () => {
       if (settled(await api().undoSplit(itemId, before, made))) await loadItems();
     },
   });
+  return made;
+}
+
+/**
+ * Make it an item of its own (Part 4b's keyboard move: the slide's row's menu, Shift+F10 from the keyboard): what its
+ * drag out of the deck does, the new item straight after the deck's. Nothing on the item's only slide (it is one
+ * already). The new item's id, or null.
+ */
+export async function slideOutBelow(itemId: string, position: number): Promise<string | null> {
+  const found = itemWithSlides(itemId);
+  if (!found || takeSlideOut(found.item, found.doc, position) === null) return null;
+  const at = usePlaylists.getState().items.findIndex((i) => i.id === itemId);
+  return at < 0 ? null : slideOut(itemId, position, at + 1);
 }
 
 /** Moves one at a time, each from the order the last one left (a held Alt+↑ never moves from an old order). */
@@ -890,6 +925,36 @@ export function moveItemBy(id: string, step: -1 | 1): Promise<boolean> {
       restore: () => putBack(openId, [{ id, at: from }]),
     });
     return true;
+  });
+  moving = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * A slide's row a place up or down within its deck (Alt+↑ ↓ on it: Part 4b's keyboard move), landing as its drag
+ * there does, with the same Undo, said by the Undo bar ("Moved “<name>_2” down in this playlist"). At the deck's first
+ * or last row it stays put: a key never takes it into another item. Moves go one at a time, as items' do, and the row
+ * is found again by what it plays, so a key pressed again before the last move landed moves the same row on. Where the
+ * row is now, or null when it did not move.
+ */
+export function moveSlideBy(itemId: string, position: number, step: -1 | 1): Promise<number | null> {
+  const found = itemWithSlides(itemId);
+  const row = found ? slideRowAt(found.item, found.doc, position) : null;
+  const run = moving.then(async () => {
+    const now = itemWithSlides(itemId);
+    if (!now || !row) return null;
+    const from = placeOfRow(now.item, now.doc, row);
+    const order = from < 0 ? null : stepSlideWithin(now.item, now.doc, from, step);
+    if (!order) return null;
+    const way = step < 0 ? 'up' : 'down';
+    const written = await writeSlideOrder(
+      now.item,
+      now.doc,
+      from,
+      order,
+      (name) => `Moved “${name}” ${way} in this playlist`,
+    );
+    return written ? from + step : null;
   });
   moving = run.catch(() => undefined);
   return run;

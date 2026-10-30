@@ -17,7 +17,7 @@ import {
 } from '../playlists/playlist-store';
 import type { MiddleRow } from '../playlists/rows';
 import type { MenuEntry } from '../ui/Menu';
-import { Presentation, SlidersHorizontal, SquareDashed, Timer } from '../ui/icons';
+import { ListPlus, Presentation, SlidersHorizontal, SquareDashed, Timer } from '../ui/icons';
 import type { FileKind, FileTarget } from './file-menu';
 import { askRename, revealFile } from './FileMenu';
 
@@ -275,6 +275,15 @@ export function slideRowTarget(
       ? { remove: { label: `Remove “${name}” from playlist`, run: requestRemoveMarkedItems } }
       : {}),
   };
+}
+
+/**
+ * Make it an item of its own (Session 55, Part 4b's keyboard move): in the menu of a slide's row of a deck or
+ * presentation in a playlist (one of more than one slide there), as the place's own, so the keyboard (Shift+F10) can do
+ * what dragging the row out of its deck does. Pro Mode's: Simple Mode's menu has Rename and Delete only (Part 18).
+ */
+export function slideOutEntry(run: () => void): MenuEntry {
+  return { label: 'Make it an item of its own', icon: ListPlus, onSelect: run };
 }
 
 /** A folder playlist's folder (Session 44): Delete takes it and everything in it out of the playlist, with one Undo. */
