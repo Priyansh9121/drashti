@@ -85,7 +85,7 @@ The Sheet now has two tabs: **Access List** (one row per Gmail) and **Computers*
 
 Claude puts that line into the release of Drashti. Until then, Drashti cannot use your list.
 
-Then turn on **the daily check**, once. Every day, it ends the access of each computer that has not checked in for 15 days (section 10).
+Then turn on **the daily check**, once. Every day, at about 3 in the morning in the Sheet's own time zone, it ends the access of each computer that has not checked in for 15 days (section 10). First check the Sheet's time zone is the mandir's: **File › Settings › Time zone**.
 
 7. Choose **Drashti › Turn on the daily check…**. If Google asks you to authorize again (it does after an update, section 11), do as in step 7.7. Its list then has one more line, "Allow this application to run when you are not present": the daily check runs while you are away. Click **Allow**. If no window opens after, choose **Drashti › Turn on the daily check…** again.
 8. The window **Turn on the daily check** says what it does. Click **OK**.
