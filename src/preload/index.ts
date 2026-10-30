@@ -187,6 +187,7 @@ const bridge: DrashtiBridge = {
     words: (presentationId) => invoke(IPC.library.words, presentationId),
     saveWords: (presentationId, text) => invoke(IPC.library.saveWords, presentationId, text),
     newFromWords: (name, text) => invoke(IPC.library.newFromWords, name, text),
+    newQrSlide: (text) => invoke(IPC.library.newQrSlide, text),
     restoreRevision: (revisionId) => invoke(IPC.library.restoreRevision, revisionId),
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),

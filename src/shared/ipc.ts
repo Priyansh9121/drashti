@@ -314,6 +314,8 @@ export const IPC = {
     /** The rest change presentations (operator window only). */
     saveWords: 'library:save-words',
     newFromWords: 'library:new-from-words',
+    /** New › QR code… (Session 55, Part 8, G): a link or words as one slide, the code large and the words under it. */
+    newQrSlide: 'library:new-qr-slide',
     restoreRevision: 'library:restore-revision',
     legacyPresentations: 'library:legacy-presentations',
     getPresentation: 'library:get-presentation',
@@ -1099,6 +1101,7 @@ export interface InvokeContract {
   [IPC.library.words]: { args: [presentationId: string]; result: WordsResult };
   [IPC.library.saveWords]: { args: [presentationId: string, text: string]; result: SaveWordsResult };
   [IPC.library.newFromWords]: { args: [name: string, text: string]; result: NewFromWordsResult };
+  [IPC.library.newQrSlide]: { args: [text: string]; result: NewFromWordsResult };
   [IPC.library.restoreRevision]: { args: [revisionId: string]; result: RevisionResult };
   [IPC.library.legacyPresentations]: { args: []; result: { id: string; name: string }[] };
   [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };

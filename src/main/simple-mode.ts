@@ -39,6 +39,8 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.saveWords,
   IPC.library.newFromWords,
+  // New › QR code… (Session 55, Part 8): Pro Mode's.
+  IPC.library.newQrSlide,
   IPC.library.saveSlides,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,

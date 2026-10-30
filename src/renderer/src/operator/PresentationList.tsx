@@ -20,6 +20,7 @@ import { ShastraPanel } from '../shastra/ShastraPanel';
 import { SearchResults } from '../library/SearchResults';
 import { applyFilters, filtering, KirtanFilters, toggleFilters, useFilters } from '../library/KirtanFilters';
 import { newFromWords } from '../library/words-store';
+import { openQrSlide } from '../library/QrSlideDialog';
 import { MediaList } from '../library/MediaList';
 import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
 import { libraryPresentation } from '../files/targets';
@@ -36,6 +37,7 @@ import {
   ListFilter,
   PictureInPicture2,
   Plus,
+  QrCode,
   Search,
   Upload,
   Video,
@@ -218,6 +220,17 @@ function LibraryTools({ media }: { media: boolean }) {
       <Button size="md" icon={Plus} title="A new presentation from pasted words" onClick={newFromWords}>
         New…
       </Button>
+      {/* New › QR code… (Session 55, Part 8): a slide with a large code of a link or words, made offline. */}
+      {!media && (
+        <Button
+          size="md"
+          icon={QrCode}
+          title="A slide with a large QR code of a link or words, and the words under it"
+          onClick={openQrSlide}
+        >
+          QR code…
+        </Button>
+      )}
       {/* Beside the media that go up as the background (Session 48): another app's window, live. */}
       {media && (
         <Button

@@ -297,6 +297,8 @@ export interface DrashtiBridge {
     saveWords(presentationId: string, text: string): Promise<SaveWordsResult>;
     /** A new presentation from pasted words, in the default look. */
     newFromWords(name: string, text: string): Promise<NewFromWordsResult>;
+    /** New › QR code… (Session 55, Part 8): one slide, a large code of the link or words and the words under it. */
+    newQrSlide(text: string): Promise<NewFromWordsResult>;
     /** Undo a change to a presentation's content: write back the copy kept before it. */
     restoreRevision(revisionId: string): Promise<RevisionResult>;
     /** Presentations with slide text in legacy fonts, which search cannot read yet. */

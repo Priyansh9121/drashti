@@ -24,7 +24,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
 import type { ImportOptions, ImportResult } from '../shared/import';
-import { type LibraryChange, listedKirtan } from '../shared/library';
+import { type LibraryChange, listedKirtan, type NewFromWordsResult } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor, SINGLE_KEYS_TEXT } from '../shared/keymap';
@@ -301,6 +301,8 @@ import { runPowerShell } from './system/powershell';
 import { type ReadyDeps, readyReport } from './ready/ready-facts';
 import type { ReadyOutput } from '../shared/ready';
 import { QUICK_BAR_MAX, quickPinsSchema, readQuickBar } from '../shared/quick-bar';
+import { QR_TEXT_MAX, qrPng, qrSlideName, qrSlidePresentation, qrWords } from './library/qr-slide';
+import { nfc } from '../shared/nfc';
 import { GuideFiles, guidesDir } from './guides';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
@@ -3599,6 +3601,50 @@ function start(): void {
     fromOperator,
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
+  });
+  // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
+  // the library through an import as any picture is, and one slide holding it large with the words under it.
+  handle(IPC.library.newQrSlide, async (e, text): Promise<NewFromWordsResult> => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can make a slide.' };
+    const words = typeof text === 'string' ? nfc(text) : '';
+    if (words.trim() === '') return { ok: false, message: 'Paste a link or type the words first.' };
+    if (qrWords(words) === null)
+      return {
+        ok: false,
+        message: `That is too long for a code a phone can read across the hall: ${String(QR_TEXT_MAX)} letters at most.`,
+      };
+    const png = qrPng(words);
+    if (!png) return { ok: false, message: 'Those words cannot be made into a QR code.' };
+    const dir = await fsPromises.mkdtemp(join(tmpdir(), 'drashti-qr-'));
+    const mediaId = await (async (): Promise<string | null> => {
+      try {
+        const file = join(dir, 'QR code.png');
+        await fsPromises.writeFile(file, png);
+        const done = await importPaths([file], {});
+        const made = done.ok
+          ? importRepo.report(done.run.id)?.items.find((i) => i.sourcePath === file)?.target
+          : undefined;
+        return made?.kind === 'media' ? made.id : null;
+      } finally {
+        // Gone once the import has its copy (Windows may hold it a moment: the system empties its temporary folder).
+        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    })();
+    if (mediaId === null) return { ok: false, message: 'The code’s picture could not be kept: try again.' };
+    const libraryId = presentations.ensureLibrary('Default');
+    const look = themeLook(themes.themeOrDefault(null), 1920, 1080);
+    const id = presentations.insert(
+      qrSlidePresentation(
+        libraryId,
+        presentations.uniqueName(libraryId, qrSlideName(words)),
+        words,
+        mediaId,
+        look,
+      ),
+    );
+    contentChanged([id]);
+    log.info('Library: a QR-code slide made');
+    return { ok: true, id };
   });
   registerKirtansIpc({
     presentations,

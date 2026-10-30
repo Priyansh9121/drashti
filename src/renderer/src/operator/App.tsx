@@ -54,6 +54,7 @@ import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { WindowPicker } from '../live-window/WindowPicker';
 import { ReadyDialog } from './ReadyDialog';
+import { QrSlideDialog } from '../library/QrSlideDialog';
 import { PipDialog } from './PipDialog';
 import { connectLiveWindow } from '../live-window/live-window-store';
 import { VideoInputDialog } from '../video-inputs/VideoInputDialog';
@@ -443,8 +444,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <WindowPicker />
       <VideoInputDialog platform={platform} />
       <PipDialog />
-      {/* Ready? (Session 55, Part 8). */}
+      {/* Ready? and New › QR code… (Session 55, Part 8). */}
       <ReadyDialog />
+      <QrSlideDialog />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}
