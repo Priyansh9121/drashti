@@ -1,5 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Rect, SlideElement } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
@@ -51,6 +51,11 @@ import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
 import { SafeAreas } from './SafeAreas';
 import { connectSafeAreas } from './safe-areas-store';
 import { cutText } from '../../../shared/text';
+import { Button, IconButton } from '../ui/Button';
+import { cx } from '../ui/cx';
+import { ZoomIn, ZoomOut } from '../ui/icons';
+import type { Zoom } from './zoom';
+import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut } from './zoom';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -154,9 +159,34 @@ export function Canvas({ platform }: { platform: string }) {
   const slideId = useEditor((s) => s.slideId);
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
+  const zoom = useEditor((s) => s.zoom);
   const area = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const size = useElementSize(area);
+  // Zoomed about a point (a pinch): the area scrolled, once drawn at the new size, so that point stays put.
+  const keepPoint = useRef<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = area.current;
+    const keep = keepPoint.current;
+    if (!el || !keep) return;
+    keepPoint.current = null;
+    el.scrollLeft = keep.left;
+    el.scrollTop = keep.top;
+  });
+  // A pinch on the trackpad (the wheel with Ctrl) zooms about the pointer; the page itself never zooms.
+  const hasDoc = doc !== null;
+  const pinch = useRef<(e: WheelEvent) => void>(() => undefined);
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      pinch.current(e);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [hasDoc]);
   const drag = useRef<Drag | null>(null);
   const [guides, setGuides] = useState<Guides | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
@@ -166,12 +196,34 @@ export function Canvas({ platform }: { platform: string }) {
   const slide = doc ? findSlide(doc, slideId) : undefined;
   if (!doc || !slide) return <div ref={area} className="min-w-0 flex-1 bg-ink" />;
 
-  const scale = Math.max(
-    0.05,
-    Math.min((size.width - 2 * PAD) / doc.width, (size.height - 2 * PAD) / doc.height),
-  );
+  // Fitted to the area, as the editor always opened; zoomed, a size of its own (Session 55, Part 17a).
+  const fit = Math.max(0.05, Math.min((size.width - 2 * PAD) / doc.width, (size.height - 2 * PAD) / doc.height));
+  const scale = scaleFor(zoom, fit);
   const width = doc.width * scale;
   const height = doc.height * scale;
+  // Where the slide sits: in the middle while it fits, else PAD in from the scrolled area's edges.
+  const left = Math.max(PAD, (size.width - width) / 2);
+  const top = Math.max(PAD, (size.height - height) / 2);
+  pinch.current = (e: WheelEvent) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const el = area.current;
+    if (!el) return;
+    const next = zoomBy(zoom, fit, Math.exp(-e.deltaY * 0.01));
+    if (Math.abs(next - scale) < 1e-4) return;
+    const r = el.getBoundingClientRect();
+    const nextLeft = Math.max(PAD, (size.width - doc.width * next) / 2);
+    const nextTop = Math.max(PAD, (size.height - doc.height * next) / 2);
+    const point = {
+      x: (e.clientX - r.left + el.scrollLeft - left) / scale,
+      y: (e.clientY - r.top + el.scrollTop - top) / scale,
+    };
+    keepPoint.current = {
+      left: Math.max(0, nextLeft + point.x * next - (e.clientX - r.left)),
+      top: Math.max(0, nextTop + point.y * next - (e.clientY - r.top)),
+    };
+    useEditor.setState({ zoom: next });
+  };
   const elements = slide.elements;
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
   const wholeUnder = slide.darken?.kind === 'whole' ? elements.find(darkensBehind)?.id : undefined;
@@ -498,11 +550,16 @@ export function Canvas({ platform }: { platform: string }) {
         : `${selected.length} elements selected`;
 
   return (
+    <div className="relative min-w-0 flex-1 bg-ink">
     <div
       ref={area}
-      className="relative min-w-0 flex-1 overflow-hidden bg-ink"
+      className={cx('absolute inset-0', zoom === 'fit' ? 'overflow-hidden' : 'overflow-auto')}
       data-testid="editor-canvas-area"
     >
+      {/* Zoomed in, the room the slide takes (with PAD round it): the area scrolls over it. */}
+      {zoom !== 'fit' && (
+        <div aria-hidden="true" style={{ width: left + width + PAD, height: top + height + PAD }} />
+      )}
       <div
         ref={stage}
         role="application"
@@ -512,8 +569,9 @@ export function Canvas({ platform }: { platform: string }) {
         tabIndex={0}
         data-testid="editor-canvas"
         data-scale={scale.toFixed(4)}
+        data-fit={fit.toFixed(4)}
         className="absolute touch-none outline-offset-4 select-none"
-        style={{ left: (size.width - width) / 2, top: (size.height - height) / 2, width, height }}
+        style={{ left, top, width, height }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -604,6 +662,54 @@ export function Canvas({ platform }: { platform: string }) {
       <p id="editor-canvas-status" className="sr-only" aria-live="polite" data-testid="editor-status">
         {status}
       </p>
+    </div>
+      <ZoomBar zoom={zoom} fit={fit} />
+    </div>
+  );
+}
+
+/** Zoom (Session 55, Part 17a): out, to fit (its size said), and in; over the slide's area, at its bottom right. */
+function ZoomBar({ zoom, fit }: { zoom: Zoom; fit: number }) {
+  const set = (next: Zoom) => {
+    useEditor.setState({ zoom: next });
+  };
+  return (
+    <div
+      role="group"
+      aria-label="Zoom"
+      className="absolute right-2 bottom-2 z-10 flex items-center gap-0.5 rounded-lg border border-line bg-panel-2 p-0.5 shadow-overlay"
+    >
+      <IconButton
+        icon={ZoomOut}
+        size="sm"
+        label="Zoom out"
+        data-testid="zoom-out"
+        onClick={() => {
+          set(zoomOut(zoom, fit));
+        }}
+      />
+      <Button
+        size="sm"
+        variant={zoom === 'fit' ? 'secondary' : 'ghost'}
+        aria-pressed={zoom === 'fit'}
+        aria-label={`Fit to the window (now ${zoomLabel(zoom, fit)})`}
+        data-testid="zoom-fit"
+        className="w-14 tabular-nums"
+        onClick={() => {
+          set('fit');
+        }}
+      >
+        {zoomLabel(zoom, fit)}
+      </Button>
+      <IconButton
+        icon={ZoomIn}
+        size="sm"
+        label="Zoom in"
+        data-testid="zoom-in"
+        onClick={() => {
+          set(zoomIn(zoom, fit));
+        }}
+      />
     </div>
   );
 }

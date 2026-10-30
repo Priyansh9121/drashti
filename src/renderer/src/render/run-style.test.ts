@@ -5,7 +5,7 @@ import { practiceSlides } from '../../../shared/practice';
 import { sampleKirtanSlide } from '../../../shared/setup';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/readable';
 import { newTextBox } from '../editor/ops';
-import { runStyle } from './SlideView';
+import { listMarkerStyle, runStyle, TEXT_SHADOW, textBoxStyle } from './SlideView';
 
 /*
  * Gujarati, Hindi and Sanskrit drawn upright with no letter-spacing (Sessions 31–36, I18N-2): what a file
@@ -81,5 +81,46 @@ describe('new text', () => {
       s.elements.flatMap((e) => (e.kind === 'text' && e.style ? [e.style.lineHeight] : []));
     expect(lineHeights(sampleKirtanSlide())).toEqual([1.35]);
     for (const s of practiceSlides()) expect(lineHeights(s).every((h) => h === 1.35)).toBe(true);
+  });
+});
+
+describe('the Words group’s looks, as every screen draws them (Session 55, Part 17a)', () => {
+  it('underlines and strikes through a run, both at once too', () => {
+    expect(runStyle({ underline: true }, box).textDecorationLine).toBe('underline');
+    expect(runStyle({ strike: true }, box).textDecorationLine).toBe('line-through');
+    expect(runStyle({ underline: true, strike: true }, box).textDecorationLine).toBe('underline line-through');
+    // Gujarati and Hindi too: a line under or through them never changes how their letters join.
+    expect(runStyle({ lang: 'gu', underline: true }, box).textDecorationLine).toBe('underline');
+    expect(runStyle({}, box).textDecorationLine).toBeUndefined();
+  });
+
+  it('a box’s glow goes with its shadow, the glow first; without one, the box draws as it always did', () => {
+    expect(textBoxStyle(box).textShadow).toBe(TEXT_SHADOW);
+    const glowing = { ...box, style: { ...box.style, glow: { color: '#00ffcc', size: 20 } } };
+    expect(textBoxStyle(glowing).textShadow).toBe(`0 0 20px #00ffcc, ${TEXT_SHADOW}`);
+    const noShadow = { ...glowing, style: { ...glowing.style, shadow: false } };
+    expect(textBoxStyle(noShadow).textShadow).toBe('0 0 20px #00ffcc');
+    expect(textBoxStyle({ ...box, style: { ...box.style, shadow: false } }).textShadow).toBeUndefined();
+  });
+
+  it('a run’s own shadow keeps its box’s glow, and its own glow keeps its box’s shadow', () => {
+    const glowing = { ...box, style: { ...box.style, glow: { color: '#00ffcc', size: 20 } } };
+    const own = { color: '#000000', blur: 4, x: 2, y: 2 };
+    expect(runStyle({ shadow: own }, glowing).textShadow).toBe('0 0 20px #00ffcc, 2px 2px 4px #000000');
+    expect(runStyle({ glow: { color: '#ff0000', size: 8 } }, box).textShadow).toBe(`0 0 8px #ff0000, ${TEXT_SHADOW}`);
+    // A run with no glow of its own in a glowing box: none.
+    expect(runStyle({ glow: null }, glowing).textShadow).toBe(TEXT_SHADOW);
+    // Nothing of its own: the box's, by inheritance.
+    expect(runStyle({}, glowing).textShadow).toBeUndefined();
+    // As before for a box without a glow.
+    expect(runStyle({ shadow: own }, box).textShadow).toBe('2px 2px 4px #000000');
+    expect(runStyle({ shadow: false }, box).textShadow).toBe('none');
+  });
+
+  it('a list’s marks: a bullet is a shape, a number its words, in the line’s colour', () => {
+    expect(listMarkerStyle('disc', { color: '#ffcc00' })).toMatchObject({ borderRadius: '50%', background: '#ffcc00' });
+    expect(listMarkerStyle('circle', {})).toMatchObject({ borderRadius: '50%', background: 'transparent' });
+    expect(listMarkerStyle('square', {})).toMatchObject({ background: 'currentColor' });
+    expect(listMarkerStyle('1', { color: '#ffcc00' })).toMatchObject({ color: '#ffcc00', textAlign: 'right' });
   });
 });

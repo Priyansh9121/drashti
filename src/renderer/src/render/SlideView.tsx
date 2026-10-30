@@ -3,6 +3,8 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import { type VideoClips, videoClip, type VideoSeeks, videoSeek } from '../../../shared/engine/state';
 import { type PlaybackClip, type PlaybackSeek, stillUrl } from '../../../shared/media';
 import type {
+  Glow,
+  ListMark,
   MediaElement,
   Outline,
   RenderSlide,
@@ -30,6 +32,7 @@ import { useMeasureReport } from './measure';
 import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
 import { standsUpright } from '../../../shared/text-runs';
+import { drawnLines, hasList } from '../../../shared/text-lists';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
@@ -52,6 +55,39 @@ export function textShadowCss(shadow: TextShadow | undefined): string | undefine
   if (shadow === true) return TEXT_SHADOW;
   if (shadow === false) return 'none';
   return `${shadow.x}px ${shadow.y}px ${shadow.blur}px ${shadow.color}`;
+}
+
+/** A glow that shows: one with a colour spreading some way. */
+const glowing = (glow: Glow | null | undefined): glow is Glow => glow != null && glow.size > 0;
+
+/**
+ * CSS for a shadow and a glow together (Session 55, Part 17a): the glow first, all round the letters, then the
+ * shadow; a text shadow alone as it always was (textShadowCss) when there is no glow.
+ */
+export function textEffectsCss(shadow: TextShadow | undefined, glow: Glow | null | undefined): string | undefined {
+  if (!glowing(glow)) return textShadowCss(shadow);
+  const own = `0 0 ${String(glow.size)}px ${glow.color}`;
+  const behind = shadow === undefined || shadow === false ? undefined : textShadowCss(shadow);
+  return behind ? `${own}, ${behind}` : own;
+}
+
+/**
+ * A run's shadow with its glow (Session 55, Part 17a). Text shadows do not add up, so a run with a shadow or a glow
+ * of its own draws both, the other one its box's; one with neither leaves both to its box. With no glow anywhere it
+ * is the run's shadow alone, as before.
+ */
+function runEffectsCss(run: Pick<TextRun, 'shadow' | 'glow'>, el: TextElement): string | undefined {
+  if (run.glow === undefined && !glowing(el.style.glow)) return textShadowCss(run.shadow);
+  if (run.shadow === undefined && run.glow === undefined) return undefined;
+  const shadow = run.shadow !== undefined ? run.shadow : el.style.shadow;
+  const glow = run.glow !== undefined ? run.glow : el.style.glow;
+  return textEffectsCss(shadow, glow) ?? 'none';
+}
+
+/** Underlined, struck through, or both (Session 55, Part 17a); undefined for neither. */
+function decorationOf(run: Pick<TextRun, 'underline' | 'strike'>): string | undefined {
+  const lines = [run.underline ? 'underline' : '', run.strike ? 'line-through' : ''].filter(Boolean);
+  return lines.length > 0 ? lines.join(' ') : undefined;
 }
 
 /**
@@ -95,8 +131,10 @@ export function runStyle(run: Omit<TextRun, 'text'> & { text?: string }, el: Tex
     fontWeight: run.weight,
     fontStyle: run.italic && !upright ? 'italic' : undefined,
     letterSpacing: upright ? undefined : run.letterSpacing,
-    textShadow: textShadowCss(run.shadow),
+    textShadow: runEffectsCss(run, el),
     ...textOutlineCss(run.outline),
+    // Underlined and struck through (Session 55, Part 17a): never changes how Gujarati or Devanagari letters join.
+    textDecorationLine: decorationOf(run),
   };
 }
 
@@ -156,6 +194,152 @@ function RevealRuns({ el, runs, words }: { el: TextElement; runs: readonly TextR
           })}
         </span>
       ))}
+    </>
+  );
+}
+
+/** A list's room (Session 55, Part 17a), in its line's words' size: for a bullet, for a number, and each level in. */
+const BULLET_ROOM = 1.2;
+const NUMBER_ROOM = 1.9;
+const LEVEL_STEP = 1.5;
+
+/**
+ * How a list's mark is drawn (Session 55, Part 17a): a bullet is a shape in its line's colour, the same on every
+ * screen whatever fonts it has; a number is its words, up against the line's own, in the line's colour.
+ */
+export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color'>): CSSProperties {
+  const color = look.color ?? 'currentColor';
+  switch (mark) {
+    case 'disc':
+      return { display: 'inline-block', width: '0.34em', height: '0.34em', borderRadius: '50%', background: color, verticalAlign: 'middle' };
+    case 'circle':
+      return {
+        display: 'inline-block',
+        width: '0.34em',
+        height: '0.34em',
+        borderRadius: '50%',
+        background: 'transparent',
+        border: `0.07em solid ${color}`,
+        boxSizing: 'border-box',
+        verticalAlign: 'middle',
+      };
+    case 'square':
+      return { display: 'inline-block', width: '0.3em', height: '0.3em', background: color, verticalAlign: 'middle' };
+    case 'dash':
+      return { display: 'inline-block', width: '0.55em', height: '0.09em', background: color, verticalAlign: 'middle' };
+    case 'arrow':
+      return {
+        display: 'inline-block',
+        width: 0,
+        height: 0,
+        borderLeft: `0.4em solid ${color}`,
+        borderTop: '0.22em solid transparent',
+        borderBottom: '0.22em solid transparent',
+        verticalAlign: 'middle',
+      };
+    default:
+      return { color: look.color, textAlign: 'right', paddingRight: '0.3em', whiteSpace: 'nowrap', boxSizing: 'border-box' };
+  }
+}
+
+/** A list's line (Session 55, Part 17a): in by its level and its mark's room, in its first words' size. */
+export function listLineStyle(line: { mark: ListMark | null; level: number; label: string | null }, size: number): CSSProperties {
+  if (line.mark === null) return {};
+  const room = line.label === null ? BULLET_ROOM : NUMBER_ROOM;
+  return { paddingLeft: fitted((line.level * LEVEL_STEP + room) * size) };
+}
+
+/**
+ * Where a list's mark sits (Session 55, Part 17a): in the room before its line's words, in the size, weight and
+ * colour of the line's first words; a number in their font too (Gujarati and Devanagari digits drawn by their fonts).
+ */
+export function listMarkerBoxStyle(
+  line: { mark: ListMark; label: string | null },
+  first: Omit<TextRun, 'text'>,
+  el: TextElement,
+): CSSProperties {
+  const size = first.size ?? el.style.fontSize;
+  const room = line.label === null ? BULLET_ROOM : NUMBER_ROOM;
+  return {
+    display: 'inline-block',
+    width: fitted(room * size),
+    marginLeft: fitted(-room * size),
+    textIndent: 0,
+    textAlign: 'center',
+    fontSize: fitted(size),
+    fontWeight: first.weight,
+    ...(line.label === null
+      ? {}
+      : {
+          fontFamily: fontFamilyFor(first.font ?? el.style.fontFamily, first.lang ?? el.lang),
+          ...listMarkerStyle(line.mark, first),
+        }),
+  };
+}
+
+/**
+ * The words of a box with a list in it (Session 55, Part 17a), line by line: each line a block, a list's line in by
+ * its level with its mark in the room before its words (and its wrapped lines under its words, not its mark). Every
+ * run keeps its look. While revealed line by line or word by word (Session 27), each line and word is its own, as
+ * RevealRuns has them.
+ */
+function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly TextRun[]; reveal?: Reveal }) {
+  const langOf = useHtmlLang();
+  const lines = drawnLines(runs);
+  // A last line left empty by a line break at the end is not drawn: words without a list draw none there either.
+  if (lines.length > 1 && lines.at(-1)?.pieces.length === 0) lines.pop();
+  return (
+    <>
+      {lines.map((line, li) => {
+        const first: Omit<TextRun, 'text'> = line.pieces[0]?.run ?? line.end ?? {};
+        const size = first.size ?? el.style.fontSize;
+        const { mark, label } = line.mark;
+        const blank = line.pieces.every((p) => p.text.trim() === '');
+        return (
+          <div
+            key={li}
+            data-line={li}
+            data-list={mark ?? undefined}
+            data-reveal-line={reveal ? li : undefined}
+            data-reveal-empty={reveal && blank ? '' : undefined}
+            style={{ position: reveal ? 'relative' : undefined, ...listLineStyle(line.mark, size) }}
+          >
+            {mark !== null && (
+              <span aria-hidden="true" data-list-marker={mark} style={listMarkerBoxStyle({ mark, label }, first, el)}>
+                {label ?? <span style={listMarkerStyle(mark, first)} />}
+              </span>
+            )}
+            {line.pieces.length === 0 ? (
+              <span style={line.end ? runStyle(line.end, el) : undefined}>
+                <br />
+              </span>
+            ) : (
+              line.pieces.map((piece, pi) => {
+                const lang = piece.run.lang ?? el.lang;
+                const locale = langOf(lang);
+                return (
+                  <span
+                    key={pi}
+                    data-run={piece.index}
+                    data-lang={piece.run.lang ?? undefined}
+                    data-legacy={piece.run.legacy ? 'true' : undefined}
+                    lang={locale}
+                    style={runStyle(piece.run, el)}
+                  >
+                    {reveal === 'words'
+                      ? wordUnits(piece.text, locale).map((unit, ui) => (
+                          <span key={ui} data-reveal-word="" style={{ position: 'relative' }}>
+                            {unit}
+                          </span>
+                        ))
+                      : piece.text}
+                  </span>
+                );
+              })
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -238,7 +422,12 @@ export function textBoxStyle(el: TextElement): CSSProperties {
     whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
     fontKerning: 'normal',
-    textShadow: s.shadow === false ? undefined : textShadowCss(s.shadow),
+    // A glow (Session 55, Part 17a) with its shadow; with none, the shadow as it always was.
+    textShadow: glowing(s.glow)
+      ? textEffectsCss(s.shadow, s.glow)
+      : s.shadow === false
+        ? undefined
+        : textShadowCss(s.shadow),
     ...textOutlineCss(s.outline ?? undefined),
     opacity: el.opacity,
   };
@@ -296,7 +485,10 @@ function TextView({
             : {}),
         }}
       >
-        {reveal ? (
+        {el.runs && hasList(el) ? (
+          // Lines of a list (Session 55, Part 17a), revealed or not.
+          <ListedRuns el={el} runs={el.runs} reveal={reveal} />
+        ) : reveal ? (
           <RevealRuns
             el={el}
             runs={el.runs && el.runs.length > 0 ? el.runs : [{ text: el.text }]}

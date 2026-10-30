@@ -121,6 +121,8 @@ export default defineConfig({
           'access-list': resolve('src/renderer/access-list.html'),
           // The Lower Thirds studio (Session 55, Part 16): a window of its own for making lower thirds.
           'lower-thirds': resolve('src/renderer/lower-thirds.html'),
+          // The slide editor (Session 55, Part 17a): a window of its own, the show going on in the operator window.
+          'slide-editor': resolve('src/renderer/slide-editor.html'),
         },
       },
     },

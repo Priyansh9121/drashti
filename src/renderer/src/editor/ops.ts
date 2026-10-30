@@ -1,4 +1,5 @@
 import type {
+  Glow,
   Lang,
   Rect,
   MediaElement,
@@ -295,6 +296,11 @@ export interface TextPatch {
   shadow?: TextShadow | undefined;
   outline?: Outline | null | undefined;
   lang?: Lang | null | undefined;
+  // Session 55 (Part 17a, the Words group): underlined, struck through, a glow, and space between letters.
+  underline?: boolean | undefined;
+  strike?: boolean | undefined;
+  glow?: Glow | null | undefined;
+  letterSpacing?: number | undefined;
 }
 
 /** Box-only settings. */
@@ -315,7 +321,18 @@ const RUN_KEYS: Record<keyof TextPatch, keyof TextRun> = {
   shadow: 'shadow',
   outline: 'outline',
   lang: 'lang',
+  underline: 'underline',
+  strike: 'strike',
+  glow: 'glow',
+  letterSpacing: 'letterSpacing',
 };
+
+/**
+ * Settings words have and a box has not (Session 55, Part 17a: italic since Session 7): set for the whole box, every
+ * word gets them; a box of plain words gets a run to carry them.
+ */
+const WORD_ONLY = ['italic', 'underline', 'strike', 'letterSpacing'] as const satisfies readonly (keyof TextPatch)[];
+const wordOnly = (k: keyof TextPatch): k is (typeof WORD_ONLY)[number] => (WORD_ONLY as readonly string[]).includes(k);
 
 /** A run look with a change: set keys, and drop the ones changed to undefined (so they follow the box). */
 export function patchRun(run: TextRun, patch: TextPatch): TextRun {
@@ -345,16 +362,27 @@ export function styleBox(el: TextElement, patch: TextPatch, box: BoxPatch = {}):
     if (patch.outline) style.outline = patch.outline;
     else delete style.outline;
   }
-  // Italic has no box setting: every word gets it. Everything else: the words follow the box.
+  // A glow (Session 55, Part 17a), as an outline.
+  if ('glow' in patch) {
+    if (patch.glow) style.glow = patch.glow;
+    else delete style.glow;
+  }
+  // Italic, underline, strike through and letter spacing have no box setting: every word gets them. Everything else:
+  // the words follow the box.
   const forWords: TextPatch = {};
   for (const k of Object.keys(patch) as (keyof TextPatch)[]) {
-    if (k === 'italic') forWords.italic = patch.italic ? true : undefined;
+    if (k === 'letterSpacing') forWords.letterSpacing = patch.letterSpacing || undefined;
+    else if (wordOnly(k)) forWords[k] = patch[k] ? true : undefined;
     else forWords[k] = undefined;
   }
   let runs = el.runs?.map((r) =>
     patchRun(r, r.legacy ? { ...forWords, font: r.font, lang: r.lang } : forWords),
   );
-  if (patch.italic && (!runs || runs.length === 0)) runs = [{ text: el.text, italic: true }];
+  // Plain words given one of those: a run to carry it.
+  const carried = Object.fromEntries(
+    Object.entries(forWords).filter(([k, v]) => wordOnly(k as keyof TextPatch) && v !== undefined),
+  );
+  if (Object.keys(carried).length > 0 && (!runs || runs.length === 0)) runs = [{ text: el.text, ...carried }];
   const next: TextElement = { ...el, style };
   if ('lang' in patch) next.lang = patch.lang ?? null;
   if (runs?.some((r) => Object.keys(r).some((k) => k !== 'text'))) next.runs = runs;

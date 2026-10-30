@@ -56,7 +56,7 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { Lang, RenderSlide, Transition } from './model';
-import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
+import type { EditDoc, EditSlidesOpen, EditSlidesResult, SaveSlidesResult, SlidesSaved } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
@@ -757,6 +757,19 @@ export interface DrashtiBridge {
     choose(id: string | null): Promise<WallpaperResult>;
     /** A quote of the idle rotation's, drawn as a picture (PNG), into its wallpaper. */
     quotePicture(into: string, quoteId: string, png: Uint8Array): Promise<WallpaperResult>;
+  };
+  /**
+   * The slide editor's window (Session 55, Part 17a): opened by the operator window on a presentation's slides; the
+   * editor told which to open while it is open, and asked before closing with changes not saved; the operator window
+   * told of a save there (for its Undo).
+   */
+  slideEditor: {
+    open(presentationId: string, slideId: string | null): Promise<{ ok: true } | { ok: false; message: string }>;
+    onEdit(listener: (open: EditSlidesOpen) => void): () => void;
+    dirty(dirty: boolean): Promise<null>;
+    close(): Promise<null>;
+    onAskClose(listener: () => void): () => void;
+    onSaved(listener: (saved: SlidesSaved) => void): () => void;
   };
   lowerThirds: {
     list(): Promise<LowerThird[]>;

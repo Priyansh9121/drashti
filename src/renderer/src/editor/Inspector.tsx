@@ -40,44 +40,13 @@ import { boxLines } from '../../../shared/tracks';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ColorInput, Field, NumberInput, Select, Slider, TextInput } from '../ui/Field';
-import {
-  AlignCenter,
-  AlignCenterHorizontal,
-  AlignCenterVertical,
-  AlignEndHorizontal,
-  AlignEndVertical,
-  AlignHorizontalDistributeCenter,
-  AlignLeft,
-  AlignRight,
-  AlignStartHorizontal,
-  AlignStartVertical,
-  AlignVerticalDistributeCenter,
-  ArrowDown,
-  ArrowDownToLine,
-  ArrowUp,
-  ArrowUpToLine,
-  BringToFront,
-  CopyPlus,
-  Italic,
-  SendToBack,
-  Trash2,
-} from '../ui/icons';
+import { AlignCenter, AlignLeft, AlignRight, CopyPlus, Trash2 } from '../ui/icons';
 import type { Icon } from '../ui/icons';
 import { Checkbox, Toggle } from '../ui/Toggle';
 import { BUNDLED_FAMILIES } from '../render/fonts';
 import { commit, useEditor } from './editor-store';
-import type { Alignment } from './geometry';
-import { alignMoves, boundsOf, distributeMoves } from './geometry';
-import type { Arrange, BoxPatch, TextPatch } from './ops';
-import {
-  arrange,
-  deleteElements,
-  duplicateElements,
-  findSlide,
-  mapElements,
-  moveEach,
-  styleBox,
-} from './ops';
+import type { BoxPatch, TextPatch } from './ops';
+import { deleteElements, duplicateElements, findSlide, mapElements, styleBox } from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
 import { SlidePanel } from './SlidePanel';
 import { useTickerOver } from './SafeAreas';
@@ -206,30 +175,6 @@ export function Inspector() {
     const now = useEditor.getState().doc;
     if (now) commit(mapElements(now, slide.id, ids, fn), coalesce ? { coalesce } : {});
   };
-  const doArrange = (how: Arrange) => {
-    const now = useEditor.getState().doc;
-    if (now) commit(arrange(now, slide.id, selection, how));
-  };
-  const align = (how: Alignment) => {
-    const now = useEditor.getState().doc;
-    if (!now) return;
-    const moves = alignMoves(
-      selected.map((el) => boundsOf(el)),
-      how,
-      doc,
-    );
-    commit(moveEach(now, slide.id, new Map(selected.map((el, i) => [el.id, moves[i] ?? { x: 0, y: 0 }]))));
-  };
-  const distribute = (axis: 'x' | 'y') => {
-    const now = useEditor.getState().doc;
-    if (!now) return;
-    const moves = distributeMoves(
-      selected.map((el) => boundsOf(el)),
-      axis,
-    );
-    commit(moveEach(now, slide.id, new Map(selected.map((el, i) => [el.id, moves[i] ?? { x: 0, y: 0 }]))));
-  };
-
   return (
     <aside
       className="w-72 shrink-0 overflow-y-auto border-l border-line bg-panel"
@@ -239,78 +184,16 @@ export function Inspector() {
       {selected.length === 0 ? (
         <>
           <p className="px-3 pt-3 text-xs text-faint">
-            Choose something on the slide to change it, or add words, a shape, a picture or a video above.
+            Choose something on the slide to change it, or add a text box, a shape, a picture or a video from Insert
+            along the top.
           </p>
           <SlidePanel doc={doc} slide={slide} />
         </>
       ) : (
         <>
           <Section title={single ? 'Selected' : `${selected.length} selected`} testId="inspector-arrange">
+            {/* Lining up, spacing out, front and back: the Arrange group along the top (Session 55, Part 17a). */}
             <div className="flex flex-wrap gap-1">
-              {(
-                [
-                  ['left', 'Line up the left edges', AlignStartVertical],
-                  ['center', 'Line up the middles across', AlignCenterVertical],
-                  ['right', 'Line up the right edges', AlignEndVertical],
-                  ['top', 'Line up the tops', AlignStartHorizontal],
-                  ['middle', 'Line up the middles down', AlignCenterHorizontal],
-                  ['bottom', 'Line up the bottoms', AlignEndHorizontal],
-                ] as const
-              ).map(([how, label, icon]) => (
-                <IconButton
-                  key={how}
-                  icon={icon}
-                  size="sm"
-                  label={single ? `${label} (with the slide)` : label}
-                  onClick={() => {
-                    align(how);
-                  }}
-                />
-              ))}
-              <IconButton
-                icon={AlignHorizontalDistributeCenter}
-                size="sm"
-                label="Space out evenly across"
-                disabled={selected.length < 3}
-                onClick={() => {
-                  distribute('x');
-                }}
-              />
-              <IconButton
-                icon={AlignVerticalDistributeCenter}
-                size="sm"
-                label="Space out evenly down"
-                disabled={selected.length < 3}
-                onClick={() => {
-                  distribute('y');
-                }}
-              />
-            </div>
-            <div className="flex flex-wrap gap-1">
-              <IconButton
-                icon={BringToFront}
-                size="sm"
-                label="Bring to the front"
-                onClick={() => doArrange('front')}
-              />
-              <IconButton
-                icon={ArrowUp}
-                size="sm"
-                label="Bring forward"
-                onClick={() => doArrange('forward')}
-              />
-              <IconButton
-                icon={ArrowDown}
-                size="sm"
-                label="Send backward"
-                onClick={() => doArrange('backward')}
-              />
-              <IconButton
-                icon={SendToBack}
-                size="sm"
-                label="Send to the back"
-                onClick={() => doArrange('back')}
-              />
               <IconButton
                 icon={CopyPlus}
                 size="sm"
@@ -536,29 +419,23 @@ function Readability({ el }: { el: TextElement }) {
   );
 }
 
+/**
+ * A text box's own settings in the side panel (since Session 55, Part 17a, how its words look is the Words group's,
+ * along the top): whether the hall can read them, what the Words group styles (the box, or the words selected while
+ * typing), the words' language and weight, shrinking to fit, and showing on every screen of a kirtan.
+ */
 function TextSection({ el, slideId, editing }: { el: TextElement; slideId: string; editing: boolean }) {
   const legacy = legacyFontOf(el);
   const active = editing ? activeText() : null;
   const words = active !== null && !active.view.state.selection.empty;
-  // What the inspector shows: the selected words' look over the box's.
+  // What the side panel shows: the selected words' look over the box's.
   const look = active ? selectedLook(active.view.state) : {};
   const s = el.style;
   // The whole box with lines in more than one language (a kirtan's tracks) is in several, not one of them.
   const several = !words && new Set(boxLines(el).flatMap((l) => (l.lang ? [l.lang] : []))).size > 1;
-  // Every line (or the selected words) in Gujarati, Hindi or Sanskrit: drawn upright, so no Italic to offer.
-  const langsHere = words
-    ? [look.lang !== undefined ? look.lang : el.lang]
-    : boxLines(el).map((l) => l.lang ?? el.lang);
-  const allIndic = langsHere.length > 0 && langsHere.every((l) => isIndic(l));
   const shown = {
     lang: look.lang !== undefined ? look.lang : el.lang,
-    font: look.font !== undefined ? look.font : s.fontFamily,
-    size: look.size ?? s.fontSize,
     weight: look.weight ?? s.fontWeight,
-    italic: look.italic ?? false,
-    color: look.color ?? s.color,
-    shadow: look.shadow ?? s.shadow,
-    outline: look.outline !== undefined ? look.outline : (s.outline ?? null),
   };
 
   /** A change to how the text looks: the selected words, or the whole box. */
@@ -577,7 +454,6 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
     if (active) {
       const clear: TextPatch = {};
       for (const k of Object.keys(patch) as (keyof TextPatch)[]) clear[k] = undefined;
-      if ('italic' in patch) clear.italic = patch.italic ? true : undefined;
       active.view.dispatch(restyleAll(active.view.state, clear));
     }
   };
@@ -602,9 +478,6 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
       </Section>
     );
 
-  const shadow = shown.shadow;
-  const own: Shadow | null = typeof shadow === 'object' ? shadow : null;
-  const outline: Outline | null = shown.outline;
   return (
     <Section title="Words" testId="inspector-text">
       <Readability el={el} />
@@ -613,6 +486,7 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
           ? 'Styling the selected words.'
           : 'Styling the whole box. Select words while typing to style just them.'}
       </p>
+      <p className="text-xs text-faint">Their font, size, colour and more are under Words along the top.</p>
       <Field label="Language" layout="inline">
         <Select
           className="flex-1"
@@ -636,215 +510,21 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
           ))}
         </Select>
       </Field>
-      <Field label="Font" layout="inline">
-        <TextInput
-          list="editor-fonts"
-          className="flex-1"
-          data-testid="field-font"
-          placeholder="The language’s own"
-          value={shown.font ?? ''}
-          onChange={(e) => {
-            apply({ font: e.target.value.trim() === '' ? null : e.target.value }, `font:${el.id}`);
-          }}
-        />
-        <datalist id="editor-fonts">
-          {BUNDLED_FAMILIES.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
-      </Field>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <NumberField
-          label="Size"
-          value={round(shown.size)}
-          min={4}
-          max={2000}
-          testId="field-size"
-          onChange={(v) => {
-            apply({ size: v }, `size:${el.id}`);
-          }}
-        />
-        <Field label="Weight" layout="inline">
-          <Select
-            data-testid="field-weight"
-            value={String(shown.weight >= 650 ? 700 : shown.weight >= 450 ? 500 : 400)}
-            onChange={(e) => {
-              apply({ weight: Number(e.target.value) });
-            }}
-          >
-            <option value="400">Regular</option>
-            <option value="500">Medium</option>
-            <option value="700">Bold</option>
-          </Select>
-        </Field>
-        {/* Gujarati, Hindi and Sanskrit are always drawn upright (Sessions 31–36, I18N-2): no Italic for them. */}
-        {!allIndic && (
-          <IconButton
-            icon={Italic}
-            size="sm"
-            label="Italic"
-            variant={shown.italic ? 'secondary' : 'ghost'}
-            aria-pressed={shown.italic}
-            onClick={() => {
-              apply({ italic: !shown.italic });
-            }}
-          />
-        )}
-      </div>
-      <Field label="Colour" layout="inline">
-        <ColorInput
-          data-testid="field-color"
-          value={shown.color.slice(0, 7)}
-          onChange={(e) => {
-            apply({ color: withSameAlpha(e.target.value, shown.color) }, `color:${el.id}`);
-          }}
-        />
-      </Field>
-      <Field label="Shadow" layout="inline">
+      <Field label="Weight" layout="inline">
         <Select
-          className="flex-1"
-          data-testid="field-shadow"
-          value={shadowChoice(shadow)}
+          data-testid="field-weight"
+          value={String(shown.weight >= 650 ? 700 : shown.weight >= 450 ? 500 : 400)}
           onChange={(e) => {
-            const v = e.target.value as ShadowChoice;
-            apply({
-              shadow:
-                v === 'none'
-                  ? false
-                  : v === 'soft'
-                    ? true
-                    : {
-                        color: '#000000d9',
-                        blur: Math.round(shown.size * 0.18),
-                        x: 0,
-                        y: Math.round(shown.size * 0.06),
-                      },
-            });
+            apply({ weight: Number(e.target.value) });
           }}
         >
-          <option value="none">None</option>
-          <option value="soft">Soft (Drashti’s)</option>
-          <option value="own">Its own</option>
+          <option value="400">Regular</option>
+          <option value="500">Medium</option>
+          <option value="700">Bold</option>
         </Select>
       </Field>
-      {own && (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 pl-2" data-testid="shadow-own">
-          <Field label="Colour" layout="inline" className="col-span-2">
-            <ColorInput
-              value={own.color.slice(0, 7)}
-              onChange={(e) => {
-                apply(
-                  { shadow: { ...own, color: withSameAlpha(e.target.value, own.color) } },
-                  `shadow:${el.id}`,
-                );
-              }}
-            />
-          </Field>
-          <NumberField
-            label="Blur"
-            value={own.blur}
-            min={0}
-            max={200}
-            testId="field-shadow-blur"
-            onChange={(v) => {
-              apply({ shadow: { ...own, blur: v } }, `shadow:${el.id}`);
-            }}
-          />
-          <NumberField
-            label="Across"
-            value={own.x}
-            min={-500}
-            max={500}
-            testId="field-shadow-x"
-            onChange={(v) => {
-              apply({ shadow: { ...own, x: v } }, `shadow:${el.id}`);
-            }}
-          />
-          <NumberField
-            label="Down"
-            value={own.y}
-            min={-500}
-            max={500}
-            testId="field-shadow-y"
-            onChange={(v) => {
-              apply({ shadow: { ...own, y: v } }, `shadow:${el.id}`);
-            }}
-          />
-        </div>
-      )}
-      <Toggle
-        label="Outline round the letters"
-        checked={outline !== null}
-        data-testid="field-outline"
-        onChange={(on) => {
-          apply({
-            outline: on ? { color: '#000000', width: Math.max(1, Math.round(shown.size / 30)) } : null,
-          });
-        }}
-      />
-      {outline && (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 pl-2">
-          <Field label="Colour" layout="inline" className="col-span-2">
-            <ColorInput
-              value={outline.color.slice(0, 7)}
-              onChange={(e) => {
-                apply(
-                  { outline: { ...outline, color: withSameAlpha(e.target.value, outline.color) } },
-                  `outline:${el.id}`,
-                );
-              }}
-            />
-          </Field>
-          <NumberField
-            label="Width"
-            value={outline.width}
-            min={0.5}
-            max={100}
-            step={0.5}
-            testId="field-outline-width"
-            onChange={(v) => {
-              apply({ outline: { ...outline, width: v } }, `outline:${el.id}`);
-            }}
-          />
-        </div>
-      )}
       <div className="space-y-2 border-t border-line pt-2">
         <p className="text-xs text-faint">For the whole box:</p>
-        <Choice
-          label="Align"
-          value={s.align}
-          options={[
-            { value: 'left', label: 'Left', icon: AlignLeft },
-            { value: 'center', label: 'Centre', icon: AlignCenter },
-            { value: 'right', label: 'Right', icon: AlignRight },
-          ]}
-          onChange={(align) => {
-            applyBox({ align });
-          }}
-        />
-        <Choice
-          label="Place"
-          value={s.verticalAlign}
-          options={[
-            { value: 'top', label: 'At the top', icon: ArrowUpToLine },
-            { value: 'middle', label: 'In the middle', icon: AlignCenterHorizontal },
-            { value: 'bottom', label: 'At the bottom', icon: ArrowDownToLine },
-          ]}
-          onChange={(verticalAlign) => {
-            applyBox({ verticalAlign });
-          }}
-        />
-        <NumberField
-          label="Line spacing"
-          value={s.lineHeight}
-          min={0.6}
-          max={3}
-          step={0.05}
-          testId="field-line-height"
-          onChange={(v) => {
-            applyBox({ lineHeight: v }, `lineHeight:${el.id}`);
-          }}
-        />
         <Toggle
           label="Shrink the words to fit the box"
           checked={s.shrinkToFit === true}

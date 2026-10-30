@@ -512,6 +512,17 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  slideEditor: {
+    open: (presentationId, slideId) => invoke(IPC.slideEditor.open, presentationId, slideId),
+    onEdit: (listener) => on(IPC.slideEditor.edit, listener),
+    dirty: (dirty) => invoke(IPC.slideEditor.dirty, dirty),
+    close: () => invoke(IPC.slideEditor.close),
+    onAskClose: (listener) =>
+      on(IPC.slideEditor.askClose, () => {
+        listener();
+      }),
+    onSaved: (listener) => on(IPC.slideEditor.saved, listener),
+  },
   midi: {
     get: () => invoke(IPC.midi.get),
     set: (settings) => invoke(IPC.midi.set, settings),
@@ -658,6 +669,8 @@ const OWN_WINDOWS: readonly (string | null)[] = [
   'access-list',
   // The Lower Thirds studio (Session 55, Part 16).
   'lower-thirds',
+  // The slide editor's window (Session 55, Part 17a).
+  'slide-editor',
 ];
 /** The page's document and MutationObserver, as far as this needs them (the preload has no DOM types). */
 const dom = globalThis as unknown as {

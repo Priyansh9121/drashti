@@ -52,6 +52,23 @@ export { Scissors } from 'lucide-react';
 export { Share2 } from 'lucide-react';
 // Session 26e: the Picture editor, and zooming the live picture.
 export { Minimize2, SlidersHorizontal, ZoomIn, ZoomOut } from 'lucide-react';
+// The slide editor's Words group (Session 55, Part 17a): size a step, bold, underline, strike through, lists, a line
+// further in or back out, effects, and find and replace (its Match case and Whole words).
+export {
+  AArrowDown,
+  AArrowUp,
+  Bold,
+  CaseSensitive,
+  IndentDecrease,
+  IndentIncrease,
+  List,
+  ListOrdered,
+  Sparkles,
+  Strikethrough,
+  TextSearch,
+  Underline,
+  WholeWord,
+} from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

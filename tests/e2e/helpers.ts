@@ -781,3 +781,48 @@ export async function nodeSaved(
     )
     .toBe(true);
 }
+
+/** The slide editor's own window (Session 55, Part 17a): its page. */
+export const isSlideEditor = (p: Page): boolean => p.url().includes('slide-editor.html');
+
+/**
+ * The slide editor (Session 55, Part 17a: a window of its own, the operator window staying live beside it), once
+ * whatever opened it (Edit slides, Edit slides… in a menu) has: its page, and the editor in it, open on its slides.
+ */
+export async function slideEditorWindow(app: ElectronApplication): Promise<{ ed: Page; editor: Locator }> {
+  const ed = await windowShowing(app, isSlideEditor, 'the slide editor');
+  const editor = ed.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible({ timeout: 30_000 });
+  return { ed, editor };
+}
+
+/** The slide editor's window closed (saved, thrown away or closed with nothing changed). */
+export async function slideEditorClosed(app: ElectronApplication): Promise<void> {
+  await expect
+    .poll(() => app.windows().some((p) => isSlideEditor(p) && !p.isClosed()), {
+      message: 'the slide editor’s window closed',
+    })
+    .toBe(false);
+}
+
+/** One of the editor's groups along its top (Words, Insert, Arrange, Design, Motion, Slides), chosen. */
+export async function editorGroup(ed: Page, name: string): Promise<void> {
+  const tab = ed.getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/** The slide editor's window at `size` (CSS pixels), its page laid out at exactly that size. */
+export async function sizeSlideEditor(
+  app: ElectronApplication,
+  ed: Page,
+  size: { width: number; height: number },
+): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, want) => {
+    BrowserWindow.getAllWindows()
+      .find((w) => w.webContents.getURL().includes('slide-editor.html'))
+      ?.setContentSize(want.width, want.height);
+  }, size);
+  await ed.setViewportSize(size);
+  await expect.poll(() => ed.evaluate(() => [innerWidth, innerHeight])).toEqual([size.width, size.height]);
+}

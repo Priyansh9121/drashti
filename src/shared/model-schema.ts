@@ -1,7 +1,9 @@
 import { z } from 'zod';
-import type { Darken, Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
+import type { Darken, Glow, Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
 import {
   DARKEN_KINDS,
+  LIST_MARKS,
+  MAX_LIST_LEVEL,
   MAX_AUTO_ADVANCE_MS,
   MAX_TRANSITION_MS,
   TIMER_AT_ZERO,
@@ -38,6 +40,12 @@ const textShadowSchema = z.union([z.boolean(), shadowSchema]);
 export const outlineSchema: z.ZodType<Outline> = z.object({
   color: hexColorSchema,
   width: num.min(0).max(500),
+});
+
+/** A glow round letters (Session 55, Part 17a). */
+export const glowSchema: z.ZodType<Glow> = z.object({
+  color: hexColorSchema,
+  size: num.min(0).max(500),
 });
 
 /** Degrees clockwise. */
@@ -83,6 +91,8 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   lineHeight: num.positive().max(5),
   shadow: textShadowSchema,
   outline: outlineSchema.nullable().optional(),
+  // Session 55 (Part 17a): a glow round the letters.
+  glow: glowSchema.nullable().optional(),
   shrinkToFit: z.boolean().optional(),
 });
 
@@ -96,6 +106,12 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
   letterSpacing: num.min(-500).max(500).optional(),
   shadow: textShadowSchema.optional(),
   outline: outlineSchema.nullable().optional(),
+  // Session 55 (Part 17a): underlined, struck through, a glow, and the line's list and level.
+  underline: z.boolean().optional(),
+  strike: z.boolean().optional(),
+  glow: glowSchema.nullable().optional(),
+  list: z.enum(LIST_MARKS).optional(),
+  level: num.int().min(0).max(MAX_LIST_LEVEL).optional(),
   lang: langSchema.nullable().optional(),
   legacy: z.boolean().optional(),
 });

@@ -28,6 +28,7 @@ const ENTRIES: Record<BridgePage, string> = {
   lock: 'access/main.tsx',
   'access-list': 'access-list/main.tsx',
   'lower-thirds': 'lower-thirds/studio/main.tsx',
+  'slide-editor': 'editor/window/main.tsx',
 };
 
 const IMPORT =

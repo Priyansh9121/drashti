@@ -2,7 +2,7 @@ import type { PresentationSummary } from '../../../shared/library';
 import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
 import { isPassageId } from '../../../shared/shastra';
 import { isRepeatId } from '../../../shared/repeat';
-import { openSlideEditor } from '../editor/editor-store';
+import { openSlideEditor } from '../editor/open-editor';
 import { requestRemoval } from '../library/import-store';
 import { leaveItem, selectPresentation, setLibraryTab } from '../library/library-store';
 import { requestMediaRemoval } from '../library/media-removal';

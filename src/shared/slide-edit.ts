@@ -138,6 +138,28 @@ export type SaveSlidesResult =
   /** `changedElsewhere`: the presentation changed since the editor opened it; saving again with force overwrites that. */
   | { ok: false; message: string; changedElsewhere?: boolean };
 
+/**
+ * The slide editor's window (Session 55, Part 17a): a window of its own, so the show goes on in the operator window
+ * while slides are edited. Opened on a presentation, at a slide (or its first).
+ */
+export interface EditSlidesOpen {
+  presentationId: string;
+  slideId: string | null;
+}
+
+/** The window's name, before the presentation's is known (then "<name> – Edit slides"). */
+export const SLIDE_EDITOR_TITLE = 'Drashti Edit Slides';
+
+/** The window's name for a presentation's slides. */
+export const slideEditorTitle = (name: string): string => `${name} – Edit slides`;
+
+/** A save in the slide editor's window, for the operator window's Undo (one change, put back as it was). */
+export interface SlidesSaved {
+  presentationId: string;
+  name: string;
+  revisionId: string;
+}
+
 /** A slide as the editor has it, for "Make a theme from this slide". */
 export interface ThemeSlide {
   width: number;

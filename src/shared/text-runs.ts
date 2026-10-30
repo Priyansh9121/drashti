@@ -96,6 +96,12 @@ const sameStyle = (a: TextRun, b: TextRun) =>
   a.letterSpacing === b.letterSpacing &&
   same(a.shadow, b.shadow) &&
   same(a.outline, b.outline) &&
+  // Session 55 (Part 17a): underlined, struck through, glowing, and the line's list.
+  a.underline === b.underline &&
+  a.strike === b.strike &&
+  same(a.glow, b.glow) &&
+  a.list === b.list &&
+  a.level === b.level &&
   a.lang === b.lang &&
   a.legacy === b.legacy;
 
