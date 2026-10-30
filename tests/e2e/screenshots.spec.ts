@@ -20,6 +20,7 @@ import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from '.
 import {
   chooseMenuItem,
   closeLibrary,
+  closePlaylistIfOpen,
   dropFiles,
   importAndGetIds,
   launchApp,
@@ -173,6 +174,20 @@ async function running(win: Page) {
   await win.getByTestId('messages').getByRole('button', { name: 'Show' }).click();
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');
   return show;
+}
+
+/**
+ * Edit slides at the slide on the screens, the kirtan's verse in `running`: a double click on its row in the open
+ * playlist (Session 55, Part 4: the slides area and its Edit slides button went; the double click's first click
+ * leaves the slide up as it is). The editor opens at that slide.
+ */
+async function editLiveSlide(win: Page) {
+  const row = slidesOf(win, KIRTAN).nth(1);
+  await expect(row).toHaveAttribute('aria-current', 'true');
+  await row.dblclick();
+  const editor = win.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');
 }
 
 test('the first start: the welcome, the practice show and the three steps (Session 26g)', async () => {
@@ -372,9 +387,8 @@ test('the slide editor', async () => {
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1600, height: 900 });
   await running(win);
-  await win.getByTestId('edit-slides').click();
+  await editLiveSlide(win);
   const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
   // A band behind the words, to show a shape.
   await editor.getByTestId('add-shape').click();
   await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
@@ -633,10 +647,27 @@ test('converting media: the import report, then the media list while converting 
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), files);
   const report = win.getByTestId('import-report');
-  await expect(report.getByTestId('report-convert-all')).toBeVisible({ timeout: 60_000 });
+  // Each is converted by itself, one at a time (Session 50; the picture too since Session 55, Part 5): the report
+  // says so, and offers nothing to press (no Convert all). The long AVI is still converting for the picture.
+  await expect(report.getByTestId('report-converted')).toContainText(
+    /^Converting [1-4] files? Drashti cannot play as (it is|they are), one at a time/u,
+    { timeout: 60_000 },
+  );
+  for (const [name, kind] of [
+    ['Placeholder welcome loop.avi', 'play'],
+    ['Placeholder intro.mov', 'play'],
+    ['Placeholder bell.aiff', 'play'],
+    ['Placeholder photo.heic', 'show'],
+  ] as const)
+    await expect(report.getByTestId('report-item').filter({ hasText: name }).first()).toContainText(
+      `Drashti cannot ${kind} ${name} as it is: `,
+    );
+  await expect(
+    report.getByTestId('report-item').filter({ hasText: 'Placeholder welcome loop.avi' }).first(),
+  ).toContainText('It converts it by itself');
+  await expect(report.getByTestId('report-convert-all')).toHaveCount(0);
   await shot(win, 'convert-report');
 
-  await report.getByTestId('report-convert-all').click();
   await report.getByRole('button', { name: 'Close' }).click();
   await win.getByRole('tab', { name: 'Media' }).click();
   await expect(win.getByTestId('convert-progress')).toBeVisible({ timeout: 60_000 });
@@ -941,9 +972,8 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
   await win.getByRole('button', { name: 'Close MIDI' }).click();
 
   // The slide editor with two elements selected together.
-  await win.getByTestId('edit-slides').click();
+  await editLiveSlide(win);
   const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
   await editor.getByTestId('add-shape').click();
   await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
   // Below the words, so both show.
@@ -1098,14 +1128,19 @@ test('Shastra, timers in the running order, Samvat and tithi (Session 12; the id
     return found;
   };
 
-  // Shastra: a passage found by its reference, in the slide grid; the loaded texts.
+  // Shastra: a passage found by its reference, its slides as rows in the middle (Session 55, Part 4: the slide grid
+  // went; with no playlist open, the library's chosen presentation or passage fills the middle), its first one up;
+  // the loaded texts.
+  await closePlaylistIfOpen(win);
   await openLibrary(win);
   await win.getByRole('tab', { name: 'Shastra' }).click();
   const panel = win.getByTestId('shastra-panel');
   await panel.getByTestId('shastra-reference').fill('PG 14-15');
   await panel.getByTestId('shastra-reference').press('Enter');
-  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', 'shastra:pg#14-15');
-  await win.getByTestId('slide-thumb').first().click();
+  const passage = win.getByTestId('slide-grid');
+  await expect(passage).toHaveAttribute('data-presentation-id', 'shastra:pg#14-15');
+  await passage.getByTestId('slide-thumb').first().click();
+  await expect(win.getByTestId('live-text')).toHaveText(/^Live: Placeholder Granth 14.15 · slide 1 of \d+$/u);
   await shot(win, 'shastra-tab');
   await panel.getByTestId('open-shastra-texts').click();
   await expect(win.getByTestId('shastra-texts-dialog')).toBeVisible();
@@ -1113,8 +1148,9 @@ test('Shastra, timers in the running order, Samvat and tithi (Session 12; the id
   await win.getByRole('button', { name: 'Close Shastra texts' }).click();
   await shot(await outputs('Placeholder hall'), 'output-shastra');
 
-  // A playlist item's timers.
-  await win.getByRole('tab', { name: 'Presentations' }).click();
+  // A playlist item's timers: the playlist open in the middle again.
+  await closeLibrary(win);
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Timers when it goes up…' }).click();
   await win.getByTestId('timer-cues').getByTestId('add-timer-cue').click();
@@ -2586,7 +2622,11 @@ test('access by Gmail, the owner’s Access List: placeholder Gmails with their 
     await expect(list.getByTestId('access-chosen-gmail')).toHaveText(PLACEHOLDER_PERSON);
     await list.getByTestId('access-revoke').click();
     const question = list.getByTestId('access-revoke-question');
-    await expect(question).toContainText('Their Drashti stops at once, screens and stream included.');
+    // Within one check, 15 seconds (Session 55, Parts 3 and 19); one with no internet once it is back, within 15 days.
+    await expect(question).toContainText('Their Drashti stops within 15 seconds, screens and stream included.');
+    await expect(question).toContainText(
+      'One with no internet stops the moment it is back online, and within 15 days in any case.',
+    );
     await shot(list, 'access-revoke');
     await question.getByRole('button', { name: 'Cancel' }).click();
   } finally {
