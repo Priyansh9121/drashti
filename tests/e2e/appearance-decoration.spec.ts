@@ -116,9 +116,9 @@ for (const id of ['dhaja', 'tiranga']) {
  * three on purpose: the top bar's Themes button went (Part 12), so LIVE's line is longer, 625 px (516 before); the
  * bar of clears is 16 px less tall (Part 13), so that column is 603 px tall; and Audio's Music heading went (Part
  * 13), so the first panel heading is the Stage screen panel's; and then Ready? came into the top bar beside Stream
- * (Part 8), so LIVE's line is 521 px and the Stream button 104 px further left. Their colours are as they were. (With a
- * second real display plugged in, the line saying it was put to use sits under the header and the column starts 24
- * px lower: this test is for one display, as CI's.)
+ * (Part 8), so LIVE's line is 521 px and the Stream button 104 px further left; and the access line's strip (Parts 3
+ * and 19: kept under the top bar, so nothing moves when the line comes or goes) puts the column 24 px lower, 579 px
+ * tall. Their colours are as they were.
  */
 const AT_9ED5D00: Record<string, unknown> = {
   black: {
@@ -130,7 +130,7 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(138, 180, 248)'],
     row: ['oklab(0.76608 -0.0191589 -0.106575 / 0.7)', 'rgb(38, 38, 43)'],
     heading: ['rgb(200, 200, 207)'],
-    under: [0, 48, 300, 603],
+    under: [0, 72, 300, 579],
     headingText: 'Stage screen',
   },
   white: {
@@ -142,7 +142,7 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(29, 78, 216)'],
     row: ['oklab(0.488178 -0.0212675 -0.21611 / 0.7)', 'rgb(223, 225, 230)'],
     heading: ['rgb(67, 70, 78)'],
-    under: [0, 48, 300, 603],
+    under: [0, 72, 300, 579],
     headingText: 'Stage screen',
   },
 };

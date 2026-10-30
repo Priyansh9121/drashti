@@ -5,8 +5,8 @@ import { useAccess } from './access-store';
 
 /*
  * Can't reach the access list (Session 54's No internet bar, made one line by the owner's decision of 29 Oct 2026):
- * while the list does not answer, Drashti keeps working, the stream and recording included, for up to an hour from
- * the last answer. The main process says so only once there has been no answer for about 2 minutes, three checks in a
+ * while the list does not answer, Drashti keeps working, the stream and recording included, for up to 15 days from
+ * the last answer (the owner's decision of 29 Oct 2026, in place of the hour). The main process says so only once there has been no answer for about 2 minutes, three checks in a
  * row (service.ts), so a check now and then that misses on a working network says nothing.
  *
  * One line under the top bar, in Pro and Simple Mode alike, in a strip kept for it there: nothing in the window moves
