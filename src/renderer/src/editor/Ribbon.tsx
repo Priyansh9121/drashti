@@ -43,7 +43,7 @@ import type { MenuPlace } from '../ui/Menu';
 import { Menu } from '../ui/Menu';
 import { commit, noteMade, showSlide, startEditing, useEditor } from './editor-store';
 import type { Alignment } from './geometry';
-import { alignMoves, boundsOf, distributeMoves } from './geometry';
+import { arrangementUnits, lineUpElements, spaceElements } from './arrange-ops';
 import type { Arrange, ShapeChoice } from './ops';
 import {
   addElement,
@@ -53,7 +53,6 @@ import {
   changeSlide,
   copySlide,
   findSlide,
-  moveEach,
   moveSlideBy,
   newShape,
   newSlide,
@@ -75,10 +74,10 @@ import { Dialog } from '../ui/Dialog';
  * top of the old editor), Arrange (lining up, spacing out, front and back, from the old inspector), Design (the slide's
  * colour and darkening behind its words, quick; all of a slide's settings stay in the side panel), Motion (how the slide
  * comes on and whether it moves on by itself, quick, as in the side panel) and Slides (new, a timer slide, a group,
- * duplicate, up and down, delete and hide, from the old slide list's top). Runs 2 and 3 of Part 17a grow each group:
- * Insert (lines and arrows, pictures cropped, video, sound, tables, icons), Arrange (group, rotate, flip, snapping and
- * guides, rulers and grid), Design (gradients and pictures, slide size, layouts, a master), Motion (each element's
- * animations and their timing), Slides (the strip to drag about, notes).
+ * duplicate, up and down, delete and hide, from the old slide list's top). Run 2 adds Insert's arrows, cropped
+ * pictures, sound, tables and icons, and Arrange's persistent groups, turning, reflection, snapping, guides, rulers
+ * and grid. Run 3 grows Design (gradients and pictures, slide size, layouts, a master), Motion (each element's
+ * animations and their timing), and Slides (the strip to drag about, notes).
  */
 
 /** A tool with its words (the Insert group's: what it adds). */
@@ -272,30 +271,23 @@ export function ArrangeGroup() {
   const selection = useEditor((s) => s.selection);
   const slide = doc ? findSlide(doc, slideId) : undefined;
   const selected = slide?.elements.filter((e) => selection.includes(e.id)) ?? [];
+  const units = arrangementUnits(slide?.elements ?? [], selection);
   const none = selected.length === 0 || !slide;
-  const single = selected.length === 1;
+  const single = units.length === 1;
   const align = (how: Alignment) => {
-    const now = useEditor.getState().doc;
-    if (!now || !slide || !doc) return;
-    const moves = alignMoves(
-      selected.map((el) => boundsOf(el)),
-      how,
-      doc,
-    );
-    commit(moveEach(now, slide.id, new Map(selected.map((el, i) => [el.id, moves[i] ?? { x: 0, y: 0 }]))));
+    finishTextEditing();
+    const s = useEditor.getState();
+    if (s.doc && s.slideId) commit(lineUpElements(s.doc, s.slideId, s.selection, how));
   };
   const distribute = (axis: 'x' | 'y') => {
-    const now = useEditor.getState().doc;
-    if (!now || !slide) return;
-    const moves = distributeMoves(
-      selected.map((el) => boundsOf(el)),
-      axis,
-    );
-    commit(moveEach(now, slide.id, new Map(selected.map((el, i) => [el.id, moves[i] ?? { x: 0, y: 0 }]))));
+    finishTextEditing();
+    const s = useEditor.getState();
+    if (s.doc && s.slideId) commit(spaceElements(s.doc, s.slideId, s.selection, axis));
   };
   const order = (how: Arrange) => {
-    const now = useEditor.getState().doc;
-    if (now && slide) commit(arrange(now, slide.id, selection, how));
+    finishTextEditing();
+    const s = useEditor.getState();
+    if (s.doc && s.slideId) commit(arrange(s.doc, s.slideId, s.selection, how));
   };
   return (
     <div className="flex min-w-0 items-start" data-testid="arrange-group">
@@ -329,7 +321,7 @@ export function ArrangeGroup() {
           icon={AlignHorizontalDistributeCenter}
           size="sm"
           label="Space out evenly across"
-          disabled={selected.length < 3}
+          disabled={units.length < 3}
           data-testid="arrange-across"
           onClick={() => {
             distribute('x');
@@ -339,7 +331,7 @@ export function ArrangeGroup() {
           icon={AlignVerticalDistributeCenter}
           size="sm"
           label="Space out evenly down"
-          disabled={selected.length < 3}
+          disabled={units.length < 3}
           data-testid="arrange-down"
           onClick={() => {
             distribute('y');

@@ -1,7 +1,95 @@
-import type { SlideElement, TextElement } from '../../../shared/model';
+import type { Rect, SlideElement, TextElement } from '../../../shared/model';
 import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
-import { boundsOf, centerOf, normalizeAngle, unionOf } from './geometry';
+import {
+  alignMoves,
+  boundsOf,
+  centerOf,
+  distributeMoves,
+  normalizeAngle,
+  unionOf,
+  type Alignment,
+  type Point,
+} from './geometry';
 import { findSlide, mapElements, newId } from './ops';
+import { groupedSelection } from '../../../shared/element-groups';
+
+export interface ArrangementUnit {
+  ids: string[];
+  frame: Rect;
+}
+
+/** A persistent group is one object for alignment and distribution, never a stack of collapsing members. */
+export function arrangementUnits(
+  elements: readonly SlideElement[],
+  ids: readonly string[],
+): ArrangementUnit[] {
+  const picked = new Set(groupedSelection(elements, ids));
+  const groups = new Map<string, SlideElement[]>();
+  for (const el of elements) {
+    if (!picked.has(el.id)) continue;
+    const key = el.groupId ? `group:${el.groupId}` : `element:${el.id}`;
+    const members = groups.get(key) ?? [];
+    members.push(el);
+    groups.set(key, members);
+  }
+  return [...groups.values()].flatMap((members) => {
+    const frame = unionOf(members.map(boundsOf));
+    return frame ? [{ ids: members.map((el) => el.id), frame }] : [];
+  });
+}
+
+function moveUnits(doc: EditDoc, slideId: string, units: ArrangementUnit[], moves: Point[]): EditDoc {
+  const byId = new Map<string, Point>();
+  units.forEach((unit, i) => {
+    for (const id of unit.ids) byId.set(id, moves[i] ?? { x: 0, y: 0 });
+  });
+  // One exact translation per unit: rounding each member separately can change the group's internal spacing.
+  return mapElements(doc, slideId, [...byId.keys()], (el) => {
+    const move = byId.get(el.id) ?? { x: 0, y: 0 };
+    return { ...el, frame: { ...el.frame, x: el.frame.x + move.x, y: el.frame.y + move.y } };
+  });
+}
+
+export function lineUpElements(
+  doc: EditDoc,
+  slideId: string,
+  ids: readonly string[],
+  how: Alignment,
+): EditDoc {
+  const units = arrangementUnits(findSlide(doc, slideId)?.elements ?? [], ids);
+  return units.length
+    ? moveUnits(
+        doc,
+        slideId,
+        units,
+        alignMoves(
+          units.map((unit) => unit.frame),
+          how,
+          doc,
+        ),
+      )
+    : doc;
+}
+
+export function spaceElements(
+  doc: EditDoc,
+  slideId: string,
+  ids: readonly string[],
+  axis: 'x' | 'y',
+): EditDoc {
+  const units = arrangementUnits(findSlide(doc, slideId)?.elements ?? [], ids);
+  return units.length >= 3
+    ? moveUnits(
+        doc,
+        slideId,
+        units,
+        distributeMoves(
+          units.map((unit) => unit.frame),
+          axis,
+        ),
+      )
+    : doc;
+}
 
 export function groupElements(doc: EditDoc, slideId: string, ids: readonly string[]): EditDoc {
   if (ids.length < 2) return doc;

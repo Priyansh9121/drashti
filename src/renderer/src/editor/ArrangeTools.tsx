@@ -8,7 +8,7 @@ import { FlipHorizontal2, FlipVertical2, Group, RotateCcw, RotateCw, Trash2, Ung
 import { commit, useEditor } from './editor-store';
 import { changeSlide, findSlide, rotateElements } from './ops';
 import { boundsOf, centerOf, unionOf } from './geometry';
-import { flipElements, groupElements, ungroupElements } from './arrange-ops';
+import { arrangementUnits, flipElements, groupElements, ungroupElements } from './arrange-ops';
 import { Cluster, Divider } from './RibbonParts';
 import { finishTextEditing } from './TextBoxEditor';
 
@@ -20,17 +20,20 @@ export function ArrangeTools() {
   const [guidesOpen, setGuidesOpen] = useState(false);
   const slide = doc ? findSlide(doc, slideId) : undefined;
   const selected = slide?.elements.filter((el) => selection.includes(el.id)) ?? [];
+  const units = arrangementUnits(slide?.elements ?? [], selection);
   const none = selected.length === 0;
   const edit = (what: 'group' | 'ungroup' | 'left' | 'right' | 'x' | 'y') => {
     finishTextEditing();
     const s = useEditor.getState();
     if (!s.doc || !s.slideId) return;
-    if (what === 'group') commit(groupElements(s.doc, s.slideId, selection));
-    else if (what === 'ungroup') commit(ungroupElements(s.doc, s.slideId, selection));
-    else if (what === 'x' || what === 'y') commit(flipElements(s.doc, s.slideId, selection, what));
+    const ids = s.selection;
+    const current = findSlide(s.doc, s.slideId)?.elements.filter((el) => ids.includes(el.id)) ?? [];
+    if (what === 'group') commit(groupElements(s.doc, s.slideId, ids));
+    else if (what === 'ungroup') commit(ungroupElements(s.doc, s.slideId, ids));
+    else if (what === 'x' || what === 'y') commit(flipElements(s.doc, s.slideId, ids, what));
     else {
-      const box = unionOf(selected.map(boundsOf));
-      if (box) commit(rotateElements(s.doc, s.slideId, selection, centerOf(box), what === 'left' ? -90 : 90));
+      const box = unionOf(current.map(boundsOf));
+      if (box) commit(rotateElements(s.doc, s.slideId, ids, centerOf(box), what === 'left' ? -90 : 90));
     }
   };
   const aid = (key: keyof typeof aids, checked: boolean) => {
@@ -50,7 +53,7 @@ export function ArrangeTools() {
           icon={Group}
           label="Group the selected elements"
           data-testid="arrange-group-elements"
-          disabled={selected.length < 2}
+          disabled={units.length < 2}
           onClick={() => edit('group')}
         />
         <IconButton
