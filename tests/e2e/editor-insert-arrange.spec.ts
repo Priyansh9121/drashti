@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { drawPicture, halves } from './placeholder-slides';
+import { drawPicture, goLive, halves } from './placeholder-slides';
+import { near, pixels } from './pixels';
 import { makeTestTone, makeTestVideo } from './test-media';
 import {
   editorGroup,
@@ -13,6 +14,8 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
+  outputPage,
+  setUpScreen,
   sizeSlideEditor,
   slideEditorClosed,
   slideEditorWindow,
@@ -23,8 +26,10 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 /** Hold metadata until the test releases it, without a timing-dependent delay. */
 async function holdPictureSize(ed: Page): Promise<void> {
   await ed.evaluate(() => {
-    const decode = HTMLImageElement.prototype.decode;
-    let release = () => undefined as void;
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'decode');
+    if (!descriptor || typeof descriptor.value !== 'function') throw new Error('no image decoder');
+    const decode = descriptor.value as (this: HTMLImageElement) => Promise<void>;
+    let release: () => void = () => undefined;
     const gate = new Promise<void>((done) => {
       release = done;
     });
@@ -95,6 +100,8 @@ test('Insert makes a table of editable cells, an arrow and an icon, each with on
 test('Insert keeps a cropped picture, a video and a sound on this slide across saving and reopening', async () => {
   const { app, win, ed, editor, presentationId } = await start();
   try {
+    await setUpScreen(win);
+    const output = await outputPage(app);
     const dir = mkdtempSync(join(tmpdir(), 'drashti-insert-media-'));
     const picture = await drawPicture(
       win,
@@ -119,6 +126,9 @@ test('Insert keeps a cropped picture, a video and a sound on this slide across s
     await expect(editor.getByTestId('editor-slide').locator('[data-slide-crop]')).toHaveCount(0);
     await ed.getByRole('button', { name: 'Redo', exact: true }).click();
     await expect(editor.getByTestId('editor-slide').locator('[data-slide-crop]')).toHaveCount(1);
+    // Keep the cropped picture clear of the video that is added next.
+    await editor.getByTestId('field-x').fill('0');
+    await editor.getByTestId('field-y').fill('0');
     await editor.getByTestId('add-media').click();
     await ed
       .getByTestId('media-picker')
@@ -152,6 +162,26 @@ test('Insert keeps a cropped picture, a video and a sound on this slide across s
     expect(slide?.cues).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: 'audio', mediaId: soundId })]),
     );
+    await goLive(win, presentationId, 0);
+    const crop = output.locator('[data-slide-crop]');
+    await expect(crop).toHaveCount(1);
+    // Both sides of the kept half are red: the green half is actually cropped on the audience output.
+    await expect
+      .poll(async () => {
+        const box = await crop.boundingBox();
+        if (!box) return false;
+        const colours = await pixels(
+          output,
+          [0.25, 0.75].map((part) => ({ x: box.x + box.width * part, y: box.y + box.height / 2 })),
+        );
+        return colours.every((colour) => near(colour, [240, 20, 20], 15));
+      })
+      .toBe(true);
+    await openLibrary(win);
+    await win
+      .getByTestId('presentation-list')
+      .getByRole('button', { name: /^Placeholder tools/ })
+      .click();
     await win.getByTestId('edit-slides').click();
     const reopened = await slideEditorWindow(app);
     await expect(reopened.editor.getByTestId('editor-slide').locator('[data-slide-crop]')).toHaveCount(1);

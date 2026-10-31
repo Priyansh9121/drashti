@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { RenderSlide } from '../../../shared/model';
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
@@ -65,7 +65,7 @@ const GROUPS: readonly TabItem<EditorGroup>[] = [
 export function SlideEditor({ platform }: { platform: string }) {
   const open = useEditor((s) => s.open);
   if (!open) return <Loading label="Opening the slides…" className="h-screen" />;
-  return <Editor platform={platform} name={open.name} />;
+  return <Editor key={open.presentationId} platform={platform} name={open.name} />;
 }
 
 /** As the renderer sees a slide being edited. */
@@ -102,6 +102,29 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const unreadable = useEditor((s) => s.unreadable);
   const note = useEditor((s) => s.note);
   const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
+  const [pickingBusy, setPickingBusy] = useState(false);
+  const pendingPick = useRef<{ id: number; busy: boolean; save: boolean | null }>({
+    id: 0,
+    busy: false,
+    save: null,
+  });
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const cancelPicking = useCallback(() => {
+    pendingPick.current = { id: pendingPick.current.id + 1, busy: false, save: null };
+    setPickingBusy(false);
+    setPicking(null);
+  }, []);
+  const saveWhenReady = useCallback((force = false) => {
+    finishTextEditing();
+    if (pendingPick.current.busy) pendingPick.current.save = force;
+    else void saveSlides(force);
+  }, []);
   const mac = platform === 'darwin';
   const mod = mac ? '⌘' : 'Ctrl+';
 
@@ -134,8 +157,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       const key = e.key.toLowerCase();
       if (key === 's' || e.key === 'Enter') {
         e.preventDefault();
-        finishTextEditing();
-        void saveSlides();
+        saveWhenReady();
         return;
       }
       if (key === 'f') {
@@ -174,7 +196,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mac]);
+  }, [mac, saveWhenReady]);
 
   return (
     <div
@@ -222,11 +244,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           variant="primary"
           size="sm"
           kbd={`${mod}S`}
-          disabled={saving || loading || !doc}
+          disabled={saving || loading || !doc || pickingBusy}
           data-testid="save-slides"
           onClick={() => {
-            finishTextEditing();
-            void saveSlides();
+            saveWhenReady();
           }}
         >
           {dirty ? 'Save' : 'Done'}
@@ -305,26 +326,38 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         <MediaPicker
           title={picking === 'sound' ? 'Give this slide a sound' : 'Put a picture or video on the slide'}
           sounds={picking === 'sound'}
-          onClose={() => {
-            setPicking(null);
-          }}
+          busy={pickingBusy}
+          onClose={cancelPicking}
           onChoose={(m) => {
-            setPicking(null);
             if (picking === 'sound') {
               const s = useEditor.getState();
               const at = s.doc ? findSlide(s.doc, s.slideId) : undefined;
               if (s.doc && at)
                 commit(changeSlide(s.doc, at.id, setSoundCue(at, { id: m.id, volume: 1, loop: false })));
+              cancelPicking();
               return;
             }
             if (m.kind === 'audio') return;
             const kind = m.kind;
+            const chosenFor = useEditor.getState();
+            if (!chosenFor.doc || !chosenFor.slideId) return;
+            const target = { presentationId: chosenFor.doc.presentationId, slideId: chosenFor.slideId };
+            const request = pendingPick.current.id + 1;
+            pendingPick.current = { id: request, busy: true, save: null };
+            setPickingBusy(true);
             void naturalSize({ id: m.id, kind }).then((size) => {
+              if (!alive.current || pendingPick.current.id !== request) return;
               const s = useEditor.getState();
-              const current = s.doc ? findSlide(s.doc, s.slideId) : undefined;
-              if (!s.doc || !current) return;
+              const current = s.doc ? findSlide(s.doc, target.slideId) : undefined;
+              if (s.doc?.presentationId !== target.presentationId || !current) {
+                cancelPicking();
+                return;
+              }
               const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, s.doc);
-              commit(addElement(s.doc, current.id, el), { select: [el.id] });
+              commit(addElement(s.doc, current.id, el), current.id === s.slideId ? { select: [el.id] } : {});
+              const queuedSave = pendingPick.current.save;
+              cancelPicking();
+              if (queuedSave !== null) void saveSlides(queuedSave);
             });
           }}
         />
@@ -339,8 +372,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           onKeepEditing={keepEditing}
           onSave={() => {
             useEditor.setState({ askDiscard: false });
-            finishTextEditing();
-            void saveSlides();
+            saveWhenReady();
           }}
           onThrowAway={closeSlideEditor}
         />
@@ -356,7 +388,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             useEditor.setState({ conflict: null });
           }}
           onConfirm={() => {
-            void saveSlides(true);
+            saveWhenReady(true);
           }}
         >
           <p>{conflict}</p>

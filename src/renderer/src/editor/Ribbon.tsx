@@ -66,7 +66,7 @@ import { finishTextEditing } from './TextBoxEditor';
 import { Cluster, Divider } from './RibbonParts';
 import { InsertTools } from './InsertTools';
 import { ArrangeTools } from './ArrangeTools';
-import { TimerForm } from '../operator/TimersPanel';
+import { TimerForm } from '../operator/TimerForm';
 import { Dialog } from '../ui/Dialog';
 
 /*

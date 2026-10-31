@@ -80,6 +80,7 @@ export function MediaPicker({
   onChooseInput,
   onClose,
   sounds = false,
+  busy = false,
 }: {
   title: string;
   onChoose: (media: MediaSummary) => void;
@@ -88,6 +89,8 @@ export function MediaPicker({
   onClose: () => void;
   /** Offer sounds (and videos, for their sound) instead of pictures and videos. */
   sounds?: boolean;
+  /** A chosen picture or video is being placed; Cancel still closes the picker. */
+  busy?: boolean;
 }) {
   const inputs = useVideoInputs((s) => s.inputs) ?? NO_INPUTS;
   const media = useMedia((s) => s.media);
@@ -113,6 +116,7 @@ export function MediaPicker({
       bodyClassName="flex min-h-0 flex-col gap-3"
     >
       <TextInput
+        disabled={busy}
         aria-label={sounds ? 'Find a sound by name' : 'Find a picture or video by name'}
         placeholder="Find by name"
         value={query}
@@ -121,6 +125,11 @@ export function MediaPicker({
           setQuery(e.target.value);
         }}
       />
+      {busy && (
+        <p role="status" data-testid="media-picker-busy" className="text-sm text-muted">
+          Putting it on the slide…
+        </p>
+      )}
       {onChooseInput && !sounds && inputs.length > 0 && (
         <section aria-label="Video inputs on this computer" className="max-h-48 shrink-0 overflow-y-auto">
           <h3 className="pb-1 text-xs font-bold text-muted">Video inputs on this computer</h3>
@@ -150,7 +159,7 @@ export function MediaPicker({
                 type="button"
                 data-testid="media-choice"
                 aria-label={`${KIND[m.kind]}: ${m.name}${m.missing ? ' (missing)' : ''}`}
-                disabled={m.missing}
+                disabled={m.missing || busy}
                 onClick={() => {
                   onChoose(m);
                 }}

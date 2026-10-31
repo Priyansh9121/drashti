@@ -851,6 +851,8 @@ function SlidePicture({
   const style: CSSProperties = crop
     ? {
         position: 'absolute',
+        // The image extends beyond this crop's viewport; the shared img max-width must not shrink it back.
+        maxWidth: 'none',
         left: -crop.x * width,
         top: -crop.y * height,
         width,
