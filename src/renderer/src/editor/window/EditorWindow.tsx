@@ -6,17 +6,11 @@ import { connectPictureLooks } from '../../render/picture-looks';
 import { connectScreens } from '../../screens/screens-store';
 import { connectInputsList } from '../../video-inputs/video-inputs-store';
 import { isTyping } from '../../operator/useKeymap';
-import {
-  askBeforeClosing,
-  isDirty,
-  openSlideEditor,
-  setCloseWindow,
-  switchTo,
-  useEditor,
-} from '../editor-store';
+import { openSlideEditor, setCloseWindow, useEditor } from '../editor-store';
 import { keepCopiesWith, setCopied } from '../clipboard';
 import { SlideEditor } from '../SlideEditor';
 import { redoAny, undoAny } from '../TextBoxEditor';
+import { closeAsked, editAsked, editorHasChanges } from './editor-events';
 
 /*
  * The slide editor's window (Session 55, Part 17a): opened on the presentation and slide its address names, told by
@@ -28,7 +22,7 @@ import { redoAny, undoAny } from '../TextBoxEditor';
 export function EditorWindow() {
   const [platform, setPlatform] = useState('darwin');
   const name = useEditor((s) => s.open?.name ?? '');
-  const dirty = useEditor(isDirty);
+  const dirty = useEditor(editorHasChanges);
 
   useEffect(() => {
     connectEngine();
@@ -58,10 +52,8 @@ export function EditorWindow() {
     const offLibrary = window.drashti.library.onChanged((what) => {
       if (what === 'presentations') void loadMedia();
     });
-    const offEdit = window.drashti.slideEditor.onEdit((open) => {
-      switchTo(open);
-    });
-    const offAsk = window.drashti.slideEditor.onAskClose(askBeforeClosing);
+    const offEdit = window.drashti.slideEditor.onEdit(editAsked);
+    const offAsk = window.drashti.slideEditor.onAskClose(closeAsked);
     // Edit › Undo and Redo while this window has the keyboard: typing in a field undoes itself.
     const offUndo = window.drashti.app.onUndo(() => {
       if (!isTyping(document.activeElement)) undoAny();
