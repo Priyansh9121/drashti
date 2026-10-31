@@ -68,6 +68,9 @@ const look: SlideLook = {
 };
 
 describe('persistent groups and reflections', () => {
+  it('keeps the existing selection order for elements that are not grouped', () => {
+    expect(groupedSelection([first, second], ['second', 'first'])).toEqual(['second', 'first']);
+  });
   it('selects the whole group from either member, preserves unrelated selections, and ungroups without mutating the old document', () => {
     const before = makeDoc();
     const grouped = groupElements(before, 'slide', ['first', 'second']);

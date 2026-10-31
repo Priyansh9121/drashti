@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +19,28 @@ import {
 } from './helpers';
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+/** Hold metadata until the test releases it, without a timing-dependent delay. */
+async function holdPictureSize(ed: Page): Promise<void> {
+  await ed.evaluate(() => {
+    const decode = HTMLImageElement.prototype.decode;
+    let release = () => undefined as void;
+    const gate = new Promise<void>((done) => {
+      release = done;
+    });
+    (globalThis as unknown as { releasePictureSize: () => void }).releasePictureSize = () => {
+      HTMLImageElement.prototype.decode = decode;
+      release();
+    };
+    HTMLImageElement.prototype.decode = function (this: HTMLImageElement) {
+      return gate.then(() => decode.call(this));
+    };
+  });
+}
+
+async function releasePictureSize(ed: Page): Promise<void> {
+  await ed.evaluate(() => (globalThis as unknown as { releasePictureSize: () => void }).releasePictureSize());
+}
 
 async function start() {
   const { app } = await launchApp();
@@ -293,6 +315,85 @@ test('a guide can be moved on the canvas with one Undo, and is saved with its sl
     );
     if (!saved.ok) throw new Error(saved.message);
     expect(saved.doc.groups[0]?.slides[0]?.guides?.x).toEqual([500]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('Save while a picture’s size is being read waits for the picture and keeps it', async () => {
+  const { app, win, ed, editor, presentationId } = await start();
+  try {
+    const file = await drawPicture(
+      win,
+      join(mkdtempSync(join(tmpdir(), 'drashti-pending-picture-')), 'Placeholder pending.png'),
+      halves('240,20,20', '20,220,20'),
+    );
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    await editorGroup(ed, 'Insert');
+    await editor.getByTestId('add-media').click();
+    await holdPictureSize(ed);
+    await ed
+      .getByTestId('media-picker')
+      .getByRole('button', { name: /^Picture: Placeholder pending/ })
+      .click();
+    await ed.keyboard.press(`${mod}+S`);
+    await expect(ed.getByTestId('media-picker-busy')).toBeVisible();
+    await expect(editor.getByTestId('save-slides')).toBeDisabled();
+    await releasePictureSize(ed);
+    await slideEditorClosed(app);
+    const saved = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      presentationId,
+    );
+    if (!saved.ok) throw new Error(saved.message);
+    expect(saved.doc.groups[0]?.slides[0]?.elements).toEqual(
+      expect.arrayContaining([expect.objectContaining({ mediaId, kind: 'image' })]),
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test('a picture whose size is pending goes onto the slide it was chosen for when another slide is requested', async () => {
+  const initial = await start();
+  const { app, win, presentationId } = initial;
+  try {
+    await editorGroup(initial.ed, 'Slides');
+    await initial.editor.getByTestId('slide-new').click();
+    await initial.editor.getByTestId('save-slides').click();
+    await slideEditorClosed(app);
+    const before = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      presentationId,
+    );
+    if (!before.ok) throw new Error(before.message);
+    const secondId = before.doc.groups[0]?.slides[1]?.id;
+    if (!secondId) throw new Error('no second slide');
+    await win.getByTestId('edit-slides').click();
+    const { ed, editor } = await slideEditorWindow(app);
+    const file = await drawPicture(
+      win,
+      join(mkdtempSync(join(tmpdir(), 'drashti-picture-slide-')), 'Placeholder original slide.png'),
+      halves('240,20,20', '20,220,20'),
+    );
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    await editorGroup(ed, 'Insert');
+    await editor.getByTestId('add-media').click();
+    await holdPictureSize(ed);
+    await ed
+      .getByTestId('media-picker')
+      .getByRole('button', { name: /^Picture: Placeholder original slide/ })
+      .click();
+    await win.evaluate(({ id, slide }) => (globalThis as PageGlobals).drashti.slideEditor.open(id, slide), {
+      id: presentationId,
+      slide: secondId,
+    });
+    await expect(editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(0);
+    await releasePictureSize(ed);
+    await expect(editor.locator(`[data-element][data-media-id="${mediaId}"]`).first()).toBeAttached();
+    await expect(editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(0);
+    await editor.getByTestId('editor-slide-thumb').first().click();
+    await expect(editor.getByTestId('editor-slide').locator(`[data-media-id="${mediaId}"]`)).toHaveCount(1);
   } finally {
     await app.close();
   }
