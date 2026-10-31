@@ -64,6 +64,10 @@ import {
 import { NewTimerSlideDialog } from './NewTimerSlide';
 import { finishTextEditing } from './TextBoxEditor';
 import { Cluster, Divider } from './RibbonParts';
+import { InsertTools } from './InsertTools';
+import { ArrangeTools } from './ArrangeTools';
+import { TimerForm } from '../operator/TimersPanel';
+import { Dialog } from '../ui/Dialog';
 
 /*
  * The slide editor's groups along its top besides Words (Session 55, Part 17a, run 1), each a row of tools in clusters,
@@ -115,10 +119,11 @@ const shownSlide = () => {
 };
 
 /** Insert: what goes on the slide. A text box goes straight into typing, the Words group chosen. */
-export function InsertGroup({ onPicture }: { onPicture: () => void }) {
+export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onSound: () => void }) {
   const slide = useEditor((s) => (s.doc ? findSlide(s.doc, s.slideId) : undefined));
   const [shapeMenu, setShapeMenu] = useState<MenuPlace | null>(null);
   const [timerMenu, setTimerMenu] = useState<MenuPlace | null>(null);
+  const [newTimer, setNewTimer] = useState(false);
   const timers = useEngine((e) => e.state?.timers);
   const add = (fn: () => void) => {
     finishTextEditing();
@@ -199,6 +204,8 @@ export function InsertGroup({ onPicture }: { onPicture: () => void }) {
           Timer
         </Tool>
       </Cluster>
+      <Divider />
+      <InsertTools key={slide?.id} addShape={addShape} onSound={onSound} />
       {shapeMenu && (
         <Menu
           at={shapeMenu}
@@ -212,6 +219,9 @@ export function InsertGroup({ onPicture }: { onPicture: () => void }) {
               ['rounded', 'Rounded rectangle', RectangleHorizontal],
               ['ellipse', 'Ellipse', Circle],
               ['line', 'Line', Minus],
+              ['arrow', 'Arrow', ArrowUp],
+              ['triangle', 'Triangle', Shapes],
+              ['diamond', 'Diamond', Shapes],
             ] as const
           ).map(([choice, label, icon]) => ({
             label,
@@ -229,18 +239,27 @@ export function InsertGroup({ onPicture }: { onPicture: () => void }) {
           onClose={() => {
             setTimerMenu(null);
           }}
-          entries={
-            timers && timers.length > 0
-              ? timers.map((t) => ({
-                  label: `${t.name} (${TIMER_KIND_NAMES[t.kind]})`,
-                  icon: Timer,
-                  onSelect: () => {
-                    addTimer(t.id);
-                  },
-                }))
-              : [{ label: 'No timers yet: make one in Timers', disabled: true, onSelect: () => undefined }]
-          }
+          entries={[
+            ...(timers ?? []).map((t) => ({
+              label: `${t.name} (${TIMER_KIND_NAMES[t.kind]})`,
+              icon: Timer,
+              onSelect: () => {
+                addTimer(t.id);
+              },
+            })),
+            { label: 'New timer…', icon: Plus, onSelect: () => setNewTimer(true) },
+          ]}
         />
+      )}
+      {newTimer && (
+        <Dialog
+          title="New timer for this slide"
+          size="sm"
+          testId="new-editor-timer"
+          onClose={() => setNewTimer(false)}
+        >
+          <TimerForm initial={null} onCreated={addTimer} onDone={() => setNewTimer(false)} />
+        </Dialog>
       )}
     </div>
   );
@@ -350,6 +369,7 @@ export function ArrangeGroup() {
           />
         ))}
       </Cluster>
+      <ArrangeTools key={slideId} />
     </div>
   );
 }

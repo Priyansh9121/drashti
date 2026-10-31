@@ -17,7 +17,15 @@ import { dispatch, useNotice } from './actions';
 
 const NO_TIMERS: TimerState[] = [];
 
-function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: () => void }) {
+export function TimerForm({
+  initial,
+  onDone,
+  onCreated,
+}: {
+  initial: TimerState | null;
+  onDone: () => void;
+  onCreated?: (id: string) => void;
+}) {
   const [name, setName] = useState(initial?.name ?? 'Countdown');
   const [kind, setKind] = useState<TimerKind>(initial?.kind ?? 'countdown');
   const [length, setLength] = useState(timerDuration(initial?.durationMs ?? 300_000, false));
@@ -40,8 +48,10 @@ function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: ()
     const result = initial
       ? await window.drashti.timers.update(initial.id, fields)
       : await window.drashti.timers.create(fields);
-    if (result.ok) onDone();
-    else setProblem(result.message);
+    if (result.ok) {
+      if (!initial && 'id' in result && typeof result.id === 'string') onCreated?.(result.id);
+      onDone();
+    } else setProblem(result.message);
   };
   return (
     <form

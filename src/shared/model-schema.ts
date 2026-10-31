@@ -9,6 +9,7 @@ import {
   TIMER_AT_ZERO,
   TIMER_FORMATS,
   TRANSITION_KINDS,
+  SHAPE_KINDS,
 } from './model';
 
 /*
@@ -50,6 +51,19 @@ export const glowSchema: z.ZodType<Glow> = z.object({
 
 /** Degrees clockwise. */
 const rotationSchema = num.min(-36_000).max(36_000).optional();
+const elementPlacement = {
+  groupId: idSchema.optional(),
+  flipX: z.boolean().optional(),
+  flipY: z.boolean().optional(),
+};
+const cropSchema = z
+  .object({
+    x: num.min(0).max(1),
+    y: num.min(0).max(1),
+    width: num.min(0.01).max(1),
+    height: num.min(0.01).max(1),
+  })
+  .refine((r) => r.x + r.width <= 1.000001 && r.y + r.height <= 1.000001, 'crop is outside the picture');
 
 /** Darkening behind the words (Sessions 31–36, SLD-3): a band or the whole picture, this dark. */
 export const darkenSchema: z.ZodType<Darken> = z.object({
@@ -118,6 +132,7 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
 
 export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion('kind', [
   z.object({
+    ...elementPlacement,
     id: idSchema,
     kind: z.literal('text'),
     frame: rectSchema,
@@ -130,11 +145,12 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     everyScreen: z.boolean().optional(),
   }),
   z.object({
+    ...elementPlacement,
     id: idSchema,
     kind: z.literal('shape'),
     frame: rectSchema,
     rotation: rotationSchema,
-    shape: z.enum(['rectangle', 'ellipse', 'line']).optional(),
+    shape: z.enum(SHAPE_KINDS).optional(),
     fill: hexColorSchema.nullable(),
     cornerRadius: num.nonnegative(),
     opacity: num.min(0).max(1),
@@ -142,6 +158,7 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
   }),
   ...(['image', 'video'] as const).map((kind) =>
     z.object({
+      ...elementPlacement,
       id: idSchema,
       kind: z.literal(kind),
       frame: rectSchema,
@@ -153,10 +170,12 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       volume: num.min(0).max(1).optional(),
       // A video's play bar on the screens (Session 54), off unless ticked.
       playBar: z.boolean().optional(),
+      crop: cropSchema.optional(),
     }),
   ),
   // A timer on a slide (Session 50): which timer, its look as words, its last minute and its zero.
   z.object({
+    ...elementPlacement,
     id: idSchema,
     kind: z.literal('timer'),
     frame: rectSchema,

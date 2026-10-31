@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { SlideElement } from '../../shared/model';
 import type { EditCue, EditDoc } from '../../shared/slide-edit';
+import { editorGuidesFromJson, type EditorGuides } from '../../shared/editor-guides';
 import type { ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/content';
 import { transitionFromJson, transitionToJson } from '../db/content';
 import { elementFromRow } from '../db/presentations';
@@ -76,6 +77,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       cues: (cues.get(s.id) ?? []).map(cueOf),
       // A deck's slide (Session 54, C2), as its import stored it.
       ...deckOf(s.deck),
+      ...guidesOf(s.editor_guides),
     })),
   }));
   return {
@@ -96,6 +98,11 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
 function deckOf(text: string | null | undefined): { deck?: DeckSlide } {
   const deck = deckFromJson(text);
   return deck ? { deck } : {};
+}
+
+function guidesOf(text: string | null | undefined): { guides?: EditorGuides } {
+  const guides = editorGuidesFromJson(text);
+  return guides ? { guides } : {};
 }
 
 /**
@@ -252,6 +259,11 @@ export function applySlideEdit(
         macro_id: s.macroId,
         // A deck's slide (Session 54, C2): as stored, with Drashti's transitions as the editor set them.
         ...deckRow(s.deck, old),
+        ...(s.guides
+          ? { editor_guides: JSON.stringify(s.guides) }
+          : old?.editor_guides !== undefined
+            ? { editor_guides: null }
+            : {}),
       });
       const list: ElementRow[] = s.elements.map((el) => {
         const was = oldElements.get(el.id);

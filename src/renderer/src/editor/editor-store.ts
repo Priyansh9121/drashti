@@ -4,6 +4,7 @@ import { slidesOf } from '../../../shared/slide-edit';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
 import type { Zoom } from './zoom';
+import { groupedSelection } from '../../../shared/element-groups';
 
 /*
  * The slide editor: the presentation being edited (a copy, changed freely
@@ -81,6 +82,8 @@ export interface EditorView {
   finding: boolean;
   /** While typing in a text box: how many steps of its typing Undo and Redo can take (Session 55, Part 17a). */
   typing: { undo: number; redo: number };
+  /** Editor view aids; guides themselves are saved on their slide. */
+  aids: { snap: boolean; guides: boolean; rulers: boolean; grid: boolean };
 }
 
 const closed: EditorView = {
@@ -110,6 +113,7 @@ const closed: EditorView = {
   zoom: 'fit',
   finding: false,
   typing: { undo: 0, redo: 0 },
+  aids: { snap: true, guides: false, rulers: false, grid: false },
 };
 
 export const useEditor = create<EditorView>(() => closed);
@@ -305,7 +309,11 @@ export function noteOutside(step: { undo: () => void; redo: () => void }): void 
 export function select(ids: readonly string[]): void {
   const s = useEditor.getState();
   if (!s.doc) return;
-  useEditor.setState({ selection: validSelection(s.doc, s.slideId, ids), editing: null });
+  const elements = findSlide(s.doc, s.slideId)?.elements ?? [];
+  useEditor.setState({
+    selection: validSelection(s.doc, s.slideId, groupedSelection(elements, ids)),
+    editing: null,
+  });
 }
 
 export function showSlide(slideId: string): void {
@@ -324,7 +332,12 @@ export function tell(note: string | null): void {
 }
 
 export function stopEditing(): void {
-  useEditor.setState({ editing: null });
+  const s = useEditor.getState();
+  const elements = s.doc ? findSlide(s.doc, s.slideId)?.elements : undefined;
+  useEditor.setState({
+    editing: null,
+    ...(s.editing && elements ? { selection: groupedSelection(elements, s.selection) } : {}),
+  });
 }
 
 /** Remember that an element was made here (its typed words take the theme's look). */

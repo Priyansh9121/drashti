@@ -5,6 +5,7 @@ import type {
   MediaElement,
   Outline,
   ShapeElement,
+  ShapeKind,
   SlideElement,
   TextAlign,
   TextElement,
@@ -17,6 +18,7 @@ import type { EditDoc, EditSlide, SlideLook } from '../../../shared/slide-edit';
 import { newGroupColor } from '../../../shared/group-colors';
 import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
+import { freshGroups } from '../../../shared/element-groups';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
 import {
   BUILT_IN_TIMER_LOOK,
@@ -151,13 +153,15 @@ export function duplicateElements(
 ): { doc: EditDoc; ids: string[] } {
   const slide = findSlide(doc, slideId);
   if (!slide) return { doc, ids: [] };
-  const copies = slide.elements
-    .filter((el) => ids.includes(el.id))
-    .map((el) => ({
-      ...structuredClone(el),
-      id: newId(),
-      frame: { ...el.frame, x: el.frame.x + offset, y: el.frame.y + offset },
-    }));
+  const copies = freshGroups(
+    slide.elements
+      .filter((el) => ids.includes(el.id))
+      .map((el) => ({
+        ...structuredClone(el),
+        id: newId(),
+        frame: { ...el.frame, x: el.frame.x + offset, y: el.frame.y + offset },
+      })),
+  );
   return {
     doc: mapSlide(doc, slideId, (s) => ({ ...s, elements: [...s.elements, ...copies] })),
     ids: copies.map((c) => c.id),
@@ -205,7 +209,7 @@ export function newTextBox(look: SlideLook): TextElement {
   };
 }
 
-export type ShapeChoice = 'rectangle' | 'rounded' | 'ellipse' | 'line';
+export type ShapeChoice = ShapeKind | 'rounded';
 
 /**
  * A new shape in the middle of the slide, in a colour that shows on any
@@ -217,7 +221,10 @@ export function newShape(
   look: SlideLook,
   size: { width: number; height: number },
 ): ShapeElement {
-  const width = Math.round(size.width * 0.4);
+  const icon = choice === 'star' || choice === 'heart' || choice === 'check';
+  const width = icon
+    ? Math.round(Math.min(size.width * 0.4, size.height * 0.3))
+    : Math.round(size.width * 0.4);
   const height = choice === 'line' ? 20 : Math.round(size.height * 0.3);
   const frame = {
     x: Math.round((size.width - width) / 2),
@@ -230,7 +237,7 @@ export function newShape(
     return { ...base, shape: 'line', fill: null, outline: { color: look.style.color, width: 6 } };
   return {
     ...base,
-    ...(choice === 'ellipse' ? { shape: 'ellipse' as const } : { shape: 'rectangle' as const }),
+    shape: choice === 'rounded' ? 'rectangle' : choice,
     fill: '#3e63dd',
     cornerRadius: choice === 'rounded' ? Math.round(Math.min(width, height) * 0.12) : 0,
   };

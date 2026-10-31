@@ -11,6 +11,7 @@ import {
 import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
 import type { DeckSlide } from './deck';
 import { deckSlideSchema } from './deck-schema';
+import { editorGuidesSchema, type EditorGuides } from './editor-guides';
 
 /*
  * The slide editor's document (PLAN.md 5.2, Session 7): a presentation's
@@ -78,6 +79,8 @@ export interface EditSlide {
   /** Bottom to top. */
   elements: SlideElement[];
   cues: EditCue[];
+  /** Guides belong to this slide's editor view, never its rendered picture. */
+  guides?: EditorGuides;
   /**
    * A slide made from a PowerPoint or Keynote deck with its animations (Session 54, C2): its steps, its own transition
    * and media, as its import stored them, and Drashti's own transitions on it and its clicks, which the editor sets
@@ -218,6 +221,7 @@ const cueSchema: z.ZodType<EditCue> = z
   }, 'a video input as the background needs its name, and no file');
 
 const slideSchema: z.ZodType<EditSlide> = z.object({
+  guides: editorGuidesSchema.optional(),
   id: idSchema,
   label: z.string().max(200),
   notes: z.string().max(20_000),

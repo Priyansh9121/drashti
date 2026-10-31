@@ -169,6 +169,11 @@ interface ElementBase {
   frame: Rect;
   /** Degrees clockwise, about the frame's centre; left out for none. */
   rotation?: number;
+  /** Editor groups are flat and local to a slide. Every renderer keeps the members as ordinary elements. */
+  groupId?: string;
+  /** Reflect the content in its frame, after its rotation. */
+  flipX?: boolean;
+  flipY?: boolean;
 }
 
 export interface TextElement extends ElementBase {
@@ -194,8 +199,29 @@ export interface TextElement extends ElementBase {
  * frame, or a line across the middle of its frame from the left edge to the
  * right (turned with rotation; its outline gives its colour and thickness).
  */
-export type ShapeKind = 'rectangle' | 'ellipse' | 'line';
-export const SHAPE_KINDS: readonly ShapeKind[] = ['rectangle', 'ellipse', 'line'];
+export const SHAPE_KINDS = [
+  'rectangle',
+  'ellipse',
+  'line',
+  'arrow',
+  'triangle',
+  'diamond',
+  'star',
+  'heart',
+  'check',
+] as const;
+export type ShapeKind = (typeof SHAPE_KINDS)[number];
+export const SHAPE_NAMES: Record<ShapeKind, string> = {
+  rectangle: 'Rectangle',
+  ellipse: 'Ellipse',
+  line: 'Line',
+  arrow: 'Arrow',
+  triangle: 'Triangle',
+  diamond: 'Diamond',
+  star: 'Star',
+  heart: 'Heart',
+  check: 'Check mark',
+};
 
 export interface ShapeElement extends ElementBase {
   kind: 'shape';
@@ -225,6 +251,8 @@ export interface MediaElement extends ElementBase {
    * engine's time, as a deck's video shows in a slideshow. Left out (off) unless ticked in the slide editor.
    */
   playBar?: boolean;
+  /** The portion kept on this slide, in shares of its picture; independent of its library look. */
+  crop?: Rect;
 }
 
 /**

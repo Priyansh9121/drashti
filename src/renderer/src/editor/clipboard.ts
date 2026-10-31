@@ -1,6 +1,7 @@
 import type { Outline, Rect, SlideElement, TextShadow } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { findSlide, mapSlide, newId } from './ops';
+import { freshGroups } from '../../../shared/element-groups';
 
 /*
  * The slide editor's clipboard (Copy, Cut, Paste, Paste in place): elements
@@ -134,10 +135,12 @@ export function pasteElements(
   if (!copied || !slide) return null;
   const sx = doc.width / copied.width;
   const sy = doc.height / copied.height;
-  let elements = copied.elements.map((el): SlideElement => ({
-    ...(sx === 1 && sy === 1 ? structuredClone(el) : rescaled(structuredClone(el), sx, sy)),
-    id: newId(),
-  }));
+  let elements = freshGroups(
+    copied.elements.map((el): SlideElement => ({
+      ...(sx === 1 && sy === 1 ? structuredClone(el) : rescaled(structuredClone(el), sx, sy)),
+      id: newId(),
+    })),
+  );
   if (!inPlace) {
     // Taken places (pasting where they came from): a step down and to the right until free.
     for (let step = 0; step < 20; step++) {

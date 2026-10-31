@@ -56,7 +56,8 @@ import type { StageCall } from '../stage-message';
  * it came, so it says 'incompatible'. A state 20 saved is read whole (22 only adds to it). 23 (Session 55, Part 17a,
  * the slide editor's Words): a slide's words underlined, struck through and glowing, and lines of a list with their
  * bullets and numbers (a run's `underline`, `strike`, `glow`, `list` and `level`, a box's `glow`); an older node or
- * page would leave them out, so it says 'incompatible'. A state 22 saved is read whole (23 only adds to it).
+ * page would leave them out, so it says 'incompatible'. Part 17a also adds geometric arrows and icons, each element's
+ * flips and group identity, and a picture's crop on its slide. A state 22 saved is read whole (23 only adds to it).
  */
 export const ENGINE_STATE_VERSION = 23;
 

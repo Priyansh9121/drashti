@@ -33,7 +33,7 @@ import {
   INDIC_LINE_HEIGHT_MIN,
   REFERENCE_LINES,
 } from '../../../shared/readable';
-import { isIndic, TIMER_FORMATS, type TimerFormat } from '../../../shared/model';
+import { isIndic, SHAPE_KINDS, SHAPE_NAMES, TIMER_FORMATS, type TimerFormat } from '../../../shared/model';
 import { wordsContrast, WORDS_CONTRAST_AIM, WORDS_CONTRAST_MIN } from '../../../shared/contrast';
 import { LANG_NAMES } from '../../../shared/themes';
 import { boxLines } from '../../../shared/tracks';
@@ -582,9 +582,11 @@ function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
             else set({ shape: next, fill: el.fill ?? (kind === 'line' ? '#000000' : null) });
           }}
         >
-          <option value="rectangle">Rectangle</option>
-          <option value="ellipse">Ellipse</option>
-          <option value="line">Line</option>
+          {SHAPE_KINDS.map((shape) => (
+            <option key={shape} value={shape}>
+              {SHAPE_NAMES[shape]}
+            </option>
+          ))}
         </Select>
       </Field>
       {kind !== 'line' && (

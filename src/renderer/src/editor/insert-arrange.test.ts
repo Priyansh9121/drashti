@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { slideElementSchema } from '../../../shared/model-schema';
 import type { SlideLook } from '../../../shared/slide-edit';
-import { newShape, type ShapeChoice } from './ops';
+import { newShape } from './ops';
 
 const look: SlideLook = {
   langs: {},
@@ -22,7 +22,7 @@ const look: SlideLook = {
 describe('Insert and Arrange slide data', () => {
   for (const shape of ['arrow', 'star', 'heart', 'check'] as const) {
     it(`makes an editable ${shape}, keeping its identity when saved`, () => {
-      const made = newShape(shape as ShapeChoice, look, { width: 1920, height: 1080 });
+      const made = newShape(shape, look, { width: 1920, height: 1080 });
       expect(made.shape).toBe(shape);
       expect(slideElementSchema.parse(made)).toEqual(made);
     });

@@ -1,6 +1,8 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Rect, SlideElement, TextElement, TextRun } from '../../../shared/model';
+import { SHAPE_NAMES } from '../../../shared/model';
+import { groupedSelection } from '../../../shared/element-groups';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
@@ -46,6 +48,7 @@ import {
   moveElements,
   rotateElements,
   scaleElements,
+  changeSlide,
   styleBox,
 } from './ops';
 import { copyElements, pasteElements } from './clipboard';
@@ -108,6 +111,7 @@ type Drag =
   | { kind: 'groupResize'; ids: string[]; handle: Handle; startDoc: EditDoc; box: Rect; lines: SnapLines }
   /** Several elements turned together round the middle of the box round them. */
   | { kind: 'groupRotate'; ids: string[]; startDoc: EditDoc; center: Point; from: number }
+  | { kind: 'guide'; axis: 'x' | 'y'; index: number; startDoc: EditDoc }
   | { kind: 'marquee'; start: Point; base: string[] };
 
 /** The angle (degrees) from `c` to `p`. */
@@ -127,8 +131,7 @@ export function elementName(el: SlideElement): string {
     const words = el.text.trim().replace(/\s+/gu, ' ');
     return words ? `${KIND_NAME.text}: ${cutText(words, 40)}` : `${KIND_NAME.text} (empty)`;
   }
-  if (el.kind === 'shape')
-    return el.shape === 'ellipse' ? 'Ellipse' : el.shape === 'line' ? 'Line' : 'Rectangle';
+  if (el.kind === 'shape') return SHAPE_NAMES[el.shape ?? 'rectangle'];
   return KIND_NAME[el.kind];
 }
 
@@ -162,6 +165,7 @@ export function Canvas({ platform }: { platform: string }) {
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
   const zoom = useEditor((s) => s.zoom);
+  const aids = useEditor((s) => s.aids);
   const area = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const size = useElementSize(area);
@@ -247,27 +251,55 @@ export function Canvas({ platform }: { platform: string }) {
     const r = stage.current?.getBoundingClientRect();
     return r ? { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale } : { x: 0, y: 0 };
   };
-  const linesWithout = (ids: readonly string[]) =>
-    snapLines(
+  const linesWithout = (ids: readonly string[]) => {
+    const lines = snapLines(
       doc,
       elements.filter((e) => !ids.includes(e.id)).map((e) => boundsOf(e)),
     );
+    return {
+      x: [
+        ...lines.x,
+        ...(slide.guides?.x ?? []),
+        ...(aids.grid ? Array.from({ length: Math.floor(doc.width / 50) + 1 }, (_, i) => i * 50) : []),
+      ],
+      y: [
+        ...lines.y,
+        ...(slide.guides?.y ?? []),
+        ...(aids.grid ? Array.from({ length: Math.floor(doc.height / 50) + 1 }, (_, i) => i * 50) : []),
+      ],
+    };
+  };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     const p = pointOf(e);
     const handle = target.closest<HTMLElement>('[data-handle]')?.dataset['handle'];
+    const guide = target.closest<HTMLElement>('[data-guide-axis]');
     const hit = hitTest(elements, p, 6 / scale);
     // Typing in a box: clicks inside it place the caret; anywhere else ends the typing.
     if (editing) {
-      if (hit === editing && !handle) return;
+      if (hit === editing && !handle && !guide) return;
       finishTextEditing();
     }
     e.preventDefault();
     stage.current?.focus();
     const now = useEditor.getState();
     if (!now.doc) return;
+    if (guide) {
+      const axis = guide.dataset['guideAxis'];
+      const index = Number(guide.dataset['guideIndex']);
+      if (
+        (axis === 'x' || axis === 'y') &&
+        Number.isInteger(index) &&
+        slide.guides?.[axis][index] !== undefined
+      ) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { kind: 'guide', axis, index, startDoc: now.doc };
+        beginGesture();
+      }
+      return;
+    }
     if (handle && selected.length > 1) {
       // Several elements: resized or turned together by the box round them.
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -316,10 +348,15 @@ export function Canvas({ platform }: { platform: string }) {
     e.currentTarget.setPointerCapture(e.pointerId);
     const additive = e.shiftKey || (platform === 'darwin' ? e.metaKey : e.ctrlKey);
     if (hit) {
-      let ids = selection;
-      if (additive) ids = selection.includes(hit) ? selection.filter((i) => i !== hit) : [...selection, hit];
-      else if (!selection.includes(hit)) ids = [hit];
+      let ids = now.selection;
+      const members = groupedSelection(elements, [hit]);
+      if (additive)
+        ids = members.every((id) => ids.includes(id))
+          ? ids.filter((id) => !members.includes(id))
+          : [...ids, ...members];
+      else if (!ids.includes(hit)) ids = members;
       select(ids);
+      ids = useEditor.getState().selection;
       if (!ids.includes(hit)) return;
       const moving = elements.filter((el) => ids.includes(el.id));
       drag.current = {
@@ -342,9 +379,21 @@ export function Canvas({ platform }: { platform: string }) {
     const d = drag.current;
     if (!d) return;
     const p = pointOf(e);
-    const free = e.altKey;
+    const free = e.altKey || !aids.snap;
     const within = SNAP_PX / scale;
-    if (d.kind === 'move') {
+    if (d.kind === 'guide') {
+      const base = findSlide(d.startDoc, slide.id)?.guides;
+      if (!base) return;
+      const value = Math.round(Math.max(0, Math.min(d.axis === 'x' ? doc.width : doc.height, p[d.axis])));
+      updateGesture(
+        changeSlide(d.startDoc, slide.id, {
+          guides: {
+            ...base,
+            [d.axis]: base[d.axis].map((n, i) => (i === d.index ? value : n)),
+          },
+        }),
+      );
+    } else if (d.kind === 'move') {
       const dx = p.x - d.start.x;
       const dy = p.y - d.start.y;
       if (!d.dragging) {
@@ -684,6 +733,65 @@ export function Canvas({ platform }: { platform: string }) {
               </TranslitSourceContext.Provider>
             </div>
             <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
+            {aids.grid && (
+              <svg
+                data-testid="editor-grid"
+                aria-hidden="true"
+                width={doc.width}
+                height={doc.height}
+                className="pointer-events-none absolute inset-0"
+              >
+                <defs>
+                  <pattern id="editor-grid-pattern" width={50} height={50} patternUnits="userSpaceOnUse">
+                    <path
+                      d="M50 0 H0 V50"
+                      fill="none"
+                      stroke="#9aa9cf"
+                      strokeOpacity="0.4"
+                      strokeWidth={1 / scale}
+                    />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#editor-grid-pattern)" />
+              </svg>
+            )}
+            {aids.guides && (
+              <div data-testid="editor-guides" className="pointer-events-none absolute inset-0">
+                <GuideLines
+                  editable
+                  guides={slide.guides ?? { x: [doc.width / 2], y: [doc.height / 2] }}
+                  doc={doc}
+                  scale={scale}
+                />
+              </div>
+            )}
+            {aids.rulers && (
+              <svg
+                data-testid="editor-rulers"
+                aria-hidden="true"
+                width={doc.width}
+                height={doc.height}
+                className="pointer-events-none absolute inset-0 overflow-visible"
+              >
+                {Array.from({ length: Math.floor(doc.width / 100) + 1 }, (_, i) => (
+                  <text key={`x${i}`} x={i * 100} y={-8 / scale} fill="#c8d0e2" fontSize={9 / scale}>
+                    {i * 100}
+                  </text>
+                ))}
+                {Array.from({ length: Math.floor(doc.height / 100) + 1 }, (_, i) => (
+                  <text
+                    key={`y${i}`}
+                    x={-5 / scale}
+                    y={i * 100}
+                    textAnchor="end"
+                    fill="#c8d0e2"
+                    fontSize={9 / scale}
+                  >
+                    {i * 100}
+                  </text>
+                ))}
+              </svg>
+            )}
             {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}
             {guides && <GuideLines guides={guides} doc={doc} scale={scale} />}
             <SafeAreas slide={doc} scale={scale} />
@@ -942,26 +1050,85 @@ function GroupBox({ elements, scale }: { elements: SlideElement[]; scale: number
 }
 
 /** The lines something snapped to, across the whole slide. */
-function GuideLines({ guides, doc, scale }: { guides: Guides; doc: EditDoc; scale: number }) {
+function GuideLines({
+  guides,
+  doc,
+  scale,
+  editable = false,
+}: {
+  guides: Guides;
+  doc: EditDoc;
+  scale: number;
+  editable?: boolean;
+}) {
   const px = 1 / scale;
-  const line = { position: 'absolute', background: 'var(--color-guide)', pointerEvents: 'none' } as const;
+  const grab = editable ? 8 * px : px;
+  const line = {
+    position: 'absolute',
+    background: editable ? 'transparent' : 'var(--color-guide)',
+    pointerEvents: editable ? 'auto' : 'none',
+  } as const;
   return (
     <>
-      {guides.x.map((x) => (
+      {guides.x.map((x, i) => (
         <div
-          key={`x${x}`}
+          key={`x${i}`}
           data-testid="guide"
           data-x={x}
-          style={{ ...line, left: x - px / 2, top: 0, width: px, height: doc.height }}
-        />
+          data-guide-axis={editable ? 'x' : undefined}
+          data-guide-index={editable ? i : undefined}
+          style={{
+            ...line,
+            left: x - grab / 2,
+            top: 0,
+            width: grab,
+            height: doc.height,
+            cursor: editable ? 'col-resize' : undefined,
+          }}
+        >
+          {editable && (
+            <div
+              style={{
+                position: 'absolute',
+                left: grab / 2,
+                top: 0,
+                width: px,
+                height: '100%',
+                background: 'var(--color-guide)',
+              }}
+            />
+          )}
+        </div>
       ))}
-      {guides.y.map((y) => (
+      {guides.y.map((y, i) => (
         <div
-          key={`y${y}`}
+          key={`y${i}`}
           data-testid="guide"
           data-y={y}
-          style={{ ...line, top: y - px / 2, left: 0, height: px, width: doc.width }}
-        />
+          data-guide-axis={editable ? 'y' : undefined}
+          data-guide-index={editable ? i : undefined}
+          style={{
+            ...line,
+            top: y - grab / 2,
+            left: 0,
+            height: grab,
+            width: doc.width,
+            cursor: editable ? 'row-resize' : undefined,
+          }}
+        >
+          {editable && (
+            <div
+              style={{
+                position: 'absolute',
+                top: grab / 2,
+                left: 0,
+                height: px,
+                width: '100%',
+                background: 'var(--color-guide)',
+              }}
+            />
+          )}
+        </div>
       ))}
     </>
   );

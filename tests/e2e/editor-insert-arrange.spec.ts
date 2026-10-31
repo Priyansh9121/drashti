@@ -211,3 +211,89 @@ test('Arrange groups elements, turns and flips them with Undo, and offers snappi
     await app.close();
   }
 });
+
+test('a table cell stays editable inside its group; leaving typing selects the group, copies stay separate, and Shift-click lets it go', async () => {
+  const { app, win, ed, editor, presentationId } = await start();
+  try {
+    await editorGroup(ed, 'Insert');
+    await editor.getByTestId('add-table').click();
+    await ed.getByTestId('table-rows').fill('2');
+    await ed.getByTestId('table-columns').fill('2');
+    await ed.getByRole('button', { name: 'Add table', exact: true }).click();
+    const canvas = editor.getByTestId('editor-canvas');
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('no canvas');
+    await ed.mouse.dblclick(box.x + box.width * 0.3, box.y + box.height * 0.35);
+    const typing = editor.locator('[data-editing="true"] .ProseMirror');
+    await expect(typing).toBeVisible();
+    await typing.fill('Placeholder table cell');
+    await ed.keyboard.press('Escape');
+    await expect(editor.getByTestId('editor-status')).toHaveText('8 elements selected');
+    await canvas.focus();
+    await ed.keyboard.press(`${mod}+D`);
+    await expect(editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(17);
+    await expect(editor.getByTestId('editor-status')).toHaveText('8 elements selected');
+    const scale = Number(await canvas.getAttribute('data-scale'));
+    // Inside the cell's left border, away from the group's resize handles.
+    const grab = { x: box.x + box.width * 0.1 + 4 * scale, y: box.y + box.height * 0.35 };
+    await ed.mouse.click(grab.x, grab.y);
+    await expect(editor.getByTestId('editor-status')).toHaveText('8 elements selected');
+    const originalGroup = await editor.getByTestId('group-box').boundingBox();
+    expect(Math.abs((originalGroup?.x ?? -999) - (box.x + box.width * 0.1))).toBeLessThan(2);
+    await ed.keyboard.down('Shift');
+    await ed.mouse.click(grab.x, grab.y);
+    await ed.keyboard.up('Shift');
+    await expect(editor.getByTestId('editor-status')).toHaveText('Nothing selected');
+    await editor.getByTestId('save-slides').click();
+    await slideEditorClosed(app);
+    const saved = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      presentationId,
+    );
+    if (!saved.ok) throw new Error(saved.message);
+    const cells = saved.doc.groups[0]?.slides[0]?.elements.filter((el) => el.groupId) ?? [];
+    expect(cells).toHaveLength(16);
+    expect(new Set(cells.map((el) => el.groupId)).size).toBe(2);
+    expect(cells.filter((el) => el.kind === 'text' && el.text === 'Placeholder table cell')).toHaveLength(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a guide can be moved on the canvas with one Undo, and is saved with its slide', async () => {
+  const { app, win, ed, editor, presentationId } = await start();
+  try {
+    await editorGroup(ed, 'Arrange');
+    await editor.getByTestId('arrange-guides').check();
+    await editor.getByRole('button', { name: 'Place guides…', exact: true }).click();
+    await ed.getByRole('spinbutton', { name: 'Across guide 1', exact: true }).fill('400');
+    await ed.getByTestId('editor-guide-settings').getByRole('button', { name: 'Done', exact: true }).click();
+    const guides = editor.getByTestId('editor-guides');
+    const before = await guides.locator('[data-x="400"]').boundingBox();
+    const canvas = editor.getByTestId('editor-canvas');
+    const box = await canvas.boundingBox();
+    if (!before || !box) throw new Error('no guide or canvas');
+    const scale = Number(await canvas.getAttribute('data-scale'));
+    const x = before.x + before.width / 2;
+    const y = box.y + box.height * 0.1;
+    await ed.mouse.move(x, y);
+    await ed.mouse.down();
+    await ed.mouse.move(x + 100 * scale, y, { steps: 8 });
+    await ed.mouse.up();
+    await expect(guides.locator('[data-x="500"]')).toHaveCount(1);
+    await ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(guides.locator('[data-x="400"]')).toHaveCount(1);
+    await ed.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(guides.locator('[data-x="500"]')).toHaveCount(1);
+    await editor.getByTestId('save-slides').click();
+    await slideEditorClosed(app);
+    const saved = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      presentationId,
+    );
+    if (!saved.ok) throw new Error(saved.message);
+    expect(saved.doc.groups[0]?.slides[0]?.guides?.x).toEqual([500]);
+  } finally {
+    await app.close();
+  }
+});

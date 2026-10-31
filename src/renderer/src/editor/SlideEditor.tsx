@@ -37,7 +37,7 @@ import {
 import { FindPanel } from './FindPanel';
 import { Inspector } from './Inspector';
 import { MediaPicker, naturalSize } from './MediaPicker';
-import { addElement, findSlide, newMedia, placeOf, placeSlide } from './ops';
+import { addElement, changeSlide, findSlide, newMedia, placeOf, placeSlide, setSoundCue } from './ops';
 import { ArrangeGroup, DesignGroup, InsertGroup, MotionGroup, SlidesGroup } from './Ribbon';
 import { finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
 import { WordsGroup } from './WordsGroup';
@@ -101,7 +101,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const dirty = useEditor(isDirty);
   const unreadable = useEditor((s) => s.unreadable);
   const note = useEditor((s) => s.note);
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
   const mac = platform === 'darwin';
   const mod = mac ? '⌘' : 'Ctrl+';
 
@@ -249,8 +249,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           {group === 'insert' && (
             <InsertGroup
               onPicture={() => {
-                setPicking(true);
+                setPicking('picture');
               }}
+              onSound={() => setPicking('sound')}
             />
           )}
           {group === 'arrange' && <ArrangeGroup />}
@@ -302,12 +303,20 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       )}
       {picking && (
         <MediaPicker
-          title="Put a picture or video on the slide"
+          title={picking === 'sound' ? 'Give this slide a sound' : 'Put a picture or video on the slide'}
+          sounds={picking === 'sound'}
           onClose={() => {
-            setPicking(false);
+            setPicking(null);
           }}
           onChoose={(m) => {
-            setPicking(false);
+            setPicking(null);
+            if (picking === 'sound') {
+              const s = useEditor.getState();
+              const at = s.doc ? findSlide(s.doc, s.slideId) : undefined;
+              if (s.doc && at)
+                commit(changeSlide(s.doc, at.id, setSoundCue(at, { id: m.id, volume: 1, loop: false })));
+              return;
+            }
             if (m.kind === 'audio') return;
             const kind = m.kind;
             void naturalSize({ id: m.id, kind }).then((size) => {

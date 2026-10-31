@@ -23,6 +23,7 @@ import { type Playback, startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
 import { engineNow } from './clock';
 import { Looked } from './picture-looks';
+import { shapePath } from '../../../shared/shape-path';
 import { slideShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useGpuRestarts, useMediaAttempt } from './media-attempts';
@@ -112,7 +113,13 @@ function frameStyle(el: SlideElement): CSSProperties {
     width: el.frame.width,
     height: el.frame.height,
     // About the frame's centre (the default origin).
-    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+    transform:
+      [
+        el.rotation ? `rotate(${el.rotation}deg)` : '',
+        el.flipX || el.flipY ? `scale(${el.flipX ? -1 : 1}, ${el.flipY ? -1 : 1})` : '',
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined,
   };
 }
 
@@ -586,6 +593,7 @@ function ShapeView({ el }: { el: ShapeElement }) {
     strokeWidth: stroke?.width ?? 0,
   };
   const radius = Math.min(el.cornerRadius, width / 2, height / 2);
+  const path = shapePath(kind, width, height);
   return (
     <svg
       data-element={el.id}
@@ -596,7 +604,9 @@ function ShapeView({ el }: { el: ShapeElement }) {
       overflow="visible"
       style={{ ...frameStyle(el), opacity: el.opacity, overflow: 'visible' }}
     >
-      {kind === 'ellipse' ? (
+      {path ? (
+        <path d={path} {...paint} />
+      ) : kind === 'ellipse' ? (
         <ellipse cx={width / 2} cy={height / 2} rx={width / 2} ry={height / 2} {...paint} />
       ) : kind === 'line' ? (
         <line x1={0} y1={height / 2} x2={width} y2={height / 2} {...paint} />
@@ -796,36 +806,17 @@ function MediaView({
 }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
-  const urlOf = useMediaUrl();
   // A picture's look (Session 26e), and on the screens the live zoom of this slide's showing.
   const showing = startedAt === undefined ? null : slideShowing(startedAt);
+  const previews = usePreviewsOnly();
+  if (el.kind === 'image')
+    return <SlidePicture el={el} showing={showing} attempt={attempt} previews={previews} />;
   // A phone or tablet: pictures and videos as small previews, and no video plays.
-  if (usePreviewsOnly())
-    return el.kind === 'image' ? (
-      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)} box={el.frame}>
-        {(style, copy) => <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={style} />}
-      </Looked>
-    ) : deck && deckStep && videoShowsFrom(deck, deckStep) === null ? null : (
+  if (previews)
+    return deck && deckStep && videoShowsFrom(deck, deckStep) === null ? null : (
       // A deck's video outside its entrance and its exit (C review) shows nothing on a phone either.
       <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />
     );
-  if (el.kind === 'image') {
-    return (
-      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)} box={el.frame}>
-        {(style, copy) => (
-          <img
-            key={attempt}
-            data-element={el.id}
-            data-media-id={el.mediaId}
-            src={copy?.url ?? urlOf(el.mediaId, attempt)}
-            alt=""
-            draggable={false}
-            style={style}
-          />
-        )}
-      </Looked>
-    );
-  }
   if (media === 'still') return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} />;
   return (
     <SlideVideo
@@ -838,6 +829,60 @@ function MediaView({
       deck={deck}
       deckStep={deckStep}
     />
+  );
+}
+
+/** A slide's own crop clips the library picture as drawn, preserving its library look and enhancements. */
+function SlidePicture({
+  el,
+  showing,
+  attempt,
+  previews,
+}: {
+  el: MediaElement;
+  showing: string | null;
+  attempt: number;
+  previews: boolean;
+}) {
+  const urlOf = useMediaUrl();
+  const crop = el.crop;
+  const width = el.frame.width / (crop?.width ?? 1);
+  const height = el.frame.height / (crop?.height ?? 1);
+  const style: CSSProperties = crop
+    ? {
+        position: 'absolute',
+        left: -crop.x * width,
+        top: -crop.y * height,
+        width,
+        height,
+        objectFit: OBJECT_FIT[el.fit],
+      }
+    : mediaStyle(el);
+  const picture = (
+    <Looked mediaId={el.mediaId} showing={showing} style={style} box={crop ? { width, height } : el.frame}>
+      {(paint, copy) =>
+        previews ? (
+          <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={paint} />
+        ) : (
+          <img
+            key={attempt}
+            data-element={crop ? undefined : el.id}
+            data-media-id={el.mediaId}
+            src={copy?.url ?? urlOf(el.mediaId, attempt)}
+            alt=""
+            draggable={false}
+            style={paint}
+          />
+        )
+      }
+    </Looked>
+  );
+  return crop ? (
+    <div data-element={el.id} data-slide-crop="" style={{ ...mediaStyle(el), overflow: 'hidden' }}>
+      {picture}
+    </div>
+  ) : (
+    picture
   );
 }
 

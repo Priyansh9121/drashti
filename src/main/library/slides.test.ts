@@ -230,6 +230,32 @@ describe('putting edited slides back', () => {
     return { db, repo, id };
   }
 
+  it('keeps editor guides with the slide through validation, storage and Undo; old slides have none', () => {
+    const { db, repo, id } = stored();
+    try {
+      const columns = db.pragma('table_info(slides)') as { name: string }[];
+      expect(columns.map((column) => column.name)).toContain('editor_guides');
+      const before = repo.content(id);
+      if (!before) throw new Error('missing');
+      const { doc } = editDocOf(before, 'Placeholder guides');
+      const first = slidesOf(doc)[0];
+      if (!first) throw new Error('missing slide');
+      expect(first).not.toHaveProperty('guides');
+      const guides = { x: [240, 960], y: [180] };
+      Object.assign(first, { guides });
+      repo.setContent(applySlideEdit(before, asSaved(doc)));
+      const after = repo.content(id);
+      if (!after) throw new Error('missing stored slide');
+      expect(slidesOf(editDocOf(after, 'Placeholder guides').doc)[0]).toHaveProperty('guides', guides);
+      repo.setContent(before);
+      const restored = repo.content(id);
+      if (!restored) throw new Error('missing restored slide');
+      expect(slidesOf(editDocOf(restored, 'Placeholder guides').doc)[0]).not.toHaveProperty('guides');
+    } finally {
+      db.close();
+    }
+  });
+
   it('keeps a slide’s darkening behind the words, for the editor and the screens; a slide made before has none (Sessions 31–36, SLD-3)', () => {
     const { repo, id } = stored();
     const before = repo.content(id);
