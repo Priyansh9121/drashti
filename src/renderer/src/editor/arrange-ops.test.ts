@@ -3,7 +3,15 @@ import { freshGroups, groupedSelection } from '../../../shared/element-groups';
 import { slideElementSchema } from '../../../shared/model-schema';
 import type { ShapeElement } from '../../../shared/model';
 import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
-import { flipElements, groupElements, tableElements, ungroupElements } from './arrange-ops';
+import {
+  flipElements,
+  groupElements,
+  lineUpElements,
+  spaceElements,
+  tableElements,
+  ungroupElements,
+} from './arrange-ops';
+import { boundsOf, unionOf } from './geometry';
 
 const first: ShapeElement = {
   id: 'first',
@@ -115,6 +123,40 @@ describe('persistent groups and reflections', () => {
       }
       expect(before.groups[0]?.slides[0]?.elements).toEqual([first, second]);
     });
+});
+
+describe('group alignment and distribution', () => {
+  it('lines up a group with the slide, preserving its relative positions and rotations', () => {
+    const before = groupElements(makeDoc(), 'slide', ['first', 'second']);
+    const after = lineUpElements(before, 'slide', ['first'], 'left');
+    const elements = after.groups[0]?.slides[0]?.elements ?? [];
+    expect(unionOf(elements.map(boundsOf))?.x).toBeCloseTo(0, 8);
+    expect((elements[1]?.frame.x ?? 0) - (elements[0]?.frame.x ?? 0)).toBeCloseTo(250, 8);
+    expect(elements.map((el) => el.rotation)).toEqual([25, 210]);
+    expect(before.groups[0]?.slides[0]?.elements[0]?.frame.x).toBe(50);
+  });
+
+  it('spaces three groups evenly without changing the spacing within any group', () => {
+    const doc = makeDoc();
+    const slide = doc.groups[0]?.slides[0];
+    if (!slide) throw new Error('no slide');
+    const elements = [0, 40, 100, 140, 300, 340].map((x, i) => ({
+      ...first,
+      id: `box-${i}`,
+      groupId: `group-${Math.floor(i / 2)}`,
+      rotation: 0,
+      frame: { x, y: 0, width: 20, height: 20 },
+    }));
+    slide.elements = elements;
+    const after = spaceElements(
+      doc,
+      'slide',
+      elements.map((el) => el.id),
+      'x',
+    );
+    expect(after.groups[0]?.slides[0]?.elements.map((el) => el.frame.x)).toEqual([0, 40, 150, 190, 300, 340]);
+    expect(slide.elements.map((el) => el.frame.x)).toEqual([0, 40, 100, 140, 300, 340]);
+  });
 });
 
 describe('editable tables', () => {

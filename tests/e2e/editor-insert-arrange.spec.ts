@@ -230,6 +230,39 @@ test('Arrange groups elements, turns and flips them with Undo, and offers snappi
     await expect(editor.getByTestId('arrange-group-elements')).toBeEnabled();
     await editor.getByTestId('arrange-group-elements').click();
     await expect(editor.getByTestId('arrange-ungroup')).toBeEnabled();
+    const beforeAlign = await editor.getByTestId('group-box').boundingBox();
+    const beforePlaces = await editor
+      .getByTestId('editor-slide')
+      .locator(':scope > [data-element]')
+      .evaluateAll((elements) =>
+        elements.map((el) => ({
+          x: parseFloat((el as HTMLElement).style.left),
+          y: parseFloat((el as HTMLElement).style.top),
+        })),
+      );
+    await editor.getByTestId('arrange-left').click();
+    const afterAlign = await editor.getByTestId('group-box').boundingBox();
+    const canvasBox = await editor.getByTestId('editor-canvas').boundingBox();
+    if (!beforeAlign || !afterAlign || !canvasBox) throw new Error('no group or canvas');
+    // A group lines up as one object, preserving every member's relative position.
+    expect(afterAlign.width).toBeCloseTo(beforeAlign.width, 0);
+    expect(afterAlign.height).toBeCloseTo(beforeAlign.height, 0);
+    expect(afterAlign.x).toBeCloseTo(canvasBox.x, 0);
+    const afterPlaces = await editor
+      .getByTestId('editor-slide')
+      .locator(':scope > [data-element]')
+      .evaluateAll((elements) =>
+        elements.map((el) => ({
+          x: parseFloat((el as HTMLElement).style.left),
+          y: parseFloat((el as HTMLElement).style.top),
+        })),
+      );
+    const movedBy = (afterPlaces[0]?.x ?? 0) - (beforePlaces[0]?.x ?? 0);
+    for (const [i, place] of afterPlaces.entries()) {
+      expect(place.x - (beforePlaces[i]?.x ?? 0)).toBeCloseTo(movedBy, 2);
+      expect(place.y).toBeCloseTo(beforePlaces[i]?.y ?? 0, 2);
+    }
+    await ed.getByRole('button', { name: 'Undo', exact: true }).click();
     await editor.getByTestId('arrange-turn-right').click();
     await expect(editor.getByTestId('editor-slide').locator('[data-element]').first()).toHaveCSS(
       'transform',
@@ -424,6 +457,43 @@ test('a picture whose size is pending goes onto the slide it was chosen for when
     await expect(editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(0);
     await editor.getByTestId('editor-slide-thumb').first().click();
     await expect(editor.getByTestId('editor-slide').locator(`[data-media-id="${mediaId}"]`)).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('Arrange finishes cell typing before it turns or ungroups the complete table', async () => {
+  const { app, ed, editor } = await start();
+  try {
+    await editorGroup(ed, 'Insert');
+    await editor.getByTestId('add-table').click();
+    await ed.getByTestId('table-rows').fill('2');
+    await ed.getByTestId('table-columns').fill('2');
+    await ed.getByRole('button', { name: 'Add table', exact: true }).click();
+    await editorGroup(ed, 'Arrange');
+    const box = await editor.getByTestId('editor-canvas').boundingBox();
+    if (!box) throw new Error('no canvas');
+    await ed.mouse.dblclick(box.x + box.width * 0.3, box.y + box.height * 0.35);
+    await editor.locator('[data-editing="true"] .ProseMirror').fill('Placeholder toolbar cell');
+    await editor.getByTestId('arrange-turn-right').click();
+    await expect(editor.getByTestId('editor-status')).toHaveText('8 elements selected');
+    await expect
+      .poll(() =>
+        editor
+          .getByTestId('editor-slide')
+          .locator('[data-element]')
+          .evaluateAll(
+            (elements) =>
+              elements.filter((el) => (el as HTMLElement).style.transform.includes('rotate(90deg)')).length,
+          ),
+      )
+      .toBe(8);
+    await ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await ed.mouse.dblclick(box.x + box.width * 0.3, box.y + box.height * 0.35);
+    await editor.locator('[data-editing="true"] .ProseMirror').fill('Placeholder kept before ungroup');
+    await editor.getByTestId('arrange-ungroup').click();
+    await expect(editor.getByTestId('arrange-ungroup')).toBeDisabled();
+    await expect(editor.getByTestId('editor-slide')).toContainText('Placeholder kept before ungroup');
   } finally {
     await app.close();
   }
