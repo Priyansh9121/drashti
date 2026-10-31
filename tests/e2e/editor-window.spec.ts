@@ -345,3 +345,60 @@ test('closing the window with changes asks first; another presentation asked for
   await slideEditorClosed(app);
   await app.close();
 });
+
+test('closing the window while words are still being typed asks first and saves those words', async () => {
+  const { app, win } = await start();
+  await importPlaceholder(win, 'Placeholder Typing Close');
+  const { ed, editor } = await editSlides(app, win, /^Placeholder Typing Close/u);
+  const p = await onCanvas(ed, 960, 540);
+  await ed.mouse.click(p.x, p.y);
+  await ed.keyboard.press('Enter');
+  const typing = editor.getByTestId('text-editing');
+  await expect(typing).toBeFocused();
+  await ed.keyboard.press('End');
+  await ed.keyboard.type(' placeholder kept');
+  await expect(typing).toHaveText('Placeholder line one placeholder kept');
+
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((w) => w.webContents.getURL().includes('slide-editor.html'))
+      ?.close();
+  });
+  const ask = ed.getByTestId('keep-changes');
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await slideEditorClosed(app);
+  const again = await editSlides(app, win, /^Placeholder Typing Close/u);
+  await expect(again.editor.getByTestId('editor-slide')).toContainText(
+    'Placeholder line one placeholder kept',
+  );
+  await app.close();
+});
+
+test('opening another presentation while words are still being typed asks before leaving them', async () => {
+  const { app, win } = await start();
+  await importPlaceholder(win, 'Placeholder Typing Switch');
+  await importPlaceholder(win, 'Placeholder Typing Destination');
+  const { ed, editor } = await editSlides(app, win, /^Placeholder Typing Switch/u);
+  const p = await onCanvas(ed, 960, 540);
+  await ed.mouse.click(p.x, p.y);
+  await ed.keyboard.press('Enter');
+  const typing = editor.getByTestId('text-editing');
+  await expect(typing).toBeFocused();
+  await ed.keyboard.press('End');
+  await ed.keyboard.type(' placeholder kept');
+  await expect(typing).toHaveText('Placeholder line one placeholder kept');
+
+  await openLibrary(win);
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Placeholder Typing Destination/u })
+    .click();
+  await win.getByTestId('edit-slides').click();
+  const ask = ed.getByTestId('keep-changes');
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(ed).toHaveTitle(/Placeholder Typing Switch/u);
+  await expect(editor.getByTestId('editor-slide')).toContainText('Placeholder line one placeholder kept');
+  await app.close();
+});
