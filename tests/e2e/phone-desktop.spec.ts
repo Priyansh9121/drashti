@@ -520,10 +520,14 @@ test('Simple Mode refuses on a phone just what it refuses in the window: the scr
   try {
     await pairByQr(p, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // Keep a Pro sheet open across the mode change: its entry goes away in Part 9,
+    // but an already-open sheet must still refuse every change in the computer.
+    await toScreens(p, 'phone');
     await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
+    await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
+    await expect(p.getByTestId('remote-open-screens')).toHaveCount(0);
     // On the phone: refused in Simple Mode's own words, nothing changed.
-    await toScreens(p, 'phone');
     const sheet = p.getByTestId('remote-screens');
     await sheet.getByTestId('remote-new-group').fill('Placeholder Stage');
     await sheet.getByRole('button', { name: 'Add group' }).click();
@@ -769,9 +773,11 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         await expect(p.getByTestId('remote-pip-sheet')).toHaveCount(0);
       }
       // Simple Mode: the slides in the box refused, said on the phone, nothing up.
+      await p.getByTestId('remote-open-pip').click();
       await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await p.getByTestId('remote-open-pip').click();
+      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
+      await expect(p.getByTestId('remote-open-pip')).toHaveCount(0);
       await p.getByTestId('remote-pip-kind-slides').click();
       await p.getByTestId('remote-pip-slides').click();
       await expect(p.getByTestId('remote-pip-sheet-notice')).toContainText('Simple Mode');
@@ -888,9 +894,11 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         await expect(p.getByTestId('remote-library-sheet')).toHaveCount(0);
       }
       // Simple Mode: a new playlist refused in words on the phone, and none made.
+      await p.getByTestId('remote-open-library').click();
       await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await p.getByTestId('remote-open-library').click();
+      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
+      await expect(p.getByTestId('remote-open-library')).toHaveCount(0);
       await p.getByTestId('remote-library-new-playlist-name').fill('Placeholder refused list');
       await p
         .getByTestId('remote-library-new-playlist')
@@ -966,9 +974,11 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
         await p.getByTestId('remote-midi-sheet-close').click();
       }
       // Simple Mode: forgetting refused in words, nothing changed.
+      await p.getByTestId('remote-open-midi').click();
       await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await p.getByTestId('remote-open-midi').click();
+      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
+      await expect(p.getByTestId('remote-open-midi')).toHaveCount(0);
       await p.getByTestId('remote-midi-forget').first().click();
       await expect(p.getByTestId('remote-midi-problem')).toContainText('Simple Mode');
       expect((await midiNow(win)).mappings).toHaveLength(1);
@@ -1042,9 +1052,11 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       }
       // Simple Mode: approving refused in words, nothing up.
       const third = await send('Placeholder refused notice');
+      await p.getByTestId('remote-open-queue').click();
       await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
-      await p.getByTestId('remote-open-queue').click();
+      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
+      await expect(p.getByTestId('remote-open-queue')).toHaveCount(0);
       await p
         .locator(`[data-testid="remote-queue-waiting"][data-id="${third}"]`)
         .getByTestId('remote-queue-ticker')
