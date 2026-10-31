@@ -160,7 +160,7 @@ function EditorForm({ mediaId, start, photo }: { mediaId: string; start: Picture
     }));
     setCropping(true);
   };
-  const startDrag = (edge: 'move' | Corner) => (e: PointerEvent<HTMLElement>) => {
+  const startDrag = (edge: 'move' | Corner, e: PointerEvent<HTMLElement>) => {
     e.stopPropagation();
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -271,7 +271,7 @@ function EditorForm({ mediaId, start, photo }: { mediaId: string; start: Picture
               data-testid="remote-pe-crop-box"
               className="absolute touch-none border-2 border-white"
               style={placed(cropBox)}
-              onPointerDown={startDrag('move')}
+              onPointerDown={(e) => startDrag('move', e)}
               onPointerMove={moveDrag}
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
@@ -281,7 +281,7 @@ function EditorForm({ mediaId, start, photo }: { mediaId: string; start: Picture
                   key={c.edge}
                   className="absolute h-11 w-11 -translate-x-1/2 -translate-y-1/2 touch-none"
                   style={c.style}
-                  onPointerDown={startDrag(c.edge)}
+                  onPointerDown={(e) => startDrag(c.edge, e)}
                   onPointerMove={moveDrag}
                   onPointerUp={endDrag}
                   onPointerCancel={endDrag}

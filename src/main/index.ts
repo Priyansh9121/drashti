@@ -4395,7 +4395,6 @@ function start(): void {
   let playlistChanges: PlaylistChanges | null = null;
   // The phone's own (Session 55, Part 9): the wallpapers (made above), and the quick bar's pins (set further down).
   const wallpapers = (): WallpaperService => {
-    if (!wallpaperService) throw new Error('The wallpapers are not ready yet.');
     return wallpaperService;
   };
   let quickBarNow: { view(): QuickPin[]; set(pins: QuickPin[]): QuickBarResult } | null = null;

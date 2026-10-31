@@ -100,7 +100,7 @@ function ItemPicture({ item }: { item: PlaylistItemInfo }) {
 function useLive(playlistId: string | null) {
   const item = useEngine((s) => {
     const live = s.state?.live.playlist;
-    return live && live.playlistId === playlistId ? live.itemId : null;
+    return live?.playlistId === playlistId ? live.itemId : null;
   });
   // The slide up from that row (a timer up alone is no slide of it).
   const slide = useEngine((s) => {

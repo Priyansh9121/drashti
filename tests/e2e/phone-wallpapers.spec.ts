@@ -1,4 +1,5 @@
-import type { Locator, Page } from '@playwright/test';
+import { longPress } from './phone-gestures';
+import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,29 +18,6 @@ import { makeTestImage } from './test-media';
  */
 
 const view = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.wallpapers.view());
-
-async function longPress(target: Locator): Promise<void> {
-  await expect(target).toBeVisible();
-  await target.scrollIntoViewIfNeeded();
-  await target.evaluate(async (el) => {
-    const r = el.getBoundingClientRect();
-    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-    const fire = (type: string) =>
-      el.dispatchEvent(
-        new PointerEvent(type, {
-          pointerId: 42,
-          pointerType: 'touch',
-          isPrimary: true,
-          bubbles: true,
-          cancelable: true,
-          ...at,
-        }),
-      );
-    fire('pointerdown');
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    fire('pointerup');
-  });
-}
 
 test('the wallpapers on a phone: listed under the playlist, one tap chooses one, a long press renames or deletes it with Undo (Safari’s engine)', async () => {
   test.setTimeout(240_000);

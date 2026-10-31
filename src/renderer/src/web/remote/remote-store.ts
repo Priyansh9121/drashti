@@ -211,7 +211,10 @@ async function loadShastra(): Promise<void> {
   if (r.ok) useRemote.setState({ shastra: r.texts });
 }
 
-async function loadHall(): Promise<void> {
+/** Mode and screen changes can arrive together: never let an older hall answer win a race. */
+const loadHall = oneAtATime(readHall);
+
+async function readHall(): Promise<void> {
   const r = await api<{
     groupId: string | null;
     clock: { locale: string; timeZone: string };

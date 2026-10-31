@@ -241,7 +241,7 @@ describe('the playlist’s rows on a phone (Session 55, Part 9)', () => {
     // A video with none set: Wallpaper, the default, ticked.
     const plain = phoneRows([media('clip', 'video')], DOCS, new Set(), false)[0];
     if (!plain) throw new Error('no row');
-    expect(ids(plain).filter((a) => a.startsWith('whenEnds'))[0]).toBe('whenEnds:wallpaper*');
+    expect(ids(plain).find((a) => a.startsWith('whenEnds'))).toBe('whenEnds:wallpaper*');
     expect(ids(itemRow('sound'))).toEqual(['pin', 'rename', 'remove']);
     expect(ids(itemRow('input'))).toEqual(['pin', 'remove']);
     // A deck's slide (a picture): looked at, its picture edited and saved, pinned as the slide, its deck taken out.

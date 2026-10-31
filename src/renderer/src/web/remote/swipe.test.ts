@@ -14,7 +14,12 @@ function drag(
   s: Swipes,
   from: [number, number],
   to: [number, number],
-  { id = 1, ms = 200, kind = 'touch' as Kind, at = 1000 } = {},
+  {
+    id = 1,
+    ms = 200,
+    kind = 'touch',
+    at = 1000,
+  }: { id?: number; ms?: number; kind?: Kind; at?: number } = {},
 ) {
   s.down({ pointerId: id, pointerType: kind, clientX: from[0], clientY: from[1], timeStamp: at });
   for (let step = 1; step <= 4; step++)

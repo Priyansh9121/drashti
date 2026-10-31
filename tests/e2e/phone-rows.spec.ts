@@ -1,3 +1,4 @@
+import { longPress } from './phone-gestures';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -24,30 +25,6 @@ async function where(win: Page) {
     slideIndex: s.layers.slide?.slideIndex ?? null,
     itemId: s.live.playlist?.itemId ?? null,
   };
-}
-
-/** A finger held on it (the pointer events a phone's touch makes), long enough to open its menu. */
-async function longPress(target: Locator): Promise<void> {
-  await expect(target).toBeVisible();
-  await target.scrollIntoViewIfNeeded();
-  await target.evaluate(async (el) => {
-    const r = el.getBoundingClientRect();
-    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-    const fire = (type: string) =>
-      el.dispatchEvent(
-        new PointerEvent(type, {
-          pointerId: 41,
-          pointerType: 'touch',
-          isPrimary: true,
-          bubbles: true,
-          cancelable: true,
-          ...at,
-        }),
-      );
-    fire('pointerdown');
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    fire('pointerup');
-  });
 }
 
 /** Every visible control under 44 × 44 CSS pixels in this part of the page. */

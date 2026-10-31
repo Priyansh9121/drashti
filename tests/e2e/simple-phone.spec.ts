@@ -1,4 +1,5 @@
-import type { Locator, Page } from '@playwright/test';
+import { longPress } from './phone-gestures';
+import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { NEW_LOWER_THIRD } from '../../src/shared/lower-thirds';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken } from './devices';
@@ -258,30 +259,6 @@ test('with Simple access, a phone is refused the same in words naming no way to 
     await app.close();
   }
 });
-
-/** A finger held on it (the pointer events a phone's touch makes), long enough to open its menu. */
-async function longPress(target: Locator): Promise<void> {
-  await expect(target).toBeVisible();
-  await target.scrollIntoViewIfNeeded();
-  await target.evaluate(async (el) => {
-    const r = el.getBoundingClientRect();
-    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-    const fire = (type: string) =>
-      el.dispatchEvent(
-        new PointerEvent(type, {
-          pointerId: 43,
-          pointerType: 'touch',
-          isPrimary: true,
-          bubbles: true,
-          cancelable: true,
-          ...at,
-        }),
-      );
-    fire('pointerdown');
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    fire('pointerup');
-  });
-}
 
 test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it shows less, dims what Simple Mode may not do, and a row’s long press offers what its window’s right-click does: Rename and Remove with Undo (Part 9)', async () => {
   test.setTimeout(240_000);

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { device, type Engine, networkOn, NETWORK_ENV, pairByQr, pairingCode } from './devices';
-import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { holdStill, launchApp, letTimePass, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -46,46 +46,40 @@ async function fingers(
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(0) });
     for (let step = 1; step <= STEPS; step++) {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(step) });
-      await p.waitForTimeout(25);
+      await letTimePass(p, 25, 'a finger moves through its 200 ms swipe');
     }
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await cdp.detach();
     return;
   }
-  await p.getByTestId('remote-live').evaluate(
-    async (el, { starts, dx, dy, steps }) => {
-      const hit = (x: number, y: number) => document.elementFromPoint(x, y) ?? el;
-      const fire = (type: string, id: number, x: number, y: number) =>
-        hit(x, y).dispatchEvent(
-          new PointerEvent(type, {
-            pointerId: 100 + id,
-            pointerType: 'touch',
-            isPrimary: id === 0,
-            clientX: x,
-            clientY: y,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      const place = (i: number, step: number) => ({
-        x: (starts[i]?.x ?? 0) + ((dx[i] ?? 0) * step) / steps,
-        y: (starts[i]?.y ?? 0) + ((dy[i] ?? 0) * step) / steps,
-      });
-      starts.forEach((s, i) => fire('pointerdown', i, s.x, s.y));
-      for (let step = 1; step <= steps; step++) {
-        starts.forEach((_, i) => {
-          const { x, y } = place(i, step);
-          fire('pointermove', i, x, y);
+  const fire = (type: string, step: number) =>
+    p.getByTestId('remote-live').evaluate(
+      (el, { starts, dx, dy, steps, step, type }) => {
+        starts.forEach((start, id) => {
+          const clientX = start.x + ((dx[id] ?? 0) * step) / steps;
+          const clientY = start.y + ((dy[id] ?? 0) * step) / steps;
+          const target = document.elementFromPoint(clientX, clientY) ?? el;
+          target.dispatchEvent(
+            new PointerEvent(type, {
+              pointerId: 100 + id,
+              pointerType: 'touch',
+              isPrimary: id === 0,
+              clientX,
+              clientY,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
         });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      starts.forEach((_, i) => {
-        const { x, y } = place(i, steps);
-        fire('pointerup', i, x, y);
-      });
-    },
-    { starts, dx, dy, steps: STEPS },
-  );
+      },
+      { starts, dx, dy, steps: STEPS, step, type },
+    );
+  await fire('pointerdown', 0);
+  for (let step = 1; step <= STEPS; step++) {
+    await fire('pointermove', step);
+    await letTimePass(p, 25, 'a finger moves through its 200 ms swipe');
+  }
+  await fire('pointerup', STEPS);
 }
 
 for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[])
@@ -145,7 +139,11 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
       // A drag mostly up or down: the page's own scroll, never a swipe.
       await fingers(p, engine, [{ x: m.x, y: m.y + 40 }], [-30], [-120]);
       // A moment for anything that would have gone through.
-      await p.waitForTimeout(700);
+      await holdStill(
+        async () => (await slideNow(win)) === 1,
+        700,
+        'two fingers and vertical gestures never turn the page',
+      );
       expect(await slideNow(win)).toBe(1);
 
       // The buttons stay, and still turn it.

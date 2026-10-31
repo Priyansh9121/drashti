@@ -256,7 +256,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
         {/* The page turned: said for a moment over the picture (the buttons say it to a screen reader). */}
         {swiped && (
           <span
-            className="pointer-events-none absolute top-1/2 rounded-full bg-black/70 px-4 py-2 text-base font-bold text-white motion-safe:animate-pulse"
+            className="pointer-events-none absolute top-1/2 rounded-full bg-black/70 px-4 py-2 text-base font-bold text-white"
             style={swiped === 'next' ? { right: '0.75rem' } : { left: '0.75rem' }}
             data-testid="remote-swiped"
             data-way={swiped}

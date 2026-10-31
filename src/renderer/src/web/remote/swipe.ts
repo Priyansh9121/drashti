@@ -47,8 +47,8 @@ export class Swipes {
   }
 
   /** A finger moves (nothing to do until it lifts: only where it began and ended count). */
-  move(p: SwipePoint): void {
-    void p;
+  move(_p: SwipePoint): void {
+    // Only the start and the lift decide a swipe.
   }
 
   /** The browser took the touch for itself (its scroll, its own zoom): the gesture never counts. */

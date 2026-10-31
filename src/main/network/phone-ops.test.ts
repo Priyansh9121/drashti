@@ -147,7 +147,7 @@ function setup(options: { simple?: boolean; letIn?: boolean } = {}) {
     // The playlists' changes a phone makes as the window does (Session 54), recorded.
     desktop: {
       screens: {
-        snapshot: () => ({ displays: [], groups: [], status: [], nodes: [], uses: [] }) as never,
+        snapshot: () => ({ displays: [], groups: [], status: [], nodes: [], uses: [] }),
         controlsDisplayId: () => null,
         createGroup: () => ({ ok: false, message: 'No.' }),
         renameGroup: () => ({ ok: false, message: 'No.' }),
@@ -168,7 +168,7 @@ function setup(options: { simple?: boolean; letIn?: boolean } = {}) {
         turn: () => ({ ok: false, message: 'No.' }),
       },
       inputs: {
-        view: () => ({ inputs: [] }) as never,
+        view: () => ({ inputs: [] }),
         access: () => 'granted',
         cameras: () => null,
         add: () => ({ ok: false, message: 'No.' }),
