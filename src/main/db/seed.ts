@@ -116,6 +116,11 @@ const KIRTAN_LINES: { group: string; lines: Record<KirtanLang, string> }[] = [
 export interface SeedOptions {
   /** Drashti's two placeholder presentations (Session 50: for the tests, never an operator's new library). */
   placeholders: boolean;
+  /**
+   * With them, the Language test slides too, unless false: the guides' pictures have the sample kirtan alone (Session
+   * 55, Part 1 took the test slide out of Drashti; screenshots.spec.ts).
+   */
+  testSlides?: boolean;
 }
 
 /**
@@ -124,7 +129,9 @@ export interface SeedOptions {
  * self-test: the watchdog's brings slides of its own to an empty library, and takes them away after.
  */
 export function seedOptions(sw: Switches): SeedOptions {
-  return { placeholders: sw('DRASHTI_TEST_SEED_PLACEHOLDERS') === '1' };
+  const placeholders = sw('DRASHTI_TEST_SEED_PLACEHOLDERS') === '1';
+  // The guides' pictures: the sample kirtan without the Language test slides (DRASHTI_TEST_NO_TEST_SLIDES, Session 55).
+  return sw('DRASHTI_TEST_NO_TEST_SLIDES') === '1' ? { placeholders, testSlides: false } : { placeholders };
 }
 
 /** What seedLibrary added, for the log. */
@@ -140,7 +147,9 @@ export interface Seeded {
  * start: one that started without them never gains them later, so a test's restart keeps what it began with.
  */
 export function seedLibrary(db: Db, options: SeedOptions): Seeded {
-  const placeholders = options.placeholders ? seedPlaceholders(db) : startWithoutPlaceholders(db);
+  const placeholders = options.placeholders
+    ? seedPlaceholders(db, options.testSlides !== false)
+    : startWithoutPlaceholders(db);
   return { placeholders, templates: seedTemplates(db), themes: seedBuiltinThemes(db) };
 }
 
@@ -151,52 +160,53 @@ function startWithoutPlaceholders(db: Db): false {
 }
 
 /**
- * Add the two placeholder presentations once per database. Returns false
- * when they were added before (even if the operator has since deleted them),
- * or the library started without them.
+ * Add the two placeholder presentations once per database (the sample kirtan alone without `testSlides`). Returns
+ * false when they were added before (even if the operator has since deleted them), or the library started without
+ * them.
  */
-export function seedPlaceholders(db: Db): boolean {
+export function seedPlaceholders(db: Db, testSlides = true): boolean {
   const done = db.prepare('SELECT 1 FROM app_meta WHERE key = ?').get(SEED_KEY);
   if (done) return false;
   const repo = new PresentationRepo(db);
   db.transaction(() => {
     const libraryId = repo.ensureLibrary('Default');
-    repo.insert({
-      libraryId,
-      name: TEST_PRESENTATION_NAME,
-      groups: [
-        {
-          name: 'Languages',
-          color: '#f5a524',
-          slides: [
-            {
-              label: 'All four languages',
-              background: '#101828',
-              elements: [
-                line('en', TEST_LINES.en, 'en', 150),
-                line('gu', TEST_LINES.gu, 'gu', 360),
-                line('hi', TEST_LINES.hi, 'hi', 570),
-                line('translit', TEST_LINES.translit, 'translit', 780, { fontSize: 68, fontWeight: 400 }),
-              ],
-            },
-            {
-              label: 'Gujarati and English',
-              background: '#0b3d2e',
-              elements: [
-                line('gu', 'બીજી પરીક્ષણ સ્લાઇડ', 'gu', 300, { fontSize: 96 }),
-                line('en', 'Second test slide', 'en', 560),
-              ],
-            },
-            {
-              label: 'English only',
-              background: '#3b0d2e',
-              elements: [line('en', 'Third test slide', 'en', 450, { fontSize: 110, fontWeight: 700 })],
-            },
-          ],
-        },
-      ],
-      source: { kind: 'drashti', path: null, ref: TEST_PRESENTATION_REF, importedAt: null },
-    });
+    if (testSlides)
+      repo.insert({
+        libraryId,
+        name: TEST_PRESENTATION_NAME,
+        groups: [
+          {
+            name: 'Languages',
+            color: '#f5a524',
+            slides: [
+              {
+                label: 'All four languages',
+                background: '#101828',
+                elements: [
+                  line('en', TEST_LINES.en, 'en', 150),
+                  line('gu', TEST_LINES.gu, 'gu', 360),
+                  line('hi', TEST_LINES.hi, 'hi', 570),
+                  line('translit', TEST_LINES.translit, 'translit', 780, { fontSize: 68, fontWeight: 400 }),
+                ],
+              },
+              {
+                label: 'Gujarati and English',
+                background: '#0b3d2e',
+                elements: [
+                  line('gu', 'બીજી પરીક્ષણ સ્લાઇડ', 'gu', 300, { fontSize: 96 }),
+                  line('en', 'Second test slide', 'en', 560),
+                ],
+              },
+              {
+                label: 'English only',
+                background: '#3b0d2e',
+                elements: [line('en', 'Third test slide', 'en', 450, { fontSize: 110, fontWeight: 700 })],
+              },
+            ],
+          },
+        ],
+        source: { kind: 'drashti', path: null, ref: TEST_PRESENTATION_REF, importedAt: null },
+      });
     repo.insert({
       libraryId,
       name: KIRTAN_PRESENTATION_NAME,

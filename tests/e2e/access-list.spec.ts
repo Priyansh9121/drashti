@@ -497,6 +497,19 @@ test('the Access List at CI’s 1024 × 645 and wider: everything in reach, by k
       await expect(dialog).toHaveCount(0);
       await list.getByTestId('access-search').fill('');
     }
+    // At 1280 wide (the guides' picture), every column up to Computer and version is in view whole, so each
+    // computer's version can be read (Session 55: Mode came in before it, and pushed it past the window's edge).
+    await sizeList(app, list, { width: 1280, height: 720 });
+    expect(
+      await list.getByTestId('access-table').evaluate((box) => {
+        const head = box.querySelector('[data-column="computers"]')?.closest('th');
+        if (!head) return 'no Computer and version column';
+        const right = head.getBoundingClientRect().right - box.getBoundingClientRect().left;
+        return right <= box.clientWidth
+          ? 'in view'
+          : `to ${String(Math.round(right))} of ${String(box.clientWidth)} px`;
+      }),
+    ).toBe('in view');
     await sizeList(app, list, CI_WINDOW);
     const table = list.getByTestId('access-table');
     expect(await table.evaluate((t) => t.scrollWidth > t.clientWidth)).toBe(true);

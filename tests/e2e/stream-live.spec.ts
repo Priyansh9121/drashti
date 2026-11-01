@@ -304,6 +304,10 @@ test('without the system’s secure storage, no key is kept, and the settings sa
   await win.getByTestId('open-stream-settings').click();
   await expect(win.getByTestId('stream-key-unavailable')).toContainText('plain text');
   await expect(win.getByTestId('stream-key-input')).toHaveCount(0);
+  // What the stream needs of the internet, a sentence of its own (Session 55: it began in lower case).
+  await expect(win.getByTestId('stream-upload-needed')).toHaveText(
+    /^Needs an upload of about \d+ Mbps \(compare it with a speed test on this computer\)\.$/u,
+  );
   const tried = await win.evaluate(async (key) => {
     const d = (globalThis as PageGlobals).drashti;
     const { activeId } = await d.stream.profiles();

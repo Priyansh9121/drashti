@@ -615,6 +615,16 @@ const noSafeStorage = sw('DRASHTI_TEST_NO_SAFE_STORAGE') === '1';
 // told to treat this computer as outside the local network, to see such requests refused.
 const networkLocalOnly = sw('DRASHTI_TEST_NETWORK_LOCAL') === '1';
 const networkRefuseLoopback = sw('DRASHTI_TEST_NETWORK_REFUSE_LOOPBACK') === '1';
+// Tests only (never a packaged Drashti): the address and name this computer is shown at in the Phones panel, and in
+// its pairing and poster links, in place of its own ("192.168.1.20 placeholder-mac": http://192.168.1.20:<port> and
+// http://placeholder-mac.local:<port>), so the guides' pictures never show a real computer's (Session 55). What the
+// server answers to is unchanged.
+const networkShown = ((): { addresses: string[]; localName: string } | null => {
+  const [address, name] = (packaged() ? '' : (sw('DRASHTI_TEST_NETWORK_SHOWN') ?? '')).trim().split(/\s+/u);
+  return address && name
+    ? { addresses: [address], localName: `${name.replace(/\.local$/u, '')}.local` }
+    : null;
+})();
 // Tests only: an announcement's minute is this many ms, so one can run out while a test watches.
 const announceMinuteMs = Math.min(
   60_000,
@@ -4448,7 +4458,8 @@ function start(): void {
       refuseLoopback: networkRefuseLoopback,
       uploads: { dir: join(mediaDir, UPLOADS_DIR), mediaDir },
     }),
-    localName: () => localName(),
+    localName: () => networkShown?.localName ?? localName(),
+    ...(networkShown ? { interfaceAddresses: () => networkShown.addresses } : {}),
     engine: {
       dispatch: (command) => engine.dispatch(command),
       snapshot: () => engine.snapshot(),

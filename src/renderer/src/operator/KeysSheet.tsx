@@ -95,15 +95,20 @@ export function KeysSheet({ platform }: { platform: string }) {
             <h3 id={`${ids}-${String(n)}`} className="mb-1.5 text-sm font-bold">
               {group.title}
             </h3>
-            <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 text-sm">
+            <dl className="space-y-1 text-sm">
               {group.actions.map((action) => {
                 const binding = KEYMAP.find((b) => b.action === action);
                 if (!binding) return null;
                 // Its keys as they act now: none, while the single-letter keys are off.
                 const keys = keymap.find((b) => b.action === action)?.keys ?? [];
+                // The quick bar's eight, its first to its last ("⌥1 to ⌥8", as the guides write them).
+                const range = action === 'quickBar' && keys.length > 2;
+                const shown = range ? [keys[0] ?? '', keys.at(-1) ?? ''] : keys;
+                // A row of its own: its name as wide as its own keys leave (Session 55: in one grid, the quick bar's
+                // eight keys left every name in Running the show a word a line).
                 return (
-                  <Fragment key={action}>
-                    <dt className="text-muted">
+                  <div key={action} className="flex items-center justify-between gap-x-4">
+                    <dt className="flex-1 text-muted">
                       {binding.label}
                       {binding.scope === 'library' && <span className="text-faint"> (in a list)</span>}
                     </dt>
@@ -113,14 +118,14 @@ export function KeysSheet({ platform }: { platform: string }) {
                           Off
                         </span>
                       )}
-                      {keys.map((key, i) => (
+                      {shown.map((key, i) => (
                         <Fragment key={key}>
-                          {i > 0 && <span className="text-xs text-muted">or</span>}
+                          {i > 0 && <span className="text-xs text-muted">{range ? 'to' : 'or'}</span>}
                           <Kbd>{keyText(key, platform)}</Kbd>
                         </Fragment>
                       ))}
                     </dd>
-                  </Fragment>
+                  </div>
                 );
               })}
             </dl>

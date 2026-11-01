@@ -40,6 +40,16 @@ test('the keys sheet opens from the Help menu and with ?, lists every key, and i
   await expect(sheet.getByTestId('keys-follow')).toHaveText(
     'These keys follow what the operators already press.',
   );
+  // Each name on one line beside its keys at 1280 x 720 (Session 55: the quick bar's eight keys had squeezed Running
+  // the show's names to a word a line).
+  const wrapped = await sheet
+    .locator('dt')
+    .evaluateAll((names) =>
+      names
+        .filter((n) => n.getBoundingClientRect().height > parseFloat(getComputedStyle(n).lineHeight) * 1.5)
+        .map((n) => n.textContent),
+    );
+  expect(wrapped).toEqual([]);
   // As this computer writes them: Search is ⌘F on a Mac, Ctrl+F on Windows.
   await expect(sheet).toContainText(process.platform === 'darwin' ? '⌘F' : 'Ctrl+F');
   // The keys the operators already press (Session 50): F12 (the Logo's, the Wallpaper's since Session 55), Cmd+1 and

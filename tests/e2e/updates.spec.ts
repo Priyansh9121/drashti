@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { versionMismatch } from '../../src/shared/nodes';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady } from './helpers';
@@ -120,6 +121,8 @@ test('a node refused for its version offers to update to Main’s version, and q
     await expect(node.page.getByTestId('node-pair-error')).toContainText('Main runs Drashti 1.0.0-test.1');
     const offer = node.page.getByTestId('node-update');
     await expect(offer).toContainText('Main runs Drashti 1.0.0-test.1; this node runs 1.0.0-test.2');
+    // Said once, by the form whose button was pressed (Session 55: the Main section's notice said it again above).
+    await expect(node.page.getByText(versionMismatch('1.0.0-test.1', '1.0.0-test.2'))).toHaveCount(1);
     await expectNoSeriousA11yIssues(node.page, 'the node offering to match Main');
     await offer.getByTestId('node-update-check').click();
     await offer.getByTestId('node-update-download').click();

@@ -106,10 +106,10 @@ So give each Main the surest connection there is: **a wired connection** to the 
 **The Access List.** The computer let in with the owner's own Gmail (`docs/access-setup.md`, section 9) has **View › Access List…**, in Pro Mode; no other computer has it. It shows every Gmail on the list, a row each:
 
 - **Gmail and name** (the owner's own row says **Owner**), and **Status**: Requested, Approved, Revoked or Rejected, with a second line where there is more to say (the computer a request came from, a token sent and the day it runs out, **No computer in yet**, **No contact for 15 days**, the day of a rejection);
-- **Requested**, **Approved** and **Revoked**: the days;
 - **Access ends**: **Unlimited**, or the day access ends and how long is left by the list's clock ("In 6 days"); **Ended …** once it has ("Their Drashti has stopped"); for a request added with a length, that length "once approved";
 - **Mode** (since alpha.14): **Pro**, or **Simple** (**Simple Mode only**); for a request, what it gets once approved; the owner's own row **Pro** (**Your own: always**);
 - **Computer and version**: each of its computers, with its Drashti's version and its system (one no longer in says **(ended)**);
+- **Requested**, **Approved** and **Revoked**: the days;
 - **Last seen**, **Time used**, and how many **Shows**, **Streams**, **Recordings** and **Imports**: counts only, never anything shown;
 - **Note**: the owner's own, seen only there and in the Sheet.
 

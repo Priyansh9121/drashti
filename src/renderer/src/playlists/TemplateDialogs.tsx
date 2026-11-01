@@ -360,8 +360,9 @@ function FillWithPresentation({
       </div>
       {choices.length === 0 ? (
         <EmptyState icon={Search} title="Nothing here yet" compact>
+          {/* Only what can be done here (Session 55: the Kirtan dialog, where a kirtan was given its category, went). */}
           {category
-            ? `No kirtan in ${category}${query ? ' has those words' : ''}: choose Every presentation, or give a kirtan this category in Kirtan.`
+            ? `No kirtan in ${category}${query ? ' has those words' : ''}: choose Every presentation.`
             : 'Nothing has those words.'}
         </EmptyState>
       ) : (
