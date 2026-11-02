@@ -17,7 +17,17 @@ import { plural } from '../ui/text';
 import { useEngine } from '../engine/engine-store';
 import type { TabItem } from '../ui/Tabs';
 import { TabPanel, Tabs } from '../ui/Tabs';
-import { ArrowLeftRight, Download, LayoutTemplate, ListPlus, Palette, Redo2, Sparkles, Type, Undo2 } from '../ui/icons';
+import {
+  ArrowLeftRight,
+  Download,
+  LayoutTemplate,
+  ListPlus,
+  Palette,
+  Redo2,
+  Sparkles,
+  Type,
+  Undo2,
+} from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -158,7 +168,14 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const pdfPage = isPdfPage(doc, slideId);
   const shownGroup = visibleEditorGroup(group, pdfPage);
   const pdfRowVisible = pdfPage && shownGroup === 'pdf';
-  const exportBusy = loading || saving || picking !== null || pickingBusy || pdfDrawing || sourceConversion !== null || pdfPending !== null;
+  const exportBusy =
+    loading ||
+    saving ||
+    picking !== null ||
+    pickingBusy ||
+    pdfDrawing ||
+    sourceConversion !== null ||
+    pdfPending !== null;
   const shownPage = doc ? findSlide(doc, slideId) : undefined;
   const pdfBoxes =
     shownPage?.elements.filter(
@@ -218,8 +235,21 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   };
   const savePdfCopy = async () => {
     const before = useEditor.getState();
-    if (pdfJob.current || pendingPick.current.busy || picking !== null || pickingBusy || before.loading || before.saving ||
-      before.pdfDrawing || before.sourceConversion || before.askDiscard || before.conflict || !before.doc || !before.open) return;
+    if (
+      pdfJob.current ||
+      pendingPick.current.busy ||
+      picking !== null ||
+      pickingBusy ||
+      before.loading ||
+      before.saving ||
+      before.pdfDrawing ||
+      before.sourceConversion ||
+      before.askDiscard ||
+      before.conflict ||
+      !before.doc ||
+      !before.open
+    )
+      return;
     finishTextEditing();
     const current = useEditor.getState();
     if (!current.doc || !current.open || current.sourceConversion || current.pdfDrawing) return;
@@ -359,7 +389,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             icon={Download}
             data-testid="pdf-save-copy"
             disabled={!doc || exportBusy}
-            onClick={() => { void savePdfCopy(); }}
+            onClick={() => {
+              void savePdfCopy();
+            }}
           >
             Save a PDF copy…
           </Button>
@@ -379,7 +411,15 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           variant="primary"
           size="sm"
           kbd={`${mod}S`}
-          disabled={saving || loading || !doc || pickingBusy || pdfDrawing || pdfPending !== null || sourceConversion !== null}
+          disabled={
+            saving ||
+            loading ||
+            !doc ||
+            pickingBusy ||
+            pdfDrawing ||
+            pdfPending !== null ||
+            sourceConversion !== null
+          }
           data-testid="save-slides"
           onClick={() => {
             saveWhenReady();
@@ -389,7 +429,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         </Button>
       </header>
       {pdfPending === 'save-copy' && !pdfRowVisible && (
-        <p className="border-b border-line px-3 py-1 text-xs text-muted" role="status" data-testid="pdf-pages-pending">
+        <p
+          className="border-b border-line px-3 py-1 text-xs text-muted"
+          role="status"
+          data-testid="pdf-pages-pending"
+        >
           Writing the PDF copy…
         </p>
       )}
@@ -448,7 +492,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onCover={() => choosePdfTool('cover')}
               onRotateRight={rotatePdfPage}
               onDeletePage={deleteCurrentPdfPage}
-              onSaveCopy={() => { void savePdfCopy(); }}
+              onSaveCopy={() => {
+                void savePdfCopy();
+              }}
             />
           )}
         </div>

@@ -1,6 +1,5 @@
 export type SourceQuitResult =
-  | { confirmed: true }
-  | { confirmed: false; reason: 'timeout' | 'failed' | 'quarantined' };
+  { confirmed: true } | { confirmed: false; reason: 'timeout' | 'failed' | 'quarantined' };
 
 interface SourceQuitDeps {
   cancel(): void;
@@ -16,13 +15,19 @@ export class SourceQuitGate {
   private resumeScheduled = false;
   constructor(private readonly deps: SourceQuitDeps) {}
 
-  get closing(): boolean { return this.flight !== null; }
-  get confirmed(): boolean { return this.drained; }
+  get closing(): boolean {
+    return this.flight !== null;
+  }
+  get confirmed(): boolean {
+    return this.drained;
+  }
 
   drain(): Promise<SourceQuitResult> {
     if (this.flight) return this.flight;
     let complete: (result: SourceQuitResult) => void = () => undefined;
-    this.flight = new Promise<SourceQuitResult>((resolve) => { complete = resolve; });
+    this.flight = new Promise<SourceQuitResult>((resolve) => {
+      complete = resolve;
+    });
     let settled = false;
     const finish = (result: SourceQuitResult) => {
       if (settled) return;
@@ -31,13 +36,29 @@ export class SourceQuitGate {
       this.drained = result.confirmed;
       complete(result);
     };
-    const timer = setTimeout(() => finish({ confirmed: false, reason: 'timeout' }), this.deps.timeoutMs ?? 5_000);
-    let cancelFailed = false;
-    try { this.deps.cancel(); } catch { cancelFailed = true; }
-    void Promise.resolve().then(() => this.deps.stop()).then(
-      (confirmed) => finish(cancelFailed ? { confirmed: false, reason: 'failed' } : confirmed ? { confirmed: true } : { confirmed: false, reason: 'quarantined' }),
-      () => finish({ confirmed: false, reason: 'failed' }),
+    const timer = setTimeout(
+      () => finish({ confirmed: false, reason: 'timeout' }),
+      this.deps.timeoutMs ?? 5_000,
     );
+    let cancelFailed = false;
+    try {
+      this.deps.cancel();
+    } catch {
+      cancelFailed = true;
+    }
+    void Promise.resolve()
+      .then(() => this.deps.stop())
+      .then(
+        (confirmed) =>
+          finish(
+            cancelFailed
+              ? { confirmed: false, reason: 'failed' }
+              : confirmed
+                ? { confirmed: true }
+                : { confirmed: false, reason: 'quarantined' },
+          ),
+        () => finish({ confirmed: false, reason: 'failed' }),
+      );
     return this.flight;
   }
 
@@ -53,10 +74,12 @@ export class SourceQuitGate {
       this.resumeScheduled = true;
       void this.drain().then((result) => {
         if (result.confirmed) resume();
-        else { this.resumeScheduled = false; refused(result); }
+        else {
+          this.resumeScheduled = false;
+          refused(result);
+        }
       });
     }
     return false;
   }
 }
-

@@ -186,10 +186,16 @@ export function PdfTools({
         </p>
       )}
       {activeTool !== null && pending === null && (
-        <p className="ml-3 shrink-0 self-center text-xs whitespace-nowrap text-muted" role="status" data-testid="pdf-tool-instruction">
-          {activeTool === 'draw' ? 'Draw on the page. Escape cancels.' :
-            activeTool === 'cover' ? 'Drag a visual cover on the page. Escape cancels.' :
-              'Drag across the part of the page to mark. Escape cancels.'}
+        <p
+          className="ml-3 shrink-0 self-center text-xs whitespace-nowrap text-muted"
+          role="status"
+          data-testid="pdf-tool-instruction"
+        >
+          {activeTool === 'draw'
+            ? 'Draw on the page. Escape cancels.'
+            : activeTool === 'cover'
+              ? 'Drag a visual cover on the page. Escape cancels.'
+              : 'Drag across the part of the page to mark. Escape cancels.'}
         </p>
       )}
     </div>

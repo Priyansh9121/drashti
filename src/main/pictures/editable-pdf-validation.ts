@@ -33,7 +33,8 @@ export function validateEditablePdfPage(
       elementIds.has(element.id) ||
       !token.safeParse(element.id).success ||
       (element.kind !== 'text' && element.kind !== 'image' && element.kind !== 'shape')
-    ) return null;
+    )
+      return null;
     elementIds.add(element.id);
     if (element.kind === 'image') {
       if (!token.safeParse(element.mediaId).success) return null;

@@ -85,7 +85,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   node: ['app', 'guides', 'node'],
   // A deck's PDF made into pictures.
   pdf: ['pictures'],
-  'pdf-export': ['app', 'engine', 'media', 'output', 'timers', 'videoInputs', 'pdfExport'],
+  'pdf-export': ['engine', 'media', 'output', 'pdfExport'],
   // Pictures' sharpened copies.
   sharpen: ['sharpen'],
   // The component gallery (Diagnostics).

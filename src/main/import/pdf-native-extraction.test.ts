@@ -234,6 +234,17 @@ describe('real PDF.js editable source paint, not operator mocks', () => {
       const image = result.elements.find(
         (element) => element.kind === 'image' && element.frame.x === 800 && element.frame.y === 444,
       );
+      if (image?.frame.width !== 96 || image.frame.height !== 64) {
+        console.error(
+          'Placeholder embedded-image numeric geometry',
+          JSON.stringify({
+            page: { width: result.width, height: result.height },
+            elements: result.elements.map((element) => ({ kind: element.kind, frame: element.frame })),
+            imagePaintIndices: list.fnArray.flatMap((fn, index) => (imageOps.has(fn) ? [index] : [])),
+            assetSizes: result.assets.map((asset) => asset.png.byteLength),
+          }),
+        );
+      }
       expect(
         image,
         'the embedded image remains a separately retained object after vector extraction',

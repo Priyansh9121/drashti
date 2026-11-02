@@ -45,7 +45,13 @@ describe('source preparation before library shutdown', () => {
     try {
       // Deliberate Main lifecycle change: a real source-only barrier precedes
       // the unchanged synchronous stop list. The order assertion is unchanged.
-      const gate = new SourceQuitGate({ cancel: () => undefined, stop: async () => { await queue.stop(); return true; } });
+      const gate = new SourceQuitGate({
+        cancel: () => undefined,
+        stop: async () => {
+          await queue.stop();
+          return true;
+        },
+      });
       const quitting = gate.drain();
       await Promise.resolve();
       release();

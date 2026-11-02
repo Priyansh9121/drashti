@@ -17,7 +17,9 @@ import { themeLook } from './themes';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
-  handle: (name: string, fn: (...args: unknown[]) => unknown) => { handlers.set(name, fn); },
+  handle: (name: string, fn: (...args: unknown[]) => unknown) => {
+    handlers.set(name, fn);
+  },
 }));
 
 // The baseline fallback keeps this a behavioral ordering RED before the new
@@ -47,19 +49,33 @@ describe('full Main source staging before library shutdown', () => {
       let readActualWords = false;
       queue = new SourceReaderQueue(async (request) => {
         const native = await nativeSourceReader(request);
-        readActualWords = native.ok && native.pages.some((page) => page.elements.some((element) => element.kind === 'text' && element.text.includes(PLACEHOLDER_WORDS)));
+        readActualWords =
+          native.ok &&
+          native.pages.some((page) =>
+            page.elements.some(
+              (element) => element.kind === 'text' && element.text.includes(PLACEHOLDER_WORDS),
+            ),
+          );
         return native;
       });
       const published = vi.fn();
       const controller = registerSlidesIpc({
-        db: w.db, presentations, revisions: new Revisions(), settings: new SettingsRepo(w.db),
-        fromOperator: () => true, mayPrepareSource: () => !closing,
-        sourceReader: queue.read, sourceWrite: sourceWrite(w.db),
-        lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height), changed: published,
+        db: w.db,
+        presentations,
+        revisions: new Revisions(),
+        settings: new SettingsRepo(w.db),
+        fromOperator: () => true,
+        mayPrepareSource: () => !closing,
+        sourceReader: queue.read,
+        sourceWrite: sourceWrite(w.db),
+        lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
+        changed: published,
       });
       cancel = () => controller.cancelSourcePreparation();
       let reached: () => void = () => undefined;
-      const held = new Promise<void>((resolve) => { reached = resolve; });
+      const held = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
       const realStore = new MediaStore(w.db, { dir: w.mediaDir });
       const realStage = realStore.stage.bind(realStore);
       const spy = vi.spyOn(MediaStore.prototype, 'stage').mockImplementationOnce(async (file) => {
@@ -77,17 +93,25 @@ describe('full Main source staging before library shutdown', () => {
         });
         return staged;
       });
-      restore = () => { spy.mockRestore(); };
+      restore = () => {
+        spy.mockRestore();
+      };
       const open = handlers.get(IPC.library.slidesForEdit);
       if (!open) throw new Error('No real slidesForEdit handler.');
       preparing = Promise.resolve(open({}, imported.id) as EditSlidesResult | Promise<EditSlidesResult>);
       const reachedStage = await Promise.race([held.then(() => true), preparing.then(() => false)]);
-      expect(reachedStage, 'the real generated PDF must reach actual image staging before testing shutdown').toBe(true);
+      expect(
+        reachedStage,
+        'the real generated PDF must reach actual image staging before testing shutdown',
+      ).toBe(true);
       expect(readActualWords, 'the real retained PDF was extracted before staging, never seeded').toBe(true);
       expect(spy).toHaveBeenCalledTimes(1);
       const readers = queue;
       const gate = new SourceQuitGate({
-        cancel: () => { closing = true; controller.cancelSourcePreparation(); },
+        cancel: () => {
+          closing = true;
+          controller.cancelSourcePreparation();
+        },
         stop: async () => {
           await Promise.all([readers.stop(), drainFullPreparation(controller)]);
           return true;
@@ -98,7 +122,9 @@ describe('full Main source staging before library shutdown', () => {
         return result;
       });
       await new Promise<void>((resolve) => setImmediate(resolve));
-      expect(order, 'an idle reader queue is insufficient while Main is still staging').not.toContain('library closed');
+      expect(order, 'an idle reader queue is insufficient while Main is still staging').not.toContain(
+        'library closed',
+      );
       release();
       expect((await preparing).ok).toBe(false);
       expect(await quitting).toEqual({ confirmed: true });
@@ -119,4 +145,3 @@ describe('full Main source staging before library shutdown', () => {
     }
   });
 });
-

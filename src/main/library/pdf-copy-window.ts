@@ -5,8 +5,13 @@ import { secureWebPreferences } from '../windows/web-preferences';
 /** The common slide renderer prints in an isolated hidden page; no show/focus call exists. */
 export function createPdfCopyWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    show: false, opacity: 0, focusable: false, skipTaskbar: true,
-    width: 320, height: 200, title: 'Drashti PDF copy',
+    show: false,
+    opacity: 0,
+    focusable: false,
+    skipTaskbar: true,
+    width: 320,
+    height: 200,
+    title: 'Drashti PDF copy',
     webPreferences: { ...secureWebPreferences(), backgroundThrottling: false },
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

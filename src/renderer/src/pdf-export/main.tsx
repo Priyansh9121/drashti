@@ -21,9 +21,14 @@ class BridgeDataFactory {
 
 function load(data: Uint8Array) {
   return getDocument({
-    data: data.slice(), BinaryDataFactory: BridgeDataFactory,
-    standardFontDataUrl: 'drashti/', cMapUrl: 'drashti/', cMapPacked: true,
-    wasmUrl: 'drashti/', useWorkerFetch: false, useSystemFonts: false,
+    data: data.slice(),
+    BinaryDataFactory: BridgeDataFactory,
+    standardFontDataUrl: 'drashti/',
+    cMapUrl: 'drashti/',
+    cMapPacked: true,
+    wasmUrl: 'drashti/',
+    useWorkerFetch: false,
+    useSystemFonts: false,
   });
 }
 
@@ -35,7 +40,9 @@ async function printMetadata(data: Uint8Array): Promise<PdfPrintPage[]> {
     const page = await doc.getPage(1);
     if (!page.ref) throw new Error('The printed sheet has no page identity.');
     return [{ ref: page.ref, view: [...page.view], rotate: page.rotate }];
-  } finally { await loading.destroy(); }
+  } finally {
+    await loading.destroy();
+  }
 }
 
 async function dimensions(data: Uint8Array): Promise<{ width: number; height: number }[]> {
@@ -49,7 +56,9 @@ async function dimensions(data: Uint8Array): Promise<{ width: number; height: nu
       sizes.push({ width: viewport.width, height: viewport.height });
     }
     return sizes;
-  } finally { await loading.destroy(); }
+  } finally {
+    await loading.destroy();
+  }
 }
 
 async function assemble(job: PdfCopyJob, printed: Map<number, Uint8Array>): Promise<Uint8Array> {
@@ -68,14 +77,19 @@ async function assemble(job: PdfCopyJob, printed: Map<number, Uint8Array>): Prom
         external = copiedSources.get(data) ?? data.slice();
         copiedSources.set(data, external);
       }
-      return { document: external,
-        includePages: [page.kind === 'original' ? page.page : 0], pageIndices: [index] };
+      return {
+        document: external,
+        includePages: [page.kind === 'original' ? page.page : 0],
+        pageIndices: [index],
+      };
     });
     const result = await doc.extractPages(pages);
     if (!(result instanceof Uint8Array) || result.length === 0 || result.length > 64 * 1024 * 1024)
       throw new Error('The PDF copy is outside the supported size limit.');
     return result;
-  } finally { await loading.destroy(); }
+  } finally {
+    await loading.destroy();
+  }
 }
 
 async function draw(): Promise<void> {
@@ -95,12 +109,20 @@ async function draw(): Promise<void> {
       // Element geometry is in design pixels; one design unit is one PDF point.
       // Chromium uses 96 CSS pixels per inch and PDF uses 72 points per inch.
       sheet.textContent = `@page{size:${width}pt ${height}pt;margin:0}html,body,#root{margin:0;padding:0;width:${width}pt;height:${height}pt;overflow:hidden;background:white}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}`;
-      flushSync(() => root.render(<div style={{ transform: 'scale(1.3333333333333333)', transformOrigin: 'top left', width, height }}><SlideView slide={page.slide} media="still" /></div>));
+      flushSync(() =>
+        root.render(
+          <div style={{ transform: 'scale(1.3333333333333333)', transformOrigin: 'top left', width, height }}>
+            <SlideView slide={page.slide} media="still" />
+          </div>,
+        ),
+      );
       await document.fonts.ready;
-      await Promise.all([...mount.querySelectorAll('img')].map(async (image) => {
-        await image.decode();
-        if (!image.naturalWidth) throw new Error('A page picture is unavailable.');
-      }));
+      await Promise.all(
+        [...mount.querySelectorAll('img')].map(async (image) => {
+          await image.decode();
+          if (!image.naturalWidth) throw new Error('A page picture is unavailable.');
+        }),
+      );
       const fresh = await window.drashti.pdfExport.print(job.id, index);
       if (!fresh) throw new Error('The edited page could not be printed.');
       const metadata = await printMetadata(fresh);
@@ -112,8 +134,14 @@ async function draw(): Promise<void> {
     const pages = await dimensions(data);
     await window.drashti.pdfExport.done({ id: job.id, data, pages });
   } catch {
-    await window.drashti.pdfExport.done({ id: job.id, error: 'The PDF copy could not be generated safely. Its original is unchanged.' });
-  } finally { root.unmount(); sheet.remove(); }
+    await window.drashti.pdfExport.done({
+      id: job.id,
+      error: 'The PDF copy could not be generated safely. Its original is unchanged.',
+    });
+  } finally {
+    root.unmount();
+    sheet.remove();
+  }
 }
 
 void draw();

@@ -88,8 +88,7 @@ export function registerSlidesIpc({
         generations.delete(id);
       }
   };
-  const drainSourcePreparation = () =>
-    Promise.allSettled([...preparations]).then(() => undefined);
+  const drainSourcePreparation = () => Promise.allSettled([...preparations]).then(() => undefined);
   /**
    * When the presentation last changed, and its content revision (Sessions 31–36: every write of its content
    * moves it on, so two writes in one millisecond still differ): the editor saves only over what it opened.

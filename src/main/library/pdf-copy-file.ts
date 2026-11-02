@@ -22,42 +22,90 @@ export interface PdfCopyControl {
   beforePublish?(stagedFile: string): Promise<void>;
 }
 export class PdfCopyError extends Error {
-  constructor(readonly code: string, message: string) { super(message); this.name = 'PdfCopyError'; }
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'PdfCopyError';
+  }
 }
-interface FolderSnapshot { chosen: string; canonical: string; identity: BigIntStats }
-interface SourceSnapshot { chosen: string; canonical: string; identity: BigIntStats | null }
-interface Protections { media: FolderSnapshot; sources: SourceSnapshot[] }
-interface OutputSnapshot { parent: FolderSnapshot; file: string; identity: BigIntStats | null }
+interface FolderSnapshot {
+  chosen: string;
+  canonical: string;
+  identity: BigIntStats;
+}
+interface SourceSnapshot {
+  chosen: string;
+  canonical: string;
+  identity: BigIntStats | null;
+}
+interface Protections {
+  media: FolderSnapshot;
+  sources: SourceSnapshot[];
+}
+interface OutputSnapshot {
+  parent: FolderSnapshot;
+  file: string;
+  identity: BigIntStats | null;
+}
 
 function stopped(request: PdfCopyRequest): void {
   if (request.signal?.aborted || (request.current && !request.current()))
     throw new PdfCopyError('cancelled', 'Saving the PDF copy was cancelled before publication.');
 }
 function unsafe(): never {
-  throw new PdfCopyError('unsafe-output', 'Choose a regular output file outside managed media and the protected source files.');
+  throw new PdfCopyError(
+    'unsafe-output',
+    'Choose a regular output file outside managed media and the protected source files.',
+  );
 }
 function changed(): never {
-  throw new PdfCopyError('changed-output', 'The chosen output or its protected source locations changed. Choose the output again.');
+  throw new PdfCopyError(
+    'changed-output',
+    'The chosen output or its protected source locations changed. Choose the output again.',
+  );
 }
 function corrupt(): never {
-  throw new PdfCopyError('corrupt-staging', 'The staged PDF copy could not be verified; the existing output was left unchanged.');
+  throw new PdfCopyError(
+    'corrupt-staging',
+    'The staged PDF copy could not be verified; the existing output was left unchanged.',
+  );
 }
 async function checked<T>(request: PdfCopyRequest, action: () => Promise<T>): Promise<T> {
   stopped(request);
-  try { const value = await action(); stopped(request); return value; }
-  catch (error) { stopped(request); throw error; }
+  try {
+    const value = await action();
+    stopped(request);
+    return value;
+  } catch (error) {
+    stopped(request);
+    throw error;
+  }
 }
 function codeIs(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code;
 }
 async function maybeStat(file: string, request: PdfCopyRequest): Promise<BigIntStats | null> {
-  try { return await checked(request, () => lstat(file, { bigint: true })); }
-  catch (error) { if (codeIs(error, 'ENOENT')) return null; throw error; }
+  try {
+    return await checked(request, () => lstat(file, { bigint: true }));
+  } catch (error) {
+    if (codeIs(error, 'ENOENT')) return null;
+    throw error;
+  }
 }
-function sameInode(a: BigIntStats, b: BigIntStats): boolean { return a.dev === b.dev && a.ino === b.ino; }
+function sameInode(a: BigIntStats, b: BigIntStats): boolean {
+  return a.dev === b.dev && a.ino === b.ino;
+}
 function sameFile(a: BigIntStats | null, b: BigIntStats | null): boolean {
   if (!a || !b) return a === b;
-  return sameInode(a, b) && a.mode === b.mode && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+  return (
+    sameInode(a, b) &&
+    a.mode === b.mode &&
+    a.size === b.size &&
+    a.mtimeNs === b.mtimeNs &&
+    a.ctimeNs === b.ctimeNs
+  );
 }
 async function folder(chosen: string, request: PdfCopyRequest): Promise<FolderSnapshot> {
   const canonical = await checked(request, () => realpath(chosen));
@@ -74,14 +122,16 @@ async function missingCanonical(file: string, request: PdfCopyRequest): Promise<
   let ancestor = file;
   const suffix: string[] = [];
   for (;;) {
-    try { return join(await checked(request, () => realpath(ancestor)), ...suffix.toReversed()); }
-    catch (error) {
+    try {
+      return join(await checked(request, () => realpath(ancestor)), ...suffix.toReversed());
+    } catch (error) {
       if (!codeIs(error, 'ENOENT')) throw error;
       const existing = await maybeStat(ancestor, request);
       if (existing?.isSymbolicLink()) unsafe();
       const parent = dirname(ancestor);
       if (parent === ancestor) throw error;
-      suffix.push(basename(ancestor)); ancestor = parent;
+      suffix.push(basename(ancestor));
+      ancestor = parent;
     }
   }
 }
@@ -117,16 +167,26 @@ async function output(request: PdfCopyRequest): Promise<OutputSnapshot> {
   return { parent, file, identity };
 }
 function safeOutput(target: OutputSnapshot, protectedFiles: Protections): void {
-  if (target.file === protectedFiles.media.canonical || isInside(protectedFiles.media.canonical, target.file)) unsafe();
+  if (target.file === protectedFiles.media.canonical || isInside(protectedFiles.media.canonical, target.file))
+    unsafe();
   for (const original of protectedFiles.sources) {
-    if (target.file === original.canonical || (target.identity && original.identity && sameInode(target.identity, original.identity))) unsafe();
+    if (
+      target.file === original.canonical ||
+      (target.identity && original.identity && sameInode(target.identity, original.identity))
+    )
+      unsafe();
   }
 }
 function unchangedProtections(before: Protections, after: Protections): void {
   if (!sameFolder(before.media, after.media) || before.sources.length !== after.sources.length) changed();
   for (const [index, old] of before.sources.entries()) {
     const current = after.sources[index];
-    if (!current || current.chosen !== old.chosen || current.canonical !== old.canonical || !sameFile(old.identity, current.identity)) changed();
+    if (
+      current?.chosen !== old.chosen ||
+      current.canonical !== old.canonical ||
+      !sameFile(old.identity, current.identity)
+    )
+      changed();
   }
 }
 function validPdf(bytes: Uint8Array): Buffer {
@@ -141,16 +201,25 @@ function validPdf(bytes: Uint8Array): Buffer {
     throw new PdfCopyError('invalid-pdf', 'The generated PDF copy is incomplete.');
   return frozen;
 }
-async function verifyStaged(file: string, expected: BigIntStats, hash: string, size: number, request: PdfCopyRequest): Promise<void> {
+async function verifyStaged(
+  file: string,
+  expected: BigIntStats,
+  hash: string,
+  size: number,
+  request: PdfCopyRequest,
+): Promise<void> {
   const pathStat = await checked(request, () => lstat(file, { bigint: true }));
   if (!pathStat.isFile() || pathStat.isSymbolicLink() || !sameFile(pathStat, expected)) corrupt();
   let handle: FileHandle | null = null;
   try {
-    stopped(request); handle = await open(file, 'r'); stopped(request);
+    stopped(request);
+    handle = await open(file, 'r');
+    stopped(request);
     const own = handle;
     const opened = await checked(request, () => own.stat({ bigint: true }));
     if (!sameFile(opened, expected)) corrupt();
-    const digest = createHash('sha256'); const buffer = Buffer.alloc(128 * 1024);
+    const digest = createHash('sha256');
+    const buffer = Buffer.alloc(128 * 1024);
     let bytes = 0;
     for (;;) {
       const result = await checked(request, () => own.read(buffer, 0, buffer.length, bytes));
@@ -172,7 +241,9 @@ async function cleanup(file: string, identity: BigIntStats): Promise<void> {
     const current = await lstat(file, { bigint: true });
     // Never delete an unknown replacement which someone put at the private name.
     if (current.isFile() && !current.isSymbolicLink() && sameInode(current, identity)) await unlink(file);
-  } catch (error) { if (!codeIs(error, 'ENOENT')) throw error; }
+  } catch (error) {
+    if (!codeIs(error, 'ENOENT')) throw error;
+  }
 }
 
 /**
@@ -203,22 +274,35 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
   try {
     // Confirm the chosen parent again immediately before private creation.
     if (!sameFolder(target.parent, await folder(target.parent.chosen, request))) changed();
-    stopped(request); handle = await open(staged, 'wx', 0o600); created = true;
+    stopped(request);
+    handle = await open(staged, 'wx', 0o600);
+    created = true;
     const writer = handle;
     stopped(request);
     owned = await checked(request, () => writer.stat({ bigint: true }));
     await checked(request, () => writer.writeFile(bytes, { signal: request.signal }));
     await checked(request, () => writer.sync());
     owned = await checked(request, () => writer.stat({ bigint: true }));
-    await writer.close(); handle = null; stopped(request);
-    if (control.beforePublish) { stopped(request); await control.beforePublish(staged); stopped(request); }
+    await writer.close();
+    handle = null;
+    stopped(request);
+    if (control.beforePublish) {
+      stopped(request);
+      await control.beforePublish(staged);
+      stopped(request);
+    }
     await verifyStaged(staged, owned, hash, bytes.length, request);
     const currentProtected = await protections(request);
     const currentTarget = await output(request);
     safeOutput(currentTarget, protectedFiles);
     safeOutput(currentTarget, currentProtected);
     unchangedProtections(protectedFiles, currentProtected);
-    if (!sameFolder(target.parent, currentTarget.parent) || target.file !== currentTarget.file || !sameFile(target.identity, currentTarget.identity)) changed();
+    if (
+      !sameFolder(target.parent, currentTarget.parent) ||
+      target.file !== currentTarget.file ||
+      !sameFile(target.identity, currentTarget.identity)
+    )
+      changed();
     const finalStaged = await checked(request, () => lstat(staged, { bigint: true }));
     if (!finalStaged.isFile() || finalStaged.isSymbolicLink() || !sameFile(owned, finalStaged)) corrupt();
     stopped(request);
@@ -226,13 +310,17 @@ export async function writePdfCopy(request: PdfCopyRequest, control: PdfCopyCont
     // No throwing admission check after this successful commit boundary.
     committed = true;
   } catch (error) {
-    if (codeIs(error, 'ABORT_ERR')) throw new PdfCopyError('cancelled', 'Saving the PDF copy was cancelled before publication.');
+    if (codeIs(error, 'ABORT_ERR'))
+      throw new PdfCopyError('cancelled', 'Saving the PDF copy was cancelled before publication.');
     throw error;
   } finally {
     try {
       if (handle) {
-        try { if (created && !owned) owned = await handle.stat({ bigint: true }); }
-        finally { await handle.close(); }
+        try {
+          if (created && !owned) owned = await handle.stat({ bigint: true });
+        } finally {
+          await handle.close();
+        }
       }
     } finally {
       if (created && !committed && owned) await cleanup(staged, owned);

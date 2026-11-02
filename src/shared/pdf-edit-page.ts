@@ -95,16 +95,25 @@ function nativePdfCommands(value: unknown): NativePathCommand[] | null {
   while (index < value.length) {
     if (result.length >= 4096) return null;
     const op = number();
-    if (op === 4) { if (!result.length) return null; result.push({ op: 'Z' }); continue; }
-    const x1 = number(), y1 = number();
+    if (op === 4) {
+      if (!result.length) return null;
+      result.push({ op: 'Z' });
+      continue;
+    }
+    const x1 = number(),
+      y1 = number();
     if (x1 === null || y1 === null) return null;
     if (op === 0 || op === 1) result.push({ op: op === 0 ? 'M' : 'L', x: x1, y: y1 });
     else if (op === 2) {
-      const x2 = number(), y2 = number(), x = number(), y = number();
+      const x2 = number(),
+        y2 = number(),
+        x = number(),
+        y = number();
       if (x2 === null || y2 === null || x === null || y === null) return null;
       result.push({ op: 'C', x1, y1, x2, y2, x, y });
     } else if (op === 3) {
-      const x = number(), y = number();
+      const x = number(),
+        y = number();
       if (x === null || y === null) return null;
       result.push({ op: 'Q', x1, y1, x, y });
     } else return null;
@@ -112,18 +121,29 @@ function nativePdfCommands(value: unknown): NativePathCommand[] | null {
   return result.length >= 2 && result[0]?.op === 'M' ? result : null;
 }
 function pointInPdfPaint(x: number, y: number, matrix: Matrix, scale: number): { x: number; y: number } {
-  return { x: (matrix[0] * x + matrix[2] * y + matrix[4]) / scale,
-    y: (matrix[1] * x + matrix[3] * y + matrix[5]) / scale };
+  return {
+    x: (matrix[0] * x + matrix[2] * y + matrix[4]) / scale,
+    y: (matrix[1] * x + matrix[3] * y + matrix[5]) / scale,
+  };
 }
-function mappedPdfCommands(commands: readonly NativePathCommand[], matrix: Matrix, scale: number): NativePathCommand[] {
+function mappedPdfCommands(
+  commands: readonly NativePathCommand[],
+  matrix: Matrix,
+  scale: number,
+): NativePathCommand[] {
   return commands.map((command): NativePathCommand => {
     if (command.op === 'Z') return command;
     const end = pointInPdfPaint(command.x, command.y, matrix, scale);
-    if (command.op === 'M' || command.op === 'L') return { op: command.op, ...end };
-    const first = pointInPdfPaint(command.x1, command.y1, matrix, scale);
-    if (command.op === 'Q') return { op: 'Q', x1: first.x, y1: first.y, ...end };
-    const second = pointInPdfPaint(command.x2, command.y2, matrix, scale);
-    return { op: 'C', x1: first.x, y1: first.y, x2: second.x, y2: second.y, ...end };
+    if (command.op === 'C') {
+      const first = pointInPdfPaint(command.x1, command.y1, matrix, scale);
+      const second = pointInPdfPaint(command.x2, command.y2, matrix, scale);
+      return { op: 'C', x1: first.x, y1: first.y, x2: second.x, y2: second.y, ...end };
+    }
+    if (command.op === 'Q') {
+      const first = pointInPdfPaint(command.x1, command.y1, matrix, scale);
+      return { op: 'Q', x1: first.x, y1: first.y, ...end };
+    }
+    return { op: command.op, ...end };
   });
 }
 function pdfCommandPoints(commands: readonly NativePathCommand[]): { x: number; y: number }[] {
@@ -136,30 +156,69 @@ function pdfCommandPoints(commands: readonly NativePathCommand[]): { x: number; 
   }
   return points;
 }
-function nativePdfPath(index: number, commands: NativePathCommand[], call: PaintCall, scale: number,
-  fillRule: 'nonzero' | 'evenodd'): ShapeElement | null {
+function nativePdfPath(
+  index: number,
+  commands: NativePathCommand[],
+  call: PaintCall,
+  scale: number,
+  fillRule: 'nonzero' | 'evenodd',
+): ShapeElement | null {
   const fill = colorOf(call.fill);
-  if (!fill || call.composite !== 'source-over' || !Number.isFinite(call.alpha) || call.alpha < 0 || call.alpha > 1) return null;
+  if (
+    !fill ||
+    call.composite !== 'source-over' ||
+    !Number.isFinite(call.alpha) ||
+    call.alpha < 0 ||
+    call.alpha > 1
+  )
+    return null;
   const absolute = mappedPdfCommands(commands, call.matrix, scale);
   const points = pdfCommandPoints(absolute);
-  if (!points.length || points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return null;
-  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-  for (const point of points) { left = Math.min(left, point.x); top = Math.min(top, point.y); right = Math.max(right, point.x); bottom = Math.max(bottom, point.y); }
-  const width = right - left, height = bottom - top;
+  if (!points.length || points.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y)))
+    return null;
+  let left = Infinity,
+    top = Infinity,
+    right = -Infinity,
+    bottom = -Infinity;
+  for (const point of points) {
+    left = Math.min(left, point.x);
+    top = Math.min(top, point.y);
+    right = Math.max(right, point.x);
+    bottom = Math.max(bottom, point.y);
+  }
+  const width = right - left,
+    height = bottom - top;
   if (width <= 0 || height <= 0 || width > 16384 || height > 16384) return null;
   // Subtract before dividing: exact extrema map to0/1 without a matrix's
   // cancellation producing1+epsilon outside the normalized path schema.
   const normalized = absolute.map((command): NativePathCommand => {
     if (command.op === 'Z') return command;
     const end = { x: (command.x - left) / width, y: (command.y - top) / height };
-    if (command.op === 'M' || command.op === 'L') return { op: command.op, ...end };
-    const first = { x1: (command.x1 - left) / width, y1: (command.y1 - top) / height };
-    if (command.op === 'Q') return { op: 'Q', ...first, ...end };
-    return { op: 'C', ...first, x2: (command.x2 - left) / width, y2: (command.y2 - top) / height, ...end };
+    if (command.op === 'C') {
+      return {
+        op: 'C',
+        x1: (command.x1 - left) / width,
+        y1: (command.y1 - top) / height,
+        x2: (command.x2 - left) / width,
+        y2: (command.y2 - top) / height,
+        ...end,
+      };
+    }
+    if (command.op === 'Q') {
+      return { op: 'Q', x1: (command.x1 - left) / width, y1: (command.y1 - top) / height, ...end };
+    }
+    return { op: command.op, ...end };
   });
-  return { id: 'pdf-path-' + String(index), kind: 'shape', shape: 'path',
-    frame: { x: left, y: top, width, height }, fill, cornerRadius: 0, opacity: call.alpha,
-    path: { commands: normalized, fillRule, lineCap: 'butt', lineJoin: 'miter' } };
+  return {
+    id: 'pdf-path-' + String(index),
+    kind: 'shape',
+    shape: 'path',
+    frame: { x: left, y: top, width, height },
+    fill,
+    cornerRadius: 0,
+    opacity: call.alpha,
+    path: { commands: normalized, fillRule, lineCap: 'butt', lineJoin: 'miter' },
+  };
 }
 
 async function pngOf(canvas: DrawingCanvas): Promise<Uint8Array> {
@@ -226,9 +285,16 @@ export async function editablePdfPage(
 
   // Source v6 packed snapshots must precede the first reference render.
   const pathSnapshots = new Map<number, { commands: NativePathCommand[]; fillRule: 'nonzero' | 'evenodd' }>();
-  const clipped = new Set([ops['clip'], ops['eoClip'], ops['paintFormXObjectBegin'], ops['paintFormXObjectEnd']]);
+  const clipped = new Set([
+    ops['clip'],
+    ops['eoClip'],
+    ops['paintFormXObjectBegin'],
+    ops['paintFormXObjectEnd'],
+  ]);
   if (list.fnArray.some((fn) => clipped.has(fn)))
-    throw new Error('This page uses clipping or form drawing that cannot yet be separated safely. Its saved playback is unchanged.');
+    throw new Error(
+      'This page uses clipping or form drawing that cannot yet be separated safely. Its saved playback is unchanged.',
+    );
   for (const [index, fn] of list.fnArray.entries()) {
     if (index % 128 === 0) await control.checkpoint?.();
     const args = argsAt(index);
@@ -238,20 +304,27 @@ export async function editablePdfPage(
       const entries: readonly unknown[] = states;
       for (const state of entries) {
         if (!Array.isArray(state)) throw new Error('This page has an unsupported graphics state.');
-        const key: unknown = state[0], value: unknown = state[1];
+        const key: unknown = state[0],
+          value: unknown = state[1];
         if (key === 'BM' && value !== 'source-over')
-          throw new Error('This page uses backdrop-dependent compositing that cannot be separated safely. Its saved playback is unchanged.');
+          throw new Error(
+            'This page uses backdrop-dependent compositing that cannot be separated safely. Its saved playback is unchanged.',
+          );
         if ((key === 'SMask' && value !== false) || (key === 'TR' && value !== null))
-          throw new Error('This page uses masks or transfer effects that cannot be separated safely. Its saved playback is unchanged.');
+          throw new Error(
+            'This page uses masks or transfer effects that cannot be separated safely. Its saved playback is unchanged.',
+          );
       }
     }
     if (fn !== ops['constructPath']) continue;
-    const paint: unknown = args[0], wrapped: unknown = args[1];
+    const paint: unknown = args[0],
+      wrapped: unknown = args[1];
     if (paint !== ops['fill'] && paint !== ops['eoFill']) continue;
     if (!Array.isArray(wrapped)) continue;
     const source: unknown = wrapped[0];
     const commands = nativePdfCommands(source);
-    if (commands) pathSnapshots.set(index, { commands, fillRule: paint === ops['eoFill'] ? 'evenodd' : 'nonzero' });
+    if (commands)
+      pathSnapshots.set(index, { commands, fillRule: paint === ops['eoFill'] ? 'evenodd' : 'nonzero' });
   }
   const pathCalls = new Map<number, PaintCall[]>();
   const outlinedText = new Set<number>();
@@ -273,16 +346,26 @@ export async function editablePdfPage(
           value: function (...args: unknown[]) {
             if (current !== null) {
               if (ctx.globalCompositeOperation !== 'source-over')
-                throw new Error('This page uses backdrop-dependent compositing that cannot be separated safely. Its saved playback is unchanged.');
+                throw new Error(
+                  'This page uses backdrop-dependent compositing that cannot be separated safely. Its saved playback is unchanged.',
+                );
               if (!allowed) {
                 painted.add(current);
-                if (show.has(list.fnArray[current]) && (method === 'strokeText' || method === 'stroke')) outlinedText.add(current);
+                if (show.has(list.fnArray[current]) && (method === 'strokeText' || method === 'stroke'))
+                  outlinedText.add(current);
                 if (pathSnapshots.has(current) && method === 'fill') {
                   const m = ctx.getTransform();
                   const values = pathCalls.get(current) ?? [];
-                  values.push({ method, at: [m.e, m.f], matrix: [m.a, m.b, m.c, m.d, m.e, m.f],
-                    font: ctx.font, fill: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '',
-                    alpha: ctx.globalAlpha, width: 0, composite: ctx.globalCompositeOperation });
+                  values.push({
+                    method,
+                    at: [m.e, m.f],
+                    matrix: [m.a, m.b, m.c, m.d, m.e, m.f],
+                    font: ctx.font,
+                    fill: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '',
+                    alpha: ctx.globalAlpha,
+                    width: 0,
+                    composite: ctx.globalCompositeOperation,
+                  });
                   pathCalls.set(current, values);
                 }
                 if (show.has(list.fnArray[current]) && (method === 'fillText' || method === 'fill')) {
@@ -313,7 +396,10 @@ export async function editablePdfPage(
         });
       }
       await page.render({
-        canvas: target.canvas as never,
+        // A non-null canvas makes PDF.js ignore canvasContext and request alpha:false.
+        // Force the factory's existing transparent context for separable paint.
+        canvas: null,
+        canvasContext: target.context as never,
         viewport,
         annotationMode: 0,
         background: 'rgba(0,0,0,0)',
@@ -340,7 +426,7 @@ export async function editablePdfPage(
   for (const [index, path] of pathSnapshots) {
     await control.checkpoint?.();
     const values = pathCalls.get(index);
-    if (!values || values.length !== 1) continue;
+    if (values?.length !== 1) continue;
     const call = values[0];
     if (!call) continue;
     const shape = nativePdfPath(index, path.commands, call, scale, path.fillRule);
@@ -500,6 +586,8 @@ export async function editablePdfPage(
       'Some rotated, outlined or unusual-font text stays as a separate picture. It can be moved or removed, but its words cannot be retyped.',
     );
   if ([...painted].some((index) => list.fnArray[index] === ops['constructPath'] && !native.has(index)))
-    issues.push('Some stroked or complex source drawings stay as separate pictures. They can be moved or removed; their control points cannot be edited.');
+    issues.push(
+      'Some stroked or complex source drawings stay as separate pictures. They can be moved or removed; their control points cannot be edited.',
+    );
   return { width: base.width, height: base.height, elements, assets, issues };
 }

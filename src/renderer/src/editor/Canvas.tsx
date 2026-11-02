@@ -310,10 +310,15 @@ export function Canvas({ platform }: { platform: string }) {
   };
   const pagePoint = (event: { clientX: number; clientY: number }): Point => {
     const point = pointOf(event);
-    return { x: Math.max(0, Math.min(pageSize.width, point.x)), y: Math.max(0, Math.min(pageSize.height, point.y)) };
+    return {
+      x: Math.max(0, Math.min(pageSize.width, point.x)),
+      y: Math.max(0, Math.min(pageSize.height, point.y)),
+    };
   };
-  const visiblePdfDraft = pdfDraft?.slideId === slide.id &&
-    pdfDraft.before === doc && pdfDraft.tool === pdfTool ? pdfDraft.element : null;
+  const visiblePdfDraft =
+    pdfDraft?.slideId === slide.id && pdfDraft.before === doc && pdfDraft.tool === pdfTool
+      ? pdfDraft.element
+      : null;
   const linesWithout = (ids: readonly string[]) => {
     const lines = snapLines(
       pageSize,
@@ -347,8 +352,12 @@ export function Canvas({ platform }: { platform: string }) {
       if (!now.doc || now.slideId !== slide.id || !now.pdfTool) return;
       stage.current?.focus();
       pdfPointer.current = {
-        id: newId(), pointerId: e.pointerId, slideId: slide.id,
-        before: now.doc, tool: now.pdfTool, points: [pagePoint(e)],
+        id: newId(),
+        pointerId: e.pointerId,
+        slideId: slide.id,
+        before: now.doc,
+        tool: now.pdfTool,
+        points: [pagePoint(e)],
       };
       useEditor.setState({ pdfDrawing: true });
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -463,8 +472,13 @@ export function Canvas({ platform }: { platform: string }) {
     const mark = pdfPointer.current;
     if (mark) {
       const now = useEditor.getState();
-      if (mark.pointerId !== e.pointerId || now.slideId !== mark.slideId || now.doc !== mark.before ||
-        now.pdfTool !== mark.tool || now.sourceConversion) {
+      if (
+        mark.pointerId !== e.pointerId ||
+        now.slideId !== mark.slideId ||
+        now.doc !== mark.before ||
+        now.pdfTool !== mark.tool ||
+        now.sourceConversion
+      ) {
         cancelPdfPointer();
         return;
       }
@@ -476,7 +490,10 @@ export function Canvas({ platform }: { platform: string }) {
         else mark.points[mark.points.length - 1] = point;
       } else {
         const first = mark.points[0];
-        if (!first) { cancelPdfPointer(); return; }
+        if (!first) {
+          cancelPdfPointer();
+          return;
+        }
         mark.points = [first, point];
       }
       const element = pdfMark(mark.tool, mark.points, mark.id);
@@ -582,21 +599,29 @@ export function Canvas({ platform }: { platform: string }) {
       useEditor.setState({ pdfDrawing: false });
       if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
       const now = useEditor.getState();
-      if (mark.pointerId !== e.pointerId || now.doc !== mark.before || now.slideId !== mark.slideId ||
-        now.pdfTool !== mark.tool || now.sourceConversion) {
+      if (
+        mark.pointerId !== e.pointerId ||
+        now.doc !== mark.before ||
+        now.slideId !== mark.slideId ||
+        now.pdfTool !== mark.tool ||
+        now.sourceConversion
+      ) {
         revokeSourceContent(mark.slideId);
         return;
       }
       const endpoint = pagePoint(e);
       if (mark.tool === 'draw') {
         const last = mark.points.at(-1);
-        if (!last || last.x !== endpoint.x || last.y !== endpoint.y) {
+        if (last?.x !== endpoint.x || last.y !== endpoint.y) {
           if (mark.points.length < 4096) mark.points.push(endpoint);
           else mark.points[mark.points.length - 1] = endpoint;
         }
       } else {
         const first = mark.points[0];
-        if (!first) { revokeSourceContent(mark.slideId); return; }
+        if (!first) {
+          revokeSourceContent(mark.slideId);
+          return;
+        }
         mark.points = [first, endpoint];
       }
       const made = pdfMark(mark.tool, mark.points, mark.id);
@@ -832,7 +857,9 @@ export function Canvas({ platform }: { platform: string }) {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerCancel}
-          onLostPointerCapture={() => { if (pdfPointer.current) cancelPdfPointer(); }}
+          onLostPointerCapture={() => {
+            if (pdfPointer.current) cancelPdfPointer();
+          }}
           onDoubleClick={onDoubleClick}
           onKeyDown={onKeyDown}
           onCopy={onCopy}
@@ -906,8 +933,11 @@ export function Canvas({ platform }: { platform: string }) {
               </TranslitSourceContext.Provider>
             </div>
             {visiblePdfDraft && (
-              <div data-testid="pdf-mark-preview" aria-hidden="true"
-                style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+              <div
+                data-testid="pdf-mark-preview"
+                aria-hidden="true"
+                style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}
+              >
                 <ElementView el={visiblePdfDraft} media="still" />
               </div>
             )}

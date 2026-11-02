@@ -424,9 +424,15 @@ const stops = new StopList((name, error) => {
 /** Exit at once (self-tests, restarting as Main): everything still stops, in order, first. */
 const exitNow = (code: number) => {
   quitting = true;
-  const finish = () => { stops.run(); app.exit(code); };
+  const finish = () => {
+    stops.run();
+    app.exit(code);
+  };
   const sourceQuit = documentQuit;
-  if (!sourceQuit) { finish(); return; }
+  if (!sourceQuit) {
+    finish();
+    return;
+  }
   void sourceQuit.drain().then((result) => {
     if (result.confirmed) finish();
     else log.error(`Source preparation did not confirm exit (${result.reason}); the library remains open.`);
@@ -3150,7 +3156,10 @@ function start(): void {
     open: createPdfCopyWindow,
     assetDirs: (kind) => {
       const folder = kind === 'wasmUrl' ? 'wasm' : kind === 'cMapUrl' ? 'cmaps' : 'standard_fonts';
-      return [join(rendererDir(), 'pdfjs', folder), join(app.getAppPath(), 'node_modules', 'pdfjs-dist', folder)];
+      return [
+        join(rendererDir(), 'pdfjs', folder),
+        join(app.getAppPath(), 'node_modules', 'pdfjs-dist', folder),
+      ];
     },
     normalize: pdfGeometry.normalize,
   });
@@ -3159,7 +3168,10 @@ function start(): void {
   handle(IPC.pdfExport.normalized, (e, id, index, pages) => pdfCopies.normalized(e.sender, id, index, pages));
   handle(IPC.pdfExport.done, (e, result) => pdfCopies.done(e.sender, result));
   handle(IPC.pdfExport.asset, (e, kind, name) => pdfCopies.asset(e.sender, kind, name));
-  stops.add('PDF copies', () => { pdfCopies.stop(); return pdfGeometry.stop(); });
+  stops.add('PDF copies', () => {
+    pdfCopies.stop();
+    return pdfGeometry.stop();
+  });
   let sourceOutputQuarantined = false;
   documentQuit = new SourceQuitGate({
     cancel: () => cancelSourceEdits(),
@@ -3789,28 +3801,45 @@ function start(): void {
     },
   });
   const pdfEditor = new PdfEditor({
-    db: libraryDb, mediaDir, session: pdfCopies,
-    allowed: (e) => !stops.done && documentQuit?.closing !== true && isLetIn() && !simpleAccess() && mode === 'pro' &&
-      !e.sender.isDestroyed() && (fromOperator(e) || editorWindow.isPage(e.sender)),
+    db: libraryDb,
+    mediaDir,
+    session: pdfCopies,
+    allowed: (e) =>
+      !stops.done &&
+      documentQuit?.closing !== true &&
+      isLetIn() &&
+      !simpleAccess() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
     stamp: (presentationId) => {
-      const row = libraryDb.prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
+      const row = libraryDb
+        .prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
         .get(presentationId) as { updated_at: string; content_rev: number } | undefined;
       return row ? `${row.updated_at}#${String(row.content_rev)}` : null;
     },
-    validate: slideEdits.documentForExport,
+    validate: (id, doc, stamp) => slideEdits.documentForExport(id, doc, stamp),
     chooseOutput: async (e, name) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
-      const options = { title: 'Save a PDF copy', buttonLabel: 'Save copy',
+      const options = {
+        title: 'Save a PDF copy',
+        buttonLabel: 'Save copy',
         defaultPath: name.replace(/[\\/:*?"<>|]/gu, ' ').trim() + ' copy.pdf',
-        filters: [{ name: 'PDF', extensions: ['pdf'] }] };
-      const chosen = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
-      return chosen.canceled ? null : chosen.filePath ?? null;
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      };
+      const chosen = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options);
+      return chosen.canceled ? null : chosen.filePath;
     },
   });
   handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
   cancelPdfCopies = () => pdfEditor.cancel();
   drainPdfCopies = () => pdfEditor.stop();
-  cancelSourceEdits = () => { slideEdits.cancelSourcePreparation(); cancelPdfCopies(); };
+  cancelSourceEdits = () => {
+    slideEdits.cancelSourcePreparation();
+    cancelPdfCopies();
+  };
   drainSourceEdits = () => slideEdits.drainSourcePreparation();
   stops.add('editor source generations', cancelSourceEdits);
   // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
@@ -6275,9 +6304,19 @@ function start(): void {
     studio.quitting();
     slideEditor?.quitting();
     const sourceQuit = documentQuit;
-    if (sourceQuit && !sourceQuit.request(event, () => app.quit(), (result) => {
-      log.error(`Source preparation did not confirm shutdown (${result.reason}); the library remains open.`);
-    })) return;
+    if (
+      sourceQuit &&
+      !sourceQuit.request(
+        event,
+        () => app.quit(),
+        (result) => {
+          log.error(
+            `Source preparation did not confirm shutdown (${result.reason}); the library remains open.`,
+          );
+        },
+      )
+    )
+      return;
   });
 
   const runSelfTest = () =>

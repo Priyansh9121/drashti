@@ -51,9 +51,24 @@ export function makeTestPdf(pages: readonly TestPdfPage[]): Buffer {
       const pixels = 'ff000000ff000000ffffff00>'; // Four generated RGB colors, ASCIIHexDecode.
       imageId = add(
         '<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Interpolate false /Filter /ASCIIHexDecode /Length ' +
-          String(Buffer.byteLength(pixels, 'latin1')) + ' >>\nstream\n' + pixels + '\nendstream',
+          String(Buffer.byteLength(pixels, 'latin1')) +
+          ' >>\nstream\n' +
+          pixels +
+          '\nendstream',
       );
-      lines.push('q', String(image.width) + ' 0 0 ' + String(image.height) + ' ' + String(image.x) + ' ' + String(image.y) + ' cm', '/PlaceholderImage Do', 'Q');
+      lines.push(
+        'q',
+        String(image.width) +
+          ' 0 0 ' +
+          String(image.height) +
+          ' ' +
+          String(image.x) +
+          ' ' +
+          String(image.y) +
+          ' cm',
+        '/PlaceholderImage Do',
+        'Q',
+      );
     }
     const content = lines.join('\n');
     const stream = add(

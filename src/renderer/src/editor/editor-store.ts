@@ -140,8 +140,10 @@ const closed: EditorView = {
 export const useEditor = create<EditorView>(() => closed);
 
 const sourceGate = new SourceConversionGate();
-let sourcePromptView: Pick<EditorView, 'group' | 'selection' | 'editing' | 'previewAt' | 'made' | 'pdfTool'> | null =
-  null;
+let sourcePromptView: Pick<
+  EditorView,
+  'group' | 'selection' | 'editing' | 'previewAt' | 'made' | 'pdfTool'
+> | null = null;
 
 function requestSourceConversion(ids: readonly string[], resume?: () => void, next?: EditDoc): boolean {
   const s = useEditor.getState();
@@ -430,7 +432,14 @@ export function showSlide(slideId: string): void {
   const s = useEditor.getState();
   if (!s.doc || !findSlide(s.doc, slideId)) return;
   cancelSourceConversion();
-  useEditor.setState({ slideId, selection: [], editing: null, previewAt: null, pdfTool: null, pdfDrawing: false });
+  useEditor.setState({
+    slideId,
+    selection: [],
+    editing: null,
+    previewAt: null,
+    pdfTool: null,
+    pdfDrawing: false,
+  });
 }
 
 export function startEditing(elementId: string): void {
