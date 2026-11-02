@@ -170,7 +170,7 @@ The columns are resized with `Splitter`s and the sizes are remembered on the com
 | 1280 to 1439 px | its icon, then its word with its key under | the same                                          |
 | From 1440 px    | the same                                   | its icon, its words at 16 px, its key beside them |
 
-![The operator window at 1600 × 900: the playlists, the open playlist's cards above the chosen deck's slides, and the right column](screenshots/operator-playlist-1600x900.png)
+![The operator window at 1600 × 900: the playlists, the open playlist's rows and the chosen deck's slide rows, and the right column](screenshots/operator-playlist-1600x900.png)
 
 ## 10. Simple Mode
 

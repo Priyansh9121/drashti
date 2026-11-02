@@ -574,15 +574,32 @@ async function copyMatchesPreview(win: Page, id: string, size: { W: number; H: n
       { png, across, H },
     );
   };
-  // Held at Before, the preview is the picture itself: the two greys.
-  await editor.getByTestId('pe-before').dispatchEvent('pointerdown');
-  await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', 'none');
-  const plain = await previewRow();
-  for (const [i, x] of across.entries())
-    expect(Math.abs((plain[i] ?? -99) - (x < W / 2 ? 0x60 : 0xa0)), `pixel ${String(x)}`).toBeLessThanOrEqual(
-      2,
-    );
-  await editor.getByTestId('pe-before').dispatchEvent('pointerup');
+  // ResizeObserver has applied the frame's new size to the image before its pixels are compared.
+  await expect
+    .poll(() => frame.locator('[data-testid="pe-kept"] img').boundingBox())
+    .toMatchObject({ width: 320, height: 180 });
+  // Hold Before with its supported keyboard input. Quiet windows are mouse-click-through: a native
+  // pointerleave during capture cancels a mouse comparison even while CDP holds its synthetic button.
+  const before = editor.getByTestId('pe-before');
+  await win.mouse.move(0, 0);
+  await before.focus();
+  await win.keyboard.down('Space');
+  try {
+    await expect(before).toHaveAttribute('aria-pressed', 'true');
+    // Held at Before, the preview is the picture itself: the two greys.
+    await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', 'none');
+    const plain = await previewRow();
+    await expect(before).toHaveAttribute('aria-pressed', 'true');
+    await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', 'none');
+    for (const [i, x] of across.entries())
+      expect(
+        Math.abs((plain[i] ?? -99) - (x < W / 2 ? 0x60 : 0xa0)),
+        `pixel ${String(x)}`,
+      ).toBeLessThanOrEqual(2);
+  } finally {
+    await win.keyboard.up('Space');
+  }
+  await expect(before).toHaveAttribute('aria-pressed', 'false');
   await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', /url/u);
   // Sharpened by its filter, the preview matches the copy within step 12's tolerance: 6 at each point,
   // 8 at the darkest and lightest.

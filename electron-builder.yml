@@ -90,6 +90,22 @@ extraResources:
       - screenshots/what-is-this.png
       - screenshots/window-picker.png
       - screenshots/zoom-window.png
+      - screenshots/editor-arrange-1024x645.png
+      - screenshots/editor-arrange-1280x720.png
+      - screenshots/editor-design-1024x645.png
+      - screenshots/editor-design-1280x720.png
+      - screenshots/editor-insert-1024x645.png
+      - screenshots/editor-insert-1280x720.png
+      - screenshots/editor-motion-1024x645.png
+      - screenshots/editor-motion-1280x720.png
+      - screenshots/editor-slides-1024x645.png
+      - screenshots/editor-slides-1280x720.png
+      - screenshots/editor-words-1024x645.png
+      - screenshots/editor-words-1280x720.png
+      - screenshots/phone-playlist-rows-375x812.png
+      - screenshots/phone-row-menu-375x812.png
+      - screenshots/phone-simple-controls-375x812.png
+      - screenshots/phone-simple-row-menu-375x812.png
 # Electron's fuses (Sessions 31–36, REL-7): a packaged Drashti never runs as Node (ELECTRON_RUN_AS_NODE),
 # never reads NODE_OPTIONS and never takes --inspect; its pages are file://, so file:// keeps its privileges.
 # Asar integrity is not now. electron-builder flips them right before it signs (ad hoc on a Mac without a
