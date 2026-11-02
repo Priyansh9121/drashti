@@ -4,7 +4,7 @@ import { slidesOf } from '../../../shared/slide-edit';
 import type { TextElement } from '../../../shared/model';
 import { resizePresentation, sizeLook } from '../../../shared/slide-size';
 import { applyLayout, ensureMaster } from './design-ops';
-import { newSlide } from './ops';
+import { applyLookToAll, newSlide } from './ops';
 
 const text: TextElement = {
   id: 'placeholder-text',
@@ -120,5 +120,52 @@ describe('slide size and layouts', () => {
     expect(changed.groups).toBe(original.groups);
     expect(slidesOf(changed)).toHaveLength(1);
     expect(ensureMaster(changed)).toBe(changed);
+  });
+});
+
+describe('a designed background used on all slides', () => {
+  it('copies the backdrop, keeping each slide’s own layout, master choice and guides', () => {
+    const doc = fixture();
+    const source = slidesOf(doc)[0]!;
+    source.design = {
+      backdrop: { kind: 'gradient', from: '#123456', to: '#654321', angle: 90 },
+      layout: 'words',
+    };
+    const target = {
+      ...newSlide(null),
+      id: 'placeholder-target',
+      design: {
+        backdrop: { kind: 'picture' as const, mediaId: 'placeholder-picture', fit: 'fill' as const },
+        layout: 'two-columns' as const,
+        skipMaster: true,
+      },
+      guides: { x: [200], y: [300] },
+    };
+    doc.groups[0]!.slides.push(target);
+    const changed = slidesOf(applyLookToAll(doc, source.id))[1];
+    expect(changed?.design).toEqual({
+      backdrop: source.design.backdrop,
+      layout: 'two-columns',
+      skipMaster: true,
+    });
+    expect(changed?.guides).toBe(target.guides);
+    expect(changed?.design?.backdrop).not.toBe(source.design.backdrop);
+    expect(target.design.backdrop.kind).toBe('picture');
+  });
+  it('clears an older designed backdrop when the source uses a solid colour', () => {
+    const doc = fixture();
+    const source = slidesOf(doc)[0]!;
+    source.background = '#112233';
+    doc.groups[0]!.slides.push({
+      ...newSlide(null),
+      id: 'placeholder-target',
+      design: {
+        backdrop: { kind: 'gradient', from: '#123456', to: '#654321', angle: 90 },
+        layout: 'two-columns',
+      },
+    });
+    const changed = slidesOf(applyLookToAll(doc, source.id))[1];
+    expect(changed?.background).toBe('#112233');
+    expect(changed?.design).toEqual({ layout: 'two-columns' });
   });
 });
