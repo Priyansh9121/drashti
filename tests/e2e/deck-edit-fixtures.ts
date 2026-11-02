@@ -5,7 +5,7 @@
  * every product API and fixture imported here already exists.
  */
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
-import { expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 // Existing host-Node E2E pattern. This repo ships better-sqlite3 13.0.3
 // Node-API prebuilds unchanged in Electron (electron-builder.yml:106);
 // the repository README documents its Node prerequisites.
@@ -119,6 +119,19 @@ export async function openSource(animated: boolean) {
     expect(id, 'the existing generated-source import must succeed before feature assertions').not.toBe('');
     const before = rawContent(userData, id);
     expect(before.slides).toHaveLength(3);
+    if (animated && before.slides.some((slide) => slide.deck === null)) {
+      // Failure-only evidence from this fresh placeholder library; preserve every baking assertion below.
+      const report = await win.evaluate(async () => {
+        const { drashti } = window as unknown as PageGlobals;
+        const runs = await drashti.library.listImportRuns();
+        const run = runs[0];
+        return run ? drashti.library.getImportReport(run.id) : null;
+      });
+      await test.info().attach('generated-deck-import-report', {
+        body: Buffer.from(JSON.stringify(report, null, 2)),
+        contentType: 'application/json',
+      });
+    }
     if (animated)
       for (const slide of before.slides) {
         expect(slide.deck, 'existing baker stand-in produced a baked source slide').not.toBeNull();
