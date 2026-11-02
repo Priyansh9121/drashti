@@ -47,7 +47,10 @@ export function retainedOriginals(db: Db): OriginalDescriptor[] {
 }
 /** Scheduled callers gate and account for checksum IO as well as the bytes they copy. */
 export type OriginalReadGuard = (bytes: number) => Promise<void>;
-async function guardedChecksum(file: string, guard: OriginalReadGuard): Promise<{ sha256: string; bytes: number }> {
+async function guardedChecksum(
+  file: string,
+  guard: OriginalReadGuard,
+): Promise<{ sha256: string; bytes: number }> {
   await guard(0);
   const input = await open(file, 'r');
   const hash = createHash('sha256');
@@ -64,7 +67,9 @@ async function guardedChecksum(file: string, guard: OriginalReadGuard): Promise<
       bytes += read.bytesRead;
     }
     return { sha256: hash.digest('hex'), bytes };
-  } finally { await input.close(); }
+  } finally {
+    await input.close();
+  }
 }
 export async function verifiedOriginal(
   mediaDir: string,
@@ -75,19 +80,23 @@ export async function verifiedOriginal(
   if (guard) await guard(0);
   const place = await realPlaceAsync(mediaDir, join(mediaDir, originalRelative(original)));
   if (!place?.inside) return null;
-  let guardFailed = false;
+  const guardState = { failed: false };
   try {
     const info = await stat(place.path);
     if (!info.isFile() || info.size !== original.bytes) return null;
     const hashed = guard
       ? await guardedChecksum(place.path, async (bytes) => {
-          try { await guard(bytes); }
-          catch (error) { guardFailed = true; throw error; }
+          try {
+            await guard(bytes);
+          } catch (error) {
+            guardState.failed = true;
+            throw error;
+          }
         })
       : await sha256File(place.path);
     return hashed.sha256 === original.sha256 && hashed.bytes === original.bytes ? place.path : null;
   } catch (error) {
-    if (guardFailed) throw error;
+    if (guardState.failed) throw error;
     return null;
   }
 }
