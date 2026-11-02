@@ -29,10 +29,18 @@ export function validateEditablePdfPage(
   const elementIds = new Set<string>();
   const needed = new Set<string>();
   for (const element of page.elements) {
-    if (elementIds.has(element.id) || (element.kind !== 'text' && element.kind !== 'image')) return null;
+    if (
+      elementIds.has(element.id) ||
+      !token.safeParse(element.id).success ||
+      (element.kind !== 'text' && element.kind !== 'image' && element.kind !== 'shape')
+    ) return null;
     elementIds.add(element.id);
-    if (element.kind === 'image') needed.add(element.mediaId);
+    if (element.kind === 'image') {
+      if (!token.safeParse(element.mediaId).success) return null;
+      needed.add(element.mediaId);
+    }
     // Schemas allow deliberately broad coordinates; this private extraction reply is bounded tighter.
+    if (element.frame.width <= 0 || element.frame.height <= 0) return null;
     const values = Object.values(element.frame);
     if (
       !values.every(

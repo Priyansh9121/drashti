@@ -241,7 +241,7 @@ describe('real PDF.js editable source paint, not operator mocks', () => {
         kind: 'image',
         frame: { x: 800, y: 444, width: 96, height: 64 },
       });
-      if (!image || image.kind !== 'image') throw new Error('The generated embedded image was not retained.');
+      if (image?.kind !== 'image') throw new Error('The generated embedded image was not retained.');
       expect(result.assets.some((asset) => asset.id === image.mediaId && asset.png.byteLength > 0)).toBe(
         true,
       );

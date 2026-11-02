@@ -258,6 +258,11 @@ import { SourceReaderQueue } from './documents/source-reader-queue';
 import { pptxReader } from './documents/pptx-reader-service';
 import { spawnPptxReaderWorker } from './documents/spawn-pptx-reader-worker';
 import { sourceWrite } from './documents/source-write';
+import { SourceQuitGate } from './documents/source-quit-gate';
+import { PdfPrintGeometry } from './documents/pdf-geometry-service';
+import { PdfCopySession } from './library/pdf-copy-session';
+import { PdfEditor } from './library/pdf-editor';
+import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
@@ -393,6 +398,8 @@ log.info(
 );
 /** Drashti is quitting: windows and processes going now are no problem (the crash journal). */
 let quitting = false;
+/** Source-only barrier, assigned when Main creates its document readers. */
+let documentQuit: SourceQuitGate | null = null;
 // The crash journal (Sessions 31–36, ROB-6): what went wrong, kept in the data folder as it happens, so the
 // next start can say it even when Drashti itself stopped (crash-journal.ts).
 const crashJournal = new CrashJournal(join(app.getPath('userData'), JOURNAL_FILE), (line) => {
@@ -417,8 +424,13 @@ const stops = new StopList((name, error) => {
 /** Exit at once (self-tests, restarting as Main): everything still stops, in order, first. */
 const exitNow = (code: number) => {
   quitting = true;
-  stops.run();
-  app.exit(code);
+  const finish = () => { stops.run(); app.exit(code); };
+  const sourceQuit = documentQuit;
+  if (!sourceQuit) { finish(); return; }
+  void sourceQuit.drain().then((result) => {
+    if (result.confirmed) finish();
+    else log.error(`Source preparation did not confirm exit (${result.reason}); the library remains open.`);
+  });
 };
 // Tests on a computer someone is using: never active, never covering the screen (windows/quiet.ts).
 startQuietTests();
@@ -2951,6 +2963,9 @@ function start(): void {
   // So does the slide editor's window (Session 55, Part 17a): Simple Mode edits no slides.
   let closeEditor: () => void = () => undefined;
   let cancelSourceEdits: () => void = () => undefined;
+  let drainSourceEdits: () => Promise<void> = () => Promise.resolve();
+  let cancelPdfCopies: () => void = () => undefined;
+  let drainPdfCopies: () => Promise<void> = () => Promise.resolve();
   // Simple Mode's one playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple
   // Mode, or a new one when there was none (simple-playlist.ts); Simple Mode changes that one only.
   const simplePlaylist = new SimplePlaylist({
@@ -3130,6 +3145,32 @@ function start(): void {
   const documentReaders = new SourceReaderQueue(
     sourceReader((request) => pdfPictures.readEditable(request), pptxReader(spawnPptxReaderWorker)),
   );
+  const pdfGeometry = new PdfPrintGeometry();
+  const pdfCopies = new PdfCopySession({
+    open: createPdfCopyWindow,
+    assetDirs: (kind) => {
+      const folder = kind === 'wasmUrl' ? 'wasm' : kind === 'cMapUrl' ? 'cmaps' : 'standard_fonts';
+      return [join(rendererDir(), 'pdfjs', folder), join(app.getAppPath(), 'node_modules', 'pdfjs-dist', folder)];
+    },
+    normalize: pdfGeometry.normalize,
+  });
+  handle(IPC.pdfExport.job, (e) => pdfCopies.job(e.sender));
+  handle(IPC.pdfExport.print, (e, id, index) => pdfCopies.print(e.sender, id, index));
+  handle(IPC.pdfExport.normalized, (e, id, index, pages) => pdfCopies.normalized(e.sender, id, index, pages));
+  handle(IPC.pdfExport.done, (e, result) => pdfCopies.done(e.sender, result));
+  handle(IPC.pdfExport.asset, (e, kind, name) => pdfCopies.asset(e.sender, kind, name));
+  stops.add('PDF copies', () => { pdfCopies.stop(); return pdfGeometry.stop(); });
+  let sourceOutputQuarantined = false;
+  documentQuit = new SourceQuitGate({
+    cancel: () => cancelSourceEdits(),
+    stop: async () => {
+      pdfPictures.stopEditable();
+      pdfCopies.stop();
+      await Promise.all([documentReaders.stop(), drainSourceEdits(), pdfGeometry.stop(), drainPdfCopies()]);
+      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
+      return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
+    },
+  });
   stops.add('document preparation', () => {
     pdfPictures.stopEditable();
     return documentReaders.stop();
@@ -3690,6 +3731,7 @@ function start(): void {
         : electronScreen.getPrimaryDisplay()
       ).workArea,
     background: () => appearance.background(),
+    closed: () => cancelSourceEdits(),
     track: (win) => {
       appearance.track(win);
     },
@@ -3726,12 +3768,18 @@ function start(): void {
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
     mayPrepareSource: (e) =>
       !stops.done &&
+      !quitStarted &&
+      documentQuit?.closing !== true &&
       isLetIn() &&
       !simpleAccess() &&
       mode === 'pro' &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
-    sourceReader: documentReaders.read,
+    sourceReader: async (request) => {
+      const result = await documentReaders.read(request);
+      if (!result.ok && result.retainOutput) sourceOutputQuarantined = true;
+      return result;
+    },
     sourceWrite: sourceWrite(libraryDb, () => imports.giveWay()),
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
@@ -3740,7 +3788,30 @@ function start(): void {
       sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
-  cancelSourceEdits = () => slideEdits.cancelSourcePreparation();
+  const pdfEditor = new PdfEditor({
+    db: libraryDb, mediaDir, session: pdfCopies,
+    allowed: (e) => !stops.done && documentQuit?.closing !== true && isLetIn() && !simpleAccess() && mode === 'pro' &&
+      !e.sender.isDestroyed() && (fromOperator(e) || editorWindow.isPage(e.sender)),
+    stamp: (presentationId) => {
+      const row = libraryDb.prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
+        .get(presentationId) as { updated_at: string; content_rev: number } | undefined;
+      return row ? `${row.updated_at}#${String(row.content_rev)}` : null;
+    },
+    validate: slideEdits.documentForExport,
+    chooseOutput: async (e, name) => {
+      const parent = BrowserWindow.fromWebContents(e.sender);
+      const options = { title: 'Save a PDF copy', buttonLabel: 'Save copy',
+        defaultPath: name.replace(/[\\/:*?"<>|]/gu, ' ').trim() + ' copy.pdf',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }] };
+      const chosen = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
+      return chosen.canceled ? null : chosen.filePath ?? null;
+    },
+  });
+  handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
+  cancelPdfCopies = () => pdfEditor.cancel();
+  drainPdfCopies = () => pdfEditor.stop();
+  cancelSourceEdits = () => { slideEdits.cancelSourcePreparation(); cancelPdfCopies(); };
+  drainSourceEdits = () => slideEdits.drainSourcePreparation();
   stops.add('editor source generations', cancelSourceEdits);
   // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
   // the library through an import as any picture is, and one slide holding it large with the words under it.
@@ -6203,6 +6274,10 @@ function start(): void {
     streaming.quitting();
     studio.quitting();
     slideEditor?.quitting();
+    const sourceQuit = documentQuit;
+    if (sourceQuit && !sourceQuit.request(event, () => app.quit(), (result) => {
+      log.error(`Source preparation did not confirm shutdown (${result.reason}); the library remains open.`);
+    })) return;
   });
 
   const runSelfTest = () =>

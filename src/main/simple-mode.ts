@@ -42,6 +42,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // New › QR code… (Session 55, Part 8): Pro Mode's.
   IPC.library.newQrSlide,
   IPC.library.saveSlides,
+  IPC.library.exportPdf,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
   // The single-letter keys (Session 37): Pro Mode's keys sheet turns them on or off.

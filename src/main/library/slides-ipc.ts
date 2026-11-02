@@ -45,6 +45,8 @@ export interface SlidesIpcDeps {
 
 export interface SlidesIpcController {
   cancelSourcePreparation(presentationId?: string): void;
+  /** After admission closes and cancellation is signalled, wait for full Main staging/cache/cleanup chains. */
+  drainSourcePreparation(): Promise<void>;
   documentForExport(
     presentationId: string,
     doc: EditDoc,
@@ -76,6 +78,9 @@ export function registerSlidesIpc({
 }: SlidesIpcDeps): SlidesIpcController {
   const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
   const generations = new Map<string, AbortController>();
+  // Cancellation removes controllers immediately; these complete chains outlive
+  // the reader queue while Main stages assets or removes its private files.
+  const preparations = new Set<Promise<EditSlidesResult>>();
   const cancelSourcePreparation = (presentationId?: string) => {
     for (const [id, controller] of generations)
       if (presentationId === undefined || presentationId === id) {
@@ -83,6 +88,8 @@ export function registerSlidesIpc({
         generations.delete(id);
       }
   };
+  const drainSourcePreparation = () =>
+    Promise.allSettled([...preparations]).then(() => undefined);
   /**
    * When the presentation last changed, and its content revision (Sessions 31–36: every write of its content
    * moves it on, so two writes in one millisecond still differ): the editor saves only over what it opened.
@@ -116,7 +123,7 @@ export function registerSlidesIpc({
         fromOperator(e) &&
         mayPrepareSource(e) &&
         stampOf(rows.presentationId)?.stamp === stamp.stamp;
-      return imported
+      const preparing: Promise<EditSlidesResult> = imported
         .prepare(rows, doc, stamp.stamp, { signal: controller.signal, allowed })
         .then((prepared): EditSlidesResult => {
           if (!allowed())
@@ -140,7 +147,10 @@ export function registerSlidesIpc({
         }))
         .finally(() => {
           if (generations.get(rows.presentationId) === controller) generations.delete(rows.presentationId);
+          preparations.delete(preparing);
         });
+      preparations.add(preparing);
+      return preparing;
     }
     return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
   });
@@ -219,5 +229,5 @@ export function registerSlidesIpc({
     settings.set(DEFAULT_TRANSITION, kept);
     return { ok: true as const, transition: kept };
   });
-  return { cancelSourcePreparation, documentForExport };
+  return { cancelSourcePreparation, drainSourcePreparation, documentForExport };
 }

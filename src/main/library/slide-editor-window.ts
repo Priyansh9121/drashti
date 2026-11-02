@@ -54,6 +54,8 @@ export interface SlideEditorDeps {
   /** One of Drashti's own windows: told of each change of appearance until it closes. */
   track(win: BrowserWindow): void;
   log(line: string): void;
+  /** The actual editor closed; a cancelled dirty-close question does not call this. */
+  closed?(): void;
 }
 
 export class SlideEditorWindow {
@@ -126,6 +128,7 @@ export class SlideEditorWindow {
       this.dirty = false;
       this.mayClose = false;
       this.deps.log('The slide editor closed');
+      this.deps.closed?.();
     });
     void loadPage(win, 'slide-editor', {
       presentation: what.presentationId,

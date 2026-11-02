@@ -27,17 +27,18 @@ vi.mock('electron', async () => {
     isMinimized() {
       return false;
     }
-    restore() {}
-    focus() {}
-    show() {}
+    restore() { this.emit('restore'); }
+    focus() { this.emit('focus'); }
+    show() { this.emit('show'); }
     close() {
       let prevented = false;
+      const isPrevented = (): boolean => prevented;
       this.emit('close', {
         preventDefault: () => {
           prevented = true;
         },
       });
-      if (!prevented) this.destroy();
+      if (!isPrevented()) this.destroy();
     }
     destroy() {
       if (!this.destroyed) {

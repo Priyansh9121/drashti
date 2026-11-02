@@ -1,5 +1,4 @@
-// Intended destination: src/renderer/src/editor/PdfTools.tsx.
-// External draft only. No endpoint, document mutation or history is implemented here.
+// PDF page controls use the editor's normal content commands and native gestures.
 import { Button } from '../ui/Button';
 import {
   Download,
@@ -184,6 +183,13 @@ export function PdfTools({
       {pending !== null && (
         <p className="ml-3 self-center text-xs text-muted" role="status" data-testid="pdf-pages-pending">
           {pending === 'insert-pages' ? 'Preparing the pages…' : 'Writing the PDF copy…'}
+        </p>
+      )}
+      {activeTool !== null && pending === null && (
+        <p className="ml-3 shrink-0 self-center text-xs whitespace-nowrap text-muted" role="status" data-testid="pdf-tool-instruction">
+          {activeTool === 'draw' ? 'Draw on the page. Escape cancels.' :
+            activeTool === 'cover' ? 'Drag a visual cover on the page. Escape cancels.' :
+              'Drag across the part of the page to mark. Escape cancels.'}
         </p>
       )}
     </div>

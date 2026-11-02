@@ -5,6 +5,7 @@ import { slidesOf } from '../../../shared/slide-edit';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
 import type { Zoom } from './zoom';
+import type { PdfCanvasTool } from './pdf-marks';
 import { groupedSelection } from '../../../shared/element-groups';
 import { sizeLook } from '../../../shared/slide-size';
 import { convertSourceContent, SourceConversionGate, sourceContentChanges } from './source-conversion';
@@ -94,6 +95,9 @@ export interface EditorView {
   previewAt: number | null;
   /** An animated imported page asks before typing, content changes or drag previews. */
   sourceConversion: { slideIds: string[] } | null;
+  /** A page-mark tool and its unfinished local pointer preview, never saved content. */
+  pdfTool: PdfCanvasTool | null;
+  pdfDrawing: boolean;
 }
 
 const closed: EditorView = {
@@ -129,12 +133,14 @@ const closed: EditorView = {
   masterReturnId: null,
   previewAt: null,
   sourceConversion: null,
+  pdfTool: null,
+  pdfDrawing: false,
 };
 
 export const useEditor = create<EditorView>(() => closed);
 
 const sourceGate = new SourceConversionGate();
-let sourcePromptView: Pick<EditorView, 'group' | 'selection' | 'editing' | 'previewAt' | 'made'> | null =
+let sourcePromptView: Pick<EditorView, 'group' | 'selection' | 'editing' | 'previewAt' | 'made' | 'pdfTool'> | null =
   null;
 
 function requestSourceConversion(ids: readonly string[], resume?: () => void, next?: EditDoc): boolean {
@@ -149,6 +155,7 @@ function requestSourceConversion(ids: readonly string[], resume?: () => void, ne
       editing: s.editing,
       previewAt: s.previewAt,
       made: s.made.filter((id) => present.has(id)),
+      pdfTool: s.pdfTool,
     };
     useEditor.setState({ sourceConversion: { slideIds: sourceGate.pending.slideIds } });
   }
@@ -423,7 +430,7 @@ export function showSlide(slideId: string): void {
   const s = useEditor.getState();
   if (!s.doc || !findSlide(s.doc, slideId)) return;
   cancelSourceConversion();
-  useEditor.setState({ slideId, selection: [], editing: null, previewAt: null });
+  useEditor.setState({ slideId, selection: [], editing: null, previewAt: null, pdfTool: null, pdfDrawing: false });
 }
 
 export function startEditing(elementId: string): void {

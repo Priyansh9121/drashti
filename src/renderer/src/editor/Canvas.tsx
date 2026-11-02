@@ -1,6 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Rect, SlideElement, TextElement, TextRun } from '../../../shared/model';
+import type { Rect, ShapeElement, SlideElement, TextElement, TextRun } from '../../../shared/model';
 import { SHAPE_NAMES } from '../../../shared/model';
 import { groupedSelection } from '../../../shared/element-groups';
 import type { EditDoc } from '../../../shared/slide-edit';
@@ -19,6 +19,7 @@ import {
   beginGesture,
   commit,
   endGesture,
+  revokeSourceContent,
   select,
   startEditing,
   tell,
@@ -53,6 +54,8 @@ import {
   scaleElements,
   changeSlide,
   styleBox,
+  addElement,
+  newId,
 } from './ops';
 import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
@@ -64,6 +67,8 @@ import { cx } from '../ui/cx';
 import { ZoomIn, ZoomOut } from '../ui/icons';
 import type { Zoom } from './zoom';
 import { scaleFor, zoomBy, zoomIn, zoomLabel, zoomOut, zoomScroll } from './zoom';
+import { pdfMark } from './pdf-marks';
+import type { PdfCanvasTool } from './pdf-marks';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -86,6 +91,21 @@ const SNAP_PX = 8;
 const DRAG_PX = 3;
 /** Handles, screen pixels. */
 const HANDLE_PX = 10;
+
+interface PdfPointerGesture {
+  id: string;
+  pointerId: number;
+  slideId: string;
+  before: EditDoc;
+  tool: PdfCanvasTool;
+  points: Point[];
+}
+interface PdfPointerPreview {
+  slideId: string;
+  before: EditDoc;
+  tool: PdfCanvasTool;
+  element: ShapeElement;
+}
 
 type Drag =
   | {
@@ -170,6 +190,7 @@ export function Canvas({ platform }: { platform: string }) {
   const zoom = useEditor((s) => s.zoom);
   const aids = useEditor((s) => s.aids);
   const previewAt = useEditor((s) => s.previewAt);
+  const pdfTool = useEditor((s) => s.pdfTool);
   const area = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const size = useElementSize(area);
@@ -229,6 +250,19 @@ export function Canvas({ platform }: { platform: string }) {
   const [guides, setGuides] = useState<Guides | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
   const [editAt, setEditAt] = useState<Point | null>(null);
+  const pdfPointer = useRef<PdfPointerGesture | null>(null);
+  const [pdfDraft, setPdfDraft] = useState<PdfPointerPreview | null>(null);
+  const cancelPdfPointer = () => {
+    const pending = pdfPointer.current;
+    pdfPointer.current = null;
+    setPdfDraft(null);
+    useEditor.setState({ pdfDrawing: false });
+    if (pending) {
+      revokeSourceContent(pending.slideId);
+      if (stage.current?.hasPointerCapture(pending.pointerId))
+        stage.current.releasePointerCapture(pending.pointerId);
+    }
+  };
   /** When Paste in place's keys went down: the paste event that same press can also make is not a second paste. */
   const pastedInPlaceAt = useRef<number | null>(null);
   const slide = doc ? findSlide(doc, slideId) : undefined;
@@ -274,6 +308,12 @@ export function Canvas({ platform }: { platform: string }) {
     const r = stage.current?.getBoundingClientRect();
     return r ? { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale } : { x: 0, y: 0 };
   };
+  const pagePoint = (event: { clientX: number; clientY: number }): Point => {
+    const point = pointOf(event);
+    return { x: Math.max(0, Math.min(pageSize.width, point.x)), y: Math.max(0, Math.min(pageSize.height, point.y)) };
+  };
+  const visiblePdfDraft = pdfDraft?.slideId === slide.id &&
+    pdfDraft.before === doc && pdfDraft.tool === pdfTool ? pdfDraft.element : null;
   const linesWithout = (ids: readonly string[]) => {
     const lines = snapLines(
       pageSize,
@@ -295,6 +335,25 @@ export function Canvas({ platform }: { platform: string }) {
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
+    const intent = useEditor.getState();
+    if (intent.pdfTool && slide.documentPage?.ext === 'pdf') {
+      e.preventDefault();
+      if (intent.sourceConversion || intent.saving || intent.pdfDrawing) return;
+      if (intent.editing) finishTextEditing();
+      cancelPdfPointer();
+      // Permission precedes even a local preview; accepting it creates no edit.
+      if (!allowSourceContent(slide.id)) return;
+      const now = useEditor.getState();
+      if (!now.doc || now.slideId !== slide.id || !now.pdfTool) return;
+      stage.current?.focus();
+      pdfPointer.current = {
+        id: newId(), pointerId: e.pointerId, slideId: slide.id,
+        before: now.doc, tool: now.pdfTool, points: [pagePoint(e)],
+      };
+      useEditor.setState({ pdfDrawing: true });
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
     const target = e.target as HTMLElement;
     const p = pointOf(e);
     const handle = target.closest<HTMLElement>('[data-handle]')?.dataset['handle'];
@@ -401,6 +460,29 @@ export function Canvas({ platform }: { platform: string }) {
   };
 
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const mark = pdfPointer.current;
+    if (mark) {
+      const now = useEditor.getState();
+      if (mark.pointerId !== e.pointerId || now.slideId !== mark.slideId || now.doc !== mark.before ||
+        now.pdfTool !== mark.tool || now.sourceConversion) {
+        cancelPdfPointer();
+        return;
+      }
+      const point = pagePoint(e);
+      const last = mark.points.at(-1);
+      if (last && Math.hypot(point.x - last.x, point.y - last.y) * scale < 1) return;
+      if (mark.tool === 'draw') {
+        if (mark.points.length < 4096) mark.points.push(point);
+        else mark.points[mark.points.length - 1] = point;
+      } else {
+        const first = mark.points[0];
+        if (!first) { cancelPdfPointer(); return; }
+        mark.points = [first, point];
+      }
+      const element = pdfMark(mark.tool, mark.points, mark.id);
+      setPdfDraft(element ? { slideId: mark.slideId, before: mark.before, tool: mark.tool, element } : null);
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     const p = pointOf(e);
@@ -493,6 +575,38 @@ export function Canvas({ platform }: { platform: string }) {
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const mark = pdfPointer.current;
+    if (mark) {
+      pdfPointer.current = null;
+      setPdfDraft(null);
+      useEditor.setState({ pdfDrawing: false });
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+      const now = useEditor.getState();
+      if (mark.pointerId !== e.pointerId || now.doc !== mark.before || now.slideId !== mark.slideId ||
+        now.pdfTool !== mark.tool || now.sourceConversion) {
+        revokeSourceContent(mark.slideId);
+        return;
+      }
+      const endpoint = pagePoint(e);
+      if (mark.tool === 'draw') {
+        const last = mark.points.at(-1);
+        if (!last || last.x !== endpoint.x || last.y !== endpoint.y) {
+          if (mark.points.length < 4096) mark.points.push(endpoint);
+          else mark.points[mark.points.length - 1] = endpoint;
+        }
+      } else {
+        const first = mark.points[0];
+        if (!first) { revokeSourceContent(mark.slideId); return; }
+        mark.points = [first, endpoint];
+      }
+      const made = pdfMark(mark.tool, mark.points, mark.id);
+      const extent = made ? Math.max(made.frame.width, made.frame.height) * scale : 0;
+      if (made && extent >= DRAG_PX)
+        commit(addElement(mark.before, mark.slideId, made), { select: [made.id] });
+      else revokeSourceContent(mark.slideId);
+      useEditor.setState({ pdfTool: null });
+      return;
+    }
     const d = drag.current;
     drag.current = null;
     setGuides(null);
@@ -515,6 +629,15 @@ export function Canvas({ platform }: { platform: string }) {
     endGesture();
   };
 
+  const onPointerCancel = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (pdfPointer.current) {
+      cancelPdfPointer();
+      useEditor.setState({ pdfTool: null });
+      return;
+    }
+    onPointerUp(e);
+  };
+
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const hit = hitTest(elements, pointOf(e), 6 / scale);
     const el = elements.find((x) => x.id === hit);
@@ -531,6 +654,13 @@ export function Canvas({ platform }: { platform: string }) {
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape' && (pdfPointer.current || useEditor.getState().pdfTool)) {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelPdfPointer();
+      useEditor.setState({ pdfTool: null });
+      return;
+    }
     // Any other key: a paste after it is a paste of its own.
     pastedInPlaceAt.current = null;
     // Alt places freely while dragging; on its own it must not open the window's menu bar (Windows).
@@ -697,11 +827,12 @@ export function Canvas({ platform }: { platform: string }) {
           data-scale={scale.toFixed(4)}
           data-fit={fit.toFixed(4)}
           className="absolute touch-none outline-offset-4 select-none"
-          style={{ left, top, width, height }}
+          style={{ left, top, width, height, cursor: pdfTool ? 'crosshair' : undefined }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onLostPointerCapture={() => { if (pdfPointer.current) cancelPdfPointer(); }}
           onDoubleClick={onDoubleClick}
           onKeyDown={onKeyDown}
           onCopy={onCopy}
@@ -774,6 +905,12 @@ export function Canvas({ platform }: { platform: string }) {
                 </MeasureContext.Provider>
               </TranslitSourceContext.Provider>
             </div>
+            {visiblePdfDraft && (
+              <div data-testid="pdf-mark-preview" aria-hidden="true"
+                style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+                <ElementView el={visiblePdfDraft} media="still" />
+              </div>
+            )}
             <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
             {aids.grid && (
               <svg

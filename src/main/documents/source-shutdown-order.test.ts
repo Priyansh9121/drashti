@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PreparedSource } from '../../shared/editable-source';
 import { StopList } from '../lifecycle';
 import { SourceReaderQueue } from './source-reader-queue';
+import { SourceQuitGate } from './source-quit-gate';
 
 describe('source preparation before library shutdown', () => {
   it('drains owned source work before the library-close step', async () => {
@@ -42,11 +43,17 @@ describe('source preparation before library shutdown', () => {
       order.push('library closed');
     });
     try {
-      stops.run();
+      // Deliberate Main lifecycle change: a real source-only barrier precedes
+      // the unchanged synchronous stop list. The order assertion is unchanged.
+      const gate = new SourceQuitGate({ cancel: () => undefined, stop: async () => { await queue.stop(); return true; } });
+      const quitting = gate.drain();
+      await Promise.resolve();
       release();
       await pending;
+      expect(await quitting).toEqual({ confirmed: true });
+      stops.run();
       await draining;
-      // Current actual order is library closed, then source drained.
+      // General StopList semantics stay synchronous; Main now drains sources first.
       expect(order).toEqual(['source drained', 'library closed']);
     } finally {
       release();

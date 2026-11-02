@@ -54,6 +54,7 @@ export function originalWorld() {
       color: [30, 58, 138],
       text: PLACEHOLDER_WORDS,
       note: 'Placeholder note',
+      syntheticImage: { x: 800, y: 32, width: 96, height: 64 },
     },
   ]);
   const hash = bytesHash(bytes);

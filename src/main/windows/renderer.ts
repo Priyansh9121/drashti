@@ -10,6 +10,7 @@ export type RendererPage =
   | 'stream'
   | 'node'
   | 'pdf'
+  | 'pdf-export'
   | 'sharpen'
   | 'zoom'
   | 'lock'
