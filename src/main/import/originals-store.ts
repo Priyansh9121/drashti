@@ -149,7 +149,8 @@ export class OriginalsStore {
       if (!before.isFile() || before.size <= 0 || before.size > limit || !EXTENSIONS.includes(ext))
         return {
           ok: false,
-          message: 'This document is empty, too large, or is not a regular document file.',
+          message:
+            'This document is empty, too large, or is not a regular document file. Save a smaller, single-file PDF or deck, then import that copy.',
         };
       await mkdir(this.mediaDir, { recursive: true });
       const free = (this.options.freeBytes ?? diskFreeBytes)(this.mediaDir);
@@ -169,7 +170,10 @@ export class OriginalsStore {
       const hashed = await sha256File(partial);
       const original: OriginalDescriptor = { ...hashed, ext };
       if (!validOriginal(original) || hashed.bytes !== before.size)
-        return { ok: false, message: 'The document could not be copied whole.' };
+        return {
+          ok: false,
+          message: 'The document could not be copied whole. Check free disk space and import it again.',
+        };
       if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
       const folder = join(this.mediaDir, ORIGINALS_DIR, hashPrefix(original.sha256));
       const originalsDir = join(this.mediaDir, ORIGINALS_DIR);

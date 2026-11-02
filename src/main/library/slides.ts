@@ -272,15 +272,6 @@ export function applySlideEdit(
           : !old && s.documentPage && !s.documentPage.edited && s.deck
             ? { deck: JSON.stringify(s.deck) }
             : deckRow(s.deck, old)),
-        ...(s.documentPage
-          ? {
-              document_page: sameData(documentPageFromJson(old?.document_page), s.documentPage)
-                ? old?.document_page
-                : JSON.stringify(s.documentPage),
-            }
-          : old?.document_page !== undefined
-            ? { document_page: old.document_page }
-            : {}),
         ...(s.guides
           ? { editor_guides: JSON.stringify(s.guides) }
           : old?.editor_guides !== undefined
@@ -294,6 +285,15 @@ export function applySlideEdit(
             }
           : old?.editor_design !== undefined
             ? { editor_design: null }
+            : {}),
+        ...(s.documentPage
+          ? {
+              document_page: sameData(documentPageFromJson(old?.document_page), s.documentPage)
+                ? old?.document_page
+                : JSON.stringify(s.documentPage),
+            }
+          : old?.document_page !== undefined
+            ? { document_page: old.document_page }
             : {}),
       });
       const list: ElementRow[] = s.elements.map((el) => {
