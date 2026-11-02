@@ -1,5 +1,5 @@
 import { longPress } from './phone-gestures';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -55,11 +55,26 @@ test('the wallpapers on a phone: listed under the playlist, one tap chooses one,
     await p.getByTestId('remote-tab-playlist').click();
     const section = p.getByTestId('remote-wallpapers');
     const tile = (name: string) => section.getByTestId('remote-wallpaper').filter({ hasText: name });
+    // The preview is lazy: scrolling it into view starts its real image request. A phone taps the
+    // settled picture, rather than a mouse clicking its replaceable waiting DIV while that arrives.
+    const tapTile = async (target: Locator) => {
+      await target.scrollIntoViewIfNeeded();
+      const picture = target.locator('img[data-preview="shown"]');
+      await expect(picture).toBeVisible();
+      await expect
+        .poll(() =>
+          picture.evaluate(
+            (image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+      await target.tap();
+    };
     await expect(section.getByTestId('remote-wallpaper')).toHaveCount(2);
     await expect(tile('Placeholder dusk')).toHaveAttribute('aria-pressed', 'false');
 
     // One tap chooses it, as the window's one click does; the window hears of it.
-    await tile('Placeholder dusk').click();
+    await tapTile(tile('Placeholder dusk'));
     await expect.poll(async () => (await view(win)).chosenId).not.toBeNull();
     const now = await view(win);
     expect(now.wallpapers.find((w) => w.id === now.chosenId)?.name).toBe('Placeholder dusk');
@@ -73,7 +88,7 @@ test('the wallpapers on a phone: listed under the playlist, one tap chooses one,
     await expect(tile('Placeholder dusk')).toHaveAttribute('aria-pressed', 'false');
     // A tap on the chosen one chooses none (black).
     const other = section.locator('[data-testid="remote-wallpaper"][aria-pressed="true"]');
-    await other.click();
+    await tapTile(other);
     await expect.poll(async () => (await view(win)).chosenId).toBeNull();
 
     // Every tile a thumb's size, and nothing serious for a screen reader.
@@ -107,6 +122,6 @@ test('the wallpapers on a phone: listed under the playlist, one tap chooses one,
     await expect.poll(async () => (await view(win)).wallpapers.length).toBe(2);
   } finally {
     await phone.close();
+    await app.close();
   }
-  await app.close();
 });
