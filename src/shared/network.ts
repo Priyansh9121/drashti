@@ -125,7 +125,14 @@ export type NetworkChange =
    */
   | 'setup'
   /** The announcements' queue changed (Session 54): a Remote deciding on them reads it again. */
-  | 'queue';
+  | 'queue'
+  /**
+   * The phone (Session 55, Part 9): Pro Mode or Simple Mode now, and Simple Mode's one playlist (a Remote reads the
+   * hall again: it shows what Simple Mode allows and opens that playlist); the wallpapers; the quick bar's pins.
+   */
+  | 'mode'
+  | 'wallpapers'
+  | 'quickBar';
 
 /** What the feed sends a device. */
 export type ToDevice =

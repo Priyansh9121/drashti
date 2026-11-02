@@ -68,6 +68,8 @@ export interface PlaylistChanges {
   moveItems: (playlistId: unknown, ids: unknown, to: unknown) => PlaylistResult;
   removeItems: (ids: unknown) => PlaylistResult;
   restoreItems: (ids: unknown) => PlaylistResult;
+  /** A video row's When it ends (Session 55, Part 6; from a phone too since Part 9). */
+  setWhenEnds: (itemId: unknown, whenEnds: unknown) => PlaylistResult;
 }
 
 export function registerPlaylistIpc({
@@ -181,6 +183,14 @@ export function registerPlaylistIpc({
       smart?.itemsRestored(restored);
       return { ok: true, ids: restored };
     },
+    setWhenEnds: (itemId, whenEnds) => {
+      const id = playlistIdSchema.safeParse(itemId);
+      const w = whenEndsSchema.safeParse(whenEnds);
+      if (!id.success || !w.success) return failed('That is not something a video can do when it ends.');
+      return repo.setWhenEnds(id.data, w.data)
+        ? { ok: true, ids: [id.data] }
+        : failed('Only a video’s row says what happens when it ends.');
+    },
   };
   handle(IPC.playlists.create, (e, name, parentId, isFolder) =>
     change(e, () => changes.create(name, parentId, isFolder)),
@@ -273,14 +283,7 @@ export function registerPlaylistIpc({
   );
   // When it ends (Session 55, Part 6): a video row's Wallpaper, Next item, Loop or Freeze.
   handle(IPC.playlists.setWhenEnds, (e, itemId, whenEnds) =>
-    change(e, () => {
-      const id = playlistIdSchema.safeParse(itemId);
-      const w = whenEndsSchema.safeParse(whenEnds);
-      if (!id.success || !w.success) return failed('That is not something a video can do when it ends.');
-      return repo.setWhenEnds(id.data, w.data)
-        ? { ok: true, ids: [id.data] }
-        : failed('Only a video’s row says what happens when it ends.');
-    }),
+    change(e, () => changes.setWhenEnds(itemId, whenEnds)),
   );
   // Duplicate (Session 55, Part 4): "<name> copy" beside it, with its rows in their order.
   handle(IPC.playlists.duplicate, (e, playlistId) =>
@@ -386,5 +389,6 @@ export function registerPlaylistIpc({
     moveItems: told(changes.moveItems),
     removeItems: told(changes.removeItems),
     restoreItems: told(changes.restoreItems),
+    setWhenEnds: told(changes.setWhenEnds),
   };
 }

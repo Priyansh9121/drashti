@@ -298,6 +298,25 @@ curl -s -X POST "$DRASHTI/api/v1/screens/keep" -H "Authorization: Bearer $TOKEN"
 | `POST /api/v1/midi/forget` | `{"index":0}`                                 | Forgets a mapping, by its place in `mappings`.                                                                                                                                                                                                  |
 | `POST /api/v1/midi/learn`  | `{"action":"next"}` or `{"action":null}`      | Learn: the next press on the chosen device's controller at the computer is mapped to `next`, `back`, `clearAll`, `blackout` or (Session 55) `wallpaper`; `null` stops learning. A pad mapped to the logo before Session 55 works the Wallpaper. |
 
+**The phone's own** (Session 55, Part 9), a Remote's alone, each as the window's own request does it. In Simple Mode the wallpapers and Rename of a file Simple Mode's playlist holds are allowed (as its window's), the rest refused (403).
+
+| Request                                      | Body                                            | Does                                                                         |
+| -------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /api/v1/wallpapers`                     |                                                 | `wallpapers` (each `id`, `name` and `pictures`) and `chosenId`.              |
+| `POST /api/v1/wallpapers/choose`             | `{"wallpaperId":"…"}` or `{"wallpaperId":null}` | Chooses one (or none: black), answered with the wallpapers.                  |
+| `POST /api/v1/wallpapers/{id}/rename`        | `{"name":"…"}`                                  | Renames it.                                                                  |
+| `POST /api/v1/wallpapers/{id}/delete`        |                                                 | Deletes it; `restore` puts it back (Undo).                                   |
+| `POST /api/v1/wallpapers/{id}/restore`       |                                                 | Puts a deleted one back.                                                     |
+| `GET /api/v1/quick-bar`                      |                                                 | `pins`: the quick bar's, in order.                                           |
+| `POST /api/v1/quick-bar`                     | `{"pins":[…]}`                                  | The whole bar (at most 8, each once), as the window keeps it.                |
+| `GET /api/v1/media/{id}/look`                |                                                 | A picture's kept `look` (null: as it was taken) and whether it is a `photo`. |
+| `POST /api/v1/media/{id}/look`               | `{"look":{…}}` or `{"look":null}`               | Keeps a picture's look, as the Picture editor's Save does.                   |
+| `POST /api/v1/media/{id}/rename`             | `{"name":"…"}`                                  | Renames a picture, video or sound in the library.                            |
+| `POST /api/v1/presentations/{id}/rename`     | `{"name":"…"}`                                  | Renames a presentation.                                                      |
+| `POST /api/v1/playlist-items/{id}/when-ends` | `{"whenEnds":"loop"}`                           | A video row's When it ends: `wallpaper`, `next`, `loop` or `freeze`.         |
+
+`GET /api/v1/hall` also says `simple`: `{"playlistId":"…","words":"…"}` while Drashti is in Simple Mode (its one playlist, and what a phone shows once), else null. The feed's `{"type":"changed","what":…}` says `mode`, `wallpapers` or `quickBar` when those change.
+
 The feed's `{"type":"changed","what":"setup"}` says the screens' setup, Keep these screens?, a phone's ask, Media's video inputs, the cameras the computer lists, MIDI or (Session 55) the stage layouts changed: a Remote setting them up reads them again (`"screens"` still says the switches or the hall changed).
 
 ## The state feed (WebSocket)

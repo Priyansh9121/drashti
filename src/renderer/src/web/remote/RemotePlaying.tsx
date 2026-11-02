@@ -8,6 +8,7 @@ import { Pause, Play } from '../../ui/icons';
 import { TimeBar } from '../../ui/TimeBar';
 import { api } from '../device';
 import { tap } from '../taps';
+import { useSimple } from './simple';
 
 /*
  * The time bar on a phone or tablet (Session 54, B2), right under the live picture, above what plays' skips and
@@ -37,6 +38,9 @@ export function RemotePlaying({ state }: { state: EngineState | null }) {
 function Row({ row }: { row: PlayingRow }) {
   // Where it is, from the engine's time as this phone knows it, a few times a second.
   const now = useNow(250);
+  // Simple Mode (Session 55, Part 9): its window's bar has Play while paused, and moves nothing: Pause and the move
+  // are dimmed here (the main process refuses them all the same).
+  const simple = useSimple() !== null;
   const { playing } = row;
   const bar = barNow(playing, now);
   const known = bar.durationMs !== null;
@@ -58,7 +62,7 @@ function Row({ row }: { row: PlayingRow }) {
         <Button
           size="lg"
           icon={stopped ? Play : Pause}
-          disabled={!known}
+          disabled={!known || (simple && !stopped)}
           data-testid={stopped ? 'remote-time-bar-play' : 'remote-time-bar-pause'}
           onClick={() =>
             void tap(
@@ -78,9 +82,13 @@ function Row({ row }: { row: PlayingRow }) {
           startMs={bar.startMs}
           endMs={bar.endMs}
           markers={playing.marks}
-          onMove={(ms) => {
-            move(playing.ref, ms);
-          }}
+          onMove={
+            simple
+              ? undefined
+              : (ms) => {
+                  move(playing.ref, ms);
+                }
+          }
         />
       </div>
     </div>

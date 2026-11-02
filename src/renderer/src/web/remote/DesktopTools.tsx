@@ -12,6 +12,7 @@ import { BookOpen, KeyboardMusic, Megaphone, Monitor, PictureInPicture2, Video }
 import { Notice } from '../../ui/Notice';
 import { plural } from '../../ui/text';
 import { answerKeep, answerOff, openSheet, startDesktop, useDesktop } from './desktop-store';
+import { useSimple } from './simple';
 import { PhoneQuestion } from './PhoneSheet';
 import { InputsSheet } from './InputsSheet';
 import { LibrarySheet } from './LibrarySheet';
@@ -31,15 +32,19 @@ import { ScreensSheet, SwitchButtons } from './ScreensSheet';
 
 export function DesktopTools() {
   const problem = useDesktop((s) => (s.sheet === null ? s.problem : null));
+  // Simple Mode (Session 55, Part 9): its window sets none of these up; Audience and Stage turned on stay.
+  const simple = useSimple() !== null;
   return (
     <section className="space-y-2" aria-labelledby="remote-desktop-title" data-testid="remote-desktop">
       <h2 id="remote-desktop-title" className="text-base font-bold tracking-wider text-muted uppercase">
         The Drashti computer
       </h2>
-      <p className="text-base text-muted">
-        Its screens, video inputs and windows, picture in picture, library, MIDI and announcements, set up
-        from here as in Drashti.
-      </p>
+      {!simple && (
+        <p className="text-base text-muted">
+          Its screens, video inputs and windows, picture in picture, library, MIDI and announcements, set up
+          from here as in Drashti.
+        </p>
+      )}
       <SwitchButtons />
       {problem && (
         <Notice
@@ -50,6 +55,15 @@ export function DesktopTools() {
           {problem}
         </Notice>
       )}
+      {!simple && <SetUpButtons />}
+    </section>
+  );
+}
+
+/** The sheets that set the computer up (Pro Mode's). */
+function SetUpButtons() {
+  return (
+    <>
       <Button
         size="lg"
         className="min-h-12 w-full"
@@ -116,7 +130,7 @@ export function DesktopTools() {
       >
         Announcements…
       </Button>
-    </section>
+    </>
   );
 }
 

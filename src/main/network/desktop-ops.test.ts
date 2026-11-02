@@ -361,6 +361,11 @@ function setup(options: { locked?: boolean; letIn?: boolean } = {}) {
             calls.push({ what: 'restoreItems', args: [ids] });
             return { ok: true, ids: ids as string[] };
           },
+          // A video row's When it ends (Session 55, Part 9: a phone's too).
+          setWhenEnds: (...args) => {
+            calls.push({ what: 'setWhenEnds', args });
+            return { ok: true, ids: [String(args[0])] };
+          },
         }),
       },
       simple: () => locked,

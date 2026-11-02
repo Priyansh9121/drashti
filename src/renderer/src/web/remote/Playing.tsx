@@ -5,6 +5,7 @@ import { Button } from '../../ui/Button';
 import { ArrowRightToLine, Bookmark, RotateCcw, RotateCw, type Icon } from '../../ui/icons';
 import { api } from '../device';
 import { tap } from '../taps';
+import { useSimple } from './simple';
 
 /*
  * What is playing, under LIVE, as the operator window has it under Next and Back (MarkerJumps, Session 50): for the
@@ -84,7 +85,9 @@ export function Playing() {
   const soundSkips = useEngine((s) => skipsOf(s.state, 'sound'));
   const bg = bgSkips !== null || bgMarks.length > 0;
   const sound = soundSkips !== null || audioMarks.length > 0;
-  if (!bg && !sound) return null;
+  // Simple Mode (Session 55, Part 9): its window has no skips or marker jumps (they move what plays).
+  const simple = useSimple() !== null;
+  if ((!bg && !sound) || simple) return null;
   return (
     <section className="space-y-2" aria-labelledby="playing-title" data-testid="remote-playing">
       <h2 id="playing-title" className="text-base font-bold tracking-wider text-muted uppercase">

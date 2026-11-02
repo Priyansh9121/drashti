@@ -44,6 +44,7 @@ import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } fr
 import { COULD_NOT } from './messages';
 import { mirrorRoutes } from './mirror-routes';
 import { desktopRoutes } from './desktop-routes';
+import { phoneRoutes } from './phone-routes';
 
 /*
  * Drashti's network server: HTTP and WebSocket on one port. It runs in a
@@ -257,6 +258,8 @@ const ROUTES: Route[] = [
   ...mirrorRoutes(route),
   // The phone as a full Drashti (Session 54): the computer's screens, Keep these screens? and the switches.
   ...desktopRoutes(route),
+  // The phone's own (Session 55, Part 9): the wallpapers, the quick bar, a picture's look, Rename… and When it ends.
+  ...phoneRoutes(route),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
   route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
   // Session 54: playlists shared with phones, and files a phone adds (upload-routes.ts).
