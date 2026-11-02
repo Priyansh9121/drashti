@@ -55,7 +55,14 @@ import type {
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Lang, RenderSlide, Transition } from './model';
-import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
+import type {
+  CopiedElements,
+  EditDoc,
+  EditSlidesOpen,
+  EditSlidesResult,
+  SaveSlidesResult,
+  SlidesSaved,
+} from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
@@ -588,6 +595,27 @@ export const IPC = {
     close: 'lowerthirds:close',
     /** main -> the studio: its window was asked to close with changes not saved (ask first). */
     askClose: 'lowerthirds:ask-close',
+  },
+  /**
+   * The slide editor's window (Session 55, Part 17a): the operator window opens it on a presentation (or brings it
+   * forward and tells it which); it says whether it has changes not saved, and closes once its question is answered;
+   * main tells the operator window of a save from it (for its Undo).
+   */
+  slideEditor: {
+    open: 'slideeditor:open',
+    /** main -> the editor: open this presentation's slides (the window was open already). */
+    edit: 'slideeditor:edit',
+    dirty: 'slideeditor:dirty',
+    close: 'slideeditor:close',
+    /** main -> the editor: its window was asked to close with changes not saved (ask first). */
+    askClose: 'slideeditor:ask-close',
+    /** main -> operator: slides were edited (saved) in the editor's window. */
+    edited: 'slideeditor:edited',
+    /** The editor's elements copied, kept by main for the next window (and what is kept). */
+    copy: 'slideeditor:copy',
+    copied: 'slideeditor:copied',
+    /** One of the show's F-keys pressed in the editor's window: the operator window acts on it, as if pressed there. */
+    showKey: 'slideeditor:show-key',
   },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
@@ -1292,6 +1320,15 @@ export interface InvokeContract {
   [IPC.lowerThirds.hide]: { args: []; result: LowerThirdDone };
   [IPC.lowerThirds.dirty]: { args: [dirty: boolean]; result: null };
   [IPC.lowerThirds.close]: { args: []; result: null };
+  [IPC.slideEditor.open]: {
+    args: [presentationId: string, slideId: string | null];
+    result: { ok: true } | { ok: false; message: string };
+  };
+  [IPC.slideEditor.dirty]: { args: [dirty: boolean]; result: null };
+  [IPC.slideEditor.copy]: { args: [copied: CopiedElements]; result: null };
+  [IPC.slideEditor.copied]: { args: []; result: CopiedElements | null };
+  [IPC.slideEditor.showKey]: { args: [key: string]; result: null };
+  [IPC.slideEditor.close]: { args: []; result: null };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.midi.report]: { args: [seen: MidiSeen]; result: null };
@@ -1507,6 +1544,9 @@ export interface EventContract {
   [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.lowerThirds.edit]: NonNullable<StudioOpen>;
   [IPC.lowerThirds.askClose]: null;
+  [IPC.slideEditor.edit]: EditSlidesOpen;
+  [IPC.slideEditor.askClose]: null;
+  [IPC.slideEditor.edited]: SlidesSaved;
   [IPC.wallpapers.changed]: WallpapersView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.output.context]: OutputContext;

@@ -30,6 +30,8 @@ import {
   relaunchApp,
   savedLive,
   setUpScreen,
+  sizeSlideEditor,
+  slideEditorWindow,
   testDisplays,
   windowShowing,
 } from './helpers';
@@ -415,8 +417,9 @@ test('Drashti’s own transition set in the slide editor at 1024 × 645 comes in
       .filter({ hasText: 'Placeholder transitions deck' })
       .click();
     await win.getByTestId('edit-slides').click();
-    const editor = win.getByTestId('slide-editor');
-    await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+    // The editor's own window (Session 55, Part 17a), at CI's size.
+    const { ed, editor } = await slideEditorWindow(app);
+    await sizeSlideEditor(app, ed, { width: 1024, height: 645 });
     // The second slide: the deck's own named, then Fade instead of it, 0.6 s.
     await editor.getByTestId('editor-slide-thumb').nth(1).click();
     const transitions = editor.getByTestId('deck-transitions');
@@ -431,7 +434,7 @@ test('Drashti’s own transition set in the slide editor at 1024 × 645 comes in
     // Everything inside the window at CI's size.
     const box = await transitions.boundingBox();
     expect(box && box.x + box.width).toBeLessThanOrEqual(1024);
-    await expectNoSeriousA11yIssues(win, 'a deck’s transitions in the slide editor at 1024 × 645');
+    await expectNoSeriousA11yIssues(ed, 'a deck’s transitions in the slide editor at 1024 × 645');
     await editor.getByTestId('save-slides').click();
 
     // Kept with the deck's slide: in order, the next slide comes on with Drashti's Fade instead of the deck's own.

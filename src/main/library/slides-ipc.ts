@@ -2,7 +2,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { CUT, type Transition } from '../../shared/model';
 import { idSchema, transitionSchema } from '../../shared/model-schema';
-import type { EditSlidesResult, SaveSlidesResult, SlideLook } from '../../shared/slide-edit';
+import type { EditSlidesResult, SaveSlidesResult, SlideLook, SlidesSaved } from '../../shared/slide-edit';
 import { editDocSchema } from '../../shared/slide-edit';
 import type { Db } from '../db/database';
 import type { PresentationRepo } from '../db/presentations';
@@ -14,8 +14,8 @@ import { nfcEditDoc } from '../../shared/nfc';
 
 /*
  * The slide editor's requests: anyone of Drashti's pages may read a
- * presentation's slides; only the operator window may save them. A save is
- * one change, kept for Undo, and the screens show the live slide's new look
+ * presentation's slides; only the operator window and the slide editor's own window (Session 55, Part 17a) may save
+ * them. A save is one change, kept for the operator window's Undo, and the screens show the live slide's new look
  * at once.
  */
 
@@ -29,6 +29,8 @@ export interface SlidesIpcDeps {
   lookFor: (themeId: string | null, size: { width: number; height: number }) => SlideLook;
   /** A presentation's content changed: refresh caches, the live slide and the operator's list. */
   changed: (presentationIds: string[]) => void;
+  /** Slides saved (Session 55, Part 17a: from the slide editor's window): the operator window's Undo puts them back. */
+  saved?: (saved: SlidesSaved) => void;
 }
 
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change slides.' };
@@ -48,6 +50,7 @@ export function registerSlidesIpc({
   fromOperator,
   lookFor,
   changed,
+  saved,
 }: SlidesIpcDeps): void {
   /**
    * When the presentation last changed, and its content revision (Sessions 31–36: every write of its content
@@ -78,14 +81,17 @@ export function registerSlidesIpc({
     const before = presentations.content(id.data);
     const now = stampOf(id.data);
     if (!before || !now) return { ok: false, message: 'That presentation is no longer in the library.' };
-    if (before.width !== doc.data.width || before.height !== doc.data.height)
-      return { ok: false, message: 'The presentation’s size changed while it was open: open it again.' };
     if (now.stamp !== stamp && force !== true)
       return {
         ok: false,
         changedElsewhere: true,
         message: 'This presentation was changed somewhere else since the editor opened it (an import, say).',
       };
+    if (
+      (before.width !== doc.data.width || before.height !== doc.data.height) &&
+      before.slides.some((s) => s.deck != null)
+    )
+      return { ok: false, message: 'An imported deck keeps its original slide size.' };
     // Every picture, video and sound must be in the library.
     const media = mediaIdsOf(doc.data);
     if (media.length > 0) {
@@ -101,6 +107,7 @@ export function registerSlidesIpc({
     presentations.setContent(after);
     const revisionId = revisions.keep([before]);
     changed([id.data]);
+    saved?.({ presentationId: id.data, name: now.name, revisionId });
     return { ok: true, revisionId };
   });
 

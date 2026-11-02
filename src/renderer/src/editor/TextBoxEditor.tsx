@@ -1,21 +1,50 @@
-import { baseKeymap } from 'prosemirror-commands';
-import { history, redo, undo } from 'prosemirror-history';
+import { baseKeymap, chainCommands } from 'prosemirror-commands';
+import { history, redo, redoDepth, undo, undoDepth } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
-import type { Mark } from 'prosemirror-model';
-import type { Command } from 'prosemirror-state';
-import { EditorState, TextSelection } from 'prosemirror-state';
+import type { Mark, Node as PMNode } from 'prosemirror-model';
+import { EditorState, Plugin, TextSelection } from 'prosemirror-state';
 import type { MarkViewConstructor } from 'prosemirror-view';
-import { EditorView } from 'prosemirror-view';
+import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import type { CSSProperties } from 'react';
-import { useContext, useEffect, useRef, useState } from 'react';
-import type { TextElement } from '../../../shared/model';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { TextElement, TextRun } from '../../../shared/model';
+import { lineMarks } from '../../../shared/text-lists';
 import { htmlLang, TranslitSourceContext } from '../render/lang';
 import type { TranslitSource } from '../../../shared/model';
-import { runStyle, textBoxStyle, useShrinkToFit } from '../render/SlideView';
-import { commit, stopEditing, useEditor } from './editor-store';
+import {
+  listLineStyle,
+  listMarkerBoxStyle,
+  listMarkerStyle,
+  runStyle,
+  textBoxStyle,
+  useShrinkToFit,
+} from '../render/SlideView';
+import {
+  commit,
+  currentLook,
+  redo as redoStep,
+  stopEditing,
+  undo as undoStep,
+  useEditor,
+} from './editor-store';
 import { deleteElements, findSlide, mapElements } from './ops';
-import type { Look } from './runs-doc';
-import { docOf, runsOf, sameWords, textSchema, withRuns } from './runs-doc';
+import type { LineAttrs, Look } from './runs-doc';
+import {
+  docOf,
+  indentLine,
+  joinLineDown,
+  joinLineUp,
+  lookOf,
+  outdentLine,
+  pasteText,
+  runsOf,
+  sameWords,
+  splitLine,
+  textSchema,
+  toggleWords,
+  unlistAtStart,
+  withRuns,
+} from './runs-doc';
 
 /*
  * Typing in a text box, in place on the slide: a ProseMirror editor drawn
@@ -45,6 +74,41 @@ export function finishTextEditing(): void {
   stopEditing();
 }
 
+/**
+ * Undo, from the editor's button, the keys or the menu (Session 55, Part 17a: every change, typing too): while typing,
+ * the typing's last step, the keyboard staying in the box; with no typing left to undo, the typing ends and the
+ * editor's last change goes.
+ */
+export function undoAny(): void {
+  const typing = useEditor.getState().editing !== null ? active : null;
+  if (typing && Number(undoDepth(typing.view.state)) > 0) {
+    undo(typing.view.state, typing.view.dispatch);
+    typing.view.focus();
+    return;
+  }
+  if (typing) finishTextEditing();
+  undoStep();
+}
+
+/** Redo, as Undo: the typing's last undone step while typing, else the editor's (once typing has ended). */
+export function redoAny(): void {
+  const typing = useEditor.getState().editing !== null ? active : null;
+  if (typing && Number(redoDepth(typing.view.state)) > 0) {
+    redo(typing.view.state, typing.view.dispatch);
+    typing.view.focus();
+    return;
+  }
+  if (useEditor.getState().future.length === 0) return;
+  if (typing) finishTextEditing();
+  redoStep();
+}
+
+/** Run something once the key that asked for it is done with (a command must not end the editor it runs in). */
+function later(run: () => void): boolean {
+  queueMicrotask(run);
+  return true;
+}
+
 /** CSS properties as a style attribute. */
 function cssText(style: CSSProperties): string {
   return Object.entries(style)
@@ -72,16 +136,71 @@ function markViews(el: TextElement, source: TranslitSource | null): Record<strin
   };
 }
 
-/** A line break (Enter and Shift+Enter): the box is one block, so lines are breaks in it. */
-const lineBreak: Command = (state, dispatch) => {
-  const br = state.schema.nodes['hard_break'];
-  if (!br) return false;
-  if (dispatch) {
-    const marks = state.storedMarks ?? state.selection.$from.marks();
-    dispatch(state.tr.replaceSelectionWith(br.create(null, null, marks)).scrollIntoView());
-  }
-  return true;
-};
+/**
+ * A list's lines as the screens draw them (Session 55, Part 17a: render/SlideView.tsx's ListedRuns): each in by its
+ * level, its mark in the room before its words, numbers counted as the screens count them. A blank line of a list is
+ * in by its level (the caret sits where its words will be) and shows no mark, as on the screens.
+ */
+function listDecorations(doc: PMNode, el: TextElement): DecorationSet {
+  const lines: { node: PMNode; at: number }[] = [];
+  doc.forEach((node, at) => {
+    lines.push({ node, at });
+  });
+  const looks = lines.map(({ node }) => {
+    const attrs = node.attrs as LineAttrs;
+    const runs: TextRun[] = [];
+    node.forEach((text) => {
+      if (text.isText)
+        runs.push({
+          text: text.text ?? '',
+          ...lookOf(text.marks),
+          ...(attrs.list ? { list: attrs.list, ...(attrs.level > 0 ? { level: attrs.level } : {}) } : {}),
+        });
+    });
+    return runs;
+  });
+  const marks = lineMarks(looks);
+  const decorations: Decoration[] = [];
+  lines.forEach(({ node, at }, i) => {
+    const attrs = node.attrs as LineAttrs;
+    if (!attrs.list) return;
+    const first: Omit<TextRun, 'text'> = looks[i]?.[0] ?? attrs.brk ?? {};
+    const size = first.size ?? el.style.fontSize;
+    const drawn = marks[i];
+    const mark = drawn?.mark ?? null;
+    // A blank line of the list: in as far as its words will be.
+    const line = mark === null ? { mark: attrs.list, level: attrs.level, label: null } : (drawn ?? null);
+    if (!line) return;
+    decorations.push(Decoration.node(at, at + node.nodeSize, { style: cssText(listLineStyle(line, size)) }));
+    if (mark === null) return;
+    const label = drawn?.label ?? null;
+    decorations.push(
+      Decoration.widget(
+        at + 1,
+        () => {
+          const dom = document.createElement('span');
+          dom.setAttribute('aria-hidden', 'true');
+          dom.setAttribute('contenteditable', 'false');
+          dom.dataset['listMarker'] = mark;
+          dom.setAttribute('style', cssText(listMarkerBoxStyle({ mark, label }, first, el)));
+          if (label !== null) dom.textContent = label;
+          else {
+            const shape = document.createElement('span');
+            shape.setAttribute('style', cssText(listMarkerStyle(mark, first)));
+            dom.append(shape);
+          }
+          return dom;
+        },
+        {
+          side: -1,
+          key: `${String(i)}:${mark}:${String(label)}:${String(size)}:${String(first.color)}`,
+          ignoreSelection: true,
+        },
+      ),
+    );
+  });
+  return DecorationSet.create(doc, decorations);
+}
 
 /** The words as the document should have them now; an emptied box made here goes away. */
 function commitWords(view: EditorView, elementId: string, slideId: string): void {
@@ -90,7 +209,7 @@ function commitWords(view: EditorView, elementId: string, slideId: string): void
   const el = findSlide(s.doc, slideId)?.elements.find((e) => e.id === elementId);
   if (el?.kind !== 'text') return;
   const made = s.made.includes(elementId);
-  const next = withRuns(el, runsOf(view.state.doc), made ? (s.look?.langs ?? {}) : undefined);
+  const next = withRuns(el, runsOf(view.state.doc), made ? (currentLook()?.langs ?? {}) : undefined);
   if (made && next.text.trim() === '') {
     commit(deleteElements(s.doc, slideId, [elementId]), { select: [] });
     return;
@@ -111,6 +230,11 @@ export function TextBoxEditor({
   const box = useRef<HTMLDivElement>(null);
   const mount = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  // The box as it is now (its size and look size a list's marks).
+  const boxNow = useRef(el);
+  useLayoutEffect(() => {
+    boxNow.current = el;
+  });
   const [typed, setTyped] = useState(0);
   // What the slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4).
   const source = useContext(TranslitSourceContext);
@@ -121,6 +245,12 @@ export function TextBoxEditor({
     const root = mount.current;
     if (!root) return;
     const schema = textSchema(() => ({}));
+    // Bullets and numbering drawn as the screens draw them (Session 55, Part 17a), from the box as it is now.
+    const lists = new Plugin({
+      props: {
+        decorations: (state) => listDecorations(state.doc, boxNow.current),
+      },
+    });
     const pm = new EditorView(
       { mount: root },
       {
@@ -129,13 +259,25 @@ export function TextBoxEditor({
           plugins: [
             history(),
             keymap({
-              'Mod-z': undo,
-              'Mod-y': redo,
-              'Shift-Mod-z': redo,
-              Enter: lineBreak,
-              'Shift-Enter': lineBreak,
+              // The typing's own steps; past its first, the editor's (the typing ends first).
+              'Mod-z': (state, dispatch) => undo(state, dispatch) || later(undoAny),
+              'Mod-y': (state, dispatch) => redo(state, dispatch) || later(redoAny),
+              'Shift-Mod-z': (state, dispatch) => redo(state, dispatch) || later(redoAny),
+              // A new line (a list going on into it); Backspace and Delete join lines, a list's mark going first.
+              Enter: splitLine,
+              'Shift-Enter': splitLine,
+              Backspace: chainCommands(unlistAtStart, joinLineUp),
+              Delete: joinLineDown,
+              // A list's line further in, and back out (Session 55, Part 17a); elsewhere Tab is as it was.
+              Tab: indentLine,
+              'Shift-Tab': outdentLine,
+              // The words selected (or what is typed next) bold, italic, underlined, and back.
+              'Mod-b': toggleWords('bold', () => boxNow.current.style.fontWeight),
+              'Mod-i': toggleWords('italic', () => boxNow.current.style.fontWeight),
+              'Mod-u': toggleWords('underline', () => boxNow.current.style.fontWeight),
             }),
             keymap(baseKeymap),
+            lists,
           ],
         }),
         markViews: markViews(el, source),
@@ -150,24 +292,14 @@ export function TextBoxEditor({
         dispatchTransaction(tr) {
           pm.updateState(pm.state.apply(tr));
           setTyped((n) => n + 1);
-          useEditor.setState((s) => ({ textTick: s.textTick + 1 }));
+          // How far the typing's own Undo and Redo go (the editor's buttons offer them: Session 55, Part 17a).
+          const typing = { undo: Number(undoDepth(pm.state)), redo: Number(redoDepth(pm.state)) };
+          useEditor.setState((s) => ({ textTick: s.textTick + 1, typing }));
         },
-        // Pasted text arrives as plain text, its lines as line breaks, in the look at the caret.
+        // Pasted text arrives as plain text, its lines as lines (a list going on through them), in the look at the caret.
         handlePaste(v, event) {
           const text = event.clipboardData?.getData('text/plain') ?? '';
-          const { state } = v;
-          const marks = state.storedMarks ?? state.selection.$from.marks();
-          const br = state.schema.nodes['hard_break'];
-          const nodes = text
-            .replace(/\r\n?/gu, '\n')
-            .split('\n')
-            .flatMap((line, i) => [
-              ...(i > 0 && br ? [br.create(null, null, marks)] : []),
-              ...(line === '' ? [] : [state.schema.text(line, marks)]),
-            ]);
-          let tr = state.tr.deleteSelection();
-          for (const node of nodes) tr = tr.insert(tr.selection.from, node);
-          v.dispatch(tr.scrollIntoView());
+          v.dispatch(pasteText(v.state, text));
           return true;
         },
         // Nothing is dropped in: words are typed or pasted.

@@ -13,6 +13,8 @@ import {
   outputPage,
   type PageGlobals,
   setUpScreen,
+  sizeSlideEditor,
+  slideEditorWindow,
 } from './helpers';
 import { canvasPixels, pixels } from './pixels';
 import { makeSlides } from './placeholder-slides';
@@ -53,13 +55,15 @@ test('the editor warns of white words over white, darkening clears it, and Undo 
     .getByRole('button', { name: /^Placeholder white on white/u })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
+  // The editor's own window (Session 55, Part 17a).
+  const { ed, editor } = await slideEditorWindow(app);
+  await sizeSlideEditor(app, ed, { width: 1600, height: 900 });
   const canvas = editor.getByTestId('editor-canvas');
   await expect(canvas).toBeVisible();
   const selectWords = async () => {
     const box = await canvas.boundingBox();
     if (!box) throw new Error('no canvas');
-    await win.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await ed.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     await expect(editor.getByTestId('inspector-text')).toBeVisible();
   };
   // Nothing darkens it: none is chosen on a slide to begin with.
@@ -69,19 +73,19 @@ test('the editor warns of white words over white, darkening clears it, and Undo 
   await expect(contrast).toHaveAttribute('data-level', 'warning');
   await expect(contrast).toContainText('The words are 1.0:1 against what is behind them');
   // The slide's own settings: the whole picture, 80% dark.
-  await win.keyboard.press('Escape');
+  await ed.keyboard.press('Escape');
   await editor.getByTestId('slide-darken').selectOption('whole');
   await editor.getByTestId('slide-darken-strength').selectOption('0.8');
-  await expectNoSeriousA11yIssues(win, 'the slide’s darkening');
+  await expectNoSeriousA11yIssues(ed, 'the slide’s darkening');
   await selectWords();
   await expect(contrast).toHaveAttribute('data-level', 'fine');
   // The slide in the editor draws it under the words.
   await expect(editor.locator('[data-testid="editor-slide"] [data-darken="whole"]')).toHaveCount(1);
   // Undo takes it back, one step at a time.
-  await win.keyboard.press('Escape');
-  await win.keyboard.press(`${mod}+z`);
+  await ed.keyboard.press('Escape');
+  await ed.keyboard.press(`${mod}+z`);
   await expect(editor.getByTestId('slide-darken-strength')).toHaveValue('0.6');
-  await win.keyboard.press(`${mod}+z`);
+  await ed.keyboard.press(`${mod}+z`);
   await expect(editor.getByTestId('slide-darken')).toHaveValue('none');
   await expect(editor.locator('[data-testid="editor-slide"] [data-darken]')).toHaveCount(0);
   await app.close();

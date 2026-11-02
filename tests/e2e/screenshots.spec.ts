@@ -36,7 +36,11 @@ import {
   QUIET,
   setUpScreen,
   showExtras,
+  sizeSlideEditor,
+  slideEditorClosed,
+  slideEditorWindow,
   slidesOf,
+  editorGroup,
   windowShowing,
 } from './helpers';
 import {
@@ -194,13 +198,14 @@ async function running(win: Page) {
  * playlist (Session 55, Part 4: the slides area and its Edit slides button went; the double click's first click
  * leaves the slide up as it is). The editor opens at that slide.
  */
-async function editLiveSlide(win: Page) {
+async function editLiveSlide(app: ElectronApplication, win: Page) {
   const row = slidesOf(win, KIRTAN).nth(1);
   await expect(row).toHaveAttribute('aria-current', 'true');
   await row.dblclick();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  // Its own window (Session 55, Part 17a), the show going on in the operator window.
+  const opened = await slideEditorWindow(app);
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');
+  return opened;
 }
 
 test('the first start: the welcome, the practice show and the three steps (Session 26g)', async () => {
@@ -400,29 +405,33 @@ test('the slide editor', async () => {
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1600, height: 900 });
   await running(win);
-  await editLiveSlide(win);
-  const editor = win.getByTestId('slide-editor');
+  const { ed, editor } = await editLiveSlide(app, win);
+  await sizeSlideEditor(app, ed, { width: 1600, height: 900 });
   // A band behind the words, to show a shape.
+  await editorGroup(ed, 'Insert');
   await editor.getByTestId('add-shape').click();
-  await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
+  await ed.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
   await editor.getByTestId('field-y').fill('380');
   await editor.getByTestId('field-height').fill('320');
   await editor.getByTestId('field-width').fill('1400');
   await editor.getByTestId('field-x').fill('260');
   await editor.getByTestId('field-opacity').fill('60');
+  await editorGroup(ed, 'Arrange');
   await editor.getByRole('button', { name: 'Send to the back' }).click();
-  // The words selected: their handles, and the inspector's words section.
-  await clickSlide(win, 960, 420);
+  // The words selected: their handles, the Words group along the top and the side panel's words section.
+  await editorGroup(ed, 'Words');
+  await clickSlide(ed, 960, 420);
   await expect(editor.getByTestId('inspector-text')).toBeVisible();
-  await shot(win, 'slide-editor');
-  await win.keyboard.press('Escape');
+  await shot(ed, 'slide-editor');
+  await ed.keyboard.press('Escape');
   await expect(editor.getByTestId('slide-panel')).toBeVisible();
-  await shot(win, 'slide-editor-slide');
-  await win.setViewportSize({ width: 1280, height: 720 });
-  await clickSlide(win, 960, 420);
-  await shot(win, 'slide-editor-1280x720');
+  await shot(ed, 'slide-editor-slide');
+  await sizeSlideEditor(app, ed, { width: 1280, height: 720 });
+  await clickSlide(ed, 960, 420);
+  await shot(ed, 'slide-editor-1280x720');
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await ed.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await slideEditorClosed(app);
   await app.close();
 });
 
@@ -1005,18 +1014,21 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
   await win.getByRole('button', { name: 'Close MIDI' }).click();
 
   // The slide editor with two elements selected together.
-  await editLiveSlide(win);
-  const editor = win.getByTestId('slide-editor');
-  await editor.getByTestId('add-shape').click();
-  await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
+  const together = await editLiveSlide(app, win);
+  await sizeSlideEditor(app, together.ed, { width: 1600, height: 900 });
+  await editorGroup(together.ed, 'Insert');
+  await together.editor.getByTestId('add-shape').click();
+  await together.ed.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
   // Below the words, so both show.
-  await editor.getByTestId('field-y').fill('700');
-  await editor.getByTestId('editor-canvas').focus();
-  await win.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-  await expect(editor.getByTestId('group-box')).toBeVisible();
-  await shot(win, 'slide-editor-together');
-  await editor.getByRole('button', { name: 'Cancel' }).click();
-  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await together.editor.getByTestId('field-y').fill('700');
+  await together.editor.getByTestId('editor-canvas').focus();
+  await together.ed.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await expect(together.editor.getByTestId('group-box')).toBeVisible();
+  await editorGroup(together.ed, 'Arrange');
+  await shot(together.ed, 'slide-editor-together');
+  await together.editor.getByRole('button', { name: 'Cancel' }).click();
+  await together.ed.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await slideEditorClosed(app);
 
   // The phone remote's More tab (its Looks until Session 55).
   const { base } = await networkOn(win);
@@ -2366,13 +2378,13 @@ test('a deck with its animations: the import report, a click of it up in LIVE, a
 
   // The slide editor on the deck's first slide: its own transition and each click's, with Drashti's own beside.
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  const { ed, editor } = await slideEditorWindow(app);
+  await sizeSlideEditor(app, ed, { width: 1280, height: 720 });
   await editor.getByTestId('editor-slide-thumb').first().click();
   const transitions = editor.getByTestId('deck-transitions');
   await expect(transitions.getByTestId('deck-own-transition')).toBeVisible();
   await transitions.scrollIntoViewIfNeeded();
-  await shot(win, 'deck-transitions');
+  await shot(ed, 'deck-transitions');
   await app.close();
 });
 

@@ -14,7 +14,8 @@ export type RendererPage =
   | 'zoom'
   | 'lock'
   | 'access-list'
-  | 'lower-thirds';
+  | 'lower-thirds'
+  | 'slide-editor';
 
 export const rendererDir = (): string => join(__dirname, '../renderer');
 export const devServerUrl = (): string | undefined =>

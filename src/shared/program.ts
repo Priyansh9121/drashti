@@ -3,6 +3,7 @@ import { languageView } from './language-view';
 import type { Lang, RenderSlide, TextRun, TranslitSource } from './model';
 import type { StreamLayout } from './stream';
 import { boxLines, lineText, readingOrder, translitSource } from './tracks';
+import { hasElementMotion } from './element-motion';
 
 /*
  * What the stream shows (PLAN.md 4.2), worked out from the show engine's
@@ -66,7 +67,12 @@ export function lowerThirdOf(
   slide: RenderSlide,
   languages: readonly Lang[] | null,
 ): { lines: LowerThirdLine[]; total: number } {
-  if (slide.elements.some((e) => e.kind === 'timer')) return { lines: [], total: 0 };
+  if (
+    slide.fullSlide ||
+    slide.backdrop ||
+    slide.elements.some((e) => e.kind === 'timer' || hasElementMotion(e.motion))
+  )
+    return { lines: [], total: 0 };
   const shown = languageView(slide, languages);
   const source = slide.translitOf ?? translitSource(slide.elements);
   const lines: LowerThirdLine[] = [];
@@ -93,7 +99,11 @@ export function lowerThird(slide: RenderSlide, languages: readonly Lang[] | null
  * alone is drawn whole wherever slides are lower thirds, as a picture slide is).
  */
 export const hasPicture = (slide: RenderSlide): boolean =>
-  slide.elements.some((e) => e.kind === 'image' || e.kind === 'video' || e.kind === 'timer');
+  slide.fullSlide === true ||
+  slide.backdrop !== undefined ||
+  slide.elements.some(
+    (e) => e.kind === 'image' || e.kind === 'video' || e.kind === 'timer' || hasElementMotion(e.motion),
+  );
 
 /** What the stream draws now, in this layout. */
 export function programPicture(

@@ -105,6 +105,7 @@ import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { LowerThirdRepo } from './db/lower-thirds';
 import { handleStudio, LowerThirdsStudio } from './lower-thirds/studio-window';
+import { handleSlideEditor, SlideEditorWindow } from './library/slide-editor-window';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
@@ -790,6 +791,8 @@ let quitConfirmed = false;
 let quitStarted = false;
 
 let operatorWindow: BrowserWindow | null = null;
+/** The slide editor's window (Session 55, Part 17a), once made: the menu's Undo and Redo and the timers ask it. */
+let slideEditor: SlideEditorWindow | null = null;
 let audioWindow: BrowserWindow | null = null;
 let db: Db | null = null;
 let importer: ImportService | null = null;
@@ -1573,6 +1576,8 @@ function start(): void {
     renamed: (from, to) => inputRenamed(from, to),
     changed: (view) => {
       sendToPage(operatorWindow, IPC.videoInputs.changed, view);
+      // The slide editor's own window names them for a slide's background (Session 55, Part 17a).
+      slideEditor?.send(IPC.videoInputs.changed, view);
       inputsChanged();
       // A phone naming or putting up an input reads them again (Session 54).
       net.hint('setup');
@@ -1774,6 +1779,7 @@ function start(): void {
   const looksChanged = () => {
     engine.refreshPictures();
     sendToOperator(IPC.media.looksChanged, shownLooks());
+    slideEditor?.send(IPC.media.looksChanged, shownLooks());
   };
   handle(IPC.media.look, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.look(mediaId) : null,
@@ -2087,6 +2093,8 @@ function start(): void {
       eventsOut.emit(screenEvents(eventsScreensWas, screensNow));
       eventsScreensWas = screensNow;
       if (pageAlive(operatorWindow)) sendToPage(operatorWindow, IPC.screens.changed, screens.snapshot());
+      // The slide editor's safe areas and crop lines (Session 55, Part 17a: its own window).
+      slideEditor?.send(IPC.screens.changed, screens.snapshot());
       // And a phone setting them up (Session 54).
       net.hint('setup');
       for (const [screenId, win] of outputWindows) {
@@ -2815,6 +2823,7 @@ function start(): void {
       // The stream's group was made: the live Look covers it.
       looks.groupsChanged();
       sendToOperator(IPC.screens.changed, screens.snapshot());
+      slideEditor?.send(IPC.screens.changed, screens.snapshot());
     },
     programChanged: () => {
       zoomWindow?.programChanged();
@@ -2934,6 +2943,8 @@ function start(): void {
   let rebuildMenu: () => void = () => undefined;
   // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
   let closeStudio: () => void = () => undefined;
+  // So does the slide editor's window (Session 55, Part 17a): Simple Mode edits no slides.
+  let closeEditor: () => void = () => undefined;
   // Simple Mode's one playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple
   // Mode, or a new one when there was none (simple-playlist.ts); Simple Mode changes that one only.
   const simplePlaylist = new SimplePlaylist({
@@ -2967,7 +2978,10 @@ function start(): void {
       // Its one playlist first, so the window opens it as it shows Simple Mode.
       if (next === 'simple') simplePlaylist.adopt();
       rebuildMenu();
-      if (next === 'simple') closeStudio();
+      if (next === 'simple') {
+        closeStudio();
+        closeEditor();
+      }
       sendToOperator(IPC.app.modeChanged, { mode: next });
       // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist only: the phones hear of the change.
       network?.uploadsChanged();
@@ -3060,6 +3074,8 @@ function start(): void {
       if (db === null) return;
       lastChanged = Date.now();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
+      // The slide editor's own window: its pictures, videos and sounds to choose from (Session 55, Part 17a).
+      slideEditor?.send(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       network?.hint('presentations');
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
@@ -3652,14 +3668,53 @@ function start(): void {
       if (rows) presentations.setContent(styleNewText(rows, themes.themeOrDefault(null)));
     },
   });
+  // The slide editor (Session 55, Part 17a): a window of its own, so the show goes on in the operator window meanwhile.
+  slideEditor = new SlideEditorWindow({
+    workArea: () =>
+      (operatorWindow && !operatorWindow.isDestroyed()
+        ? electronScreen.getDisplayMatching(operatorWindow.getBounds())
+        : electronScreen.getPrimaryDisplay()
+      ).workArea,
+    background: () => appearance.background(),
+    track: (win) => {
+      appearance.track(win);
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  const editorWindow = slideEditor;
+  closeEditor = () => {
+    editorWindow.close();
+  };
+  stops.add('slide editor', () => {
+    editorWindow.close();
+  });
+  handleSlideEditor({
+    editor: editorWindow,
+    fromOperator,
+    exists: (presentationId) => presentations.content(presentationId) !== null,
+    // The show's F-keys from the editor's window: pressed in the operator window's page, which acts on them.
+    showKey: (key) => {
+      const page = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null;
+      if (!page || page.isDestroyed()) return;
+      page.sendInputEvent({ type: 'keyDown', keyCode: key });
+      page.sendInputEvent({ type: 'keyUp', keyCode: key });
+    },
+  });
   registerSlidesIpc({
     db,
     presentations,
     revisions,
     settings,
-    fromOperator,
+    // The operator window, and the slide editor's own window (Session 55, Part 17a).
+    fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
+    // A save in the editor's window: one change for the operator window's Undo.
+    saved: (saved) => {
+      sendToOperator(IPC.slideEditor.edited, saved);
+    },
   });
   // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
   // the library through an import as any picture is, and one slide holding it large with the words under it.
@@ -4778,6 +4833,7 @@ function start(): void {
     },
     screensChanged: () => {
       sendToOperator(IPC.screens.changed, screens.snapshot());
+      slideEditor?.send(IPC.screens.changed, screens.snapshot());
       // A node's displays or screens changed: copies follow the screens' size, a node's included (Session 26h).
       void sharpened.screensChanged();
     },
@@ -5064,7 +5120,8 @@ function start(): void {
 
   // Timers: made and edited here, started and paused through the engine.
   const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {
-    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change timers.' };
+    if (!fromOperator(e) && !(slideEditor?.isPage(e.sender) ?? false))
+      return { ok: false, message: 'Only the operator window can change timers.' };
     const result = run();
     if (result.ok) engine.setTimers(timers.list());
     return result;
@@ -5079,6 +5136,7 @@ function start(): void {
       return f.success ? { ok: true, id: timers.create(f.data) } : badTimer;
     }),
   );
+  // A slide timer's own time and kind, from the slide editor's window too (Session 55, Parts 15 and 17a).
   handle(IPC.timers.update, (e, timerId, fields) =>
     timerChange(e, () => {
       const id = idSchema.safeParse(timerId);
@@ -5764,7 +5822,10 @@ function start(): void {
     message: 'Only the operator window can change the video inputs.',
   };
   // The list: the operator window's Media, and every screen's page, which opens only an input listed here.
-  handle(IPC.videoInputs.list, (e) => (screenPage(e) ? inputs.view() : { inputs: [] }));
+  // The slide editor's window too (Session 55, Part 17a): a slide's background is a video input by its name.
+  handle(IPC.videoInputs.list, (e) =>
+    screenPage(e) || (slideEditor?.isPage(e.sender) ?? false) ? inputs.view() : { inputs: [] },
+  );
   handle(IPC.videoInputs.add, (e, fields) => (fromOperator(e) ? inputs.add(fields) : notOperatorInputs));
   handle(IPC.videoInputs.update, (e, id, fields) =>
     fromOperator(e) ? inputs.update(id, fields) : notOperatorInputs,
@@ -6115,6 +6176,7 @@ function start(): void {
     quitStarted = true;
     streaming.quitting();
     studio.quitting();
+    slideEditor?.quitting();
   });
 
   const runSelfTest = () =>
@@ -6439,6 +6501,8 @@ function start(): void {
         const on = !safeAreasShown();
         settings.set('showSafeAreas', on);
         sendToOperator(IPC.app.safeAreasChanged, { on });
+        // The slide editor draws them (Session 55, Part 17a: in its own window).
+        slideEditor?.send(IPC.app.safeAreasChanged, { on });
         rebuildMenu();
       },
     },
@@ -6472,6 +6536,13 @@ function start(): void {
     undo: {
       accelerator: acceleratorFor('undo'),
       run: () => {
+        // The slide editor's window, when it has the keyboard (Session 55, Part 17a): its typing, or its last change.
+        const editing = slideEditor?.focused();
+        if (editing) {
+          editing.webContents.undo();
+          slideEditor?.send(IPC.app.undo, { at: Date.now() });
+          return;
+        }
         // Undo typing in a text field (as the standard Edit menu would); the page ignores the
         // message then, and otherwise undoes the last removal.
         operatorWindow?.webContents.undo();
@@ -6480,7 +6551,13 @@ function start(): void {
     },
     redo: {
       run: () => {
-        // As Undo: redo typing in a text field; the slide editor redoes its last undone step otherwise.
+        const editing = slideEditor?.focused();
+        if (editing) {
+          editing.webContents.redo();
+          slideEditor?.send(IPC.app.redo, { at: Date.now() });
+          return;
+        }
+        // As Undo: redo typing in a text field.
         operatorWindow?.webContents.redo();
         sendToOperator(IPC.app.redo, { at: Date.now() });
       },

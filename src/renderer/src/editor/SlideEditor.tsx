@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import type { RenderSlide } from '../../../shared/model';
-import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { EditDoc } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
+import { renderEditedSlide } from '../../../shared/slide-design';
+import { SHOW_F_KEYS } from '../../../shared/keymap';
 import { isTyping } from '../operator/useKeymap';
 import { loadMedia } from '../library/library-store';
 import { PlacedInParent } from '../render/Placed';
@@ -14,89 +14,62 @@ import { ConfirmDialog, useFocusTrap } from '../ui/Dialog';
 import { KeepChangesDialog, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
 import { plural } from '../ui/text';
 import { useEngine } from '../engine/engine-store';
-import {
-  ArrowDown,
-  ArrowUp,
-  Circle,
-  CopyPlus,
-  ImagePlus,
-  ListPlus,
-  Minus,
-  Plus,
-  RectangleHorizontal,
-  Redo2,
-  Shapes,
-  Square,
-  Timer,
-  Trash2,
-  Type,
-  Undo2,
-} from '../ui/icons';
-import type { MenuPlace } from '../ui/Menu';
-import { Menu } from '../ui/Menu';
+import type { TabItem } from '../ui/Tabs';
+import { TabPanel, Tabs } from '../ui/Tabs';
+import { ArrowLeftRight, LayoutTemplate, ListPlus, Palette, Redo2, Sparkles, Type, Undo2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { Canvas } from './Canvas';
+import type { EditorGroup } from './editor-store';
 import {
   closeSlideEditor,
   commit,
   isDirty,
-  noteMade,
-  redo,
+  keepEditing,
   requestClose,
   saveSlides,
   select,
   showSlide,
-  startEditing,
   tell,
-  undo,
   useEditor,
 } from './editor-store';
+import { FindPanel } from './FindPanel';
 import { Inspector } from './Inspector';
 import { MediaPicker, naturalSize } from './MediaPicker';
-import type { ShapeChoice } from './ops';
-import {
-  addElement,
-  addGroup,
-  addSlideAfter,
-  copySlide,
-  findSlide,
-  moveSlideBy,
-  newMedia,
-  newShape,
-  newSlide,
-  newTextBox,
-  newTimerElement,
-  placeOf,
-  placeSlide,
-  removeSlide,
-} from './ops';
-import { finishTextEditing } from './TextBoxEditor';
-import { NewTimerSlideDialog } from './NewTimerSlide';
-import { TIMER_KIND_NAMES } from '../../../shared/timers';
+import { addElement, changeSlide, findSlide, newMedia, placeOf, placeSlide, setSoundCue } from './ops';
+import { ArrangeGroup, DesignGroup, InsertGroup, MotionGroup, SlidesGroup } from './Ribbon';
+import { finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
+import { WordsGroup } from './WordsGroup';
+import { zoomIn, zoomOut } from './zoom';
 
 /*
- * The slide editor (PLAN.md 5.2, Session 7): it covers the operator window,
- * as Edit words does. The slides on the left, the slide being edited in the
- * middle, what is selected on the right. Saving is one change for the
- * operator's Undo; Cancel (or Esc) asks first when there are changes.
+ * The slide editor (PLAN.md 5.2, Session 7), since Session 55 (Part 17a) in a window of its own, as a presentation
+ * program is laid out but in Drashti's own words and look: its groups along the top (Words, Insert, Arrange, Design,
+ * Motion, Slides), each a row of tools; the slides on the left, the slide being edited in the middle (zoomed to fit,
+ * or in and out), what is selected (or the slide's own settings) on the right. Undo and Redo take back every change,
+ * typing too, by their buttons and keys. Saving is one change for the operator window's Undo; Cancel (or Esc) asks
+ * first when there are changes, and so does closing the window.
  */
+
+/** The groups along the top, in their order (Session 55, Part 17a). */
+const GROUPS: readonly TabItem<EditorGroup>[] = [
+  { id: 'words', label: 'Words', icon: Type },
+  { id: 'insert', label: 'Insert', icon: ListPlus },
+  { id: 'arrange', label: 'Arrange', icon: ArrowLeftRight },
+  { id: 'design', label: 'Design', icon: Palette },
+  { id: 'motion', label: 'Motion', icon: Sparkles },
+  { id: 'slides', label: 'Slides', icon: LayoutTemplate },
+];
 
 export function SlideEditor({ platform }: { platform: string }) {
   const open = useEditor((s) => s.open);
-  if (!open) return null;
-  return <Editor platform={platform} name={open.name} />;
+  if (!open) return <Loading label="Opening the slides…" className="h-screen" />;
+  return <Editor key={open.presentationId} platform={platform} name={open.name} />;
 }
 
 /** As the renderer sees a slide being edited. */
-const renderSlide = (doc: EditDoc, s: EditSlide): RenderSlide => ({
-  id: s.id,
-  width: doc.width,
-  height: doc.height,
-  background: s.background,
-  elements: s.elements,
-});
+const renderSlide = renderEditedSlide;
 
 function Editor({ platform, name }: { platform: string; name: string }) {
   const root = useRef<HTMLDivElement>(null);
@@ -108,29 +81,54 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const saving = useEditor((s) => s.saving);
   const askDiscard = useEditor((s) => s.askDiscard);
   const steps = useEditor((s) => s.past.length);
+  const group = useEditor((s) => s.group);
+  const strip = useEditor((s) => s.strip);
+  const finding = useEditor((s) => s.finding);
   // Its slide is on the screens now: saving changes them at once.
   const presentationId = useEditor((s) => s.open?.presentationId);
   const live = useEngine(
     (e) => presentationId !== undefined && e.state?.layers.slide?.presentationId === presentationId,
   );
   const conflict = useEditor((s) => s.conflict);
-  const canUndo = useEditor((s) => s.past.length > 0 && !s.editing);
-  const canRedo = useEditor((s) => s.future.length > 0 && !s.editing);
+  // Undo and Redo, typing too (Session 55, Part 17a): while typing, its own steps first, then the editor's.
+  const canUndo = useEditor((s) => s.past.length > 0 || (s.editing !== null && s.typing.undo > 0));
+  const canRedo = useEditor((s) => s.future.length > 0 || (s.editing !== null && s.typing.redo > 0));
   const dirty = useEditor(isDirty);
   const unreadable = useEditor((s) => s.unreadable);
   const note = useEditor((s) => s.note);
-  const [shapeMenu, setShapeMenu] = useState<MenuPlace | null>(null);
-  // A Timer's menu (Session 50): which timer it shows.
-  const [timerMenu, setTimerMenu] = useState<MenuPlace | null>(null);
-  const timers = useEngine((e) => e.state?.timers);
-  const [picking, setPicking] = useState(false);
-  const mod = platform === 'darwin' ? '⌘' : 'Ctrl+';
+  const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
+  const [pickingBusy, setPickingBusy] = useState(false);
+  const pendingPick = useRef<{ id: number; busy: boolean; save: boolean | null }>({
+    id: 0,
+    busy: false,
+    save: null,
+  });
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const cancelPicking = useCallback(() => {
+    pendingPick.current = { id: pendingPick.current.id + 1, busy: false, save: null };
+    setPickingBusy(false);
+    setPicking(null);
+  }, []);
+  const saveWhenReady = useCallback((force = false) => {
+    finishTextEditing();
+    if (pendingPick.current.busy) pendingPick.current.save = force;
+    else void saveSlides(force);
+  }, []);
+  const mac = platform === 'darwin';
+  const mod = mac ? '⌘' : 'Ctrl+';
 
-  // Esc steps back: stop typing, then let go of the selection, then close (asking first).
+  // Esc steps back: close find, stop typing, then let go of the selection, then close (asking first).
   useFocusTrap(root, () => {
     const s = useEditor.getState();
     if (s.askDiscard || s.conflict) return;
-    if (s.editing) finishTextEditing();
+    if (s.finding) useEditor.setState({ finding: false });
+    else if (s.editing) finishTextEditing();
     else if (s.selection.length > 0) select([]);
     else requestClose();
   });
@@ -140,132 +138,95 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     void loadMedia();
   }, []);
 
-  // Undo, Redo and Save from the keyboard; typing in a field or a text box keeps its own keys.
+  // The window's keys: Save, Undo and Redo, Find, and zoom; typing in a field or a text box keeps its own keys.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const m = platform === 'darwin' ? e.metaKey : e.ctrlKey;
+      // The show's F-keys (Clear all, Oops, the Wallpaper...): the operator window acts on them (Session 55, 17a).
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && SHOW_F_KEYS.includes(e.key)) {
+        e.preventDefault();
+        void window.drashti.slideEditor.showKey(e.key);
+        return;
+      }
+      const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === 's' || e.key === 'Enter') {
         e.preventDefault();
-        finishTextEditing();
-        void saveSlides();
+        saveWhenReady();
+        return;
+      }
+      if (key === 'f') {
+        e.preventDefault();
+        useEditor.setState({ finding: true });
+        // Open already: the words to find chosen again.
+        document.querySelector<HTMLInputElement>('[data-testid="find-text"]')?.select();
+        return;
+      }
+      // Zoom (Session 55, Part 17a): in, out, and to fit.
+      if (e.key === '=' || e.key === '+' || e.code === 'Equal') {
+        e.preventDefault();
+        zoomBy('in');
+        return;
+      }
+      if (e.key === '-' || e.code === 'Minus') {
+        e.preventDefault();
+        zoomBy('out');
+        return;
+      }
+      if (e.key === '0' || e.code === 'Digit0') {
+        e.preventDefault();
+        useEditor.setState({ zoom: 'fit' });
         return;
       }
       if (isTyping(e.target)) return;
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        undo();
-      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        undoAny();
+      } else if ((key === 'z' && e.shiftKey) || (key === 'y' && !mac)) {
         e.preventDefault();
-        redo();
+        redoAny();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [platform]);
+  }, [mac, saveWhenReady]);
 
-  const slide = doc ? findSlide(doc, slideId) : undefined;
-  const add = (fn: () => void) => {
-    finishTextEditing();
-    fn();
-  };
-  const addText = () => {
-    add(() => {
-      const s = useEditor.getState();
-      if (!s.doc || !s.look || !slide) return;
-      const box = newTextBox(s.look);
-      noteMade(box.id);
-      commit(addElement(s.doc, slide.id, box), { select: [box.id] });
-      startEditing(box.id);
-    });
-  };
-  const addTimer = (timerId: string) => {
-    add(() => {
-      const s = useEditor.getState();
-      if (!s.doc || !slide) return;
-      const el = newTimerElement(timerId, s.look, s.doc);
-      commit(addElement(s.doc, slide.id, el), { select: [el.id] });
-    });
-  };
-  const addShape = (choice: ShapeChoice) => {
-    add(() => {
-      const s = useEditor.getState();
-      if (!s.doc || !s.look || !slide) return;
-      const shape = newShape(choice, s.look, s.doc);
-      commit(addElement(s.doc, slide.id, shape), { select: [shape.id] });
-    });
-  };
-
-  return createPortal(
+  return (
     <div
       ref={root}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
       tabIndex={-1}
+      aria-labelledby={titleId}
       data-testid="slide-editor"
-      className="fixed inset-0 z-40 flex flex-col bg-ink text-fg focus:outline-none"
+      className="flex h-screen flex-col bg-ink text-fg focus:outline-none"
     >
-      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2">
-        <h2 id={titleId} className="min-w-40 flex-[1_1_12rem] text-base font-bold">
+      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-panel px-3 py-1.5">
+        <h1 id={titleId} className="min-w-24 flex-[1_1_8rem] text-sm font-bold">
           <Truncate text={`Slides of “${name}”`} />
-        </h2>
-        <IconButton icon={Undo2} label="Undo" kbd={`${mod}Z`} disabled={!canUndo} onClick={undo} />
+        </h1>
+        <Tabs
+          group="editor"
+          label="The editor’s groups"
+          items={GROUPS}
+          value={group}
+          size="sm"
+          onChange={(next) => {
+            useEditor.setState({ group: next });
+          }}
+        />
+        <span className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
+        <IconButton icon={Undo2} label="Undo" kbd={`${mod}Z`} disabled={!canUndo} onClick={undoAny} />
         <IconButton
           icon={Redo2}
           label="Redo"
-          kbd={platform === 'darwin' ? '⇧⌘Z' : 'Ctrl+Y'}
+          kbd={mac ? '⇧⌘Z' : 'Ctrl+Y'}
           disabled={!canRedo}
-          onClick={redo}
+          onClick={redoAny}
         />
-        <span className="mx-1 h-6 w-px bg-line" aria-hidden="true" />
-        <Button size="sm" icon={Type} onClick={addText} disabled={!slide} data-testid="add-text">
-          Words
-        </Button>
+        <span className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
         <Button
           size="sm"
-          icon={Shapes}
-          disabled={!slide}
-          data-testid="add-shape"
-          aria-haspopup="menu"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            setShapeMenu({ x: r.left, y: r.bottom + 4 });
-          }}
-        >
-          Shape
-        </Button>
-        <Button
-          size="sm"
-          icon={ImagePlus}
-          disabled={!slide}
-          data-testid="add-media"
-          onClick={() => {
-            finishTextEditing();
-            setPicking(true);
-          }}
-        >
-          Picture or video
-        </Button>
-        <Button
-          size="sm"
-          icon={Timer}
-          disabled={!slide}
-          data-testid="add-timer"
-          aria-haspopup="menu"
-          onClick={(e) => {
-            finishTextEditing();
-            const r = e.currentTarget.getBoundingClientRect();
-            setTimerMenu({ x: r.left, y: r.bottom + 4 });
-          }}
-        >
-          Timer
-        </Button>
-        <span className="mx-1 h-6 w-px bg-line" aria-hidden="true" />
-        <Button
           onClick={() => {
             // Words still being typed count as a change: keep them first, so closing asks.
             finishTextEditing();
@@ -276,17 +237,70 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         </Button>
         <Button
           variant="primary"
+          size="sm"
           kbd={`${mod}S`}
-          disabled={saving || loading || !doc}
+          disabled={saving || loading || !doc || pickingBusy}
           data-testid="save-slides"
           onClick={() => {
-            finishTextEditing();
-            void saveSlides();
+            saveWhenReady();
           }}
         >
           {dirty ? 'Save' : 'Done'}
         </Button>
       </header>
+      <TabPanel
+        group="editor"
+        id={group}
+        className="flex shrink-0 items-center overflow-x-auto border-b border-line bg-panel-2 px-3 py-1"
+      >
+        <div data-testid="editor-ribbon" data-group={group} className="flex min-w-0 items-start">
+          {group === 'words' && (
+            <WordsGroup
+              findKbd={`${mod}F`}
+              onFind={() => {
+                useEditor.setState({ finding: true });
+              }}
+            />
+          )}
+          {group === 'insert' && (
+            <InsertGroup
+              onPicture={() => {
+                setPicking('picture');
+              }}
+              onSound={() => setPicking('sound')}
+            />
+          )}
+          {group === 'arrange' && <ArrangeGroup />}
+          {group === 'design' && <DesignGroup key={slideId} />}
+          {group === 'motion' && <MotionGroup key={slideId} />}
+          {group === 'slides' && <SlidesGroup />}
+        </div>
+      </TabPanel>
+      {doc?.master?.id === slideId && (
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 border-b border-second/30 bg-second/10 px-3 py-1"
+          data-testid="editor-master-banner"
+        >
+          <p className="text-sm text-fg">
+            Editing the master — shared behind this presentation’s own slides.
+          </p>
+          <Button
+            size="sm"
+            data-testid="master-done"
+            onClick={() => {
+              finishTextEditing();
+              const s = useEditor.getState();
+              const target =
+                s.masterReturnId && s.doc && findSlide(s.doc, s.masterReturnId)
+                  ? s.masterReturnId
+                  : s.doc?.groups.flatMap((g) => g.slides)[0]?.id;
+              if (target) showSlide(target);
+            }}
+          >
+            Done editing master
+          </Button>
+        </div>
+      )}
       {problem && (
         <Notice tone="danger" className="m-2">
           {problem}
@@ -313,71 +327,60 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (
-        <div className="flex min-h-0 flex-1">
-          <SlideList doc={doc} current={slideId} />
-          <Canvas platform={platform} />
-          <Inspector />
-        </div>
-      )}
-      {shapeMenu && (
-        <Menu
-          at={shapeMenu}
-          label="Add a shape"
-          onClose={() => {
-            setShapeMenu(null);
-          }}
-          entries={(
-            [
-              ['rectangle', 'Rectangle', Square],
-              ['rounded', 'Rounded rectangle', RectangleHorizontal],
-              ['ellipse', 'Ellipse', Circle],
-              ['line', 'Line', Minus],
-            ] as const
-          ).map(([choice, label, icon]) => ({
-            label,
-            icon,
-            onSelect: () => {
-              addShape(choice);
-            },
-          }))}
-        />
-      )}
-      {timerMenu && (
-        <Menu
-          at={timerMenu}
-          label="Add a timer"
-          onClose={() => {
-            setTimerMenu(null);
-          }}
-          entries={
-            timers && timers.length > 0
-              ? timers.map((t) => ({
-                  label: `${t.name} (${TIMER_KIND_NAMES[t.kind]})`,
-                  icon: Timer,
-                  onSelect: () => {
-                    addTimer(t.id);
-                  },
-                }))
-              : [{ label: 'No timers yet: make one in Timers', disabled: true, onSelect: () => undefined }]
-          }
-        />
+        <main className="flex min-h-0 flex-1 flex-col" aria-label="The slides">
+          <div className="flex min-h-0 flex-1">
+            {!strip && <SlideList doc={doc} current={slideId} />}
+            <div className="relative flex min-w-0 flex-1">
+              <Canvas platform={platform} />
+              {finding && (
+                <FindPanel
+                  onClose={() => {
+                    useEditor.setState({ finding: false });
+                  }}
+                />
+              )}
+            </div>
+            <Inspector />
+          </div>
+          {strip && <SlideList doc={doc} current={slideId} horizontal />}
+        </main>
       )}
       {picking && (
         <MediaPicker
-          title="Put a picture or video on the slide"
-          onClose={() => {
-            setPicking(false);
-          }}
+          title={picking === 'sound' ? 'Give this slide a sound' : 'Put a picture or video on the slide'}
+          sounds={picking === 'sound'}
+          busy={pickingBusy}
+          onClose={cancelPicking}
           onChoose={(m) => {
-            setPicking(false);
+            if (picking === 'sound') {
+              const s = useEditor.getState();
+              const at = s.doc ? findSlide(s.doc, s.slideId) : undefined;
+              if (s.doc && at)
+                commit(changeSlide(s.doc, at.id, setSoundCue(at, { id: m.id, volume: 1, loop: false })));
+              cancelPicking();
+              return;
+            }
             if (m.kind === 'audio') return;
             const kind = m.kind;
+            const chosenFor = useEditor.getState();
+            if (!chosenFor.doc || !chosenFor.slideId) return;
+            const target = { presentationId: chosenFor.doc.presentationId, slideId: chosenFor.slideId };
+            const request = pendingPick.current.id + 1;
+            pendingPick.current = { id: request, busy: true, save: null };
+            setPickingBusy(true);
             void naturalSize({ id: m.id, kind }).then((size) => {
+              if (!alive.current || pendingPick.current.id !== request) return;
               const s = useEditor.getState();
-              const current = s.doc ? findSlide(s.doc, s.slideId) : undefined;
-              if (!s.doc || !current) return;
+              const current = s.doc ? findSlide(s.doc, target.slideId) : undefined;
+              if (s.doc?.presentationId !== target.presentationId || !current) {
+                cancelPicking();
+                return;
+              }
               const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, s.doc);
-              commit(addElement(s.doc, current.id, el), { select: [el.id] });
+              commit(addElement(s.doc, current.id, el), current.id === s.slideId ? { select: [el.id] } : {});
+              const queuedSave = pendingPick.current.save;
+              cancelPicking();
+              if (queuedSave !== null) void saveSlides(queuedSave);
             });
           }}
         />
@@ -389,13 +392,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           live={live ? savesLive(name) : undefined}
           note={live ? undefined : SAVES_LIBRARY}
           saving={saving}
-          onKeepEditing={() => {
-            useEditor.setState({ askDiscard: false });
-          }}
+          onKeepEditing={keepEditing}
           onSave={() => {
             useEditor.setState({ askDiscard: false });
-            finishTextEditing();
-            void saveSlides();
+            saveWhenReady();
           }}
           onThrowAway={closeSlideEditor}
         />
@@ -411,39 +411,40 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             useEditor.setState({ conflict: null });
           }}
           onConfirm={() => {
-            void saveSlides(true);
+            saveWhenReady(true);
           }}
         >
           <p>{conflict}</p>
           <p>Saving yours replaces that change. Undo brings it back afterwards.</p>
         </ConfirmDialog>
       )}
-    </div>,
-    document.body,
+    </div>
   );
 }
 
+/** Zoom in or out a step from where it is (the slide's fit as the canvas last measured it). */
+function zoomBy(way: 'in' | 'out'): void {
+  const s = useEditor.getState();
+  const canvas = document.querySelector<HTMLElement>('[data-testid="editor-canvas"]');
+  const fit = Number(canvas?.dataset['fit'] ?? '0.5') || 0.5;
+  useEditor.setState({ zoom: way === 'in' ? zoomIn(s.zoom, fit) : zoomOut(s.zoom, fit) });
+}
+
 /** The slides, group by group: the one being edited is marked; click another to edit it, drag to move it. */
-function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
+function SlideList({
+  doc,
+  current,
+  horizontal = false,
+}: {
+  doc: EditDoc;
+  current: string | null;
+  horizontal?: boolean;
+}) {
   const numbers = new Map(slidesOf(doc).map((s, i) => [s.id, i + 1]));
-  const total = numbers.size;
   const [dragging, setDragging] = useState<string | null>(null);
   // Slides with words past a box (Sessions 31–36, SLD-1), marked on their thumbnails.
   const [overset, setOverset] = useState<ReadonlySet<string>>(new Set());
   const [dropAt, setDropAt] = useState<{ groupId: string; index: number } | null>(null);
-  // New Timer Slide… (Session 50): after the slide being edited, in the presentation's theme.
-  const [timerSlide, setTimerSlide] = useState(false);
-  const theme = useEditor((s) => s.look);
-  const act = (fn: (d: EditDoc, slideId: string) => { doc: EditDoc; show?: string } | null) => {
-    finishTextEditing();
-    const s = useEditor.getState();
-    if (!s.doc || !s.slideId) return;
-    const done = fn(s.doc, s.slideId);
-    if (!done) return;
-    commit(done.doc, { select: [] });
-    if (done.show) showSlide(done.show);
-  };
-  const look = () => useEditor.getState().look;
   const drop = () => {
     const s = useEditor.getState();
     const moving = dragging && s.doc ? findSlide(s.doc, dragging) : undefined;
@@ -463,102 +464,23 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
   return (
     <nav
       aria-label="Slides"
-      className="flex w-52 shrink-0 flex-col border-r border-line bg-panel"
+      className={
+        horizontal
+          ? 'h-40 w-full shrink-0 border-t border-line bg-panel'
+          : 'flex w-44 shrink-0 flex-col border-r border-line bg-panel xl:w-52'
+      }
       data-testid="editor-slides"
+      data-direction={horizontal ? 'across' : 'down'}
     >
       <div
-        className="flex shrink-0 flex-wrap gap-1 border-b border-line p-2"
-        role="toolbar"
-        aria-label="The slide being edited"
+        className={
+          horizontal ? 'flex h-full gap-4 overflow-x-auto p-2' : 'min-h-0 flex-1 overflow-y-auto p-2'
+        }
       >
-        <IconButton
-          icon={Plus}
-          size="sm"
-          label="New slide after this one"
-          data-testid="slide-new"
-          onClick={() => {
-            act((d, id) => {
-              const made = newSlide(look());
-              return { doc: addSlideAfter(d, id, made), show: made.id };
-            });
-          }}
-        />
-        <IconButton
-          icon={Timer}
-          size="sm"
-          label="New timer slide after this one…"
-          data-testid="slide-new-timer"
-          onClick={() => {
-            finishTextEditing();
-            setTimerSlide(true);
-          }}
-        />
-        <IconButton
-          icon={ListPlus}
-          size="sm"
-          label="New group"
-          data-testid="group-new"
-          onClick={() => {
-            act((d) => {
-              const made = addGroup(d, 'New group', look());
-              return { doc: made.doc, show: made.slideId };
-            });
-          }}
-        />
-        <IconButton
-          icon={CopyPlus}
-          size="sm"
-          label="Duplicate this slide"
-          data-testid="slide-duplicate"
-          onClick={() => {
-            act((d, id) => {
-              const original = findSlide(d, id);
-              if (!original) return null;
-              const copy = copySlide(original);
-              return { doc: addSlideAfter(d, id, copy), show: copy.id };
-            });
-          }}
-        />
-        <IconButton
-          icon={ArrowUp}
-          size="sm"
-          label="Move this slide up"
-          data-testid="slide-up"
-          onClick={() => {
-            act((d, id) => ({ doc: moveSlideBy(d, id, -1) }));
-          }}
-        />
-        <IconButton
-          icon={ArrowDown}
-          size="sm"
-          label="Move this slide down"
-          data-testid="slide-down"
-          onClick={() => {
-            act((d, id) => ({ doc: moveSlideBy(d, id, 1) }));
-          }}
-        />
-        <IconButton
-          icon={Trash2}
-          size="sm"
-          variant="danger"
-          label="Delete this slide"
-          data-testid="slide-delete"
-          disabled={total < 2}
-          onClick={() => {
-            act((d, id) => {
-              const all = slidesOf(d);
-              const at = all.findIndex((x) => x.id === id);
-              const next = all[at + 1] ?? all[at - 1];
-              return next ? { doc: removeSlide(d, id), show: next.id } : null;
-            });
-          }}
-        />
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {doc.groups.map((g) => (
           <section
             key={g.id}
-            className="mb-3"
+            className={horizontal ? 'shrink-0' : 'mb-3'}
             aria-label={g.name || 'Slides without a group name'}
             data-testid="editor-group"
             data-group={g.name}
@@ -581,7 +503,7 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
               />
               <Truncate text={g.name || 'No name'} />
             </h3>
-            <ol className="space-y-2">
+            <ol className={horizontal ? 'flex gap-2' : 'space-y-2'}>
               {g.slides.map((s, index) => {
                 const n = numbers.get(s.id) ?? 0;
                 const here = s.id === current;
@@ -589,14 +511,25 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
                 return (
                   <li
                     key={s.id}
-                    className={cx('rounded-md', marker && 'shadow-[0_-3px_0_0_var(--color-accent)]')}
+                    className={cx(
+                      'rounded-md',
+                      horizontal && 'w-36 shrink-0',
+                      marker &&
+                        (horizontal
+                          ? 'shadow-[-3px_0_0_0_var(--color-accent)]'
+                          : 'shadow-[0_-3px_0_0_var(--color-accent)]'),
+                    )}
                     onDragOver={(e) => {
                       if (!dragging) return;
                       e.preventDefault();
                       const r = e.currentTarget.getBoundingClientRect();
                       setDropAt({
                         groupId: g.id,
-                        index: e.clientY > r.top + r.height / 2 ? index + 1 : index,
+                        index: (
+                          horizontal ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2
+                        )
+                          ? index + 1
+                          : index,
                       });
                     }}
                   >
@@ -608,6 +541,7 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
                       aria-current={here ? 'true' : undefined}
                       aria-label={`Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}`}
                       onDragStart={(e) => {
+                        finishTextEditing();
                         e.dataTransfer.effectAllowed = 'move';
                         e.dataTransfer.setData('text/plain', s.id);
                         setDragging(s.id);
@@ -666,20 +600,6 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
           </section>
         ))}
       </div>
-      {timerSlide && (
-        <NewTimerSlideDialog
-          where={`after slide ${String(current ? (numbers.get(current) ?? total) : total)}`}
-          look={theme}
-          size={doc}
-          onAdd={(made) => {
-            act((d, id) => ({ doc: addSlideAfter(d, id, made), show: made.id }));
-            return null;
-          }}
-          onClose={() => {
-            setTimerSlide(false);
-          }}
-        />
-      )}
     </nav>
   );
 }

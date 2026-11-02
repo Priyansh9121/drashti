@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { PresentationDoc } from '../../../shared/library';
 import { playOrder } from '../../../shared/order';
 import { useEngine } from '../engine/engine-store';
-import { openSlideEditor } from '../editor/editor-store';
+import { openSlideEditor } from '../editor/open-editor';
 import { NewTimerSlideInLibrary } from '../editor/NewTimerSlide';
 import { fileMenuProps } from '../files/FileMenu';
 import { fileMenuEntries } from '../files/file-menu';

@@ -14,8 +14,7 @@ import { RemoveConfirm, RemoveItemsConfirm, RemovePlaylistConfirm } from '../lib
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
-import { SlideEditor } from '../editor/SlideEditor';
-import { redo as redoEdit, undo as undoEdit, useEditor } from '../editor/editor-store';
+import { connectSlideEditorSaves } from '../editor/open-editor';
 import { AppearanceDialog } from '../appearance/AppearanceDialog';
 import { connectAppearance } from '../appearance/appearance-store';
 import { undoRemoval } from '../library/undo';
@@ -148,16 +147,14 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // 55, Part 18: Simple Mode deletes, renames and drags its playlist's rows too) brings back the last of those.
     const offUndo = window.drashti.app.onUndo(() => {
       if (isTyping(document.activeElement)) return;
-      // The stage layout editor's own steps (Session 55).
+      // The stage layout editor's own steps (Session 55). (The slide editor has a window of its own since Session 55,
+      // Part 17a, its Undo its own.)
       if (useStageLayouts.getState().open) void undoStage();
-      else if (useEditor.getState().open) undoEdit();
       else if (useMode.getState().mode === 'simple') void undoSimple();
       else void undoRemoval();
     });
-    // Edit > Redo: the slide editor's last undone step (typing in a field redoes itself).
-    const offRedo = window.drashti.app.onRedo(() => {
-      if (!isTyping(document.activeElement) && useEditor.getState().open) redoEdit();
-    });
+    // Slides saved in the slide editor's window (Session 55, Part 17a): one change for Undo here.
+    const offEditorSaves = connectSlideEditorSaves();
     // Things the main process tells the operator (for example where diagnostics were saved).
     const offNotice = window.drashti.app.onNotice((text) => {
       useNotice.setState({ text });
@@ -185,7 +182,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     void window.drashti.app.getInfo().then(setInfo);
     return () => {
       offUndo();
-      offRedo();
+      offEditorSaves();
       offNotice();
       offProgress();
       offKeys();
@@ -439,7 +436,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <WordsEditor platform={platform} />
       <SetupWizard platform={platform} />
       <Welcome />
-      <SlideEditor platform={platform} />
       <AppearanceDialog />
       <WindowPicker />
       <VideoInputDialog platform={platform} />

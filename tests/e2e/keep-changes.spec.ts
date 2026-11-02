@@ -11,6 +11,9 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
+  sizeSlideEditor,
+  slideEditorClosed,
+  slideEditorWindow,
 } from './helpers';
 import { makeTestVideo } from './test-media';
 
@@ -192,19 +195,20 @@ test('the slide editor asks before words still being typed in a text box are los
     .getByRole('button', { name: /^Language test slides/u })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  // The editor's own window (Session 55, Part 17a): its question is asked there.
+  const { ed, editor } = await slideEditorWindow(app);
+  await sizeSlideEditor(app, ed, { width: 1600, height: 900 });
   // Type in the slide's words (double-click a text box), then Cancel straight away.
   await editor.getByTestId('editor-slide').locator('[data-element]').first().dblclick();
   await expect(editor.locator('[contenteditable="true"]')).toBeVisible();
-  await win.keyboard.press('End');
-  await win.keyboard.type(' placeholder typed');
+  await ed.keyboard.press('End');
+  await ed.keyboard.type(' placeholder typed');
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await escKeepsEditing(win, editor);
+  await escKeepsEditing(ed, editor);
   // Still there, and Cancel asks again.
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await expect(win.getByTestId('keep-changes')).toBeVisible();
-  await answer(win, 'Throw them away');
-  await expect(editor).toHaveCount(0);
+  await expect(ed.getByTestId('keep-changes')).toBeVisible();
+  await answer(ed, 'Throw them away');
+  await slideEditorClosed(app);
   await app.close();
 });

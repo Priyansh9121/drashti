@@ -1,8 +1,11 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type VideoClips, videoClip, type VideoSeeks, videoSeek } from '../../../shared/engine/state';
 import { type PlaybackClip, type PlaybackSeek, stillUrl } from '../../../shared/media';
 import type {
+  Glow,
+  ElementMotion,
+  ListMark,
   MediaElement,
   Outline,
   RenderSlide,
@@ -19,8 +22,11 @@ import { translitSource } from '../../../shared/tracks';
 import { OBJECT_FIT } from './media-style';
 import { type Playback, startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
-import { engineNow } from './clock';
+import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
+import { hasElementMotion, motionFrame } from '../../../shared/element-motion';
+import { wakeAt } from './wake-at';
 import { Looked } from './picture-looks';
+import { shapePath } from '../../../shared/shape-path';
 import { slideShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useGpuRestarts, useMediaAttempt } from './media-attempts';
@@ -30,6 +36,7 @@ import { useMeasureReport } from './measure';
 import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
 import { standsUpright } from '../../../shared/text-runs';
+import { drawnLines, hasList } from '../../../shared/text-lists';
 import { TimerElementView } from './TimerElementView';
 import { PlayBar } from './PlayBar';
 import type { DeckMedia } from '../../../shared/deck';
@@ -54,6 +61,42 @@ export function textShadowCss(shadow: TextShadow | undefined): string | undefine
   return `${shadow.x}px ${shadow.y}px ${shadow.blur}px ${shadow.color}`;
 }
 
+/** A glow that shows: one with a colour spreading some way. */
+const glowing = (glow: Glow | null | undefined): glow is Glow => glow != null && glow.size > 0;
+
+/**
+ * CSS for a shadow and a glow together (Session 55, Part 17a): the glow first, all round the letters, then the
+ * shadow; a text shadow alone as it always was (textShadowCss) when there is no glow.
+ */
+export function textEffectsCss(
+  shadow: TextShadow | undefined,
+  glow: Glow | null | undefined,
+): string | undefined {
+  if (!glowing(glow)) return textShadowCss(shadow);
+  const own = `0 0 ${String(glow.size)}px ${glow.color}`;
+  const behind = shadow === undefined || shadow === false ? undefined : textShadowCss(shadow);
+  return behind ? `${own}, ${behind}` : own;
+}
+
+/**
+ * A run's shadow with its glow (Session 55, Part 17a). Text shadows do not add up, so a run with a shadow or a glow
+ * of its own draws both, the other one its box's; one with neither leaves both to its box. With no glow anywhere it
+ * is the run's shadow alone, as before.
+ */
+function runEffectsCss(run: Pick<TextRun, 'shadow' | 'glow'>, el: TextElement): string | undefined {
+  if (run.glow === undefined && !glowing(el.style.glow)) return textShadowCss(run.shadow);
+  if (run.shadow === undefined && run.glow === undefined) return undefined;
+  const shadow = run.shadow ?? el.style.shadow;
+  const glow = run.glow !== undefined ? run.glow : el.style.glow;
+  return textEffectsCss(shadow, glow) ?? 'none';
+}
+
+/** Underlined, struck through, or both (Session 55, Part 17a); undefined for neither. */
+function decorationOf(run: Pick<TextRun, 'underline' | 'strike'>): string | undefined {
+  const lines = [run.underline ? 'underline' : '', run.strike ? 'line-through' : ''].filter(Boolean);
+  return lines.length > 0 ? lines.join(' ') : undefined;
+}
+
 /**
  * CSS for an outline around letters. The stroke is painted under the
  * letters (paint-order), so half of it shows outside them: it is drawn twice
@@ -73,7 +116,13 @@ function frameStyle(el: SlideElement): CSSProperties {
     width: el.frame.width,
     height: el.frame.height,
     // About the frame's centre (the default origin).
-    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+    transform:
+      [
+        el.rotation ? `rotate(${el.rotation}deg)` : '',
+        el.flipX || el.flipY ? `scale(${el.flipX ? -1 : 1}, ${el.flipY ? -1 : 1})` : '',
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined,
   };
 }
 
@@ -95,8 +144,10 @@ export function runStyle(run: Omit<TextRun, 'text'> & { text?: string }, el: Tex
     fontWeight: run.weight,
     fontStyle: run.italic && !upright ? 'italic' : undefined,
     letterSpacing: upright ? undefined : run.letterSpacing,
-    textShadow: textShadowCss(run.shadow),
+    textShadow: runEffectsCss(run, el),
     ...textOutlineCss(run.outline),
+    // Underlined and struck through (Session 55, Part 17a): never changes how Gujarati or Devanagari letters join.
+    textDecorationLine: decorationOf(run),
   };
 }
 
@@ -156,6 +207,184 @@ function RevealRuns({ el, runs, words }: { el: TextElement; runs: readonly TextR
           })}
         </span>
       ))}
+    </>
+  );
+}
+
+/** A list's room (Session 55, Part 17a), in its line's words' size: for a bullet, for a number, and each level in. */
+const BULLET_ROOM = 1.2;
+const NUMBER_ROOM = 1.9;
+const LEVEL_STEP = 1.5;
+
+/**
+ * How a list's mark is drawn (Session 55, Part 17a): a bullet is a shape in its line's colour, the same on every
+ * screen whatever fonts it has; a number is its words, up against the line's own, in the line's colour.
+ */
+export function listMarkerStyle(mark: ListMark, look: Pick<TextRun, 'color'>): CSSProperties {
+  const color = look.color ?? 'currentColor';
+  switch (mark) {
+    case 'disc':
+      return {
+        display: 'inline-block',
+        width: '0.34em',
+        height: '0.34em',
+        borderRadius: '50%',
+        background: color,
+        verticalAlign: 'middle',
+      };
+    case 'circle':
+      return {
+        display: 'inline-block',
+        width: '0.34em',
+        height: '0.34em',
+        borderRadius: '50%',
+        background: 'transparent',
+        border: `0.07em solid ${color}`,
+        boxSizing: 'border-box',
+        verticalAlign: 'middle',
+      };
+    case 'square':
+      return {
+        display: 'inline-block',
+        width: '0.3em',
+        height: '0.3em',
+        background: color,
+        verticalAlign: 'middle',
+      };
+    case 'dash':
+      return {
+        display: 'inline-block',
+        width: '0.55em',
+        height: '0.09em',
+        background: color,
+        verticalAlign: 'middle',
+      };
+    case 'arrow':
+      return {
+        display: 'inline-block',
+        width: 0,
+        height: 0,
+        borderLeft: `0.4em solid ${color}`,
+        borderTop: '0.22em solid transparent',
+        borderBottom: '0.22em solid transparent',
+        verticalAlign: 'middle',
+      };
+    default:
+      return {
+        color: look.color,
+        textAlign: 'right',
+        paddingRight: '0.3em',
+        whiteSpace: 'nowrap',
+        boxSizing: 'border-box',
+      };
+  }
+}
+
+/** A list's line (Session 55, Part 17a): in by its level and its mark's room, in its first words' size. */
+export function listLineStyle(
+  line: { mark: ListMark | null; level: number; label: string | null },
+  size: number,
+): CSSProperties {
+  if (line.mark === null) return {};
+  const room = line.label === null ? BULLET_ROOM : NUMBER_ROOM;
+  return { paddingLeft: fitted((line.level * LEVEL_STEP + room) * size) };
+}
+
+/**
+ * Where a list's mark sits (Session 55, Part 17a): in the room before its line's words, in the size, weight and
+ * colour of the line's first words; a number in their font too (Gujarati and Devanagari digits drawn by their fonts).
+ */
+export function listMarkerBoxStyle(
+  line: { mark: ListMark; label: string | null },
+  first: Omit<TextRun, 'text'>,
+  el: TextElement,
+): CSSProperties {
+  const size = first.size ?? el.style.fontSize;
+  const room = line.label === null ? BULLET_ROOM : NUMBER_ROOM;
+  return {
+    display: 'inline-block',
+    width: fitted(room * size),
+    marginLeft: fitted(-room * size),
+    textIndent: 0,
+    textAlign: 'center',
+    fontSize: fitted(size),
+    fontWeight: first.weight,
+    ...(line.label === null
+      ? {}
+      : {
+          fontFamily: fontFamilyFor(first.font ?? el.style.fontFamily, first.lang ?? el.lang),
+          ...listMarkerStyle(line.mark, first),
+        }),
+  };
+}
+
+/**
+ * The words of a box with a list in it (Session 55, Part 17a), line by line: each line a block, a list's line in by
+ * its level with its mark in the room before its words (and its wrapped lines under its words, not its mark). Every
+ * run keeps its look. While revealed line by line or word by word (Session 27), each line and word is its own, as
+ * RevealRuns has them.
+ */
+function ListedRuns({ el, runs, reveal }: { el: TextElement; runs: readonly TextRun[]; reveal?: Reveal }) {
+  const langOf = useHtmlLang();
+  const lines = drawnLines(runs);
+  // A last line left empty by a line break at the end is not drawn: words without a list draw none there either.
+  if (lines.length > 1 && lines.at(-1)?.pieces.length === 0) lines.pop();
+  return (
+    <>
+      {lines.map((line, li) => {
+        const first: Omit<TextRun, 'text'> = line.pieces[0]?.run ?? line.end ?? {};
+        const size = first.size ?? el.style.fontSize;
+        const { mark, label } = line.mark;
+        const blank = line.pieces.every((p) => p.text.trim() === '');
+        return (
+          <div
+            key={li}
+            data-line={li}
+            data-list={mark ?? undefined}
+            data-reveal-line={reveal ? li : undefined}
+            data-reveal-empty={reveal && blank ? '' : undefined}
+            style={{ position: reveal ? 'relative' : undefined, ...listLineStyle(line.mark, size) }}
+          >
+            {mark !== null && (
+              <span
+                aria-hidden="true"
+                data-list-marker={mark}
+                style={listMarkerBoxStyle({ mark, label }, first, el)}
+              >
+                {label ?? <span style={listMarkerStyle(mark, first)} />}
+              </span>
+            )}
+            {line.pieces.length === 0 ? (
+              <span style={line.end ? runStyle(line.end, el) : undefined}>
+                <br />
+              </span>
+            ) : (
+              line.pieces.map((piece, pi) => {
+                const lang = piece.run.lang ?? el.lang;
+                const locale = langOf(lang);
+                return (
+                  <span
+                    key={pi}
+                    data-run={piece.index}
+                    data-lang={piece.run.lang ?? undefined}
+                    data-legacy={piece.run.legacy ? 'true' : undefined}
+                    lang={locale}
+                    style={runStyle(piece.run, el)}
+                  >
+                    {reveal === 'words'
+                      ? wordUnits(piece.text, locale).map((unit, ui) => (
+                          <span key={ui} data-reveal-word="" style={{ position: 'relative' }}>
+                            {unit}
+                          </span>
+                        ))
+                      : piece.text}
+                  </span>
+                );
+              })
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -238,7 +467,12 @@ export function textBoxStyle(el: TextElement): CSSProperties {
     whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
     fontKerning: 'normal',
-    textShadow: s.shadow === false ? undefined : textShadowCss(s.shadow),
+    // A glow (Session 55, Part 17a) with its shadow; with none, the shadow as it always was.
+    textShadow: glowing(s.glow)
+      ? textEffectsCss(s.shadow, s.glow)
+      : s.shadow === false
+        ? undefined
+        : textShadowCss(s.shadow),
     ...textOutlineCss(s.outline ?? undefined),
     opacity: el.opacity,
   };
@@ -296,7 +530,10 @@ function TextView({
             : {}),
         }}
       >
-        {reveal ? (
+        {el.runs && hasList(el) ? (
+          // Lines of a list (Session 55, Part 17a), revealed or not.
+          <ListedRuns el={el} runs={el.runs} reveal={reveal} />
+        ) : reveal ? (
           <RevealRuns
             el={el}
             runs={el.runs && el.runs.length > 0 ? el.runs : [{ text: el.text }]}
@@ -359,6 +596,7 @@ function ShapeView({ el }: { el: ShapeElement }) {
     strokeWidth: stroke?.width ?? 0,
   };
   const radius = Math.min(el.cornerRadius, width / 2, height / 2);
+  const path = shapePath(kind, width, height);
   return (
     <svg
       data-element={el.id}
@@ -369,7 +607,9 @@ function ShapeView({ el }: { el: ShapeElement }) {
       overflow="visible"
       style={{ ...frameStyle(el), opacity: el.opacity, overflow: 'visible' }}
     >
-      {kind === 'ellipse' ? (
+      {path ? (
+        <path d={path} {...paint} />
+      ) : kind === 'ellipse' ? (
         <ellipse cx={width / 2} cy={height / 2} rx={width / 2} ry={height / 2} {...paint} />
       ) : kind === 'line' ? (
         <line x1={0} y1={height / 2} x2={width} y2={height / 2} {...paint} />
@@ -569,36 +809,17 @@ function MediaView({
 }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
-  const urlOf = useMediaUrl();
   // A picture's look (Session 26e), and on the screens the live zoom of this slide's showing.
   const showing = startedAt === undefined ? null : slideShowing(startedAt);
+  const previews = usePreviewsOnly();
+  if (el.kind === 'image')
+    return <SlidePicture el={el} showing={showing} attempt={attempt} previews={previews} />;
   // A phone or tablet: pictures and videos as small previews, and no video plays.
-  if (usePreviewsOnly())
-    return el.kind === 'image' ? (
-      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)} box={el.frame}>
-        {(style, copy) => <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={style} />}
-      </Looked>
-    ) : deck && deckStep && videoShowsFrom(deck, deckStep) === null ? null : (
+  if (previews)
+    return deck && deckStep && videoShowsFrom(deck, deckStep) === null ? null : (
       // A deck's video outside its entrance and its exit (C review) shows nothing on a phone either.
       <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />
     );
-  if (el.kind === 'image') {
-    return (
-      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)} box={el.frame}>
-        {(style, copy) => (
-          <img
-            key={attempt}
-            data-element={el.id}
-            data-media-id={el.mediaId}
-            src={copy?.url ?? urlOf(el.mediaId, attempt)}
-            alt=""
-            draggable={false}
-            style={style}
-          />
-        )}
-      </Looked>
-    );
-  }
   if (media === 'still') return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} />;
   return (
     <SlideVideo
@@ -614,7 +835,63 @@ function MediaView({
   );
 }
 
-export function ElementView({
+/** A slide's own crop clips the library picture as drawn, preserving its library look and enhancements. */
+function SlidePicture({
+  el,
+  showing,
+  attempt,
+  previews,
+}: {
+  el: MediaElement;
+  showing: string | null;
+  attempt: number;
+  previews: boolean;
+}) {
+  const urlOf = useMediaUrl();
+  const crop = el.crop;
+  const width = el.frame.width / (crop?.width ?? 1);
+  const height = el.frame.height / (crop?.height ?? 1);
+  const style: CSSProperties = crop
+    ? {
+        position: 'absolute',
+        // The image extends beyond this crop's viewport; the shared img max-width must not shrink it back.
+        maxWidth: 'none',
+        left: -crop.x * width,
+        top: -crop.y * height,
+        width,
+        height,
+        objectFit: OBJECT_FIT[el.fit],
+      }
+    : mediaStyle(el);
+  const picture = (
+    <Looked mediaId={el.mediaId} showing={showing} style={style} box={crop ? { width, height } : el.frame}>
+      {(paint, copy) =>
+        previews ? (
+          <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={paint} />
+        ) : (
+          <img
+            key={attempt}
+            data-element={crop ? undefined : el.id}
+            data-media-id={el.mediaId}
+            src={copy?.url ?? urlOf(el.mediaId, attempt)}
+            alt=""
+            draggable={false}
+            style={paint}
+          />
+        )
+      }
+    </Looked>
+  );
+  return crop ? (
+    <div data-element={el.id} data-slide-crop="" style={{ ...mediaStyle(el), overflow: 'hidden' }}>
+      {picture}
+    </div>
+  ) : (
+    picture
+  );
+}
+
+function ElementBody({
   el,
   media = 'live',
   startedAt,
@@ -660,6 +937,116 @@ export function ElementView({
       deck={deck}
       deckStep={deckStep}
     />
+  );
+}
+
+function MovingElement({
+  el,
+  motion,
+  at,
+  children,
+}: {
+  el: SlideElement;
+  motion: ElementMotion;
+  at: number;
+  children: ReactNode;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    let frame = 0;
+    let cancelWake: () => void = () => undefined;
+    const tick = () => {
+      cancelAnimationFrame(frame);
+      cancelWake();
+      const elapsed = engineFrameNow() - at;
+      const f = motionFrame(motion, elapsed);
+      if (root.current) {
+        root.current.style.opacity = String(f.opacity);
+        root.current.style.transform = `translate(${f.x}px, ${f.y}px) rotate(${f.rotate}deg) scale(${f.scale})`;
+        root.current.dataset['motionAt'] = String(Math.max(0, Math.round(elapsed)));
+      }
+      if (clockHeld()) return;
+      if (f.moving) frame = requestAnimationFrame(tick);
+      else if (f.nextAt !== null) cancelWake = wakeAt(at + f.nextAt, engineNow, tick);
+    };
+    tick();
+    const off = onClockJump(tick);
+    return () => {
+      off();
+      cancelAnimationFrame(frame);
+      cancelWake();
+    };
+  }, [motion, at]);
+  return (
+    <div
+      ref={root}
+      data-element-motion={el.id}
+      style={{
+        position: 'absolute',
+        left: el.frame.x,
+        top: el.frame.y,
+        width: el.frame.width,
+        height: el.frame.height,
+        transformOrigin: 'center',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function ElementView(props: Parameters<typeof ElementBody>[0] & { previewAt?: number }) {
+  const at = props.previewAt ?? props.startedAt;
+  const motion = props.el.motion;
+  if (
+    !motion ||
+    !hasElementMotion(motion) ||
+    at === undefined ||
+    (props.media === 'still' && props.previewAt === undefined)
+  )
+    return <ElementBody {...props} />;
+  const el = { ...props.el, frame: { ...props.el.frame, x: 0, y: 0 } };
+  return (
+    <MovingElement el={props.el} motion={motion} at={at}>
+      <ElementBody {...props} el={el} />
+    </MovingElement>
+  );
+}
+
+/** The slide's own picture/gradient, shared by every live view and by the editor's still canvas. */
+export function SlideBackdropView({
+  slide,
+  media = 'still',
+}: {
+  slide: Pick<RenderSlide, 'id' | 'width' | 'height' | 'backdrop'>;
+  media?: MediaMode;
+}) {
+  const bg = slide.backdrop;
+  if (!bg) return null;
+  if (bg.kind === 'gradient')
+    return (
+      <div
+        data-slide-backdrop="gradient"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: `linear-gradient(${bg.angle}deg, ${bg.from}, ${bg.to})`,
+        }}
+      />
+    );
+  return (
+    <div data-slide-backdrop="picture" style={{ position: 'absolute', inset: 0 }}>
+      <ElementBody
+        el={{
+          id: `backdrop-${slide.id}`,
+          kind: 'image',
+          mediaId: bg.mediaId,
+          fit: bg.fit,
+          frame: { x: 0, y: 0, width: slide.width, height: slide.height },
+        }}
+        media={media}
+      />
+    </div>
   );
 }
 
@@ -723,6 +1110,7 @@ export const SlideView = memo(function SlideView({
           background: text === 'only' ? 'transparent' : (slide.background ?? 'transparent'),
         }}
       >
+        {text !== 'only' && <SlideBackdropView slide={slide} media={media} />}
         {slide.elements.map((el) => [
           // The whole picture darkened (Sessions 31–36, SLD-3): over everything before the first words (a
           // picture, the colour, the background layer's video under the slide), under the words.

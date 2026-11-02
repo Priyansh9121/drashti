@@ -53,12 +53,18 @@ import type { StageCall } from '../stage-message';
  * only adds to 16). 22 (Session 55, Part 16, the Lower Thirds studio): a lower third's style, second colour and moving
  * background (its look's `style`, `accent`, `motion`), its own out (`outAnimation`), the seconds it stays up
  * (`seconds`, Part 8's R) and the studio's fonts; an older node or page would draw it as a plain box going out the way
- * it came, so it says 'incompatible'. A state 20 saved is read whole (22 only adds to it).
+ * it came, so it says 'incompatible'. A state 20 saved is read whole (22 only adds to it). 23 (Session 55, Part 17a,
+ * the slide editor's Words): a slide's words underlined, struck through and glowing, and lines of a list with their
+ * bullets and numbers (a run's `underline`, `strike`, `glow`, `list` and `level`, a box's `glow`); an older node or
+ * page would leave them out, so it says 'incompatible'. Part 17a also adds geometric arrows and icons, each element's
+ * flips and group identity, and a picture's crop on its slide. The resolved master, gradient or picture backdrop,
+ * design size and element motion also travel in each rendered slide; all players use shownAt for the motion.
+ * Designed and animated slides keep their full canvas in every layout. A state 22 saved is read whole (23 only adds to it).
  */
-export const ENGINE_STATE_VERSION = 22;
+export const ENGINE_STATE_VERSION = 23;
 
 /**
- * Whether a state saved by this engine version is read whole (Session 52): this version's own, 16 (Session 55's
+ * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
  * Part 12), 15 (the Session 55 builds before Part 12), 14 (alpha.13's), 13 (alpha.12's) and 12 (alpha.11's), as 17,
  * 15, 14 and 13 each only add fields to the one before (15 leaves the live Look's stage layouts out, which nothing reads
  * any more) and 16 only leaves out what went (Session 55, Part 12: a reader leaves an older state's props, mask, logo
@@ -67,8 +73,10 @@ export const ENGINE_STATE_VERSION = 22;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
-    // 22 only adds to 20 (Session 55, Part 16's lower thirds); 17, 18 and 20 each only add to 16 (Session 55: Part 15's
-    // messages and timers, Part 6's chosen wallpaper, Part 5's picture looks).
+    // 23 only adds to 22 (Session 55, Part 17a's words); 22 only adds to 20 (Session 55, Part 16's lower thirds); 17,
+    // 18 and 20 each only add to 16 (Session 55: Part 15's messages and timers, Part 6's chosen wallpaper, Part 5's
+    // picture looks).
+    version === 22 ||
     version === 20 ||
     version === 18 ||
     version === 17 ||

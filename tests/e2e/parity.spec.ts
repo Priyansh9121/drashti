@@ -9,6 +9,7 @@ import {
   outputPage,
   type PageGlobals,
   setUpScreen,
+  slideEditorWindow,
 } from './helpers';
 import { goLive, makeSlides } from './placeholder-slides';
 
@@ -94,15 +95,14 @@ test('a slide’s shrunk words are the same size and in the same lines on the ou
     }
   })();
 
-  // The slide editor.
+  // The slide editor (its own window since Session 55, Part 17a).
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
-  await expect(win.locator(`[data-testid="editor-slide"] [data-element="${elementId}"]`)).toHaveAttribute(
+  const { ed } = await slideEditorWindow(app);
+  await expect(ed.locator(`[data-testid="editor-slide"] [data-element="${elementId}"]`)).toHaveAttribute(
     'data-fit',
     /^0\./u,
   );
-  const inEditor = await measure(win, '[data-testid="editor-slide"]', elementId);
+  const inEditor = await measure(ed, '[data-testid="editor-slide"]', elementId);
 
   expect({ thumbnail: onThumb, editor: inEditor, phone: onPhone }).toEqual({
     thumbnail: onOutput,

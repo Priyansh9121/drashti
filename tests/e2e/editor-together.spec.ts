@@ -5,7 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
+import {
+  editorGroup,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  sizeSlideEditor,
+  slideEditorClosed,
+  slideEditorWindow,
+} from './helpers';
 
 /*
  * The slide editor (Session 11): several elements selected (Select all, or
@@ -13,7 +23,8 @@ import { importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } 
  * gesture one Undo; elements are copied and pasted between slides (Paste puts
  * them where they were; Paste in place even where that is taken) and between
  * presentations, keeping their styles, languages and media. Placeholder
- * words and generated shapes only.
+ * words and generated shapes only. Since Session 55 (Part 17a) the editor has a window of its own, made for each
+ * presentation edited: what is copied in one pastes in the next.
  */
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -64,57 +75,58 @@ test('several elements resize and turn together, each change one Undo; copy and 
     .getByRole('button', { name: /^Placeholder Together/ })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  const { ed, editor } = await slideEditorWindow(app);
+  await sizeSlideEditor(app, ed, { width: 1600, height: 900 });
   const status = editor.getByTestId('editor-status');
   // A rectangle beside the words.
+  await editorGroup(ed, 'Insert');
   await editor.getByTestId('add-shape').click();
-  await win.getByRole('menuitem', { name: 'Rectangle', exact: true }).click();
+  await ed.getByRole('menuitem', { name: 'Rectangle', exact: true }).click();
   await expect(status).toContainText('Rectangle selected');
-  const before = await elementsOf(win);
+  const before = await elementsOf(ed);
   expect(before).toHaveLength(2);
 
   // Both selected (Select all): one box round them, with its own handles.
   await editor.getByTestId('editor-canvas').focus();
-  await win.keyboard.press(`${mod}+A`);
+  await ed.keyboard.press(`${mod}+A`);
   await expect(status).toHaveText('2 elements selected');
   await expect(editor.getByTestId('group-box')).toBeVisible();
-  await expectNoSeriousA11yIssues(win, 'the slide editor with two elements selected');
+  await expectNoSeriousA11yIssues(ed, 'the slide editor with two elements selected');
 
   // Moved together: drag one of them 150 px down (Alt: no snapping); both move, and one Undo puts both back.
   const first = before[0];
   if (!first) throw new Error('no element');
-  const grab = await onCanvas(win, first.left + 30, first.top + 30);
-  const dropAt = await onCanvas(win, first.left + 30, first.top + 180);
-  await win.keyboard.down('Alt');
-  await drag(win, grab, dropAt);
-  await win.keyboard.up('Alt');
+  const grab = await onCanvas(ed, first.left + 30, first.top + 30);
+  const dropAt = await onCanvas(ed, first.left + 30, first.top + 180);
+  await ed.keyboard.down('Alt');
+  await drag(ed, grab, dropAt);
+  await ed.keyboard.up('Alt');
   // Both by the same amount, about 150 px (the pointer lands on whole screen pixels).
   await expect
     .poll(async () => {
-      const moved = (await elementsOf(win)).map((x) => x.top - (before.find((b) => b.id === x.id)?.top ?? 0));
+      const moved = (await elementsOf(ed)).map((x) => x.top - (before.find((b) => b.id === x.id)?.top ?? 0));
       const [a = 0, b = 0] = moved;
       return moved.length === 2 && Math.abs(a - b) <= 1 && Math.abs(a - 150) <= 3;
     })
     .toBe(true);
   await expect(status).toHaveText('2 elements selected');
-  await win.keyboard.press(`${mod}+Z`);
-  await expect.poll(() => elementsOf(win)).toEqual(before);
+  await ed.keyboard.press(`${mod}+Z`);
+  await expect.poll(() => elementsOf(ed)).toEqual(before);
 
   // Resize together from the right edge, 200 px to the left: both get narrower, the left edge stays.
   const e = await editor.getByTestId('group-handle-e').boundingBox();
   if (!e) throw new Error('no handle');
   const scale = Number(await editor.getByTestId('editor-canvas').getAttribute('data-scale'));
   await drag(
-    win,
+    ed,
     { x: e.x + e.width / 2, y: e.y + e.height / 2 },
     { x: e.x + e.width / 2 - 200 * scale, y: e.y + e.height / 2 },
   );
-  const resized = await elementsOf(win);
+  const resized = await elementsOf(ed);
   expect(resized.map((r) => r.width < (before.find((b) => b.id === r.id)?.width ?? 0))).toEqual([true, true]);
   // One Undo puts both back.
-  await win.keyboard.press(`${mod}+Z`);
-  await expect.poll(() => elementsOf(win)).toEqual(before);
+  await ed.keyboard.press(`${mod}+Z`);
+  await expect.poll(() => elementsOf(ed)).toEqual(before);
 
   // Turn together from the round handle: a quarter turn (Shift holds it to steps of 15 degrees).
   const turnHandle = await editor.getByTestId('group-handle-rotate').boundingBox();
@@ -122,30 +134,30 @@ test('several elements resize and turn together, each change one Undo; copy and 
   if (!turnHandle || !box) throw new Error('no box');
   const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const r = c.y - (turnHandle.y + turnHandle.height / 2);
-  await win.keyboard.down('Shift');
-  await win.mouse.move(c.x, c.y - r);
-  await win.mouse.down();
+  await ed.keyboard.down('Shift');
+  await ed.mouse.move(c.x, c.y - r);
+  await ed.mouse.down();
   for (let i = 1; i <= 9; i++) {
     const a = (-90 + i * 10) * (Math.PI / 180);
-    await win.mouse.move(c.x + r * Math.cos(a), c.y + r * Math.sin(a));
+    await ed.mouse.move(c.x + r * Math.cos(a), c.y + r * Math.sin(a));
   }
-  await win.mouse.up();
-  await win.keyboard.up('Shift');
-  await expect.poll(async () => (await elementsOf(win)).map((x) => x.turn)).toEqual(['90', '90']);
-  await win.keyboard.press(`${mod}+Z`);
-  await expect.poll(() => elementsOf(win)).toEqual(before);
+  await ed.mouse.up();
+  await ed.keyboard.up('Shift');
+  await expect.poll(async () => (await elementsOf(ed)).map((x) => x.turn)).toEqual(['90', '90']);
+  await ed.keyboard.press(`${mod}+Z`);
+  await expect.poll(() => elementsOf(ed)).toEqual(before);
 
   // Copy the rectangle, paste it on the second slide (where it was), and in place on this one.
   const rect = before[1];
   if (!rect) throw new Error('no rectangle');
-  const p = await onCanvas(win, rect.left + rect.width / 2, rect.top + rect.height / 2);
-  await win.mouse.click(p.x, p.y);
+  const p = await onCanvas(ed, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  await ed.mouse.click(p.x, p.y);
   await expect(status).toContainText('Rectangle selected');
-  await win.keyboard.press(`${mod}+C`);
+  await ed.keyboard.press(`${mod}+C`);
   await expect(editor.getByTestId('editor-note')).toContainText('Copied 1 element.');
-  await win.keyboard.press(`${mod}+Shift+V`);
-  await expect.poll(async () => (await elementsOf(win)).length).toBe(3);
-  const inPlace = await elementsOf(win);
+  await ed.keyboard.press(`${mod}+Shift+V`);
+  await expect.poll(async () => (await elementsOf(ed)).length).toBe(3);
+  const inPlace = await elementsOf(ed);
   expect(inPlace[2]).toMatchObject({
     left: rect.left,
     top: rect.top,
@@ -153,23 +165,23 @@ test('several elements resize and turn together, each change one Undo; copy and 
     height: rect.height,
   });
   await editor.getByTestId('editor-slide-thumb').nth(1).click();
-  const second = (await elementsOf(win)).length;
+  const second = (await elementsOf(ed)).length;
   await editor.getByTestId('editor-canvas').focus();
-  await win.keyboard.press(`${mod}+V`);
-  await expect.poll(async () => (await elementsOf(win)).length).toBe(second + 1);
-  expect((await elementsOf(win)).at(-1)).toMatchObject({ left: rect.left, top: rect.top });
+  await ed.keyboard.press(`${mod}+V`);
+  await expect.poll(async () => (await elementsOf(ed)).length).toBe(second + 1);
+  expect((await elementsOf(ed)).at(-1)).toMatchObject({ left: rect.left, top: rect.top });
   // And the words (Gujarati and transliteration in their own styles) from the first slide.
   await editor.getByTestId('editor-slide-thumb').nth(0).click();
   const words = before[0];
   if (!words) throw new Error('no words');
-  const w = await onCanvas(win, words.left + 20, words.top + 20);
-  await win.mouse.click(w.x, w.y);
+  const w = await onCanvas(ed, words.left + 20, words.top + 20);
+  await ed.mouse.click(w.x, w.y);
   await expect(status).toContainText('Text box');
-  await win.keyboard.press(`${mod}+C`);
+  await ed.keyboard.press(`${mod}+C`);
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
 
-  // Into another presentation (the sample kirtan): the same words, languages and look.
+  // Into another presentation (the sample kirtan), in the window made for it: the same words, languages and look.
   await openLibrary(win);
   await win
     .getByTestId('presentation-list')
@@ -177,13 +189,14 @@ test('several elements resize and turn together, each change one Undo; copy and 
     .click();
   const sampleId = (await win.getByTestId('slide-grid').getAttribute('data-presentation-id')) ?? '';
   await win.getByTestId('edit-slides').click();
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
-  const had = (await elementsOf(win)).length;
-  await editor.getByTestId('editor-canvas').focus();
-  await win.keyboard.press(`${mod}+V`);
-  await expect.poll(async () => (await elementsOf(win)).length).toBe(had + 1);
-  await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  const next = await slideEditorWindow(app);
+  await sizeSlideEditor(app, next.ed, { width: 1600, height: 900 });
+  const had = (await elementsOf(next.ed)).length;
+  await next.editor.getByTestId('editor-canvas').focus();
+  await next.ed.keyboard.press(`${mod}+V`);
+  await expect.poll(async () => (await elementsOf(next.ed)).length).toBe(had + 1);
+  await next.editor.getByTestId('save-slides').click();
+  await slideEditorClosed(app);
   const docs = await win.evaluate(
     async ({ from, to }) => {
       const d = (globalThis as PageGlobals).drashti;

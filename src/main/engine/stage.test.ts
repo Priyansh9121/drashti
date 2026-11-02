@@ -82,10 +82,11 @@ describe('the stage screens in the engine’s state (Session 55)', () => {
     expect(engine.current.blackout).toBe(false);
   });
 
-  it('is engine 22 (Session 55: 22, Part 16, the Lower Thirds studio; 17, Part 15, message looks, the stage message’s size, timers for the audience; 18, Part 6, the chosen wallpaper; 20, Part 5, a picture’s crop, turn and blurred fill; 16, Part 12: the Wallpaper); a state saved with any of them (20, 18, 17), the Wallpaper (16), the stage (15), by alpha.13 (14), alpha.12 (13) or alpha.11 (12) is read whole', () => {
-    expect(ENGINE_STATE_VERSION).toBe(22);
-    for (const v of [22, 20, 18, 17, 16, 15, 14, 13, 12]) expect(readsEngineVersion(v), String(v)).toBe(true);
-    for (const v of [11, 19, 21, 23, '22', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
+  it('is engine 23 (Session 55: 23, Part 17a, a slide’s words underlined, struck through, glowing and listed; 22, Part 16, the Lower Thirds studio; 17, Part 15, message looks, the stage message’s size, timers for the audience; 18, Part 6, the chosen wallpaper; 20, Part 5, a picture’s crop, turn and blurred fill; 16, Part 12: the Wallpaper); a state saved with any of them (22, 20, 18, 17), the Wallpaper (16), the stage (15), by alpha.13 (14), alpha.12 (13) or alpha.11 (12) is read whole', () => {
+    expect(ENGINE_STATE_VERSION).toBe(23);
+    for (const v of [23, 22, 20, 18, 17, 16, 15, 14, 13, 12])
+      expect(readsEngineVersion(v), String(v)).toBe(true);
+    for (const v of [11, 19, 21, 24, '23', null]) expect(readsEngineVersion(v), String(v)).toBe(false);
   });
 });
 

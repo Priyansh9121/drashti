@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,12 +8,17 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
+  closeSlideEditorByKey,
+  editorGroup,
   importAndGetIds,
   launchApp,
   openLibrary,
   operatorPage,
   outputPage,
   setUpScreen,
+  sizeSlideEditor,
+  slideEditorClosed,
+  slideEditorWindow,
 } from './helpers';
 import { makeTestImage } from './test-media';
 
@@ -22,43 +27,39 @@ import { makeTestImage } from './test-media';
  * pictures, moving from the keyboard and by dragging (with snapping),
  * Undo and Redo, saving to the screens, Cancel, legacy-font text, typing
  * through an input method, and accessibility. Placeholder words and
- * generated pictures only.
+ * generated pictures only. Since Session 55 (Part 17a) the editor is a window of its own, its tools in groups along
+ * its top (Words, Insert, Arrange, Design, Motion, Slides).
  */
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-/** A point on the slide (slide pixels) as a point in the window. */
-async function onCanvas(win: Page, x: number, y: number): Promise<{ x: number; y: number }> {
-  const canvas = win.getByTestId('editor-canvas');
+/** A point on the slide (slide pixels) as a point in the editor's window. */
+async function onCanvas(ed: Page, x: number, y: number): Promise<{ x: number; y: number }> {
+  const canvas = ed.getByTestId('editor-canvas');
   const box = await canvas.boundingBox();
   const scale = Number(await canvas.getAttribute('data-scale'));
   if (!box) throw new Error('no canvas');
   return { x: box.x + x * scale, y: box.y + y * scale };
 }
 
-async function clickSlide(win: Page, x: number, y: number): Promise<void> {
-  const p = await onCanvas(win, x, y);
-  await win.mouse.click(p.x, p.y);
+async function clickSlide(ed: Page, x: number, y: number): Promise<void> {
+  const p = await onCanvas(ed, x, y);
+  await ed.mouse.click(p.x, p.y);
 }
 
 /** Drag on the slide from one point to another (slide pixels), in small steps, optionally holding Alt. */
-async function dragSlide(
-  win: Page,
-  from: [number, number],
-  to: [number, number],
-  alt = false,
-): Promise<void> {
-  const a = await onCanvas(win, ...from);
-  const b = await onCanvas(win, ...to);
-  await win.mouse.move(a.x, a.y);
-  if (alt) await win.keyboard.down('Alt');
-  await win.mouse.down();
-  for (let i = 1; i <= 8; i++) await win.mouse.move(a.x + ((b.x - a.x) * i) / 8, a.y + ((b.y - a.y) * i) / 8);
-  await win.mouse.up();
-  if (alt) await win.keyboard.up('Alt');
+async function dragSlide(ed: Page, from: [number, number], to: [number, number], alt = false): Promise<void> {
+  const a = await onCanvas(ed, ...from);
+  const b = await onCanvas(ed, ...to);
+  await ed.mouse.move(a.x, a.y);
+  if (alt) await ed.keyboard.down('Alt');
+  await ed.mouse.down();
+  for (let i = 1; i <= 8; i++) await ed.mouse.move(a.x + ((b.x - a.x) * i) / 8, a.y + ((b.y - a.y) * i) / 8);
+  await ed.mouse.up();
+  if (alt) await ed.keyboard.up('Alt');
 }
 
-const fieldValue = async (win: Page, id: string) => Number(await win.getByTestId(id).inputValue());
+const fieldValue = async (ed: Page, id: string) => Number(await ed.getByTestId(id).inputValue());
 
 /** Import a placeholder kirtan (and anything else) and return the kirtan's id. */
 async function importKirtan(win: Page, name: string, words: string, more: string[] = []): Promise<string> {
@@ -69,7 +70,12 @@ async function importKirtan(win: Page, name: string, words: string, more: string
   return id;
 }
 
-async function openEditor(win: Page, name: string | RegExp): Promise<Locator> {
+/** The presentation chosen in the library, and Edit slides: the editor's window (Session 55, Part 17a), and the editor. */
+async function openEditor(
+  app: ElectronApplication,
+  win: Page,
+  name: string | RegExp,
+): Promise<{ ed: Page; editor: Locator }> {
   // By its row (the row's trash button is named after it too: “Delete …”, Session 26a).
   await openLibrary(win);
   await win
@@ -79,9 +85,9 @@ async function openEditor(win: Page, name: string | RegExp): Promise<Locator> {
     .click();
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toBeVisible();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
-  return editor;
+  const opened = await slideEditorWindow(app);
+  await sizeSlideEditor(app, opened.ed, { width: 1600, height: 900 });
+  return opened;
 }
 
 /**
@@ -89,8 +95,8 @@ async function openEditor(win: Page, name: string | RegExp): Promise<Locator> {
  * would). The editor reads a selection when the page says it changed; the page's own word for that
  * came too late on a macOS CI runner, so it is said here at once, as the browser would.
  */
-async function selectTyped(win: Page, start: number, end: number): Promise<void> {
-  await win.evaluate(
+async function selectTyped(ed: Page, start: number, end: number): Promise<void> {
+  await ed.evaluate(
     ({ start, end }) => {
       const root = document.querySelector('[data-testid="text-editing"]');
       const walker = root ? document.createTreeWalker(root, NodeFilter.SHOW_TEXT) : null;
@@ -128,77 +134,79 @@ test('edit a slide: a Gujarati word in its own font and size, a shape and a pict
   const slideLayer = output.locator('[data-layer="slide"]');
   await expect(slideLayer).toContainText('નમૂના પંક્તિ');
 
-  const editor = await openEditor(win, /Placeholder Editor Kirtan/);
+  const { ed, editor } = await openEditor(app, win, /Placeholder Editor Kirtan/);
   const status = editor.getByTestId('editor-status');
 
-  // The words: select the box, type in it, give the first Gujarati word its own font and size.
-  await clickSlide(win, 960, 540);
+  // The words: select the box, type in it, give the first Gujarati word one of Drashti's fonts and its own size
+  // (Session 55, Part 17a: the Words group along the top; its fonts are the bundled ones).
+  await clickSlide(ed, 960, 540);
   await expect(status).toContainText('Text box');
-  await win.keyboard.press('Enter');
+  await ed.keyboard.press('Enter');
   const typing = editor.getByTestId('text-editing');
   await expect(typing).toBeFocused();
-  await selectTyped(win, 0, 5);
+  await selectTyped(ed, 0, 5);
   await expect(editor.getByTestId('text-target')).toHaveText('Styling the selected words.');
-  await editor.getByTestId('field-font').fill('Placeholder Serif');
+  await editor.getByTestId('field-font').selectOption('Noto Serif');
   await editor.getByTestId('field-size').fill('120');
-  await win.keyboard.press('Escape');
+  await ed.keyboard.press('Escape');
   await expect(typing).toHaveCount(0);
   const word = editor.getByTestId('editor-slide').locator('[data-run][data-lang="gu"]').first();
   await expect(word).toHaveText('નમૂના');
-  await expect.poll(() => word.evaluate((el) => getComputedStyle(el).fontSize)).toBe('120px');
-  expect(await word.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Placeholder Serif"?/u);
+  await expect.poll(() => word.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"?Noto Serif"?/u);
+  expect(await word.evaluate((el) => getComputedStyle(el).fontSize)).toBe('120px');
 
   // A shape: an ellipse in the middle, moved from the keyboard.
+  await editorGroup(ed, 'Insert');
   await editor.getByTestId('add-shape').click();
-  await win.getByRole('menuitem', { name: 'Ellipse' }).click();
+  await ed.getByRole('menuitem', { name: 'Ellipse' }).click();
   await expect(status).toContainText('Ellipse selected');
-  await clickSlide(win, 960, 540);
-  const x0 = await fieldValue(win, 'field-x');
-  const y0 = await fieldValue(win, 'field-y');
-  await win.keyboard.press('ArrowRight');
-  await win.keyboard.press('ArrowRight');
-  await win.keyboard.press('ArrowRight');
-  await win.keyboard.press('Shift+ArrowDown');
-  await expect.poll(() => fieldValue(win, 'field-x')).toBe(x0 + 3);
-  expect(await fieldValue(win, 'field-y')).toBe(y0 + 10);
+  await clickSlide(ed, 960, 540);
+  const x0 = await fieldValue(ed, 'field-x');
+  const y0 = await fieldValue(ed, 'field-y');
+  await ed.keyboard.press('ArrowRight');
+  await ed.keyboard.press('ArrowRight');
+  await ed.keyboard.press('ArrowRight');
+  await ed.keyboard.press('Shift+ArrowDown');
+  await expect.poll(() => fieldValue(ed, 'field-x')).toBe(x0 + 3);
+  expect(await fieldValue(ed, 'field-y')).toBe(y0 + 10);
 
   // A picture from the library, at its own proportions in the middle of the slide.
   await editor.getByTestId('add-media').click();
-  await win.getByTestId('media-picker').getByTestId('media-choice').first().click();
+  await ed.getByTestId('media-picker').getByTestId('media-choice').first().click();
   await expect(status).toContainText('Picture selected');
-  await expect.poll(() => fieldValue(win, 'field-width')).toBe(960);
-  expect(await fieldValue(win, 'field-height')).toBe(540);
-  expect(await fieldValue(win, 'field-x')).toBe(480);
+  await expect.poll(() => fieldValue(ed, 'field-width')).toBe(960);
+  expect(await fieldValue(ed, 'field-height')).toBe(540);
+  expect(await fieldValue(ed, 'field-x')).toBe(480);
 
   // Move it off the middle from the keyboard (ten times ten), then drag it back to 10 px short of
   // the middle: it snaps there, with a guide; holding Alt it goes exactly where it is dragged.
-  await clickSlide(win, 700, 400);
-  for (let i = 0; i < 10; i++) await win.keyboard.press('Shift+ArrowRight');
-  await expect.poll(() => fieldValue(win, 'field-x')).toBe(580);
-  const a = await onCanvas(win, 1060, 540);
-  const b = await onCanvas(win, 950, 540);
-  await win.mouse.move(a.x, a.y);
-  await win.mouse.down();
-  for (let i = 1; i <= 8; i++) await win.mouse.move(a.x + ((b.x - a.x) * i) / 8, a.y);
+  await clickSlide(ed, 700, 400);
+  for (let i = 0; i < 10; i++) await ed.keyboard.press('Shift+ArrowRight');
+  await expect.poll(() => fieldValue(ed, 'field-x')).toBe(580);
+  const a = await onCanvas(ed, 1060, 540);
+  const b = await onCanvas(ed, 950, 540);
+  await ed.mouse.move(a.x, a.y);
+  await ed.mouse.down();
+  for (let i = 1; i <= 8; i++) await ed.mouse.move(a.x + ((b.x - a.x) * i) / 8, a.y);
   await expect(editor.getByTestId('guide').first()).toBeVisible();
-  await win.mouse.up();
+  await ed.mouse.up();
   await expect(editor.getByTestId('guide')).toHaveCount(0);
-  await expect.poll(() => fieldValue(win, 'field-x')).toBe(480);
-  await dragSlide(win, [960, 540], [863, 540], true);
-  const free = await fieldValue(win, 'field-x');
+  await expect.poll(() => fieldValue(ed, 'field-x')).toBe(480);
+  await dragSlide(ed, [960, 540], [863, 540], true);
+  const free = await fieldValue(ed, 'field-x');
   expect(Math.abs(free - 383)).toBeLessThanOrEqual(3);
 
   // Undo and Redo: the free drag, then the snapped one.
-  await win.keyboard.press(`${mod}+Z`);
-  await expect.poll(() => fieldValue(win, 'field-x')).toBe(480);
-  await win.keyboard.press(`${mod}+Z`);
-  await expect.poll(() => fieldValue(win, 'field-x')).toBe(580);
-  await win.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+Z' : 'Control+Y');
-  await expect.poll(() => fieldValue(win, 'field-x')).toBe(480);
+  await ed.keyboard.press(`${mod}+Z`);
+  await expect.poll(() => fieldValue(ed, 'field-x')).toBe(480);
+  await ed.keyboard.press(`${mod}+Z`);
+  await expect.poll(() => fieldValue(ed, 'field-x')).toBe(580);
+  await ed.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+Z' : 'Control+Y');
+  await expect.poll(() => fieldValue(ed, 'field-x')).toBe(480);
 
-  // Save: the live slide on the screens shows it all at once.
+  // Save: the live slide on the screens shows it all at once, and the editor's window closes.
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
   const outWord = slideLayer.locator('[data-run][data-lang="gu"]').first();
   await expect(outWord).toHaveText('નમૂના');
   await expect.poll(() => outWord.evaluate((el) => getComputedStyle(el).fontSize)).toBe('120px');
@@ -247,33 +255,32 @@ test('words past their box and words too small for the hall are marked and said 
     }),
   );
   await importAndGetIds(win, [file]);
-  const editor = await openEditor(win, /Placeholder Overset/);
+  const { ed, editor } = await openEditor(app, win, /Placeholder Overset/);
   // The slide list marks the slide whose words run over, and says so with its name.
   const thumbs = editor.getByTestId('editor-slide-thumb');
   await expect(thumbs.nth(0).getByTestId('thumb-overset')).toBeVisible();
   await expect(thumbs.nth(0)).toHaveAttribute('aria-label', /words run past a box$/u);
   await expect(thumbs.nth(1).getByTestId('thumb-overset')).toHaveCount(0);
   // Its box, selected: the inspector says what to do.
-  await clickSlide(win, 960, 200);
+  await clickSlide(ed, 960, 200);
   await expect(editor.getByTestId('inspector-overset')).toContainText('Words run past the box');
   // The 30 px words: a warning, below 36 px.
   await thumbs.nth(1).click();
-  await clickSlide(win, 960, 500);
+  await clickSlide(ed, 960, 500);
   const floor = editor.getByTestId('inspector-floor');
   await expect(floor).toHaveAttribute('data-level', 'warning');
   await expect(floor).toContainText('drawn at 30 px on a 1080-line screen');
   await expect(editor.getByTestId('inspector-overset')).toHaveCount(0);
-  await expectNoSeriousA11yIssues(win, 'the slide editor saying words are too small');
+  await expectNoSeriousA11yIssues(ed, 'the slide editor saying words are too small');
   // The 72 px words: nothing to say.
   await thumbs.nth(2).click();
-  await clickSlide(win, 960, 500);
+  await clickSlide(ed, 960, 500);
   await expect(editor.getByTestId('inspector-text')).toBeVisible();
   await expect(floor).toHaveCount(0);
   await expect(editor.getByTestId('inspector-overset')).toHaveCount(0);
   // The operator's slide grid marks the same slide.
-  await win.keyboard.press('Escape');
-  await win.keyboard.press('Escape');
-  await expect(editor).toHaveCount(0);
+  await ed.keyboard.press('Escape');
+  await closeSlideEditorByKey(app, ed);
   const grid = win.getByTestId('slide-thumb');
   await expect(grid.nth(0).getByTestId('thumb-overset')).toBeVisible();
   await expect(grid.nth(1).getByTestId('thumb-overset')).toHaveCount(0);
@@ -310,7 +317,7 @@ test('View › Show Safe Areas draws 93% and 90%, the ticker’s band at 999 of 
     }),
   );
   await importAndGetIds(win, [file]);
-  const editor = await openEditor(win, /Placeholder Safe Areas/);
+  const { ed, editor } = await openEditor(app, win, /Placeholder Safe Areas/);
   const areas = editor.getByTestId('safe-areas');
   await expect(areas).toHaveCount(0);
   await chooseMenuItem(app, 'show-safe-areas');
@@ -356,12 +363,12 @@ test('View › Show Safe Areas draws 93% and 90%, the ticker’s band at 999 of 
   );
   await expect(crops).toHaveCount(0);
   // The footer's words sit in the ticker's band on the hall's group: the inspector says so; the title's do not.
-  await clickSlide(win, 960, 1030);
+  await clickSlide(ed, 960, 1030);
   await expect(editor.getByTestId('inspector-ticker')).toContainText(
     'Words sit where the ticker runs on “Main Hall”',
   );
-  await expectNoSeriousA11yIssues(win, 'the slide editor with its safe areas');
-  await clickSlide(win, 960, 300);
+  await expectNoSeriousA11yIssues(ed, 'the slide editor with its safe areas');
+  await clickSlide(ed, 960, 300);
   await expect(editor.getByTestId('inspector-text')).toBeVisible();
   await expect(editor.getByTestId('inspector-ticker')).toHaveCount(0);
   // Off again from the menu.
@@ -379,31 +386,32 @@ test('new words get 1.35 between lines; a Gujarati box set closer than 1.3 is wa
     'Placeholder Spacing',
     '[Verse]\nનમૂનાની પંક્તિ\nબીજી નમૂના પંક્તિ\n\n[Chorus]\nPlaceholder line\nPlaceholder second line\n',
   );
-  const editor = await openEditor(win, /Placeholder Spacing/);
+  const { ed, editor } = await openEditor(app, win, /Placeholder Spacing/);
   const spacing = editor.getByTestId('field-line-height');
   const warning = editor.getByTestId('inspector-line-height');
   const italic = editor.getByRole('button', { name: 'Italic', exact: true });
-  // The Gujarati slide's words: 1.35 apart, nothing to say, and no Italic (they are always drawn upright).
-  await clickSlide(win, 960, 540);
+  // The Gujarati slide's words: 1.35 apart, nothing to say, and no Italic (they are always drawn upright: since
+  // Session 55, Part 17a, the Words group's Italic is there but cannot be pressed for them).
+  await clickSlide(ed, 960, 540);
   await expect(editor.getByTestId('inspector-text')).toBeVisible();
   await expect(spacing).toHaveValue('1.35');
   await expect(warning).toHaveCount(0);
-  await expect(italic).toHaveCount(0);
+  await expect(italic).toBeDisabled();
   // Set at 1.2: warned of, until it is 1.3 again.
   await spacing.fill('1.2');
   await expect(warning).toHaveText(
     'The line spacing is 1.2: below 1.3, Gujarati and Hindi marks can touch the line above. Line spacing is under Words.',
   );
-  await expectNoSeriousA11yIssues(win, 'the slide editor warning of close Gujarati lines');
+  await expectNoSeriousA11yIssues(ed, 'the slide editor warning of close Gujarati lines');
   await spacing.fill('1.3');
   await expect(warning).toHaveCount(0);
-  // English words at 1.2: nothing to say, and Italic is there.
-  await win.keyboard.press('Escape');
+  // English words at 1.2: nothing to say, and Italic is there to press.
+  await ed.keyboard.press('Escape');
   await editor.getByTestId('editor-slide-thumb').nth(1).click();
-  await clickSlide(win, 960, 540);
+  await clickSlide(ed, 960, 540);
   await expect(editor.getByTestId('inspector-text')).toBeVisible();
   await spacing.fill('1.2');
-  await expect(italic).toBeVisible();
+  await expect(italic).toBeEnabled();
   await expect(warning).toHaveCount(0);
   await app.close();
 });
@@ -412,36 +420,34 @@ test('Cancel keeps nothing: Esc lets go of the selection, then asks before throw
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1600, height: 900 });
-  const editor = await openEditor(win, /Language test slides/);
+  const { ed, editor } = await openEditor(app, win, /Language test slides/);
   const elements = editor.getByTestId('editor-slide').locator('[data-element]');
   const count = await elements.count();
   expect(count).toBeGreaterThan(0);
-  await clickSlide(win, 960, 450);
+  await clickSlide(ed, 960, 450);
   await expect(editor.getByTestId('selection')).toHaveCount(1);
-  await win.keyboard.press('Delete');
+  await ed.keyboard.press('Delete');
   await expect(elements).toHaveCount(count - 1);
   // Nothing is selected now: Esc would close, so it asks first, with Save changes focused (Session
   // 26g; the one question every editor asks, Session 25): Esc keeps editing, and nothing is saved.
-  await win.keyboard.press('Escape');
-  const confirm = win.getByTestId('keep-changes');
+  await ed.keyboard.press('Escape');
+  const confirm = ed.getByTestId('keep-changes');
   await expect(confirm).toBeVisible();
   await expect(confirm.getByRole('button', { name: 'Save changes' })).toBeFocused();
   await expect(confirm.getByRole('button', { name: 'Keep editing' })).toBeVisible();
-  await win.keyboard.press('Escape');
+  await ed.keyboard.press('Escape');
   await expect(confirm).toHaveCount(0);
   await expect(editor).toBeVisible();
   await expect(elements).toHaveCount(count - 1);
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
-  await expect(editor).toHaveCount(0);
+  await ed.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await slideEditorClosed(app);
   // Opened again: everything is still there.
   await win.getByTestId('edit-slides').click();
-  await expect(
-    win.getByTestId('slide-editor').getByTestId('editor-slide').locator('[data-element]'),
-  ).toHaveCount(count);
+  const again = await slideEditorWindow(app);
+  await expect(again.editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(count);
   // With no changes, Esc closes at once.
-  await win.keyboard.press('Escape');
-  await expect(win.getByTestId('slide-editor')).toHaveCount(0);
+  await closeSlideEditorByKey(app, again.ed);
   await app.close();
 });
 
@@ -473,20 +479,20 @@ test('words typed in a legacy font can be moved and resized, but not edited', as
     }),
   );
   const [id = ''] = await importAndGetIds(win, [file]);
-  const editor = await openEditor(win, /Placeholder Legacy/);
-  await clickSlide(win, 960, 540);
+  const { ed, editor } = await openEditor(app, win, /Placeholder Legacy/);
+  await clickSlide(ed, 960, 540);
   await expect(editor.getByTestId('legacy-note')).toContainText('Gopika');
-  await win.keyboard.press('Enter');
+  await ed.keyboard.press('Enter');
   await expect(editor.getByTestId('editor-note')).toContainText('legacy font (Gopika)');
   await expect(editor.getByTestId('text-editing')).toHaveCount(0);
-  await win.getByTestId('editor-canvas').dblclick();
+  await ed.getByTestId('editor-canvas').dblclick();
   await expect(editor.getByTestId('text-editing')).toHaveCount(0);
   // It moves, and keeps its words exactly.
-  await win.getByTestId('editor-canvas').focus();
-  await win.keyboard.press('Shift+ArrowLeft');
-  await expect.poll(() => fieldValue(win, 'field-x')).toBe(90);
+  await ed.getByTestId('editor-canvas').focus();
+  await ed.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => fieldValue(ed, 'field-x')).toBe(90);
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
   const el = await win.evaluate(async (pid) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(pid);
     return doc?.groups[0]?.slides[0]?.slide.elements[0] ?? null;
@@ -503,34 +509,35 @@ test('words typed through a Gujarati or Hindi input method go in as composed', a
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1600, height: 900 });
-  const editor = await openEditor(win, /Language test slides/);
+  const { ed, editor } = await openEditor(app, win, /Language test slides/);
+  await editorGroup(ed, 'Insert');
   await editor.getByTestId('add-text').click();
   const typing = editor.getByTestId('text-editing');
   await expect(typing).toBeFocused();
   // Count the composition events the box sees, to be sure the input method's path was used.
-  await win.evaluate(() => {
+  await ed.evaluate(() => {
     const root = document.querySelector('[data-testid="text-editing"]');
     const seen: string[] = [];
     (globalThis as typeof globalThis & { compositions?: string[] }).compositions = seen;
     root?.addEventListener('compositionstart', () => seen.push('start'));
     root?.addEventListener('compositionend', (e) => seen.push(`end:${(e as CompositionEvent).data}`));
   });
-  const cdp = await win.context().newCDPSession(win);
+  const cdp = await ed.context().newCDPSession(ed);
   // Gujarati: the input method shows what is being composed, then commits the word.
   await cdp.send('Input.imeSetComposition', { text: 'ગુ', selectionStart: 2, selectionEnd: 2 });
   await cdp.send('Input.imeSetComposition', { text: 'ગુજરા', selectionStart: 5, selectionEnd: 5 });
   await cdp.send('Input.insertText', { text: 'ગુજરાતી' });
-  await win.keyboard.press('Enter');
+  await ed.keyboard.press('Enter');
   // Hindi, the same way.
   await cdp.send('Input.imeSetComposition', { text: 'हि', selectionStart: 2, selectionEnd: 2 });
   await cdp.send('Input.imeSetComposition', { text: 'हिन्द', selectionStart: 5, selectionEnd: 5 });
   await cdp.send('Input.insertText', { text: 'हिन्दी' });
   await expect(typing).toHaveText('ગુજરાતીहिन्दी');
-  const seen = await win.evaluate(
+  const seen = await ed.evaluate(
     () => (globalThis as typeof globalThis & { compositions?: string[] }).compositions,
   );
   expect(seen).toEqual(['start', 'end:ગુજરાતી', 'start', 'end:हिन्दी']);
-  await win.keyboard.press('Escape');
+  await ed.keyboard.press('Escape');
   // A new box: each line takes its language's look from the theme.
   const box = editor.getByTestId('editor-slide').locator('[data-element]').last();
   await expect(box.locator('[data-run][data-lang="gu"]')).toHaveText('ગુજરાતી\n');
@@ -546,13 +553,14 @@ for (const [width, height] of [
     const { app } = await launchApp();
     const win = await operatorPage(app);
     await win.setViewportSize({ width, height });
-    const editor = await openEditor(win, /Sample kirtan/);
+    const { ed, editor } = await openEditor(app, win, /Sample kirtan/);
+    await sizeSlideEditor(app, ed, { width, height });
     // Nothing selected: the slide's own settings.
     await expect(editor.getByTestId('slide-panel')).toBeVisible();
-    await expectNoSeriousA11yIssues(win, `the slide editor's slide panel at ${width} x ${height}`);
-    await clickSlide(win, 960, 540);
+    await expectNoSeriousA11yIssues(ed, `the slide editor's slide panel at ${width} x ${height}`);
+    await clickSlide(ed, 960, 540);
     await expect(editor.getByTestId('inspector-text')).toBeVisible();
-    const problems = await win.evaluate(() => {
+    const problems = await ed.evaluate(() => {
       const out: string[] = [];
       const vw = innerWidth;
       const vh = innerHeight;
@@ -579,10 +587,10 @@ for (const [width, height] of [
       return out;
     });
     expect(problems).toEqual([]);
-    await expectNoSeriousA11yIssues(win, `the slide editor at ${width} x ${height}`);
+    await expectNoSeriousA11yIssues(ed, `the slide editor at ${width} x ${height}`);
     // Typing in a box, with the inspector styling its words.
-    await win.keyboard.press('Enter');
+    await ed.keyboard.press('Enter');
     await expect(editor.getByTestId('text-editing')).toBeFocused();
-    await expectNoSeriousA11yIssues(win, 'the slide editor while typing');
+    await expectNoSeriousA11yIssues(ed, 'the slide editor while typing');
     await app.close();
   });

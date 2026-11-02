@@ -1,16 +1,40 @@
 import { create } from 'zustand';
+import { useMemo } from 'react';
 import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
-import { selectPresentation, useLibrary } from '../library/library-store';
-import { pushRemoval } from '../library/undo';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
+import type { Zoom } from './zoom';
+import { groupedSelection } from '../../../shared/element-groups';
+import { sizeLook } from '../../../shared/slide-size';
 
 /*
  * The slide editor: the presentation being edited (a copy, changed freely
  * and saved as one change), its own Undo and Redo, which slide is shown,
- * what is selected, and the text box being typed in.
+ * what is selected, and the text box being typed in. Since Session 55 (Part 17a) it lives in a window of its own: a
+ * save there comes back to the operator window as one change for its Undo (main tells it), and saving, throwing the
+ * changes away or closing with none closes the window. It has groups along its top (the one chosen kept here), zoom,
+ * and find and replace.
  */
+
+/** The editor's groups along its top (Session 55, Part 17a). */
+export type EditorGroup = 'words' | 'insert' | 'arrange' | 'design' | 'motion' | 'slides';
+
+/**
+ * A change the editor makes outside the presentation (Session 55, Part 17a): Drashti's default transition, a slide
+ * timer's own time and kind (the library's timer). Saved at once, it is a step of the editor's Undo and Redo all the
+ * same, in its turn: taken back and given again by its own two.
+ */
+export interface OutsideStep {
+  outside: true;
+  undo: () => void;
+  redo: () => void;
+}
+
+/** A step for Undo: the document as it was before it, or a change outside the presentation. */
+export type EditStep = EditDoc | OutsideStep;
+
+const isOutside = (step: EditStep): step is OutsideStep => 'outside' in step;
 
 /** How many steps the editor's Undo remembers. */
 const HISTORY = 200;
@@ -33,8 +57,8 @@ export interface EditorView {
   selection: string[];
   /** The text box being typed in. */
   editing: string | null;
-  past: EditDoc[];
-  future: EditDoc[];
+  past: EditStep[];
+  future: EditStep[];
   /** The last step that later ones may join (arrow-key nudges). */
   coalesce: { key: string; at: number } | null;
   /** The document before a drag started: the drag is one step. */
@@ -52,6 +76,19 @@ export interface EditorView {
   note: string | null;
   /** Each text box on the slide shown, as measured where it is drawn (its words past it, its fit). */
   measured: Readonly<Record<string, Measured>>;
+  /** The group chosen along the top (Session 55, Part 17a). */
+  group: EditorGroup;
+  /** How big the slide is drawn: fitted to its area, or a scale of its own (Session 55, Part 17a). */
+  zoom: Zoom;
+  /** Find and replace is open (Session 55, Part 17a). */
+  finding: boolean;
+  /** While typing in a text box: how many steps of its typing Undo and Redo can take (Session 55, Part 17a). */
+  typing: { undo: number; redo: number };
+  /** Editor view aids; guides themselves are saved on their slide. */
+  aids: { snap: boolean; guides: boolean; rulers: boolean; grid: boolean };
+  strip: boolean;
+  masterReturnId: string | null;
+  previewAt: number | null;
 }
 
 const closed: EditorView = {
@@ -77,15 +114,45 @@ const closed: EditorView = {
   textTick: 0,
   note: null,
   measured: {},
+  group: 'words',
+  zoom: 'fit',
+  finding: false,
+  typing: { undo: 0, redo: 0 },
+  aids: { snap: true, guides: false, rulers: false, grid: false },
+  strip: false,
+  masterReturnId: null,
+  previewAt: null,
 };
 
 export const useEditor = create<EditorView>(() => closed);
 
+export function currentLook(): SlideLook | null {
+  const s = useEditor.getState();
+  return s.look && s.doc && s.opened ? sizeLook(s.look, s.opened, s.doc) : s.look;
+}
+
+export function useEditorLook(): SlideLook | null {
+  const look = useEditor((s) => s.look);
+  const fromWidth = useEditor((s) => s.opened?.width);
+  const fromHeight = useEditor((s) => s.opened?.height);
+  const width = useEditor((s) => s.doc?.width);
+  const height = useEditor((s) => s.doc?.height);
+  return useMemo(
+    () =>
+      look && fromWidth && fromHeight && width && height
+        ? sizeLook(look, { width: fromWidth, height: fromHeight }, { width, height })
+        : look,
+    [look, fromWidth, fromHeight, width, height],
+  );
+}
+
 export const isDirty = (s: EditorView): boolean => s.doc !== null && s.doc !== s.opened;
 
-/** Open the editor on a presentation, at a slide (or its first). */
+/** Open the editor on a presentation, at a slide (or its first); `name` until its slides say theirs. */
 export async function openSlideEditor(presentationId: string, name: string, slideId: string | null = null) {
-  useEditor.setState({ ...closed, open: { presentationId, name }, loading: true });
+  // The group along the top stays as it was, as a presentation program keeps it.
+  const group = useEditor.getState().group;
+  useEditor.setState({ ...closed, group, open: { presentationId, name }, loading: true });
   const result = await window.drashti.library.slidesForEdit(presentationId);
   if (useEditor.getState().open?.presentationId !== presentationId) return;
   if (!result.ok) {
@@ -96,6 +163,7 @@ export async function openSlideEditor(presentationId: string, name: string, slid
   const start = slides.find((s) => s.id === slideId) ?? slides[0];
   useEditor.setState({
     loading: false,
+    open: { presentationId, name: result.doc.name },
     doc: result.doc,
     opened: result.doc,
     stamp: result.stamp,
@@ -105,8 +173,21 @@ export async function openSlideEditor(presentationId: string, name: string, slid
   });
 }
 
+/** The window the editor is in closes (main closes it: Session 55, Part 17a). */
+let closeWindow: () => void = () => undefined;
+
+/** Close the editor's window when the editor closes (its own window's page sets this). */
+export function setCloseWindow(close: () => void): void {
+  closeWindow = close;
+}
+
 export function closeSlideEditor(): void {
-  useEditor.setState(closed);
+  // Another presentation's slides waiting (Session 55, Part 17a): they open instead, the window staying.
+  const next = pending;
+  pending = null;
+  useEditor.setState({ ...closed, group: useEditor.getState().group });
+  if (next) void openSlideEditor(next.presentationId, '', next.slideId);
+  else closeWindow();
 }
 
 /** Close, asking first when there are changes. */
@@ -114,6 +195,40 @@ export function requestClose(): void {
   const s = useEditor.getState();
   if (isDirty(s)) useEditor.setState({ askDiscard: true });
   else closeSlideEditor();
+}
+
+/** Another presentation's slides asked for while this one has changes (Session 55, Part 17a): opened once answered. */
+let pending: { presentationId: string; slideId: string | null } | null = null;
+
+/**
+ * The window told to open a presentation's slides (Session 55, Part 17a): this one's, at that slide; another's at once
+ * when nothing here has changed, else once the question about the changes is answered (Keep editing stays here).
+ */
+export function switchTo(open: { presentationId: string; slideId: string | null }): void {
+  const s = useEditor.getState();
+  if (s.open?.presentationId === open.presentationId && s.doc) {
+    if (open.slideId) showSlide(open.slideId);
+    return;
+  }
+  if (isDirty(s)) {
+    pending = open;
+    useEditor.setState({ askDiscard: true });
+    return;
+  }
+  void openSlideEditor(open.presentationId, '', open.slideId);
+}
+
+/** The window asked to close with changes (its close button): the question about them, then closed. */
+export function askBeforeClosing(): void {
+  pending = null;
+  if (isDirty(useEditor.getState())) useEditor.setState({ askDiscard: true });
+  else closeSlideEditor();
+}
+
+/** Keep editing: the question goes, and nothing waits for it any more. */
+export function keepEditing(): void {
+  pending = null;
+  useEditor.setState({ askDiscard: false });
 }
 
 /** Keep only selected elements that are on the slide shown. */
@@ -134,6 +249,7 @@ export function commit(next: EditDoc, options: { coalesce?: string; select?: str
     s.past.length > 0;
   useEditor.setState({
     doc: next,
+    previewAt: null,
     past: joins ? s.past : [...s.past.slice(1 - HISTORY), s.doc],
     future: [],
     coalesce: options.coalesce !== undefined ? { key: options.coalesce, at: now } : null,
@@ -144,7 +260,7 @@ export function commit(next: EditDoc, options: { coalesce?: string; select?: str
 /** Start a drag: changes until it ends are shown, and are one step for Undo. */
 export function beginGesture(): void {
   const s = useEditor.getState();
-  if (s.doc && !s.gesture) useEditor.setState({ gesture: s.doc });
+  if (s.doc && !s.gesture) useEditor.setState({ gesture: s.doc, previewAt: null });
 }
 
 /** The document while dragging (not a step yet). */
@@ -173,9 +289,15 @@ export function undo(): void {
   const s = useEditor.getState();
   const prev = s.past.at(-1);
   if (!prev || !s.doc || s.editing) return;
+  if (isOutside(prev)) {
+    prev.undo();
+    useEditor.setState({ past: s.past.slice(0, -1), future: [prev, ...s.future], coalesce: null });
+    return;
+  }
   const slideId = findSlide(prev, s.slideId) ? s.slideId : (slidesOf(prev)[0]?.id ?? null);
   useEditor.setState({
     doc: prev,
+    previewAt: null,
     past: s.past.slice(0, -1),
     future: [s.doc, ...s.future],
     coalesce: null,
@@ -188,10 +310,16 @@ export function redo(): void {
   const s = useEditor.getState();
   const next = s.future[0];
   if (!next || !s.doc || s.editing) return;
+  if (isOutside(next)) {
+    next.redo();
+    useEditor.setState({ past: [...s.past, next], future: s.future.slice(1), coalesce: null });
+    return;
+  }
   const slideId = findSlide(next, s.slideId) ? s.slideId : (slidesOf(next)[0]?.id ?? null);
   useEditor.setState({
     doc: next,
     past: [...s.past, s.doc],
+    previewAt: null,
     future: s.future.slice(1),
     coalesce: null,
     slideId,
@@ -199,20 +327,35 @@ export function redo(): void {
   });
 }
 
+/** A change made outside the presentation, now (Session 55, Part 17a): one step for Undo, nothing left to redo. */
+export function noteOutside(step: { undo: () => void; redo: () => void }): void {
+  const s = useEditor.getState();
+  useEditor.setState({
+    past: [...s.past.slice(1 - HISTORY), { outside: true, ...step }],
+    future: [],
+    coalesce: null,
+  });
+}
+
 export function select(ids: readonly string[]): void {
   const s = useEditor.getState();
   if (!s.doc) return;
-  useEditor.setState({ selection: validSelection(s.doc, s.slideId, ids), editing: null });
+  const elements = findSlide(s.doc, s.slideId)?.elements ?? [];
+  useEditor.setState({
+    selection: validSelection(s.doc, s.slideId, groupedSelection(elements, ids)),
+    previewAt: null,
+    editing: null,
+  });
 }
 
 export function showSlide(slideId: string): void {
   const s = useEditor.getState();
   if (!s.doc || !findSlide(s.doc, slideId)) return;
-  useEditor.setState({ slideId, selection: [], editing: null });
+  useEditor.setState({ slideId, selection: [], editing: null, previewAt: null });
 }
 
 export function startEditing(elementId: string): void {
-  useEditor.setState({ editing: elementId, selection: [elementId] });
+  useEditor.setState({ editing: elementId, selection: [elementId], previewAt: null });
 }
 
 /** Tell the operator something, in the editor. */
@@ -221,7 +364,12 @@ export function tell(note: string | null): void {
 }
 
 export function stopEditing(): void {
-  useEditor.setState({ editing: null });
+  const s = useEditor.getState();
+  const elements = s.doc ? findSlide(s.doc, s.slideId)?.elements : undefined;
+  useEditor.setState({
+    editing: null,
+    ...(s.editing && elements ? { selection: groupedSelection(elements, s.selection) } : {}),
+  });
 }
 
 /** Remember that an element was made here (its typed words take the theme's look). */
@@ -229,7 +377,7 @@ export function noteMade(id: string): void {
   useEditor.setState((s) => ({ made: [...s.made, id] }));
 }
 
-/** Save the changes as one change for the operator's Undo, and close. */
+/** Save the changes as one change for the operator window's Undo, and close. */
 export async function saveSlides(force = false): Promise<void> {
   const s = useEditor.getState();
   if (!s.open || !s.doc || s.saving) return;
@@ -238,7 +386,7 @@ export async function saveSlides(force = false): Promise<void> {
     return;
   }
   useEditor.setState({ saving: true, problem: null, conflict: null });
-  const { presentationId, name } = s.open;
+  const { presentationId } = s.open;
   const result = await window.drashti.library.saveSlides(presentationId, s.doc, s.stamp, force);
   if (!result.ok) {
     useEditor.setState(
@@ -248,14 +396,6 @@ export async function saveSlides(force = false): Promise<void> {
     );
     return;
   }
-  const { revisionId } = result;
-  pushRemoval({
-    text: `Edited the slides of “${name}”`,
-    restore: async () => {
-      await window.drashti.library.restoreRevision(revisionId);
-      if (useLibrary.getState().selectedId === presentationId) await selectPresentation(presentationId);
-    },
-  });
+  // One change for the operator window's Undo: main tells it (Session 55, Part 17a).
   closeSlideEditor();
-  if (useLibrary.getState().selectedId === presentationId) await selectPresentation(presentationId);
 }

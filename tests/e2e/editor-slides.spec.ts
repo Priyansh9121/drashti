@@ -4,7 +4,16 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, openLibrary, operatorPage } from './helpers';
+import {
+  editorGroup,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  sizeSlideEditor,
+  slideEditorClosed,
+  slideEditorWindow,
+} from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -17,8 +26,8 @@ import { makeTestImage, makeTestVideo } from './test-media';
  */
 
 /** The editor's groups and slides as "Group: label label…" ("·" for a slide without a label). */
-async function outline(win: Page): Promise<string[]> {
-  return win.getByTestId('editor-group').evaluateAll((groups) =>
+async function outline(ed: Page): Promise<string[]> {
+  return ed.getByTestId('editor-group').evaluateAll((groups) =>
     groups.map((g) => {
       const slides = [...g.querySelectorAll('[data-testid="editor-slide-thumb"]')].map((t) => {
         const label = (t.getAttribute('aria-label') ?? '').split(': ')[1];
@@ -54,50 +63,53 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
     .getByRole('button', { name: /^Placeholder Slides Kirtan/ })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
+  // Its own window (Session 55, Part 17a); slides are added, copied, moved and taken away from its Slides group.
+  const { ed, editor } = await slideEditorWindow(app);
+  await sizeSlideEditor(app, ed, { width: 1600, height: 1000 });
   await expect(editor.getByTestId('slide-panel')).toBeVisible();
-  expect(await outline(win)).toEqual(['Verse: · ·', 'Chorus: ·']);
+  expect(await outline(ed)).toEqual(['Verse: · ·', 'Chorus: ·']);
 
   // Label and notes of the first slide.
   await editor.getByTestId('slide-label').fill('Opening');
   await editor.getByTestId('slide-notes').fill('Placeholder note for the stage');
 
   // A new slide after it, moved down, and on into the chorus.
+  await editorGroup(ed, 'Slides');
   await editor.getByTestId('slide-new').click();
   await editor.getByTestId('slide-label').fill('Added');
-  expect(await outline(win)).toEqual(['Verse: Opening Added ·', 'Chorus: ·']);
+  expect(await outline(ed)).toEqual(['Verse: Opening Added ·', 'Chorus: ·']);
   await editor.getByTestId('slide-down').click();
   await editor.getByTestId('slide-down').click();
-  expect(await outline(win)).toEqual(['Verse: Opening ·', 'Chorus: Added ·']);
+  expect(await outline(ed)).toEqual(['Verse: Opening ·', 'Chorus: Added ·']);
   await editor.getByTestId('slide-up').click();
-  expect(await outline(win)).toEqual(['Verse: Opening · Added', 'Chorus: ·']);
+  expect(await outline(ed)).toEqual(['Verse: Opening · Added', 'Chorus: ·']);
 
   // A copy of it, then the copy removed.
   await editor.getByTestId('slide-duplicate').click();
-  expect(await outline(win)).toEqual(['Verse: Opening · Added Added', 'Chorus: ·']);
+  expect(await outline(ed)).toEqual(['Verse: Opening · Added Added', 'Chorus: ·']);
   await editor.getByTestId('slide-delete').click();
-  expect(await outline(win)).toEqual(['Verse: Opening · Added', 'Chorus: ·']);
+  expect(await outline(ed)).toEqual(['Verse: Opening · Added', 'Chorus: ·']);
 
   // A new group, named and coloured, and the added slide moved into it.
   await editor.getByTestId('group-new').click();
   await editor.getByTestId('group-name').fill('Placeholder Bridge');
   await editor.getByRole('radio', { name: 'Colour #8e4ec6' }).click();
   await editor.getByTestId('slide-label').fill('Bridge');
-  expect(await outline(win)).toEqual(['Verse: Opening · Added', 'Chorus: ·', 'Placeholder Bridge: Bridge']);
+  expect(await outline(ed)).toEqual(['Verse: Opening · Added', 'Chorus: ·', 'Placeholder Bridge: Bridge']);
   await editor.getByRole('button', { name: /Slide 3: Added/ }).click();
   await editor.getByTestId('slide-group-choice').selectOption({ label: 'Placeholder Bridge' });
-  expect(await outline(win)).toEqual(['Verse: Opening ·', 'Chorus: ·', 'Placeholder Bridge: Bridge Added']);
+  expect(await outline(ed)).toEqual(['Verse: Opening ·', 'Chorus: ·', 'Placeholder Bridge: Bridge Added']);
 
   // The first slide's background picture, sound, transition and auto-advance.
   await editor.getByRole('button', { name: /Slide 1: Opening/ }).click();
   await editor.getByTestId('choose-background').click();
-  await win
+  await ed
     .getByTestId('media-picker')
     .getByRole('button', { name: /Picture: Placeholder backdrop/ })
     .click();
   await expect(editor.getByTestId('background-cue')).toContainText('Placeholder backdrop');
   await editor.getByTestId('choose-sound').click();
-  await win
+  await ed
     .getByTestId('media-picker')
     .getByRole('button', { name: /Video: Placeholder tune clip/ })
     .click();
@@ -112,14 +124,16 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
   await editor.getByTestId('presentation-loop').click();
 
   // One slide's look for every slide: a dark box behind the words, given to all.
+  await editorGroup(ed, 'Insert');
   await editor.getByTestId('add-shape').click();
-  await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
+  await ed.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
   await editor.getByTestId('field-y').fill('700');
+  await editorGroup(ed, 'Arrange');
   await editor.getByRole('button', { name: 'Send to the back' }).click();
-  await win.keyboard.press('Escape');
+  await ed.keyboard.press('Escape');
   await expect(editor.getByTestId('slide-panel')).toBeVisible();
   await editor.getByTestId('apply-look').click();
-  await win.getByTestId('apply-look-confirm').getByRole('button', { name: 'Give them this look' }).click();
+  await ed.getByTestId('apply-look-confirm').getByRole('button', { name: 'Give them this look' }).click();
   const shapes = await editor
     .getByTestId('editor-slide-thumb')
     .evaluateAll((thumbs) => thumbs.map((t) => t.querySelectorAll('svg[data-shape]').length));
@@ -130,7 +144,7 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
 
   // Saved: all of it is in the library.
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
   const saved = await win.evaluate(async (pid) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(pid);
     return {
@@ -195,7 +209,7 @@ test('Drashti’s own default transition is a cut until it is changed, and stays
     .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
+  const { editor } = await slideEditorWindow(app);
   await editor.getByTestId('app-transition').selectOption('dissolve');
   await expect
     .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.library.getDefaultTransition()))

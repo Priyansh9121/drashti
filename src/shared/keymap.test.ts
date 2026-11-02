@@ -9,6 +9,7 @@ import {
   PAGE_KEYMAP,
   shortcutText,
   SIMPLE_KEYMAP,
+  SHOW_F_KEYS,
   SINGLE_KEYS,
   quickKey,
   quickSlotFor,
@@ -264,5 +265,25 @@ describe('keymap', () => {
       'Alt+7',
       'Alt+8',
     ]);
+  });
+});
+
+describe('the show’s F-keys from the slide editor’s window (Session 55, Part 17a)', () => {
+  it('are the clears, Oops and the Wallpaper: keys that never type a letter', () => {
+    expect([...SHOW_F_KEYS].sort()).toEqual(['F1', 'F12', 'F2', 'F3', 'F5', 'F6', 'F7', 'F9']);
+    for (const key of SHOW_F_KEYS) {
+      const action = actionFor(press(key), 'darwin', KEYMAP);
+      expect(action, key).not.toBeNull();
+      expect([
+        'clearAll',
+        'clearSlide',
+        'clearBackground',
+        'clearAudio',
+        'clearMessages',
+        'clearTicker',
+        'oops',
+        'toggleWallpaper',
+      ]).toContain(action);
+    }
   });
 });

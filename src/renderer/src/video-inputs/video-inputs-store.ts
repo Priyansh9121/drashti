@@ -89,6 +89,27 @@ export function connectVideoInputs(): void {
   );
 }
 
+let listed = false;
+
+/**
+ * The inputs alone, kept as they change (the slide editor's window, Session 55, Part 17a: a slide's background input
+ * by its name): nothing asked about the cameras, which the operator window keeps to itself.
+ */
+export function connectInputsList(): void {
+  if (listed || connected) return;
+  listed = true;
+  const inputs = window.drashti.videoInputs;
+  inputs.onChanged((view) => {
+    useVideoInputs.setState({ inputs: view.inputs, chosenId: view.chosenId ?? null });
+  });
+  void inputs.list().then(
+    (view) => {
+      useVideoInputs.setState({ inputs: view.inputs, chosenId: view.chosenId ?? null });
+    },
+    () => undefined,
+  );
+}
+
 /** Ask the main process again whether Drashti may use the cameras (as the dialog opens, and Look again). */
 export async function readAccess(): Promise<void> {
   const access = await window.drashti.videoInputs.access().catch((): CameraAccess => 'unknown');

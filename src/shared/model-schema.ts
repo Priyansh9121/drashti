@@ -1,12 +1,26 @@
 import { z } from 'zod';
-import type { Darken, Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
+import type {
+  Darken,
+  ElementMotion,
+  Glow,
+  Outline,
+  Shadow,
+  SlideDesign,
+  SlideElement,
+  TextRun,
+  TextStyle,
+  Transition,
+} from './model';
 import {
   DARKEN_KINDS,
+  LIST_MARKS,
+  MAX_LIST_LEVEL,
   MAX_AUTO_ADVANCE_MS,
   MAX_TRANSITION_MS,
   TIMER_AT_ZERO,
   TIMER_FORMATS,
   TRANSITION_KINDS,
+  SHAPE_KINDS,
 } from './model';
 
 /*
@@ -40,8 +54,62 @@ export const outlineSchema: z.ZodType<Outline> = z.object({
   width: num.min(0).max(500),
 });
 
+/** A glow round letters (Session 55, Part 17a). */
+export const glowSchema: z.ZodType<Glow> = z.object({
+  color: hexColorSchema,
+  size: num.min(0).max(500),
+});
+
 /** Degrees clockwise. */
 const rotationSchema = num.min(-36_000).max(36_000).optional();
+const motionTiming = {
+  delayMs: num.int().min(0).max(3_600_000),
+  durationMs: num.int().min(50).max(60_000),
+};
+export const elementMotionSchema: z.ZodType<ElementMotion> = z.object({
+  in: z.object({ kind: z.enum(['fade', 'rise', 'zoom']), ...motionTiming }).optional(),
+  emphasis: z.object({ kind: z.enum(['pulse', 'turn']), ...motionTiming }).optional(),
+  out: z.object({ kind: z.enum(['fade', 'sink', 'shrink']), ...motionTiming }).optional(),
+});
+export const slideDesignSchema: z.ZodType<SlideDesign> = z.object({
+  backdrop: z
+    .discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('gradient'),
+        from: hexColorSchema,
+        to: hexColorSchema,
+        angle: num.min(0).max(360),
+      }),
+      z.object({ kind: z.literal('picture'), mediaId: idSchema, fit: z.enum(['fit', 'fill', 'stretch']) }),
+    ])
+    .optional(),
+  layout: z.enum(['words', 'heading-words', 'two-columns']).optional(),
+  skipMaster: z.boolean().optional(),
+});
+
+export function slideDesignFromJson(text: string | null | undefined): SlideDesign | undefined {
+  if (!text) return undefined;
+  try {
+    const parsed = slideDesignSchema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+const elementPlacement = {
+  groupId: idSchema.optional(),
+  flipX: z.boolean().optional(),
+  flipY: z.boolean().optional(),
+  motion: elementMotionSchema.optional(),
+};
+const cropSchema = z
+  .object({
+    x: num.min(0).max(1),
+    y: num.min(0).max(1),
+    width: num.min(0.01).max(1),
+    height: num.min(0.01).max(1),
+  })
+  .refine((r) => r.x + r.width <= 1.000001 && r.y + r.height <= 1.000001, 'crop is outside the picture');
 
 /** Darkening behind the words (Sessions 31–36, SLD-3): a band or the whole picture, this dark. */
 export const darkenSchema: z.ZodType<Darken> = z.object({
@@ -83,6 +151,8 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   lineHeight: num.positive().max(5),
   shadow: textShadowSchema,
   outline: outlineSchema.nullable().optional(),
+  // Session 55 (Part 17a): a glow round the letters.
+  glow: glowSchema.nullable().optional(),
   shrinkToFit: z.boolean().optional(),
 });
 
@@ -96,12 +166,19 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
   letterSpacing: num.min(-500).max(500).optional(),
   shadow: textShadowSchema.optional(),
   outline: outlineSchema.nullable().optional(),
+  // Session 55 (Part 17a): underlined, struck through, a glow, and the line's list and level.
+  underline: z.boolean().optional(),
+  strike: z.boolean().optional(),
+  glow: glowSchema.nullable().optional(),
+  list: z.enum(LIST_MARKS).optional(),
+  level: num.int().min(0).max(MAX_LIST_LEVEL).optional(),
   lang: langSchema.nullable().optional(),
   legacy: z.boolean().optional(),
 });
 
 export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion('kind', [
   z.object({
+    ...elementPlacement,
     id: idSchema,
     kind: z.literal('text'),
     frame: rectSchema,
@@ -114,11 +191,12 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     everyScreen: z.boolean().optional(),
   }),
   z.object({
+    ...elementPlacement,
     id: idSchema,
     kind: z.literal('shape'),
     frame: rectSchema,
     rotation: rotationSchema,
-    shape: z.enum(['rectangle', 'ellipse', 'line']).optional(),
+    shape: z.enum(SHAPE_KINDS).optional(),
     fill: hexColorSchema.nullable(),
     cornerRadius: num.nonnegative(),
     opacity: num.min(0).max(1),
@@ -126,6 +204,7 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
   }),
   ...(['image', 'video'] as const).map((kind) =>
     z.object({
+      ...elementPlacement,
       id: idSchema,
       kind: z.literal(kind),
       frame: rectSchema,
@@ -137,10 +216,12 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       volume: num.min(0).max(1).optional(),
       // A video's play bar on the screens (Session 54), off unless ticked.
       playBar: z.boolean().optional(),
+      crop: cropSchema.optional(),
     }),
   ),
   // A timer on a slide (Session 50): which timer, its look as words, its last minute and its zero.
   z.object({
+    ...elementPlacement,
     id: idSchema,
     kind: z.literal('timer'),
     frame: rectSchema,

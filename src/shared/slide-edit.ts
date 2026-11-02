@@ -1,16 +1,18 @@
 import { z } from 'zod';
-import type { Darken, Lang, Rect, SlideElement, TextRun, TextStyle, Transition } from './model';
+import type { Darken, Lang, Rect, SlideDesign, SlideElement, TextRun, TextStyle, Transition } from './model';
 import {
   autoAdvanceSchema,
   darkenSchema,
   hexColorSchema,
   idSchema,
   slideElementSchema,
+  slideDesignSchema,
   transitionSchema,
 } from './model-schema';
 import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
 import type { DeckSlide } from './deck';
 import { deckSlideSchema } from './deck-schema';
+import { editorGuidesSchema, type EditorGuides } from './editor-guides';
 
 /*
  * The slide editor's document (PLAN.md 5.2, Session 7): a presentation's
@@ -78,6 +80,9 @@ export interface EditSlide {
   /** Bottom to top. */
   elements: SlideElement[];
   cues: EditCue[];
+  /** Guides belong to this slide's editor view, never its rendered picture. */
+  guides?: EditorGuides;
+  design?: SlideDesign;
   /**
    * A slide made from a PowerPoint or Keynote deck with its animations (Session 54, C2): its steps, its own transition
    * and media, as its import stored them, and Drashti's own transitions on it and its clicks, which the editor sets
@@ -103,6 +108,8 @@ export interface EditDoc {
   transition: Transition | null;
   loop: boolean;
   groups: EditGroup[];
+  /** One shared canvas behind the presentation's own slides; never a playable slide. */
+  master?: EditSlide | null;
 }
 
 /** How a line in a language looks: a run's style without its words. */
@@ -137,6 +144,41 @@ export type SaveSlidesResult =
   | { ok: true; revisionId: string }
   /** `changedElsewhere`: the presentation changed since the editor opened it; saving again with force overwrites that. */
   | { ok: false; message: string; changedElsewhere?: boolean };
+
+/**
+ * The slide editor's window (Session 55, Part 17a): a window of its own, so the show goes on in the operator window
+ * while slides are edited. Opened on a presentation, at a slide (or its first).
+ */
+export interface EditSlidesOpen {
+  presentationId: string;
+  slideId: string | null;
+}
+
+/** The window's name, before the presentation's is known (then "<name> – Edit slides"). */
+export const SLIDE_EDITOR_TITLE = 'Drashti Edit Slides';
+
+/** The window's name for a presentation's slides. */
+export const slideEditorTitle = (name: string): string => `${name} – Edit slides`;
+
+/** A save in the slide editor's window, for the operator window's Undo (one change, put back as it was). */
+export interface SlidesSaved {
+  presentationId: string;
+  name: string;
+  revisionId: string;
+}
+
+/** Elements copied in the slide editor, with the size of the slides they came from (Session 55: kept by main). */
+export interface CopiedElements {
+  elements: SlideElement[];
+  width: number;
+  height: number;
+}
+
+export const copiedElementsSchema: z.ZodType<CopiedElements> = z.object({
+  elements: z.array(slideElementSchema).max(500),
+  width: z.number().int().min(16).max(16384),
+  height: z.number().int().min(16).max(16384),
+});
 
 /** A slide as the editor has it, for "Make a theme from this slide". */
 export interface ThemeSlide {
@@ -183,6 +225,8 @@ const cueSchema: z.ZodType<EditCue> = z
   }, 'a video input as the background needs its name, and no file');
 
 const slideSchema: z.ZodType<EditSlide> = z.object({
+  guides: editorGuidesSchema.optional(),
+  design: slideDesignSchema.optional(),
   id: idSchema,
   label: z.string().max(200),
   notes: z.string().max(20_000),
@@ -200,6 +244,16 @@ const slideSchema: z.ZodType<EditSlide> = z.object({
   deck: deckSlideSchema.optional(),
 });
 
+export function masterFromJson(text: string | null | undefined): EditSlide | undefined {
+  if (!text) return undefined;
+  try {
+    const parsed = slideSchema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const themeSlideSchema: z.ZodType<ThemeSlide> = z.object({
   width: z.number().int().min(16).max(16384),
   height: z.number().int().min(16).max(16384),
@@ -216,6 +270,7 @@ export const editDocSchema: z.ZodType<EditDoc> = z
     height: z.number().int().min(16).max(16384),
     transition: transitionSchema.nullable(),
     loop: z.boolean(),
+    master: slideSchema.nullable().optional(),
     groups: z
       .array(
         z.object({
@@ -234,12 +289,19 @@ export const editDocSchema: z.ZodType<EditDoc> = z
       g.id,
       ...g.slides.flatMap((s) => [s.id, ...s.elements.map((e) => e.id), ...s.cues.map((c) => c.id)]),
     ]);
+    if (d.master)
+      ids.push(d.master.id, ...d.master.elements.map((e) => e.id), ...d.master.cues.map((c) => c.id));
     return new Set(ids).size === ids.length;
   }, 'an id is used twice');
 
 /** Every slide in the editor's order (groups in order, then their slides). */
 export function slidesOf(doc: EditDoc): EditSlide[] {
   return doc.groups.flatMap((g) => g.slides);
+}
+
+/** Every editable canvas, with the master once, before the playable slides. */
+export function editableSlidesOf(doc: EditDoc): EditSlide[] {
+  return [...(doc.master ? [doc.master] : []), ...slidesOf(doc)];
 }
 
 /** The group a slide is in. */

@@ -89,6 +89,65 @@ function setup(height = 1080) {
 
 const texts = (rows: ContentRows) => rows.elements.map((e) => JSON.parse(e.props) as TextElement);
 
+function savedDesignBackgrounds() {
+  const { db, repo, rows } = setup();
+  db.prepare('INSERT INTO media (id, kind, name, path, playable) VALUES (?, ?, ?, ?, 1)').run(
+    'placeholder-theme-picture',
+    'image',
+    'Placeholder theme picture',
+    'placeholder-theme.png',
+  );
+  db.prepare('INSERT INTO media (id, kind, name, path, playable) VALUES (?, ?, ?, ?, 1)').run(
+    'placeholder-theme-sound',
+    'audio',
+    'Placeholder theme sound',
+    'placeholder-theme.wav',
+  );
+  const designs = [
+    {
+      backdrop: { kind: 'gradient', from: '#334455', to: '#667788', angle: 90 },
+      layout: 'two-columns',
+      skipMaster: true,
+      futureDesign: { placeholder: ['first', 1] },
+    },
+    {
+      backdrop: { kind: 'picture', mediaId: 'old', fit: 'fill' },
+      layout: 'heading-words',
+      skipMaster: false,
+      futureDesign: { placeholder: ['second', 2] },
+    },
+    { layout: 'words', skipMaster: true, futureDesign: { placeholder: ['third', 3] } },
+  ];
+  // The last slide has no backdrop: its original JSON, including whitespace, must not be rewritten.
+  const designJson = designs.map((design, i) => JSON.stringify(design, null, i === 2 ? 2 : undefined));
+  const first = must(rows.slides[0]);
+  const saved: ContentRows = {
+    ...rows,
+    slides: rows.slides.map((slide, i) => ({
+      ...slide,
+      notes: `Placeholder theme notes ${String(i + 1)}`,
+      editor_guides: '{"x":[320],"y":[240]}',
+      editor_design: must(designJson[i]),
+    })),
+    cues: [
+      ...rows.cues,
+      {
+        id: 'placeholder-theme-sound-cue',
+        slide_id: first.id,
+        position: 1,
+        kind: 'audio',
+        label: 'Placeholder theme sound',
+        media_id: 'placeholder-theme-sound',
+        props: '{ "volume": 0.4, "loop": false }',
+      },
+    ],
+  };
+  repo.setContent(saved);
+  const stored = must(readContent(db, rows.presentationId));
+  expect(stored.slides.map((slide) => slide.editor_design)).toEqual(designJson);
+  return { db, repo, rows: stored, designs, designJson };
+}
+
 describe('applying a theme', () => {
   it('styles each run by its language, moves the first text box, and never changes words', () => {
     const { rows } = setup();
@@ -182,6 +241,102 @@ describe('applying a theme', () => {
     const none = applyTheme(rows, theme);
     expect(none.cues).toEqual(rows.cues);
     expect(none.slides).toEqual(rows.slides);
+  });
+
+  for (const background of [
+    { kind: 'color', color: '#002244' },
+    {
+      kind: 'media',
+      mediaId: 'placeholder-theme-picture',
+      media: 'image',
+      fit: 'fill',
+      loop: false,
+    },
+  ] as const)
+    it(`replaces saved Design backdrops with the theme's ${background.kind} background, keeping the rest and Undo`, () => {
+      const { db, repo, rows, designs } = savedDesignBackgrounds();
+      try {
+        const before = structuredClone(rows);
+        const { id: _oldThemeId, ...fields } = theme;
+        const themes = new ThemeRepo(db);
+        const chosen = must(themes.get(themes.create({ ...fields, background })));
+        let cue = 0;
+        const changed = applyTheme(rows, chosen, () => `placeholder-theme-cue-${String(++cue)}`);
+        expect(rows).toEqual(before);
+        repo.setContent(changed);
+        const reloaded = must(readContent(db, rows.presentationId));
+        const shown = must(repo.get(rows.presentationId)).groups.flatMap((group) => group.slides);
+        expect(shown).toHaveLength(rows.slides.length);
+        for (const info of shown) {
+          // RED on the old source: its stale gradient/picture still covers the newly selected theme.
+          expect(info.slide.backdrop).toBeUndefined();
+          expect(info.slide.background).toBe(background.kind === 'color' ? background.color : null);
+          const backgrounds = info.cues.filter((item) => item.kind === 'background');
+          if (background.kind === 'color') expect(backgrounds).toEqual([]);
+          else
+            expect(backgrounds).toEqual([
+              expect.objectContaining({
+                kind: 'background',
+                background: {
+                  kind: 'media',
+                  mediaId: background.mediaId,
+                  media: background.media,
+                  fit: background.fit,
+                  loop: background.loop,
+                },
+              }),
+            ]);
+        }
+        for (const [i, original] of rows.slides.entries()) {
+          const actual = must(reloaded.slides[i]);
+          const design = must(designs[i]);
+          const expected = Object.fromEntries(Object.entries(design).filter(([key]) => key !== 'backdrop'));
+          expect(JSON.parse(must(actual.editor_design)) as unknown).toEqual(expected);
+          const {
+            background: _beforeBackground,
+            darken: _beforeDarken,
+            editor_design: _beforeDesign,
+            ...kept
+          } = original;
+          const {
+            background: _afterBackground,
+            darken: _afterDarken,
+            editor_design: _afterDesign,
+            ...stillKept
+          } = actual;
+          expect(stillKept).toEqual(kept);
+        }
+        expect(reloaded.slides[2]?.editor_design).toBe(rows.slides[2]?.editor_design);
+        expect(texts(reloaded).map((box) => box.text)).toEqual(texts(rows).map((box) => box.text));
+        expect(reloaded.cues.filter((item) => item.kind !== 'background')).toEqual(
+          rows.cues
+            .filter((item) => item.kind !== 'background')
+            .map((item) => ({ ...item, position: item.position + (background.kind === 'media' ? 1 : 0) })),
+        );
+        // As the operator's Undo does: all original rows, cue props and Design JSON return exactly.
+        repo.setContent(rows);
+        expect(must(readContent(db, rows.presentationId))).toEqual(rows);
+      } finally {
+        db.close();
+      }
+    });
+
+  it('keeps saved Design JSON byte-for-byte when the theme leaves backgrounds alone', () => {
+    const { db, repo, rows, designJson, designs } = savedDesignBackgrounds();
+    try {
+      const { id: _oldThemeId, ...fields } = theme;
+      const themes = new ThemeRepo(db);
+      const chosen = must(themes.get(themes.create({ ...fields, background: { kind: 'none' } })));
+      repo.setContent(applyTheme(rows, chosen));
+      const reloaded = must(readContent(db, rows.presentationId));
+      expect(reloaded.slides.map((slide) => slide.editor_design)).toEqual(designJson);
+      expect(reloaded.cues).toEqual(rows.cues);
+      const shown = must(repo.get(rows.presentationId)).groups.flatMap((group) => group.slides);
+      expect(shown[0]?.slide.backdrop).toEqual(designs[0]?.backdrop);
+      expect(shown[1]?.slide.backdrop).toEqual(designs[1]?.backdrop);
+    } finally {
+      db.close();
+    }
   });
 
   it('puts its darkening behind the words on every slide, and takes it off where it has none (Sessions 31–36, SLD-3)', () => {

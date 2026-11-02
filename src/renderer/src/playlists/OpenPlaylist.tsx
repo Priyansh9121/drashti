@@ -81,7 +81,7 @@ import {
 } from './drag';
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
-import { openSlideEditor } from '../editor/editor-store';
+import { openSlideEditor } from '../editor/open-editor';
 import { RepeatBar } from './RepeatBar';
 import { useLastSecondsRow } from '../wallpapers/when-ends';
 import { FolderCrumbs } from './PlaylistFolders';

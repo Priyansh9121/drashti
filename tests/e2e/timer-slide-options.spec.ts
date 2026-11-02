@@ -1,9 +1,20 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, openLibrary, operatorPage, outputPage, outputReady, setUpScreen } from './helpers';
+import {
+  editorGroup,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  outputPage,
+  outputReady,
+  setUpScreen,
+  sizeSlideEditor,
+  slideEditorClosed,
+  slideEditorWindow,
+} from './helpers';
 import { makeSlides } from './placeholder-slides';
-import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+import { CI_WINDOW } from './window-size';
 
 /*
  * A timer on a slide, in Edit slides (Session 55, Part 15): its time changed there (a countdown's length, or the
@@ -49,13 +60,16 @@ test('Edit slides changes a slide timer’s time, kind, format, warning and what
     .getByRole('button', { name: /^Placeholder Timer Options/ })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
+  // The editor's own window (Session 55, Part 17a); a Timer from its Insert group.
+  const first = await slideEditorWindow(app);
+  const editor = first.editor;
+  await editorGroup(first.ed, 'Insert');
   await editor.getByTestId('add-timer').click();
-  await win.getByRole('menuitem', { name: 'Placeholder options countdown (Countdown)' }).click();
+  await first.ed.getByRole('menuitem', { name: 'Placeholder options countdown (Countdown)' }).click();
   const section = editor.getByTestId('inspector-timer');
   // Laid out at CI's operator window and at 1280 × 720: nothing in the Timer's section sticks out sideways.
   for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
-    await sizeOperatorWindow(app, win, size);
+    await sizeSlideEditor(app, first.ed, size);
     await section.scrollIntoViewIfNeeded();
     const out = await section.evaluate((root) => {
       const frame = root.getBoundingClientRect();
@@ -88,7 +102,7 @@ test('Edit slides changes a slide timer’s time, kind, format, warning and what
   await section.getByTestId('field-at-zero').selectOption('message');
   await section.getByTestId('field-timer-zero-text').fill('Placeholder: time is up');
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
 
   const timers = await win.evaluate(async (pid) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(pid);
@@ -128,10 +142,12 @@ test('Edit slides changes a slide timer’s time, kind, format, warning and what
     .getByRole('button', { name: /^Placeholder Timer Options/ })
     .click();
   await win.getByTestId('edit-slides').click();
-  await editor.getByTestId('editor-slide').locator('[data-timer-element]').click();
-  await section.getByTestId('field-timer-kind').selectOption('countdown_to_time');
-  await section.getByTestId('field-timer-time').fill('19:30');
-  await section.getByTestId('field-timer-time').press('Enter');
+  const again = await slideEditorWindow(app);
+  await again.editor.getByTestId('editor-slide').locator('[data-timer-element]').click();
+  const sectionAgain = again.editor.getByTestId('inspector-timer');
+  await sectionAgain.getByTestId('field-timer-kind').selectOption('countdown_to_time');
+  await sectionAgain.getByTestId('field-timer-time').fill('19:30');
+  await sectionAgain.getByTestId('field-timer-time').press('Enter');
   await expect
     .poll(async () => {
       const t = (await snapshot(win)).timers.find((x) => x.id === timerId);

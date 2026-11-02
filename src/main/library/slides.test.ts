@@ -230,6 +230,32 @@ describe('putting edited slides back', () => {
     return { db, repo, id };
   }
 
+  it('keeps editor guides with the slide through validation, storage and Undo; old slides have none', () => {
+    const { db, repo, id } = stored();
+    try {
+      const columns = db.pragma('table_info(slides)') as { name: string }[];
+      expect(columns.map((column) => column.name)).toContain('editor_guides');
+      const before = repo.content(id);
+      if (!before) throw new Error('missing');
+      const { doc } = editDocOf(before, 'Placeholder guides');
+      const first = slidesOf(doc)[0];
+      if (!first) throw new Error('missing slide');
+      expect(first).not.toHaveProperty('guides');
+      const guides = { x: [240, 960], y: [180] };
+      Object.assign(first, { guides });
+      repo.setContent(applySlideEdit(before, asSaved(doc)));
+      const after = repo.content(id);
+      if (!after) throw new Error('missing stored slide');
+      expect(slidesOf(editDocOf(after, 'Placeholder guides').doc)[0]).toHaveProperty('guides', guides);
+      repo.setContent(before);
+      const restored = repo.content(id);
+      if (!restored) throw new Error('missing restored slide');
+      expect(slidesOf(editDocOf(restored, 'Placeholder guides').doc)[0]).not.toHaveProperty('guides');
+    } finally {
+      db.close();
+    }
+  });
+
   it('keeps a slide’s darkening behind the words, for the editor and the screens; a slide made before has none (Sessions 31–36, SLD-3)', () => {
     const { repo, id } = stored();
     const before = repo.content(id);
@@ -249,6 +275,33 @@ describe('putting edited slides back', () => {
     const shown = repo.get(id)?.groups.flatMap((g) => g.slides.map((s) => s.slide));
     expect(shown?.[0]?.darken).toEqual({ kind: 'whole', strength: 0.8 });
     expect(shown?.[1]).not.toHaveProperty('darken');
+  });
+
+  it('keeps the Words group’s looks: underlined, struck through, glowing words and lines of a list, for the editor and the screens (Session 55, Part 17a)', () => {
+    const { repo, id } = stored();
+    const before = repo.content(id);
+    if (!before) throw new Error('missing');
+    const { doc } = editDocOf(before, 'Placeholder edit');
+    const box = slidesOf(doc)[1]?.elements[0];
+    if (box?.kind !== 'text') throw new Error('no box');
+    const styled: TextElement = {
+      ...box,
+      text: 'Placeholder one\nPlaceholder two',
+      style: { ...box.style, glow: { color: '#00ffcc', size: 20 } },
+      runs: [
+        { text: 'Placeholder one\n', underline: true, strike: true, list: 'gu' },
+        { text: 'Placeholder two', glow: null, list: 'gu', level: 1 },
+      ],
+    };
+    const slide = slidesOf(doc)[1];
+    if (slide) slide.elements = [styled];
+    repo.setContent(applySlideEdit(before, asSaved(doc)));
+    const after = repo.content(id);
+    if (!after) throw new Error('missing');
+    // The editor reads them back, and the screens get them with the slide.
+    expect(slidesOf(editDocOf(after, 'Placeholder edit').doc)[1]?.elements[0]).toEqual(styled);
+    const shown = repo.get(id)?.groups.flatMap((g) => g.slides.map((s) => s.slide));
+    expect(shown?.[1]?.elements[0]).toMatchObject({ style: styled.style, runs: styled.runs });
   });
 
   it('keeps a deck’s slide as its import stored it, saving only Drashti’s transitions on it and its clicks (Session 54, C2)', () => {
@@ -320,6 +373,94 @@ describe('putting edited slides back', () => {
         .map((e) => e.id),
     ).toEqual([box.id, 'odd', first?.elements[1]?.id]);
   });
+
+  const savedPlacement = {
+    motion: { in: { kind: 'fade', delayMs: 0, durationMs: 600 } },
+    groupId: 'placeholder-placement-group',
+    flipX: true,
+    flipY: true,
+  };
+  const placementCases = [
+    ...Object.entries(savedPlacement).flatMap(([key, value]) =>
+      (['text', 'shape', 'image', 'video', 'timer'] as const).map((kind) => ({ kind, key, value })),
+    ),
+    ...(['image', 'video'] as const).map((kind) => ({
+      kind,
+      key: 'crop',
+      value: { x: 0.1, y: 0.2, width: 0.7, height: 0.6 },
+    })),
+  ];
+
+  it.each(placementCases)(
+    'removes saved $key from a $kind while retaining unknown data and untouched JSON',
+    ({ kind, key, value }) => {
+      const { db, repo, id } = stored();
+      try {
+        const initial = repo.content(id);
+        const target = initial?.elements.find((row) => row.kind === 'text');
+        if (!initial || !target) throw new Error('missing placeholder element');
+        const original = JSON.parse(target.props) as Record<string, unknown>;
+        const byKind: Record<typeof kind, Record<string, unknown>> = {
+          text: original,
+          shape: { shape: 'rectangle', fill: '#123456', cornerRadius: 0, opacity: 1 },
+          image: { mediaId: 'placeholder-picture', fit: 'fill' },
+          video: { mediaId: 'placeholder-video', fit: 'fill' },
+          timer: { timerId: 'placeholder-timer', style: original['style'] },
+        };
+        const future = { note: 'Placeholder future data', nested: [1, 2, 3] };
+        const savedJson = JSON.stringify({ ...byKind[kind], [key]: value, future }, null, 2);
+        db.prepare('UPDATE elements SET kind = ?, props = ? WHERE id = ?').run(kind, savedJson, target.id);
+        const before = repo.content(id);
+        if (!before) throw new Error('missing saved placeholder');
+        const { doc } = editDocOf(before, 'Placeholder placement removal');
+        const slide = slidesOf(doc).find((s) => s.elements.some((el) => el.id === target.id));
+        const el = slide?.elements.find((e) => e.id === target.id);
+        if (!slide || !el) throw new Error('saved placeholder could not be read');
+        expect(el).toHaveProperty(key, value);
+
+        // An untouched read/save must preserve the original JSON bytes, including its formatting.
+        const unchanged = applySlideEdit(before, asSaved(doc));
+        expect(unchanged.elements.find((row) => row.id === target.id)?.props).toBe(savedJson);
+
+        // Match the UI's removal semantics: the optional property is absent, rather than false or undefined.
+        slide.elements = slide.elements.map((element) =>
+          element.id === target.id
+            ? (Object.fromEntries(Object.entries(element).filter(([name]) => name !== key)) as typeof element)
+            : element,
+        );
+        const after = applySlideEdit(before, asSaved(doc));
+        const row = after.elements.find((e) => e.id === target.id);
+        if (!row) throw new Error('missing edited row');
+        const props = JSON.parse(row.props) as Record<string, unknown>;
+        expect(props).not.toHaveProperty(key);
+        expect(props['future']).toEqual(future);
+        for (const untouched of before.elements.filter((e) => e.id !== target.id))
+          expect(after.elements.find((e) => e.id === untouched.id)).toEqual(untouched);
+
+        // Exercise the actual write/read path too: it must not resurrect the cleared setting.
+        repo.setContent(after);
+        const reopened = repo.content(id);
+        if (!reopened) throw new Error('missing reopened placeholder');
+        const reopenedElement = slidesOf(editDocOf(reopened, 'Placeholder placement removal').doc)
+          .flatMap((s) => s.elements)
+          .find((element) => element.id === target.id);
+        expect(reopenedElement).not.toHaveProperty(key);
+        expect(JSON.parse(reopened.elements.find((e) => e.id === target.id)?.props ?? '{}')).toHaveProperty(
+          'future',
+          future,
+        );
+        expect(
+          repo
+            .get(id)
+            ?.groups.flatMap((g) => g.slides)
+            .flatMap((s) => s.slide.elements)
+            .find((element) => element.id === target.id),
+        ).not.toHaveProperty(key);
+      } finally {
+        db.close();
+      }
+    },
+  );
 
   it('unticks a video’s play bar on the screens: a setting Drashti knows is never kept as unknown data (Session 54)', () => {
     const db = openDatabase(':memory:');

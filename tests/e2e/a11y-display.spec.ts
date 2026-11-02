@@ -3,7 +3,16 @@ import { chromium, expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, openLibrary, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import {
+  editorGroup,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+  slideEditorWindow,
+} from './helpers';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -170,11 +179,12 @@ test('axe at 1280 x 720 on the words editor and the slide editor’s picture pic
   await win.keyboard.press('Escape');
   await expect(win.getByTestId('words-editor')).toHaveCount(0);
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
-  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  // The editor's own window (Session 55, Part 17a); Picture or video is in its Insert group.
+  const { ed, editor } = await slideEditorWindow(app);
+  await editorGroup(ed, 'Insert');
   await editor.getByTestId('add-media').click();
-  await expect(win.getByTestId('media-picker').getByTestId('media-choice').first()).toBeVisible();
-  await expectNoSeriousA11yIssues(win, 'the slide editor’s picture and video picker');
+  await expect(ed.getByTestId('media-picker').getByTestId('media-choice').first()).toBeVisible();
+  await expectNoSeriousA11yIssues(ed, 'the slide editor’s picture and video picker');
   await app.close();
 });
 

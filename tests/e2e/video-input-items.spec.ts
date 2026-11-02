@@ -16,6 +16,8 @@ import {
   relaunchApp,
   savedLive,
   setUpScreen,
+  slideEditorClosed,
+  slideEditorWindow,
 } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -176,15 +178,16 @@ test('a video input as a playlist item and as a slide’s background, each up wi
     .getByRole('button', { name: /^Placeholder words/ })
     .click();
   await win.getByTestId('edit-slides').click();
-  const editor = win.getByTestId('slide-editor');
+  // The editor's own window (Session 55, Part 17a).
+  const { ed, editor } = await slideEditorWindow(app);
   await editor.getByTestId('choose-background').click();
-  const picker = win.getByTestId('media-picker');
+  const picker = ed.getByTestId('media-picker');
   await expect(picker.getByTestId('input-choice')).toHaveCount(1);
   await picker.getByRole('button', { name: `Video input: ${INPUT}` }).click();
   await expect(editor.getByTestId('background-cue')).toHaveText(`Background: the video input “${INPUT}”`);
   await expect(editor.getByTestId('background-input-missing')).toHaveCount(0);
   await editor.getByTestId('save-slides').click();
-  await expect(editor).toHaveCount(0);
+  await slideEditorClosed(app);
   const cues = await win.evaluate(
     async (id) =>
       (await (globalThis as PageGlobals).drashti.library.getPresentation(id))?.groups[0]?.slides[0]?.cues,

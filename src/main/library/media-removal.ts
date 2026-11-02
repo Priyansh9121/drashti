@@ -55,10 +55,18 @@ export class MediaRemoval {
            SELECT g.presentation_id FROM slide_cues c JOIN slides s ON s.id = c.slide_id
              JOIN slide_groups g ON g.id = s.group_id WHERE c.media_id IN (${list})
            UNION
-           SELECT presentation_id FROM kirtans WHERE audio_media_id IN (${list}))
+           SELECT presentation_id FROM kirtans WHERE audio_media_id IN (${list})
+           UNION
+           SELECT g.presentation_id FROM slides s JOIN slide_groups g ON g.id = s.group_id,
+             json_tree(CASE WHEN json_valid(s.editor_design) THEN s.editor_design ELSE NULL END) j
+             WHERE j.key = 'mediaId' AND j.type = 'text' AND j.value IN (${list})
+           UNION
+           SELECT p.id FROM presentations p,
+             json_tree(CASE WHEN json_valid(p.editor_master) THEN p.editor_master ELSE NULL END) j
+             WHERE j.key = 'mediaId' AND j.type = 'text' AND j.value IN (${list}))
          ORDER BY name COLLATE NOCASE`,
       )
-      .all(...ids, ...ids, ...ids) as { name: string }[];
+      .all(...ids, ...ids, ...ids, ...ids, ...ids) as { name: string }[];
     const playlists = all(
       `SELECT name FROM playlists WHERE deleted_at IS NULL AND id IN (
          SELECT playlist_id FROM playlist_items WHERE deleted_at IS NULL AND media_id IN (${list}))

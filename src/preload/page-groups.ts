@@ -20,7 +20,8 @@ export type BridgePage =
   | 'zoom'
   | 'lock'
   | 'access-list'
-  | 'lower-thirds';
+  | 'lower-thirds'
+  | 'slide-editor';
 
 export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // The operator window: everything but the node's window, the PDF window and the sharpening window.
@@ -60,6 +61,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'screenSwitches',
     'setup',
     'shastra',
+    // The slide editor's window (Session 55, Part 17a): opened from here, its saves come back here for Undo.
+    'slideEditor',
     // Audio's Music steps aside, a file's Even loudness, Trim black and silence (Session 55, Part 7).
     'sound',
     'stageLayouts',
@@ -93,6 +96,23 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   'access-list': ['accessList', 'app'],
   // The Lower Thirds studio (Session 55, Part 16): the lower thirds, and what is up (the engine's state, read only).
   'lower-thirds': ['app', 'engine', 'lowerThirds'],
+  // The slide editor's window (Session 55, Part 17a): a presentation's slides read and saved, the library's pictures,
+  // videos and sounds to put on them (and their looks), the screens (their safe areas), video inputs, timers, and what
+  // is up; a picture's file arriving again (output, as every page drawing slides). The video inputs' store reaches the
+  // operator's actions (playlists, screenSwitches): the main process refuses their changes from here.
+  'slide-editor': [
+    'app',
+    'engine',
+    'library',
+    'media',
+    'output',
+    'playlists',
+    'screenSwitches',
+    'screens',
+    'slideEditor',
+    'timers',
+    'videoInputs',
+  ],
 };
 
 /** The page a window shows, from its address (its file's name; Vite's root is the operator's), or null. */

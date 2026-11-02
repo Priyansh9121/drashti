@@ -22,6 +22,7 @@ export { Captions } from 'lucide-react';
 export { Wallpaper } from 'lucide-react';
 // Ready? and the quick bar (Session 55, Part 8): the check before the sabha, an item pinned and taken off.
 export { ListChecks, Pin, PinOff } from 'lucide-react';
+export { Group, Heart, Star, Table2, Ungroup } from 'lucide-react';
 // Pictures (Session 55, Part 5): the Picture editor's Crop, Turn and Flip, and Save picture….
 export { Crop, FlipHorizontal2, FlipVertical2, ImageDown } from 'lucide-react';
 // Zoom both ways (Session 48): another app's window on the screens, and the window for Zoom to share.
@@ -52,6 +53,23 @@ export { Scissors } from 'lucide-react';
 export { Share2 } from 'lucide-react';
 // Session 26e: the Picture editor, and zooming the live picture.
 export { Minimize2, SlidersHorizontal, ZoomIn, ZoomOut } from 'lucide-react';
+// The slide editor's Words group (Session 55, Part 17a): size a step, bold, underline, strike through, lists, a line
+// further in or back out, effects, and find and replace (its Match case and Whole words).
+export {
+  AArrowDown,
+  AArrowUp,
+  Bold,
+  CaseSensitive,
+  IndentDecrease,
+  IndentIncrease,
+  List,
+  ListOrdered,
+  Sparkles,
+  Strikethrough,
+  TextSearch,
+  Underline,
+  WholeWord,
+} from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

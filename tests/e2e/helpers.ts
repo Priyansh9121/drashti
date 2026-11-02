@@ -82,6 +82,8 @@ export async function launchApp(
   // Let in through a stand-in list before it starts (Session 54, tests/e2e/access.ts): as the placeholder person
   // unless a spec says otherwise (locked, the owner, another Gmail), on that data folder's own list.
   access: AccessOptions = {},
+  // Pixel fixtures can pin a colour space without changing the regular application's defaults.
+  chromiumArgs: string[] = [],
 ): Promise<{ app: ElectronApplication; userData: string; access: AccessStandIn }> {
   const running = currentTest();
   sweepDataFolders(running, userDataDir);
@@ -90,7 +92,7 @@ export async function launchApp(
   const lock = await letInBeforeStart(userData, version ? { version, ...access } : access);
   const app = await electron.launch({
     // Another build of Drashti can be run instead (an earlier commit's, for audience-pixels.spec.ts).
-    args: [process.env['DRASHTI_E2E_APP_DIR'] ?? '.'],
+    args: [...chromiumArgs, process.env['DRASHTI_E2E_APP_DIR'] ?? '.'],
     env: appEnv({
       DRASHTI_USER_DATA_DIR: userData,
       DRASHTI_NO_QUIT_CONFIRM: '1',
@@ -780,4 +782,63 @@ export async function nodeSaved(
       { timeout, message: 'the node saved the show as the test wants it (node-show.json)' },
     )
     .toBe(true);
+}
+
+/** The slide editor's own window (Session 55, Part 17a): its page. */
+export const isSlideEditor = (p: Page): boolean => p.url().includes('slide-editor.html');
+
+/**
+ * The slide editor (Session 55, Part 17a: a window of its own, the operator window staying live beside it), once
+ * whatever opened it (Edit slides, Edit slides… in a menu) has: its page, and the editor in it, open on its slides.
+ */
+export async function slideEditorWindow(app: ElectronApplication): Promise<{ ed: Page; editor: Locator }> {
+  const ed = await windowShowing(app, isSlideEditor, 'the slide editor');
+  const editor = ed.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible({ timeout: 30_000 });
+  return { ed, editor };
+}
+
+/** The slide editor's window closed (saved, thrown away or closed with nothing changed). */
+export async function slideEditorClosed(app: ElectronApplication): Promise<void> {
+  await expect
+    .poll(() => app.windows().some((p) => isSlideEditor(p) && !p.isClosed()), {
+      message: 'the slide editor’s window closed',
+    })
+    .toBe(false);
+}
+
+/** One of the editor's groups along its top (Words, Insert, Arrange, Design, Motion, Slides), chosen. */
+export async function editorGroup(ed: Page, name: string): Promise<void> {
+  const tab = ed.getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/** The slide editor's window at `size` (CSS pixels), its page laid out at exactly that size. */
+export async function sizeSlideEditor(
+  app: ElectronApplication,
+  ed: Page,
+  size: { width: number; height: number },
+): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, want) => {
+    BrowserWindow.getAllWindows()
+      .find((w) => w.webContents.getURL().includes('slide-editor.html'))
+      ?.setContentSize(want.width, want.height);
+  }, size);
+  await ed.setViewportSize(size);
+  await expect.poll(() => ed.evaluate(() => [innerWidth, innerHeight])).toEqual([size.width, size.height]);
+}
+
+/**
+ * A key that closes the slide editor's window as it goes down (Esc with nothing changed): the window is gone before
+ * the key comes up, which then meets no page.
+ */
+export async function closeSlideEditorByKey(
+  app: ElectronApplication,
+  ed: Page,
+  key = 'Escape',
+): Promise<void> {
+  await ed.keyboard.down(key);
+  await slideEditorClosed(app);
+  await ed.keyboard.up(key).catch(() => undefined);
 }

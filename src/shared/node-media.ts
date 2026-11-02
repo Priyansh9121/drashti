@@ -14,6 +14,7 @@ function fromElements(elements: readonly SlideElement[], out: Set<string>): void
 
 /** A slide's pictures and videos: its elements', and a deck's steps' clips, last frames and holds (Session 54, C2). */
 function fromSlide(slide: RenderSlide, out: Set<string>): void {
+  if (slide.backdrop?.kind === 'picture') out.add(slide.backdrop.mediaId);
   fromElements(slide.elements, out);
   for (const id of deckPictures(slide.deck)) out.add(id);
 }

@@ -8,6 +8,7 @@ import { expectNoSeriousA11yIssues, settled } from './a11y';
 import {
   closeLibrary,
   closePlaylistIfOpen,
+  closeSlideEditorByKey,
   importAndGetIds,
   killApp,
   launchApp,
@@ -17,6 +18,7 @@ import {
   type PageGlobals,
   relaunchApp,
   savedLive,
+  slideEditorWindow,
 } from './helpers';
 import { makeTestTone } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -415,20 +417,20 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
 
   // The slide editor names the sound it shows, the last, and says when its file is missing (a double-click on a
   // thumbnail opens it at that slide; with nothing changed, Esc closes it).
-  const editor = win.getByTestId('slide-editor');
   for (const [index, file, said] of [
     [1, FILE, true],
     [2, 'Placeholder tune.wav', false],
     [3, FILE, true],
   ] as const) {
     await thumbs.nth(index).dblclick();
+    // Its own window (Session 55, Part 17a).
+    const { ed, editor } = await slideEditorWindow(app);
     await expect(editor.getByTestId('sound-cue')).toHaveText(file);
     if (said) await expect(editor.getByTestId('sound-file-missing')).toHaveText(editorSays(file));
     else await expect(editor.getByTestId('sound-file-missing')).toHaveCount(0);
     // The first of two sounds is never "kept as it is": a change to the sound takes both off (the review).
     await expect(editor.getByTestId('other-cues')).toHaveCount(0);
-    await win.keyboard.press('Escape');
-    await expect(editor).toHaveCount(0);
+    await closeSlideEditorByKey(app, ed);
   }
 
   // Simple Mode: its picture of what is next names a missing sound before it goes up; of two sounds, the last.
@@ -470,9 +472,11 @@ test('a slide’s missing sound is named in its thumbnail, the slide editor and 
   await expect(thumbs.nth(2).getByTestId('thumb-sound-missing')).toHaveText('Missing');
   await expect(thumbs.nth(2)).toHaveAccessibleName(/, its sound file “Placeholder tune\.wav” is missing$/u);
   await thumbs.nth(2).dblclick();
-  await expect(editor.getByTestId('sound-cue')).toHaveText('Placeholder tune.wav');
-  await expect(editor.getByTestId('sound-file-missing')).toHaveText(editorSays('Placeholder tune.wav'));
-  await win.keyboard.press('Escape');
-  await expect(editor).toHaveCount(0);
+  const removedOne = await slideEditorWindow(app);
+  await expect(removedOne.editor.getByTestId('sound-cue')).toHaveText('Placeholder tune.wav');
+  await expect(removedOne.editor.getByTestId('sound-file-missing')).toHaveText(
+    editorSays('Placeholder tune.wav'),
+  );
+  await closeSlideEditorByKey(app, removedOne.ed);
   await app.close();
 });

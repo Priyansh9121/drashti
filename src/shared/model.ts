@@ -77,6 +77,30 @@ export interface Outline {
  */
 export type TextShadow = boolean | Shadow;
 
+/** A glow round letters (Session 55, Part 17a): light of a colour spreading out all round them, as far as `size`. */
+export interface Glow {
+  /** "#rrggbb", or "#rrggbbaa" to see through it. */
+  color: string;
+  /** How far it spreads (its blur), in slide pixels. */
+  size: number;
+}
+
+/**
+ * A line's mark when it is one of a list (Session 55, Part 17a): a bullet (a dot, a ring, a square, a dash or an
+ * arrow), or a number: 1. 2. 3., in Gujarati digits (૧. ૨. ૩.), in Devanagari digits (१. २. ३.), a. b. c., A. B. C.
+ * or i. ii. iii.
+ */
+export const BULLET_MARKS = ['disc', 'circle', 'square', 'dash', 'arrow'] as const;
+export const NUMBER_MARKS = ['1', 'gu', 'hi', 'a', 'A', 'i'] as const;
+export type BulletMark = (typeof BULLET_MARKS)[number];
+export type NumberMark = (typeof NUMBER_MARKS)[number];
+export type ListMark = BulletMark | NumberMark;
+export const LIST_MARKS = [...BULLET_MARKS, ...NUMBER_MARKS] as const satisfies readonly ListMark[];
+export const isNumberMark = (mark: ListMark): mark is NumberMark =>
+  (NUMBER_MARKS as readonly string[]).includes(mark);
+/** How far in a list's line can go: levels 0 (the first) to 4. */
+export const MAX_LIST_LEVEL = 4;
+
 export interface TextStyle {
   /** CSS font-family list; the renderer adds the bundled Noto fonts as fallbacks. */
   fontFamily: string | null;
@@ -90,6 +114,8 @@ export interface TextStyle {
   shadow: TextShadow;
   /** A line around the letters; left out or null for none. */
   outline?: Outline | null;
+  /** A glow round the letters (Session 55, Part 17a); left out or null for none. */
+  glow?: Glow | null;
   /** Make the words smaller until they fit the box (never bigger than they are set). */
   shrinkToFit?: boolean;
 }
@@ -115,6 +141,19 @@ export interface TextRun {
   shadow?: TextShadow;
   /** A line around this run's letters (null: none); when unset, the element's style decides. */
   outline?: Outline | null;
+  /** Underlined (Session 55, Part 17a). */
+  underline?: boolean;
+  /** Struck through (Session 55, Part 17a). */
+  strike?: boolean;
+  /** A glow round this run's letters (null: none); when unset, the element's style decides (Session 55, Part 17a). */
+  glow?: Glow | null;
+  /**
+   * The line this run is on is one of a list, with this mark (Session 55, Part 17a: shared/text-lists.ts). Every run
+   * of the line carries it, its line break too, so the line keeps it wherever it goes.
+   */
+  list?: ListMark;
+  /** How far in that list's line is: 1 to MAX_LIST_LEVEL; left out for the first level. */
+  level?: number;
   /** Language of this run; when a source gives none it is detected from the script. */
   lang?: Lang | null;
   /**
@@ -124,12 +163,42 @@ export interface TextRun {
   legacy?: boolean;
 }
 
+export interface MotionTiming<K extends string> {
+  kind: K;
+  /** From the moment this slide goes up, on Main's clock. */
+  delayMs: number;
+  durationMs: number;
+}
+
+/** Explicit slide motion, evaluated from Main's time by every renderer. */
+export interface ElementMotion {
+  in?: MotionTiming<'fade' | 'rise' | 'zoom'>;
+  emphasis?: MotionTiming<'pulse' | 'turn'>;
+  out?: MotionTiming<'fade' | 'sink' | 'shrink'>;
+}
+
+export type SlideBackdrop =
+  | { kind: 'gradient'; from: string; to: string; angle: number }
+  | { kind: 'picture'; mediaId: string; fit: 'fit' | 'fill' | 'stretch' };
+export type SlideLayout = 'words' | 'heading-words' | 'two-columns';
+export interface SlideDesign {
+  backdrop?: SlideBackdrop;
+  layout?: SlideLayout;
+  skipMaster?: boolean;
+}
+
 /** What every element has: its place, and how far it is turned. */
 interface ElementBase {
   id: string;
   frame: Rect;
   /** Degrees clockwise, about the frame's centre; left out for none. */
   rotation?: number;
+  /** Editor groups are flat and local to a slide. Every renderer keeps the members as ordinary elements. */
+  groupId?: string;
+  /** Reflect the content in its frame, after its rotation. */
+  flipX?: boolean;
+  flipY?: boolean;
+  motion?: ElementMotion;
 }
 
 export interface TextElement extends ElementBase {
@@ -155,8 +224,29 @@ export interface TextElement extends ElementBase {
  * frame, or a line across the middle of its frame from the left edge to the
  * right (turned with rotation; its outline gives its colour and thickness).
  */
-export type ShapeKind = 'rectangle' | 'ellipse' | 'line';
-export const SHAPE_KINDS: readonly ShapeKind[] = ['rectangle', 'ellipse', 'line'];
+export const SHAPE_KINDS = [
+  'rectangle',
+  'ellipse',
+  'line',
+  'arrow',
+  'triangle',
+  'diamond',
+  'star',
+  'heart',
+  'check',
+] as const;
+export type ShapeKind = (typeof SHAPE_KINDS)[number];
+export const SHAPE_NAMES: Record<ShapeKind, string> = {
+  rectangle: 'Rectangle',
+  ellipse: 'Ellipse',
+  line: 'Line',
+  arrow: 'Arrow',
+  triangle: 'Triangle',
+  diamond: 'Diamond',
+  star: 'Star',
+  heart: 'Heart',
+  check: 'Check mark',
+};
 
 export interface ShapeElement extends ElementBase {
   kind: 'shape';
@@ -186,6 +276,8 @@ export interface MediaElement extends ElementBase {
    * engine's time, as a deck's video shows in a slideshow. Left out (off) unless ticked in the slide editor.
    */
   playBar?: boolean;
+  /** The portion kept on this slide, in shares of its picture; independent of its library look. */
+  crop?: Rect;
 }
 
 /**
@@ -254,6 +346,11 @@ export interface RenderSlide {
   height: number;
   /** Solid background behind the elements, or null for transparent. */
   background: string | null;
+  backdrop?: SlideBackdrop;
+  /** A designed canvas must stay whole in layouts that would otherwise extract its words. */
+  fullSlide?: boolean;
+  /** Resolved master elements: fixed in place when a kirtan's language columns close up. */
+  masterElementIds?: string[];
   /** Darkening behind the words; left out for none (every slide made before it, Sessions 31–36). */
   darken?: Darken;
   elements: SlideElement[];

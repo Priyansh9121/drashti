@@ -1,9 +1,11 @@
 import type {
+  Glow,
   Lang,
   Rect,
   MediaElement,
   Outline,
   ShapeElement,
+  ShapeKind,
   SlideElement,
   TextAlign,
   TextElement,
@@ -16,6 +18,7 @@ import type { EditDoc, EditSlide, SlideLook } from '../../../shared/slide-edit';
 import { newGroupColor } from '../../../shared/group-colors';
 import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
+import { freshGroups } from '../../../shared/element-groups';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
 import {
   BUILT_IN_TIMER_LOOK,
@@ -35,11 +38,13 @@ export const newId = (): string => crypto.randomUUID();
 
 export function findSlide(doc: EditDoc, slideId: string | null): EditSlide | undefined {
   if (slideId === null) return undefined;
+  if (doc.master?.id === slideId) return doc.master;
   for (const g of doc.groups) for (const s of g.slides) if (s.id === slideId) return s;
   return undefined;
 }
 
 export function mapSlide(doc: EditDoc, slideId: string, fn: (slide: EditSlide) => EditSlide): EditDoc {
+  if (doc.master?.id === slideId) return { ...doc, master: fn(doc.master) };
   return {
     ...doc,
     groups: doc.groups.map((g) =>
@@ -150,13 +155,15 @@ export function duplicateElements(
 ): { doc: EditDoc; ids: string[] } {
   const slide = findSlide(doc, slideId);
   if (!slide) return { doc, ids: [] };
-  const copies = slide.elements
-    .filter((el) => ids.includes(el.id))
-    .map((el) => ({
-      ...structuredClone(el),
-      id: newId(),
-      frame: { ...el.frame, x: el.frame.x + offset, y: el.frame.y + offset },
-    }));
+  const copies = freshGroups(
+    slide.elements
+      .filter((el) => ids.includes(el.id))
+      .map((el) => ({
+        ...structuredClone(el),
+        id: newId(),
+        frame: { ...el.frame, x: el.frame.x + offset, y: el.frame.y + offset },
+      })),
+  );
   return {
     doc: mapSlide(doc, slideId, (s) => ({ ...s, elements: [...s.elements, ...copies] })),
     ids: copies.map((c) => c.id),
@@ -204,7 +211,7 @@ export function newTextBox(look: SlideLook): TextElement {
   };
 }
 
-export type ShapeChoice = 'rectangle' | 'rounded' | 'ellipse' | 'line';
+export type ShapeChoice = ShapeKind | 'rounded';
 
 /**
  * A new shape in the middle of the slide, in a colour that shows on any
@@ -216,7 +223,10 @@ export function newShape(
   look: SlideLook,
   size: { width: number; height: number },
 ): ShapeElement {
-  const width = Math.round(size.width * 0.4);
+  const icon = choice === 'star' || choice === 'heart' || choice === 'check';
+  const width = icon
+    ? Math.round(Math.min(size.width * 0.4, size.height * 0.3))
+    : Math.round(size.width * 0.4);
   const height = choice === 'line' ? 20 : Math.round(size.height * 0.3);
   const frame = {
     x: Math.round((size.width - width) / 2),
@@ -229,7 +239,7 @@ export function newShape(
     return { ...base, shape: 'line', fill: null, outline: { color: look.style.color, width: 6 } };
   return {
     ...base,
-    ...(choice === 'ellipse' ? { shape: 'ellipse' as const } : { shape: 'rectangle' as const }),
+    shape: choice === 'rounded' ? 'rectangle' : choice,
     fill: '#3e63dd',
     cornerRadius: choice === 'rounded' ? Math.round(Math.min(width, height) * 0.12) : 0,
   };
@@ -295,6 +305,11 @@ export interface TextPatch {
   shadow?: TextShadow | undefined;
   outline?: Outline | null | undefined;
   lang?: Lang | null | undefined;
+  // Session 55 (Part 17a, the Words group): underlined, struck through, a glow, and space between letters.
+  underline?: boolean | undefined;
+  strike?: boolean | undefined;
+  glow?: Glow | null | undefined;
+  letterSpacing?: number | undefined;
 }
 
 /** Box-only settings. */
@@ -315,7 +330,24 @@ const RUN_KEYS: Record<keyof TextPatch, keyof TextRun> = {
   shadow: 'shadow',
   outline: 'outline',
   lang: 'lang',
+  underline: 'underline',
+  strike: 'strike',
+  glow: 'glow',
+  letterSpacing: 'letterSpacing',
 };
+
+/**
+ * Settings words have and a box has not (Session 55, Part 17a: italic since Session 7): set for the whole box, every
+ * word gets them; a box of plain words gets a run to carry them.
+ */
+const WORD_ONLY = [
+  'italic',
+  'underline',
+  'strike',
+  'letterSpacing',
+] as const satisfies readonly (keyof TextPatch)[];
+const wordOnly = (k: keyof TextPatch): k is (typeof WORD_ONLY)[number] =>
+  (WORD_ONLY as readonly string[]).includes(k);
 
 /** A run look with a change: set keys, and drop the ones changed to undefined (so they follow the box). */
 export function patchRun(run: TextRun, patch: TextPatch): TextRun {
@@ -345,16 +377,28 @@ export function styleBox(el: TextElement, patch: TextPatch, box: BoxPatch = {}):
     if (patch.outline) style.outline = patch.outline;
     else delete style.outline;
   }
-  // Italic has no box setting: every word gets it. Everything else: the words follow the box.
+  // A glow (Session 55, Part 17a), as an outline.
+  if ('glow' in patch) {
+    if (patch.glow) style.glow = patch.glow;
+    else delete style.glow;
+  }
+  // Italic, underline, strike through and letter spacing have no box setting: every word gets them. Everything else:
+  // the words follow the box.
   const forWords: TextPatch = {};
   for (const k of Object.keys(patch) as (keyof TextPatch)[]) {
-    if (k === 'italic') forWords.italic = patch.italic ? true : undefined;
+    if (k === 'letterSpacing')
+      forWords.letterSpacing = patch.letterSpacing === 0 ? undefined : patch.letterSpacing;
+    else if (wordOnly(k)) forWords[k] = patch[k] ? true : undefined;
     else forWords[k] = undefined;
   }
   let runs = el.runs?.map((r) =>
     patchRun(r, r.legacy ? { ...forWords, font: r.font, lang: r.lang } : forWords),
   );
-  if (patch.italic && (!runs || runs.length === 0)) runs = [{ text: el.text, italic: true }];
+  // Plain words given one of those: a run to carry it.
+  const carried = Object.fromEntries(
+    Object.entries(forWords).filter(([k, v]) => wordOnly(k as keyof TextPatch) && v !== undefined),
+  );
+  if (Object.keys(carried).length > 0 && (!runs || runs.length === 0)) runs = [{ text: el.text, ...carried }];
   const next: TextElement = { ...el, style };
   if ('lang' in patch) next.lang = patch.lang ?? null;
   if (runs?.some((r) => Object.keys(r).some((k) => k !== 'text'))) next.runs = runs;
@@ -504,7 +548,13 @@ export function changeSlide(
   slideId: string,
   patch: Partial<Omit<EditSlide, 'id' | 'elements'>>,
 ): EditDoc {
-  return mapSlide(doc, slideId, (s) => ({ ...s, ...patch }));
+  return mapSlide(doc, slideId, (s) => {
+    if ('background' in patch && !('design' in patch) && s.design?.backdrop) {
+      const { backdrop: _backdrop, ...design } = s.design;
+      return { ...s, ...patch, design };
+    }
+    return { ...s, ...patch };
+  });
 }
 
 // ---- a slide's background and sound (its cues) ------------------------------------------
@@ -660,6 +710,14 @@ export function applyLookToAll(doc: EditDoc, slideId: string): EditDoc {
         return {
           ...s,
           background: source.background,
+          ...(source.design?.backdrop || s.design?.backdrop
+            ? {
+                design: {
+                  ...Object.fromEntries(Object.entries(s.design ?? {}).filter(([key]) => key !== 'backdrop')),
+                  ...(source.design?.backdrop ? { backdrop: structuredClone(source.design.backdrop) } : {}),
+                },
+              }
+            : {}),
           elements: [...behind.map(copy), ...kept, ...front.map(copy)],
         };
       }),

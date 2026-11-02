@@ -90,7 +90,10 @@ function oneColumn(boxes: readonly TextElement[]): boolean {
 }
 
 function view(slide: RenderSlide, langs: readonly Lang[]): RenderSlide {
-  const boxes = slide.elements.filter((e): e is TextElement => e.kind === 'text' && !e.rotation);
+  const fixed = new Set(slide.masterElementIds);
+  const boxes = slide.elements.filter(
+    (e): e is TextElement => e.kind === 'text' && !e.rotation && !fixed.has(e.id),
+  );
   const shown = new Map<SlideElement, SlideElement | null>();
   for (const el of slide.elements)
     if (el.kind === 'text') shown.set(el, el.everyScreen ? el : boxIn(el, langs));
