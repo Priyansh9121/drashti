@@ -55,6 +55,7 @@ import { up as editorGuides } from './migrations/056-editor-guides';
 import { up as editorDesign } from './migrations/057-editor-design';
 import { up as documentOriginals } from './migrations/062-document-originals';
 import { up as documentPages } from './migrations/063-document-pages';
+import { up as pageSize } from './migrations/064-page-size';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -130,6 +131,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 57, name: 'the slide editor’s master and design', up: editorDesign },
   { version: 62, name: 'immutable document originals', up: documentOriginals },
   { version: 63, name: 'document page identity and geometry', up: documentPages },
+  { version: 64, name: 'independent native page size', up: pageSize },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

@@ -16,6 +16,7 @@ import type {
 } from '../../../shared/model';
 import type { EditDoc, EditSlide, SlideLook } from '../../../shared/slide-edit';
 import { newGroupColor } from '../../../shared/group-colors';
+import { editingCanvas } from '../../../shared/document-page';
 import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
 import { freshGroups } from '../../../shared/element-groups';
@@ -477,7 +478,12 @@ export function addSlideAfter(doc: EditDoc, afterId: string, slide: EditSlide): 
   const at = placeOf(doc, afterId);
   const group = at ? doc.groups[at.group] : doc.groups.at(-1);
   if (!group) return { ...doc, groups: [{ id: newId(), name: '', color: null, slides: [slide] }] };
-  return placeSlide(doc, slide, group.id, at ? at.index + 1 : group.slides.length);
+  const selected = at ? group.slides[at.index] : undefined;
+  const added =
+    !slide.pageSize && !slide.documentPage && (selected?.pageSize || selected?.documentPage?.ext === 'pdf')
+      ? { ...slide, pageSize: selected.pageSize ?? editingCanvas(selected.documentPage, doc) }
+      : slide;
+  return placeSlide(doc, added, group.id, at ? at.index + 1 : group.slides.length);
 }
 
 /** A copy of a slide, with new ids for it and everything on it. */

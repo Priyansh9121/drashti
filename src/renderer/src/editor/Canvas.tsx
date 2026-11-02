@@ -195,7 +195,8 @@ export function Canvas({ platform }: { platform: string }) {
       const now = useEditor.getState();
       const d = now.doc;
       if (!d) return;
-      const pageSize = editingCanvas(findSlide(d, now.slideId)?.documentPage, d);
+      const current = findSlide(d, now.slideId);
+      const pageSize = current?.pageSize ?? editingCanvas(current?.documentPage, d);
       const w = el.clientWidth;
       const h = el.clientHeight;
       const fit = Math.max(0.05, Math.min((w - 2 * PAD) / pageSize.width, (h - 2 * PAD) / pageSize.height));
@@ -232,7 +233,7 @@ export function Canvas({ platform }: { platform: string }) {
   const pastedInPlaceAt = useRef<number | null>(null);
   const slide = doc ? findSlide(doc, slideId) : undefined;
   if (!doc || !slide) return <div ref={area} className="min-w-0 flex-1 bg-ink" />;
-  const pageSize = editingCanvas(slide.documentPage, doc);
+  const pageSize = slide.pageSize ?? editingCanvas(slide.documentPage, doc);
 
   // Fitted to the area, as the editor always opened; zoomed, a size of its own (Session 55, Part 17a).
   const fit = Math.max(

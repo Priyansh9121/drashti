@@ -1,5 +1,26 @@
 import { z } from 'zod';
 
+/** A native page can have its own paper size without claiming an imported original. */
+export interface PageSize {
+  width: number;
+  height: number;
+}
+
+export const pageSizeSchema: z.ZodType<PageSize> = z.object({
+  width: z.number().min(16).max(16384),
+  height: z.number().min(16).max(16384),
+});
+
+export function pageSizeFromJson(text: string | null | undefined): PageSize | undefined {
+  if (!text) return undefined;
+  try {
+    const parsed = pageSizeSchema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A page occurrence, independent of its position and of deduplicated preview pictures. */
 export interface DocumentPageRef {
   sha256: string;

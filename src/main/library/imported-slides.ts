@@ -34,6 +34,7 @@ const contentOf = (slide: EditSlide, copied = false) => {
     width: slide.documentPage?.width,
     height: slide.documentPage?.height,
     rotation: slide.documentPage?.rotation,
+    pageSize: slide.pageSize,
   };
 };
 const sameSource = (a: DocumentPageRef | undefined, b: DocumentPageRef | undefined) =>
@@ -178,6 +179,7 @@ export class ImportedSlides {
                 );
                 slide.background = '#ffffff';
                 slide.documentPage = { ...pageRef, width: native.width, height: native.height };
+                slide.pageSize = { width: native.width, height: native.height };
                 issues.push(...native.issues);
               }
             } finally {
@@ -278,6 +280,8 @@ export class ImportedSlides {
         slide.darken = saved.darken;
         slide.design = saved.design;
         slide.documentPage = saved.documentPage ?? original.documentPage;
+        if (saved.pageSize) slide.pageSize = saved.pageSize;
+        else delete slide.pageSize;
       } else {
         if (original.deck && !original.documentPage?.edited && (!slide.documentPage.edited || slide.deck))
           return {

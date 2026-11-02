@@ -9,7 +9,7 @@ import { darkenFromJson, slideDesignFromJson } from '../../shared/model-schema';
 import { masterFromJson } from '../../shared/slide-edit';
 import type { DeckSlide } from '../../shared/deck';
 import { deckFromJson } from '../../shared/deck-schema';
-import { documentPageFromJson } from '../../shared/document-page';
+import { documentPageFromJson, pageSizeFromJson } from '../../shared/document-page';
 
 /*
  * The slide editor's document, made from a presentation's stored rows, and
@@ -84,6 +84,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
         ? { documentPage: documentPageFromJson(s.document_page), sourceOccurrenceId: s.id }
         : {}),
       ...(slideDesignFromJson(s.editor_design) ? { design: slideDesignFromJson(s.editor_design) } : {}),
+      ...(pageSizeFromJson(s.page_size) ? { pageSize: pageSizeFromJson(s.page_size) } : {}),
     })),
   }));
   return {
@@ -294,6 +295,15 @@ export function applySlideEdit(
             }
           : old?.document_page !== undefined
             ? { document_page: old.document_page }
+            : {}),
+        ...(s.pageSize
+          ? {
+              page_size: sameData(pageSizeFromJson(old?.page_size), s.pageSize)
+                ? old?.page_size
+                : JSON.stringify(s.pageSize),
+            }
+          : old?.page_size !== undefined
+            ? { page_size: null }
             : {}),
       });
       const list: ElementRow[] = s.elements.map((el) => {

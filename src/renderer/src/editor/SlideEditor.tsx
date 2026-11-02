@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { EditDoc } from '../../../shared/slide-edit';
-import { slidesOf } from '../../../shared/slide-edit';
+import type { TextElement } from '../../../shared/model';
+import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { renderEditedSlide } from '../../../shared/slide-design';
 import { SHOW_F_KEYS } from '../../../shared/keymap';
 import { isTyping } from '../operator/useKeymap';
@@ -39,12 +40,27 @@ import {
 import { FindPanel } from './FindPanel';
 import { Inspector } from './Inspector';
 import { MediaPicker, naturalSize } from './MediaPicker';
-import { addElement, changeSlide, findSlide, newMedia, placeOf, placeSlide, setSoundCue } from './ops';
+import {
+  addElement,
+  changeSlide,
+  findSlide,
+  mapElements,
+  newMedia,
+  placeOf,
+  placeSlide,
+  setSoundCue,
+  styleBox,
+} from './ops';
 import { ArrangeGroup, DesignGroup, InsertGroup, MotionGroup, SlidesGroup } from './Ribbon';
-import { finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
+import { activeText, finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
 import { WordsGroup } from './WordsGroup';
 import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
+import { PdfTools } from './PdfTools';
+import { SourceIssues } from './SourceIssues';
+import { isPdfPage, pdfEditorTabs, visibleEditorGroup } from './pdf-context';
+import { deletePdfPage, turnPdfPageRight } from './pdf-page-ops';
+import { restyle, selectedLook } from './runs-doc';
 
 /*
  * The slide editor (PLAN.md 5.2, Session 7), since Session 55 (Part 17a) in a window of its own, as a presentation
@@ -100,6 +116,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const canRedo = useEditor((s) => s.future.length > 0 || (s.editing !== null && s.typing.redo > 0));
   const dirty = useEditor(isDirty);
   const unreadable = useEditor((s) => s.unreadable);
+  const sourceIssues = useEditor((s) => s.sourceIssues);
+  const selection = useEditor((s) => s.selection);
+  const editing = useEditor((s) => s.editing);
+  useEditor((s) => s.textTick);
   const note = useEditor((s) => s.note);
   const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
   const [pickingBusy, setPickingBusy] = useState(false);
@@ -128,6 +148,54 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   }, []);
   const mac = platform === 'darwin';
   const mod = mac ? '⌘' : 'Ctrl+';
+  const pdfPage = isPdfPage(doc, slideId);
+  const shownGroup = visibleEditorGroup(group, pdfPage);
+  const shownPage = doc ? findSlide(doc, slideId) : undefined;
+  const pdfBoxes =
+    shownPage?.elements.filter(
+      (element): element is TextElement =>
+        element.kind === 'text' && selection.includes(element.id) && legacyFontOf(element) === null,
+    ) ?? [];
+  const pdfActive = editing && pdfBoxes.some((box) => box.id === editing) ? activeText() : null;
+  const wordLook = pdfActive ? selectedLook(pdfActive.view.state) : {};
+  const allMarked = (which: 'underline' | 'strike') =>
+    pdfBoxes.length > 0 &&
+    pdfBoxes.every((box) => (box.runs?.length ?? 0) > 0 && box.runs?.every((run) => run[which] === true));
+  const underlined = wordLook.underline ?? allMarked('underline');
+  const struckThrough = wordLook.strike ?? allMarked('strike');
+  const applyPdfMark = (which: 'underline' | 'strike') => {
+    const state = useEditor.getState();
+    const active = activeText();
+    const value = which === 'underline' ? !underlined : !struckThrough;
+    if (active && state.editing === active.elementId && !active.view.state.selection.empty) {
+      active.view.dispatch(restyle(active.view.state, { [which]: value }));
+      return;
+    }
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId) return;
+    commit(
+      mapElements(now.doc, now.slideId, now.selection, (element) =>
+        element.kind === 'text' && legacyFontOf(element) === null
+          ? styleBox(element, { [which]: value })
+          : element,
+      ),
+    );
+  };
+  const rotatePdfPage = () => {
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (now.doc && now.slideId) commit(turnPdfPageRight(now.doc, now.slideId));
+  };
+  const deleteCurrentPdfPage = () => {
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId) return;
+    const removed = deletePdfPage(now.doc, now.slideId);
+    if (!removed) return;
+    commit(removed.doc, { select: [] });
+    showSlide(removed.show);
+  };
 
   // Esc steps back: close find, stop typing, then let go of the selection, then close (asking first).
   useFocusTrap(root, () => {
@@ -215,8 +283,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         <Tabs
           group="editor"
           label="The editor’s groups"
-          items={GROUPS}
-          value={group}
+          items={pdfEditorTabs(GROUPS, pdfPage)}
+          value={shownGroup}
           size="sm"
           onChange={(next) => {
             useEditor.setState({ group: next });
@@ -257,11 +325,11 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       </header>
       <TabPanel
         group="editor"
-        id={group}
+        id={shownGroup}
         className="flex shrink-0 items-center overflow-x-auto border-b border-line bg-panel-2 px-3 py-1"
       >
-        <div data-testid="editor-ribbon" data-group={group} className="flex min-w-0 items-start">
-          {group === 'words' && (
+        <div data-testid="editor-ribbon" data-group={shownGroup} className="flex min-w-0 items-start">
+          {shownGroup === 'words' && (
             <WordsGroup
               findKbd={`${mod}F`}
               onFind={() => {
@@ -269,7 +337,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               }}
             />
           )}
-          {group === 'insert' && (
+          {shownGroup === 'insert' && (
             <InsertGroup
               onPicture={() => {
                 setPicking('picture');
@@ -277,10 +345,38 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onSound={() => setPicking('sound')}
             />
           )}
-          {group === 'arrange' && <ArrangeGroup />}
-          {group === 'design' && <DesignGroup key={slideId} />}
-          {group === 'motion' && <MotionGroup key={slideId} />}
-          {group === 'slides' && <SlidesGroup />}
+          {shownGroup === 'arrange' && <ArrangeGroup />}
+          {shownGroup === 'design' && <DesignGroup key={slideId} />}
+          {shownGroup === 'motion' && <MotionGroup key={slideId} />}
+          {shownGroup === 'slides' && <SlidesGroup />}
+          {shownGroup === 'pdf' && pdfPage && (
+            <PdfTools
+              available={{
+                highlight: false,
+                underline: pdfBoxes.length > 0,
+                strike: pdfBoxes.length > 0,
+                draw: false,
+                cover: false,
+                rotateRight:
+                  !!shownPage?.pageSize ||
+                  (shownPage?.documentPage?.width !== undefined &&
+                    shownPage.documentPage.height !== undefined &&
+                    !shownPage.documentPage.rotation),
+                deletePage: !!doc && slidesOf(doc).length > 1,
+                insertPages: false,
+                saveCopy: false,
+              }}
+              activeTool={null}
+              underlined={underlined}
+              struckThrough={struckThrough}
+              pending={null}
+              blocked={loading || saving || pickingBusy || sourceConversion !== null}
+              onUnderline={() => applyPdfMark('underline')}
+              onStrikeThrough={() => applyPdfMark('strike')}
+              onRotateRight={rotatePdfPage}
+              onDeletePage={deleteCurrentPdfPage}
+            />
+          )}
         </div>
       </TabPanel>
       {doc?.master?.id === slideId && (
@@ -331,6 +427,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           is kept as it is, but not shown here.
         </Notice>
       )}
+      <SourceIssues issues={sourceIssues} />
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (

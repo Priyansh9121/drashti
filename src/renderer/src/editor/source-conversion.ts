@@ -32,6 +32,7 @@ const content = (slide: EditSlide) => ({
   darken: slide.darken,
   cues: slide.cues,
   design: slide.design,
+  pageSize: slide.pageSize,
   pageWidth: slide.documentPage?.width,
   pageHeight: slide.documentPage?.height,
   pageRotation: slide.documentPage?.rotation,

@@ -19,7 +19,7 @@ import { convertSourceContent, SourceConversionGate, sourceContentChanges } from
  */
 
 /** The editor's groups along its top (Session 55, Part 17a). */
-export type EditorGroup = 'words' | 'insert' | 'arrange' | 'design' | 'motion' | 'slides';
+export type EditorGroup = 'words' | 'insert' | 'arrange' | 'design' | 'motion' | 'slides' | 'pdf';
 
 /**
  * A change the editor makes outside the presentation (Session 55, Part 17a): Drashti's default transition, a slide
@@ -53,6 +53,8 @@ export interface EditorView {
   stamp: string;
   look: SlideLook | null;
   unreadable: number;
+  /** Preparation limits for imported source objects, separate from unreadable stored elements. */
+  sourceIssues: string[];
   slideId: string | null;
   /** Selected elements on the slide shown. */
   selection: string[];
@@ -103,6 +105,7 @@ const closed: EditorView = {
   stamp: '',
   look: null,
   unreadable: 0,
+  sourceIssues: [],
   slideId: null,
   selection: [],
   editing: null,
@@ -221,6 +224,7 @@ export async function openSlideEditor(presentationId: string, name: string, slid
     stamp: result.stamp,
     look: result.look,
     unreadable: result.unreadable,
+    sourceIssues: result.sourceIssues ?? [],
     slideId: start?.id ?? null,
   });
 }

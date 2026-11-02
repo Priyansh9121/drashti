@@ -13,7 +13,7 @@ import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
 import type { DeckSlide } from './deck';
 import { deckSlideSchema } from './deck-schema';
 import { editorGuidesSchema, type EditorGuides } from './editor-guides';
-import { documentPageSchema, type DocumentPageRef } from './document-page';
+import { documentPageSchema, pageSizeSchema, type DocumentPageRef, type PageSize } from './document-page';
 
 /*
  * The slide editor's document (PLAN.md 5.2, Session 7): a presentation's
@@ -65,6 +65,7 @@ export function cueInputName(cue: { kind: string; mediaId: string | null; props:
 
 export interface EditSlide {
   documentPage?: DocumentPageRef;
+  pageSize?: PageSize;
   /** Main's opened occurrence, retained by an editor copy; never stored or sent to a player. */
   sourceOccurrenceId?: string;
   id: string;
@@ -232,6 +233,7 @@ const cueSchema: z.ZodType<EditCue> = z
 
 const slideSchema: z.ZodType<EditSlide> = z.object({
   documentPage: documentPageSchema.optional(),
+  pageSize: pageSizeSchema.optional(),
   sourceOccurrenceId: idSchema.optional(),
   guides: editorGuidesSchema.optional(),
   design: slideDesignSchema.optional(),

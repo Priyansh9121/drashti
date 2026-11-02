@@ -34,7 +34,7 @@ export function composeSlide(
 export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
   const own: RenderSlide = {
     id: slide.id,
-    ...editingCanvas(slide.documentPage, doc),
+    ...(slide.pageSize ?? editingCanvas(slide.documentPage, doc)),
     background: slide.background,
     elements: slide.elements,
     ...(slide.darken ? { darken: slide.darken } : {}),

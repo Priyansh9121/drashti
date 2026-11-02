@@ -25,7 +25,13 @@ import type { ItemOrder } from '../../shared/playlists';
 import type { Db } from './database';
 import type { ContentRows } from './content';
 import { readContent, transitionFromJson, transitionToJson, writeContent } from './content';
-import { documentCanvas, documentPageFromJson, type DocumentPageRef } from '../../shared/document-page';
+import {
+  documentCanvas,
+  documentPageFromJson,
+  pageSizeFromJson,
+  type DocumentPageRef,
+  type PageSize,
+} from '../../shared/document-page';
 import { SearchIndex } from './search';
 
 interface SourceColumns {
@@ -175,6 +181,7 @@ export function elementFromRow(row: ElementRow): SlideElement | null {
 
 export interface NewSlide {
   documentPage?: DocumentPageRef;
+  pageSize?: PageSize;
   label?: string;
   notes?: string;
   background?: string | null;
@@ -362,6 +369,7 @@ export class PresentationRepo {
       deck: string | null;
       editor_design?: string | null;
       document_page?: string | null;
+      page_size?: string | null;
     }[];
     const elements = this.db
       .prepare(
@@ -450,7 +458,7 @@ export class PresentationRepo {
       const slide = composeSlide(
         {
           id: s.id,
-          ...documentCanvas(documentPageFromJson(s.document_page), p),
+          ...(pageSizeFromJson(s.page_size) ?? documentCanvas(documentPageFromJson(s.document_page), p)),
           background: s.background,
           // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
           ...(darken ? { darken } : {}),
@@ -660,6 +668,8 @@ export class PresentationRepo {
     const setDeck = anyDeck ? db.prepare('UPDATE slides SET deck = ? WHERE id = ?') : null;
     const anyDocument = input.groups.some((g) => g.slides.some((sl) => sl.documentPage));
     const setDocument = anyDocument ? db.prepare('UPDATE slides SET document_page = ? WHERE id = ?') : null;
+    const anyPageSize = input.groups.some((g) => g.slides.some((sl) => sl.pageSize));
+    const setPageSize = anyPageSize ? db.prepare('UPDATE slides SET page_size = ? WHERE id = ?') : null;
     const insertElement = db.prepare(
       'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, rotation, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
@@ -686,6 +696,7 @@ export class PresentationRepo {
         );
         if (setDeck && slide.deck) setDeck.run(deckToJson(slide.deck), slideId);
         if (setDocument && slide.documentPage) setDocument.run(JSON.stringify(slide.documentPage), slideId);
+        if (setPageSize && slide.pageSize) setPageSize.run(JSON.stringify(slide.pageSize), slideId);
         slide.elements.forEach((element, ei) => {
           const { id: _id, kind, frame, rotation, ...props } = element;
           insertElement.run(
