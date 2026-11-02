@@ -149,9 +149,9 @@ test('Motion keeps per-element in, emphasis and out times as well as the slide t
       elements: [
         expect.objectContaining({
           motion: {
-            in: { kind: 'fade', durationMs: 1000 },
-            emphasis: { kind: 'pulse', delayMs: 1500 },
-            out: { kind: 'fade', delayMs: 4000 },
+            in: { kind: 'fade', delayMs: 0, durationMs: 1000 },
+            emphasis: { kind: 'pulse', delayMs: 1500, durationMs: 600 },
+            out: { kind: 'fade', delayMs: 4000, durationMs: 600 },
           },
         }),
       ],
