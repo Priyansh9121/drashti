@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   DARKEN_STRENGTHS,
+  MAX_TRANSITION_MS,
   TRANSITION_KINDS,
   TRANSITION_NAMES,
   type TransitionKind,
@@ -41,7 +42,15 @@ import {
 import type { Icon } from '../ui/icons';
 import type { MenuPlace } from '../ui/Menu';
 import { Menu } from '../ui/Menu';
-import { commit, noteMade, showSlide, startEditing, useEditor } from './editor-store';
+import {
+  commit,
+  currentLook,
+  noteMade,
+  showSlide,
+  startEditing,
+  useEditor,
+  useEditorLook,
+} from './editor-store';
 import type { Alignment } from './geometry';
 import { arrangementUnits, lineUpElements, spaceElements } from './arrange-ops';
 import type { Arrange, ShapeChoice } from './ops';
@@ -67,6 +76,9 @@ import { InsertTools } from './InsertTools';
 import { ArrangeTools } from './ArrangeTools';
 import { TimerForm } from '../operator/TimerForm';
 import { Dialog } from '../ui/Dialog';
+import { DesignTools } from './DesignTools';
+import { MotionTools } from './MotionTools';
+import { SlidesTools } from './SlidesTools';
 
 /*
  * The slide editor's groups along its top besides Words (Session 55, Part 17a, run 1), each a row of tools in clusters,
@@ -132,8 +144,9 @@ export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onS
     add(() => {
       const s = useEditor.getState();
       const at = shownSlide();
-      if (!s.doc || !s.look || !at) return;
-      const box = newTextBox(s.look);
+      const look = currentLook();
+      if (!s.doc || !look || !at) return;
+      const box = newTextBox(look);
       noteMade(box.id);
       commit(addElement(s.doc, at.id, box), { select: [box.id] });
       useEditor.setState({ group: 'words' });
@@ -144,8 +157,9 @@ export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onS
     add(() => {
       const s = useEditor.getState();
       const at = shownSlide();
-      if (!s.doc || !s.look || !at) return;
-      const shape = newShape(choice, s.look, s.doc);
+      const look = currentLook();
+      if (!s.doc || !look || !at) return;
+      const shape = newShape(choice, look, s.doc);
       commit(addElement(s.doc, at.id, shape), { select: [shape.id] });
     });
   };
@@ -154,7 +168,7 @@ export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onS
       const s = useEditor.getState();
       const at = shownSlide();
       if (!s.doc || !at) return;
-      const el = newTimerElement(timerId, s.look, s.doc);
+      const el = newTimerElement(timerId, currentLook(), s.doc);
       commit(addElement(s.doc, at.id, el), { select: [el.id] });
     });
   };
@@ -368,6 +382,7 @@ export function ArrangeGroup() {
 
 /** Design: the slide's colour behind it and the darkening behind its words, quick (all of it in the side panel). */
 export function DesignGroup() {
+  const master = useEditor((s) => s.doc?.master?.id === s.slideId);
   const slide = useEditor((s) => (s.doc ? findSlide(s.doc, s.slideId) : undefined));
   const set = (patch: Parameters<typeof changeSlide>[2], coalesce?: string) => {
     const now = useEditor.getState().doc;
@@ -406,7 +421,7 @@ export function DesignGroup() {
           aria-label="Darken behind the words"
           data-testid="design-darken"
           className="w-44"
-          disabled={off}
+          disabled={off || master}
           value={slide?.darken?.kind ?? 'none'}
           onChange={(e) => {
             const kind = e.target.value;
@@ -426,7 +441,7 @@ export function DesignGroup() {
           aria-label="How dark"
           data-testid="design-darken-strength"
           className="w-20"
-          disabled={off || !slide.darken}
+          disabled={off || master || !slide.darken}
           value={String(slide?.darken?.strength ?? 0.6)}
           onChange={(e) => {
             const kind = slide?.darken?.kind ?? 'band';
@@ -440,12 +455,14 @@ export function DesignGroup() {
           ))}
         </Select>
       </Cluster>
+      <DesignTools key={slide?.id} />
     </div>
   );
 }
 
 /** Motion: how the slide comes on, and whether it moves on by itself, quick (as in the side panel). */
 export function MotionGroup() {
+  const master = useEditor((s) => s.doc?.master?.id === s.slideId);
   const slide = useEditor((s) => (s.doc ? findSlide(s.doc, s.slideId) : undefined));
   const set = (patch: Parameters<typeof changeSlide>[2], coalesce?: string) => {
     const now = useEditor.getState().doc;
@@ -455,42 +472,75 @@ export function MotionGroup() {
   const deck = slide?.deck !== undefined;
   const transition = slide?.transition ?? null;
   const [seconds, setSeconds] = useState<string | null>(null);
+  const [taking, setTaking] = useState<string | null>(null);
   return (
     <div className="flex min-w-0 items-start" data-testid="motion-group">
       <Cluster name="Comes on with">
-        <Select
-          aria-label="Comes on with"
-          data-testid="motion-transition"
-          className="w-44"
-          disabled={!slide || deck}
-          title={deck ? 'A deck’s slide: its transitions are in the side panel.' : undefined}
-          value={transition?.kind ?? 'none'}
-          onChange={(e) => {
-            const v = e.target.value;
-            set(
-              {
-                transition:
-                  v === 'none'
-                    ? null
-                    : v === 'cut'
-                      ? { kind: 'cut', durationMs: 0 }
-                      : {
-                          kind: v as TransitionKind,
-                          durationMs: transition && transition.kind !== 'cut' ? transition.durationMs : 800,
-                        },
-              },
-              `transition:${slide?.id ?? ''}`,
-            );
-          }}
-        >
-          <option value="none">The presentation’s</option>
-          <option value="cut">Cut (at once)</option>
-          {TRANSITION_KINDS.filter((k) => k !== 'cut').map((k) => (
-            <option key={k} value={k}>
-              {TRANSITION_NAMES[k]}
-            </option>
-          ))}
-        </Select>
+        <div className="flex flex-col gap-1">
+          <Select
+            aria-label="Comes on with"
+            data-testid="motion-transition"
+            className="w-44"
+            disabled={!slide || deck || master}
+            title={deck ? 'A deck’s slide: its transitions are in the side panel.' : undefined}
+            value={transition?.kind ?? 'none'}
+            onChange={(e) => {
+              const v = e.target.value;
+              set(
+                {
+                  transition:
+                    v === 'none'
+                      ? null
+                      : v === 'cut'
+                        ? { kind: 'cut', durationMs: 0 }
+                        : {
+                            kind: v as TransitionKind,
+                            durationMs: transition && transition.kind !== 'cut' ? transition.durationMs : 800,
+                          },
+                },
+                `transition:${slide?.id ?? ''}`,
+              );
+            }}
+          >
+            <option value="none">The presentation’s</option>
+            <option value="cut">Cut (at once)</option>
+            {TRANSITION_KINDS.filter((k) => k !== 'cut').map((k) => (
+              <option key={k} value={k}>
+                {TRANSITION_NAMES[k]}
+              </option>
+            ))}
+          </Select>
+          <NumberInput
+            aria-label="Transition takes (seconds)"
+            data-testid="motion-transition-seconds"
+            className="h-7 w-20"
+            unit="s"
+            min={0.1}
+            max={MAX_TRANSITION_MS / 1000}
+            step={0.1}
+            disabled={!slide || deck || master || !transition || transition.kind === 'cut'}
+            value={taking ?? String((transition?.durationMs ?? 800) / 1000)}
+            onFocus={() => setTaking(String((transition?.durationMs ?? 800) / 1000))}
+            onBlur={() => setTaking(null)}
+            onChange={(e) => {
+              setTaking(e.target.value);
+              const n = Number(e.target.value);
+              const now = shownSlide()?.transition;
+              if (
+                e.target.value.trim() &&
+                Number.isFinite(n) &&
+                n >= 0.1 &&
+                n * 1000 <= MAX_TRANSITION_MS &&
+                now &&
+                now.kind !== 'cut'
+              )
+                set(
+                  { transition: { ...now, durationMs: Math.round(n * 1000) } },
+                  `transition:${slide?.id ?? ''}`,
+                );
+            }}
+          />
+        </div>
       </Cluster>
       <Divider />
       <Cluster name="Moves on by itself">
@@ -498,7 +548,7 @@ export function MotionGroup() {
           type="checkbox"
           aria-label="Moves on by itself"
           data-testid="motion-auto"
-          disabled={!slide}
+          disabled={!slide || master}
           checked={slide?.autoAdvanceMs != null}
           onChange={(e) => {
             set({ autoAdvanceMs: e.target.checked ? 5000 : null });
@@ -513,7 +563,7 @@ export function MotionGroup() {
           min={0.5}
           max={3600}
           step={0.5}
-          disabled={(slide?.autoAdvanceMs ?? null) === null}
+          disabled={master || (slide?.autoAdvanceMs ?? null) === null}
           value={seconds ?? String((slide?.autoAdvanceMs ?? 5000) / 1000)}
           onFocus={() => {
             setSeconds(String((slide?.autoAdvanceMs ?? 5000) / 1000));
@@ -529,6 +579,7 @@ export function MotionGroup() {
           }}
         />
       </Cluster>
+      <MotionTools key={slide?.id} />
     </div>
   );
 }
@@ -537,9 +588,10 @@ export function MotionGroup() {
 export function SlidesGroup() {
   const doc = useEditor((s) => s.doc);
   const current = useEditor((s) => s.slideId);
-  const theme = useEditor((s) => s.look);
+  const theme = useEditorLook();
+  const master = doc?.master?.id === current;
   const [timerSlide, setTimerSlide] = useState(false);
-  const slide = doc ? findSlide(doc, current) : undefined;
+  const slide = doc && !master ? findSlide(doc, current) : undefined;
   const all = doc ? slidesOf(doc) : [];
   const numbers = new Map(all.map((s, i) => [s.id, i + 1]));
   const act = (
@@ -550,13 +602,16 @@ export function SlidesGroup() {
   ) => {
     finishTextEditing();
     const s = useEditor.getState();
-    if (!s.doc || !s.slideId) return;
+    if (!s.doc || !s.slideId || s.doc.master?.id === s.slideId) return;
     const done = fn(s.doc, s.slideId);
     if (!done) return;
     commit(done.doc, { select: [] });
     if (done.show) showSlide(done.show);
   };
-  const look = () => useEditor.getState().look;
+  const look = () => {
+    const value = currentLook();
+    return value && useEditor.getState().doc?.master ? { ...value, background: null } : value;
+  };
   return (
     <div className="flex min-w-0 items-start" data-testid="slides-group">
       <Cluster name="New">
@@ -589,7 +644,7 @@ export function SlidesGroup() {
           size="sm"
           label="New group"
           data-testid="group-new"
-          disabled={!doc}
+          disabled={!doc || master}
           onClick={() => {
             act((d) => {
               const made = addGroup(d, 'New group', look());
@@ -667,6 +722,7 @@ export function SlidesGroup() {
           }}
         />
       </Cluster>
+      <SlidesTools />
       {timerSlide && doc && (
         <NewTimerSlideDialog
           where={`after slide ${String(current ? (numbers.get(current) ?? all.length) : all.length)}`}

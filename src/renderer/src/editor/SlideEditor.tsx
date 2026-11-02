@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { RenderSlide } from '../../../shared/model';
-import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
+import type { EditDoc } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
+import { renderEditedSlide } from '../../../shared/slide-design';
 import { SHOW_F_KEYS } from '../../../shared/keymap';
 import { isTyping } from '../operator/useKeymap';
 import { loadMedia } from '../library/library-store';
@@ -69,13 +69,7 @@ export function SlideEditor({ platform }: { platform: string }) {
 }
 
 /** As the renderer sees a slide being edited. */
-const renderSlide = (doc: EditDoc, s: EditSlide): RenderSlide => ({
-  id: s.id,
-  width: doc.width,
-  height: doc.height,
-  background: s.background,
-  elements: s.elements,
-});
+const renderSlide = renderEditedSlide;
 
 function Editor({ platform, name }: { platform: string; name: string }) {
   const root = useRef<HTMLDivElement>(null);
@@ -88,6 +82,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const askDiscard = useEditor((s) => s.askDiscard);
   const steps = useEditor((s) => s.past.length);
   const group = useEditor((s) => s.group);
+  const strip = useEditor((s) => s.strip);
   const finding = useEditor((s) => s.finding);
   // Its slide is on the screens now: saving changes them at once.
   const presentationId = useEditor((s) => s.open?.presentationId);
@@ -276,11 +271,36 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             />
           )}
           {group === 'arrange' && <ArrangeGroup />}
-          {group === 'design' && <DesignGroup />}
-          {group === 'motion' && <MotionGroup />}
+          {group === 'design' && <DesignGroup key={slideId} />}
+          {group === 'motion' && <MotionGroup key={slideId} />}
           {group === 'slides' && <SlidesGroup />}
         </div>
       </TabPanel>
+      {doc?.master?.id === slideId && (
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 border-b border-second/30 bg-second/10 px-3 py-1"
+          data-testid="editor-master-banner"
+        >
+          <p className="text-sm text-fg">
+            Editing the master — shared behind this presentation’s own slides.
+          </p>
+          <Button
+            size="sm"
+            data-testid="master-done"
+            onClick={() => {
+              finishTextEditing();
+              const s = useEditor.getState();
+              const target =
+                s.masterReturnId && s.doc && findSlide(s.doc, s.masterReturnId)
+                  ? s.masterReturnId
+                  : s.doc?.groups.flatMap((g) => g.slides)[0]?.id;
+              if (target) showSlide(target);
+            }}
+          >
+            Done editing master
+          </Button>
+        </div>
+      )}
       {problem && (
         <Notice tone="danger" className="m-2">
           {problem}
@@ -307,19 +327,22 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (
-        <main className="flex min-h-0 flex-1" aria-label="The slides">
-          <SlideList doc={doc} current={slideId} />
-          <div className="relative flex min-w-0 flex-1">
-            <Canvas platform={platform} />
-            {finding && (
-              <FindPanel
-                onClose={() => {
-                  useEditor.setState({ finding: false });
-                }}
-              />
-            )}
+        <main className="flex min-h-0 flex-1 flex-col" aria-label="The slides">
+          <div className="flex min-h-0 flex-1">
+            {!strip && <SlideList doc={doc} current={slideId} />}
+            <div className="relative flex min-w-0 flex-1">
+              <Canvas platform={platform} />
+              {finding && (
+                <FindPanel
+                  onClose={() => {
+                    useEditor.setState({ finding: false });
+                  }}
+                />
+              )}
+            </div>
+            <Inspector />
           </div>
-          <Inspector />
+          {strip && <SlideList doc={doc} current={slideId} horizontal />}
         </main>
       )}
       {picking && (
@@ -408,7 +431,15 @@ function zoomBy(way: 'in' | 'out'): void {
 }
 
 /** The slides, group by group: the one being edited is marked; click another to edit it, drag to move it. */
-function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
+function SlideList({
+  doc,
+  current,
+  horizontal = false,
+}: {
+  doc: EditDoc;
+  current: string | null;
+  horizontal?: boolean;
+}) {
   const numbers = new Map(slidesOf(doc).map((s, i) => [s.id, i + 1]));
   const [dragging, setDragging] = useState<string | null>(null);
   // Slides with words past a box (Sessions 31–36, SLD-1), marked on their thumbnails.
@@ -433,14 +464,23 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
   return (
     <nav
       aria-label="Slides"
-      className="flex w-44 shrink-0 flex-col border-r border-line bg-panel xl:w-52"
+      className={
+        horizontal
+          ? 'h-40 w-full shrink-0 border-t border-line bg-panel'
+          : 'flex w-44 shrink-0 flex-col border-r border-line bg-panel xl:w-52'
+      }
       data-testid="editor-slides"
+      data-direction={horizontal ? 'across' : 'down'}
     >
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div
+        className={
+          horizontal ? 'flex h-full gap-4 overflow-x-auto p-2' : 'min-h-0 flex-1 overflow-y-auto p-2'
+        }
+      >
         {doc.groups.map((g) => (
           <section
             key={g.id}
-            className="mb-3"
+            className={horizontal ? 'shrink-0' : 'mb-3'}
             aria-label={g.name || 'Slides without a group name'}
             data-testid="editor-group"
             data-group={g.name}
@@ -463,7 +503,7 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
               />
               <Truncate text={g.name || 'No name'} />
             </h3>
-            <ol className="space-y-2">
+            <ol className={horizontal ? 'flex gap-2' : 'space-y-2'}>
               {g.slides.map((s, index) => {
                 const n = numbers.get(s.id) ?? 0;
                 const here = s.id === current;
@@ -471,14 +511,25 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
                 return (
                   <li
                     key={s.id}
-                    className={cx('rounded-md', marker && 'shadow-[0_-3px_0_0_var(--color-accent)]')}
+                    className={cx(
+                      'rounded-md',
+                      horizontal && 'w-36 shrink-0',
+                      marker &&
+                        (horizontal
+                          ? 'shadow-[-3px_0_0_0_var(--color-accent)]'
+                          : 'shadow-[0_-3px_0_0_var(--color-accent)]'),
+                    )}
                     onDragOver={(e) => {
                       if (!dragging) return;
                       e.preventDefault();
                       const r = e.currentTarget.getBoundingClientRect();
                       setDropAt({
                         groupId: g.id,
-                        index: e.clientY > r.top + r.height / 2 ? index + 1 : index,
+                        index: (
+                          horizontal ? e.clientX > r.left + r.width / 2 : e.clientY > r.top + r.height / 2
+                        )
+                          ? index + 1
+                          : index,
                       });
                     }}
                   >
@@ -490,6 +541,7 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
                       aria-current={here ? 'true' : undefined}
                       aria-label={`Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}`}
                       onDragStart={(e) => {
+                        finishTextEditing();
                         e.dataTransfer.effectAllowed = 'move';
                         e.dataTransfer.setData('text/plain', s.id);
                         setDragging(s.id);

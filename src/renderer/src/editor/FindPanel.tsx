@@ -169,7 +169,8 @@ export function FindPanel({ onClose }: { onClose: () => void }) {
         </span>
         {match && context && (
           <span className="min-w-0 truncate" data-testid="find-where">
-            Slide {numbers.get(match.slideId) ?? ''}: {context.before}
+            {doc?.master?.id === match.slideId ? 'Master' : `Slide ${numbers.get(match.slideId) ?? ''}`}:{' '}
+            {context.before}
             <mark className="rounded-sm bg-second/30 px-0.5 text-fg">{context.words}</mark>
             {context.after}
           </span>

@@ -131,15 +131,42 @@ describe('Design and Motion saved from the slide editor', () => {
   it('keeps a slide’s existing picture cue in front of the master’s background', () => {
     const t = setup();
     try {
-      t.db.prepare('INSERT INTO media (id, kind, name, path) VALUES (?, ?, ?, ?)').run('placeholder-own-picture', 'image', 'Placeholder own picture', 'placeholder.png');
+      t.db
+        .prepare('INSERT INTO media (id, kind, name, path) VALUES (?, ?, ?, ?)')
+        .run('placeholder-own-picture', 'image', 'Placeholder own picture', 'placeholder.png');
       const slide = t.doc.groups[0]?.slides[0];
       if (!slide) throw new Error('no slide');
       const master = { ...slide, id: 'placeholder-master', background: '#445566', elements: [], cues: [] };
-      const doc = { ...t.doc, master, groups: [{ ...t.doc.groups[0], slides: [{ ...slide, background: null, cues: [{ id: 'placeholder-background-cue', kind: 'background' as const, label: '', mediaId: 'placeholder-own-picture', props: '{"media":"image","fit":"fill"}' }] }] }] };
+      const doc = {
+        ...t.doc,
+        master,
+        groups: [
+          {
+            ...t.doc.groups[0],
+            slides: [
+              {
+                ...slide,
+                background: null,
+                cues: [
+                  {
+                    id: 'placeholder-background-cue',
+                    kind: 'background' as const,
+                    label: '',
+                    mediaId: 'placeholder-own-picture',
+                    props: '{"media":"image","fit":"fill"}',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
       t.repo.setContent(applySlideEdit(t.before, editDocSchema.parse(doc)));
       const read = t.repo.get(t.id)?.groups[0]?.slides[0];
       expect(read?.cues).toHaveLength(1);
       expect(read?.slide.background).toBeNull();
-    } finally { t.db.close(); }
+    } finally {
+      t.db.close();
+    }
   });
 });

@@ -81,6 +81,7 @@ export function MediaPicker({
   onClose,
   sounds = false,
   busy = false,
+  picturesOnly = false,
 }: {
   title: string;
   onChoose: (media: MediaSummary) => void;
@@ -91,6 +92,7 @@ export function MediaPicker({
   sounds?: boolean;
   /** A chosen picture or video is being placed; Cancel still closes the picker. */
   busy?: boolean;
+  picturesOnly?: boolean;
 }) {
   const inputs = useVideoInputs((s) => s.inputs) ?? NO_INPUTS;
   const media = useMedia((s) => s.media);
@@ -102,10 +104,14 @@ export function MediaPicker({
     () =>
       media.filter(
         (m) =>
-          (sounds ? m.kind === 'audio' || m.kind === 'video' : m.kind === 'image' || m.kind === 'video') &&
+          (picturesOnly
+            ? m.kind === 'image'
+            : sounds
+              ? m.kind === 'audio' || m.kind === 'video'
+              : m.kind === 'image' || m.kind === 'video') &&
           m.name.toLowerCase().includes(query.trim().toLowerCase()),
       ),
-    [media, query, sounds],
+    [media, query, sounds, picturesOnly],
   );
   return (
     <Dialog

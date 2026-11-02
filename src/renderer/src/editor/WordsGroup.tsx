@@ -35,7 +35,7 @@ import type { MenuPlace } from '../ui/Menu';
 import { Menu, menuBelow } from '../ui/Menu';
 import { Toggle } from '../ui/Toggle';
 import { Cluster, Divider } from './RibbonParts';
-import { commit, useEditor } from './editor-store';
+import { commit, useEditor, useEditorLook } from './editor-store';
 import type { BoxPatch, TextPatch } from './ops';
 import { findSlide, mapElements, styleBox } from './ops';
 import {
@@ -182,7 +182,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
   const slideId = useEditor((s) => s.slideId);
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
-  const theme = useEditor((s) => s.look);
+  const theme = useEditorLook();
   // The look at the caret changes as words are typed and selected.
   useEditor((s) => s.textTick);
   const [listMenu, setListMenu] = useState<{ at: MenuPlace; kind: 'bullets' | 'numbers' } | null>(null);

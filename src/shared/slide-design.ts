@@ -6,14 +6,16 @@ export function composeSlide(
   slide: RenderSlide,
   design: SlideDesign | undefined,
   master: EditSlide | null | undefined,
+  ownsBackground = false,
 ): RenderSlide {
   if (slide.deck) return slide;
   const behind = design?.skipMaster ? null : master;
-  const backdrop = design?.backdrop ?? (slide.background === null ? behind?.design?.backdrop : undefined);
+  const backdrop =
+    design?.backdrop ?? (slide.background === null && !ownsBackground ? behind?.design?.backdrop : undefined);
   if (!design && !behind) return slide;
   return {
     ...slide,
-    background: slide.background ?? behind?.background ?? null,
+    background: slide.background ?? (ownsBackground ? null : behind?.background) ?? null,
     ...(backdrop ? { backdrop } : {}),
     ...(behind
       ? {
@@ -38,5 +40,10 @@ export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
     ...(slide.darken ? { darken: slide.darken } : {}),
     ...(slide.deck ? { deck: slide.deck } : {}),
   };
-  return composeSlide(own, slide.design, doc.master?.id === slide.id ? null : doc.master);
+  return composeSlide(
+    own,
+    slide.design,
+    doc.master?.id === slide.id ? null : doc.master,
+    slide.cues.some((c) => c.kind === 'background'),
+  );
 }

@@ -187,7 +187,14 @@ export function Inspector() {
             Choose something on the slide to change it, or add a text box, a shape, a picture or a video from
             Insert along the top.
           </p>
-          <SlidePanel doc={doc} slide={slide} />
+          {doc.master?.id === slide.id ? (
+            <p className="p-3 text-sm text-muted">
+              This master sits behind the presentation’s own slides. Use Insert, Words and Arrange here;
+              Design changes its background. Done editing master returns to the slide.
+            </p>
+          ) : (
+            <SlidePanel doc={doc} slide={slide} />
+          )}
         </>
       ) : (
         <>

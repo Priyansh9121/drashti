@@ -457,6 +457,7 @@ export class PresentationRepo {
         },
         slideDesignFromJson(s.editor_design),
         master,
+        (cuesBySlide.get(s.id) ?? []).some((c) => c.kind === 'background'),
       );
       const info: SlideInfo = {
         id: s.id,

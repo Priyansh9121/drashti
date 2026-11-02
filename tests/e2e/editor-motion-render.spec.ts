@@ -169,6 +169,9 @@ for (const engine of ['webkit', 'chromium'] as const)
       await expect(phone.page.getByTestId('remote-live')).toBeVisible();
       await goLive(win, id, 0);
       for (const page of [hall, phone.page]) await expect(moving(page)).toHaveCount(1);
+      await expect
+        .poll(async () => Number(await moving(hall).getAttribute('data-motion-at')))
+        .toBeGreaterThanOrEqual(2000);
       const read = (page: Page) =>
         moving(page).evaluate((el) => ({
           at: Number(el.getAttribute('data-motion-at')),

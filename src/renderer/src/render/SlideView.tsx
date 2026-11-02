@@ -1,9 +1,10 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type VideoClips, videoClip, type VideoSeeks, videoSeek } from '../../../shared/engine/state';
 import { type PlaybackClip, type PlaybackSeek, stillUrl } from '../../../shared/media';
 import type {
   Glow,
+  ElementMotion,
   ListMark,
   MediaElement,
   Outline,
@@ -21,7 +22,9 @@ import { translitSource } from '../../../shared/tracks';
 import { OBJECT_FIT } from './media-style';
 import { type Playback, startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
-import { engineNow } from './clock';
+import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
+import { hasElementMotion, motionFrame } from '../../../shared/element-motion';
+import { wakeAt } from './wake-at';
 import { Looked } from './picture-looks';
 import { shapePath } from '../../../shared/shape-path';
 import { slideShowing } from '../../../shared/picture-look';
@@ -888,7 +891,7 @@ function SlidePicture({
   );
 }
 
-export function ElementView({
+function ElementBody({
   el,
   media = 'live',
   startedAt,
@@ -934,6 +937,116 @@ export function ElementView({
       deck={deck}
       deckStep={deckStep}
     />
+  );
+}
+
+function MovingElement({
+  el,
+  motion,
+  at,
+  children,
+}: {
+  el: SlideElement;
+  motion: ElementMotion;
+  at: number;
+  children: ReactNode;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    let frame = 0;
+    let cancelWake: () => void = () => undefined;
+    const tick = () => {
+      cancelAnimationFrame(frame);
+      cancelWake();
+      const elapsed = engineFrameNow() - at;
+      const f = motionFrame(motion, elapsed);
+      if (root.current) {
+        root.current.style.opacity = String(f.opacity);
+        root.current.style.transform = `translate(${f.x}px, ${f.y}px) rotate(${f.rotate}deg) scale(${f.scale})`;
+        root.current.dataset['motionAt'] = String(Math.max(0, Math.round(elapsed)));
+      }
+      if (clockHeld()) return;
+      if (f.moving) frame = requestAnimationFrame(tick);
+      else if (f.nextAt !== null) cancelWake = wakeAt(at + f.nextAt, engineNow, tick);
+    };
+    tick();
+    const off = onClockJump(tick);
+    return () => {
+      off();
+      cancelAnimationFrame(frame);
+      cancelWake();
+    };
+  }, [motion, at]);
+  return (
+    <div
+      ref={root}
+      data-element-motion={el.id}
+      style={{
+        position: 'absolute',
+        left: el.frame.x,
+        top: el.frame.y,
+        width: el.frame.width,
+        height: el.frame.height,
+        transformOrigin: 'center',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function ElementView(props: Parameters<typeof ElementBody>[0] & { previewAt?: number }) {
+  const at = props.previewAt ?? props.startedAt;
+  const motion = props.el.motion;
+  if (
+    !motion ||
+    !hasElementMotion(motion) ||
+    at === undefined ||
+    (props.media === 'still' && props.previewAt === undefined)
+  )
+    return <ElementBody {...props} />;
+  const el = { ...props.el, frame: { ...props.el.frame, x: 0, y: 0 } };
+  return (
+    <MovingElement el={props.el} motion={motion} at={at}>
+      <ElementBody {...props} el={el} />
+    </MovingElement>
+  );
+}
+
+/** The slide's own picture/gradient, shared by every live view and by the editor's still canvas. */
+export function SlideBackdropView({
+  slide,
+  media = 'still',
+}: {
+  slide: Pick<RenderSlide, 'id' | 'width' | 'height' | 'backdrop'>;
+  media?: MediaMode;
+}) {
+  const bg = slide.backdrop;
+  if (!bg) return null;
+  if (bg.kind === 'gradient')
+    return (
+      <div
+        data-slide-backdrop="gradient"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: `linear-gradient(${bg.angle}deg, ${bg.from}, ${bg.to})`,
+        }}
+      />
+    );
+  return (
+    <div data-slide-backdrop="picture" style={{ position: 'absolute', inset: 0 }}>
+      <ElementBody
+        el={{
+          id: `backdrop-${slide.id}`,
+          kind: 'image',
+          mediaId: bg.mediaId,
+          fit: bg.fit,
+          frame: { x: 0, y: 0, width: slide.width, height: slide.height },
+        }}
+        media={media}
+      />
+    </div>
   );
 }
 
@@ -997,6 +1110,7 @@ export const SlideView = memo(function SlideView({
           background: text === 'only' ? 'transparent' : (slide.background ?? 'transparent'),
         }}
       >
+        {text !== 'only' && <SlideBackdropView slide={slide} media={media} />}
         {slide.elements.map((el) => [
           // The whole picture darkened (Sessions 31–36, SLD-3): over everything before the first words (a
           // picture, the colour, the background layer's video under the slide), under the words.

@@ -67,7 +67,11 @@ export function lowerThirdOf(
   slide: RenderSlide,
   languages: readonly Lang[] | null,
 ): { lines: LowerThirdLine[]; total: number } {
-  if (slide.fullSlide || slide.elements.some((e) => e.kind === 'timer' || hasElementMotion(e.motion)))
+  if (
+    slide.fullSlide ||
+    slide.backdrop ||
+    slide.elements.some((e) => e.kind === 'timer' || hasElementMotion(e.motion))
+  )
     return { lines: [], total: 0 };
   const shown = languageView(slide, languages);
   const source = slide.translitOf ?? translitSource(slide.elements);
@@ -96,6 +100,7 @@ export function lowerThird(slide: RenderSlide, languages: readonly Lang[] | null
  */
 export const hasPicture = (slide: RenderSlide): boolean =>
   slide.fullSlide === true ||
+  slide.backdrop !== undefined ||
   slide.elements.some(
     (e) => e.kind === 'image' || e.kind === 'video' || e.kind === 'timer' || hasElementMotion(e.motion),
   );

@@ -1,10 +1,12 @@
 import { create } from 'zustand';
+import { useMemo } from 'react';
 import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
 import type { Zoom } from './zoom';
 import { groupedSelection } from '../../../shared/element-groups';
+import { sizeLook } from '../../../shared/slide-size';
 
 /*
  * The slide editor: the presentation being edited (a copy, changed freely
@@ -84,6 +86,9 @@ export interface EditorView {
   typing: { undo: number; redo: number };
   /** Editor view aids; guides themselves are saved on their slide. */
   aids: { snap: boolean; guides: boolean; rulers: boolean; grid: boolean };
+  strip: boolean;
+  masterReturnId: string | null;
+  previewAt: number | null;
 }
 
 const closed: EditorView = {
@@ -114,9 +119,32 @@ const closed: EditorView = {
   finding: false,
   typing: { undo: 0, redo: 0 },
   aids: { snap: true, guides: false, rulers: false, grid: false },
+  strip: false,
+  masterReturnId: null,
+  previewAt: null,
 };
 
 export const useEditor = create<EditorView>(() => closed);
+
+export function currentLook(): SlideLook | null {
+  const s = useEditor.getState();
+  return s.look && s.doc && s.opened ? sizeLook(s.look, s.opened, s.doc) : s.look;
+}
+
+export function useEditorLook(): SlideLook | null {
+  const look = useEditor((s) => s.look);
+  const fromWidth = useEditor((s) => s.opened?.width);
+  const fromHeight = useEditor((s) => s.opened?.height);
+  const width = useEditor((s) => s.doc?.width);
+  const height = useEditor((s) => s.doc?.height);
+  return useMemo(
+    () =>
+      look && fromWidth && fromHeight && width && height
+        ? sizeLook(look, { width: fromWidth, height: fromHeight }, { width, height })
+        : look,
+    [look, fromWidth, fromHeight, width, height],
+  );
+}
 
 export const isDirty = (s: EditorView): boolean => s.doc !== null && s.doc !== s.opened;
 
@@ -221,6 +249,7 @@ export function commit(next: EditDoc, options: { coalesce?: string; select?: str
     s.past.length > 0;
   useEditor.setState({
     doc: next,
+    previewAt: null,
     past: joins ? s.past : [...s.past.slice(1 - HISTORY), s.doc],
     future: [],
     coalesce: options.coalesce !== undefined ? { key: options.coalesce, at: now } : null,
@@ -231,7 +260,7 @@ export function commit(next: EditDoc, options: { coalesce?: string; select?: str
 /** Start a drag: changes until it ends are shown, and are one step for Undo. */
 export function beginGesture(): void {
   const s = useEditor.getState();
-  if (s.doc && !s.gesture) useEditor.setState({ gesture: s.doc });
+  if (s.doc && !s.gesture) useEditor.setState({ gesture: s.doc, previewAt: null });
 }
 
 /** The document while dragging (not a step yet). */
@@ -268,6 +297,7 @@ export function undo(): void {
   const slideId = findSlide(prev, s.slideId) ? s.slideId : (slidesOf(prev)[0]?.id ?? null);
   useEditor.setState({
     doc: prev,
+    previewAt: null,
     past: s.past.slice(0, -1),
     future: [s.doc, ...s.future],
     coalesce: null,
@@ -289,6 +319,7 @@ export function redo(): void {
   useEditor.setState({
     doc: next,
     past: [...s.past, s.doc],
+    previewAt: null,
     future: s.future.slice(1),
     coalesce: null,
     slideId,
@@ -312,6 +343,7 @@ export function select(ids: readonly string[]): void {
   const elements = findSlide(s.doc, s.slideId)?.elements ?? [];
   useEditor.setState({
     selection: validSelection(s.doc, s.slideId, groupedSelection(elements, ids)),
+    previewAt: null,
     editing: null,
   });
 }
@@ -319,11 +351,11 @@ export function select(ids: readonly string[]): void {
 export function showSlide(slideId: string): void {
   const s = useEditor.getState();
   if (!s.doc || !findSlide(s.doc, slideId)) return;
-  useEditor.setState({ slideId, selection: [], editing: null });
+  useEditor.setState({ slideId, selection: [], editing: null, previewAt: null });
 }
 
 export function startEditing(elementId: string): void {
-  useEditor.setState({ editing: elementId, selection: [elementId] });
+  useEditor.setState({ editing: elementId, selection: [elementId], previewAt: null });
 }
 
 /** Tell the operator something, in the editor. */

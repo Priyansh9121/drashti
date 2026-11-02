@@ -19,7 +19,14 @@ import {
   textBoxStyle,
   useShrinkToFit,
 } from '../render/SlideView';
-import { commit, redo as redoStep, stopEditing, undo as undoStep, useEditor } from './editor-store';
+import {
+  commit,
+  currentLook,
+  redo as redoStep,
+  stopEditing,
+  undo as undoStep,
+  useEditor,
+} from './editor-store';
 import { deleteElements, findSlide, mapElements } from './ops';
 import type { LineAttrs, Look } from './runs-doc';
 import {
@@ -202,7 +209,7 @@ function commitWords(view: EditorView, elementId: string, slideId: string): void
   const el = findSlide(s.doc, slideId)?.elements.find((e) => e.id === elementId);
   if (el?.kind !== 'text') return;
   const made = s.made.includes(elementId);
-  const next = withRuns(el, runsOf(view.state.doc), made ? (s.look?.langs ?? {}) : undefined);
+  const next = withRuns(el, runsOf(view.state.doc), made ? (currentLook()?.langs ?? {}) : undefined);
   if (made && next.text.trim() === '') {
     commit(deleteElements(s.doc, slideId, [elementId]), { select: [] });
     return;

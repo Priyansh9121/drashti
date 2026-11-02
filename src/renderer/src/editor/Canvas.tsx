@@ -7,7 +7,8 @@ import type { EditDoc } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
 import { MediaStill } from '../render/MediaStill';
-import { darkensBehind, ElementView } from '../render/SlideView';
+import { darkensBehind, ElementView, SlideBackdropView } from '../render/SlideView';
+import { renderEditedSlide } from '../../../shared/slide-design';
 import { TranslitSourceContext } from '../render/lang';
 import { translitSource } from '../../../shared/tracks';
 import { MeasureContext, type MeasureReport } from '../render/measure';
@@ -166,6 +167,7 @@ export function Canvas({ platform }: { platform: string }) {
   const editing = useEditor((s) => s.editing);
   const zoom = useEditor((s) => s.zoom);
   const aids = useEditor((s) => s.aids);
+  const previewAt = useEditor((s) => s.previewAt);
   const area = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const size = useElementSize(area);
@@ -240,6 +242,9 @@ export function Canvas({ platform }: { platform: string }) {
   const left = Math.max(PAD, (size.width - width) / 2);
   const top = Math.max(PAD, (size.height - height) / 2);
   const elements = slide.elements;
+  const rendered = renderEditedSlide(doc, slide);
+  const fixedIds = new Set(rendered.masterElementIds);
+  const fixed = rendered.elements.filter((el) => fixedIds.has(el.id));
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
   const wholeUnder = slide.darken?.kind === 'whole' ? elements.find(darkensBehind)?.id : undefined;
   const selected = elements.filter((e) => selection.includes(e.id));
@@ -688,14 +693,23 @@ export function Canvas({ platform }: { platform: string }) {
             <div
               data-a11y-picture
               data-testid="editor-slide"
+              data-preview-motion={previewAt === null ? undefined : 'true'}
               style={{
                 position: 'absolute',
                 inset: 0,
                 overflow: 'hidden',
-                background: slide.background ?? '#000000',
+                background: rendered.background ?? '#000000',
               }}
             >
               {background?.mediaId && <CueStill mediaId={background.mediaId} props={background.props} />}
+              <SlideBackdropView slide={rendered} />
+              {fixed.length > 0 && (
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} data-master-content="">
+                  {fixed.map((el) => (
+                    <ElementView key={el.id} el={el} media="still" previewAt={previewAt ?? undefined} />
+                  ))}
+                </div>
+              )}
               {/* Each text box's measure, for the inspector (words past the box, the size drawn); what the
                 slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4). */}
               <TranslitSourceContext.Provider value={translitSource(elements)}>
@@ -721,6 +735,7 @@ export function Canvas({ platform }: { platform: string }) {
                         key={el.id}
                         el={el}
                         media="still"
+                        previewAt={previewAt ?? undefined}
                         band={
                           slide.darken?.kind === 'band' && darkensBehind(el)
                             ? slide.darken.strength

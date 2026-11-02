@@ -5,7 +5,7 @@ import { Dialog } from '../ui/Dialog';
 import { Field, NumberInput } from '../ui/Field';
 import { Check, Crop, Heart, Music, Shapes, Star, Table2 } from '../ui/icons';
 import { Menu, type MenuPlace } from '../ui/Menu';
-import { commit, useEditor } from './editor-store';
+import { commit, currentLook, useEditor } from './editor-store';
 import { addElement, findSlide, mapElements } from './ops';
 import type { ShapeChoice } from './ops';
 import { tableElements } from './arrange-ops';
@@ -54,7 +54,7 @@ export function InsertTools({
           variant="ghost"
           icon={Music}
           data-testid="add-sound"
-          disabled={!slide}
+          disabled={!slide || doc?.master?.id === slide.id}
           onClick={() => {
             finishTextEditing();
             onSound();
@@ -138,8 +138,9 @@ function TableDialog({ onClose }: { onClose: () => void }) {
     columns <= 10;
   const add = () => {
     const s = useEditor.getState();
-    if (!s.doc || !s.look || !s.slideId || !valid) return;
-    const cells = tableElements(rows, columns, s.look, s.doc);
+    const look = currentLook();
+    if (!s.doc || !look || !s.slideId || !valid) return;
+    const cells = tableElements(rows, columns, look, s.doc);
     let doc = s.doc;
     for (const cell of cells) doc = addElement(doc, s.slideId, cell);
     commit(doc, { select: cells.map((el) => el.id) });
