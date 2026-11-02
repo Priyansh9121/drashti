@@ -284,6 +284,9 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 **Simple Mode on the Drashti computer.** The phone opens its one playlist and explains the limit once each time Simple Mode comes on. Use that playlist’s rows, Next and Back, the clears and Clear all, Put it back, Black-out, the Wallpaper, live zoom and Back to Whole; Play resumes what is paused. A Repeat Slides playlist starts only when it is that one playlist. A long press on its own rows offers Rename and Remove from playlist with Undo; wallpapers can be chosen, renamed and deleted with Undo. Pro-only controls are hidden or dimmed, and the computer refuses their requests too: another playlist, putting something up from Media or the library outside that playlist, music Pause or track changes, marker jumps, timers, messages, lower thirds, stage setup and other setup need Pro Mode. Taking something off the screens still works. A refusal names the permitted playlist; with Pro access it explains how to leave Simple Mode at the computer, and Simple-only access offers no way to Pro Mode.
 
 **The phone’s playlist tools.** A tap on a presentation, PDF or deck name folds its slide rows; a tap on a slide or file puts it up once. A long press opens that row’s menu, with Undo where it changes the playlist. Looking at or saving a picture on the phone works in either mode; Pro Mode adds the Picture editor, video-ending choices and quick pins; the phone can choose wallpapers too. On Show, swipe left for Next and right for Back; vertical scrolling and two-finger zoom do not advance. Pair phones and enable connections/files in Pro Mode before a Simple Mode rehearsal. The presenter guide gives the phone’s steps; files and photos in Simple Mode still go into Added from Phones, not its one playlist.
+![The phone’s picture row menu in Pro Mode](screenshots/phone-row-menu-375x812.png)
+
+![The same phone’s picture row menu in Simple Mode](screenshots/phone-simple-row-menu-375x812.png)
 
 ## 8. The network: firewalls and a fixed address
 
@@ -489,10 +492,19 @@ A **smart playlist** follows a folder on this computer (Session 26c): what Drash
 **Themes went in alpha.14**: the Themes button and the theme editor are gone, and so is the Theme step of **Set Up Screens…**. Nothing of them is lost. **A presentation keeps the look its theme gave it**: each language's font, size, weight, colour and shadow, where its first text box sits, and what is behind the words. Presentations given a built-in theme (Midnight, Saffron, Maroon and Gold and the others, each at least 7:1 against its background) keep it. **A new presentation** made in Drashti starts with the look of the library's default theme as it was (Drashti's own, unless another was made the default before alpha.14).
 
 **Changing the look** is the slide editor’s (**Edit slides…**, in a presentation’s right-click menu), now in its own window while the operator’s show controls remain available. **Words** has the bundled fonts, lists, language-safe text styles, shadow, outline and glow, and Find/Replace includes the master. **Insert** adds text, shapes, lines, arrows, editable icons, video and sound cues, reusable timers and tables: their grouped cells are ordinary text and shapes, double-clicked to write and Ungrouped to rearrange. **Crop picture** changes only this slide’s picture element; **Whole picture** resets it. **Arrange** aligns and spaces selections, groups them, changes front/back, turns or flips them, and offers snapping, per-slide guides, rulers and the editor-only grid. Undo/Redo covers typing and gestures, and saving waits for pending media; close or a presentation switch protects words still being typed.
+![The words group at 1280 × 720 with generated placeholder content](screenshots/editor-words-1280x720.png)
+
+![The insert group at 1280 × 720 with generated placeholder content](screenshots/editor-insert-1280x720.png)
+
+![The arrange group at 1280 × 720 with generated placeholder content](screenshots/editor-arrange-1280x720.png)
 
 **Design and a master.** **Design** chooses colour, gradient or picture backgrounds and their fit, a wide/standard/custom presentation size, and layouts that keep existing words and other content. Fit scales and centres the content; turning it off keeps its pixel positions and sizes. An imported deck’s size stays locked. One visual master sits behind the presentation’s own elements: **Use master** and **Use master background** choose inheritance per slide, and a slide’s own background takes priority; sound, slide transitions and notes belong to the slides, not the master. **Give every slide this slide’s look** and Undo remain available.
+![The design group at 1280 × 720 with generated placeholder content](screenshots/editor-design-1280x720.png)
 
 **Motion and slides.** **Motion** sets a slide’s transition, duration and automatic advance, and an element’s **Comes in**, **Draws attention** and **Goes out**, each timed from the slide going up. Preview uses the same drawing as the hall, node, phone and Program; a designed or animated canvas stays whole in their layouts. **Slides** offers new/duplicate/delete/hide, **Slides across** to drag the order with one Undo, and **Notes…** even with a box selected. Notes go to stage/phone, never the audience picture. Clearing a crop, flip, group or effect remains cleared after saving and reopening; older presentations retain their playback.
+![The motion group at 1280 × 720 with generated placeholder content](screenshots/editor-motion-1280x720.png)
+
+![The slides group at 1280 × 720 with generated placeholder content](screenshots/editor-slides-1280x720.png)
 
 ## 17. Events out
 

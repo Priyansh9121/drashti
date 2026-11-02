@@ -466,24 +466,23 @@ Zooming the picture on the screens has no key either: scroll or pinch over the *
 
 In the slide editor:
 
-| Key                                                  | What it does                                                                              |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Tab** / **Shift+Tab**                              | Select the next (or previous) thing on the slide                                          |
-| **← → ↑ ↓**                                          | Move what is selected one pixel (with **Shift**, ten)                                     |
-| **Enter**                                            | Type in the selected words (double-click them, too)                                       |
-| **Esc**                                              | Stop typing; then let go of the selection; then close (asking first if changed)           |
-| **Delete** or **Backspace**                          | Delete what is selected                                                                   |
-| **Cmd+D** / **Ctrl+D**                               | Duplicate what is selected                                                                |
-| **Cmd+A** / **Ctrl+A**                               | Select everything on the slide                                                            |
-| **Cmd+C**, **Cmd+X**, **Cmd+V** (Ctrl on Windows)    | Copy, cut and paste what is selected (to another slide, or another presentation's slides) |
-| **Cmd+Shift+V** / **Ctrl+Shift+V**                   | Paste exactly in place                                                                    |
-| **Cmd+Z** / **Ctrl+Z**, **Cmd+Shift+Z** / **Ctrl+Y** | Undo and redo in the editor (while typing: the typing)                                    |
-| **Cmd+S** / **Ctrl+S**                               | Save the slides                                                                           |
-| **Cmd+Enter** / **Ctrl+Enter**                       | Save the slides, including words still being typed                                        |
-| **Cmd+F** / **Ctrl+F**                               | Find and replace in the presentation, including its master                                |
-| **Cmd+=** / **Ctrl+=**, **Cmd++** / **Ctrl++**       | Zoom in                                                                                   |
-| **Cmd+-** / **Ctrl+-**                               | Zoom out                                                                                  |
-| **Cmd+0** / **Ctrl+0**                               | Fit the slide to the editing area                                                         |
-
-| **Alt** (while dragging) | Place freely, without snapping |
+| Key                                                    | What it does                                                                                                 |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| **Tab** / **Shift+Tab**                                | Select the next (or previous) thing on the slide                                                             |
+| **← → ↑ ↓**                                            | Move what is selected one pixel (with **Shift**, ten)                                                        |
+| **Enter**                                              | Type in the selected words (double-click them, too)                                                          |
+| **Esc**                                                | Stop typing; then let go of the selection; then close (asking first if changed)                              |
+| **Delete** or **Backspace**                            | Delete what is selected                                                                                      |
+| **Cmd+D** / **Ctrl+D**                                 | Duplicate what is selected                                                                                   |
+| **Cmd+A** / **Ctrl+A**                                 | Select everything on the slide                                                                               |
+| **Cmd+C**, **Cmd+X**, **Cmd+V** (Ctrl on Windows)      | Copy, cut and paste what is selected (to another slide, or another presentation's slides)                    |
+| **Cmd+Shift+V** / **Ctrl+Shift+V**                     | Paste exactly in place                                                                                       |
+| **Cmd+Z** / **Ctrl+Z**, **Cmd+Shift+Z** / **Ctrl+Y**   | Undo and redo in the editor (while typing: the typing)                                                       |
+| **Cmd+S** / **Ctrl+S**                                 | Save the slides                                                                                              |
+| **Cmd+Enter** / **Ctrl+Enter**                         | Save the slides, including words still being typed                                                           |
+| **Cmd+F** / **Ctrl+F**                                 | Find and replace in the presentation, including its master                                                   |
+| **Cmd+=** / **Ctrl+=**, **Cmd++** / **Ctrl++**         | Zoom in                                                                                                      |
+| **Cmd+-** / **Ctrl+-**                                 | Zoom out                                                                                                     |
+| **Cmd+0** / **Ctrl+0**                                 | Fit the slide to the editing area                                                                            |
+| **Alt** (while dragging)                               | Place freely, without snapping                                                                               |
 | **Shift** (while dragging a corner or the turn handle) | Keep the proportions (a picture or video keeps them anyway: Shift lets them go); turn in steps of 15 degrees |

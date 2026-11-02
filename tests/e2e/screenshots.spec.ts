@@ -147,7 +147,7 @@ async function shot(page: Page, name: string, hide: Locator[] = [], whole = fals
 }
 
 /** A picture of part of the page: the box around these parts (Session 25's close-ups for the guides). */
-async function part(page: Page, name: string, parts: Locator[]) {
+async function part(page: Page, name: string, parts: Locator[], hide: Locator[] = []) {
   mkdirSync(folder, { recursive: true });
   await letTimePass(page, 700, 'the docs’ picture: thumbnails and still frames settle');
   const boxes = (await Promise.all(parts.map((p) => p.boundingBox()))).filter((b) => b !== null);
@@ -159,7 +159,14 @@ async function part(page: Page, name: string, parts: Locator[]) {
     width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
     height: Math.max(...boxes.map((b) => b.y + b.height)) - y,
   };
-  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', clip, animations: 'disabled' });
+  await page.screenshot({
+    path: join(folder, `${name}.png`),
+    scale: 'css',
+    clip,
+    mask: hide,
+    maskColor: '#2a2f3a',
+    animations: 'disabled',
+  });
 }
 
 /**
@@ -596,7 +603,7 @@ test('the stream: the panel on air and recording, its settings, and the Program 
       .toBe('live');
     await expect(win.getByTestId('stream-preview')).toBeVisible();
     await letTimePass(win, 3000, 'the docs’ picture: the preview shows the camera');
-    await shot(win, 'stream-panel');
+    await shot(win, 'stream-panel', [win.getByTestId('stream-recording').locator('p[title]')]);
     await mkdirAndShot(program, 'stream-program-camera');
     await win.getByTestId('stream-layout-slides').click();
     await letTimePass(win, 1000, 'the docs’ picture: the preview shows the slides');
@@ -604,7 +611,7 @@ test('the stream: the panel on air and recording, its settings, and the Program 
     await win.getByTestId('stream-layout-camera').click();
     await win.getByTestId('open-stream-settings').click();
     await expect(win.getByTestId('stream-key-saved')).toBeVisible();
-    await shot(win, 'stream-settings');
+    await shot(win, 'stream-settings', [win.getByTestId('stream-recording').locator('p[title]')]);
     await win.getByRole('button', { name: 'Close stream settings' }).click();
     await win.getByRole('button', { name: 'Close stream' }).click();
     await win.setViewportSize({ width: 1280, height: 720 });
@@ -1594,14 +1601,14 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     await expect(win.getByTestId('link-name')).toHaveText('Placeholder sabha folder');
     await win.getByTestId('link-choose-folder').click();
     await expect(win.getByTestId('link-folder')).toHaveText(chosen);
-    await shot(win, 'import-link-dropbox');
+    await shot(win, 'import-link-dropbox', [win.getByTestId('link-folder')]);
     // On air: it waits, and the status bar shows it.
     await app.evaluate(() => {
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
     });
     await win.getByTestId('link-download').click();
     await expect(win.getByTestId('link-going')).toHaveAttribute('data-phase', 'waiting');
-    await shot(win, 'import-link-waiting');
+    await shot(win, 'import-link-waiting', [win.getByTestId('link-folder')]);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(win.getByTestId('link-status')).toBeVisible();
     await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
@@ -1616,12 +1623,15 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     await win.getByTestId('link-open-report').click({ timeout: 180_000 });
     await expect(report).toBeVisible();
     await expect(report.getByTestId('report-saved-in')).toBeVisible();
-    await shot(win, 'import-link-report');
+    await shot(win, 'import-link-report', [report.getByTestId('report-saved-in').locator('span[title]')]);
     await report.getByRole('button', { name: 'Close', exact: true }).first().click();
     await chooseMenuItem(app, 'import-from-link');
     await expect(win.getByTestId('link-fitted-item')).toBeVisible();
     await expect(win.getByTestId('link-not-taken-item')).toBeVisible();
-    await shot(win, 'import-link-saved');
+    await shot(win, 'import-link-saved', [
+      win.getByTestId('link-folder'),
+      win.getByTestId('link-saved-folder'),
+    ]);
     await app.close();
   } finally {
     await standIn.close();
@@ -1646,7 +1656,8 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
       DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
     });
     const win = await operatorPage(app);
-    await win.setViewportSize({ width: 1280, height: 720 });
+    // Show the whole choices form without a clipped instruction at its scroll edge.
+    await win.setViewportSize({ width: 1280, height: 900 });
     await operatorReady(win);
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
@@ -1661,29 +1672,29 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
   await expect(first.win.getByTestId('link-name')).toHaveText('Placeholder sabha video', { timeout: 60_000 });
   await first.win.getByTestId('link-choose-folder').click();
   await expect(first.win.getByTestId('link-folder')).toHaveText(chosen);
-  await shot(first.win, 'import-link-youtube');
+  await shot(first.win, 'import-link-youtube', [first.win.getByTestId('link-folder')]);
   // The tick, and Download wakes; then downloading.
   await first.win.getByTestId('link-permission').check();
   await expect(first.win.getByTestId('link-download')).toBeEnabled();
-  await shot(first.win, 'import-link-youtube-ticked');
+  await shot(first.win, 'import-link-youtube-ticked', [first.win.getByTestId('link-folder')]);
   await first.win.getByTestId('link-download').click();
   await expect(first.win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p', {
     timeout: 60_000,
   });
   await letTimePass(first.win, 1500, 'the docs’ picture: the download has made some progress');
-  await shot(first.win, 'import-link-youtube-going');
+  await shot(first.win, 'import-link-youtube-going', [first.win.getByTestId('link-folder')]);
   await first.win.getByTestId('link-stop').click();
   // MP3: the best sound, no quality to choose.
   await expect(first.win.getByTestId('link-message')).toContainText('Stopped. Nothing was kept.');
   await first.win.getByTestId('link-type-mp3').click();
   await expect(first.win.getByTestId('link-mp3-words')).toBeVisible();
-  await shot(first.win, 'import-link-youtube-mp3');
+  await shot(first.win, 'import-link-youtube-mp3', [first.win.getByTestId('link-folder')]);
   // The admin's setting at 2160p (4K): 2160p can be picked, 4320p (8K) still cannot.
   await first.win.getByTestId('link-type-mp4').click();
   await first.win.getByTestId('link-max-height').selectOption('2160');
   await expect(first.win.getByTestId('link-quality-2160')).toBeEnabled();
   await first.win.getByTestId('link-quality-2160').click();
-  await shot(first.win, 'import-link-youtube-2160');
+  await shot(first.win, 'import-link-youtube-2160', [first.win.getByTestId('link-folder')]);
   await first.app.close();
   // A video that needs signing in: plain words, and the YouTube Studio way.
   const refused = await launch({
@@ -1804,7 +1815,12 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
     // One click on it puts it up too (Session 54): its card LIVE, as an operator's click leaves it.
     await items.first().click();
     await expect(items.first()).toHaveAttribute('data-live', 'true');
-    await part(win, 'smart-playlist', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
+    await part(
+      win,
+      'smart-playlist',
+      [win.getByTestId('column-left'), win.getByTestId('centre-playlist')],
+      [win.getByTestId('smart-folder')],
+    );
 
     // Repeat Slides going round: LIVE says so, with Stop (Esc).
     await win.getByRole('button', { name: 'New playlist or folder' }).click();
@@ -2921,8 +2937,30 @@ for (const guideSize of [
         await ed.getByTestId('table-columns').fill('3');
         await ed.getByRole('button', { name: 'Add table', exact: true }).click();
         await expect(editor.getByTestId('editor-slide').locator(':scope > [data-element]')).toHaveCount(13);
+        // Place the generated table below the title, leaving room for the master footer.
+        const slideFrame = await editor.getByTestId('editor-slide').boundingBox();
+        const handle = await editor.getByTestId('group-handle-s').boundingBox();
+        if (!slideFrame || !handle) throw new Error('the table resize handle has a visible frame');
+        const x = handle.x + handle.width / 2;
+        const y = handle.y + handle.height / 2;
+        await ed.mouse.move(x, y);
+        await ed.mouse.down();
+        await ed.mouse.move(x, y - (108 * slideFrame.width) / 1920, { steps: 6 });
+        await ed.mouse.up();
+        await editor.getByTestId('editor-canvas').focus();
+        for (let step = 0; step < 12; step++) await ed.keyboard.press('Shift+ArrowDown');
         await expect(editor.getByTestId('add-table')).toBeVisible();
         await expect(editor.getByTestId('add-sound')).toBeVisible();
+        const wordsFrame = await editor
+          .getByTestId('editor-slide')
+          .locator(':scope > [data-element]')
+          .first()
+          .boundingBox();
+        const tableFrame = await editor.getByTestId('group-box').boundingBox();
+        if (!wordsFrame || !tableFrame) throw new Error('the generated title and table have visible frames');
+        expect(tableFrame.y, 'the guide table leaves the generated title readable').toBeGreaterThanOrEqual(
+          wordsFrame.y + wordsFrame.height + 4,
+        );
         await shot(ed, 'editor-insert' + suffix);
 
         await selectSlideContents();
@@ -3038,6 +3076,8 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
           ).find((item) => item.kind === 'media' && item.mediaId === show.videoMediaId),
         )
         .toMatchObject({ whenEnds: 'loop' });
+      // A separate tap follows the long press's lift guard; its lift must never put the row up.
+      await letTimePass(p, 800, 'the held finger lifts before a separate tap starts the generated video');
       await videoRow.click();
       await expect
         .poll(async () => {
