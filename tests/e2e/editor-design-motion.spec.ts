@@ -331,7 +331,10 @@ test('a picture background survives Undo, Redo and reopening, paints the audienc
 for (const kind of ['whole', 'band'] as const)
   test(`the master’s ${kind} darkening is identical in the editor and audience, under its white heading`, async () => {
     test.setTimeout(120_000);
-    const { app } = await launchApp();
+    const { app } = await launchApp({}, undefined, {}, ['--force-color-profile=srgb']);
+    expect(await app.evaluate(({ app }) => app.commandLine.getSwitchValue('force-color-profile'))).toBe(
+      'srgb',
+    );
     const win = await operatorPage(app);
     await operatorReady(win);
     try {
@@ -462,6 +465,13 @@ for (const kind of ['whole', 'band'] as const)
         { width: 1280, height: 720 },
       ]) {
         await sizeSlideEditor(app, ed, size);
+        // ResizeObserver updates the fitted canvas after the native content size changes.
+        await ed.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+            ),
+        );
         // Output is the established shared renderer; the editor must show exactly its layering.
         for (const view of [
           { name: 'audience', page: output, slide: audience },
@@ -482,7 +492,7 @@ for (const kind of ['whole', 'band'] as const)
             y: box.y + (point.y / fixture.height) * box.height,
           }));
           const [shape, masterBand, ownBand] = await pixels(view.page, points);
-          const label = `${view.name}, ${kind}, ${size.width}`;
+          const label = `${view.name}, ${kind}, ${size.width}: ${JSON.stringify({ shape, masterBand, ownBand, box })}`;
           expect
             .soft(
               near(shape, kind === 'whole' ? [100, 40, 20] : [200, 80, 40], 8),

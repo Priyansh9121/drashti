@@ -82,6 +82,8 @@ export async function launchApp(
   // Let in through a stand-in list before it starts (Session 54, tests/e2e/access.ts): as the placeholder person
   // unless a spec says otherwise (locked, the owner, another Gmail), on that data folder's own list.
   access: AccessOptions = {},
+  // Pixel fixtures can pin a colour space without changing the regular application's defaults.
+  chromiumArgs: string[] = [],
 ): Promise<{ app: ElectronApplication; userData: string; access: AccessStandIn }> {
   const running = currentTest();
   sweepDataFolders(running, userDataDir);
@@ -90,7 +92,7 @@ export async function launchApp(
   const lock = await letInBeforeStart(userData, version ? { version, ...access } : access);
   const app = await electron.launch({
     // Another build of Drashti can be run instead (an earlier commit's, for audience-pixels.spec.ts).
-    args: [process.env['DRASHTI_E2E_APP_DIR'] ?? '.'],
+    args: [...chromiumArgs, process.env['DRASHTI_E2E_APP_DIR'] ?? '.'],
     env: appEnv({
       DRASHTI_USER_DATA_DIR: userData,
       DRASHTI_NO_QUIT_CONFIRM: '1',
