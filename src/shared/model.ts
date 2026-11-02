@@ -163,6 +163,30 @@ export interface TextRun {
   legacy?: boolean;
 }
 
+export interface MotionTiming<K extends string> {
+  kind: K;
+  /** From the moment this slide goes up, on Main's clock. */
+  delayMs: number;
+  durationMs: number;
+}
+
+/** Explicit slide motion, evaluated from Main's time by every renderer. */
+export interface ElementMotion {
+  in?: MotionTiming<'fade' | 'rise' | 'zoom'>;
+  emphasis?: MotionTiming<'pulse' | 'turn'>;
+  out?: MotionTiming<'fade' | 'sink' | 'shrink'>;
+}
+
+export type SlideBackdrop =
+  | { kind: 'gradient'; from: string; to: string; angle: number }
+  | { kind: 'picture'; mediaId: string; fit: 'fit' | 'fill' | 'stretch' };
+export type SlideLayout = 'words' | 'heading-words' | 'two-columns';
+export interface SlideDesign {
+  backdrop?: SlideBackdrop;
+  layout?: SlideLayout;
+  skipMaster?: boolean;
+}
+
 /** What every element has: its place, and how far it is turned. */
 interface ElementBase {
   id: string;
@@ -174,6 +198,7 @@ interface ElementBase {
   /** Reflect the content in its frame, after its rotation. */
   flipX?: boolean;
   flipY?: boolean;
+  motion?: ElementMotion;
 }
 
 export interface TextElement extends ElementBase {
@@ -321,6 +346,11 @@ export interface RenderSlide {
   height: number;
   /** Solid background behind the elements, or null for transparent. */
   background: string | null;
+  backdrop?: SlideBackdrop;
+  /** A designed canvas must stay whole in layouts that would otherwise extract its words. */
+  fullSlide?: boolean;
+  /** Resolved master elements: fixed in place when a kirtan's language columns close up. */
+  masterElementIds?: string[];
   /** Darkening behind the words; left out for none (every slide made before it, Sessions 31–36). */
   darken?: Darken;
   elements: SlideElement[];

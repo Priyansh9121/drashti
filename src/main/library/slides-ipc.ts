@@ -81,14 +81,17 @@ export function registerSlidesIpc({
     const before = presentations.content(id.data);
     const now = stampOf(id.data);
     if (!before || !now) return { ok: false, message: 'That presentation is no longer in the library.' };
-    if (before.width !== doc.data.width || before.height !== doc.data.height)
-      return { ok: false, message: 'The presentation’s size changed while it was open: open it again.' };
     if (now.stamp !== stamp && force !== true)
       return {
         ok: false,
         changedElsewhere: true,
         message: 'This presentation was changed somewhere else since the editor opened it (an import, say).',
       };
+    if (
+      (before.width !== doc.data.width || before.height !== doc.data.height) &&
+      before.slides.some((s) => s.deck != null)
+    )
+      return { ok: false, message: 'An imported deck keeps its original slide size.' };
     // Every picture, video and sound must be in the library.
     const media = mediaIdsOf(doc.data);
     if (media.length > 0) {

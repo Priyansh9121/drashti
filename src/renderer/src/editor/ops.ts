@@ -38,11 +38,13 @@ export const newId = (): string => crypto.randomUUID();
 
 export function findSlide(doc: EditDoc, slideId: string | null): EditSlide | undefined {
   if (slideId === null) return undefined;
+  if (doc.master?.id === slideId) return doc.master;
   for (const g of doc.groups) for (const s of g.slides) if (s.id === slideId) return s;
   return undefined;
 }
 
 export function mapSlide(doc: EditDoc, slideId: string, fn: (slide: EditSlide) => EditSlide): EditDoc {
+  if (doc.master?.id === slideId) return { ...doc, master: fn(doc.master) };
   return {
     ...doc,
     groups: doc.groups.map((g) =>
@@ -546,7 +548,13 @@ export function changeSlide(
   slideId: string,
   patch: Partial<Omit<EditSlide, 'id' | 'elements'>>,
 ): EditDoc {
-  return mapSlide(doc, slideId, (s) => ({ ...s, ...patch }));
+  return mapSlide(doc, slideId, (s) => {
+    if ('background' in patch && !('design' in patch) && s.design?.backdrop) {
+      const { backdrop: _backdrop, ...design } = s.design;
+      return { ...s, ...patch, design };
+    }
+    return { ...s, ...patch };
+  });
 }
 
 // ---- a slide's background and sound (its cues) ------------------------------------------

@@ -118,7 +118,7 @@ describe('Design and Motion saved from the slide editor', () => {
       expect(mediaIdsOf(validated)).toContain('placeholder-master-picture');
       t.repo.setContent(applySlideEdit(t.before, validated));
       const read = editDocOf(t.repo.content(t.id) ?? t.before, 'Placeholder design').doc;
-      expect(read).toMatchObject({ master: expect.objectContaining({ label: 'Master' }) });
+      expect(read).toMatchObject({ master: { label: 'Master' } });
       const shown = t.repo.get(t.id)?.groups[0]?.slides[0]?.slide;
       expect(shown).toMatchObject({ backdrop: master.design.backdrop });
       expect(shown?.elements).toHaveLength(slide.elements.length + master.elements.length);

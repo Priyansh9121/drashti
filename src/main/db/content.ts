@@ -3,6 +3,7 @@ import { transitionSchema } from '../../shared/model-schema';
 import { type BoxWords, langsOfBoxes } from '../../shared/tracks';
 import { copyFinder } from '../convert/relink';
 import type { Db } from './database';
+import { editorMediaWithCopies } from './editor-design-media';
 
 /*
  * A presentation's content exactly as stored, row by row with every id:
@@ -39,6 +40,7 @@ export interface SlideRow {
    */
   deck?: string | null;
   editor_guides?: string | null;
+  editor_design?: string | null;
 }
 export interface ElementRow {
   id: string;
@@ -80,6 +82,7 @@ export interface ContentRows {
   /** The presentation's size (read only: slides are laid out on it). */
   width: number;
   height: number;
+  editorMaster?: string | null;
   selectedArrangementId: string | null;
   themeId: string | null;
   /** JSON: the presentation's default transition, or null for the app's. */
@@ -117,12 +120,13 @@ export interface AutoLineRow {
 export function readContent(db: Db, presentationId: string): ContentRows | null {
   const p = db
     .prepare(
-      'SELECT width, height, selected_arrangement_id, theme_id, transition, loop FROM presentations WHERE id = ? AND deleted_at IS NULL',
+      'SELECT width, height, editor_master, selected_arrangement_id, theme_id, transition, loop FROM presentations WHERE id = ? AND deleted_at IS NULL',
     )
     .get(presentationId) as
     | {
         width: number;
         height: number;
+        editor_master: string | null;
         selected_arrangement_id: string | null;
         theme_id: string | null;
         transition: string | null;
@@ -138,7 +142,7 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
   const slides = db
     .prepare(
       `SELECT s.id, s.group_id, s.position, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.enabled, s.macro_id,
-              s.deck, s.editor_guides
+              s.deck, s.editor_guides, s.editor_design
          FROM slides s JOIN slide_groups g ON g.id = s.group_id
         WHERE g.presentation_id = ? ORDER BY g.position, g.rowid, s.position, s.rowid`,
     )
@@ -182,6 +186,7 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
     presentationId,
     width: p.width,
     height: p.height,
+    ...(p.editor_master !== null ? { editorMaster: p.editor_master } : {}),
     selectedArrangementId: p.selected_arrangement_id,
     themeId: p.theme_id,
     transition: p.transition,
@@ -234,8 +239,8 @@ export function writeContent(db: Db, rows: ContentRows): void {
   );
   for (const g of rows.groups) group.run(g.id, id, g.name, g.color, g.position);
   const slide = db.prepare(
-    `INSERT INTO slides (id, group_id, position, label, notes, background, darken, transition, auto_advance_ms, enabled, macro_id, deck, editor_guides)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO slides (id, group_id, position, label, notes, background, darken, transition, auto_advance_ms, enabled, macro_id, deck, editor_guides, editor_design)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const s of rows.slides)
     slide.run(
@@ -252,6 +257,7 @@ export function writeContent(db: Db, rows: ContentRows): void {
       s.macro_id,
       s.deck ?? null,
       s.editor_guides ?? null,
+      editorMediaWithCopies(s.editor_design, copy),
     );
   const element = db.prepare(
     `INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, rotation, props)
@@ -316,8 +322,20 @@ export function writeContent(db: Db, rows: ContentRows): void {
   const tracks = rows.kirtan ? kirtanLangs(rows).join(',') : null;
   db.prepare(
     `UPDATE presentations SET selected_arrangement_id = ?, theme_id = ?, transition = ?, loop = ?, slide_count = ?,
+       width = ?, height = ?, editor_master = ?,
        kirtan_tracks = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), content_rev = content_rev + 1 WHERE id = ?`,
-  ).run(selected, rows.themeId, rows.transition, rows.loop, slideCount, tracks, id);
+  ).run(
+    selected,
+    rows.themeId,
+    rows.transition,
+    rows.loop,
+    slideCount,
+    rows.width,
+    rows.height,
+    editorMediaWithCopies(rows.editorMaster, copy),
+    tracks,
+    id,
+  );
 }
 
 /** The languages a kirtan's slides that play have words in: its tracks. */

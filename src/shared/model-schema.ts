@@ -1,5 +1,16 @@
 import { z } from 'zod';
-import type { Darken, Glow, Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
+import type {
+  Darken,
+  ElementMotion,
+  Glow,
+  Outline,
+  Shadow,
+  SlideDesign,
+  SlideElement,
+  TextRun,
+  TextStyle,
+  Transition,
+} from './model';
 import {
   DARKEN_KINDS,
   LIST_MARKS,
@@ -51,10 +62,45 @@ export const glowSchema: z.ZodType<Glow> = z.object({
 
 /** Degrees clockwise. */
 const rotationSchema = num.min(-36_000).max(36_000).optional();
+const motionTiming = {
+  delayMs: num.int().min(0).max(3_600_000),
+  durationMs: num.int().min(50).max(60_000),
+};
+export const elementMotionSchema: z.ZodType<ElementMotion> = z.object({
+  in: z.object({ kind: z.enum(['fade', 'rise', 'zoom']), ...motionTiming }).optional(),
+  emphasis: z.object({ kind: z.enum(['pulse', 'turn']), ...motionTiming }).optional(),
+  out: z.object({ kind: z.enum(['fade', 'sink', 'shrink']), ...motionTiming }).optional(),
+});
+export const slideDesignSchema: z.ZodType<SlideDesign> = z.object({
+  backdrop: z
+    .discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('gradient'),
+        from: hexColorSchema,
+        to: hexColorSchema,
+        angle: num.min(0).max(360),
+      }),
+      z.object({ kind: z.literal('picture'), mediaId: idSchema, fit: z.enum(['fit', 'fill', 'stretch']) }),
+    ])
+    .optional(),
+  layout: z.enum(['words', 'heading-words', 'two-columns']).optional(),
+  skipMaster: z.boolean().optional(),
+});
+
+export function slideDesignFromJson(text: string | null | undefined): SlideDesign | undefined {
+  if (!text) return undefined;
+  try {
+    const parsed = slideDesignSchema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
 const elementPlacement = {
   groupId: idSchema.optional(),
   flipX: z.boolean().optional(),
   flipY: z.boolean().optional(),
+  motion: elementMotionSchema.optional(),
 };
 const cropSchema = z
   .object({

@@ -1,5 +1,5 @@
 import type { SlideElement, TextRun } from './model';
-import type { EditDoc } from './slide-edit';
+import type { EditDoc, EditSlide } from './slide-edit';
 
 /*
  * Text in one Unicode form, NFC (Sessions 31–36, I18N-6), where it enters Drashti: an import, the slide
@@ -38,18 +38,20 @@ export function nfcDeep<T>(value: T): T {
 
 /** A slide editor's document with its words in NFC: its name, its groups' names, its slides' labels, notes and words. */
 export function nfcEditDoc(doc: EditDoc): EditDoc {
+  const normalizeSlide = (s: EditSlide): EditSlide => ({
+    ...s,
+    label: nfc(s.label),
+    notes: nfc(s.notes),
+    elements: s.elements.map(nfcElement),
+  });
   return {
     ...doc,
     name: nfc(doc.name),
+    ...(doc.master ? { master: normalizeSlide(doc.master) } : {}),
     groups: doc.groups.map((g) => ({
       ...g,
       name: nfc(g.name),
-      slides: g.slides.map((s) => ({
-        ...s,
-        label: nfc(s.label),
-        notes: nfc(s.notes),
-        elements: s.elements.map(nfcElement),
-      })),
+      slides: g.slides.map(normalizeSlide),
     })),
   };
 }

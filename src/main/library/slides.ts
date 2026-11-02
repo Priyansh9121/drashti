@@ -5,7 +5,8 @@ import { editorGuidesFromJson, type EditorGuides } from '../../shared/editor-gui
 import type { ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/content';
 import { transitionFromJson, transitionToJson } from '../db/content';
 import { elementFromRow } from '../db/presentations';
-import { darkenFromJson } from '../../shared/model-schema';
+import { darkenFromJson, slideDesignFromJson } from '../../shared/model-schema';
+import { masterFromJson } from '../../shared/slide-edit';
 import type { DeckSlide } from '../../shared/deck';
 import { deckFromJson } from '../../shared/deck-schema';
 
@@ -78,6 +79,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       // A deck's slide (Session 54, C2), as its import stored it.
       ...deckOf(s.deck),
       ...guidesOf(s.editor_guides),
+      ...(slideDesignFromJson(s.editor_design) ? { design: slideDesignFromJson(s.editor_design) } : {}),
     })),
   }));
   return {
@@ -89,6 +91,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       transition: transitionFromJson(rows.transition),
       loop: rows.loop === 1,
       groups,
+      ...(masterFromJson(rows.editorMaster) ? { master: masterFromJson(rows.editorMaster) } : {}),
     },
     unreadable,
   };
@@ -208,11 +211,12 @@ export function applySlideEdit(
 ): ContentRows {
   // Ids the presentation already has stay; anything new gets an id from here.
   const own = (ids: readonly string[]) => new Set(ids);
+  const oldMaster = masterFromJson(before.editorMaster);
   const known = {
     group: own(before.groups.map((g) => g.id)),
-    slide: own(before.slides.map((s) => s.id)),
-    element: own(before.elements.map((e) => e.id)),
-    cue: own(before.cues.map((c) => c.id)),
+    slide: own([...before.slides.map((s) => s.id), ...(oldMaster ? [oldMaster.id] : [])]),
+    element: own([...before.elements.map((e) => e.id), ...(oldMaster?.elements.map((e) => e.id) ?? [])]),
+    cue: own([...before.cues.map((c) => c.id), ...(oldMaster?.cues.map((c) => c.id) ?? [])]),
   };
   const fresh = new Map<string, string>();
   const idFor = (kind: keyof typeof known, id: string): string => {
@@ -264,6 +268,15 @@ export function applySlideEdit(
           : old?.editor_guides !== undefined
             ? { editor_guides: null }
             : {}),
+        ...(s.design
+          ? {
+              editor_design: sameData(slideDesignFromJson(old?.editor_design), s.design)
+                ? old?.editor_design
+                : JSON.stringify(s.design),
+            }
+          : old?.editor_design !== undefined
+            ? { editor_design: null }
+            : {}),
       });
       const list: ElementRow[] = s.elements.map((el) => {
         const was = oldElements.get(el.id);
@@ -305,6 +318,24 @@ export function applySlideEdit(
   const groupIds = new Set(groups.map((g) => g.id));
   return {
     ...before,
+    width: doc.width,
+    height: doc.height,
+    ...(doc.master !== undefined
+      ? {
+          editorMaster:
+            doc.master === null
+              ? null
+              : sameData(oldMaster, doc.master)
+                ? before.editorMaster
+                : JSON.stringify({
+                    ...parseObject(before.editorMaster ?? '{}'),
+                    ...doc.master,
+                    id: idFor('slide', doc.master.id),
+                    elements: doc.master.elements.map((el) => ({ ...el, id: idFor('element', el.id) })),
+                    cues: doc.master.cues.map((c) => ({ ...c, id: idFor('cue', c.id) })),
+                  }),
+        }
+      : {}),
     transition: sameData(transitionFromJson(before.transition), doc.transition)
       ? before.transition
       : transitionToJson(doc.transition),
@@ -325,10 +356,10 @@ export function applySlideEdit(
 /** Every media item an edited document uses (elements and cues), to check they are in the library. */
 export function mediaIdsOf(doc: EditDoc): string[] {
   const ids = new Set<string>();
-  for (const g of doc.groups)
-    for (const s of g.slides) {
-      for (const el of s.elements) if (el.kind === 'image' || el.kind === 'video') ids.add(el.mediaId);
-      for (const c of s.cues) if (c.mediaId) ids.add(c.mediaId);
-    }
+  for (const s of [...doc.groups.flatMap((g) => g.slides), ...(doc.master ? [doc.master] : [])]) {
+    if (s.design?.backdrop?.kind === 'picture') ids.add(s.design.backdrop.mediaId);
+    for (const el of s.elements) if (el.kind === 'image' || el.kind === 'video') ids.add(el.mediaId);
+    for (const c of s.cues) if (c.mediaId) ids.add(c.mediaId);
+  }
   return [...ids];
 }

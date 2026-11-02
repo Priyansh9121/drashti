@@ -12,11 +12,12 @@ import type {
 } from '../../shared/library';
 import type { KirtanDetails } from '../../shared/kirtans';
 import { occasionsFrom } from '../../shared/kirtans';
-import { type Lang, LANGS, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
-import { darkenFromJson, slideElementSchema } from '../../shared/model-schema';
+import { type Lang, LANGS, type SlideElement, type Transition } from '../../shared/model';
+import { darkenFromJson, slideDesignFromJson, slideElementSchema } from '../../shared/model-schema';
 import type { DeckSlide } from '../../shared/deck';
 import { deckFromJson, deckToJson } from '../../shared/deck-schema';
-import { cueInputName } from '../../shared/slide-edit';
+import { cueInputName, masterFromJson } from '../../shared/slide-edit';
+import { composeSlide } from '../../shared/slide-design';
 import { langsOf } from '../../shared/tracks';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
 import { itemPlayOrder, ownOrderItem, playOrder } from '../../shared/order';
@@ -304,7 +305,7 @@ export class PresentationRepo {
   get(id: string): PresentationDoc | null {
     const p = this.db
       .prepare(
-        'SELECT id, name, width, height, selected_arrangement_id, transition, loop, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
+        'SELECT id, name, width, height, editor_master, selected_arrangement_id, transition, loop, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
       )
       .get(id) as
       | (SourceColumns & {
@@ -312,6 +313,7 @@ export class PresentationRepo {
           name: string;
           width: number;
           height: number;
+          editor_master: string | null;
           selected_arrangement_id: string | null;
           transition: string | null;
           loop: number;
@@ -340,7 +342,7 @@ export class PresentationRepo {
     const slides = this.db
       .prepare(
         `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.macro_id,
-                s.deck
+                s.deck, s.editor_design
            FROM slides s JOIN slide_groups g ON g.id = s.group_id
           WHERE g.presentation_id = ? AND s.enabled = 1
           ORDER BY g.position, g.rowid, s.position, s.rowid`,
@@ -356,6 +358,7 @@ export class PresentationRepo {
       auto_advance_ms: number | null;
       macro_id: string | null;
       deck: string | null;
+      editor_design: string | null;
     }[];
     const elements = this.db
       .prepare(
@@ -404,27 +407,67 @@ export class PresentationRepo {
     const groupInfos = new Map<string, GroupInfo>(
       groups.map((g) => [g.id, { id: g.id, name: g.name, color: g.color, slides: [] }]),
     );
+    const master = masterFromJson(p.editor_master);
+    const masterCues = master
+      ? master.cues.flatMap((c) => {
+          const media = c.mediaId
+            ? (this.db
+                .prepare(
+                  'SELECT name, kind, CASE WHEN deleted_at IS NOT NULL THEN 1 ELSE missing END AS missing, playable, format FROM media WHERE id = ?',
+                )
+                .get(c.mediaId) as
+                | {
+                    name: string;
+                    kind: string;
+                    missing: number;
+                    playable: number | null;
+                    format: string | null;
+                  }
+                | undefined)
+            : undefined;
+          const cue = cueFromRow({
+            slide_id: master.id,
+            kind: c.kind,
+            label: c.label,
+            props: c.props,
+            media_id: c.mediaId,
+            media_name: media?.name ?? null,
+            media_kind: media?.kind ?? null,
+            media_missing: media?.missing ?? null,
+            media_playable: media?.playable,
+            media_format: media?.format,
+          });
+          return cue ? [cue] : [];
+        })
+      : [];
     slides.forEach((s, index) => {
       const darken = darkenFromJson(s.darken);
       // A deck's slide (Session 54, C2): left out for every other slide, as darkening is.
       const deck = deckFromJson(s.deck);
-      const slide: RenderSlide = {
-        id: s.id,
-        width: p.width,
-        height: p.height,
-        background: s.background,
-        // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
-        ...(darken ? { darken } : {}),
-        elements: bySlide.get(s.id) ?? [],
-        ...(deck ? { deck } : {}),
-      };
+      const slide = composeSlide(
+        {
+          id: s.id,
+          width: p.width,
+          height: p.height,
+          background: s.background,
+          // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
+          ...(darken ? { darken } : {}),
+          elements: bySlide.get(s.id) ?? [],
+          ...(deck ? { deck } : {}),
+        },
+        slideDesignFromJson(s.editor_design),
+        master,
+      );
       const info: SlideInfo = {
         id: s.id,
         index,
         label: s.label,
         notes: s.notes,
         slide,
-        cues: cuesBySlide.get(s.id) ?? [],
+        cues: [
+          ...(!deck && master && !slideDesignFromJson(s.editor_design)?.skipMaster ? masterCues : []),
+          ...(cuesBySlide.get(s.id) ?? []),
+        ],
         transition: transitionFromJson(s.transition),
         autoAdvanceMs: s.auto_advance_ms,
         macroId: s.macro_id,

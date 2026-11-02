@@ -141,9 +141,20 @@ export class WantedMedia {
            FROM slide_groups g JOIN slides s ON s.group_id = g.id, json_tree(s.deck) j
           WHERE g.presentation_id = ? AND s.deck IS NOT NULL AND j.type = 'text'
             AND j.key IN ('clipId', 'lastId', 'holdId', 'mediaId', 'posterId')
+         UNION ALL
+         SELECT j.value AS id, g.position, s.position, 2000000 + j.id
+           FROM slide_groups g JOIN slides s ON s.group_id = g.id,
+             json_tree(CASE WHEN json_valid(s.editor_design) THEN s.editor_design ELSE NULL END) j
+          WHERE g.presentation_id = ? AND j.key = 'mediaId' AND j.type = 'text'
+         UNION ALL
+         SELECT j.value AS id, -1, -1, j.id FROM presentations p,
+           json_tree(CASE WHEN json_valid(p.editor_master) THEN p.editor_master ELSE NULL END) j
+          WHERE p.id = ? AND j.key = 'mediaId' AND j.type = 'text'
          ORDER BY 2, 3, 4`,
       )
-      .all(presentationId, presentationId, presentationId) as { id: string | null }[];
+      .all(presentationId, presentationId, presentationId, presentationId, presentationId) as {
+      id: string | null;
+    }[];
     // A deck's slides (Session 54, C2): what the SQL found in their deck, and what the screens draw of it.
     return [
       ...rows.flatMap((r) => (typeof r.id === 'string' ? [r.id] : [])),

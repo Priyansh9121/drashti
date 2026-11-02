@@ -1,6 +1,6 @@
 import type { Lang, TextElement, TextRun } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
-import { slidesOf } from '../../../shared/slide-edit';
+import { editableSlidesOf } from '../../../shared/slide-edit';
 import { detectLang, mergeRuns, scriptOf } from '../../../shared/text-runs';
 import { readingOrder } from '../../../shared/tracks';
 import { mapElements } from './ops';
@@ -60,7 +60,7 @@ export function findMatches(doc: EditDoc, query: string, options: FindOptions): 
   const pattern = patternOf(query, options);
   if (!pattern) return [];
   const out: Match[] = [];
-  for (const slide of slidesOf(doc))
+  for (const slide of editableSlidesOf(doc))
     for (const el of readingOrder(slide.elements)) {
       const legacy = legacySpans(el);
       for (const found of el.text.matchAll(pattern)) {
@@ -76,7 +76,7 @@ export function findMatches(doc: EditDoc, query: string, options: FindOptions): 
 
 /** The text box a match is in, if it is still there. */
 function boxOf(doc: EditDoc, match: Match): TextElement | undefined {
-  const slide = slidesOf(doc).find((s) => s.id === match.slideId);
+  const slide = editableSlidesOf(doc).find((s) => s.id === match.slideId);
   const el = slide?.elements.find((e) => e.id === match.elementId);
   return el?.kind === 'text' ? el : undefined;
 }
