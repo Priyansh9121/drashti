@@ -113,7 +113,7 @@ function kind(node: PdfValue | undefined, type: 'ref', detail: string): PdfRef;
 function kind(node: PdfValue | undefined, type: 'dict', detail: string): PdfDictionary;
 function kind(node: PdfValue | undefined, type: 'array', detail: string): PdfArray;
 function kind(node: PdfValue | undefined, type: ValueData['kind'], detail: string): PdfValue {
-  if (!node || node.kind !== type) invalid(detail);
+  if (node?.kind !== type) invalid(detail);
   return node;
 }
 function field(dict: PdfDictionary, name: string): PdfValue | undefined {
@@ -350,7 +350,7 @@ function parseFile(bytes: Buffer): ParsedFile {
   if (entries.size !== size || [...entries.keys()].some((number) => number >= size))
     invalid('xref is not a complete fresh-print table');
   const zero = entries.get(0);
-  if (!zero || zero.status !== 'f' || zero.gen !== 65535) invalid('missing free object zero');
+  if (zero?.status !== 'f' || zero.gen !== 65535) invalid('missing free object zero');
   reader.expect('startxref');
   if (reader.word() !== String(xrefOffset)) invalid('startxref mismatch');
   reader.skip();

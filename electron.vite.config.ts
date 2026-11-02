@@ -27,7 +27,7 @@ function pdfjsData(): Plugin {
     name: 'drashti-pdfjs-data',
     apply: 'build',
     generateBundle() {
-      for (const folder of ['standard_fonts', 'wasm']) {
+      for (const folder of ['standard_fonts', 'wasm', 'cmaps']) {
         const dir = resolve('node_modules/pdfjs-dist', folder);
         for (const name of readdirSync(dir))
           this.emitFile({
@@ -48,6 +48,7 @@ export default defineConfig({
         input: {
           index: resolve('src/main/index.ts'),
           'import-worker': resolve('src/main/import/worker.ts'),
+          'pptx-reader-worker': resolve('src/main/documents/pptx-reader-worker.ts'),
           // The stream worker: encoding, sending and recording (src/main/stream/worker/worker.ts).
           'stream-worker': resolve('src/main/stream/worker/worker.ts'),
           // The network worker: the HTTP and WebSocket server for paired devices (src/main/network/worker/worker.ts).

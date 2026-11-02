@@ -1,3 +1,5 @@
+import type { PdfJob, PdfPage, PdfDone } from './editable-source';
+import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
@@ -18,7 +20,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
-import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
+import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
   PassageInfo,
@@ -329,6 +331,7 @@ export const IPC = {
     /** A presentation's slides for the slide editor, and saving them (operator window only). */
     slidesForEdit: 'library:slides-for-edit',
     saveSlides: 'library:save-slides',
+    exportPdf: 'library:export-pdf',
     /** The transition for presentations without their own; changing it is for the operator window only. */
     getDefaultTransition: 'library:get-default-transition',
     setDefaultTransition: 'library:set-default-transition',
@@ -967,6 +970,13 @@ export const IPC = {
     switchQuestion: 'output:switch-question',
     switchAnswer: 'output:switch-answer',
   },
+  pdfExport: {
+    job: 'pdf-export:job',
+    print: 'pdf-export:print',
+    normalized: 'pdf-export:normalized',
+    done: 'pdf-export:done',
+    asset: 'pdf-export:asset',
+  },
   pictures: {
     /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
     job: 'pictures:job',
@@ -1040,10 +1050,18 @@ export interface InvokeContract {
     args: [motion: InterfaceMotion];
     result: { ok: true } | { ok: false; message: string };
   };
-  [IPC.pictures.job]: { args: []; result: PictureJob | null };
-  [IPC.pictures.page]: { args: [page: PicturePage]; result: boolean };
-  [IPC.pictures.done]: { args: [done: PicturesDone]; result: null };
+  [IPC.pictures.job]: { args: []; result: PdfJob | null };
+  [IPC.pictures.page]: { args: [page: PdfPage]; result: boolean };
+  [IPC.pictures.done]: { args: [done: PdfDone]; result: null };
   [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
+  [IPC.pdfExport.job]: { args: []; result: PdfCopyJob | null };
+  [IPC.pdfExport.print]: { args: [id: string, index: number]; result: Uint8Array | null };
+  [IPC.pdfExport.normalized]: {
+    args: [id: string, index: number, pages: PdfPrintPage[]];
+    result: Uint8Array | null;
+  };
+  [IPC.pdfExport.done]: { args: [done: PdfCopyFinished]; result: boolean };
+  [IPC.pdfExport.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.sharpen.next]: { args: []; result: SharpenJobView | null };
   [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };
@@ -1195,6 +1213,10 @@ export interface InvokeContract {
   [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
+  [IPC.library.exportPdf]: {
+    args: [presentationId: string, doc: EditDoc, stamp: string];
+    result: PdfCopyResult;
+  };
   [IPC.library.saveSlides]: {
     args: [presentationId: string, doc: EditDoc, stamp: string, force: boolean];
     result: SaveSlidesResult;

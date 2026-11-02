@@ -167,7 +167,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     const state = useEditor.getState();
     const active = activeText();
     const value = which === 'underline' ? !underlined : !struckThrough;
-    if (active && state.editing === active.elementId && !active.view.state.selection.empty) {
+    if (state.editing === active?.elementId && !active.view.state.selection.empty) {
       active.view.dispatch(restyle(active.view.state, { [which]: value }));
       return;
     }

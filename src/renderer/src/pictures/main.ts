@@ -1,4 +1,5 @@
 import { AnnotationMode, getDocument } from 'pdfjs-dist';
+import { drawEditablePdf } from './editable-main';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
 import type { PictureAssetKind } from '../../../shared/pictures';
@@ -48,6 +49,10 @@ async function commentsOf(doc: PDFDocumentProxy, n: number): Promise<string> {
 async function draw(): Promise<void> {
   const job = await window.drashti.pictures.job();
   if (!job) return;
+  if ('mode' in job) {
+    await drawEditablePdf(job, BridgeDataFactory);
+    return;
+  }
   const task = getDocument({
     data: job.data,
     // pdf.js's own data comes through the bridge: these name no place (it never fetches), they only

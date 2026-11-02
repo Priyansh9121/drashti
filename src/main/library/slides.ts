@@ -145,7 +145,7 @@ function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck
 const PLACEMENT_KEYS = ['groupId', 'flipX', 'flipY', 'motion'] as const;
 const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
   text: new Set([...PLACEMENT_KEYS, 'text', 'lang', 'style', 'runs', 'opacity', 'everyScreen']),
-  shape: new Set([...PLACEMENT_KEYS, 'shape', 'fill', 'cornerRadius', 'opacity', 'outline']),
+  shape: new Set([...PLACEMENT_KEYS, 'shape', 'path', 'fill', 'cornerRadius', 'opacity', 'outline']),
   // A video's play bar on the screens (Session 54): known, so unticking it in the editor takes it away.
   image: new Set([...PLACEMENT_KEYS, 'mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar', 'crop']),
   video: new Set([...PLACEMENT_KEYS, 'mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar', 'crop']),

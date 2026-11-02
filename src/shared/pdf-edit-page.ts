@@ -1,6 +1,11 @@
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { SlideElement, TextElement } from './model';
 
+export interface EditablePdfControl {
+  checkpoint?(): Promise<void>;
+  maxAssetBytes?: number;
+}
+
 export interface EditablePdfPage {
   width: number;
   height: number;
@@ -102,7 +107,10 @@ export async function editablePdfPage(
   doc: PDFDocumentProxy,
   page: PDFPageProxy,
   ops: Readonly<Record<string, number>>,
+  control: EditablePdfControl = {},
 ): Promise<EditablePdfPage> {
+  await control.checkpoint?.();
+  let assetBytes = 0;
   const base = page.getViewport({ scale: 1 });
   if (base.width < 16 || base.height < 16 || base.width > 16384 || base.height > 16384)
     throw new Error('This PDF page is outside the editable size limit.');
@@ -294,6 +302,7 @@ export async function editablePdfPage(
   const elements: SlideElement[] = [],
     assets: EditablePdfPage['assets'] = [];
   for (const index of [...painted].sort((a, b) => a - b)) {
+    await control.checkpoint?.();
     const text = native.get(index);
     if (text) {
       elements.push(text);
@@ -329,7 +338,11 @@ export async function editablePdfPage(
           crop.canvas.height,
         );
         const id = `pdf-paint-${index}`;
-        assets.push({ id, png: await pngOf(crop.canvas) });
+        const png = await pngOf(crop.canvas);
+        assetBytes += png.byteLength;
+        if (assetBytes > (control.maxAssetBytes ?? Infinity))
+          throw new Error('This page exceeds the editable object byte limit.');
+        assets.push({ id, png });
         elements.push({
           id,
           kind: 'image',

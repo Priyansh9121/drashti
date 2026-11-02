@@ -253,6 +253,11 @@ import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createPicturesWindow } from './pictures/pictures-window';
 import { createSharpenWindow } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
+import { sourceReader } from './documents/source-reader';
+import { SourceReaderQueue } from './documents/source-reader-queue';
+import { pptxReader } from './documents/pptx-reader-service';
+import { spawnPptxReaderWorker } from './documents/spawn-pptx-reader-worker';
+import { sourceWrite } from './documents/source-write';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
@@ -2945,6 +2950,7 @@ function start(): void {
   let closeStudio: () => void = () => undefined;
   // So does the slide editor's window (Session 55, Part 17a): Simple Mode edits no slides.
   let closeEditor: () => void = () => undefined;
+  let cancelSourceEdits: () => void = () => undefined;
   // Simple Mode's one playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple
   // Mode, or a new one when there was none (simple-playlist.ts); Simple Mode changes that one only.
   const simplePlaylist = new SimplePlaylist({
@@ -3001,6 +3007,7 @@ function start(): void {
   // The list's answer each check: Simple access puts this computer in Simple Mode within one check.
   onAccessChange(() => {
     modes.accessChanged();
+    if (!isLetIn() || simpleAccess()) cancelSourceEdits();
   });
   simpleNow = () => mode === 'simple';
   /** Simple Mode's one playlist and what it holds, read as each request comes (simple-mode.ts's bounds). */
@@ -3119,6 +3126,13 @@ function start(): void {
     log: (message) => {
       log.info(message);
     },
+  });
+  const documentReaders = new SourceReaderQueue(
+    sourceReader((request) => pdfPictures.readEditable(request), pptxReader(spawnPptxReaderWorker)),
+  );
+  stops.add('document preparation', () => {
+    pdfPictures.stopEditable();
+    return documentReaders.stop();
   });
   handle(IPC.pictures.job, (e) => pdfPictures.job(e.sender));
   handle(IPC.pictures.page, (e, page) => pdfPictures.page(e.sender, page));
@@ -3685,6 +3699,7 @@ function start(): void {
   });
   const editorWindow = slideEditor;
   closeEditor = () => {
+    cancelSourceEdits();
     editorWindow.close();
   };
   stops.add('slide editor', () => {
@@ -3702,13 +3717,22 @@ function start(): void {
       page.sendInputEvent({ type: 'keyUp', keyCode: key });
     },
   });
-  registerSlidesIpc({
+  const slideEdits = registerSlidesIpc({
     db,
     presentations,
     revisions,
     settings,
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
+    mayPrepareSource: (e) =>
+      !stops.done &&
+      isLetIn() &&
+      !simpleAccess() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+    sourceReader: documentReaders.read,
+    sourceWrite: sourceWrite(libraryDb, () => imports.giveWay()),
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
     // A save in the editor's window: one change for the operator window's Undo.
@@ -3716,6 +3740,8 @@ function start(): void {
       sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
+  cancelSourceEdits = () => slideEdits.cancelSourcePreparation();
+  stops.add('editor source generations', cancelSourceEdits);
   // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
   // the library through an import as any picture is, and one slide holding it large with the words under it.
   handle(IPC.library.newQrSlide, async (e, text): Promise<NewFromWordsResult> => {

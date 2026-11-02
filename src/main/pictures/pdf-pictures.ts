@@ -1,4 +1,7 @@
 import type { BrowserWindow, WebContents } from 'electron';
+import type { PdfJob, PreparedSource } from '../../shared/editable-source';
+import type { SourceRead } from '../documents/source-reader';
+import { EditablePdfSessions } from './editable-pdf-session';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
 import { join } from 'node:path';
@@ -68,10 +71,51 @@ interface Drawing {
 
 export class PdfPictures {
   private drawing: Drawing | null = null;
+  private readonly editable: EditablePdfSessions;
+  private editableWaiting = 0;
   /** Waiting for their turn: one document at a time. */
   private turn: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly deps: PdfPicturesDeps) {}
+  constructor(private readonly deps: PdfPicturesDeps) {
+    this.editable = new EditablePdfSessions(() => deps.open());
+  }
+
+  /** Native source mode shares the original drawing queue; ordinary draw behavior is unchanged. */
+  readEditable(request: SourceRead): Promise<PreparedSource> {
+    const isAborted = (): boolean => request.signal.aborted;
+    if (isAborted() || this.editableWaiting >= 4)
+      return Promise.resolve({
+        ok: false,
+        message: 'Source preparation is busy. Saved playback is unchanged.',
+      });
+    this.editableWaiting++;
+    let started = false;
+    let onAbort: () => void = () => undefined;
+    const cancelled = new Promise<PreparedSource>((resolve) => {
+      onAbort = () => {
+        if (!started)
+          resolve({ ok: false, message: 'Source preparation cancelled. Saved playback is unchanged.' });
+      };
+      request.signal.addEventListener('abort', onAbort, { once: true });
+    });
+    const run = this.turn
+      .then(() => {
+        started = true;
+        return this.editable.readNow(request);
+      })
+      .finally(() => {
+        this.editableWaiting--;
+      });
+    this.turn = run.catch(() => undefined);
+    if (isAborted()) onAbort();
+    // A queued cancelled slot stays counted until consumed, so repeated cancel cannot grow the chain.
+    // An active job resolves through its session only after owned Main PNG writes have settled.
+    return Promise.race([run, cancelled]).finally(() => request.signal.removeEventListener('abort', onAbort));
+  }
+
+  stopEditable(): void {
+    this.editable.stop();
+  }
 
   /** Draw every page of a PDF (up to the limit) into `outDir` as PNGs. */
   draw(pdfPath: string, outDir: string, signal?: AbortSignal): Promise<PicturesResult> {
@@ -166,13 +210,15 @@ export class PdfPictures {
   }
 
   /** The drawing window asks what to draw (once): nothing for any other page. */
-  job(sender: WebContents): PictureJob | null {
+  job(sender: WebContents): PdfJob | null {
+    if (this.editable.owns(sender)) return this.editable.job(sender);
     const d = this.drawing;
     return d?.win.webContents.id === sender.id ? d.job : null;
   }
 
   /** A page as drawn: kept as a PNG in the import's folder. False tells the window to stop. */
   async page(sender: WebContents, raw: unknown): Promise<boolean> {
+    if (this.editable.owns(sender)) return this.editable.page(sender, raw);
     const d = this.drawing;
     if (d?.win.webContents.id !== sender.id) return false;
     const page = raw as Partial<PicturePage> | null;
@@ -197,6 +243,10 @@ export class PdfPictures {
 
   /** The window has drawn what it could. */
   done(sender: WebContents, raw: unknown): void {
+    if (this.editable.owns(sender)) {
+      this.editable.done(sender, raw);
+      return;
+    }
     const d = this.drawing;
     if (d?.win.webContents.id !== sender.id) return;
     const done = raw as Partial<PicturesDone> | null;
@@ -217,7 +267,7 @@ export class PdfPictures {
   /** pdf.js's own data: a plain name from one of its own folders, for the drawing window only. */
   async asset(sender: WebContents, kind: unknown, name: unknown): Promise<Uint8Array | null> {
     const d = this.drawing;
-    if (d?.win.webContents.id !== sender.id) return null;
+    if (d?.win.webContents.id !== sender.id && !this.editable.owns(sender)) return null;
     if (kind !== 'standardFontDataUrl' && kind !== 'wasmUrl' && kind !== 'cMapUrl') return null;
     if (typeof name !== 'string' || !PICTURE_ASSET_NAME.test(name) || name.startsWith('.')) return null;
     for (const dir of this.deps.assetDirs(kind)) {

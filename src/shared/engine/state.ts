@@ -61,7 +61,9 @@ import type { StageCall } from '../stage-message';
  * design size and element motion also travel in each rendered slide; all players use shownAt for the motion.
  * Designed and animated slides keep their full canvas in every layout. A state 22 saved is read whole (23 only adds to it).
  */
-export const ENGINE_STATE_VERSION = 23;
+// 25 (Part 17b): native normalized vector paths travel with slides to every player.
+// Optional path/page-size fields add to 23/24; saved states from both read whole.
+export const ENGINE_STATE_VERSION = 25;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -73,6 +75,8 @@ export const ENGINE_STATE_VERSION = 23;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 24 ||
+    version === 23 ||
     // 23 only adds to 22 (Session 55, Part 17a's words); 22 only adds to 20 (Session 55, Part 16's lower thirds); 17,
     // 18 and 20 each only add to 16 (Session 55: Part 15's messages and timers, Part 6's chosen wallpaper, Part 5's
     // picture looks).

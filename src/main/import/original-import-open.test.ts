@@ -5,10 +5,12 @@ import type { EditSlidesResult } from '../../shared/slide-edit';
 import { DEFAULT_THEME } from '../../shared/themes';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
+import { sourceWrite } from '../documents/source-write';
 import { Revisions } from '../library/revisions';
 import { registerSlidesIpc } from '../library/slides-ipc';
 import { themeLook } from '../library/themes';
 import { bytesHash, originalWorld, PLACEHOLDER_WORDS } from './testing/original-fixture';
+import { nativeSourceReader } from './testing/native-source-reader';
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
@@ -108,6 +110,9 @@ describe('retained PDF originals', () => {
         revisions: new Revisions(),
         settings: new SettingsRepo(w.db),
         fromOperator: () => true,
+        mayPrepareSource: () => true,
+        sourceReader: nativeSourceReader,
+        sourceWrite: sourceWrite(w.db),
         lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
         changed: () => {
           throw new Error('Opening must not publish a saved content change.');

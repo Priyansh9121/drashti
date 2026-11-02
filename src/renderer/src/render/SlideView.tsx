@@ -26,7 +26,7 @@ import { clockHeld, engineFrameNow, engineNow, onClockJump } from './clock';
 import { hasElementMotion, motionFrame } from '../../../shared/element-motion';
 import { wakeAt } from './wake-at';
 import { Looked } from './picture-looks';
-import { shapePath } from '../../../shared/shape-path';
+import { nativePathData, shapePath } from '../../../shared/shape-path';
 import { slideShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useGpuRestarts, useMediaAttempt } from './media-attempts';
@@ -596,7 +596,9 @@ function ShapeView({ el }: { el: ShapeElement }) {
     strokeWidth: stroke?.width ?? 0,
   };
   const radius = Math.min(el.cornerRadius, width / 2, height / 2);
-  const path = shapePath(kind, width, height);
+  const drawing = kind === 'path' ? el.path : undefined;
+  const path = drawing ? nativePathData(drawing, width, height) : shapePath(kind, width, height);
+  if (kind === 'path' && !drawing) return null;
   return (
     <svg
       data-element={el.id}
@@ -608,7 +610,13 @@ function ShapeView({ el }: { el: ShapeElement }) {
       style={{ ...frameStyle(el), opacity: el.opacity, overflow: 'visible' }}
     >
       {path ? (
-        <path d={path} {...paint} />
+        <path
+          d={path}
+          {...paint}
+          fillRule={drawing?.fillRule}
+          strokeLinecap={drawing?.lineCap}
+          strokeLinejoin={drawing?.lineJoin}
+        />
       ) : kind === 'ellipse' ? (
         <ellipse cx={width / 2} cy={height / 2} rx={width / 2} ry={height / 2} {...paint} />
       ) : kind === 'line' ? (

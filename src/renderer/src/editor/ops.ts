@@ -21,6 +21,7 @@ import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
 import { freshGroups } from '../../../shared/element-groups';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
+import { DEFAULT_DRAWING } from '../../../shared/shape-path';
 import {
   BUILT_IN_TIMER_LOOK,
   timerElement,
@@ -238,6 +239,14 @@ export function newShape(
   const base = { id: newId(), kind: 'shape' as const, frame, cornerRadius: 0, opacity: 1 };
   if (choice === 'line')
     return { ...base, shape: 'line', fill: null, outline: { color: look.style.color, width: 6 } };
+  if (choice === 'path')
+    return {
+      ...base,
+      shape: 'path',
+      path: structuredClone(DEFAULT_DRAWING),
+      fill: null,
+      outline: { color: look.style.color, width: 6 },
+    };
   return {
     ...base,
     shape: choice === 'rounded' ? 'rectangle' : choice,

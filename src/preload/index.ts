@@ -192,6 +192,7 @@ const bridge: DrashtiBridge = {
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
     slidesForEdit: (presentationId) => invoke(IPC.library.slidesForEdit, presentationId),
+    exportPdf: (presentationId, doc, stamp) => invoke(IPC.library.exportPdf, presentationId, doc, stamp),
     saveSlides: (presentationId, doc, stamp, force = false) =>
       invoke(IPC.library.saveSlides, presentationId, doc, stamp, force),
     getDefaultTransition: () => invoke(IPC.library.getDefaultTransition),
@@ -624,6 +625,13 @@ const bridge: DrashtiBridge = {
         listener(which);
       }),
     switchAnswer: (yes) => invoke(IPC.output.switchAnswer, yes),
+  },
+  pdfExport: {
+    job: () => invoke(IPC.pdfExport.job),
+    print: (id, index) => invoke(IPC.pdfExport.print, id, index),
+    normalized: (id, index, pages) => invoke(IPC.pdfExport.normalized, id, index, pages),
+    done: (done) => invoke(IPC.pdfExport.done, done),
+    asset: (kind, name) => invoke(IPC.pdfExport.asset, kind, name),
   },
   pictures: {
     job: () => invoke(IPC.pictures.job),

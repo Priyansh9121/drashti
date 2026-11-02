@@ -1,4 +1,34 @@
-import type { ShapeKind } from './model';
+import type { NativePath, ShapeKind } from './model';
+
+/** SVG commands are generated solely from validated finite native numbers. */
+export function nativePathData(path: NativePath, width: number, height: number): string {
+  return path.commands
+    .map((command) => {
+      switch (command.op) {
+        case 'M':
+        case 'L':
+          return `${command.op}${command.x * width} ${command.y * height}`;
+        case 'C':
+          return `C${command.x1 * width} ${command.y1 * height} ${command.x2 * width} ${command.y2 * height} ${command.x * width} ${command.y * height}`;
+        case 'Q':
+          return `Q${command.x1 * width} ${command.y1 * height} ${command.x * width} ${command.y * height}`;
+        case 'Z':
+          return 'Z';
+      }
+    })
+    .join(' ');
+}
+
+export const DEFAULT_DRAWING: NativePath = {
+  commands: [
+    { op: 'M', x: 0, y: 0 },
+    { op: 'L', x: 0.5, y: 1 },
+    { op: 'L', x: 1, y: 0 },
+  ],
+  fillRule: 'nonzero',
+  lineCap: 'round',
+  lineJoin: 'round',
+};
 
 /** Drashti's simple geometric symbols, authored here in a 100-unit square; no imported artwork. */
 function pathOf(kind: ShapeKind): string | null {

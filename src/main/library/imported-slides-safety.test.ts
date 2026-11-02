@@ -10,9 +10,11 @@ import { editDocSchema, type EditSlidesResult, type SaveSlidesResult } from '../
 import { DEFAULT_THEME } from '../../shared/themes';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
+import { sourceWrite } from '../documents/source-write';
 import { MediaStore } from '../import/media-store';
 import { OriginalsStore } from '../import/originals-store';
 import { originalWorld, PLACEHOLDER_WORDS } from '../import/testing/original-fixture';
+import { nativeSourceReader } from '../import/testing/native-source-reader';
 import { makeTestPptx } from '../import/testing/make-pptx';
 import { Revisions } from './revisions';
 import { editDocOf, rowOf } from './slides';
@@ -38,6 +40,9 @@ function register(w: World, presentations: PresentationRepo) {
     revisions: new Revisions(),
     settings: new SettingsRepo(w.db),
     fromOperator: () => true,
+    mayPrepareSource: () => true,
+    sourceReader: nativeSourceReader,
+    sourceWrite: sourceWrite(w.db),
     lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
     changed: (ids) => {
       published.push(ids);
@@ -316,8 +321,8 @@ describe('imported editor provenance and legacy safety', () => {
       const published = register(w, presentations);
       // Import already succeeded. Only the later asset-store boundary fails:
       // real PDF parsing/extraction/raster generation remains untouched.
-      const failedAsset = vi.spyOn(MediaStore.prototype, 'importFile').mockResolvedValue({
-        outcome: 'failed',
+      const failedAsset = vi.spyOn(MediaStore.prototype, 'stage').mockResolvedValue({
+        ok: false,
         issue: {
           severity: 'error',
           code: 'no-room',

@@ -5,6 +5,7 @@ import { idSchema, transitionSchema } from '../../shared/model-schema';
 import type { EditSlidesResult, SaveSlidesResult, SlideLook, SlidesSaved } from '../../shared/slide-edit';
 import { editDocSchema } from '../../shared/slide-edit';
 import type { Db } from '../db/database';
+import type { ContentRows } from '../db/content';
 import type { PresentationRepo } from '../db/presentations';
 import type { SettingsRepo } from '../db/settings';
 import { handle } from '../ipc/handle';
@@ -12,6 +13,9 @@ import type { Revisions } from './revisions';
 import { applySlideEdit, editDocOf, mediaIdsOf } from './slides';
 import { nfcEditDoc } from '../../shared/nfc';
 import { ImportedSlides } from './imported-slides';
+import type { SourceReader } from '../documents/source-reader';
+import type { SourceWrite } from '../documents/source-write';
+import type { EditDoc } from '../../shared/slide-edit';
 
 /*
  * The slide editor's requests: anyone of Drashti's pages may read a
@@ -32,6 +36,20 @@ export interface SlidesIpcDeps {
   changed: (presentationIds: string[]) => void;
   /** Slides saved (Session 55, Part 17a: from the slide editor's window): the operator window's Undo puts them back. */
   saved?: (saved: SlidesSaved) => void;
+  /** Main selects secure production adapters; omitted readers never fall back to Node canvas. */
+  sourceReader?: SourceReader;
+  sourceWrite?: SourceWrite;
+  /** Main's current Pro/access/sender authority, rechecked throughout preparation. */
+  mayPrepareSource?: (event: IpcMainInvokeEvent) => boolean;
+}
+
+export interface SlidesIpcController {
+  cancelSourcePreparation(presentationId?: string): void;
+  documentForExport(
+    presentationId: string,
+    doc: EditDoc,
+    stamp: string,
+  ): { ok: true; doc: EditDoc } | { ok: false; message: string };
 }
 
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change slides.' };
@@ -52,8 +70,19 @@ export function registerSlidesIpc({
   lookFor,
   changed,
   saved,
-}: SlidesIpcDeps): void {
-  const imported = new ImportedSlides(db);
+  sourceReader,
+  sourceWrite,
+  mayPrepareSource = () => false,
+}: SlidesIpcDeps): SlidesIpcController {
+  const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
+  const generations = new Map<string, AbortController>();
+  const cancelSourcePreparation = (presentationId?: string) => {
+    for (const [id, controller] of generations)
+      if (presentationId === undefined || presentationId === id) {
+        controller.abort();
+        generations.delete(id);
+      }
+  };
   /**
    * When the presentation last changed, and its content revision (Sessions 31–36: every write of its content
    * moves it on, so two writes in one millisecond still differ): the editor saves only over what it opened.
@@ -65,7 +94,7 @@ export function registerSlidesIpc({
     return row ? { name: row.name, stamp: `${row.updated_at}#${String(row.content_rev)}` } : null;
   };
 
-  handle(IPC.library.slidesForEdit, (_e, presentationId): EditSlidesResult | Promise<EditSlidesResult> => {
+  handle(IPC.library.slidesForEdit, (e, presentationId): EditSlidesResult | Promise<EditSlidesResult> => {
     const id = idSchema.safeParse(presentationId);
     const rows = id.success ? presentations.content(id.data) : null;
     const stamp = id.success ? stampOf(id.data) : null;
@@ -76,10 +105,21 @@ export function registerSlidesIpc({
       .pluck()
       .get(rows.presentationId);
     if (source === 'pictures' || rows.slides.some((slide) => slide.document_page)) {
+      if (!fromOperator(e) || !mayPrepareSource(e))
+        return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
+      cancelSourcePreparation();
+      const controller = new AbortController();
+      generations.set(rows.presentationId, controller);
+      const allowed = () =>
+        !controller.signal.aborted &&
+        generations.get(rows.presentationId) === controller &&
+        fromOperator(e) &&
+        mayPrepareSource(e) &&
+        stampOf(rows.presentationId)?.stamp === stamp.stamp;
       return imported
-        .prepare(rows, doc, stamp.stamp)
+        .prepare(rows, doc, stamp.stamp, { signal: controller.signal, allowed })
         .then((prepared): EditSlidesResult => {
-          if (stampOf(rows.presentationId)?.stamp !== stamp.stamp)
+          if (!allowed())
             return {
               ok: false,
               message:
@@ -95,15 +135,24 @@ export function registerSlidesIpc({
           };
         })
         .catch(() => ({
-          ok: false,
+          ok: false as const,
           message: 'The source pages could not be prepared. The saved presentation is unchanged.',
-        }));
+        }))
+        .finally(() => {
+          if (generations.get(rows.presentationId) === controller) generations.delete(rows.presentationId);
+        });
     }
     return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
   });
 
-  handle(IPC.library.saveSlides, (e, presentationId, edited, stamp, force): SaveSlidesResult => {
-    if (!fromOperator(e)) return onlyOperator;
+  const validateDocument = (
+    presentationId: unknown,
+    edited: unknown,
+    stamp: unknown,
+    force: unknown,
+  ):
+    | { ok: true; doc: EditDoc; before: ContentRows; now: { name: string; stamp: string }; id: string }
+    | Extract<SaveSlidesResult, { ok: false }> => {
     const id = idSchema.safeParse(presentationId);
     const doc = editDocSchema.safeParse(edited);
     if (!id.success || !doc.success || typeof stamp !== 'string' || doc.data.presentationId !== id.data)
@@ -134,12 +183,24 @@ export function registerSlidesIpc({
           message: 'A picture, video or sound on these slides is no longer in the library.',
         };
     }
-    // Its words in one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
-    const after = applySlideEdit(before, nfcEditDoc(prepared.doc));
+    return { ok: true as const, doc: nfcEditDoc(prepared.doc), before, now, id: id.data };
+  };
+
+  const documentForExport: SlidesIpcController['documentForExport'] = (presentationId, doc, stamp) => {
+    const checked = validateDocument(presentationId, doc, stamp, false);
+    return checked.ok ? { ok: true, doc: checked.doc } : { ok: false, message: checked.message };
+  };
+
+  handle(IPC.library.saveSlides, (e, presentationId, edited, stamp, force): SaveSlidesResult => {
+    if (!fromOperator(e)) return onlyOperator;
+    const checked = validateDocument(presentationId, edited, stamp, force);
+    if (!checked.ok) return checked;
+    // Its words in one form, NFC, exactly as in the validated export document.
+    const after = applySlideEdit(checked.before, checked.doc);
     presentations.setContent(after);
-    const revisionId = revisions.keep([before]);
-    changed([id.data]);
-    saved?.({ presentationId: id.data, name: now.name, revisionId });
+    const revisionId = revisions.keep([checked.before]);
+    changed([checked.id]);
+    saved?.({ presentationId: checked.id, name: checked.now.name, revisionId });
     return { ok: true, revisionId };
   });
 
@@ -158,4 +219,5 @@ export function registerSlidesIpc({
     settings.set(DEFAULT_TRANSITION, kept);
     return { ok: true as const, transition: kept };
   });
+  return { cancelSourcePreparation, documentForExport };
 }

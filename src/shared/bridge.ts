@@ -1,4 +1,6 @@
 import type { ReadyReport } from './ready';
+import type { PdfJob, PdfPage, PdfDone } from './editable-source';
+import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
@@ -51,7 +53,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
-import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
+import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
@@ -313,6 +315,8 @@ export interface DrashtiBridge {
     getPresentation(id: string): Promise<PresentationDoc | null>;
     /** A presentation's slides, everything on them, and how new text looks, for the slide editor. */
     slidesForEdit(presentationId: string): Promise<EditSlidesResult>;
+    /** Save a separate PDF from the current editor document; never saves or closes the presentation. */
+    exportPdf(presentationId: string, doc: EditDoc, stamp: string): Promise<PdfCopyResult>;
     /**
      * Put edited slides back as one change (Undo brings back the copy kept
      * before it). Refused when the presentation changed since `stamp`, unless forced.
@@ -934,11 +938,18 @@ export interface DrashtiBridge {
     switchAnswer(yes: boolean): Promise<null>;
   };
   /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
+  pdfExport: {
+    job(): Promise<PdfCopyJob | null>;
+    print(id: string, index: number): Promise<Uint8Array | null>;
+    normalized(id: string, index: number, pages: PdfPrintPage[]): Promise<Uint8Array | null>;
+    done(done: PdfCopyFinished): Promise<boolean>;
+    asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
+  };
   pictures: {
-    job(): Promise<PictureJob | null>;
+    job(): Promise<PdfJob | null>;
     /** False: stop (the import was cancelled). */
-    page(page: PicturePage): Promise<boolean>;
-    done(done: PicturesDone): Promise<null>;
+    page(page: PdfPage): Promise<boolean>;
+    done(done: PdfDone): Promise<null>;
     asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
   };
   /** The hidden window that makes pictures' sharpened copies (Session 26f); that window only. */

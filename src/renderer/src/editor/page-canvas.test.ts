@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { addSlideAfter, newSlide } from '../renderer/src/editor/ops';
-import type { EditDoc, EditSlide } from './slide-edit';
-import { editDocSchema } from './slide-edit';
-import { renderEditedSlide } from './slide-design';
+import { addSlideAfter, newSlide } from './ops';
+import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
+import { editDocSchema } from '../../../shared/slide-edit';
+import { renderEditedSlide } from '../../../shared/slide-design';
 
 function fixture(): { doc: EditDoc; slide: EditSlide } {
   const slide: EditSlide = {

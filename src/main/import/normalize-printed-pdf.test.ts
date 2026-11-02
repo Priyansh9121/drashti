@@ -53,7 +53,7 @@ function fixture(
     const box = [...origin, origin[0] + spec.width, origin[1] + spec.height];
     const commands = Buffer.from(
       'q\n0.2 0.4 0.7 rg\n40 50 30 20 re f\nQ\nBT /F1 12 Tf 1 0 0 1 24 270 Tm (Placeholder ' +
-        index +
+        String(index) +
         ') Tj ET\n% xref /Type /Page /MediaBox [0 0 1 1] endobj stream\n',
     );
     const compressed = deflateSync(commands);

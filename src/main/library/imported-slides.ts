@@ -1,22 +1,19 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { DocumentPageRef } from '../../shared/document-page';
 import { documentPageFromJson } from '../../shared/document-page';
 import type { SlideElement } from '../../shared/model';
-import { editablePdfPage } from '../../shared/pdf-edit-page';
-import type { EditDoc, EditSlide } from '../../shared/slide-edit';
+import { editDocSchema, type EditDoc, type EditSlide } from '../../shared/slide-edit';
 import type { ContentRows } from '../db/content';
 import type { Db } from '../db/database';
-import { readEditablePptx } from '../import/deck/editable-pptx';
+import { unavailableSourceReader, type SourceReader } from '../documents/source-reader';
+import { unavailableSourceWrite, type SourceCommitGuard, type SourceWrite } from '../documents/source-write';
 import { MediaStore } from '../import/media-store';
-import { MEDIA_REF } from '../import/model';
 import { OriginalsStore, type OriginalDescriptor } from '../import/originals-store';
 import { editDocOf, sameData } from './slides';
 
-const require = createRequire(import.meta.url);
 const allSlides = (doc: EditDoc) => doc.groups.flatMap((group) => group.slides);
 const contentOf = (slide: EditSlide, copied = false) => {
   const groups = new Map<string, number>();
@@ -45,13 +42,18 @@ export class ImportedSlides {
   private readonly prepared = new Map<string, { stamp: string; doc: EditDoc }>();
   private readonly originals: OriginalsStore;
   private readonly media: MediaStore;
+  private readonly reader: SourceReader;
+  private readonly write: SourceWrite;
 
   constructor(
     private readonly db: Db,
     mediaDir = join(dirname(db.name), 'Media'),
+    options: { sourceReader?: SourceReader; sourceWrite?: SourceWrite } = {},
   ) {
     this.originals = new OriginalsStore(db, mediaDir);
     this.media = new MediaStore(db, { dir: mediaDir });
+    this.reader = options.sourceReader ?? unavailableSourceReader;
+    this.write = options.sourceWrite ?? unavailableSourceWrite;
   }
 
   private async originalFor(
@@ -69,7 +71,10 @@ export class ImportedSlides {
     rows: ContentRows,
     opened: EditDoc,
     stamp: string,
+    guard: SourceCommitGuard,
   ): Promise<{ doc: EditDoc; issues: string[] }> {
+    const allowed = () => !guard.signal.aborted && guard.allowed();
+    if (!allowed()) throw new Error('Source preparation cancelled.');
     const doc = structuredClone(opened);
     const issues: string[] = [];
     const slides = allSlides(doc);
@@ -84,6 +89,7 @@ export class ImportedSlides {
         );
     }
     const work = await mkdtemp(join(tmpdir(), 'drashti-edit-source-'));
+    let retainOutput = false;
     try {
       const bySource = new Map<string, EditSlide[]>();
       for (const slide of slides)
@@ -104,98 +110,110 @@ export class ImportedSlides {
           );
           continue;
         }
+        if (!allowed()) throw new Error('Source preparation cancelled.');
+        if (ref.ext !== 'pdf' && ref.ext !== 'pptx') {
+          issues.push(
+            'This older deck needs a retained PDF reading copy to expose its objects. Its saved playback is unchanged.',
+          );
+          continue;
+        }
         try {
-          if (ref.ext === 'pptx') {
-            const parsed = await readEditablePptx(source.file, join(work, ref.sha256));
-            const media = new Map<string, string>();
-            for (const [i, asset] of parsed.media.entries()) {
-              const imported = await this.media.importFile(asset.originalPath, {
-                kind: 'drashti',
-                path: 'Editable document object',
-              });
-              if (!('mediaId' in imported)) throw new Error('A source object could not be retained.');
-              media.set(`${MEDIA_REF}${i}`, imported.mediaId);
-            }
-            for (const slide of list) {
-              const pageRef = slide.documentPage;
-              if (!pageRef) continue;
-              const native = parsed.slides.find((page) => page.sourceIndex === pageRef.page);
-              if (!native) {
-                issues.push('A source slide could not be matched; its saved playback is unchanged.');
-                continue;
-              }
-              slide.elements = native.elements.map((element): SlideElement => {
-                const own = { ...element, id: `${slide.id}-${element.id}` };
-                return own.kind === 'image' || own.kind === 'video'
-                  ? { ...own, mediaId: media.get(own.mediaId) ?? own.mediaId }
-                  : own;
-              });
-              slide.background = native.background;
-              slide.documentPage = { ...pageRef, width: parsed.width, height: parsed.height };
-              issues.push(...native.issues);
-            }
-          } else if (ref.ext === 'pdf') {
-            const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-            // A bundled entry has no sibling pdf.worker.mjs. Keep the real parser in the bundle too.
-            const pdfWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
-            (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = pdfWorker;
-            const assets = dirname(require.resolve('pdfjs-dist/package.json'));
-            const loading = pdfjs.getDocument({
-              data: new Uint8Array(await readFile(source.file)),
-              useWorkerFetch: false,
-              useSystemFonts: false,
-              disableFontFace: false,
-              standardFontDataUrl: join(assets, 'standard_fonts') + sep,
-              cMapUrl: join(assets, 'cmaps') + sep,
-              cMapPacked: true,
-              wasmUrl: join(assets, 'wasm') + sep,
-            });
+          const outDir = join(work, randomUUID());
+          await mkdir(outDir);
+          const parsed = await this.reader({
+            ext: ref.ext,
+            file: source.file,
+            outDir,
+            sourcePages: [
+              ...new Set(list.flatMap((slide) => (slide.documentPage ? [slide.documentPage.page] : []))),
+            ],
+            signal: guard.signal,
+            checkpoint: () => Promise.resolve(allowed()),
+          });
+          if (!parsed.ok) {
+            retainOutput ||= parsed.retainOutput === true;
+            issues.push(parsed.message);
+            continue;
+          }
+          if (!allowed()) throw new Error('Source preparation cancelled.');
+          const retained = new Map<string, string>();
+          for (const native of parsed.pages) {
+            const occurrences = list.filter((slide) => slide.documentPage?.page === native.sourceIndex);
+            if (!occurrences.length) continue;
             try {
-              const pdf = await loading.promise;
-              for (const slide of list) {
-                const pageRef = slide.documentPage;
-                if (!pageRef) continue;
-                const page = await pdf.getPage(pageRef.page + 1);
-                const native = await editablePdfPage(pdf, page, pdfjs.OPS);
-                const media = new Map<string, string>();
-                for (const asset of native.assets) {
-                  const file = join(work, `${randomUUID()}.png`);
-                  await writeFile(file, asset.png);
-                  const imported = await this.media.importFile(file, {
-                    kind: 'drashti',
-                    path: 'Editable document object',
-                  });
-                  if (!('mediaId' in imported)) throw new Error('A source object could not be retained.');
-                  media.set(asset.id, imported.mediaId);
+              const media = new Map<string, string>();
+              for (const asset of native.assets) {
+                if (!allowed()) throw new Error('Source preparation cancelled.');
+                let mediaId = retained.get(asset.file);
+                if (!mediaId) {
+                  const staged = await this.media.stage(asset.file);
+                  if (!staged.ok) throw new Error('A source object could not be retained.');
+                  if (!allowed()) throw new Error('Source preparation cancelled.');
+                  const imported = await this.write(guard, () =>
+                    this.media.addStaged(staged.staged, {
+                      kind: 'drashti',
+                      path: 'Editable document object',
+                    }),
+                  );
+                  mediaId = imported.mediaId;
+                  retained.set(asset.file, mediaId);
                 }
-                slide.elements = native.elements.map((element): SlideElement =>
-                  element.kind === 'image' || element.kind === 'video'
-                    ? {
-                        ...element,
-                        id: `${slide.id}-${element.id}`,
-                        mediaId: media.get(element.mediaId) ?? element.mediaId,
-                      }
-                    : { ...element, id: `${slide.id}-${element.id}` },
-                );
-                slide.background = '#ffffff';
-                slide.documentPage = { ...pageRef, width: native.width, height: native.height };
-                slide.pageSize = { width: native.width, height: native.height };
-                issues.push(...native.issues);
+                if (media.has(asset.token)) throw new Error('A source asset token is duplicated.');
+                media.set(asset.token, mediaId);
               }
-            } finally {
-              await loading.destroy();
+              const elements = native.elements.map((element): SlideElement => {
+                if (element.kind !== 'image' && element.kind !== 'video') return element;
+                const mediaId = media.get(element.mediaId);
+                if (!mediaId) throw new Error('A source object could not be retained.');
+                return { ...element, mediaId };
+              });
+              const candidates = occurrences.map((slide) => ({
+                ...slide,
+                elements: elements.map((element) => ({ ...element, id: `${slide.id}-${element.id}` })),
+                background: native.background,
+                documentPage: { ...slide.documentPage, width: native.width, height: native.height },
+                ...(ref.ext === 'pdf' ? { pageSize: { width: native.width, height: native.height } } : {}),
+              }));
+              // Check complete candidates before replacing any occurrence's old canvas.
+              for (const candidate of candidates) {
+                const one = {
+                  ...doc,
+                  groups: [
+                    {
+                      ...doc.groups[0],
+                      id: doc.groups[0]?.id ?? randomUUID(),
+                      name: '',
+                      color: doc.groups[0]?.color ?? null,
+                      slides: [candidate],
+                    },
+                  ],
+                };
+                if (!editDocSchema.safeParse(one).success)
+                  throw new Error('A prepared source page is not valid.');
+              }
+              if (!allowed()) throw new Error('Source preparation cancelled.');
+              for (const [index, slide] of occurrences.entries()) {
+                const candidate = candidates[index];
+                if (!candidate) throw new Error('A prepared page is missing.');
+                Object.assign(slide, candidate);
+              }
+              issues.push(...native.issues);
+            } catch {
+              if (!allowed()) throw new Error('Source preparation cancelled.');
+              issues.push('Some source objects could not be prepared safely. Saved playback is unchanged.');
             }
-          } else
-            issues.push(
-              'This older deck needs a retained PDF reading copy to expose its objects. Its saved playback is unchanged.',
-            );
+          }
+          if (parsed.failed.length)
+            issues.push('Some source pages could not be matched; their saved playback is unchanged.');
         } catch {
+          if (!allowed()) throw new Error('Source preparation cancelled.');
           issues.push('Some source objects could not be prepared safely. Saved playback is unchanged.');
         }
       }
     } finally {
-      await rm(work, { recursive: true, force: true });
+      if (!retainOutput) await rm(work, { recursive: true, force: true });
     }
+    if (!allowed()) throw new Error('Source preparation cancelled.');
     for (const slide of slides) if (slide.documentPage) slide.sourceOccurrenceId = slide.id;
     this.prepared.delete(doc.presentationId);
     this.prepared.set(doc.presentationId, { stamp, doc: structuredClone(doc) });
