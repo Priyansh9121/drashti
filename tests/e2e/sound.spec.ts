@@ -311,7 +311,11 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
 });
 
 test('only the audio player may see sound outputs; the choice is remembered, and a missing one falls back', async () => {
-  const { app, userData } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  // Exercise the real session permission rules against generated devices, never this computer's camera or mic.
+  const { app, userData } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+  });
   const win = await operatorPage(app);
   const audio = await audioPage(app);
   const outputsSeenBy = (page: Page) =>
@@ -398,7 +402,7 @@ test('only the audio player may see sound outputs; the choice is remembered, and
   await app.close();
 
   // After a restart the choice is remembered, and still missing: the operator sees it at once.
-  const again = await relaunchApp(userData);
+  const again = await relaunchApp(userData, { DRASHTI_TEST_FAKE_DEVICES: '1' });
   const win2 = await operatorPage(again.app);
   const status = await win2.evaluate(() => (globalThis as PageGlobals).drashti.audio.getOutput());
   expect(status.chosen).toEqual({ id: 'placeholder-mixer-id', label: 'Placeholder Mixer' });
