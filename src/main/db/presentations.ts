@@ -25,6 +25,7 @@ import type { ItemOrder } from '../../shared/playlists';
 import type { Db } from './database';
 import type { ContentRows } from './content';
 import { readContent, transitionFromJson, transitionToJson, writeContent } from './content';
+import { documentCanvas, documentPageFromJson, type DocumentPageRef } from '../../shared/document-page';
 import { SearchIndex } from './search';
 
 interface SourceColumns {
@@ -173,6 +174,7 @@ export function elementFromRow(row: ElementRow): SlideElement | null {
 }
 
 export interface NewSlide {
+  documentPage?: DocumentPageRef;
   label?: string;
   notes?: string;
   background?: string | null;
@@ -359,6 +361,7 @@ export class PresentationRepo {
       macro_id: string | null;
       deck: string | null;
       editor_design?: string | null;
+      document_page?: string | null;
     }[];
     const elements = this.db
       .prepare(
@@ -447,8 +450,7 @@ export class PresentationRepo {
       const slide = composeSlide(
         {
           id: s.id,
-          width: p.width,
-          height: p.height,
+          ...documentCanvas(documentPageFromJson(s.document_page), p),
           background: s.background,
           // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
           ...(darken ? { darken } : {}),
@@ -656,6 +658,8 @@ export class PresentationRepo {
     // (the tests' own) still takes every other presentation.
     const anyDeck = input.groups.some((g) => g.slides.some((sl) => sl.deck));
     const setDeck = anyDeck ? db.prepare('UPDATE slides SET deck = ? WHERE id = ?') : null;
+    const anyDocument = input.groups.some((g) => g.slides.some((sl) => sl.documentPage));
+    const setDocument = anyDocument ? db.prepare('UPDATE slides SET document_page = ? WHERE id = ?') : null;
     const insertElement = db.prepare(
       'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, rotation, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
@@ -681,6 +685,7 @@ export class PresentationRepo {
           slide.enabled === false ? 0 : 1,
         );
         if (setDeck && slide.deck) setDeck.run(deckToJson(slide.deck), slideId);
+        if (setDocument && slide.documentPage) setDocument.run(JSON.stringify(slide.documentPage), slideId);
         slide.elements.forEach((element, ei) => {
           const { id: _id, kind, frame, rotation, ...props } = element;
           insertElement.run(

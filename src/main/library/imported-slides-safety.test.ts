@@ -1,0 +1,527 @@
+import { randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { documentPageFromJson } from '../../shared/document-page';
+import type { DeckSlide } from '../../shared/deck';
+import { IPC } from '../../shared/ipc';
+import type { TextElement } from '../../shared/model';
+import { editDocSchema, type EditSlidesResult, type SaveSlidesResult } from '../../shared/slide-edit';
+import { DEFAULT_THEME } from '../../shared/themes';
+import { PresentationRepo } from '../db/presentations';
+import { SettingsRepo } from '../db/settings';
+import { MediaStore } from '../import/media-store';
+import { OriginalsStore } from '../import/originals-store';
+import { originalWorld, PLACEHOLDER_WORDS } from '../import/testing/original-fixture';
+import { makeTestPptx } from '../import/testing/make-pptx';
+import { Revisions } from './revisions';
+import { editDocOf, rowOf } from './slides';
+import { registerSlidesIpc } from './slides-ipc';
+import { themeLook } from './themes';
+
+const handlers = new Map<string, (...args: unknown[]) => unknown>();
+vi.mock('../ipc/handle', () => ({
+  handle: (channel: string, fn: (...args: unknown[]) => unknown) => {
+    handlers.set(channel, fn);
+  },
+}));
+beforeEach(() => handlers.clear());
+
+type World = ReturnType<typeof originalWorld>;
+type Opened = Extract<EditSlidesResult, { ok: true }>;
+
+function register(w: World, presentations: PresentationRepo) {
+  const published: string[][] = [];
+  registerSlidesIpc({
+    db: w.db,
+    presentations,
+    revisions: new Revisions(),
+    settings: new SettingsRepo(w.db),
+    fromOperator: () => true,
+    lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
+    changed: (ids) => {
+      published.push(ids);
+    },
+  });
+  return published;
+}
+
+async function open(id: string): Promise<Opened> {
+  const handler = handlers.get(IPC.library.slidesForEdit);
+  if (!handler) throw new Error('The existing editor-open handler was not registered.');
+  const result = await (handler({}, id) as EditSlidesResult | Promise<EditSlidesResult>);
+  expect(result.ok, 'the real source editor opened successfully').toBe(true);
+  if (!result.ok) throw new Error(result.message);
+  expect(editDocSchema.safeParse(result.doc).success, 'preparation returns an existing valid EditDoc').toBe(
+    true,
+  );
+  return result;
+}
+
+async function save(id: string, opened: Opened): Promise<SaveSlidesResult> {
+  const handler = handlers.get(IPC.library.saveSlides);
+  if (!handler) throw new Error('The existing editor-save handler was not registered.');
+  return await (handler({}, id, opened.doc, opened.stamp, false) as
+    SaveSlidesResult | Promise<SaveSlidesResult>);
+}
+
+function nativeSource(opened: Opened): TextElement {
+  const boxes = opened.doc.groups
+    .flatMap((group) => group.slides)
+    .flatMap((slide) => slide.elements)
+    .filter((element) => element.kind === 'text');
+  const box = boxes.find((element) => element.text.includes(PLACEHOLDER_WORDS));
+  expect(box, 'native words must come from real PDF preparation, never a seeded replacement').toBeDefined();
+  if (!box) throw new Error('The real PDF preparation did not expose the generated source words.');
+  return box;
+}
+
+function originalsUnchanged(w: World) {
+  expect(readFileSync(w.source)).toEqual(w.bytes);
+  expect(readFileSync(w.owned)).toEqual(w.bytes);
+}
+
+/** A genuine retained source and realistic stored baking metadata, with no clip playback. */
+async function bakedSource(w: World, editedFirst = false) {
+  const words = 'Placeholder copied animated source';
+  const bytes = makeTestPptx([{ text: words, color: '204060', animated: true }]);
+  const file = join(w.root, 'Placeholder copied animated source.pptx');
+  writeFileSync(file, bytes);
+  const originals = new OriginalsStore(w.db, w.mediaDir, { freeBytes: () => 1024 ** 4 });
+  const media = new MediaStore(w.db, { dir: w.mediaDir, freeBytes: () => 1024 ** 4 });
+  const staged = await originals.stage(file, 'pptx');
+  if (!staged.ok) throw new Error(staged.message);
+  originals.register(staged.original);
+  const clips = [0, 1].map((index) =>
+    media.addMissing(join(w.root, `Placeholder step ${String(index)}.mp4`), 'video', {
+      kind: 'drashti',
+      path: file,
+    }),
+  );
+  const lasts = [0, 1].map((index) =>
+    media.addMissing(join(w.root, `Placeholder final ${String(index)}.png`), 'image', {
+      kind: 'drashti',
+      path: file,
+    }),
+  );
+  const firstClip = clips[0],
+    nextClip = clips[1],
+    firstLast = lasts[0],
+    nextLast = lasts[1];
+  if (!firstClip || !nextClip || !firstLast || !nextLast)
+    throw new Error('The generated baked media ids are missing.');
+  const deck: DeckSlide & { placeholderFuture: { label: string; version: number } } = {
+    transition: { name: 'Placeholder source fade', durationMs: 100 },
+    steps: [
+      { clipId: firstClip, clipMs: 250, lastId: firstLast },
+      { clipId: nextClip, clipMs: 350, lastId: nextLast },
+    ],
+    media: [
+      {
+        kind: 'video',
+        mediaId: nextClip,
+        box: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 },
+        loop: false,
+        volume: 0,
+        start: { step: 1, offsetMs: 0 },
+      },
+    ],
+    placeholderFuture: { label: 'Placeholder source metadata', version: 1 },
+  };
+  const presentations = new PresentationRepo(w.db);
+  const ref = { sha256: staged.original.sha256, ext: 'pptx' as const, page: 0 };
+  const look = themeLook({ ...DEFAULT_THEME }, 1280, 720);
+  const operatorText: TextElement = {
+    id: randomUUID(),
+    kind: 'text',
+    text: 'Placeholder operator edit of the first occurrence',
+    lang: 'en',
+    frame: { x: 80, y: 80, width: 900, height: 160 },
+    style: look.style,
+  };
+  const id = presentations.insert({
+    libraryId: presentations.ensureLibrary('Placeholder retained deck tests'),
+    name: 'Placeholder copied animated source',
+    width: 1280,
+    height: 720,
+    source: { kind: 'pictures', path: file, ref: null, importedAt: null },
+    sourceHash: staged.original.sha256,
+    groups: [
+      {
+        name: '',
+        slides: [
+          ...(editedFirst
+            ? [
+                {
+                  documentPage: { ...ref, edited: true, width: 1280, height: 720 },
+                  label: 'Placeholder edited occurrence',
+                  elements: [operatorText],
+                },
+              ]
+            : []),
+          {
+            documentPage: ref,
+            label: 'Placeholder baked occurrence',
+            deck,
+            elements: [
+              {
+                id: randomUUID(),
+                kind: 'image',
+                mediaId: nextLast,
+                fit: 'fit',
+                frame: { x: 0, y: 0, width: 1280, height: 720 },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const before = presentations.content(id);
+  if (!before) throw new Error('The generated retained deck was not stored.');
+  return { words, bytes, file, owned: staged.file, ref, deck, presentations, id, before };
+}
+
+const copiedSlide = (slide: Opened['doc']['groups'][number]['slides'][number]) => ({
+  ...structuredClone(slide),
+  id: randomUUID(),
+  elements: slide.elements.map((element) => ({ ...structuredClone(element), id: randomUUID() })),
+  cues: slide.cues.map((cue) => ({ ...cue, id: randomUUID() })),
+});
+
+describe('imported editor provenance and legacy safety', () => {
+  it('keeps allowed transition edits and unknown source deck data when an unconverted baked page is copied', async () => {
+    const w = originalWorld();
+    try {
+      const source = await bakedSource(w);
+      const published = register(w, source.presentations);
+      const opened = await open(source.id);
+      const group = opened.doc.groups[0],
+        original = group?.slides[0];
+      if (!group || !original?.deck) throw new Error('The generated source baked page is missing.');
+      expect(
+        original.elements
+          .filter((element) => element.kind === 'text')
+          .map((element) => element.text)
+          .join('\n'),
+      ).toContain(source.words);
+      const copy = copiedSlide(original);
+      if (!copy.deck) throw new Error('The source copy lost its baked metadata during fixture setup.');
+      const drashti: NonNullable<DeckSlide['drashti']> = {
+        transition: { kind: 'dissolve', durationMs: 600 },
+        mode: 'instead',
+      };
+      const stepTransitions: NonNullable<DeckSlide['stepTransitions']> = {
+        1: { transition: { kind: 'slide', durationMs: 450 }, mode: 'over' },
+      };
+      copy.deck.drashti = drashti;
+      copy.deck.stepTransitions = stepTransitions;
+      group.slides.push(copy);
+      expect(editDocSchema.safeParse(opened.doc).success).toBe(true);
+      const result = await save(source.id, opened);
+      expect(result.ok, 'editing Drashti’s transition metadata must not require source conversion').toBe(
+        true,
+      );
+      if (!result.ok) throw new Error(result.message);
+      const after = source.presentations.content(source.id);
+      expect(after?.slides).toHaveLength(2);
+      expect(after?.slides[0]).toEqual(source.before.slides[0]);
+      expect(after?.elements.filter((element) => element.slide_id === source.before.slides[0]?.id)).toEqual(
+        source.before.elements,
+      );
+      const stored = after?.slides[1];
+      expect(stored?.deck).not.toBeNull();
+      const savedDeck = JSON.parse(stored?.deck ?? 'null') as
+        (DeckSlide & { placeholderFuture?: unknown }) | null;
+      expect(savedDeck?.drashti).toEqual(drashti);
+      expect(savedDeck?.stepTransitions).toEqual(stepTransitions);
+      expect(savedDeck?.steps).toEqual(source.deck.steps);
+      expect(savedDeck?.media).toEqual(source.deck.media);
+      expect(savedDeck?.placeholderFuture).toEqual(source.deck.placeholderFuture);
+      expect(documentPageFromJson(stored?.document_page)).toMatchObject(source.ref);
+      expect(documentPageFromJson(stored?.document_page)?.edited).not.toBe(true);
+      expect(published).toEqual([[source.id]]);
+      expect(readFileSync(source.file)).toEqual(source.bytes);
+      expect(readFileSync(source.owned)).toEqual(source.bytes);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('matches a copied baked occurrence to its own semantic baseline when an edited occurrence of the same source page comes first', async () => {
+    const w = originalWorld();
+    try {
+      const source = await bakedSource(w, true);
+      register(w, source.presentations);
+      const opened = await open(source.id);
+      const group = opened.doc.groups[0],
+        baked = group?.slides[1];
+      if (!group || !baked?.deck) throw new Error('The second source occurrence is not baked.');
+      expect(group.slides[0]?.documentPage).toMatchObject({ ...source.ref, edited: true });
+      expect(group.slides[0]?.deck).toBeUndefined();
+      expect(baked.documentPage?.edited).not.toBe(true);
+      expect(
+        baked.elements
+          .filter((element) => element.kind === 'text')
+          .map((element) => element.text)
+          .join('\n'),
+      ).toContain(source.words);
+      group.slides.push(copiedSlide(baked));
+      expect(editDocSchema.safeParse(opened.doc).success).toBe(true);
+      const result = await save(source.id, opened);
+      expect(result.ok, 'the genuine unchanged baked copy has a matching prepared occurrence').toBe(true);
+      if (!result.ok) throw new Error(result.message);
+      const after = source.presentations.content(source.id);
+      expect(after?.slides).toHaveLength(3);
+      expect(after?.slides.slice(0, 2)).toEqual(source.before.slides);
+      for (const row of source.before.slides)
+        expect(after?.elements.filter((element) => element.slide_id === row.id)).toEqual(
+          source.before.elements.filter((element) => element.slide_id === row.id),
+        );
+      const copy = after?.slides[2];
+      expect(
+        copy?.deck,
+        'choosing the edited occurrence must not silently convert the baked copy',
+      ).not.toBeNull();
+      expect(documentPageFromJson(copy?.document_page)?.edited).not.toBe(true);
+      expect(documentPageFromJson(copy?.document_page)).toMatchObject(source.ref);
+      const copiedDeck = JSON.parse(copy?.deck ?? 'null') as
+        (DeckSlide & { placeholderFuture?: unknown }) | null;
+      expect(copiedDeck?.steps).toEqual(source.deck.steps);
+      expect(copiedDeck?.media).toEqual(source.deck.media);
+      expect(copiedDeck?.placeholderFuture).toEqual(source.deck.placeholderFuture);
+      expect(readFileSync(source.file)).toEqual(source.bytes);
+      expect(readFileSync(source.owned)).toEqual(source.bytes);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('keeps the whole saved page when a real prepared image cannot be imported, with a reported failure and no unresolved media ids', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      expect(imported.summary.totals).toMatchObject({ imported: 1, failed: 0 });
+      const presentations = new PresentationRepo(w.db);
+      const before = presentations.content(imported.id);
+      if (!before) throw new Error('The generated imported page is missing.');
+      const expected = editDocOf(before, 'Placeholder original').doc.groups.flatMap(
+        (group) => group.slides,
+      )[0];
+      expect(expected?.elements.some((element) => element.kind === 'image')).toBe(true);
+      const revision = w.db
+        .prepare('SELECT content_rev FROM presentations WHERE id = ?')
+        .pluck()
+        .get(imported.id);
+      const published = register(w, presentations);
+      // Import already succeeded. Only the later asset-store boundary fails:
+      // real PDF parsing/extraction/raster generation remains untouched.
+      const failedAsset = vi.spyOn(MediaStore.prototype, 'importFile').mockResolvedValue({
+        outcome: 'failed',
+        issue: {
+          severity: 'error',
+          code: 'no-room',
+          message: 'Placeholder: the generated prepared image could not be retained.',
+          fix: null,
+        },
+      });
+      try {
+        const opened = await open(imported.id);
+        expect(
+          failedAsset,
+          'real preparation produced an image and reached its asset-import boundary',
+        ).toHaveBeenCalled();
+        const page = opened.doc.groups.flatMap((group) => group.slides)[0];
+        expect(
+          page,
+          'a failed asset import must preserve the entire saved canvas, including its background and source identity',
+        ).toEqual(expected);
+        for (const element of page?.elements ?? []) {
+          if (element.kind !== 'image' && element.kind !== 'video') continue;
+          expect(
+            w.db.prepare('SELECT 1 FROM media WHERE id = ?').get(element.mediaId),
+            'every displayed image resolves to actual retained media, not an extraction-local id',
+          ).toBeDefined();
+        }
+        const issues = (opened.sourceIssues ?? []).join(' ');
+        expect(issues).toMatch(/asset|picture|image|media|prepar/iu);
+        expect(issues).toMatch(/fail|could not|unavailable|unchanged|kept/iu);
+        expect(presentations.content(imported.id)).toEqual(before);
+        expect(
+          w.db.prepare('SELECT content_rev FROM presentations WHERE id = ?').pluck().get(imported.id),
+        ).toBe(revision);
+        expect(published).toEqual([]);
+        originalsUnchanged(w);
+      } finally {
+        failedAsset.mockRestore();
+      }
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('refuses a native source edit whose page identity was stripped, keeping exact stored playback and source bytes', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      expect(imported.summary.totals).toMatchObject({ imported: 1, failed: 0 });
+      const presentations = new PresentationRepo(w.db);
+      const before = presentations.content(imported.id);
+      expect(before?.slides).toHaveLength(1);
+      const revision = w.db
+        .prepare('SELECT content_rev FROM presentations WHERE id = ?')
+        .pluck()
+        .get(imported.id);
+      const published = register(w, presentations);
+      const opened = await open(imported.id);
+      const box = nativeSource(opened);
+      const slide = opened.doc.groups.flatMap((group) => group.slides)[0];
+      expect(slide?.documentPage).toMatchObject({ sha256: w.hash, ext: 'pdf', page: 0 });
+      if (!slide) throw new Error('The source page is missing.');
+      delete slide.documentPage;
+      box.text = 'Placeholder revised source words';
+      box.runs = [{ ...(box.runs?.[0] ?? {}), text: box.text }];
+      expect(
+        editDocSchema.safeParse(opened.doc).success,
+        'the edit is schema-valid apart from its missing provenance',
+      ).toBe(true);
+
+      const result = await save(imported.id, opened);
+      expect(result.ok, 'stripping provenance must not bypass the imported-page save policy').toBe(false);
+      if (result.ok) throw new Error('The provenance-stripped source edit was incorrectly saved.');
+      expect(result.message).toMatch(/source|original|document|imported|page|reopen/iu);
+      expect(presentations.content(imported.id)).toEqual(before);
+      expect(
+        w.db.prepare('SELECT content_rev FROM presentations WHERE id = ?').pluck().get(imported.id),
+      ).toBe(revision);
+      expect(published).toEqual([]);
+      originalsUnchanged(w);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('saves a duplicated unedited prepared page with fresh ids and the same resolvable immutable source page', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      expect(imported.summary.totals).toMatchObject({ imported: 1, failed: 0 });
+      const presentations = new PresentationRepo(w.db);
+      const before = presentations.content(imported.id);
+      expect(before?.slides).toHaveLength(1);
+      const published = register(w, presentations);
+      const opened = await open(imported.id);
+      nativeSource(opened);
+      const group = opened.doc.groups[0];
+      const first = group?.slides[0];
+      if (!group || !first) throw new Error('The generated PDF page is missing.');
+      expect(first.documentPage).toMatchObject({ sha256: w.hash, ext: 'pdf', page: 0 });
+      expect(first.documentPage?.edited).not.toBe(true);
+      const copy = structuredClone(first);
+      copy.id = randomUUID();
+      copy.elements = copy.elements.map((element) => ({ ...element, id: randomUUID() }));
+      copy.cues = copy.cues.map((cue) => ({ ...cue, id: randomUUID() }));
+      group.slides.push(copy);
+      expect(editDocSchema.safeParse(opened.doc).success, 'the duplicate has valid distinct editor ids').toBe(
+        true,
+      );
+
+      const result = await save(imported.id, opened);
+      expect(
+        result.ok,
+        'a valid copied page occurrence must not be refused only because its slide id is new',
+      ).toBe(true);
+      if (!result.ok) throw new Error(result.message);
+      const after = presentations.content(imported.id);
+      expect(after?.slides).toHaveLength(2);
+      expect(new Set(after?.slides.map((slide) => slide.id)).size).toBe(2);
+      const refs = (after?.slides ?? []).map((slide) => documentPageFromJson(slide.document_page));
+      expect(refs.map((ref) => ({ sha256: ref?.sha256, ext: ref?.ext, page: ref?.page }))).toEqual([
+        { sha256: w.hash, ext: 'pdf', page: 0 },
+        { sha256: w.hash, ext: 'pdf', page: 0 },
+      ]);
+      const originalId = before?.slides[0]?.id;
+      expect(after?.slides.find((slide) => slide.id === originalId)).toEqual(before?.slides[0]);
+      expect(after?.elements.filter((element) => element.slide_id === originalId)).toEqual(
+        before?.elements.filter((element) => element.slide_id === originalId),
+      );
+      const originals = new OriginalsStore(w.db, w.mediaDir);
+      for (const ref of refs) {
+        const original = originals
+          .list()
+          .find((entry) => entry.sha256 === ref?.sha256 && entry.ext === ref.ext);
+        expect(original, 'each occurrence resolves to a registered retained original').toBeDefined();
+        if (!original) throw new Error('The duplicated page has no retained original.');
+        const file = await originals.resolve(original);
+        expect(file).not.toBeNull();
+        if (!file) throw new Error('The duplicated page original cannot be read.');
+        expect(readFileSync(file)).toEqual(w.bytes);
+      }
+      const reopened = await open(imported.id);
+      const pages = reopened.doc.groups.flatMap((entry) => entry.slides);
+      expect(pages).toHaveLength(2);
+      for (const page of pages)
+        expect(
+          page.elements
+            .filter((element) => element.kind === 'text')
+            .map((element) => element.text)
+            .join('\n'),
+        ).toContain(PLACEHOLDER_WORDS);
+      expect(published).toEqual([[imported.id]]);
+      originalsUnchanged(w);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('preserves a legacy imported page with an operator overlay and explains why its older source mapping is ambiguous', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      expect(imported.summary.totals).toMatchObject({ imported: 1, failed: 0 });
+      const presentations = new PresentationRepo(w.db);
+      const initial = presentations.content(imported.id);
+      const slideId = initial?.slides[0]?.id;
+      if (!slideId) throw new Error('The generated imported slide is missing.');
+      // A pre-17b library has no per-page origin. Model it without guessing any source object ids.
+      w.db.prepare('UPDATE slides SET document_page = NULL WHERE id = ?').run(slideId);
+      const legacy = presentations.content(imported.id);
+      if (!legacy) throw new Error('The generated legacy presentation is missing.');
+      const look = themeLook({ ...DEFAULT_THEME }, legacy.width, legacy.height);
+      const overlay: TextElement = {
+        id: randomUUID(),
+        kind: 'text',
+        text: 'Placeholder operator-added overlay',
+        lang: 'en',
+        frame: { x: 80, y: 80, width: 900, height: 160 },
+        style: look.style,
+      };
+      legacy.elements.push({
+        ...rowOf(overlay, overlay.id, slideId, undefined),
+        position: legacy.elements.length,
+      });
+      presentations.setContent(legacy);
+      const before = presentations.content(imported.id);
+      if (!before) throw new Error('The generated legacy presentation cannot be read.');
+      const expected = editDocOf(before, 'Placeholder original').doc.groups.flatMap(
+        (group) => group.slides,
+      )[0];
+      const published = register(w, presentations);
+      const opened = await open(imported.id);
+      const page = opened.doc.groups.flatMap((group) => group.slides)[0];
+
+      expect(page?.elements.find((element) => element.id === overlay.id)).toEqual(overlay);
+      expect(
+        page?.elements,
+        'an ambiguous legacy canvas must not be silently rebuilt from the source',
+      ).toEqual(expected?.elements);
+      expect(page?.documentPage).toBeUndefined();
+      expect((opened.sourceIssues ?? []).join(' ')).toMatch(/ambig|older|legacy|existing.{0,30}edit/iu);
+      expect(presentations.content(imported.id)).toEqual(before);
+      expect(published).toEqual([]);
+      originalsUnchanged(w);
+    } finally {
+      w.clean();
+    }
+  });
+});

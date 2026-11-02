@@ -2,6 +2,7 @@ import type { DeckSlide } from '../../shared/deck';
 import type { ImportIssue } from '../../shared/import';
 import type { SlideElement, Transition } from '../../shared/model';
 import type { MediaMarkers } from '../../shared/markers';
+import type { DocumentPageRef } from '../../shared/document-page';
 
 /*
  * The intermediate model every importer produces. Parsers fill it from a
@@ -31,6 +32,7 @@ export interface ParsedCue {
 }
 
 export interface ParsedSlide {
+  documentPage?: DocumentPageRef;
   label: string;
   notes: string;
   /** Solid background colour, or null. */

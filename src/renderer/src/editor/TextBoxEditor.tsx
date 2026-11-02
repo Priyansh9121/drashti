@@ -20,9 +20,11 @@ import {
   useShrinkToFit,
 } from '../render/SlideView';
 import {
+  allowSourceContent,
   commit,
   currentLook,
   redo as redoStep,
+  revokeSourceContent,
   stopEditing,
   undo as undoStep,
   useEditor,
@@ -290,11 +292,42 @@ export function TextBoxEditor({
           style: 'width: 100%; flex-shrink: 0; outline: none; caret-color: currentColor',
         },
         dispatchTransaction(tr) {
+          if (tr.docChanged) {
+            const before = pm.state;
+            if (
+              !allowSourceContent(slideId, () => {
+                if (pm.isDestroyed) return;
+                // Moving focus to the notice can update the selection. Keep the
+                // proposed words without applying a transaction from stale state.
+                pm.dispatch(
+                  pm.state === before
+                    ? tr
+                    : pm.state.tr.replaceWith(0, pm.state.doc.content.size, tr.doc.content),
+                );
+              })
+            )
+              return;
+          }
           pm.updateState(pm.state.apply(tr));
           setTyped((n) => n + 1);
           // How far the typing's own Undo and Redo go (the editor's buttons offer them: Session 55, Part 17a).
           const typing = { undo: Number(undoDepth(pm.state)), redo: Number(redoDepth(pm.state)) };
           useEditor.setState((s) => ({ textTick: s.textTick + 1, typing }));
+          const doc = useEditor.getState().doc;
+          const slide = doc ? findSlide(doc, slideId) : undefined;
+          if (
+            tr.docChanged &&
+            typing.undo === 0 &&
+            slide?.deck &&
+            slide.documentPage &&
+            !slide.documentPage.edited &&
+            sameWords(withRuns(el, runsOf(pm.state.doc)), el)
+          ) {
+            revokeSourceContent(slideId);
+            queueMicrotask(() => {
+              if (active?.view === pm) finishTextEditing();
+            });
+          }
         },
         // Pasted text arrives as plain text, its lines as lines (a list going on through them), in the look at the caret.
         handlePaste(v, event) {

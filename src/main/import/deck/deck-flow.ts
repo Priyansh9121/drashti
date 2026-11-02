@@ -18,7 +18,7 @@ import type { Baker } from './plan';
  */
 
 export type DeckFlow =
-  | { kind: 'baked'; parsed: ParsedPresentation }
+  | { kind: 'baked'; parsed: ParsedPresentation; sourceIndices?: number[] }
   | {
       kind: 'pictures';
       /** The pictures an app saved while it tried (null: save them as PDF as before). */
@@ -37,6 +37,8 @@ export interface DeckFlowRequest {
   file: string;
   fileName: string;
   sourcePath: string;
+  /** The received file's folder, kept separate from an immutable own copy. */
+  sourceDir?: string;
   /** The .pptx as read already (null for an old .ppt or a Keynote file). */
   read: PptxDeck | null;
   /** A folder of its own. */
@@ -98,7 +100,7 @@ export async function runDeck(
         result.baked,
         work,
         options.ffmpeg,
-        dirname(file),
+        request.sourceDir ?? dirname(file),
       );
       const before = tried[0];
       if (before)
@@ -108,7 +110,7 @@ export async function runDeck(
           message: `${APP[before.baker]} could not make the deck’s movie (${before.reason}), so ${APP[baker]} did: check that its slides look right.`,
           fix: null,
         });
-      return { kind: 'baked', parsed };
+      return { kind: 'baked', parsed, sourceIndices: result.baked.plan.slides.map((slide) => slide.index) };
     }
     last = result;
     // Only an app that could not do it at all gives way to the next.

@@ -116,7 +116,7 @@ describe('retained PDF originals', () => {
       const open = handlers.get('library:slides-for-edit');
       if (!open) throw new Error('The existing editor-open handler was not registered.');
       // This awaits either the current synchronous result or real asynchronous preparation later.
-      const opened = (await open({} as never, imported.id)) as EditSlidesResult;
+      const opened = (await open({}, imported.id)) as EditSlidesResult;
       expect(opened.ok).toBe(true);
       if (!opened.ok) throw new Error(opened.message);
       expect(presentations.content(imported.id)).toEqual(playbackBefore);

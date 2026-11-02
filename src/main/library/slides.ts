@@ -9,6 +9,7 @@ import { darkenFromJson, slideDesignFromJson } from '../../shared/model-schema';
 import { masterFromJson } from '../../shared/slide-edit';
 import type { DeckSlide } from '../../shared/deck';
 import { deckFromJson } from '../../shared/deck-schema';
+import { documentPageFromJson } from '../../shared/document-page';
 
 /*
  * The slide editor's document, made from a presentation's stored rows, and
@@ -20,7 +21,7 @@ import { deckFromJson } from '../../shared/deck-schema';
  */
 
 /** Equal as plain data, key order aside. */
-function sameData(a: unknown, b: unknown): boolean {
+export function sameData(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;
@@ -79,6 +80,9 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       // A deck's slide (Session 54, C2), as its import stored it.
       ...deckOf(s.deck),
       ...guidesOf(s.editor_guides),
+      ...(documentPageFromJson(s.document_page)
+        ? { documentPage: documentPageFromJson(s.document_page) }
+        : {}),
       ...(slideDesignFromJson(s.editor_design) ? { design: slideDesignFromJson(s.editor_design) } : {}),
     })),
   }));
@@ -263,7 +267,20 @@ export function applySlideEdit(
         enabled: s.enabled ? 1 : 0,
         macro_id: s.macroId,
         // A deck's slide (Session 54, C2): as stored, with Drashti's transitions as the editor set them.
-        ...deckRow(s.deck, old),
+        ...(s.documentPage?.edited && !s.deck
+          ? { deck: null }
+          : !old && s.documentPage && !s.documentPage.edited && s.deck
+            ? { deck: JSON.stringify(s.deck) }
+            : deckRow(s.deck, old)),
+        ...(s.documentPage
+          ? {
+              document_page: sameData(documentPageFromJson(old?.document_page), s.documentPage)
+                ? old?.document_page
+                : JSON.stringify(s.documentPage),
+            }
+          : old?.document_page !== undefined
+            ? { document_page: old.document_page }
+            : {}),
         ...(s.guides
           ? { editor_guides: JSON.stringify(s.guides) }
           : old?.editor_guides !== undefined

@@ -11,6 +11,7 @@ import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import { applySlideEdit, editDocOf, mediaIdsOf } from './slides';
 import { nfcEditDoc } from '../../shared/nfc';
+import { ImportedSlides } from './imported-slides';
 
 /*
  * The slide editor's requests: anyone of Drashti's pages may read a
@@ -52,6 +53,7 @@ export function registerSlidesIpc({
   changed,
   saved,
 }: SlidesIpcDeps): void {
+  const imported = new ImportedSlides(db);
   /**
    * When the presentation last changed, and its content revision (Sessions 31–36: every write of its content
    * moves it on, so two writes in one millisecond still differ): the editor saves only over what it opened.
@@ -63,12 +65,40 @@ export function registerSlidesIpc({
     return row ? { name: row.name, stamp: `${row.updated_at}#${String(row.content_rev)}` } : null;
   };
 
-  handle(IPC.library.slidesForEdit, (_e, presentationId): EditSlidesResult => {
+  handle(IPC.library.slidesForEdit, (_e, presentationId): EditSlidesResult | Promise<EditSlidesResult> => {
     const id = idSchema.safeParse(presentationId);
     const rows = id.success ? presentations.content(id.data) : null;
     const stamp = id.success ? stampOf(id.data) : null;
     if (!rows || !stamp) return { ok: false, message: 'That presentation is no longer in the library.' };
     const { doc, unreadable } = editDocOf(rows, stamp.name);
+    const source = db
+      .prepare('SELECT source_kind FROM presentations WHERE id = ?')
+      .pluck()
+      .get(rows.presentationId);
+    if (source === 'pictures' || rows.slides.some((slide) => slide.document_page)) {
+      return imported
+        .prepare(rows, doc, stamp.stamp)
+        .then((prepared): EditSlidesResult => {
+          if (stampOf(rows.presentationId)?.stamp !== stamp.stamp)
+            return {
+              ok: false,
+              message:
+                'This presentation changed while its source pages were being prepared. Reopen the editor.',
+            };
+          return {
+            ok: true,
+            doc: prepared.doc,
+            stamp: stamp.stamp,
+            look: lookFor(rows.themeId, rows),
+            unreadable,
+            ...(prepared.issues.length ? { sourceIssues: prepared.issues } : {}),
+          };
+        })
+        .catch(() => ({
+          ok: false,
+          message: 'The source pages could not be prepared. The saved presentation is unchanged.',
+        }));
+    }
     return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
   });
 
@@ -92,8 +122,10 @@ export function registerSlidesIpc({
       before.slides.some((s) => s.deck != null)
     )
       return { ok: false, message: 'An imported deck keeps its original slide size.' };
+    const prepared = imported.forSave(before, doc.data, stamp);
+    if (!prepared.ok) return prepared;
     // Every picture, video and sound must be in the library.
-    const media = mediaIdsOf(doc.data);
+    const media = mediaIdsOf(prepared.doc);
     if (media.length > 0) {
       const found = db.prepare('SELECT 1 FROM media WHERE id = ?');
       if (media.some((m) => !found.get(m)))
@@ -103,7 +135,7 @@ export function registerSlidesIpc({
         };
     }
     // Its words in one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
-    const after = applySlideEdit(before, nfcEditDoc(doc.data));
+    const after = applySlideEdit(before, nfcEditDoc(prepared.doc));
     presentations.setContent(after);
     const revisionId = revisions.keep([before]);
     changed([id.data]);

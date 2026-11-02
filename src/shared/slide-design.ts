@@ -1,5 +1,6 @@
 import type { RenderSlide, SlideDesign } from './model';
 import type { EditDoc, EditSlide } from './slide-edit';
+import { editingCanvas } from './document-page';
 
 /** Resolve the one master once, before sending a slide to any screen, node, phone or stream. */
 export function composeSlide(
@@ -33,8 +34,7 @@ export function composeSlide(
 export function renderEditedSlide(doc: EditDoc, slide: EditSlide): RenderSlide {
   const own: RenderSlide = {
     id: slide.id,
-    width: doc.width,
-    height: doc.height,
+    ...editingCanvas(slide.documentPage, doc),
     background: slide.background,
     elements: slide.elements,
     ...(slide.darken ? { darken: slide.darken } : {}),

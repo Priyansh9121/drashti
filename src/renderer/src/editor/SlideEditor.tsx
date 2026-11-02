@@ -10,7 +10,7 @@ import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { ConfirmDialog, useFocusTrap } from '../ui/Dialog';
+import { ConfirmDialog, Dialog, useFocusTrap } from '../ui/Dialog';
 import { KeepChangesDialog, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
 import { plural } from '../ui/text';
 import { useEngine } from '../engine/engine-store';
@@ -23,6 +23,8 @@ import { Truncate } from '../ui/Truncate';
 import { Canvas } from './Canvas';
 import type { EditorGroup } from './editor-store';
 import {
+  acceptSourceConversion,
+  cancelSourceConversion,
   closeSlideEditor,
   commit,
   isDirty,
@@ -42,6 +44,7 @@ import { ArrangeGroup, DesignGroup, InsertGroup, MotionGroup, SlidesGroup } from
 import { finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
 import { WordsGroup } from './WordsGroup';
 import { zoomIn, zoomOut } from './zoom';
+import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 
 /*
  * The slide editor (PLAN.md 5.2, Session 7), since Session 55 (Part 17a) in a window of its own, as a presentation
@@ -74,12 +77,14 @@ const renderSlide = renderEditedSlide;
 function Editor({ platform, name }: { platform: string; name: string }) {
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const sourceWarningId = useId();
   const loading = useEditor((s) => s.loading);
   const doc = useEditor((s) => s.doc);
   const slideId = useEditor((s) => s.slideId);
   const problem = useEditor((s) => s.problem);
   const saving = useEditor((s) => s.saving);
   const askDiscard = useEditor((s) => s.askDiscard);
+  const sourceConversion = useEditor((s) => s.sourceConversion);
   const steps = useEditor((s) => s.past.length);
   const group = useEditor((s) => s.group);
   const strip = useEditor((s) => s.strip);
@@ -116,6 +121,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     setPicking(null);
   }, []);
   const saveWhenReady = useCallback((force = false) => {
+    if (useEditor.getState().sourceConversion) return;
     finishTextEditing();
     if (pendingPick.current.busy) pendingPick.current.save = force;
     else void saveSlides(force);
@@ -126,7 +132,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   // Esc steps back: close find, stop typing, then let go of the selection, then close (asking first).
   useFocusTrap(root, () => {
     const s = useEditor.getState();
-    if (s.askDiscard || s.conflict) return;
+    if (s.askDiscard || s.conflict || s.sourceConversion) return;
     if (s.finding) useEditor.setState({ finding: false });
     else if (s.editing) finishTextEditing();
     else if (s.selection.length > 0) select([]);
@@ -141,6 +147,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   // The window's keys: Save, Undo and Redo, Find, and zoom; typing in a field or a text box keeps its own keys.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (useEditor.getState().sourceConversion) return;
       // The show's F-keys (Clear all, Oops, the Wallpaper...): the operator window acts on them (Session 55, 17a).
       if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && SHOW_F_KEYS.includes(e.key)) {
         e.preventDefault();
@@ -239,7 +246,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           variant="primary"
           size="sm"
           kbd={`${mod}S`}
-          disabled={saving || loading || !doc || pickingBusy}
+          disabled={saving || loading || !doc || pickingBusy || sourceConversion !== null}
           data-testid="save-slides"
           onClick={() => {
             saveWhenReady();
@@ -399,6 +406,42 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
           onThrowAway={closeSlideEditor}
         />
+      )}
+      {sourceConversion && (
+        <Dialog
+          title={
+            sourceConversion.slideIds.length === 1
+              ? SOURCE_CONVERSION_WARNING.title
+              : 'Edit these animated slides'
+          }
+          onClose={cancelSourceConversion}
+          closeButton={false}
+          size="sm"
+          describedBy={sourceWarningId}
+          testId="source-conversion"
+          footer={
+            <>
+              <Button data-autofocus onClick={cancelSourceConversion}>
+                {SOURCE_CONVERSION_WARNING.cancel}
+              </Button>
+              <Button variant="primary" onClick={acceptSourceConversion}>
+                {sourceConversion.slideIds.length === 1
+                  ? SOURCE_CONVERSION_WARNING.accept
+                  : 'Make these slides editable'}
+              </Button>
+            </>
+          }
+        >
+          <div id={sourceWarningId} className="space-y-2 text-sm text-muted">
+            <p>
+              {sourceConversion.slideIds.length === 1
+                ? 'Only this slide becomes Drashti’s own.'
+                : `These ${sourceConversion.slideIds.length} slides become Drashti’s own.`}{' '}
+              Their original animations and clicks are replaced by editable content.
+            </p>
+            <p>The original file is never changed. Other slides keep their original playback.</p>
+          </div>
+        </Dialog>
       )}
       {conflict && (
         <ConfirmDialog

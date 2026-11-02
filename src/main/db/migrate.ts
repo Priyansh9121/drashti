@@ -53,6 +53,8 @@ import { up as evenLoudness } from './migrations/051-even-loudness';
 import { up as ownOrder } from './migrations/055-own-order';
 import { up as editorGuides } from './migrations/056-editor-guides';
 import { up as editorDesign } from './migrations/057-editor-design';
+import { up as documentOriginals } from './migrations/062-document-originals';
+import { up as documentPages } from './migrations/063-document-pages';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -126,6 +128,8 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 55, name: 'a playlist’s own order of a presentation’s slides', up: ownOrder },
   { version: 56, name: 'the slide editor’s guides', up: editorGuides },
   { version: 57, name: 'the slide editor’s master and design', up: editorDesign },
+  { version: 62, name: 'immutable document originals', up: documentOriginals },
+  { version: 63, name: 'document page identity and geometry', up: documentPages },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

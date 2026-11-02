@@ -161,21 +161,21 @@ export function rawContent(userData: string, id: string) {
         `SELECT s.* FROM slides s JOIN slide_groups g ON g.id = s.group_id
          WHERE g.presentation_id = ? ORDER BY g.position, s.position`,
       )
-      .all(id) as Array<{ id: string; deck: string | null; notes: string; [key: string]: unknown }>;
+      .all(id) as { id: string; deck: string | null; notes: string; [key: string]: unknown }[];
     const elements = db
       .prepare(
         `SELECT e.* FROM elements e JOIN slides s ON s.id = e.slide_id
          JOIN slide_groups g ON g.id = s.group_id
          WHERE g.presentation_id = ? ORDER BY g.position, s.position, e.position`,
       )
-      .all(id) as Array<{ slide_id: string; [key: string]: unknown }>;
+      .all(id) as { slide_id: string; [key: string]: unknown }[];
     const cues = db
       .prepare(
         `SELECT c.* FROM slide_cues c JOIN slides s ON s.id = c.slide_id
          JOIN slide_groups g ON g.id = s.group_id
          WHERE g.presentation_id = ? ORDER BY g.position, s.position, c.position`,
       )
-      .all(id) as Array<{ slide_id: string; [key: string]: unknown }>;
+      .all(id) as { slide_id: string; [key: string]: unknown }[];
     const revision = db.prepare('SELECT content_rev FROM presentations WHERE id = ?').get(id);
     return { slides, elements, cues, revision };
   } finally {

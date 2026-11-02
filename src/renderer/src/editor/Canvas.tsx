@@ -5,6 +5,7 @@ import { SHAPE_NAMES } from '../../../shared/model';
 import { groupedSelection } from '../../../shared/element-groups';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
+import { editingCanvas } from '../../../shared/document-page';
 import { useMedia } from '../library/library-store';
 import { MediaStill } from '../render/MediaStill';
 import { darkensBehind, ElementView, SlideBackdropView } from '../render/SlideView';
@@ -14,6 +15,7 @@ import { translitSource } from '../../../shared/tracks';
 import { MeasureContext, type MeasureReport } from '../render/measure';
 import { useElementSize } from '../render/useElementSize';
 import {
+  allowSourceContent,
   beginGesture,
   commit,
   endGesture,
@@ -193,9 +195,10 @@ export function Canvas({ platform }: { platform: string }) {
       const now = useEditor.getState();
       const d = now.doc;
       if (!d) return;
+      const pageSize = editingCanvas(findSlide(d, now.slideId)?.documentPage, d);
       const w = el.clientWidth;
       const h = el.clientHeight;
-      const fit = Math.max(0.05, Math.min((w - 2 * PAD) / d.width, (h - 2 * PAD) / d.height));
+      const fit = Math.max(0.05, Math.min((w - 2 * PAD) / pageSize.width, (h - 2 * PAD) / pageSize.height));
       const scale = scaleFor(now.zoom, fit);
       const next = zoomBy(now.zoom, fit, Math.exp(-e.deltaY * 0.01));
       if (Math.abs(next - scale) < 1e-4) return;
@@ -211,8 +214,8 @@ export function Canvas({ platform }: { platform: string }) {
           to: next,
         });
       keepPoint.current = {
-        left: keep(at.x, el.scrollLeft, w, d.width),
-        top: keep(at.y, el.scrollTop, h, d.height),
+        left: keep(at.x, el.scrollLeft, w, pageSize.width),
+        top: keep(at.y, el.scrollTop, h, pageSize.height),
       };
       useEditor.setState({ zoom: next });
     };
@@ -229,15 +232,16 @@ export function Canvas({ platform }: { platform: string }) {
   const pastedInPlaceAt = useRef<number | null>(null);
   const slide = doc ? findSlide(doc, slideId) : undefined;
   if (!doc || !slide) return <div ref={area} className="min-w-0 flex-1 bg-ink" />;
+  const pageSize = editingCanvas(slide.documentPage, doc);
 
   // Fitted to the area, as the editor always opened; zoomed, a size of its own (Session 55, Part 17a).
   const fit = Math.max(
     0.05,
-    Math.min((size.width - 2 * PAD) / doc.width, (size.height - 2 * PAD) / doc.height),
+    Math.min((size.width - 2 * PAD) / pageSize.width, (size.height - 2 * PAD) / pageSize.height),
   );
   const scale = scaleFor(zoom, fit);
-  const width = doc.width * scale;
-  const height = doc.height * scale;
+  const width = pageSize.width * scale;
+  const height = pageSize.height * scale;
   // Where the slide sits: in the middle while it fits, else PAD in from the scrolled area's edges.
   const left = Math.max(PAD, (size.width - width) / 2);
   const top = Math.max(PAD, (size.height - height) / 2);
@@ -271,19 +275,19 @@ export function Canvas({ platform }: { platform: string }) {
   };
   const linesWithout = (ids: readonly string[]) => {
     const lines = snapLines(
-      doc,
+      pageSize,
       elements.filter((e) => !ids.includes(e.id)).map((e) => boundsOf(e)),
     );
     return {
       x: [
         ...lines.x,
         ...(slide.guides?.x ?? []),
-        ...(aids.grid ? Array.from({ length: Math.floor(doc.width / 50) + 1 }, (_, i) => i * 50) : []),
+        ...(aids.grid ? Array.from({ length: Math.floor(pageSize.width / 50) + 1 }, (_, i) => i * 50) : []),
       ],
       y: [
         ...lines.y,
         ...(slide.guides?.y ?? []),
-        ...(aids.grid ? Array.from({ length: Math.floor(doc.height / 50) + 1 }, (_, i) => i * 50) : []),
+        ...(aids.grid ? Array.from({ length: Math.floor(pageSize.height / 50) + 1 }, (_, i) => i * 50) : []),
       ],
     };
   };
@@ -319,6 +323,7 @@ export function Canvas({ platform }: { platform: string }) {
       return;
     }
     if (handle && selected.length > 1) {
+      if (!allowSourceContent(slide.id)) return;
       // Several elements: resized or turned together by the box round them.
       e.currentTarget.setPointerCapture(e.pointerId);
       const ids = selected.map((el) => el.id);
@@ -344,6 +349,7 @@ export function Canvas({ platform }: { platform: string }) {
       return;
     }
     if (handle && single) {
+      if (!allowSourceContent(slide.id)) return;
       e.currentTarget.setPointerCapture(e.pointerId);
       if (handle === 'rotate') {
         drag.current = { kind: 'rotate', id: single.id, startDoc: now.doc, frame: single.frame };
@@ -402,7 +408,9 @@ export function Canvas({ platform }: { platform: string }) {
     if (d.kind === 'guide') {
       const base = findSlide(d.startDoc, slide.id)?.guides;
       if (!base) return;
-      const value = Math.round(Math.max(0, Math.min(d.axis === 'x' ? doc.width : doc.height, p[d.axis])));
+      const value = Math.round(
+        Math.max(0, Math.min(d.axis === 'x' ? pageSize.width : pageSize.height, p[d.axis])),
+      );
       updateGesture(
         changeSlide(d.startDoc, slide.id, {
           guides: {
@@ -416,6 +424,13 @@ export function Canvas({ platform }: { platform: string }) {
       const dy = p.y - d.start.y;
       if (!d.dragging) {
         if (Math.hypot(dx, dy) * scale < DRAG_PX) return;
+        if (!allowSourceContent(slide.id)) {
+          drag.current = null;
+          setGuides(null);
+          if (e.currentTarget.hasPointerCapture(e.pointerId))
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          return;
+        }
         d.dragging = true;
         beginGesture();
       }
@@ -697,8 +712,8 @@ export function Canvas({ platform }: { platform: string }) {
               position: 'absolute',
               left: 0,
               top: 0,
-              width: doc.width,
-              height: doc.height,
+              width: pageSize.width,
+              height: pageSize.height,
               transform: `scale(${scale})`,
               transformOrigin: '0 0',
             }}
@@ -763,8 +778,8 @@ export function Canvas({ platform }: { platform: string }) {
               <svg
                 data-testid="editor-grid"
                 aria-hidden="true"
-                width={doc.width}
-                height={doc.height}
+                width={pageSize.width}
+                height={pageSize.height}
                 className="pointer-events-none absolute inset-0"
               >
                 <defs>
@@ -785,8 +800,8 @@ export function Canvas({ platform }: { platform: string }) {
               <div data-testid="editor-guides" className="pointer-events-none absolute inset-0">
                 <GuideLines
                   editable
-                  guides={slide.guides ?? { x: [doc.width / 2], y: [doc.height / 2] }}
-                  doc={doc}
+                  guides={slide.guides ?? { x: [pageSize.width / 2], y: [pageSize.height / 2] }}
+                  doc={pageSize}
                   scale={scale}
                 />
               </div>
@@ -795,16 +810,16 @@ export function Canvas({ platform }: { platform: string }) {
               <svg
                 data-testid="editor-rulers"
                 aria-hidden="true"
-                width={doc.width}
-                height={doc.height}
+                width={pageSize.width}
+                height={pageSize.height}
                 className="pointer-events-none absolute inset-0 overflow-visible"
               >
-                {Array.from({ length: Math.floor(doc.width / 100) + 1 }, (_, i) => (
+                {Array.from({ length: Math.floor(pageSize.width / 100) + 1 }, (_, i) => (
                   <text key={`x${i}`} x={i * 100} y={-8 / scale} fill="#c8d0e2" fontSize={9 / scale}>
                     {i * 100}
                   </text>
                 ))}
-                {Array.from({ length: Math.floor(doc.height / 100) + 1 }, (_, i) => (
+                {Array.from({ length: Math.floor(pageSize.height / 100) + 1 }, (_, i) => (
                   <text
                     key={`y${i}`}
                     x={-5 / scale}
@@ -819,8 +834,8 @@ export function Canvas({ platform }: { platform: string }) {
               </svg>
             )}
             {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}
-            {guides && <GuideLines guides={guides} doc={doc} scale={scale} />}
-            <SafeAreas slide={doc} scale={scale} />
+            {guides && <GuideLines guides={guides} doc={pageSize} scale={scale} />}
+            <SafeAreas slide={pageSize} scale={scale} />
             {marquee && (
               <div
                 data-testid="editor-marquee"
@@ -1083,7 +1098,7 @@ function GuideLines({
   editable = false,
 }: {
   guides: Guides;
-  doc: EditDoc;
+  doc: Pick<EditDoc, 'width' | 'height'>;
   scale: number;
   editable?: boolean;
 }) {

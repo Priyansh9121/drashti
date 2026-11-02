@@ -13,6 +13,7 @@ import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
 import type { DeckSlide } from './deck';
 import { deckSlideSchema } from './deck-schema';
 import { editorGuidesSchema, type EditorGuides } from './editor-guides';
+import { documentPageSchema, type DocumentPageRef } from './document-page';
 
 /*
  * The slide editor's document (PLAN.md 5.2, Session 7): a presentation's
@@ -63,6 +64,7 @@ export function cueInputName(cue: { kind: string; mediaId: string | null; props:
 }
 
 export interface EditSlide {
+  documentPage?: DocumentPageRef;
   id: string;
   label: string;
   notes: string;
@@ -137,6 +139,8 @@ export type EditSlidesResult =
       look: SlideLook;
       /** Elements that could not be read: kept as they are, but not shown here. */
       unreadable: number;
+      /** Limits of a source document's editable derivative, shown before its objects are changed. */
+      sourceIssues?: string[];
     }
   | { ok: false; message: string };
 
@@ -225,6 +229,7 @@ const cueSchema: z.ZodType<EditCue> = z
   }, 'a video input as the background needs its name, and no file');
 
 const slideSchema: z.ZodType<EditSlide> = z.object({
+  documentPage: documentPageSchema.optional(),
   guides: editorGuidesSchema.optional(),
   design: slideDesignSchema.optional(),
   id: idSchema,

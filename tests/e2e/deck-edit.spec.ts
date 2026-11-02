@@ -171,7 +171,7 @@ for (const kind of ['typing', 'drag'] as const) {
       const publicAfter = await publicSlides(s.win, s.id);
       expect(publicAfter[1]?.slide.deck).toBeUndefined();
       const oldMiddle = JSON.parse(s.before.slides[1]?.deck ?? 'null') as {
-        steps?: Array<{ lastId: string }>;
+        steps?: { lastId: string }[];
       } | null;
       const oldLastId = oldMiddle?.steps?.at(-1)?.lastId;
       expect(oldLastId, 'the source middle slide had a baked final frame').toBeTruthy();
