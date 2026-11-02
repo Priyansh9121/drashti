@@ -57,7 +57,9 @@ import type { StageCall } from '../stage-message';
  * the slide editor's Words): a slide's words underlined, struck through and glowing, and lines of a list with their
  * bullets and numbers (a run's `underline`, `strike`, `glow`, `list` and `level`, a box's `glow`); an older node or
  * page would leave them out, so it says 'incompatible'. Part 17a also adds geometric arrows and icons, each element's
- * flips and group identity, and a picture's crop on its slide. A state 22 saved is read whole (23 only adds to it).
+ * flips and group identity, and a picture's crop on its slide. The resolved master, gradient or picture backdrop,
+ * design size and element motion also travel in each rendered slide; all players use shownAt for the motion.
+ * Designed and animated slides keep their full canvas in every layout. A state 22 saved is read whole (23 only adds to it).
  */
 export const ENGINE_STATE_VERSION = 23;
 

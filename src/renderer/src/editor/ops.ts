@@ -710,6 +710,14 @@ export function applyLookToAll(doc: EditDoc, slideId: string): EditDoc {
         return {
           ...s,
           background: source.background,
+          ...(source.design?.backdrop || s.design?.backdrop
+            ? {
+                design: {
+                  ...Object.fromEntries(Object.entries(s.design ?? {}).filter(([key]) => key !== 'backdrop')),
+                  ...(source.design?.backdrop ? { backdrop: structuredClone(source.design.backdrop) } : {}),
+                },
+              }
+            : {}),
           elements: [...behind.map(copy), ...kept, ...front.map(copy)],
         };
       }),

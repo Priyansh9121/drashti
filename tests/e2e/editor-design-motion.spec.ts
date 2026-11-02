@@ -3,6 +3,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { drawPicture, goLive, halves } from './placeholder-slides';
+import { near, pixels } from './pixels';
 import {
   editorGroup,
   importAndGetIds,
@@ -10,6 +12,9 @@ import {
   openLibrary,
   operatorPage,
   operatorReady,
+  outputPage,
+  outputReady,
+  setUpScreen,
   type PageGlobals,
   sizeSlideEditor,
   slideEditorClosed,
@@ -226,6 +231,81 @@ test('notes still being typed from the Slides group survive native close and Sav
     );
     if (!saved.ok) throw new Error(saved.message);
     expect(saved.doc.groups[0]?.slides[0]?.notes).toBe('Placeholder notes kept while still typing');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a picture background survives Undo, Redo and reopening, paints the audience canvas, and can return to a colour', async () => {
+  const { app, win, ed, editor, id } = await start();
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-design-picture-'));
+    const file = await drawPicture(
+      win,
+      join(dir, 'Placeholder design background.png'),
+      halves('240,20,20', '20,220,20'),
+    );
+    const [mediaId = ''] = await importAndGetIds(win, [file]);
+    await editorGroup(ed, 'Design');
+    await editor.getByTestId('design-background-kind').selectOption('picture');
+    await ed
+      .getByTestId('media-picker')
+      .getByRole('button', { name: /^Picture: Placeholder design background/ })
+      .click();
+    await expect(editor.getByTestId('editor-slide').locator('[data-slide-backdrop="picture"]')).toHaveCount(
+      1,
+    );
+    await ed.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(editor.getByTestId('editor-slide').locator('[data-slide-backdrop]')).toHaveCount(0);
+    await ed.getByRole('button', { name: 'Redo', exact: true }).click();
+    await expect(editor.getByTestId('editor-slide').locator('[data-slide-backdrop="picture"]')).toHaveCount(
+      1,
+    );
+    await editor.getByTestId('save-slides').click();
+    await slideEditorClosed(app);
+    const saved = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      id,
+    );
+    if (!saved.ok) throw new Error(saved.message);
+    expect(saved.doc.groups[0]?.slides[0]?.design?.backdrop).toEqual({
+      kind: 'picture',
+      mediaId,
+      fit: 'fill',
+    });
+    await setUpScreen(win);
+    const output = await outputPage(app);
+    await outputReady(output);
+    await goLive(win, id, 0);
+    const background = output.locator('[data-layer="slide"] [data-slide-backdrop="picture"]');
+    await expect(background).toHaveCount(1);
+    await expect
+      .poll(async () => {
+        const box = await background.boundingBox();
+        if (!box) return false;
+        const colours = await pixels(
+          output,
+          [0.15, 0.85].map((part) => ({ x: box.x + box.width * part, y: box.y + box.height * 0.15 })),
+        );
+        return near(colours[0] ?? [], [240, 20, 20], 15) && near(colours[1] ?? [], [20, 220, 20], 15);
+      })
+      .toBe(true);
+    await openLibrary(win);
+    await win.getByTestId('edit-slides').click();
+    const reopened = await slideEditorWindow(app);
+    await editorGroup(reopened.ed, 'Design');
+    await expect(reopened.editor.getByTestId('design-background-kind')).toHaveValue('picture');
+    await reopened.editor.getByTestId('design-background-kind').selectOption('solid');
+    await expect(reopened.editor.getByTestId('editor-slide').locator('[data-slide-backdrop]')).toHaveCount(0);
+    await reopened.editor.getByTestId('save-slides').click();
+    await slideEditorClosed(app);
+    const solid = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      id,
+    );
+    if (!solid.ok) throw new Error(solid.message);
+    expect(solid.doc.groups[0]?.slides[0]?.background).toBe('#000000');
+    expect(solid.doc.groups[0]?.slides[0]?.design?.backdrop).toBeUndefined();
   } finally {
     await app.close();
   }
