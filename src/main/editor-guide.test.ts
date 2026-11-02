@@ -92,10 +92,15 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
     );
     const summary = presenter.find((p) => p.text.startsWith('What the page never does on its own:'));
     expect(summary, 'the presenter file-destination summary').toBeDefined();
-    for (const detail of ['Add photos', 'ordinary playlist open', 'Pro Mode', 'Simple Mode', 'Added from Phones']) {
+    for (const detail of [
+      'Add photos',
+      'ordinary playlist open',
+      'Pro Mode',
+      'Simple Mode',
+      'Added from Phones',
+    ]) {
       expect(summary?.text).toContain(detail);
     }
-
   });
 
   it('the Slides help card leads to the new window instructions, not a fallback heading', () => {
