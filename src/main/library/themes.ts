@@ -120,6 +120,20 @@ export function styleNewText(rows: ContentRows, theme: Theme, newId: () => strin
   return applyTheme(rows, { ...theme, box: { ...theme.box, lineHeight: newTextLineHeight(theme) } }, newId);
 }
 
+/** A replacement background removes local design paint, retaining other and unknown settings. */
+function withoutDesignBackdrop(slide: SlideRow): SlideRow {
+  if (!slide.editor_design) return slide;
+  try {
+    const value: unknown = JSON.parse(slide.editor_design);
+    if (value === null || typeof value !== 'object' || Array.isArray(value) || !('backdrop' in value))
+      return slide;
+    const { backdrop: _old, ...kept } = value as Record<string, unknown>;
+    return { ...slide, editor_design: JSON.stringify(kept) };
+  } catch {
+    return slide;
+  }
+}
+
 /** A presentation's rows with a theme applied. */
 export function applyTheme(rows: ContentRows, theme: Theme, newId: () => string = randomUUID): ContentRows {
   const scale = rows.height / 1080;
@@ -155,11 +169,11 @@ export function applyTheme(rows: ContentRows, theme: Theme, newId: () => string 
   let cues: CueRow[] = rows.cues;
   const bg = theme.background;
   if (bg.kind === 'color') {
-    slides = slides.map((s) => ({ ...s, background: bg.color }));
+    slides = slides.map((s) => ({ ...withoutDesignBackdrop(s), background: bg.color }));
     cues = cues.filter((c) => c.kind !== 'background');
   } else if (bg.kind === 'media') {
     // The picture or video on every slide: going live anywhere puts it up, and the same file carries on.
-    slides = slides.map((s) => ({ ...s, background: null }));
+    slides = slides.map((s) => ({ ...withoutDesignBackdrop(s), background: null }));
     const others = cues
       .filter((c) => c.kind !== 'background')
       .map((c) => ({ ...c, position: c.position + 1 }));

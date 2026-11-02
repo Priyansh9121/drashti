@@ -137,14 +137,15 @@ function deckRow(deck: DeckSlide | undefined, old: SlideRow | undefined): { deck
 }
 
 /** The keys of an element's stored data that Drashti knows, per kind (the rest are kept as they are). */
+const PLACEMENT_KEYS = ['groupId', 'flipX', 'flipY', 'motion'] as const;
 const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
-  text: new Set(['text', 'lang', 'style', 'runs', 'opacity', 'everyScreen']),
-  shape: new Set(['shape', 'fill', 'cornerRadius', 'opacity', 'outline']),
+  text: new Set([...PLACEMENT_KEYS, 'text', 'lang', 'style', 'runs', 'opacity', 'everyScreen']),
+  shape: new Set([...PLACEMENT_KEYS, 'shape', 'fill', 'cornerRadius', 'opacity', 'outline']),
   // A video's play bar on the screens (Session 54): known, so unticking it in the editor takes it away.
-  image: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar']),
-  video: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar']),
+  image: new Set([...PLACEMENT_KEYS, 'mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar', 'crop']),
+  video: new Set([...PLACEMENT_KEYS, 'mediaId', 'fit', 'loop', 'opacity', 'volume', 'playBar', 'crop']),
   // A timer on a slide (Session 50).
-  timer: new Set(['timerId', 'style', 'lastMinute', 'atZero', 'opacity']),
+  timer: new Set([...PLACEMENT_KEYS, 'timerId', 'style', 'lastMinute', 'atZero', 'opacity']),
 };
 
 function parseObject(text: string): Record<string, unknown> {

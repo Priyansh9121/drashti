@@ -246,7 +246,20 @@ export function Canvas({ platform }: { platform: string }) {
   const fixedIds = new Set(rendered.masterElementIds);
   const fixed = rendered.elements.filter((el) => fixedIds.has(el.id));
   // The words the whole-picture darkening goes under: the first box with any, or a Timer (Session 50).
-  const wholeUnder = slide.darken?.kind === 'whole' ? elements.find(darkensBehind)?.id : undefined;
+  const wholeUnder = slide.darken?.kind === 'whole' ? rendered.elements.find(darkensBehind)?.id : undefined;
+  const wholeDarkening =
+    wholeUnder && slide.darken ? (
+      <div
+        key="darken"
+        data-darken="whole"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: `rgba(0, 0, 0, ${String(slide.darken.strength)})`,
+          pointerEvents: 'none',
+        }}
+      />
+    ) : null;
   const selected = elements.filter((e) => selection.includes(e.id));
   const single = selected.length === 1 ? selected[0] : undefined;
   const background = slide.cues.find((c) => c.kind === 'background' && c.mediaId !== null);
@@ -705,9 +718,18 @@ export function Canvas({ platform }: { platform: string }) {
               <SlideBackdropView slide={rendered} />
               {fixed.length > 0 && (
                 <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} data-master-content="">
-                  {fixed.map((el) => (
-                    <ElementView key={el.id} el={el} media="still" previewAt={previewAt ?? undefined} />
-                  ))}
+                  {fixed.map((el) => [
+                    el.id === wholeUnder ? wholeDarkening : null,
+                    <ElementView
+                      key={el.id}
+                      el={el}
+                      media="still"
+                      previewAt={previewAt ?? undefined}
+                      band={
+                        slide.darken?.kind === 'band' && darkensBehind(el) ? slide.darken.strength : undefined
+                      }
+                    />,
+                  ])}
                 </div>
               )}
               {/* Each text box's measure, for the inspector (words past the box, the size drawn); what the
@@ -716,18 +738,7 @@ export function Canvas({ platform }: { platform: string }) {
                 <MeasureContext.Provider value={keepMeasure}>
                   {elements.map((el) => [
                     // Darkening behind the words (Sessions 31–36, SLD-3), as the screens draw it.
-                    el.id === wholeUnder && slide.darken ? (
-                      <div
-                        key="darken"
-                        data-darken="whole"
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          background: `rgba(0, 0, 0, ${String(slide.darken.strength)})`,
-                          pointerEvents: 'none',
-                        }}
-                      />
-                    ) : null,
+                    el.id === wholeUnder ? wholeDarkening : null,
                     el.id === editing && el.kind === 'text' ? (
                       <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
                     ) : (
