@@ -1,5 +1,7 @@
 # Running Drashti alongside ProPresenter
 
+This guide is for **1.0.0-alpha.14**, with its completed slide editor, phone playlist tools and Simple Mode phone limits. Keep the existing fallback program and its library untouched.
+
 This guide is for the volunteers who try Drashti on the mandir's two computers, the ProPresenter 6 Mac and the ProPresenter 7 Windows PC, before it is used for a real sabha. It follows the plan's "parallel run" (PLAN.md, section 5.1): Drashti runs on the real computers and screens on evenings **without** a sabha, and ProPresenter stays installed, untouched, the whole time.
 
 You never need to change anything in ProPresenter. Drashti only reads its files.
@@ -261,6 +263,10 @@ Drashti can take a phone as a remote, a tablet as a stage screen, and announceme
 
 **Looking closer, sharing and adding files.** On a remote, **Look closer** (or a tap on the live picture) shows the picture full size and sharp, to zoom with two fingers on the phone alone; zoomed in on a picture that is live (never a slide of words), **Show this zoom on the screens** puts that zoom on the hall's screens, as far as they can follow, and **Back to Whole** undoes it. **Look through** shows a presentation's slides one by one on the phone alone (a deck with its animations click by click, each click's motion and then its still), the phone's own Back closing it again, and the magnifier or the play button beside a picture or a video in the playlist (or in **Media**) opens it there, a video with its sound and its own time bar. In Drashti, right-click a playlist and choose **Share with Phones and Tablets**: paired remotes find it in their **Library**, under **Shared from Drashti**, to look at and play on the phone alone (**Stop Sharing** ends it). And with **Phones and tablets may add files** on (in **Phones**; off until turned on), a remote's **Add from this Phone…** (in **Library**, **Media**) sends a picture, video, sound, PDF, PowerPoint (`.pptx`) or Keynote file (up to 2 GB each) into Drashti's **Media** and the playlist **Added from Phones**, marked with the phone's name; it never goes on the screens by itself.
 
+**Simple Mode on the Drashti computer.** The phone opens its one playlist and explains the limit once each time Simple Mode comes on. Use that playlist’s rows, Next and Back, the clears and Clear all, Put it back, Black-out, the Wallpaper, live zoom and Back to Whole; Play resumes what is paused. A Repeat Slides playlist starts only when it is that one playlist. A long press on its own rows offers Rename and Remove from playlist with Undo; wallpapers can be chosen, renamed and deleted with Undo. Pro-only controls are hidden or dimmed, and the computer refuses their requests too: another playlist, putting something up from Media or the library outside that playlist, music Pause or track changes, marker jumps, timers, messages, lower thirds, stage setup and other setup need Pro Mode. Taking something off the screens still works. A refusal names the permitted playlist; with Pro access it explains how to leave Simple Mode at the computer, and Simple-only access offers no way to Pro Mode.
+
+**Phone rows and gestures.** Tap a deck or presentation name to fold its slide rows, and tap a slide or file once to put it up; a long press opens its menu. Save picture… works on the phone through its Share sheet or a browser download, in Simple Mode too; Pro Mode adds Picture editor… for Crop/Turn/Flip, video-ending choices and quick pins; wallpapers can be chosen too. On Show, left swipe is Next and right swipe Back; try vertical scrolling and two-finger zoom without advancing. Add photos fills the ordinary open playlist, otherwise Added from Phones; in Simple Mode it still goes to Added from Phones, never its one playlist by itself.
+
 **A tablet as a stage screen:** the same, with **Pair a Stage device**. The tablet shows what the stage screens show, a layout's audience picture too, drawn from small previews as the phone remote's live picture is (a video input or another app's window is not drawn there: that part stays black). Press **Full screen** on it, and set the tablet never to lock while it is on the stage.
 
 **The announcements poster:**
@@ -432,7 +438,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Tab** / **Shift+Tab**                        | Move through the window, region by region; **Enter** presses what has the focus (Space is Next, except in an open menu, where it chooses)                                              |
 | **Cmd+A** / **Ctrl+A** (in a list)             | Choose the whole list (**Shift**-click chooses a run, **Cmd**- or **Ctrl**-click one more, and a box dragged from an empty place the rows it touches)                                  |
 | **Delete** or **Backspace** (in a list)        | Delete the chosen rows, all at once with one Undo (it asks first when one is on the screens or used, saying where)                                                                     |
-| **Alt+↑** / **Alt+↓** (a playlist's row)       | Move the row up or down a place (on a Mac, **Alt** is the ⌥ Option key)                                                                                                                |
+| **Alt+↑** / **Alt+↓** (a playlist's row)       | Move the row up or down a place; a slide’s row moves within its deck (on a Mac, **Alt** is the ⌥ Option key)                                                                           |
 | **Cmd+Z** / **Ctrl+Z**                         | Undo the last delete, or playlist add or move (in Simple Mode: put back what Clear all took down, else the last row removed, renamed or moved)                                         |
 | **Cmd+Enter** / **Ctrl+Enter** (editing words) | Save the words (in **New…**, a presentation from pasted words)                                                                                                                         |
 | **Cmd+1** / **Ctrl+1**                         | The audience screens off, and on again                                                                                                                                                 |
@@ -448,24 +454,36 @@ In **Start, end and markers** (a video's timeline): **I** and **O** set the star
 
 On a **time bar** (under **Next** and **Back**, in Pro Mode): the arrow keys move what plays 5 seconds, **Page Up** and **Page Down** 30, and **Home** and **End** go to its start and end points.
 
+**Preparing a presentation in alpha.14.** In Pro Mode, Edit slides… opens its own window with **Words**, **Insert**, **Arrange**, **Design**, **Motion** and **Slides**, while the show controls remain in the operator window. Words handles bundled fonts, lists/effects and Find/Replace; Insert adds text, editable shapes/icons, grouped table cells, slide-only cropped pictures, video/sound cues and timers. Arrange gives group-aware align/distribute, front/back, turn/flip and snapping, with saved guides and editor-only rulers/grid.
+
+**Design and motion rehearsal.** Use placeholder words and generated pictures: try a colour/gradient/picture background, layouts and size with Fit or keep-pixels, and one master behind the slides. A slide’s own background wins; Use master and Use master background control inheritance, and imported deck size stays locked. Motion sets transitions/automatic advance and each element’s Comes in/Draws attention/Goes out from slide-up; compare hall, node, phone and Program on the matching build without a broadcast. Slides across drags the order with one Undo; Notes… stays available with a box selected, and goes only to stage/phone. Save/reopen cleared motion, crop, flips and groups; check Undo/Redo, and closing or switching with an unfinished word asks before it is lost. Older presentations keep their playback.
+
 **Transitions** (how a slide comes on; chosen in Pro Mode, for a slide or a presentation in the slide editor, or for a Repeat Slides playlist under its name): **Cut** (at once), **Fade**, **Fade through black**, **Slide** (in from the right) and **Slow zoom** (a fade, then the slide growing slowly while it is up); and **Wipe**, **Push** and **Zoom**, which every screen shows as a fade (every screen moves calmly), and **Line by line** and **Word by word** (never word by word on a kirtan's slides). Pictures only ever fade. Every screen runs them at the same moment. A slide from a deck with its animations comes in with the deck's own transition; in the slide editor it, and each of its clicks, can have one of these instead, **Over the deck's own** or **Instead of the deck's own**.
 
 Zooming the picture on the screens has no key either: scroll or pinch over the **LIVE** picture while a picture is up (in Simple Mode too), and **Keep this zoom** (Pro Mode) keeps it for next time. The screens dashboard has no key: click the screens line at the bottom left of the window (it opens in Simple Mode too). **Ready?** has no key: press it in the top bar before each sabha. Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first).
 
+**Moving one slide without dragging.** With the keyboard on a presentation’s, PDF’s or deck’s slide row in an open playlist, **Alt+↑** / **Alt+↓** moves it within that deck, stays at the ends and has Undo. Its number stays its own and the library is unchanged; focus follows the row. In Pro Mode, its menu (**Shift+F10**) has **Make it an item of its own**, directly after the deck, with Undo. Simple Mode keeps Rename/Delete only, while the within-deck key move works there too.
+
 In the slide editor:
 
-| Key                                                    | What it does                                                                                                 |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| **Tab** / **Shift+Tab**                                | Select the next (or previous) thing on the slide                                                             |
-| **← → ↑ ↓**                                            | Move what is selected one pixel (with **Shift**, ten)                                                        |
-| **Enter**                                              | Type in the selected words (double-click them, too)                                                          |
-| **Esc**                                                | Stop typing; then let go of the selection; then close (asking first if changed)                              |
-| **Delete** or **Backspace**                            | Delete what is selected                                                                                      |
-| **Cmd+D** / **Ctrl+D**                                 | Duplicate what is selected                                                                                   |
-| **Cmd+A** / **Ctrl+A**                                 | Select everything on the slide                                                                               |
-| **Cmd+C**, **Cmd+X**, **Cmd+V** (Ctrl on Windows)      | Copy, cut and paste what is selected (to another slide, or another presentation's slides)                    |
-| **Cmd+Shift+V** / **Ctrl+Shift+V**                     | Paste exactly in place                                                                                       |
-| **Cmd+Z** / **Ctrl+Z**, **Cmd+Shift+Z** / **Ctrl+Y**   | Undo and redo in the editor (while typing: the typing)                                                       |
-| **Cmd+S** / **Ctrl+S**                                 | Save the slides                                                                                              |
-| **Alt** (while dragging)                               | Place freely, without snapping                                                                               |
+| Key                                                  | What it does                                                                              |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Tab** / **Shift+Tab**                              | Select the next (or previous) thing on the slide                                          |
+| **← → ↑ ↓**                                          | Move what is selected one pixel (with **Shift**, ten)                                     |
+| **Enter**                                            | Type in the selected words (double-click them, too)                                       |
+| **Esc**                                              | Stop typing; then let go of the selection; then close (asking first if changed)           |
+| **Delete** or **Backspace**                          | Delete what is selected                                                                   |
+| **Cmd+D** / **Ctrl+D**                               | Duplicate what is selected                                                                |
+| **Cmd+A** / **Ctrl+A**                               | Select everything on the slide                                                            |
+| **Cmd+C**, **Cmd+X**, **Cmd+V** (Ctrl on Windows)    | Copy, cut and paste what is selected (to another slide, or another presentation's slides) |
+| **Cmd+Shift+V** / **Ctrl+Shift+V**                   | Paste exactly in place                                                                    |
+| **Cmd+Z** / **Ctrl+Z**, **Cmd+Shift+Z** / **Ctrl+Y** | Undo and redo in the editor (while typing: the typing)                                    |
+| **Cmd+S** / **Ctrl+S**                               | Save the slides                                                                           |
+| **Cmd+Enter** / **Ctrl+Enter**                       | Save the slides, including words still being typed                                        |
+| **Cmd+F** / **Ctrl+F**                               | Find and replace in the presentation, including its master                                |
+| **Cmd+=** / **Ctrl+=**, **Cmd++** / **Ctrl++**       | Zoom in                                                                                   |
+| **Cmd+-** / **Ctrl+-**                               | Zoom out                                                                                  |
+| **Cmd+0** / **Ctrl+0**                               | Fit the slide to the editing area                                                         |
+
+| **Alt** (while dragging) | Place freely, without snapping |
 | **Shift** (while dragging a corner or the turn handle) | Keep the proportions (a picture or video keeps them anyway: Shift lets them go); turn in steps of 15 degrees |

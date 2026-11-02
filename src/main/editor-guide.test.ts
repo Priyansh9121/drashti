@@ -29,7 +29,7 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
       ['Use master background', 'One shared master.'],
       ['Comes in', 'Motion timing.'],
       ['Slides across', 'Slides and notes.'],
-    ]) {
+    ] as const) {
       const hits = searchGuides([indexed], query)
         .filter((s) => s.section === section)
         .flatMap((s) => s.hits)

@@ -62,6 +62,7 @@ import {
   PLAYLIST,
   setUpPlaceholderShow,
   TALK,
+  VIDEO,
   WELCOME,
 } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
@@ -74,6 +75,7 @@ import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeZip } from '../../src/main/import/testing/zip-writer';
 import { dropboxStandIn, folderLink } from './dropbox-stand-in';
+import { longPress } from './phone-gestures';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -2818,4 +2820,271 @@ test('the wallpapers: three in the Playlists panel, one chosen to show whenever 
   await expect(tiles.filter({ hasText: 'Placeholder evening' })).toHaveAttribute('aria-pressed', 'true');
   await shot(win, 'wallpapers');
   await app.close();
+});
+
+// Append to tests/e2e/screenshots.spec.ts. The existing 36 cases and their gates stay unchanged.
+for (const guideSize of [
+  { width: 1024, height: 645 },
+  { width: 1280, height: 720 },
+]) {
+  test(
+    'alpha.14 editor groups at ' + String(guideSize.width) + ' by ' + String(guideSize.height),
+    async () => {
+      const { app } = await launchApp();
+      try {
+        const win = await operatorPage(app);
+        await operatorReady(win);
+        const file = join(
+          mkdtempSync(join(tmpdir(), 'drashti-shots-14-editor-')),
+          'Placeholder editor guide.txt',
+        );
+        writeFileSync(
+          file,
+          '[Placeholder group]\nPlaceholder welcome\nPrepared for the next programme\n\nPlaceholder second slide\n\nPlaceholder closing slide\n',
+        );
+        const imported = await importAndGetIds(win, [file]);
+        expect(imported).toHaveLength(1);
+        await openLibrary(win);
+        await win
+          .getByTestId('presentation-list')
+          .getByRole('button', { name: /^Placeholder editor guide/ })
+          .click();
+        await win.getByTestId('edit-slides').click();
+        const { ed, editor } = await slideEditorWindow(app);
+        await sizeSlideEditor(app, ed, guideSize);
+        await expect(editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
+        await expect(editor.getByTestId('editor-slide').locator(':scope > [data-element]')).toHaveCount(1);
+        await expect(editor.getByTestId('editor-slide')).toContainText(
+          'Placeholder welcome\nPrepared for the next programme',
+        );
+        await expect(editor.getByRole('tab')).toHaveText([
+          'Words',
+          'Insert',
+          'Arrange',
+          'Design',
+          'Motion',
+          'Slides',
+        ]);
+        const suffix = '-' + String(guideSize.width) + 'x' + String(guideSize.height);
+        const ribbon = editor.getByTestId('editor-ribbon');
+        const selectSlideContents = async () => {
+          await editor.getByTestId('editor-canvas').focus();
+          await ed.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+        };
+
+        // This is an ordinary generated words presentation, not an imported PDF/deck source edit.
+        await editorGroup(ed, 'Design');
+        await editor.getByTestId('design-background-kind').selectOption('gradient');
+        await editor.getByTestId('design-gradient-from').fill('#14324e');
+        await editor.getByTestId('design-gradient-to').fill('#36576e');
+        await editor.getByTestId('design-master').click();
+        await expect(editor.getByTestId('editor-master-banner')).toBeVisible();
+        await editorGroup(ed, 'Insert');
+        await editor.getByTestId('add-text').click();
+        await editor.locator('[data-editing="true"] .ProseMirror').fill('Placeholder programme');
+        await ed.keyboard.press('Escape');
+        await editorGroup(ed, 'Words');
+        await ribbon.getByTestId('field-font').selectOption('Mukta');
+        await ribbon.getByTestId('field-size').fill('40');
+        await editor.getByTestId('field-x').fill('80');
+        await editor.getByTestId('field-y').fill('920');
+        await editor.getByTestId('field-width').fill('1760');
+        await editor.getByTestId('field-height').fill('80');
+        await editor.getByTestId('master-done').click();
+        await expect(editor.getByTestId('editor-master-banner')).toHaveCount(0);
+        await expect(editor.getByTestId('editor-slide')).toContainText('Placeholder programme');
+
+        await selectSlideContents();
+        await editorGroup(ed, 'Words');
+        await expect(editor.getByTestId('inspector-text')).toBeVisible();
+        await ribbon.getByTestId('field-font').selectOption('Mukta');
+        await ribbon.getByTestId('field-size').fill('84');
+        await ribbon.getByTestId('field-color').fill('#fff4d9');
+        await ribbon.getByTestId('words-align-left').click();
+        await editor.getByTestId('field-x').fill('80');
+        await editor.getByTestId('field-y').fill('80');
+        await editor.getByTestId('field-width').fill('1760');
+        await editor.getByTestId('field-height').fill('240');
+        await expect(ribbon.getByTestId('field-font')).toHaveValue('Mukta');
+        await expect(ribbon.getByTestId('field-size')).toHaveValue('84');
+        await shot(ed, 'editor-words' + suffix);
+
+        await ed.keyboard.press('Escape');
+        await editorGroup(ed, 'Design');
+        await expect(editor.getByTestId('design-background-kind')).toHaveValue('gradient');
+        await expect(editor.getByTestId('design-master')).toBeEnabled();
+        await shot(ed, 'editor-design' + suffix);
+
+        await editorGroup(ed, 'Insert');
+        await editor.getByTestId('add-table').click();
+        await ed.getByTestId('table-rows').fill('2');
+        await ed.getByTestId('table-columns').fill('3');
+        await ed.getByRole('button', { name: 'Add table', exact: true }).click();
+        await expect(editor.getByTestId('editor-slide').locator(':scope > [data-element]')).toHaveCount(13);
+        await expect(editor.getByTestId('add-table')).toBeVisible();
+        await expect(editor.getByTestId('add-sound')).toBeVisible();
+        await shot(ed, 'editor-insert' + suffix);
+
+        await selectSlideContents();
+        await editorGroup(ed, 'Arrange');
+        await expect(editor.getByTestId('arrange-group-elements')).toBeEnabled();
+        await editor.getByTestId('arrange-group-elements').click();
+        await expect(editor.getByTestId('arrange-ungroup')).toBeEnabled();
+        await editor.getByTestId('arrange-rulers').check();
+        await editor.getByTestId('arrange-grid').check();
+        await editor.getByTestId('arrange-snap').check();
+        await editor.getByTestId('arrange-guides').check();
+        await expect(editor.getByTestId('editor-rulers')).toBeVisible();
+        await expect(editor.getByTestId('editor-grid')).toBeVisible();
+        await expect(editor.getByTestId('editor-guides')).toBeVisible();
+        await shot(ed, 'editor-arrange' + suffix);
+
+        await editorGroup(ed, 'Motion');
+        await editor.getByTestId('motion-element-in').selectOption('fade');
+        await editor.getByTestId('motion-in-duration').fill('1');
+        await editor.getByTestId('motion-element-emphasis').selectOption('pulse');
+        await editor.getByTestId('motion-emphasis-delay').fill('1.5');
+        await editor.getByTestId('motion-element-out').selectOption('fade');
+        await editor.getByTestId('motion-out-delay').fill('4');
+        await editor.getByTestId('motion-transition').selectOption('dissolve');
+        await editor.getByTestId('motion-transition-seconds').fill('0.4');
+        await editor.getByTestId('motion-auto').check();
+        await editor.getByTestId('motion-auto-seconds').fill('6');
+        await expect(editor.getByTestId('motion-auto')).toBeChecked();
+        await expect(editor.getByTestId('motion-element-in')).toHaveValue('fade');
+        // No preview is played: the authored motion stays still in a guide picture.
+        await shot(ed, 'editor-motion' + suffix);
+
+        await editorGroup(ed, 'Slides');
+        await editor.getByTestId('slides-strip').check();
+        await expect(editor.getByTestId('editor-slides')).toHaveAttribute('data-direction', 'across');
+        await expect(editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
+        await editor.getByTestId('slides-notes').click();
+        await ed.getByTestId('slides-notes-text').fill('Placeholder cue for the presenter.');
+        await ed.getByRole('button', { name: 'Keep notes', exact: true }).click();
+        await expect(ed.getByTestId('slides-notes-dialog')).toHaveCount(0);
+        await expect(editor.getByTestId('slides-notes')).toBeEnabled();
+        await shot(ed, 'editor-slides' + suffix);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+}
+
+test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by 812', async () => {
+  const { app } = await launchApp(NETWORK_ENV);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const show = await setUpPlaceholderShow(win, { video: true });
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+    await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
+    const phone = await device('chromium');
+    try {
+      const p = phone.page;
+      await p.setViewportSize({ width: 375, height: 812 });
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      await p.getByTestId('remote-tab-playlist').click();
+      await p.getByTestId('remote-playlist').selectOption(show.playlistId);
+      const rows = p.getByTestId('remote-items');
+      const firstVerse = rows.getByTestId('remote-row').filter({ hasText: KIRTAN + '_2' });
+      await expect(
+        rows.locator('[data-testid="remote-item"][data-kind="group"]').filter({ hasText: KIRTAN }),
+      ).toHaveAttribute('aria-expanded', 'true');
+      await expect(rows.getByTestId('remote-row').filter({ hasText: KIRTAN + '_' })).toHaveCount(5);
+      await firstVerse.click();
+      await expect(firstVerse).toHaveAttribute('data-live', 'true');
+      await expect(firstVerse).toBeInViewport();
+      await shot(p, 'phone-playlist-rows-375x812');
+
+      const pictureRow = rows
+        .locator('[data-testid="remote-item"][data-kind="media"]')
+        .filter({ hasText: PICTURE });
+      await longPress(pictureRow);
+      const menu = p.getByTestId('remote-row-menu');
+      await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
+        /Look at it on this phone/u,
+        /Picture editor/u,
+        /Save picture/u,
+        /Pin to the quick bar/u,
+        /Rename/u,
+        /Remove from playlist/u,
+      ]);
+      await expect(menu.getByTestId('remote-menu-edit')).toBeInViewport();
+      await expect(menu.getByTestId('remote-row-menu-close')).toBeInViewport();
+      await shot(p, 'phone-row-menu-375x812');
+      await menu.getByTestId('remote-row-menu-close').click();
+      await expect(menu).toHaveCount(0);
+
+      // Keep the generated two-second clip going through its actual Pro row menu, then pause it.
+      // Loop is an existing Part 9 action; no clock/duration/permission is replaced for the picture.
+      const videoRow = rows
+        .locator('[data-testid="remote-item"][data-kind="media"]')
+        .filter({ hasText: VIDEO });
+      await longPress(videoRow);
+      await menu.getByTestId('remote-menu-when-loop').click();
+      await expect(menu).toHaveCount(0);
+      await expect
+        .poll(async () =>
+          (
+            await win.evaluate(
+              async (id) => (globalThis as PageGlobals).drashti.playlists.items(id),
+              show.playlistId,
+            )
+          ).find((item) => item.kind === 'media' && item.mediaId === show.videoMediaId),
+        )
+        .toMatchObject({ whenEnds: 'loop' });
+      await videoRow.click();
+      await expect
+        .poll(async () => {
+          const background = (
+            await win.evaluate(
+              async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state,
+            )
+          ).layers.background;
+          return background?.kind === 'media' ? { mediaId: background.mediaId, loop: background.loop } : null;
+        })
+        .toEqual({ mediaId: show.videoMediaId, loop: true });
+      await p.getByTestId('remote-tab-show').click();
+      await expect(p.getByTestId('remote-time-bar-pause')).toBeEnabled();
+      await p.getByTestId('remote-time-bar-pause').click();
+      const bar = p.getByTestId('remote-time-bar-row').filter({ has: p.getByTestId('remote-time-bar-play') });
+      await expect(bar).toHaveAttribute('data-playing', 'background');
+      await expect(bar).toHaveAttribute('data-paused', 'true');
+      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      const simple = p.getByTestId('remote-simple');
+      await expect(simple).toContainText('its playlist “' + PLAYLIST + '”');
+      await expect(simple).toBeInViewport();
+      await expect(bar.getByRole('progressbar', { name: 'Time of the background video' })).toBeVisible();
+      await expect(bar.getByRole('slider')).toHaveCount(0);
+      await expect(bar.getByTestId('remote-time-bar-play')).toBeEnabled();
+      await expect(bar.getByTestId('remote-time-bar-play')).toBeInViewport();
+      await expect(p.getByTestId('remote-quick-bar')).toHaveCount(0);
+      await expect(p.getByTestId('remote-skip-background-forward')).toHaveCount(0);
+      await shot(p, 'phone-simple-controls-375x812');
+
+      await p.getByTestId('remote-tab-playlist').click();
+      await expect(p.getByTestId('remote-playlist')).toHaveValue(show.playlistId);
+      await expect(p.getByTestId('remote-playlist').locator('option')).toHaveCount(1);
+      await longPress(pictureRow);
+      await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
+        /Look at it on this phone/u,
+        /Save picture/u,
+        /Rename/u,
+        /Remove from playlist/u,
+      ]);
+      await expect(menu.getByTestId('remote-menu-edit')).toHaveCount(0);
+      await expect(menu.getByTestId('remote-row-menu-close')).toBeInViewport();
+      await shot(p, 'phone-simple-row-menu-375x812');
+    } finally {
+      await phone.close();
+    }
+  } finally {
+    await app.close();
+  }
 });

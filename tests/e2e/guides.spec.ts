@@ -163,7 +163,6 @@ test('Simple Mode’s Help › Guides… shows only the operator’s and the pre
   await app.close();
 });
 
-
 test('the bundled editor guide finds crop, master, timed motion and the slide strip at useful passages', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -188,7 +187,9 @@ test('the bundled editor guide finds crop, master, timed motion and the slide st
     await expect(shown).toContainText(topic.detail);
     await expect(shown).toBeInViewport();
     await expect
-      .poll(() => guides.locator('img').evaluateAll((imgs) => imgs.every((i) => (i as HTMLImageElement).complete)))
+      .poll(() =>
+        guides.locator('img').evaluateAll((imgs) => imgs.every((i) => (i as HTMLImageElement).complete)),
+      )
       .toBe(true);
     await expect(shown).toBeInViewport();
   }
@@ -208,7 +209,10 @@ test('Simple Mode can read its phone exceptions without gaining the setup guides
   const guides = win.getByTestId('guides');
   await expect(guides.getByRole('tab')).toHaveText(['Operator', 'Presenter']);
   await guides.getByRole('searchbox').fill('phone Simple Mode');
-  const hit = guides.getByTestId('guide-results').getByTestId('guide-hit').filter({ hasText: 'The phone in Simple Mode.' });
+  const hit = guides
+    .getByTestId('guide-results')
+    .getByTestId('guide-hit')
+    .filter({ hasText: 'The phone in Simple Mode.' });
   await expect(hit).toHaveCount(1);
   await hit.click();
   const shown = guides.locator('[data-passage][data-current="true"]');

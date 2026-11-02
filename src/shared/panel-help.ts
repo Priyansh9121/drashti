@@ -35,8 +35,8 @@ export const PANEL_HELP = {
   slides: {
     title: 'Slides',
     doc: 'operator',
-    text: 'With no playlist open, the slides of the presentation chosen in the library, a row each in the order they play. Click a row to put it on the screens at once, press Space for the next one, or type its number and press Enter. Right-click a row for Edit slides…, New Timer Slide… and more; the ⋯ menu beside Edit slides has Rename…, Show in Finder and Delete… for the whole presentation.',
-    guide: '**Starting.**',
+    text: 'With no playlist open, these are the chosen presentation’s slides: click a row to put it up, press Space for the next one, or type its number and press Enter. Edit slides… opens its own window, with Words, Insert, Arrange, Design, Motion and Slides, while the operator window keeps the show controls. Save waits for pending media and protects unfinished typing; its saved change has one operator Undo.',
+    guide: '**Edit slides opens its own window.**',
   },
   live: {
     title: 'LIVE',
@@ -77,7 +77,7 @@ export const PANEL_HELP = {
   playlist: {
     title: 'The open playlist',
     doc: 'operator',
-    text: 'The playlist you opened is where things go live: one click on any row puts it on the screens at once (a slide, a picture, a video, a sound or a video input), and a presentation’s, a deck’s or a PDF’s slides are rows under its name, which folds them; type a row’s number and press Enter to put it up. Cmd-click (Ctrl-click on Windows) only marks a row, a drag moves it, and its right-click menu has Delete (out of this playlist only, with Undo), Rename… and more; the playlist’s ⋯ menu has Duplicate and Practise this playlist. A video input from Media can be a row too: on a computer with no video input of that name, it says Not on this computer and Next goes past it.',
+    text: 'The playlist you opened is where things go live: one click on a row puts it up, and a presentation’s, deck’s or PDF’s name folds its slide rows; type a row’s number and press Enter to put it up. Cmd-click (Ctrl-click on Windows) only marks a row; drag or Alt+Up/Down moves it, within its deck on a slide row, and its menu has Rename, Remove and Undo; the playlist’s ⋯ has Duplicate and Practise this playlist. A video input from Media can be a row too: without that named input on this computer it says Not on this computer and Next goes past it.',
     guide: '**Middle:**',
   },
   controls: {
@@ -101,7 +101,7 @@ export const PANEL_HELP = {
   phones: {
     title: 'Phones',
     doc: 'operator',
-    text: 'Phones and tablets on the mandir’s Wi-Fi, paired as a remote, a stage display or for announcements: turn on Let paired phones and tablets connect, then check each one says Connected. A playlist shared from its right-click menu (Share with Phones and Tablets) shows on a remote under Shared from Drashti. To let a remote add files, turn on Phones and tablets may add files, off until then: Add from this Phone… brings pictures, videos, sounds and decks into Media and the playlist Added from Phones, and Add photos brings photos to the end of the open playlist, never onto the screens by themselves.',
+    text: 'Phones and tablets on the local Wi-Fi pair as a remote, stage display or for announcements: in Pro Mode turn on Let paired phones and tablets connect, then check Connected. A remote shows playlist slide rows, menus, protected show swipes and wallpapers; Simple Mode names its own playlist, permits its rows and clears, and refuses Pro-only actions. Phones and tablets may add files allows Add from this Phone… into Added from Phones; Add photos uses the ordinary open playlist in Pro Mode, otherwise Added from Phones, never going live by itself.',
     guide: '**Phones** (if a phone remote or a stage tablet is used)',
   },
   announcements: {
