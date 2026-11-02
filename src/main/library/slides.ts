@@ -81,7 +81,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       ...deckOf(s.deck),
       ...guidesOf(s.editor_guides),
       ...(documentPageFromJson(s.document_page)
-        ? { documentPage: documentPageFromJson(s.document_page) }
+        ? { documentPage: documentPageFromJson(s.document_page), sourceOccurrenceId: s.id }
         : {}),
       ...(slideDesignFromJson(s.editor_design) ? { design: slideDesignFromJson(s.editor_design) } : {}),
     })),

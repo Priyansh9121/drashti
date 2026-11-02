@@ -191,6 +191,7 @@ export class ImportedSlides {
     } finally {
       await rm(work, { recursive: true, force: true });
     }
+    for (const slide of slides) if (slide.documentPage) slide.sourceOccurrenceId = slide.id;
     this.prepared.delete(doc.presentationId);
     this.prepared.set(doc.presentationId, { stamp, doc: structuredClone(doc) });
     while (this.prepared.size > 8) {
@@ -234,10 +235,14 @@ export class ImportedSlides {
         continue;
       }
       const original =
-        ownPrepared ??
-        (!old ? prepared.find((page) => sameSource(page.documentPage, slide.documentPage)) : undefined);
+        ownPrepared ?? (!old && slide.sourceOccurrenceId ? native.get(slide.sourceOccurrenceId) : undefined);
       const originalRef = original?.documentPage;
-      if (!original || !originalRef || !sameSource(slide.documentPage, originalRef))
+      if (
+        !original ||
+        !originalRef ||
+        slide.sourceOccurrenceId !== original.id ||
+        !sameSource(slide.documentPage, originalRef)
+      )
         return { ok: false, message: 'Reopen the editor before saving these imported pages.' };
       const copied = !old;
       const untouched =
@@ -255,8 +260,16 @@ export class ImportedSlides {
             return { ...element, id: randomUUID(), ...(groupId ? { groupId } : {}) };
           });
           slide.cues = saved.cues.map((cue) => ({ ...cue, id: randomUUID() }));
-          if (saved.deck) slide.deck = structuredClone(saved.deck);
-          else delete slide.deck;
+          if (saved.deck) {
+            const drashti = slide.deck?.drashti;
+            const stepTransitions = slide.deck?.stepTransitions;
+            const { drashti: _drashti, stepTransitions: _steps, ...kept } = saved.deck;
+            slide.deck = {
+              ...structuredClone(kept),
+              ...(drashti ? { drashti: structuredClone(drashti) } : {}),
+              ...(stepTransitions ? { stepTransitions: structuredClone(stepTransitions) } : {}),
+            };
+          } else delete slide.deck;
         } else slide.elements = saved.elements;
         slide.background = saved.background;
         slide.darken = saved.darken;

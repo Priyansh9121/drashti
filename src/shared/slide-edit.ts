@@ -65,6 +65,8 @@ export function cueInputName(cue: { kind: string; mediaId: string | null; props:
 
 export interface EditSlide {
   documentPage?: DocumentPageRef;
+  /** Main's opened occurrence, retained by an editor copy; never stored or sent to a player. */
+  sourceOccurrenceId?: string;
   id: string;
   label: string;
   notes: string;
@@ -230,6 +232,7 @@ const cueSchema: z.ZodType<EditCue> = z
 
 const slideSchema: z.ZodType<EditSlide> = z.object({
   documentPage: documentPageSchema.optional(),
+  sourceOccurrenceId: idSchema.optional(),
   guides: editorGuidesSchema.optional(),
   design: slideDesignSchema.optional(),
   id: idSchema,
