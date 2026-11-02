@@ -87,6 +87,15 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
     expect(phone).toContain('Added from Phones');
     expect(phone).toContain('not into this playlist');
     expect(source).not.toContain("and a phone's markers still jump");
+    const presenter = passagesOf(
+      parseMarkdown(readFileSync(join(process.cwd(), 'docs/presenter-guide.md'), 'utf8')),
+    );
+    const summary = presenter.find((p) => p.text.startsWith('What the page never does on its own:'));
+    expect(summary, 'the presenter file-destination summary').toBeDefined();
+    for (const detail of ['Add photos', 'ordinary playlist open', 'Pro Mode', 'Simple Mode', 'Added from Phones']) {
+      expect(summary?.text).toContain(detail);
+    }
+
   });
 
   it('the Slides help card leads to the new window instructions, not a fallback heading', () => {
