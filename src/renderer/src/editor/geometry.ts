@@ -86,6 +86,13 @@ export function hitTest(
   point: Point,
   slack = 0,
 ): string | null {
+  if (slack > 0) {
+    // A nearby frame’s tolerance must not cover an exact hit on the visible frame below it.
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const el = elements[i];
+      if (el && contains(el, point)) return el.id;
+    }
+  }
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
     if (el && contains(el, point, slack)) return el.id;

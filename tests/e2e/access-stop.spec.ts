@@ -400,13 +400,72 @@ test('the line in days and hours: started with no internet 18 hours after an ans
 test('the line over Simple Mode, in CI’s window: under its top bar, nothing moving, over none of its big buttons, fitting, passing the accessibility checks, the show going on under it', async () => {
   test.setTimeout(150_000);
   const { app, win, access: list } = await showing({ ...QUICK, DRASHTI_TEST_ACCESS_STOP_MS: '600000' });
+  // Numeric resize diagnostics only: never attach a DOM/storage dump or any access data.
+  const attachLayoutNumbers = async (name: string) => {
+    const facts = await win.evaluate(() => {
+      const number = (raw: string | null): number | null => {
+        if (raw === null || raw.trim() === '') return null;
+        const value = Number.parseFloat(raw);
+        return Number.isFinite(value) ? value : null;
+      };
+      const box = (element: Element | null) => {
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      };
+      const column = (side: string) => {
+        const element = document.querySelector<HTMLElement>(`[data-testid="column-${side}"]`);
+        return { rect: box(element), inlineWidth: number(element?.style.width ?? null) };
+      };
+      const separator = (label: string) => {
+        const element = document.querySelector(`[role="separator"][aria-label="${label}"]`);
+        return {
+          now: number(element?.getAttribute('aria-valuenow') ?? null),
+          max: number(element?.getAttribute('aria-valuemax') ?? null),
+        };
+      };
+      const preference = (side: 'left' | 'right'): number | 'absent' => {
+        try {
+          const raw = localStorage.getItem(`drashti.ui.layout.${side}`);
+          if (raw === null) return 'absent';
+          const value: unknown = JSON.parse(raw);
+          return typeof value === 'number' && Number.isFinite(value) ? value : 'absent';
+        } catch {
+          return 'absent';
+        }
+      };
+      return {
+        timestampMs: Date.now(),
+        monotonicMs: performance.now(),
+        viewport: {
+          innerWidth,
+          innerHeight,
+          clientWidth: document.documentElement.clientWidth,
+          clientHeight: document.documentElement.clientHeight,
+        },
+        columns: { left: column('left'), middle: column('middle'), right: column('right') },
+        separators: {
+          left: separator('Resize the playlists'),
+          right: separator('Resize the live column'),
+        },
+        persisted: { left: preference('left'), right: preference('right') },
+        warningPresent: document.querySelector('[data-testid="access-offline-notice"]') !== null,
+      };
+    });
+    await test.info().attach(name, { body: JSON.stringify(facts, null, 2), contentType: 'application/json' });
+  };
   try {
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     const simple = win.getByTestId('simple-mode');
     await expect(simple).toBeVisible();
     await sizeOperatorWindow(app, win, CI_WINDOW);
     await expect(win.getByTestId('access-offline-notices')).toBeVisible();
+    // The viewport is set: its column constraint must have committed before the unchanged baseline.
+    await expect(
+      simple.getByRole('separator', { name: 'Resize the playlists', exact: true }),
+    ).toHaveAttribute('aria-valuemax', '244');
     const before = await layout(win);
+    await attachLayoutNumbers('simple-layout-baseline-captured');
     expect(before.length).toBeGreaterThan(3);
     const tries = list.tries;
     stopAnswering(list);
@@ -417,7 +476,16 @@ test('the line over Simple Mode, in CI’s window: under its top bar, nothing mo
     await expect(line).toHaveText(LINE);
     // In Simple Mode's own strip: nothing moved, over none of its big buttons.
     await expect(simple).toBeVisible();
-    expect(await layout(win), 'nothing moved as the line came').toEqual(before);
+    try {
+      expect(await layout(win), 'nothing moved as the line came').toEqual(before);
+    } catch (error) {
+      try {
+        await attachLayoutNumbers('simple-layout-warning-comparison-failed');
+      } catch {
+        // Preserve the original layout failure even if the diagnostic attachment cannot be collected.
+      }
+      throw error;
+    }
     await oneLineOverNothing(win, 'the line over Simple Mode at 1024 × 645');
     await clearOfShowControls(win, line);
     await expectFits(win.getByTestId('access-offline-notices'), 'the line over Simple Mode at 1024 × 645');
