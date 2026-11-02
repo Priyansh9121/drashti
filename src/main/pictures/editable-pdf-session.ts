@@ -50,14 +50,25 @@ interface Session {
 
 export class EditablePdfSessions {
   private active: Session | null = null;
-  private current(): Session | null { return this.active; }
-  private isStopped(session: Session): boolean { return session.stopped; }
-  private isAborted(request: SourceRead): boolean { return request.signal.aborted; }
+  private current(): Session | null {
+    return this.active;
+  }
+  private isStopped(session: Session): boolean {
+    return session.stopped;
+  }
+  private isAborted(request: SourceRead): boolean {
+    return request.signal.aborted;
+  }
   constructor(private readonly open: () => BrowserWindow) {}
 
   /** Called only by PdfPictures' shared serial queue, not directly by a renderer. */
   async readNow(request: SourceRead): Promise<PreparedSource> {
-    if (this.current() || request.ext !== 'pdf' || this.isAborted(request) || !(await sourceCheckpoint(request)))
+    if (
+      this.current() ||
+      request.ext !== 'pdf' ||
+      this.isAborted(request) ||
+      !(await sourceCheckpoint(request))
+    )
       return failure();
     const requested = new Set(request.sourcePages);
     if (
@@ -181,7 +192,11 @@ export class EditablePdfSessions {
           session.finish(failure());
           return false;
         }
-        if (!(await sourceCheckpoint(session.request)) || this.isStopped(session) || this.isAborted(session.request)) {
+        if (
+          !(await sourceCheckpoint(session.request)) ||
+          this.isStopped(session) ||
+          this.isAborted(session.request)
+        ) {
           session.finish(failure());
           return false;
         }

@@ -22,7 +22,9 @@ export class SourceReaderQueue {
   private waiting: Queued[] = [];
   private active: Queued | null = null;
   private stopped = false;
-  private isStopped(): boolean { return this.stopped; }
+  private isStopped(): boolean {
+    return this.stopped;
+  }
   constructor(
     private readonly readSource: SourceReader,
     private readonly options: QueueOptions = {},

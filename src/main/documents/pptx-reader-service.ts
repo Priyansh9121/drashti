@@ -196,7 +196,8 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
                 page.elements.some(
                   (element) =>
                     !Object.values(element.frame).every(
-                      (value: unknown) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000,
+                      (value: unknown) =>
+                        typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000,
                     ),
                 )
               ) {

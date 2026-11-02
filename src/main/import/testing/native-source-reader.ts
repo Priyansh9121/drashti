@@ -19,8 +19,7 @@ export const nativeSourceReader: SourceReader = async (request) => {
   if (request.ext === 'pptx') {
     const native = await readEditablePptx(request.file, request.outDir);
     for (const sourceIndex of request.sourcePages) {
-      if (isAborted() || !(await request.checkpoint()))
-        return { ok: false, message: 'Cancelled.' };
+      if (isAborted() || !(await request.checkpoint())) return { ok: false, message: 'Cancelled.' };
       const page = native.slides.find((entry) => entry.sourceIndex === sourceIndex);
       if (!page) {
         failed.push(sourceIndex);

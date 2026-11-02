@@ -34,7 +34,13 @@ export function validateEditablePdfPage(
     if (element.kind === 'image') needed.add(element.mediaId);
     // Schemas allow deliberately broad coordinates; this private extraction reply is bounded tighter.
     const values = Object.values(element.frame);
-    if (!values.every((value: unknown) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000)) return null;
+    if (
+      !values.every(
+        (value: unknown) =>
+          typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1_000_000,
+      )
+    )
+      return null;
   }
   const tokens = new Set<string>();
   let assetBytes = 0;
