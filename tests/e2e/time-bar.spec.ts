@@ -4,7 +4,16 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { device, type Engine, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
+import {
+  apiCall,
+  device,
+  type Engine,
+  NETWORK_ENV,
+  networkOn,
+  pairByQr,
+  pairingCode,
+  pairToken,
+} from './devices';
 import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
@@ -409,7 +418,7 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
 });
 
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
-  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode refuses the move and the Pause and says so, never the Play`, async () => {
+  test(`the phone’s bar (${engine}): the same rows under its live picture; a tap or a drag moves what plays in step on the screen, Pause and Play too; Simple Mode shows a read-only bar and disabled Pause, refuses scripted move and Pause with 403, and lets Play resume`, async () => {
     test.setTimeout(180_000);
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
@@ -437,13 +446,16 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       type: 'setBackground',
       background: { kind: 'media', mediaId, media: 'video', fit: 'fill', loop: true },
     });
-    const { base } = await networkOn(win);
+    const { base, port } = await networkOn(win);
     const code = await pairingCode(win, 'remote', 'Placeholder phone');
     const phone = await device(engine);
     const p = phone.page;
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
+      // A paired script still tests the server's refusals when Part 9 no longer offers those actions on the phone.
+      // Generated at run time, kept in memory and never printed, as in simple-phone.spec.ts.
+      const script = await pairToken(win, port, 'remote', 'Placeholder time-bar script');
       const playing = p.getByTestId('remote-time-bars');
       const row = playing.locator('[data-testid="remote-time-bar-row"][data-playing="background"]');
       const bar = row.getByRole('slider', { name: 'Time of the background video', exact: true });
@@ -489,23 +501,54 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
       await inStep(copies, () => backgroundTiming(win), 'played on from the phone');
 
-      // Simple Mode on the computer, the video left paused: the phone's move and Pause are refused, the phone saying
-      // why, and nothing moves; its Play is not, so nothing stays paused (Session 54's review).
+      // Simple Mode on the computer, the video left paused: Part 9's phone shows why once and offers only Play.
+      // The bar is read-only and Pause is disabled; a paired script asking anyway still gets a refusal in words.
       await row.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
       await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
+      await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
+      const simpleBar = row.getByRole('progressbar', { name: 'Time of the background video', exact: true });
+      await expect(simpleBar).toBeVisible();
+      await expect(row.getByRole('slider')).toHaveCount(0);
+      await expect(row.getByRole('button', { name: 'Play' })).toBeEnabled();
       const seek = (await backgroundTiming(win)).seek;
-      await clickAlong(p, bar, 0.9);
-      await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
+      await clickAlong(p, simpleBar, 0.9);
+      expect((await backgroundTiming(win)).seek).toEqual(seek);
+      const refusedMove = await apiCall(port, '/api/v1/playing/move', {
+        method: 'POST',
+        token: script,
+        body: { playing: { layer: 'background' }, toMs: Math.round(durationMs * 0.9) },
+      });
+      expect(refusedMove.status).toBe(403);
+      expect(refusedMove.json).toMatchObject({
+        ok: false,
+        error: 'forbidden',
+        message: expect.stringContaining('Simple Mode is on'),
+      });
       expect((await backgroundTiming(win)).seek).toEqual(seek);
       await row.getByRole('button', { name: 'Play' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
       await inStep(copies, () => backgroundTiming(win), 'played on from the phone in Simple Mode');
+      await expect(row.getByRole('button', { name: 'Pause' })).toBeDisabled();
       const playedOn = (await backgroundTiming(win)).seek;
-      await row.getByRole('button', { name: 'Pause' }).click();
-      await expect(p.getByText('Simple Mode is on', { exact: false })).toBeVisible();
+      const refusedPause = await apiCall(port, '/api/v1/playing/pause', {
+        method: 'POST',
+        token: script,
+        body: { playing: { layer: 'background' } },
+      });
+      expect(refusedPause.status).toBe(403);
+      expect(refusedPause.json).toMatchObject({
+        ok: false,
+        error: 'forbidden',
+        message: expect.stringContaining('Simple Mode is on'),
+      });
       expect((await backgroundTiming(win)).seek).toEqual(playedOn);
+      await inStep(
+        copies,
+        () => backgroundTiming(win),
+        'still playing in step after Simple Mode refused Pause',
+      );
     } finally {
       await phone.close();
     }
