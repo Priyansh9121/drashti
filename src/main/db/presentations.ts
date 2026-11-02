@@ -305,7 +305,8 @@ export class PresentationRepo {
   get(id: string): PresentationDoc | null {
     const p = this.db
       .prepare(
-        'SELECT id, name, width, height, editor_master, selected_arrangement_id, transition, loop, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
+        // Optional editor columns are absent in an older schema read during an upgrade.
+        'SELECT * FROM presentations WHERE id = ? AND deleted_at IS NULL',
       )
       .get(id) as
       | (SourceColumns & {
@@ -313,7 +314,7 @@ export class PresentationRepo {
           name: string;
           width: number;
           height: number;
-          editor_master: string | null;
+          editor_master?: string | null;
           selected_arrangement_id: string | null;
           transition: string | null;
           loop: number;
@@ -341,8 +342,7 @@ export class PresentationRepo {
       .all(id) as { id: string; name: string; color: string | null }[];
     const slides = this.db
       .prepare(
-        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.macro_id,
-                s.deck, s.editor_design
+        `SELECT s.*
            FROM slides s JOIN slide_groups g ON g.id = s.group_id
           WHERE g.presentation_id = ? AND s.enabled = 1
           ORDER BY g.position, g.rowid, s.position, s.rowid`,
@@ -358,7 +358,7 @@ export class PresentationRepo {
       auto_advance_ms: number | null;
       macro_id: string | null;
       deck: string | null;
-      editor_design: string | null;
+      editor_design?: string | null;
     }[];
     const elements = this.db
       .prepare(

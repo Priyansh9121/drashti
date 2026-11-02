@@ -126,7 +126,9 @@ describe('slide size and layouts', () => {
 describe('a designed background used on all slides', () => {
   it('copies the backdrop, keeping each slide’s own layout, master choice and guides', () => {
     const doc = fixture();
-    const source = slidesOf(doc)[0]!;
+    const source = slidesOf(doc)[0];
+    const group = doc.groups[0];
+    if (!source || !group) throw new Error('no placeholder slide');
     source.design = {
       backdrop: { kind: 'gradient', from: '#123456', to: '#654321', angle: 90 },
       layout: 'words',
@@ -141,7 +143,7 @@ describe('a designed background used on all slides', () => {
       },
       guides: { x: [200], y: [300] },
     };
-    doc.groups[0]!.slides.push(target);
+    group.slides.push(target);
     const changed = slidesOf(applyLookToAll(doc, source.id))[1];
     expect(changed?.design).toEqual({
       backdrop: source.design.backdrop,
@@ -154,9 +156,11 @@ describe('a designed background used on all slides', () => {
   });
   it('clears an older designed backdrop when the source uses a solid colour', () => {
     const doc = fixture();
-    const source = slidesOf(doc)[0]!;
+    const source = slidesOf(doc)[0];
+    const group = doc.groups[0];
+    if (!source || !group) throw new Error('no placeholder slide');
     source.background = '#112233';
-    doc.groups[0]!.slides.push({
+    group.slides.push({
       ...newSlide(null),
       id: 'placeholder-target',
       design: {

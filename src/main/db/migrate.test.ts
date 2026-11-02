@@ -145,12 +145,13 @@ describe('migrations', () => {
     const db = openDatabase(file);
     expect(schemaVersion(db)).toBe(LATEST_VERSION);
     // As they were, with migration 44's content revision added at 0 (Sessions 31–36), and migration 48's device a
-    // phone added it from, none (Session 54).
+    // phone added it from, none (Session 54), and migration 57's optional master, none (Part 17a).
     const after = (
       db.prepare('SELECT rowid, * FROM presentations ORDER BY rowid').all() as Record<string, unknown>[]
-    ).map(({ content_rev: rev, from_device: device, ...row }) => {
+    ).map(({ content_rev: rev, from_device: device, editor_master: master, ...row }) => {
       expect(rev).toBe(0);
       expect(device).toBeNull();
+      expect(master).toBeNull();
       return row;
     });
     expect(after).toEqual(before);
