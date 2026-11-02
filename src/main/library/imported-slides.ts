@@ -135,6 +135,9 @@ export class ImportedSlides {
             }
           } else if (ref.ext === 'pdf') {
             const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+            // A bundled entry has no sibling pdf.worker.mjs. Keep the real parser in the bundle too.
+            const pdfWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+            (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = pdfWorker;
             const assets = dirname(require.resolve('pdfjs-dist/package.json'));
             const loading = pdfjs.getDocument({
               data: new Uint8Array(await readFile(source.file)),
