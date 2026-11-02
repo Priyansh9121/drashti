@@ -5,7 +5,14 @@ import { SCHEDULED_FOLDER } from '../../shared/backups';
 import { pooledBackup } from '../backup/pooled';
 import { LATEST_VERSION, openDatabase } from '../db/database';
 import { bytesHash, originalWorld } from '../import/testing/original-fixture';
-import { applyPendingRestore, backupLibrary, LIBRARY_FILE, readManifest, requestRestore } from './backup';
+import {
+  applyPendingRestore,
+  backupLibrary,
+  LIBRARY_FILE,
+  readManifest,
+  requestRestore,
+  rollBackRestore,
+} from './backup';
 
 const options = (mediaDir: string | null) => ({
   mediaDir,
@@ -106,6 +113,44 @@ describe('required original bytes in backups', () => {
       expect(applyPendingRestore(target, restoreOptions())).toMatchObject({ restored: true });
       expect(hashInLibrary(join(target, LIBRARY_FILE), id)).toBe(w.hash);
       expect(bytesHash(readFileSync(join(target, 'Media', w.originalRelative)))).toBe(w.hash);
+    } finally {
+      w.clean();
+    }
+  });
+  it('merges originals-only restore into existing optional Media and preserves it through rollback', async () => {
+    const w = originalWorld();
+    try {
+      await w.importPdf();
+      w.arrangeOwnedBytes();
+      const saved = await backupLibrary(w.db, w.drive, options(w.mediaDir));
+      const noteFile = join(saved.folder, 'backup.json');
+      const note = JSON.parse(readFileSync(noteFile, 'utf8')) as Record<string, unknown>;
+      writeFileSync(
+        noteFile,
+        JSON.stringify({
+          ...note,
+          media: false,
+          originals: { version: 1, files: [{ sha256: w.hash, ext: 'pdf', bytes: w.bytes.length }] },
+        }),
+      );
+      const target = join(w.root, 'populated-restore');
+      mkdirSync(join(target, 'Media'), { recursive: true });
+      const current = openDatabase(join(target, LIBRARY_FILE));
+      current.close();
+      const optional = join(target, 'Media', 'Placeholder current picture.bin');
+      const unchanged = Buffer.from('generated optional bytes');
+      writeFileSync(optional, unchanged);
+      requestRestore(target, saved.folder);
+      const restored = applyPendingRestore(target, restoreOptions());
+      expect(restored).toMatchObject({ restored: true, media: false });
+      expect(existsSync(optional)).toBe(true);
+      expect(readFileSync(optional)).toEqual(unchanged);
+      expect(bytesHash(readFileSync(join(target, 'Media', w.originalRelative)))).toBe(w.hash);
+      if (!restored.restored) throw new Error('The generated original backup was not restored.');
+      expect(rollBackRestore(target, restored.keptIn, { now: options(null).now })).toMatchObject({
+        ok: true,
+      });
+      expect(readFileSync(optional)).toEqual(unchanged);
     } finally {
       w.clean();
     }

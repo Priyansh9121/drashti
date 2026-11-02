@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditSlidesResult } from '../../shared/slide-edit';
 import { DEFAULT_THEME } from '../../shared/themes';
@@ -38,6 +39,49 @@ describe('retained PDF originals', () => {
       expect(readFileSync(w.owned)).toEqual(w.bytes);
       rmSync(w.source); // Only this fixture's generated external PDF.
       expect(readFileSync(w.owned)).toEqual(w.bytes);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('draws the verified own source even if the generated external source changes during import', async () => {
+    const w = originalWorld();
+    try {
+      let drawn = '';
+      const imported = await w.importPdf({
+        drawPdf: (pdf, outDir) => {
+          drawn = pdf;
+          const changed = Buffer.from(w.bytes);
+          changed[changed.length - 1] = (changed[changed.length - 1] ?? 0) ^ 1;
+          writeFileSync(w.source, changed);
+          return w.drawPdf(pdf, outDir);
+        },
+      });
+      expect(imported.summary.totals).toMatchObject({ imported: 1, failed: 0 });
+      expect(drawn).not.toBe(w.source);
+      expect(bytesHash(readFileSync(w.owned))).toBe(w.hash);
+      expect(bytesHash(readFileSync(w.source))).not.toBe(w.hash);
+      expect(
+        w.db.prepare('SELECT source_hash FROM presentations WHERE id = ?').pluck().get(imported.id),
+      ).toBe(w.hash);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('refuses a corrupt same-sized retained original without replacing it or importing a dangling document', async () => {
+    const w = originalWorld();
+    try {
+      const corrupt = Buffer.from(w.bytes);
+      corrupt[0] = (corrupt[0] ?? 0) ^ 1;
+      mkdirSync(dirname(w.owned), { recursive: true });
+      writeFileSync(w.owned, corrupt);
+      expect(corrupt.length).toBe(w.bytes.length);
+      const summary = await w.runPdf();
+      expect(summary.totals).toMatchObject({ imported: 0, failed: 1, presentations: 0 });
+      expect(readFileSync(w.owned)).toEqual(corrupt);
+      expect(readFileSync(w.source)).toEqual(w.bytes);
+      expect(new PresentationRepo(w.db).list()).toHaveLength(0);
     } finally {
       w.clean();
     }

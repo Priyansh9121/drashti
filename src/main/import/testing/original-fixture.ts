@@ -6,7 +6,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import { openDatabase } from '../../db/database';
 import { ImportRepo } from '../../db/imports';
 import { MediaStore } from '../media-store';
-import { runImport } from '../pipeline';
+import { type PipelineContext, runImport } from '../pipeline';
 import { makeTestPdf } from './make-pdf';
 
 /* Generated source and page bytes only. No original-store production API is assumed by this fixture. */
@@ -65,8 +65,23 @@ export function originalWorld() {
   const originalManifestPath = originalRelative.split(sep).join('/');
   const owned = join(mediaDir, originalRelative);
 
-  const importPdf = async () => {
-    const summary = await runImport({
+  const drawPdf = (pdf: string, outDir: string) => {
+    if (!readFileSync(pdf).subarray(0, 5).equals(Buffer.from('%PDF-')))
+      throw new Error('The generated PDF input was not readable.');
+    mkdirSync(outDir, { recursive: true });
+    const file = join(outDir, 'page-0001.png');
+    writeFileSync(file, pagePng());
+    return Promise.resolve({
+      ok: true as const,
+      width: 1920,
+      height: 1080,
+      pages: [{ index: 0, file, notes: 'Placeholder note' }],
+      total: 1,
+      failed: [],
+    });
+  };
+  const runPdf = (extra: Partial<PipelineContext> = {}) =>
+    runImport({
       db,
       media,
       runId: randomUUID(),
@@ -74,23 +89,11 @@ export function originalWorld() {
       options: {},
       converters: false,
       progressEveryMs: 0,
-      drawPdf: (pdf, outDir) => {
-        // Accept either the generated external PDF or a retained own copy passed by the real importer.
-        if (!readFileSync(pdf).subarray(0, 5).equals(Buffer.from('%PDF-')))
-          throw new Error('The generated PDF input was not readable.');
-        mkdirSync(outDir, { recursive: true });
-        const file = join(outDir, 'page-0001.png');
-        writeFileSync(file, pagePng());
-        return Promise.resolve({
-          ok: true as const,
-          width: 1920,
-          height: 1080,
-          pages: [{ index: 0, file, notes: 'Placeholder note' }],
-          total: 1,
-          failed: [],
-        });
-      },
+      drawPdf,
+      ...extra,
     });
+  const importPdf = async (extra: Partial<PipelineContext> = {}) => {
+    const summary = await runPdf(extra);
     const item = new ImportRepo(db)
       .report(summary.id)
       ?.items.find((entry) => entry.target?.kind === 'presentation');
@@ -125,6 +128,8 @@ export function originalWorld() {
     originalManifestPath,
     owned,
     importPdf,
+    runPdf,
+    drawPdf,
     arrangeOwnedBytes,
     clean: () => {
       db.close();
