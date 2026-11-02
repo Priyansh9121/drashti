@@ -72,7 +72,9 @@ function setup() {
     const box = r.doc.groups[0]?.slides[0]?.elements.find((e) => e.kind === 'text');
     return box?.kind === 'text' ? box.text : '';
   };
-  return { db, id, open, save, elsewhere, stored };
+  const saveDoc = (r: EditSlidesResult & { ok: true }, doc: typeof r.doc) =>
+    call('library:save-slides', id, doc, r.stamp) as SaveSlidesResult;
+  return { db, id, open, save, saveDoc, elsewhere, stored, presentations };
 }
 
 beforeEach(() => {
@@ -80,6 +82,34 @@ beforeEach(() => {
 });
 
 describe('the slide editor’s guard', () => {
+  it('lets the operator save a chosen slide size as one revision', () => {
+    const t = setup();
+    try {
+      const opened = t.open();
+      expect(t.saveDoc(opened, { ...opened.doc, width: 1440, height: 1080 }).ok).toBe(true);
+      expect(t.presentations.content(t.id)).toMatchObject({ width: 1440, height: 1080 });
+    } finally {
+      t.db.close();
+    }
+  });
+
+  it('still refuses a stale size edit after another writer changes the presentation size', () => {
+    const t = setup();
+    try {
+      const opened = t.open();
+      const rows = t.presentations.content(t.id);
+      if (!rows) throw new Error('no presentation');
+      t.presentations.setContent({ ...rows, width: 1600, height: 900 });
+      expect(t.saveDoc(opened, { ...opened.doc, width: 1440, height: 1080 })).toMatchObject({
+        ok: false,
+        changedElsewhere: true,
+      });
+      expect(t.presentations.content(t.id)).toMatchObject({ width: 1600, height: 900 });
+    } finally {
+      t.db.close();
+    }
+  });
+
   it('another change after the editor opened: the editor’s save is refused, and keeps nothing', () => {
     const t = setup();
     const opened = t.open();

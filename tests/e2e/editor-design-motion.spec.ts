@@ -202,3 +202,31 @@ test('Slides offers a draggable strip and notes while a box is selected, with on
     await app.close();
   }
 });
+
+test('notes still being typed from the Slides group survive native close and Save changes', async () => {
+  const { app, win, ed, editor, id } = await start();
+  try {
+    await editorGroup(ed, 'Slides');
+    await expect(editor.getByTestId('slides-notes')).toBeVisible();
+    await editor.getByTestId('slides-notes').click();
+    await ed.getByTestId('slides-notes-text').fill('Placeholder notes kept while still typing');
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().includes('slide-editor.html'),
+      );
+      if (!window) throw new Error('no editor window');
+      window.close();
+    });
+    await expect(ed.getByTestId('keep-changes')).toBeVisible();
+    await ed.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await slideEditorClosed(app);
+    const saved = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      id,
+    );
+    if (!saved.ok) throw new Error(saved.message);
+    expect(saved.doc.groups[0]?.slides[0]?.notes).toBe('Placeholder notes kept while still typing');
+  } finally {
+    await app.close();
+  }
+});
