@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { drawPicture, goLive, halves } from './placeholder-slides';
+import { drawPicture, goLive, halves, makeSlides } from './placeholder-slides';
 import { near, pixels } from './pixels';
 import {
   editorGroup,
@@ -161,6 +161,23 @@ test('Motion keeps per-element in, emphasis and out times as well as the slide t
         }),
       ],
     });
+    await win.getByTestId('edit-slides').click();
+    const reopened = await slideEditorWindow(app);
+    await editorGroup(reopened.ed, 'Motion');
+    await reopened.editor.getByTestId('editor-canvas').focus();
+    await reopened.ed.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    for (const phase of ['in', 'emphasis', 'out']) {
+      await reopened.editor.getByTestId(`motion-element-${phase}`).selectOption('none');
+      await expect(reopened.editor.getByTestId(`motion-element-${phase}`)).toHaveValue('none');
+    }
+    await reopened.editor.getByTestId('save-slides').click();
+    await slideEditorClosed(app);
+    const cleared = await win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+      id,
+    );
+    if (!cleared.ok) throw new Error(cleared.message);
+    expect(cleared.doc.groups[0]?.slides[0]?.elements[0]?.motion).toBeUndefined();
   } finally {
     await app.close();
   }
@@ -310,3 +327,196 @@ test('a picture background survives Undo, Redo and reopening, paints the audienc
     await app.close();
   }
 });
+
+for (const kind of ['whole', 'band'] as const)
+  test(`the master’s ${kind} darkening is identical in the editor and audience, under its white heading`, async () => {
+    test.setTimeout(120_000);
+    const { app } = await launchApp();
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    try {
+      const id = await makeSlides(
+        win,
+        `Placeholder master darkening ${kind}`,
+        [{ words: 'Placeholder own words', wordsColor: '#ffffff', background: null }],
+        { kind: 'cut', durationMs: 0 },
+      );
+      const fixture = await win.evaluate(
+        async ({ id, kind }) => {
+          const d = (globalThis as PageGlobals).drashti;
+          const opened = await d.library.slidesForEdit(id);
+          if (!opened.ok) throw new Error(opened.message);
+          const { doc } = opened;
+          const slide = doc.groups.flatMap((g) => g.slides)[0];
+          const text = slide?.elements.find((el) => el.kind === 'text');
+          if (!slide || !text) throw new Error('no placeholder slide words');
+          const white = {
+            ...text.style,
+            fontFamily: null,
+            fontSize: 100,
+            fontWeight: 700,
+            color: '#ffffff',
+            align: 'center' as const,
+            verticalAlign: 'middle' as const,
+            lineHeight: 1,
+            shadow: false,
+            outline: null,
+            glow: null,
+            shrinkToFit: false,
+          };
+          // The background shape is before the master heading in the composed order.
+          // Whole darkening must cover this shape, then leave both white headings alone.
+          doc.master = {
+            ...slide,
+            id: 'placeholder-darkening-master',
+            label: 'Master',
+            background: '#c85028',
+            darken: null,
+            transition: null,
+            autoAdvanceMs: null,
+            cues: [],
+            elements: [
+              {
+                id: 'placeholder-darkening-master-background',
+                kind: 'shape',
+                shape: 'rectangle',
+                frame: { x: 0, y: 0, width: doc.width, height: doc.height },
+                fill: '#c85028',
+                cornerRadius: 0,
+                opacity: 1,
+              },
+              {
+                ...text,
+                id: 'placeholder-darkening-master-heading',
+                text: 'Placeholder master heading',
+                lang: null,
+                runs: [],
+                frame: { x: 160, y: 120, width: 1600, height: 200 },
+                style: white,
+              },
+            ],
+          };
+          slide.background = null;
+          slide.darken = { kind, strength: 0.5 };
+          slide.cues = [];
+          slide.elements = [
+            {
+              ...text,
+              text: 'Placeholder own words',
+              lang: null,
+              runs: [],
+              frame: { x: 160, y: 650, width: 1600, height: 200 },
+              style: white,
+            },
+          ];
+          const saved = await d.library.saveSlides(id, doc, opened.stamp);
+          if (!saved.ok) throw new Error(saved.message);
+          // New master/element IDs are assigned on save: use the stored IDs, never the draft ones.
+          const kept = await d.library.slidesForEdit(id);
+          if (!kept.ok) throw new Error(kept.message);
+          const master = kept.doc.master?.elements.find((el) => el.kind === 'text');
+          const own = kept.doc.groups.flatMap((g) => g.slides)[0]?.elements.find((el) => el.kind === 'text');
+          if (!master || !own) throw new Error('placeholder headings were not kept');
+          return {
+            masterHeadingId: master.id,
+            ownWordsId: own.id,
+            width: kept.doc.width,
+            height: kept.doc.height,
+          };
+        },
+        { id, kind },
+      );
+      await setUpScreen(win);
+      const output = await outputPage(app);
+      await outputReady(output);
+      await goLive(win, id, 0);
+      const audience = output.locator('[data-layer="slide"] [data-slide]');
+      await expect(audience).toHaveCount(1);
+      await expect(audience).toContainText('Placeholder master heading');
+      await openLibrary(win);
+      await win
+        .getByTestId('presentation-list')
+        .getByRole('button', { name: /^Placeholder master darkening/ })
+        .click();
+      await win.getByTestId('edit-slides').click();
+      const { ed, editor } = await slideEditorWindow(app);
+      const still = editor.getByTestId('editor-slide');
+      await expect(still).toContainText('Placeholder master heading');
+      for (const page of [ed, output])
+        await page.evaluate(async () => {
+          await document.fonts.ready;
+        });
+      const brightestWords = async (page: Page, words: Locator): Promise<number> => {
+        const box = await words.boundingBox();
+        if (!box) throw new Error('no placeholder word box');
+        const grid = Array.from({ length: 600 }, (_, i) => ({
+          x: box.x + ((i % 60) + 0.5) * (box.width / 60),
+          y: box.y + (0.2 + Math.floor(i / 60) * 0.06) * box.height,
+        }));
+        return Math.max(
+          ...(await pixels(page, grid)).map((rgba) => Math.min(rgba[0] ?? 0, rgba[1] ?? 0, rgba[2] ?? 0)),
+        );
+      };
+      for (const size of [
+        { width: 1024, height: 645 },
+        { width: 1280, height: 720 },
+      ]) {
+        await sizeSlideEditor(app, ed, size);
+        // Output is the established shared renderer; the editor must show exactly its layering.
+        for (const view of [
+          { name: 'audience', page: output, slide: audience },
+          { name: 'editor', page: ed, slide: still },
+        ]) {
+          const heading = view.slide.locator(`[data-element="${fixture.masterHeadingId}"]`);
+          const own = view.slide.locator(`[data-element="${fixture.ownWordsId}"]`);
+          await expect(heading).toHaveCount(1);
+          await expect(own).toHaveCount(1);
+          const box = await view.slide.boundingBox();
+          if (!box) throw new Error('no placeholder slide canvas');
+          const points = [
+            { x: 513, y: 457 }, // background shape, clear of both text bands and editor grid lines
+            { x: 183, y: 221 }, // empty left edge inside the master heading’s band
+            { x: 183, y: 751 }, // empty left edge inside the ordinary words’ band
+          ].map((point) => ({
+            x: box.x + (point.x / fixture.width) * box.width,
+            y: box.y + (point.y / fixture.height) * box.height,
+          }));
+          const [shape, masterBand, ownBand] = await pixels(view.page, points);
+          const label = `${view.name}, ${kind}, ${size.width}`;
+          expect
+            .soft(
+              near(shape, kind === 'whole' ? [100, 40, 20] : [200, 80, 40], 8),
+              `${label}: background shape`,
+            )
+            .toBe(true);
+          expect
+            .soft(near(masterBand, [100, 40, 20], 8), `${label}: darkening behind master words`)
+            .toBe(true);
+          expect.soft(near(ownBand, [100, 40, 20], 8), `${label}: darkening behind own words`).toBe(true);
+          expect
+            .soft(await brightestWords(view.page, heading), `${label}: master heading stays white`)
+            .toBeGreaterThan(230);
+          expect
+            .soft(await brightestWords(view.page, own), `${label}: own words stay white`)
+            .toBeGreaterThan(230);
+          if (kind === 'whole') {
+            await expect(view.slide.locator('[data-darken="whole"]')).toHaveCount(1);
+            const underMaster = await heading.evaluate((words) => {
+              const slide = words.closest('[data-testid="editor-slide"], [data-slide]');
+              const overlay = slide?.querySelector('[data-darken="whole"]');
+              return Boolean(
+                overlay && overlay.compareDocumentPosition(words) & Node.DOCUMENT_POSITION_FOLLOWING,
+              );
+            });
+            expect.soft(underMaster, `${label}: whole overlay precedes master words`).toBe(true);
+          } else {
+            // The ordinary band is a control: only the master band was omitted by Canvas.
+            await expect.soft(heading.locator('[data-darken="band"]')).toHaveCount(1);
+            await expect(own.locator('[data-darken="band"]')).toHaveCount(1);
+          }
+        }
+      }
+    } finally {
+      await app.close();
+    }
+  });
