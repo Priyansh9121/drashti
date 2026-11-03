@@ -534,7 +534,7 @@ export class ImportedSlides {
           y: element.frame.y + picture.frame.y,
         },
       })),
-    );
+    ).map((element) => (picture.groupId ? { ...element, groupId: picture.groupId } : element));
     const { deck: _deck, ...kept } = target;
     const page: EditSlide = {
       ...kept,

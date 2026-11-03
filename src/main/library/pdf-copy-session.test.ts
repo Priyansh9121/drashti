@@ -33,7 +33,7 @@ class Window extends EventEmitter {
     this.emit('closed');
   }
 }
-function setup() {
+function setup(size = { width: 480, height: 320 }) {
   const win = new Window();
   const admission = { allowed: true };
   const normalize = vi.fn(
@@ -56,7 +56,7 @@ function setup() {
       pages: [
         {
           kind: 'native',
-          slide: { id: 'placeholder-page', width: 480, height: 320, background: '#ffffff', elements: [] },
+          slide: { id: 'placeholder-page', ...size, background: '#ffffff', elements: [] },
         },
       ],
       sources: [],
@@ -198,4 +198,33 @@ describe('the exact hidden PDF copy window protocol', () => {
     expect(await s.result).toBeNull();
     expect(s.win.destroyed).toBe(true);
   });
+});
+
+// Admit a normal desktop canvas at print resolution; keep oversized captures bounded.
+it('captures a default 1920 by 1080 native canvas at print resolution while staying hidden', async () => {
+  const s = setup({ width: 1920, height: 1080 });
+  try {
+    expect(await s.session.capture(s.own, s.job.id, 0)).toEqual(
+      new Uint8Array(Buffer.from('Generated effect pixels')),
+    );
+    expect(s.win.setContentSize).toHaveBeenCalledWith(2560, 1440);
+    expect(s.win.webContents.capturePage).toHaveBeenCalledWith(
+      { x: 0, y: 0, width: 2560, height: 1440 },
+      { stayHidden: true },
+    );
+  } finally {
+    s.session.stop();
+    await s.result;
+  }
+});
+it('still refuses an oversized 3840 by 2160 effect canvas before capture allocation', async () => {
+  const s = setup({ width: 3840, height: 2160 });
+  try {
+    expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+    expect(s.win.setContentSize).not.toHaveBeenCalled();
+    expect(s.win.webContents.capturePage).not.toHaveBeenCalled();
+  } finally {
+    s.session.stop();
+    await s.result;
+  }
 });

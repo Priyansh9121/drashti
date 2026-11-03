@@ -122,20 +122,23 @@ export function SourceLinkDialog({
         <legend className="mb-1 text-sm font-semibold">Saved source picture to replace</legend>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {pictures.map((picture, index) => {
-            const rendered = renderEditedSlide(doc, {
-              ...slide,
-              id: picture.id,
-              elements: [picture],
-              cues: [],
-              label: '',
-              notes: '',
-              background: null,
-              darken: null,
-              enabled: true,
-              transition: null,
-              autoAdvanceMs: null,
-              macroId: null,
-            });
+            const rendered = renderEditedSlide(
+              { ...doc, master: null },
+              {
+                ...slide,
+                id: picture.id,
+                elements: [picture],
+                cues: [],
+                label: '',
+                notes: '',
+                background: null,
+                darken: null,
+                enabled: true,
+                transition: null,
+                autoAdvanceMs: null,
+                macroId: null,
+              },
+            );
             return (
               <label key={picture.id} className="w-36 shrink-0 text-sm">
                 <input

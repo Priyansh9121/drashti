@@ -290,3 +290,82 @@ describe('bounded atomic PDF copy files', () => {
       await noPrivateTemps(w.outputDir);
     }));
 });
+
+// Generated legacy Keynote packages use the real filesystem protection coordinator.
+it('allows a copy outside a protected legacy Keynote package, without touching its files', async () =>
+  inWorld(async (w) => {
+    const bundle = join(w.sourceDir, 'Placeholder legacy.key');
+    const index = join(bundle, 'Index');
+    await mkdir(index, { recursive: true });
+    const child = join(index, 'Placeholder document.iwa');
+    const original = Buffer.from('Placeholder generated package object');
+    await writeFile(child, original);
+    const alias = join(w.sourceDir, 'Placeholder package alias.key');
+    await dirLink(bundle, alias);
+    await writePdfCopy({ ...w.request, protectedSources: [...w.request.protectedSources, bundle, alias] });
+    expect(await readFile(w.outputPath)).toEqual(w.bytes);
+    expect(await readFile(child)).toEqual(original);
+    await originalsUnchanged(w);
+    await noPrivateTemps(w.outputDir);
+  }));
+it('refuses a file inside a protected Keynote package and an outside hardlink to a package file', async () =>
+  inWorld(async (w) => {
+    const bundle = join(w.sourceDir, 'Placeholder legacy.key');
+    await mkdir(bundle);
+    const child = join(bundle, 'Placeholder object.iwa');
+    const original = Buffer.from('Placeholder generated package object');
+    await writeFile(child, original);
+    const protectedSources = [...w.request.protectedSources, bundle];
+    const inside = join(bundle, 'Placeholder new copy.pdf');
+    await expect(writePdfCopy({ ...w.request, outputPath: inside, protectedSources })).rejects.toMatchObject({
+      code: 'unsafe-output',
+    });
+    expect(await readdir(bundle)).toEqual(['Placeholder object.iwa']);
+    await link(child, w.outputPath);
+    await expect(writePdfCopy({ ...w.request, protectedSources })).rejects.toMatchObject({
+      code: 'unsafe-output',
+    });
+    expect(await readFile(child)).toEqual(original);
+    expect(await readFile(w.outputPath)).toEqual(original);
+    await noPrivateTemps(w.outputDir);
+  }));
+it('rechecks a package descendant before publication and preserves the chosen old output on change', async () =>
+  inWorld(async (w) => {
+    const bundle = join(w.sourceDir, 'Placeholder legacy.key');
+    const index = join(bundle, 'Index');
+    await mkdir(index, { recursive: true });
+    const child = join(index, 'Placeholder object.iwa');
+    await writeFile(child, 'Placeholder initial package object');
+    const old = generatedPdf('Placeholder old chosen output');
+    await writeFile(w.outputPath, old);
+    const changedChild = Buffer.from('Placeholder changed package object with a different size');
+    const beforePublish = vi.fn(async () => {
+      await writeFile(child, changedChild);
+    });
+    await expect(
+      writePdfCopy(
+        { ...w.request, protectedSources: [...w.request.protectedSources, bundle] },
+        { beforePublish },
+      ),
+    ).rejects.toMatchObject({ code: 'changed-output' });
+    expect(beforePublish).toHaveBeenCalledOnce();
+    expect(await readFile(w.outputPath)).toEqual(old);
+    expect(await readFile(child)).toEqual(changedChild);
+    await noPrivateTemps(w.outputDir);
+  }));
+
+it('bounds deeply nested protected Keynote packages before allocating an output', async () =>
+  inWorld(async (w) => {
+    const bundle = join(w.sourceDir, 'Placeholder deep.key');
+    const leaf = join(bundle, ...Array.from({ length: 70 }, () => 'd'));
+    await mkdir(leaf, { recursive: true });
+    const sourceFile = join(leaf, 'Placeholder object.iwa');
+    const original = Buffer.from('Placeholder generated deep package');
+    await writeFile(sourceFile, original);
+    await expect(
+      writePdfCopy({ ...w.request, protectedSources: [...w.request.protectedSources, bundle] }),
+    ).rejects.toMatchObject({ code: 'source-limit' });
+    expect(await readFile(sourceFile)).toEqual(original);
+    await expect(readFile(w.outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await noPrivateTemps(w.outputDir);
+  }));

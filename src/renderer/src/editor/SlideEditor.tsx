@@ -597,7 +597,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       )}
       <SourceIssues
         issues={sourceIssues}
-        blocked={exportBusy || pdfJob.current}
+        blocked={exportBusy}
         onLink={
           shownPage &&
           (!shownPage.documentPage ||
