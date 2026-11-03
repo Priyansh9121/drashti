@@ -1,11 +1,11 @@
 import type { IpcMainInvokeEvent } from 'electron';
-import { basename, isAbsolute } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { idSchema } from '../../shared/model-schema';
 import { editDocSchema, type EditDoc } from '../../shared/slide-edit';
 import { renderEditedSlide } from '../../shared/slide-design';
 import type { PdfCopyJob, PdfCopyResult } from '../../shared/pdf-copy';
-import { OriginalsStore } from '../import/originals-store';
+import { OriginalsStore, originalRelative } from '../import/originals-store';
 import type { Db } from '../db/database';
 import type { PdfCopySession } from './pdf-copy-session';
 import { writePdfCopy } from './pdf-copy-file';
@@ -87,7 +87,7 @@ export class PdfEditor {
       const bytes = await this.deps.session.run(plan, current, signal);
       if (!bytes || !current())
         return failed('The PDF copy could not be generated safely. The original is unchanged.');
-      // Managed originals are protected as a subtree. Protect every original external document path too.
+      // Protect retained originals by file identity as well as by subtree, including outside hardlinks.
       const external = this.deps.db
         .prepare(
           "SELECT source_path FROM presentations WHERE source_kind = 'pictures' AND source_path IS NOT NULL",
@@ -97,7 +97,12 @@ export class PdfEditor {
         bytes,
         outputPath: output,
         mediaDir: this.deps.mediaDir,
-        protectedSources: external.map((row) => row.source_path).filter(isAbsolute),
+        protectedSources: [
+          ...new OriginalsStore(this.deps.db, this.deps.mediaDir)
+            .list()
+            .map((original) => join(this.deps.mediaDir, originalRelative(original))),
+          ...external.map((row) => row.source_path).filter(isAbsolute),
+        ],
         signal,
         current,
       });

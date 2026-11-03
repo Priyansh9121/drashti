@@ -240,7 +240,10 @@ export class ImportedSlides {
       cached?.stamp === stamp &&
       (cached.doc.width !== doc.width ||
         cached.doc.height !== doc.height ||
-        !sameData(cached.doc.master, doc.master));
+        !sameData(
+          cached.doc.master ? contentOf(cached.doc.master) : null,
+          doc.master ? contentOf(doc.master) : null,
+        ));
     for (const slide of allSlides(doc)) {
       const old = before.slides.find((row) => row.id === slide.id);
       const storedRef = documentPageFromJson(old?.document_page);

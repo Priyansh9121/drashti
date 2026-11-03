@@ -80,3 +80,11 @@ export function editingCanvas(
     ? { width: page.height, height: page.width }
     : { width: page.width, height: page.height };
 }
+
+/** The selected editor page takes precedence over the presentation's default size. */
+export function slideCanvas(
+  slide: { pageSize?: PageSize; documentPage?: DocumentPageRef } | undefined,
+  fallback: PageSize,
+): PageSize {
+  return slide?.pageSize ?? editingCanvas(slide?.documentPage, fallback);
+}

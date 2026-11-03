@@ -8,6 +8,7 @@ import type { Zoom } from './zoom';
 import type { PdfCanvasTool } from './pdf-marks';
 import { groupedSelection } from '../../../shared/element-groups';
 import { sizeLook } from '../../../shared/slide-size';
+import { slideCanvas } from '../../../shared/document-page';
 import { convertSourceContent, SourceConversionGate, sourceContentChanges } from './source-conversion';
 
 /*
@@ -191,15 +192,19 @@ export function revokeSourceContent(slideId: string): void {
 
 export function currentLook(): SlideLook | null {
   const s = useEditor.getState();
-  return s.look && s.doc && s.opened ? sizeLook(s.look, s.opened, s.doc) : s.look;
+  return s.look && s.doc && s.opened
+    ? sizeLook(s.look, s.opened, slideCanvas(findSlide(s.doc, s.slideId), s.doc))
+    : s.look;
 }
 
 export function useEditorLook(): SlideLook | null {
   const look = useEditor((s) => s.look);
   const fromWidth = useEditor((s) => s.opened?.width);
   const fromHeight = useEditor((s) => s.opened?.height);
-  const width = useEditor((s) => s.doc?.width);
-  const height = useEditor((s) => s.doc?.height);
+  const width = useEditor((s) => (s.doc ? slideCanvas(findSlide(s.doc, s.slideId), s.doc).width : undefined));
+  const height = useEditor((s) =>
+    s.doc ? slideCanvas(findSlide(s.doc, s.slideId), s.doc).height : undefined,
+  );
   return useMemo(
     () =>
       look && fromWidth && fromHeight && width && height
