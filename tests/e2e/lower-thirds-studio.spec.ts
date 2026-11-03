@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { LowerThirdInput } from '../../src/shared/lower-thirds';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { isExpectedStudioDiscardClose } from './expected-studio-close';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import {
@@ -352,6 +353,17 @@ test('the studio at CI’s 1024 × 645 and at 1280 × 720: the preview, every ta
         .getByTestId('keep-changes')
         .getByRole('button', { name: 'Throw them away' })
         .click({ noWaitAfter: true });
+    } catch (error) {
+      // The intended window can close before Electron acknowledges its own final input action.
+      // Accept only that exact action/error and the observed Studio-only close, never another failure.
+      const expectedClose = isExpectedStudioDiscardClose(error, {
+        ...discardFlags,
+        studioIsClosed: studio.isClosed(),
+        studioStillListed: app.windows().some(isStudio),
+        parentAlive: parentAlive(),
+      });
+      if (!expectedClose) throw error;
+      console.log('Studio discard acknowledgement ended at its verified close');
     } finally {
       sayDiscard('after-click-or-error');
     }
