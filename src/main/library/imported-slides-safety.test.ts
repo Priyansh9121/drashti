@@ -6,7 +6,13 @@ import { documentPageFromJson } from '../../shared/document-page';
 import type { DeckSlide } from '../../shared/deck';
 import { IPC } from '../../shared/ipc';
 import type { TextElement } from '../../shared/model';
-import { editDocSchema, type EditSlide, type EditSlidesResult, type SaveSlidesResult, type SlidesSaved } from '../../shared/slide-edit';
+import {
+  editDocSchema,
+  type EditSlide,
+  type EditSlidesResult,
+  type SaveSlidesResult,
+  type SlidesSaved,
+} from '../../shared/slide-edit';
 import { DEFAULT_THEME } from '../../shared/themes';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
@@ -195,48 +201,151 @@ const copiedSlide = (slide: Opened['doc']['groups'][number]['slides'][number]) =
 });
 
 describe('imported editor provenance and legacy safety', () => {
+  for (const excluded of [false, true]) {
+    it(`saves a ${excluded ? 'skipped visible' : 'new empty'} master without converting source playback`, async () => {
+      const w = originalWorld();
+      try {
+        const source = await bakedSource(w);
+        if (excluded) {
+          source.before.slides[0]!.editor_design = JSON.stringify({ skipMaster: true });
+          source.presentations.setContent(source.before);
+        }
+        const before = source.presentations.content(source.id);
+        register(w, source.presentations);
+        const opened = await open(source.id);
+        opened.doc.master = {
+          id: randomUUID(),
+          label: 'Placeholder master',
+          notes: '',
+          background: excluded ? '#123456' : null,
+          darken: null,
+          enabled: true,
+          transition: null,
+          autoAdvanceMs: null,
+          macroId: null,
+          elements: [],
+          cues: [],
+        };
+        expect(
+          await save(source.id, opened),
+          'noncontributing master must preserve baked playback',
+        ).toMatchObject({ ok: true });
+        const after = source.presentations.content(source.id);
+        expect(after?.slides).toEqual(before?.slides);
+        expect(after?.elements).toEqual(before?.elements);
+        expect(readFileSync(source.file)).toEqual(source.bytes);
+        expect(readFileSync(source.owned)).toEqual(source.bytes);
+      } finally {
+        w.clean();
+      }
+    });
+  }
+  it('keeps an untouched PDF playback canvas when only the document default changes', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      const presentations = new PresentationRepo(w.db);
+      const before = presentations.get(imported.id)?.groups[0]?.slides[0]?.slide;
+      register(w, presentations);
+      const opened = await open(imported.id);
+      nativeSource(opened);
+      opened.doc.width = 1600;
+      opened.doc.height = 900;
+      expect(await save(imported.id, opened)).toMatchObject({ ok: true });
+      const after = presentations.get(imported.id)?.groups[0]?.slides[0]?.slide;
+      expect(after, 'default dimensions cannot stretch unchanged source playback').toEqual(before);
+      const stored = presentations.content(imported.id)?.slides[0];
+      expect(documentPageFromJson(stored?.document_page)?.edited).not.toBe(true);
+      originalsUnchanged(w);
+    } finally {
+      w.clean();
+    }
+  });
+
   it('saves master notes and guides without converting an animated source or changing its exact deck and Undo snapshot', async () => {
     const w = originalWorld();
     try {
       const source = await bakedSource(w);
       const look = themeLook({ ...DEFAULT_THEME }, 1280, 720);
       const master: EditSlide = {
-        id: randomUUID(), label: 'Placeholder master', notes: 'Placeholder master notes',
-        background: '#182430', darken: null, enabled: true, transition: null,
-        autoAdvanceMs: null, macroId: null,
-        elements: [{ id: randomUUID(), kind: 'text', text: 'Placeholder master words', lang: 'en',
-          frame: { x: 40, y: 20, width: 320, height: 80 }, style: look.style }],
-        cues: [], guides: { x: [80], y: [60] },
+        id: randomUUID(),
+        label: 'Placeholder master',
+        notes: 'Placeholder master notes',
+        background: '#182430',
+        darken: null,
+        enabled: true,
+        transition: null,
+        autoAdvanceMs: null,
+        macroId: null,
+        elements: [
+          {
+            id: randomUUID(),
+            kind: 'text',
+            text: 'Placeholder master words',
+            lang: 'en',
+            frame: { x: 40, y: 20, width: 320, height: 80 },
+            style: look.style,
+          },
+        ],
+        cues: [],
+        guides: { x: [80], y: [60] },
       };
       source.presentations.setContent({ ...source.before, editorMaster: JSON.stringify(master) });
       const before = source.presentations.content(source.id);
       if (!before) throw new Error('The generated source with its master is missing.');
-      const sourceBefore = w.db.prepare('SELECT source_kind, source_path, source_hash FROM presentations WHERE id = ?').get(source.id);
+      const sourceBefore = w.db
+        .prepare('SELECT source_kind, source_path, source_hash FROM presentations WHERE id = ?')
+        .get(source.id);
       const revisions = new Revisions();
       const keep = vi.spyOn(revisions, 'keep');
       const published: string[][] = [];
       const saved: SlidesSaved[] = [];
       registerSlidesIpc({
-        db: w.db, presentations: source.presentations, revisions, settings: new SettingsRepo(w.db),
-        fromOperator: () => true, mayPrepareSource: () => true,
-        sourceReader: nativeSourceReader, sourceWrite: sourceWrite(w.db),
+        db: w.db,
+        presentations: source.presentations,
+        revisions,
+        settings: new SettingsRepo(w.db),
+        fromOperator: () => true,
+        mayPrepareSource: () => true,
+        sourceReader: nativeSourceReader,
+        sourceWrite: sourceWrite(w.db),
         lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
-        changed: (ids) => { published.push(ids); }, saved: (event) => { saved.push(event); },
+        changed: (ids) => {
+          published.push(ids);
+        },
+        saved: (event) => {
+          saved.push(event);
+        },
       });
       const opened = await open(source.id);
       const original = opened.doc.groups[0]?.slides[0];
-      expect(original?.deck, 'the real prepared page must retain its baked source before this metadata save').toBeDefined();
-      expect(original?.elements.filter((element) => element.kind === 'text').map((element) => element.text).join('\n')).toContain(source.words);
+      expect(
+        original?.deck,
+        'the real prepared page must retain its baked source before this metadata save',
+      ).toBeDefined();
+      expect(
+        original?.elements
+          .filter((element) => element.kind === 'text')
+          .map((element) => element.text)
+          .join('\n'),
+      ).toContain(source.words);
       const openedMaster = opened.doc.master;
       if (!openedMaster) throw new Error('The actual registered open did not expose the stored master.');
-      const expectedMaster = { ...structuredClone(openedMaster), notes: 'Placeholder revised master notes', guides: { x: [160], y: [120] } };
+      const expectedMaster = {
+        ...structuredClone(openedMaster),
+        notes: 'Placeholder revised master notes',
+        guides: { x: [160], y: [120] },
+      };
       // Metadata only: the master background, elements, styles, cues and every
       // source-page object stay as opened; no conversion approval is requested.
       openedMaster.notes = expectedMaster.notes;
       openedMaster.guides = expectedMaster.guides;
       expect(editDocSchema.safeParse(opened.doc).success).toBe(true);
       const result = await save(source.id, opened);
-      expect(result, 'master notes/guides do not change rendered source content or require conversion').toMatchObject({ ok: true });
+      expect(
+        result,
+        'master notes/guides do not change rendered source content or require conversion',
+      ).toMatchObject({ ok: true });
       if (!result.ok) throw new Error(result.message);
       const after = source.presentations.content(source.id);
       if (!after) throw new Error('The saved source presentation is missing.');
@@ -244,10 +353,16 @@ describe('imported editor provenance and legacy safety', () => {
       expect(after.slides[0]?.deck).toBe(before.slides[0]?.deck);
       expect(documentPageFromJson(after.slides[0]?.document_page)?.edited).not.toBe(true);
       expect(editDocOf(after, opened.doc.name).doc.master).toEqual(expectedMaster);
-      expect(w.db.prepare('SELECT source_kind, source_path, source_hash FROM presentations WHERE id = ?').get(source.id)).toEqual(sourceBefore);
+      expect(
+        w.db
+          .prepare('SELECT source_kind, source_path, source_hash FROM presentations WHERE id = ?')
+          .get(source.id),
+      ).toEqual(sourceBefore);
       expect(keep).toHaveBeenCalledTimes(1);
       expect(published).toEqual([[source.id]]);
-      expect(saved).toEqual([{ presentationId: source.id, name: opened.doc.name, revisionId: result.revisionId }]);
+      expect(saved).toEqual([
+        { presentationId: source.id, name: opened.doc.name, revisionId: result.revisionId },
+      ]);
       const undo = revisions.take(result.revisionId);
       expect(undo).toEqual([before]);
       expect(revisions.take(result.revisionId)).toBeNull();
@@ -257,7 +372,9 @@ describe('imported editor provenance and legacy safety', () => {
       expect(source.presentations.content(source.id)).toEqual(before);
       expect(readFileSync(source.file)).toEqual(source.bytes);
       expect(readFileSync(source.owned)).toEqual(source.bytes);
-    } finally { w.clean(); }
+    } finally {
+      w.clean();
+    }
   });
 
   it('keeps allowed transition edits and unknown source deck data when an unconverted baked page is copied', async () => {
