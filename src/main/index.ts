@@ -2313,7 +2313,9 @@ function start(): void {
   const autoScreens = new AutoScreens({
     on: autoScreensOn,
     displays: () =>
-      autoPretendOnly ? listDisplays().filter((d) => d.id >= EXTRA_DISPLAY_ID) : listDisplays(),
+      autoPretendOnly
+        ? listDisplays().filter((d) => d.id >= EXTRA_DISPLAY_ID && d.id < EXTRA_DISPLAY_ID + 4)
+        : listDisplays(),
     uses: () => screens.uses(),
     controlsDisplayId: controlsDisplay,
     notUsed,
