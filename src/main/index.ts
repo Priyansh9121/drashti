@@ -2813,6 +2813,8 @@ function start(): void {
     noSoundMs: swMs('DRASHTI_TEST_NO_SOUND_MS') ?? undefined,
     // Tests: a recording's part holds this many bytes, not 3.5 GB (Session 31).
     recordPartBytes: Number(sw('DRASHTI_TEST_RECORD_PART_BYTES') ?? 0) || undefined,
+    // Tests: the stream worker's search for its encoder takes at least this long, as on CI's Mac (Session 55).
+    encoderSearchMs: swMs('DRASHTI_TEST_ENCODER_SEARCH_MS') ?? undefined,
     recordingDrive: (folder) => onFat(folder),
     titleMarks: (marks) => {
       if (operatorWindow && !operatorWindow.isDestroyed())

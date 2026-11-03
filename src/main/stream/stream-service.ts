@@ -40,6 +40,7 @@ import { pageAlive } from '../windows/send';
 import type { ToStreamWorker, WorkerStatus } from './worker/protocol';
 import { NO_SOUND_MS, type NoSound, NoSoundWatch } from './no-sound';
 import { bytesPerHourAt, freeBytesOf, recordingWarning } from './recording-drive';
+import { PictureWatch } from './picture-watch';
 import { RestartCap } from './restart-cap';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -100,6 +101,8 @@ export interface StreamServiceDeps {
   noSoundMs?: number;
   /** Tests (DRASHTI_TEST_RECORD_PART_BYTES): how much a recording's part holds; 3.5 GB otherwise. */
   recordPartBytes?: number;
+  /** Tests (DRASHTI_TEST_ENCODER_SEARCH_MS): the worker's search for its encoder takes at least this long. */
+  encoderSearchMs?: number;
   /** Whether a folder is on a FAT drive, or null when that cannot be told (./recording-drive.ts). */
   recordingDrive?(folder: string): Promise<boolean | null>;
   log(level: 'info' | 'warn', message: string): void;
@@ -112,8 +115,6 @@ const FOLDER_SETTING = 'stream.recordingFolder';
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
 /** After an unexpected stop, Drashti goes live again by itself only if it starts again this soon. */
 export const RESUME_WITHIN_MS = 5 * 60 * 1000;
-/** No picture from the stream's page for this long, while wanted: it is given its port again (then 10 s, 20 s... to 1 min). */
-const NO_PICTURE_MS = 5000;
 export const FFMPEG_VERSION = '9.0.2';
 const FFMPEG_MISSING =
   'Drashti’s copy of FFmpeg is missing, so it cannot stream or record. Install Drashti again (or, from the repository, run node scripts/fetch-ffmpeg.mjs).';
@@ -145,8 +146,8 @@ const inputsSchema = z.object({
 export class StreamService {
   private program: BrowserWindow | null = null;
   private programReady = false;
-  /** When the stream's page last got the encoder's port, and how often since without a picture. */
-  private encoderPaired = { at: 0, tries: 0 };
+  /** No picture from the stream's page while wanted: it is given its port again (./picture-watch.ts). */
+  private readonly pictureWatch = new PictureWatch();
   private readonly watchers = new Map<number, WebContents>();
   /** What else keeps the Program open, by name (Session 48: the window for Zoom), without the preview's port. */
   private readonly holders = new Set<string>();
@@ -703,6 +704,7 @@ export class StreamService {
     if (this.worker) return this.worker;
     const worker = this.deps.spawnWorker();
     this.worker = worker;
+    this.pictureWatch.newWorker();
     worker.onMessage((m) => {
       if (this.worker !== worker) return;
       if (m.type === 'log') this.deps.log(m.level, `[stream] ${m.message}`);
@@ -734,6 +736,7 @@ export class StreamService {
       preset,
       encoder: this.encoderName,
       caFile,
+      ...(this.deps.encoderSearchMs ? { searchAtLeastMs: this.deps.encoderSearchMs } : {}),
     });
     this.updateProgram();
     this.pairEncoder();
@@ -761,7 +764,7 @@ export class StreamService {
     worker.sendFrames(port1);
     program.webContents.postMessage(IPC.stream.port, { role: 'encoder' }, [port2]);
     this.deps.log('info', "The stream's page was given the encoder");
-    this.encoderPaired.at = this.deps.now();
+    this.pictureWatch.paired(this.deps.now());
     this.contextChanged();
   }
 
@@ -771,13 +774,14 @@ export class StreamService {
    * flooded; a picture resets the wait.
    */
   private checkPicture(status: WorkerStatus): void {
-    if (status.encoding || !this.inUse() || !status.encoder || status.error || !this.programReady) {
-      if (status.encoding) this.encoderPaired.tries = 0;
-      return;
-    }
-    const wait = Math.min(60_000, NO_PICTURE_MS * 2 ** this.encoderPaired.tries);
-    if (this.deps.now() - this.encoderPaired.at < wait) return;
-    this.encoderPaired.tries++;
+    const wait = this.pictureWatch.heard({
+      wanted: this.inUse() && this.programReady,
+      encoderChosen: status.encoder !== null,
+      encoding: status.encoding,
+      failed: Boolean(status.error),
+      now: this.deps.now(),
+    });
+    if (wait === null) return;
     this.deps.log(
       'warn',
       `The stream has had no picture from its page for ${wait / 1000} s: connecting it again`,

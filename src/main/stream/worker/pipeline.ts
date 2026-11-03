@@ -326,6 +326,7 @@ export class StreamPipeline {
     preset: StreamPreset;
     encoder: string | null;
     caFile: string | null;
+    searchAtLeastMs?: number;
   }): Promise<void> {
     this.ffmpeg = options.ffmpeg;
     this.caFile = options.caFile;
@@ -337,6 +338,8 @@ export class StreamPipeline {
     const known = options.encoder
       ? (encoderCandidates(options.platform).find((c) => c.name === options.encoder) ?? null)
       : null;
+    if (!known && options.searchAtLeastMs)
+      await new Promise((resolve) => setTimeout(resolve, options.searchAtLeastMs));
     this.encoder = known ?? (await pickEncoder(options.ffmpeg, options.platform, options.preset));
     if (!this.encoder) {
       this.error = 'No H.264 encoder works on this computer, so it cannot stream or record.';

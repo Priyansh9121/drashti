@@ -53,7 +53,7 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
   // A page that draws nothing for a while (a busy machine) records nothing, or frames for only part of the
   // time (a CI Mac's GPU busy with the operator window's warm-up held a page's frames from 0.3 s on): a
   // clip given the whole length but ending early loops back at once, so a test sees it barely play. Then
-  // it records again.
+  // it records again. Each recording is timed from its recorder's own start (recordWebm).
   if (options.h264) {
     const recorded = await recordWebm(page, options);
     const bytes = Buffer.from(recorded.base64, 'base64');
@@ -104,6 +104,13 @@ interface VideoFixtureLifecycle {
   trackEvents: { atMs: number; event: 'mute' | 'unmute' | 'ended' }[];
 }
 
+/**
+ * How long a recorder may take to start before the clip is timed anyway (alpha.14's gate on CI's Mac, 3 Nov 2026:
+ * the page's recorder there began only when it was stopped, its start event 0.4–1.5 ms after stop(), twenty times
+ * in a row; the clip is timed from the recorder's own start, its picture drawn meanwhile).
+ */
+const RECORDER_START_MS = 30_000;
+
 /** A WebM (or an MP4) of a canvas recorded in the page, in real time, and how long the recording ran. */
 function recordWebm(
   page: Page,
@@ -111,7 +118,7 @@ function recordWebm(
 ): Promise<{ base64: string; ms: number; lifecycle: VideoFixtureLifecycle }> {
   return page
     .evaluate(
-      async ({ seconds, width, height, fps, tone, hue, h264 }) => {
+      async ({ seconds, width, height, fps, tone, hue, h264, startWithinMs }) => {
         const observedAt = performance.now();
         const at = () => Math.round((performance.now() - observedAt) * 1000) / 1000;
         const lifecycle: VideoFixtureLifecycle = {
@@ -216,6 +223,14 @@ function recordWebm(
         draw(0);
         lifecycle.startCalledAtMs = at();
         recorder.start(100);
+        // The clip begins when the recorder has really started (its start event), its first picture drawn meanwhile:
+        // a recorder that starts late is never stopped before it began.
+        const asked = performance.now();
+        while (lifecycle.startEventAtMs === null && performance.now() - asked < startWithinMs) {
+          draw(0);
+          // eslint-disable-next-line no-restricted-syntax -- in the page: the first picture drawn each 1/fps s until the recorder starts
+          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
+        }
         const start = performance.now();
         while (performance.now() - start < seconds * 1000) {
           draw((performance.now() - start) / 1000);
@@ -234,7 +249,16 @@ function recordWebm(
         trackState();
         return { base64: btoa(binary), ms, lifecycle };
       },
-      { width: 320, height: 180, fps: 30, tone: 0, hue: 210, h264: false, ...options },
+      {
+        width: 320,
+        height: 180,
+        fps: 30,
+        tone: 0,
+        hue: 210,
+        h264: false,
+        ...options,
+        startWithinMs: RECORDER_START_MS,
+      },
     )
     .catch(async (error: unknown) => {
       try {

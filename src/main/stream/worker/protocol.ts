@@ -21,6 +21,8 @@ export type ToStreamWorker =
       preset: StreamPreset;
       encoder: string | null;
       caFile: string | null;
+      /** Tests (DRASHTI_TEST_ENCODER_SEARCH_MS): a search for the encoder takes at least this long, as on CI's Mac. */
+      searchAtLeastMs?: number;
     }
   /**
    * Send to this address with this key, and to each of `more` with its own (Session 28: several platforms
