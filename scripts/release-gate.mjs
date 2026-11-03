@@ -14,14 +14,18 @@ import { createReadStream, existsSync, readdirSync, readFileSync, statSync } fro
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** The jobs a release's commit must have passed, from a push: the Mac's, Windows', and Windows' in Black (Session 41). */
+/**
+ * The jobs a release's commit must have passed, from a push: the Mac's, Windows', Windows' in Black (Session 41), and
+ * the Mac's second half (Session 55: CI's Mac runs the suite in two halves side by side).
+ */
 export const APP_JOBS = [
   'End-to-end and installers (macos-latest)',
   'End-to-end and installers (windows-latest)',
   'End-to-end in Black (windows-latest)',
+  'End-to-end, second half (macos-latest)',
 ];
 /** How the gate's lines name them. */
-const JOB_NAMES = ['macOS', 'Windows', 'Windows in Black'];
+const JOB_NAMES = ['macOS', 'Windows', 'Windows in Black', 'macOS second half'];
 
 const short = (sha) => String(sha).slice(0, 7);
 
