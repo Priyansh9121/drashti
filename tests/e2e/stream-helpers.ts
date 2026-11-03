@@ -64,6 +64,8 @@ export function rtmpListener(
       'copy',
       '-f',
       'flv',
+      '-flush_packets',
+      '1',
       '-y',
       file,
     ],

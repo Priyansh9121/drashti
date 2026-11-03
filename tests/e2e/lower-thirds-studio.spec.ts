@@ -296,8 +296,74 @@ test('the studio at CI’s 1024 × 645 and at 1280 × 720: the preview, every ta
   await ask.getByRole('button', { name: 'Keep editing' }).click();
   await expect(ask).toHaveCount(0);
   expect(app.windows().some(isStudio)).toBe(true);
-  await closeIt();
-  await studio.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
-  await expect.poll(() => app.windows().some(isStudio)).toBe(false);
+  // Diagnostic only: preserve the original real click and its error while recording whether only the studio closed.
+  const discardEvents: string[] = [];
+  const discardFlags = {
+    studioClosed: false,
+    studioCrashed: false,
+    operatorClosed: false,
+    operatorCrashed: false,
+    appClosed: false,
+    mainExited: false,
+  };
+  const mark = (name: keyof typeof discardFlags) => () => {
+    discardFlags[name] = true;
+    discardEvents.push(name);
+  };
+  const studioClosed = mark('studioClosed');
+  const studioCrashed = mark('studioCrashed');
+  const operatorClosed = mark('operatorClosed');
+  const operatorCrashed = mark('operatorCrashed');
+  const appClosed = mark('appClosed');
+  const mainExited = mark('mainExited');
+  const main = app.process();
+  studio.once('close', studioClosed);
+  studio.once('crash', studioCrashed);
+  win.once('close', operatorClosed);
+  win.once('crash', operatorCrashed);
+  app.once('close', appClosed);
+  main.once('exit', mainExited);
+  const parentAlive = () =>
+    !win.isClosed() &&
+    !discardFlags.operatorCrashed &&
+    !discardFlags.appClosed &&
+    main.exitCode === null &&
+    main.signalCode === null;
+  const sayDiscard = (phase: 'before-click' | 'after-click-or-error') => {
+    console.log(
+      'Studio discard diagnostic',
+      JSON.stringify({
+        phase,
+        ...discardFlags,
+        studioIsClosed: studio.isClosed(),
+        operatorIsClosed: win.isClosed(),
+        studioStillListed: app.windows().some(isStudio),
+        parentAlive: parentAlive(),
+        events: discardEvents,
+      }),
+    );
+  };
+  try {
+    await closeIt();
+    sayDiscard('before-click');
+    expect(parentAlive(), 'the operator and Main are alive before discarding').toBe(true);
+    try {
+      await studio
+        .getByTestId('keep-changes')
+        .getByRole('button', { name: 'Throw them away' })
+        .click({ noWaitAfter: true });
+    } finally {
+      sayDiscard('after-click-or-error');
+    }
+    await expect.poll(() => app.windows().some(isStudio)).toBe(false);
+    expect(parentAlive(), 'discarding closes the studio, leaving the operator and Main alive').toBe(true);
+  } finally {
+    studio.off('close', studioClosed);
+    studio.off('crash', studioCrashed);
+    win.off('close', operatorClosed);
+    win.off('crash', operatorCrashed);
+    app.off('close', appClosed);
+    main.off('exit', mainExited);
+  }
   await app.close();
 });
