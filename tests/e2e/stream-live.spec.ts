@@ -614,6 +614,30 @@ test('on air, and on air again, with the preview watched and a picture standing 
   await app.close();
 });
 
+test('a slow search for the encoder is not taken for no picture: on air from the page’s first frame, its port given once', async () => {
+  // Alpha.14's gate on CI's Mac (3 Nov 2026): the worker took 15 s to choose its encoder (VideoToolbox's test encode
+  // hung until its 15 s limit, then x264), and those 15 s were counted as no picture from the stream's page, although
+  // the page had sent its first frame at once. Here the search takes 8 s, more than the 5 s the picture is given.
+  test.setTimeout(120_000);
+  const port = await freePort();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-slow-search-'));
+  listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'slow-search.flv')));
+  const { app, userData } = await launchApp({ ...FAKE, DRASHTI_TEST_ENCODER_SEARCH_MS: '8000' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUp(app, win, port, dir, false);
+  await win.evaluate(async () => {
+    await (globalThis as PageGlobals).drashti.stream.goLive({ confirmed: true });
+  });
+  await waitLive(win, userData, 'live', 45_000);
+  expect(streamLog(userData)).not.toContain('no picture from its page');
+  expect(streamLog(userData).match(/The stream's page was given the encoder/gu)).toHaveLength(1);
+  await win.evaluate(async () => {
+    await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
+  });
+  await app.close();
+});
+
 test('a quit on purpose while on air and recording: the next start is off air, not recording, and says nothing stopped', async () => {
   // Session 23: the library closed before the stream service saved that the stream had ended, so the
   // save threw, stream-state.json kept "live", and a start within 5 minutes went live again by itself.
