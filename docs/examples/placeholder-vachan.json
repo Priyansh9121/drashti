@@ -3,7 +3,7 @@
   "version": 1,
   "name": "Placeholder Vachan",
   "abbreviation": "PV",
-  "description": "A made-up text with sections, as a Vachanamrut is arranged.",
+  "description": "A made-up book with sections, as a Vachanamrut is arranged.",
   "sections": [
     {
       "label": "Placeholder Pratham",

@@ -641,13 +641,13 @@ export async function dropFiles(
 }
 
 /**
- * Turn on View › Show Shastra, Templates and Kirtan Details (Session 26a: off to begin with), as an admin
- * would, for tests of the Shastra tab, templates and the kirtan filters; waits until the window shows them.
+ * Turn on View › Show Books, Templates and Kirtan Details (Session 26a: off to begin with), as an admin
+ * would, for tests of the Books tab, templates and the kirtan filters; waits until the window shows them.
  */
 export async function showExtras(page: Page): Promise<void> {
   const result = await page.evaluate(() => (globalThis as PageGlobals).drashti.library.setExtras(true));
   if (!result.ok) throw new Error(result.message);
-  // Shown once the window has heard: the playlists' Templates tab (the library's Shastra tab is in its sheet,
+  // Shown once the window has heard: the playlists' Templates tab (the library's Books tab is in its sheet,
   // Session 44, open or not).
   await expect(page.getByTestId('playlist-view-tab-templates')).toBeVisible();
 }

@@ -442,7 +442,7 @@ describe('runImport', () => {
     expect(summary.totals.files).toBe(0);
   });
 
-  it('loads a Shastra text from its JSON file, again without change, and updated in place', async () => {
+  it('loads a book from its JSON file, again without change, and updated in place', async () => {
     const t = setup();
     const text = (verses: number[]) =>
       JSON.stringify({
@@ -461,12 +461,16 @@ describe('runImport', () => {
       format: 'shastra',
       outcome: 'imported',
       target: { kind: 'shastra' },
-      message: 'Loaded: 2 items. Find a passage in Shastra by typing its reference, for example “PG 1”.',
+      message: 'Loaded: 2 items. Find a passage in Books by typing its reference, for example “PG 1”.',
     });
     expect(row('Placeholder Granth (PG)')?.issues.map((i) => i.message)).toEqual([
       'Transliteration for 2 items and Sanskrit in its other script for 2 items made by Drashti (marked as made).',
     ]);
-    expect(row('other.json')?.outcome).toBe('unsupported');
+    expect(row('other.json')).toMatchObject({
+      outcome: 'unsupported',
+      message:
+        'A JSON file that is not a book or a calendar Drashti knows (see docs/shastra-format.md and docs/calendar-format.md).',
+    });
     expect(row('broken.json')?.outcome).toBe('failed');
     // The same file again: nothing changes.
     const again = await t.run([file]);

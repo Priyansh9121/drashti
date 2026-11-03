@@ -8,7 +8,7 @@ import { launchApp, operatorPage, operatorReady } from './helpers';
 
 /*
  * Every panel and dialog Session 12 added passes the accessibility checks at
- * 1280 x 720, beyond those its own tests check as they go (the Shastra tab
+ * 1280 x 720, beyond those its own tests check as they go (the Books tab
  * and Texts, the passage picker, timer cues and slots, the Calendar dialog;
  * the arti left in Session 44): today's line along the bottom, the stage
  * layout editor with a Samvat box and a quote box, a message with a Samvat

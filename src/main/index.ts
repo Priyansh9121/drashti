@@ -1410,7 +1410,7 @@ function start(): void {
   // The Shastra texts' index too, when it was folded another way (Session 13's spellings).
   const shastraIndexStart = performance.now();
   if (shastraRepo.reindexIfStale())
-    log.info(`Shastra search index folded again in ${Math.round(performance.now() - shastraIndexStart)} ms`);
+    log.info(`Books' search index folded again in ${Math.round(performance.now() - shastraIndexStart)} ms`);
   // Removed presentations can be restored for 30 days.
   const purged = presentations.purgeRemoved(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
   if (purged > 0) log.info(`Purged ${purged} presentation(s) removed more than 30 days ago`);
@@ -5377,10 +5377,10 @@ function start(): void {
   });
   handle(IPC.shastra.remove, (e, textId) => {
     if (!fromOperator(e))
-      return { ok: false as const, message: 'Only the operator window can remove a text.' };
+      return { ok: false as const, message: 'Only the operator window can remove a book.' };
     const t = textIdSchema.safeParse(textId);
     if (!t.success || !shastra.remove(t.data))
-      return { ok: false as const, message: 'That text is not loaded.' };
+      return { ok: false as const, message: 'That book is not loaded.' };
     listChanged('shastra');
     engine.refreshNext();
     return { ok: true as const, texts: shastra.list() };
@@ -6318,12 +6318,12 @@ function start(): void {
     }
     installMenu(menuActions());
   };
-  // ---- View > Show Shastra, Templates and Kirtan Details (Session 26a) -----------------------------
+  // ---- View > Show Books, Templates and Kirtan Details (Session 26a) -------------------------------
   // Hidden, not deleted: their code, data and the remote's library stay; the same item brings them back.
   const extrasShown = () => settings.get('showExtras') === true;
   const setExtras = (on: boolean) => {
     settings.set('showExtras', on);
-    log.info(`View: Shastra, Templates and Kirtan Details ${on ? 'shown' : 'hidden'}`);
+    log.info(`View: Books, Templates and Kirtan Details ${on ? 'shown' : 'hidden'}`);
     sendToOperator(IPC.library.extrasChanged, { on });
     rebuildMenu();
   };

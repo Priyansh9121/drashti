@@ -185,7 +185,7 @@ function AddSlot() {
         label="Search in"
         hint={
           category === SHASTRA_SLOT
-            ? 'Filling the slot asks for a Shastra passage, by its reference or its words.'
+            ? 'Filling the slot asks for a passage from a book, by its reference or its words.'
             : 'Filling the slot starts with the kirtans of this category.'
         }
       >
@@ -197,7 +197,7 @@ function AddSlot() {
           }}
         >
           <option value="">Every presentation</option>
-          <option value={SHASTRA_SLOT}>A Shastra passage</option>
+          <option value={SHASTRA_SLOT}>A passage from a book</option>
           {categories.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -246,7 +246,7 @@ function FillSlot({ slot }: { slot: NonNullable<ReturnType<typeof usePlaylists.g
   return <FillWithPresentation slot={slot} />;
 }
 
-/** A slot that asks for a Shastra passage: its reference, or its words. */
+/** A slot that asks for a passage from a book: its reference, or its words. */
 function FillWithPassage({
   slot,
 }: {
@@ -258,7 +258,7 @@ function FillWithPassage({
   return (
     <Dialog
       title={`Fill “${slot.label}”`}
-      subtitle="Choose the Shastra passage for this time."
+      subtitle="Choose a passage from a book for this time."
       size="md"
       onClose={close}
       testId="fill-slot"
@@ -436,7 +436,7 @@ function EditSlot({ slot }: { slot: NonNullable<ReturnType<typeof usePlaylists.g
           }}
         >
           <option value="">Every presentation</option>
-          <option value={SHASTRA_SLOT}>A Shastra passage</option>
+          <option value={SHASTRA_SLOT}>A passage from a book</option>
           {offered.map((c) => (
             <option key={c} value={c}>
               {c}

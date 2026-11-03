@@ -163,7 +163,7 @@ function setup(
             }
           : {
               ok: false,
-              message: `No loaded text is called “${reference.split(' ')[0] ?? ''}”. The texts are: PG.`,
+              message: `No loaded book is called “${reference.split(' ')[0] ?? ''}”. The books are: PG.`,
             },
     },
     // The mirror's reads (Session 54, D5): mirror-ops.test.ts checks them.
@@ -503,7 +503,7 @@ describe('the network in the main process', () => {
       service.answer({ address: PHONE, deviceId: remote, op: 'shastra', args: { reference: 'XY 1' } }),
     ).toEqual({
       status: 404,
-      body: { ok: false, message: 'No loaded text is called “XY”. The texts are: PG.' },
+      body: { ok: false, message: 'No loaded book is called “XY”. The books are: PG.' },
     });
     expect(service.answer({ address: PHONE, deviceId: remote, op: 'shastra', args: {} }).status).toBe(400);
     expect(

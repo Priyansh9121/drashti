@@ -1,21 +1,21 @@
-# Shastra texts: the file format
+# Books: the file format
 
-Drashti shows passages from Shastra texts, such as a shlok, a vat or a Vachanamrut. They come up on the screens with their reference line ("Satsang Diksha 14") and are found by typing that reference, by searching their words, or by browsing.
+Drashti shows passages from books, such as a shlok, a vat or a Vachanamrut. They come up on the screens with their reference line ("Satsang Diksha 14") and are found by typing that reference, by searching their words, or by browsing.
 
-**Drashti ships no texts.** Each mandir's admin loads the texts that BAPS or the mandir has authorised, prepared in the file format below. Use only an authorised source, and keep its wording exactly as it was given.
+**Drashti ships no books.** Each mandir's admin loads the books that BAPS or the mandir has authorised, prepared in the file format below. Use only an authorised source, and keep its wording exactly as it was given.
 
 Two made-up examples to try it with are in [`examples/placeholder-granth.json`](examples/placeholder-granth.json) (items of its own) and [`examples/placeholder-vachan.json`](examples/placeholder-vachan.json) (in sections). Their words mean nothing.
 
-## Loading a text
+## Loading a book
 
-- Drag the file onto the library (the left column), or choose **Shastra › Texts… › Load a text…**. **Import…** works too.
+- Drag the file onto the library, or in the library's **Books** tab choose **Books…**, then **Load a book…**. **Import…** works too.
 - The import report says what came in: how many items and sections, what Drashti made (see "Languages"), and anything it left out and why.
-- **Loading a text again updates it.** Drashti knows a text by its **abbreviation**: the same abbreviation (ignoring case, dots and spaces) means the same text. Items keep their place by section and number, so playlists that name a passage keep working. Items no longer in the file go. The same file loaded twice changes nothing.
-- **Texts…** also chooses each text's theme (how its passages look) and removes a text. Both are Pro Mode only. A removed text's passages show as missing in playlists until it is loaded again.
+- **Loading a book again updates it.** Drashti knows a book by its **abbreviation**: the same abbreviation (ignoring case, dots and spaces) means the same book. Items keep their place by section and number, so playlists that name a passage keep working. Items no longer in the file go. The same file loaded twice changes nothing.
+- **Books…** also removes a book (Pro Mode only). A removed book's passages show as missing in playlists until it is loaded again.
 
 ## The file
 
-A text is one file: UTF-8 JSON, with a name ending in `.json`. It must start by saying what it is:
+A book is one file: UTF-8 JSON, with a name ending in `.json`. It must start by saying what it is:
 
 ```json
 {
@@ -42,23 +42,23 @@ A text is one file: UTF-8 JSON, with a name ending in `.json`. It must start by 
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `format`       | Always `"drashti-shastra"`.                                                                                                           |
 | `version`      | Always `1`.                                                                                                                           |
-| `name`         | The text's name as the screens show it in the reference line: "Placeholder Granth 14".                                                |
+| `name`         | The book's name as the screens show it in the reference line: "Placeholder Granth 14".                                                |
 | `abbreviation` | What the operator types: "PG 14". Up to 24 characters. Dots, spaces and case don't matter when typing, so "G.Pr." can be typed "gpr". |
 | `description`  | Optional, for the admin.                                                                                                              |
-| `items`        | The text's numbered items, when it has no sections.                                                                                   |
-| `sections`     | Or its sections, each with its own items or sections (see below). A text has one or the other.                                        |
+| `items`        | The book's numbered items, when it has no sections.                                                                                   |
+| `sections`     | Or its sections, each with its own items or sections (see below). A book has one or the other.                                        |
 
 ### Items
 
 | Field    | What it is                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `number` | Its number in its section (or the text): a whole number, unique there. References use it: "PG 14", "PG 14-16".                 |
+| `number` | Its number in its section (or the book): a whole number, unique there. References use it: "PG 14", "PG 14-16".                 |
 | `title`  | Optional: shown when browsing.                                                                                                 |
 | `text`   | Its words, in one or more languages (see below). Line breaks (`\n`) are kept: a shlok's lines stay lines. An item needs words. |
 
 ### Sections
 
-A text arranged in parts, such as a Vachanamrut's (Gadhada Pratham, Sarangpur…), has `sections` instead of `items`. Sections can hold sections, nested as deep as the text needs:
+A book arranged in parts, such as a Vachanamrut's (Gadhada Pratham, Sarangpur…), has `sections` instead of `items`. Sections can hold sections, nested as deep as the book needs:
 
 ```json
 "sections": [
@@ -77,7 +77,7 @@ A text arranged in parts, such as a Vachanamrut's (Gadhada Pratham, Sarangpur…
 | `items`        | Its items, or                                                                                   |
 | `sections`     | its own sections. Not both.                                                                     |
 
-A section is known by its abbreviation (or its label), so keep these the same when updating a text.
+A section is known by its abbreviation (or its label), so keep these the same when updating a book.
 
 ## Languages
 
@@ -100,22 +100,22 @@ Each screen group shows the languages its Look chooses, in its order. The refere
 
 ## Finding a passage
 
-- **By reference**, in the Shastra tab, the phone remote or the API: the text's abbreviation (or its name), then the sections' abbreviations, then a number or a range:
+- **By reference**, in the Books tab, the phone remote or the API: the book's abbreviation (or its name), then the sections' abbreviations, then a number or a range:
   - `PG 14`, `pg14`, `Placeholder Granth 14`
   - `PG 14-16` (a range, within one section)
   - `PV P.Pr. 1`, `pv ppr 1`, `PV Placeholder Pratham 1`
 
-  A reference that names nothing is refused, saying why: "No loaded text is called “XY”. The texts are: PG, PV." or "Placeholder Granth has no 99: it goes from 1 to 21." A passage shows up to 60 items at a time.
+  A reference that names nothing is refused, saying why: "No loaded book is called “XY”. The books are: PG, PV." or "Placeholder Granth has no 99: it goes from 1 to 21." A passage shows up to 60 items at a time.
 
 - **By its words**, in any language, accents ignored ("sloka" finds "śloka"): every word typed must start one of the item's words.
-- **By browsing** a text, its sections and items.
+- **By browsing** a book, its sections and items.
 
 ## How a passage looks
 
-- It becomes slides, drawn with its text's **theme**: a style per language, the **reference line's style** (above or below the words), and the box (set in Themes; chosen for each text in **Texts…**). A theme's background colour is the slides' colour; a picture or video goes on the background layer, as a presentation's does.
+- It becomes slides, drawn with its book's **theme**: a style per language, the **reference line's style** (above or below the words), and the box (the theme the book was given before alpha.14, else Drashti's own). A theme's background colour is the slides' colour; a picture or video goes on the background layer, as a presentation's does.
 - Each item starts a slide. A long item goes on over several, cut at its line breaks, else at the ends of sentences (. ? ! । ॥), into parts that fit the box. Every language is cut alike, so a slide holds the same part of the item in each, and the reference line counts the parts: "Placeholder Granth 21 (2/4)".
 - The cutting fits where the live Look shows the passage: each group's languages, and a lower third (fewer lines) where a group, or the stream's Camera layout on air, shows one.
-- **Next** and **Back** step through its slides, then on to the next playlist item. A passage can be a playlist item, and a template slot can ask for one ("A Shastra passage").
+- **Next** and **Back** step through its slides, then on to the next playlist item. A passage can be a playlist item, and a template slot can ask for one ("A passage from a book").
 
 ## What Drashti checks
 

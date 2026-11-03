@@ -1496,7 +1496,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     }
   };
 
-  // ---- what an admin loads: Shastra texts (and, later, calendars and quotes) -------------------
+  // ---- what an admin loads: books (Shastra until alpha.15; and, later, calendars and quotes) -----
 
   const importShastra = (where: Where, fileName: string, hash: string, raw: unknown) => {
     const read = readShastraFile(raw);
@@ -1549,7 +1549,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               ? 'Already loaded, unchanged since.'
               : `${loaded.outcome === 'updated' ? 'Updated' : 'Loaded'}: ${loaded.items} items${
                   loaded.sections > 0 ? ` in ${loaded.sections} sections` : ''
-                }. Find a passage in Shastra by typing its reference${
+                }. Find a passage in Books by typing its reference${
                   loaded.sections > 0 ? '' : `, for example “${text.abbreviation} ${first}”`
                 }.`,
           issues: loaded.outcome === 'unchanged' ? [] : issues,
@@ -1563,7 +1563,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           addToTotals(totals, item);
         },
         failed: (error) => {
-          failed(where, 'shastra', fileName, `Could not load this text: ${errorText(error)}`, [], at);
+          failed(where, 'shastra', fileName, `Could not load this book: ${errorText(error)}`, [], at);
         },
       },
     );
@@ -1659,7 +1659,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       target: null,
       counts: NO_COUNTS,
       message:
-        'A JSON file that is not a Shastra text or a calendar Drashti knows (see docs/shastra-format.md and docs/calendar-format.md).',
+        'A JSON file that is not a book or a calendar Drashti knows (see docs/shastra-format.md and docs/calendar-format.md).',
       issues: [],
     });
   };

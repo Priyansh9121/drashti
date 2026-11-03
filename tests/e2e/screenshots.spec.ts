@@ -1055,7 +1055,7 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
   await app.close();
 });
 
-test('Shastra, timers in the running order, Samvat and tithi (Session 12; the idle rotation went in Session 55)', async () => {
+test('Books, timers in the running order, Samvat and tithi (Session 12; the idle rotation went in Session 55)', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp({
     DRASHTI_WINDOWED_OUTPUTS: '1',
@@ -1182,12 +1182,12 @@ test('Shastra, timers in the running order, Samvat and tithi (Session 12; the id
     return found;
   };
 
-  // Shastra: a passage found by its reference, its slides as rows in the middle (Session 55, Part 4: the slide grid
+  // Books: a passage found by its reference, its slides as rows in the middle (Session 55, Part 4: the slide grid
   // went; with no playlist open, the library's chosen presentation or passage fills the middle), its first one up;
   // the loaded texts.
   await closePlaylistIfOpen(win);
   await openLibrary(win);
-  await win.getByRole('tab', { name: 'Shastra' }).click();
+  await win.getByRole('tab', { name: 'Books' }).click();
   const panel = win.getByTestId('shastra-panel');
   await panel.getByTestId('shastra-reference').fill('PG 14-15');
   await panel.getByTestId('shastra-reference').press('Enter');
@@ -1199,7 +1199,7 @@ test('Shastra, timers in the running order, Samvat and tithi (Session 12; the id
   await panel.getByTestId('open-shastra-texts').click();
   await expect(win.getByTestId('shastra-texts-dialog')).toBeVisible();
   await shot(win, 'shastra-texts');
-  await win.getByRole('button', { name: 'Close Shastra texts' }).click();
+  await win.getByRole('button', { name: 'Close Books' }).click();
   await shot(await outputs('Placeholder hall'), 'output-shastra');
 
   // A playlist item's timers: the playlist open in the middle again.

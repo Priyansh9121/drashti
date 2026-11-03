@@ -12,9 +12,9 @@ import {
 } from './helpers';
 
 /*
- * Hidden, not deleted (Session 26a): the Shastra tab, the Templates beside the
+ * Hidden, not deleted (Session 26a): the Books tab, the Templates beside the
  * playlists and the kirtan filters leave the operator window, and an admin's
- * View › Show Shastra, Templates and Kirtan Details (off to begin with, kept
+ * View › Show Books, Templates and Kirtan Details (off to begin with, kept
  * with the library's settings) brings them back. Import… stands where the
  * filters were: Files…, A Folder… and From a Link….
  */
@@ -22,7 +22,7 @@ import {
 const menuChecked = (app: Awaited<ReturnType<typeof launchApp>>['app']) =>
   app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('show-extras')?.checked ?? null);
 
-test('Shastra, Templates and the kirtan filters are hidden to begin with; the View switch brings them back, and keeps', async () => {
+test('Books, Templates and the kirtan filters are hidden to begin with; the View switch brings them back, and keeps', async () => {
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -52,15 +52,22 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
   await expect(win.getByRole('menuitem', { name: 'Save as template…' })).toHaveCount(0);
   await win.keyboard.press('Escape');
   await win.getByTestId('playlist-close').click();
-  await expectNoSeriousA11yIssues(win, 'the operator window with Shastra, Templates and the filters hidden');
+  await expectNoSeriousA11yIssues(win, 'the operator window with Books, Templates and the filters hidden');
 
-  // View › Show Shastra, Templates and Kirtan Details: all three come back.
+  // View › Show Books, Templates and Kirtan Details: all three come back.
   await chooseMenuItem(app, 'show-extras');
   await openLibrary(win);
   await expect(shastraTab).toBeVisible();
   await expect(templatesTab).toBeVisible();
   await expect(filters).toBeVisible();
   await expect.poll(() => menuChecked(app)).toBe(true);
+  // Named Books since alpha.15 (Shastra until then), in the tab and the menu.
+  await expect(shastraTab).toHaveAccessibleName('Books');
+  expect(
+    await app.evaluate(
+      ({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('show-extras')?.label ?? null,
+    ),
+  ).toBe('Show Books, Templates and Kirtan Details');
   await shastraTab.click();
   await expect(win.getByTestId('library-tab-shastra')).toHaveAttribute('aria-selected', 'true');
   // Kept with the library's settings: still shown after a restart.
@@ -71,7 +78,7 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
   await operatorReady(win2);
   await expect(win2.getByTestId('library-tab-shastra')).toBeVisible();
   expect(await menuChecked(again.app)).toBe(true);
-  // Off again: the window leaves the Shastra tab it was on for Presentations.
+  // Off again: the window leaves the Books tab it was on for Presentations.
   await win2.getByTestId('library-tab-shastra').click();
   await chooseMenuItem(again.app, 'show-extras');
   await expect(win2.getByTestId('library-tab-shastra')).toHaveCount(0);

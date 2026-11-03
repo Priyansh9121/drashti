@@ -157,9 +157,8 @@ export type PlaylistItemInfo =
    */
   | { id: string; kind: 'placeholder'; label: string; hint: string | null; category: string | null }
   /**
-   * A Shastra passage (Session 12), named by keys so it lasts when its text
-   * is loaded again: `missing` while no loaded text has it. Its label is
-   * the reference as it read when it was added.
+   * A passage from a book (Session 12; Shastra until alpha.15), named by keys so it lasts when its book is loaded
+   * again: `missing` while no loaded book has it. Its label is the reference as it read when it was added.
    */
   | { id: string; kind: 'shastra'; label: string; passageId: string; missing: boolean; timers: TimerCue[] }
   /**
@@ -179,8 +178,17 @@ export type NewItem =
   /** One of this computer's video inputs, by its name (Session 51). */
   | { kind: 'input'; name: string };
 
-/** A slot that asks for a Shastra passage (filling it opens the Shastra tab). */
+/**
+ * A slot that asks for a passage from a book (filling it opens the books' passage picker). Stored as libraries have
+ * always stored it, "Shastra", Books' name until alpha.15, so an older library's slots ask for a passage still; it
+ * is never shown as it is stored: slotCategoryName says Books.
+ */
 export const SHASTRA_SLOT = 'Shastra';
+
+/** A slot's category as a person reads it: Books for a slot asking for a passage, a kirtan's category as it is. */
+export function slotCategoryName(category: string): string {
+  return category === SHASTRA_SLOT ? 'Books' : category;
+}
 
 /** A media item as the library's media list shows it. */
 export interface MediaSummary {

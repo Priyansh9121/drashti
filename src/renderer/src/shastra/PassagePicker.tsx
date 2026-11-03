@@ -7,7 +7,7 @@ import { rowClass } from '../ui/ListRow';
 import { EmptyState } from '../ui/States';
 
 /*
- * Choosing a Shastra passage (Session 12), for a slot that asks for one: by
+ * Choosing a passage from a book (Session 12), for a slot that asks for one: by
  * its reference ("SD 14-16"), or by its words.
  */
 export function PassagePicker({ onPick }: { onPick: (passageId: string) => void }) {
@@ -78,7 +78,7 @@ export function PassagePicker({ onPick }: { onPick: (passageId: string) => void 
         <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-2 text-faint" />
         <TextInput
           type="search"
-          aria-label="Search the texts' words"
+          aria-label="Search the books' words"
           placeholder="Or search the words…"
           className="w-full pl-7"
           spellCheck={false}

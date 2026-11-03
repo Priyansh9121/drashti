@@ -12,7 +12,7 @@ const TYPES = {
   presentations: 'application/x-drashti-presentations',
   media: 'application/x-drashti-media',
   items: 'application/x-drashti-playlist-items',
-  /** Shastra passages (their ids), from the Shastra tab. */
+  /** Shastra passages (their ids), from the Books tab. */
   passages: 'application/x-drashti-passages',
   /** This computer's video inputs (Session 51), by their names, from Media's Video inputs. */
   inputs: 'application/x-drashti-inputs',

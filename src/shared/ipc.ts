@@ -358,7 +358,7 @@ export const IPC = {
     /** main -> operator: presentations, props, messages or themes were added or changed. */
     changed: 'library:changed',
     /**
-     * View › Show Shastra, Templates and Kirtan Details (Session 26a): whether the operator window shows
+     * View › Show Books, Templates and Kirtan Details (Session 26a): whether the operator window shows
      * them (off to begin with, kept with the library's settings); setting it is Pro Mode's.
      */
     extras: 'library:extras',

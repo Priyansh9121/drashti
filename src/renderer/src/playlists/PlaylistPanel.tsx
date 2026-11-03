@@ -468,7 +468,7 @@ function RepeatRowButton({ playlistId, name }: { playlistId: string; name: strin
 
 /**
  * The week's playlists, or the sabha templates (kept apart, so a template is never run by mistake).
- * Templates only with View › Show Shastra, Templates and Kirtan Details (Session 26a); otherwise a
+ * Templates only with View › Show Books, Templates and Kirtan Details (Session 26a); otherwise a
  * heading.
  */
 function ViewTabs() {
@@ -574,7 +574,7 @@ function TemplateList() {
 
 /**
  * The playlists (Session 26a: always at the top of the left column): many of them, in folders, made with
- * + New; a click opens one in the centre (OpenPlaylist.tsx). With View › Show Shastra, Templates and Kirtan
+ * + New; a click opens one in the centre (OpenPlaylist.tsx). With View › Show Books, Templates and Kirtan
  * Details, the sabha templates beside them.
  */
 export function PlaylistPanel({ platform }: { platform: string }) {

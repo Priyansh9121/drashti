@@ -17,7 +17,7 @@ export function itemWord(item: PlaylistItemInfo): string {
     case 'presentation':
       return item.deck ? 'Deck' : 'Presentation';
     case 'shastra':
-      return 'Shastra passage';
+      return 'Passage from a book';
     case 'input':
       return 'Video input';
     case 'placeholder':

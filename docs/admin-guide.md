@@ -304,15 +304,15 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 
 ---
 
-## 9. Shastra texts and calendars
+## 9. Books and calendars
 
-**Shown or hidden.** The operator window starts without the **Shastra** tab, the **Templates** beside the playlists and the library's **kirtan filters** (Category, Kavi, Raag, Occasion): volunteers rarely need them. **View › Show Shastra, Templates and Kirtan Details** (Pro Mode; on Windows press Alt for the menu bar) brings all three back, and turning it off hides them again. It is kept with the library, so a backup keeps it. Hiding them changes nothing else: Shastra texts, templates and kirtan details stay as they were, playlists that hold a passage still run it, the remote's library and the API that name a passage keep working, and search still finds kirtans by their kavi, raag and occasion.
+**Shown or hidden.** The operator window starts without the **Books** tab, the **Templates** beside the playlists and the library's **kirtan filters** (Category, Kavi, Raag, Occasion): volunteers rarely need them. **View › Show Books, Templates and Kirtan Details** (Pro Mode; on Windows press Alt for the menu bar) brings all three back, and turning it off hides them again. It is kept with the library, so a backup keeps it. Hiding them changes nothing else: the books, templates and kirtan details stay as they were, playlists that hold a passage still run it, the remote's library and the API that name a passage keep working, and search still finds kirtans by their kavi, raag and occasion.
 
 Drashti comes with no scripture text and no calendar: an admin loads files prepared from a source BAPS or the mandir has authorised. The file formats are in `docs/shastra-format.md` and `docs/calendar-format.md`, with made-up examples in `docs/examples/`.
 
-**Shastra texts.** Drag the file onto the library, or (with the Shastra tab shown) in the **Shastra** tab use **Texts…**, then **Load a text…**. Loading a text again (the same abbreviation) updates it, and its passages in playlists keep working. **Texts…** also removes one. A text's passages keep the look of the theme it was given before alpha.14 (else Drashti's own).
+**Books.** Drag the book's file onto the library, or (with the Books tab shown) in the **Books** tab use **Books…**, then **Load a book…**. Loading a book again (the same abbreviation) updates it, and its passages in playlists keep working. **Books…** also removes one. A book's passages keep the look of the theme it was given before alpha.14 (else Drashti's own).
 
-![Shastra texts](screenshots/shastra-texts.png)
+![The loaded books](screenshots/shastra-texts.png)
 
 **Calendars.** Drag the file onto the library, or **Calendar** in the Timers panel, then **Load a calendar…**. Loading it again (the same name) updates it. Today's Samvat date and tithi then show along the bottom of the operator window, on stage layouts that have the box for it, and on the hall's screens only in a message that uses it. A date no calendar gives shows nothing.
 

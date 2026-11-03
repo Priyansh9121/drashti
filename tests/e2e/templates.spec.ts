@@ -264,7 +264,7 @@ test('timers in templates: an item starts a countdown as it goes up, kept by the
     })
     .toBe(true);
 
-  // A slot: renamed, and asking for a Shastra passage now.
+  // A slot: renamed, and asking for a passage from a book now (stored as libraries store it, shown as Books).
   await win.evaluate(async (tid) => {
     const added = await (globalThis as PageGlobals).drashti.playlists.addSlot(tid, null, {
       label: 'Placeholder slot',
@@ -281,10 +281,10 @@ test('timers in templates: an item starts a countdown as it goes up, kept by the
   await expect(edit.getByTestId('slot-category')).toHaveValue('Kirtan');
   await expectNoSeriousA11yIssues(win, 'editing a slot');
   await edit.getByTestId('slot-label').fill('Placeholder reading');
-  await edit.getByTestId('slot-category').selectOption('Shastra');
+  await edit.getByTestId('slot-category').selectOption({ label: 'A passage from a book' });
   await edit.getByTestId('save-slot').click();
   await expect(edit).toHaveCount(0);
   const renamed = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder reading' });
-  await expect(renamed).toContainText('A slot · Shastra');
+  await expect(renamed).toContainText('A slot · Books');
   await app.close();
 });
