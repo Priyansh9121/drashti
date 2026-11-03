@@ -3780,8 +3780,8 @@ function start(): void {
     choosePdfFile: async (e) => {
       const parent = BrowserWindow.fromWebContents(e.sender);
       const options = {
-        title: 'Insert PDF pages',
-        buttonLabel: 'Insert pages',
+        title: 'Choose a PDF',
+        buttonLabel: 'Choose PDF',
         properties: ['openFile'] as 'openFile'[],
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       };

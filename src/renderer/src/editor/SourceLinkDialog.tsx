@@ -27,6 +27,7 @@ export function SourceLinkDialog({
     pictures.length === 1 ? (pictures[0]?.id ?? null) : null,
   );
   const [pages, setPages] = useState<EditSlide[]>([]);
+  const [issues, setIssues] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export function SourceLinkDialog({
       if (!mounted.current) return;
       if (result.ok) {
         setPages(result.pages);
+        setIssues(result.issues);
         setSelected(null);
       } else if (!result.cancelled) setProblem(result.message);
     } catch {
@@ -76,7 +78,7 @@ export function SourceLinkDialog({
       );
       if (!mounted.current) return;
       if (result.ok) {
-        onLinked(result.page, result.issues);
+        onLinked(result.page, [...new Set([...issues, ...result.issues])]);
         onClose();
       } else setProblem(result.message);
     } catch {
@@ -196,6 +198,15 @@ export function SourceLinkDialog({
         Review the reading copy’s appearance before Save. Fonts and other objects may differ from the original
         program. The original files are kept.
       </p>
+      {issues.length > 0 && (
+        <Notice tone="warning" title="Reading-copy limits" className="mt-3">
+          <ul className="max-h-28 list-disc space-y-1 overflow-auto pl-5">
+            {issues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        </Notice>
+      )}
       {busy && (
         <p role="status" className="mt-3 text-sm">
           Preparing the reading copy… Cancel stops this job.

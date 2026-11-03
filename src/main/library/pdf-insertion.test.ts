@@ -429,6 +429,7 @@ describe('explicit legacy PDF reading-copy mapping', () => {
           target = group?.slides[0];
         const image = target?.elements.find((element) => element.kind === 'image');
         if (!group || !target || !image) throw new Error('Missing generated legacy picture.');
+        image.groupId = 'placeholder-operator-group';
         target.notes = 'Placeholder operator notes';
         target.guides = { x: [100], y: [200] };
         target.cues = [
@@ -437,6 +438,7 @@ describe('explicit legacy PDF reading-copy mapping', () => {
         const overlay = {
           id: randomUUID(),
           kind: 'text' as const,
+          groupId: 'placeholder-operator-group',
           text: 'Placeholder unsaved overlay',
           lang: null,
           frame: { x: 80, y: 90, width: 300, height: 100 },
@@ -483,6 +485,12 @@ describe('explicit legacy PDF reading-copy mapping', () => {
             .map((element) => element.text)
             .join(' '),
         ).toContain(words);
+        expect(
+          linked.page.elements
+            .filter((element) => element.id !== overlay.id)
+            .every((element) => element.groupId === image.groupId),
+          'native source objects retain the saved picture’s operator group',
+        ).toBe(true);
         expect(linked.page).toMatchObject({ notes: target.notes, guides: target.guides, cues: target.cues });
         expect(s.presentations.content(s.target.id)).toEqual(before);
         expect(s.keep).not.toHaveBeenCalled();
