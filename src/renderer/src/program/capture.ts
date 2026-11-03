@@ -251,9 +251,12 @@ async function capture(): Promise<void> {
     if (encoder) await toEncoder(frame);
     frame.close();
   }
-  if (mine === generation) keepLatest(null);
+  if (mine === generation) {
+    keepLatest(null);
+    track = null;
+    document.body.dataset['capture'] = 'off';
+  }
   say(`capture ${String(mine)} ended after ${String(mineFrames)} frames`);
-  document.body.dataset['capture'] = 'off';
 }
 
 function wanted(): boolean {
@@ -273,6 +276,7 @@ function update(): void {
     keepLatest(null);
     track.stop();
     track = null;
+    document.body.dataset['capture'] = 'off';
   }
 }
 
