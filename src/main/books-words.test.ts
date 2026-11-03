@@ -73,13 +73,18 @@ function saidIn(path: string): { line: number; words: string }[] {
       ts.isJsxText(node)
         ? node.text.trim()
         : null;
-    // A module's path is a file's name, which stays (src/main/shastra/…).
-    const imported = ts.isImportDeclaration(node.parent) || ts.isExportDeclaration(node.parent);
-    if (words !== null && !imported && saysShastra(words))
+    // A module's path is a file's name, which stays (src/main/shastra/…). (Words are never the file itself, so
+    // they have a parent.)
+    if (
+      words !== null &&
+      saysShastra(words) &&
+      !ts.isImportDeclaration(node.parent) &&
+      !ts.isExportDeclaration(node.parent)
+    )
       found.push({ line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1, words });
     ts.forEachChild(node, visit);
   };
-  visit(source);
+  ts.forEachChild(source, visit);
   return found;
 }
 
