@@ -207,7 +207,9 @@ describe('imported editor provenance and legacy safety', () => {
       try {
         const source = await bakedSource(w);
         if (excluded) {
-          source.before.slides[0]!.editor_design = JSON.stringify({ skipMaster: true });
+          const savedPage = source.before.slides[0];
+          if (!savedPage) throw new Error('Missing generated baked page.');
+          savedPage.editor_design = JSON.stringify({ skipMaster: true });
           source.presentations.setContent(source.before);
         }
         const before = source.presentations.content(source.id);

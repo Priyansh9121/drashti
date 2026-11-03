@@ -1,6 +1,6 @@
-import { slideCanvas } from '../../shared/document-page';
+import { documentCanvas, slideCanvas } from '../../shared/document-page';
 import { freshGroups } from '../../shared/element-groups';
-import { renderEditedSlide } from '../../shared/slide-design';
+import { masterContribution, renderEditedSlide } from '../../shared/slide-design';
 import type { InsertPdfPagesResult } from '../../shared/slide-edit';
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -451,14 +451,6 @@ export class ImportedSlides {
     const prepared = cached?.stamp === stamp ? allSlides(cached.doc) : [];
     const native = new Map(prepared.map((slide) => [slide.id, slide]));
     const stored = new Map(allSlides(editDocOf(before, edited.name).doc).map((slide) => [slide.id, slide]));
-    const globalContentChanged =
-      cached?.stamp === stamp &&
-      (cached.doc.width !== doc.width ||
-        cached.doc.height !== doc.height ||
-        !sameData(
-          cached.doc.master ? contentOf(cached.doc.master) : null,
-          doc.master ? contentOf(doc.master) : null,
-        ));
     for (const slide of allSlides(doc)) {
       const old = before.slides.find((row) => row.id === slide.id);
       const storedRef = documentPageFromJson(old?.document_page);
@@ -487,7 +479,9 @@ export class ImportedSlides {
         return { ok: false, message: 'Reopen the editor before saving these imported pages.' };
       const copied = !old;
       const untouched =
-        !globalContentChanged && sameData(contentOf(slide, copied), contentOf(original, copied));
+        sameData(slideCanvas(original, cached?.doc ?? before), slideCanvas(slide, doc)) &&
+        sameData(masterContribution(cached?.doc ?? doc, original), masterContribution(doc, slide)) &&
+        sameData(contentOf(slide, copied), contentOf(original, copied));
       if (untouched) {
         const saved = stored.get(original.id) ?? (cached?.inserted.has(original.id) ? original : undefined);
         if (!saved)
@@ -516,6 +510,17 @@ export class ImportedSlides {
         slide.darken = saved.darken;
         slide.design = saved.design;
         slide.documentPage = saved.documentPage ?? original.documentPage;
+        if (
+          slide.documentPage &&
+          !slide.documentPage.edited &&
+          !saved.pageSize &&
+          (before.width !== doc.width || before.height !== doc.height)
+        ) {
+          slide.documentPage = {
+            ...slide.documentPage,
+            playbackSize: documentCanvas(saved.documentPage, before),
+          };
+        }
         if (saved.pageSize) slide.pageSize = saved.pageSize;
         else delete slide.pageSize;
       } else {

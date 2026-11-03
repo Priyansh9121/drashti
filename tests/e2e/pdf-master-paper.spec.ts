@@ -43,12 +43,13 @@ for (const windowSize of [
         const actual = await master.evaluate((node) => {
           if (!(node instanceof HTMLElement || node instanceof SVGElement))
             throw new Error('Missing master shape.');
-          return {
-            x: parseFloat(node.style.left),
-            y: parseFloat(node.style.top),
-            width: parseFloat(node.style.width),
-            height: parseFloat(node.style.height),
+          const pixels = (property: string) => {
+            const value = node.computedStyleMap().get(property);
+            if (!(value instanceof CSSUnitValue) || value.unit !== 'px')
+              throw new Error(`Missing numeric master ${property}.`);
+            return value.value;
           };
+          return { x: pixels('left'), y: pixels('top'), width: pixels('width'), height: pixels('height') };
         });
         const scale = Math.min(paper.width / source.width, paper.height / source.height);
         const expected = {

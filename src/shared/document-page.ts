@@ -33,6 +33,8 @@ export interface DocumentPageRef {
   width?: number;
   height?: number;
   rotation?: 0 | 90 | 180 | 270;
+  /** Main pins untouched saved playback when the presentation default changes. */
+  playbackSize?: PageSize;
 }
 
 export const documentPageSchema: z.ZodType<DocumentPageRef> = z
@@ -41,6 +43,7 @@ export const documentPageSchema: z.ZodType<DocumentPageRef> = z
     ext: z.enum(['pdf', 'pptx', 'ppt', 'key']),
     page: z.number().int().min(0).max(1999),
     edited: z.boolean().optional(),
+    playbackSize: pageSizeSchema.optional(),
     width: z.number().min(16).max(16384).optional(),
     height: z.number().min(16).max(16384).optional(),
     rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
@@ -65,7 +68,7 @@ export function documentCanvas(
   fallback: { width: number; height: number },
 ): { width: number; height: number } {
   if (!page?.edited || page.width === undefined || page.height === undefined)
-    return { width: fallback.width, height: fallback.height };
+    return page?.playbackSize ?? { width: fallback.width, height: fallback.height };
   return editingCanvas(page, fallback);
 }
 

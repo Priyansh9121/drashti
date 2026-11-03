@@ -1,6 +1,7 @@
 import type { Glow, Outline, Rect, SlideElement, TextRun, TextShadow, TextStyle } from './model';
 import type { EditDoc, EditSlide, RunLook, SlideLook } from './slide-edit';
 import { placeContent, type Size } from './scaling';
+import { slideCanvas } from './document-page';
 
 const shadowAt = (value: TextShadow, scale: number): TextShadow =>
   typeof value === 'boolean'
@@ -79,28 +80,42 @@ function elementAt(el: SlideElement, from: Size, to: Size): SlideElement {
   return { ...el, frame };
 }
 
-/** Fit, with one uniform scale, or deliberately keep all pixel positions; neither drops content. */
+/** Fit one set of objects without changing their identities, grouping or path coordinates. */
+export function fitElements(elements: SlideElement[], from: Size, to: Size): SlideElement[] {
+  if (from.width === to.width && from.height === to.height) return elements;
+  return elements.map((element) => elementAt(element, from, to));
+}
+
+/** Fit each page from its own paper, or deliberately keep all pixel positions. */
 export function resizePresentation(doc: EditDoc, to: Size, fit = true): EditDoc {
   if (![to.width, to.height].every((n) => Number.isInteger(n) && n >= 16 && n <= 16384)) return doc;
-  if (doc.width === to.width && doc.height === to.height) return doc;
-  if (!fit) return { ...doc, ...to };
-  const p = placeContent(doc, to, 'fit');
-  const resize = (slide: EditSlide): EditSlide => ({
-    ...slide,
-    elements: slide.elements.map((el) => elementAt(el, doc, to)),
-    ...(slide.guides
-      ? {
-          guides: {
-            x: slide.guides.x.map((x) => x * p.scaleX + p.x),
-            y: slide.guides.y.map((y) => y * p.scaleY + p.y),
-          },
-        }
-      : {}),
-  });
-  return {
-    ...doc,
-    ...to,
-    groups: doc.groups.map((g) => ({ ...g, slides: g.slides.map(resize) })),
-    ...(doc.master ? { master: resize(doc.master) } : {}),
+  const resize = (slide: EditSlide): EditSlide => {
+    const from = slideCanvas(slide, doc);
+    const changed = from.width !== to.width || from.height !== to.height;
+    if (!changed) return slide;
+    const p = placeContent(from, to, 'fit');
+    return {
+      ...slide,
+      ...(slide.pageSize || slide.documentPage ? { pageSize: { ...to } } : {}),
+      elements: fit ? fitElements(slide.elements, from, to) : slide.elements,
+      ...(fit && slide.guides
+        ? {
+            guides: {
+              x: slide.guides.x.map((x) => x * p.scaleX + p.x),
+              y: slide.guides.y.map((y) => y * p.scaleY + p.y),
+            },
+          }
+        : {}),
+    };
   };
+  const groups = doc.groups.map((group) => ({ ...group, slides: group.slides.map(resize) }));
+  const master = doc.master ? resize(doc.master) : doc.master;
+  if (
+    doc.width === to.width &&
+    doc.height === to.height &&
+    master === doc.master &&
+    groups.every((group, i) => group.slides.every((slide, j) => slide === doc.groups[i]?.slides[j]))
+  )
+    return doc;
+  return { ...doc, ...to, groups, ...(doc.master ? { master } : {}) };
 }

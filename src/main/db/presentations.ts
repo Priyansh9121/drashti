@@ -27,6 +27,7 @@ import type { ContentRows } from './content';
 import { readContent, transitionFromJson, transitionToJson, writeContent } from './content';
 import {
   documentCanvas,
+  slideCanvas,
   documentPageFromJson,
   pageSizeFromJson,
   type DocumentPageRef,
@@ -468,6 +469,7 @@ export class PresentationRepo {
         slideDesignFromJson(s.editor_design),
         master,
         (cuesBySlide.get(s.id) ?? []).some((c) => c.kind === 'background'),
+        slideCanvas(master ?? undefined, p),
       );
       const info: SlideInfo = {
         id: s.id,

@@ -44,12 +44,14 @@ function first(doc: EditDoc) {
 describe('master and mixed paper consistency', () => {
   it('fits the master from its own canvas to the selected paper without mutating it', () => {
     const doc = fixture();
+    const shape = first(doc).elements[0];
+    if (!shape) throw new Error('Missing generated shape.');
     doc.master = {
       ...newSlide(null),
       id: 'placeholder-master',
       elements: [
         {
-          ...first(doc).elements[0]!,
+          ...shape,
           id: 'placeholder-master-shape',
           frame: { x: 128, y: 72, width: 256, height: 144 },
         },

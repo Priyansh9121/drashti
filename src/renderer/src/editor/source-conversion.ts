@@ -1,5 +1,7 @@
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
+import { slideCanvas } from '../../../shared/document-page';
+import { masterContribution } from '../../../shared/slide-design';
 
 export const SOURCE_CONVERSION_WARNING = {
   title: 'Edit this animated slide',
@@ -41,13 +43,15 @@ const content = (slide: EditSlide) => ({
 /** Metadata and editor aids do not turn an original page into a native derivative. */
 export function sourceContentChanges(before: EditDoc, next: EditDoc): string[] {
   const previous = new Map(slidesOf(before).map((slide) => [slide.id, slide]));
-  const wholePresentation =
-    before.width !== next.width ||
-    before.height !== next.height ||
-    !same(before.master ? content(before.master) : null, next.master ? content(next.master) : null);
+
   return slidesOf(next).flatMap((slide) => {
     const old = previous.get(slide.id);
-    return old?.documentPage && (wholePresentation || !same(content(old), content(slide))) ? [slide.id] : [];
+    return old?.documentPage &&
+      (!same(slideCanvas(old, before), slideCanvas(slide, next)) ||
+        !same(masterContribution(before, old), masterContribution(next, slide)) ||
+        !same(content(old), content(slide)))
+      ? [slide.id]
+      : [];
   });
 }
 
