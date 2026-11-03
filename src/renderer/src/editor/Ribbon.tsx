@@ -1,3 +1,4 @@
+import { slideCanvas } from '../../../shared/document-page';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -159,7 +160,7 @@ export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onS
       const at = shownSlide();
       const look = currentLook();
       if (!s.doc || !look || !at) return;
-      const shape = newShape(choice, look, s.doc);
+      const shape = newShape(choice, look, slideCanvas(at, s.doc));
       commit(addElement(s.doc, at.id, shape), { select: [shape.id] });
     });
   };
@@ -168,7 +169,7 @@ export function InsertGroup({ onPicture, onSound }: { onPicture: () => void; onS
       const s = useEditor.getState();
       const at = shownSlide();
       if (!s.doc || !at) return;
-      const el = newTimerElement(timerId, currentLook(), s.doc);
+      const el = newTimerElement(timerId, currentLook(), slideCanvas(at, s.doc));
       commit(addElement(s.doc, at.id, el), { select: [el.id] });
     });
   };

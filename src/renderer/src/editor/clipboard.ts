@@ -1,3 +1,4 @@
+import { slideCanvas } from '../../../shared/document-page';
 import type { Outline, Rect, SlideElement, TextShadow } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { findSlide, mapSlide, newId } from './ops';
@@ -47,7 +48,7 @@ export function copyElements(doc: EditDoc, slideId: string, ids: readonly string
   const slide = findSlide(doc, slideId);
   const elements = slide?.elements.filter((el) => ids.includes(el.id)) ?? [];
   if (elements.length === 0) return 0;
-  copied = { elements: structuredClone(elements), width: doc.width, height: doc.height };
+  copied = { elements: structuredClone(elements), ...slideCanvas(slide, doc) };
   keep?.(copied);
   return elements.length;
 }
@@ -133,8 +134,9 @@ export function pasteElements(
 ): { doc: EditDoc; ids: string[] } | null {
   const slide = findSlide(doc, slideId);
   if (!copied || !slide) return null;
-  const sx = doc.width / copied.width;
-  const sy = doc.height / copied.height;
+  const size = slideCanvas(slide, doc);
+  const sx = size.width / copied.width;
+  const sy = size.height / copied.height;
   let elements = freshGroups(
     copied.elements.map((el): SlideElement => ({
       ...(sx === 1 && sy === 1 ? structuredClone(el) : rescaled(structuredClone(el), sx, sy)),

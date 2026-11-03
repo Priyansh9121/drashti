@@ -1,3 +1,4 @@
+import { slideCanvas } from '../../../shared/document-page';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { EditDoc } from '../../../shared/slide-edit';
 import type { TextElement } from '../../../shared/model';
@@ -600,7 +601,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 cancelPicking();
                 return;
               }
-              const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, s.doc);
+              const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, slideCanvas(current, s.doc));
               commit(addElement(s.doc, current.id, el), current.id === s.slideId ? { select: [el.id] } : {});
               const queuedSave = pendingPick.current.save;
               cancelPicking();

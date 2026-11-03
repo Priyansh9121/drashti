@@ -1,3 +1,4 @@
+import { slideCanvas } from '../../../shared/document-page';
 import { useState } from 'react';
 import type { EditorGuides } from '../../../shared/editor-guides';
 import { Button, IconButton } from '../ui/Button';
@@ -41,8 +42,10 @@ export function ArrangeTools() {
     useEditor.setState({ aids: { ...useEditor.getState().aids, [key]: checked } });
     const s = useEditor.getState();
     const current = s.doc ? findSlide(s.doc, s.slideId) : undefined;
-    if (key === 'guides' && checked && s.doc && current && !current.guides)
-      commit(changeSlide(s.doc, current.id, { guides: { x: [s.doc.width / 2], y: [s.doc.height / 2] } }));
+    if (key === 'guides' && checked && s.doc && current && !current.guides) {
+      const size = slideCanvas(current, s.doc);
+      commit(changeSlide(s.doc, current.id, { guides: { x: [size.width / 2], y: [size.height / 2] } }));
+    }
   };
   return (
     <>
@@ -132,6 +135,7 @@ function GuideDialog({ onClose }: { onClose: () => void }) {
   const doc = useEditor((s) => s.doc);
   const slideId = useEditor((s) => s.slideId);
   const slide = doc ? findSlide(doc, slideId) : undefined;
+  const size = doc ? slideCanvas(slide, doc) : null;
   const guides = slide?.guides ?? { x: [], y: [] };
   const set = (next: EditorGuides, coalesce?: string) => {
     const s = useEditor.getState();
@@ -166,10 +170,10 @@ function GuideDialog({ onClose }: { onClose: () => void }) {
                   <NumberInput
                     aria-label={`${axis === 'x' ? 'Across' : 'Down'} guide ${i + 1}`}
                     min={0}
-                    max={axis === 'x' ? doc?.width : doc?.height}
+                    max={axis === 'x' ? size?.width : size?.height}
                     value={n}
                     onChange={(e) => {
-                      const max = (axis === 'x' ? doc?.width : doc?.height) ?? 16384;
+                      const max = (axis === 'x' ? size?.width : size?.height) ?? 16384;
                       set(
                         {
                           ...guides,
@@ -196,7 +200,7 @@ function GuideDialog({ onClose }: { onClose: () => void }) {
               onClick={() =>
                 set({
                   ...guides,
-                  [axis]: [...guides[axis], ((axis === 'x' ? doc?.width : doc?.height) ?? 0) / 2],
+                  [axis]: [...guides[axis], ((axis === 'x' ? size?.width : size?.height) ?? 0) / 2],
                 })
               }
             >

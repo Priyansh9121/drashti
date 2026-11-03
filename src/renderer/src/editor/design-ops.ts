@@ -1,3 +1,4 @@
+import { slideCanvas } from '../../../shared/document-page';
 import type { SlideLayout, TextElement } from '../../../shared/model';
 import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
 import { findSlide, mapSlide, newSlide, newTextBox } from './ops';
@@ -10,6 +11,7 @@ export function ensureMaster(doc: EditDoc): EditDoc {
 export function applyLayout(doc: EditDoc, slideId: string, layout: SlideLayout, look: SlideLook): EditDoc {
   const slide = findSlide(doc, slideId);
   if (!slide || slide.deck) return doc;
+  const size = slideCanvas(slide, doc);
   const boxes = slide.elements.filter((el): el is TextElement => el.kind === 'text' && !el.groupId);
   const needed = layout === 'words' ? 1 : 2;
   const added: TextElement[] = [];
@@ -44,7 +46,7 @@ export function applyLayout(doc: EditDoc, slideId: string, layout: SlideLayout, 
       }
       return [
         box.id,
-        { x: x * doc.width, y: y * doc.height, width: width * doc.width, height: height * doc.height },
+        { x: x * size.width, y: y * size.height, width: width * size.width, height: height * size.height },
       ] as const;
     }),
   );
