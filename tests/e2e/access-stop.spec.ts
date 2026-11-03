@@ -286,6 +286,11 @@ test('with no answer: no bar at the first missed checks; after 2 minutes (12 s h
     // The strip kept for the line is there, empty, before anything is missed.
     await expect(win.getByTestId('access-offline-notices')).toBeVisible();
     await expect(line).toHaveCount(0);
+    // The viewport's column constraint must have committed before the unchanged Pro baseline.
+    await expect(win.getByRole('separator', { name: 'Resize the playlists', exact: true })).toHaveAttribute(
+      'aria-valuemax',
+      '244',
+    );
     const before = await layout(win);
     expect(before.length).toBeGreaterThan(5);
     const tries = list.tries;
