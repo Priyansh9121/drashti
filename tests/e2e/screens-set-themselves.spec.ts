@@ -59,7 +59,7 @@ const jobs = (win: Page) =>
     const s = await (globalThis as PageGlobals).drashti.screens.get();
     // A build before Session 55 (a red run's) has no `uses`: no display has a job there.
     return ((s.uses as typeof s.uses | undefined) ?? [])
-      .filter((u) => u.displayId >= first && u.screenId !== null)
+      .filter((u) => u.displayId >= first && u.displayId < first + 4 && u.screenId !== null)
       .map((u) => `${String(u.displayId - first + 1)}: ${u.role === 'stage' ? 'stage' : 'audience'}`);
   }, PRETEND);
 
@@ -186,11 +186,33 @@ test('two projectors of one model, each on the other’s port: each goes back to
 test('the controls’ display is never taken; Not used is remembered by the display, unplugged and after a restart, until a job is given by hand', async () => {
   test.setTimeout(150_000);
   const env = { ...AUTO, DRASHTI_EXTRA_DISPLAYS: '2', DRASHTI_TEST_CONTROLS_DISPLAY: String(PRETEND) };
-  const { app, userData } = await launchApp(env);
+  const nativeId = PRETEND + 100;
+  // A native Windows display may have an id above the pretend range. Replace only this app's native
+  // inventory before plugging in the pretend projectors; the app reads these methods on each refresh.
+  const highNativeHost = (target: ElectronApplication) =>
+    target.evaluate(({ screen }, id) => {
+      const host = {
+        ...screen.getPrimaryDisplay(),
+        id,
+        label: 'Placeholder native host display',
+        internal: false,
+      };
+      screen.getAllDisplays = () => [host];
+      screen.getPrimaryDisplay = () => host;
+    }, nativeId);
+  const nativeJob = (page: Page) =>
+    page.evaluate(async (id) => {
+      const s = await (globalThis as PageGlobals).drashti.screens.get();
+      return s.uses.find((u) => u.displayId === id)?.screenId;
+    }, nativeId);
+  const { app, userData } = await launchApp({ ...env, DRASHTI_EXTRA_DISPLAYS: '0' });
   const win = await operatorPage(app);
   await operatorReady(win);
+  await highNativeHost(app);
+  await plugIn(app, 2);
   // The first pretend display has the controls: the second is the audience's.
   await expect.poll(() => jobs(win)).toEqual(['2: audience']);
+  expect(await nativeJob(win), 'the native host is outside the pretend-only assignment inventory').toBeNull();
   await holdStill(async () => (await jobs(win)).length === 1, 2000, 'the controls’ display is never taken');
 
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
@@ -210,10 +232,13 @@ test('the controls’ display is never taken; Not used is remembered by the disp
   await app.close();
 
   // After a restart too; then given a job by hand, it is its.
-  const again = await relaunchApp(userData, env);
+  const again = await relaunchApp(userData, { ...env, DRASHTI_EXTRA_DISPLAYS: '0' });
   const win2 = await operatorPage(again.app);
   await operatorReady(win2);
+  await highNativeHost(again.app);
+  await plugIn(again.app, 2);
   await holdStill(async () => (await jobs(win2)).length === 0, 3000, 'Not used is kept with the library');
+  expect(await nativeJob(win2), 'the restarted native host is never given a pretend-only job').toBeNull();
   const given = await win2.evaluate(
     (d) => (globalThis as PageGlobals).drashti.screens.setJob(d, 'stage'),
     PRETEND + 1,

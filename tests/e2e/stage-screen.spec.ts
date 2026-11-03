@@ -305,6 +305,218 @@ async function framesOf(video: Locator): Promise<{ count: number; capture: numbe
   );
 }
 
+/** Passive stage-input diagnostics: object references stay in this page; only bounded facts leave it. */
+async function stageVideoFacts(page: Page, side: 'stage' | 'hall'): Promise<unknown> {
+  return page.evaluate((side) => {
+    const globals = globalThis as unknown as { __stageVideoFacts?: () => unknown };
+    if (!globals.__stageVideoFacts) {
+      type Role = 'stage-input' | 'stage-audience' | 'hall-input';
+      const roles: { role: Role; selector: string }[] =
+        side === 'stage'
+          ? [
+              { role: 'stage-input', selector: '[data-stage-box="videoInput"] video' },
+              { role: 'stage-audience', selector: '[data-stage-box="audience"] [data-kind="input"] video' },
+            ]
+          : [{ role: 'hall-input', selector: '[data-kind="input"] video' }];
+      const first = new Map<
+        Role,
+        { video: HTMLVideoElement; stream: MediaStream | null; tracks: MediaStreamTrack[] }
+      >();
+      const observedTracks = new WeakSet<MediaStreamTrack>();
+      const events: unknown[] = [];
+      let droppedEvents = 0;
+      let tracksObserved = 0;
+      const number = (n: number): number | null =>
+        Number.isFinite(n) ? Math.round(Math.max(-1e6, Math.min(1e6, n)) * 1000) / 1000 : null;
+      const visibility = () => (document.visibilityState === 'visible' ? 'visible' : 'hidden');
+      const streamOf = (v: HTMLVideoElement) => (v.srcObject instanceof MediaStream ? v.srcObject : null);
+      const remember = (role: Role, video: HTMLVideoElement) => {
+        let saved = first.get(role);
+        if (!saved) {
+          const stream = streamOf(video);
+          saved = { video, stream, tracks: stream?.getTracks() ?? [] };
+          first.set(role, saved);
+        }
+        return saved;
+      };
+      const identities = (role: Role, video: HTMLVideoElement) => {
+        const saved = remember(role, video);
+        const stream = streamOf(video);
+        const tracks = stream?.getTracks() ?? [];
+        return {
+          sameVideoAsFirstObserved: saved.video === video,
+          firstHadStream: saved.stream !== null,
+          sameStreamAsFirstObserved:
+            saved.stream !== null && stream !== null ? saved.stream === stream : null,
+          sameTracksAsFirstObserved:
+            saved.tracks.length > 0 && tracks.length > 0
+              ? saved.tracks.length === tracks.length && tracks.every((t) => saved.tracks.includes(t))
+              : null,
+        };
+      };
+      const push = (event: unknown) => {
+        if (events.length < 128) events.push(event);
+        else droppedEvents++;
+      };
+      const watchTracks = (role: Role, video: HTMLVideoElement) => {
+        for (const track of (streamOf(video)?.getTracks() ?? []).slice(0, 4)) {
+          if (observedTracks.has(track) || tracksObserved >= 16) continue;
+          observedTracks.add(track);
+          tracksObserved++;
+          for (const name of ['ended', 'mute', 'unmute'] as const)
+            track.addEventListener(
+              name,
+              () => {
+                const current = document.querySelector<HTMLVideoElement>(
+                  roles.find((r) => r.role === role)?.selector ?? 'video[data-no-stage-role]',
+                );
+                push({
+                  atMs: number(performance.now()),
+                  role,
+                  event: `track-${name}`,
+                  visibility: visibility(),
+                  kind: track.kind === 'video' ? 'video' : track.kind === 'audio' ? 'audio' : 'other',
+                  readyState: track.readyState,
+                  muted: track.muted,
+                  enabled: track.enabled,
+                  sameTrackAsFirstObserved: remember(role, video).tracks.includes(track),
+                  trackStillOnCurrentVideo:
+                    current !== null && (streamOf(current)?.getTracks().includes(track) ?? false),
+                });
+              },
+              { passive: true },
+            );
+        }
+      };
+      for (const name of ['play', 'playing', 'pause', 'waiting', 'stalled'] as const)
+        document.addEventListener(
+          name,
+          (event) => {
+            const video = event.target;
+            if (!(video instanceof HTMLVideoElement)) return;
+            const role =
+              roles.find((r) => video.matches(r.selector))?.role ??
+              [...first].find(([, saved]) => saved.video === video)?.[0];
+            if (!role) return;
+            const identity = identities(role, video);
+            watchTracks(role, video);
+            push({
+              atMs: number(performance.now()),
+              role,
+              event: name,
+              visibility: visibility(),
+              currentTime: number(video.currentTime),
+              readyState: video.readyState,
+              paused: video.paused,
+              ended: video.ended,
+              connected: video.isConnected,
+              ...identity,
+            });
+          },
+          { capture: true, passive: true },
+        );
+      document.addEventListener(
+        'visibilitychange',
+        () => {
+          push({ atMs: number(performance.now()), event: 'document-visibility', visibility: visibility() });
+        },
+        { passive: true },
+      );
+      globals.__stageVideoFacts = () => {
+        const videos = roles.map(({ role, selector }) => {
+          const video = document.querySelector<HTMLVideoElement>(selector);
+          if (!video) return { role, present: false };
+          const identity = identities(role, video);
+          watchTracks(role, video);
+          const stream = streamOf(video);
+          const style = getComputedStyle(video);
+          const rect = video.getBoundingClientRect();
+          let displayNoneAncestor = false;
+          let hiddenAncestor = false;
+          let transparentAncestor = false;
+          for (
+            let ancestor = video.parentElement, n = 0;
+            ancestor && n < 16;
+            ancestor = ancestor.parentElement, n++
+          ) {
+            const ancestorStyle = getComputedStyle(ancestor);
+            displayNoneAncestor ||= ancestorStyle.display === 'none';
+            hiddenAncestor ||=
+              ancestorStyle.visibility === 'hidden' || ancestorStyle.visibility === 'collapse';
+            transparentAncestor ||= Number(ancestorStyle.opacity) === 0;
+          }
+          return {
+            role,
+            present: true,
+            connected: video.isConnected,
+            currentTime: number(video.currentTime),
+            width: video.videoWidth,
+            height: video.videoHeight,
+            readyState: video.readyState,
+            paused: video.paused,
+            ended: video.ended,
+            display: style.display === 'none' ? 'none' : style.display === 'contents' ? 'contents' : 'box',
+            visibility:
+              style.visibility === 'visible'
+                ? 'visible'
+                : style.visibility === 'hidden'
+                  ? 'hidden'
+                  : style.visibility === 'collapse'
+                    ? 'collapse'
+                    : 'other',
+            opacity:
+              Number(style.opacity) === 0
+                ? 'zero'
+                : Number(style.opacity) === 1
+                  ? 'opaque'
+                  : Number(style.opacity) > 0 && Number(style.opacity) < 1
+                    ? 'partial'
+                    : 'other',
+            rect: {
+              x: number(rect.x),
+              y: number(rect.y),
+              width: number(rect.width),
+              height: number(rect.height),
+            },
+            displayNoneAncestor,
+            hiddenAncestor,
+            transparentAncestor,
+            streamPresent: stream !== null,
+            streamActive: stream?.active ?? null,
+            ...identity,
+            tracks: (stream?.getTracks() ?? []).slice(0, 4).map((track) => ({
+              kind: track.kind === 'video' ? 'video' : track.kind === 'audio' ? 'audio' : 'other',
+              readyState: track.readyState,
+              muted: track.muted,
+              enabled: track.enabled,
+              sameAsFirstObserved: remember(role, video).tracks.includes(track),
+            })),
+          };
+        });
+        const streams = roles.map(({ selector }) => {
+          const v = document.querySelector<HTMLVideoElement>(selector);
+          return v ? streamOf(v) : null;
+        });
+        return {
+          side,
+          atMs: number(performance.now()),
+          documentVisibility: visibility(),
+          videos,
+          stageBoxesShareStream:
+            streams.length === 2 && streams[0] !== null && streams[1] !== null
+              ? streams[0] === streams[1]
+              : null,
+          events: [...events],
+          droppedEvents,
+          tracksObserved,
+          trackObserverLimitReached: tracksObserved >= 16,
+        };
+      };
+    }
+    return globals.__stageVideoFacts();
+  }, side);
+}
+
 test('the video input box shows the chosen input whatever the audience shows; with the audience showing it, one feed; LIVE’s button puts it up and takes it off, the stage never following', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp({ ...FAKE, DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
@@ -338,6 +550,20 @@ test('the video input box shows the chosen input whatever the audience shows; wi
   await expect.poll(async () => (await framesOf(boxVideo)).count, { timeout: 15_000 }).toBeGreaterThan(3);
   expect(await background(win)).toBeNull();
   await expect(hall.locator('[data-kind="input"]')).toHaveCount(0);
+  const attachVideoCheckpoint = async (checkpoint: 'before-audience' | 'after-audience') => {
+    const facts = await Promise.all([
+      stageVideoFacts(stage, 'stage').catch(() => ({ side: 'stage', unavailable: true })),
+      stageVideoFacts(hall, 'hall').catch(() => ({ side: 'hall', unavailable: true })),
+    ]);
+    await test
+      .info()
+      .attach(`stage-video-${checkpoint}`, {
+        body: JSON.stringify({ checkpoint, facts }),
+        contentType: 'application/json',
+      })
+      .catch(() => undefined);
+  };
+  await attachVideoCheckpoint('before-audience');
 
   // LIVE's one press: on the audience, as its background; the button says it is up; the stage as it was.
   const button = win.getByTestId('input-on-audience');
@@ -373,6 +599,7 @@ test('the video input box shows the chosen input whatever the audience shows; wi
     framesOf(boxVideo),
     framesOf(hall.locator('[data-kind="input"] video')),
   ]);
+  await attachVideoCheckpoint('after-audience');
   expect(onStage.count).toBeGreaterThan(3);
   expect(onHall.count).toBeGreaterThan(3);
   // Said in the run's output: whether Chromium gave the frames' capture times here, and how many were shared.
