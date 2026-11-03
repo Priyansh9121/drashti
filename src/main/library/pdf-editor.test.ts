@@ -25,7 +25,9 @@ import { themeLook } from './themes';
 // real. No import, extraction, source cache, provenance or writer is mocked.
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 vi.mock('../ipc/handle', () => ({
-  handle: (channel: string, fn: (...args: unknown[]) => unknown) => { handlers.set(channel, fn); },
+  handle: (channel: string, fn: (...args: unknown[]) => unknown) => {
+    handlers.set(channel, fn);
+  },
 }));
 beforeEach(() => handlers.clear());
 
@@ -42,21 +44,22 @@ function fixtureLocation(): () => void {
   for (const key of keys) process.env[key] = home;
   if (resolve(tmpdir()) !== home) {
     for (const entry of before) {
-      if (entry.value === undefined) delete process.env[entry.key];
+      if (entry.value === undefined) Reflect.deleteProperty(process.env, entry.key);
       else process.env[entry.key] = entry.value;
     }
     throw new Error('The generated PDF fixture temp root must be inside this worktree.');
   }
   return () => {
     for (const entry of before) {
-      if (entry.value === undefined) delete process.env[entry.key];
+      if (entry.value === undefined) Reflect.deleteProperty(process.env, entry.key);
       else process.env[entry.key] = entry.value;
     }
   };
 }
 
 function stamp(w: World, id: string): string | null {
-  const row = w.db.prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
+  const row = w.db
+    .prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
     .get(id) as { updated_at: string; content_rev: number } | undefined;
   return row ? row.updated_at + '#' + String(row.content_rev) : null;
 }
@@ -87,11 +90,21 @@ describe('real PDF editor copy source protection', () => {
       const revisions = new Revisions();
       const kept = vi.spyOn(revisions, 'keep'); // Observe real in-memory revision writes; no stub.
       slides = registerSlidesIpc({
-        db: world.db, presentations, revisions, settings: new SettingsRepo(world.db),
-        fromOperator: () => true, mayPrepareSource: () => true,
-        sourceReader: nativeSourceReader, sourceWrite: sourceWrite(world.db),
+        db: world.db,
+        presentations,
+        revisions,
+        settings: new SettingsRepo(world.db),
+        fromOperator: () => true,
+        mayPrepareSource: () => true,
+        sourceReader: nativeSourceReader,
+        sourceWrite: sourceWrite(world.db),
         lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
-        changed: (ids) => { published.push(ids); }, saved: (change) => { saved.push(change); },
+        changed: (ids) => {
+          published.push(ids);
+        },
+        saved: (change) => {
+          saved.push(change);
+        },
       });
       const registered = slides;
       const event = { sender: Object.assign(new EventEmitter(), { isDestroyed: () => false }) } as never;
@@ -102,26 +115,44 @@ describe('real PDF editor copy source protection', () => {
       if (!result.ok) throw new Error(result.message);
       const opened: Opened = result;
       expect(editDocSchema.safeParse(opened.doc).success).toBe(true);
-      expect(opened.doc.groups.flatMap((group) => group.slides).flatMap((slide) => slide.elements)
-        .some((element) => element.kind === 'text' && element.text.includes(PLACEHOLDER_WORDS))).toBe(true);
-      expect(registered.documentForExport(imported.id, opened.doc, opened.stamp).ok,
-        'use the real prepared-source validator, never a seeded trusted document').toBe(true);
+      expect(
+        opened.doc.groups
+          .flatMap((group) => group.slides)
+          .flatMap((slide) => slide.elements)
+          .some((element) => element.kind === 'text' && element.text.includes(PLACEHOLDER_WORDS)),
+      ).toBe(true);
+      expect(
+        registered.documentForExport(imported.id, opened.doc, opened.stamp).ok,
+        'use the real prepared-source validator, never a seeded trusted document',
+      ).toBe(true);
       expect(presentations.content(imported.id)).toEqual(before);
       expect(stamp(world, imported.id)).toBe(beforeStamp);
 
-      const chosen = join(world.root, 'chosen-output'); mkdirSync(chosen);
+      const chosen = join(world.root, 'chosen-output');
+      mkdirSync(chosen);
       const alias = join(chosen, 'Placeholder retained-original alias.pdf');
       linkSync(world.owned, alias);
-      const ownedBefore = inode(world.owned), aliasBefore = inode(alias);
+      const ownedBefore = inode(world.owned),
+        aliasBefore = inode(alias);
       const externalBefore = inode(world.source);
-      expect({ dev: aliasBefore.dev, ino: aliasBefore.ino }).toEqual({ dev: ownedBefore.dev, ino: ownedBefore.ino });
-      expect({ dev: externalBefore.dev, ino: externalBefore.ino }).not.toEqual({ dev: ownedBefore.dev, ino: ownedBefore.ino });
+      expect({ dev: aliasBefore.dev, ino: aliasBefore.ino }).toEqual({
+        dev: ownedBefore.dev,
+        ino: ownedBefore.ino,
+      });
+      expect({ dev: externalBefore.dev, ino: externalBefore.ino }).not.toEqual({
+        dev: ownedBefore.dev,
+        ino: ownedBefore.ino,
+      });
       expect(isInside(realpathSync(world.mediaDir), realpathSync(alias))).toBe(false);
       expect(realpathSync(alias)).not.toBe(realpathSync(world.owned));
-      const bytes = makeTestPdf([{ width: 960, height: 540, color: [40, 80, 120], text: 'Placeholder copied output' }]);
+      const bytes = makeTestPdf([
+        { width: 960, height: 540, color: [40, 80, 120], text: 'Placeholder copied output' },
+      ]);
       expect(bytes).not.toEqual(world.bytes);
       const session = new PdfCopySession({
-        open: () => { throw new Error('The unit hidden-session boundary must not open an Electron window.'); },
+        open: () => {
+          throw new Error('The unit hidden-session boundary must not open an Electron window.');
+        },
         assetDirs: () => [],
         normalize: () => Promise.reject(new Error('No unit print operation is admitted.')),
       });
@@ -129,9 +160,13 @@ describe('real PDF editor copy source protection', () => {
       // bytes. Real plan/source resolution and the protected writer still run.
       const generated = vi.spyOn(session, 'run').mockResolvedValue(new Uint8Array(bytes));
       editor = new PdfEditor({
-        db: world.db, mediaDir: world.mediaDir, session,
-        allowed: () => true, stamp: (id) => stamp(world, id),
-        validate: registered.documentForExport, chooseOutput: () => Promise.resolve(alias),
+        db: world.db,
+        mediaDir: world.mediaDir,
+        session,
+        allowed: () => true,
+        stamp: (id) => stamp(world, id),
+        validate: (...args) => registered.documentForExport(...args),
+        chooseOutput: () => Promise.resolve(alias),
       });
       const copied = await editor.export(event, imported.id, opened.doc, opened.stamp);
       expect(generated).toHaveBeenCalledOnce();
@@ -160,7 +195,9 @@ describe('real PDF editor copy source protection', () => {
         slides?.cancelSourcePreparation();
         await slides?.drainSourcePreparation();
         w?.clean(); // Verified generated fixture root inside this worktree only.
-      } finally { restoreLocation(); }
+      } finally {
+        restoreLocation();
+      }
     }
   });
 });
