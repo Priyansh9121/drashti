@@ -192,6 +192,11 @@ const bridge: DrashtiBridge = {
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
     slidesForEdit: (presentationId) => invoke(IPC.library.slidesForEdit, presentationId),
+    pdfPageSources: () => invoke(IPC.library.pdfPageSources),
+    insertPdfPages: (presentationId, stamp, sourceId) =>
+      invoke(IPC.library.insertPdfPages, presentationId, stamp, sourceId),
+    cancelPdfInsertion: (presentationId, stamp) =>
+      invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
     exportPdf: (presentationId, doc, stamp) => invoke(IPC.library.exportPdf, presentationId, doc, stamp),
     saveSlides: (presentationId, doc, stamp, force = false) =>
       invoke(IPC.library.saveSlides, presentationId, doc, stamp, force),

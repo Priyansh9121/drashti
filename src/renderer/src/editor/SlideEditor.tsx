@@ -54,6 +54,7 @@ import { Inspector } from './Inspector';
 import { MediaPicker, naturalSize } from './MediaPicker';
 import {
   addElement,
+  addSlideAfter,
   changeSlide,
   findSlide,
   mapElements,
@@ -69,6 +70,7 @@ import { WordsGroup } from './WordsGroup';
 import { zoomIn, zoomOut } from './zoom';
 import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
+import { PdfInsertDialog } from './PdfInsertDialog';
 import type { PdfPendingAction } from './PdfTools';
 import { SourceIssues } from './SourceIssues';
 import { isPdfPage, pdfEditorTabs, visibleEditorGroup } from './pdf-context';
@@ -140,6 +142,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
   const [pickingBusy, setPickingBusy] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
+  const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
+  const insertBase = useRef<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const pdfJob = useRef(false);
   const pendingPick = useRef<{ id: number; busy: boolean; save: boolean | null }>({
     id: 0,
@@ -234,6 +238,23 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     commit(removed.doc, { select: [] });
     showSlide(removed.show);
   };
+  const closeInsertion = () => {
+    insertBase.current = null;
+    pdfJob.current = false;
+    setInserting(null);
+    setPdfPending(null);
+  };
+  const openInsertion = () => {
+    if (pdfJob.current || exportBusy) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId || now.sourceConversion) return;
+    insertBase.current = { doc: now.doc, slideId: now.slideId, stamp: now.stamp };
+    pdfJob.current = true;
+    useEditor.setState({ pdfTool: null });
+    setPdfPending('insert-pages');
+    setInserting(insertBase.current);
+  };
   const savePdfCopy = async () => {
     const before = useEditor.getState();
     if (
@@ -304,6 +325,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
+      if (insertBase.current) {
+        e.preventDefault();
+        return;
+      }
       if (key === 's' || e.key === 'Enter') {
         e.preventDefault();
         saveWhenReady();
@@ -478,7 +503,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                     shownPage.documentPage.height !== undefined &&
                     !shownPage.documentPage.rotation),
                 deletePage: !!doc && slidesOf(doc).length > 1,
-                insertPages: false,
+                insertPages: !!doc,
                 saveCopy: !!doc,
               }}
               activeTool={pdfTool}
@@ -493,6 +518,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onCover={() => choosePdfTool('cover')}
               onRotateRight={rotatePdfPage}
               onDeletePage={deleteCurrentPdfPage}
+              onInsertPages={openInsertion}
               onSaveCopy={() => {
                 void savePdfCopy();
               }}
@@ -607,6 +633,31 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               cancelPicking();
               if (queuedSave !== null) void saveSlides(queuedSave);
             });
+          }}
+        />
+      )}
+      {inserting && (
+        <PdfInsertDialog
+          presentationId={inserting.doc.presentationId}
+          stamp={inserting.stamp}
+          onClose={closeInsertion}
+          onInserted={(pages, issues) => {
+            const base = insertBase.current;
+            const now = useEditor.getState();
+            if (base?.doc !== now.doc || now.stamp !== base.stamp) {
+              tell('The slides changed while the pages were prepared. Choose Insert pages again.');
+              return;
+            }
+            let next = base.doc,
+              after = base.slideId;
+            for (const page of pages) {
+              next = addSlideAfter(next, after, page);
+              after = page.id;
+            }
+            commit(next, { select: [] });
+            const first = pages[0];
+            if (first) showSlide(first.id);
+            useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
           }}
         />
       )}

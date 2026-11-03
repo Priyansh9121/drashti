@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { rawContent } from './deck-edit-fixtures';
 import { importAndGetIds, openLibrary, slideEditorClosed, slideEditorWindow } from './helpers';
 import {
+  type GeneratedSourcePage,
   generatedPdf,
   openGeneratedPdf,
   PDF_LABELS,
@@ -14,7 +15,7 @@ import {
 } from './pdf-tools-fixtures';
 import { inspectPdf, occurrences } from './pdf-export-oracle';
 
-const inserted = [
+const inserted: [GeneratedSourcePage, GeneratedSourcePage] = [
   { width: 360, height: 240, marker: 'Placeholder inserted A', oldWords: 'Placeholder insertion words A' },
   { width: 240, height: 360, marker: 'Placeholder inserted B', oldWords: 'Placeholder insertion words B' },
 ];
@@ -71,14 +72,14 @@ test('inserting retained PDF pages keeps their order, paper, words and originals
     for (const [at, paper] of inserted.entries()) {
       const page = saved.slides[at + 1];
       if (!page) throw new Error('The inserted persisted page is missing.');
-      expect(JSON.parse(String(page.document_page))).toMatchObject({
+      expect(JSON.parse(String(page['document_page']))).toMatchObject({
         sha256: hash,
         ext: 'pdf',
         page: at,
         width: paper.width,
         height: paper.height,
       });
-      expect(JSON.parse(String(page.page_size))).toEqual({ width: paper.width, height: paper.height });
+      expect(JSON.parse(String(page['page_size']))).toEqual({ width: paper.width, height: paper.height });
     }
     expect(rawContent(s.userData, sourceId)).toEqual(originalSource);
     await openLibrary(s.win);

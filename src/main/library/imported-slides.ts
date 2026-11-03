@@ -1,3 +1,7 @@
+import { slideCanvas } from '../../shared/document-page';
+import { freshGroups } from '../../shared/element-groups';
+import { renderEditedSlide } from '../../shared/slide-design';
+import type { InsertPdfPagesResult } from '../../shared/slide-edit';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -39,7 +43,7 @@ const sameSource = (a: DocumentPageRef | undefined, b: DocumentPageRef | undefin
 
 /** Native working copies belong to an editor stamp; they never replace stored playback merely on open. */
 export class ImportedSlides {
-  private readonly prepared = new Map<string, { stamp: string; doc: EditDoc }>();
+  private readonly prepared = new Map<string, { stamp: string; doc: EditDoc; inserted: Set<string> }>();
   private readonly originals: OriginalsStore;
   private readonly media: MediaStore;
   private readonly reader: SourceReader;
@@ -216,13 +220,102 @@ export class ImportedSlides {
     if (!allowed()) throw new Error('Source preparation cancelled.');
     for (const slide of slides) if (slide.documentPage) slide.sourceOccurrenceId = slide.id;
     this.prepared.delete(doc.presentationId);
-    this.prepared.set(doc.presentationId, { stamp, doc: structuredClone(doc) });
+    this.prepared.set(doc.presentationId, { stamp, doc: structuredClone(doc), inserted: new Set() });
     while (this.prepared.size > 8) {
       const oldest = this.prepared.keys().next().value;
       if (oldest === undefined) break;
       this.prepared.delete(oldest);
     }
     return { doc, issues: [...new Set(issues)] };
+  }
+
+  /** Prepare an existing retained PDF, then authorize fresh occurrences for this editor stamp.
+   * Neither the source presentation nor the target's stored rows are changed. */
+  async insertFromPdf(
+    targetRows: ContentRows,
+    targetName: string,
+    stamp: string,
+    sourceRows: ContentRows,
+    sourceName: string,
+    sourceStamp: string,
+    guard: SourceCommitGuard,
+  ): Promise<InsertPdfPagesResult> {
+    const cached = this.prepared.get(targetRows.presentationId);
+    const baseline =
+      cached?.stamp === stamp
+        ? { ...cached, doc: structuredClone(cached.doc), inserted: new Set(cached.inserted) }
+        : { stamp, doc: editDocOf(targetRows, targetName).doc, inserted: new Set<string>() };
+    const source = editDocOf(sourceRows, sourceName);
+    if (source.unreadable)
+      return {
+        ok: false,
+        message:
+          'Some objects in that PDF cannot be copied. Open it in Edit slides and review its limits first.',
+      };
+    const prepared = await this.prepare(sourceRows, source.doc, sourceStamp, guard);
+    const original = allSlides(prepared.doc);
+    if (!original.length || original.length > 400 || baseline.inserted.size + original.length > 400)
+      return {
+        ok: false,
+        message: 'Insert at most 400 PDF pages in one editor session. Save and reopen before adding more.',
+      };
+    if (
+      original.some(
+        (page) =>
+          page.deck !== undefined ||
+          page.pageSize === undefined ||
+          (page.documentPage !== undefined && page.documentPage.ext !== 'pdf'),
+      )
+    )
+      return {
+        ok: false,
+        message:
+          'The PDF source pages are not ready to copy. Restore its original and reopen it in Edit slides first.',
+      };
+    const pages = original.map((page): EditSlide => {
+      const rendered = renderEditedSlide(prepared.doc, page);
+      const masterUsed = !!prepared.doc.master && !page.design?.skipMaster;
+      const id = randomUUID();
+      const { deck: _deck, sourceOccurrenceId: _occurrence, ...content } = page;
+      return {
+        ...content,
+        id,
+        elements: freshGroups(rendered.elements.map((element) => ({ ...element, id: randomUUID() }))),
+        cues: page.cues.map((cue) => ({ ...cue, id: randomUUID() })),
+        background: rendered.background,
+        darken: rendered.darken ?? null,
+        pageSize: slideCanvas(page, prepared.doc),
+        design: {
+          ...page.design,
+          skipMaster: true,
+          ...(rendered.backdrop ? { backdrop: rendered.backdrop } : {}),
+        },
+        ...(page.documentPage
+          ? {
+              documentPage: { ...page.documentPage, ...(masterUsed ? { edited: true } : {}) },
+              sourceOccurrenceId: id,
+            }
+          : {}),
+      };
+    });
+    let first = baseline.doc.groups[0];
+    if (!first) {
+      first = { id: randomUUID(), name: 'Pages', color: null, slides: [] };
+      baseline.doc.groups.push(first);
+    }
+    first.slides.push(...pages);
+    if (!editDocSchema.safeParse(baseline.doc).success)
+      return { ok: false, message: 'These pages exceed the editor limits. Insert a smaller PDF instead.' };
+    if (guard.signal.aborted || !guard.allowed()) throw new Error('Source preparation cancelled.');
+    for (const page of pages) baseline.inserted.add(page.id);
+    this.prepared.delete(targetRows.presentationId);
+    this.prepared.set(targetRows.presentationId, baseline);
+    while (this.prepared.size > 8) {
+      const oldest = this.prepared.keys().next().value;
+      if (oldest === undefined) break;
+      this.prepared.delete(oldest);
+    }
+    return { ok: true, pages, issues: prepared.issues };
   }
 
   /** Restore untouched original rows; only actual object edits save the prepared native page. */
@@ -274,7 +367,7 @@ export class ImportedSlides {
       const untouched =
         !globalContentChanged && sameData(contentOf(slide, copied), contentOf(original, copied));
       if (untouched) {
-        const saved = stored.get(original.id);
+        const saved = stored.get(original.id) ?? (cached?.inserted.has(original.id) ? original : undefined);
         if (!saved)
           return { ok: false, message: 'The original page is no longer available. Reopen the editor.' };
         // Only the prepared objects are restored; notes, position, hide, guides and transitions still save.

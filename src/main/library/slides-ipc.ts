@@ -1,3 +1,4 @@
+import type { InsertPdfPagesResult, PdfPageSource } from '../../shared/slide-edit';
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { CUT, type Transition } from '../../shared/model';
@@ -80,7 +81,8 @@ export function registerSlidesIpc({
   const generations = new Map<string, AbortController>();
   // Cancellation removes controllers immediately; these complete chains outlive
   // the reader queue while Main stages assets or removes its private files.
-  const preparations = new Set<Promise<EditSlidesResult>>();
+  const preparations = new Set<Promise<unknown>>();
+  const insertions = new Map<string, { controller: AbortController; sender: number; stamp: string }>();
   const cancelSourcePreparation = (presentationId?: string) => {
     for (const [id, controller] of generations)
       if (presentationId === undefined || presentationId === id) {
@@ -153,6 +155,90 @@ export function registerSlidesIpc({
     }
     return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
   });
+
+  handle(IPC.library.pdfPageSources, (e): PdfPageSource[] => {
+    if (!fromOperator(e) || !mayPrepareSource(e)) return [];
+    return db
+      .prepare(
+        `
+      SELECT p.id, p.name, (SELECT COUNT(*) FROM slides s JOIN slide_groups g ON g.id = s.group_id WHERE g.presentation_id = p.id) AS pages
+      FROM presentations p WHERE p.deleted_at IS NULL AND p.source_kind = 'pictures'
+        AND lower(p.source_path) LIKE '%.pdf' ORDER BY p.name COLLATE NOCASE, p.id
+    `,
+      )
+      .all() as PdfPageSource[];
+  });
+
+  handle(IPC.library.cancelPdfInsertion, (e, rawId, stamp): boolean => {
+    const id = idSchema.safeParse(rawId);
+    if (!id.success || !fromOperator(e)) return false;
+    const current = insertions.get(id.data);
+    if (current?.sender !== e.sender.id || current.stamp !== stamp) return false;
+    current.controller.abort();
+    return true;
+  });
+
+  handle(
+    IPC.library.insertPdfPages,
+    (e, rawId, rawStamp, rawSource): InsertPdfPagesResult | Promise<InsertPdfPagesResult> => {
+      if (!fromOperator(e) || !mayPrepareSource(e)) return onlyOperator;
+      const id = idSchema.safeParse(rawId),
+        sourceId = idSchema.safeParse(rawSource);
+      if (
+        !id.success ||
+        !sourceId.success ||
+        id.data === sourceId.data ||
+        typeof rawStamp !== 'string' ||
+        rawStamp.length > 1024
+      )
+        return { ok: false, message: 'Choose another PDF in the library, or duplicate this page instead.' };
+      const target = presentations.content(id.data),
+        source = presentations.content(sourceId.data);
+      const targetStamp = stampOf(id.data),
+        sourceStamp = stampOf(sourceId.data);
+      const sourcePdf = db
+        .prepare(
+          "SELECT 1 FROM presentations WHERE id = ? AND deleted_at IS NULL AND source_kind = 'pictures' AND lower(source_path) LIKE '%.pdf'",
+        )
+        .get(sourceId.data);
+      if (!target || !source || !targetStamp || !sourceStamp || !sourcePdf || targetStamp.stamp !== rawStamp)
+        return {
+          ok: false,
+          message: 'That PDF or this presentation changed. Reopen the editor and choose the PDF again.',
+        };
+      cancelSourcePreparation();
+      const controller = new AbortController();
+      generations.set(id.data, controller);
+      insertions.set(id.data, { controller, sender: e.sender.id, stamp: rawStamp });
+      const allowed = () =>
+        !controller.signal.aborted &&
+        generations.get(id.data) === controller &&
+        fromOperator(e) &&
+        mayPrepareSource(e) &&
+        stampOf(id.data)?.stamp === rawStamp &&
+        stampOf(sourceId.data)?.stamp === sourceStamp.stamp;
+      const preparing: Promise<InsertPdfPagesResult> = imported
+        .insertFromPdf(target, targetStamp.name, rawStamp, source, sourceStamp.name, sourceStamp.stamp, {
+          signal: controller.signal,
+          allowed,
+        })
+        .catch((): InsertPdfPagesResult =>
+          controller.signal.aborted
+            ? { ok: false, cancelled: true, message: 'Inserting the PDF pages was cancelled.' }
+            : {
+                ok: false,
+                message: 'Those PDF pages could not be inserted. Reopen the editor and choose the PDF again.',
+              },
+        )
+        .finally(() => {
+          if (generations.get(id.data) === controller) generations.delete(id.data);
+          if (insertions.get(id.data)?.controller === controller) insertions.delete(id.data);
+          preparations.delete(preparing);
+        });
+      preparations.add(preparing);
+      return preparing;
+    },
+  );
 
   const validateDocument = (
     presentationId: unknown,

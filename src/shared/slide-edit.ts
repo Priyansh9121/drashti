@@ -325,3 +325,12 @@ export function legacyFontOf(el: SlideElement): string | null {
   const run = el.runs?.find((r) => r.legacy);
   return run ? (run.font ?? 'a legacy font') : null;
 }
+
+/** An imported PDF available as an insertion source; no filesystem path crosses IPC. */
+export interface PdfPageSource {
+  id: string;
+  name: string;
+  pages: number;
+}
+export type InsertPdfPagesResult =
+  { ok: true; pages: EditSlide[]; issues: string[] } | { ok: false; message: string; cancelled?: true };

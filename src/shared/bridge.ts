@@ -1,3 +1,4 @@
+import type { PdfPageSource, InsertPdfPagesResult } from './slide-edit';
 import type { ReadyReport } from './ready';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
@@ -316,6 +317,9 @@ export interface DrashtiBridge {
     /** A presentation's slides, everything on them, and how new text looks, for the slide editor. */
     slidesForEdit(presentationId: string): Promise<EditSlidesResult>;
     /** Save a separate PDF from the current editor document; never saves or closes the presentation. */
+    pdfPageSources(): Promise<PdfPageSource[]>;
+    insertPdfPages(presentationId: string, stamp: string, sourceId: string): Promise<InsertPdfPagesResult>;
+    cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
     exportPdf(presentationId: string, doc: EditDoc, stamp: string): Promise<PdfCopyResult>;
     /**
      * Put edited slides back as one change (Undo brings back the copy kept

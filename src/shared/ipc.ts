@@ -1,3 +1,4 @@
+import type { PdfPageSource, InsertPdfPagesResult } from './slide-edit';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
@@ -332,6 +333,9 @@ export const IPC = {
     slidesForEdit: 'library:slides-for-edit',
     saveSlides: 'library:save-slides',
     exportPdf: 'library:export-pdf',
+    pdfPageSources: 'library:pdf-page-sources',
+    insertPdfPages: 'library:insert-pdf-pages',
+    cancelPdfInsertion: 'library:cancel-pdf-insertion',
     /** The transition for presentations without their own; changing it is for the operator window only. */
     getDefaultTransition: 'library:get-default-transition',
     setDefaultTransition: 'library:set-default-transition',
@@ -1215,6 +1219,12 @@ export interface InvokeContract {
   [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
+  [IPC.library.pdfPageSources]: { args: []; result: PdfPageSource[] };
+  [IPC.library.insertPdfPages]: {
+    args: [presentationId: string, stamp: string, sourceId: string];
+    result: InsertPdfPagesResult;
+  };
+  [IPC.library.cancelPdfInsertion]: { args: [presentationId: string, stamp: string]; result: boolean };
   [IPC.library.exportPdf]: {
     args: [presentationId: string, doc: EditDoc, stamp: string];
     result: PdfCopyResult;
