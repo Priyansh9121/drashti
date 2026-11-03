@@ -1,6 +1,9 @@
 export type SourceQuitResult =
   { confirmed: true } | { confirmed: false; reason: 'timeout' | 'failed' | 'quarantined' };
 
+// Internal classification, never operator-facing message text.
+const FAILED_STOP = 'failed';
+
 interface SourceQuitDeps {
   cancel(): void;
   /** True only after owned work stopped; retainOutput/quarantine must return false. */
@@ -52,12 +55,12 @@ export class SourceQuitGate {
         (confirmed) =>
           finish(
             cancelFailed
-              ? { confirmed: false, reason: 'failed' }
+              ? { confirmed: false, reason: FAILED_STOP }
               : confirmed
                 ? { confirmed: true }
                 : { confirmed: false, reason: 'quarantined' },
           ),
-        () => finish({ confirmed: false, reason: 'failed' }),
+        () => finish({ confirmed: false, reason: FAILED_STOP }),
       );
     return this.flight;
   }

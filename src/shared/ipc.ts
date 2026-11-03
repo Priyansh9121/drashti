@@ -971,12 +971,12 @@ export const IPC = {
     switchAnswer: 'output:switch-answer',
   },
   pdfExport: {
-    capture: 'pdf-export:capture',
-    job: 'pdf-export:job',
-    print: 'pdf-export:print',
-    normalized: 'pdf-export:normalized',
-    done: 'pdf-export:done',
-    asset: 'pdf-export:asset',
+    capture: 'pdfcopy:capture',
+    job: 'pdfcopy:job',
+    print: 'pdfcopy:print',
+    normalized: 'pdfcopy:normalized',
+    done: 'pdfcopy:done',
+    asset: 'pdfcopy:asset',
   },
   pictures: {
     /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
