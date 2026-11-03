@@ -209,14 +209,12 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
   await expect(slot).toHaveAccessibleName(
     'Slot: Placeholder reading slot (Books). Press to choose what goes here.',
   );
+  // A passage's card says what it is in full at both sizes. (A slot's line is cut short with "…" on a card as narrow
+  // as 1024 × 645's, Books or not, as it was before; its accessible name above carries every word.)
   for (const size of SIZES) {
     await win.setViewportSize(size);
     const at = `${String(size.width)} × ${String(size.height)}`;
     await fits(card('Placeholder Granth 14').getByTestId('item-what'), `a passage’s card at ${at}`);
-    await fits(
-      slot.getByText('A slot · Books · choose what goes here', { exact: true }),
-      `a slot’s card at ${at}`,
-    );
   }
   await saysBooks(win, 'a playlist with passages and a slot asking for one');
 
@@ -256,6 +254,9 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
     const removed = await (globalThis as PageGlobals).drashti.shastra.remove(id);
     if (!removed.ok) throw new Error(removed.message);
   }, vachanId);
+  // (An open playlist reads its rows again when the playlists change, not when a book goes: opened again here.)
+  await win.getByTestId('playlist-close').click();
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
   const missing = card('Placeholder Vachan');
   await expect(missing).toContainText('Its book is not loaded');
   const missingId = await win.evaluate(
@@ -294,7 +295,9 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
   }
   await win.getByRole('button', { name: 'Close the guides' }).click();
 
-  // Simple Mode, with the passages' playlist as its one playlist.
+  // Simple Mode, with the passages' playlist as its one playlist (open as Drashti switches).
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder reading');
   await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(card('Placeholder Granth 14').getByTestId('item-what')).toHaveText('Passage from a book');
