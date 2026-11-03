@@ -103,6 +103,19 @@ describe('the guides’ keys and Drashti’s, both ways', () => {
   it('the key card lists every key in the keymap', () => {
     const card = new Set(cardKeys());
     expect([...all].filter((k) => !card.has(k))).toEqual([]);
+    const blocks = parseMarkdown(read('parallel-run.md'));
+    const editor = blocks.findIndex(
+      (b) => b.kind === 'paragraph' && inlineText(b.children) === 'In the slide editor:',
+    );
+    expect(editor, 'the editor key card follows its actual introduction').toBeGreaterThanOrEqual(0);
+    const table = blocks[editor + 1];
+    expect(table?.kind).toBe('table');
+    const rows = table?.kind === 'table' ? table.rows.map((r) => r.cells.map(inlineText)) : [];
+    expect(rows).toContainEqual(['Alt (while dragging)', 'Place freely, without snapping']);
+    expect(rows).toContainEqual([
+      'Shift (while dragging a corner or the turn handle)',
+      'Keep the proportions (a picture or video keeps them anyway: Shift lets them go); turn in steps of 15 degrees',
+    ]);
   });
 
   it('every key on the key card is in the keymap, or named as another’s', () => {

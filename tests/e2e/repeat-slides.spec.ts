@@ -190,8 +190,11 @@ test('Simple Mode starts and stops Repeat Slides, and changes none of its settin
     { oneId, twoId },
   );
   // Open in Pro Mode, it is Simple Mode's one playlist (Session 55, Part 18).
-  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Hall Pictures' }).click();
+  // The row's Start is a separate control: open its visible name, not that control at the row's centre.
+  const repeatRow = win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Hall Pictures' });
+  await repeatRow.getByText('Placeholder Hall Pictures', { exact: true }).click();
   await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder Hall Pictures');
+  expect((await snapshot(win)).repeat).toBeNull();
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(win.getByTestId('simple-repeat-start')).toBeVisible();

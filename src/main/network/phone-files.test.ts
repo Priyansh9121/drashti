@@ -231,16 +231,30 @@ describe('a file a phone added', () => {
     expect(imported).toHaveLength(1);
     const pptx = makeZip([{ name: 'ppt/presentation.xml', data: '<p:presentation/>' }]);
     const notes: string[] = [];
+    let signalWaiting = (): void => undefined;
+    const waiting = new Promise<'waiting'>((resolve) => {
+      signalWaiting = () => resolve('waiting');
+    });
     const deck = files.arrived(
       sent(pptx, 'Placeholder deck.pptx', { ext: 'pptx', kind: 'powerpoint' }),
-      (m) => notes.push(m),
+      (m) => {
+        notes.push(m);
+        signalWaiting();
+      },
     );
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(notes).toEqual([DECK_WAITS]);
-    expect(imported).toHaveLength(1);
-    onAir = false;
-    expect(await deck).toMatchObject({ ok: true });
-    expect(imported).toHaveLength(2);
+    try {
+      // File inspection is asynchronous: observe the waiting note rather than guessing its duration.
+      expect(await Promise.race([waiting, deck.then(() => 'finished' as const)])).toBe('waiting');
+      expect(notes).toEqual([DECK_WAITS]);
+      expect(imported).toHaveLength(1);
+      onAir = false;
+      expect(await deck).toMatchObject({ ok: true });
+      expect(imported).toHaveLength(2);
+    } finally {
+      // A failed assertion must finish this upload before the fixture closes its database and folder.
+      onAir = false;
+      await Promise.allSettled([deck]);
+    }
   });
 
   it('nothing while the switch is off: refused, never imported, and the file sent removed', async () => {

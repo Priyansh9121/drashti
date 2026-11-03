@@ -306,24 +306,73 @@ test('a table cell stays editable inside its group; leaving typing selects the g
     await ed.getByTestId('table-columns').fill('2');
     await ed.getByRole('button', { name: 'Add table', exact: true }).click();
     const canvas = editor.getByTestId('editor-canvas');
+    // Keep the exposed edge of an offset copy within the picker’s screen-pixel tolerance on every platform.
+    await editor.getByTestId('zoom-out').click();
+    await expect(editor.getByTestId('zoom-fit')).toHaveAttribute('aria-pressed', 'false');
+    for (let step = 0; step < 14; step++) {
+      const previousScale = await canvas.getAttribute('data-scale');
+      const zoomScale = Number(previousScale);
+      if (Math.abs(zoomScale - 0.25) < 0.0001) break;
+      await editor.getByTestId(zoomScale > 0.25 ? 'zoom-out' : 'zoom-in').click();
+      await expect(canvas).not.toHaveAttribute('data-scale', previousScale ?? '');
+    }
+    await expect(canvas).toHaveAttribute('data-scale', '0.2500');
     const box = await canvas.boundingBox();
     if (!box) throw new Error('no canvas');
+    const selectionGeometry = () =>
+      editor.locator('[data-selected]').evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const rect = node.getBoundingClientRect();
+          return {
+            id: node.getAttribute('data-selected'),
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+      );
     await ed.mouse.dblclick(box.x + box.width * 0.3, box.y + box.height * 0.35);
     const typing = editor.locator('[data-editing="true"] .ProseMirror');
     await expect(typing).toBeVisible();
     await typing.fill('Placeholder table cell');
     await ed.keyboard.press('Escape');
     await expect(editor.getByTestId('editor-status')).toHaveText('8 elements selected');
+    const originalSelection = await selectionGeometry();
     await canvas.focus();
     await ed.keyboard.press(`${mod}+D`);
     await expect(editor.getByTestId('editor-slide').locator('[data-element]')).toHaveCount(17);
     await expect(editor.getByTestId('editor-status')).toHaveText('8 elements selected');
+    const copiedSelection = await selectionGeometry();
+    const canvasAfterCopy = await canvas.boundingBox();
+    const copyGroup = await editor.getByTestId('group-box').boundingBox();
     const scale = Number(await canvas.getAttribute('data-scale'));
     // Inside the cell's left border, away from the group's resize handles.
     const grab = { x: box.x + box.width * 0.1 + 4 * scale, y: box.y + box.height * 0.35 };
     await ed.mouse.click(grab.x, grab.y);
     await expect(editor.getByTestId('editor-status')).toHaveText('8 elements selected');
     const originalGroup = await editor.getByTestId('group-box').boundingBox();
+    await test.info().attach('group-selection-geometry', {
+      body: JSON.stringify(
+        {
+          cachedCanvas: box,
+          canvasAfterCopy,
+          canvasAfterClick: await canvas.boundingBox(),
+          scaleAfterCopy: scale,
+          scaleAfterClick: await canvas.getAttribute('data-scale'),
+          fitAfterClick: await canvas.getAttribute('data-fit'),
+          grab,
+          originalSelection,
+          copiedSelection,
+          selectionAfterClick: await selectionGeometry(),
+          copyGroup,
+          groupAfterClick: originalGroup,
+        },
+        null,
+        2,
+      ),
+      contentType: 'application/json',
+    });
     expect(Math.abs((originalGroup?.x ?? -999) - (box.x + box.width * 0.1))).toBeLessThan(2);
     await ed.keyboard.down('Shift');
     await ed.mouse.click(grab.x, grab.y);

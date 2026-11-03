@@ -48,6 +48,24 @@ describe('turned frames', () => {
     expect(hitTest(els, { x: 10, y: 10 })).toBe('under');
     expect(hitTest(els, { x: 500, y: 500 })).toBeNull();
   });
+
+  it('picks an exact frame before a nearby topmost frame’s tolerance, keeping fuzzy-only targets pickable', () => {
+    const original = { id: 'original', frame: { x: 96, y: 100, width: 300, height: 120 } };
+    const copy = { id: 'copy', frame: { x: 120, y: 124, width: 300, height: 120 } };
+    const elements = [original, copy];
+    const point = { x: 100, y: 180 };
+    // At 25% zoom, the copy is six screen pixels away; the visible original must still be selectable.
+    expect(contains(original, point)).toBe(true);
+    expect(contains(copy, point)).toBe(false);
+    expect(contains(copy, point, 24)).toBe(true);
+    expect(hitTest(elements, point)).toBe('original');
+    expect(hitTest(elements, point, 24)).toBe('original');
+    // Both exact frames contain this point: the upper one still wins.
+    expect(hitTest(elements, { x: 140, y: 180 }, 24)).toBe('copy');
+    const line = { id: 'line', frame: { x: 0, y: 49, width: 300, height: 2 } };
+    expect(hitTest([line], { x: 150, y: 56 })).toBeNull();
+    expect(hitTest([line], { x: 150, y: 56 }, 6)).toBe('line');
+  });
 });
 
 describe('resizing', () => {

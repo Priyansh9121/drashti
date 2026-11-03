@@ -162,3 +162,74 @@ test('Simple Mode’s Help › Guides… shows only the operator’s and the pre
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
   await app.close();
 });
+
+test('the bundled editor guide finds crop, master, timed motion and the slide strip at useful passages', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await chooseMenuItem(app, 'guides');
+  const guides = win.getByTestId('guides');
+  await expect(guides).toBeVisible();
+  for (const topic of [
+    { query: 'Crop picture', lead: 'Crop only this slide.', detail: 'other uses' },
+    { query: 'Use master background', lead: 'One shared master.', detail: 'takes priority' },
+    { query: 'Comes in', lead: 'Motion timing.', detail: 'from the slide going up' },
+    { query: 'Slides across', lead: 'Slides and notes.', detail: 'one Undo' },
+  ]) {
+    await guides.getByRole('searchbox').fill(topic.query);
+    const hit = guides.getByTestId('guide-results').getByTestId('guide-hit').filter({ hasText: topic.lead });
+    await expect(hit).toHaveCount(1);
+    await expect(hit).toContainText('10. Editing slides in its own window');
+    await hit.click();
+    const shown = guides.locator('[data-passage][data-current="true"]');
+    await expect(shown).toContainText(topic.lead);
+    await expect(shown).toContainText(topic.detail);
+    await expect(shown).toBeInViewport();
+    await expect
+      .poll(() =>
+        guides.locator('img').evaluateAll((imgs) => imgs.every((i) => (i as HTMLImageElement).complete)),
+      )
+      .toBe(true);
+    await expect(shown).toBeInViewport();
+  }
+  await expectNoSeriousA11yIssues(win, 'the editor instructions in Guides');
+  await win.keyboard.press('Escape');
+  await expect(guides).toBeHidden();
+  await app.close();
+});
+
+test('Simple Mode can read its phone exceptions without gaining the setup guides', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await chooseMenuItem(app, 'guides');
+  const guides = win.getByTestId('guides');
+  await expect(guides.getByRole('tab')).toHaveText(['Operator', 'Presenter']);
+  await guides.getByRole('searchbox').fill('phone Simple Mode');
+  const hit = guides
+    .getByTestId('guide-results')
+    .getByTestId('guide-hit')
+    .filter({ hasText: 'The phone in Simple Mode.' });
+  await expect(hit).toHaveCount(1);
+  await hit.click();
+  const shown = guides.locator('[data-passage][data-current="true"]');
+  await expect(shown).toContainText('own playlist');
+  await expect(shown).toContainText('Play resumes');
+  await expect(shown).toContainText('Pause and marker jumps');
+  await expect(shown).toContainText('refused');
+  await expect(shown).toContainText('Added from Phones');
+  await expect(shown).toContainText('not into this playlist');
+  await expect(shown).toBeInViewport();
+  const permissions = await win.evaluate(async () => {
+    const g = (globalThis as PageGlobals).drashti.guides;
+    return [await g.read('admin'), await g.read('setup-day')].map((r) => r.ok);
+  });
+  expect(permissions).toEqual([false, false]);
+  await win.keyboard.press('Escape');
+  await expect(guides).toBeHidden();
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+  await app.close();
+});

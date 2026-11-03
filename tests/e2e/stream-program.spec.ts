@@ -156,14 +156,27 @@ test('only the stream’s page may use the camera and microphone; the operator w
   await useFakeInputs(win);
   await expect(program.getByTestId('program-root')).toHaveAttribute('data-camera', 'on');
 
-  const ask = (page: Page) =>
-    page.evaluate(async () => {
+  const ask = (page: Page, selected: { cameraId: string; microphoneId: string } | null = null) =>
+    page.evaluate(async (selected) => {
       const all = await navigator.mediaDevices.enumerateDevices();
       const devices = all
         .filter((d) => d.kind === 'videoinput' || d.kind === 'audioinput')
         .map((d) => d.label);
       const sounds = all.filter((d) => d.kind === 'audioinput').map((d) => d.label);
-      const asked = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(
+      // Match the Program's named inputs and unprocessed mixer feed. The operator's denied request
+      // stays unchanged; the allowed probe never falls back to a real/default input or voice processing.
+      const constraints: MediaStreamConstraints = selected
+        ? {
+            video: { deviceId: { exact: selected.cameraId } },
+            audio: {
+              deviceId: { exact: selected.microphoneId },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          }
+        : { video: true, audio: true };
+      const asked = await navigator.mediaDevices.getUserMedia(constraints).then(
         (stream) => {
           for (const t of stream.getTracks()) t.stop();
           return 'granted';
@@ -183,7 +196,7 @@ test('only the stream’s page may use the camera and microphone; the operator w
         asked,
         shared,
       };
-    });
+    }, selected);
   // The operator window: a camera's name, for a video input's pictures (Session 50), but never a microphone's; no
   // camera and microphone together, no capture.
   const operator = await ask(win);
@@ -191,7 +204,11 @@ test('only the stream’s page may use the camera and microphone; the operator w
   expect(operator.asked).not.toBe('granted');
   expect(operator.shared).toBe('refused');
   // The stream's page: it sees and opens them.
-  const stream = await ask(program);
+  const inputs = (await status(win)).inputs;
+  const cameraId = inputs.cameras[0]?.id;
+  const microphoneId = inputs.microphones[0]?.id;
+  if (!cameraId || !microphoneId) throw new Error('The generated camera and microphone are missing');
+  const stream = await ask(program, { cameraId, microphoneId });
   expect(stream.labels.length).toBeGreaterThan(0);
   expect(stream.asked).toBe('granted');
   await app.close();

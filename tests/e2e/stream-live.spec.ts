@@ -1,9 +1,18 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { MkvCluster } from '../../src/main/stream/worker/mkv';
 import { MkvSplitter } from '../../src/main/stream/worker/mkv';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
@@ -26,6 +35,7 @@ import {
   freePort,
   readFlv,
   rtmpListener,
+  type RtmpReceiverObservation,
   setUpStream as setUp,
   streamPage,
   TEST_KEY,
@@ -170,59 +180,181 @@ test('cut the connection mid-stream: it reconnects by itself, and the recording 
   test.setTimeout(120_000);
   const port = await freePort();
   const dir = mkdtempSync(join(tmpdir(), 'drashti-reconnect-'));
-  const first = rtmpListener(ffmpeg ?? '', port, join(dir, 'first.flv'));
+  const observedSince = Date.now();
+  const observations: ({ receiver: 'first' | 'second'; atMs: number } & RtmpReceiverObservation)[] = [];
+  const note = (receiver: 'first' | 'second') => (event: RtmpReceiverObservation) => {
+    observations.push({ receiver, atMs: Date.now() - observedSince, ...event });
+  };
+  const first = rtmpListener(ffmpeg ?? '', port, join(dir, 'first.flv'), note('first'));
   listeners.push(first);
+  const receivers = [first];
   const { app, userData } = await launchApp(FAKE);
-  const win = await operatorPage(app);
-  await operatorReady(win);
-  await setUp(app, win, port, dir);
-  const started = await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const rec = await d.stream.startRecording();
-    const on = await d.stream.goLive({ confirmed: true });
-    return [rec.ok, on.ok];
-  });
-  expect(started).toEqual([true, true]);
-  await waitLive(win, userData, 'live', 30_000);
-  await expect(win.getByTestId('rec')).toBeVisible();
-  const recordingSince = Date.now();
-  await letTimePass(win, 3000, 'the stream and the recording run a few seconds');
+  let activePage: Page | undefined;
+  let closed = false;
+  const attachReconnectFacts = async () => {
+    const output = resolve(test.info().outputPath('reconnect-diagnostics'));
+    const underResults = relative(resolve(process.cwd(), 'test-results'), output);
+    if (!underResults || underResults.startsWith('..') || isAbsolute(underResults)) return;
+    mkdirSync(output, { recursive: true });
+    const status = activePage
+      ? await bridge(activePage)
+          .status()
+          .catch(() => null)
+      : null;
+    const encoder = status?.encoder?.includes('VideoToolbox')
+      ? 'videotoolbox'
+      : status?.encoder?.includes('x264')
+        ? 'x264'
+        : status?.encoder?.includes('NVENC')
+          ? 'nvenc'
+          : status?.encoder?.includes('Quick Sync')
+            ? 'qsv'
+            : status?.encoder?.includes('AMD')
+              ? 'amf'
+              : status?.encoder
+                ? 'other'
+                : 'none';
+    const telemetry = status
+      ? {
+          encoder,
+          programOn: status.programOn,
+          fps: status.live.fps,
+          droppedFrames: status.live.droppedFrames,
+          liveState: status.live.state,
+          reconnects: status.live.reconnects,
+          retryAt: status.live.retryAt,
+          bitrateKbps: status.live.bitrateKbps,
+          recordingState: status.recording.state,
+          recordingBytes: status.recording.bytes,
+        }
+      : null;
+    const preserveGenerated = (file: string, name: string): boolean => {
+      try {
+        copyFileSync(file, join(output, name));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const received = ['first.flv', 'second.flv'].map((name, index) => {
+      const file = join(dir, name);
+      try {
+        const bytes = statSync(file).size;
+        const preserved = preserveGenerated(file, `receiver-${String(index + 1)}.flv`);
+        return { receiver: index === 0 ? 'first' : 'second', exists: true, bytes, preserved };
+      } catch {
+        return { receiver: index === 0 ? 'first' : 'second', exists: false, bytes: null };
+      }
+    });
+    const recordings = readdirSync(dir, { withFileTypes: true })
+      .filter((file) => file.isFile() && file.name.endsWith('.mkv'))
+      .map((file, index) => {
+        try {
+          const parsed = readRecording(join(dir, file.name));
+          const preserved = preserveGenerated(join(dir, file.name), `recording-${String(index + 1)}.mkv`);
+          const pictures = parsed.clusters.flatMap((cluster, at) =>
+            cluster.startsPicture ? [parsed.seconds[at] ?? null] : [],
+          );
+          return {
+            index,
+            readable: true,
+            preserved,
+            bytes: parsed.bytes,
+            header: parsed.header,
+            clusters: parsed.clusters.length,
+            keyframes: pictures.length,
+            firstSeconds: parsed.seconds[0] ?? null,
+            lastSeconds: parsed.seconds.at(-1) ?? null,
+            keyframeSeconds: pictures,
+          };
+        } catch {
+          return { index, readable: false };
+        }
+      });
+    const facts = {
+      atMs: Date.now() - observedSince,
+      telemetry,
+      receiverEvents: observations,
+      receivers: receivers.map((child, index) => ({
+        receiver: index === 0 ? 'first' : 'second',
+        exitCode: child.exitCode,
+        signal: child.signalCode,
+        killed: child.killed,
+      })),
+      received,
+      recordings,
+      publicStatusDoesNotExposeEncodingBacklogOrRecordingRate: true,
+    };
+    await test.info().attach('reconnect-failure-facts', {
+      body: JSON.stringify(facts, null, 2),
+      contentType: 'application/json',
+    });
+  };
+  try {
+    const win = await operatorPage(app);
+    activePage = win;
+    await operatorReady(win);
+    await setUp(app, win, port, dir);
+    const started = await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const rec = await d.stream.startRecording();
+      const on = await d.stream.goLive({ confirmed: true });
+      return [rec.ok, on.ok];
+    });
+    expect(started).toEqual([true, true]);
+    await waitLive(win, userData, 'live', 30_000);
+    await expect(win.getByTestId('rec')).toBeVisible();
+    const recordingSince = Date.now();
+    await letTimePass(win, 3000, 'the stream and the recording run a few seconds');
 
-  // The far end goes away, as when the internet drops.
-  first.kill('SIGKILL');
-  await waitLive(win, userData, 'reconnecting', 30_000);
-  await expect(win.getByTestId('stream-live-message')).toContainText('Trying again');
-  await expect(win.getByTestId('on-air')).toContainText('reconnecting');
-  // Recording goes on meanwhile.
-  expect((await bridge(win).status()).recording.state).toBe('recording');
-  await letTimePass(win, 2000, 'the recording goes on while the stream tries again');
+    // The far end goes away, as when the internet drops.
+    first.kill('SIGKILL');
+    await waitLive(win, userData, 'reconnecting', 30_000);
+    await expect(win.getByTestId('stream-live-message')).toContainText('Trying again');
+    await expect(win.getByTestId('on-air')).toContainText('reconnecting');
+    // Recording goes on meanwhile.
+    expect((await bridge(win).status()).recording.state).toBe('recording');
+    await letTimePass(win, 2000, 'the recording goes on while the stream tries again');
 
-  // It comes back: Drashti connects again by itself.
-  listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'second.flv')));
-  await waitLive(win, userData, 'live', 45_000);
-  const after = await bridge(win).status();
-  expect(after.live.reconnects).toBeGreaterThanOrEqual(1);
-  await letTimePass(win, 3000, 'the stream and the recording run on once it is back');
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    await d.stream.end({ confirmed: true });
-    await d.stream.stopRecording();
-  });
-  const recordedFor = (Date.now() - recordingSince) / 1000;
-  await expect.poll(async () => (await bridge(win).status()).recording.state).toBe('off');
-  await app.close();
+    // It comes back: Drashti connects again by itself.
+    const second = rtmpListener(ffmpeg ?? '', port, join(dir, 'second.flv'), note('second'));
+    receivers.push(second);
+    listeners.push(second);
+    await waitLive(win, userData, 'live', 45_000);
+    const after = await bridge(win).status();
+    expect(after.live.reconnects).toBeGreaterThanOrEqual(1);
+    await letTimePass(win, 3000, 'the stream and the recording run on once it is back');
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      await d.stream.end({ confirmed: true });
+      await d.stream.stopRecording();
+    });
+    const recordedFor = (Date.now() - recordingSince) / 1000;
+    await expect.poll(async () => (await bridge(win).status()).recording.state).toBe('off');
+    await app.close();
+    closed = true;
 
-  // One recording, from start to end, with no gap where the connection dropped.
-  const files = readdirSync(dir).filter((f) => f.endsWith('.mkv'));
-  expect(files).toHaveLength(1);
-  const { header, clusters, seconds: times } = readRecording(join(dir, files[0] ?? ''));
-  expect(header).toBe(true);
-  expect(clusters[0]?.startsPicture).toBe(true);
-  // Clusters are up to a keyframe apart (2 s): a dropped connection would leave a longer gap.
-  const longestGap = Math.max(...times.slice(1).map((t, i) => t - (times[i] ?? 0)));
-  expect(longestGap).toBeLessThan(2.5);
-  expect(times.at(-1) ?? 0).toBeGreaterThan(recordedFor - 3);
-  expect(existsSync(join(dir, 'second.flv'))).toBe(true);
+    // One recording, from start to end, with no gap where the connection dropped.
+    const files = readdirSync(dir).filter((f) => f.endsWith('.mkv'));
+    expect(files).toHaveLength(1);
+    const { header, clusters, seconds: times } = readRecording(join(dir, files[0] ?? ''));
+    expect(header).toBe(true);
+    expect(clusters[0]?.startsPicture).toBe(true);
+    // Clusters are up to a keyframe apart (2 s): a dropped connection would leave a longer gap.
+    const longestGap = Math.max(...times.slice(1).map((t, i) => t - (times[i] ?? 0)));
+    expect(longestGap).toBeLessThan(2.5);
+    expect(times.at(-1) ?? 0).toBeGreaterThan(recordedFor - 3);
+    expect(existsSync(join(dir, 'second.flv'))).toBe(true);
+  } catch (error) {
+    try {
+      await attachReconnectFacts();
+    } catch {
+      // Preserve the original failure even if its strictly filtered diagnostics cannot be collected.
+    }
+    throw error;
+  } finally {
+    if (!closed) await app.close().catch(() => undefined);
+  }
 });
 
 test('after a run, the made-up key is nowhere: not in the logs, diagnostics, database, backups or the windows', async () => {

@@ -57,8 +57,10 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
   if (options.h264) {
     const recorded = await recordWebm(page, options);
     const bytes = Buffer.from(recorded.base64, 'base64');
-    if (bytes.length < 1000)
+    if (bytes.length < 1000) {
+      console.log(`Generated video failure lifecycle: ${JSON.stringify(recorded.lifecycle)}`);
       throw new Error(`The page recorded no H.264 video (${String(bytes.length)} bytes).`);
+    }
     writeFileSync(file, bytes);
     return file;
   }
@@ -71,6 +73,7 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
       writeFileSync(file, setWebmDuration(bytes, recorded.ms));
       return file;
     }
+    console.log(`Generated video failure lifecycle: ${JSON.stringify(recorded.lifecycle)}`);
     const problem = webm
       ? `its frames ended at ${String(Math.round(last))} ms of ${String(Math.round(recorded.ms))}`
       : `no video (${String(bytes.length)} bytes)`;
@@ -81,70 +84,173 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
   }
 }
 
+/** Bounded numeric/enum diagnostics only; never media, URLs, device names or arbitrary error text. */
+interface VideoFixtureLifecycle {
+  draws: number;
+  firstDrawAtMs: number | null;
+  lastDrawAtMs: number | null;
+  startCalledAtMs: number | null;
+  startEventAtMs: number | null;
+  stopCalledAtMs: number | null;
+  stopEventAtMs: number | null;
+  dataEvents: number;
+  dataBytes: number;
+  data: { atMs: number; bytes: number }[];
+  lastData: { atMs: number; bytes: number } | null;
+  errorCategory: 'none' | 'recorder-error';
+  errorAtMs: number | null;
+  track: { readyState: 'live' | 'ended'; muted: boolean; enabled: boolean } | null;
+  trackEventCount: number;
+  trackEvents: { atMs: number; event: 'mute' | 'unmute' | 'ended' }[];
+}
+
 /** A WebM (or an MP4) of a canvas recorded in the page, in real time, and how long the recording ran. */
-function recordWebm(page: Page, options: TestVideoOptions): Promise<{ base64: string; ms: number }> {
-  return page.evaluate(
-    async ({ seconds, width, height, fps, tone, hue, h264 }) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('no 2d context');
-      const stream = canvas.captureStream(fps);
-      let audio: AudioContext | null = null;
-      if (tone > 0) {
-        audio = new AudioContext();
-        const osc = audio.createOscillator();
-        osc.frequency.value = tone;
-        const dest = audio.createMediaStreamDestination();
-        osc.connect(dest);
-        osc.start();
-        const track = dest.stream.getAudioTracks()[0];
-        if (track) stream.addTrack(track);
+function recordWebm(
+  page: Page,
+  options: TestVideoOptions,
+): Promise<{ base64: string; ms: number; lifecycle: VideoFixtureLifecycle }> {
+  return page
+    .evaluate(
+      async ({ seconds, width, height, fps, tone, hue, h264 }) => {
+        const observedAt = performance.now();
+        const at = () => Math.round((performance.now() - observedAt) * 1000) / 1000;
+        const lifecycle: VideoFixtureLifecycle = {
+          draws: 0,
+          firstDrawAtMs: null,
+          lastDrawAtMs: null,
+          startCalledAtMs: null,
+          startEventAtMs: null,
+          stopCalledAtMs: null,
+          stopEventAtMs: null,
+          dataEvents: 0,
+          dataBytes: 0,
+          data: [],
+          lastData: null,
+          errorCategory: 'none',
+          errorAtMs: null,
+          track: null,
+          trackEventCount: 0,
+          trackEvents: [],
+        };
+        (
+          globalThis as { drashtiTestVideoFixtureLifecycle?: VideoFixtureLifecycle }
+        ).drashtiTestVideoFixtureLifecycle = lifecycle;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        const stream = canvas.captureStream(fps);
+        const track = stream.getVideoTracks()[0];
+        const trackState = () => {
+          lifecycle.track = track
+            ? { readyState: track.readyState, muted: track.muted, enabled: track.enabled }
+            : null;
+        };
+        trackState();
+        for (const event of ['mute', 'unmute', 'ended'] as const)
+          track?.addEventListener(event, () => {
+            lifecycle.trackEventCount++;
+            if (lifecycle.trackEvents.length < 16) lifecycle.trackEvents.push({ atMs: at(), event });
+            trackState();
+          });
+        let audio: AudioContext | null = null;
+        if (tone > 0) {
+          audio = new AudioContext();
+          const osc = audio.createOscillator();
+          osc.frequency.value = tone;
+          const dest = audio.createMediaStreamDestination();
+          osc.connect(dest);
+          osc.start();
+          const track = dest.stream.getAudioTracks()[0];
+          if (track) stream.addTrack(track);
+        }
+        const mimeType = h264
+          ? 'video/mp4;codecs=avc1.42E01E'
+          : tone > 0
+            ? 'video/webm;codecs=vp8,opus'
+            : 'video/webm;codecs=vp8';
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 400_000,
+          // Frequent key frames, so seeking a test video is quick.
+          videoKeyFrameIntervalDuration: 250,
+        } as MediaRecorderOptions);
+        const chunks: Blob[] = [];
+        recorder.addEventListener('start', () => {
+          lifecycle.startEventAtMs = at();
+          trackState();
+        });
+        recorder.addEventListener('error', () => {
+          lifecycle.errorCategory = 'recorder-error';
+          lifecycle.errorAtMs = at();
+          trackState();
+        });
+        recorder.ondataavailable = (e) => {
+          chunks.push(e.data);
+          const entry = { atMs: at(), bytes: e.data.size };
+          lifecycle.dataEvents++;
+          lifecycle.dataBytes += entry.bytes;
+          if (lifecycle.data.length < 32) lifecycle.data.push(entry);
+          lifecycle.lastData = entry;
+        };
+        const stopped = new Promise((resolve) => {
+          recorder.onstop = (event) => {
+            lifecycle.stopEventAtMs = at();
+            trackState();
+            resolve(event);
+          };
+        });
+        const draw = (t: number) => {
+          lifecycle.draws++;
+          lifecycle.lastDrawAtMs = at();
+          lifecycle.firstDrawAtMs ??= lifecycle.lastDrawAtMs;
+          ctx.fillStyle = `hsl(${hue} 60% 35%)`;
+          ctx.fillRect(0, 0, width, height);
+          // A bar that crosses the frame once over the clip, and the time.
+          ctx.fillStyle = '#fff';
+          ctx.fillRect((t / seconds) * width, 0, Math.max(2, width / 64), height);
+          ctx.font = `${Math.round(height / 5)}px sans-serif`;
+          ctx.fillText(t.toFixed(2), width / 20, height / 3);
+        };
+        draw(0);
+        lifecycle.startCalledAtMs = at();
+        recorder.start(100);
+        const start = performance.now();
+        while (performance.now() - start < seconds * 1000) {
+          draw((performance.now() - start) / 1000);
+          // eslint-disable-next-line no-restricted-syntax -- in the page: a video's frames drawn one each 1/fps s
+          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
+        }
+        const ms = performance.now() - start;
+        lifecycle.stopCalledAtMs = at();
+        recorder.stop();
+        await stopped;
+        await audio?.close();
+        const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000)
+          binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        trackState();
+        return { base64: btoa(binary), ms, lifecycle };
+      },
+      { width: 320, height: 180, fps: 30, tone: 0, hue: 210, h264: false, ...options },
+    )
+    .catch(async (error: unknown) => {
+      try {
+        const lifecycle = await page.evaluate(
+          () =>
+            (globalThis as { drashtiTestVideoFixtureLifecycle?: VideoFixtureLifecycle })
+              .drashtiTestVideoFixtureLifecycle ?? null,
+        );
+        console.log(
+          `Generated video failure lifecycle: ${JSON.stringify({ errorCategory: 'page-evaluate-error', lifecycle })}`,
+        );
+      } catch {
+        // Diagnostic collection must never replace the original recording failure.
       }
-      const mimeType = h264
-        ? 'video/mp4;codecs=avc1.42E01E'
-        : tone > 0
-          ? 'video/webm;codecs=vp8,opus'
-          : 'video/webm;codecs=vp8';
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 400_000,
-        // Frequent key frames, so seeking a test video is quick.
-        videoKeyFrameIntervalDuration: 250,
-      } as MediaRecorderOptions);
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => chunks.push(e.data);
-      const stopped = new Promise((resolve) => (recorder.onstop = resolve));
-      const draw = (t: number) => {
-        ctx.fillStyle = `hsl(${hue} 60% 35%)`;
-        ctx.fillRect(0, 0, width, height);
-        // A bar that crosses the frame once over the clip, and the time.
-        ctx.fillStyle = '#fff';
-        ctx.fillRect((t / seconds) * width, 0, Math.max(2, width / 64), height);
-        ctx.font = `${Math.round(height / 5)}px sans-serif`;
-        ctx.fillText(t.toFixed(2), width / 20, height / 3);
-      };
-      draw(0);
-      recorder.start(100);
-      const start = performance.now();
-      while (performance.now() - start < seconds * 1000) {
-        draw((performance.now() - start) / 1000);
-        // eslint-disable-next-line no-restricted-syntax -- in the page: a video's frames drawn one each 1/fps s
-        await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
-      }
-      const ms = performance.now() - start;
-      recorder.stop();
-      await stopped;
-      await audio?.close();
-      const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer());
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += 0x8000)
-        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      return { base64: btoa(binary), ms };
-    },
-    { width: 320, height: 180, fps: 30, tone: 0, hue: 210, h264: false, ...options },
-  );
+      throw error;
+    });
 }
 
 // ---- WebM --------------------------------------------------------------------

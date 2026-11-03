@@ -37,9 +37,20 @@ export function freePort(): Promise<number> {
   });
 }
 
+/** Receiver observations are categories only: never its stderr, address or made-up key. */
+export type RtmpReceiverObservation =
+  | { kind: 'spawn-error'; category: 'not-found' | 'permission' | 'other' }
+  | { kind: 'stderr'; category: 'bind' | 'connection' | 'input' | 'io' | 'other' }
+  | { kind: 'exit'; code: number | null; signal: NodeJS.Signals | null };
+
 /** FFmpeg waiting for one stream on rtmp://127.0.0.1:<port>/live2/<key>, saving it as FLV. */
-export function rtmpListener(ffmpeg: string, port: number, file: string): ChildProcess {
-  return spawn(
+export function rtmpListener(
+  ffmpeg: string,
+  port: number,
+  file: string,
+  observe?: (event: RtmpReceiverObservation) => void,
+): ChildProcess {
+  const child = spawn(
     ffmpeg,
     [
       '-hide_banner',
@@ -53,11 +64,42 @@ export function rtmpListener(ffmpeg: string, port: number, file: string): ChildP
       'copy',
       '-f',
       'flv',
+      '-flush_packets',
+      '1',
       '-y',
       file,
     ],
-    { stdio: 'ignore', windowsHide: true },
+    { stdio: observe ? ['ignore', 'ignore', 'pipe'] : 'ignore', windowsHide: true },
   );
+  if (observe) {
+    const categories = new Set<string>();
+    let tail = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      // Keep split messages classifiable in RAM, never attach or print their raw contents.
+      tail = (tail + chunk.toString()).slice(-4096);
+      const category = /address already in use|cannot assign requested address|bind failed/iu.test(tail)
+        ? 'bind'
+        : /connection refused|connection reset|connection timed out|broken pipe/iu.test(tail)
+          ? 'connection'
+          : /invalid data|error opening input|could not find codec|end of file/iu.test(tail)
+            ? 'input'
+            : /input\/output error|i\/o error|permission denied|no such file/iu.test(tail)
+              ? 'io'
+              : 'other';
+      if (!categories.has(category)) {
+        categories.add(category);
+        observe({ kind: 'stderr', category });
+      }
+    });
+    child.once('error', (error: NodeJS.ErrnoException) => {
+      observe({
+        kind: 'spawn-error',
+        category: error.code === 'ENOENT' ? 'not-found' : error.code === 'EACCES' ? 'permission' : 'other',
+      });
+    });
+    child.once('exit', (code, signal) => observe({ kind: 'exit', code, signal }));
+  }
+  return child;
 }
 
 /** The stream's own page (the Program), once it is open. */

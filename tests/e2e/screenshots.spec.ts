@@ -62,6 +62,7 @@ import {
   PLAYLIST,
   setUpPlaceholderShow,
   TALK,
+  VIDEO,
   WELCOME,
 } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
@@ -74,6 +75,7 @@ import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeZip } from '../../src/main/import/testing/zip-writer';
 import { dropboxStandIn, folderLink } from './dropbox-stand-in';
+import { longPress } from './phone-gestures';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -145,7 +147,7 @@ async function shot(page: Page, name: string, hide: Locator[] = [], whole = fals
 }
 
 /** A picture of part of the page: the box around these parts (Session 25's close-ups for the guides). */
-async function part(page: Page, name: string, parts: Locator[]) {
+async function part(page: Page, name: string, parts: Locator[], hide: Locator[] = []) {
   mkdirSync(folder, { recursive: true });
   await letTimePass(page, 700, 'the docs’ picture: thumbnails and still frames settle');
   const boxes = (await Promise.all(parts.map((p) => p.boundingBox()))).filter((b) => b !== null);
@@ -157,7 +159,14 @@ async function part(page: Page, name: string, parts: Locator[]) {
     width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
     height: Math.max(...boxes.map((b) => b.y + b.height)) - y,
   };
-  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', clip, animations: 'disabled' });
+  await page.screenshot({
+    path: join(folder, `${name}.png`),
+    scale: 'css',
+    clip,
+    mask: hide,
+    maskColor: '#2a2f3a',
+    animations: 'disabled',
+  });
 }
 
 /**
@@ -594,7 +603,7 @@ test('the stream: the panel on air and recording, its settings, and the Program 
       .toBe('live');
     await expect(win.getByTestId('stream-preview')).toBeVisible();
     await letTimePass(win, 3000, 'the docs’ picture: the preview shows the camera');
-    await shot(win, 'stream-panel');
+    await shot(win, 'stream-panel', [win.getByTestId('stream-recording').locator('p[title]')]);
     await mkdirAndShot(program, 'stream-program-camera');
     await win.getByTestId('stream-layout-slides').click();
     await letTimePass(win, 1000, 'the docs’ picture: the preview shows the slides');
@@ -602,7 +611,7 @@ test('the stream: the panel on air and recording, its settings, and the Program 
     await win.getByTestId('stream-layout-camera').click();
     await win.getByTestId('open-stream-settings').click();
     await expect(win.getByTestId('stream-key-saved')).toBeVisible();
-    await shot(win, 'stream-settings');
+    await shot(win, 'stream-settings', [win.getByTestId('stream-recording').locator('p[title]')]);
     await win.getByRole('button', { name: 'Close stream settings' }).click();
     await win.getByRole('button', { name: 'Close stream' }).click();
     await win.setViewportSize({ width: 1280, height: 720 });
@@ -1592,14 +1601,14 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     await expect(win.getByTestId('link-name')).toHaveText('Placeholder sabha folder');
     await win.getByTestId('link-choose-folder').click();
     await expect(win.getByTestId('link-folder')).toHaveText(chosen);
-    await shot(win, 'import-link-dropbox');
+    await shot(win, 'import-link-dropbox', [win.getByTestId('link-folder')]);
     // On air: it waits, and the status bar shows it.
     await app.evaluate(() => {
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
     });
     await win.getByTestId('link-download').click();
     await expect(win.getByTestId('link-going')).toHaveAttribute('data-phase', 'waiting');
-    await shot(win, 'import-link-waiting');
+    await shot(win, 'import-link-waiting', [win.getByTestId('link-folder')]);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(win.getByTestId('link-status')).toBeVisible();
     await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
@@ -1614,12 +1623,15 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     await win.getByTestId('link-open-report').click({ timeout: 180_000 });
     await expect(report).toBeVisible();
     await expect(report.getByTestId('report-saved-in')).toBeVisible();
-    await shot(win, 'import-link-report');
+    await shot(win, 'import-link-report', [report.getByTestId('report-saved-in').locator('span[title]')]);
     await report.getByRole('button', { name: 'Close', exact: true }).first().click();
     await chooseMenuItem(app, 'import-from-link');
     await expect(win.getByTestId('link-fitted-item')).toBeVisible();
     await expect(win.getByTestId('link-not-taken-item')).toBeVisible();
-    await shot(win, 'import-link-saved');
+    await shot(win, 'import-link-saved', [
+      win.getByTestId('link-folder'),
+      win.getByTestId('link-saved-folder'),
+    ]);
     await app.close();
   } finally {
     await standIn.close();
@@ -1644,7 +1656,8 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
       DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
     });
     const win = await operatorPage(app);
-    await win.setViewportSize({ width: 1280, height: 720 });
+    // Show the whole choices form without a clipped instruction at its scroll edge.
+    await win.setViewportSize({ width: 1280, height: 900 });
     await operatorReady(win);
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
@@ -1659,29 +1672,29 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
   await expect(first.win.getByTestId('link-name')).toHaveText('Placeholder sabha video', { timeout: 60_000 });
   await first.win.getByTestId('link-choose-folder').click();
   await expect(first.win.getByTestId('link-folder')).toHaveText(chosen);
-  await shot(first.win, 'import-link-youtube');
+  await shot(first.win, 'import-link-youtube', [first.win.getByTestId('link-folder')]);
   // The tick, and Download wakes; then downloading.
   await first.win.getByTestId('link-permission').check();
   await expect(first.win.getByTestId('link-download')).toBeEnabled();
-  await shot(first.win, 'import-link-youtube-ticked');
+  await shot(first.win, 'import-link-youtube-ticked', [first.win.getByTestId('link-folder')]);
   await first.win.getByTestId('link-download').click();
   await expect(first.win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p', {
     timeout: 60_000,
   });
   await letTimePass(first.win, 1500, 'the docs’ picture: the download has made some progress');
-  await shot(first.win, 'import-link-youtube-going');
+  await shot(first.win, 'import-link-youtube-going', [first.win.getByTestId('link-folder')]);
   await first.win.getByTestId('link-stop').click();
   // MP3: the best sound, no quality to choose.
   await expect(first.win.getByTestId('link-message')).toContainText('Stopped. Nothing was kept.');
   await first.win.getByTestId('link-type-mp3').click();
   await expect(first.win.getByTestId('link-mp3-words')).toBeVisible();
-  await shot(first.win, 'import-link-youtube-mp3');
+  await shot(first.win, 'import-link-youtube-mp3', [first.win.getByTestId('link-folder')]);
   // The admin's setting at 2160p (4K): 2160p can be picked, 4320p (8K) still cannot.
   await first.win.getByTestId('link-type-mp4').click();
   await first.win.getByTestId('link-max-height').selectOption('2160');
   await expect(first.win.getByTestId('link-quality-2160')).toBeEnabled();
   await first.win.getByTestId('link-quality-2160').click();
-  await shot(first.win, 'import-link-youtube-2160');
+  await shot(first.win, 'import-link-youtube-2160', [first.win.getByTestId('link-folder')]);
   await first.app.close();
   // A video that needs signing in: plain words, and the YouTube Studio way.
   const refused = await launch({
@@ -1802,7 +1815,12 @@ test('this session’s playlists: a Dropbox folder as one playlist a folder at a
     // One click on it puts it up too (Session 54): its card LIVE, as an operator's click leaves it.
     await items.first().click();
     await expect(items.first()).toHaveAttribute('data-live', 'true');
-    await part(win, 'smart-playlist', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
+    await part(
+      win,
+      'smart-playlist',
+      [win.getByTestId('column-left'), win.getByTestId('centre-playlist')],
+      [win.getByTestId('smart-folder')],
+    );
 
     // Repeat Slides going round: LIVE says so, with Stop (Esc).
     await win.getByRole('button', { name: 'New playlist or folder' }).click();
@@ -2818,4 +2836,295 @@ test('the wallpapers: three in the Playlists panel, one chosen to show whenever 
   await expect(tiles.filter({ hasText: 'Placeholder evening' })).toHaveAttribute('aria-pressed', 'true');
   await shot(win, 'wallpapers');
   await app.close();
+});
+
+// Append to tests/e2e/screenshots.spec.ts. The existing 36 cases and their gates stay unchanged.
+for (const guideSize of [
+  { width: 1024, height: 645 },
+  { width: 1280, height: 720 },
+]) {
+  test(
+    'alpha.14 editor groups at ' + String(guideSize.width) + ' by ' + String(guideSize.height),
+    async () => {
+      const { app } = await launchApp();
+      try {
+        const win = await operatorPage(app);
+        await operatorReady(win);
+        const file = join(
+          mkdtempSync(join(tmpdir(), 'drashti-shots-14-editor-')),
+          'Placeholder editor guide.txt',
+        );
+        writeFileSync(
+          file,
+          '[Placeholder group]\nPlaceholder welcome\nPrepared for the next programme\n\nPlaceholder second slide\n\nPlaceholder closing slide\n',
+        );
+        const imported = await importAndGetIds(win, [file]);
+        expect(imported).toHaveLength(1);
+        await openLibrary(win);
+        await win
+          .getByTestId('presentation-list')
+          .getByRole('button', { name: /^Placeholder editor guide/ })
+          .click();
+        await win.getByTestId('edit-slides').click();
+        const { ed, editor } = await slideEditorWindow(app);
+        await sizeSlideEditor(app, ed, guideSize);
+        await expect(editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
+        await expect(editor.getByTestId('editor-slide').locator(':scope > [data-element]')).toHaveCount(1);
+        await expect(editor.getByTestId('editor-slide')).toContainText(
+          'Placeholder welcome\nPrepared for the next programme',
+        );
+        await expect(editor.getByRole('tab')).toHaveText([
+          'Words',
+          'Insert',
+          'Arrange',
+          'Design',
+          'Motion',
+          'Slides',
+        ]);
+        const suffix = '-' + String(guideSize.width) + 'x' + String(guideSize.height);
+        const ribbon = editor.getByTestId('editor-ribbon');
+        const selectSlideContents = async () => {
+          await editor.getByTestId('editor-canvas').focus();
+          await ed.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+        };
+
+        // This is an ordinary generated words presentation, not an imported PDF/deck source edit.
+        await editorGroup(ed, 'Design');
+        await editor.getByTestId('design-background-kind').selectOption('gradient');
+        await editor.getByTestId('design-gradient-from').fill('#14324e');
+        await editor.getByTestId('design-gradient-to').fill('#36576e');
+        await editor.getByTestId('design-master').click();
+        await expect(editor.getByTestId('editor-master-banner')).toBeVisible();
+        await editorGroup(ed, 'Insert');
+        await editor.getByTestId('add-text').click();
+        await editor.locator('[data-editing="true"] .ProseMirror').fill('Placeholder programme');
+        await ed.keyboard.press('Escape');
+        await editorGroup(ed, 'Words');
+        await ribbon.getByTestId('field-font').selectOption('Mukta');
+        await ribbon.getByTestId('field-size').fill('40');
+        await editor.getByTestId('field-x').fill('80');
+        await editor.getByTestId('field-y').fill('920');
+        await editor.getByTestId('field-width').fill('1760');
+        await editor.getByTestId('field-height').fill('80');
+        await editor.getByTestId('master-done').click();
+        await expect(editor.getByTestId('editor-master-banner')).toHaveCount(0);
+        await expect(editor.getByTestId('editor-slide')).toContainText('Placeholder programme');
+
+        await selectSlideContents();
+        await editorGroup(ed, 'Words');
+        await expect(editor.getByTestId('inspector-text')).toBeVisible();
+        await ribbon.getByTestId('field-font').selectOption('Mukta');
+        await ribbon.getByTestId('field-size').fill('84');
+        await ribbon.getByTestId('field-color').fill('#fff4d9');
+        await ribbon.getByTestId('words-align-left').click();
+        await editor.getByTestId('field-x').fill('80');
+        await editor.getByTestId('field-y').fill('80');
+        await editor.getByTestId('field-width').fill('1760');
+        await editor.getByTestId('field-height').fill('240');
+        await expect(ribbon.getByTestId('field-font')).toHaveValue('Mukta');
+        await expect(ribbon.getByTestId('field-size')).toHaveValue('84');
+        await shot(ed, 'editor-words' + suffix);
+
+        await ed.keyboard.press('Escape');
+        await editorGroup(ed, 'Design');
+        await expect(editor.getByTestId('design-background-kind')).toHaveValue('gradient');
+        await expect(editor.getByTestId('design-master')).toBeEnabled();
+        await shot(ed, 'editor-design' + suffix);
+
+        await editorGroup(ed, 'Insert');
+        await editor.getByTestId('add-table').click();
+        await ed.getByTestId('table-rows').fill('2');
+        await ed.getByTestId('table-columns').fill('3');
+        await ed.getByRole('button', { name: 'Add table', exact: true }).click();
+        await expect(editor.getByTestId('editor-slide').locator(':scope > [data-element]')).toHaveCount(13);
+        // Place the generated table below the title, leaving room for the master footer.
+        const slideFrame = await editor.getByTestId('editor-slide').boundingBox();
+        const handle = await editor.getByTestId('group-handle-s').boundingBox();
+        if (!slideFrame || !handle) throw new Error('the table resize handle has a visible frame');
+        const x = handle.x + handle.width / 2;
+        const y = handle.y + handle.height / 2;
+        await ed.mouse.move(x, y);
+        await ed.mouse.down();
+        await ed.mouse.move(x, y - (108 * slideFrame.width) / 1920, { steps: 6 });
+        await ed.mouse.up();
+        await editor.getByTestId('editor-canvas').focus();
+        for (let step = 0; step < 12; step++) await ed.keyboard.press('Shift+ArrowDown');
+        await expect(editor.getByTestId('add-table')).toBeVisible();
+        await expect(editor.getByTestId('add-sound')).toBeVisible();
+        const wordsFrame = await editor
+          .getByTestId('editor-slide')
+          .locator(':scope > [data-element]')
+          .first()
+          .boundingBox();
+        const tableFrame = await editor.getByTestId('group-box').boundingBox();
+        if (!wordsFrame || !tableFrame) throw new Error('the generated title and table have visible frames');
+        expect(tableFrame.y, 'the guide table leaves the generated title readable').toBeGreaterThanOrEqual(
+          wordsFrame.y + wordsFrame.height + 4,
+        );
+        await shot(ed, 'editor-insert' + suffix);
+
+        await selectSlideContents();
+        await editorGroup(ed, 'Arrange');
+        await expect(editor.getByTestId('arrange-group-elements')).toBeEnabled();
+        await editor.getByTestId('arrange-group-elements').click();
+        await expect(editor.getByTestId('arrange-ungroup')).toBeEnabled();
+        await editor.getByTestId('arrange-rulers').check();
+        await editor.getByTestId('arrange-grid').check();
+        await editor.getByTestId('arrange-snap').check();
+        await editor.getByTestId('arrange-guides').check();
+        await expect(editor.getByTestId('editor-rulers')).toBeVisible();
+        await expect(editor.getByTestId('editor-grid')).toBeVisible();
+        await expect(editor.getByTestId('editor-guides')).toBeVisible();
+        await shot(ed, 'editor-arrange' + suffix);
+
+        await editorGroup(ed, 'Motion');
+        await editor.getByTestId('motion-element-in').selectOption('fade');
+        await editor.getByTestId('motion-in-duration').fill('1');
+        await editor.getByTestId('motion-element-emphasis').selectOption('pulse');
+        await editor.getByTestId('motion-emphasis-delay').fill('1.5');
+        await editor.getByTestId('motion-element-out').selectOption('fade');
+        await editor.getByTestId('motion-out-delay').fill('4');
+        await editor.getByTestId('motion-transition').selectOption('dissolve');
+        await editor.getByTestId('motion-transition-seconds').fill('0.4');
+        await editor.getByTestId('motion-auto').check();
+        await editor.getByTestId('motion-auto-seconds').fill('6');
+        await expect(editor.getByTestId('motion-auto')).toBeChecked();
+        await expect(editor.getByTestId('motion-element-in')).toHaveValue('fade');
+        // No preview is played: the authored motion stays still in a guide picture.
+        await shot(ed, 'editor-motion' + suffix);
+
+        await editorGroup(ed, 'Slides');
+        await editor.getByTestId('slides-strip').check();
+        await expect(editor.getByTestId('editor-slides')).toHaveAttribute('data-direction', 'across');
+        await expect(editor.getByTestId('editor-slide-thumb')).toHaveCount(3);
+        await editor.getByTestId('slides-notes').click();
+        await ed.getByTestId('slides-notes-text').fill('Placeholder cue for the presenter.');
+        await ed.getByRole('button', { name: 'Keep notes', exact: true }).click();
+        await expect(ed.getByTestId('slides-notes-dialog')).toHaveCount(0);
+        await expect(editor.getByTestId('slides-notes')).toBeEnabled();
+        await shot(ed, 'editor-slides' + suffix);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+}
+
+test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by 812', async () => {
+  const { app } = await launchApp(NETWORK_ENV);
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const show = await setUpPlaceholderShow(win, { video: true });
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder phone');
+    await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+    await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
+    const phone = await device('chromium');
+    try {
+      const p = phone.page;
+      await p.setViewportSize({ width: 375, height: 812 });
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      await p.getByTestId('remote-tab-playlist').click();
+      await p.getByTestId('remote-playlist').selectOption(show.playlistId);
+      const rows = p.getByTestId('remote-items');
+      const firstVerse = rows.getByTestId('remote-row').filter({ hasText: KIRTAN + '_2' });
+      await expect(
+        rows.locator('[data-testid="remote-item"][data-kind="group"]').filter({ hasText: KIRTAN }),
+      ).toHaveAttribute('aria-expanded', 'true');
+      await expect(rows.getByTestId('remote-row').filter({ hasText: KIRTAN + '_' })).toHaveCount(5);
+      await firstVerse.click();
+      await expect(firstVerse).toHaveAttribute('data-live', 'true');
+      await expect(firstVerse).toBeInViewport();
+      await shot(p, 'phone-playlist-rows-375x812');
+
+      const pictureRow = rows
+        .locator('[data-testid="remote-item"][data-kind="media"]')
+        .filter({ hasText: PICTURE });
+      await longPress(pictureRow);
+      const menu = p.getByTestId('remote-row-menu');
+      await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
+        /Look at it on this phone/u,
+        /Picture editor/u,
+        /Save picture/u,
+        /Pin to the quick bar/u,
+        /Rename/u,
+        /Remove from playlist/u,
+      ]);
+      await expect(menu.getByTestId('remote-menu-edit')).toBeInViewport();
+      await expect(menu.getByTestId('remote-row-menu-close')).toBeInViewport();
+      await shot(p, 'phone-row-menu-375x812');
+      await menu.getByTestId('remote-row-menu-close').click();
+      await expect(menu).toHaveCount(0);
+
+      // Keep the generated two-second clip going through its actual Pro row menu, then pause it.
+      // Loop is an existing Part 9 action; no clock/duration/permission is replaced for the picture.
+      const videoRow = rows
+        .locator('[data-testid="remote-item"][data-kind="media"]')
+        .filter({ hasText: VIDEO });
+      await longPress(videoRow);
+      await menu.getByTestId('remote-menu-when-loop').click();
+      await expect(menu).toHaveCount(0);
+      await expect
+        .poll(async () =>
+          (
+            await win.evaluate(
+              async (id) => (globalThis as PageGlobals).drashti.playlists.items(id),
+              show.playlistId,
+            )
+          ).find((item) => item.kind === 'media' && item.mediaId === show.videoMediaId),
+        )
+        .toMatchObject({ whenEnds: 'loop' });
+      // A separate tap follows the long press's lift guard; its lift must never put the row up.
+      await letTimePass(p, 800, 'the held finger lifts before a separate tap starts the generated video');
+      await videoRow.click();
+      await expect
+        .poll(async () => {
+          const background = (
+            await win.evaluate(
+              async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state,
+            )
+          ).layers.background;
+          return background?.kind === 'media' ? { mediaId: background.mediaId, loop: background.loop } : null;
+        })
+        .toEqual({ mediaId: show.videoMediaId, loop: true });
+      await p.getByTestId('remote-tab-show').click();
+      await expect(p.getByTestId('remote-time-bar-pause')).toBeEnabled();
+      await p.getByTestId('remote-time-bar-pause').click();
+      const bar = p.getByTestId('remote-time-bar-row').filter({ has: p.getByTestId('remote-time-bar-play') });
+      await expect(bar).toHaveAttribute('data-playing', 'background');
+      await expect(bar).toHaveAttribute('data-paused', 'true');
+      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      const simple = p.getByTestId('remote-simple');
+      await expect(simple).toContainText('its playlist “' + PLAYLIST + '”');
+      await expect(simple).toBeInViewport();
+      await expect(bar.getByRole('progressbar', { name: 'Time of the background video' })).toBeVisible();
+      await expect(bar.getByRole('slider')).toHaveCount(0);
+      await expect(bar.getByTestId('remote-time-bar-play')).toBeEnabled();
+      await expect(bar.getByTestId('remote-time-bar-play')).toBeInViewport();
+      await expect(p.getByTestId('remote-quick-bar')).toHaveCount(0);
+      await expect(p.getByTestId('remote-skip-background-forward')).toHaveCount(0);
+      await shot(p, 'phone-simple-controls-375x812');
+
+      await p.getByTestId('remote-tab-playlist').click();
+      await expect(p.getByTestId('remote-playlist')).toHaveValue(show.playlistId);
+      await expect(p.getByTestId('remote-playlist').locator('option')).toHaveCount(1);
+      await longPress(pictureRow);
+      await expect(menu.locator('[data-testid^="remote-menu-"]')).toHaveText([
+        /Look at it on this phone/u,
+        /Save picture/u,
+        /Rename/u,
+        /Remove from playlist/u,
+      ]);
+      await expect(menu.getByTestId('remote-menu-edit')).toHaveCount(0);
+      await expect(menu.getByTestId('remote-row-menu-close')).toBeInViewport();
+      await shot(p, 'phone-simple-row-menu-375x812');
+    } finally {
+      await phone.close();
+    }
+  } finally {
+    await app.close();
+  }
 });

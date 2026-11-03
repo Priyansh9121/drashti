@@ -1,5 +1,7 @@
 # Setting up Drashti's access list in your Google account
 
+These steps prepare the list used by **1.0.0-alpha.14**, including its Pro/Simple access modes and daily check. Keep the same deployment when putting in a later change (section 11).
+
 From version 1.0.0-alpha.13, Drashti opens only for a Gmail that is on its **access list**. From alpha.14, the list also says what each Gmail may use (Pro Mode and Simple Mode, or Simple Mode only), and a computer that has not checked in for 15 days must ask for access again (section 10). The list is a Google Sheet in **your approver Gmail** (the account that approves requests), with a small program behind it (a Google Apps Script "web app") that answers each Drashti, sends the emails from that account, and takes the **Approve** and **Reject** links. Everything is free and stays in your account.
 
 This guide is for you, the owner. It takes about 30 minutes, once. You do every step yourself: Claude never signs in to any Google account. Nothing here needs any programming; you copy and paste five files.
@@ -135,6 +137,8 @@ A token works once, for one computer, and runs out after **3 days**. If yours ru
 - **Never share the Sheet or the script** with anyone: whoever can edit them can let people in.
 - Times in the emails follow the Sheet's time zone (**File › Settings**).
 
+**What the modes cover in this release.** Pro includes preparing presentations in the slide editor’s own window: Words, Insert, Arrange, Design, Motion and Slides, with Undo/Redo, background/master/layout and timed effects, and saved stage/phone notes. The operator guide gives the editing steps; reading it in Simple Mode grants no editing permission. A paired phone in Simple Mode follows that computer’s one playlist and its permitted clears/zoom/Play, with its own-row Rename/Remove/Undo and wallpapers; the presenter guide explains the limits. Files and photos keep going to Added from Phones, not into the Simple playlist. Pair phones and enable their connection/files in Pro first.
+
 ## 11. Putting in a change later (always the same deployment)
 
 When a new Drashti needs a change in the list, Claude names the files to paste again (only those):
@@ -147,7 +151,7 @@ The address and the key stay the same, so the line built into Drashti keeps work
 
 - **Never use New deployment** (it makes a new address).
 - **Never touch the keys** in **Project Settings › Script Properties**, and **never choose Drashti › Set up…** for a change.
-- **Modes and the daily check (alpha.14, 30 Oct 2026):** paste `core.js`, `Code.js`, `Link.html` and `appsscript.json` again (`Setup.html` is unchanged), and save. Before step 2, reload the Sheet's tab and choose **Drashti › Turn on the daily check…** (steps 8.7 to 8.9): Google asks once for its one new permission. Then do steps 2 and 3. Your Sheet needs nothing more: the list adds its **Mode** column by itself at its first call, with `Pro` for every Gmail let in before. Until this new version is deployed, an alpha.14 Drashti waits for the list's answer at each start: it cannot open at once without the internet.
+- **Modes and the daily check (alpha.14):** first check the Sheet’s **File › Settings › Time zone**, then paste `core.js`, `Code.js`, `Link.html` and `appsscript.json` again (`Setup.html` is unchanged), and save. Before step 2, reload the Sheet's tab and choose **Drashti › Turn on the daily check…** (steps 8.7 to 8.9): Google asks once for its one new permission. Then do steps 2 and 3. Your Sheet needs nothing more: the list adds its **Mode** column by itself at its first call, with `Pro` for every Gmail let in before. Until this new version is deployed, an alpha.14 Drashti waits for the list's answer at each start: it cannot open at once without the internet.
 - **Lengths of access (28 Oct 2026):** paste `core.js`, `Code.js` and `Link.html` again (`appsscript.json` and `Setup.html` are unchanged). Your Sheet needs nothing: the list adds its two new columns, **Access ends** (shown) and **Length** (hidden), by itself at its first call, with **Unlimited** for everyone approved before.
 
 ## 12. The limits of a free Google account
@@ -174,6 +178,7 @@ The list's own limits, so that requests never use up the emails tokens need: **5
 - **No Drashti menu in the Sheet:** reload the Sheet's tab and wait a few seconds; check that all five files were saved (step 5).
 - **No Turn on the daily check… in the Drashti menu:** reload the Sheet's tab; check that alpha.14's `Code.js` was pasted and saved (section 11).
 - **Not sure the daily check is on:** choose **Drashti › Turn on the daily check…**. If it is on, it says **The daily check is on**, and makes no second.
+- **Drashti opens online but will not reopen offline just after a check:** check the **published web app version**, even if the pasted files match the release. Saving the files or a script/library version does not publish them. An older published list can still give a valid signed answer for online use without the proof alpha.14 needs to reopen offline. Follow section 11: **Deploy › Manage deployments**, edit the **same deployment**, choose **New version**, then **Deploy**. Keep its address and keys. Reconnect Drashti, let it check access, then try an offline restart again.
 - **The Mode column was deleted or renamed:** the list puts it back empty at its next call, and every Gmail but yours may then use Simple Mode only. For each Gmail that should have Pro, type `Pro` in its **Mode** again, or use **Change the mode…** in the Access List.
 - **Set up… asks for APPROVER_EMAIL:** do step 6, then choose **Drashti › Set up…** again.
 - **The line was not copied, or the window was closed:** choose **Drashti › Set up…** again. It shows the same line (it never makes new keys once it has them).
