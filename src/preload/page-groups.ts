@@ -50,6 +50,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'music',
     'network',
     'nodes',
+    // The opening as Drashti starts, and File › Opening… (Session 55).
+    'opening',
     'output',
     'pip',
     'playlists',

@@ -9,8 +9,9 @@ import { realPlaceAsync } from './contained';
 /*
  * The main-process side of drashti-media://. A window asks for
  * drashti-media://media/<id> (the file), drashti-media://still/<id> (its
- * still frame, for thumbnails) or drashti-media://sharp/<id>/<step> (a
- * picture's sharpened copy, Session 26f); the library says which file that is, and it
+ * still frame, for thumbnails), drashti-media://sharp/<id>/<step> (a
+ * picture's sharpened copy, Session 26f) or drashti-media://opening/<id> (a photo's copy
+ * for the opening, Session 55); the library says which file that is, and it
  * is streamed with byte ranges, so video can seek. Whatever the library
  * says, nothing outside the media folder is served: every refusal is a 404.
  */
@@ -29,6 +30,11 @@ export interface MediaFileRow {
 /** Where a media item's still frame is kept, relative to the media folder. */
 export function stillPath(sha256: string): string {
   return `stills/${sha256}.jpg`;
+}
+
+/** Where a photo's copy for the opening is kept (Session 55, opening/opening-files.ts), relative to the media folder. */
+export function openingCopyPath(sha256: string): string {
+  return `opening/${sha256}.jpg`;
 }
 
 export interface MediaProtocolDeps {
@@ -157,6 +163,8 @@ export type MediaRequest =
   | { what: 'sharp'; mediaId: string; step: number }
   /** A picture's blurred copy (Session 55, Part 5, D). */
   | { what: 'blur'; mediaId: string }
+  /** A photo's copy at the operator window's size, for the opening (Session 55). */
+  | { what: 'opening'; mediaId: string }
   /** A picture one of the guides shows (the guides inside Drashti, Sessions 31–36). */
   | { what: 'guide'; name: string };
 
@@ -183,7 +191,7 @@ export function mediaRequestOf(url: string): MediaRequest | null {
   }
   const mediaId = parsed.pathname.slice(1);
   if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
-  return what === 'media' || what === 'still' || what === 'blur' ? { what, mediaId } : null;
+  return what === 'media' || what === 'still' || what === 'blur' || what === 'opening' ? { what, mediaId } : null;
 }
 
 export interface ByteRange {
@@ -248,6 +256,7 @@ async function fileFor(
   if (asked.what === 'media') row = found;
   else if (!sha) return null;
   else if (asked.what === 'still') row = { path: stillPath(sha) };
+  else if (asked.what === 'opening') row = { path: openingCopyPath(sha) };
   else if (asked.what === 'blur') {
     const copy = deps.blurred?.(sha) ?? null;
     if (!copy) return null;

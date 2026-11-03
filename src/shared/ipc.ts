@@ -13,6 +13,7 @@ import type { WallpaperFiles, WallpaperResult, WallpapersView, WhenEnds } from '
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
+import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -235,6 +236,28 @@ export const IPC = {
     changed: 'drop:changed',
     /** main -> operator: File > Drop Folder… was chosen. */
     open: 'drop:open',
+  },
+  /**
+   * The opening (Session 55, shared/opening.ts): five seconds as Drashti starts, in the operator window only; its
+   * photos and lines chosen in File › Opening… (Pro Mode).
+   */
+  opening: {
+    /** The operator window, as it opens: what to play, or null (main decides: once, and only at the start). */
+    atStart: 'opening:at-start',
+    /** It ended (by itself, a key, a click or a tap): keys are the show's again. */
+    ended: 'opening:ended',
+    view: 'opening:view',
+    setOn: 'opening:set-on',
+    /** The photos (from Media) and the lines, in order. */
+    setChoice: 'opening:set-choice',
+    /** Load the opening pack…: a folder chosen, its photos into Media and they and its lines made the opening's. */
+    loadPack: 'opening:load-pack',
+    /** A photo's copy at the operator window's size, drawn by the window (as a still is). */
+    saveCopy: 'opening:save-copy',
+    /** main -> operator: a key ended it (main keeps that key from the page and the menu). */
+    end: 'opening:end',
+    /** main -> operator: File › Opening… was chosen. */
+    open: 'opening:open',
   },
   /**
    * Updates (Session 14, shared/updates.ts): looking, downloading, installing
@@ -1086,6 +1109,16 @@ export interface InvokeContract {
   [IPC.drop.pickFolder]: { args: []; result: DropFolderResult | null };
   [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
   [IPC.drop.importAnyway]: { args: [name: string]; result: DropFolderResult };
+  [IPC.opening.atStart]: { args: []; result: OpeningPlan | null };
+  [IPC.opening.ended]: { args: [how: OpeningEnd]; result: null };
+  [IPC.opening.view]: { args: []; result: OpeningView };
+  [IPC.opening.setOn]: { args: [on: boolean]; result: OpeningResult };
+  [IPC.opening.setChoice]: { args: [choice: OpeningChoice]; result: OpeningResult };
+  [IPC.opening.loadPack]: { args: []; result: OpeningResult | null };
+  [IPC.opening.saveCopy]: {
+    args: [mediaId: string, bytes: Uint8Array];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.updates.view]: { args: []; result: UpdateView };
   [IPC.music.view]: { args: []; result: MusicView };
   [IPC.music.create]: { args: [name: string]; result: MusicResult };
@@ -1530,6 +1563,8 @@ export interface EventContract {
   [IPC.events.open]: { at: number };
   [IPC.drop.changed]: DropFolderView;
   [IPC.drop.open]: { at: number };
+  [IPC.opening.end]: { at: number };
+  [IPC.opening.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };

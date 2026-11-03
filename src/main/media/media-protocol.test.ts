@@ -16,6 +16,7 @@ import {
   stillUrl,
   VIDEO_EXTENSIONS,
 } from '../../shared/media';
+import { openingPhotoUrl } from '../../shared/opening';
 import type { MediaFileRow, MediaProtocolDeps } from './media-protocol';
 import {
   contentTypeOf,
@@ -35,6 +36,7 @@ const SHA = 'ab'.repeat(32);
 const STILL = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
 const COPY = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]);
 const BLUR = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 9, 0xff, 0xd9]);
+const OPENING = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 5, 5, 0xff, 0xd9]);
 
 beforeAll(() => {
   // Not through realpath: on macOS the temp folder is behind a link (/var -> /private/var), as on some machines the media folder may be.
@@ -50,6 +52,9 @@ beforeAll(() => {
   writeFileSync(join(mediaDir, 'sharpened', `${SHA}-50.png`), COPY);
   mkdirSync(join(mediaDir, 'blurred'));
   writeFileSync(join(mediaDir, 'blurred', `${SHA}.jpg`), BLUR);
+  // A photo's copy for the opening (Session 55), made for the picture with SHA only.
+  mkdirSync(join(mediaDir, 'opening'));
+  writeFileSync(join(mediaDir, 'opening', `${SHA}.jpg`), OPENING);
   writeFileSync(join(mediaDir, 'cd', 'empty.mp4'), new Uint8Array());
   writeFileSync(join(outside, 'secret.txt'), 'not media');
   symlinkSync(outside, join(mediaDir, 'gh'), 'junction');
@@ -159,6 +164,16 @@ describe('drashti-media:// requests', () => {
     expect(blurOfId(blurMediaId('image-1'))).toBe('image-1');
     expect(blurOfId('image-1_s50')).toBeNull();
     expect(blurOfId('image-1')).toBeNull();
+  });
+
+  it("serves a photo's copy for the opening once it is made (Session 55), and nothing else as one", async () => {
+    const res = await get(openingPhotoUrl('image'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg');
+    expect(await bytesOf(res)).toEqual(OPENING);
+    for (const id of ['noStill', 'badSha', 'empty', 'missing', 'stale', 'nobody'])
+      expect((await get(openingPhotoUrl(id))).status, id).toBe(404);
+    expect(mediaRequestOf('drashti-media://opening/image%2F..%2Fx')).toBeNull();
   });
 
   it('serves byte ranges, which video seeking needs', async () => {

@@ -248,6 +248,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.pip.savePlace,
   // The quick bar (Session 55, Part 8): Pro Mode's; Simple Mode shows none and never changes its pins.
   IPC.quickBar.set,
+  // File › Opening… (Session 55): Pro Mode's; the opening itself plays as Drashti starts in either mode.
+  IPC.opening.setOn,
+  IPC.opening.setChoice,
+  IPC.opening.loadPack,
+  IPC.opening.saveCopy,
 ];
 
 /**

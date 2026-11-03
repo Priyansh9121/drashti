@@ -55,6 +55,7 @@ import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJo
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
+import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -220,6 +221,22 @@ export interface DrashtiBridge {
     importAnyway(name: string): Promise<DropFolderResult>;
     onChanged(listener: (view: DropFolderView) => void): () => void;
     /** File > Drop Folder… was chosen. */
+    onOpen(listener: () => void): () => void;
+  };
+  /** The opening (Session 55, operator window): played as Drashti starts; chosen in File › Opening… (Pro Mode). */
+  opening: {
+    /** What to play as the window opens, or null (main decides, once). */
+    atStart(): Promise<OpeningPlan | null>;
+    ended(how: OpeningEnd): Promise<null>;
+    /** A key ended it (main kept that key from the show). */
+    onEnd(listener: () => void): () => void;
+    view(): Promise<OpeningView>;
+    setOn(on: boolean): Promise<OpeningResult>;
+    setChoice(choice: OpeningChoice): Promise<OpeningResult>;
+    /** Load the opening pack… (null: no folder chosen). */
+    loadPack(): Promise<OpeningResult | null>;
+    saveCopy(mediaId: string, bytes: Uint8Array): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** File › Opening… was chosen. */
     onOpen(listener: () => void): () => void;
   };
   /** Audio playlists (Session 14, operator window). */
