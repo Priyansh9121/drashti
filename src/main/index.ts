@@ -3775,6 +3775,19 @@ function start(): void {
     },
   });
   const slideEdits = registerSlidesIpc({
+    choosePdfFile: async (e) => {
+      const parent = BrowserWindow.fromWebContents(e.sender);
+      const options = {
+        title: 'Insert PDF pages',
+        buttonLabel: 'Insert pages',
+        properties: ['openFile'] as 'openFile'[],
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      };
+      const chosen = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options);
+      return chosen.canceled ? null : (chosen.filePaths[0] ?? null);
+    },
     db,
     presentations,
     revisions,

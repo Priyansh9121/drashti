@@ -5,7 +5,7 @@ import { Dialog } from '../ui/Dialog';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 
-/** Choose a retained PDF; importing a new file remains the library's existing import action. */
+/** Main owns file selection; both sources become one undoable insertion. */
 export function PdfInsertDialog({
   presentationId,
   stamp,
@@ -45,13 +45,18 @@ export function PdfInsertDialog({
       live = false;
     };
   }, [presentationId]);
-  const insert = async () => {
-    if (!selected || working.current) return;
+  const insert = async (fromFile = false) => {
+    if ((!fromFile && !selected) || working.current) return;
     working.current = true;
     setBusy(true);
     setProblem(null);
     try {
-      const result = await window.drashti.library.insertPdfPages(presentationId, stamp, selected);
+      const result = fromFile
+        ? await window.drashti.library.insertPdfFile(presentationId, stamp)
+        : selected
+          ? await window.drashti.library.insertPdfPages(presentationId, stamp, selected)
+          : null;
+      if (!result) return;
       if (!mounted.current) return;
       if (result.ok) {
         onInserted(result.pages, result.issues);
@@ -80,14 +85,17 @@ export function PdfInsertDialog({
         </>
       }
     >
-      <p className="mb-3 text-sm text-muted">
+      <Button disabled={busy} onClick={() => void insert(true)}>
+        Choose a PDF file…
+      </Button>
+      <p className="my-3 text-sm text-muted">
         Insert all pages of another PDF after this page. The PDF in the library stays as it is; Undo removes
         this insertion.
       </p>
       {sources === null && !problem && <Loading label="Reading PDFs…" />}
       {sources?.length === 0 && (
         <p className="text-sm text-muted">
-          No other PDFs are ready in the library. Import a PDF, then open Insert pages again.
+          No other PDFs are in the library. Choose a PDF file to insert its pages here.
         </p>
       )}
       {!!sources?.length && (

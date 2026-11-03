@@ -101,6 +101,7 @@ export class PdfEditor {
           ...new OriginalsStore(this.deps.db, this.deps.mediaDir)
             .list()
             .map((original) => join(this.deps.mediaDir, originalRelative(original))),
+          ...new OriginalsStore(this.deps.db, this.deps.mediaDir).sourceLocations(),
           ...external.map((row) => row.source_path).filter(isAbsolute),
         ],
         signal,

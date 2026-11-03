@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { link, mkdir, open, rm, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { PictureSource } from '../../shared/pictures';
 import type { Db } from '../db/database';
@@ -118,7 +118,9 @@ export class OriginalsStore {
     return retainedOriginals(this.db);
   }
 
-  register(original: OriginalDescriptor): void {
+  register(original: OriginalDescriptor, sourcePath?: string): void {
+    if (sourcePath !== undefined && (!isAbsolute(sourcePath) || sourcePath.includes('\0')))
+      throw new Error('An original source location must be an absolute file path.');
     if (!validOriginal(original)) throw new Error('The original document reference is not valid.');
     const existing = this.db
       .prepare('SELECT bytes FROM document_originals WHERE sha256 = ? AND ext = ?')
@@ -128,6 +130,28 @@ export class OriginalsStore {
     this.db
       .prepare('INSERT OR IGNORE INTO document_originals (sha256, ext, bytes) VALUES (?, ?, ?)')
       .run(original.sha256, original.ext, original.bytes);
+    if (sourcePath !== undefined)
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO document_original_locations (sha256, ext, source_path) VALUES (?, ?, ?)',
+        )
+        .run(original.sha256, original.ext, sourcePath);
+  }
+
+  sourceLocations(): string[] {
+    if (
+      !this.db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'document_original_locations'")
+        .get()
+    )
+      return [];
+    return (
+      this.db
+        .prepare('SELECT DISTINCT source_path FROM document_original_locations ORDER BY source_path')
+        .all() as { source_path: string }[]
+    )
+      .map((row) => row.source_path)
+      .filter(isAbsolute);
   }
 
   registerPreview(original: OriginalDescriptor, mediaId: string): void {

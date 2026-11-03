@@ -2,10 +2,10 @@ import { slideCanvas } from '../../shared/document-page';
 import { freshGroups } from '../../shared/element-groups';
 import { renderEditedSlide } from '../../shared/slide-design';
 import type { InsertPdfPagesResult } from '../../shared/slide-edit';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import type { DocumentPageRef } from '../../shared/document-page';
 import { documentPageFromJson } from '../../shared/document-page';
 import type { SlideElement } from '../../shared/model';
@@ -62,10 +62,12 @@ export class ImportedSlides {
 
   private async originalFor(
     ref: DocumentPageRef,
+    retained?: OriginalDescriptor,
   ): Promise<{ original: OriginalDescriptor; file: string } | null> {
-    const original = this.originals
-      .list()
-      .find((entry) => entry.sha256 === ref.sha256 && entry.ext === ref.ext);
+    const original =
+      retained?.sha256 === ref.sha256 && retained.ext === ref.ext
+        ? retained
+        : this.originals.list().find((entry) => entry.sha256 === ref.sha256 && entry.ext === ref.ext);
     if (!original) return null;
     const file = await this.originals.resolve(original);
     return file ? { original, file } : null;
@@ -77,6 +79,17 @@ export class ImportedSlides {
     stamp: string,
     guard: SourceCommitGuard,
   ): Promise<{ doc: EditDoc; issues: string[] }> {
+    if (rows.presentationId !== opened.presentationId)
+      throw new Error('Source presentation identity changed.');
+    return this.prepareDoc(opened, stamp, guard);
+  }
+
+  private async prepareDoc(
+    opened: EditDoc,
+    stamp: string,
+    guard: SourceCommitGuard,
+    retained?: OriginalDescriptor,
+  ): Promise<{ doc: EditDoc; issues: string[] }> {
     const allowed = () => !guard.signal.aborted && guard.allowed();
     if (!allowed()) throw new Error('Source preparation cancelled.');
     const doc = structuredClone(opened);
@@ -86,7 +99,7 @@ export class ImportedSlides {
       const kind = this.db
         .prepare('SELECT source_kind FROM presentations WHERE id = ?')
         .pluck()
-        .get(rows.presentationId);
+        .get(opened.presentationId);
       if (kind === 'pictures')
         issues.push(
           'This older import has ambiguous source-page mapping. Its saved canvas and operator additions are preserved; link the matching original pages before changing source objects.',
@@ -107,7 +120,7 @@ export class ImportedSlides {
       for (const list of bySource.values()) {
         const ref = list[0]?.documentPage;
         if (!ref) continue;
-        const source = await this.originalFor(ref);
+        const source = await this.originalFor(ref, retained);
         if (!source) {
           issues.push(
             'A retained original is missing or damaged. Saved playback is unchanged; restore the original from a backup.',
@@ -240,11 +253,7 @@ export class ImportedSlides {
     sourceStamp: string,
     guard: SourceCommitGuard,
   ): Promise<InsertPdfPagesResult> {
-    const cached = this.prepared.get(targetRows.presentationId);
-    const baseline =
-      cached?.stamp === stamp
-        ? { ...cached, doc: structuredClone(cached.doc), inserted: new Set(cached.inserted) }
-        : { stamp, doc: editDocOf(targetRows, targetName).doc, inserted: new Set<string>() };
+    const baseline = this.insertionBaseline(targetRows, targetName, stamp);
     const source = editDocOf(sourceRows, sourceName);
     if (source.unreadable)
       return {
@@ -253,6 +262,23 @@ export class ImportedSlides {
           'Some objects in that PDF cannot be copied. Open it in Edit slides and review its limits first.',
       };
     const prepared = await this.prepare(sourceRows, source.doc, sourceStamp, guard);
+    return this.adoptInsertion(baseline, prepared, guard);
+  }
+
+  private insertionBaseline(targetRows: ContentRows, targetName: string, stamp: string) {
+    const cached = this.prepared.get(targetRows.presentationId);
+    const baseline =
+      cached?.stamp === stamp
+        ? { ...cached, doc: structuredClone(cached.doc), inserted: new Set(cached.inserted) }
+        : { stamp, doc: editDocOf(targetRows, targetName).doc, inserted: new Set<string>() };
+    return baseline;
+  }
+
+  private adoptInsertion(
+    baseline: { stamp: string; doc: EditDoc; inserted: Set<string> },
+    prepared: { doc: EditDoc; issues: string[] },
+    guard: SourceCommitGuard,
+  ): InsertPdfPagesResult {
     const original = allSlides(prepared.doc);
     if (!original.length || original.length > 400 || baseline.inserted.size + original.length > 400)
       return {
@@ -308,14 +334,110 @@ export class ImportedSlides {
       return { ok: false, message: 'These pages exceed the editor limits. Insert a smaller PDF instead.' };
     if (guard.signal.aborted || !guard.allowed()) throw new Error('Source preparation cancelled.');
     for (const page of pages) baseline.inserted.add(page.id);
-    this.prepared.delete(targetRows.presentationId);
-    this.prepared.set(targetRows.presentationId, baseline);
+    this.prepared.delete(baseline.doc.presentationId);
+    this.prepared.set(baseline.doc.presentationId, baseline);
     while (this.prepared.size > 8) {
       const oldest = this.prepared.keys().next().value;
       if (oldest === undefined) break;
       this.prepared.delete(oldest);
     }
     return { ok: true, pages, issues: prepared.issues };
+  }
+
+  /** File selection stays in Main. Native page zero supplies the real count;
+   * the second bounded read prepares the complete document off Main. */
+  async insertFromFile(
+    targetRows: ContentRows,
+    targetName: string,
+    stamp: string,
+    sourcePath: string,
+    guard: SourceCommitGuard,
+  ): Promise<InsertPdfPagesResult> {
+    const allowed = () => !guard.signal.aborted && guard.allowed();
+    if (!allowed() || !isAbsolute(sourcePath)) throw new Error('Source preparation cancelled.');
+    const info = await stat(sourcePath);
+    if (!info.isFile() || info.size > 128 * 1024 * 1024)
+      return {
+        ok: false,
+        message: 'Choose a regular PDF no larger than 128 MiB. Save a smaller PDF and try again.',
+      };
+    const baseline = this.insertionBaseline(targetRows, targetName, stamp);
+    const staged = await this.originals.stage(sourcePath, 'pdf', guard.signal);
+    if (!allowed()) throw new Error('Source preparation cancelled.');
+    if (!staged.ok) return staged;
+    if (staged.original.bytes > 128 * 1024 * 1024)
+      return { ok: false, message: 'The PDF grew beyond 128 MiB. Save a smaller PDF and try again.' };
+    const work = await mkdtemp(join(tmpdir(), 'drashti-insert-pdf-'));
+    const sourceId = randomUUID();
+    let retainOutput = false;
+    try {
+      const count = await this.reader({
+        ext: 'pdf',
+        file: staged.file,
+        outDir: join(work, 'count'),
+        sourcePages: [0],
+        signal: guard.signal,
+        checkpoint: () => Promise.resolve(allowed()),
+      });
+      if (!count.ok) {
+        retainOutput ||= count.retainOutput === true;
+        return {
+          ok: false,
+          message: 'That PDF could not be prepared. Save an unprotected PDF copy and choose it again.',
+        };
+      }
+      if (!allowed()) throw new Error('Source preparation cancelled.');
+      if (
+        count.total < 1 ||
+        count.total > 400 ||
+        count.pages.length !== 1 ||
+        count.failed.length ||
+        baseline.inserted.size + count.total > 400
+      )
+        return {
+          ok: false,
+          message:
+            'Insert at most 400 PDF pages in one editor session. Save smaller parts or reopen before adding more.',
+        };
+      const doc: EditDoc = {
+        presentationId: sourceId,
+        name: 'PDF pages',
+        width: targetRows.width,
+        height: targetRows.height,
+        transition: null,
+        loop: false,
+        groups: [
+          {
+            id: randomUUID(),
+            name: 'Pages',
+            color: null,
+            slides: Array.from({ length: count.total }, (_, page): EditSlide => ({
+              id: randomUUID(),
+              label: '',
+              notes: '',
+              background: '#ffffff',
+              darken: null,
+              enabled: true,
+              transition: null,
+              autoAdvanceMs: null,
+              macroId: null,
+              elements: [],
+              cues: [],
+              documentPage: { sha256: staged.original.sha256, ext: 'pdf', page },
+            })),
+          },
+        ],
+      };
+      const prepared = await this.prepareDoc(doc, stamp, guard, staged.original);
+      if (!allowed()) throw new Error('Source preparation cancelled.');
+      // Register only after successful native preparation. The source location
+      // protects the external original without creating another presentation.
+      await this.write(guard, () => this.originals.register(staged.original, sourcePath));
+      return this.adoptInsertion(baseline, prepared, guard);
+    } finally {
+      this.prepared.delete(sourceId);
+      if (!retainOutput) await rm(work, { recursive: true, force: true });
+    }
   }
 
   /** Restore untouched original rows; only actual object edits save the prepared native page. */

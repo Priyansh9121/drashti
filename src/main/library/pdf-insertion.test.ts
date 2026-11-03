@@ -9,6 +9,7 @@ import { SettingsRepo } from '../db/settings';
 import type { SourceReader } from '../documents/source-reader';
 import { sourceWrite } from '../documents/source-write';
 import { makeTestPdf } from '../import/testing/make-pdf';
+import { OriginalsStore } from '../import/originals-store';
 import { nativeSourceReader } from '../import/testing/native-source-reader';
 import { bytesHash, originalWorld } from '../import/testing/original-fixture';
 import { Revisions } from './revisions';
@@ -30,7 +31,10 @@ const call = async <T>(channel: string, ...args: unknown[]): Promise<T> => {
   return (await handler(...args)) as T;
 };
 
-async function fixture(reader: SourceReader = nativeSourceReader) {
+async function fixture(
+  reader: SourceReader = nativeSourceReader,
+  choosePdfFile?: () => Promise<string | null>,
+) {
   const w = originalWorld();
   try {
     const target = await w.importPdf();
@@ -61,6 +65,7 @@ async function fixture(reader: SourceReader = nativeSourceReader) {
       settings: new SettingsRepo(w.db),
       fromOperator: () => access.operator,
       mayPrepareSource: () => access.pro,
+      choosePdfFile,
       sourceReader: reads,
       sourceWrite: sourceWrite(w.db),
       lookFor: (_theme, size) => themeLook({ ...DEFAULT_THEME }, size.width, size.height),
@@ -100,6 +105,126 @@ async function fixture(reader: SourceReader = nativeSourceReader) {
 }
 
 describe('the real retained PDF insertion coordinator', () => {
+  it('inserts a directly chosen PDF without another presentation and keeps its retained original and source protection', async () => {
+    let chosen = '';
+    const s = await fixture(nativeSourceReader, () => Promise.resolve(chosen));
+    try {
+      chosen = join(s.w.externalDir, 'Placeholder direct only.pdf');
+      const bytes = makeTestPdf([
+        { width: 319.25, height: 481.5, color: [50, 80, 100], text: 'Placeholder direct native words' },
+      ]);
+      writeFileSync(chosen, bytes);
+      const countBefore = s.w.db.prepare('SELECT COUNT(*) FROM presentations').pluck().get();
+      const inserted = await call<InsertPdfPagesResult>(
+        IPC.library.insertPdfFile,
+        event,
+        s.target.id,
+        s.opened.stamp,
+      );
+      expect(inserted.ok).toBe(true);
+      if (!inserted.ok) throw new Error(inserted.message);
+      const page = inserted.pages[0];
+      if (!page) throw new Error('The directly selected PDF page was not prepared.');
+      expect(page.pageSize).toEqual({ width: 319.25, height: 481.5 });
+      expect(
+        page.elements.some(
+          (element) => element.kind === 'text' && element.text.includes('Placeholder direct native words'),
+        ),
+      ).toBe(true);
+      const originals = new OriginalsStore(s.w.db, s.w.mediaDir);
+      expect(originals.sourceLocations()).toContain(chosen);
+      const original = originals.list().find((entry) => entry.sha256 === bytesHash(bytes));
+      if (!original) throw new Error('The directly selected original was not retained.');
+      const kept = await originals.resolve(original);
+      if (!kept) throw new Error('The directly selected retained bytes were not readable.');
+      expect(readFileSync(kept)).toEqual(bytes);
+      expect(s.w.db.prepare('SELECT COUNT(*) FROM presentations').pluck().get()).toBe(countBefore);
+      expect(s.presentations.content(s.target.id)).toEqual(s.beforeTarget);
+      expect(s.keep).not.toHaveBeenCalled();
+      s.opened.doc.groups[0]?.slides.push(page);
+      expect(s.controller.documentForExport(s.target.id, s.opened.doc, s.opened.stamp).ok).toBe(true);
+      const saved = await call<SaveSlidesResult>(
+        IPC.library.saveSlides,
+        event,
+        s.target.id,
+        s.opened.doc,
+        s.opened.stamp,
+        false,
+      );
+      expect(saved.ok).toBe(true);
+      expect(s.keep).toHaveBeenCalledOnce();
+      expect(s.presentations.content(s.target.id)?.slides).toHaveLength(2);
+      expect(s.w.db.prepare('SELECT COUNT(*) FROM presentations').pluck().get()).toBe(countBefore);
+      expect(readFileSync(chosen)).toEqual(bytes);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('never opens a file chooser for denied or stale requests and ignores a late choice after cancellation', async () => {
+    let complete: (file: string | null) => void = () => undefined;
+    const chosen = new Promise<string | null>((resolve) => {
+      complete = resolve;
+    });
+    const picker = vi.fn(() => chosen);
+    const s = await fixture(nativeSourceReader, picker);
+    try {
+      const originals = new OriginalsStore(s.w.db, s.w.mediaDir);
+      const before = originals.list(),
+        locations = originals.sourceLocations();
+      s.access.pro = false;
+      expect(await call(IPC.library.insertPdfFile, event, s.target.id, s.opened.stamp)).toMatchObject({
+        ok: false,
+      });
+      s.access.pro = true;
+      expect(
+        await call(IPC.library.insertPdfFile, event, s.target.id, 'stale-placeholder-stamp'),
+      ).toMatchObject({ ok: false });
+      expect(picker).not.toHaveBeenCalled();
+      const pending = call<InsertPdfPagesResult>(
+        IPC.library.insertPdfFile,
+        event,
+        s.target.id,
+        s.opened.stamp,
+      );
+      await vi.waitFor(() => expect(picker).toHaveBeenCalledOnce());
+      expect(await call(IPC.library.cancelPdfInsertion, event, s.target.id, s.opened.stamp)).toBe(true);
+      complete(s.file);
+      expect(await pending).toMatchObject({ ok: false, cancelled: true });
+      expect(s.reads).not.toHaveBeenCalled();
+      expect(originals.list()).toEqual(before);
+      expect(originals.sourceLocations()).toEqual(locations);
+      expect(s.presentations.content(s.target.id)).toEqual(s.beforeTarget);
+      expect(s.keep).not.toHaveBeenCalled();
+    } finally {
+      complete(null);
+      await s.close();
+    }
+  });
+
+  it('does not register a non-PDF file or save pages when actual native reading fails', async () => {
+    let chosen = '';
+    const s = await fixture(nativeSourceReader, () => Promise.resolve(chosen));
+    try {
+      chosen = join(s.w.externalDir, 'Placeholder invalid.pdf');
+      const bytes = Buffer.from('Placeholder invalid PDF bytes');
+      writeFileSync(chosen, bytes);
+      const originals = new OriginalsStore(s.w.db, s.w.mediaDir);
+      const before = originals.list(),
+        locations = originals.sourceLocations();
+      expect(await call(IPC.library.insertPdfFile, event, s.target.id, s.opened.stamp)).toMatchObject({
+        ok: false,
+      });
+      expect(originals.list()).toEqual(before);
+      expect(originals.sourceLocations()).toEqual(locations);
+      expect(s.presentations.content(s.target.id)).toEqual(s.beforeTarget);
+      expect(s.keep).not.toHaveBeenCalled();
+      expect(readFileSync(chosen)).toEqual(bytes);
+    } finally {
+      await s.close();
+    }
+  });
+
   it('prepares native source objects, authorizes fresh occurrences and saves as one revision without changing either original', async () => {
     const s = await fixture();
     try {

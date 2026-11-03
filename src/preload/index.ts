@@ -195,6 +195,7 @@ const bridge: DrashtiBridge = {
     pdfPageSources: () => invoke(IPC.library.pdfPageSources),
     insertPdfPages: (presentationId, stamp, sourceId) =>
       invoke(IPC.library.insertPdfPages, presentationId, stamp, sourceId),
+    insertPdfFile: (presentationId, stamp) => invoke(IPC.library.insertPdfFile, presentationId, stamp),
     cancelPdfInsertion: (presentationId, stamp) =>
       invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
     exportPdf: (presentationId, doc, stamp) => invoke(IPC.library.exportPdf, presentationId, doc, stamp),

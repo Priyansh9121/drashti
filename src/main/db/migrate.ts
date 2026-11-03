@@ -56,6 +56,7 @@ import { up as editorDesign } from './migrations/057-editor-design';
 import { up as documentOriginals } from './migrations/062-document-originals';
 import { up as documentPages } from './migrations/063-document-pages';
 import { up as pageSize } from './migrations/064-page-size';
+import { up as originalLocations } from './migrations/065-original-locations';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -132,6 +133,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 62, name: 'immutable document originals', up: documentOriginals },
   { version: 63, name: 'document page identity and geometry', up: documentPages },
   { version: 64, name: 'independent native page size', up: pageSize },
+  { version: 65, name: 'original document source locations', up: originalLocations },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

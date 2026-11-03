@@ -319,6 +319,7 @@ export interface DrashtiBridge {
     /** Save a separate PDF from the current editor document; never saves or closes the presentation. */
     pdfPageSources(): Promise<PdfPageSource[]>;
     insertPdfPages(presentationId: string, stamp: string, sourceId: string): Promise<InsertPdfPagesResult>;
+    insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
     cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
     exportPdf(presentationId: string, doc: EditDoc, stamp: string): Promise<PdfCopyResult>;
     /**

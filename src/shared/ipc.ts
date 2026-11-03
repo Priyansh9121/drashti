@@ -335,6 +335,7 @@ export const IPC = {
     exportPdf: 'library:export-pdf',
     pdfPageSources: 'library:pdf-page-sources',
     insertPdfPages: 'library:insert-pdf-pages',
+    insertPdfFile: 'library:insert-pdf-file',
     cancelPdfInsertion: 'library:cancel-pdf-insertion',
     /** The transition for presentations without their own; changing it is for the operator window only. */
     getDefaultTransition: 'library:get-default-transition',
@@ -1222,6 +1223,10 @@ export interface InvokeContract {
   [IPC.library.pdfPageSources]: { args: []; result: PdfPageSource[] };
   [IPC.library.insertPdfPages]: {
     args: [presentationId: string, stamp: string, sourceId: string];
+    result: InsertPdfPagesResult;
+  };
+  [IPC.library.insertPdfFile]: {
+    args: [presentationId: string, stamp: string];
     result: InsertPdfPagesResult;
   };
   [IPC.library.cancelPdfInsertion]: { args: [presentationId: string, stamp: string]; result: boolean };

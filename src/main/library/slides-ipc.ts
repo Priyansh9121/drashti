@@ -42,6 +42,8 @@ export interface SlidesIpcDeps {
   sourceWrite?: SourceWrite;
   /** Main's current Pro/access/sender authority, rechecked throughout preparation. */
   mayPrepareSource?: (event: IpcMainInvokeEvent) => boolean;
+  /** Only Main selects files through the native PDF dialog. */
+  choosePdfFile?: (event: IpcMainInvokeEvent) => Promise<string | null>;
 }
 
 export interface SlidesIpcController {
@@ -76,6 +78,7 @@ export function registerSlidesIpc({
   sourceReader,
   sourceWrite,
   mayPrepareSource = () => false,
+  choosePdfFile,
 }: SlidesIpcDeps): SlidesIpcController {
   const imported = new ImportedSlides(db, undefined, { sourceReader, sourceWrite });
   const generations = new Map<string, AbortController>();
@@ -228,6 +231,60 @@ export function registerSlidesIpc({
             : {
                 ok: false,
                 message: 'Those PDF pages could not be inserted. Reopen the editor and choose the PDF again.',
+              },
+        )
+        .finally(() => {
+          if (generations.get(id.data) === controller) generations.delete(id.data);
+          if (insertions.get(id.data)?.controller === controller) insertions.delete(id.data);
+          preparations.delete(preparing);
+        });
+      preparations.add(preparing);
+      return preparing;
+    },
+  );
+
+  handle(
+    IPC.library.insertPdfFile,
+    (e, rawId, rawStamp): InsertPdfPagesResult | Promise<InsertPdfPagesResult> => {
+      if (!fromOperator(e) || !mayPrepareSource(e)) return onlyOperator;
+      const id = idSchema.safeParse(rawId);
+      if (!id.success || typeof rawStamp !== 'string' || rawStamp.length > 1024 || !choosePdfFile)
+        return {
+          ok: false,
+          message: 'File selection is unavailable. Choose a PDF already in the library instead.',
+        };
+      const target = presentations.content(id.data),
+        now = stampOf(id.data);
+      if (!target || now?.stamp !== rawStamp)
+        return { ok: false, message: 'This presentation changed. Reopen the editor before inserting a PDF.' };
+      cancelSourcePreparation();
+      const controller = new AbortController();
+      generations.set(id.data, controller);
+      insertions.set(id.data, { controller, sender: e.sender.id, stamp: rawStamp });
+      const allowed = () =>
+        !controller.signal.aborted &&
+        generations.get(id.data) === controller &&
+        fromOperator(e) &&
+        mayPrepareSource(e) &&
+        stampOf(id.data)?.stamp === rawStamp;
+      const preparing: Promise<InsertPdfPagesResult> = Promise.resolve()
+        .then(async () => {
+          if (!allowed()) throw new Error('Source preparation cancelled.');
+          const file = await choosePdfFile(e);
+          if (!allowed()) throw new Error('Source preparation cancelled.');
+          if (!file) return { ok: false as const, cancelled: true as const, message: 'No PDF was chosen.' };
+          return imported.insertFromFile(target, now.name, rawStamp, file, {
+            signal: controller.signal,
+            allowed,
+          });
+        })
+        .catch((): InsertPdfPagesResult =>
+          controller.signal.aborted
+            ? { ok: false, cancelled: true, message: 'Inserting the PDF pages was cancelled.' }
+            : {
+                ok: false,
+                message:
+                  'Those PDF pages could not be inserted. Choose an unprotected PDF copy and try again.',
               },
         )
         .finally(() => {
