@@ -928,7 +928,12 @@ function SlideList({
                         className="pointer-events-none relative block aspect-video w-full"
                         data-a11y-picture
                       >
-                        <PlacedInParent content={slideCanvas(s, doc)} mode="fit" className="absolute inset-0">
+                        <PlacedInParent
+                          fractional
+                          content={slideCanvas(s, doc)}
+                          mode="fit"
+                          className="absolute inset-0"
+                        >
                           <OversetWatch
                             onChange={(over) => {
                               setOverset((was) => {

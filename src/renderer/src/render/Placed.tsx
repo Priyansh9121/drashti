@@ -45,14 +45,16 @@ export function PlacedInParent({
   mode,
   className,
   children,
+  fractional = false,
 }: {
   content: Size;
   mode: ScalingMode;
   className: string;
   children: ReactNode;
+  fractional?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const box = useElementSize(ref);
+  const box = useElementSize(ref, fractional);
   return (
     <div ref={ref} className={`overflow-hidden ${className}`} data-box={`${box.width}x${box.height}`}>
       {box.width > 0 && (
