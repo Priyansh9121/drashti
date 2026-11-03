@@ -8,6 +8,8 @@ import { SlideView } from '../render/SlideView';
 import { preloadFonts } from '../render/fonts';
 import '../render/fonts.css';
 import '../styles/app.css';
+import './print.css';
+import { rasterizeTextEffects } from './text-effects';
 
 (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = pdfWorker;
 
@@ -123,12 +125,19 @@ async function draw(): Promise<void> {
           if (!image.naturalWidth) throw new Error('A page picture is unavailable.');
         }),
       );
-      const fresh = await window.drashti.pdfExport.print(job.id, index);
-      if (!fresh) throw new Error('The edited page could not be printed.');
-      const metadata = await printMetadata(fresh);
-      const corrected = await window.drashti.pdfExport.normalized(job.id, index, metadata);
-      if (!corrected) throw new Error('The printed page could not retain its exact paper size.');
-      printed.set(index, corrected);
+      const cleanupEffects = await rasterizeTextEffects(mount, { width, height }, () =>
+        window.drashti.pdfExport.capture(job.id, index),
+      );
+      try {
+        const fresh = await window.drashti.pdfExport.print(job.id, index);
+        if (!fresh) throw new Error('The edited page could not be printed.');
+        const metadata = await printMetadata(fresh);
+        const corrected = await window.drashti.pdfExport.normalized(job.id, index, metadata);
+        if (!corrected) throw new Error('The printed page could not retain its exact paper size.');
+        printed.set(index, corrected);
+      } finally {
+        cleanupEffects();
+      }
     }
     const data = await assemble(job, printed);
     const pages = await dimensions(data);

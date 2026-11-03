@@ -48,6 +48,8 @@ interface ActiveCopy {
   current(): boolean;
   finish(data: Uint8Array | null): void;
   taken: boolean;
+  captures: number;
+  captureBytes: number;
   next: number;
   printing: boolean;
   fresh: { index: number; data: Uint8Array } | null;
@@ -109,6 +111,8 @@ export class PdfCopySession {
         current,
         finish,
         taken: false,
+        captures: 0,
+        captureBytes: 0,
         next: nextNative(plan.pages, 0),
         printing: false,
         fresh: null,
@@ -145,6 +149,52 @@ export class PdfCopySession {
     if (!active || active.taken) return null;
     active.taken = true;
     return active.job;
+  }
+
+  /** Only the owned hidden page can flatten its decorative text effects.
+   * The actual words remain native/searchable in the subsequent print. */
+  async capture(sender: WebContents, id: unknown, index: unknown): Promise<Uint8Array | null> {
+    const active = this.own(sender);
+    if (
+      !active ||
+      typeof index !== 'number' ||
+      !active.taken ||
+      active.job.id !== id ||
+      active.next !== index ||
+      active.printing ||
+      active.fresh ||
+      active.captures >= 128
+    )
+      return null;
+    const page = active.job.pages[index];
+    if (page?.kind !== 'native') return null;
+    const width = Math.ceil((page.slide.width * 4) / 3),
+      height = Math.ceil((page.slide.height * 4) / 3);
+    // Bound viewport and screenshot memory as well as compressed output bytes.
+    if (width * height > 2_000_000) return null;
+    active.printing = true;
+    active.captures++;
+    try {
+      active.win.setContentSize(width, height);
+      await active.win.webContents.executeJavaScript(
+        'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      if (this.own(sender) !== active) return null;
+      const image = await active.win.webContents.capturePage(
+        { x: 0, y: 0, width, height },
+        { stayHidden: true },
+      );
+      if (this.own(sender) !== active || image.isEmpty()) return null;
+      const data = image.toPNG();
+      active.captureBytes += data.length;
+      if (data.length > 32 * 1024 * 1024 || active.captureBytes > LIMIT) return null;
+      return new Uint8Array(data);
+    } catch {
+      active.finish(null);
+      return null;
+    } finally {
+      active.printing = false;
+    }
   }
 
   async print(sender: WebContents, id: unknown, index: unknown): Promise<Uint8Array | null> {

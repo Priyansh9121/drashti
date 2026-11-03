@@ -3166,6 +3166,7 @@ function start(): void {
     normalize: pdfGeometry.normalize,
   });
   handle(IPC.pdfExport.job, (e) => pdfCopies.job(e.sender));
+  handle(IPC.pdfExport.capture, (e, id, index) => pdfCopies.capture(e.sender, id, index));
   handle(IPC.pdfExport.print, (e, id, index) => pdfCopies.print(e.sender, id, index));
   handle(IPC.pdfExport.normalized, (e, id, index, pages) => pdfCopies.normalized(e.sender, id, index, pages));
   handle(IPC.pdfExport.done, (e, result) => pdfCopies.done(e.sender, result));

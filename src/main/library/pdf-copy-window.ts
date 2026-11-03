@@ -6,6 +6,8 @@ import { secureWebPreferences } from '../windows/web-preferences';
 export function createPdfCopyWindow(): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
+    transparent: true,
+    backgroundColor: '#00000000',
     opacity: 0,
     focusable: false,
     skipTaskbar: true,

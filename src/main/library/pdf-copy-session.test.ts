@@ -14,10 +14,15 @@ const bytes = () => Buffer.from('%PDF-1.4\nGenerated protocol fixture\n%%EOF\n')
 const metadata = [{ ref: { num: 3, gen: 0 }, view: [0, 0, 480, 319.91998], rotate: 0 }];
 class Window extends EventEmitter {
   destroyed = false;
+  setContentSize = vi.fn();
   webContents = Object.assign(new EventEmitter(), {
     id: 101,
     getOSProcessId: () => -1,
     printToPDF: vi.fn(() => Promise.resolve(bytes())),
+    executeJavaScript: vi.fn(() => Promise.resolve(undefined)),
+    capturePage: vi.fn(() =>
+      Promise.resolve({ isEmpty: () => false, toPNG: () => Buffer.from('Generated effect pixels') }),
+    ),
   });
   isDestroyed() {
     return this.destroyed;
@@ -67,6 +72,47 @@ function setup() {
 }
 
 describe('the exact hidden PDF copy window protocol', () => {
+  it('captures only the current owned sheet, keeps capture hidden and refuses it after printing', async () => {
+    const s = setup();
+    expect(await s.session.capture(s.other, s.job.id, 0)).toBeNull();
+    expect(await s.session.capture(s.own, 'another-job', 0)).toBeNull();
+    expect(await s.session.capture(s.own, s.job.id, 1)).toBeNull();
+    expect(s.win.webContents.capturePage).not.toHaveBeenCalled();
+    expect(await s.session.capture(s.own, s.job.id, 0)).toEqual(
+      new Uint8Array(Buffer.from('Generated effect pixels')),
+    );
+    expect(s.win.setContentSize).toHaveBeenCalledWith(640, 427);
+    expect(s.win.webContents.capturePage).toHaveBeenCalledWith(
+      { x: 0, y: 0, width: 640, height: 427 },
+      { stayHidden: true },
+    );
+    await s.session.print(s.own, s.job.id, 0);
+    expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+    expect(s.win.webContents.capturePage).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects overlapping captures and discards captured pixels after permission is withdrawn', async () => {
+    const s = setup();
+    let finish: ((image: Awaited<ReturnType<typeof s.win.webContents.capturePage>>) => void) | undefined;
+    s.win.webContents.capturePage.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = s.session.capture(s.own, s.job.id, 0);
+    await vi.waitFor(() => expect(s.win.webContents.capturePage).toHaveBeenCalledOnce());
+    expect(await s.session.capture(s.own, s.job.id, 0)).toBeNull();
+    s.admission.allowed = false;
+    expect(s.session.job(s.own)).toBeNull();
+    expect(await s.result).toBeNull();
+    if (!finish) throw new Error('The owned capture was not started.');
+    finish({ isEmpty: () => false, toPNG: () => Buffer.from('Generated late pixels') });
+    expect(await pending).toBeNull();
+    expect(s.win.webContents.printToPDF).not.toHaveBeenCalled();
+    expect(s.win.destroyed).toBe(true);
+  });
+
   it('refuses another sender, a repeated job read and wrong print identity without normalizing', async () => {
     const s = setup();
     try {

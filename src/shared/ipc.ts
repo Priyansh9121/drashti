@@ -971,6 +971,7 @@ export const IPC = {
     switchAnswer: 'output:switch-answer',
   },
   pdfExport: {
+    capture: 'pdf-export:capture',
     job: 'pdf-export:job',
     print: 'pdf-export:print',
     normalized: 'pdf-export:normalized',
@@ -1055,6 +1056,7 @@ export interface InvokeContract {
   [IPC.pictures.done]: { args: [done: PdfDone]; result: null };
   [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.pdfExport.job]: { args: []; result: PdfCopyJob | null };
+  [IPC.pdfExport.capture]: { args: [id: string, index: number]; result: Uint8Array | null };
   [IPC.pdfExport.print]: { args: [id: string, index: number]; result: Uint8Array | null };
   [IPC.pdfExport.normalized]: {
     args: [id: string, index: number, pages: PdfPrintPage[]];

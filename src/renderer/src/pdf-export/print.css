@@ -1,0 +1,8 @@
+/* The shared announcement-poster print rule hides other windows' content.
+ * This stylesheet is loaded only by the private PDF-copy page. */
+@media print {
+  #root,
+  #root * {
+    visibility: visible;
+  }
+}

@@ -939,6 +939,7 @@ export interface DrashtiBridge {
   };
   /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
   pdfExport: {
+    capture(id: string, index: number): Promise<Uint8Array | null>;
     job(): Promise<PdfCopyJob | null>;
     print(id: string, index: number): Promise<Uint8Array | null>;
     normalized(id: string, index: number, pages: PdfPrintPage[]): Promise<Uint8Array | null>;

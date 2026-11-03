@@ -627,6 +627,7 @@ const bridge: DrashtiBridge = {
     switchAnswer: (yes) => invoke(IPC.output.switchAnswer, yes),
   },
   pdfExport: {
+    capture: (id, index) => invoke(IPC.pdfExport.capture, id, index),
     job: () => invoke(IPC.pdfExport.job),
     print: (id, index) => invoke(IPC.pdfExport.print, id, index),
     normalized: (id, index, pages) => invoke(IPC.pdfExport.normalized, id, index, pages),
