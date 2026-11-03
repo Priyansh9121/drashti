@@ -233,8 +233,13 @@ describe('files between Drashti and a phone, over the API', () => {
   it('the word on files from phones given before the server starts holds once it has', async () => {
     const { port } = await start({ policyFirst: true });
     const listed = await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN });
-    // Add photos (Session 55, Part 8): no playlist open on Drashti.
-    expect(listed.body['adding']).toEqual({ on: true, maxBytes: ON.maxBytes, openPlaylist: null });
+    // Add photos (Session 55, Part 8): no playlist open on Drashti; question 5: not in Simple Mode.
+    expect(listed.body['adding']).toEqual({
+      on: true,
+      maxBytes: ON.maxBytes,
+      openPlaylist: null,
+      simplePlaylist: null,
+    });
     const begun = await call(port, '/api/v1/uploads', {
       method: 'POST',
       token: REMOTE_TOKEN,
@@ -247,7 +252,12 @@ describe('files between Drashti and a phone, over the API', () => {
     const { port } = await start();
     server?.setUploadPolicy({ ...ON, on: false });
     const listed = await call(port, '/api/v1/uploads', { token: REMOTE_TOKEN });
-    expect(listed.body['adding']).toEqual({ on: false, maxBytes: ON.maxBytes, openPlaylist: null });
+    expect(listed.body['adding']).toEqual({
+      on: false,
+      maxBytes: ON.maxBytes,
+      openPlaylist: null,
+      simplePlaylist: null,
+    });
     const begun = await call(port, '/api/v1/uploads', {
       method: 'POST',
       token: REMOTE_TOKEN,

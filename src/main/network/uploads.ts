@@ -279,6 +279,7 @@ export class Uploads {
       on: this.policy.on && this.ready,
       maxBytes: this.policy.maxBytes,
       openPlaylist: this.policy.openPlaylist ?? null,
+      simplePlaylist: this.policy.simplePlaylist ?? null,
     };
   }
 

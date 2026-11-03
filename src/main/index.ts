@@ -2985,7 +2985,8 @@ function start(): void {
         closeEditor();
       }
       sendToOperator(IPC.app.modeChanged, { mode: next });
-      // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist only: the phones hear of the change.
+      // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist, and in Simple Mode its pictures to
+      // Simple Mode's playlist (question 5): the phones hear of the change.
       network?.uploadsChanged();
       // And (Part 9) a phone shows only what Simple Mode allows, and opens its playlist: it reads the hall again.
       network?.hint('mode');
@@ -4446,6 +4447,8 @@ function start(): void {
     letIn: isLetIn,
     // A phone's Add photos (Session 55, Part 8): the playlist open in Pro Mode's window; none in Simple Mode.
     openPlaylist: () => (mode === 'pro' ? openInPro : null),
+    // Question 5 (3 Nov 2026): in Simple Mode a phone's pictures go to the end of its one playlist.
+    simplePlaylist: () => (mode === 'simple' ? simplePlaylist.current() : null),
   });
   // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
   // below, where the window's own requests for them are registered.

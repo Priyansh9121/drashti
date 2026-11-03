@@ -12,6 +12,9 @@ import { cutText } from './text';
  *   pieces, picking up again after a dropped connection, into a folder of Drashti's media folder by names Drashti
  *   makes; checked by what it is, then imported as a dropped file is, into the playlist "Added from Phones" and
  *   Media, marked with the device's name. It never goes live by itself. Off until someone turns the switch on.
+ * - Since Session 55: Add photos puts pictures at the end of the playlist open in Pro Mode (Part 8); and while Drashti is
+ *   in Simple Mode, a picture, however it is sent, goes to the end of Simple Mode's one playlist (question 5, the
+ *   owner's decision of 3 Nov 2026), in Media as ever.
  */
 
 /** The playlist a phone's files go into, made when the first one comes (" (2)" when another has the name). */
@@ -60,6 +63,11 @@ export interface AddFilesView {
    * or null with none open (or in Simple Mode): they go to "Added from Phones" then. Left out by an older Drashti.
    */
   openPlaylist?: string | null;
+  /**
+   * Question 5 (the owner's decision of 3 Nov 2026): the name of Simple Mode's one playlist while Drashti is in Simple
+   * Mode, where a phone's pictures go, however they are sent; null in Pro Mode. Left out by an older Drashti.
+   */
+  simplePlaylist?: string | null;
 }
 
 /** What the worker taking the pieces is told by the main process (the switch, the limits, on air). */
@@ -71,6 +79,8 @@ export interface UploadPolicy {
   slowed: boolean;
   /** The playlist open in Pro Mode's window, for the phone's words (Session 55, Part 8: Add photos); null for none. */
   openPlaylist?: string | null;
+  /** Simple Mode's one playlist while Drashti is in Simple Mode, for the phone's words (question 5); null in Pro Mode. */
+  simplePlaylist?: string | null;
 }
 
 /** Add photos (Session 55, Part 8): what a phone asks for its pictures, the playlist open on Drashti. */
@@ -138,6 +148,32 @@ export const ADD_FILES_WORDS = {
   oldPowerPoint:
     'Drashti takes a PowerPoint file from a phone as .pptx, not the older .ppt: save it as a PowerPoint Presentation (.pptx), then add it again.',
 } as const;
+
+/**
+ * Where a phone's files go, as the phone says it before they are sent (the words above its two buttons): `files` for
+ * Add from this Phone…, `photos` for Add photos. In Simple Mode a picture goes to the end of Simple Mode's playlist
+ * (question 5), and anything else into Added from Phones; in Pro Mode, Add photos goes to the playlist open there.
+ */
+export function addFilesWords(view: Pick<AddFilesView, 'maxBytes' | 'openPlaylist' | 'simplePlaylist'>): {
+  files: string;
+  photos: string;
+} {
+  const simple = view.simplePlaylist ?? null;
+  const open = view.openPlaylist ?? null;
+  const size = sizeWords(view.maxBytes);
+  if (simple !== null)
+    return {
+      files: `A file goes whole, up to ${size}: a picture to the end of Simple Mode’s playlist “${simple}”, and a video, sound, PDF, PowerPoint or Keynote file into Drashti’s playlist “${ADDED_FROM_PHONES}”. Nothing goes on the screens by itself.`,
+      photos: `Add photos puts pictures at the end of Simple Mode’s playlist, “${simple}”. They never go on the screens by themselves.`,
+    };
+  return {
+    files: `A picture, video, sound, PDF, PowerPoint or Keynote file, up to ${size}, goes whole into Drashti’s playlist “${ADDED_FROM_PHONES}”. It never goes on the screens by itself.`,
+    photos:
+      open === null
+        ? `No playlist is open on Drashti: Add photos puts pictures into “${ADDED_FROM_PHONES}”.`
+        : `Add photos puts pictures at the end of the playlist open on Drashti, “${open}”. They never go on the screens by themselves.`,
+  };
+}
 
 export const tooLargeWords = (maxBytes: number): string =>
   `This file is larger than ${sizeWords(maxBytes)}: Drashti takes files up to ${sizeWords(maxBytes)} from a phone.`;

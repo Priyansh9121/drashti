@@ -36,8 +36,10 @@ import { freeName, madeFrom } from '../playlists/folder-playlist';
  *   name Drashti made in the uploads folder of the media folder and really there, and what is inside it), then
  *   imported as a dropped file is (so a deck comes in as any deck does, and what Drashti cannot play is
  *   converted by itself, never on air), named as the phone named it, marked with the device's name, and added to
- *   the playlist "Added from Phones" (made when the first file comes). It never goes live by itself. The file sent
- *   is removed once imported: the media folder keeps the library's own copy.
+ *   the playlist "Added from Phones" (made when the first file comes): a picture Add photos sends goes to the end of
+ *   the playlist open in Pro Mode (Session 55, Part 8), and, while Drashti is in Simple Mode, a picture however it is
+ *   sent goes to the end of Simple Mode's one playlist (question 5, the owner's decision of 3 Nov 2026). It never
+ *   goes live by itself. The file sent is removed once imported: the media folder keeps the library's own copy.
  * - The playlists shared with phones, for Remote devices to view.
  */
 
@@ -88,6 +90,11 @@ export interface PhoneFilesDeps {
    * Simple Mode. Left out: none.
    */
   openPlaylist?: () => string | null;
+  /**
+   * Question 5 (the owner's decision of 3 Nov 2026): Simple Mode's one playlist, by its id, while Drashti is in Simple
+   * Mode; null in Pro Mode. Left out: none.
+   */
+  simplePlaylist?: () => string | null;
 }
 
 const plainWord = (kind: ArrivedFile['kind']) =>
@@ -147,6 +154,7 @@ export class PhoneFiles {
       reserveBytes: UPLOAD_RESERVE_BYTES,
       slowed: this.deps.onAir(),
       openPlaylist: this.openPlaylist()?.name ?? null,
+      simplePlaylist: this.simplePlaylist()?.name ?? null,
     };
   }
 
@@ -160,6 +168,22 @@ export class PhoneFiles {
     const row = this.deps.db
       .prepare(
         "SELECT id, name FROM playlists WHERE id = ? AND deleted_at IS NULL AND is_folder = 0 AND is_template = 0 AND kind = 'normal'",
+      )
+      .get(id) as { id: string; name: string } | undefined;
+    return row ?? null;
+  }
+
+  /**
+   * Question 5: Simple Mode's one playlist while Drashti is in Simple Mode, still a playlist (never a folder of
+   * playlists, a template, or one deleted); else null. Whatever kind it is, as Simple Mode's own Add files… puts files
+   * at its end.
+   */
+  private simplePlaylist(): { id: string; name: string } | null {
+    const id = this.deps.simplePlaylist?.() ?? null;
+    if (id === null) return null;
+    const row = this.deps.db
+      .prepare(
+        'SELECT id, name FROM playlists WHERE id = ? AND deleted_at IS NULL AND is_folder = 0 AND is_template = 0',
       )
       .get(id) as { id: string; name: string } | undefined;
     return row ?? null;
@@ -290,10 +314,14 @@ export class PhoneFiles {
     // same file added before, from anywhere) stays as it was.
     const fresh = item?.outcome === 'imported' || item?.outcome === 'kept-both';
     const renamed: string[] = [];
-    // Add photos (Session 55, Part 8): a picture asked for the open playlist goes to its end; anything else, or with
-    // none open, to Added from Phones as before.
+    // A picture: in Simple Mode to the end of its one playlist, however it was sent (question 5); in Pro Mode, asked
+    // for the open playlist (Add photos, Session 55, Part 8), to its end. Anything else, or with neither, to Added from
+    // Phones as before.
+    const picture = file.kind === 'image';
     const playlist =
-      (file.into === INTO_OPEN && file.kind === 'image' ? this.openPlaylist() : null) ?? this.addedPlaylist();
+      (picture ? this.simplePlaylist() : null) ??
+      (picture && file.into === INTO_OPEN ? this.openPlaylist() : null) ??
+      this.addedPlaylist();
     this.deps.db.transaction(() => {
       if (fresh && made.kind === 'media')
         this.deps.db

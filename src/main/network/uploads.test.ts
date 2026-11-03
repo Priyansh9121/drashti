@@ -391,6 +391,10 @@ describe('what a phone may add', () => {
     expect(await uploads.adding()).toMatchObject({ on: true, openPlaylist: null });
     uploads.setPolicy({ ...ON, openPlaylist: 'Placeholder sabha' });
     expect(await uploads.adding()).toMatchObject({ on: true, openPlaylist: 'Placeholder sabha' });
+    // Question 5: in Simple Mode its one playlist's name, where a phone's pictures go.
+    uploads.setPolicy({ ...ON, simplePlaylist: 'Sabha, 4 Nov 2026' });
+    expect(await uploads.adding()).toMatchObject({ openPlaylist: null, simplePlaylist: 'Sabha, 4 Nov 2026' });
+    uploads.setPolicy({ ...ON, openPlaylist: 'Placeholder sabha' });
     const bytes = picture(3000);
     const id = upload(
       await uploads.begin(PHONE, { name: 'IMG_0002.HEIC', size: bytes.length, into: 'open' }),

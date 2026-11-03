@@ -132,3 +132,139 @@ test('Add photos on a paired phone at 375 × 812: pictures into the end of the p
   }
   await app.close();
 });
+
+/** Choose files with the phone's own picker, from Add from this Phone…. */
+async function addFromPhone(p: Page, files: string[]): Promise<void> {
+  const [chooser] = await Promise.all([
+    p.waitForEvent('filechooser'),
+    p.getByTestId('remote-add-button').click(),
+  ]);
+  await chooser.setFiles(files);
+}
+
+/*
+ * Question 5 (the owner's decision of 3 Nov 2026): while Drashti is in Simple Mode, a photo a paired phone sends, by
+ * Add from this Phone… or Add photos, goes to the end of Simple Mode's playlist, and into Media as ever, never live;
+ * the phone says so before it is sent. Back in Pro Mode a picture from Add from this Phone… goes to Added from Phones
+ * as before.
+ */
+test('in Simple Mode a paired phone’s photos go to the end of Simple Mode’s playlist, said first, never live; in Pro Mode, to Added from Phones as before', async () => {
+  test.setTimeout(240_000);
+  const { app, userData } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-phone-photos-'));
+  const photos = [
+    await makeTestImage(win, join(dir, 'Placeholder photo one.png'), { color: '#7c2d12' }),
+    await makeTestImage(win, join(dir, 'Placeholder photo two.png'), { color: '#14532d' }),
+    await makeTestImage(win, join(dir, 'Placeholder photo three.png'), { color: '#1e3a8a' }),
+  ];
+  // A playlist with a header in it, open as Drashti switches to Simple Mode: Simple Mode's one playlist.
+  const playlistId = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const list = await d.playlists.create('Placeholder sabha', null, false);
+    if (!list.ok) throw new Error(list.message);
+    const added = await d.playlists.addItems(list.ids[0] ?? '', null, [
+      { kind: 'header', label: 'Placeholder start' },
+    ]);
+    if (!added.ok) throw new Error(added.message);
+    return list.ids[0] ?? '';
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder sabha' }).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder sabha');
+  await setAddFiles(win, true);
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist())).toBe(playlistId);
+  const rowsInSimple = win.getByTestId('open-playlist').getByTestId('playlist-item');
+  await expect(rowsInSimple).toHaveCount(1);
+  const labels = () =>
+    win.evaluate(
+      async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).map((i) => i.label),
+      playlistId,
+    );
+  const addedFromPhones = () =>
+    win.evaluate(async () =>
+      (await (globalThis as PageGlobals).drashti.playlists.tree()).filter(
+        (n) => n.name === 'Added from Phones',
+      ),
+    );
+
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    await p.setViewportSize({ width: 375, height: 812 });
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-library').click();
+    await p.getByTestId('remote-library-media').click();
+    await expect(p.getByTestId('remote-add-button')).toBeVisible();
+    const sending = p.getByTestId('remote-sending');
+
+    // Add from this Phone…, a picture: at the end of Simple Mode's playlist, in Media, never live.
+    await addFromPhone(p, [photos[0] ?? '']);
+    const one = sending.filter({ hasText: 'Placeholder photo one.png' });
+    await expect(one).toHaveAttribute('data-state', 'added', { timeout: 60_000 });
+    await expect(one.getByTestId('remote-sending-words')).toHaveText(
+      'Added to Drashti, in Media and the playlist “Placeholder sabha”.',
+    );
+    await expect.poll(labels).toEqual(['Placeholder start', 'Placeholder photo one.png']);
+    // Simple Mode's window shows it as its last row.
+    await expect(rowsInSimple).toHaveCount(2);
+    await expect(rowsInSimple.last()).toContainText('Placeholder photo one.png');
+    const media = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+    expect(media.filter((m) => m.name === 'Placeholder photo one.png')).toHaveLength(1);
+    expect(await addedFromPhones()).toEqual([]);
+    const { state } = await snapshot(win);
+    expect(state.live.playlist).toBeNull();
+    expect(state.layers.background).toBeNull();
+
+    // The phone says where pictures go, before they are sent: Simple Mode's playlist, by its name.
+    await expect(p.getByTestId('remote-photos-words')).toHaveText(
+      'Add photos puts pictures at the end of Simple Mode’s playlist, “Placeholder sabha”. They never go on the screens by themselves.',
+    );
+    await expect(p.getByTestId('remote-add')).toContainText(
+      'a picture to the end of Simple Mode’s playlist “Placeholder sabha”',
+    );
+    await expectNoSeriousA11yIssues(p, 'adding files on a phone in Simple Mode at 375 × 812');
+
+    // Add photos: the same, after it.
+    await addPhotos(p, [photos[1] ?? '']);
+    await expect(sending.filter({ hasText: 'Placeholder photo two.png' })).toHaveAttribute(
+      'data-state',
+      'added',
+      { timeout: 60_000 },
+    );
+    await expect
+      .poll(labels)
+      .toEqual(['Placeholder start', 'Placeholder photo one.png', 'Placeholder photo two.png']);
+    await expect(rowsInSimple).toHaveCount(3);
+    await expect.poll(() => uploadsLeft(userData)).toEqual([]);
+
+    // Pro Mode again, the playlist closed: Add from this Phone…'s picture goes to Added from Phones, as before.
+    await win.getByTestId('simple-leave').dblclick();
+    await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+    await closePlaylistIfOpen(win);
+    await expect(p.getByTestId('remote-add')).toContainText(
+      'goes whole into Drashti’s playlist “Added from Phones”',
+    );
+    await addFromPhone(p, [photos[2] ?? '']);
+    const three = sending.filter({ hasText: 'Placeholder photo three.png' });
+    await expect(three).toHaveAttribute('data-state', 'added', { timeout: 60_000 });
+    await expect(three.getByTestId('remote-sending-words')).toHaveText(
+      'Added to Drashti, in Media and the playlist “Added from Phones”.',
+    );
+    expect(await labels()).toEqual([
+      'Placeholder start',
+      'Placeholder photo one.png',
+      'Placeholder photo two.png',
+    ]);
+    await expect(win.getByTestId('playlist-node').filter({ hasText: 'Added from Phones' })).toHaveCount(1);
+  } finally {
+    await phone.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+  await app.close();
+});

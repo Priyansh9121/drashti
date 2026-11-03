@@ -220,8 +220,9 @@ test('Simple Mode can read its phone exceptions without gaining the setup guides
   await expect(shown).toContainText('Play resumes');
   await expect(shown).toContainText('Pause and marker jumps');
   await expect(shown).toContainText('refused');
+  // Question 5 (alpha.15): a phone's pictures go to the end of this playlist; its other files to Added from Phones.
+  await expect(shown).toContainText('goes to the end of this playlist');
   await expect(shown).toContainText('Added from Phones');
-  await expect(shown).toContainText('not into this playlist');
   await expect(shown).toBeInViewport();
   const permissions = await win.evaluate(async () => {
     const g = (globalThis as PageGlobals).drashti.guides;

@@ -84,8 +84,9 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
     expect(phone).toContain('Play resumes');
     expect(phone).toContain('Pause and marker jumps');
     expect(phone).toContain('refused');
+    // Question 5 (alpha.15): a phone's pictures go to the end of its playlist; its other files to Added from Phones.
+    expect(phone).toContain('goes to the end of this playlist');
     expect(phone).toContain('Added from Phones');
-    expect(phone).toContain('not into this playlist');
     expect(source).not.toContain("and a phone's markers still jump");
     const presenter = passagesOf(
       parseMarkdown(readFileSync(join(process.cwd(), 'docs/presenter-guide.md'), 'utf8')),
@@ -98,6 +99,7 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
       'Pro Mode',
       'Simple Mode',
       'Added from Phones',
+      'end of Simple Mode’s playlist',
     ]) {
       expect(summary?.text).toContain(detail);
     }

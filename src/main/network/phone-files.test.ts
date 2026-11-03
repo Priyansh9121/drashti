@@ -46,6 +46,8 @@ let simple = false;
 let letIn = true;
 /** The playlist open in Pro Mode's window (Session 55, Part 8: Add photos). */
 let open: { id: string; name: string } | null = null;
+/** Simple Mode's one playlist (Session 55, Part 18), told only while Drashti is in Simple Mode (question 5). */
+let simpleOne: string | null = null;
 const reports = new Map<string, ImportItemReport[]>();
 
 const DEVICES: Record<string, { name: string; kind: 'remote' | 'stage' }> = {
@@ -114,6 +116,7 @@ beforeEach(() => {
   simple = false;
   letIn = true;
   open = null;
+  simpleOne = null;
   files = new PhoneFiles({
     db,
     settings,
@@ -137,6 +140,7 @@ beforeEach(() => {
     waitMs: 10,
     letIn: () => letIn,
     openPlaylist: () => open?.id ?? null,
+    simplePlaylist: () => (simple ? simpleOne : null),
   });
   files.setOn(true);
 });
@@ -361,6 +365,70 @@ describe('Add photos (Session 55, Part 8): pictures from a phone into the playli
   });
 });
 
+// Question 5 (the owner's decision of 3 Nov 2026): while Drashti is in Simple Mode, a photo a phone sends goes to the end
+// of Simple Mode's playlist, however it was sent, and stays in Media; in Pro Mode nothing changes.
+describe('a phone’s photos in Simple Mode (question 5): at the end of Simple Mode’s playlist', () => {
+  it('a picture, from Add from this Phone… or Add photos, goes to the end of Simple Mode’s playlist and into Media; the phone is told its name', async () => {
+    const sabha = playlists.create('Sabha, 4 Nov 2026', null, false) ?? '';
+    playlists.addItems(sabha, null, [{ kind: 'header', label: 'Placeholder start' }]);
+    simpleOne = sabha;
+    simple = true;
+    expect(await files.arrived(sent(JPEG, 'IMG_0005.HEIC'))).toEqual({
+      ok: true,
+      message: 'Added to Drashti, in Media and the playlist “Sabha, 4 Nov 2026”.',
+    });
+    await files.arrived({ ...sent(Buffer.concat([JPEG, Buffer.from('d')]), 'IMG_0006.HEIC'), into: 'open' });
+    expect(playlists.itemsOf(sabha).map((i) => i.label)).toEqual([
+      'Placeholder start',
+      'IMG_0005.HEIC',
+      'IMG_0006.HEIC',
+    ]);
+    expect(new MediaRepo(db).list().map((m) => [m.name, m.fromDevice])).toEqual([
+      ['IMG_0005.HEIC', 'Placeholder phone'],
+      ['IMG_0006.HEIC', 'Placeholder phone'],
+    ]);
+    expect(added()).toEqual([]);
+    // Quiet in Simple Mode, as before: its window shows the new rows.
+    expect(notices).toEqual([]);
+    // The phone's words name it (Add photos and Add from this Phone…).
+    expect(files.policy()).toMatchObject({ simplePlaylist: 'Sabha, 4 Nov 2026', openPlaylist: null });
+  });
+
+  it('anything else from a phone goes to Added from Phones as before; in Pro Mode a picture does too', async () => {
+    const sabha = playlists.create('Sabha, 4 Nov 2026', null, false) ?? '';
+    simpleOne = sabha;
+    simple = true;
+    const pptx = makeZip([{ name: 'ppt/presentation.xml', data: '<p:presentation/>' }]);
+    const deck = await files.arrived(
+      sent(pptx, 'Placeholder deck.pptx', { ext: 'pptx', kind: 'powerpoint' }),
+    );
+    expect(deck.ok).toBe(true);
+    expect(deck.message).toContain('the playlist “Added from Phones”');
+    expect(playlists.itemsOf(sabha)).toEqual([]);
+    expect(added().map((p) => p.itemCount)).toEqual([1]);
+    // Pro Mode: Simple Mode's playlist is told to no one, and a picture goes to Added from Phones, as before.
+    simple = false;
+    expect(files.policy()).toMatchObject({ simplePlaylist: null });
+    expect(await files.arrived(sent(JPEG, 'Placeholder Pro.jpg'))).toEqual({
+      ok: true,
+      message: 'Added to Drashti, in Media and the playlist “Added from Phones”.',
+    });
+    expect(playlists.itemsOf(sabha)).toEqual([]);
+    expect(added().map((p) => p.itemCount)).toEqual([2]);
+  });
+
+  it('a Simple Mode playlist that is gone, or a folder, is never used: Added from Phones instead', async () => {
+    const folder = playlists.create('Placeholder folder', null, true) ?? '';
+    simpleOne = folder;
+    simple = true;
+    expect(files.policy()).toMatchObject({ simplePlaylist: null });
+    expect(await files.arrived(sent(JPEG, 'Placeholder lost.jpg'))).toEqual({
+      ok: true,
+      message: 'Added to Drashti, in Media and the playlist “Added from Phones”.',
+    });
+  });
+});
+
 describe('what the network is told', () => {
   it('the switch, the size limit, 2 GB kept free, and slower on air; told when the stream goes on or off air', async () => {
     expect(files.policy()).toEqual({
@@ -370,6 +438,8 @@ describe('what the network is told', () => {
       slowed: false,
       // Add photos (Session 55, Part 8): no playlist open.
       openPlaylist: null,
+      // Question 5: Pro Mode, so no Simple Mode's playlist.
+      simplePlaylist: null,
     });
     files.setOn(false);
     expect(files.view()).toEqual({ on: false, maxBytes: 2 * 1024 ** 3 });
