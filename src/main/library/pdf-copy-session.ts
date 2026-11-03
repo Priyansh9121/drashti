@@ -171,7 +171,7 @@ export class PdfCopySession {
     const width = Math.ceil((page.slide.width * 4) / 3),
       height = Math.ceil((page.slide.height * 4) / 3);
     // Bound viewport and screenshot memory as well as compressed output bytes.
-    if (width * height > 2_000_000) return null;
+    if (width * height > 4_000_000) return null;
     active.printing = true;
     active.captures++;
     try {

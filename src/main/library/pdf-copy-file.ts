@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, open, realpath, rename, unlink } from 'node:fs/promises';
+import { lstat, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -11,7 +11,7 @@ export interface PdfCopyRequest {
   /** Main's native Save dialog choice, never a renderer-provided path. */
   outputPath: string;
   mediaDir: string;
-  /** Main-known immutable managed originals and external source file paths. */
+  /** Main-known immutable managed originals and external source files or legacy Keynote packages. */
   protectedSources: readonly string[];
   signal?: AbortSignal;
   /** Main's current editor/permission/sender-generation admission. */
@@ -135,22 +135,80 @@ async function missingCanonical(file: string, request: PdfCopyRequest): Promise<
     }
   }
 }
-async function source(chosen: string, request: PdfCopyRequest): Promise<SourceSnapshot> {
+const MAX_PROTECTED_ENTRIES = 50_000;
+const MAX_PACKAGE_DEPTH = 64;
+interface ProtectionBudget {
+  entries: number;
+}
+function sourceLimit(): never {
+  throw new PdfCopyError(
+    'source-limit',
+    'A source package is too large or too deeply nested to check safely. Save it as a single-file deck or PDF and use that source copy instead.',
+  );
+}
+function takeSource(snapshot: SourceSnapshot, budget: ProtectionBudget): SourceSnapshot {
+  if (++budget.entries > MAX_PROTECTED_ENTRIES) sourceLimit();
+  return snapshot;
+}
+async function source(
+  chosen: string,
+  request: PdfCopyRequest,
+  budget: ProtectionBudget,
+): Promise<SourceSnapshot[]> {
   if (!isAbsolute(chosen)) unsafe();
   const entry = await maybeStat(chosen, request);
-  if (!entry) return { chosen, canonical: await missingCanonical(chosen, request), identity: null };
-  // An existing source symlink protects its real target too. A broken symlink
-  // refuses the operation rather than treating an unresolved alias as absent.
+  if (!entry)
+    return [
+      takeSource({ chosen, canonical: await missingCanonical(chosen, request), identity: null }, budget),
+    ];
   const canonical = await checked(request, () => realpath(chosen));
   const identity = await checked(request, () => lstat(canonical, { bigint: true }));
-  if (!identity.isFile() || identity.isSymbolicLink()) unsafe();
-  return { chosen, canonical, identity };
+  if (identity.isSymbolicLink()) unsafe();
+  const root = takeSource({ chosen, canonical, identity }, budget);
+  if (identity.isFile()) return [root];
+  // Older Keynote packages are source documents, never ordinary output folders.
+  if (!identity.isDirectory() || !chosen.toLowerCase().endsWith('.key')) unsafe();
+  const snapshots: SourceSnapshot[] = [root];
+  const walk = async (folder: SourceSnapshot, depth: number): Promise<void> => {
+    if (depth > MAX_PACKAGE_DEPTH) sourceLimit();
+    stopped(request);
+    // Assign the handle before the post-open cancellation check, so every exit closes it.
+    const directory = await opendir(folder.canonical);
+    try {
+      stopped(request);
+      const opening = await checked(request, () => lstat(folder.canonical, { bigint: true }));
+      if (!opening.isDirectory() || opening.isSymbolicLink() || !sameFile(folder.identity, opening))
+        changed();
+      for await (const child of directory) {
+        stopped(request);
+        const path = join(folder.canonical, child.name);
+        const linkIdentity = await checked(request, () => lstat(path, { bigint: true }));
+        const target = await checked(request, () => realpath(path));
+        const found = await checked(request, () => lstat(target, { bigint: true }));
+        if (found.isSymbolicLink() || (!found.isFile() && !found.isDirectory())) unsafe();
+        // Do not traverse unrelated folders through a package's directory links.
+        if (found.isDirectory() && target !== canonical && !isInside(canonical, target)) unsafe();
+        const snapshot = takeSource({ chosen: path, canonical: target, identity: found }, budget);
+        snapshots.push(snapshot);
+        if (found.isDirectory() && !linkIdentity.isSymbolicLink()) await walk(snapshot, depth + 1);
+      }
+      const closing = await checked(request, () => lstat(folder.canonical, { bigint: true }));
+      if (!sameFile(folder.identity, closing)) changed();
+    } finally {
+      await directory.close().catch((error: unknown) => {
+        if (!codeIs(error, 'ERR_DIR_CLOSED')) throw error;
+      });
+    }
+  };
+  await walk(root, 0);
+  return snapshots.sort((a, b) => (a.chosen < b.chosen ? -1 : a.chosen > b.chosen ? 1 : 0));
 }
 async function protections(request: PdfCopyRequest): Promise<Protections> {
   if (!isAbsolute(request.mediaDir)) unsafe();
   const media = await folder(request.mediaDir, request);
   const sources: SourceSnapshot[] = [];
-  for (const path of request.protectedSources) sources.push(await source(path, request));
+  const budget: ProtectionBudget = { entries: 0 };
+  for (const path of request.protectedSources) sources.push(...(await source(path, request, budget)));
   return { media, sources };
 }
 async function output(request: PdfCopyRequest): Promise<OutputSnapshot> {
@@ -172,6 +230,7 @@ function safeOutput(target: OutputSnapshot, protectedFiles: Protections): void {
   for (const original of protectedFiles.sources) {
     if (
       target.file === original.canonical ||
+      (original.identity?.isDirectory() && isInside(original.canonical, target.file)) ||
       (target.identity && original.identity && sameInode(target.identity, original.identity))
     )
       unsafe();

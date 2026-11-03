@@ -8,7 +8,7 @@ import type { PdfCopyJob, PdfCopyResult } from '../../shared/pdf-copy';
 import { OriginalsStore, originalRelative } from '../import/originals-store';
 import type { Db } from '../db/database';
 import type { PdfCopySession } from './pdf-copy-session';
-import { writePdfCopy } from './pdf-copy-file';
+import { PdfCopyError, writePdfCopy } from './pdf-copy-file';
 
 export interface PdfEditorDeps {
   db: Db;
@@ -111,6 +111,7 @@ export class PdfEditor {
       return { ok: true, name: basename(output) };
     } catch (error) {
       if (error instanceof PdfEditorError) return failed(error.message);
+      if (error instanceof PdfCopyError && error.code === 'source-limit') return failed(error.message);
       return failed(
         'The PDF copy could not be saved safely. Choose a new file outside the original documents and managed media.',
       );

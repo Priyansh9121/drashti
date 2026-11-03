@@ -18,8 +18,8 @@ export function SourceLinkDialog({
   doc: EditDoc;
   slideId: string;
   stamp: string;
-  onLinked(page: EditSlide, issues: string[]): void;
-  onClose(): void;
+  onLinked: (page: EditSlide, issues: string[]) => void;
+  onClose: () => void;
 }) {
   const slide = doc.groups.flatMap((group) => group.slides).find((page) => page.id === slideId);
   const pictures = slide?.elements.filter((element) => element.kind === 'image') ?? [];

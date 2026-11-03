@@ -481,12 +481,10 @@ export class ImportedSlides {
     const picture = target?.elements.find((element) => element.id === pictureId);
     const savedPicture = original?.elements.find((element) => element.id === pictureId);
     if (
-      !cached ||
-      cached.stamp !== stamp ||
+      cached?.stamp !== stamp ||
       !original ||
       !target ||
-      !source?.documentPage ||
-      source.documentPage.ext !== 'pdf' ||
+      source?.documentPage?.ext !== 'pdf' ||
       !source.pageSize ||
       (original.documentPage && original.documentPage.ext !== 'ppt' && original.documentPage.ext !== 'key') ||
       picture?.kind !== 'image' ||
@@ -606,7 +604,7 @@ export class ImportedSlides {
       if (
         linked &&
         !slide.documentPage &&
-        slide.elements.some((element) => approval?.nativeIds.has(element.id))
+        slide.elements.some((element) => approval.nativeIds.has(element.id))
       )
         return { ok: false, message: 'A linked PDF page must keep its original document identity.' };
       if (!slide.documentPage) {
