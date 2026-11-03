@@ -36,6 +36,7 @@ import { Canvas } from './Canvas';
 import type { EditorGroup } from './editor-store';
 import {
   acceptSourceConversion,
+  allowSourceContent,
   cancelSourceConversion,
   closeSlideEditor,
   commit,
@@ -72,6 +73,7 @@ import { SOURCE_CONVERSION_WARNING } from './source-conversion';
 import { PdfTools } from './PdfTools';
 import { PdfInsertDialog } from './PdfInsertDialog';
 import type { PdfPendingAction } from './PdfTools';
+import { SourceLinkDialog } from './SourceLinkDialog';
 import { SourceIssues } from './SourceIssues';
 import { isPdfPage, pdfEditorTabs, visibleEditorGroup } from './pdf-context';
 import { deletePdfPage, turnPdfPageRight } from './pdf-page-ops';
@@ -143,6 +145,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const [pickingBusy, setPickingBusy] = useState(false);
   const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
   const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
+  const [linking, setLinking] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const insertBase = useRef<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
   const pdfJob = useRef(false);
   const pendingPick = useRef<{ id: number; busy: boolean; save: boolean | null }>({
@@ -239,7 +242,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     showSlide(removed.show);
   };
   const closeInsertion = () => {
+    if (insertBase.current) revokeSourceContent(insertBase.current.slideId);
     insertBase.current = null;
+    setLinking(null);
     pdfJob.current = false;
     setInserting(null);
     setPdfPending(null);
@@ -254,6 +259,22 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     useEditor.setState({ pdfTool: null });
     setPdfPending('insert-pages');
     setInserting(insertBase.current);
+  };
+  const openSourceLink = () => {
+    if (pdfJob.current || exportBusy) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId || now.sourceConversion) return;
+    const begin = () => {
+      const current = useEditor.getState();
+      if (!current.doc || !current.slideId || current.doc !== now.doc) return;
+      insertBase.current = { doc: current.doc, slideId: current.slideId, stamp: current.stamp };
+      pdfJob.current = true;
+      useEditor.setState({ pdfTool: null });
+      setPdfPending('insert-pages');
+      setLinking(insertBase.current);
+    };
+    if (allowSourceContent(now.slideId, begin)) begin();
   };
   const savePdfCopy = async () => {
     const before = useEditor.getState();
@@ -574,7 +595,19 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           is kept as it is, but not shown here.
         </Notice>
       )}
-      <SourceIssues issues={sourceIssues} />
+      <SourceIssues
+        issues={sourceIssues}
+        blocked={exportBusy || pdfJob.current}
+        onLink={
+          shownPage &&
+          (!shownPage.documentPage ||
+            shownPage.documentPage.ext === 'ppt' ||
+            shownPage.documentPage.ext === 'key') &&
+          shownPage.elements.some((element) => element.kind === 'image')
+            ? openSourceLink
+            : undefined
+        }
+      />
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (
@@ -633,6 +666,24 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               cancelPicking();
               if (queuedSave !== null) void saveSlides(queuedSave);
             });
+          }}
+        />
+      )}
+      {linking && (
+        <SourceLinkDialog
+          doc={linking.doc}
+          slideId={linking.slideId}
+          stamp={linking.stamp}
+          onClose={closeInsertion}
+          onLinked={(page, issues) => {
+            const base = insertBase.current;
+            const now = useEditor.getState();
+            if (base?.doc !== now.doc || now.stamp !== base.stamp) {
+              tell('The slides changed while the reading copy was prepared. Choose Link source page again.');
+              return;
+            }
+            commit(changeSlide(base.doc, page.id, page), { select: [] });
+            useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
           }}
         />
       )}
@@ -877,7 +928,7 @@ function SlideList({
                         className="pointer-events-none relative block aspect-video w-full"
                         data-a11y-picture
                       >
-                        <PlacedInParent content={doc} mode="fit" className="absolute inset-0">
+                        <PlacedInParent content={slideCanvas(s, doc)} mode="fit" className="absolute inset-0">
                           <OversetWatch
                             onChange={(over) => {
                               setOverset((was) => {

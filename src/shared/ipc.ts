@@ -1,4 +1,4 @@
-import type { PdfPageSource, InsertPdfPagesResult } from './slide-edit';
+import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
@@ -336,6 +336,7 @@ export const IPC = {
     pdfPageSources: 'library:pdf-page-sources',
     insertPdfPages: 'library:insert-pdf-pages',
     insertPdfFile: 'library:insert-pdf-file',
+    linkPdfPage: 'library:link-pdf-page',
     cancelPdfInsertion: 'library:cancel-pdf-insertion',
     /** The transition for presentations without their own; changing it is for the operator window only. */
     getDefaultTransition: 'library:get-default-transition',
@@ -1220,6 +1221,17 @@ export interface InvokeContract {
   [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
+  [IPC.library.linkPdfPage]: {
+    args: [
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      slideId: string,
+      pictureId: string,
+      preparedId: string,
+    ];
+    result: LinkPdfPageResult;
+  };
   [IPC.library.pdfPageSources]: { args: []; result: PdfPageSource[] };
   [IPC.library.insertPdfPages]: {
     args: [presentationId: string, stamp: string, sourceId: string];

@@ -334,3 +334,7 @@ export interface PdfPageSource {
 }
 export type InsertPdfPagesResult =
   { ok: true; pages: EditSlide[]; issues: string[] } | { ok: false; message: string; cancelled?: true };
+
+/** Explicitly replacing a saved source picture never writes the source or saves the presentation. */
+export type LinkPdfPageResult =
+  { ok: true; page: EditSlide; issues: string[] } | { ok: false; message: string };

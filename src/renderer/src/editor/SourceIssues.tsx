@@ -1,8 +1,17 @@
 // Intended destination: src/renderer/src/editor/SourceIssues.tsx.
 // External draft. Main supplies sanitized explanations, never source paths.
+import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
 
-export function SourceIssues({ issues }: { issues: readonly string[] }) {
+export function SourceIssues({
+  issues,
+  onLink,
+  blocked,
+}: {
+  issues: readonly string[];
+  onLink?: () => void;
+  blocked?: boolean;
+}) {
   const unique = [...new Set(issues.filter((issue) => issue.trim().length > 0))];
   if (unique.length === 0) return null;
   return (
@@ -13,6 +22,11 @@ export function SourceIssues({ issues }: { issues: readonly string[] }) {
           <li key={issue}>{issue}</li>
         ))}
       </ul>
+      {onLink && (
+        <Button size="sm" className="mt-2" disabled={blocked} onClick={onLink}>
+          Link source page…
+        </Button>
+      )}
     </Notice>
   );
 }

@@ -1,7 +1,8 @@
 import { documentCanvas, slideCanvas } from '../../shared/document-page';
 import { freshGroups } from '../../shared/element-groups';
 import { masterContribution, renderEditedSlide } from '../../shared/slide-design';
-import type { InsertPdfPagesResult } from '../../shared/slide-edit';
+import { fitElements } from '../../shared/slide-size';
+import type { InsertPdfPagesResult, LinkPdfPageResult } from '../../shared/slide-edit';
 import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -41,9 +42,16 @@ const contentOf = (slide: EditSlide, copied = false) => {
 const sameSource = (a: DocumentPageRef | undefined, b: DocumentPageRef | undefined) =>
   !!a && !!b && a.sha256 === b.sha256 && a.ext === b.ext && a.page === b.page;
 
+interface PreparedEditor {
+  stamp: string;
+  doc: EditDoc;
+  inserted: Set<string>;
+  linked: Map<string, { page: EditSlide; nativeIds: Set<string> }>;
+}
+
 /** Native working copies belong to an editor stamp; they never replace stored playback merely on open. */
 export class ImportedSlides {
-  private readonly prepared = new Map<string, { stamp: string; doc: EditDoc; inserted: Set<string> }>();
+  private readonly prepared = new Map<string, PreparedEditor>();
   private readonly originals: OriginalsStore;
   private readonly media: MediaStore;
   private readonly reader: SourceReader;
@@ -95,7 +103,7 @@ export class ImportedSlides {
     const doc = structuredClone(opened);
     const issues: string[] = [];
     const slides = allSlides(doc);
-    if (slides.length > 0 && !slides.some((slide) => slide.documentPage)) {
+    if (slides.some((slide) => !slide.documentPage)) {
       const kind = this.db
         .prepare('SELECT source_kind FROM presentations WHERE id = ?')
         .pluck()
@@ -233,7 +241,12 @@ export class ImportedSlides {
     if (!allowed()) throw new Error('Source preparation cancelled.');
     for (const slide of slides) if (slide.documentPage) slide.sourceOccurrenceId = slide.id;
     this.prepared.delete(doc.presentationId);
-    this.prepared.set(doc.presentationId, { stamp, doc: structuredClone(doc), inserted: new Set() });
+    this.prepared.set(doc.presentationId, {
+      stamp,
+      doc: structuredClone(doc),
+      inserted: new Set(),
+      linked: new Map(),
+    });
     while (this.prepared.size > 8) {
       const oldest = this.prepared.keys().next().value;
       if (oldest === undefined) break;
@@ -267,15 +280,25 @@ export class ImportedSlides {
 
   private insertionBaseline(targetRows: ContentRows, targetName: string, stamp: string) {
     const cached = this.prepared.get(targetRows.presentationId);
-    const baseline =
+    const baseline: PreparedEditor =
       cached?.stamp === stamp
-        ? { ...cached, doc: structuredClone(cached.doc), inserted: new Set(cached.inserted) }
-        : { stamp, doc: editDocOf(targetRows, targetName).doc, inserted: new Set<string>() };
+        ? {
+            ...cached,
+            doc: structuredClone(cached.doc),
+            inserted: new Set(cached.inserted),
+            linked: new Map(cached.linked),
+          }
+        : {
+            stamp,
+            doc: editDocOf(targetRows, targetName).doc,
+            inserted: new Set<string>(),
+            linked: new Map(),
+          };
     return baseline;
   }
 
   private adoptInsertion(
-    baseline: { stamp: string; doc: EditDoc; inserted: Set<string> },
+    baseline: PreparedEditor,
     prepared: { doc: EditDoc; issues: string[] },
     guard: SourceCommitGuard,
   ): InsertPdfPagesResult {
@@ -440,6 +463,118 @@ export class ImportedSlides {
     }
   }
 
+  /** The operator names both the saved picture and a prepared PDF page; no ordinal is guessed. */
+  linkPdfPage(
+    doc: EditDoc,
+    stamp: string,
+    slideId: string,
+    pictureId: string,
+    preparedId: string,
+  ): LinkPdfPageResult {
+    const cached = this.prepared.get(doc.presentationId);
+    const original =
+      cached?.stamp === stamp ? allSlides(cached.doc).find((slide) => slide.id === slideId) : undefined;
+    const target = allSlides(doc).find((slide) => slide.id === slideId);
+    const source = cached?.inserted.has(preparedId)
+      ? allSlides(cached.doc).find((slide) => slide.id === preparedId)
+      : undefined;
+    const picture = target?.elements.find((element) => element.id === pictureId);
+    const savedPicture = original?.elements.find((element) => element.id === pictureId);
+    if (
+      !cached ||
+      cached.stamp !== stamp ||
+      !original ||
+      !target ||
+      !source?.documentPage ||
+      source.documentPage.ext !== 'pdf' ||
+      !source.pageSize ||
+      (original.documentPage && original.documentPage.ext !== 'ppt' && original.documentPage.ext !== 'key') ||
+      picture?.kind !== 'image' ||
+      savedPicture?.kind !== 'image' ||
+      picture.mediaId !== savedPicture.mediaId
+    )
+      return {
+        ok: false,
+        message:
+          'Choose an older source picture and a PDF page prepared for this editor. Reopen and try again if either changed.',
+      };
+    if (
+      picture.fit !== 'fit' ||
+      picture.crop ||
+      picture.rotation ||
+      picture.flipX ||
+      picture.flipY ||
+      (picture.opacity !== undefined && picture.opacity !== 1)
+    )
+      return {
+        ok: false,
+        message:
+          'This source picture is cropped, turned, faded or filled. Keep its saved playback, or use an uncropped whole-page picture before linking.',
+      };
+    const paper = slideCanvas(target, doc);
+    const background: SlideElement[] = source.background
+      ? [
+          {
+            id: randomUUID(),
+            kind: 'shape',
+            frame: { x: 0, y: 0, ...source.pageSize },
+            fill: source.background,
+            cornerRadius: 0,
+            opacity: 1,
+          },
+        ]
+      : [];
+    const objects = freshGroups(
+      fitElements([...background, ...source.elements], source.pageSize, picture.frame).map((element) => ({
+        ...element,
+        id: randomUUID(),
+        frame: {
+          ...element.frame,
+          x: element.frame.x + picture.frame.x,
+          y: element.frame.y + picture.frame.y,
+        },
+      })),
+    );
+    const { deck: _deck, ...kept } = target;
+    const page: EditSlide = {
+      ...kept,
+      pageSize: paper,
+      documentPage: {
+        sha256: source.documentPage.sha256,
+        ext: 'pdf',
+        page: source.documentPage.page,
+        width: paper.width,
+        height: paper.height,
+        edited: true,
+      },
+      sourceOccurrenceId: target.id,
+      elements: target.elements.flatMap((element) => (element.id === pictureId ? objects : [element])),
+    };
+    const next = {
+      ...doc,
+      groups: doc.groups.map((group) => ({
+        ...group,
+        slides: group.slides.map((slide) => (slide.id === page.id ? page : slide)),
+      })),
+    };
+    if (!editDocSchema.safeParse(next).success)
+      return {
+        ok: false,
+        message: 'That reading copy exceeds this page’s editor limits. Choose a simpler PDF reading copy.',
+      };
+    cached.linked.set(page.id, {
+      page: structuredClone(page),
+      nativeIds: new Set(objects.map((element) => element.id)),
+    });
+    return {
+      ok: true,
+      page,
+      issues: [
+        'A PDF reading copy was matched explicitly. Review its appearance before saving; the saved canvas and operator additions are kept.',
+      ],
+    };
+  }
+
   /** Restore untouched original rows; only actual object edits save the prepared native page. */
   forSave(
     before: ContentRows,
@@ -455,6 +590,25 @@ export class ImportedSlides {
       const old = before.slides.find((row) => row.id === slide.id);
       const storedRef = documentPageFromJson(old?.document_page);
       const ownPrepared = native.get(slide.id);
+      const approval =
+        cached?.stamp === stamp
+          ? (cached.linked.get(slide.id) ??
+            (!old && slide.sourceOccurrenceId ? cached.linked.get(slide.sourceOccurrenceId) : undefined))
+          : undefined;
+      const linked = approval?.page;
+      if (linked?.documentPage && sameSource(slide.documentPage, linked.documentPage)) {
+        if (slide.sourceOccurrenceId !== linked.id)
+          return { ok: false, message: 'A linked source page must keep its approved occurrence identity.' };
+        slide.documentPage = { ...slide.documentPage, ...linked.documentPage, edited: true };
+        delete slide.deck;
+        continue;
+      }
+      if (
+        linked &&
+        !slide.documentPage &&
+        slide.elements.some((element) => approval?.nativeIds.has(element.id))
+      )
+        return { ok: false, message: 'A linked PDF page must keep its original document identity.' };
       if (!slide.documentPage) {
         if (storedRef || ownPrepared?.documentPage)
           return { ok: false, message: 'An imported page must keep its original document identity.' };

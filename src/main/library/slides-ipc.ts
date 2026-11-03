@@ -1,4 +1,4 @@
-import type { InsertPdfPagesResult, PdfPageSource } from '../../shared/slide-edit';
+import type { InsertPdfPagesResult, PdfPageSource, LinkPdfPageResult } from '../../shared/slide-edit';
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
 import { CUT, type Transition } from '../../shared/model';
@@ -337,6 +337,28 @@ export function registerSlidesIpc({
     }
     return { ok: true as const, doc: nfcEditDoc(prepared.doc), before, now, id: id.data };
   };
+
+  handle(
+    IPC.library.linkPdfPage,
+    (e, rawId, rawDoc, rawStamp, rawSlide, rawPicture, rawSource): LinkPdfPageResult => {
+      if (!fromOperator(e) || !mayPrepareSource(e)) return onlyOperator;
+      const ids = [rawSlide, rawPicture, rawSource].map((value) => idSchema.safeParse(value));
+      if (ids.some((id) => !id.success))
+        return { ok: false, message: 'Choose a saved picture and a prepared PDF page.' };
+      const checked = validateDocument(rawId, rawDoc, rawStamp, false);
+      if (!checked.ok) return { ok: false, message: checked.message };
+      const kind = db.prepare('SELECT source_kind FROM presentations WHERE id = ?').pluck().get(checked.id);
+      if (kind !== 'pictures')
+        return { ok: false, message: 'Only an older imported source picture needs a PDF reading copy.' };
+      return imported.linkPdfPage(
+        checked.doc,
+        String(rawStamp),
+        String(rawSlide),
+        String(rawPicture),
+        String(rawSource),
+      );
+    },
+  );
 
   const documentForExport: SlidesIpcController['documentForExport'] = (presentationId, doc, stamp) => {
     const checked = validateDocument(presentationId, doc, stamp, false);

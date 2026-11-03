@@ -1,8 +1,14 @@
+import { randomUUID } from 'node:crypto';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC } from '../../shared/ipc';
-import type { EditSlidesResult, InsertPdfPagesResult, SaveSlidesResult } from '../../shared/slide-edit';
+import type {
+  EditSlidesResult,
+  InsertPdfPagesResult,
+  SaveSlidesResult,
+  LinkPdfPageResult,
+} from '../../shared/slide-edit';
 import { DEFAULT_THEME } from '../../shared/themes';
 import { PresentationRepo } from '../db/presentations';
 import { SettingsRepo } from '../db/settings';
@@ -385,6 +391,185 @@ describe('the real retained PDF insertion coordinator', () => {
       expect(s.presentations.content(s.target.id)).toEqual(s.beforeTarget);
     } finally {
       release();
+      await s.close();
+    }
+  });
+});
+
+describe('explicit legacy PDF reading-copy mapping', () => {
+  for (const legacy of ['ambiguous', 'ppt', 'key'] as const) {
+    it(`links a selected PDF page for ${legacy}, preserving unsaved additions and Undo`, async () => {
+      let picked = '';
+      const s = await fixture(nativeSourceReader, () => Promise.resolve(picked));
+      try {
+        const row = s.beforeTarget?.slides[0];
+        if (!row) throw new Error('Missing generated source picture.');
+        let legacyFile: string | null = null;
+        const legacyBytes = Buffer.from('Placeholder generated legacy bytes');
+        let legacyRef: { sha256: string; ext: 'ppt' | 'key'; page: number } | null = null;
+        if (legacy !== 'ambiguous') {
+          const file = join(s.w.externalDir, `Placeholder retained legacy.${legacy}`);
+          legacyFile = file;
+          writeFileSync(file, legacyBytes);
+          const originals = new OriginalsStore(s.w.db, s.w.mediaDir);
+          const staged = await originals.stage(file, legacy);
+          if (!staged.ok) throw new Error(staged.message);
+          originals.register(staged.original, file);
+          legacyRef = { sha256: staged.original.sha256, ext: legacy, page: 3 };
+        }
+        s.w.db
+          .prepare('UPDATE slides SET document_page = ? WHERE id = ?')
+          .run(legacyRef ? JSON.stringify(legacyRef) : null, row.id);
+        s.w.db
+          .prepare('UPDATE presentations SET content_rev = content_rev + 1 WHERE id = ?')
+          .run(s.target.id);
+        const opened = await call<EditSlidesResult>(IPC.library.slidesForEdit, event, s.target.id);
+        if (!opened.ok) throw new Error(opened.message);
+        const group = opened.doc.groups[0],
+          target = group?.slides[0];
+        const image = target?.elements.find((element) => element.kind === 'image');
+        if (!group || !target || !image) throw new Error('Missing generated legacy picture.');
+        target.notes = 'Placeholder operator notes';
+        target.guides = { x: [100], y: [200] };
+        target.cues = [
+          { id: randomUUID(), kind: 'clear', label: 'Placeholder clear cue', mediaId: null, props: '{}' },
+        ];
+        const overlay = {
+          id: randomUUID(),
+          kind: 'text' as const,
+          text: 'Placeholder unsaved overlay',
+          lang: null,
+          frame: { x: 80, y: 90, width: 300, height: 100 },
+          style: opened.look.style,
+        };
+        target.elements.push(overlay);
+        const undo = structuredClone(opened.doc),
+          before = s.presentations.content(s.target.id);
+        picked = join(s.w.externalDir, 'Placeholder explicit reading copy.pdf');
+        const bytes = makeTestPdf([{ width: 480, height: 320, color: [20, 50, 80], text: words }]);
+        writeFileSync(picked, bytes);
+        const prepared = await call<InsertPdfPagesResult>(
+          IPC.library.insertPdfFile,
+          event,
+          s.target.id,
+          opened.stamp,
+        );
+        if (!prepared.ok || !prepared.pages[0]) throw new Error('Real PDF reading copy preparation failed.');
+        const linked = await call<LinkPdfPageResult>(
+          IPC.library.linkPdfPage,
+          event,
+          s.target.id,
+          opened.doc,
+          opened.stamp,
+          target.id,
+          image.id,
+          prepared.pages[0].id,
+        );
+        expect(linked.ok).toBe(true);
+        if (!linked.ok) throw new Error(linked.message);
+        expect(linked.page.documentPage).toMatchObject({
+          sha256: bytesHash(bytes),
+          ext: 'pdf',
+          page: 0,
+          edited: true,
+          width: opened.doc.width,
+          height: opened.doc.height,
+        });
+        expect(linked.page.elements.find((element) => element.id === overlay.id)).toEqual(overlay);
+        expect(linked.page.elements.some((element) => element.id === image.id)).toBe(false);
+        expect(
+          linked.page.elements
+            .filter((element) => element.kind === 'text')
+            .map((element) => element.text)
+            .join(' '),
+        ).toContain(words);
+        expect(linked.page).toMatchObject({ notes: target.notes, guides: target.guides, cues: target.cues });
+        expect(s.presentations.content(s.target.id)).toEqual(before);
+        expect(s.keep).not.toHaveBeenCalled();
+        expect(s.controller.documentForExport(s.target.id, undo, opened.stamp).ok).toBe(true);
+        group.slides[0] = linked.page;
+        const stripped = structuredClone(opened.doc),
+          strippedPage = stripped.groups[0]?.slides[0];
+        if (!strippedPage) throw new Error('Missing generated linked page.');
+        delete strippedPage.documentPage;
+        expect(s.controller.documentForExport(s.target.id, stripped, opened.stamp).ok).toBe(false);
+        expect(
+          await call<SaveSlidesResult>(
+            IPC.library.saveSlides,
+            event,
+            s.target.id,
+            opened.doc,
+            opened.stamp,
+            false,
+          ),
+        ).toMatchObject({ ok: true });
+        expect(s.keep).toHaveBeenCalledTimes(1);
+        const reopened = await call<EditSlidesResult>(IPC.library.slidesForEdit, event, s.target.id);
+        if (!reopened.ok) throw new Error(reopened.message);
+        const saved = reopened.doc.groups[0]?.slides[0];
+        const savedOverlay = saved?.elements.find(
+          (element) => element.kind === 'text' && element.text === overlay.text,
+        );
+        expect(savedOverlay).toEqual({ ...overlay, id: savedOverlay?.id });
+        expect(savedOverlay?.id).not.toBe(overlay.id);
+        expect(saved?.notes).toBe(target.notes);
+        expect(saved?.cues.map(({ id: _id, ...cue }) => cue)).toEqual(
+          target.cues.map(({ id: _id, ...cue }) => cue),
+        );
+        expect(saved?.cues[0]?.id).not.toBe(target.cues[0]?.id);
+        if (legacyFile) expect(readFileSync(legacyFile)).toEqual(legacyBytes);
+        expect(readFileSync(picked)).toEqual(bytes);
+        expect(readFileSync(s.w.source)).toEqual(s.w.bytes);
+        expect(readFileSync(s.w.owned)).toEqual(s.w.bytes);
+      } finally {
+        await s.close();
+      }
+    });
+  }
+  it('denies stale or non-Pro mapping and never guesses either page or picture', async () => {
+    const s = await fixture();
+    try {
+      s.access.pro = false;
+      expect(
+        await call<LinkPdfPageResult>(
+          IPC.library.linkPdfPage,
+          event,
+          s.target.id,
+          s.opened.doc,
+          s.opened.stamp,
+          'placeholder-slide',
+          'placeholder-picture',
+          'placeholder-page',
+        ),
+      ).toMatchObject({ ok: false });
+      s.access.pro = true;
+      expect(
+        await call<LinkPdfPageResult>(
+          IPC.library.linkPdfPage,
+          event,
+          s.target.id,
+          s.opened.doc,
+          'placeholder-old-stamp',
+          'placeholder-slide',
+          'placeholder-picture',
+          'placeholder-page',
+        ),
+      ).toMatchObject({ ok: false });
+      expect(
+        await call<LinkPdfPageResult>(
+          IPC.library.linkPdfPage,
+          event,
+          s.target.id,
+          s.opened.doc,
+          s.opened.stamp,
+          'placeholder-slide',
+          'placeholder-picture',
+          'placeholder-page',
+        ),
+      ).toMatchObject({ ok: false });
+      expect(s.keep).not.toHaveBeenCalled();
+      expect(s.presentations.content(s.target.id)).toEqual(s.beforeTarget);
+    } finally {
       await s.close();
     }
   });
