@@ -60,6 +60,7 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
+import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -258,6 +259,17 @@ export interface DrashtiBridge {
     loadPack(): Promise<OpeningResult | null>;
     saveCopy(mediaId: string, bytes: Uint8Array): Promise<{ ok: true } | { ok: false; message: string }>;
     /** File › Opening… was chosen. */
+    onOpen(listener: () => void): () => void;
+  };
+  /** Live captions (Session 55, Part 10, operator window; Pro Mode): how they stand, never a word heard. */
+  captions: {
+    view(): Promise<CaptionsStatus>;
+    setOn(on: boolean): Promise<CaptionsStatus>;
+    setModel(model: CaptionModelId): Promise<CaptionsStatus>;
+    setSettings(settings: CaptionSettings): Promise<CaptionsStatus>;
+    retry(): Promise<CaptionsStatus>;
+    onChanged(listener: (view: CaptionsStatus) => void): () => void;
+    /** File > Live Captions… was chosen. */
     onOpen(listener: () => void): () => void;
   };
   /** Audio playlists (Session 14, operator window). */

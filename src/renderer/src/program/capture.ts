@@ -1,6 +1,7 @@
 import { PREVIEW_FPS, PREVIEW_WIDTH } from '../../../shared/stream';
 import { cutText } from '../../../shared/text';
 import { inTurn } from '../render/live-window';
+import { speechPort } from './speech-tap';
 
 /*
  * The stream's page captures its own picture (the Program), frame by frame,
@@ -24,6 +25,7 @@ let soundReader: ReadableStreamDefaultReader<AudioData> | null = null;
 let size = { width: 1920, height: 1080 };
 let levelOf: () => number = () => -100;
 let soundTrack: () => MediaStreamTrack | null = () => null;
+let inputTrack: () => MediaStreamTrack | null = () => null;
 let previewBusy = false;
 let lastPreview = 0;
 let frames = 0;
@@ -283,9 +285,15 @@ function update(): void {
 let listening = false;
 
 /** Start listening for ports from the main process (once, when the page starts). */
-export function startCapture(level: () => number, sound: () => MediaStreamTrack | null): void {
+export function startCapture(
+  level: () => number,
+  sound: () => MediaStreamTrack | null,
+  // The sound input's own track, for live captions (Session 55, Part 10).
+  input: () => MediaStreamTrack | null = () => null,
+): void {
   levelOf = level;
   soundTrack = sound;
+  inputTrack = input;
   if (listening) return;
   listening = true;
   window.addEventListener('message', (event) => {
@@ -293,6 +301,11 @@ export function startCapture(level: () => number, sound: () => MediaStreamTrack 
     const data = event.data as { drashtiStreamPort?: string } | null;
     const port = event.ports[0];
     if (!port) return;
+    if (data?.drashtiStreamPort === 'speech') {
+      // Live captions (Session 55, Part 10): the sound input's own sound, on its own port.
+      speechPort(port, inputTrack);
+      return;
+    }
     if (data?.drashtiStreamPort === 'preview') {
       preview?.close();
       preview = port;

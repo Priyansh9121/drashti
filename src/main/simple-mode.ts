@@ -213,6 +213,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.drop.pickFolder,
   IPC.drop.setOn,
   IPC.drop.importAnyway,
+  // Live captions (Session 55, Part 10): set in Pro Mode only; Simple Mode's screens show them as they are.
+  IPC.captions.view,
+  IPC.captions.setOn,
+  IPC.captions.setModel,
+  IPC.captions.setSettings,
+  IPC.captions.retry,
   // Audio playlists (Session 14): Simple Mode plays and pauses one, and changes none.
   IPC.music.create,
   IPC.music.rename,

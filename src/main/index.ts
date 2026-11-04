@@ -342,6 +342,14 @@ import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
+import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
+import { CaptionsService } from './speech/captions-service';
+import { createWhisperEngine } from './speech/whisper-engine';
+import { createStandInEngine } from './speech/stand-in-engine';
+import { findWhisper, whisperProblem } from './speech/engine-place';
+import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
+import { CaptionSettingsRepo } from './db/captions';
+import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import type { EngineState } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
@@ -1476,18 +1484,20 @@ function start(): void {
   let network: NetworkService | null = null;
   /** The cameras the operator window last saw, by name (Session 54: a phone naming a video input); null until said. */
   let seenCameras: string[] | null = null;
+  // Live captions never reach a phone, a tablet or the API (Session 55, Part 10): every message goes without them.
   const networkTransport: EngineTransport = {
     broadcast: (message) => {
-      network?.broadcast(message);
+      network?.broadcast(withoutCaptions(message));
     },
   };
   // Output nodes get every engine message too (while any is paired); made further down.
   let nodeService: NodeService | null = null;
   /** What each node should copy (made with the media, further down). */
   let wantedMedia: WantedMedia | null = null;
+  // Nor an output node (Session 55, Part 10): captions show only on this computer's own screens and stream.
   const nodesTransport: EngineTransport = {
     broadcast: (message) => {
-      nodeService?.broadcast(message);
+      nodeService?.broadcast(withoutCaptions(message));
     },
   };
   // Each screen group's settings (Session 55, Part 12: Looks gone from the window): the engine reads them through the
@@ -2872,6 +2882,66 @@ function start(): void {
   });
   // No blurred copy is made while on air or recording (Session 55, D; Session 50's rule).
   blurOnAir = () => streaming.inUse() || testOnAir;
+
+  // ---- live captions (Session 55, Part 10) ------------------------------------
+  // Off until an admin turns them on (File › Live Captions…, Pro Mode); the model downloads once into the data folder.
+  // Tests only (never a packaged Drashti): DRASHTI_TEST_SPEECH names placeholder phrases a stand-in engine "hears".
+  const testSpeech = packaged() ? undefined : sw('DRASHTI_TEST_SPEECH');
+  const whisperProgram = findWhisper({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+  const captionsData = app.getPath('userData');
+  const captions: CaptionsService = new CaptionsService({
+    userData: captionsData,
+    platform: process.platform,
+    arch: process.arch,
+    repo: new CaptionSettingsRepo(opened.db),
+    engine:
+      testSpeech !== undefined
+        ? createStandInEngine(testSpeech.split('|'))
+        : createWhisperEngine({
+            program: () => whisperProgram,
+            model: () => modelFile(captionsData, captions.view().model),
+            fallback: () => captions.view().model !== 'turbo',
+            sound: { open: (chunk) => streaming.listenSound(chunk) },
+            log,
+          }),
+    engineProblem: () =>
+      testSpeech !== undefined
+        ? null
+        : (whisperProblem(process.platform, process.getSystemVersion()) ??
+          (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null)),
+    modelReady: (id) =>
+      testSpeech !== undefined || modelReady(modelFile(captionsData, id), MODEL_SOURCES[id]),
+    download: (id, progress) =>
+      downloadModel({ dest: modelFile(captionsData, id), source: MODEL_SOURCES[id], progress }),
+    show: (shown) => {
+      engine.setCaptions(shown);
+    },
+    changed: (view) => {
+      sendToOperator(IPC.captions.changed, view);
+    },
+    log,
+  });
+  captions.start();
+  stops.add('captions', () => {
+    captions.close();
+  });
+  handle(IPC.captions.view, () => captions.view());
+  handle(IPC.captions.setOn, (e, on) =>
+    fromOperator(e) && typeof on === 'boolean' ? captions.setOn(on) : captions.view(),
+  );
+  handle(IPC.captions.setModel, (e, model) =>
+    fromOperator(e) && isCaptionModel(model) ? captions.setModel(model) : captions.view(),
+  );
+  handle(IPC.captions.setSettings, (e, settings) =>
+    fromOperator(e) ? captions.setSettings(parseCaptionSettings(settings)) : captions.view(),
+  );
+  handle(IPC.captions.retry, (e) => (fromOperator(e) ? captions.retry() : captions.view()));
 
   // ---- another app's window as the background (Session 48) -------------------
   // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
@@ -4703,8 +4773,8 @@ function start(): void {
     ...(networkShown ? { interfaceAddresses: () => networkShown.addresses } : {}),
     engine: {
       dispatch: (command) => engine.dispatch(command),
-      snapshot: () => engine.snapshot(),
-      state: () => engine.current,
+      snapshot: () => withoutCaptions(engine.snapshot()),
+      state: () => stateWithoutCaptions(engine.current),
     },
     reads: {
       playlists: () => playlists.tree(),
@@ -5033,8 +5103,8 @@ function start(): void {
           ],
     bind: networkLocalOnly || perfTest ? '127.0.0.1' : '0.0.0.0',
     engine: {
-      snapshot: () => engine.snapshot(),
-      state: () => engine.current,
+      snapshot: () => withoutCaptions(engine.snapshot()),
+      state: () => stateWithoutCaptions(engine.current),
       rev: () => engine.rev,
       session: engine.session,
     },
@@ -6818,6 +6888,9 @@ function start(): void {
     },
     opening: () => {
       if (mode === 'pro') sendToOperator(IPC.opening.open, { at: Date.now() });
+    },
+    liveCaptions: () => {
+      if (mode === 'pro') sendToOperator(IPC.captions.open, { at: Date.now() });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });

@@ -101,7 +101,14 @@ export const AudienceBox = memo(function AudienceBox({
           >
             <SceneBoundary resetKey={revisionOf(state)}>
               <Placed content={view.canvas} box={PICTURE} mode={view.scaling}>
-                <Scene state={state} canvas={view.canvas} scaling={view.scaling} look={view.look} />
+                <Scene
+                  state={state}
+                  canvas={view.canvas}
+                  scaling={view.scaling}
+                  look={view.look}
+                  // The stage screen draws live captions once, over all of it (Session 55, Part 10).
+                  captions={false}
+                />
               </Placed>
             </SceneBoundary>
             {(view.off || unseen.length > 0) && <PictureWords box={size} off={view.off} unseen={unseen} />}

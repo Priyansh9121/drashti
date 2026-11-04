@@ -9,6 +9,7 @@ import { MovingLowerThird } from '../render/LowerThird';
 import { LowerThirdView } from '../render/LowerThirdView';
 import { MessageBanner, Scene } from '../render/Scene';
 import { FULL_FRAME_LAYERS, fullFrameState } from './full-frame';
+import { CaptionsView } from '../render/CaptionsView';
 
 function CameraVideo({ stream }: { stream: MediaStream | null }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -94,6 +95,7 @@ export function ProgramView({
             look={{ ...DEFAULT_LIVE_GROUP_LOOK, layers: FULL_FRAME_LAYERS, languages, movement }}
             ticker={false}
             place="stream"
+            captions={false}
           />
         </div>
       )}
@@ -125,6 +127,8 @@ export function ProgramView({
           movement={movement}
         />
       )}
+      {/* Live captions (Session 55, Part 10): on the stream always, over the camera too. */}
+      <CaptionsView state={state} canvas={canvas} screen="stream" />
     </div>
   );
 }

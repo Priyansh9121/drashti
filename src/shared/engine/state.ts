@@ -13,6 +13,7 @@ import type { SoundState } from '../sound';
 import type { ChosenWallpaper } from '../wallpapers';
 import type { MessageLook } from '../message-look';
 import type { StageCall } from '../stage-message';
+import type { CaptionsShown } from '../captions';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -60,6 +61,11 @@ import type { StageCall } from '../stage-message';
  * flips and group identity, and a picture's crop on its slide. The resolved master, gradient or picture backdrop,
  * design size and element motion also travel in each rendered slide; all players use shownAt for the motion.
  * Designed and animated slides keep their full canvas in every layout. A state 22 saved is read whole (23 only adds to it).
+ * 26 (Session 55, Part 10, the owner's number; 24 and 25 are other alpha.15 parts', each only adding): live captions
+ * (`captions`), the last lines heard from the stream's sound input, which the stream and the stage draw, and the
+ * audience screens only if chosen; never sent to a phone or a node (shared/engine/captions-filter.ts), never kept by
+ * the recovery file. An older page would leave them out, so it says 'incompatible'. A state 25, 24 or 23 saved is read
+ * whole (26 only adds to them).
  */
 // 25 (Part 17b): native normalized vector paths travel with slides to every player.
 // Optional path/page-size fields add to 23/24; saved states from both read whole.
@@ -748,6 +754,13 @@ export interface EngineState {
    * main process sets it, from the library. Left out (a state saved before 18) or null: none chosen, black.
    */
   chosenWallpaper?: ChosenWallpaper | null;
+  /**
+   * Live captions (Session 55, Part 10, shared/captions.ts): the last one or two lines heard from the stream's sound
+   * input, which the stream and the stage draw, and the audience screens only when `audience` is set. Only the main
+   * process sets it (as bookkeeping: never a change to the show); a phone or a node is never sent it, and the recovery
+   * file never keeps it. Left out (a state saved before 26) or null: no captions.
+   */
+  captions?: CaptionsShown | null;
 }
 
 export function emptyLayers(): Layers {
