@@ -35,7 +35,7 @@ export interface SpeechHub {
 }
 
 /** How far behind a phrase may be (its end to when the engine gave it) before the hub drops it. */
-const LATEST_MS = 10_000;
+export const LATEST_MS = 10_000;
 
 function isConfidence(n: number | null): boolean {
   return n === null || (Number.isFinite(n) && n >= 0 && n <= 1);
@@ -45,8 +45,11 @@ function isWords(text: string): boolean {
   return text.length > 0 && text.trim() === text;
 }
 
-/** What is wrong with a phrase the real hub would never send, or null when nothing is. */
-function problemWith(h: Heard, state: SpeechState, finals: ReadonlySet<string>): string | null {
+/**
+ * What is wrong with a phrase the hub never sends, or null when nothing is (added after the interface: the real hub
+ * checks its engine's phrases with it too). Its words never appear in what it says.
+ */
+export function heardProblem(h: Heard, state: SpeechState, finals: ReadonlySet<string>): string | null {
   if (state.phase !== 'listening') {
     return `the hub is ${state.phase}, not listening: call setState({ phase: 'listening', language: 'auto' }) first`;
   }
@@ -141,7 +144,7 @@ export function createFakeSpeechHub(): SpeechHub & {
     },
     say(h) {
       const phrase = frozen({ ...h, heardAt: h.heardAt ?? Date.now() });
-      const problem = problemWith(phrase, current, finals);
+      const problem = heardProblem(phrase, current, finals);
       if (problem !== null) throw new Error(`say(): ${problem}.`);
       if (phrase.final) finals.add(phrase.id);
       let failure: Error | null = null;
