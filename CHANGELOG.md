@@ -16,6 +16,7 @@ Update after a sabha, and update Main and nodes together. Live captions and all 
 - Book references during pravachan offers actual passages from loaded Books beside LIVE, with exact matches first and meaning suggestions. Typed Gujarati, Hindi and English searches work while listening is off. Read the reference and quoted words, then press Show passage to put one up. A changed or removed Book, or an expired suggestion, needs a fresh search and review.
 - Follow singing (Trial) offers the normal next verse when heard words match the kirtan on LIVE. It keeps the play order, never jumps to another verse and never advances by itself: the operator presses Next. Both speech helpers need Live captions switched on for listening; neither turns it on for you.
 - The admin and operator guides and setup-day checklist cover all five helpers and their separate choices.
+- Streaming can reconnect while its recording keeps going, even after it has been running for a while.
 
 ## 1.0.0-alpha.14 (4 Nov 2026)
 

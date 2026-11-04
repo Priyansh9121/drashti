@@ -423,6 +423,10 @@ export class StreamPipeline {
       '0:a:0',
       ...videoArgs(encoder.name, preset),
       ...audioArgs(preset),
+      // Default time-sized clusters can bury a keyframe behind earlier video.
+      // Fresh connections must be able to start at every encoded keyframe.
+      '-cluster_time_limit',
+      '0',
       '-f',
       'matroska',
       'pipe:1',
