@@ -1,3 +1,4 @@
+import { AiPlaylist } from '../ai/AiPlaylist';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { PlaylistNode } from '../../../shared/playlists';
@@ -583,6 +584,7 @@ export function PlaylistPanel({ platform }: { platform: string }) {
   return (
     // In the left column's "Playlists" landmark (operator/Layout.tsx, Session 44), with the Library button.
     <div data-testid="playlists" className="flex min-h-0 flex-1 flex-col">
+      <AiPlaylist />
       {view === 'templates' ? <TemplateList /> : <PlaylistTree platform={platform} />}
       <SaveTemplateDialog />
       <AddSlotDialog />

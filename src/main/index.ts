@@ -79,6 +79,9 @@ import { ImportRepo } from './db/imports';
 import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
+import { AiHelpers } from './ai/coordinator';
+import { AiWorkerRpc } from './ai/rpc';
+import { spawnAiWorker } from './ai/spawn-worker';
 import { SearchIndex } from './db/search';
 import { TimerRepo } from './db/timers';
 import { ThemeRepo } from './db/themes';
@@ -2966,6 +2969,7 @@ function start(): void {
   // is a way of working, never a lock (Session 54, E5: roles and PINs are gone), but with Simple access
   // (Session 55, the list's answer) it is all this computer may use: mode-keeper.ts holds it there, and
   // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
+  let aiHelpers: AiHelpers | null = null;
   let mode: OperatorMode = 'pro';
   let rebuildMenu: () => void = () => undefined;
   // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
@@ -3010,6 +3014,7 @@ function start(): void {
       if (next === 'simple') simplePlaylist.adopt();
       rebuildMenu();
       if (next === 'simple') {
+        aiHelpers?.suspend();
         closeStudio();
         closeEditor();
       }
@@ -3032,7 +3037,10 @@ function start(): void {
   // The list's answer each check: Simple access puts this computer in Simple Mode within one check.
   onAccessChange(() => {
     modes.accessChanged();
-    if (!isLetIn() || simpleAccess()) cancelSourceEdits();
+    if (!isLetIn() || simpleAccess()) {
+      cancelSourceEdits();
+      aiHelpers?.suspend();
+    }
   });
   simpleNow = () => mode === 'simple';
   /** Simple Mode's one playlist and what it holds, read as each request comes (simple-mode.ts's bounds). */
@@ -3919,6 +3927,62 @@ function start(): void {
   // Themes, Props and the Logo are gone from the window (Session 55, Part 12): a presentation keeps the look its theme
   // gave it, new words start in the library's default look (themeLook, styleNewText), and the props, the logo's
   // setting and the themes stay in the library, unseen.
+  // Offline helpers have only the operator's review channels, never a show command.
+  const helperOwner = (owner: number) =>
+    owner === operatorWindow?.webContents.id &&
+    !operatorWindow.isDestroyed() &&
+    mode === 'pro' &&
+    isLetIn() &&
+    !simpleAccess() &&
+    !stops.done &&
+    !quitStarted;
+  const helperAssetsOverride = !packaged() ? sw('DRASHTI_TEST_AI_ASSETS') : undefined;
+  const offlineHelpers = new AiHelpers({
+    db,
+    settings,
+    playlists,
+    calendar: new CalendarRepo(db),
+    search,
+    authorised: helperOwner,
+    rpc: new AiWorkerRpc(spawnAiWorker, {
+      assetsRoot:
+        helperAssetsOverride ??
+        (packaged() ? join(process.resourcesPath, 'ai') : join(app.getAppPath(), 'vendor', 'ai')),
+      libraryFile: libraryFile(),
+      cacheFile: join(app.getPath('userData'), 'ai-helper-cache.sqlite'),
+    }),
+    settingsChanged: (value) => sendToOperator(IPC.ai.changed, value),
+    changed: () => {
+      sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      network?.hint('playlists');
+    },
+  });
+  aiHelpers = offlineHelpers;
+  stops.add('offline helpers', () => {
+    offlineHelpers.suspend();
+  });
+  let helperShowing: number | undefined;
+  engine.onChange((state) => {
+    const showing = state.layers.slide?.shownAt;
+    if (showing !== helperShowing) {
+      helperShowing = showing;
+      offlineHelpers.busy(Date.now() + 200);
+    }
+  });
+  handle(IPC.ai.get, (e) => offlineHelpers.get(e.sender.id));
+  handle(IPC.ai.set, (e, value) => offlineHelpers.set(e.sender.id, value));
+  handle(IPC.ai.past, (e) => offlineHelpers.past(e.sender.id));
+  handle(IPC.ai.search, (e, value) =>
+    offlineHelpers.search(e.sender.id, value, (progress) => sendToOperator(IPC.ai.progress, progress)),
+  );
+  handle(IPC.ai.lyrics, (e, value) => offlineHelpers.suggestLyrics(e.sender.id, value));
+  handle(IPC.ai.approveLyrics, (e, value) => offlineHelpers.approveLyrics(e.sender.id, value));
+  handle(IPC.ai.playlist, (e, value) => offlineHelpers.suggestPlaylist(e.sender.id, value));
+  handle(IPC.ai.approvePlaylist, (e, value) => offlineHelpers.approvePlaylist(e.sender.id, value));
+  handle(IPC.ai.cancel, (e) => {
+    if (helperOwner(e.sender.id)) offlineHelpers.suspend();
+    return null;
+  });
   handle(IPC.library.search, (_e, query) =>
     search.search(typeof query === 'string' ? cutText(query, 200) : ''),
   );
@@ -6249,9 +6313,11 @@ function start(): void {
   // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
   // again, or its page stops, the question goes from the outputs too, never left there.
   operatorWindow.webContents.on('did-start-loading', () => {
+    offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
   operatorWindow.webContents.on('render-process-gone', () => {
+    offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
   // The audio player once the operator window has loaded (or after 5 s whatever happens). Created
@@ -6566,6 +6632,10 @@ function start(): void {
     stage: choiceGuard(REPEAT_CHOICE_MS),
   };
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
+    aiHelpers: () => {
+      const owner = operatorWindow?.webContents.id;
+      if (owner !== undefined && helperOwner(owner)) sendToOperator(IPC.ai.open, { at: Date.now() });
+    },
     mode,
     // Simple access (Session 55): no way back to Pro Mode in the menu.
     simpleOnly: modes.simpleOnly(),

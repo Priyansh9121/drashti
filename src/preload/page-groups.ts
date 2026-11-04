@@ -29,6 +29,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   index: [
     // The stop and the countdown (Session 54), over either mode.
     'access',
+    'ai',
     'announcements',
     'app',
     'appearance',

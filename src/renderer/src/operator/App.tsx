@@ -1,3 +1,7 @@
+import { useWords } from '../library/words-store';
+import { connectAi } from '../ai/ai-store';
+import { AiDialog } from '../ai/AiDialog';
+import { undoAiLyrics } from '../ai/AiLyrics';
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
@@ -135,6 +139,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectSingleKeys();
     connectMode();
     connectAppearance();
+    connectAi();
     // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
     connectSound();
     // The quick bar's pins (Session 55, Part 8): Pro Mode shows them; kept with the library.
@@ -146,6 +151,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // the last removal, or in Simple Mode puts back what Clear all took down while Put it back is offered, else (Session
     // 55, Part 18: Simple Mode deletes, renames and drags its playlist's rows too) brings back the last of those.
     const offUndo = window.drashti.app.onUndo(() => {
+      if (useWords.getState().open?.mode === 'new' && undoAiLyrics()) return;
       if (isTyping(document.activeElement)) return;
       // The stage layout editor's own steps (Session 55). (The slide editor has a window of its own since Session 55,
       // Part 17a, its Undo its own.)
@@ -437,6 +443,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SetupWizard platform={platform} />
       <Welcome />
       <AppearanceDialog />
+      <AiDialog />
       <WindowPicker />
       <VideoInputDialog platform={platform} />
       <PipDialog />

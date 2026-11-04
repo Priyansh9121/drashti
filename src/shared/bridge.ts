@@ -1,3 +1,4 @@
+import type { AiResult, AiSettings, AiSearchProgress, AiLyricReview, AiPlaylistReview } from './ai';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { ReadyReport } from './ready';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
@@ -141,6 +142,21 @@ import type {
  * ipcRenderer, no raw channel names.
  */
 export interface DrashtiBridge {
+  ai: {
+    get(): Promise<AiResult<AiSettings>>;
+    set(settings: unknown): Promise<AiResult<AiSettings>>;
+    past(): Promise<AiResult<{ id: string; name: string }[]>>;
+    search(request: unknown): Promise<AiResult<SearchResult>>;
+    lyrics(request: unknown): Promise<AiResult<AiLyricReview>>;
+    approveLyrics(request: unknown): Promise<AiResult<string>>;
+    playlist(request: unknown): Promise<AiResult<AiPlaylistReview>>;
+    approvePlaylist(request: unknown): Promise<AiResult<{ id: string }>>;
+    cancel(): Promise<null>;
+    onOpen(listener: () => void): () => void;
+    onChanged(listener: (settings: AiSettings) => void): () => void;
+    onProgress(listener: (progress: AiSearchProgress) => void): () => void;
+  };
+
   app: {
     getInfo(): Promise<AppInfo>;
     /** A render error in this window, for the main process's log (Session 23; any of Drashti's windows). */

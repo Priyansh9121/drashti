@@ -1,3 +1,4 @@
+import { AiLyrics, undoAiLyrics } from '../ai/AiLyrics';
 import { useMemo, useState } from 'react';
 import type { TrackSlide } from '../../../shared/kirtans';
 import { parseLyrics } from '../../../shared/lyrics';
@@ -172,6 +173,15 @@ export function WordsEditor({ platform }: { platform: string }) {
   const title = open.mode === 'new' ? 'New presentation' : `Words of “${open.name}”`;
   const changed = hasChanges(state);
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (
+      e.key.toLowerCase() === 'z' &&
+      !e.shiftKey &&
+      (platform === 'darwin' ? e.metaKey : e.ctrlKey) &&
+      undoAiLyrics()
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Enter' && (platform === 'darwin' ? e.metaKey : e.ctrlKey)) {
       e.preventDefault();
       void saveWords();
@@ -298,6 +308,7 @@ export function WordsEditor({ platform }: { platform: string }) {
               are.
             </p>
           )}
+          {open.mode === 'new' && <AiLyrics />}
           <Textarea
             aria-label="Words"
             data-testid="words-text"

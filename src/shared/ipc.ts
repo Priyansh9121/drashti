@@ -1,3 +1,4 @@
+import type { AiResult, AiSettings, AiSearchProgress, AiLyricReview, AiPlaylistReview } from './ai';
 import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { PdfJob, PdfPage, PdfDone } from './editable-source';
 import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
@@ -140,6 +141,20 @@ import type {
  * the preload script and the main process both import them from here.
  */
 export const IPC = {
+  ai: {
+    get: 'ai:get',
+    set: 'ai:set',
+    past: 'ai:past',
+    search: 'ai:search',
+    lyrics: 'ai:lyrics',
+    approveLyrics: 'ai:approve-lyrics',
+    playlist: 'ai:playlist',
+    approvePlaylist: 'ai:approve-playlist',
+    cancel: 'ai:cancel',
+    open: 'ai:open',
+    changed: 'ai:changed',
+    progress: 'ai:progress',
+  },
   app: {
     getInfo: 'app:get-info',
     /** main -> operator: Edit > Undo was chosen (the page decides what to undo). */
@@ -1043,6 +1058,16 @@ export const IPC = {
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.ai.get]: { args: []; result: AiResult<AiSettings> };
+  [IPC.ai.set]: { args: [settings: unknown]; result: AiResult<AiSettings> };
+  [IPC.ai.past]: { args: []; result: AiResult<{ id: string; name: string }[]> };
+  [IPC.ai.search]: { args: [request: unknown]; result: AiResult<SearchResult> };
+  [IPC.ai.lyrics]: { args: [request: unknown]; result: AiResult<AiLyricReview> };
+  [IPC.ai.approveLyrics]: { args: [request: unknown]; result: AiResult<string> };
+  [IPC.ai.playlist]: { args: [request: unknown]; result: AiResult<AiPlaylistReview> };
+  [IPC.ai.approvePlaylist]: { args: [request: unknown]; result: AiResult<{ id: string }> };
+  [IPC.ai.cancel]: { args: []; result: null };
+
   [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
   [IPC.quickBar.view]: { args: []; result: QuickPin[] };
   [IPC.quickBar.set]: { args: [pins: QuickPin[]]; result: QuickBarResult };
@@ -1560,6 +1585,9 @@ export interface InvokeContract {
 
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
+  [IPC.ai.open]: { at: number };
+  [IPC.ai.changed]: AiSettings;
+  [IPC.ai.progress]: AiSearchProgress;
   [IPC.appearance.changed]: AppearanceNow;
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
