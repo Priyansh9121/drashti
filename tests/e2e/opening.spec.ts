@@ -448,8 +448,11 @@ test('File › Opening… at 1024 × 645 and 1280 × 720: photos from Media with
     timeout: 20_000,
   });
   expect(readdirSync(join(userData, 'Media', 'opening')).filter((f) => f.endsWith('.jpg'))).toHaveLength(2);
+  // Each line is kept as the next field is taken (its save comes back while the next is typed, wiping nothing).
+  await expect
+    .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.opening.view().then((v) => v.lines)))
+    .toEqual(['Placeholder first line', 'Placeholder second line']);
   const kept = await win.evaluate(() => (globalThis as PageGlobals).drashti.opening.view());
-  expect(kept.lines).toEqual(['Placeholder first line', 'Placeholder second line']);
   expect(kept.photos.map((p) => p.ready)).toEqual([true, true]);
   // The preview plays it in the dialog, and ends by itself.
   await dialog.getByTestId('opening-play').click();

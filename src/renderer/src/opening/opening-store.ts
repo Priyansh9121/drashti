@@ -13,7 +13,9 @@ export const useOpening = create<{
   problem: string | null;
   /** Load the opening pack… is under way. */
   loading: boolean;
-}>(() => ({ open: false, view: null, problem: null, loading: false }));
+  /** Bumped when the lines come from elsewhere than the typing (opened, a pack loaded): the fields take them then. */
+  linesFrom: number;
+}>(() => ({ open: false, view: null, problem: null, loading: false, linesFrom: 0 }));
 
 let connected = false;
 
@@ -40,7 +42,7 @@ function makeCopies(view: OpeningView): void {
 
 export function openOpening(): void {
   void window.drashti.opening.view().then((view) => {
-    useOpening.setState({ open: true, view, problem: null });
+    useOpening.setState((s) => ({ open: true, view, problem: null, linesFrom: s.linesFrom + 1 }));
     // A copy not made yet (the window closed while it was being made, say) is made now.
     makeCopies(view);
   });
@@ -64,7 +66,9 @@ export function take(result: OpeningResult | null): void {
 export async function loadPack(): Promise<void> {
   useOpening.setState({ loading: true, problem: null });
   try {
-    take(await window.drashti.opening.loadPack());
+    const loaded = await window.drashti.opening.loadPack();
+    take(loaded);
+    if (loaded?.ok) useOpening.setState((s) => ({ linesFrom: s.linesFrom + 1 }));
   } finally {
     useOpening.setState({ loading: false });
   }

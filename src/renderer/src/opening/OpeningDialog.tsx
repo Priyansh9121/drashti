@@ -52,13 +52,17 @@ function OpeningForm({ view }: { view: OpeningView }) {
   const [picking, setPicking] = useState(false);
   // The preview plays again each time Play is pressed (a new key), and shows its first moment until then.
   const [play, setPlay] = useState(0);
-  // The lines as typed; put back to the kept ones only when those change (a pack loaded), never while typing.
-  const kept = view.lines.join('\n');
-  const [typed, setTyped] = useState<{ kept: string; lines: string[] }>(() => ({ kept, lines: view.lines }));
-  if (typed.kept !== kept) setTyped({ kept, lines: kept === '' ? [] : kept.split('\n') });
+  // The lines as typed: they take the kept ones as the window opens and when a pack is loaded, never from a save of
+  // their own (one coming back while the next line is typed would wipe it).
+  const linesFrom = useOpening((s) => s.linesFrom);
+  const [typed, setTyped] = useState<{ from: number; lines: string[] }>(() => ({
+    from: linesFrom,
+    lines: view.lines,
+  }));
+  if (typed.from !== linesFrom) setTyped({ from: linesFrom, lines: view.lines });
   const lines = typed.lines;
   const setLines = (next: string[]) => {
-    setTyped({ kept, lines: next });
+    setTyped({ from: linesFrom, lines: next });
   };
   const photos = view.photos.filter((p) => !p.gone).map((p) => p.mediaId);
   const plan = useMemo(() => planOf(view), [view]);
