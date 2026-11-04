@@ -290,7 +290,7 @@ test('in Simple Mode too, ended by a key the same way', async () => {
   await app.close();
 });
 
-test('with Interface motion Off, or the computer asking for reduced motion: one still photo, its lines fading in, nothing moving', async () => {
+test('with Interface motion Off, or the computer asking for reduced motion (as it starts or while it plays): one still photo, its lines fading in, nothing moving', async () => {
   test.setTimeout(150_000);
   const userData = await startedOnce(async (win) => {
     await choose(win, await pictures(win, [['200,180,140'], ['40,60,110']]), LINES);
@@ -324,13 +324,17 @@ test('with Interface motion Off, or the computer asking for reduced motion: one 
   const off = await relaunchApp(userData, ASK);
   await still(off.app);
   await off.app.close();
-  // Interface motion back to Calm; the computer asking for reduced motion instead.
+  // Interface motion back to Calm; the computer asking for reduced motion instead, as soon as it does (here while the
+  // opening plays: a test cannot ask before the window's page runs).
   const calm = await relaunchApp(userData);
   const page = await operatorPage(calm.app);
   await operatorReady(page);
   await page.evaluate(() => (globalThis as PageGlobals).drashti.appearance.setMotion('calm'));
   await calm.app.close();
-  const reduced = await launchApp(ASK, userData, {}, ['--force-prefers-reduced-motion']);
+  const reduced = await relaunchApp(userData, ASK);
+  const moving = await operatorPage(reduced.app);
+  await expect(moving.getByTestId('opening')).toHaveAttribute('data-motion', 'full', { timeout: 15_000 });
+  await moving.emulateMedia({ reducedMotion: 'reduce' });
   await still(reduced.app);
   await reduced.app.close();
 });

@@ -71,8 +71,8 @@ export interface KeyInput {
 
 /**
  * The keys while the opening plays: the first key down ends it, and every key until then is kept from the page and
- * the menu; the key that ended it stays kept (its repeats while held, and its release), so the show hears only a
- * key pressed after it.
+ * the menu; the key that ended it stays kept while it is held (its repeats, and its release if it is told: Chromium
+ * drops the release of a key kept from the page), so the show hears only a key pressed after it.
  */
 export class OpeningKeys {
   private playing = false;
@@ -108,6 +108,11 @@ export class OpeningKeys {
       return true;
     }
     if (!this.held.has(code)) return false;
+    // Pressed again (not a repeat): it was let go, though its release was never told. The show's.
+    if ((input.type === 'keyDown' || input.type === 'rawKeyDown') && !input.isAutoRepeat) {
+      this.held.delete(code);
+      return false;
+    }
     if (input.type === 'keyUp') this.held.delete(code);
     return true;
   }

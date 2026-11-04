@@ -62,7 +62,11 @@ export function OpeningAtStart() {
         held = e.code;
         keep(e);
         end.current('key');
-      } else if (held !== null && e.code === held) keep(e);
+      } else if (held !== null && e.code === held) {
+        // Its repeats are kept; pressed again, it is the show's.
+        if (e.repeat) keep(e);
+        else held = null;
+      }
     };
     const up = (e: KeyboardEvent) => {
       if (held === null || e.code !== held) return;
@@ -83,7 +87,25 @@ export function OpeningAtStart() {
     },
     [],
   );
-  const [still] = useState(motionOff);
+  // Still with reduced motion or Interface motion Off, as it starts, or as soon as either comes on while it plays.
+  const [still, setStill] = useState(motionOff);
+  useEffect(() => {
+    if (!plan) return;
+    const check = () => {
+      if (motionOff()) setStill(true);
+    };
+    const media = matchMedia('(prefers-reduced-motion: reduce)');
+    media.addEventListener('change', check);
+    const chosen = new MutationObserver(check);
+    chosen.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-interface-motion'],
+    });
+    return () => {
+      media.removeEventListener('change', check);
+      chosen.disconnect();
+    };
+  }, [plan]);
   if (!plan || state === 'over') return null;
   return createPortal(
     <div

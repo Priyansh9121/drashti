@@ -87,6 +87,16 @@ describe('the keys while it plays', () => {
     expect(keys.take(down('Space'))).toBe(false);
   });
 
+  it('a fresh press of the same key is the show’s, though its release was never told (Chromium drops it)', () => {
+    // A key down kept from the page is the last the main process hears of it: Chromium drops its char and release.
+    const keys = new OpeningKeys(() => undefined);
+    keys.start();
+    expect(keys.take(down('Space'))).toBe(true);
+    expect(keys.take(down('Space', true))).toBe(true);
+    expect(keys.take(down('Space'))).toBe(false);
+    expect(keys.take(down('Space', true))).toBe(false);
+  });
+
   it('a page loaded again forgets a key held', () => {
     const keys = new OpeningKeys(() => undefined);
     keys.start();
