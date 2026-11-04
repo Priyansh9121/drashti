@@ -401,6 +401,7 @@ describe('a phone’s photos in Simple Mode (question 5): at the end of Simple M
     expect(notices).toEqual([]);
     // The phone's words name it (Add photos and Add from this Phone…).
     expect(files.policy()).toMatchObject({ simplePlaylist: 'Sabha, 4 Nov 2026', openPlaylist: null });
+    expect(files.policy()).not.toHaveProperty('simpleRepeats');
   });
 
   // The owner's answer of 4 Nov 2026: a phone's other files too, a deck once the stream has ended (as Simple Mode's own
@@ -461,6 +462,8 @@ describe('a phone’s photos in Simple Mode (question 5): at the end of Simple M
     const going = playlists.createRepeat('Placeholder going round', null) ?? '';
     simpleOne = going;
     simple = true;
+    // The phone is told so, to say where a video or sound goes (alpha.15 words review).
+    expect(files.policy()).toMatchObject({ simplePlaylist: 'Placeholder going round', simpleRepeats: true });
     await files.arrived(sent(Buffer.concat([JPEG, Buffer.from('r')]), 'Placeholder round.jpg'));
     expect(await files.arrived(sent(WAV, 'Placeholder tone.wav', { ext: 'wav', kind: 'audio' }))).toEqual({
       ok: true,

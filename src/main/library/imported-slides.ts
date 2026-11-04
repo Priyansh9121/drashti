@@ -103,14 +103,23 @@ export class ImportedSlides {
     const doc = structuredClone(opened);
     const issues: string[] = [];
     const slides = allSlides(doc);
-    if (slides.some((slide) => !slide.documentPage)) {
+    // A saved page picture with no page of the original: an older import's slide (or one whose pages did not match).
+    // A page added in the editor is not one: it has a PDF page's paper size, or no picture of an original.
+    if (
+      slides.some(
+        (slide) =>
+          !slide.documentPage &&
+          !slide.pageSize &&
+          slide.elements.some((element) => element.kind === 'image'),
+      )
+    ) {
       const kind = this.db
         .prepare('SELECT source_kind FROM presentations WHERE id = ?')
         .pluck()
         .get(opened.presentationId);
       if (kind === 'pictures')
         issues.push(
-          'This older import has ambiguous source-page mapping. Its saved canvas and operator additions are preserved; link the matching original pages before changing source objects.',
+          'Drashti doesn’t know which page of the original each of these slides shows, as with older imports. The slides and what you added to them stay as they are. To edit the original’s own words and shapes, first use Link source page… to link each slide to its page.',
         );
     }
     const work = await mkdtemp(join(tmpdir(), 'drashti-edit-source-'));
@@ -131,14 +140,14 @@ export class ImportedSlides {
         const source = await this.originalFor(ref, retained);
         if (!source) {
           issues.push(
-            'A retained original is missing or damaged. Saved playback is unchanged; restore the original from a backup.',
+            'The original file of these slides is missing or damaged. The slides still show as before; restore the original file from a backup.',
           );
           continue;
         }
         if (!allowed()) throw new Error('Source preparation cancelled.');
         if (ref.ext !== 'pdf' && ref.ext !== 'pptx') {
           issues.push(
-            'This older deck needs a retained PDF reading copy to expose its objects. Its saved playback is unchanged.',
+            'Drashti can’t read this deck’s own words and shapes. To edit them, save the deck as a PDF from its own program, then use Link source page… to link each slide to its page. The slides still show as before.',
           );
           continue;
         }
@@ -225,14 +234,20 @@ export class ImportedSlides {
               issues.push(...native.issues);
             } catch {
               if (!allowed()) throw new Error('Source preparation cancelled.');
-              issues.push('Some source objects could not be prepared safely. Saved playback is unchanged.');
+              issues.push(
+                'Some of the original’s words, pictures or shapes could not be made editable. Those slides still show as before.',
+              );
             }
           }
           if (parsed.failed.length)
-            issues.push('Some source pages could not be matched; their saved playback is unchanged.');
+            issues.push(
+              'Some pages of the original could not be matched to their slides. Those slides still show as before.',
+            );
         } catch {
           if (!allowed()) throw new Error('Source preparation cancelled.');
-          issues.push('Some source objects could not be prepared safely. Saved playback is unchanged.');
+          issues.push(
+            'Some of the original’s words, pictures or shapes could not be made editable. Those slides still show as before.',
+          );
         }
       }
     } finally {
@@ -306,7 +321,7 @@ export class ImportedSlides {
     if (!original.length || original.length > 400 || baseline.inserted.size + original.length > 400)
       return {
         ok: false,
-        message: 'Insert at most 400 PDF pages in one editor session. Save and reopen before adding more.',
+        message: 'Insert at most 400 PDF pages at a time. Save and reopen the editor before adding more.',
       };
     if (
       original.some(
@@ -382,14 +397,14 @@ export class ImportedSlides {
     if (!info.isFile() || info.size > 128 * 1024 * 1024)
       return {
         ok: false,
-        message: 'Choose a regular PDF no larger than 128 MiB. Save a smaller PDF and try again.',
+        message: 'Choose a PDF file of 128 MB or less. Save a smaller PDF and try again.',
       };
     const baseline = this.insertionBaseline(targetRows, targetName, stamp);
     const staged = await this.originals.stage(sourcePath, 'pdf', guard.signal);
     if (!allowed()) throw new Error('Source preparation cancelled.');
     if (!staged.ok) return staged;
     if (staged.original.bytes > 128 * 1024 * 1024)
-      return { ok: false, message: 'The PDF grew beyond 128 MiB. Save a smaller PDF and try again.' };
+      return { ok: false, message: 'That PDF is now larger than 128 MB. Save a smaller PDF and try again.' };
     const work = await mkdtemp(join(tmpdir(), 'drashti-insert-pdf-'));
     const sourceId = randomUUID();
     let retainOutput = false;
@@ -420,7 +435,7 @@ export class ImportedSlides {
         return {
           ok: false,
           message:
-            'Insert at most 400 PDF pages in one editor session. Save smaller parts or reopen before adding more.',
+            'Insert at most 400 PDF pages at a time. Save the PDF in smaller parts, or save and reopen the editor before adding more.',
         };
       const doc: EditDoc = {
         presentationId: sourceId,
@@ -494,7 +509,7 @@ export class ImportedSlides {
       return {
         ok: false,
         message:
-          'Choose an older source picture and a PDF page prepared for this editor. Reopen and try again if either changed.',
+          'Choose the slide’s saved picture and a page of the PDF. If either changed, reopen the editor and try again.',
       };
     if (
       picture.fit !== 'fit' ||
@@ -507,7 +522,7 @@ export class ImportedSlides {
       return {
         ok: false,
         message:
-          'This source picture is cropped, turned, faded or filled. Keep its saved playback, or use an uncropped whole-page picture before linking.',
+          'This picture is cropped, turned, faded or set to fill the slide. Keep the slide as it is, or use the whole, uncropped page picture before linking.',
       };
     const paper = slideCanvas(target, doc);
     const background: SlideElement[] = source.background
@@ -568,7 +583,7 @@ export class ImportedSlides {
       ok: true,
       page,
       issues: [
-        'A PDF reading copy was matched explicitly. Review its appearance before saving; the saved canvas and operator additions are kept.',
+        'You linked this slide to a page of the PDF. Check how it looks before you save; what you added to the slide, and its size, stay as they were.',
       ],
     };
   }
@@ -596,7 +611,11 @@ export class ImportedSlides {
       const linked = approval?.page;
       if (linked?.documentPage && sameSource(slide.documentPage, linked.documentPage)) {
         if (slide.sourceOccurrenceId !== linked.id)
-          return { ok: false, message: 'A linked source page must keep its approved occurrence identity.' };
+          return {
+            ok: false,
+            message:
+              'A linked page must stay on the slide it was linked to. Reopen the editor and link it again.',
+          };
         slide.documentPage = { ...slide.documentPage, ...linked.documentPage, edited: true };
         delete slide.deck;
         continue;
@@ -606,15 +625,24 @@ export class ImportedSlides {
         !slide.documentPage &&
         slide.elements.some((element) => approval.nativeIds.has(element.id))
       )
-        return { ok: false, message: 'A linked PDF page must keep its original document identity.' };
+        return {
+          ok: false,
+          message: 'A linked page must stay linked to its PDF. Reopen the editor and link it again.',
+        };
       if (!slide.documentPage) {
         if (storedRef || ownPrepared?.documentPage)
-          return { ok: false, message: 'An imported page must keep its original document identity.' };
+          return {
+            ok: false,
+            message: 'An imported page must stay linked to its original file. Reopen the editor.',
+          };
         continue;
       }
       if (storedRef?.edited) {
         if (!sameSource(slide.documentPage, storedRef))
-          return { ok: false, message: 'A page cannot change its original document identity.' };
+          return {
+            ok: false,
+            message: 'A page cannot be linked to a different original file. Reopen the editor.',
+          };
         slide.documentPage.edited = true;
         delete slide.deck;
         continue;

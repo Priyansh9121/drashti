@@ -46,7 +46,7 @@ const resultSchema = z
   .strict();
 const failed = (): PreparedSource => ({
   ok: false,
-  message: 'This source could not be prepared safely. Saved playback is unchanged.',
+  message: 'This deck’s words and shapes could not be read safely. The slides still show as before.',
 });
 
 interface ReaderOptions {
@@ -118,7 +118,8 @@ export function pptxReader(spawn: () => PptxReaderChild, options: ReaderOptions 
           if (!hasExited())
             publish({
               ok: false,
-              message: 'A source process did not stop. Restart Drashti before preparing more source pages.',
+              message:
+                'Drashti’s document reader did not stop. Restart Drashti before editing more imported slides.',
               retainOutput: true,
             });
         }, options.exitGraceMs ?? 1_000);

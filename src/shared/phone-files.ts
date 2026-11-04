@@ -68,6 +68,11 @@ export interface AddFilesView {
    * Simple Mode, where a phone's files go, however they are sent; null in Pro Mode. Left out by an older Drashti.
    */
   simplePlaylist?: string | null;
+  /**
+   * True while that playlist is a Repeat Slides one, which holds no video or sound: those go to "Added from Phones"
+   * instead (alpha.15 words review). Left out otherwise.
+   */
+  simpleRepeats?: boolean;
 }
 
 /** What the worker taking the pieces is told by the main process (the switch, the limits, on air). */
@@ -81,6 +86,8 @@ export interface UploadPolicy {
   openPlaylist?: string | null;
   /** Simple Mode's one playlist while Drashti is in Simple Mode, for the phone's words (question 5); null in Pro Mode. */
   simplePlaylist?: string | null;
+  /** True while that playlist is a Repeat Slides one (videos and sounds go to Added from Phones); else left out. */
+  simpleRepeats?: boolean;
 }
 
 /** Add photos (Session 55, Part 8): what a phone asks for its pictures, the playlist open on Drashti. */
@@ -152,9 +159,12 @@ export const ADD_FILES_WORDS = {
 /**
  * Where a phone's files go, as the phone says it before they are sent (the words above its two buttons): `files` for
  * Add from this Phone…, `photos` for Add photos. In Simple Mode every file goes to the end of Simple Mode's playlist
- * (question 5); in Pro Mode, Add photos goes to the playlist open there, and the rest into Added from Phones.
+ * (question 5), but a video or sound to Added from Phones while it is a Repeat Slides one; in Pro Mode, Add photos goes
+ * to the playlist open there, and the rest into Added from Phones.
  */
-export function addFilesWords(view: Pick<AddFilesView, 'maxBytes' | 'openPlaylist' | 'simplePlaylist'>): {
+export function addFilesWords(
+  view: Pick<AddFilesView, 'maxBytes' | 'openPlaylist' | 'simplePlaylist' | 'simpleRepeats'>,
+): {
   files: string;
   photos: string;
 } {
@@ -163,7 +173,10 @@ export function addFilesWords(view: Pick<AddFilesView, 'maxBytes' | 'openPlaylis
   const size = sizeWords(view.maxBytes);
   if (simple !== null)
     return {
-      files: `A picture, video, sound, PDF, PowerPoint or Keynote file, up to ${size}, goes whole to the end of Simple Mode’s playlist “${simple}”. It never goes on the screens by itself.`,
+      files:
+        view.simpleRepeats === true
+          ? `A file up to ${size} goes whole: a picture, PDF, PowerPoint or Keynote file to the end of Simple Mode’s playlist “${simple}”, and a video or sound into “${ADDED_FROM_PHONES}”, since a Repeat Slides playlist holds no videos or sounds. Nothing goes on the screens by itself.`
+          : `A picture, video, sound, PDF, PowerPoint or Keynote file, up to ${size}, goes whole to the end of Simple Mode’s playlist “${simple}”. It never goes on the screens by itself.`,
       photos: `Add photos puts pictures at the end of Simple Mode’s playlist, “${simple}”. They never go on the screens by themselves.`,
     };
   return {

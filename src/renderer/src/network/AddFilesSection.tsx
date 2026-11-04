@@ -7,7 +7,8 @@ import { networkAction } from './network-store';
 /*
  * Files from phones (Session 54, D4), in the Phones and tablets panel: the switch, off until someone turns it on
  * (every person's), and what it lets a paired remote do (question 5, alpha.15: in Simple Mode a file goes to the end
- * of Simple Mode's playlist). Turned off, a file still coming stops.
+ * of Simple Mode's playlist, a video or sound to Added from Phones while it is a Repeat Slides one). Turned off, a file
+ * still coming stops.
  */
 
 export function AddFilesSection({ status }: { status: NetworkStatus }) {
@@ -26,7 +27,8 @@ export function AddFilesSection({ status }: { status: NetworkStatus }) {
         A paired remote can add a picture, video, sound, PDF, PowerPoint or Keynote file from the phone, up to{' '}
         {sizeWords(files.maxBytes)} each, with Add from this Phone… in its Library. It comes into Media and
         the playlist “{ADDED_FROM_PHONES}”, marked with the phone’s name, and never goes on the screens by
-        itself. In Simple Mode it goes to the end of Simple Mode’s playlist instead.
+        itself. In Simple Mode it goes to the end of Simple Mode’s playlist instead, but a video or sound goes
+        into “{ADDED_FROM_PHONES}” when that playlist is a Repeat Slides one, which holds no videos or sounds.
       </p>
     </section>
   );

@@ -4,9 +4,9 @@ import { picturesIssues } from './pictures';
 
 const expected: Record<PictureSource, string> = {
   pdf: 'Each of the 2 pages became a slide holding its picture for playback. Open Edit slides to change supported words, pictures and shapes in Drashti’s own copy. The original file is kept; some fonts or objects may look different.',
-  pptx: 'Each of the 2 pages became a slide holding its picture for playback. Open Edit slides to change supported PowerPoint objects in Drashti’s own copy. The original file is kept; some fonts or objects may look different. Animations and builds show as each slide’s finished picture in this saved playback.',
-  ppt: 'Each of the 2 pages became a slide holding its picture for playback. Open Edit slides and link a matching PDF reading copy to edit this older deck’s source objects. The original file is kept. Animations and builds show as each slide’s finished picture in this saved playback.',
-  key: 'Each of the 2 pages became a slide holding its picture for playback. Open Edit slides and link a matching PDF reading copy to edit this older deck’s source objects. The original file is kept. Animations and builds show as each slide’s finished picture in this saved playback.',
+  pptx: 'Each of the 2 pages became a slide holding its picture for playback. Open Edit slides to change supported PowerPoint objects in Drashti’s own copy. The original file is kept; some fonts or objects may look different. Animations and builds show as each slide’s finished picture.',
+  ppt: 'Each of the 2 pages became a slide holding its picture for playback. Open Edit slides and link a matching PDF reading copy to edit this deck’s own words and shapes. The original file is kept. Animations and builds show as each slide’s finished picture.',
+  key: 'Each of the 2 pages became a slide holding its picture for playback. Open Edit slides and link a matching PDF reading copy to edit this deck’s own words and shapes. The original file is kept. Animations and builds show as each slide’s finished picture.',
 };
 
 describe('editable-document import explanations', () => {

@@ -182,10 +182,10 @@ mac:
       to: whisper
       filter: ['**/*', '!SOURCE.txt']
   # macOS asks the operator before Drashti may use a camera (for the stream, and Session 50's video inputs on the
-  # screens) or a sound input (for the stream).
+  # screens) or a sound input (for the stream, and live captions).
   extendInfo:
     NSCameraUsageDescription: Drashti uses the camera or capture card you choose for the stream to YouTube, and to show a video input on the screens.
-    NSMicrophoneUsageDescription: Drashti uses the sound input you choose (the mixer’s line in) for the stream to YouTube.
+    NSMicrophoneUsageDescription: Drashti uses the sound input you choose (the mixer’s line in) for the stream to YouTube, and for live captions when you turn them on.
     NSAppleEventsUsageDescription: Drashti asks Keynote or PowerPoint to save a presentation you import as PDF, to show its slides as pictures.
 dmg:
   # The disk image's own icon when it is opened in Finder.

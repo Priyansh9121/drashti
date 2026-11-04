@@ -394,6 +394,13 @@ describe('what a phone may add', () => {
     // Question 5: in Simple Mode its one playlist's name, where a phone's pictures go.
     uploads.setPolicy({ ...ON, simplePlaylist: 'Sabha, 4 Nov 2026' });
     expect(await uploads.adding()).toMatchObject({ openPlaylist: null, simplePlaylist: 'Sabha, 4 Nov 2026' });
+    expect(await uploads.adding()).not.toHaveProperty('simpleRepeats');
+    // A Repeat Slides one: the phone says a video or sound goes to Added from Phones (alpha.15 words review).
+    uploads.setPolicy({ ...ON, simplePlaylist: 'Placeholder going round', simpleRepeats: true });
+    expect(await uploads.adding()).toMatchObject({
+      simplePlaylist: 'Placeholder going round',
+      simpleRepeats: true,
+    });
     uploads.setPolicy({ ...ON, openPlaylist: 'Placeholder sabha' });
     const bytes = picture(3000);
     const id = upload(
