@@ -2,8 +2,19 @@ import Database from 'better-sqlite3';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
-import { originalRelative, verifiedOriginal, type OriginalReadGuard } from '../import/originals-store';
-import { freshOriginalSet, originalRoot } from '../library/original-backup';
+import {
+  originalRelative,
+  verifiedOriginal,
+  type OriginalDescriptor,
+  type OriginalReadGuard,
+} from '../import/originals-store';
+import {
+  freshOriginalSet,
+  heldOriginals,
+  namedOriginals,
+  originalRoot,
+  type LeftOutOriginal,
+} from '../library/original-backup';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { SCHEDULED_FOLDER } from '../../shared/backups';
@@ -75,6 +86,8 @@ export interface PooledResult {
   /** Older scheduled backups removed, and shared media files no kept backup needed. */
   removed: number;
   poolRemoved: number;
+  /** Required originals missing or damaged in the library, so left out of this backup (alpha.15). */
+  originalsLeftOut?: LeftOutOriginal[];
 }
 
 /** A media file's path in a backup's list: with forward slashes on every system. */
@@ -137,22 +150,36 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
     // Enumerate after the snapshot: the gate may have let a complete import commit before it.
     const originals = freshOriginalSet(join(folder, LIBRARY_FILE));
     const originalMedia = originalRoot(options.dbFile, options.mediaDir);
-    const media = options.mediaDir && existsSync(options.mediaDir) ? await filesIn(options.mediaDir) : [];
+    let media = options.mediaDir && existsSync(options.mediaDir) ? await filesIn(options.mediaDir) : [];
     const sources = new Map(media.map((file) => [file.path, join(options.mediaDir ?? '', file.path)]));
+    const missing: OriginalDescriptor[] = [];
+    /** Pool copies of originals that are damaged: the library's whole one is copied over each. */
+    const recopy = new Set<string>();
     if (originals) {
       if (!originalMedia) throw new Error('The required original folder is unavailable.');
       for (const original of originals.files) {
-        const source = await verifiedOriginal(originalMedia, original, checksumGuard);
-        if (!source) throw new Error('A required retained original is missing or damaged.');
         const path = originalRelative(original);
+        const source = await verifiedOriginal(originalMedia, original, checksumGuard);
+        if (!source) {
+          // Missing or damaged in the library (alpha.15): left out, and the library and every other file
+          // still go. Its damaged bytes are not copied as if they were the original.
+          missing.push(original);
+          media = media.filter((file) => file.path !== path);
+          sources.delete(path);
+          continue;
+        }
+        // A damaged copy already in the pool is not used.
         if (existsSync(join(pool, path)) && !(await verifiedOriginal(pool, original, checksumGuard)))
-          throw new Error('A retained original in the backup pool is damaged.');
+          recopy.add(path);
         sources.set(path, source);
         if (!media.some((file) => file.path === path)) media.push({ path, bytes: original.bytes });
       }
     }
+    const held = originals && missing.length ? heldOriginals(originals, missing) : originals;
+    const leftOut = namedOriginals(join(folder, LIBRARY_FILE), missing);
     const toCopy: { path: string; bytes: number }[] = [];
-    for (const file of media) if ((await sizeOf(join(pool, file.path))) !== file.bytes) toCopy.push(file);
+    for (const file of media)
+      if (recopy.has(file.path) || (await sizeOf(join(pool, file.path))) !== file.bytes) toCopy.push(file);
     const total = toCopy.reduce((sum, file) => sum + file.bytes, 0);
     if (total > hooks.freeBytes(scheduled) - options.reserveBytes)
       throw new BackupStopped(
@@ -199,8 +226,8 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
         throw error;
       }
     }
-    if (originals)
-      for (const original of originals.files)
+    if (held)
+      for (const original of held.files)
         if (!(await verifiedOriginal(pool, original, checksumGuard)))
           throw new Error('A required original was not copied whole into the backup pool.');
     stop();
@@ -219,8 +246,9 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
           createdAt: options.now.toISOString(),
           media: options.mediaDir !== null,
           scheduled: true,
-          ...(options.mediaDir !== null || originals ? { mediaPool: `../${MEDIA}` } : {}),
-          ...(originals ? { originals } : {}),
+          ...(options.mediaDir !== null || held ? { mediaPool: `../${MEDIA}` } : {}),
+          ...(held ? { originals: held } : {}),
+          ...(leftOut.length ? { originalsLeftOut: leftOut } : {}),
         },
         null,
         2,
@@ -234,6 +262,7 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
       files: files.length,
       bytesCopied: done,
       ...pruned,
+      ...(leftOut.length ? { originalsLeftOut: leftOut } : {}),
     };
   } catch (error) {
     // Nothing half-done is left to be taken for a backup (the shared files copied whole stay).

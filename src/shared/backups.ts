@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { daysSchema, hhmmSchema } from './schedule';
+import { plural } from './text';
 
 /*
  * Scheduled backups (Session 14). On chosen days at a time (like the arti),
@@ -71,6 +72,35 @@ export interface BackupRun {
   /** Media files copied this time, of those the backup lists. */
   copied?: number;
   files?: number;
+  /** A finished backup that had to leave out original documents (alpha.15): which, in words. */
+  leftOut?: string;
+}
+
+/** A retained original document a backup left out, as the operator knows it (alpha.15). */
+export interface LeftOutName {
+  ext: string;
+  /** The presentation made from it, or the file it came from; none when neither is known. */
+  name?: string;
+}
+
+const leftOutLabel = ({ ext, name }: LeftOutName): string =>
+  name ? `“${name}”` : ext === 'pdf' ? 'a PDF' : ext === 'key' ? 'a Keynote file' : 'a PowerPoint file';
+
+/**
+ * Original documents (the PDF and PowerPoint files kept for editing) that were missing or damaged when a
+ * backup was made (alpha.15): the backup went ahead without them, and says so in these words once it has
+ * finished. Their slides are in the library, so in the backup.
+ */
+export function leftOutText(leftOut: readonly LeftOutName[]): string {
+  const labels = [...new Set(leftOut.map(leftOutLabel))];
+  const shown = labels.slice(0, 3);
+  const more = labels.length - shown.length;
+  const last = more > 0 ? `${String(more)} more` : shown.pop();
+  const names = shown.length ? `${shown.join(', ')} and ${last ?? ''}` : (last ?? '');
+  const one = leftOut.length === 1;
+  return `${plural(leftOut.length, 'original document')} ${one ? 'was' : 'were'} missing or damaged, so ${
+    one ? 'it isn’t' : 'they aren’t'
+  } in this backup: ${names}. ${one ? 'Its' : 'Their'} slides are in the backup.`;
 }
 
 export interface ScheduledBackupsView {
