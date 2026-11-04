@@ -52,8 +52,10 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
   const frameMs = 1000 / (options.fps ?? 30);
   // A page that draws nothing for a while (a busy machine) records nothing, or frames for only part of the
   // time (a CI Mac's GPU busy with the operator window's warm-up held a page's frames from 0.3 s on): a
-  // clip given the whole length but ending early loops back at once, so a test sees it barely play. Then
-  // it records again. Each recording is timed from its recorder's own start (recordWebm).
+  // clip given the whole length but ending early loops back at once, so a test sees it barely play. A clip
+  // longer than asked (a held first picture recorded before it was timed) moves every time a test reads in
+  // it. Either way it records again. Each recording is timed from its recorder's own start (recordWebm).
+  const askedMs = options.seconds * 1000;
   if (options.h264) {
     const recorded = await recordWebm(page, options);
     const bytes = Buffer.from(recorded.base64, 'base64');
@@ -69,14 +71,17 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
     const bytes = Buffer.from(recorded.base64, 'base64');
     const webm = bytes.length >= 4 && bytes.readUInt32BE(0) === EBML_HEADER;
     const last = webm ? Math.max(0, ...webmVideoFrameTimes(bytes)) : 0;
-    if (webm && last >= recorded.ms * 0.9 - frameMs) {
+    const longer = Math.max(last, recorded.ms) > askedMs + LONGER_MS;
+    if (webm && last >= recorded.ms * 0.9 - frameMs && !longer) {
       writeFileSync(file, setWebmDuration(bytes, recorded.ms));
       return file;
     }
     console.log(`Generated video failure lifecycle: ${JSON.stringify(recorded.lifecycle)}`);
-    const problem = webm
-      ? `its frames ended at ${String(Math.round(last))} ms of ${String(Math.round(recorded.ms))}`
-      : `no video (${String(bytes.length)} bytes)`;
+    const problem = !webm
+      ? `no video (${String(bytes.length)} bytes)`
+      : longer
+        ? `it ran ${String(Math.round(Math.max(last, recorded.ms)))} ms, ${String(askedMs)} ms asked`
+        : `its frames ended at ${String(Math.round(last))} ms of ${String(Math.round(recorded.ms))}`;
     // Five tries, a second apart: a busy CI computer can hold a page up for a while.
     if (attempt === 5) throw new Error(`The page recorded no whole video in five tries: ${problem}.`);
     console.log(`A test video was recorded again: ${problem}.`);
@@ -90,6 +95,7 @@ interface VideoFixtureLifecycle {
   firstDrawAtMs: number | null;
   lastDrawAtMs: number | null;
   startCalledAtMs: number | null;
+  recordingAtMs: number | null;
   startEventAtMs: number | null;
   stopCalledAtMs: number | null;
   stopEventAtMs: number | null;
@@ -105,11 +111,17 @@ interface VideoFixtureLifecycle {
 }
 
 /**
- * How long a recorder may take to start before the clip is timed anyway (alpha.14's gate on CI's Mac, 3 Nov 2026:
- * the page's recorder there began only when it was stopped, its start event 0.4–1.5 ms after stop(), twenty times
- * in a row; the clip is timed from the recorder's own start, its picture drawn meanwhile).
+ * How long a recorder may take to start recording, and then to give its first data, before the clip is timed or
+ * stopped anyway (alpha.14's gate on CI's Mac, 3 Nov 2026: stopped 2 s after start(), before its first data, the
+ * page's recorder gave nothing, its start event 0.4–1.5 ms after stop(), twenty times in a row).
  */
 const RECORDER_START_MS = 30_000;
+
+/**
+ * How far past the length asked a clip may run: its last frame captured late on a busy computer, or its timer late.
+ * Never a held first picture (alpha.14's gate on CI's Mac, 4 Nov 2026: 1.3–1.8 s of it made a 2 s clip 3.4–3.8 s).
+ */
+const LONGER_MS = 250;
 
 /** A WebM (or an MP4) of a canvas recorded in the page, in real time, and how long the recording ran. */
 function recordWebm(
@@ -126,6 +138,7 @@ function recordWebm(
           firstDrawAtMs: null,
           lastDrawAtMs: null,
           startCalledAtMs: null,
+          recordingAtMs: null,
           startEventAtMs: null,
           stopCalledAtMs: null,
           stopEventAtMs: null,
@@ -223,14 +236,17 @@ function recordWebm(
         draw(0);
         lifecycle.startCalledAtMs = at();
         recorder.start(100);
-        // The clip begins when the recorder has really started (its start event), its first picture drawn meanwhile:
-        // a recorder that starts late is never stopped before it began.
+        // The clip begins when the recorder records (its state, at once in Chromium), its first picture drawn
+        // meanwhile: a recorder that starts late is never timed before it began. Its start event is no sign of that:
+        // Chromium sends it with the recorder's first data (on CI's Mac, 4 Nov 2026, 1.3–1.8 s after start(), and
+        // the first picture held until then made a 2 s clip 3.4–3.8 s long).
         const asked = performance.now();
-        while (lifecycle.startEventAtMs === null && performance.now() - asked < startWithinMs) {
+        while (recorder.state !== 'recording' && performance.now() - asked < startWithinMs) {
           draw(0);
-          // eslint-disable-next-line no-restricted-syntax -- in the page: the first picture drawn each 1/fps s until the recorder starts
+          // eslint-disable-next-line no-restricted-syntax -- in the page: the first picture drawn each 1/fps s until the recorder records
           await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
         }
+        lifecycle.recordingAtMs = at();
         const start = performance.now();
         while (performance.now() - start < seconds * 1000) {
           draw((performance.now() - start) / 1000);
@@ -238,6 +254,13 @@ function recordWebm(
           await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
         }
         const ms = performance.now() - start;
+        // Stopped only once its first data has come (its start event): stopped before, it gives nothing (3 Nov
+        // 2026). Nothing is drawn meanwhile, so the clip ends where it was timed to.
+        const drawn = performance.now();
+        while (lifecycle.startEventAtMs === null && performance.now() - drawn < startWithinMs) {
+          // eslint-disable-next-line no-restricted-syntax -- in the page: waiting for the recorder's first data
+          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
+        }
         lifecycle.stopCalledAtMs = at();
         recorder.stop();
         await stopped;
@@ -377,6 +400,22 @@ export function webmVideoFrameTimes(webm: Uint8Array): number[] {
     at = e.end;
   }
   return times;
+}
+
+/** The duration written in a WebM's Info element (ms), or 0 when it has none. */
+export function webmDurationMs(webm: Uint8Array): number {
+  const header = readElement(webm, 0);
+  const segment = readElement(webm, header.end);
+  const info = children(webm, segment).find((e) => e.id === INFO);
+  if (!info) return 0;
+  let scale = 1_000_000;
+  let duration = 0;
+  for (const c of children(webm, info)) {
+    const data = Buffer.from(webm.subarray(c.dataStart, c.end));
+    if (c.id === TIMECODE_SCALE) scale = data.reduce((n, b) => n * 256 + b, 0);
+    else if (c.id === DURATION) duration = data.length === 4 ? data.readFloatBE(0) : data.readDoubleBE(0);
+  }
+  return (duration * scale) / 1_000_000;
 }
 
 /** An element id and an 8-byte size, so the size never needs to fit a shorter field. */
