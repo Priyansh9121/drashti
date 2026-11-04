@@ -26,7 +26,7 @@ export function AiLyrics() {
   const [selected, setSelected] = useState<string[]>([]);
   const [waiting, setWaiting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  if (!enabled || !pro || open?.mode !== 'new') return null;
+  if (!pro || open?.mode !== 'new') return null;
   const current = () =>
     useWords.getState().open === open &&
     useWords.getState().text === text &&
@@ -72,6 +72,19 @@ export function AiLyrics() {
     }
   };
   const last = history.at(-1);
+  const undo =
+    last?.open === open && last.after === text ? (
+      <Button
+        size="sm"
+        onClick={() => {
+          undoAiLyrics();
+          setReview(null);
+        }}
+      >
+        Undo suggestion
+      </Button>
+    ) : null;
+  if (!enabled) return undo === null ? null : <div className="flex gap-2">{undo}</div>;
   return (
     <section className="shrink-0 space-y-2" aria-label="Import suggestions">
       <div className="flex flex-wrap gap-2">
@@ -85,17 +98,7 @@ export function AiLyrics() {
         >
           Suggest transliteration
         </Button>
-        {last?.open === open && last.after === text && (
-          <Button
-            size="sm"
-            onClick={() => {
-              undoAiLyrics();
-              setReview(null);
-            }}
-          >
-            Undo suggestion
-          </Button>
-        )}
+        {undo}
       </div>
       {waiting && (
         <p role="status" className="text-xs text-muted">

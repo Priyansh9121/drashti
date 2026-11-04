@@ -226,8 +226,16 @@ for (const size of [
       await expect(undo).toBeVisible();
       await undo.click();
       await expect(input).toHaveValue(fixture.lyrics.gu);
-      await expect.poll(() => s.app.evaluate(({ app }) => app.getAppMetrics().filter((metric) => metric.name === 'Drashti offline helpers').length)).toBe(0);
-    } finally { await s.app.close(); }
+      await expect
+        .poll(() =>
+          s.app.evaluate(
+            ({ app }) =>
+              app.getAppMetrics().filter((metric) => metric.name === 'Drashti offline helpers').length,
+          ),
+        )
+        .toBe(0);
+    } finally {
+      await s.app.close();
+    }
   });
-
 }
