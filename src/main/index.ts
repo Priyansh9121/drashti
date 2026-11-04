@@ -900,9 +900,13 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
       app: app.getVersion(),
       now: new Date(),
     });
-    if (outcome.restored)
+    if (outcome.restored) {
       log.info(`Library restored from a backup (${outcome.media ? 'with' : 'without'} media)`);
-    else if (outcome.code) log.warn(`A restore was asked for and not done (${outcome.code})`);
+      if (outcome.originalsNotKept)
+        log.warn(
+          `Restore: ${String(outcome.originalsNotKept)} original document(s) of the library from before were missing or damaged, so its kept copy lacks them`,
+        );
+    } else if (outcome.code) log.warn(`A restore was asked for and not done (${outcome.code})`);
     return outcome;
   } catch (error) {
     // The code only: the error's message can hold a path.

@@ -25,7 +25,7 @@ import {
   rollBackRestore,
   sameDisk,
 } from './backup';
-import { backUp, type BackupUi } from './backup-ui';
+import { backUp, restore, type BackupUi } from './backup-ui';
 import { Revisions } from './revisions';
 import { registerSlidesIpc } from './slides-ipc';
 import { themeLook } from './themes';
@@ -34,6 +34,8 @@ import { themeLook } from './themes';
 const dialogs = vi.hoisted(() => ({
   folder: '',
   media: false,
+  /** 0 for the first button (Back Up, Restore and Restart), 1 for Cancel. */
+  response: 0,
   boxes: [] as { message?: string; detail?: string; checkboxLabel?: string }[],
 }));
 vi.mock('electron', () => ({
@@ -41,7 +43,7 @@ vi.mock('electron', () => ({
     showOpenDialog: () => Promise.resolve({ canceled: false, filePaths: [dialogs.folder] }),
     showMessageBox: (...args: unknown[]) => {
       dialogs.boxes.push(args.at(-1) as MessageBoxOptions);
-      return Promise.resolve({ response: 0, checkboxChecked: dialogs.media });
+      return Promise.resolve({ response: dialogs.response, checkboxChecked: dialogs.media });
     },
   },
 }));
@@ -54,6 +56,7 @@ vi.mock('../ipc/handle', () => ({
 beforeEach(() => {
   handlers.clear();
   dialogs.boxes = [];
+  dialogs.response = 0;
 });
 
 const options = (mediaDir: string | null) => ({
@@ -295,14 +298,20 @@ describe('a missing or damaged original never stops a backup or a restore', () =
       const second = await importSecond(w);
       const name = presentationName(w, first.id);
       damage(w.owned);
+      const optional = 'Placeholder optional picture.bin';
+      writeFileSync(join(w.mediaDir, optional), Buffer.alloc(37, 4));
       const saved = await backupLibrary(w.db, w.drive, options(w.mediaDir));
       expect(hashInLibrary(join(saved.folder, LIBRARY_FILE), first.id)).toBe(w.hash);
       expect(bytesHash(readFileSync(join(saved.folder, 'Media', second.relative)))).toBe(second.hash);
       // The damaged copy is not kept in the backup as if it were the original.
       expect(existsSync(join(saved.folder, 'Media', w.originalRelative))).toBe(false);
+      // Both generated PDFs draw the same page picture, kept once.
       const pictures = w.db.prepare("SELECT path FROM media WHERE path <> ''").pluck().all() as string[];
-      expect(pictures.length).toBeGreaterThan(1);
-      for (const file of pictures) expect(existsSync(join(saved.folder, 'Media', file))).toBe(true);
+      expect(pictures.length).toBeGreaterThan(0);
+      for (const file of [...pictures, optional])
+        expect(existsSync(join(saved.folder, 'Media', file))).toBe(true);
+      // The damaged copy taken with the media is not counted either: the pictures, the other original, and this.
+      expect(saved.mediaFiles).toBe(pictures.length + 2);
       expect(readNote(saved.folder)).toMatchObject({
         media: true,
         originals: { files: [{ sha256: second.hash }] },
@@ -370,6 +379,7 @@ describe('a missing or damaged original never stops a backup or a restore', () =
       const first = await w.importPdf();
       w.arrangeOwnedBytes();
       const second = await importSecond(w);
+      const name = presentationName(w, first.id);
       rmSync(w.owned);
       const saved = await backupLibrary(w.db, w.drive, options(null));
       expect(checkBackup(saved.folder, LATEST_VERSION)).toMatchObject({
@@ -377,6 +387,17 @@ describe('a missing or damaged original never stops a backup or a restore', () =
         media: false,
         originals: { set: { files: [{ sha256: second.hash }] } },
       });
+      // File > Restore Library… says so before it is restored (answered Cancel here).
+      const notices: string[] = [];
+      const ui = backupUi(w, notices);
+      dialogs.folder = saved.folder;
+      dialogs.response = 1;
+      await restore(ui);
+      expect(dialogs.boxes[0]?.detail).toContain(
+        `1 original document was missing or damaged, so it isn’t in this backup: “${name}”. Its slides are in the backup.`,
+      );
+      expect(dialogs.boxes[0]?.detail).toContain('the screens go black while it restarts');
+      expect(notices).toEqual([]);
       const target = join(w.root, 'restored-left-out');
       mkdirSync(target);
       requestRestore(target, saved.folder);
@@ -443,9 +464,11 @@ describe('a missing or damaged original never stops a backup or a restore', () =
       // The library from before is kept, says what it lacks, and is still a backup that can be restored.
       if (!restored.restored) throw new Error('The generated library was not restored.');
       const kept = join(w.userData, 'Backups', restored.keptIn);
-      expect(readNote(kept)?.originalsLeftOut?.map((o) => o.sha256).sort()).toEqual(
-        [w.hash, second.hash].sort(),
-      );
+      expect(
+        readNote(kept)
+          ?.originalsLeftOut?.map((o) => o.sha256)
+          .sort(),
+      ).toEqual([w.hash, second.hash].sort());
       expect(checkBackup(kept, LATEST_VERSION)).toMatchObject({ ok: true, media: false });
     } finally {
       w.clean();
