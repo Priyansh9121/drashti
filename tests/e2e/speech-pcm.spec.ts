@@ -35,6 +35,7 @@ if(process.platform==='darwin')app.setActivationPolicy('accessory');
 app.focus=()=>{};
 app.commandLine.appendSwitch('use-fake-device-for-media-stream');
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');
 app.whenReady().then(()=>{
  session.defaultSession.setPermissionRequestHandler((_w,_p,yes)=>yes(true));
  const w=new BrowserWindow({width:640,height:360,show:false,webPreferences:{backgroundThrottling:false,preload:${JSON.stringify(preload)}}});
@@ -79,13 +80,26 @@ app.whenReady().then(()=>{
     const page = await app.firstWindow();
     await page.evaluate(async () => {
       interface Tap {
-        speechPort(port: MessagePort | null, track: () => MediaStreamTrack | null): void;
+        speechPort(
+          port: MessagePort | null,
+          track: () => MediaStreamTrack | null,
+          graph: () => { context: AudioContext; source: AudioNode; sink: AudioNode } | null,
+        ): void;
       }
       const tap = (globalThis as unknown as { DrashtiSpeechTap: Tap }).DrashtiSpeechTap;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const context = new AudioContext({ sampleRate: 48_000 });
+      const source = context.createMediaStreamSource(stream);
+      const sink = context.createMediaStreamDestination();
+      source.connect(sink);
+      await context.resume();
       window.addEventListener('message', (event: MessageEvent<{ speechPort?: boolean }>) => {
         if (event.source === window && event.data.speechPort === true && event.ports[0])
-          tap.speechPort(event.ports[0], () => stream.getAudioTracks()[0] ?? null);
+          tap.speechPort(
+            event.ports[0],
+            () => stream.getAudioTracks()[0] ?? null,
+            () => ({ context, source, sink }),
+          );
       });
     });
     await app.evaluate(() => (globalThis as unknown as { pairPcm(): void }).pairPcm());
@@ -98,6 +112,18 @@ app.whenReady().then(()=>{
     await expect.poll(async () => (await receipt()).samples).toBeGreaterThan(8_000);
     expect((await receipt()).chunks).toBeGreaterThan(0);
     expect((await receipt()).nonSilent).toBe(true);
+    // Drawing/encoding must not turn two seconds of microphone input into a few isolated fragments.
+    const before = (await receipt()).samples;
+    await page.evaluate(async () => {
+      for (let i = 0; i < 4; i += 1) {
+        const until = performance.now() + 400;
+        while (performance.now() < until) {
+          /* generated renderer load */
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      }
+    });
+    expect((await receipt()).samples - before).toBeGreaterThanOrEqual(24_000);
   } finally {
     await app.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
