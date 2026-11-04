@@ -121,7 +121,12 @@ export async function downloadModel(o: {
         throw new ModelDownloadError('The download was stopped.');
       }
       done += value.length;
-      if (!out.write(value)) await new Promise((resume) => out.once('drain', resume));
+      if (!out.write(value))
+        await new Promise<void>((resume) => {
+          out.once('drain', () => {
+            resume();
+          });
+        });
       o.progress(done, o.source.bytes);
     }
   } catch (error) {

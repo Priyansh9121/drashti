@@ -68,6 +68,8 @@ export interface MenuActions {
   eventsOut: () => void;
   /** File > Drop Folder… (Session 28). */
   dropFolder: () => void;
+  /** File > Live Captions… (Session 55, Part 10; Pro Mode): left out where there is no such choice. */
+  liveCaptions?: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
@@ -145,6 +147,9 @@ export function installMenu(actions: MenuActions): void {
               { id: 'scheduled-backups', label: 'Scheduled Backups…', click: actions.scheduledBackups },
               { type: 'separator' },
               { id: 'drop-folder', label: 'Drop Folder…', click: actions.dropFolder },
+              ...(actions.liveCaptions
+                ? [{ id: 'live-captions', label: 'Live Captions…', click: actions.liveCaptions }]
+                : []),
               ...(actions.deckAnimations
                 ? [
                     {

@@ -172,6 +172,7 @@ function Program() {
 startCapture(
   () => sound.level(),
   () => sound.track(),
+  () => sound.inputTrack(),
 );
 
 const root = document.getElementById('root');

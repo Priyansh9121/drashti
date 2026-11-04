@@ -68,6 +68,14 @@ export class StreamSound {
     return this.out.stream.getAudioTracks()[0] ?? null;
   }
 
+  /**
+   * The sound input's own track (Session 55, Part 10, live captions): before the delay, the mix with Drashti's own
+   * sound and the limiter, so captions hear the speaker and never the music or a video.
+   */
+  inputTrack(): MediaStreamTrack | null {
+    return this.input?.stream.getAudioTracks()[0] ?? null;
+  }
+
   setDelay(ms: number): void {
     this.delay.delayTime.setValueAtTime(Math.max(0, Math.min(1000, ms)) / 1000, this.ctx.currentTime);
   }

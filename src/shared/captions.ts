@@ -149,6 +149,10 @@ export const CAPTION_MODELS = Object.freeze({
 export type CaptionModelId = keyof typeof CAPTION_MODELS;
 export const CAPTION_MODEL_IDS = Object.keys(CAPTION_MODELS) as CaptionModelId[];
 
+/** Whether a value sent is one of the models. */
+export const isCaptionModel = (value: unknown): value is CaptionModelId =>
+  CAPTION_MODEL_IDS.some((id) => id === value);
+
 /** The model a computer starts with: Most accurate on a Mac with Apple silicon, Standard everywhere else. */
 export function defaultModel(platform: string, arch: string): CaptionModelId {
   return platform === 'darwin' && arch === 'arm64' ? 'turbo' : 'small';

@@ -2,6 +2,7 @@ import {
   type BrowserWindow,
   dialog,
   MessageChannelMain,
+  type MessagePortMain,
   type WebContents,
   type WebFrameMain,
 } from 'electron';
@@ -150,6 +151,9 @@ export class StreamService {
   private readonly watchers = new Map<number, WebContents>();
   /** What else keeps the Program open, by name (Session 48: the window for Zoom), without the preview's port. */
   private readonly holders = new Set<string>();
+  /** Live captions' listener (Session 55, Part 10) and its port to the page. */
+  private speech: ((samples: Int16Array, endAt: number) => void) | null = null;
+  private speechPort: MessagePortMain | null = null;
   private inputs: ProgramInputs = NO_INPUTS;
   private layout: StreamLayout;
   private systemBlocked: { camera: boolean; microphone: boolean } = { camera: false, microphone: false };
@@ -482,6 +486,7 @@ export class StreamService {
       this.programReady = true;
       this.pairPreviews();
       this.pairEncoder();
+      this.pairSpeech();
       this.changed();
       this.deps.programChanged?.();
     });
@@ -750,6 +755,46 @@ export class StreamService {
       if (places.ok) worker.send({ type: 'live', url: profile.url, key: places.key, more: places.more });
     }
     if (this.recordWanted && this.recording.file) worker.send(this.recordMessage());
+  }
+
+  /**
+   * Hear the stream's sound input (Session 55, Part 10, live captions), on air or not: the page is kept open and given
+   * a port it sends the input's own sound on (16 kHz mono 16-bit, before the stream's delay, mix and limiter), each
+   * piece timed as it arrives. Null when no sound input is chosen, or the computer blocks it. Returns how to stop.
+   */
+  listenSound(chunk: (samples: Int16Array, endAt: number) => void): (() => void) | null {
+    if (this.activeProfile().sound === null || this.context().sound === null) return null;
+    this.speech = chunk;
+    this.hold('captions', true);
+    this.pairSpeech();
+    return () => {
+      if (this.speech !== chunk) return;
+      this.speech = null;
+      this.speechPort?.close();
+      this.speechPort = null;
+      this.hold('captions', false);
+    };
+  }
+
+  private pairSpeech(): void {
+    const program = this.program;
+    if (!this.speech || !pageAlive(program) || !this.programReady) return;
+    this.speechPort?.close();
+    const { port1, port2 } = new MessageChannelMain();
+    port1.on('message', (event) => {
+      const data = event.data as { kind?: unknown; samples?: unknown } | null;
+      if (data?.kind !== 'pcm') return;
+      const samples =
+        data.samples instanceof ArrayBuffer
+          ? new Int16Array(data.samples)
+          : data.samples instanceof Int16Array
+            ? data.samples
+            : null;
+      if (samples) this.speech?.(samples, this.deps.now());
+    });
+    port1.start();
+    this.speechPort = port1;
+    program.webContents.postMessage(IPC.stream.port, { role: 'speech' }, [port2]);
   }
 
   /** Give the worker a port to the stream's page for its frames and sound. */

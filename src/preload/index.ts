@@ -29,7 +29,8 @@ function on<C extends EventChannel>(channel: C, listener: (payload: EventContrac
 const pageWindow = globalThis as unknown as {
   postMessage(message: unknown, targetOrigin: string, transfer: readonly unknown[]): void;
 };
-ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' }) => {
+// And live captions' (Session 55, Part 10): the sound input's own sound goes back on it.
+ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' | 'speech' }) => {
   pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
 });
 
@@ -123,6 +124,18 @@ const bridge: DrashtiBridge = {
     onChanged: (listener) => on(IPC.drop.changed, listener),
     onOpen: (listener) =>
       on(IPC.drop.open, () => {
+        listener();
+      }),
+  },
+  captions: {
+    view: () => invoke(IPC.captions.view),
+    setOn: (value) => invoke(IPC.captions.setOn, value),
+    setModel: (model) => invoke(IPC.captions.setModel, model),
+    setSettings: (settings) => invoke(IPC.captions.setSettings, settings),
+    retry: () => invoke(IPC.captions.retry),
+    onChanged: (listener) => on(IPC.captions.changed, listener),
+    onOpen: (listener) =>
+      on(IPC.captions.open, () => {
         listener();
       }),
   },
