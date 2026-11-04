@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';
 import type { BackupRun, BackupSchedule, BackupsResult, ScheduledBackupsView } from '../../shared/backups';
-import { backupScheduleSchema, NO_BACKUP_SCHEDULE, SCHEDULED_FOLDER } from '../../shared/backups';
+import {
+  backupScheduleSchema,
+  leftOutText,
+  NO_BACKUP_SCHEDULE,
+  SCHEDULED_FOLDER,
+} from '../../shared/backups';
 import { nextScheduleTime, scheduleTimes } from '../../shared/schedule';
 import type { BackupWorker } from './spawn-backup-worker';
 import { plural } from '../../shared/text';
@@ -90,10 +95,16 @@ export class ScheduledBackups {
     const now = this.deps.now();
     const last = this.last();
     const dismissed = this.deps.settings.get(DISMISSED);
+    // A finished backup that left original documents out says so too (alpha.15), until read.
+    const leftOut = last?.outcome === 'done' && typeof last.leftOut === 'string' ? last.leftOut : null;
     const warning =
-      last && last.outcome !== 'done' && dismissed !== last.endedAt
-        ? `Backup at ${hhmm(last.at)} ${last.outcome === 'skipped' ? 'skipped' : 'stopped'}: ${last.message}`
-        : null;
+      !last || dismissed === last.endedAt
+        ? null
+        : last.outcome !== 'done'
+          ? `Backup at ${hhmm(last.at)} ${last.outcome === 'skipped' ? 'skipped' : 'stopped'}: ${last.message}`
+          : leftOut
+            ? `Backup at ${hhmm(last.at)} finished, but ${leftOut}`
+            : null;
     return {
       schedule: s,
       nextAt: s.enabled && s.folder ? nextScheduleTime({ ...s, date: null }, now) : null,
@@ -165,12 +176,13 @@ export class ScheduledBackups {
     outcome: BackupRun['outcome'],
     message: string,
     extra: Partial<BackupRun> = {},
+    leftOutCount = 0,
   ): void {
     const run: BackupRun = { at, endedAt: this.deps.now(), outcome, message, ...extra };
     this.deps.settings.set(LAST, run);
     this.deps.log(
-      outcome === 'done' ? 'info' : 'warn',
-      `Scheduled backup for ${hhmm(at)}: ${outcome}${extra.copied !== undefined ? ` (${String(extra.copied)} of ${String(extra.files ?? 0)} media file(s) copied)` : ''}`,
+      outcome === 'done' && !extra.leftOut ? 'info' : 'warn',
+      `Scheduled backup for ${hhmm(at)}: ${outcome}${extra.copied !== undefined ? ` (${String(extra.copied)} of ${String(extra.files ?? 0)} media file(s) copied)` : ''}${leftOutCount ? `; ${String(leftOutCount)} original document(s) missing or damaged, left out` : ''}`,
     );
   }
 
@@ -234,11 +246,17 @@ export class ScheduledBackups {
         this.progress = { done: message.done, total: message.total };
         this.changed();
       } else if (message.type === 'done') {
+        const leftOut = message.originalsLeftOut ?? [];
         this.finish(
           at,
           'done',
           `in ${SCHEDULED_FOLDER}, “${message.folder}”${message.removed > 0 ? `; ${plural(message.removed, 'older one')} removed` : ''}.`,
-          { copied: message.copied, files: message.files },
+          {
+            copied: message.copied,
+            files: message.files,
+            ...(leftOut.length ? { leftOut: leftOutText(leftOut) } : {}),
+          },
+          leftOut.length,
         );
         end();
       } else {

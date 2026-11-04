@@ -713,4 +713,117 @@ describe('imported editor provenance and legacy safety', () => {
       w.clean();
     }
   });
+
+  // alpha.15 words review: the older-import notice is for slides whose page of the original is unknown, never a
+  // page added in the editor. New slide after an imported page (renderer/src/editor/ops.ts addSlideAfter) takes a
+  // PDF page's paper size and nothing after a PowerPoint page; no page of the original either way.
+  const olderImportNotice = (issues: readonly string[] | undefined) =>
+    (issues ?? []).filter((issue) => /older import|which page of the original/iu.test(issue));
+  const addBlankAfterFirst = (opened: Opened): EditSlide => {
+    const group = opened.doc.groups[0];
+    const page = group?.slides[0];
+    if (!group || !page) throw new Error('The generated imported page is missing.');
+    const blank: EditSlide = {
+      id: randomUUID(),
+      label: '',
+      notes: '',
+      background: null,
+      darken: null,
+      enabled: true,
+      transition: null,
+      autoAdvanceMs: null,
+      macroId: null,
+      elements: [],
+      cues: [],
+      ...(page.pageSize ? { pageSize: page.pageSize } : {}),
+    };
+    group.slides.splice(1, 0, blank);
+    return blank;
+  };
+
+  it('gives a new PDF import no older-import notice once a blank page is added and saved', async () => {
+    const w = originalWorld();
+    try {
+      const imported = await w.importPdf();
+      expect(imported.summary.totals).toMatchObject({ imported: 1, failed: 0 });
+      const presentations = new PresentationRepo(w.db);
+      register(w, presentations);
+      const opened = await open(imported.id);
+      expect(olderImportNotice(opened.sourceIssues)).toEqual([]);
+      const blank = addBlankAfterFirst(opened);
+      expect(blank.pageSize, 'a blank page after a PDF page takes its paper size').toBeDefined();
+      expect(await save(imported.id, opened)).toMatchObject({ ok: true });
+
+      const reopened = await open(imported.id);
+      const pages = reopened.doc.groups.flatMap((group) => group.slides);
+      expect(pages.map((page) => page.documentPage === undefined)).toEqual([false, true]);
+      expect(pages[1]?.pageSize).toEqual(blank.pageSize);
+      expect(olderImportNotice(reopened.sourceIssues)).toEqual([]);
+      originalsUnchanged(w);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('gives a new PowerPoint import no older-import notice once a blank slide is added and saved', async () => {
+    const w = originalWorld();
+    try {
+      const file = join(w.root, 'Placeholder deck.pptx');
+      writeFileSync(file, makeTestPptx([{ text: 'Placeholder deck words', color: '204060' }]));
+      const originals = new OriginalsStore(w.db, w.mediaDir, { freeBytes: () => 1024 ** 4 });
+      const staged = await originals.stage(file, 'pptx');
+      if (!staged.ok) throw new Error(staged.message);
+      originals.register(staged.original);
+      const picture = new MediaStore(w.db, { dir: w.mediaDir, freeBytes: () => 1024 ** 4 }).addMissing(
+        join(w.root, 'Placeholder deck page 1.png'),
+        'image',
+        { kind: 'drashti', path: file },
+      );
+      const presentations = new PresentationRepo(w.db);
+      // A new import's page: its picture, and the page of its kept original.
+      const id = presentations.insert({
+        libraryId: presentations.ensureLibrary('Placeholder deck tests'),
+        name: 'Placeholder deck',
+        width: 1280,
+        height: 720,
+        source: { kind: 'pictures', path: file, ref: null, importedAt: null },
+        sourceHash: staged.original.sha256,
+        groups: [
+          {
+            name: '',
+            slides: [
+              {
+                documentPage: { sha256: staged.original.sha256, ext: 'pptx', page: 0 },
+                elements: [
+                  {
+                    id: randomUUID(),
+                    kind: 'image',
+                    mediaId: picture,
+                    fit: 'fit',
+                    frame: { x: 0, y: 0, width: 1280, height: 720 },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      register(w, presentations);
+      const opened = await open(id);
+      expect(olderImportNotice(opened.sourceIssues)).toEqual([]);
+      const blank = addBlankAfterFirst(opened);
+      expect(
+        blank.pageSize,
+        'a blank slide after a PowerPoint page has no paper size of its own',
+      ).toBeUndefined();
+      expect(await save(id, opened)).toMatchObject({ ok: true });
+
+      const reopened = await open(id);
+      const pages = reopened.doc.groups.flatMap((group) => group.slides);
+      expect(pages.map((page) => page.documentPage === undefined)).toEqual([false, true]);
+      expect(olderImportNotice(reopened.sourceIssues)).toEqual([]);
+    } finally {
+      w.clean();
+    }
+  });
 });

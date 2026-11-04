@@ -25,14 +25,22 @@ import { CONVERTING_DIR, UPLOADS_DIR } from '../import/media-store';
 import { SHARPENED_DIR } from '../media/sharpened';
 import { BLURRED_DIR } from '../media/blurred';
 import { realPlace } from '../media/contained';
-import { ORIGINALS_STAGING_DIR, originalRelative, retainedOriginals } from '../import/originals-store';
+import {
+  ORIGINALS_STAGING_DIR,
+  originalRelative,
+  retainedOriginals,
+  type OriginalDescriptor,
+} from '../import/originals-store';
 import {
   copyOriginalSet,
   freshOriginalSet,
+  heldOriginals,
   mergeOriginalSetSync,
+  namedOriginals,
   originalRoot,
   originalsPresent,
   originalSet,
+  type LeftOutOriginal,
   type OriginalBackupSet,
 } from './original-backup';
 
@@ -53,6 +61,8 @@ const REQUEST = 'restore-request.json';
 export const NOTE = 'backup.json';
 /** A scheduled backup's list of the media files it needs from the shared pool (Session 14). */
 export const MANIFEST = 'media.json';
+/** In the library kept before a restore: its damaged copies of originals the restore replaced (alpha.15). */
+const DAMAGED_ORIGINALS = 'Damaged originals';
 /** Files this big are streamed, so the progress moves while they copy. */
 const STREAM_FROM = 16 * 1024 * 1024;
 
@@ -70,7 +80,22 @@ export interface BackupNote {
   mediaPool?: string;
   /** Required immutable sources, even in a library-only backup. */
   originals?: OriginalBackupSet;
+  /**
+   * Required originals missing or damaged in the library when the backup was made (alpha.15): left out, so
+   * the library and everything else were still backed up. Not in `originals`; a check and a restore know.
+   */
+  originalsLeftOut?: LeftOutOriginal[];
 }
+
+const originalSchema = z.object({
+  sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  ext: z.enum(['pdf', 'pptx', 'ppt', 'key']),
+  bytes: z
+    .number()
+    .int()
+    .positive()
+    .max(1024 ** 3),
+});
 
 const noteSchema: z.ZodType<BackupNote> = z.object({
   app: z.string(),
@@ -82,20 +107,12 @@ const noteSchema: z.ZodType<BackupNote> = z.object({
   originals: z
     .object({
       version: z.literal(1),
-      files: z
-        .array(
-          z.object({
-            sha256: z.string().regex(/^[0-9a-f]{64}$/u),
-            ext: z.enum(['pdf', 'pptx', 'ppt', 'key']),
-            bytes: z
-              .number()
-              .int()
-              .positive()
-              .max(1024 ** 3),
-          }),
-        )
-        .max(100_000),
+      files: z.array(originalSchema).max(100_000),
     })
+    .optional(),
+  originalsLeftOut: z
+    .array(originalSchema.extend({ name: z.string().max(1000).optional() }))
+    .max(100_000)
     .optional(),
 });
 
@@ -236,12 +253,15 @@ export interface BackupOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
-/** Back up into a new folder in `into`; returns that folder and how many media files went with it. */
+/**
+ * Back up into a new folder in `into`; returns that folder, how many media files went with it, and (alpha.15)
+ * the required originals left out because they were missing or damaged in the library.
+ */
 export async function backupLibrary(
   db: Db,
   into: string,
   options: BackupOptions,
-): Promise<{ folder: string; mediaFiles: number }> {
+): Promise<{ folder: string; mediaFiles: number; originalsLeftOut?: LeftOutOriginal[] }> {
   const folder = freshFolder(into, `Drashti backup ${fileStamp(options.now)}`);
   await mkdir(folder, { recursive: true });
   try {
@@ -249,12 +269,27 @@ export async function backupLibrary(
     const originals = freshOriginalSet(join(folder, LIBRARY_FILE));
     const originalMedia = originalRoot(db.name, options.mediaDir);
     const mediaDir = options.mediaDir !== null && existsSync(options.mediaDir) ? options.mediaDir : null;
-    const mediaFiles = mediaDir
+    let mediaFiles = mediaDir
       ? await copyFolder(mediaDir, join(folder, MEDIA), options.onProgress ?? (() => undefined))
       : 0;
+    let held = originals;
+    let leftOut: LeftOutOriginal[] = [];
     if (originals) {
       if (!originalMedia) throw new Error('The library has no managed folder for its required originals.');
-      await copyOriginalSet(originalMedia, join(folder, MEDIA), originals);
+      // One missing or damaged never stops the backup (alpha.15): it is left out, and the note says which.
+      const missing = await copyOriginalSet(originalMedia, join(folder, MEDIA), originals);
+      if (missing.length) {
+        held = heldOriginals(originals, missing);
+        leftOut = namedOriginals(join(folder, LIBRARY_FILE), missing);
+        // A damaged one the media copy took is not kept as if it were the original.
+        for (const original of missing) {
+          const copy = join(folder, MEDIA, originalRelative(original));
+          if (existsSync(copy)) {
+            await rm(copy, { force: true });
+            mediaFiles--;
+          }
+        }
+      }
     }
     // Written last: a folder without it is a backup that did not finish.
     await writeFile(
@@ -264,10 +299,11 @@ export async function backupLibrary(
         schema: options.schema,
         createdAt: options.now.toISOString(),
         media: mediaDir !== null,
-        ...(originals ? { originals } : {}),
+        ...(held ? { originals: held } : {}),
+        ...(leftOut.length ? { originalsLeftOut: leftOut } : {}),
       }),
     );
-    return { folder, mediaFiles };
+    return { folder, mediaFiles, ...(leftOut.length ? { originalsLeftOut: leftOut } : {}) };
   } catch (error) {
     // Nothing half-done is left behind to be taken for a backup later.
     await rm(folder, { recursive: true, force: true });
@@ -326,19 +362,23 @@ export function checkBackup(folder: string, latestSchema: number): BackupCheck {
       code: 'newer',
       message: 'That backup was made by a newer Drashti: update Drashti first.',
     };
+  // Each original the library needs is in the backup, or (alpha.15) listed as left out when it was made.
+  const listedIn = (list: readonly OriginalDescriptor[] | undefined, original: OriginalDescriptor) =>
+    list?.some(
+      (listed) =>
+        listed.sha256 === original.sha256 && listed.ext === original.ext && listed.bytes === original.bytes,
+    ) ?? false;
   if (
     required &&
-    !required.files.every((original) =>
-      note.originals?.files.some(
-        (listed) =>
-          listed.sha256 === original.sha256 && listed.ext === original.ext && listed.bytes === original.bytes,
-      ),
+    !required.files.every(
+      (original) => listedIn(note.originals?.files, original) || listedIn(note.originalsLeftOut, original),
     )
   )
     return {
       ok: false,
       code: 'unfinished',
-      message: 'The backup does not list every required original document.',
+      message:
+        'That backup is not whole: it does not list every original document its library needs (the PDF and PowerPoint files kept for editing), so it cannot be restored.',
     };
   let pool: { dir: string; files: string[] } | null = null;
   if (
@@ -350,12 +390,18 @@ export function checkBackup(folder: string, latestSchema: number): BackupCheck {
       return {
         ok: false,
         code: 'unfinished',
-        message: 'The original document pool is not in the expected backup folder.',
+        message:
+          'That backup’s media is not where Drashti keeps it (the shared Media folder beside it), so it cannot be restored whole.',
       };
     const dir = join(folder, note.mediaPool);
     const files = readManifest(folder);
     if (!files?.every((file) => existsSync(join(dir, file))))
-      return { ok: false, code: 'unfinished', message: 'The backup’s shared media is incomplete.' };
+      return {
+        ok: false,
+        code: 'unfinished',
+        message:
+          'That backup’s media is not all there (the shared Media folder beside it is missing files), so it cannot be restored whole.',
+      };
     if (
       note.originals &&
       !note.originals.files.every((original) =>
@@ -365,7 +411,8 @@ export function checkBackup(folder: string, latestSchema: number): BackupCheck {
       return {
         ok: false,
         code: 'unfinished',
-        message: 'The shared manifest omits a required original document.',
+        message:
+          'That backup’s media is not all there (its list of shared files leaves out an original document its library needs), so it cannot be restored whole.',
       };
     pool = { dir, files };
   }
@@ -377,13 +424,15 @@ export function checkBackup(folder: string, latestSchema: number): BackupCheck {
     return {
       ok: false,
       code: 'unfinished',
-      message: 'The required original folder leaves the selected backup location.',
+      message:
+        'That backup’s Media folder leads outside the backup (it is a link to another place), so it cannot be restored.',
     };
   if (note.originals && !originalsPresent(root, note.originals))
     return {
       ok: false,
       code: 'unfinished',
-      message: 'A required original document is missing from this backup.',
+      message:
+        'That backup is not whole: an original document it lists (a PDF or PowerPoint file kept for editing) is missing from it, so it cannot be restored.',
     };
   return {
     ok: true,
@@ -405,7 +454,14 @@ type CheckFailure = Extract<BackupCheck, { ok: false }>['code'];
 export type RestoreOutcome =
   | { restored: false; code: null; message: null }
   | { restored: false; code: 'bad-request' | 'copy-failed' | 'swap-failed' | CheckFailure; message: string }
-  | { restored: true; from: string; keptIn: string; media: boolean };
+  | {
+      restored: true;
+      from: string;
+      keptIn: string;
+      media: boolean;
+      /** The current library's originals that were missing or damaged, so not in its kept copy (alpha.15). */
+      originalsNotKept?: number;
+    };
 
 const reason = (error: unknown) => {
   const code = errorCode(error);
@@ -451,6 +507,7 @@ export function applyPendingRestore(
   const incomingMedia = join(userData, `${MEDIA}.restoring`);
   const keptIn = freshFolder(join(userData, 'Backups'), `Before restore ${fileStamp(options.now)}`);
   let previousOriginals: OriginalBackupSet | undefined;
+  let notKept: LeftOutOriginal[] = [];
   const cleanUp = () => {
     rmSync(incomingMedia, { recursive: true, force: true });
     rmSync(incomingDb, { force: true });
@@ -479,8 +536,14 @@ export function applyPendingRestore(
       // An originals-only restore leaves the current Media tree, including every old original, in place.
       previousOriginals = undefined;
     }
-    if (!check.media && previousOriginals)
-      mergeOriginalSetSync(mediaDir, join(keptIn, MEDIA), previousOriginals);
+    if (!check.media && previousOriginals) {
+      // One missing or damaged in the current library never stops restoring a good backup (alpha.15): the
+      // others are kept, and the kept copy's note says which it lacks.
+      const missing = mergeOriginalSetSync(mediaDir, join(keptIn, MEDIA), previousOriginals, {
+        leaveOutBad: true,
+      });
+      if (missing.length) notKept = namedOriginals(current, missing);
+    }
     copyFileSync(join(from, LIBRARY_FILE), incomingDb);
   } catch (error) {
     cleanUp();
@@ -508,7 +571,12 @@ export function applyPendingRestore(
         renameSync(mediaDir, incomingMedia);
       });
     }
-    if (!check.media && check.originals) mergeOriginalSetSync(incomingMedia, mediaDir, check.originals.set);
+    // A damaged copy in the current library where the backup's whole one goes is kept aside with the library
+    // from before, and replaced (alpha.15).
+    if (!check.media && check.originals)
+      mergeOriginalSetSync(incomingMedia, mediaDir, check.originals.set, {
+        moveBadTo: join(keptIn, DAMAGED_ORIGINALS),
+      });
     for (const name of upgradeCopies(userData)) {
       renameSync(join(userData, name), join(keptIn, name));
       undo.push(() => {
@@ -536,6 +604,8 @@ export function applyPendingRestore(
       message: `The library was not restored completely (${reason(error)}). The library from before is kept in Backups/${basename(keptIn)} in Drashti’s data folder.`,
     };
   }
+  const keptOriginals =
+    previousOriginals && notKept.length ? heldOriginals(previousOriginals, notKept) : previousOriginals;
   writeFileSync(
     join(keptIn, NOTE),
     noteText({
@@ -543,11 +613,18 @@ export function applyPendingRestore(
       schema: options.schema,
       createdAt: options.now.toISOString(),
       media: check.media && existsSync(join(keptIn, MEDIA)),
-      ...(previousOriginals ? { originals: previousOriginals } : {}),
+      ...(keptOriginals ? { originals: keptOriginals } : {}),
+      ...(notKept.length ? { originalsLeftOut: notKept } : {}),
     }),
   );
   cleanUp();
-  return { restored: true, from: basename(from), keptIn: basename(keptIn), media: check.media };
+  return {
+    restored: true,
+    from: basename(from),
+    keptIn: basename(keptIn),
+    media: check.media,
+    ...(notKept.length ? { originalsNotKept: notKept.length } : {}),
+  };
 }
 
 export type RollBackOutcome = { ok: true; failedIn: string } | { ok: false; message: string };

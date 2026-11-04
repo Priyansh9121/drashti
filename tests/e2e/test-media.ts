@@ -1,11 +1,13 @@
 import type { Page } from '@playwright/test';
+import { execFile } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { letTimePass } from './helpers';
+import { promisify } from 'node:util';
+import { testFfmpeg } from './stream-helpers';
 
 /*
  * Test media, made while the test runs (nothing is committed): a PNG drawn
- * on a canvas, and short WebM videos recorded from a canvas with
- * MediaRecorder, optionally with a tone as their sound.
+ * on a canvas, and short videos made by the bundled FFmpeg (a WebM, or an
+ * MP4), optionally with a tone as their sound.
  */
 
 /** Draw a flat-colour PNG in the page and save it. */
@@ -47,261 +49,96 @@ export interface TestVideoOptions {
   h264?: boolean;
 }
 
-/** Record a short WebM in the page (in real time) and save it, with its duration written in. */
-export async function makeTestVideo(page: Page, file: string, options: TestVideoOptions): Promise<string> {
-  const frameMs = 1000 / (options.fps ?? 30);
-  // A page that draws nothing for a while (a busy machine) records nothing, or frames for only part of the
-  // time (a CI Mac's GPU busy with the operator window's warm-up held a page's frames from 0.3 s on): a
-  // clip given the whole length but ending early loops back at once, so a test sees it barely play. A clip
-  // longer than asked (a held first picture recorded before it was timed) moves every time a test reads in
-  // it. Either way it records again. Each recording is timed from its recorder's own start (recordWebm).
-  const askedMs = options.seconds * 1000;
-  if (options.h264) {
-    const recorded = await recordWebm(page, options);
-    const bytes = Buffer.from(recorded.base64, 'base64');
-    if (bytes.length < 1000) {
-      console.log(`Generated video failure lifecycle: ${JSON.stringify(recorded.lifecycle)}`);
-      throw new Error(`The page recorded no H.264 video (${String(bytes.length)} bytes).`);
-    }
-    writeFileSync(file, bytes);
-    return file;
-  }
-  for (let attempt = 1; ; attempt++) {
-    const recorded = await recordWebm(page, options);
-    const bytes = Buffer.from(recorded.base64, 'base64');
-    const webm = bytes.length >= 4 && bytes.readUInt32BE(0) === EBML_HEADER;
-    const last = webm ? Math.max(0, ...webmVideoFrameTimes(bytes)) : 0;
-    // As far as it plays: its last frame of pictures or sound, or its timed length.
-    const longer = Math.max(webm ? webmLastFrameMs(bytes) : 0, recorded.ms) > askedMs + LONGER_MS;
-    if (webm && last >= recorded.ms * 0.9 - frameMs && !longer) {
-      writeFileSync(file, setWebmDuration(bytes, recorded.ms));
-      return file;
-    }
-    console.log(`Generated video failure lifecycle: ${JSON.stringify(recorded.lifecycle)}`);
-    const problem = !webm
-      ? `no video (${String(bytes.length)} bytes)`
-      : longer
-        ? `it ran ${String(Math.round(Math.max(webmLastFrameMs(bytes), recorded.ms)))} ms, ${String(askedMs)} ms asked`
-        : `its frames ended at ${String(Math.round(last))} ms of ${String(Math.round(recorded.ms))}`;
-    // Five tries, a second apart: a busy CI computer can hold a page up for a while.
-    if (attempt === 5) throw new Error(`The page recorded no whole video in five tries: ${problem}.`);
-    console.log(`A test video was recorded again: ${problem}.`);
-    await letTimePass(page, 1000, 'a busy computer is given a second before the video is recorded again');
-  }
-}
-
-/** Bounded numeric/enum diagnostics only; never media, URLs, device names or arbitrary error text. */
-interface VideoFixtureLifecycle {
-  draws: number;
-  firstDrawAtMs: number | null;
-  lastDrawAtMs: number | null;
-  startCalledAtMs: number | null;
-  recordingAtMs: number | null;
-  startEventAtMs: number | null;
-  stopCalledAtMs: number | null;
-  stopEventAtMs: number | null;
-  dataEvents: number;
-  dataBytes: number;
-  data: { atMs: number; bytes: number }[];
-  lastData: { atMs: number; bytes: number } | null;
-  errorCategory: 'none' | 'recorder-error';
-  errorAtMs: number | null;
-  track: { readyState: 'live' | 'ended'; muted: boolean; enabled: boolean } | null;
-  trackEventCount: number;
-  trackEvents: { atMs: number; event: 'mute' | 'unmute' | 'ended' }[];
-}
-
 /**
- * How long a recorder may take to start recording, and then to give its first data, before the clip is timed or
- * stopped anyway (alpha.14's gate on CI's Mac, 3 Nov 2026: stopped 2 s after start(), before its first data, the
- * page's recorder gave nothing, its start event 0.4–1.5 ms after stop(), twenty times in a row).
- */
-const RECORDER_START_MS = 30_000;
-
-/**
- * How far past the length asked a clip may run: its last frame captured late on a busy computer, or its timer late.
- * Never a held first picture (alpha.14's gate on CI's Mac, 4 Nov 2026: 1.3–1.8 s of it made a 2 s clip 3.4–3.8 s),
- * nor its tone still sounding while the recorder's start event is awaited.
+ * How far past the length asked a test video may run: its sound's last frame, Opus's 20 ms ones counted from its
+ * codec's own delay.
  */
 const LONGER_MS = 250;
 
-/** A WebM (or an MP4) of a canvas recorded in the page, in real time, and how long the recording ran. */
-function recordWebm(
-  page: Page,
-  options: TestVideoOptions,
-): Promise<{ base64: string; ms: number; lifecycle: VideoFixtureLifecycle }> {
-  return page
-    .evaluate(
-      async ({ seconds, width, height, fps, tone, hue, h264, startWithinMs }) => {
-        const observedAt = performance.now();
-        const at = () => Math.round((performance.now() - observedAt) * 1000) / 1000;
-        const lifecycle: VideoFixtureLifecycle = {
-          draws: 0,
-          firstDrawAtMs: null,
-          lastDrawAtMs: null,
-          startCalledAtMs: null,
-          recordingAtMs: null,
-          startEventAtMs: null,
-          stopCalledAtMs: null,
-          stopEventAtMs: null,
-          dataEvents: 0,
-          dataBytes: 0,
-          data: [],
-          lastData: null,
-          errorCategory: 'none',
-          errorAtMs: null,
-          track: null,
-          trackEventCount: 0,
-          trackEvents: [],
-        };
-        (
-          globalThis as { drashtiTestVideoFixtureLifecycle?: VideoFixtureLifecycle }
-        ).drashtiTestVideoFixtureLifecycle = lifecycle;
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('no 2d context');
-        const stream = canvas.captureStream(fps);
-        const track = stream.getVideoTracks()[0];
-        const trackState = () => {
-          lifecycle.track = track
-            ? { readyState: track.readyState, muted: track.muted, enabled: track.enabled }
-            : null;
-        };
-        trackState();
-        for (const event of ['mute', 'unmute', 'ended'] as const)
-          track?.addEventListener(event, () => {
-            lifecycle.trackEventCount++;
-            if (lifecycle.trackEvents.length < 16) lifecycle.trackEvents.push({ atMs: at(), event });
-            trackState();
-          });
-        let audio: AudioContext | null = null;
-        if (tone > 0) {
-          audio = new AudioContext();
-          const osc = audio.createOscillator();
-          osc.frequency.value = tone;
-          const dest = audio.createMediaStreamDestination();
-          osc.connect(dest);
-          osc.start();
-          const track = dest.stream.getAudioTracks()[0];
-          if (track) stream.addTrack(track);
-        }
-        const mimeType = h264
-          ? 'video/mp4;codecs=avc1.42E01E'
-          : tone > 0
-            ? 'video/webm;codecs=vp8,opus'
-            : 'video/webm;codecs=vp8';
-        const recorder = new MediaRecorder(stream, {
-          mimeType,
-          videoBitsPerSecond: 400_000,
-          // Frequent key frames, so seeking a test video is quick.
-          videoKeyFrameIntervalDuration: 250,
-        } as MediaRecorderOptions);
-        const chunks: Blob[] = [];
-        recorder.addEventListener('start', () => {
-          lifecycle.startEventAtMs = at();
-          trackState();
-        });
-        recorder.addEventListener('error', () => {
-          lifecycle.errorCategory = 'recorder-error';
-          lifecycle.errorAtMs = at();
-          trackState();
-        });
-        recorder.ondataavailable = (e) => {
-          chunks.push(e.data);
-          const entry = { atMs: at(), bytes: e.data.size };
-          lifecycle.dataEvents++;
-          lifecycle.dataBytes += entry.bytes;
-          if (lifecycle.data.length < 32) lifecycle.data.push(entry);
-          lifecycle.lastData = entry;
-        };
-        const stopped = new Promise((resolve) => {
-          recorder.onstop = (event) => {
-            lifecycle.stopEventAtMs = at();
-            trackState();
-            resolve(event);
-          };
-        });
-        const draw = (t: number) => {
-          lifecycle.draws++;
-          lifecycle.lastDrawAtMs = at();
-          lifecycle.firstDrawAtMs ??= lifecycle.lastDrawAtMs;
-          ctx.fillStyle = `hsl(${hue} 60% 35%)`;
-          ctx.fillRect(0, 0, width, height);
-          // A bar that crosses the frame once over the clip, and the time.
-          ctx.fillStyle = '#fff';
-          ctx.fillRect((t / seconds) * width, 0, Math.max(2, width / 64), height);
-          ctx.font = `${Math.round(height / 5)}px sans-serif`;
-          ctx.fillText(t.toFixed(2), width / 20, height / 3);
-        };
-        draw(0);
-        lifecycle.startCalledAtMs = at();
-        recorder.start(100);
-        // The clip begins when the recorder records (its state, at once in Chromium), its first picture drawn
-        // meanwhile: a recorder that starts late is never timed before it began. Its start event is no sign of that:
-        // Chromium sends it with the recorder's first data (on CI's Mac, 4 Nov 2026, 1.3–1.8 s after start(), and
-        // the first picture held until then made a 2 s clip 3.4–3.8 s long).
-        const asked = performance.now();
-        while (recorder.state !== 'recording' && performance.now() - asked < startWithinMs) {
-          draw(0);
-          // eslint-disable-next-line no-restricted-syntax -- in the page: the first picture drawn each 1/fps s until the recorder records
-          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
-        }
-        lifecycle.recordingAtMs = at();
-        const start = performance.now();
-        while (performance.now() - start < seconds * 1000) {
-          draw((performance.now() - start) / 1000);
-          // eslint-disable-next-line no-restricted-syntax -- in the page: a video's frames drawn one each 1/fps s
-          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
-        }
-        const ms = performance.now() - start;
-        // Its sound ends with its pictures: a tone left on would go on being recorded.
-        await audio?.suspend();
-        // Stopped only once its first data has come (its start event): stopped before, it gives nothing (3 Nov
-        // 2026). Nothing is drawn or sounded meanwhile, so the clip ends where it was timed to.
-        const drawn = performance.now();
-        while (lifecycle.startEventAtMs === null && performance.now() - drawn < startWithinMs) {
-          // eslint-disable-next-line no-restricted-syntax -- in the page: waiting for the recorder's first data
-          await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
-        }
-        lifecycle.stopCalledAtMs = at();
-        recorder.stop();
-        await stopped;
-        await audio?.close();
-        const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer());
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += 0x8000)
-          binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        trackState();
-        return { base64: btoa(binary), ms, lifecycle };
-      },
-      {
-        width: 320,
-        height: 180,
-        fps: 30,
-        tone: 0,
-        hue: 210,
-        h264: false,
-        ...options,
-        startWithinMs: RECORDER_START_MS,
-      },
-    )
-    .catch(async (error: unknown) => {
-      try {
-        const lifecycle = await page.evaluate(
-          () =>
-            (globalThis as { drashtiTestVideoFixtureLifecycle?: VideoFixtureLifecycle })
-              .drashtiTestVideoFixtureLifecycle ?? null,
-        );
-        console.log(
-          `Generated video failure lifecycle: ${JSON.stringify({ errorCategory: 'page-evaluate-error', lifecycle })}`,
-        );
-      } catch {
-        // Diagnostic collection must never replace the original recording failure.
-      }
-      throw error;
-    });
+/** The test video's background, CSS's hsl(hue 60% 35%), as FFmpeg's 0xRRGGBB. */
+function background(hue: number): string {
+  const a = 0.6 * Math.min(0.35, 1 - 0.35);
+  const channel = (n: number) => {
+    const k = (n + hue / 30) % 12;
+    return Math.round(255 * (0.35 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+  };
+  return `0x${[channel(0), channel(8), channel(4)].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
+const run = promisify(execFile);
+
+/**
+ * A short test video, made by the bundled FFmpeg: a flat colour with a white bar that crosses it once over the clip,
+ * a keyframe every 250 ms (so seeking a test video is quick), and a tone as its sound when asked. A WebM (VP8, and
+ * Opus) written live, as a page's recorder writes one, with its duration written in; or, with `h264`, an MP4.
+ * Recorded in the page in real time before, it came out short or long on a busy CI Mac in three of alpha.14's gates
+ * (3–5 Nov 2026: a page held up records frames for only part of the time, five tries in a row); made by FFmpeg it is
+ * the length asked whatever the page is doing. The page is no longer used: `_page` stays for the tests that pass it.
+ */
+export async function makeTestVideo(_page: Page, file: string, options: TestVideoOptions): Promise<string> {
+  const ffmpeg = testFfmpeg();
+  if (!ffmpeg) throw new Error('A test video needs the bundled FFmpeg (node scripts/fetch-ffmpeg.mjs).');
+  const { seconds, width = 320, height = 180, fps = 30, tone = 0, hue = 210, h264 = false } = options;
+  const sound = tone > 0 && !h264;
+  const graph = [
+    `color=c=${background(hue)}:s=${String(width)}x${String(height)}:r=${String(fps)}:d=${String(seconds)}[bg]`,
+    `color=c=white:s=${String(Math.max(2, Math.round(width / 64)))}x${String(height)}:r=${String(fps)}:d=${String(seconds)}[bar]`,
+    `[bg][bar]overlay=x=t*${String(width / seconds)}:y=0:shortest=1,format=yuv420p[v]`,
+    // As the page's oscillator was: a sine at full scale, on both channels.
+    ...(sound
+      ? [
+          `aevalsrc=exprs=sin(2*PI*${String(tone)}*t)|sin(2*PI*${String(tone)}*t):c=stereo:s=48000:d=${String(seconds)}[a]`,
+        ]
+      : []),
+  ].join(';');
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-filter_complex', graph, '-map', '[v]'];
+  const keyframes = ['-force_key_frames', 'expr:gte(t,n_forced*0.25)', '-b:v', '400k'];
+  if (h264) {
+    const mp4 = [
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-profile:v',
+      'baseline',
+      '-movflags',
+      '+faststart',
+    ];
+    await run(ffmpeg, [...args, ...mp4, ...keyframes, '-y', file]);
+    return file;
+  }
+  const vp8 = [
+    '-c:v',
+    'libvpx',
+    '-deadline',
+    'realtime',
+    '-cpu-used',
+    '8',
+    '-auto-alt-ref',
+    '0',
+    '-lag-in-frames',
+    '0',
+  ];
+  const opus = sound ? ['-map', '[a]', '-c:a', 'libopus', '-b:a', '128k'] : [];
+  // To a pipe: written live, as a recorder writes it (no cues to point into it).
+  const { stdout } = await run(
+    ffmpeg,
+    [...args, ...vp8, ...keyframes, ...opus, '-write_crc32', '0', '-f', 'webm', 'pipe:1'],
+    {
+      encoding: 'buffer',
+      maxBuffer: 256 * 1024 * 1024,
+    },
+  );
+  // Its pictures run to its end, and nothing runs past it: made so every time, checked anyway.
+  const askedMs = seconds * 1000;
+  const last = Math.max(0, ...webmVideoFrameTimes(stdout));
+  const longest = webmLastFrameMs(stdout);
+  if (last < askedMs - (2 * 1000) / fps || longest > askedMs + LONGER_MS)
+    throw new Error(
+      `FFmpeg made a test video whose frames end at ${String(Math.round(last))} ms and run to ${String(Math.round(longest))} ms, ${String(askedMs)} ms asked.`,
+    );
+  writeFileSync(file, setWebmDuration(stdout, askedMs));
+  return file;
 }
 
 // ---- WebM --------------------------------------------------------------------
@@ -309,6 +146,8 @@ function recordWebm(
 const EBML_HEADER = 0x1a45dfa3;
 const SEGMENT = 0x18538067;
 const SEEK_HEAD = 0x114d9b74;
+const VOID = 0xec;
+const CUES = 0x1c53bb6b;
 const INFO = 0x1549a966;
 const TIMECODE_SCALE = 0x2ad7b1;
 const DURATION = 0x4489;
@@ -456,8 +295,8 @@ export function setWebmDuration(webm: Uint8Array, durationMs: number): Buffer {
   const segment = readElement(webm, header.end);
   if (segment.id !== SEGMENT) throw new Error('no WebM segment');
   const top = children(webm, segment);
-  // Offsets in a seek index would move; MediaRecorder never writes one.
-  if (top.some((e) => e.id === SEEK_HEAD)) throw new Error('WebM with a seek index is not supported');
+  // Cues would point to the wrong places once Info grows: a live WebM has none.
+  if (top.some((e) => e.id === CUES)) throw new Error('WebM with cues is not supported');
   const info = top.find((e) => e.id === INFO);
   if (!info) throw new Error('WebM without an Info element');
   let scale = 1_000_000;
@@ -472,14 +311,18 @@ export function setWebmDuration(webm: Uint8Array, durationMs: number): Buffer {
   kept.push(Buffer.concat([Buffer.from([0x44, 0x89, 0x88]), duration]));
   const infoData = Buffer.concat(kept);
   const newInfo = Buffer.concat([elementHeader([0x15, 0x49, 0xa9, 0x66], infoData.length), infoData]);
-  const grow = newInfo.length - (info.end - info.start);
+  // Before Info, a seek index (FFmpeg writes one, with room after it) is left out: its offsets would move, and nothing
+  // needs it. MediaRecorder never writes one.
+  const before = top.filter((e) => e.end <= info.start && e.id !== SEEK_HEAD && e.id !== VOID);
+  const leftOut = info.start - segment.dataStart - before.reduce((n, e) => n + e.end - e.start, 0);
+  const grow = newInfo.length - (info.end - info.start) - leftOut;
   const segmentHeader = Number.isFinite(segment.end)
     ? elementHeader([0x18, 0x53, 0x80, 0x67], segment.end - segment.dataStart + grow)
     : webm.subarray(segment.start, segment.dataStart);
   return Buffer.concat([
     webm.subarray(0, header.end),
     segmentHeader,
-    webm.subarray(segment.dataStart, info.start),
+    ...before.map((e) => webm.subarray(e.start, e.end)),
     newInfo,
     webm.subarray(info.end),
   ]);

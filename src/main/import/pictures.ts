@@ -258,12 +258,12 @@ export function picturesIssues(details: {
       ? 'Open Edit slides to change supported words, pictures and shapes in Drashti’s own copy. The original file is kept; some fonts or objects may look different.'
       : details.source === 'pptx'
         ? 'Open Edit slides to change supported PowerPoint objects in Drashti’s own copy. The original file is kept; some fonts or objects may look different.'
-        : 'Open Edit slides and link a matching PDF reading copy to edit this older deck’s source objects. The original file is kept.';
+        : 'Open Edit slides and link a matching PDF reading copy to edit this deck’s own words and shapes. The original file is kept.';
   const issues: ImportIssue[] = [
     {
       severity: 'info',
       code: 'pictures',
-      message: `${details.pages === 1 ? 'The page became a slide' : `Each of the ${String(details.pages)} pages became a slide`} holding its picture for playback. ${editing}${details.source === 'pdf' ? '' : ' Animations and builds show as each slide’s finished picture in this saved playback.'}`,
+      message: `${details.pages === 1 ? 'The page became a slide' : `Each of the ${String(details.pages)} pages became a slide`} holding its picture for playback. ${editing}${details.source === 'pdf' ? '' : ' Animations and builds show as each slide’s finished picture.'}`,
       fix: null,
     },
   ];

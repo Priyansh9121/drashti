@@ -105,6 +105,62 @@ describe('scheduled backups', () => {
     expect(t.workers[0]?.killed).toBe(true);
   });
 
+  it('say once it has finished that an original was left out, until the next one or dismissed (alpha.15)', () => {
+    const t = setup();
+    t.service.save(t.schedule());
+    t.tick(61 * 60_000);
+    const original = { sha256: 'ab'.repeat(32), ext: 'pdf' as const, bytes: 1000 };
+    t.workers[0]?.reply({
+      type: 'done',
+      folder: 'Drashti backup x',
+      copied: 1,
+      files: 4,
+      bytesCopied: 10,
+      removed: 0,
+      poolRemoved: 0,
+      originalsLeftOut: [{ ...original, name: 'Placeholder Deck' }],
+    });
+    const leftOut =
+      '1 original document was missing or damaged, so it isn’t in this backup: “Placeholder Deck”. Its slides are in the backup.';
+    expect(t.service.view()).toMatchObject({
+      state: 'idle',
+      last: { outcome: 'done', copied: 1, files: 4, leftOut },
+      warning: `Backup at 21:00 finished, but ${leftOut}`,
+    });
+    t.service.dismiss();
+    expect(t.service.view().warning).toBeNull();
+    // Two the next day, one known only by its kind; a good one after that says nothing.
+    t.tick(24 * 60 * 60_000);
+    t.workers[1]?.reply({
+      type: 'done',
+      folder: 'Drashti backup y',
+      copied: 0,
+      files: 4,
+      bytesCopied: 0,
+      removed: 0,
+      poolRemoved: 0,
+      originalsLeftOut: [
+        { ...original, name: 'Placeholder Deck' },
+        { ...original, sha256: 'cd'.repeat(32), ext: 'pptx' },
+      ],
+    });
+    expect(t.service.view().warning).toBe(
+      'Backup at 21:00 finished, but 2 original documents were missing or damaged, so they aren’t in this backup: “Placeholder Deck” and a PowerPoint file. Their slides are in the backup.',
+    );
+    t.tick(24 * 60 * 60_000);
+    t.workers[2]?.reply({
+      type: 'done',
+      folder: 'Drashti backup z',
+      copied: 0,
+      files: 4,
+      bytesCopied: 0,
+      removed: 0,
+      poolRemoved: 0,
+    });
+    expect(t.service.view()).toMatchObject({ warning: null, last: { outcome: 'done' } });
+    expect(t.service.view().last?.leftOut).toBeUndefined();
+  });
+
   it('skip a time when the folder is not there, with a warning until the next good one or dismissed', () => {
     const t = setup();
     t.service.save(t.schedule({ folder: join(t.drive, 'USB drive taken out') }));

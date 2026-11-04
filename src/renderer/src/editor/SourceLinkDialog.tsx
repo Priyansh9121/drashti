@@ -106,8 +106,8 @@ export function SourceLinkDialog({
     >
       <p className="mb-3 text-sm">
         For an older import, choose a PDF made by the original presentation program, then match the page
-        yourself. Only the selected saved picture is replaced. Operator additions, notes and the canvas size
-        stay. Undo puts the picture back.
+        yourself. Only the selected saved picture is replaced. What you added to the slide, its notes and its
+        size stay. Undo puts the picture back.
       </p>
       {slide?.deck && (
         <Notice tone="warning" className="mb-3">

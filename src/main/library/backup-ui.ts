@@ -2,10 +2,13 @@ import type { BrowserWindow, MessageBoxOptions, MessageBoxReturnValue, OpenDialo
 import { dialog } from 'electron';
 import { existsSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative } from 'node:path';
+import { leftOutText } from '../../shared/backups';
 import { formatBytes } from '../../shared/format';
 import type { TaskProgress } from '../../shared/app-info';
+import { plural } from '../../shared/text';
 import type { Db } from '../db/database';
 import { diskFreeBytes } from '../import/media-store';
+import { ORIGINALS_DIR, retainedOriginals } from '../import/originals-store';
 import { backupLibrary, checkBackup, filesIn, LIBRARY_FILE, requestRestore, sameDisk } from './backup';
 import type { FileUse } from '../plain-errors';
 import { fileProblem } from '../plain-errors';
@@ -28,6 +31,8 @@ export interface BackupUi {
   /** Quit on purpose, with nothing live and without the usual question, and start again. */
   restart: () => void;
   log: { info: (message: string) => void; warn: (message: string) => void };
+  /** Free bytes on a disk: its own, unless a test stands in. */
+  freeBytes?: (dir: string) => number;
 }
 
 const GiB = 1024 ** 3;
@@ -97,14 +102,20 @@ async function backUpFlow(ui: BackupUi): Promise<void> {
     });
     return;
   }
-  const media = await filesIn(ui.mediaDir);
+  // The original documents (the PDF and PowerPoint files kept for editing) go with the library, even without
+  // the media (alpha.15): counted with it, and not again with the media.
+  const originals = retainedOriginals(ui.db);
+  const originalBytes = originals.reduce((sum, original) => sum + original.bytes, 0);
+  const media = (await filesIn(ui.mediaDir)).filter((f) => f.path.split(/[\\/]/u)[0] !== ORIGINALS_DIR);
   const mediaBytes = media.reduce((sum, f) => sum + f.bytes, 0);
   const libraryBytes =
     bytesOf(join(ui.userData, LIBRARY_FILE)) + bytesOf(join(ui.userData, `${LIBRARY_FILE}-wal`));
   const answer = await messageBox(ui, {
     type: 'question',
     message: 'Back up the library?',
-    detail: `A new folder in “${basename(into)}” gets the library: presentations, playlists, themes, props, timers, screens and settings (${formatBytes(libraryBytes)}).`,
+    detail: `A new folder in “${basename(into)}” gets the library: presentations, playlists, themes, props, timers, screens and settings${
+      originals.length ? `, and ${plural(originals.length, 'original document')} kept for editing` : ''
+    } (${formatBytes(libraryBytes + originalBytes)}).`,
     ...(media.length > 0
       ? {
           checkboxLabel: `Include the media: ${media.length.toLocaleString('en')} pictures, videos and sounds (${formatBytes(mediaBytes)})`,
@@ -119,9 +130,9 @@ async function backUpFlow(ui: BackupUi): Promise<void> {
   const withMedia = media.length > 0 && answer.checkboxChecked;
 
   // Room for it, keeping 2 GB free when it is the library's own disk (as imports do).
-  const needed = libraryBytes + (withMedia ? mediaBytes : 0);
+  const needed = libraryBytes + originalBytes + (withMedia ? mediaBytes : 0);
   const reserve = sameDisk(into, ui.userData) ? 2 * GiB : 64 * 1024 * 1024;
-  const usable = Math.max(0, diskFreeBytes(into) - reserve);
+  const usable = Math.max(0, (ui.freeBytes ?? diskFreeBytes)(into) - reserve);
   if (needed > usable) {
     await messageBox(ui, {
       type: 'warning',
@@ -138,7 +149,11 @@ async function backUpFlow(ui: BackupUi): Promise<void> {
   const started = Date.now();
   let shown = 0;
   try {
-    const { folder, mediaFiles } = await backupLibrary(ui.db, into, {
+    const {
+      folder,
+      mediaFiles,
+      originalsLeftOut = [],
+    } = await backupLibrary(ui.db, into, {
       mediaDir: withMedia ? ui.mediaDir : null,
       app: ui.version,
       schema: ui.schema,
@@ -157,7 +172,13 @@ async function backUpFlow(ui: BackupUi): Promise<void> {
     ui.log.info(
       `Library backed up (${withMedia ? `with ${String(mediaFiles)} media file(s)` : 'without media'}, ${String(Math.round((Date.now() - started) / 1000))} s)`,
     );
-    ui.notice(`Library backed up to ${folder}`);
+    if (originalsLeftOut.length) {
+      ui.log.warn(
+        `The backup left out ${String(originalsLeftOut.length)} original document(s), missing or damaged in the library`,
+      );
+      // Told once it has finished (alpha.15): the backup went ahead without them.
+      ui.notice(`Library backed up to ${folder}, but ${leftOutText(originalsLeftOut)}`);
+    } else ui.notice(`Library backed up to ${folder}`);
   } catch (error) {
     ui.log.warn(`The backup did not finish (${errorCode(error)})`);
     ui.notice(
@@ -206,6 +227,7 @@ async function restoreFlow(ui: BackupUi): Promise<void> {
       check.media
         ? `The library and its media go back to how they were in this backup${when}.`
         : `The library goes back to how it was in this backup${when}. It has no media, so the media folder stays as it is.`,
+      ...(check.note.originalsLeftOut?.length ? [leftOutText(check.note.originalsLeftOut)] : []),
       `The library you have now${check.media ? ' and its media are' : ' is'} kept in Drashti’s data folder, under Backups, so nothing is lost.`,
       'Drashti restarts to do it: the screens go black while it restarts, and nothing is on them afterwards.',
     ].join('\n\n'),

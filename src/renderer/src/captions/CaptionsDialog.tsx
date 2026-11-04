@@ -72,8 +72,9 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
         </div>
         <p className="text-sm text-muted">
           What is said into the stream’s sound input shows as captions on the stream and the stage screens,
-          and on the audience screens if you choose. It is heard on this computer only: nothing heard is kept,
-          logged or sent anywhere, and phones never get it.
+          and on the audience screens if you choose. Captions are worked out on this computer: Drashti does
+          not keep or log the sound or the words it hears, and phones never get them. The captions are part of
+          the stream’s picture, so they go to YouTube and into the stream’s recordings.
         </p>
         <Toggle
           checked={view.on}

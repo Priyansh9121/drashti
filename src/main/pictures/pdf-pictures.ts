@@ -86,7 +86,8 @@ export class PdfPictures {
     if (isAborted() || this.editableWaiting >= 4)
       return Promise.resolve({
         ok: false,
-        message: 'Source preparation is busy. Saved playback is unchanged.',
+        message:
+          'Drashti is busy reading other documents. The slides still show as before; try again in a moment.',
       });
     this.editableWaiting++;
     let started = false;
@@ -94,7 +95,10 @@ export class PdfPictures {
     const cancelled = new Promise<PreparedSource>((resolve) => {
       onAbort = () => {
         if (!started)
-          resolve({ ok: false, message: 'Source preparation cancelled. Saved playback is unchanged.' });
+          resolve({
+            ok: false,
+            message: 'Reading the original’s words and shapes was stopped. The slides still show as before.',
+          });
       };
       request.signal.addEventListener('abort', onAbort, { once: true });
     });

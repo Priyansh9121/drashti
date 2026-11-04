@@ -31,7 +31,7 @@ const doneSchema = z
   .strict();
 const failure = (): PreparedSource => ({
   ok: false,
-  message: 'Source pages could not be prepared safely. Saved playback is unchanged.',
+  message: 'This PDF’s words and shapes could not be read safely. The slides still show as before.',
 });
 
 interface Session {
@@ -101,7 +101,10 @@ export class EditablePdfSessions {
       }
       let finished = false;
       const abort = () =>
-        finish({ ok: false, message: 'Source preparation cancelled. Saved playback is unchanged.' });
+        finish({
+          ok: false,
+          message: 'Reading the original’s words and shapes was stopped. The slides still show as before.',
+        });
       const timer = setTimeout(() => finish(failure()), sourceTimeLeft(request));
       const session: Session = {
         win,

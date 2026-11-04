@@ -22,7 +22,7 @@ export function sourceReader(pdf: SourceReader, pptx: SourceReader): SourceReade
 export const unavailableSourceReader: SourceReader = () =>
   Promise.resolve({
     ok: false,
-    message: 'Source preparation is unavailable. Saved playback is unchanged.',
+    message: 'Drashti can’t read the original’s words and shapes now. The slides still show as before.',
   });
 
 /** Authority checks cannot strand a cancelled source generation, even if their yield is still pending. */
