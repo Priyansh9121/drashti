@@ -173,6 +173,7 @@ startCapture(
   () => sound.level(),
   () => sound.track(),
   () => sound.inputTrack(),
+  () => sound.speechGraph(),
 );
 
 const root = document.getElementById('root');

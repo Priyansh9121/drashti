@@ -1,6 +1,6 @@
 import { _electron, expect, test } from '@playwright/test';
 import { createServer } from 'node:http';
-import { buildSync } from 'esbuild';
+import { build } from 'esbuild';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -11,7 +11,32 @@ import { tmpdir } from 'node:os';
 test('browser microphone PCM reaches Main intact through the preload port', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-speech-port-'));
   const bundle = join(dir, 'speech-tap.js');
-  buildSync({
+  const worklet = join(dir, 'speech-worklet.js');
+  const workletSource = join(process.cwd(), 'src/renderer/src/program/speech-worklet.ts');
+  await build({
+    entryPoints: [workletSource],
+    outfile: worklet,
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    logLevel: 'silent',
+  });
+  await build({
+    plugins: [
+      {
+        name: 'native-worklet-url',
+        setup(build) {
+          build.onResolve({ filter: /speech-worklet\.ts\?worker&url$/ }, () => ({
+            path: 'speech-worklet-url',
+            namespace: 'fixture',
+          }));
+          build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
+            contents: "export default '/speech-worklet.js'",
+            loader: 'js',
+          }));
+        },
+      },
+    ],
     entryPoints: [join(process.cwd(), 'src/renderer/src/program/speech-tap.ts')],
     outfile: bundle,
     bundle: true,
@@ -59,7 +84,10 @@ app.whenReady().then(()=>{
 });`,
   );
   const server = createServer((request, response) => {
-    if (request.url === '/speech-tap.js') {
+    if (request.url === '/speech-worklet.js') {
+      response.setHeader('Content-Type', 'text/javascript');
+      response.end(readFileSync(worklet));
+    } else if (request.url === '/speech-tap.js') {
       response.setHeader('Content-Type', 'text/javascript');
       response.end(readFileSync(bundle));
     } else {
@@ -92,6 +120,16 @@ app.whenReady().then(()=>{
       const source = context.createMediaStreamSource(stream);
       const sink = context.createMediaStreamDestination();
       source.connect(sink);
+      const state = globalThis as unknown as { tapDisconnects: number };
+      state.tapDisconnects = 0;
+      const disconnect = source.disconnect.bind(source);
+      Object.defineProperty(source, 'disconnect', {
+        value: (destination?: AudioNode) => {
+          state.tapDisconnects++;
+          if (destination) disconnect(destination);
+          else disconnect();
+        },
+      });
       await context.resume();
       window.addEventListener('message', (event: MessageEvent<{ speechPort?: boolean }>) => {
         if (event.source === window && event.data.speechPort === true && event.ports[0])
@@ -124,6 +162,11 @@ app.whenReady().then(()=>{
       }
     });
     expect((await receipt()).samples - before).toBeGreaterThanOrEqual(24_000);
+    await app.evaluate(() => (globalThis as unknown as { pcmPort: { close(): void } }).pcmPort.close());
+    await expect
+      .poll(() => page.evaluate(() => (globalThis as unknown as { tapDisconnects: number }).tapDisconnects))
+      .toBe(1);
+    expect(await page.evaluate(() => document.querySelectorAll('audio').length)).toBe(0);
   } finally {
     await app.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

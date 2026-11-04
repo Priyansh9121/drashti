@@ -1,108 +1,122 @@
-/*
- * The stream's sound input for live captions (Session 55, Part 10): the input's own sound (before the stream's delay,
- * its mix with Drashti's own sound and its limiter), mono, 16 kHz, 16-bit, sent to the main process on its own port
- * about ten times a second. The page never hears a word: it only passes the sound on.
- */
+import workletUrl from './speech-worklet.ts?worker&url';
+export { SPEECH_RATE, SpeechResampler } from './speech-resampler';
 
-export const SPEECH_RATE = 16_000;
-
-/** Mono samples at any rate to 16 kHz 16-bit: each output sample the average of the input it stands for. */
-export class SpeechResampler {
-  /** Where the next output sample falls in the next piece's input. */
-  private at = 0;
-
-  push(input: Float32Array, rate: number): Int16Array {
-    const step = rate / SPEECH_RATE;
-    const out: number[] = [];
-    while (this.at < input.length) {
-      const from = Math.max(0, Math.floor(this.at - step / 2));
-      const to = Math.min(input.length, Math.max(from + 1, Math.ceil(this.at + step / 2)));
-      let sum = 0;
-      for (let i = from; i < to; i += 1) sum += input[i] ?? 0;
-      const v = Math.max(-1, Math.min(1, sum / (to - from)));
-      out.push(Math.round(v * 32_767));
-      this.at += step;
-    }
-    this.at -= input.length;
-    return Int16Array.from(out);
-  }
+/** The existing stream graph's raw input and silent destination; this tap never opens a device or loudspeaker. */
+export interface SpeechGraph {
+  context: AudioContext;
+  source: AudioNode;
+  sink: AudioNode;
 }
 
 let port: MessagePort | null = null;
-let reader: ReadableStreamDefaultReader<AudioData> | null = null;
 let trackOf: () => MediaStreamTrack | null = () => null;
+let graphOf: () => SpeechGraph | null = () => null;
+let generation = 0;
+let pending: number | null = null;
 let retry: ReturnType<typeof setTimeout> | null = null;
-/** The port now (read through a function: speechPort() changes it while a piece is awaited). */
-const portNow = (): MessagePort | null => port;
+let active: { track: MediaStreamTrack; source: AudioNode; stop(): void } | null = null;
+const modules = new WeakMap<AudioContext, Promise<void>>();
 
-/** Read the input's sound while the port is open; a new input (or none yet) is looked for again each second. */
-async function read(): Promise<void> {
-  if (!port || reader) return;
-  const track = trackOf();
-  if (!track || track.readyState === 'ended') {
-    // eslint-disable-next-line no-restricted-syntax -- live captions' sound: the input looked for again each second, never a frame of the picture
-    retry ??= setTimeout(() => {
-      retry = null;
-      void read();
-    }, 1_000);
-    return;
-  }
-  const mine = new MediaStreamTrackProcessor<AudioData>({ track }).readable.getReader();
-  reader = mine;
-  const resampler = new SpeechResampler();
-  let waiting: Int16Array[] = [];
-  let count = 0;
-  try {
-    for (;;) {
-      const { value: data, done } = await mine.read();
-      if (done) break;
-      const frames = data.numberOfFrames;
-      const mono = new Float32Array(frames);
-      const plane = new Float32Array(frames);
-      const channels = Math.max(1, data.numberOfChannels);
-      for (let c = 0; c < channels; c += 1) {
-        data.copyTo(plane, { planeIndex: c, format: 'f32-planar' });
-        for (let i = 0; i < frames; i += 1) mono[i] = (mono[i] ?? 0) + (plane[i] ?? 0) / channels;
-      }
-      const rate = data.sampleRate;
-      data.close();
-      const piece = resampler.push(mono, rate);
-      waiting.push(piece);
-      count += piece.length;
-      // About a tenth of a second at a time.
-      const to = portNow();
-      if (count >= SPEECH_RATE / 10 && to) {
-        const all = new Int16Array(count);
-        let at = 0;
-        for (const part of waiting) {
-          all.set(part, at);
-          at += part.length;
-        }
-        // Electron's Main port cannot receive a renderer ArrayBuffer transfer: it delivers a null payload.
-        // Clone this small (about 3.2 KB) typed array instead; it contains sound samples, never heard words.
-        to.postMessage({ kind: 'pcm', samples: all });
-        waiting = [];
-        count = 0;
-      }
-    }
-  } catch {
-    // The input went (another chosen, or none): looked for again below.
-  } finally {
-    if (reader === mine) reader = null;
-  }
-  if (portNow()) void read();
+function later(): void {
+  if (!port || retry) return;
+  // eslint-disable-next-line no-restricted-syntax -- notice a replaced/ended microphone, never decide a picture frame
+  retry = setTimeout(() => {
+    retry = null;
+    void update();
+  }, 1_000);
 }
 
-/** The main process gave the page a port for live captions (null: it closed it). */
-export function speechPort(next: MessagePort | null, track: () => MediaStreamTrack | null): void {
-  port?.close();
-  port = next;
-  trackOf = track;
-  if (!port) {
-    void reader?.cancel();
-    reader = null;
+/** Keep capture off the drawing/encoding thread: its track processor drops queued audio when the renderer is busy. */
+async function update(): Promise<void> {
+  const to = port;
+  const mine = generation;
+  if (!to || pending === mine) return;
+  const track = trackOf();
+  const graph = graphOf();
+  if (active) {
+    if (active.track === track && active.source === graph?.source && track?.readyState === 'live') {
+      later();
+      return;
+    }
+    active.stop();
+    active = null;
+  }
+  if (!track || track.readyState !== 'live' || !graph) {
+    later();
     return;
   }
-  port.start();
-  void read();
+  pending = mine;
+  try {
+    let ready = modules.get(graph.context);
+    if (!ready) {
+      ready = graph.context.audioWorklet.addModule(workletUrl);
+      modules.set(graph.context, ready);
+      void ready.catch(() => modules.delete(graph.context));
+    }
+    await ready;
+    if (port !== to || generation !== mine || trackOf() !== track || graphOf()?.source !== graph.source)
+      return;
+    const node = new AudioWorkletNode(graph.context, 'drashti-speech', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+    });
+    node.port.onmessage = (event: MessageEvent<unknown>) => {
+      if (port !== to || generation !== mine || track.readyState !== 'live') return;
+      if (!(event.data instanceof Int16Array)) return;
+      // Electron's Main port turns a transferred ArrayBuffer into null. Clone this bounded 3.2 KB batch instead.
+      to.postMessage({ kind: 'pcm', samples: event.data });
+    };
+    node.port.start();
+    graph.source.connect(node).connect(graph.sink);
+    active = {
+      track,
+      source: graph.source,
+      stop: () => {
+        // Only this silent branch: the stream's own input remains connected and its track stays live.
+        try {
+          graph.source.disconnect(node);
+        } catch {
+          // A replaced input already disconnected all its branches.
+        }
+        node.disconnect();
+        node.port.onmessage = null;
+        node.port.postMessage('stop');
+        node.port.close();
+      },
+    };
+  } catch {
+    // A device/context went away or its module could not load. Retry without blocking the show.
+  } finally {
+    if (pending === mine) pending = null;
+    if (generation === mine) later();
+  }
+}
+
+/** Main's port for live captions; null, or closing its other end, stops the tap immediately. */
+export function speechPort(
+  next: MessagePort | null,
+  track: () => MediaStreamTrack | null,
+  graph: () => SpeechGraph | null = () => null,
+): void {
+  generation++;
+  const was = port;
+  port = next;
+  if (was) {
+    was.onmessage = null;
+    was.close();
+  }
+  if (retry) clearTimeout(retry);
+  retry = null;
+  active?.stop();
+  active = null;
+  trackOf = track;
+  graphOf = graph;
+  if (!next) return;
+  const closed = () => {
+    if (port === next) speechPort(null, () => null);
+  };
+  next.addEventListener('close', closed, { once: true });
+  next.start();
+  void update();
 }
