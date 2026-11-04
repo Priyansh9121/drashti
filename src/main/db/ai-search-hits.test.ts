@@ -15,7 +15,7 @@ const fixture = JSON.parse(
 };
 interface Hint {
   presentationId: string;
-  slideId: string;
+  slideId: string | null;
   stamp: string;
   kind: 'meaning' | 'spelling';
   score: number;
@@ -125,5 +125,18 @@ describe('hydrating offline helper search suggestions from current library sourc
       { ...boat, presentationId: 'placeholder-invented-id' },
     ];
     expect(ask(fixture.queries.meaning, hints).hits).toEqual([]);
+  });
+  it('resolves a title-only presentation without inventing a slide reference', () => {
+    const boat = doc('boat');
+    db.prepare('DELETE FROM elements WHERE slide_id = ?').run(boat.slideId);
+    index.update(boat.presentationId);
+    expect(ask(fixture.queries.meaning, [{ ...boat, slideId: null }]).hits).toMatchObject([
+      {
+        presentationId: boat.presentationId,
+        name: fixture.library[0]?.name,
+        match: { kind: 'title' },
+        suggestion: 'meaning',
+      },
+    ]);
   });
 });
