@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,10 +8,19 @@ import { PAUSES_MS, downloadSource } from '../../../scripts/download-source.mjs'
 /*
  * A release's source archives (scripts/release-assets.mjs): each download is tried up to three times, with a
  * pause before the second try and a longer one before the third (Session 47: ffmpeg.org once did not answer
- * and stopped a publish). A stand-in fetch with made-up answers, and pauses that are noted, never waited.
+ * and stopped a publish). ffmpeg.org stopped alpha.14's publish the same way (4 Nov 2026), so a source may have a
+ * backup, an identical copy elsewhere, kept only if it matches the pinned SHA-256. A stand-in fetch with made-up
+ * answers, and pauses that are noted, never waited.
  */
 
 const SOURCE = { name: 'placeholder-1.0.tar.xz', url: 'https://example.invalid/placeholder-1.0.tar.xz' };
+const ARCHIVE = 'Placeholder source archive';
+/** The same source with a backup, and the SHA-256 pinned for it: the placeholder archive's. */
+const BACKED_UP = {
+  ...SOURCE,
+  backup: 'https://example.invalid/backup/placeholder-1.0.tar.xz',
+  sha256: createHash('sha256').update(ARCHIVE).digest('hex'),
+};
 /** What Node's fetch throws when a server does not answer: "fetch failed", with why as its cause. */
 const NO_ANSWER = () =>
   new TypeError('fetch failed', { cause: new Error('Connect Timeout Error (placeholder)') });
@@ -90,5 +100,38 @@ describe('a source archive’s download', () => {
       ),
     );
     expect(fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('a source archive with a backup', () => {
+  it('takes the identical copy from its backup once its own server has failed three tries', async () => {
+    const fetch = fetchGiving(NO_ANSWER, NO_ANSWER, NO_ANSWER, () => new Response(ARCHIVE));
+    await downloadSource(BACKED_UP, file, fetch, pause);
+    expect(readFileSync(file, 'utf8')).toBe(ARCHIVE);
+    expect(events).toEqual([
+      `fetch ${SOURCE.url}`,
+      'paused 5000',
+      `fetch ${SOURCE.url}`,
+      'paused 15000',
+      `fetch ${SOURCE.url}`,
+      `fetch ${BACKED_UP.backup}`,
+    ]);
+    expect(log.mock.calls.at(-1)).toEqual([
+      `placeholder-1.0.tar.xz: try 3 of 3 failed (fetch failed: Connect Timeout Error (placeholder)); trying its backup, ${BACKED_UP.backup}`,
+    ]);
+  });
+
+  it('refuses a backup whose SHA-256 is not the pinned one, and keeps nothing of it', async () => {
+    const fetch = fetchGiving(
+      NO_ANSWER,
+      NO_ANSWER,
+      NO_ANSWER,
+      () => new Response('Placeholder: not the archive'),
+    );
+    await expect(downloadSource(BACKED_UP, file, fetch, pause)).rejects.toThrow(
+      new Error('placeholder-1.0.tar.xz from its backup did not match its pinned SHA-256'),
+    );
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(existsSync(file)).toBe(false);
   });
 });

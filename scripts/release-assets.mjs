@@ -95,10 +95,13 @@ writeFileSync(join(dir, 'drashti-update.json'), `${JSON.stringify(manifest, null
 // FFmpeg's (scripts/fetch-ffmpeg.mjs), and yt-dlp's with the GPL code its builds bundle (Session 25c,
 // scripts/fetch-youtube-tools.mjs; its Mac and Windows builds hold mutagen 1.48.1, GPL version 2 or
 // later, as their own -v header lists it). Each download is tried up to three times (Session 47,
-// scripts/download-source.mjs).
+// scripts/download-source.mjs). FFmpeg's has a backup, taken when ffmpeg.org fails its three tries (it
+// stopped alpha.14's publish, 4 Nov 2026): the identical copy alpha.13's release carries, checked against the
+// same pinned SHA-256. SOURCES.md still names ffmpeg.org.
 const FFMPEG_SOURCE = {
   name: 'ffmpeg-9.0.2.tar.xz',
   url: 'https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz',
+  backup: 'https://github.com/Priyansh9121/drashti/releases/download/v1.0.0-alpha.13/ffmpeg-9.0.2.tar.xz',
   sha256: '8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e',
   cache: 'ffmpeg-source',
 };

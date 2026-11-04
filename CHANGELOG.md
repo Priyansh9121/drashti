@@ -17,7 +17,7 @@ Update after a sabha, and update Main and nodes together. Live captions and all 
 - Follow singing (Trial) offers the normal next verse when heard words match the kirtan on LIVE. It keeps the play order, never jumps to another verse and never advances by itself: the operator presses Next. Both speech helpers need Live captions switched on for listening; neither turns it on for you.
 - The admin and operator guides and setup-day checklist cover all five helpers and their separate choices.
 
-## 1.0.0-alpha.14 (4 Nov 2026)
+## 1.0.0-alpha.14 (5 Nov 2026)
 
 A sabha runs differently now: screens set themselves, the playlist is where things go live, and Simple Mode is for one projector. Nothing is deleted from an older library. Set the mixer’s channel once with a typical file: sound now plays at one even level. Update after a sabha, and update nodes the same evening.
 
