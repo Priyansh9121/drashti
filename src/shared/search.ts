@@ -83,10 +83,22 @@ export const KIRTAN_FIELD_NAMES: Record<KirtanField, string> = {
   occasion: 'Occasion',
 };
 
+/** A worker may suggest identities and scores, never replacement words or references. */
+export interface AiSearchHint {
+  presentationId: string;
+  slideId: string;
+  /** Current presentation timestamp and content revision, captured before inference. */
+  stamp: string;
+  kind: 'meaning' | 'spelling';
+  score: number;
+}
+
 export interface SearchHit {
   presentationId: string;
   name: string;
   libraryName: string;
+  /** An optional operator-requested offline match; exact results keep their existing shape. */
+  suggestion?: AiSearchHint['kind'];
   /** Where it matched: the title, a kirtan's detail (its kavi, raag...), or a line of slide text as it is written. */
   match:
     | { kind: 'title' }
