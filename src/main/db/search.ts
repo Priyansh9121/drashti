@@ -230,7 +230,7 @@ export class SearchIndex {
         const hint = input as Partial<Record<keyof AiSearchHint, unknown>>;
         return (
           typeof hint.presentationId === 'string' &&
-          typeof hint.slideId === 'string' &&
+          (hint.slideId === null || typeof hint.slideId === 'string') &&
           typeof hint.stamp === 'string' &&
           (hint.kind === 'meaning' || hint.kind === 'spelling') &&
           typeof hint.score === 'number' &&
@@ -259,6 +259,35 @@ export class SearchIndex {
     let more = original.more;
     for (const hint of candidates) {
       if (seen.has(hint.presentationId)) continue;
+      if (hint.slideId === null) {
+        const title = this.stmt(
+          `SELECT p.id, p.name, l.name AS library_name, p.updated_at, p.content_rev
+             FROM presentations p JOIN libraries l ON l.id = p.library_id
+            WHERE p.id = ? AND p.deleted_at IS NULL`,
+        ).get(hint.presentationId) as
+          | {
+              id: string;
+              name: string;
+              library_name: string;
+              updated_at: string;
+              content_rev: number;
+            }
+          | undefined;
+        if (!title || title.updated_at + '#' + String(title.content_rev) !== hint.stamp) continue;
+        seen.add(title.id);
+        if (hits.length >= limit) {
+          more = true;
+          continue;
+        }
+        hits.push({
+          presentationId: title.id,
+          name: title.name,
+          libraryName: title.library_name,
+          match: { kind: 'title' },
+          suggestion: hint.kind,
+        });
+        continue;
+      }
       const row = source.get(hint.slideId, hint.presentationId) as
         | {
             id: string;

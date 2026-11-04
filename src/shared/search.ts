@@ -86,7 +86,8 @@ export const KIRTAN_FIELD_NAMES: Record<KirtanField, string> = {
 /** A worker may suggest identities and scores, never replacement words or references. */
 export interface AiSearchHint {
   presentationId: string;
-  slideId: string;
+  /** Null selects the existing title without claiming a slide-text match. */
+  slideId: string | null;
   /** Current presentation timestamp and content revision, captured before inference. */
   stamp: string;
   kind: 'meaning' | 'spelling';
