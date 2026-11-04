@@ -36,7 +36,9 @@ async function withSource<T>(
     data: new Uint8Array(bytes),
     useWorkerFetch: false,
     useSystemFonts: false,
-    disableFontFace: false,
+    // Node has no browser FontFace loader. Use PDF.js’s bundled glyph paths,
+    // so retained ink never depends on an operating system’s fallback fonts.
+    disableFontFace: true,
     stopAtErrors: true,
     standardFontDataUrl: join(localAssets, 'standard_fonts') + sep,
     cMapUrl: join(localAssets, 'cmaps') + sep,
