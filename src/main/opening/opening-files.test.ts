@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -69,14 +77,32 @@ describe('the opening pack', () => {
         join(root, 'photos', '7.jpg'),
         join(root, 'photos', '8.jpg'),
       ],
-      lines: ['Placeholder one', 'Placeholder two', 'Placeholder three', 'Placeholder four', 'Placeholder five'],
+      lines: [
+        'Placeholder one',
+        'Placeholder two',
+        'Placeholder three',
+        'Placeholder four',
+        'Placeholder five',
+      ],
     });
   });
 
   it('takes the first five lines of more, and says what a pack is missing, changing nothing', async () => {
-    const more = await readPack(pack([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, 'jpg']), `${FIVE}Placeholder six\n`));
+    const more = await readPack(
+      pack(
+        [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, 'jpg']),
+        `${FIVE}Placeholder six\n`,
+      ),
+    );
     expect(more.ok && more.lines).toHaveLength(5);
-    expect(await readPack(pack([1, 2, 3, 4, 5, 6].map((n) => [n, 'jpg']), 'Placeholder one\n'))).toEqual({
+    expect(
+      await readPack(
+        pack(
+          [1, 2, 3, 4, 5, 6].map((n) => [n, 'jpg']),
+          'Placeholder one\n',
+        ),
+      ),
+    ).toEqual({
       ok: false,
       message:
         'The opening pack is missing photos 7 and 8 (photos/7.jpg and photos/8.jpg), and has 1 line of the 5 in words.txt. Nothing was changed.',
@@ -107,7 +133,8 @@ describe('the opening’s copy of each photo', () => {
   it('refuses anything but one whole JPEG of a sensible size, or a name that is not a sha256', async () => {
     for (const bytes of [jpeg().subarray(0, 10), 'not bytes', null, jpeg(OPENING_COPY_MAX_BYTES + 2)])
       expect(await saveOpeningCopy(dir, SHA, bytes)).toMatchObject({ ok: false });
-    for (const sha of ['../../evil', 'AB'.repeat(32), '']) expect(await saveOpeningCopy(dir, sha, jpeg())).toMatchObject({ ok: false });
+    for (const sha of ['../../evil', 'AB'.repeat(32), ''])
+      expect(await saveOpeningCopy(dir, sha, jpeg())).toMatchObject({ ok: false });
     expect(existsSync(join(dir, 'opening'))).toBe(false);
   });
 });

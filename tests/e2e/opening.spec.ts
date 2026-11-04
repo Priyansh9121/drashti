@@ -8,6 +8,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
+  holdStill,
   importAndGetIds,
   killApp,
   launchApp,
@@ -45,11 +46,17 @@ function openingLog(userData: string): string[] {
 }
 
 /** Pictures drawn in the page and imported: their media ids. */
-async function pictures(win: Page, colours: string[][], size = { width: 640, height: 360 }): Promise<string[]> {
+async function pictures(
+  win: Page,
+  colours: string[][],
+  size = { width: 640, height: 360 },
+): Promise<string[]> {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-opening-pictures-'));
   const files: string[] = [];
   for (const [i, [left = '0,0,0', right = left]] of colours.entries())
-    files.push(await drawPicture(win, join(dir, `placeholder-${String(i + 1)}.png`), halves(left, right), size));
+    files.push(
+      await drawPicture(win, join(dir, `placeholder-${String(i + 1)}.png`), halves(left, right), size),
+    );
   return importAndGetIds(win, files);
 }
 
@@ -66,7 +73,7 @@ async function choose(win: Page, photos: string[], lines: string[]): Promise<voi
  * `prepare` meanwhile; its data folder.
  */
 async function startedOnce(
-  prepare: (win: Page, app: ElectronApplication) => Promise<void> = async () => undefined,
+  prepare: (win: Page, app: ElectronApplication) => Promise<void> = () => Promise.resolve(),
   env: Record<string, string> = {},
   access: Parameters<typeof launchApp>[2] = {},
 ): Promise<string> {
@@ -109,7 +116,9 @@ test('plays as Drashti starts, over the operator window only, Drashti starting u
   await expect(opening(win)).toHaveCount(0, { timeout: 10_000 });
   await expect.poll(() => openingLog(userData).join(' | ')).toContain('Opening: ended by itself after');
   const log = openingLog(userData);
-  expect(log[0]).toBe('Opening: plays (2 photos, 2 lines)');
+  // The first start (a test not asking) said why it did not play; this one, that it did.
+  expect(log).toContain('Opening: not played (in a test that does not ask for it)');
+  expect(log).toContain('Opening: plays (2 photos, 2 lines)');
   const after = Number(/after (\d+) ms/u.exec(log.at(-1) ?? '')?.[1]);
   expect(after).toBeGreaterThanOrEqual(5000);
   expect(log.join(' ')).not.toContain('Placeholder');
@@ -120,10 +129,15 @@ test('any key ends it at once, and the show never hears that key: Space puts up 
   test.setTimeout(120_000);
   let id = '';
   const userData = await startedOnce(async (win) => {
-    id = await makeSlides(win, 'Placeholder opening keys', [{ words: 'Placeholder one' }, { words: 'Placeholder two' }], {
-      kind: 'cut',
-      durationMs: 0,
-    });
+    id = await makeSlides(
+      win,
+      'Placeholder opening keys',
+      [{ words: 'Placeholder one' }, { words: 'Placeholder two' }],
+      {
+        kind: 'cut',
+        durationMs: 0,
+      },
+    );
   });
   const { app } = await relaunchApp(userData, ASK);
   const win = await operatorPage(app);
@@ -134,12 +148,16 @@ test('any key ends it at once, and the show never hears that key: Space puts up 
   await expect.poll(async () => (await engineState(win)).layers.slide?.slideIndex).toBe(0);
   await win.keyboard.press('Space');
   await expect(opening(win)).toHaveCount(0);
-  // A moment for a key that got through to act: none did.
-  await win.waitForTimeout(500);
-  expect((await engineState(win)).layers.slide?.slideIndex).toBe(0);
+  await holdStill(
+    async () => (await engineState(win)).layers.slide?.slideIndex === 0,
+    500,
+    'the Space that ended the opening never reached the show',
+  );
   await win.keyboard.press('Space');
   await expect.poll(async () => (await engineState(win)).layers.slide?.slideIndex).toBe(1);
-  await expect.poll(() => openingLog(userData).at(-1) ?? '').toMatch(/^Opening: ended by a key after \d+ ms$/u);
+  await expect
+    .poll(() => openingLog(userData).at(-1) ?? '')
+    .toMatch(/^Opening: ended by a key after \d+ ms$/u);
   await app.close();
 });
 
@@ -156,13 +174,18 @@ test('a click ends it at once and lands on nothing beneath; a tap ends it too', 
   if (!box) throw new Error('no Black-out button');
   await win.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(opening(win)).toHaveCount(0);
-  await win.waitForTimeout(500);
-  expect((await engineState(win)).blackout).toBe(false);
+  await holdStill(
+    async () => !(await engineState(win)).blackout,
+    500,
+    'the click that ended the opening never reached Black-out',
+  );
   // The next click is the show's.
   await blackout.click();
   await expect.poll(async () => (await engineState(win)).blackout).toBe(true);
   await first.app.close();
-  await expect.poll(() => openingLog(userData).at(-1) ?? '').toMatch(/^Opening: ended by a click after \d+ ms$/u);
+  await expect
+    .poll(() => openingLog(userData).at(-1) ?? '')
+    .toMatch(/^Opening: ended by a click after \d+ ms$/u);
 
   // A tap (a touch screen's finger): the same.
   const second = await relaunchApp(userData, ASK);
@@ -228,8 +251,11 @@ test('never at a new version’s first start (an update’s), nor when the windo
   });
   await page.waitForLoadState('domcontentloaded');
   await operatorReady(page);
-  await page.waitForTimeout(1500);
-  await expect(opening(page)).toHaveCount(0);
+  await holdStill(
+    async () => (await opening(page).count()) === 0,
+    1500,
+    'a window loaded again (as the watchdog reloads it) never plays the opening',
+  );
   await again.app.close();
 });
 
@@ -254,7 +280,7 @@ test('on a library’s first start the welcome comes instead, never both; once i
 
 test('in Simple Mode too, ended by a key the same way', async () => {
   test.setTimeout(120_000);
-  const userData = await startedOnce(async () => undefined, {}, { mode: 'simple' });
+  const userData = await startedOnce(() => Promise.resolve(), {}, { mode: 'simple' });
   const { app } = await relaunchApp(userData, ASK, { mode: 'simple' });
   const win = await operatorPage(app);
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
@@ -277,7 +303,9 @@ test('with Interface motion Off, or the computer asking for reduced motion: one 
     const player = win.getByTestId('opening');
     await expect(player).toHaveAttribute('data-motion', 'still');
     await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
-    await expect(player.locator('[data-opening-sweep], [data-opening-sparkle], [data-opening-word]')).toHaveCount(0);
+    await expect(
+      player.locator('[data-opening-sweep], [data-opening-sparkle], [data-opening-word]'),
+    ).toHaveCount(0);
     // What changes: only opacity (the lines', and the whole at its end); no transform anywhere.
     await expect
       .poll(() => player.evaluate((root) => root.getAnimations({ subtree: true }).length))
@@ -320,10 +348,19 @@ test('nothing in it swings in light more than three times a second, over the who
   });
   const { app } = await relaunchApp(userData, ASK);
   const win = await operatorPage(app);
-  await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
   const player = win.getByTestId('opening');
   await expect(player).toBeVisible({ timeout: 15_000 });
-  await expect.poll(() => player.evaluate((root) => root.getAnimations({ subtree: true }).length)).toBeGreaterThan(20);
+  // Held at once, every part (they are made together), then measured at the screens' 1280 × 720.
+  await expect
+    .poll(() =>
+      player.evaluate((root) => {
+        const all = root.getAnimations({ subtree: true });
+        for (const a of all) a.pause();
+        return all.length;
+      }),
+    )
+    .toBeGreaterThan(20);
+  await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
   // Held, then each 60th of a second from its start to its end, as the screens' frames are measured.
   const FPS = 60;
   const whole: number[] = [];
@@ -407,13 +444,16 @@ test('File › Opening… at 1024 × 645 and 1280 × 720: photos from Media with
   await dialog.getByTestId('opening-play').click();
   const preview = dialog.getByTestId('opening-preview');
   await expect(preview).toHaveAttribute('data-photos', '2');
-  await expect(preview.locator('img[data-opening-photo]').first()).toHaveAttribute('src', /drashti-media:\/\/opening\//u);
+  await expect(preview.locator('img[data-opening-photo]').first()).toHaveAttribute(
+    'src',
+    /drashti-media:\/\/opening\//u,
+  );
   await expect(preview).toHaveCount(0, { timeout: 10_000 });
   // Turned off: the next start does not play it.
   await dialog.getByTestId('opening-on').click();
-  await expect.poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.opening.view().then((v) => v.on))).toBe(
-    false,
-  );
+  await expect
+    .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.opening.view().then((v) => v.on)))
+    .toBe(false);
   await app.close();
   const again = await relaunchApp(userData, ASK);
   const page = await operatorPage(again.app);

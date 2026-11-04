@@ -44,12 +44,23 @@ export async function makeOpeningCopy(mediaId: string): Promise<boolean> {
 }
 
 let making: Promise<void> = Promise.resolve();
+/** Photos waiting for their copy, or having it made: never asked for twice. */
+const waiting = new Set<string>();
+/** Photos whose copy could not be made while Drashti runs: they play from their own file. */
+const failed = new Set<string>();
+
+/** Whether this photo's copy could not be made (it plays from its own file). */
+export const copyFailed = (mediaId: string): boolean => failed.has(mediaId);
 
 /** Make the copies of these photos, one after another (after any being made already); `each` as each is done. */
 export function makeOpeningCopies(mediaIds: readonly string[], each: () => void): Promise<void> {
+  const fresh = mediaIds.filter((id) => !waiting.has(id));
+  for (const id of fresh) waiting.add(id);
   making = making.then(async () => {
-    for (const id of mediaIds) {
-      await makeOpeningCopy(id);
+    for (const id of fresh) {
+      if (await makeOpeningCopy(id)) failed.delete(id);
+      else failed.add(id);
+      waiting.delete(id);
       each();
     }
   });

@@ -67,6 +67,9 @@ export async function saveOpeningCopy(
     return { ok: true };
   } catch (error) {
     await rm(part, { force: true }).catch(() => undefined);
-    return { ok: false, message: `Could not keep the opening’s copy of a photo. ${fileProblem(error, 'own')}` };
+    return {
+      ok: false,
+      message: `Could not keep the opening’s copy of a photo. ${fileProblem(error, 'own')}`,
+    };
   }
 }

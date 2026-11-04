@@ -25,7 +25,9 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function service(o: { kept?: unknown; lastVersion?: string | null; boot?: Partial<OpeningServiceDeps['boot']> } = {}) {
+function service(
+  o: { kept?: unknown; lastVersion?: string | null; boot?: Partial<OpeningServiceDeps['boot']> } = {},
+) {
   const store = new Map<string, unknown>();
   if (o.kept !== undefined) store.set('opening', o.kept);
   if (o.lastVersion !== null) store.set('lastStartVersion', o.lastVersion ?? '1.0.0-alpha.14');
@@ -33,7 +35,9 @@ function service(o: { kept?: unknown; lastVersion?: string | null; boot?: Partia
   const lines: string[] = [];
   const imported: string[][] = [];
   // Pictures 1 to 9 are in Media; picture 2's copy is made.
-  const pictures = new Map(Array.from({ length: 9 }, (_, i) => [`photo-${String(i + 1)}`, i + 1] as const));
+  const pictures = new Map<string, number>(
+    Array.from({ length: 9 }, (_, i) => [`photo-${String(i + 1)}`, i + 1]),
+  );
   const copies = new Set([SHA(2)]);
   let welcome = false;
   const opening = new OpeningService({
@@ -77,7 +81,10 @@ const START = { pageAgain: false, sinceWindow: 300 };
 describe('as Drashti starts', () => {
   it('plays once, each photo from its copy (its whole file until the copy is made), never naming its words', () => {
     const s = service({
-      kept: { photos: ['photo-1', 'photo-2', 'not-in-media'], lines: ['Placeholder line one', 'Placeholder two'] },
+      kept: {
+        photos: ['photo-1', 'photo-2', 'not-in-media'],
+        lines: ['Placeholder line one', 'Placeholder two'],
+      },
     });
     expect(s.opening.atStart(START)).toEqual({
       photos: [mediaUrl('photo-1'), openingPhotoUrl('photo-2')],
@@ -136,9 +143,16 @@ describe('File › Opening…', () => {
 
   it('keeps photos and lines checked whole: a picture in Media only, lines made tidy, empty ones left out', () => {
     const s = service({ kept: { on: false } });
-    const kept = s.opening.setChoice({ photos: ['photo-3', 'photo-1'], lines: ['  Placeholder  one ', '', 'Two'] });
+    const kept = s.opening.setChoice({
+      photos: ['photo-3', 'photo-1'],
+      lines: ['  Placeholder  one ', '', 'Two'],
+    });
     expect(kept).toMatchObject({ ok: true, view: { on: false, lines: ['Placeholder one', 'Two'] } });
-    expect(s.store.get('opening')).toEqual({ on: false, photos: ['photo-3', 'photo-1'], lines: ['Placeholder one', 'Two'] });
+    expect(s.store.get('opening')).toEqual({
+      on: false,
+      photos: ['photo-3', 'photo-1'],
+      lines: ['Placeholder one', 'Two'],
+    });
     for (const bad of [
       { photos: ['not-in-media'], lines: [] },
       { photos: Array.from({ length: 9 }, (_, i) => `photo-${String(i + 1)}`), lines: [] },
@@ -147,7 +161,11 @@ describe('File › Opening…', () => {
       null,
     ])
       expect(s.opening.setChoice(bad)).toMatchObject({ ok: false });
-    expect(s.store.get('opening')).toEqual({ on: false, photos: ['photo-3', 'photo-1'], lines: ['Placeholder one', 'Two'] });
+    expect(s.store.get('opening')).toEqual({
+      on: false,
+      photos: ['photo-3', 'photo-1'],
+      lines: ['Placeholder one', 'Two'],
+    });
     expect(s.opening.setOn(true)).toMatchObject({ ok: true, view: { on: true } });
     expect(s.lines).toEqual(['Opening: turned on']);
   });
@@ -157,14 +175,25 @@ describe('File › Opening…', () => {
     const root = join(dir, 'pack');
     mkdirSync(join(root, 'photos'), { recursive: true });
     for (let n = 1; n <= 8; n++) writeFileSync(join(root, 'photos', `${String(n)}.jpg`), jpeg());
-    writeFileSync(join(root, 'words.txt'), ['One', 'Two', 'Three', 'Four', 'Five'].map((w) => `Placeholder ${w}`).join('\n'));
+    writeFileSync(
+      join(root, 'words.txt'),
+      ['One', 'Two', 'Three', 'Four', 'Five'].map((w) => `Placeholder ${w}`).join('\n'),
+    );
     const loaded = await s.opening.loadPack(root);
-    expect(s.imported).toEqual([Array.from({ length: 8 }, (_, i) => join(root, 'photos', `${String(i + 1)}.jpg`))]);
+    expect(s.imported).toEqual([
+      Array.from({ length: 8 }, (_, i) => join(root, 'photos', `${String(i + 1)}.jpg`)),
+    ]);
     expect(loaded).toMatchObject({ ok: true, view: { on: false } });
     expect(s.store.get('opening')).toEqual({
       on: false,
       photos: Array.from({ length: 8 }, (_, i) => `photo-${String(i + 1)}`),
-      lines: ['Placeholder One', 'Placeholder Two', 'Placeholder Three', 'Placeholder Four', 'Placeholder Five'],
+      lines: [
+        'Placeholder One',
+        'Placeholder Two',
+        'Placeholder Three',
+        'Placeholder Four',
+        'Placeholder Five',
+      ],
     });
     expect(s.lines).toEqual(["Opening: the opening pack's 8 photos and 5 lines are the opening's now"]);
   });

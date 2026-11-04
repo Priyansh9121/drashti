@@ -41,7 +41,7 @@ function makeCopies(view: OpeningView): void {
 export function openOpening(): void {
   void window.drashti.opening.view().then((view) => {
     useOpening.setState({ open: true, view, problem: null });
-    // A library brought from another computer (a restore, say) has its photos but not their copies.
+    // A copy not made yet (the window closed while it was being made, say) is made now.
     makeCopies(view);
   });
 }

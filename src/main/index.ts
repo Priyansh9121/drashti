@@ -5884,7 +5884,10 @@ function start(): void {
   // The first start's welcome (Session 26g): once per library, before anything was set up; never in Simple Mode or on
   // a node. The opening (Session 55) gives way to it, and to Simple Mode's first steps.
   const welcomeNow = () =>
-    mode === 'pro' && !wizardOff && settings.get('welcome') === undefined && settings.get('setupWizard') === undefined;
+    mode === 'pro' &&
+    !wizardOff &&
+    settings.get('welcome') === undefined &&
+    settings.get('setupWizard') === undefined;
   const simpleStepsNow = () =>
     mode === 'simple' && !wizardOff && settings.get('simpleFirstRun') === undefined;
   handle(IPC.setup.state, () => ({

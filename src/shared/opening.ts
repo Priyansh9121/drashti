@@ -55,7 +55,11 @@ export const cleanLine = (line: string): string =>
 
 const mediaIdSchema = z.string().regex(MEDIA_ID_PATTERN);
 const listSchema = z.array(z.unknown()).optional().catch(undefined);
-const settingSchema = z.object({ on: z.boolean().optional().catch(undefined), photos: listSchema, lines: listSchema });
+const settingSchema = z.object({
+  on: z.boolean().optional().catch(undefined),
+  photos: listSchema,
+  lines: listSchema,
+});
 
 /** What is kept, read forgivingly: a photo or a line it cannot read is left out, never the rest. */
 export function readOpening(raw: unknown): OpeningSetting {

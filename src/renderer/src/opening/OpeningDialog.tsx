@@ -16,6 +16,7 @@ import { ChevronLeft, ChevronRight, FolderOpen, ImagePlus, Play, X } from '../ui
 import { motionOff } from '../ui/motion';
 import { Notice } from '../ui/Notice';
 import { Toggle } from '../ui/Toggle';
+import { copyFailed } from './copies';
 import { closeOpening, connectOpening, loadPack, take, useOpening } from './opening-store';
 import { OpeningPlayer } from './OpeningPlayer';
 
@@ -38,7 +39,9 @@ export function OpeningDialog() {
 /** The plan as it would play now: each photo's copy once made (its whole file until then). */
 function planOf(view: OpeningView): OpeningPlan {
   return {
-    photos: view.photos.filter((p) => !p.gone).map((p) => (p.ready ? openingPhotoUrl(p.mediaId) : mediaUrl(p.mediaId))),
+    photos: view.photos
+      .filter((p) => !p.gone)
+      .map((p) => (p.ready ? openingPhotoUrl(p.mediaId) : mediaUrl(p.mediaId))),
     lines: view.lines,
   };
 }
@@ -49,10 +52,14 @@ function OpeningForm({ view }: { view: OpeningView }) {
   const [picking, setPicking] = useState(false);
   // The preview plays again each time Play is pressed (a new key), and shows its first moment until then.
   const [play, setPlay] = useState(0);
-  const [lines, setLines] = useState<string[]>(() => view.lines);
-  useEffect(() => {
-    setLines(view.lines);
-  }, [view.lines]);
+  // The lines as typed; put back to the kept ones only when those change (a pack loaded), never while typing.
+  const kept = view.lines.join('\n');
+  const [typed, setTyped] = useState<{ kept: string; lines: string[] }>(() => ({ kept, lines: view.lines }));
+  if (typed.kept !== kept) setTyped({ kept, lines: kept === '' ? [] : kept.split('\n') });
+  const lines = typed.lines;
+  const setLines = (next: string[]) => {
+    setTyped({ kept, lines: next });
+  };
   const photos = view.photos.filter((p) => !p.gone).map((p) => p.mediaId);
   const plan = useMemo(() => planOf(view), [view]);
   const keep = (next: { photos?: string[]; lines?: string[] }) => {
@@ -78,9 +85,9 @@ function OpeningForm({ view }: { view: OpeningView }) {
     >
       <div className="space-y-5">
         <p className="text-sm text-muted">
-          For five seconds as Drashti starts, the mandir’s own photos and lines, on this screen only: never on the
-          hall’s screens, a node, the stream or a phone. Any key, click or tap ends it at once. With nothing chosen,
-          Drashti’s lamp lights.
+          For five seconds as Drashti starts, the mandir’s own photos and lines, on this screen only: never on
+          the hall’s screens, a node, the stream or a phone. Any key, click or tap ends it at once. With
+          nothing chosen, Drashti’s lamp lights.
         </p>
         <Toggle
           checked={view.on}
@@ -138,7 +145,11 @@ function OpeningForm({ view }: { view: OpeningView }) {
                     </span>
                   </div>
                   <p className="truncate text-xs text-muted" title={p.name}>
-                    {p.gone ? 'No longer in Media: left out' : p.ready ? p.name : 'Getting it ready…'}
+                    {p.gone
+                      ? 'No longer in Media: left out'
+                      : p.ready || copyFailed(p.mediaId)
+                        ? p.name
+                        : 'Getting it ready…'}
                   </p>
                   <div className="flex gap-1">
                     <IconButton
@@ -164,7 +175,9 @@ function OpeningForm({ view }: { view: OpeningView }) {
                       icon={X}
                       label={`Take photo ${String(i + 1)} out of the opening`}
                       onClick={() => {
-                        keep({ photos: view.photos.filter((q, k) => k !== i && !q.gone).map((q) => q.mediaId) });
+                        keep({
+                          photos: view.photos.filter((q, k) => k !== i && !q.gone).map((q) => q.mediaId),
+                        });
                       }}
                     />
                   </div>
@@ -211,8 +224,8 @@ function OpeningForm({ view }: { view: OpeningView }) {
             The opening pack
           </h3>
           <p className="text-sm text-muted">
-            A folder with the photos (photos/1.jpg to 8.jpg) and their lines (words.txt, one to a line). Its photos
-            come into Media, and they and its lines replace what is chosen here.
+            A folder with the photos (photos/1.jpg to 8.jpg) and their lines (words.txt, one to a line). Its
+            photos come into Media, and they and its lines replace what is chosen here.
           </p>
           <Button
             icon={FolderOpen}

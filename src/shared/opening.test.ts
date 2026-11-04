@@ -37,7 +37,12 @@ describe('what is kept', () => {
     const kept = readOpening({
       on: false,
       photos: [id(1), 'not a media id!', 7, ...[2, 3, 4, 5, 6, 7, 8, 9].map(id)],
-      lines: ['  Placeholder   line one ', 3, '', ...[2, 3, 4, 5, 6].map((n) => `Placeholder line ${String(n)}`)],
+      lines: [
+        '  Placeholder   line one ',
+        3,
+        '',
+        ...[2, 3, 4, 5, 6].map((n) => `Placeholder line ${String(n)}`),
+      ],
     });
     expect(kept.on).toBe(false);
     expect(kept.photos).toEqual([1, 2, 3, 4, 5, 6, 7, 8].map(id));
@@ -59,7 +64,7 @@ describe('what is kept', () => {
   });
 
   it('cuts a long line between letters, never inside a Gujarati conjunct', () => {
-    const long = `${'ક્ષ '.repeat(60)}`;
+    const long = 'ક્ષ '.repeat(60);
     const line = readOpening({ lines: [long] }).lines[0] ?? '';
     expect(line.length).toBeLessThanOrEqual(OPENING_LINE_MAX);
     expect(line.endsWith('ક્ષ')).toBe(true);

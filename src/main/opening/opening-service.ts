@@ -88,8 +88,8 @@ export class OpeningService {
     const photos = kept.photos.flatMap((id) => {
       const picture = this.deps.picture(id);
       if (!picture) return [];
-      // Its copy at the window's size; a photo whose copy is not made yet (a library restored on another computer,
-      // say) shows its whole file this time, and File › Opening… makes the copy.
+      // Its copy at the window's size (backups carry the copies); a photo whose copy is not made yet (File › Opening…
+      // closed while it was being made, say) shows its whole file this time, and File › Opening… makes the copy.
       return [this.deps.hasCopy(picture.sha256) ? openingPhotoUrl(id) : mediaUrl(id)];
     });
     const without = kept.photos.length - photos.length;
@@ -103,7 +103,9 @@ export class OpeningService {
 
   /** It ended. */
   ended(how: OpeningEnd, afterMs: number): void {
-    this.deps.log(`Opening: ended ${how === 'itself' ? 'by itself' : `by a ${how}`} after ${String(Math.round(afterMs))} ms`);
+    this.deps.log(
+      `Opening: ended ${how === 'itself' ? 'by itself' : `by a ${how}`} after ${String(Math.round(afterMs))} ms`,
+    );
   }
 
   view(): OpeningView {
@@ -156,7 +158,9 @@ export class OpeningService {
     }
     const imported = await this.deps.importPhotos(pack.photos);
     if (!imported.ok) return imported;
-    const notPictures = imported.ids.flatMap((id, i) => (this.deps.picture(id) ? [] : [basename(pack.photos[i] ?? '')]));
+    const notPictures = imported.ids.flatMap((id, i) =>
+      this.deps.picture(id) ? [] : [basename(pack.photos[i] ?? '')],
+    );
     if (notPictures.length > 0)
       return {
         ok: false,

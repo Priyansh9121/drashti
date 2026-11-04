@@ -40,7 +40,12 @@ function Line({ line, index, still }: { line: string; index: number; still: bool
     <p
       data-opening-line={index}
       className="absolute inset-x-[6%] bottom-[10%] text-center leading-tight text-balance text-white"
-      style={{ fontFamily: WORDS_FONT, fontWeight: OPENING_WEIGHT, fontSize: 'clamp(26px, 5.4vmin, 72px)', opacity: 0 }}
+      style={{
+        fontFamily: WORDS_FONT,
+        fontWeight: OPENING_WEIGHT,
+        fontSize: 'clamp(26px, 5.4vmin, 72px)',
+        opacity: 0,
+      }}
     >
       {pieces.map((piece, i) =>
         piece.unit === null || still ? (
@@ -104,7 +109,12 @@ function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animatio
       // Zooming slowly from its coming in until the next has covered it.
       const covered = (times.photos[i + 1]?.start ?? times.end) + (times.photos[i + 1]?.fadeIn ?? 0);
       el.style.transformOrigin = ORIGINS[i % ORIGINS.length] ?? 'center';
-      run(el, [{ transform: 'scale(1)' }, { transform: `scale(${String(ZOOM)})` }], t.start, covered - t.start);
+      run(
+        el,
+        [{ transform: 'scale(1)' }, { transform: `scale(${String(ZOOM)})` }],
+        t.start,
+        covered - t.start,
+      );
       const sweep = parts.sweeps[i];
       if (sweep)
         run(

@@ -191,7 +191,9 @@ export function mediaRequestOf(url: string): MediaRequest | null {
   }
   const mediaId = parsed.pathname.slice(1);
   if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
-  return what === 'media' || what === 'still' || what === 'blur' || what === 'opening' ? { what, mediaId } : null;
+  return what === 'media' || what === 'still' || what === 'blur' || what === 'opening'
+    ? { what, mediaId }
+    : null;
 }
 
 export interface ByteRange {
