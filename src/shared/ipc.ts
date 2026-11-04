@@ -14,6 +14,7 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
+import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -260,6 +261,24 @@ export const IPC = {
     screens: 'opening:screens',
     /** main -> operator: File › Opening… was chosen. */
     open: 'opening:open',
+  },
+  /**
+   * Live captions (Session 55, Part 10, shared/captions.ts): in Pro Mode only. A window is never sent a word heard:
+   * only how captions stand, and the lines to draw through the engine's state.
+   */
+  captions: {
+    view: 'captions:view',
+    /** Turn captions on or off on this computer (the model downloads once when first turned on). */
+    setOn: 'captions:set-on',
+    setModel: 'captions:set-model',
+    /** The library's settings: the language, the audience screens too, the size and place. */
+    setSettings: 'captions:set-settings',
+    /** Try the model's download again (after no internet). */
+    retry: 'captions:retry',
+    /** main -> operator: how captions stand changed (a download's progress too). */
+    changed: 'captions:changed',
+    /** main -> operator: File > Live Captions… was chosen. */
+    open: 'captions:open',
   },
   /**
    * Updates (Session 14, shared/updates.ts): looking, downloading, installing
@@ -1121,6 +1140,11 @@ export interface InvokeContract {
     args: [mediaId: string, bytes: Uint8Array];
     result: { ok: true } | { ok: false; message: string };
   };
+  [IPC.captions.view]: { args: []; result: CaptionsStatus };
+  [IPC.captions.setOn]: { args: [on: boolean]; result: CaptionsStatus };
+  [IPC.captions.setModel]: { args: [model: CaptionModelId]; result: CaptionsStatus };
+  [IPC.captions.setSettings]: { args: [settings: CaptionSettings]; result: CaptionsStatus };
+  [IPC.captions.retry]: { args: []; result: CaptionsStatus };
   [IPC.updates.view]: { args: []; result: UpdateView };
   [IPC.music.view]: { args: []; result: MusicView };
   [IPC.music.create]: { args: [name: string]; result: MusicResult };
@@ -1568,6 +1592,8 @@ export interface EventContract {
   [IPC.opening.key]: { at: number };
   [IPC.opening.screens]: { at: number };
   [IPC.opening.open]: { at: number };
+  [IPC.captions.changed]: CaptionsStatus;
+  [IPC.captions.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };
@@ -1603,7 +1629,7 @@ export interface EventContract {
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.looksChanged]: Record<string, PictureLook>;
-  [IPC.stream.port]: { role: 'preview' | 'encoder' };
+  [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };
   [IPC.stream.context]: ProgramContext;
   [IPC.liveWindow.changed]: LiveWindowStatus;
   [IPC.videoInputs.changed]: VideoInputsView;

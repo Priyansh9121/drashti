@@ -1,0 +1,27 @@
+import { describe, expect, it } from 'vitest';
+import { whisperCandidates, whisperProblem } from './engine-place';
+
+/* Where the captions engine is, and whether this computer can run it (Part 10). */
+
+describe('the captions engine’s place (Part 10)', () => {
+  it('is in the resources when packaged, in vendor/whisper from the repository', () => {
+    const at = { resourcesPath: '/R', appPath: '/A', arch: 'arm64' };
+    expect(whisperCandidates({ ...at, packaged: true, platform: 'darwin' })).toEqual([
+      '/R/whisper/drashti-whisper',
+    ]);
+    expect(whisperCandidates({ ...at, packaged: false, platform: 'darwin' })).toEqual([
+      '/A/vendor/whisper/darwin-arm64/drashti-whisper',
+    ]);
+    expect(whisperCandidates({ ...at, packaged: true, platform: 'win32', arch: 'x64' })[0]).toMatch(
+      /whisper[\\/]whisper-server\.exe$/u,
+    );
+  });
+
+  it('says plainly when this Mac is too old for it (whisper.cpp’s library needs macOS 13.3)', () => {
+    expect(whisperProblem('darwin', '12.7.6')).toBe('Live captions need macOS 13.3 or later on this Mac.');
+    expect(whisperProblem('darwin', '13.2.1')).toBe('Live captions need macOS 13.3 or later on this Mac.');
+    expect(whisperProblem('darwin', '13.3')).toBeNull();
+    expect(whisperProblem('darwin', '15.5')).toBeNull();
+    expect(whisperProblem('win32', '10.0.19045')).toBeNull();
+  });
+});

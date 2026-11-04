@@ -94,6 +94,7 @@ import { BackupsDialog } from '../backups/BackupsDialog';
 import { EventsOutDialog } from '../events/EventsOutDialog';
 import { DropFolderDialog } from '../drop/DropFolderDialog';
 import { OpeningDialog } from '../opening/OpeningDialog';
+import { CaptionsDialog } from '../captions/CaptionsDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { LinkDialog } from '../links/LinkDialog';
 import { KeysSheet, showKeysSheet } from './KeysSheet';
@@ -455,6 +456,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <DropFolderDialog />
       {/* File › Opening… (Session 55). */}
       <OpeningDialog />
+      {/* File › Live Captions… (Session 55, Part 10). */}
+      <CaptionsDialog />
       <UpdatesDialog />
       <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />

@@ -43,6 +43,7 @@ import { CUT, type RenderSlide, type SlideElement, type Transition } from '../..
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { mediaInState } from '../../shared/node-media';
 import { type ChosenWallpaper, DEFAULT_WHEN_ENDS, type WhenEnds } from '../../shared/wallpapers';
+import type { CaptionsShown } from '../../shared/captions';
 import {
   backgroundShowing,
   framed,
@@ -397,6 +398,12 @@ function nearestSlide(slides: readonly PlayedSlide[], slideId: string, near: num
 export class ShowEngine {
   private state: EngineState = initialEngineState();
   private revision = 0;
+  /**
+   * The revision of the last change that was more than live captions (Session 55, Part 10): a phone's Next sent with
+   * the revision it saw still goes when only the captions changed since (they change every second or so while
+   * someone speaks).
+   */
+  private showRevision = 0;
   /** This run of the engine: its revisions start from 0 (snapshots say which run they are from). */
   readonly session = randomUUID();
   private readonly listeners = new Set<(state: EngineState) => void>();
@@ -486,7 +493,7 @@ export class ShowEngine {
     // run of the engine (Session 53: a page's copy from before Drashti restarted, whatever the number): nothing.
     if (
       command.type === 'next' &&
-      ((command.rev !== undefined && command.rev !== this.revision) ||
+      ((command.rev !== undefined && (command.rev < this.showRevision || command.rev > this.revision)) ||
         (command.session !== undefined && command.session !== this.session))
     )
       return this.unchanged();
@@ -994,6 +1001,21 @@ export class ShowEngine {
   setQuote(quote: Quote | null): CommandResult {
     if (sameData(this.state.quote, quote)) return this.unchanged();
     return this.apply([{ type: 'quote/set', quote }]);
+  }
+
+  /**
+   * Live captions (Session 55, Part 10, main/speech/captions-feed.ts): the last lines heard from the stream's sound
+   * input, or none. Never a change to the show: what Back, Put it back and Oops would undo stays, and a phone's Next
+   * sent before them still goes. The same again changes nothing.
+   */
+  setCaptions(captions: CaptionsShown | null): CommandResult {
+    if (sameData(this.state.captions ?? null, captions)) return this.unchanged();
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'captions/set', captions }]);
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
   /**
@@ -2720,6 +2742,8 @@ export class ShowEngine {
     this.state = next;
     const baseRev = this.revision;
     this.revision += 1;
+    const captionsOnly = ops.every((op) => op.path[0] === 'captions');
+    if (!captionsOnly) this.showRevision = this.revision;
     this.transport.broadcast({
       kind: 'patch',
       version: ENGINE_STATE_VERSION,
@@ -2728,6 +2752,10 @@ export class ShowEngine {
       ops,
       sentAt: this.now(),
     });
+    // Live captions alone (Session 55, Part 10): the screens have them (the patch); nothing in the main process reads
+    // them, so its listeners (the recovery file, the menus, the phones' counts…) and timers are spared the work, every
+    // second or so while someone speaks: the show comes first.
+    if (captionsOnly) return { ok: true, changed: true, rev: this.revision };
     for (const listener of this.listeners) listener(next);
     this.scheduleAdvance();
     this.scheduleMusic();

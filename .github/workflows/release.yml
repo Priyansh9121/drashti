@@ -69,6 +69,11 @@ jobs:
       - name: Fetch yt-dlp and Deno for Intel Macs too
         if: runner.os == 'macOS'
         run: node scripts/fetch-youtube-tools.mjs --target darwin-x64
+      - name: Fetch the live captions engine (Session 55, Part 10)
+        run: node scripts/fetch-whisper.mjs
+      - name: Fetch the live captions engine for Intel Macs too
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-whisper.mjs --target darwin-x64
       - run: pnpm build
       - name: Package (signed when the certificates are given)
         shell: bash

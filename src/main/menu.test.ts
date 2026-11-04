@@ -219,6 +219,26 @@ describe('File › Decks With Their Animations on This Computer (Session 54, C r
   });
 });
 
+describe('File › Live Captions… (Session 55, Part 10)', () => {
+  it.each(PLATFORMS)('opens the Live captions dialog, in Pro Mode only (%s)', (platform) => {
+    const opened: string[] = [];
+    on(platform, () => {
+      const made = actions('pro');
+      installMenu({ ...made.a, liveCaptions: () => opened.push('captions') });
+    });
+    const entry = item('live-captions');
+    expect(entry).toMatchObject({ label: 'Live Captions…' });
+    (entry?.click as (() => void) | undefined)?.();
+    expect(opened).toEqual(['captions']);
+    // Simple Mode has no File menu, so no Live Captions….
+    on(platform, () => {
+      const made = actions('simple');
+      installMenu({ ...made.a, liveCaptions: () => opened.push('simple') });
+    });
+    expect(item('live-captions')).toBeUndefined();
+  });
+});
+
 describe('the menu while not let in (Session 54, access by Gmail)', () => {
   it.each(PLATFORMS)(
     'has Quit and the editing keys only: no show, no library, no devtools (%s)',

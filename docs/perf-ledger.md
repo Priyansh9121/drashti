@@ -171,3 +171,19 @@ The `live-window` scenario: the placeholder window live on two outputs and the s
 After the kept picture's fix (`66c573e`: nothing kept once a window's capture ends, and the copy a second older shown), one more run with the window: idle p90 15 ms, just after the import 12 ms, worst block 17 ms, late frames 0 and 1, the stream 29.8 fps with none dropped, the window 21.7 frames a second on each screen, 6% of one core.
 
 Each screen captures the window itself (the outputs, the stream's page and, small, the operator window): three captures cost about 3 to 4 points of one core and no late frame, so one capture shared between them (copying frames between pages) was not needed. A real meeting's window (macOS's own window capture, Screen Recording given) has not been measured: only a person can.
+
+## Session 55, Part 10: live captions (dev Mac, 4 November 2026)
+
+Local and quiet on the dev Mac (M2, 8 GB, with other builds running and 12 GB of swap in use, so ±20%), not a CI round. The captions engine (`src/main/speech/whisper-engine.ts`) drove the real engine: whisper.cpp 1.9.5's whisper-server (built in a scratch folder for this only) and `drashti-whisper`, Drashti's small program on whisper.cpp's prebuilt Mac library (the one the installers carry). The sound was speech made by the Mac's `say` while the check ran (two placeholder sentences with a 1.2 s pause), fed in real time as 100 ms pieces, as the stream's page sends them. `ps` read the engine's share of one core, its memory and its niceness every half second; "behind" is each final phrase's `heardAt − endAt` (how long after the words ended the captions had them).
+
+| Engine, model                                | Behind, each phrase | Partials | The engine: mean, most (of one core) | Memory | Priority |
+| -------------------------------------------- | ------------------- | -------- | ------------------------------------ | ------ | -------- |
+| whisper-server, Standard (small)             | 1.10, 1.19 s        | 4        | 5%, 20%                              | 663 MB | nice 10  |
+| whisper-server, Most accurate (turbo q5_0)   | 2.25, 2.30 s        | 4        | 4%, 27%                              | 656 MB | nice 10  |
+| drashti-whisper (prebuilt library), Standard | 1.14, 1.19 s        | 4        | 4%, 14%                              | 642 MB | nice 10  |
+
+Both sentences came back word for word every time. On a Mac with Apple silicon the graphics chip does most of the work (Metal), so the engine takes little of the processor. With the processor alone (as on the mandir's Windows PCs, which have no graphics chip it can use), the same engine took per 5 s of speech (the trial's figures, this Mac): Standard 1.1 s on 4 threads and 1.7 s on 2; Most accurate 4.7 s and 6.5 s, too slow to keep up there. A slower processor than the M2's takes longer still, which is why Standard is the default everywhere but on Apple silicon.
+
+What keeps the show first, by design rather than by figures: the engine runs below the show's priority (a Mac's nice 10, Windows' below normal), so the screens and the main process are served first and the engine waits; when a piece takes more than 1.5 times its 1.5 s step three times running, or the captions fall more than 8 s behind, it stops by itself for a minute (held, busy) and starts again; the screens are changed at most every 300 ms; and a change of captions alone spares the main process's listeners and timers (the recovery file, the menus, the phones' counts).
+
+Not measured yet: the Performance check's own figures with captions running (slide changes, the worst block, the stream's frames) on CI's Mac and Windows, and the engine on the mandir's own PC. Both need a run the owner approves: the check with `DRASHTI_TEST_SPEECH` cannot stand in, as it has no engine.

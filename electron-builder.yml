@@ -156,6 +156,11 @@ mac:
     - from: vendor/deno/darwin-${arch}
       to: deno
       filter: [deno]
+    # Live captions' engine (scripts/fetch-whisper.mjs, Session 55, Part 10): whisper.cpp's library and our small
+    # program on it, its framework's links kept: LICENSES/whisper/. Signed with the rest of the app.
+    - from: vendor/whisper/darwin-${arch}
+      to: whisper
+      filter: ['**/*', '!SOURCE.txt']
   # macOS asks the operator before Drashti may use a camera (for the stream, and Session 50's video inputs on the
   # screens) or a sound input (for the stream).
   extendInfo:
@@ -205,6 +210,11 @@ win:
     - from: vendor/deno/win32-${arch}
       to: deno
       filter: [deno.exe]
+    # Live captions' engine (scripts/fetch-whisper.mjs, Session 55, Part 10): whisper.cpp's whisper-server.exe and its
+    # DLLs: LICENSES/whisper/.
+    - from: vendor/whisper/win32-${arch}
+      to: whisper
+      filter: ['**/*', '!SOURCE.txt']
     - from: build/icon.ico
       to: icon.ico
 nsis:
