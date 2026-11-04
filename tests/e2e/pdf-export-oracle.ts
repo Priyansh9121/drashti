@@ -1,10 +1,11 @@
+import { nodePdfAssets } from '../../src/main/import/testing/pdfjs-assets';
 /* Independent PDF.js read/render oracle, intended tests/e2e/pdf-export-oracle.ts.
  * Validate this setup in its own oracle spec BEFORE relying on feature RED.
  * Node canvas/module/font failure is a fixture error, never a product failure.
  */
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 export interface PdfRasterPage {
@@ -45,10 +46,7 @@ export async function inspectPdf(file: string): Promise<PdfRasterPage[]> {
     useWorkerFetch: false,
     useSystemFonts: false,
     disableFontFace: false,
-    standardFontDataUrl: join(root, 'standard_fonts') + sep,
-    cMapUrl: join(root, 'cmaps') + sep,
-    cMapPacked: true,
-    wasmUrl: join(root, 'wasm') + sep,
+    ...nodePdfAssets(root),
   });
   try {
     const pdf = await loading.promise;

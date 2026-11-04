@@ -1,8 +1,9 @@
+import { nodePdfAssets } from './pdfjs-assets';
 // Reads the actual retained source and runs the same extraction cores; no known-word lookup or fake elements.
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import { EDITABLE_SOURCE_LIMITS, type PreparedSourcePage } from '../../../shared/editable-source';
 import { editablePdfPage } from '../../../shared/pdf-edit-page';
 import type { SourceReader } from '../../documents/source-reader';
@@ -55,10 +56,7 @@ export const nativeSourceReader: SourceReader = async (request) => {
     useWorkerFetch: false,
     useSystemFonts: false,
     disableFontFace: false,
-    standardFontDataUrl: join(assets, 'standard_fonts') + sep,
-    cMapUrl: join(assets, 'cmaps') + sep,
-    cMapPacked: true,
-    wasmUrl: join(assets, 'wasm') + sep,
+    ...nodePdfAssets(assets),
   });
   try {
     const pdf = await loading.promise;

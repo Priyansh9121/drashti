@@ -1,7 +1,8 @@
+import { nodePdfAssets } from './testing/pdfjs-assets';
 // EXTERNAL DRAFT ONLY. No test/probe was run by this agent.
 // Intended destination: src/main/import/pdf-native-extraction.test.ts.
 import { createRequire } from 'node:module';
-import { dirname, join, sep } from 'node:path';
+import { dirname } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type * as PdfJs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
@@ -40,10 +41,7 @@ async function withSource<T>(
     // so retained ink never depends on an operating system’s fallback fonts.
     disableFontFace: true,
     stopAtErrors: true,
-    standardFontDataUrl: join(localAssets, 'standard_fonts') + sep,
-    cMapUrl: join(localAssets, 'cmaps') + sep,
-    cMapPacked: true,
-    wasmUrl: join(localAssets, 'wasm') + sep,
+    ...nodePdfAssets(localAssets),
   });
   try {
     const doc = await loading.promise;
