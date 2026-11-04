@@ -34,6 +34,9 @@ function whenText(at: number, now: number): string {
 
 function Status({ view, now }: { view: ScheduledBackupsView; now: number }) {
   const last = view.last;
+  // A finished one that left original documents out (alpha.15) is a warning too.
+  const leftOut = last?.outcome === 'done' ? last.leftOut : undefined;
+  const warn = last !== null && (last.outcome !== 'done' || leftOut !== undefined);
   return (
     <div className="space-y-2 text-sm" data-testid="backups-status">
       {view.state === 'running' && (
@@ -53,14 +56,15 @@ function Status({ view, now }: { view: ScheduledBackupsView; now: number }) {
         <Notice tone="info">Waiting: {view.waitingFor}. It goes on by itself afterwards.</Notice>
       )}
       {last && (
-        <p data-testid="backups-last" className={last.outcome === 'done' ? 'text-muted' : 'text-warning-fg'}>
-          {last.outcome !== 'done' && <AlertTriangle size={14} aria-hidden="true" className="mr-1 inline" />}
+        <p data-testid="backups-last" className={warn ? 'text-warning-fg' : 'text-muted'}>
+          {warn && <AlertTriangle size={14} aria-hidden="true" className="mr-1 inline" />}
           Last: {whenText(last.at, now)},{' '}
           {last.outcome === 'done' ? 'backed up' : last.outcome === 'skipped' ? 'skipped' : 'stopped'}{' '}
           {last.message}
           {last.outcome === 'done' && last.files !== undefined
             ? ` ${String(last.copied ?? 0)} of ${String(last.files)} media files were new.`
             : ''}
+          {leftOut ? ` ${leftOut}` : ''}
         </p>
       )}
       {view.nextAt !== null && (
@@ -215,9 +219,14 @@ function BackupsForm({ view }: { view: ScheduledBackupsView }) {
   );
 }
 
-/** The status bar's warning: a scheduled backup skipped or stopped (both modes), until read. */
+/**
+ * The status bar's warning: a scheduled backup skipped or stopped (both modes), or (alpha.15) one that finished
+ * without some original documents, until read.
+ */
 export function BackupWarning() {
   const warning = useBackups((s) => s.view?.warning ?? null);
+  // Backing up again would not bring back an original left out of a finished backup: only OK, then.
+  const finished = useBackups((s) => s.view?.last?.outcome === 'done');
   useEffect(() => {
     connectBackups();
   }, []);
@@ -230,14 +239,16 @@ export function BackupWarning() {
       <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
       <span className="truncate">{warning}</span>
       {/* Its next step, the one primary of the warning (Session 26g). */}
-      <Button
-        variant="primary"
-        size="sm"
-        data-testid="backup-now"
-        onClick={() => void window.drashti.backups.runNow()}
-      >
-        Back up now
-      </Button>
+      {!finished && (
+        <Button
+          variant="primary"
+          size="sm"
+          data-testid="backup-now"
+          onClick={() => void window.drashti.backups.runNow()}
+        >
+          Back up now
+        </Button>
+      )}
       <button
         type="button"
         aria-label="Dismiss the backup warning"

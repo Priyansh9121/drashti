@@ -32,4 +32,21 @@ describe('where a phone’s files go, in its words', () => {
         'Add photos puts pictures at the end of Simple Mode’s playlist, “Sabha, 4 Nov 2026”. They never go on the screens by themselves.',
     });
   });
+
+  // alpha.15 words review: a Repeat Slides playlist holds no video or sound, so those go to Added from Phones.
+  it('in Simple Mode with a Repeat Slides playlist: a video or sound into Added from Phones, the rest at its end', () => {
+    expect(
+      addFilesWords({
+        maxBytes: UPLOAD_MAX_BYTES,
+        openPlaylist: null,
+        simplePlaylist: 'Placeholder going round',
+        simpleRepeats: true,
+      }),
+    ).toEqual({
+      files:
+        'A file up to 2 GB goes whole: a picture, PDF, PowerPoint or Keynote file to the end of Simple Mode’s playlist “Placeholder going round”, and a video or sound into “Added from Phones”, since a Repeat Slides playlist holds no videos or sounds. Nothing goes on the screens by itself.',
+      photos:
+        'Add photos puts pictures at the end of Simple Mode’s playlist, “Placeholder going round”. They never go on the screens by themselves.',
+    });
+  });
 });

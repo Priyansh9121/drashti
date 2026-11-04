@@ -1,5 +1,4 @@
-// Intended destination: src/renderer/src/editor/SourceIssues.tsx.
-// External draft. Main supplies sanitized explanations, never source paths.
+// The editor's notes on an imported original, in Main's own plain words (never a file's path).
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
 
@@ -16,7 +15,7 @@ export function SourceIssues({
   if (unique.length === 0) return null;
   return (
     <Notice tone="warning" title="Source document limits" className="m-2" data-testid="editor-source-issues">
-      <p>Review these limits before changing the source objects.</p>
+      <p>Read these notes before you change the original’s words and shapes.</p>
       <ul className="max-h-28 list-disc space-y-1 overflow-y-auto pl-5">
         {unique.map((issue) => (
           <li key={issue}>{issue}</li>

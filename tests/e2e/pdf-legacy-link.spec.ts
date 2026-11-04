@@ -67,7 +67,7 @@ for (const windowSize of [
       await win.getByTestId('edit-slides').click();
       const { ed, editor } = await slideEditorWindow(app);
       await sizeSlideEditor(app, ed, windowSize);
-      await expect(editor.getByTestId('editor-source-issues')).toContainText(/ambiguous/iu);
+      await expect(editor.getByTestId('editor-source-issues')).toContainText(/which page of the original/iu);
       await editorGroup(ed, 'Insert');
       await editor.getByTestId('add-text').click();
       await editor.locator('[data-editing="true"] .ProseMirror').fill('Placeholder operator overlay');
@@ -139,7 +139,9 @@ for (const windowSize of [
       const reopened = await slideEditorWindow(app);
       await expect(reopened.editor.getByTestId('editor-slide')).toContainText('Placeholder page A');
       await expect(reopened.editor.getByTestId('editor-slide')).toContainText('Placeholder operator overlay');
-      await expect(reopened.editor.getByTestId('editor-source-issues')).toContainText(/ambiguous/iu);
+      await expect(reopened.editor.getByTestId('editor-source-issues')).toContainText(
+        /which page of the original/iu,
+      );
       await app.evaluate(({ BrowserWindow }) => {
         const samples: { requested: number[]; actual: number[]; visible: boolean; focused: boolean }[] = [];
         const root = globalThis as unknown as { __readingCopySizes: typeof samples };

@@ -349,7 +349,7 @@ function placed(rect: Rect, matrix: Matrix, flipX: boolean, ctx: Context) {
     sy === 0 ||
     Math.abs(matrix[0] * matrix[2] + matrix[1] * matrix[3]) > sx * sy * 0.00001
   ) {
-    ctx.issues.add('Sheared or collapsed group geometry cannot be reproduced; this object was left out.');
+    ctx.issues.add('A slanted or squashed group of objects can’t be copied, so it was left out.');
     return null;
   }
   const center = at(matrix, rect.x + rect.width / 2, rect.y + rect.height / 2);
@@ -359,7 +359,7 @@ function placed(rect: Rect, matrix: Matrix, flipX: boolean, ctx: Context) {
     ![center.x, center.y, width, height].every(Number.isFinite) ||
     Math.max(Math.abs(center.x / EMU), Math.abs(center.y / EMU), width, height) > 1_000_000
   ) {
-    ctx.issues.add('An object’s transformed frame is outside the supported range and was left out.');
+    ctx.issues.add('An object is placed or sized beyond what Drashti can copy, so it was left out.');
     return null;
   }
   const sign = flipX ? -1 : 1;
@@ -633,7 +633,7 @@ async function objectOf(
   const xfrm = lastChild(props, 'xfrm'),
     rect = rawRect(xfrm);
   if (!rect) {
-    ctx.issues.add('An object has no usable source frame and was left out.');
+    ctx.issues.add('An object has no size or place Drashti can use, so it was left out.');
     return [];
   }
   const own = about(rect.x + rect.width / 2, rect.y + rect.height / 2, turning(xfrm));
@@ -735,7 +735,7 @@ async function walk(
       const cx = number(attr(ext, 'cx'), 0),
         cy = number(attr(ext, 'cy'), 0);
       if (!rect || cx <= 0 || cy <= 0) {
-        ctx.issues.add('An invalid group frame was left out.');
+        ctx.issues.add('A group with no usable size or place was left out.');
         continue;
       }
       const base = multiply(
@@ -945,7 +945,9 @@ export async function readEditablePptx(file: string, outDir: string): Promise<Ed
         'A source slide exceeds the 500 editable-object limit; objects were not silently dropped.',
       );
     if (descendants(slide.root, 'timing').length > 0)
-      issues.add('Source animations become static native objects when this slide is converted.');
+      issues.add(
+        'This slide’s animations are not kept when it becomes Drashti’s own: its objects stay still.',
+      );
     slides.push({
       sourceIndex,
       hidden: ['0', 'false'].includes(attr(slide.root, 'show') ?? ''),

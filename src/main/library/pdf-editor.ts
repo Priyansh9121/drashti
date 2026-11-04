@@ -113,7 +113,7 @@ export class PdfEditor {
       if (error instanceof PdfEditorError) return failed(error.message);
       if (error instanceof PdfCopyError && error.code === 'source-limit') return failed(error.message);
       return failed(
-        'The PDF copy could not be saved safely. Choose a new file outside the original documents and managed media.',
+        'The PDF copy could not be saved safely. Choose a new file that is not one of the original files and not in Drashti’s own media folder.',
       );
     }
   }
@@ -137,16 +137,16 @@ export class PdfEditor {
           );
           if (!descriptor)
             throw new PdfEditorError(
-              'An original PDF is unavailable. Restore its retained original before saving this copy.',
+              'An original PDF file is missing. Restore it from a backup before saving this copy.',
             );
           const file = await originals.resolve(descriptor);
           if (!file || !current() || (await stat(file)).size > 128 * 1024 * 1024)
-            throw new PdfEditorError('An original PDF is unavailable or exceeds the 128 MiB source limit.');
+            throw new PdfEditorError('An original PDF file is missing or larger than 128 MB.');
           const data = new Uint8Array(await readFile(file));
           sourceBytes += data.length;
           if (!current() || sourceBytes > 256 * 1024 * 1024)
             throw new PdfEditorError(
-              'The source PDFs exceed the 256 MiB copy limit. Save this document in smaller parts.',
+              'The original PDFs together are larger than 256 MB. Save this document in smaller parts.',
             );
           sources.set(ref.sha256, data);
         }

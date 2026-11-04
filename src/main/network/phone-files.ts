@@ -149,13 +149,18 @@ export class PhoneFiles {
 
   /** What the network's worker is told (the switch, and Drashti let in; the open playlist, for the phone's words). */
   policy(): UploadPolicy {
+    const simple = this.simplePlaylist();
     return {
       on: this.on && this.letIn(),
       maxBytes: this.deps.maxBytes ?? UPLOAD_MAX_BYTES,
       reserveBytes: UPLOAD_RESERVE_BYTES,
       slowed: this.deps.onAir(),
       openPlaylist: this.openPlaylist()?.name ?? null,
-      simplePlaylist: this.simplePlaylist()?.name ?? null,
+      simplePlaylist: simple?.name ?? null,
+      // A Repeat Slides playlist holds no video or sound (importArrived sends them to Added from Phones): said.
+      ...(simple !== null && this.deps.playlists.repeatPlaylist(simple.id) !== null
+        ? { simpleRepeats: true }
+        : {}),
     };
   }
 

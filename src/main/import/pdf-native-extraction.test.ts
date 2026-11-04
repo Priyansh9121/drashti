@@ -1,6 +1,5 @@
 import { nodePdfAssets } from './testing/pdfjs-assets';
-// EXTERNAL DRAFT ONLY. No test/probe was run by this agent.
-// Intended destination: src/main/import/pdf-native-extraction.test.ts.
+// A PDF page's own words, pictures and shapes, as the editor reads them (pdf-edit-page.ts), from generated PDFs.
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

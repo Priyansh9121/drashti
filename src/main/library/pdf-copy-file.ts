@@ -143,7 +143,7 @@ interface ProtectionBudget {
 function sourceLimit(): never {
   throw new PdfCopyError(
     'source-limit',
-    'A source package is too large or too deeply nested to check safely. Save it as a single-file deck or PDF and use that source copy instead.',
+    'An original Keynote package holds too many files to check safely. Save it as a single-file deck or PDF, and use that copy instead.',
   );
 }
 function takeSource(snapshot: SourceSnapshot, budget: ProtectionBudget): SourceSnapshot {
