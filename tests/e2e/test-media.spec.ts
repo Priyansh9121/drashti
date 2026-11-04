@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launchApp, operatorPage, operatorReady } from './helpers';
-import { makeTestVideo, webmDurationMs, webmLastFrameMs } from './test-media';
+import { makeTestVideo, webmDurationMs, webmLastFrameMs, webmVideoFrameTimes } from './test-media';
 
 /*
  * The generated test video itself (alpha.14's gate on CI's Mac, 3 Nov 2026): the page's recorder there began only
@@ -127,5 +127,42 @@ test('a recorder that says it has started only late still gives a test video the
   const length = lengthMs(file);
   expect(length, 'the clip is the 2 s asked').toBeGreaterThan(1700);
   expect(length, 'the clip is the 2 s asked').toBeLessThan(2300);
+  await app.close();
+});
+
+test('a page held up for seconds at a time still gets a whole test video, the length asked', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // As on a busy CI Mac (alpha.14's three gates, 3–5 Nov 2026, a clip's frames ending at 899 ms of 1104 five times in
+  // a row): the page does nothing else for 1.5 s at a time, again and again, while the clip is made.
+  await win.evaluate(() => {
+    const page = globalThis as { drashtiTestHeldUp?: boolean };
+    page.drashtiTestHeldUp = true;
+    const holdUp = () => {
+      if (!page.drashtiTestHeldUp) return;
+      const until = performance.now() + 1500;
+      while (performance.now() < until) {
+        // held up
+      }
+      window.setTimeout(holdUp, 100);
+    };
+    window.setTimeout(holdUp, 0);
+  });
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-test-media-'));
+  const file = await makeTestVideo(win, join(dir, 'Placeholder held up clip.webm'), {
+    seconds: 2,
+    tone: 440,
+  });
+  const length = lengthMs(file);
+  expect(length, 'the clip is the 2 s asked').toBeGreaterThan(1700);
+  expect(length, 'the clip is the 2 s asked').toBeLessThan(2300);
+  expect(Math.max(...webmVideoFrameTimes(readFileSync(file))), 'its pictures run to its end').toBeGreaterThan(
+    1900,
+  );
+  await win.evaluate(() => {
+    (globalThis as { drashtiTestHeldUp?: boolean }).drashtiTestHeldUp = false;
+  });
   await app.close();
 });
