@@ -135,3 +135,21 @@ export function captionsFor(
   if (!captions || captions.lines.length === 0) return null;
   return screen === 'hall' && !captions.audience ? null : captions;
 }
+
+/**
+ * The models an admin can choose (whisper.cpp's, MIT, downloaded once into Drashti's data folder: never in the app or
+ * its installers). Standard hears English well and Hindi passably, and keeps up on an ordinary computer; Most accurate
+ * hears Hindi far better but needs a fast computer (a Mac with Apple silicon). Neither is good enough for Gujarati yet
+ * (Session 55's trial), so captions are marked Trial.
+ */
+export const CAPTION_MODELS = Object.freeze({
+  small: Object.freeze({ name: 'Standard', bytes: 487_601_967 }),
+  turbo: Object.freeze({ name: 'Most accurate (needs a fast computer)', bytes: 574_041_195 }),
+});
+export type CaptionModelId = keyof typeof CAPTION_MODELS;
+export const CAPTION_MODEL_IDS = Object.keys(CAPTION_MODELS) as CaptionModelId[];
+
+/** The model a computer starts with: Most accurate on a Mac with Apple silicon, Standard everywhere else. */
+export function defaultModel(platform: string, arch: string): CaptionModelId {
+  return platform === 'darwin' && arch === 'arm64' ? 'turbo' : 'small';
+}
