@@ -41,6 +41,9 @@ export class Swipes {
 
   /** A finger (or a pen) touches: the first starts a gesture; a second spoils it (zooming). */
   down(p: SwipePoint): void {
+    // A new pointer gesture is a fresh tap, not the previous swipe's compatibility click.
+    // Keep suppressing the swipe's own click, even when its timestamp names the gesture's start.
+    if (this.down_.size === 0) this.swipedAt = -Infinity;
     if (p.pointerType !== 'touch' && p.pointerType !== 'pen') return;
     if (this.down_.size > 0) this.spoiled = true;
     this.down_.set(p.pointerId, { x: p.clientX, y: p.clientY, at: p.timeStamp });
