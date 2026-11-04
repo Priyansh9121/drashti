@@ -2,6 +2,19 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.15
+
+Update after a sabha, and update Main and nodes together. Live captions and the three offline AI helpers start off: try only what you want before using it in a sabha. The two speech helpers are still being built.
+
+- Shastra is now called Books wherever you see it. Existing libraries, books' files and scripts still work. Loading or removing a book updates passages in open playlists and on phones at once.
+- In Simple Mode, files and photos from a paired phone go to the end of its one playlist and never go live by themselves. A video or sound that cannot go into a Repeat Slides playlist goes to Added from Phones instead.
+- Edit supported words, shapes and pictures from PDFs and PowerPoint (.pptx) slides in Drashti's own copy. The original stays unchanged. Read the source notes and check fonts and appearance before saving. An animated slide asks before its original clicks become editable content; untouched slides keep their clicks.
+- PDF pages gain Highlight, Underline, Strike through, Draw and a visual Cover, page turning, deletion and reordering. Cover does not remove the words underneath. Insert another PDF from the library or a file as one Undo, keep different page sizes, and save a separate PDF copy. Save keeps library edits; exporting a PDF is separate.
+- Older slide pictures can be linked to an explicitly chosen matching PDF page; for PowerPoint or Keynote, choose a PDF reading copy. Added objects, notes and guides stay. Unsupported source changes are explained before approval.
+- Live captions are off and marked Trial. File > Live Captions chooses a model, downloaded once (488 or 574 MB), language, size and place. Captions hear the stream's chosen sound input and show on the stream and this computer's stage screens; the audience screens are optional, and phones and nodes never receive captions. English is good, Hindi fair; Gujarati is not good enough for the audience yet. Choose one language. A busy computer rests captions so the show comes first. Macs need macOS 13.3 or later.
+- File > AI helpers has three separate switches, all off at first, working offline on this computer. Meaning and spelling search adds real library matches for meaning, spelling and Gujarati in English letters. Import suggestions offer slide breaks and Roman letters for newly pasted words: choose each change, with Undo. Playlist suggestions use chosen past sabhas and the loaded calendar: review, edit and approve a new playlist. Books stay as loaded; suggestions never go live or start a stream or recording.
+- The admin and operator guides and setup-day checklist cover these steps, with space for the two speech helpers when they are ready.
+
 ## 1.0.0-alpha.14 (4 Nov 2026)
 
 A sabha runs differently now: screens set themselves, the playlist is where things go live, and Simple Mode is for one projector. Nothing is deleted from an older library. Set the mixer’s channel once with a typical file: sound now plays at one even level. Update after a sabha, and update nodes the same evening.
