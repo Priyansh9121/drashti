@@ -179,6 +179,8 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
   return {
     start(language, to) {
       let stopped = false;
+      // Read through a function: stop() changes it while a piece is awaited, which the type checker cannot see.
+      const ended = (): boolean => stopped;
       let child: ChildProcess | null = null;
       let closeSound: (() => void) | null = null;
       let port = 0;
@@ -202,7 +204,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         finals.length = 0;
         const was = child;
         child = null;
-        if (was && was.exitCode === null) was.kill();
+        if (was?.exitCode === null) was.kill();
       };
 
       /** Send one clip; null when the engine said nothing usable or the piece was dropped. */
@@ -271,14 +273,14 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         const clipEndAt = piece.endAt;
         try {
           let asked = await ask(samples, null);
-          if (!asked || stopped) return;
+          if (!asked || ended()) return;
           let heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
           const guess = language === 'auto' ? likeliest(asked.reply) : null;
           if (language === 'auto' && heardIn === null) {
             // Written in a fourth language: a whole phrase is heard again in the likeliest of the three.
             if (!final || !guess) return;
             asked = await ask(samples, guess.language);
-            if (!asked || stopped) return;
+            if (!asked || ended()) return;
             heardIn = guess.language;
           }
           const behind = Date.now() - clipEndAt;
@@ -305,7 +307,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           // Stopped (aborted), or the engine went away: its exit says so.
         } finally {
           working = false;
-          if (!stopped) setImmediate(() => void pump());
+          if (!ended()) setImmediate(() => void pump());
         }
       };
 
@@ -397,7 +399,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           o.log.warn('Speech: the captions engine could not be put below the show’s priority.');
         }
         const deadline = Date.now() + readyMs;
-        while (!stopped && child === started && Date.now() < deadline) {
+        while (!ended() && child === started && Date.now() < deadline) {
           try {
             const health = await get(`http://127.0.0.1:${String(port)}/health`, { signal: abort.signal });
             if (health.ok) {
@@ -410,7 +412,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           }
           await new Promise((wait) => setTimeout(wait, 250));
         }
-        if (!stopped && child === started) {
+        if (!ended() && child === started) {
           end();
           to.state({ phase: 'failed', message: 'The captions engine did not start in time.' });
         }
