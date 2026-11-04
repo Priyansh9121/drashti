@@ -49,7 +49,9 @@ globalThis.runTextMeasure=async(on,reporting)=>{
       response.end(readFileSync(bundle));
     } else {
       response.setHeader('Content-Type', 'text/html');
-      response.end('<!doctype html><title>Placeholder text measure</title><body><script>globalThis.fixtureErrors=[];addEventListener("error",e=>fixtureErrors.push(e.message));</script><script src="/probe.js"></script>');
+      response.end(
+        '<!doctype html><title>Placeholder text measure</title><body><script>globalThis.fixtureErrors=[];addEventListener("error",e=>fixtureErrors.push(e.message));</script><script src="/probe.js"></script>',
+      );
     }
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -62,14 +64,23 @@ globalThis.runTextMeasure=async(on,reporting)=>{
   try {
     const page = await app.firstWindow();
     await page.waitForLoadState('load');
-    expect(await page.evaluate(() => (globalThis as unknown as { fixtureErrors: string[] }).fixtureErrors)).toEqual([]);
-    await expect.poll(() => page.evaluate(() => typeof (globalThis as unknown as { runTextMeasure?: unknown }).runTextMeasure)).toBe('function');
+    expect(
+      await page.evaluate(() => (globalThis as unknown as { fixtureErrors: string[] }).fixtureErrors),
+    ).toEqual([]);
+    await expect
+      .poll(() =>
+        page.evaluate(() => typeof (globalThis as unknown as { runTextMeasure?: unknown }).runTextMeasure),
+      )
+      .toBe('function');
     const run = (on: boolean, reporting: boolean) =>
       page.evaluate(
         async ({ on, reporting }) =>
           (
             globalThis as unknown as {
-              runTextMeasure(on: boolean, reporting: boolean): Promise<{
+              runTextMeasure(
+                on: boolean,
+                reporting: boolean,
+              ): Promise<{
                 readsAtCommit: number;
                 reportsAtCommit: number;
                 over: boolean;
@@ -82,9 +93,13 @@ globalThis.runTextMeasure=async(on,reporting)=>{
     const plain = await run(false, false);
     expect(plain.readsAtCommit).toBe(0);
     expect(plain.over).toBe(true);
+    expect(plain.fit).toBeNull();
     const fit = await run(true, false);
     expect(fit.readsAtCommit).toBeGreaterThan(0);
+    expect(fit.fit).not.toBeNull();
+    expect(Number(fit.fit)).toBeGreaterThan(0);
     expect(Number(fit.fit)).toBeLessThan(1);
+    expect(fit.over).toBe(false);
     const editor = await run(false, true);
     expect(editor.readsAtCommit).toBeGreaterThan(0);
     expect(editor.reportsAtCommit).toBeGreaterThan(0);

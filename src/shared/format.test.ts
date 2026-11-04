@@ -16,7 +16,11 @@ it('does not rebuild the fallback clock text for every redraw in the same clock 
 });
 
 it('reuses an explicit clock style’s formatted value within the same tick', () => {
-  const format = vi.spyOn(Intl.DateTimeFormat.prototype, 'format', 'get');
+  const format = vi.spyOn(
+    Intl.DateTimeFormat.prototype as unknown as { readonly format: unknown },
+    'format',
+    'get',
+  );
   try {
     const at = Date.UTC(2127, 1, 3, 4, 5, 6);
     const style = { locale: 'en-NZ', timeZone: 'Pacific/Auckland' };
@@ -59,7 +63,7 @@ describe('formatting for people', () => {
     expect(formatClock(at, { locale: 'en-GB', timeZone: 'Placeholder/Nowhere' })).toBe(
       new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     );
-    // Without a style, this computer's own way (it follows the computer's zone, so it is never kept).
+    // Without a style, this computer's own way (refreshed on its next clock tick if the host's zone changes).
     expect(formatClock(at, null)).toBe(
       new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     );

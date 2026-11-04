@@ -421,15 +421,32 @@ export function useShrinkToFit(
   useLayoutEffect(() => {
     const b = box.current;
     const w = words.current;
-    if (!b || !w) return;
+    if (!b || !w) return undefined;
+    const reportOver = (fit: number) => {
+      const over = w.offsetHeight > b.clientHeight + 0.5;
+      if (over) b.setAttribute('data-overset', '');
+      else b.removeAttribute('data-overset');
+      report?.(el.id, { over, fit });
+    };
+    if (!on) {
+      if (b.style.getPropertyValue('--fit') !== '') b.style.removeProperty('--fit');
+      b.removeAttribute('data-fit');
+      if (report) reportOver(1);
+      else {
+        // Passive metadata must not force layout in every show commit. A replaced slide cancels its old read.
+        const frame = requestAnimationFrame(() => {
+          if (box.current === b && words.current === w && b.isConnected) reportOver(1);
+        });
+        return () => cancelAnimationFrame(frame);
+      }
+      return undefined;
+    }
     const fits = (fit: number) => {
       b.style.setProperty('--fit', String(fit));
       return w.offsetHeight <= b.clientHeight + 0.5;
     };
     let lo = 1;
-    if (!on) {
-      b.style.removeProperty('--fit');
-    } else if (!fits(1)) {
+    if (!fits(1)) {
       lo = MIN_FIT;
       let hi = 1;
       for (let i = 0; i < 12; i++) {
@@ -443,10 +460,8 @@ export function useShrinkToFit(
     if (lo < 1) b.setAttribute('data-fit', lo.toFixed(3));
     else b.removeAttribute('data-fit');
     // The words still past the box, at that fit.
-    const over = w.offsetHeight > b.clientHeight + 0.5;
-    if (over) b.setAttribute('data-overset', '');
-    else b.removeAttribute('data-overset');
-    report?.(el.id, { over, fit: lo });
+    reportOver(lo);
+    return undefined;
   }, [box, words, el, on, fontsLoaded, again, report]);
 }
 
