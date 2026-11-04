@@ -1,6 +1,8 @@
+import { slideCanvas } from '../../../shared/document-page';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { EditDoc } from '../../../shared/slide-edit';
-import { slidesOf } from '../../../shared/slide-edit';
+import type { TextElement } from '../../../shared/model';
+import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { renderEditedSlide } from '../../../shared/slide-design';
 import { SHOW_F_KEYS } from '../../../shared/keymap';
 import { isTyping } from '../operator/useKeymap';
@@ -10,24 +12,38 @@ import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { ConfirmDialog, useFocusTrap } from '../ui/Dialog';
+import { ConfirmDialog, Dialog, useFocusTrap } from '../ui/Dialog';
 import { KeepChangesDialog, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
 import { plural } from '../ui/text';
 import { useEngine } from '../engine/engine-store';
 import type { TabItem } from '../ui/Tabs';
 import { TabPanel, Tabs } from '../ui/Tabs';
-import { ArrowLeftRight, LayoutTemplate, ListPlus, Palette, Redo2, Sparkles, Type, Undo2 } from '../ui/icons';
+import {
+  ArrowLeftRight,
+  Download,
+  LayoutTemplate,
+  ListPlus,
+  Palette,
+  Redo2,
+  Sparkles,
+  Type,
+  Undo2,
+} from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { Canvas } from './Canvas';
 import type { EditorGroup } from './editor-store';
 import {
+  acceptSourceConversion,
+  allowSourceContent,
+  cancelSourceConversion,
   closeSlideEditor,
   commit,
   isDirty,
   keepEditing,
   requestClose,
+  revokeSourceContent,
   saveSlides,
   select,
   showSlide,
@@ -37,11 +53,32 @@ import {
 import { FindPanel } from './FindPanel';
 import { Inspector } from './Inspector';
 import { MediaPicker, naturalSize } from './MediaPicker';
-import { addElement, changeSlide, findSlide, newMedia, placeOf, placeSlide, setSoundCue } from './ops';
+import {
+  addElement,
+  addSlideAfter,
+  changeSlide,
+  findSlide,
+  mapElements,
+  newMedia,
+  placeOf,
+  placeSlide,
+  setSoundCue,
+  styleBox,
+} from './ops';
 import { ArrangeGroup, DesignGroup, InsertGroup, MotionGroup, SlidesGroup } from './Ribbon';
-import { finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
+import { activeText, finishTextEditing, redoAny, undoAny } from './TextBoxEditor';
 import { WordsGroup } from './WordsGroup';
 import { zoomIn, zoomOut } from './zoom';
+import { SOURCE_CONVERSION_WARNING } from './source-conversion';
+import { PdfTools } from './PdfTools';
+import { PdfInsertDialog } from './PdfInsertDialog';
+import type { PdfPendingAction } from './PdfTools';
+import { SourceLinkDialog } from './SourceLinkDialog';
+import { SourceIssues } from './SourceIssues';
+import { isPdfPage, pdfEditorTabs, visibleEditorGroup } from './pdf-context';
+import { deletePdfPage, turnPdfPageRight } from './pdf-page-ops';
+import { restyle, selectedLook } from './runs-doc';
+import type { PdfCanvasTool } from './pdf-marks';
 
 /*
  * The slide editor (PLAN.md 5.2, Session 7), since Session 55 (Part 17a) in a window of its own, as a presentation
@@ -74,12 +111,16 @@ const renderSlide = renderEditedSlide;
 function Editor({ platform, name }: { platform: string; name: string }) {
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const sourceWarningId = useId();
   const loading = useEditor((s) => s.loading);
   const doc = useEditor((s) => s.doc);
   const slideId = useEditor((s) => s.slideId);
   const problem = useEditor((s) => s.problem);
   const saving = useEditor((s) => s.saving);
   const askDiscard = useEditor((s) => s.askDiscard);
+  const sourceConversion = useEditor((s) => s.sourceConversion);
+  const pdfTool = useEditor((s) => s.pdfTool);
+  const pdfDrawing = useEditor((s) => s.pdfDrawing);
   const steps = useEditor((s) => s.past.length);
   const group = useEditor((s) => s.group);
   const strip = useEditor((s) => s.strip);
@@ -95,9 +136,18 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const canRedo = useEditor((s) => s.future.length > 0 || (s.editing !== null && s.typing.redo > 0));
   const dirty = useEditor(isDirty);
   const unreadable = useEditor((s) => s.unreadable);
+  const sourceIssues = useEditor((s) => s.sourceIssues);
+  const selection = useEditor((s) => s.selection);
+  const editing = useEditor((s) => s.editing);
+  useEditor((s) => s.textTick);
   const note = useEditor((s) => s.note);
   const [picking, setPicking] = useState<'picture' | 'sound' | null>(null);
   const [pickingBusy, setPickingBusy] = useState(false);
+  const [pdfPending, setPdfPending] = useState<PdfPendingAction>(null);
+  const [inserting, setInserting] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
+  const [linking, setLinking] = useState<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
+  const insertBase = useRef<{ doc: EditDoc; slideId: string; stamp: string } | null>(null);
+  const pdfJob = useRef(false);
   const pendingPick = useRef<{ id: number; busy: boolean; save: boolean | null }>({
     id: 0,
     busy: false,
@@ -116,19 +166,164 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     setPicking(null);
   }, []);
   const saveWhenReady = useCallback((force = false) => {
+    if (pdfJob.current || useEditor.getState().sourceConversion || useEditor.getState().pdfDrawing) return;
     finishTextEditing();
     if (pendingPick.current.busy) pendingPick.current.save = force;
     else void saveSlides(force);
   }, []);
   const mac = platform === 'darwin';
   const mod = mac ? '⌘' : 'Ctrl+';
+  const pdfPage = isPdfPage(doc, slideId);
+  const shownGroup = visibleEditorGroup(group, pdfPage);
+  const pdfRowVisible = pdfPage && shownGroup === 'pdf';
+  const exportBusy =
+    loading ||
+    saving ||
+    picking !== null ||
+    pickingBusy ||
+    pdfDrawing ||
+    sourceConversion !== null ||
+    pdfPending !== null;
+  const shownPage = doc ? findSlide(doc, slideId) : undefined;
+  const pdfBoxes =
+    shownPage?.elements.filter(
+      (element): element is TextElement =>
+        element.kind === 'text' && selection.includes(element.id) && legacyFontOf(element) === null,
+    ) ?? [];
+  const pdfActive = editing && pdfBoxes.some((box) => box.id === editing) ? activeText() : null;
+  const wordLook = pdfActive ? selectedLook(pdfActive.view.state) : {};
+  const allMarked = (which: 'underline' | 'strike') =>
+    pdfBoxes.length > 0 &&
+    pdfBoxes.every((box) => (box.runs?.length ?? 0) > 0 && box.runs?.every((run) => run[which] === true));
+  const underlined = wordLook.underline ?? allMarked('underline');
+  const struckThrough = wordLook.strike ?? allMarked('strike');
+  const choosePdfTool = (tool: PdfCanvasTool) => {
+    const now = useEditor.getState();
+    if (now.sourceConversion || now.pdfDrawing) return;
+    if (now.editing) finishTextEditing();
+    select([]);
+    useEditor.setState({ pdfTool: now.pdfTool === tool ? null : tool, previewAt: null });
+  };
+  const applyPdfMark = (which: 'underline' | 'strike') => {
+    if (pdfBoxes.length === 0) {
+      choosePdfTool(which);
+      return;
+    }
+    const state = useEditor.getState();
+    const active = activeText();
+    const value = which === 'underline' ? !underlined : !struckThrough;
+    if (state.editing === active?.elementId && !active.view.state.selection.empty) {
+      active.view.dispatch(restyle(active.view.state, { [which]: value }));
+      return;
+    }
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId) return;
+    commit(
+      mapElements(now.doc, now.slideId, now.selection, (element) =>
+        element.kind === 'text' && legacyFontOf(element) === null
+          ? styleBox(element, { [which]: value })
+          : element,
+      ),
+    );
+  };
+  const rotatePdfPage = () => {
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (now.doc && now.slideId) commit(turnPdfPageRight(now.doc, now.slideId));
+  };
+  const deleteCurrentPdfPage = () => {
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId) return;
+    const removed = deletePdfPage(now.doc, now.slideId);
+    if (!removed) return;
+    commit(removed.doc, { select: [] });
+    showSlide(removed.show);
+  };
+  const closeInsertion = () => {
+    if (insertBase.current) revokeSourceContent(insertBase.current.slideId);
+    insertBase.current = null;
+    setLinking(null);
+    pdfJob.current = false;
+    setInserting(null);
+    setPdfPending(null);
+  };
+  const openInsertion = () => {
+    if (pdfJob.current || exportBusy) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId || now.sourceConversion) return;
+    insertBase.current = { doc: now.doc, slideId: now.slideId, stamp: now.stamp };
+    pdfJob.current = true;
+    useEditor.setState({ pdfTool: null });
+    setPdfPending('insert-pages');
+    setInserting(insertBase.current);
+  };
+  const openSourceLink = () => {
+    if (pdfJob.current || exportBusy) return;
+    finishTextEditing();
+    const now = useEditor.getState();
+    if (!now.doc || !now.slideId || now.sourceConversion) return;
+    const begin = () => {
+      const current = useEditor.getState();
+      if (!current.doc || !current.slideId || current.doc !== now.doc) return;
+      insertBase.current = { doc: current.doc, slideId: current.slideId, stamp: current.stamp };
+      pdfJob.current = true;
+      useEditor.setState({ pdfTool: null });
+      setPdfPending('insert-pages');
+      setLinking(insertBase.current);
+    };
+    if (allowSourceContent(now.slideId, begin)) begin();
+  };
+  const savePdfCopy = async () => {
+    const before = useEditor.getState();
+    if (
+      pdfJob.current ||
+      pendingPick.current.busy ||
+      picking !== null ||
+      pickingBusy ||
+      before.loading ||
+      before.saving ||
+      before.pdfDrawing ||
+      before.sourceConversion ||
+      before.askDiscard ||
+      before.conflict ||
+      !before.doc ||
+      !before.open
+    )
+      return;
+    finishTextEditing();
+    const current = useEditor.getState();
+    if (!current.doc || !current.open || current.sourceConversion || current.pdfDrawing) return;
+    const snapshot = { id: current.open.presentationId, doc: current.doc, stamp: current.stamp };
+    pdfJob.current = true;
+    setPdfPending('save-copy');
+    useEditor.setState({ pdfTool: null });
+    tell(null);
+    try {
+      const result = await window.drashti.library.exportPdf(snapshot.id, snapshot.doc, snapshot.stamp);
+      if (!alive.current || useEditor.getState().open?.presentationId !== snapshot.id) return;
+      if (result.ok) tell(`Saved PDF copy “${result.name}”.`);
+      else if (!result.cancelled) tell(result.message);
+    } catch {
+      if (alive.current && useEditor.getState().open?.presentationId === snapshot.id)
+        tell('The PDF copy could not be written.');
+    } finally {
+      pdfJob.current = false;
+      if (alive.current) setPdfPending(null);
+    }
+  };
 
   // Esc steps back: close find, stop typing, then let go of the selection, then close (asking first).
   useFocusTrap(root, () => {
     const s = useEditor.getState();
-    if (s.askDiscard || s.conflict) return;
+    if (pdfJob.current || s.askDiscard || s.conflict || s.sourceConversion) return;
     if (s.finding) useEditor.setState({ finding: false });
-    else if (s.editing) finishTextEditing();
+    else if (s.pdfTool) {
+      if (s.slideId) revokeSourceContent(s.slideId);
+      useEditor.setState({ pdfTool: null, pdfDrawing: false });
+    } else if (s.editing) finishTextEditing();
     else if (s.selection.length > 0) select([]);
     else requestClose();
   });
@@ -141,6 +336,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   // The window's keys: Save, Undo and Redo, Find, and zoom; typing in a field or a text box keeps its own keys.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (useEditor.getState().sourceConversion) return;
       // The show's F-keys (Clear all, Oops, the Wallpaper...): the operator window acts on them (Session 55, 17a).
       if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.repeat && SHOW_F_KEYS.includes(e.key)) {
         e.preventDefault();
@@ -150,6 +346,10 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
       const key = e.key.toLowerCase();
+      if (insertBase.current) {
+        e.preventDefault();
+        return;
+      }
       if (key === 's' || e.key === 'Enter') {
         e.preventDefault();
         saveWhenReady();
@@ -208,11 +408,15 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         <Tabs
           group="editor"
           label="The editor’s groups"
-          items={GROUPS}
-          value={group}
+          items={pdfEditorTabs(GROUPS, pdfPage)}
+          value={shownGroup}
           size="sm"
           onChange={(next) => {
-            useEditor.setState({ group: next });
+            const now = useEditor.getState();
+            if (next !== 'pdf') {
+              if (now.pdfTool && now.slideId) revokeSourceContent(now.slideId);
+              useEditor.setState({ group: next, pdfTool: null, pdfDrawing: false });
+            } else useEditor.setState({ group: next });
           }}
         />
         <span className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
@@ -225,8 +429,23 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           onClick={redoAny}
         />
         <span className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
+        {!pdfRowVisible && (
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Download}
+            data-testid="pdf-save-copy"
+            disabled={!doc || exportBusy}
+            onClick={() => {
+              void savePdfCopy();
+            }}
+          >
+            Save a PDF copy…
+          </Button>
+        )}
         <Button
           size="sm"
+          disabled={pdfPending !== null}
           onClick={() => {
             // Words still being typed count as a change: keep them first, so closing asks.
             finishTextEditing();
@@ -239,7 +458,15 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           variant="primary"
           size="sm"
           kbd={`${mod}S`}
-          disabled={saving || loading || !doc || pickingBusy}
+          disabled={
+            saving ||
+            loading ||
+            !doc ||
+            pickingBusy ||
+            pdfDrawing ||
+            pdfPending !== null ||
+            sourceConversion !== null
+          }
           data-testid="save-slides"
           onClick={() => {
             saveWhenReady();
@@ -248,13 +475,22 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           {dirty ? 'Save' : 'Done'}
         </Button>
       </header>
+      {pdfPending === 'save-copy' && !pdfRowVisible && (
+        <p
+          className="border-b border-line px-3 py-1 text-xs text-muted"
+          role="status"
+          data-testid="pdf-pages-pending"
+        >
+          Writing the PDF copy…
+        </p>
+      )}
       <TabPanel
         group="editor"
-        id={group}
+        id={shownGroup}
         className="flex shrink-0 items-center overflow-x-auto border-b border-line bg-panel-2 px-3 py-1"
       >
-        <div data-testid="editor-ribbon" data-group={group} className="flex min-w-0 items-start">
-          {group === 'words' && (
+        <div data-testid="editor-ribbon" data-group={shownGroup} className="flex min-w-0 items-start">
+          {shownGroup === 'words' && (
             <WordsGroup
               findKbd={`${mod}F`}
               onFind={() => {
@@ -262,7 +498,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               }}
             />
           )}
-          {group === 'insert' && (
+          {shownGroup === 'insert' && (
             <InsertGroup
               onPicture={() => {
                 setPicking('picture');
@@ -270,10 +506,45 @@ function Editor({ platform, name }: { platform: string; name: string }) {
               onSound={() => setPicking('sound')}
             />
           )}
-          {group === 'arrange' && <ArrangeGroup />}
-          {group === 'design' && <DesignGroup key={slideId} />}
-          {group === 'motion' && <MotionGroup key={slideId} />}
-          {group === 'slides' && <SlidesGroup />}
+          {shownGroup === 'arrange' && <ArrangeGroup />}
+          {shownGroup === 'design' && <DesignGroup key={slideId} />}
+          {shownGroup === 'motion' && <MotionGroup key={slideId} />}
+          {shownGroup === 'slides' && <SlidesGroup />}
+          {pdfRowVisible && (
+            <PdfTools
+              available={{
+                highlight: true,
+                underline: true,
+                strike: true,
+                draw: true,
+                cover: true,
+                rotateRight:
+                  !!shownPage?.pageSize ||
+                  (shownPage?.documentPage?.width !== undefined &&
+                    shownPage.documentPage.height !== undefined &&
+                    !shownPage.documentPage.rotation),
+                deletePage: !!doc && slidesOf(doc).length > 1,
+                insertPages: !!doc,
+                saveCopy: !!doc,
+              }}
+              activeTool={pdfTool}
+              underlined={underlined}
+              struckThrough={struckThrough}
+              pending={pdfPending}
+              blocked={loading || saving || pickingBusy || pdfDrawing || sourceConversion !== null}
+              onHighlight={() => choosePdfTool('highlight')}
+              onUnderline={() => applyPdfMark('underline')}
+              onStrikeThrough={() => applyPdfMark('strike')}
+              onDraw={() => choosePdfTool('draw')}
+              onCover={() => choosePdfTool('cover')}
+              onRotateRight={rotatePdfPage}
+              onDeletePage={deleteCurrentPdfPage}
+              onInsertPages={openInsertion}
+              onSaveCopy={() => {
+                void savePdfCopy();
+              }}
+            />
+          )}
         </div>
       </TabPanel>
       {doc?.master?.id === slideId && (
@@ -324,6 +595,19 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           is kept as it is, but not shown here.
         </Notice>
       )}
+      <SourceIssues
+        issues={sourceIssues}
+        blocked={exportBusy}
+        onLink={
+          shownPage &&
+          (!shownPage.documentPage ||
+            shownPage.documentPage.ext === 'ppt' ||
+            shownPage.documentPage.ext === 'key') &&
+          shownPage.elements.some((element) => element.kind === 'image')
+            ? openSourceLink
+            : undefined
+        }
+      />
       {loading || !doc ? (
         <Loading label="Opening the slides…" className="flex-1" />
       ) : (
@@ -376,12 +660,55 @@ function Editor({ platform, name }: { platform: string; name: string }) {
                 cancelPicking();
                 return;
               }
-              const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, s.doc);
+              const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, slideCanvas(current, s.doc));
               commit(addElement(s.doc, current.id, el), current.id === s.slideId ? { select: [el.id] } : {});
               const queuedSave = pendingPick.current.save;
               cancelPicking();
               if (queuedSave !== null) void saveSlides(queuedSave);
             });
+          }}
+        />
+      )}
+      {linking && (
+        <SourceLinkDialog
+          doc={linking.doc}
+          slideId={linking.slideId}
+          stamp={linking.stamp}
+          onClose={closeInsertion}
+          onLinked={(page, issues) => {
+            const base = insertBase.current;
+            const now = useEditor.getState();
+            if (base?.doc !== now.doc || now.stamp !== base.stamp) {
+              tell('The slides changed while the reading copy was prepared. Choose Link source page again.');
+              return;
+            }
+            commit(changeSlide(base.doc, page.id, page), { select: [] });
+            useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
+          }}
+        />
+      )}
+      {inserting && (
+        <PdfInsertDialog
+          presentationId={inserting.doc.presentationId}
+          stamp={inserting.stamp}
+          onClose={closeInsertion}
+          onInserted={(pages, issues) => {
+            const base = insertBase.current;
+            const now = useEditor.getState();
+            if (base?.doc !== now.doc || now.stamp !== base.stamp) {
+              tell('The slides changed while the pages were prepared. Choose Insert pages again.');
+              return;
+            }
+            let next = base.doc,
+              after = base.slideId;
+            for (const page of pages) {
+              next = addSlideAfter(next, after, page);
+              after = page.id;
+            }
+            commit(next, { select: [] });
+            const first = pages[0];
+            if (first) showSlide(first.id);
+            useEditor.setState({ sourceIssues: [...new Set([...now.sourceIssues, ...issues])] });
           }}
         />
       )}
@@ -399,6 +726,42 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
           onThrowAway={closeSlideEditor}
         />
+      )}
+      {sourceConversion && (
+        <Dialog
+          title={
+            sourceConversion.slideIds.length === 1
+              ? SOURCE_CONVERSION_WARNING.title
+              : 'Edit these animated slides'
+          }
+          onClose={cancelSourceConversion}
+          closeButton={false}
+          size="sm"
+          describedBy={sourceWarningId}
+          testId="source-conversion"
+          footer={
+            <>
+              <Button data-autofocus onClick={cancelSourceConversion}>
+                {SOURCE_CONVERSION_WARNING.cancel}
+              </Button>
+              <Button variant="primary" onClick={acceptSourceConversion}>
+                {sourceConversion.slideIds.length === 1
+                  ? SOURCE_CONVERSION_WARNING.accept
+                  : 'Make these slides editable'}
+              </Button>
+            </>
+          }
+        >
+          <div id={sourceWarningId} className="space-y-2 text-sm text-muted">
+            <p>
+              {sourceConversion.slideIds.length === 1
+                ? 'Only this slide becomes Drashti’s own.'
+                : `These ${sourceConversion.slideIds.length} slides become Drashti’s own.`}{' '}
+              Their original animations and clicks are replaced by editable content.
+            </p>
+            <p>The original file is never changed. Other slides keep their original playback.</p>
+          </div>
+        </Dialog>
       )}
       {conflict && (
         <ConfirmDialog
@@ -565,7 +928,12 @@ function SlideList({
                         className="pointer-events-none relative block aspect-video w-full"
                         data-a11y-picture
                       >
-                        <PlacedInParent content={doc} mode="fit" className="absolute inset-0">
+                        <PlacedInParent
+                          fractional
+                          content={slideCanvas(s, doc)}
+                          mode="fit"
+                          className="absolute inset-0"
+                        >
                           <OversetWatch
                             onChange={(over) => {
                               setOverset((was) => {

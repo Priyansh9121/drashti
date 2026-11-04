@@ -147,6 +147,8 @@ mac:
   # its framework's symbolic links kept), and Deno: LICENSES/yt-dlp/ and LICENSES/deno/. Signed with the
   # rest of the app.
   extraResources:
+    - from: vendor/ai/darwin-${arch}
+      to: ai
     - from: vendor/ffmpeg/darwin-${arch}
       to: ffmpeg
       filter: [ffmpeg]
@@ -201,6 +203,8 @@ win:
   # every DLL are signed then.
   signExts: ['.node', '.dll']
   extraResources:
+    - from: vendor/ai/win32-${arch}
+      to: ai
     - from: vendor/ffmpeg/win32-${arch}
       to: ffmpeg
       filter: [ffmpeg.exe]

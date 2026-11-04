@@ -22,6 +22,7 @@ const ENTRIES: Record<BridgePage, string> = {
   stream: 'program/main.tsx',
   node: 'node/main.tsx',
   pdf: 'pictures/main.ts',
+  'pdf-export': 'pdf-export/main.tsx',
   sharpen: 'sharpen/main.ts',
   gallery: 'gallery/main.tsx',
   zoom: 'zoom/main.tsx',

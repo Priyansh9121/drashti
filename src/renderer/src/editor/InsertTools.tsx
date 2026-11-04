@@ -1,3 +1,4 @@
+import { slideCanvas } from '../../../shared/document-page';
 import { useState } from 'react';
 import type { MediaElement, Rect } from '../../../shared/model';
 import { Button } from '../ui/Button';
@@ -140,7 +141,7 @@ function TableDialog({ onClose }: { onClose: () => void }) {
     const s = useEditor.getState();
     const look = currentLook();
     if (!s.doc || !look || !s.slideId || !valid) return;
-    const cells = tableElements(rows, columns, look, s.doc);
+    const cells = tableElements(rows, columns, look, slideCanvas(findSlide(s.doc, s.slideId), s.doc));
     let doc = s.doc;
     for (const cell of cells) doc = addElement(doc, s.slideId, cell);
     commit(doc, { select: cells.map((el) => el.id) });

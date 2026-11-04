@@ -13,6 +13,7 @@ import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
 import type { DeckSlide } from './deck';
 import { deckSlideSchema } from './deck-schema';
 import { editorGuidesSchema, type EditorGuides } from './editor-guides';
+import { documentPageSchema, pageSizeSchema, type DocumentPageRef, type PageSize } from './document-page';
 
 /*
  * The slide editor's document (PLAN.md 5.2, Session 7): a presentation's
@@ -63,6 +64,10 @@ export function cueInputName(cue: { kind: string; mediaId: string | null; props:
 }
 
 export interface EditSlide {
+  documentPage?: DocumentPageRef;
+  pageSize?: PageSize;
+  /** Main's opened occurrence, retained by an editor copy; never stored or sent to a player. */
+  sourceOccurrenceId?: string;
   id: string;
   label: string;
   notes: string;
@@ -137,6 +142,8 @@ export type EditSlidesResult =
       look: SlideLook;
       /** Elements that could not be read: kept as they are, but not shown here. */
       unreadable: number;
+      /** Limits of a source document's editable derivative, shown before its objects are changed. */
+      sourceIssues?: string[];
     }
   | { ok: false; message: string };
 
@@ -225,6 +232,9 @@ const cueSchema: z.ZodType<EditCue> = z
   }, 'a video input as the background needs its name, and no file');
 
 const slideSchema: z.ZodType<EditSlide> = z.object({
+  documentPage: documentPageSchema.optional(),
+  pageSize: pageSizeSchema.optional(),
+  sourceOccurrenceId: idSchema.optional(),
   guides: editorGuidesSchema.optional(),
   design: slideDesignSchema.optional(),
   id: idSchema,
@@ -315,3 +325,16 @@ export function legacyFontOf(el: SlideElement): string | null {
   const run = el.runs?.find((r) => r.legacy);
   return run ? (run.font ?? 'a legacy font') : null;
 }
+
+/** An imported PDF available as an insertion source; no filesystem path crosses IPC. */
+export interface PdfPageSource {
+  id: string;
+  name: string;
+  pages: number;
+}
+export type InsertPdfPagesResult =
+  { ok: true; pages: EditSlide[]; issues: string[] } | { ok: false; message: string; cancelled?: true };
+
+/** Explicitly replacing a saved source picture never writes the source or saves the presentation. */
+export type LinkPdfPageResult =
+  { ok: true; page: EditSlide; issues: string[] } | { ok: false; message: string };

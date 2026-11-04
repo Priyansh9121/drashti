@@ -35,6 +35,23 @@ ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' |
 });
 
 const bridge: DrashtiBridge = {
+  ai: {
+    get: () => invoke(IPC.ai.get),
+    set: (settings) => invoke(IPC.ai.set, settings),
+    past: () => invoke(IPC.ai.past),
+    search: (request) => invoke(IPC.ai.search, request),
+    lyrics: (request) => invoke(IPC.ai.lyrics, request),
+    approveLyrics: (request) => invoke(IPC.ai.approveLyrics, request),
+    playlist: (request) => invoke(IPC.ai.playlist, request),
+    approvePlaylist: (request) => invoke(IPC.ai.approvePlaylist, request),
+    cancel: () => invoke(IPC.ai.cancel),
+    onOpen: (listener) =>
+      on(IPC.ai.open, () => {
+        listener();
+      }),
+    onChanged: (listener) => on(IPC.ai.changed, listener),
+    onProgress: (listener) => on(IPC.ai.progress, listener),
+  },
   app: {
     getInfo: () => invoke(IPC.app.getInfo),
     renderError: (report) => invoke(IPC.app.renderError, report),
@@ -226,6 +243,15 @@ const bridge: DrashtiBridge = {
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
     slidesForEdit: (presentationId) => invoke(IPC.library.slidesForEdit, presentationId),
+    linkPdfPage: (presentationId, doc, stamp, slideId, pictureId, preparedId) =>
+      invoke(IPC.library.linkPdfPage, presentationId, doc, stamp, slideId, pictureId, preparedId),
+    pdfPageSources: () => invoke(IPC.library.pdfPageSources),
+    insertPdfPages: (presentationId, stamp, sourceId) =>
+      invoke(IPC.library.insertPdfPages, presentationId, stamp, sourceId),
+    insertPdfFile: (presentationId, stamp) => invoke(IPC.library.insertPdfFile, presentationId, stamp),
+    cancelPdfInsertion: (presentationId, stamp) =>
+      invoke(IPC.library.cancelPdfInsertion, presentationId, stamp),
+    exportPdf: (presentationId, doc, stamp) => invoke(IPC.library.exportPdf, presentationId, doc, stamp),
     saveSlides: (presentationId, doc, stamp, force = false) =>
       invoke(IPC.library.saveSlides, presentationId, doc, stamp, force),
     getDefaultTransition: () => invoke(IPC.library.getDefaultTransition),
@@ -658,6 +684,14 @@ const bridge: DrashtiBridge = {
         listener(which);
       }),
     switchAnswer: (yes) => invoke(IPC.output.switchAnswer, yes),
+  },
+  pdfExport: {
+    capture: (id, index) => invoke(IPC.pdfExport.capture, id, index),
+    job: () => invoke(IPC.pdfExport.job),
+    print: (id, index) => invoke(IPC.pdfExport.print, id, index),
+    normalized: (id, index, pages) => invoke(IPC.pdfExport.normalized, id, index, pages),
+    done: (done) => invoke(IPC.pdfExport.done, done),
+    asset: (kind, name) => invoke(IPC.pdfExport.asset, kind, name),
   },
   pictures: {
     job: () => invoke(IPC.pictures.job),

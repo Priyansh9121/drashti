@@ -1,3 +1,4 @@
+import { slideCanvas } from '../../../shared/document-page';
 import type { Rect, SlideElement, TextElement } from '../../../shared/model';
 import type { EditDoc, SlideLook } from '../../../shared/slide-edit';
 import {
@@ -65,7 +66,7 @@ export function lineUpElements(
         alignMoves(
           units.map((unit) => unit.frame),
           how,
-          doc,
+          slideCanvas(findSlide(doc, slideId), doc),
         ),
       )
     : doc;

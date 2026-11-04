@@ -53,7 +53,12 @@ import { up as evenLoudness } from './migrations/051-even-loudness';
 import { up as ownOrder } from './migrations/055-own-order';
 import { up as editorGuides } from './migrations/056-editor-guides';
 import { up as editorDesign } from './migrations/057-editor-design';
+import { up as documentOriginals } from './migrations/062-document-originals';
+import { up as documentPages } from './migrations/063-document-pages';
+import { up as pageSize } from './migrations/064-page-size';
+import { up as originalLocations } from './migrations/065-original-locations';
 import { up as captions } from './migrations/066-captions';
+import { up as aiSabhas } from './migrations/068-ai-sabhas';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -127,9 +132,13 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 55, name: 'a playlist’s own order of a presentation’s slides', up: ownOrder },
   { version: 56, name: 'the slide editor’s guides', up: editorGuides },
   { version: 57, name: 'the slide editor’s master and design', up: editorDesign },
-  // 062–065 are Part 17b's (alpha.15); 066 and 067 Part 10's (067 unused). The runner takes every version above the
-  // library's, in order, so a gap is fine (alpha.14 shipped 051 then 055).
+  { version: 62, name: 'immutable document originals', up: documentOriginals },
+  { version: 63, name: 'document page identity and geometry', up: documentPages },
+  { version: 64, name: 'independent native page size', up: pageSize },
+  { version: 65, name: 'original document source locations', up: originalLocations },
   { version: 66, name: 'live captions', up: captions },
+  // 067 is unused; preserve each part’s allocated migration numbers.
+  { version: 68, name: 'approved AI sabha suggestions', up: aiSabhas },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

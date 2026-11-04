@@ -15,6 +15,7 @@ export type BridgePage =
   | 'stream'
   | 'node'
   | 'pdf'
+  | 'pdf-export'
   | 'sharpen'
   | 'gallery'
   | 'zoom'
@@ -28,6 +29,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   index: [
     // The stop and the countdown (Session 54), over either mode.
     'access',
+    'ai',
     'announcements',
     'app',
     'appearance',
@@ -87,6 +89,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   node: ['app', 'guides', 'node'],
   // A deck's PDF made into pictures.
   pdf: ['pictures'],
+  'pdf-export': ['engine', 'media', 'output', 'pdfExport'],
   // Pictures' sharpened copies.
   sharpen: ['sharpen'],
   // The component gallery (Diagnostics).

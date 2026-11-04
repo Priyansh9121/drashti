@@ -67,7 +67,9 @@ import type { CaptionsShown } from '../captions';
  * the recovery file. An older page would leave them out, so it says 'incompatible'. A state 25, 24 or 23 saved is read
  * whole (26 only adds to them).
  */
-export const ENGINE_STATE_VERSION = 26;
+// 25 (Part 17b): native normalized vector paths travel with slides to every player.
+// 26 adds private live captions; 27 reserves the offline helpers’ version. Each additive predecessor reads whole.
+export const ENGINE_STATE_VERSION = 27;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -79,8 +81,7 @@ export const ENGINE_STATE_VERSION = 26;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
-    // 26 only adds to 25, 24 and 23 (Session 55, Part 10's live captions; 24 and 25 are other alpha.15 parts', each
-    // only adding).
+    version === 26 ||
     version === 25 ||
     version === 24 ||
     version === 23 ||

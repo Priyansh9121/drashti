@@ -234,6 +234,7 @@ export const SHAPE_KINDS = [
   'star',
   'heart',
   'check',
+  'path',
 ] as const;
 export type ShapeKind = (typeof SHAPE_KINDS)[number];
 export const SHAPE_NAMES: Record<ShapeKind, string> = {
@@ -246,12 +247,28 @@ export const SHAPE_NAMES: Record<ShapeKind, string> = {
   star: 'Star',
   heart: 'Heart',
   check: 'Check mark',
+  path: 'Drawing',
 };
+
+/** Native vectors in shares of their frame, retained on every player. */
+export type NativePathCommand =
+  | { op: 'M' | 'L'; x: number; y: number }
+  | { op: 'C'; x1: number; y1: number; x2: number; y2: number; x: number; y: number }
+  | { op: 'Q'; x1: number; y1: number; x: number; y: number }
+  | { op: 'Z' };
+export interface NativePath {
+  commands: NativePathCommand[];
+  fillRule: 'nonzero' | 'evenodd';
+  lineCap: 'butt' | 'round' | 'square';
+  lineJoin: 'miter' | 'round' | 'bevel';
+}
 
 export interface ShapeElement extends ElementBase {
   kind: 'shape';
   /** Left out: a rectangle (every shape before Session 7 was one). */
   shape?: ShapeKind;
+  /** Required for a Drawing; its frame, turn and flips transform every point. */
+  path?: NativePath;
   /** "#rrggbb" or "#rrggbbaa"; null for none (an outline only, or a line). */
   fill: string | null;
   /** Rectangles only: how round the corners are, in slide pixels. */

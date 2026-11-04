@@ -3,6 +3,7 @@ import type {
   Darken,
   ElementMotion,
   Glow,
+  NativePath,
   Outline,
   Shadow,
   SlideDesign,
@@ -52,6 +53,34 @@ const textShadowSchema = z.union([z.boolean(), shadowSchema]);
 export const outlineSchema: z.ZodType<Outline> = z.object({
   color: hexColorSchema,
   width: num.min(0).max(500),
+});
+
+const pathCoordinate = num.min(0).max(1);
+const pathPoint = { x: pathCoordinate, y: pathCoordinate };
+export const nativePathSchema: z.ZodType<NativePath> = z.object({
+  commands: z
+    .array(
+      z.discriminatedUnion('op', [
+        z.object({ op: z.literal('M'), ...pathPoint }),
+        z.object({ op: z.literal('L'), ...pathPoint }),
+        z.object({
+          op: z.literal('C'),
+          x1: pathCoordinate,
+          y1: pathCoordinate,
+          x2: pathCoordinate,
+          y2: pathCoordinate,
+          ...pathPoint,
+        }),
+        z.object({ op: z.literal('Q'), x1: pathCoordinate, y1: pathCoordinate, ...pathPoint }),
+        z.object({ op: z.literal('Z') }),
+      ]),
+    )
+    .min(2)
+    .max(4096)
+    .refine((commands) => commands[0]?.op === 'M', 'A drawing starts with Move.'),
+  fillRule: z.enum(['nonzero', 'evenodd']),
+  lineCap: z.enum(['butt', 'round', 'square']),
+  lineJoin: z.enum(['miter', 'round', 'bevel']),
 });
 
 /** A glow round letters (Session 55, Part 17a). */
@@ -190,18 +219,24 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     opacity: num.min(0).max(1).optional(),
     everyScreen: z.boolean().optional(),
   }),
-  z.object({
-    ...elementPlacement,
-    id: idSchema,
-    kind: z.literal('shape'),
-    frame: rectSchema,
-    rotation: rotationSchema,
-    shape: z.enum(SHAPE_KINDS).optional(),
-    fill: hexColorSchema.nullable(),
-    cornerRadius: num.nonnegative(),
-    opacity: num.min(0).max(1),
-    outline: outlineSchema.nullable().optional(),
-  }),
+  z
+    .object({
+      ...elementPlacement,
+      id: idSchema,
+      kind: z.literal('shape'),
+      frame: rectSchema,
+      rotation: rotationSchema,
+      shape: z.enum(SHAPE_KINDS).optional(),
+      path: nativePathSchema.optional(),
+      fill: hexColorSchema.nullable(),
+      cornerRadius: num.nonnegative(),
+      opacity: num.min(0).max(1),
+      outline: outlineSchema.nullable().optional(),
+    })
+    .refine(
+      (shape) => (shape.shape === 'path' ? shape.path !== undefined : shape.path === undefined),
+      'A Drawing needs its path; other shapes do not carry one.',
+    ),
   ...(['image', 'video'] as const).map((kind) =>
     z.object({
       ...elementPlacement,

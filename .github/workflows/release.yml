@@ -61,9 +61,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
+      - name: Fetch pinned offline helper resources
+        run: node scripts/fetch-ai-models.mjs
       - name: Fetch FFmpeg for Intel Macs too
         if: runner.os == 'macOS'
         run: node scripts/fetch-ffmpeg.mjs --target darwin-x64
+      - name: Fetch offline helpers for Intel Macs too
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-ai-models.mjs --target darwin-x64
       - name: Fetch yt-dlp and Deno (Session 25c)
         run: node scripts/fetch-youtube-tools.mjs
       - name: Fetch yt-dlp and Deno for Intel Macs too

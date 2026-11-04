@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
@@ -30,6 +29,7 @@ import { parsePp6 } from './formats/pp6';
 import { parsePp7, type Pp7Kind, pp7KindOf } from './formats/pp7';
 import { readDocx } from './formats/docx';
 import { parseLyricsText } from './formats/text';
+import { OriginalsStore, type OriginalDescriptor } from './originals-store';
 import { diskFreeBytes, type MediaStore, sha256File, type StagedMedia, UPLOADS_DIR } from './media-store';
 import { isInside } from '../media/contained';
 import { withoutOutsideLinks } from './deck/links';
@@ -212,14 +212,6 @@ const SUPPORT_EXTENSIONS: Record<string, string> = {
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
-/** A big file's sha256, read a piece at a time. */
-async function fileSha256(path: string): Promise<string> {
-  const hash = createHash('sha256');
-  for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 }))
-    hash.update(chunk as Buffer);
-  return hash.digest('hex');
-}
-
 /** How transliteration is made (the setting kirtans use too): plain letters until the operator chooses marks. */
 function storedTranslitStyle(db: Db): TranslitStyle {
   const value = new SettingsRepo(db).get('translitStyle');
@@ -356,6 +348,7 @@ export function toNewPresentation(
         })),
         transition: s.transition ?? null,
         autoAdvanceMs: s.autoAdvanceMs ?? null,
+        ...(s.documentPage ? { documentPage: s.documentPage } : {}),
         // A deck's slide (Session 54, C2): its references made the library's media ids.
         ...(s.deck ? { deck: mapDeckMedia(s.deck, (ref) => media(ref) ?? ref) } : {}),
       })),
@@ -381,6 +374,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   };
   const imports = new ImportRepo(ctx.db);
   const presentations = new PresentationRepo(ctx.db);
+  const originals = new OriginalsStore(
+    ctx.db,
+    ctx.media.dir,
+    ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {},
+  );
   const playlists = new PlaylistRepo(ctx.db);
   const batch = new BatchWriter(ctx.db, { budgetMs: ctx.batchBudgetMs ?? 250 });
   /** Run a commit, counting it when it committed a group. */
@@ -710,6 +708,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     hash: string,
     parsed: ParsedPresentation,
     decidedAlready?: Decided,
+    retained: readonly OriginalDescriptor[] = [],
   ) => {
     const base = { sourcePath: where.sourcePath, format: reportFormat(kind), counts: NO_COUNTS };
     const decided = decidedAlready ?? decideEarlier(file, where, kind, parsed.ref, hash);
@@ -738,6 +737,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       () => {
         const started = performance.now();
         const media = storeMedia(staged, kind);
+        for (const original of retained) originals.register(original);
         const libraryId = presentations.ensureLibrary(parsed.library ?? ctx.libraryName ?? 'Default');
         const { input, dropped } = toNewPresentation(parsed, libraryId, source, hash, media.ids);
         // A kirtan laid out a box per language: its plain transliteration is told from English by reading.
@@ -792,6 +792,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           };
           wrote = { presentationId: id, replaced: false };
         }
+        for (const original of retained)
+          for (const mediaId of media.ids)
+            if (ctx.db.prepare("SELECT 1 FROM media WHERE id = ? AND kind = 'image'").get(mediaId))
+              originals.registerPreview(original, mediaId);
         imports.addItem(ctx.runId, at, item);
         time('write', started);
         return { item, wrote, marked: media.marked };
@@ -865,7 +869,17 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       return;
     }
     let t = performance.now();
-    const hash = await fileSha256(file.path);
+    const sourceDir = dirname(file.path);
+    const fromPhone = isInside(resolve(ctx.media.dir, UPLOADS_DIR), resolve(file.path));
+    const kept = await originals.stage(file.path, source, ctx.signal);
+    if (!kept.ok) {
+      fail('original-not-retained', kept.message);
+      return;
+    }
+    const hash = kept.original.sha256;
+    const retained: OriginalDescriptor[] = [kept.original];
+    const visibleIndices = (list: readonly PptxSlide[] | null) =>
+      list?.flatMap((slide, index) => (slide.hidden ? [] : [index])) ?? [];
     time('read', t);
     // What can make a deck's movie here (Session 54, C2): PowerPoint first for its own files, then Keynote.
     const bakers: Baker[] =
@@ -891,9 +905,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     if (!decided) return;
     const work = await mkdtemp(join(ctx.tempDir ?? tmpdir(), 'drashti-pictures-'));
     try {
-      let pdf = file.path;
+      let pdf = kept.file;
       /** The deck as PowerPoint, Keynote and Drashti read it: the file, or a phone's copy with dead links. */
-      let deckPath = file.path;
+      let deckPath = kept.file;
       let converter: Converter | null = null;
       let firstTried: { converter: Converter; reason: string } | null = null;
       let slides: PptxSlide[] | null = null;
@@ -903,7 +917,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       if (source !== 'pdf') {
         // A plainly damaged file never reaches Keynote or PowerPoint, which would ask about it in a
         // window nobody sees and stop answering (Session 16).
-        const checked = await checkDeck(source, file.path);
+        const checked = await checkDeck(source, kept.file);
         if (!checked.ok) {
           fail('pictures-damaged', checked.message);
           return;
@@ -912,9 +926,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         // A deck a phone sent (Session 54, C review): its links to files outside it are dead ends in the copy that
         // PowerPoint, Keynote and Drashti read, so nothing else of this computer's comes in through it.
         let read = checked.deck;
-        if (source === 'pptx' && isInside(resolve(ctx.media.dir, UPLOADS_DIR), resolve(file.path))) {
+        if (source === 'pptx' && fromPhone) {
           deckPath = join(work, basename(file.path));
-          if ((await withoutOutsideLinks(file.path, deckPath)) > 0) read = await readPptxDeck(deckPath);
+          if ((await withoutOutsideLinks(kept.file, deckPath)) > 0) read = await readPptxDeck(deckPath);
         }
         // With its animations where PowerPoint or Keynote can make its movie (Session 54, C2).
         t = performance.now();
@@ -924,6 +938,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             file: deckPath,
             fileName,
             sourcePath: where.sourcePath,
+            sourceDir,
             read,
             work,
             bakers,
@@ -943,7 +958,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         );
         time('parse', t);
         if (flow.kind === 'baked') {
-          await importPresentation(file, where, 'pictures', hash, flow.parsed, decided);
+          const indices = flow.sourceIndices ?? visibleIndices(slides);
+          flow.parsed.groups
+            .flatMap((g) => g.slides)
+            .forEach((slide, index) => {
+              slide.documentPage = { sha256: hash, ext: source, page: indices[index] ?? index };
+            });
+          await importPresentation(file, where, 'pictures', hash, flow.parsed, decided, retained);
           return;
         }
         // Asked for its animations in place of its pictures, and they could not be made: the earlier import stays,
@@ -1038,6 +1059,17 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         }
         if (first) firstTried = { converter: first.converter, reason: first.reason };
       }
+      let editableOriginal = kept.original;
+      if ((source === 'ppt' || source === 'key') && pdf !== kept.file) {
+        const convertedOriginal = await originals.stage(pdf, 'pdf', ctx.signal);
+        if (!convertedOriginal.ok) {
+          fail('converted-original-not-retained', convertedOriginal.message);
+          return;
+        }
+        retained.push(convertedOriginal.original);
+        editableOriginal = convertedOriginal.original;
+        pdf = convertedOriginal.file;
+      }
       t = performance.now();
       const drawn = await ctx.drawPdf(pdf, join(work, 'pages'));
       time('parse', t);
@@ -1051,6 +1083,20 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         drawn,
         drawn.pages.map((p) => notes?.[p.index] ?? ''),
       );
+      const shownIndices = visibleIndices(slides);
+      parsed.groups
+        .flatMap((g) => g.slides)
+        .forEach((slide, index) => {
+          const drawnIndex = drawn.pages[index]?.index ?? index;
+          const page =
+            source === 'pdf' || editableOriginal.ext === 'pdf' || !slides || drawn.total === slides.length
+              ? drawnIndex
+              : drawn.total === shownIndices.length
+                ? shownIndices[drawnIndex]
+                : undefined;
+          if (page !== undefined)
+            slide.documentPage = { sha256: editableOriginal.sha256, ext: editableOriginal.ext, page };
+        });
       parsed.media = parsed.media.map((m, i) => ({
         ...m,
         sourcePath: `${where.sourcePath}#page=${String((drawn.pages[i]?.index ?? i) + 1)}`,
@@ -1065,7 +1111,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               where.sourcePath,
               work,
               ctx.ffmpeg ?? null,
-              dirname(deckPath),
+              sourceDir,
             )
           : { videos: 0, cued: 0, left: 0, unmatched: deckRead ? deckMediaCount(deckRead.deck) : 0 };
       const shown = slides?.filter((sl) => !sl.hidden) ?? [];
@@ -1085,7 +1131,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         notesUnmatched: slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
       });
       parsed.issues.splice(1, 0, ...deckIssues, ...picturesMediaIssues(added));
-      await importPresentation(file, where, 'pictures', hash, parsed, decided);
+      await importPresentation(file, where, 'pictures', hash, parsed, decided, retained);
     } finally {
       await rm(work, { recursive: true, force: true });
     }

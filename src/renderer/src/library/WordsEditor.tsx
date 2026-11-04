@@ -1,3 +1,4 @@
+import { AiLyrics } from '../ai/AiLyrics';
 import { useMemo, useState } from 'react';
 import type { TrackSlide } from '../../../shared/kirtans';
 import { parseLyrics } from '../../../shared/lyrics';
@@ -298,6 +299,7 @@ export function WordsEditor({ platform }: { platform: string }) {
               are.
             </p>
           )}
+          {open.mode === 'new' && <AiLyrics />}
           <Textarea
             aria-label="Words"
             data-testid="words-text"

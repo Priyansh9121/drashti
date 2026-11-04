@@ -1,3 +1,7 @@
+import type { AiResult, AiSettings, AiSearchProgress, AiLyricReview, AiPlaylistReview } from './ai';
+import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
+import type { PdfJob, PdfPage, PdfDone } from './editable-source';
+import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { ReadyReport } from './ready';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
@@ -20,7 +24,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
-import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
+import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type {
   PassageInfo,
@@ -139,6 +143,20 @@ import type {
  * the preload script and the main process both import them from here.
  */
 export const IPC = {
+  ai: {
+    get: 'ai:get',
+    set: 'ai:set',
+    past: 'ai:past',
+    search: 'ai:search',
+    lyrics: 'ai:lyrics',
+    approveLyrics: 'ai:approve-lyrics',
+    playlist: 'ai:playlist',
+    approvePlaylist: 'ai:approve-playlist',
+    cancel: 'ai:cancel',
+    open: 'ai:open',
+    changed: 'ai:changed',
+    progress: 'ai:progress',
+  },
   app: {
     getInfo: 'app:get-info',
     /** main -> operator: Edit > Undo was chosen (the page decides what to undo). */
@@ -373,6 +391,12 @@ export const IPC = {
     /** A presentation's slides for the slide editor, and saving them (operator window only). */
     slidesForEdit: 'library:slides-for-edit',
     saveSlides: 'library:save-slides',
+    exportPdf: 'library:export-pdf',
+    pdfPageSources: 'library:pdf-page-sources',
+    insertPdfPages: 'library:insert-pdf-pages',
+    insertPdfFile: 'library:insert-pdf-file',
+    linkPdfPage: 'library:link-pdf-page',
+    cancelPdfInsertion: 'library:cancel-pdf-insertion',
     /** The transition for presentations without their own; changing it is for the operator window only. */
     getDefaultTransition: 'library:get-default-transition',
     setDefaultTransition: 'library:set-default-transition',
@@ -1011,6 +1035,14 @@ export const IPC = {
     switchQuestion: 'output:switch-question',
     switchAnswer: 'output:switch-answer',
   },
+  pdfExport: {
+    capture: 'pdfcopy:capture',
+    job: 'pdfcopy:job',
+    print: 'pdfcopy:print',
+    normalized: 'pdfcopy:normalized',
+    done: 'pdfcopy:done',
+    asset: 'pdfcopy:asset',
+  },
   pictures: {
     /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
     job: 'pictures:job',
@@ -1070,6 +1102,16 @@ export const IPC = {
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.ai.get]: { args: []; result: AiResult<AiSettings> };
+  [IPC.ai.set]: { args: [settings: unknown]; result: AiResult<AiSettings> };
+  [IPC.ai.past]: { args: []; result: AiResult<{ id: string; name: string }[]> };
+  [IPC.ai.search]: { args: [request: unknown]; result: AiResult<SearchResult> };
+  [IPC.ai.lyrics]: { args: [request: unknown]; result: AiResult<AiLyricReview> };
+  [IPC.ai.approveLyrics]: { args: [request: unknown]; result: AiResult<string> };
+  [IPC.ai.playlist]: { args: [request: unknown]; result: AiResult<AiPlaylistReview> };
+  [IPC.ai.approvePlaylist]: { args: [request: unknown]; result: AiResult<{ id: string }> };
+  [IPC.ai.cancel]: { args: []; result: null };
+
   [IPC.ready.check]: { args: [openPlaylistId: string | null]; result: ReadyReport | null };
   [IPC.quickBar.view]: { args: []; result: QuickPin[] };
   [IPC.quickBar.set]: { args: [pins: QuickPin[]]; result: QuickBarResult };
@@ -1084,10 +1126,19 @@ export interface InvokeContract {
     args: [motion: InterfaceMotion];
     result: { ok: true } | { ok: false; message: string };
   };
-  [IPC.pictures.job]: { args: []; result: PictureJob | null };
-  [IPC.pictures.page]: { args: [page: PicturePage]; result: boolean };
-  [IPC.pictures.done]: { args: [done: PicturesDone]; result: null };
+  [IPC.pictures.job]: { args: []; result: PdfJob | null };
+  [IPC.pictures.page]: { args: [page: PdfPage]; result: boolean };
+  [IPC.pictures.done]: { args: [done: PdfDone]; result: null };
   [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
+  [IPC.pdfExport.job]: { args: []; result: PdfCopyJob | null };
+  [IPC.pdfExport.capture]: { args: [id: string, index: number]; result: Uint8Array | null };
+  [IPC.pdfExport.print]: { args: [id: string, index: number]; result: Uint8Array | null };
+  [IPC.pdfExport.normalized]: {
+    args: [id: string, index: number, pages: PdfPrintPage[]];
+    result: Uint8Array | null;
+  };
+  [IPC.pdfExport.done]: { args: [done: PdfCopyFinished]; result: boolean };
+  [IPC.pdfExport.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.sharpen.next]: { args: []; result: SharpenJobView | null };
   [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };
@@ -1254,6 +1305,31 @@ export interface InvokeContract {
   [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
+  [IPC.library.linkPdfPage]: {
+    args: [
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      slideId: string,
+      pictureId: string,
+      preparedId: string,
+    ];
+    result: LinkPdfPageResult;
+  };
+  [IPC.library.pdfPageSources]: { args: []; result: PdfPageSource[] };
+  [IPC.library.insertPdfPages]: {
+    args: [presentationId: string, stamp: string, sourceId: string];
+    result: InsertPdfPagesResult;
+  };
+  [IPC.library.insertPdfFile]: {
+    args: [presentationId: string, stamp: string];
+    result: InsertPdfPagesResult;
+  };
+  [IPC.library.cancelPdfInsertion]: { args: [presentationId: string, stamp: string]; result: boolean };
+  [IPC.library.exportPdf]: {
+    args: [presentationId: string, doc: EditDoc, stamp: string];
+    result: PdfCopyResult;
+  };
   [IPC.library.saveSlides]: {
     args: [presentationId: string, doc: EditDoc, stamp: string, force: boolean];
     result: SaveSlidesResult;
@@ -1568,6 +1644,9 @@ export interface InvokeContract {
 
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
+  [IPC.ai.open]: { at: number };
+  [IPC.ai.changed]: AiSettings;
+  [IPC.ai.progress]: AiSearchProgress;
   [IPC.appearance.changed]: AppearanceNow;
   [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;

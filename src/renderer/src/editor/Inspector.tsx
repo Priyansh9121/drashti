@@ -34,6 +34,7 @@ import {
   REFERENCE_LINES,
 } from '../../../shared/readable';
 import { isIndic, SHAPE_KINDS, SHAPE_NAMES, TIMER_FORMATS, type TimerFormat } from '../../../shared/model';
+import { DEFAULT_DRAWING } from '../../../shared/shape-path';
 import { wordsContrast, WORDS_CONTRAST_AIM, WORDS_CONTRAST_MIN } from '../../../shared/contrast';
 import { LANG_NAMES } from '../../../shared/themes';
 import { boxLines } from '../../../shared/tracks';
@@ -579,14 +580,22 @@ function ShapeSection({ el, change }: { el: ShapeElement; change: Change }) {
           value={kind}
           onChange={(e) => {
             const next = e.target.value as ShapeKind;
-            if (next === 'line')
+            if (next === 'path')
+              set({
+                shape: 'path',
+                path: el.path ?? structuredClone(DEFAULT_DRAWING),
+                fill: null,
+                outline: outline ?? { color: '#ffffff', width: 3 },
+              });
+            else if (next === 'line')
               set({
                 shape: 'line',
+                path: undefined,
                 fill: null,
                 outline: outline ?? { color: el.fill?.slice(0, 7) ?? '#ffffff', width: 6 },
                 frame: { ...el.frame, y: el.frame.y + el.frame.height / 2 - 10, height: 20 },
               });
-            else set({ shape: next, fill: el.fill ?? (kind === 'line' ? '#000000' : null) });
+            else set({ shape: next, path: undefined, fill: el.fill ?? (kind === 'line' ? '#000000' : null) });
           }}
         >
           {SHAPE_KINDS.map((shape) => (

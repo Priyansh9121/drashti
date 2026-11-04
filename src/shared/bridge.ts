@@ -1,4 +1,8 @@
+import type { AiResult, AiSettings, AiSearchProgress, AiLyricReview, AiPlaylistReview } from './ai';
+import type { PdfPageSource, InsertPdfPagesResult, LinkPdfPageResult } from './slide-edit';
 import type { ReadyReport } from './ready';
+import type { PdfJob, PdfPage, PdfDone } from './editable-source';
+import type { PdfCopyFinished, PdfCopyJob, PdfCopyResult, PdfPrintPage } from './pdf-copy';
 import type { QuickBarResult, QuickPin } from './quick-bar';
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type {
@@ -51,7 +55,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage, PresentationUsage, RevealResult } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
-import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
+import type { PictureAssetKind, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
@@ -140,6 +144,21 @@ import type {
  * ipcRenderer, no raw channel names.
  */
 export interface DrashtiBridge {
+  ai: {
+    get(): Promise<AiResult<AiSettings>>;
+    set(settings: unknown): Promise<AiResult<AiSettings>>;
+    past(): Promise<AiResult<{ id: string; name: string }[]>>;
+    search(request: unknown): Promise<AiResult<SearchResult>>;
+    lyrics(request: unknown): Promise<AiResult<AiLyricReview>>;
+    approveLyrics(request: unknown): Promise<AiResult<string>>;
+    playlist(request: unknown): Promise<AiResult<AiPlaylistReview>>;
+    approvePlaylist(request: unknown): Promise<AiResult<{ id: string }>>;
+    cancel(): Promise<null>;
+    onOpen(listener: () => void): () => void;
+    onChanged(listener: (settings: AiSettings) => void): () => void;
+    onProgress(listener: (progress: AiSearchProgress) => void): () => void;
+  };
+
   app: {
     getInfo(): Promise<AppInfo>;
     /** A render error in this window, for the main process's log (Session 23; any of Drashti's windows). */
@@ -344,6 +363,20 @@ export interface DrashtiBridge {
     getPresentation(id: string): Promise<PresentationDoc | null>;
     /** A presentation's slides, everything on them, and how new text looks, for the slide editor. */
     slidesForEdit(presentationId: string): Promise<EditSlidesResult>;
+    /** Save a separate PDF from the current editor document; never saves or closes the presentation. */
+    linkPdfPage(
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      slideId: string,
+      pictureId: string,
+      preparedId: string,
+    ): Promise<LinkPdfPageResult>;
+    pdfPageSources(): Promise<PdfPageSource[]>;
+    insertPdfPages(presentationId: string, stamp: string, sourceId: string): Promise<InsertPdfPagesResult>;
+    insertPdfFile(presentationId: string, stamp: string): Promise<InsertPdfPagesResult>;
+    cancelPdfInsertion(presentationId: string, stamp: string): Promise<boolean>;
+    exportPdf(presentationId: string, doc: EditDoc, stamp: string): Promise<PdfCopyResult>;
     /**
      * Put edited slides back as one change (Undo brings back the copy kept
      * before it). Refused when the presentation changed since `stamp`, unless forced.
@@ -965,11 +998,19 @@ export interface DrashtiBridge {
     switchAnswer(yes: boolean): Promise<null>;
   };
   /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
+  pdfExport: {
+    capture(id: string, index: number): Promise<Uint8Array | null>;
+    job(): Promise<PdfCopyJob | null>;
+    print(id: string, index: number): Promise<Uint8Array | null>;
+    normalized(id: string, index: number, pages: PdfPrintPage[]): Promise<Uint8Array | null>;
+    done(done: PdfCopyFinished): Promise<boolean>;
+    asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
+  };
   pictures: {
-    job(): Promise<PictureJob | null>;
+    job(): Promise<PdfJob | null>;
     /** False: stop (the import was cancelled). */
-    page(page: PicturePage): Promise<boolean>;
-    done(done: PicturesDone): Promise<null>;
+    page(page: PdfPage): Promise<boolean>;
+    done(done: PdfDone): Promise<null>;
     asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
   };
   /** The hidden window that makes pictures' sharpened copies (Session 26f); that window only. */

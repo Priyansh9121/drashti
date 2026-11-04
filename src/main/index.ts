@@ -80,6 +80,9 @@ import { ImportRepo } from './db/imports';
 import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
+import { AiHelpers } from './ai/coordinator';
+import { AiWorkerRpc } from './ai/rpc';
+import { spawnAiWorker } from './ai/spawn-worker';
 import { SearchIndex } from './db/search';
 import { TimerRepo } from './db/timers';
 import { ThemeRepo } from './db/themes';
@@ -256,6 +259,16 @@ import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createPicturesWindow } from './pictures/pictures-window';
 import { createSharpenWindow } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
+import { sourceReader } from './documents/source-reader';
+import { SourceReaderQueue } from './documents/source-reader-queue';
+import { pptxReader } from './documents/pptx-reader-service';
+import { spawnPptxReaderWorker } from './documents/spawn-pptx-reader-worker';
+import { sourceWrite } from './documents/source-write';
+import { SourceQuitGate } from './documents/source-quit-gate';
+import { PdfPrintGeometry } from './documents/pdf-geometry-service';
+import { PdfCopySession } from './library/pdf-copy-session';
+import { PdfEditor } from './library/pdf-editor';
+import { createPdfCopyWindow } from './library/pdf-copy-window';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
 import { ownSchema } from './appearance/appearance-file';
@@ -400,6 +413,8 @@ log.info(
 );
 /** Drashti is quitting: windows and processes going now are no problem (the crash journal). */
 let quitting = false;
+/** Source-only barrier, assigned when Main creates its document readers. */
+let documentQuit: SourceQuitGate | null = null;
 // The crash journal (Sessions 31–36, ROB-6): what went wrong, kept in the data folder as it happens, so the
 // next start can say it even when Drashti itself stopped (crash-journal.ts).
 const crashJournal = new CrashJournal(join(app.getPath('userData'), JOURNAL_FILE), (line) => {
@@ -424,8 +439,19 @@ const stops = new StopList((name, error) => {
 /** Exit at once (self-tests, restarting as Main): everything still stops, in order, first. */
 const exitNow = (code: number) => {
   quitting = true;
-  stops.run();
-  app.exit(code);
+  const finish = () => {
+    stops.run();
+    app.exit(code);
+  };
+  const sourceQuit = documentQuit;
+  if (!sourceQuit) {
+    finish();
+    return;
+  }
+  void sourceQuit.drain().then((result) => {
+    if (result.confirmed) finish();
+    else log.error(`Source preparation did not confirm exit (${result.reason}); the library remains open.`);
+  });
 };
 // Tests on a computer someone is using: never active, never covering the screen (windows/quiet.ts).
 startQuietTests();
@@ -3017,12 +3043,17 @@ function start(): void {
   // is a way of working, never a lock (Session 54, E5: roles and PINs are gone), but with Simple access
   // (Session 55, the list's answer) it is all this computer may use: mode-keeper.ts holds it there, and
   // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
+  let aiHelpers: AiHelpers | null = null;
   let mode: OperatorMode = 'pro';
   let rebuildMenu: () => void = () => undefined;
   // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
   let closeStudio: () => void = () => undefined;
   // So does the slide editor's window (Session 55, Part 17a): Simple Mode edits no slides.
   let closeEditor: () => void = () => undefined;
+  let cancelSourceEdits: () => void = () => undefined;
+  let drainSourceEdits: () => Promise<void> = () => Promise.resolve();
+  let cancelPdfCopies: () => void = () => undefined;
+  let drainPdfCopies: () => Promise<void> = () => Promise.resolve();
   // Simple Mode's one playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple
   // Mode, or a new one when there was none (simple-playlist.ts); Simple Mode changes that one only.
   const simplePlaylist = new SimplePlaylist({
@@ -3057,6 +3088,7 @@ function start(): void {
       if (next === 'simple') simplePlaylist.adopt();
       rebuildMenu();
       if (next === 'simple') {
+        aiHelpers?.suspend();
         closeStudio();
         closeEditor();
       }
@@ -3080,6 +3112,10 @@ function start(): void {
   // The list's answer each check: Simple access puts this computer in Simple Mode within one check.
   onAccessChange(() => {
     modes.accessChanged();
+    if (!isLetIn() || simpleAccess()) {
+      cancelSourceEdits();
+      aiHelpers?.suspend();
+    }
   });
   simpleNow = () => mode === 'simple';
   /** Simple Mode's one playlist and what it holds, read as each request comes (simple-mode.ts's bounds). */
@@ -3198,6 +3234,46 @@ function start(): void {
     log: (message) => {
       log.info(message);
     },
+  });
+  const documentReaders = new SourceReaderQueue(
+    sourceReader((request) => pdfPictures.readEditable(request), pptxReader(spawnPptxReaderWorker)),
+  );
+  const pdfGeometry = new PdfPrintGeometry();
+  const pdfCopies = new PdfCopySession({
+    open: createPdfCopyWindow,
+    assetDirs: (kind) => {
+      const folder = kind === 'wasmUrl' ? 'wasm' : kind === 'cMapUrl' ? 'cmaps' : 'standard_fonts';
+      return [
+        join(rendererDir(), 'pdfjs', folder),
+        join(app.getAppPath(), 'node_modules', 'pdfjs-dist', folder),
+      ];
+    },
+    normalize: pdfGeometry.normalize,
+  });
+  handle(IPC.pdfExport.job, (e) => pdfCopies.job(e.sender));
+  handle(IPC.pdfExport.capture, (e, id, index) => pdfCopies.capture(e.sender, id, index));
+  handle(IPC.pdfExport.print, (e, id, index) => pdfCopies.print(e.sender, id, index));
+  handle(IPC.pdfExport.normalized, (e, id, index, pages) => pdfCopies.normalized(e.sender, id, index, pages));
+  handle(IPC.pdfExport.done, (e, result) => pdfCopies.done(e.sender, result));
+  handle(IPC.pdfExport.asset, (e, kind, name) => pdfCopies.asset(e.sender, kind, name));
+  stops.add('PDF copies', () => {
+    pdfCopies.stop();
+    return pdfGeometry.stop();
+  });
+  let sourceOutputQuarantined = false;
+  documentQuit = new SourceQuitGate({
+    cancel: () => cancelSourceEdits(),
+    stop: async () => {
+      pdfPictures.stopEditable();
+      pdfCopies.stop();
+      await Promise.all([documentReaders.stop(), drainSourceEdits(), pdfGeometry.stop(), drainPdfCopies()]);
+      // A bounded retainOutput fallback is not confirmation that an owned writer/process stopped.
+      return !sourceOutputQuarantined && pdfGeometry.exitConfirmed;
+    },
+  });
+  stops.add('document preparation', () => {
+    pdfPictures.stopEditable();
+    return documentReaders.stop();
   });
   handle(IPC.pictures.job, (e) => pdfPictures.job(e.sender));
   handle(IPC.pictures.page, (e, page) => pdfPictures.page(e.sender, page));
@@ -3760,6 +3836,7 @@ function start(): void {
         : electronScreen.getPrimaryDisplay()
       ).workArea,
     background: () => appearance.background(),
+    closed: () => cancelSourceEdits(),
     track: (win) => {
       appearance.track(win);
     },
@@ -3769,6 +3846,7 @@ function start(): void {
   });
   const editorWindow = slideEditor;
   closeEditor = () => {
+    cancelSourceEdits();
     editorWindow.close();
   };
   stops.add('slide editor', () => {
@@ -3786,13 +3864,41 @@ function start(): void {
       page.sendInputEvent({ type: 'keyUp', keyCode: key });
     },
   });
-  registerSlidesIpc({
+  const slideEdits = registerSlidesIpc({
+    choosePdfFile: async (e) => {
+      const parent = BrowserWindow.fromWebContents(e.sender);
+      const options = {
+        title: 'Choose a PDF',
+        buttonLabel: 'Choose PDF',
+        properties: ['openFile'] as 'openFile'[],
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      };
+      const chosen = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options);
+      return chosen.canceled ? null : (chosen.filePaths[0] ?? null);
+    },
     db,
     presentations,
     revisions,
     settings,
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
+    mayPrepareSource: (e) =>
+      !stops.done &&
+      !quitStarted &&
+      documentQuit?.closing !== true &&
+      isLetIn() &&
+      !simpleAccess() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+    sourceReader: async (request) => {
+      const result = await documentReaders.read(request);
+      if (!result.ok && result.retainOutput) sourceOutputQuarantined = true;
+      return result;
+    },
+    sourceWrite: sourceWrite(libraryDb, () => imports.giveWay()),
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
     // A save in the editor's window: one change for the operator window's Undo.
@@ -3800,6 +3906,48 @@ function start(): void {
       sendToOperator(IPC.slideEditor.edited, saved);
     },
   });
+  const pdfEditor = new PdfEditor({
+    db: libraryDb,
+    mediaDir,
+    session: pdfCopies,
+    allowed: (e) =>
+      !stops.done &&
+      documentQuit?.closing !== true &&
+      isLetIn() &&
+      !simpleAccess() &&
+      mode === 'pro' &&
+      !e.sender.isDestroyed() &&
+      (fromOperator(e) || editorWindow.isPage(e.sender)),
+    stamp: (presentationId) => {
+      const row = libraryDb
+        .prepare('SELECT updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
+        .get(presentationId) as { updated_at: string; content_rev: number } | undefined;
+      return row ? `${row.updated_at}#${String(row.content_rev)}` : null;
+    },
+    validate: (id, doc, stamp) => slideEdits.documentForExport(id, doc, stamp),
+    chooseOutput: async (e, name) => {
+      const parent = BrowserWindow.fromWebContents(e.sender);
+      const options = {
+        title: 'Save a PDF copy',
+        buttonLabel: 'Save copy',
+        defaultPath: name.replace(/[\\/:*?"<>|]/gu, ' ').trim() + ' copy.pdf',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      };
+      const chosen = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options);
+      return chosen.canceled ? null : chosen.filePath;
+    },
+  });
+  handle(IPC.library.exportPdf, (e, id, doc, stamp) => pdfEditor.export(e, id, doc, stamp));
+  cancelPdfCopies = () => pdfEditor.cancel();
+  drainPdfCopies = () => pdfEditor.stop();
+  cancelSourceEdits = () => {
+    slideEdits.cancelSourcePreparation();
+    cancelPdfCopies();
+  };
+  drainSourceEdits = () => slideEdits.drainSourcePreparation();
+  stops.add('editor source generations', cancelSourceEdits);
   // New › QR code… (Session 55, Part 8, G): the code made here, offline (main/library/qr-slide.ts), kept as a picture in
   // the library through an import as any picture is, and one slide holding it large with the words under it.
   handle(IPC.library.newQrSlide, async (e, text): Promise<NewFromWordsResult> => {
@@ -3859,6 +4007,64 @@ function start(): void {
   // Themes, Props and the Logo are gone from the window (Session 55, Part 12): a presentation keeps the look its theme
   // gave it, new words start in the library's default look (themeLook, styleNewText), and the props, the logo's
   // setting and the themes stay in the library, unseen.
+  // Offline helpers have only the operator's review channels, never a show command.
+  const helperOwner = (owner: number) =>
+    owner === operatorWindow?.webContents.id &&
+    !operatorWindow.isDestroyed() &&
+    mode === 'pro' &&
+    isLetIn() &&
+    !simpleAccess() &&
+    !stops.done &&
+    !quitStarted;
+  const helperAssetsOverride = !packaged() ? sw('DRASHTI_TEST_AI_ASSETS') : undefined;
+  const offlineHelpers = new AiHelpers({
+    db,
+    settings,
+    playlists,
+    calendar: new CalendarRepo(db),
+    search,
+    authorised: helperOwner,
+    rpc: new AiWorkerRpc(spawnAiWorker, {
+      assetsRoot:
+        helperAssetsOverride ??
+        (packaged()
+          ? join(process.resourcesPath, 'ai')
+          : join(app.getAppPath(), 'vendor', 'ai', `${process.platform}-${process.arch}`)),
+      libraryFile: libraryFile(),
+      cacheFile: join(app.getPath('userData'), 'ai-helper-cache.sqlite'),
+    }),
+    settingsChanged: (value) => sendToOperator(IPC.ai.changed, value),
+    changed: () => {
+      sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      network?.hint('playlists');
+    },
+  });
+  aiHelpers = offlineHelpers;
+  stops.add('offline helpers', () => {
+    offlineHelpers.suspend();
+  });
+  let helperShowing: number | undefined;
+  engine.onChange((state) => {
+    const showing = state.layers.slide?.shownAt;
+    if (showing !== helperShowing) {
+      helperShowing = showing;
+      offlineHelpers.busy(Date.now() + 200);
+    }
+  });
+  handle(IPC.ai.get, (e) => offlineHelpers.get(e.sender.id));
+  handle(IPC.ai.set, (e, value) => offlineHelpers.set(e.sender.id, value));
+  handle(IPC.ai.past, (e) => offlineHelpers.past(e.sender.id));
+  handle(IPC.ai.search, (e, value) =>
+    offlineHelpers.search(e.sender.id, value, (progress) => sendToOperator(IPC.ai.progress, progress)),
+  );
+  handle(IPC.ai.lyrics, (e, value) => offlineHelpers.suggestLyrics(e.sender.id, value));
+  handle(IPC.ai.approveLyrics, (e, value) => offlineHelpers.approveLyrics(e.sender.id, value));
+  handle(IPC.ai.playlist, (e, value) => offlineHelpers.suggestPlaylist(e.sender.id, value));
+  handle(IPC.ai.approvePlaylist, (e, value) => offlineHelpers.approvePlaylist(e.sender.id, value));
+  handle(IPC.ai.cancel, (e) => {
+    if (helperOwner(e.sender.id)) offlineHelpers.suspend();
+    return null;
+  });
   handle(IPC.library.search, (_e, query) =>
     search.search(typeof query === 'string' ? cutText(query, 200) : ''),
   );
@@ -6335,9 +6541,11 @@ function start(): void {
   // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
   // again, or its page stops, the question goes from the outputs too, never left there.
   operatorWindow.webContents.on('did-start-loading', () => {
+    offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
   operatorWindow.webContents.on('render-process-gone', () => {
+    offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
   // The audio player once the operator window has loaded (or after 5 s whatever happens). Created
@@ -6407,6 +6615,20 @@ function start(): void {
     streaming.quitting();
     studio.quitting();
     slideEditor?.quitting();
+    const sourceQuit = documentQuit;
+    if (
+      sourceQuit &&
+      !sourceQuit.request(
+        event,
+        () => app.quit(),
+        (result) => {
+          log.error(
+            `Source preparation did not confirm shutdown (${result.reason}); the library remains open.`,
+          );
+        },
+      )
+    )
+      return;
   });
 
   const runSelfTest = () =>
@@ -6638,6 +6860,10 @@ function start(): void {
     stage: choiceGuard(REPEAT_CHOICE_MS),
   };
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
+    aiHelpers: () => {
+      const owner = operatorWindow?.webContents.id;
+      if (owner !== undefined && helperOwner(owner)) sendToOperator(IPC.ai.open, { at: Date.now() });
+    },
     mode,
     // Simple access (Session 55): no way back to Pro Mode in the menu.
     simpleOnly: modes.simpleOnly(),

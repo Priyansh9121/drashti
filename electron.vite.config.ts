@@ -27,7 +27,7 @@ function pdfjsData(): Plugin {
     name: 'drashti-pdfjs-data',
     apply: 'build',
     generateBundle() {
-      for (const folder of ['standard_fonts', 'wasm']) {
+      for (const folder of ['standard_fonts', 'wasm', 'cmaps']) {
         const dir = resolve('node_modules/pdfjs-dist', folder);
         for (const name of readdirSync(dir))
           this.emitFile({
@@ -47,7 +47,10 @@ export default defineConfig({
         // The workers are bundles of their own, started as utility processes.
         input: {
           index: resolve('src/main/index.ts'),
+          'ai-worker': resolve('src/main/ai/worker.ts'),
           'import-worker': resolve('src/main/import/worker.ts'),
+          'pptx-reader-worker': resolve('src/main/documents/pptx-reader-worker.ts'),
+          'pdf-geometry-worker': resolve('src/main/documents/pdf-geometry-worker.ts'),
           // The stream worker: encoding, sending and recording (src/main/stream/worker/worker.ts).
           'stream-worker': resolve('src/main/stream/worker/worker.ts'),
           // The network worker: the HTTP and WebSocket server for paired devices (src/main/network/worker/worker.ts).
@@ -111,6 +114,7 @@ export default defineConfig({
           announce: resolve('src/renderer/announce.html'),
           // The hidden window that draws a PDF's pages as pictures (Session 15).
           pdf: resolve('src/renderer/pdf.html'),
+          'pdf-export': resolve('src/renderer/pdf-export.html'),
           // The hidden window that makes pictures' sharpened copies (Session 26f).
           sharpen: resolve('src/renderer/sharpen.html'),
           // The window for Zoom: the stream's picture, for Zoom's Share Screen (Session 48).

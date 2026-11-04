@@ -1,3 +1,5 @@
+import { connectAi } from '../ai/ai-store';
+import { AiDialog } from '../ai/AiDialog';
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
@@ -137,6 +139,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectSingleKeys();
     connectMode();
     connectAppearance();
+    connectAi();
     // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
     connectSound();
     // The quick bar's pins (Session 55, Part 8): Pro Mode shows them; kept with the library.
@@ -439,6 +442,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SetupWizard platform={platform} />
       <Welcome />
       <AppearanceDialog />
+      <AiDialog />
       <WindowPicker />
       <VideoInputDialog platform={platform} />
       <PipDialog />

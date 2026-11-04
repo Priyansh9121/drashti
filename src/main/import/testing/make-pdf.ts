@@ -14,6 +14,8 @@ export interface TestPdfPage {
   text?: string;
   /** A comment on the page (its notes). */
   note?: string;
+  /** Optional generated 2x2 color checker, never received/real image bytes. */
+  syntheticImage?: { x: number; y: number; width: number; height: number };
 }
 
 /** PDF text strings: backslashes and brackets escaped, ASCII only. */
@@ -43,6 +45,31 @@ export function makeTestPdf(pages: readonly TestPdfPage[]): Buffer {
         `${pdfString(page.text)} Tj`,
         'ET',
       );
+    let imageId: number | undefined;
+    if (page.syntheticImage) {
+      const image = page.syntheticImage;
+      const pixels = 'ff000000ff000000ffffff00>'; // Four generated RGB colors, ASCIIHexDecode.
+      imageId = add(
+        '<< /Type /XObject /Subtype /Image /Width 2 /Height 2 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Interpolate false /Filter /ASCIIHexDecode /Length ' +
+          String(Buffer.byteLength(pixels, 'latin1')) +
+          ' >>\nstream\n' +
+          pixels +
+          '\nendstream',
+      );
+      lines.push(
+        'q',
+        String(image.width) +
+          ' 0 0 ' +
+          String(image.height) +
+          ' ' +
+          String(image.x) +
+          ' ' +
+          String(image.y) +
+          ' cm',
+        '/PlaceholderImage Do',
+        'Q',
+      );
+    }
     const content = lines.join('\n');
     const stream = add(
       `<< /Length ${String(Buffer.byteLength(content, 'latin1'))} >>\nstream\n${content}\nendstream`,
@@ -52,7 +79,7 @@ export function makeTestPdf(pages: readonly TestPdfPage[]): Buffer {
       : '';
     kids.push(
       add(
-        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${String(page.width)} ${String(page.height)}] /Contents ${String(stream)} 0 R /Resources << /Font << /F1 ${String(font)} 0 R >> >>${annots} >>`,
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${String(page.width)} ${String(page.height)}] /Contents ${String(stream)} 0 R /Resources << /Font << /F1 ${String(font)} 0 R >>${imageId ? ` /XObject << /PlaceholderImage ${String(imageId)} 0 R >>` : ''} >>${annots} >>`,
       ),
     );
   }

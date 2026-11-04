@@ -24,6 +24,17 @@ import type { Db } from '../db/database';
 import { CONVERTING_DIR, UPLOADS_DIR } from '../import/media-store';
 import { SHARPENED_DIR } from '../media/sharpened';
 import { BLURRED_DIR } from '../media/blurred';
+import { realPlace } from '../media/contained';
+import { ORIGINALS_STAGING_DIR, originalRelative, retainedOriginals } from '../import/originals-store';
+import {
+  copyOriginalSet,
+  freshOriginalSet,
+  mergeOriginalSetSync,
+  originalRoot,
+  originalsPresent,
+  originalSet,
+  type OriginalBackupSet,
+} from './original-backup';
 
 /*
  * Backing up and restoring the library. A backup is a folder: the database,
@@ -57,6 +68,8 @@ export interface BackupNote {
    * this backup, "../Media"), with MANIFEST listing the files this one needs.
    */
   mediaPool?: string;
+  /** Required immutable sources, even in a library-only backup. */
+  originals?: OriginalBackupSet;
 }
 
 const noteSchema: z.ZodType<BackupNote> = z.object({
@@ -66,6 +79,24 @@ const noteSchema: z.ZodType<BackupNote> = z.object({
   media: z.boolean(),
   scheduled: z.boolean().optional(),
   mediaPool: z.string().optional(),
+  originals: z
+    .object({
+      version: z.literal(1),
+      files: z
+        .array(
+          z.object({
+            sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+            ext: z.enum(['pdf', 'pptx', 'ppt', 'key']),
+            bytes: z
+              .number()
+              .int()
+              .positive()
+              .max(1024 ** 3),
+          }),
+        )
+        .max(100_000),
+    })
+    .optional(),
 });
 
 /** A note as it is read (null when it is missing or not a backup's note). */
@@ -121,7 +152,7 @@ const errorCode = (error: unknown): string | undefined =>
  * phones are sending.
  */
 // Blurred copies (Session 55, Part 5) are left out as the sharpened ones are: each can be made again.
-const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR, BLURRED_DIR, UPLOADS_DIR]);
+const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR, BLURRED_DIR, UPLOADS_DIR, ORIGINALS_STAGING_DIR]);
 
 /**
  * The files in a folder and below (regular files only, symbolic links not followed), with their sizes.
@@ -215,10 +246,16 @@ export async function backupLibrary(
   await mkdir(folder, { recursive: true });
   try {
     await db.backup(join(folder, LIBRARY_FILE));
+    const originals = freshOriginalSet(join(folder, LIBRARY_FILE));
+    const originalMedia = originalRoot(db.name, options.mediaDir);
     const mediaDir = options.mediaDir !== null && existsSync(options.mediaDir) ? options.mediaDir : null;
     const mediaFiles = mediaDir
       ? await copyFolder(mediaDir, join(folder, MEDIA), options.onProgress ?? (() => undefined))
       : 0;
+    if (originals) {
+      if (!originalMedia) throw new Error('The library has no managed folder for its required originals.');
+      await copyOriginalSet(originalMedia, join(folder, MEDIA), originals);
+    }
     // Written last: a folder without it is a backup that did not finish.
     await writeFile(
       join(folder, NOTE),
@@ -227,6 +264,7 @@ export async function backupLibrary(
         schema: options.schema,
         createdAt: options.now.toISOString(),
         media: mediaDir !== null,
+        ...(originals ? { originals } : {}),
       }),
     );
     return { folder, mediaFiles };
@@ -245,6 +283,7 @@ export type BackupCheck =
       note: BackupNote;
       /** A scheduled backup's media: the pool folder and the files it needs there (else null). */
       pool: { dir: string; files: string[] } | null;
+      originals?: { root: string; set: OriginalBackupSet };
     }
   | { ok: false; code: 'no-library' | 'unfinished' | 'unreadable' | 'newer'; message: string };
 
@@ -268,10 +307,13 @@ export function checkBackup(folder: string, latestSchema: number): BackupCheck {
     };
   }
   let schema: number;
+  let required: OriginalBackupSet | undefined;
   try {
     const db = new Database(file, { readonly: true, fileMustExist: true });
     try {
       schema = db.pragma('user_version', { simple: true }) as number;
+      const files = schema <= latestSchema ? retainedOriginals(db) : [];
+      if (files.length) required = { version: 1, files };
     } finally {
       db.close();
     }
@@ -284,20 +326,73 @@ export function checkBackup(folder: string, latestSchema: number): BackupCheck {
       code: 'newer',
       message: 'That backup was made by a newer Drashti: update Drashti first.',
     };
-  // A scheduled backup keeps its media in the pool beside it; every file it lists must be there.
-  if (!existsSync(join(folder, MEDIA)) && note.mediaPool !== undefined && note.media) {
-    const dir = join(folder, note.mediaPool);
-    const files = readManifest(folder);
-    if (!files?.every((f) => existsSync(join(dir, f))))
+  if (
+    required &&
+    !required.files.every((original) =>
+      note.originals?.files.some(
+        (listed) =>
+          listed.sha256 === original.sha256 && listed.ext === original.ext && listed.bytes === original.bytes,
+      ),
+    )
+  )
+    return {
+      ok: false,
+      code: 'unfinished',
+      message: 'The backup does not list every required original document.',
+    };
+  let pool: { dir: string; files: string[] } | null = null;
+  if (
+    !existsSync(join(folder, MEDIA)) &&
+    note.mediaPool !== undefined &&
+    (note.media || (note.originals?.files.length ?? 0) > 0)
+  ) {
+    if (note.originals && note.mediaPool !== '../Media')
       return {
         ok: false,
         code: 'unfinished',
-        message:
-          'That backup’s media is not all there (the shared Media folder beside it is missing files), so it cannot be restored whole.',
+        message: 'The original document pool is not in the expected backup folder.',
       };
-    return { ok: true, media: true, schema, note, pool: { dir, files } };
+    const dir = join(folder, note.mediaPool);
+    const files = readManifest(folder);
+    if (!files?.every((file) => existsSync(join(dir, file))))
+      return { ok: false, code: 'unfinished', message: 'The backup’s shared media is incomplete.' };
+    if (
+      note.originals &&
+      !note.originals.files.every((original) =>
+        files.includes(originalRelative(original).split(/[\\/]/u).join('/')),
+      )
+    )
+      return {
+        ok: false,
+        code: 'unfinished',
+        message: 'The shared manifest omits a required original document.',
+      };
+    pool = { dir, files };
   }
-  return { ok: true, media: existsSync(join(folder, MEDIA)), schema, note, pool: null };
+  const media = note.originals ? note.media : pool !== null || existsSync(join(folder, MEDIA));
+  if (media && !pool && !existsSync(join(folder, MEDIA)))
+    return { ok: false, code: 'unfinished', message: 'The backup’s media is missing.' };
+  const root = pool?.dir ?? join(folder, MEDIA);
+  if (note.originals && !realPlace(pool ? dirname(folder) : folder, root)?.inside)
+    return {
+      ok: false,
+      code: 'unfinished',
+      message: 'The required original folder leaves the selected backup location.',
+    };
+  if (note.originals && !originalsPresent(root, note.originals))
+    return {
+      ok: false,
+      code: 'unfinished',
+      message: 'A required original document is missing from this backup.',
+    };
+  return {
+    ok: true,
+    media,
+    schema,
+    note,
+    pool,
+    ...(note.originals ? { originals: { root, set: note.originals } } : {}),
+  };
 }
 
 /** Ask for a restore from `from` at the next start. */
@@ -355,6 +450,7 @@ export function applyPendingRestore(
   const incomingDb = `${current}.restoring`;
   const incomingMedia = join(userData, `${MEDIA}.restoring`);
   const keptIn = freshFolder(join(userData, 'Backups'), `Before restore ${fileStamp(options.now)}`);
+  let previousOriginals: OriginalBackupSet | undefined;
   const cleanUp = () => {
     rmSync(incomingMedia, { recursive: true, force: true });
     rmSync(incomingDb, { force: true });
@@ -367,7 +463,7 @@ export function applyPendingRestore(
       if (existsSync(`${current}${suffix}`))
         copyFileSync(`${current}${suffix}`, join(keptIn, `${LIBRARY_FILE}${suffix}`));
     rmSync(incomingMedia, { recursive: true, force: true });
-    if (check.pool) {
+    if (check.pool && check.media) {
       // A scheduled backup: the files it lists, from the pool shared by the backups beside it.
       for (const file of check.pool.files) {
         mkdirSync(dirname(join(incomingMedia, file)), { recursive: true });
@@ -375,6 +471,16 @@ export function applyPendingRestore(
       }
       mkdirSync(incomingMedia, { recursive: true });
     } else if (check.media) cpSync(join(from, MEDIA), incomingMedia, { recursive: true });
+    if (check.originals) mergeOriginalSetSync(check.originals.root, incomingMedia, check.originals.set);
+    try {
+      previousOriginals = originalSet(current);
+    } catch {
+      // A damaged current DB must not prevent recovery from a good backup; its bytes are kept for diagnosis.
+      // An originals-only restore leaves the current Media tree, including every old original, in place.
+      previousOriginals = undefined;
+    }
+    if (!check.media && previousOriginals)
+      mergeOriginalSetSync(mediaDir, join(keptIn, MEDIA), previousOriginals);
     copyFileSync(join(from, LIBRARY_FILE), incomingDb);
   } catch (error) {
     cleanUp();
@@ -402,6 +508,7 @@ export function applyPendingRestore(
         renameSync(mediaDir, incomingMedia);
       });
     }
+    if (!check.media && check.originals) mergeOriginalSetSync(incomingMedia, mediaDir, check.originals.set);
     for (const name of upgradeCopies(userData)) {
       renameSync(join(userData, name), join(keptIn, name));
       undo.push(() => {
@@ -435,9 +542,11 @@ export function applyPendingRestore(
       app: options.app,
       schema: options.schema,
       createdAt: options.now.toISOString(),
-      media: existsSync(join(keptIn, MEDIA)),
+      media: check.media && existsSync(join(keptIn, MEDIA)),
+      ...(previousOriginals ? { originals: previousOriginals } : {}),
     }),
   );
+  cleanUp();
   return { restored: true, from: basename(from), keptIn: basename(keptIn), media: check.media };
 }
 
@@ -465,17 +574,26 @@ export function rollBackRestore(userData: string, keptIn: string, options: { now
     // Upgrade copies made while trying to open the restored library go with it; the old ones come back.
     for (const name of upgradeCopies(userData)) renameSync(join(userData, name), join(failedIn, name));
     for (const name of upgradeCopies(kept)) renameSync(join(kept, name), join(userData, name));
-    if (existsSync(join(kept, MEDIA))) {
+    const keptNote = readNote(kept);
+    if (existsSync(join(kept, MEDIA)) && (!keptNote?.originals || keptNote.media)) {
       if (existsSync(mediaDir)) renameSync(mediaDir, join(failedIn, MEDIA));
       renameSync(join(kept, MEDIA), mediaDir);
     }
+    if (keptNote?.originals && !keptNote.media)
+      mergeOriginalSetSync(join(kept, MEDIA), mediaDir, keptNote.originals);
     // Copied, not moved: the kept folder stays a backup of the library from before.
     for (const suffix of ['', '-wal', '-shm'])
       if (existsSync(join(kept, `${LIBRARY_FILE}${suffix}`)))
         copyFileSync(join(kept, `${LIBRARY_FILE}${suffix}`), `${current}${suffix}`);
     const note = noteSchema.safeParse(JSON.parse(readFileSync(join(kept, NOTE), 'utf8')));
     if (note.success)
-      writeFileSync(join(kept, NOTE), noteText({ ...note.data, media: existsSync(join(kept, MEDIA)) }));
+      writeFileSync(
+        join(kept, NOTE),
+        noteText({
+          ...note.data,
+          media: note.data.originals ? note.data.media : existsSync(join(kept, MEDIA)),
+        }),
+      );
   } catch (error) {
     return {
       ok: false,

@@ -5,8 +5,11 @@ import { slidesOf } from '../../../shared/slide-edit';
 import { findSlide } from './ops';
 import type { Measured } from '../render/measure';
 import type { Zoom } from './zoom';
+import type { PdfCanvasTool } from './pdf-marks';
 import { groupedSelection } from '../../../shared/element-groups';
 import { sizeLook } from '../../../shared/slide-size';
+import { slideCanvas } from '../../../shared/document-page';
+import { convertSourceContent, SourceConversionGate, sourceContentChanges } from './source-conversion';
 
 /*
  * The slide editor: the presentation being edited (a copy, changed freely
@@ -18,7 +21,7 @@ import { sizeLook } from '../../../shared/slide-size';
  */
 
 /** The editor's groups along its top (Session 55, Part 17a). */
-export type EditorGroup = 'words' | 'insert' | 'arrange' | 'design' | 'motion' | 'slides';
+export type EditorGroup = 'words' | 'insert' | 'arrange' | 'design' | 'motion' | 'slides' | 'pdf';
 
 /**
  * A change the editor makes outside the presentation (Session 55, Part 17a): Drashti's default transition, a slide
@@ -52,6 +55,8 @@ export interface EditorView {
   stamp: string;
   look: SlideLook | null;
   unreadable: number;
+  /** Preparation limits for imported source objects, separate from unreadable stored elements. */
+  sourceIssues: string[];
   slideId: string | null;
   /** Selected elements on the slide shown. */
   selection: string[];
@@ -89,6 +94,11 @@ export interface EditorView {
   strip: boolean;
   masterReturnId: string | null;
   previewAt: number | null;
+  /** An animated imported page asks before typing, content changes or drag previews. */
+  sourceConversion: { slideIds: string[] } | null;
+  /** A page-mark tool and its unfinished local pointer preview, never saved content. */
+  pdfTool: PdfCanvasTool | null;
+  pdfDrawing: boolean;
 }
 
 const closed: EditorView = {
@@ -100,6 +110,7 @@ const closed: EditorView = {
   stamp: '',
   look: null,
   unreadable: 0,
+  sourceIssues: [],
   slideId: null,
   selection: [],
   editing: null,
@@ -122,21 +133,78 @@ const closed: EditorView = {
   strip: false,
   masterReturnId: null,
   previewAt: null,
+  sourceConversion: null,
+  pdfTool: null,
+  pdfDrawing: false,
 };
 
 export const useEditor = create<EditorView>(() => closed);
 
+const sourceGate = new SourceConversionGate();
+let sourcePromptView: Pick<
+  EditorView,
+  'group' | 'selection' | 'editing' | 'previewAt' | 'made' | 'pdfTool'
+> | null = null;
+
+function requestSourceConversion(ids: readonly string[], resume?: () => void, next?: EditDoc): boolean {
+  const s = useEditor.getState();
+  if (!s.doc) return false;
+  if (sourceGate.request(s.doc, ids, resume, next)) return true;
+  if (!s.sourceConversion && sourceGate.pending) {
+    const present = new Set(slidesOf(s.doc).flatMap((slide) => slide.elements.map((element) => element.id)));
+    sourcePromptView = {
+      group: s.group,
+      selection: s.selection,
+      editing: s.editing,
+      previewAt: s.previewAt,
+      made: s.made.filter((id) => present.has(id)),
+      pdfTool: s.pdfTool,
+    };
+    useEditor.setState({ sourceConversion: { slideIds: sourceGate.pending.slideIds } });
+  }
+  return false;
+}
+
+/** Ask before a live content intent; drags are tried again after acknowledgement. */
+export function allowSourceContent(slideId: string | null, resume?: () => void): boolean {
+  return slideId !== null && requestSourceConversion([slideId], resume);
+}
+
+/** Acceptance itself is neither a document change nor an Undo step. */
+export function acceptSourceConversion(): void {
+  const resume = sourceGate.accept(useEditor.getState().doc);
+  sourcePromptView = null;
+  useEditor.setState({ sourceConversion: null });
+  resume?.();
+}
+
+export function cancelSourceConversion(): void {
+  sourceGate.reset();
+  const before = sourcePromptView;
+  sourcePromptView = null;
+  useEditor.setState({ ...before, sourceConversion: null });
+}
+
+/** An abandoned typing session, or Undo back to its original words, needs notice again. */
+export function revokeSourceContent(slideId: string): void {
+  sourceGate.consume([slideId]);
+}
+
 export function currentLook(): SlideLook | null {
   const s = useEditor.getState();
-  return s.look && s.doc && s.opened ? sizeLook(s.look, s.opened, s.doc) : s.look;
+  return s.look && s.doc && s.opened
+    ? sizeLook(s.look, s.opened, slideCanvas(findSlide(s.doc, s.slideId), s.doc))
+    : s.look;
 }
 
 export function useEditorLook(): SlideLook | null {
   const look = useEditor((s) => s.look);
   const fromWidth = useEditor((s) => s.opened?.width);
   const fromHeight = useEditor((s) => s.opened?.height);
-  const width = useEditor((s) => s.doc?.width);
-  const height = useEditor((s) => s.doc?.height);
+  const width = useEditor((s) => (s.doc ? slideCanvas(findSlide(s.doc, s.slideId), s.doc).width : undefined));
+  const height = useEditor((s) =>
+    s.doc ? slideCanvas(findSlide(s.doc, s.slideId), s.doc).height : undefined,
+  );
   return useMemo(
     () =>
       look && fromWidth && fromHeight && width && height
@@ -150,6 +218,7 @@ export const isDirty = (s: EditorView): boolean => s.doc !== null && s.doc !== s
 
 /** Open the editor on a presentation, at a slide (or its first); `name` until its slides say theirs. */
 export async function openSlideEditor(presentationId: string, name: string, slideId: string | null = null) {
+  cancelSourceConversion();
   // The group along the top stays as it was, as a presentation program keeps it.
   const group = useEditor.getState().group;
   useEditor.setState({ ...closed, group, open: { presentationId, name }, loading: true });
@@ -169,6 +238,7 @@ export async function openSlideEditor(presentationId: string, name: string, slid
     stamp: result.stamp,
     look: result.look,
     unreadable: result.unreadable,
+    sourceIssues: result.sourceIssues ?? [],
     slideId: start?.id ?? null,
   });
 }
@@ -185,6 +255,7 @@ export function closeSlideEditor(): void {
   // Another presentation's slides waiting (Session 55, Part 17a): they open instead, the window staying.
   const next = pending;
   pending = null;
+  cancelSourceConversion();
   useEditor.setState({ ...closed, group: useEditor.getState().group });
   if (next) void openSlideEditor(next.presentationId, '', next.slideId);
   else closeWindow();
@@ -241,6 +312,10 @@ function validSelection(doc: EditDoc, slideId: string | null, ids: readonly stri
 export function commit(next: EditDoc, options: { coalesce?: string; select?: string[] } = {}): void {
   const s = useEditor.getState();
   if (!s.doc || next === s.doc) return;
+  const changedSources = sourceContentChanges(s.doc, next);
+  if (!requestSourceConversion(changedSources, () => commit(next, options), next)) return;
+  next = convertSourceContent(next, changedSources);
+  sourceGate.consume(changedSources);
   const now = Date.now();
   const joins =
     options.coalesce !== undefined &&
@@ -265,7 +340,15 @@ export function beginGesture(): void {
 
 /** The document while dragging (not a step yet). */
 export function updateGesture(next: EditDoc): void {
-  if (useEditor.getState().gesture) useEditor.setState({ doc: next });
+  const s = useEditor.getState();
+  if (!s.gesture || !s.doc) return;
+  const changedSources = sourceContentChanges(s.gesture, next);
+  if (!requestSourceConversion(changedSources)) {
+    useEditor.setState({ gesture: null });
+    return;
+  }
+  useEditor.setState({ doc: convertSourceContent(next, changedSources) });
+  sourceGate.consume(changedSources);
 }
 
 /** End a drag: one step for Undo, if anything moved. */
@@ -286,6 +369,7 @@ export function endGesture(): void {
 }
 
 export function undo(): void {
+  cancelSourceConversion();
   const s = useEditor.getState();
   const prev = s.past.at(-1);
   if (!prev || !s.doc || s.editing) return;
@@ -307,6 +391,7 @@ export function undo(): void {
 }
 
 export function redo(): void {
+  cancelSourceConversion();
   const s = useEditor.getState();
   const next = s.future[0];
   if (!next || !s.doc || s.editing) return;
@@ -351,10 +436,32 @@ export function select(ids: readonly string[]): void {
 export function showSlide(slideId: string): void {
   const s = useEditor.getState();
   if (!s.doc || !findSlide(s.doc, slideId)) return;
-  useEditor.setState({ slideId, selection: [], editing: null, previewAt: null });
+  cancelSourceConversion();
+  useEditor.setState({
+    slideId,
+    selection: [],
+    editing: null,
+    previewAt: null,
+    pdfTool: null,
+    pdfDrawing: false,
+  });
 }
 
 export function startEditing(elementId: string): void {
+  const s = useEditor.getState();
+  const element = s.doc ? findSlide(s.doc, s.slideId)?.elements.find((el) => el.id === elementId) : undefined;
+  if (element?.kind !== 'text') {
+    // Insert Text calls commit then starts typing. Its proposed element is not
+    // published until the pending content change is accepted.
+    const proposed = sourceGate.pending?.next;
+    if (
+      proposed &&
+      findSlide(proposed, s.slideId)?.elements.some((el) => el.id === elementId && el.kind === 'text')
+    )
+      sourceGate.pending?.after.push(() => startEditing(elementId));
+    return;
+  }
+  if (!allowSourceContent(s.slideId, () => startEditing(elementId))) return;
   useEditor.setState({ editing: elementId, selection: [elementId], previewAt: null });
 }
 
@@ -365,6 +472,7 @@ export function tell(note: string | null): void {
 
 export function stopEditing(): void {
   const s = useEditor.getState();
+  if (s.slideId) revokeSourceContent(s.slideId);
   const elements = s.doc ? findSlide(s.doc, s.slideId)?.elements : undefined;
   useEditor.setState({
     editing: null,
@@ -380,6 +488,7 @@ export function noteMade(id: string): void {
 /** Save the changes as one change for the operator window's Undo, and close. */
 export async function saveSlides(force = false): Promise<void> {
   const s = useEditor.getState();
+  if (s.sourceConversion) return;
   if (!s.open || !s.doc || s.saving) return;
   if (!isDirty(s)) {
     closeSlideEditor();

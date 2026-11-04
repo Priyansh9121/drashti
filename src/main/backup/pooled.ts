@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
 import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
+import { originalRelative, verifiedOriginal, type OriginalReadGuard } from '../import/originals-store';
+import { freshOriginalSet, originalRoot } from '../library/original-backup';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { SCHEDULED_FOLDER } from '../../shared/backups';
@@ -101,6 +103,13 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
   const stop = () => {
     if (hooks.cancelled()) throw new BackupStopped('cancelled', 'The backup was stopped.');
   };
+  const checksumGuard: OriginalReadGuard = async (bytes) => {
+    stop();
+    await hooks.gate();
+    stop();
+    if (bytes > 0) await hooks.throttle(bytes);
+    stop();
+  };
   if (!existsSync(options.root))
     throw new BackupStopped('no-folder', 'The backup folder is not there (is the drive connected?).');
   const scheduled = join(options.root, SCHEDULED_FOLDER);
@@ -110,18 +119,9 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
   await mkdir(folder);
   await writeFile(join(folder, MARKER), `${JSON.stringify({ createdAt: options.now.toISOString() })}\n`);
   try {
-    // What the shared folder does not have yet (the same name and size is the same file: named by its hash).
-    const media = options.mediaDir && existsSync(options.mediaDir) ? await filesIn(options.mediaDir) : [];
-    const toCopy: { path: string; bytes: number }[] = [];
-    for (const f of media) if ((await sizeOf(join(pool, f.path))) !== f.bytes) toCopy.push(f);
-    const total = toCopy.reduce((sum, f) => sum + f.bytes, 0);
     const libraryBytes = (await sizeOf(options.dbFile)) ?? 0;
-    const usable = hooks.freeBytes(scheduled) - options.reserveBytes;
-    if (total + libraryBytes > usable)
-      throw new BackupStopped(
-        'no-room',
-        'There is not enough room on the backup drive (Drashti keeps free space there too).',
-      );
+    if (libraryBytes > hooks.freeBytes(scheduled) - options.reserveBytes)
+      throw new BackupStopped('no-room', 'There is not enough room for the library backup.');
 
     // The library, whole, while the show goes on.
     await hooks.gate();
@@ -134,6 +134,32 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
       db.close();
     }
 
+    // Enumerate after the snapshot: the gate may have let a complete import commit before it.
+    const originals = freshOriginalSet(join(folder, LIBRARY_FILE));
+    const originalMedia = originalRoot(options.dbFile, options.mediaDir);
+    const media = options.mediaDir && existsSync(options.mediaDir) ? await filesIn(options.mediaDir) : [];
+    const sources = new Map(media.map((file) => [file.path, join(options.mediaDir ?? '', file.path)]));
+    if (originals) {
+      if (!originalMedia) throw new Error('The required original folder is unavailable.');
+      for (const original of originals.files) {
+        const source = await verifiedOriginal(originalMedia, original, checksumGuard);
+        if (!source) throw new Error('A required retained original is missing or damaged.');
+        const path = originalRelative(original);
+        if (existsSync(join(pool, path)) && !(await verifiedOriginal(pool, original, checksumGuard)))
+          throw new Error('A retained original in the backup pool is damaged.');
+        sources.set(path, source);
+        if (!media.some((file) => file.path === path)) media.push({ path, bytes: original.bytes });
+      }
+    }
+    const toCopy: { path: string; bytes: number }[] = [];
+    for (const file of media) if ((await sizeOf(join(pool, file.path))) !== file.bytes) toCopy.push(file);
+    const total = toCopy.reduce((sum, file) => sum + file.bytes, 0);
+    if (total > hooks.freeBytes(scheduled) - options.reserveBytes)
+      throw new BackupStopped(
+        'no-room',
+        'There is not enough room on the backup drive (Drashti keeps free space there too).',
+      );
+
     // The media, one file at a time, at the speed allowed.
     let done = 0;
     let copied = 0;
@@ -141,7 +167,7 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
     for (const f of toCopy) {
       await hooks.gate();
       stop();
-      const source = join(options.mediaDir ?? '', f.path);
+      const source = sources.get(f.path) ?? join(options.mediaDir ?? '', f.path);
       const target = join(pool, f.path);
       await mkdir(dirname(target), { recursive: true });
       try {
@@ -173,10 +199,16 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
         throw error;
       }
     }
+    if (originals)
+      for (const original of originals.files)
+        if (!(await verifiedOriginal(pool, original, checksumGuard)))
+          throw new Error('A required original was not copied whole into the backup pool.');
+    stop();
     // The files this backup needs: every media file that is now in the shared folder.
     const files: string[] = [];
     for (const f of media) if (existsSync(join(pool, f.path))) files.push(listed(f.path));
     await writeFile(join(folder, MANIFEST), `${JSON.stringify({ files })}\n`);
+    stop();
     // Written last: a folder without it is a backup that did not finish.
     await writeFile(
       join(folder, NOTE),
@@ -187,12 +219,14 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
           createdAt: options.now.toISOString(),
           media: options.mediaDir !== null,
           scheduled: true,
-          ...(options.mediaDir !== null ? { mediaPool: `../${MEDIA}` } : {}),
+          ...(options.mediaDir !== null || originals ? { mediaPool: `../${MEDIA}` } : {}),
+          ...(originals ? { originals } : {}),
         },
         null,
         2,
       )}\n`,
     );
+    stop();
     const pruned = await prune(scheduled, options.keep, folder);
     return {
       folder: folder.slice(scheduled.length + 1),
