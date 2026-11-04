@@ -40,7 +40,7 @@ function setup(o: { engine?: boolean; failDownload?: boolean } = {}) {
       },
     },
     engine,
-    engineFound: () => o.engine ?? true,
+    engineProblem: () => ((o.engine ?? true) ? null : 'This copy of Drashti has no captions engine.'),
     modelReady: () => ready,
     download: async (id, progress) => {
       downloads.push(id);

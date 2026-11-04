@@ -26,3 +26,15 @@ export function whisperCandidates(p: WhisperPlace): string[] {
 export function findWhisper(p: WhisperPlace): string | null {
   return whisperCandidates(p).find((c) => existsSync(c)) ?? null;
 }
+
+/**
+ * Why this computer cannot run the captions engine, or null when it can: whisper.cpp's library for the Mac needs
+ * macOS 13.3 or later (Drashti itself runs from macOS 12). `version` is the system's, as "13.2.1".
+ */
+export function whisperProblem(platform: NodeJS.Platform, version: string): string | null {
+  if (platform !== 'darwin') return null;
+  const [major = 0, minor = 0] = version.split('.').map((n) => Number.parseInt(n, 10) || 0);
+  return major > 13 || (major === 13 && minor >= 3)
+    ? null
+    : 'Live captions need macOS 13.3 or later on this Mac.';
+}

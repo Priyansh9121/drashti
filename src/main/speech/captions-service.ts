@@ -26,8 +26,8 @@ export interface CaptionsServiceDeps {
   repo: { get(): CaptionSettings; set(settings: CaptionSettings): void };
   /** What hears (the whisper engine, or the test switch's stand-in). */
   engine: SpeechEngine;
-  /** Whether this copy of Drashti has the captions engine. */
-  engineFound: () => boolean;
+  /** Why this computer cannot run captions (no engine here, or too old a Mac), or null when it can. */
+  engineProblem: () => string | null;
   modelReady: (id: CaptionModelId) => boolean;
   download: (id: CaptionModelId, progress: (done: number, total: number) => void) => Promise<void>;
   /** The engine's setCaptions. */
@@ -86,7 +86,8 @@ export class CaptionsService {
       settings: this.settings(),
       download: this.download,
       speech: this.hub.state(),
-      engine: this.deps.engineFound(),
+      engine: this.deps.engineProblem() === null,
+      engineProblem: this.deps.engineProblem(),
       trial: true,
     };
   }
@@ -142,7 +143,7 @@ export class CaptionsService {
   }
 
   private async turnOn(): Promise<void> {
-    if (!this.deps.engineFound()) return;
+    if (this.deps.engineProblem() !== null) return;
     this.hub.setOn(true);
     this.feed.start();
     if (!this.deps.modelReady(this.switch.model)) await this.fetchModel();

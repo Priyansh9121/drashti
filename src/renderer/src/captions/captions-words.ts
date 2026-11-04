@@ -6,7 +6,7 @@ export const megabytes = (bytes: number): string => `${String(Math.round(bytes /
 
 /** What the listening is doing now, and what to do about it. */
 export function captionsStateText(view: CaptionsStatus): string {
-  if (!view.engine) return 'This copy of Drashti has no captions engine.';
+  if (!view.engine) return view.engineProblem ?? 'This copy of Drashti has no captions engine.';
   if (!view.on) return 'Off on this computer.';
   const s = view.speech;
   switch (s.phase) {

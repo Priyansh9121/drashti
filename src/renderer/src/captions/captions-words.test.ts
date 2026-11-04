@@ -11,6 +11,7 @@ const view = (over: Partial<CaptionsStatus>): CaptionsStatus => ({
   download: { phase: 'ready', done: 487_601_967, total: 487_601_967, message: null },
   speech: { phase: 'listening', language: 'auto' },
   engine: true,
+  engineProblem: null,
   trial: true,
   ...over,
 });
@@ -26,6 +27,11 @@ describe('the Live captions dialog’s words (Part 10)', () => {
       /No sound input is chosen for the stream/,
     );
     expect(captionsStateText(view({ engine: false }))).toBe('This copy of Drashti has no captions engine.');
+    expect(
+      captionsStateText(
+        view({ engine: false, engineProblem: 'Live captions need macOS 13.3 or later on this Mac.' }),
+      ),
+    ).toBe('Live captions need macOS 13.3 or later on this Mac.');
     expect(captionsStateText(view({ speech: { phase: 'failed', message: 'Placeholder failure.' } }))).toBe(
       'Placeholder failure.',
     );

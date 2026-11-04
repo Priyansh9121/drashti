@@ -330,7 +330,7 @@ import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions
 import { CaptionsService } from './speech/captions-service';
 import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
-import { findWhisper } from './speech/engine-place';
+import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
@@ -2879,7 +2879,11 @@ function start(): void {
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             log,
           }),
-    engineFound: () => testSpeech !== undefined || whisperProgram !== null,
+    engineProblem: () =>
+      testSpeech !== undefined
+        ? null
+        : (whisperProblem(process.platform, process.getSystemVersion()) ??
+          (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null)),
     modelReady: (id) =>
       testSpeech !== undefined || modelReady(modelFile(captionsData, id), MODEL_SOURCES[id]),
     download: (id, progress) =>

@@ -175,8 +175,10 @@ export interface CaptionsStatus {
   download: CaptionsDownload;
   /** What the listening is doing now. */
   speech: SpeechState;
-  /** Whether this copy of Drashti has the captions engine (scripts/fetch-whisper.mjs bundles it). */
+  /** Whether this copy of Drashti has the captions engine (scripts/fetch-whisper.mjs bundles it) and can run it. */
   engine: boolean;
+  /** Why not, when it cannot: no engine in this copy, or a Mac older than macOS 13.3. */
+  engineProblem: string | null;
   /** Captions are a trial: Gujarati is not good enough yet with any free model (Session 55). */
   trial: boolean;
 }
