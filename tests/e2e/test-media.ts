@@ -71,7 +71,8 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
     const bytes = Buffer.from(recorded.base64, 'base64');
     const webm = bytes.length >= 4 && bytes.readUInt32BE(0) === EBML_HEADER;
     const last = webm ? Math.max(0, ...webmVideoFrameTimes(bytes)) : 0;
-    const longer = Math.max(last, recorded.ms) > askedMs + LONGER_MS;
+    // As far as it plays: its last frame of pictures or sound, or its timed length.
+    const longer = Math.max(webm ? webmLastFrameMs(bytes) : 0, recorded.ms) > askedMs + LONGER_MS;
     if (webm && last >= recorded.ms * 0.9 - frameMs && !longer) {
       writeFileSync(file, setWebmDuration(bytes, recorded.ms));
       return file;
@@ -80,7 +81,7 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
     const problem = !webm
       ? `no video (${String(bytes.length)} bytes)`
       : longer
-        ? `it ran ${String(Math.round(Math.max(last, recorded.ms)))} ms, ${String(askedMs)} ms asked`
+        ? `it ran ${String(Math.round(Math.max(webmLastFrameMs(bytes), recorded.ms)))} ms, ${String(askedMs)} ms asked`
         : `its frames ended at ${String(Math.round(last))} ms of ${String(Math.round(recorded.ms))}`;
     // Five tries, a second apart: a busy CI computer can hold a page up for a while.
     if (attempt === 5) throw new Error(`The page recorded no whole video in five tries: ${problem}.`);
@@ -119,7 +120,8 @@ const RECORDER_START_MS = 30_000;
 
 /**
  * How far past the length asked a clip may run: its last frame captured late on a busy computer, or its timer late.
- * Never a held first picture (alpha.14's gate on CI's Mac, 4 Nov 2026: 1.3–1.8 s of it made a 2 s clip 3.4–3.8 s).
+ * Never a held first picture (alpha.14's gate on CI's Mac, 4 Nov 2026: 1.3–1.8 s of it made a 2 s clip 3.4–3.8 s),
+ * nor its tone still sounding while the recorder's start event is awaited.
  */
 const LONGER_MS = 250;
 
@@ -254,8 +256,10 @@ function recordWebm(
           await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
         }
         const ms = performance.now() - start;
+        // Its sound ends with its pictures: a tone left on would go on being recorded.
+        await audio?.suspend();
         // Stopped only once its first data has come (its start event): stopped before, it gives nothing (3 Nov
-        // 2026). Nothing is drawn meanwhile, so the clip ends where it was timed to.
+        // 2026). Nothing is drawn or sounded meanwhile, so the clip ends where it was timed to.
         const drawn = performance.now();
         while (lifecycle.startEventAtMs === null && performance.now() - drawn < startWithinMs) {
           // eslint-disable-next-line no-restricted-syntax -- in the page: waiting for the recorder's first data
@@ -368,6 +372,15 @@ const MASTERS = new Set([0x1654ae6b, TRACK_ENTRY, INFO, 0x1f43b675, 0xa0]);
  * segment, entering the elements that hold frames, so MediaRecorder's live clusters of unknown size read too.
  */
 export function webmVideoFrameTimes(webm: Uint8Array): number[] {
+  return frameTimes(webm, 'video');
+}
+
+/** When a WebM's last frame of any track, its pictures' or its sound's, is shown (ms): as far as it plays. */
+export function webmLastFrameMs(webm: Uint8Array): number {
+  return Math.max(0, ...frameTimes(webm, 'every'));
+}
+
+function frameTimes(webm: Uint8Array, tracks: 'video' | 'every'): number[] {
   const header = readElement(webm, 0);
   const segment = readElement(webm, header.end);
   const uint = (e: Element) => webm.subarray(e.dataStart, e.end).reduce((n, b) => n * 256 + b, 0);
@@ -395,7 +408,8 @@ export function webmVideoFrameTimes(webm: Uint8Array): number[] {
       // The frame's time from its cluster's, a signed 16-bit number.
       const hi = webm[e.dataStart + track.length] ?? 0;
       const relative = hi * 256 + (webm[e.dataStart + track.length + 1] ?? 0) - (hi & 0x80 ? 0x10000 : 0);
-      if (track.value === videoTrack) times.push(((cluster + relative) * scale) / 1_000_000);
+      if (tracks === 'every' || track.value === videoTrack)
+        times.push(((cluster + relative) * scale) / 1_000_000);
     }
     at = e.end;
   }

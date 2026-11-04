@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launchApp, operatorPage, operatorReady } from './helpers';
-import { makeTestVideo, webmDurationMs, webmVideoFrameTimes } from './test-media';
+import { makeTestVideo, webmDurationMs, webmLastFrameMs } from './test-media';
 
 /*
  * The generated test video itself (alpha.14's gate on CI's Mac, 3 Nov 2026): the page's recorder there began only
@@ -13,10 +13,10 @@ import { makeTestVideo, webmDurationMs, webmVideoFrameTimes } from './test-media
  * 1.3–1.8 s late; the first picture held until then made a 2 s clip 3.4–3.8 s long. Each clip is the length asked.
  */
 
-/** How long a test video plays (ms): its written duration, or its last frame's time when that is later. */
+/** How long a test video plays (ms): its written duration, or its last frame's time, pictures or sound, if later. */
 function lengthMs(file: string): number {
   const bytes = readFileSync(file);
-  return Math.max(webmDurationMs(bytes), ...webmVideoFrameTimes(bytes));
+  return Math.max(webmDurationMs(bytes), webmLastFrameMs(bytes));
 }
 
 test('a recorder that starts late still gives a whole test video', async () => {
@@ -65,27 +65,44 @@ test('a recorder that says it has started only late still gives a test video the
   const win = await operatorPage(app);
   await operatorReady(win);
   // As on CI's Mac on 4 Nov: the page's recorder records from start() on, but its start event comes 3 s later (or
-  // when it is stopped first).
+  // when it is stopped first), later than the whole 2 s clip.
   await win.evaluate(() => {
     const proto = MediaRecorder.prototype;
     // eslint-disable-next-line @typescript-eslint/unbound-method -- called on each recorder below, with call()
     const realStart = proto.start;
     // eslint-disable-next-line @typescript-eslint/unbound-method -- called on each recorder below, with call()
     const realStop = proto.stop;
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- called on each recorder below, with call()
+    const realListen = proto.addEventListener;
     const late = new WeakMap<MediaRecorder, number>();
     const startEvent = (recorder: MediaRecorder) => {
       late.delete(recorder);
       recorder.dispatchEvent(new Event('start'));
     };
-    proto.start = function (this: MediaRecorder, timeslice?: number) {
-      // The recorder's own start event never reaches the page; this one comes 3 s later.
-      this.addEventListener(
-        'start',
-        (event) => {
-          if (event.isTrusted) event.stopImmediatePropagation();
+    // The recorder's own start event never reaches the page's listeners (a listener's place in the order can't
+    // stop it: at its target each runs in the order added); only this one, 3 s later.
+    proto.addEventListener = function (
+      this: MediaRecorder,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      if (type !== 'start') {
+        realListen.call(this, type, listener, options);
+        return;
+      }
+      realListen.call(
+        this,
+        type,
+        (event: Event) => {
+          if (event.isTrusted) return;
+          if (typeof listener === 'function') listener.call(this, event);
+          else listener.handleEvent(event);
         },
-        { capture: true },
+        options,
       );
+    } as typeof proto.addEventListener;
+    proto.start = function (this: MediaRecorder, timeslice?: number) {
       late.set(
         this,
         window.setTimeout(() => startEvent(this), 3000),
@@ -102,7 +119,11 @@ test('a recorder that says it has started only late still gives a test video the
     };
   });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-test-media-'));
-  const file = await makeTestVideo(win, join(dir, 'Placeholder late start event clip.webm'), { seconds: 2 });
+  // With a tone: its sound, too, ends with the clip.
+  const file = await makeTestVideo(win, join(dir, 'Placeholder late start event clip.webm'), {
+    seconds: 2,
+    tone: 440,
+  });
   const length = lengthMs(file);
   expect(length, 'the clip is the 2 s asked').toBeGreaterThan(1700);
   expect(length, 'the clip is the 2 s asked').toBeLessThan(2300);
