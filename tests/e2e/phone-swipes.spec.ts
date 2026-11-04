@@ -17,6 +17,53 @@ const snapshot = (win: Page) =>
 
 const slideNow = async (win: Page) => (await snapshot(win)).layers.slide?.slideIndex ?? null;
 
+/** The live picture's top in the page's pixels, read after two frames (a scroll the compositor did is the page's). */
+const liveTop = (p: Page) =>
+  p
+    .getByTestId('remote-live')
+    .evaluate(
+      (el) =>
+        new Promise<number>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(el.getBoundingClientRect().top))),
+        ),
+    );
+
+/**
+ * How long the finger rested before it lifted, as the page saw the touches (their own times: its last touchmove to its
+ * touchend), in Chrome's engine. Chromium takes a finger that lifts 80 ms or more after it last moved as at rest and
+ * starts no fling (ui/events/velocity_tracker, kAssumePointerUpStoppedTimeMs).
+ */
+async function restBeforeLift(p: Page, gesture: () => Promise<void>): Promise<number | null> {
+  const watch = await p.evaluateHandle(() => {
+    let moved: number | null = null;
+    let lifted: number | null = null;
+    const onMove = (e: TouchEvent) => {
+      if (e.isTrusted && lifted === null) moved = e.timeStamp;
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.isTrusted && lifted === null) lifted = e.timeStamp;
+    };
+    document.addEventListener('touchmove', onMove, { capture: true, passive: true });
+    document.addEventListener('touchend', onEnd, { capture: true, passive: true });
+    return {
+      done: () =>
+        new Promise<number | null>((resolve) =>
+          requestAnimationFrame(() => {
+            document.removeEventListener('touchmove', onMove, true);
+            document.removeEventListener('touchend', onEnd, true);
+            resolve(moved === null || lifted === null ? null : lifted - moved);
+          }),
+        ),
+    };
+  });
+  try {
+    await gesture();
+    return await watch.evaluate((w) => w.done());
+  } finally {
+    await watch.dispose();
+  }
+}
+
 /** The middle of the live picture, in the page's pixels. */
 async function middle(p: Page): Promise<{ x: number; y: number; width: number }> {
   const box = await p.getByTestId('remote-live').boundingBox();
@@ -25,8 +72,16 @@ async function middle(p: Page): Promise<{ x: number; y: number; width: number }>
 }
 
 /**
+ * How long fingers that stop rest before they lift: past the 80 ms after which Chromium takes a finger as at rest
+ * (restBeforeLift), so it starts no fling.
+ */
+const AT_REST_MS = 100;
+
+/**
  * Fingers on the live picture, each from its start by (dx, dy) in eight moves over about 200 ms: a touch screen's own
- * in Chrome's engine, the pointer events a phone's touches make in Safari's.
+ * in Chrome's engine, the pointer events a phone's touches make in Safari's. They lift as they move (a flick), or,
+ * with `stop`, rest first: a drag that scrolls the page must stop, as a headless Chromium never animates a fling and
+ * keeps it until the next touch, which Chrome on Windows then takes as the touch that stops it, with no click.
  */
 async function fingers(
   p: Page,
@@ -34,7 +89,12 @@ async function fingers(
   starts: { x: number; y: number }[],
   dx: number[],
   dy: number[],
+  { stop = false }: { stop?: boolean } = {},
 ): Promise<void> {
+  const rest = () =>
+    stop
+      ? letTimePass(p, AT_REST_MS, 'the fingers rest before they lift: a drag that stops')
+      : Promise.resolve();
   const STEPS = 8;
   const at = (i: number, step: number) => ({
     x: (starts[i]?.x ?? 0) + ((dx[i] ?? 0) * step) / STEPS,
@@ -48,6 +108,7 @@ async function fingers(
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points(step) });
       await letTimePass(p, 25, 'a finger moves through its 200 ms swipe');
     }
+    await rest();
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await cdp.detach();
     return;
@@ -79,6 +140,7 @@ async function fingers(
     await fire('pointermove', step);
     await letTimePass(p, 25, 'a finger moves through its 200 ms swipe');
   }
+  await rest();
   await fire('pointerup', STEPS);
 }
 
@@ -372,13 +434,23 @@ for (const engine of ['chromium', 'webkit'] as const satisfies readonly Engine[]
         [0, -100],
         [0, 0],
       );
-      // A drag mostly up or down: the page's own scroll, never a swipe.
-      await fingers(p, engine, [{ x: m.x, y: m.y + 40 }], [-30], [-120]);
+      // A drag mostly up or down: the page's own scroll, never a swipe. It stops before the finger lifts, so the page
+      // stays where the finger left it: a fling would stay, unseen, in a headless Chromium (CI's Windows never moved
+      // the page on), and Chrome on Windows takes the next touch, the tap below, as stopping it, with no click.
+      const rested = await restBeforeLift(p, () =>
+        fingers(p, engine, [{ x: m.x, y: m.y + 40 }], [-30], [-120], { stop: true }),
+      );
+      if (engine === 'chromium')
+        expect(
+          rested,
+          'the finger rests 80 ms or more before it lifts: a drag that stops',
+        ).toBeGreaterThanOrEqual(80);
+      const left = await liveTop(p);
       // A moment for anything that would have gone through.
       await holdStill(
-        async () => (await slideNow(win)) === 1,
+        async () => (await slideNow(win)) === 1 && (await liveTop(p)) === left,
         700,
-        'two fingers and vertical gestures never turn the page',
+        'two fingers and vertical gestures never turn the page, and the page stays where the finger left it (no fling)',
       );
       expect(await slideNow(win)).toBe(1);
 
