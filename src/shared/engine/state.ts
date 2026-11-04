@@ -63,7 +63,7 @@ import type { StageCall } from '../stage-message';
  */
 // 25 (Part 17b): native normalized vector paths travel with slides to every player.
 // Optional path/page-size fields add to 23/24; saved states from both read whole.
-export const ENGINE_STATE_VERSION = 25;
+export const ENGINE_STATE_VERSION = 27;
 
 /**
  * Whether a state saved by this engine version is read whole (Session 52): this version's own, 22 (Part 16's), 16 (Session 55's
@@ -75,6 +75,8 @@ export const ENGINE_STATE_VERSION = 25;
 export function readsEngineVersion(version: unknown): boolean {
   return (
     version === ENGINE_STATE_VERSION ||
+    version === 26 ||
+    version === 25 ||
     version === 24 ||
     version === 23 ||
     // 23 only adds to 22 (Session 55, Part 17a's words); 22 only adds to 20 (Session 55, Part 16's lower thirds); 17,

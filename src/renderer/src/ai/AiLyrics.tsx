@@ -9,7 +9,7 @@ import { Notice } from '../ui/Notice';
 import { useAi } from './ai-store';
 type Open = ReturnType<typeof useWords.getState>['open'];
 const history: { open: Open; before: string; after: string }[] = [];
-export function undoAiLyrics(): boolean {
+function undoAiLyrics(): boolean {
   const last = history.at(-1);
   const state = useWords.getState();
   if (last?.open !== state.open || last.after !== state.text) return false;
