@@ -1,0 +1,57 @@
+{
+  "description": "Invented test material for offline helper tests. No real song, book, sabha or calendar.",
+  "library": [
+    {
+      "key": "boat",
+      "name": "Placeholder blue boat",
+      "text": "A small blue boat floats along a flowing river.",
+      "lang": "en"
+    },
+    {
+      "key": "stones",
+      "name": "Placeholder orange stones",
+      "text": "Orange square stones are counted on a table.",
+      "lang": "en"
+    },
+    {
+      "key": "exact",
+      "name": "Placeholder water card",
+      "text": "Water is a word on this placeholder card.",
+      "lang": "en"
+    },
+    { "key": "gu", "name": "નમૂનાની હોડી", "text": "નમૂનાની નાની હોડી નદીમાં તરતી જાય છે.", "lang": "gu" },
+    { "key": "hi", "name": "नमूने की नाव", "text": "नमूने की छोटी नाव नदी के पानी पर चलती है.", "lang": "hi" }
+  ],
+  "queries": {
+    "meaning": "travelling on moving water",
+    "typo": "blu baot",
+    "romanGu": "namunani hodi",
+    "romanGuTypo": "namunani hdoi"
+  },
+  "lyrics": {
+    "gu": "નમૂના પંક્તિ એક\nનમૂના પંક્તિ બે\nનમૂના પંક્તિ ત્રણ\nનમૂના પંક્તિ ચાર",
+    "hi": "नमूना पंक्ति एक\nनमूना पंक्ति दो\nनमूना पंक्ति तीन\nनमूना पंक्ति चार",
+    "en": "Placeholder line one\nPlaceholder line two\nPlaceholder line three\nPlaceholder line four",
+    "splitAfter": [2]
+  },
+  "calendar": {
+    "format": "drashti-calendar",
+    "version": 1,
+    "name": "Placeholder AI calendar",
+    "description": "Invented dates and names; not a real calendar.",
+    "days": [
+      {
+        "date": "2026-12-06",
+        "samvat": 1001,
+        "month": { "gu": "નમૂના માસ", "en": "Placeholder month" },
+        "paksha": { "gu": "નમૂના પક્ષ", "en": "Placeholder half" },
+        "tithi": { "gu": "નમૂના તિથિ", "en": "Placeholder tithi" },
+        "festivals": [{ "gu": "નમૂનાની હોડી", "en": "Placeholder blue boat gathering" }]
+      }
+    ]
+  },
+  "pastSabhas": [
+    { "name": "Placeholder earlier boat gathering", "date": "2026-11-01", "items": ["boat", "gu"] },
+    { "name": "Placeholder earlier stone gathering", "date": "2026-11-08", "items": ["stones"] }
+  ]
+}
