@@ -326,6 +326,7 @@ import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 import type { StreamStatus } from '../shared/stream';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
+import { stateWithoutCaptions, withoutCaptions } from '../shared/engine/captions-filter';
 import type { EngineState } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
@@ -1447,18 +1448,20 @@ function start(): void {
   let network: NetworkService | null = null;
   /** The cameras the operator window last saw, by name (Session 54: a phone naming a video input); null until said. */
   let seenCameras: string[] | null = null;
+  // Live captions never reach a phone, a tablet or the API (Session 55, Part 10): every message goes without them.
   const networkTransport: EngineTransport = {
     broadcast: (message) => {
-      network?.broadcast(message);
+      network?.broadcast(withoutCaptions(message));
     },
   };
   // Output nodes get every engine message too (while any is paired); made further down.
   let nodeService: NodeService | null = null;
   /** What each node should copy (made with the media, further down). */
   let wantedMedia: WantedMedia | null = null;
+  // Nor an output node (Session 55, Part 10): captions show only on this computer's own screens and stream.
   const nodesTransport: EngineTransport = {
     broadcast: (message) => {
-      nodeService?.broadcast(message);
+      nodeService?.broadcast(withoutCaptions(message));
     },
   };
   // Each screen group's settings (Session 55, Part 12: Looks gone from the window): the engine reads them through the
@@ -4492,8 +4495,8 @@ function start(): void {
     ...(networkShown ? { interfaceAddresses: () => networkShown.addresses } : {}),
     engine: {
       dispatch: (command) => engine.dispatch(command),
-      snapshot: () => engine.snapshot(),
-      state: () => engine.current,
+      snapshot: () => withoutCaptions(engine.snapshot()),
+      state: () => stateWithoutCaptions(engine.current),
     },
     reads: {
       playlists: () => playlists.tree(),
@@ -4822,8 +4825,8 @@ function start(): void {
           ],
     bind: networkLocalOnly || perfTest ? '127.0.0.1' : '0.0.0.0',
     engine: {
-      snapshot: () => engine.snapshot(),
-      state: () => engine.current,
+      snapshot: () => withoutCaptions(engine.snapshot()),
+      state: () => stateWithoutCaptions(engine.current),
       rev: () => engine.rev,
       session: engine.session,
     },

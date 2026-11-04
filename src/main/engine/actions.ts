@@ -1,4 +1,5 @@
 import type { CalendarDay } from '../../shared/calendar';
+import type { CaptionsShown } from '../../shared/captions';
 import type { Quote } from '../../shared/idle';
 import type { LiveLook } from '../../shared/looks';
 import type { LiveZoom, PictureLook } from '../../shared/picture-look';
@@ -166,4 +167,6 @@ export type EngineAction =
   /** How Drashti's own sound plays now (Session 55, Part 7): the music stepping aside, each file's even gain. */
   | { type: 'sound/set'; sound: SoundState }
   /** The chosen wallpaper (Session 55, Part 6), as the library has it, or none. */
-  | { type: 'chosenWallpaper/set'; wallpaper: ChosenWallpaper | null };
+  | { type: 'chosenWallpaper/set'; wallpaper: ChosenWallpaper | null }
+  /** Live captions (Session 55, Part 10): the last lines heard, or none. */
+  | { type: 'captions/set'; captions: CaptionsShown | null };
