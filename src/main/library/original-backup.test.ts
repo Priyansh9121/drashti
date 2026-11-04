@@ -430,12 +430,10 @@ describe('a missing or damaged original never stops a backup or a restore', () =
         const open = handlers.get('library:slides-for-edit');
         if (!open) throw new Error('The editor-open handler was not registered.');
         const opened = (await open({}, first.id)) as EditSlidesResult;
-        expect(opened).toMatchObject({
-          ok: true,
-          sourceIssues: [
-            'A retained original is missing or damaged. Saved playback is unchanged; restore the original from a backup.',
-          ],
-        });
+        if (!opened.ok) throw new Error(opened.message);
+        // Its one source note, in whatever words the editor uses: missing or damaged, put back from a backup.
+        expect(opened.sourceIssues).toHaveLength(1);
+        expect(opened.sourceIssues?.[0]).toMatch(/missing or damaged\b.*\bfrom a backup/u);
         expect(presentations.content(first.id)).toEqual(playback);
       } finally {
         db.close();
