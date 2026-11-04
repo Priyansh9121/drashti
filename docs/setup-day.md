@@ -1,6 +1,6 @@
 # Setup day: the checklist
 
-Use this checklist with **1.0.0-alpha.15**, which adds Books, work on imported slides and PDFs, live captions (off and marked Trial), and three helpers that work offline. The two speech helpers are still being built; their checks will be added when they are ready.
+Use this checklist with **1.0.0-alpha.15**, which adds Books, work on imported slides and PDFs, live captions (off and marked Trial), and five helpers that work offline, including Book references during pravachan and Follow singing (Trial).
 
 This is the list for the day Drashti is set up on the mandir's two computers: for the admin doing the setup, with the operators there for the parts marked **(operators)**. Tick each line as it is done, and fill in the "Write down" table at the end. The steps say what to do; `docs/admin-guide.md` says how, and `docs/parallel-run.md` has the first evenings beside the old presentation program.
 
@@ -175,18 +175,21 @@ On each computer:
 
 **AI helpers (optional, in Pro Mode on each Main).** Use placeholder words, books and past playlists for these checks (admin guide, section 26; operator guide, section 11).
 
-- [ ] Open **File › AI helpers…**: Meaning and spelling search, Import suggestions and Playlist suggestions start off. Try each wanted helper offline; nothing suggested goes live, starts a stream or recording, or changes Books. Turn off the ones the operators do not want, and write down the choices.
+- [ ] Open **File › AI helpers…**: Meaning and spelling search, Import suggestions, Playlist suggestions, Book references and Follow singing (Trial) all start off and are Pro only. Try each wanted helper offline; nothing suggested goes live by itself, starts a stream or recording, or changes Books. Turn off the ones the operators do not want, and write down the choices.
 - [ ] **Meaning and spelling search**: type a meaning, misspelling or Gujarati in English letters and press **Find by meaning**. Check ordinary matches still appear and each suggestion opens the real library item or loaded passage. Preview before adding it to a playlist; switch the helper off and check the usual search still works.
 - [ ] **Import suggestions**: **New…**, paste made-up words, then Suggest slide breaks and Suggest transliteration. Choose individual changes, **Apply selected changes**, then **Undo suggestion**, including after switching the helper off. The original input returns; existing words and Books stay as they were.
 - [ ] **Playlist suggestions**: choose a date and placeholder past sabhas, review the calendar entry and each row's source, rename/reorder/remove, then **Make playlist**. Check it is a new playlist, with the chosen rows; rehearse it. Try **Cancel** once too: no playlist changes.
 
-### Speech helper 1 (being built)
+### Book references during pravachan (optional, Pro Mode)
 
-Its rehearsal check will be added here when it is ready. Leave it out for now.
+- [ ] Load a made-up Book file and turn on **Book references** in **File › AI helpers…**, leaving Live captions off. Beside LIVE, type Gujarati, Hindi or English into **Look in loaded Books**, then **Find in Books**: typed search still works. Check the reference and quoted words against that Book; exact matches appear first, then meaning suggestions. Nothing goes up until **Show passage** is pressed.
+- [ ] Only if the owner wants listening: turn on **Live captions on this computer** separately, wait for its model and choose the stream's sound input as above. Both speech helpers need this; neither turns it on. Use generated speech or made-up rehearsal words to find a loaded passage. Read it, then press **Show passage — …**: that press alone puts it up. Phones receive no heard transcript.
+- [ ] Try a missing match, then change or remove the placeholder Book after a result was offered: an old **Show passage** must not show a changed passage. An expired result also needs a fresh search and review. Leave the Book's original words unchanged. Turn Book references off after trying it unless the owner chooses otherwise.
 
-### Speech helper 2 (being built)
+### Follow singing (Trial; optional, Pro Mode)
 
-Its rehearsal check will be added here when it is ready. Leave it out for now.
+- [ ] With Live captions switched on and its input/model ready, turn on **Follow singing (Trial)**, then put a made-up kirtan verse on **LIVE**. Use generated speech or made-up rehearsal words that match it. A clear match may offer **Next suggested verse**; wait without pressing it and confirm nothing advances. Then the operator presses it, or the usual **Next**: only the normal next verse in the play order follows, with no jump to another verse. With no clear match, Next remains the operator's choice.
+- [ ] Change the live slide, leave Pro Mode or disconnect the operator: the old suggestion must be unusable; a fresh match is needed. Check Simple Mode offers neither speech helper. Leave this Trial off unless its rehearsal was useful and the owner wants it. Write down both speech choices, and turn Live captions off separately if listening should stop.
 
 ### The remaining checks (each computer)
 
