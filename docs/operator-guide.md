@@ -65,6 +65,8 @@ Do these about 30 minutes before the sabha starts.
 
 ![Ready? before the sabha: each line green, or amber with what to do](screenshots/ready.png)
 
+**Live captions (Trial).** They start off. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Tell the admin if they are wrong or lag behind; **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
+
 ## 2. Running the sabha
 
 **Starting.** In the open playlist, click the first row: it goes up at once, whatever it is (a slide, a picture, a video or a sound). **Space** (or **→**), or **Next** under LIVE, then puts up the row after it.
@@ -370,7 +372,7 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 **Design the background and layout.** **Design** offers a colour, a two-colour gradient or a library picture. A picture can **Fill the slide**, show the **Whole picture** or **Stretch**; choosing a new designed background removes the old background cue, while keeping the slide’s sound. **Give every slide this slide’s look** carries that look to the presentation after asking first; Undo puts it back. **Words**, **Heading and words** and **Two columns** rearrange words while preserving existing text, table cells, pictures and other content. The existing whole/band darkening still helps words read over the picture and includes the master’s words.
 
-**One size for the presentation.** Choose **Slide size** for Wide (16:9), Standard (4:3) or custom whole-pixel width and height, from 16 to 16384 pixels. **Fit and centre the existing content** scales and centres the slides’ content and the master together; with it off, elements keep their pixel positions and sizes. Undo restores the old size and placements. An imported deck keeps its size locked. Choose a practical canvas size and inspect it on the actual screens before the sabha.
+**One size for the presentation.** Choose **Slide size** for Wide (16:9), Standard (4:3) or custom whole-pixel width and height, from 16 to 16384 pixels. **Fit and centre the existing content** scales and centres the slides’ content and the master together; with it off, elements keep their pixel positions and sizes. Undo restores the old size and placements. An imported deck or PDF may begin with pages of different sizes: Fit works from each page's own size when resizing them. Choose a practical canvas size and inspect it on the actual screens before the sabha.
 
 **One shared master.** In Design, **Edit master** makes or opens the one visual master behind this presentation’s slides. Put repeated words, shapes or pictures there, then **Done editing master** returns to the slide; the master itself is not a playable slide. **Use master** controls whether a slide shows it, and **Use master background** follows its background: a slide’s own background or background cue takes priority. Master words keep their position on every screen. Sound insertion and slide-only notes or transitions are unavailable while editing this visual master. Removing a master is undoable.
 ![The design group in the slide editor at 1024 × 645, using placeholder content](screenshots/editor-design-1024x645.png)
@@ -385,4 +387,36 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 **Keys while preparing.** Use Cmd on a Mac and Ctrl on Windows: **Cmd/Ctrl+S** or **Cmd/Ctrl+Enter** saves, **Cmd/Ctrl+F** opens Find and replace, **Cmd/Ctrl+Z** undoes, and **Cmd/Ctrl+Shift+Z** redoes (also **Ctrl+Y on Windows**). **Cmd/Ctrl+=** or **Cmd/Ctrl+plus** zooms in, **Cmd/Ctrl+minus** zooms out and **Cmd/Ctrl+0** fits. These are the editor’s combinations; ordinary typing keeps its own editing keys. The rest of the editor key card is at the end of `docs/parallel-run.md`.
 
-**What alpha.14 includes.** The phone controls in section 2 and Simple Mode’s phone behavior in section 9, and this six-group slide editor, are available in alpha.14. Imported PDFs and decks can already be shown and decks can retain their own baked clicks and media; their original words, shapes and pictures are not editable source objects in this release.
+**Imported words, shapes and pictures.** In alpha.15 an imported PDF or PowerPoint (`.pptx`) slide can offer its original words, supported shapes and pictures to edit in Drashti's own copy. Let preparation finish, then read the source notes: a missing font or an unsupported drawing may change how the page looks. A scanned PDF's words may be only a picture, so they cannot be typed over as text. Check the prepared page against the original before Save. The original file is kept unchanged.
+
+**An animated slide asks first.** Before a content change replaces an animated slide's original clicks and animations, Drashti asks **Make this slide editable**. Choose it only after reading the source notes; **Keep original** cancels that change. Only the changed slide becomes Drashti's own: untouched slides keep their original playback. Adding notes or editor guides alone does not replace the source. Use Undo if the change is not wanted, and **Save** when the copy is right.
+
+**Mark a PDF page.** Choose the page on the left, then **PDF pages**. **Highlight**, **Underline**, **Strike through**, **Draw** and **Cover** mark it: drag over the part wanted, or draw, and press Esc to cancel a mark before finishing it. Underline and Strike through can also style selected editable words. Finished marks can be selected, moved or removed, with Undo and Redo. **Cover** puts a visible patch over the page; it does not remove the words underneath and must not be used to make a private document safe to share.
+
+**Turn, remove or move a page.** In **PDF pages**, **Turn page right** turns the chosen page a quarter turn; **Delete page** removes that page. Drag a page in the slide list or **Slides across** to change its order. Undo and Redo put each change back. These are changes in the editor until **Save** keeps them in the library; the retained original PDF stays as it was.
+
+**Bring in another PDF's pages.** Choose the page they should follow, then **PDF pages › Insert pages…**. Choose a **PDF in the library** and **Insert pages**, or **Choose a PDF file…**. All its pages go after the chosen one, in order. A file chosen here does not make another presentation in the library, and the PDF chosen from the library stays unchanged. **Cancel** stops preparation. All the inserted pages are one Undo or Redo; nothing is kept in this presentation until **Save**.
+
+**Pages of different sizes.** A PDF page keeps its own paper size and turn: choose it before judging its canvas, rulers, alignment or thumbnail. Inserted pages keep their own sizes too. When **Slide size** resizes mixed pages, **Fit and centre the existing content** fits each from its own paper; with it off, objects keep their pixel positions and sizes. The shared master fits to each page without changing the master itself. Notes and editor guides stay off the audience picture, whatever the page's size.
+
+**An older import needs a matching page.** If an old slide has only a saved picture, use **Link source page…**. For a PowerPoint or Keynote slide, first save a PDF reading copy from the deck's own program. In **Link a PDF reading copy**, **Choose a PDF reading copy…**, choose the **Saved source picture to replace** and its **Matching page in the PDF reading copy**, then **Link selected page**. Check that both pictures are the same page; Drashti leaves an uncertain match to you. Only that picture is replaced: your added objects, notes, guides and canvas size stay. Read warnings before approving an animated slide. An unsupported crop, turn or other change to the source picture may prevent linking; keep the original rather than choose a wrong page. Undo puts the saved picture back, and Save keeps the link.
+
+**Save a new PDF.** **PDF pages › Save a PDF copy…** writes the pages as they now look to a new PDF where you choose. It refuses the original file, including another name for the same file. Give the copy a different name and open it to check every page, font, mark, size and turn. Exporting does not save your edits to the library: use **Save** there too. A PDF copy is for reading; do not expect the deck's clicks, video or sound to play in it.
+
+## 11. AI helpers while preparing a sabha
+
+**Choose only the helpers you want.** In Pro Mode, **File › AI helpers…** has three switches, all off at first: **Meaning and spelling search**, **Import suggestions** and **Playlist suggestions**. Each works offline on this computer; the choices are kept. Suggestions wait for you to check them. They do not change Books, put anything on the screens, or start a stream or recording. These tools are not offered in Simple Mode or on a phone.
+
+**Find by meaning.** With Meaning and spelling search on, open **Library**, type in its search box and press **Find by meaning**. The usual exact matches stay, with suggestions for meaning, a misspelling or Gujarati typed in English letters. Each suggestion leads to a real presentation, media item or loaded book passage; look at it before adding it to the playlist. It does not make up words or references. If the helper cannot finish, use the usual search.
+
+**Suggestions for newly pasted words.** With Import suggestions on, use the library's **New…** and paste the words for a new presentation. **Suggest slide breaks** offers places to split them; **Suggest transliteration** offers Roman letters using Drashti's existing rules. The review names the language when recognised and shows each change with its source line. Tick only the changes you want, then **Apply selected changes**. **Undo suggestion** restores your input, even after the helper has been switched off. Read the words and the Roman letters before making the presentation. This helper does not rewrite words already in the library or in Books.
+
+**Suggest a playlist.** With Playlist suggestions on, choose **Suggest a playlist**, then the **Sabha date** and the **Past sabhas** it may draw from. **Suggest playlist** shows its proposed order and the calendar entry, if there is one; without an entry it uses a past sabha you chose. Check each row and where it came from, change the **Playlist name**, move rows up or down, and **Remove suggestion** for anything unwanted. Only **Make playlist** makes a new playlist; **Cancel** leaves the existing playlists as they were. Open the new one and rehearse it before the sabha.
+
+### Speech helper 1 (being built)
+
+Instructions will be added here when this helper is ready. There are no steps to follow yet.
+
+### Speech helper 2 (being built)
+
+Instructions will be added here when this helper is ready. There are no steps to follow yet.

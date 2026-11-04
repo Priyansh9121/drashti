@@ -1,6 +1,6 @@
 # The admin's guide: looking after Drashti
 
-These instructions describe **1.0.0-alpha.14**: the current phone controls and Simple Mode boundaries, and the completed slide editor. Keep Main, nodes and phone pages on the matching build when updating.
+These instructions describe **1.0.0-alpha.15**: Books, editing imported slides and PDFs, live captions (off and marked Trial), and the three helpers that work offline. The two speech helpers are still being built. Keep Main, nodes and phone pages on the matching build when updating.
 
 This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside the old presentation program are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`.
 
@@ -312,6 +312,8 @@ Drashti comes with no scripture text and no calendar: an admin loads files prepa
 
 **Books.** Drag the book's file onto the library, or (with the Books tab shown) in the **Books** tab use **Books…**, then **Load a book…**. Loading a book again (the same abbreviation) updates it, and its passages in playlists keep working. **Books…** also removes one. A book's passages keep the look of the theme it was given before alpha.14 (else Drashti's own).
 
+Loading or removing a book updates its passages in open playlists and on phones at once. After removal, a passage says **Its book is not loaded**; loading the book again brings it back. Drashti comes with no books: load only files from a source BAPS or the mandir has authorised.
+
 ![The loaded books](screenshots/shastra-texts.png)
 
 **Calendars.** Drag the file onto the library, or **Calendar** in the Timers panel, then **Load a calendar…**. Loading it again (the same name) updates it. Today's Samvat date and tithi then show along the bottom of the operator window, on stage layouts that have the box for it, and on the hall's screens only in a message that uses it. A date no calendar gives shows nothing.
@@ -498,7 +500,7 @@ A **smart playlist** follows a folder on this computer (Session 26c): what Drash
 
 ![The arrange group at 1280 × 720 with generated placeholder content](screenshots/editor-arrange-1280x720.png)
 
-**Design and a master.** **Design** chooses colour, gradient or picture backgrounds and their fit, a wide/standard/custom presentation size, and layouts that keep existing words and other content. Fit scales and centres the content; turning it off keeps its pixel positions and sizes. An imported deck’s size stays locked. One visual master sits behind the presentation’s own elements: **Use master** and **Use master background** choose inheritance per slide, and a slide’s own background takes priority; sound, slide transitions and notes belong to the slides, not the master. **Give every slide this slide’s look** and Undo remain available.
+**Design and a master.** **Design** chooses colour, gradient or picture backgrounds and their fit, a wide/standard/custom presentation size, and layouts that keep existing words and other content. Fit scales and centres the content; turning it off keeps its pixel positions and sizes. Imported PDF and deck pages can keep different paper sizes; fitting starts from each page’s own size, and the master fits to each page (section 24). One visual master sits behind the presentation’s own elements: **Use master** and **Use master background** choose inheritance per slide, and a slide’s own background takes priority; sound, slide transitions and notes belong to the slides, not the master. **Give every slide this slide’s look** and Undo remain available.
 ![The design group at 1280 × 720 with generated placeholder content](screenshots/editor-design-1280x720.png)
 
 **Motion and slides.** **Motion** sets a slide’s transition, duration and automatic advance, and an element’s **Comes in**, **Draws attention** and **Goes out**, each timed from the slide going up. Preview uses the same drawing as the hall, node, phone and Program; a designed or animated canvas stays whole in their layouts. **Slides** offers new/duplicate/delete/hide, **Slides across** to drag the order with one Undo, and **Notes…** even with a box selected. Notes go to stage/phone, never the audience picture. Clearing a crop, flip, group or effect remains cleared after saving and reopening; older presentations retain their playback.
@@ -587,3 +589,49 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 **The opening pack.** **Load the opening pack…** takes the folder the owner gives each mandir: its photos in `photos` (`1.jpg` to `8.jpg`) and its lines in `words.txt`, one to a line. Its photos come into **Media**, and they and its lines replace whatever was chosen. A pack missing a photo or a line says which, and nothing changes. Drashti only reads the folder.
 
 **Turning it off.** Untick **Play the opening as Drashti starts** in **File › Opening…**: Drashti then opens straight onto its window. With the computer set to reduce motion, or **Interface motion** set to **Off** (section 19), the opening shows the first photo still and its lines fading in, nothing moving. Its light never changes more than three times a second (about once).
+
+## 24. Imported slides and PDFs
+
+**Keep the original.** Drashti keeps the original PDF or deck unchanged and edits its own copy. Leave room on the disk for both. The operator's guide, section 10, has the steps for editable words, shapes and pictures, PDF marks, pages and a new PDF copy. Try these on placeholder files before anyone uses them for a sabha.
+
+**Read the source notes before approving.** Some fonts, drawings and pictures cannot be brought across exactly, and a scanned PDF may have only a picture of its words. Compare the prepared slide with the original before saving. An animated slide asks **Make this slide editable** before its original clicks and animations are replaced; **Keep original** leaves it playing as before. Other slides keep their clicks. Notes and guides alone do not make a source slide editable.
+
+**An older import may need a match.** **Link source page…** lets the operator choose a PDF reading copy and match the saved picture to its page. For an older PowerPoint or Keynote import, make that PDF in the deck's own program first. Drashti does not guess an uncertain match. Check the page, its fonts and the source notes before approving; an unsupported turn, crop or other change to the old source picture may prevent linking.
+
+**Save a separate PDF.** **Save a PDF copy…** writes a new file where the operator chooses; it cannot overwrite a retained original, even through another name for the same file. It does not save unfinished changes to the library: the editor's **Save** does that. **Cover** is a visible patch over part of a page, not a way to remove private words from a PDF. Keep a file with private material out of a copy meant to be shared.
+
+## 25. Live captions (Trial)
+
+**Off until an admin turns them on.** In Pro Mode, **File › Live Captions…** opens the dialog. **Live captions on this computer** starts off; it belongs to this computer, so check each Main separately. Captions are marked **Trial**. Leave them off for a sabha unless a rehearsal on that computer has gone well. There is nothing to set in Simple Mode. A Mac needs **macOS 13.3 or later** for captions.
+
+**The model downloads once.** While online, choose **Model** and turn captions on: **Standard**, 488 MB, or **Most accurate**, 574 MB. Start with Standard on the Windows PC and Most accurate on an Apple-silicon Mac. The progress line says how much has arrived; **Try again** retries a failed download. Wait until it says **The model is on this computer**. After that, the chosen model works without the internet; choosing another may need its own download.
+
+**What captions hear.** Choose the mixer's input under **Sound input** in the stream's settings. Captions hear that input, not Drashti's music or videos. The stream's page stays open while listening, even off air, so its chosen camera may be open and its light on. This alone does not start a stream or recording.
+
+**Language and where the words go.** Choose one **Language**: English or Hindi for a rehearsal; **Gujarati (trial)** only to see how it does. Gujarati is not good enough for the audience yet. **Gujarati, Hindi or English, as heard** often takes Gujarati for Hindi. The stream and stage screens show captions; **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large; **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.
+
+**The status line says what to do:**
+
+- **Off on this computer**: captions are switched off.
+- **On: captions start when the screens are ready** or **Starting…**: let the screens and engine finish starting.
+- **Waiting for the model**: let the download finish; use **Try again** if it failed.
+- **Listening to the stream’s sound input**: captions are listening. Check that the mixer is sending speech to that input.
+- **No sound input is chosen for the stream**: choose it in the stream's settings; captions then start.
+- **Resting: this computer is busy**: the show comes first. Captions try again in a minute. If this happens in the rehearsal, leave them off on that computer.
+- A message about the engine or macOS means this copy or computer cannot start it. Put that right before trying again; there is no need to turn captions on to run the show.
+
+**What stays private.** Captions are worked out on this computer. Drashti does not keep or log what it hears for captions, or send the sound to a speech service. Words shown in the stream are part of its picture, so take the same care with them as with any words put on the screens. Turn **Live captions on this computer** off to stop listening.
+
+## 26. AI helpers that work offline
+
+**Three separate switches, all off at first.** In Pro Mode, **File › AI helpers…** has **Meaning and spelling search**, **Import suggestions** and **Playlist suggestions**. Turn on only the ones the operators want; the choices are kept. They work on this computer with the model supplied with Drashti, with no account or speech service. With every switch off, no helper starts. Simple Mode and phones do not offer these helpers.
+
+**The operator decides.** Search points to material already in the library, including meaning, spelling and Gujarati typed in English letters; it does not invent a passage or reference. Import suggestions are for newly pasted words, with each change chosen and **Undo suggestion** to put them back. Playlist suggestions draw from the chosen past sabhas and the loaded calendar: review, rename, move or remove suggestions before **Make playlist**. Books stay as loaded. Nothing suggested goes live or starts a stream or recording. The operator's guide, section 11, has the steps.
+
+### Speech helper 1 (being built)
+
+Instructions will be added here when this helper is ready. Leave it out of the setup-day rehearsal for now.
+
+### Speech helper 2 (being built)
+
+Instructions will be added here when this helper is ready. Leave it out of the setup-day rehearsal for now.
