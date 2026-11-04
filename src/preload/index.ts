@@ -133,6 +133,10 @@ const bridge: DrashtiBridge = {
       on(IPC.opening.key, () => {
         listener();
       }),
+    onScreens: (listener) =>
+      on(IPC.opening.screens, () => {
+        listener();
+      }),
     view: () => invoke(IPC.opening.view),
     setOn: (on) => invoke(IPC.opening.setOn, on),
     setChoice: (choice) => invoke(IPC.opening.setChoice, choice),

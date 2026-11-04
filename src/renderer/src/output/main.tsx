@@ -85,7 +85,11 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>, drawing: b
       requestAnimationFrame(() => {
         entry.nextAt = engineNow();
       });
-      firstPaintNow ??= { rev, wallAt };
+      if (firstPaintNow === null) {
+        firstPaintNow = { rev, wallAt };
+        // Said at once, not at the next heartbeat: the opening waits for the screens' first frames (Session 55).
+        reportNow();
+      }
     });
     return () => {
       cancelAnimationFrame(frame);
@@ -102,6 +106,8 @@ function ThrowForTests(): never {
 let paintedRevNow = -1;
 /** This page's first painted frame (its revision, this computer's time), for the start's phase lines. */
 let firstPaintNow: { rev: number; wallAt: number } | null = null;
+/** Send this page's report now (set by useFrameReports while it runs). */
+let reportNow: () => void = () => undefined;
 const late: number[] = [];
 
 /**
@@ -115,8 +121,7 @@ function useFrameReports(refreshHz: number, drawing: boolean) {
   // process watches, and a slow computer's warm-up can last past its grace (an output reloaded again and
   // again under Rosetta). Late frames are counted only once the show is drawn.
   useEffect(() => {
-    // eslint-disable-next-line no-restricted-syntax -- reports every 2 s: draws nothing
-    const report = setInterval(() => {
+    const send = () => {
       // eslint-disable-next-line no-restricted-properties -- a frame reporter's own clock: it draws nothing
       const since = performance.now() - 60_000;
       while (late.length > 0 && (late[0] ?? 0) < since) late.shift();
@@ -138,9 +143,13 @@ function useFrameReports(refreshHz: number, drawing: boolean) {
           firstPaint: firstPaintNow,
         })
         .catch(() => undefined);
-    }, 2000);
+    };
+    reportNow = send;
+    // eslint-disable-next-line no-restricted-syntax -- reports every 2 s: draws nothing
+    const report = setInterval(send, 2000);
     return () => {
       clearInterval(report);
+      reportNow = () => undefined;
     };
   }, [drawing]);
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { OpeningEnd, OpeningPlan } from '../../../shared/opening';
+import { OPENING_HOLD_MS, type OpeningEnd, type OpeningPlan } from '../../../shared/opening';
 import { motionOff } from '../ui/motion';
 import { OpeningPlayer } from './OpeningPlayer';
 
@@ -9,7 +9,9 @@ import { OpeningPlayer } from './OpeningPlayer';
  * process decides whether it plays), over the whole window while the window finishes starting underneath it, in Pro
  * and Simple Mode alike. Any key ends it at once: the main process keeps that key from the show and says so here. A
  * click or a tap ends it at once too, and lands on nothing beneath: the opening stays, unseen, until the button or the
- * finger is up and its click has come.
+ * finger is up and its click has come. It never moves while the hall's screens are still getting ready (their warm-up
+ * waits for frames on time): it holds, black, until the main process says they have all drawn, and plays still if that
+ * takes longer than OPENING_HOLD_MS.
  */
 
 /** Asked once a page (StrictMode's second effect, or a window loaded again, is told no by the main process anyway). */
@@ -18,18 +20,28 @@ let asked: Promise<OpeningPlan | null> | null = null;
 export function OpeningAtStart() {
   const [plan, setPlan] = useState<OpeningPlan | null>(null);
   const [state, setState] = useState<'playing' | 'shield' | 'over'>('playing');
+  /** Waiting for the hall's screens to draw (the plan's hold). */
+  const [held, setHeld] = useState(false);
+  const screensUp = useRef(false);
   const playing = useRef(false);
   const end = useRef<(how: OpeningEnd) => void>(() => undefined);
   useEffect(() => {
     let live = true;
+    // Listened for before it is asked, so a word that comes with the answer is never missed.
+    const off = window.drashti.opening.onScreens(() => {
+      screensUp.current = true;
+      setHeld(false);
+    });
     asked ??= window.drashti.opening.atStart().catch(() => null);
     void asked.then((p) => {
       if (!live || !p) return;
       playing.current = true;
+      setHeld(p.hold === true && !screensUp.current);
       setPlan(p);
     });
     return () => {
       live = false;
+      off();
     };
   }, []);
   useEffect(() => {
@@ -89,6 +101,17 @@ export function OpeningAtStart() {
   );
   // Still with reduced motion or Interface motion Off, as it starts, or as soon as either comes on while it plays.
   const [still, setStill] = useState(motionOff);
+  // The screens not drawn within OPENING_HOLD_MS: it plays still, so it never moves beside their warm-up.
+  useEffect(() => {
+    if (!held) return;
+    const wait = setTimeout(() => {
+      setStill(true);
+      setHeld(false);
+    }, OPENING_HOLD_MS);
+    return () => {
+      clearTimeout(wait);
+    };
+  }, [held]);
   useEffect(() => {
     if (!plan) return;
     const check = () => {
@@ -136,6 +159,7 @@ export function OpeningAtStart() {
         <OpeningPlayer
           plan={plan}
           still={still}
+          held={held}
           className="absolute inset-0"
           onDone={() => {
             end.current('itself');

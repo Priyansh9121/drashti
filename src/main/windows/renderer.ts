@@ -23,6 +23,8 @@ export const devServerUrl = (): string | undefined =>
 
 /** Tests only: pages keep the GPU's warm-up drawn, to be looked at (Session 27). Never when packaged. */
 const holdWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_HOLD_WARM_UP') === '1';
+/** Tests only: pages draw the show at once, as translated (Session 55: the opening's test of screens drawn). */
+const skipWarmUp = (): boolean => !packaged() && sw('DRASHTI_TEST_SKIP_WARM_UP') === '1';
 
 /**
  * Run translated (an Intel build under Rosetta on an Apple-silicon Mac, x64 under Windows' emulation): pages
@@ -39,7 +41,7 @@ export function loadPage(
 ): Promise<void> {
   const query = holdWarmUp()
     ? { ...given, warmUp: 'hold' }
-    : translated()
+    : translated() || skipWarmUp()
       ? { ...given, warmUp: 'skip' }
       : given;
   const dev = devServerUrl();

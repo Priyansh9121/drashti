@@ -87,13 +87,14 @@ async function startedOnce(
 
 const opening = (win: Page) => win.getByTestId('opening-start');
 
-test('plays as Drashti starts, over the operator window only, Drashti starting underneath; it ends by itself after five seconds', async () => {
+test('plays as Drashti starts, over the operator window only, once the hall’s screens have drawn, Drashti starting underneath; it ends by itself after five seconds', async () => {
   test.setTimeout(120_000);
   const userData = await startedOnce(async (win) => {
     await choose(win, await pictures(win, [['235,235,215'], ['40,60,110']]), LINES);
     await setUpScreen(win);
   });
-  const { app } = await relaunchApp(userData, ASK);
+  // The screens draw at once (no warm-up, a test switch), so it moves as soon as they have.
+  const { app } = await relaunchApp(userData, { ...ASK, DRASHTI_TEST_SKIP_WARM_UP: '1' });
   const win = await operatorPage(app);
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
   const shownAt = Date.now();
@@ -122,6 +123,32 @@ test('plays as Drashti starts, over the operator window only, Drashti starting u
   const after = Number(/after (\d+) ms/u.exec(log.at(-1) ?? '')?.[1]);
   expect(after).toBeGreaterThanOrEqual(5000);
   expect(log.join(' ')).not.toContain('Placeholder');
+  await app.close();
+});
+
+test('while the hall’s screens are still getting ready it never moves: it waits for them, at most two seconds, then plays still', async () => {
+  test.setTimeout(120_000);
+  const userData = await startedOnce(async (win) => {
+    await choose(win, await pictures(win, [['235,235,215'], ['40,60,110']]), LINES);
+    await setUpScreen(win);
+  });
+  // The screens' warm-up kept drawn (a test switch): they never draw their first frame here.
+  const { app } = await relaunchApp(userData, { ...ASK, DRASHTI_TEST_HOLD_WARM_UP: '1' });
+  const win = await operatorPage(app);
+  await expect(opening(win)).toBeVisible({ timeout: 15_000 });
+  const player = win.getByTestId('opening');
+  await expect(player).toHaveAttribute('data-opening-motion', 'still', { timeout: 10_000 });
+  await expect(player).toHaveAttribute('data-opening-held', 'false');
+  await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
+  await expect(
+    player.locator('[data-opening-sweep], [data-opening-sparkle], [data-opening-word]'),
+  ).toHaveCount(0);
+  // Never on a hall screen.
+  const output = await outputPage(app);
+  await expect(output.locator('#root')).toBeAttached();
+  await expect(output.getByTestId('opening')).toHaveCount(0);
+  await expect(output.getByTestId('opening-start')).toHaveCount(0);
+  await expect(opening(win)).toHaveCount(0, { timeout: 15_000 });
   await app.close();
 });
 

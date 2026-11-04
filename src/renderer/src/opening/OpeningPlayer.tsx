@@ -196,6 +196,7 @@ function ready(root: HTMLElement, plan: OpeningPlan): Promise<unknown> {
 export function OpeningPlayer({
   plan,
   still,
+  held = false,
   onDone,
   className,
   testId = 'opening',
@@ -203,6 +204,8 @@ export function OpeningPlayer({
   plan: OpeningPlan;
   /** Reduced motion, or Interface motion Off: still. */
   still: boolean;
+  /** Waiting for the hall's screens to draw: black, nothing started. */
+  held?: boolean;
   /** It played to its end (its fade done). */
   onDone?: () => void;
   className?: string;
@@ -221,7 +224,7 @@ export function OpeningPlayer({
   );
   useLayoutEffect(() => {
     const root = ref.current;
-    if (!root) return;
+    if (!root || held) return;
     let stopped = false;
     let animations: Animation[] = [];
     const loads: ReturnType<typeof setTimeout>[] = [];
@@ -258,12 +261,13 @@ export function OpeningPlayer({
       for (const load of loads) clearTimeout(load);
       for (const a of animations) a.cancel();
     };
-  }, [photos, lines, still]);
+  }, [photos, lines, still, held]);
   return (
     <div
       ref={ref}
       data-testid={testId}
       data-opening-motion={still ? 'still' : 'full'}
+      data-opening-held={held ? 'true' : 'false'}
       data-photos={photos.length}
       data-lines={lines.length}
       aria-hidden="true"
@@ -279,11 +283,15 @@ export function OpeningPlayer({
           draggable={false}
           decoding="async"
           className="absolute inset-0 size-full object-cover"
-          style={{ opacity: still ? 1 : 0 }}
+          style={{ opacity: still && !held ? 1 : 0 }}
         />
       ))}
       {photos.length === 0 && (
-        <div data-opening-lamp="" className="absolute inset-x-0 top-[18%] flex justify-center">
+        <div
+          data-opening-lamp=""
+          className="absolute inset-x-0 top-[18%] flex justify-center"
+          style={{ visibility: held ? 'hidden' : undefined }}
+        >
           <LitLamp size={110} />
         </div>
       )}

@@ -230,6 +230,8 @@ export interface DrashtiBridge {
     ended(how: OpeningEnd): Promise<null>;
     /** A key ended it (main kept that key from the show). */
     onEnd(listener: () => void): () => void;
+    /** Every hall screen has drawn its first frame. */
+    onScreens(listener: () => void): () => void;
     view(): Promise<OpeningView>;
     setOn(on: boolean): Promise<OpeningResult>;
     setChoice(choice: OpeningChoice): Promise<OpeningResult>;

@@ -256,6 +256,8 @@ export const IPC = {
     saveCopy: 'opening:save-copy',
     /** main -> operator: a key ended it (main keeps that key from the page and the menu). */
     key: 'opening:key',
+    /** main -> operator: every hall screen has drawn its first frame: it may move. */
+    screens: 'opening:screens',
     /** main -> operator: File › Opening… was chosen. */
     open: 'opening:open',
   },
@@ -1564,6 +1566,7 @@ export interface EventContract {
   [IPC.drop.changed]: DropFolderView;
   [IPC.drop.open]: { at: number };
   [IPC.opening.key]: { at: number };
+  [IPC.opening.screens]: { at: number };
   [IPC.opening.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;

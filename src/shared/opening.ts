@@ -23,6 +23,11 @@ import { cutText } from './text';
 
 /** The whole opening, in ms. */
 export const OPENING_MS = 5000;
+/**
+ * The longest it waits for the hall's screens to draw their first frame before it plays (still, then): it never moves
+ * while they are still getting ready, so it never slows them (their warm-up waits for frames that come on time).
+ */
+export const OPENING_HOLD_MS = 2000;
 /** At most this many photos, and this many lines. */
 export const OPENING_PHOTOS_MAX = 8;
 export const OPENING_LINES_MAX = 5;
@@ -95,6 +100,8 @@ export type OpeningChoice = z.infer<typeof openingChoiceSchema>;
 export interface OpeningPlan {
   photos: string[];
   lines: string[];
+  /** The hall's screens are still getting ready: it waits for them (OPENING_HOLD_MS at most) before it moves. */
+  hold?: boolean;
 }
 
 /** How it ended, for the log: by itself, or a key, a click or a tap. */

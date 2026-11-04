@@ -287,7 +287,7 @@ import {
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
-import { OPENING_MS } from '../shared/opening';
+import { OPENING_HOLD_MS, OPENING_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
@@ -4981,6 +4981,8 @@ function start(): void {
   });
   /** Each output page's first painted frame already said (its time, on this computer's clock). */
   const firstPaints = new Map<string, number>();
+  /** Told as each output page's first frame is said (the opening waits for them: set further down). */
+  let firstPainted: () => void = () => undefined;
   handle(IPC.output.report, (e, raw) => {
     const screenId = manager.screenIdFor(e.sender.id);
     const r = raw as {
@@ -4999,6 +5001,7 @@ function start(): void {
       firstPaints.get(screenId) !== first.wallAt
     ) {
       firstPaints.set(screenId, first.wallAt);
+      firstPainted();
       log.info(
         phaseLine(
           `${outputNames.get(screenId) ?? 'an output'} first painted revision ${String(first.rev)}`,
@@ -5972,12 +5975,22 @@ function start(): void {
   let openingPageAgain = false;
   /** When it started playing, while it plays. */
   let openingSince: number | null = null;
+  /** The hall's screens on this computer still getting ready: one without its first frame said. */
+  const screensWarming = () => [...outputWindows.keys()].some((id) => !firstPaints.has(id));
+  /** Waiting to tell the operator window that every screen has drawn. */
+  let openingWaits = false;
+  firstPainted = () => {
+    if (!openingWaits || screensWarming()) return;
+    openingWaits = false;
+    sendToOperator(IPC.opening.screens, { at: Date.now() });
+  };
   let openingLimit: NodeJS.Timeout | null = null;
   // Any key ends it, and the main process keeps that key from the page and the menu (Space never moves the show on).
   const openingKeys = new OpeningKeys(() => {
     sendToOperator(IPC.opening.key, { at: Date.now() });
   });
   const openingOver = () => {
+    openingWaits = false;
     openingKeys.stop();
     if (openingLimit) clearTimeout(openingLimit);
     openingLimit = null;
@@ -5985,13 +5998,14 @@ function start(): void {
   handle(IPC.opening.atStart, (e) => {
     if (!fromOperator(e)) return null;
     const plan = opening.atStart({ pageAgain: openingPageAgain, sinceWindow: Date.now() - openingWindowAt });
-    if (plan) {
-      openingSince = Date.now();
-      openingKeys.start();
-      // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its five seconds.
-      openingLimit = setTimeout(openingOver, OPENING_MS + 3000);
-    }
-    return plan;
+    if (!plan) return null;
+    openingSince = Date.now();
+    openingKeys.start();
+    // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its five seconds.
+    openingLimit = setTimeout(openingOver, OPENING_MS + OPENING_HOLD_MS + 3000);
+    // It never moves while the hall's screens are getting ready: told here once they all have drawn.
+    openingWaits = screensWarming();
+    return { ...plan, hold: openingWaits };
   });
   handle(IPC.opening.ended, (e, how) => {
     if (!fromOperator(e) || openingSince === null) return null;
