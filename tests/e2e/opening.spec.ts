@@ -125,7 +125,7 @@ test('plays as Drashti starts, over the operator window only, Drashti starting u
   await app.close();
 });
 
-test('any key ends it at once, and the show never hears that key: Space puts up no next slide, the next Space does', async () => {
+test('any key ends it at once, and the show never hears that key: Space changes nothing on the screens, the next Space does', async () => {
   test.setTimeout(120_000);
   let id = '';
   const userData = await startedOnce(async (win) => {
@@ -143,18 +143,23 @@ test('any key ends it at once, and the show never hears that key: Space puts up 
   const win = await operatorPage(app);
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
   await operatorReady(win);
-  // Something live underneath, so a Space the show heard would show.
+  // Something live underneath, so a Space the show heard would show: Next puts up its next slide, or (with no
+  // playlist open) the first slide of the presentation chosen in the middle. Either way what is live changes.
+  const live = async () => {
+    const state = await engineState(win);
+    return `${state.live?.presentationId ?? '-'} · ${String(state.layers.slide?.slideIndex ?? '-')}`;
+  };
   await goLive(win, id, 0);
-  await expect.poll(async () => (await engineState(win)).layers.slide?.slideIndex).toBe(0);
+  await expect.poll(live).toBe(`${id} · 0`);
   await win.keyboard.press('Space');
   await expect(opening(win)).toHaveCount(0);
   await holdStill(
-    async () => (await engineState(win)).layers.slide?.slideIndex === 0,
+    async () => (await live()) === `${id} · 0`,
     500,
     'the Space that ended the opening never reached the show',
   );
   await win.keyboard.press('Space');
-  await expect.poll(async () => (await engineState(win)).layers.slide?.slideIndex).toBe(1);
+  await expect.poll(live).not.toBe(`${id} · 0`);
   await expect
     .poll(() => openingLog(userData).at(-1) ?? '')
     .toMatch(/^Opening: ended by a key after \d+ ms$/u);
