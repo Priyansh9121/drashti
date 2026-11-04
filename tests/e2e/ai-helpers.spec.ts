@@ -8,6 +8,7 @@ import { CalendarRepo } from '../../src/main/db/calendar';
 import { PlaylistRepo } from '../../src/main/db/playlists';
 import { SettingsRepo } from '../../src/main/db/settings';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { expectFits } from './fit';
 import {
   chooseMenuItem,
   closeLibrary,
@@ -99,7 +100,13 @@ for (const size of [
       ).toBe(0);
       await expect(dialog).toBeVisible();
       for (const name of ['Meaning and spelling search', 'Import suggestions', 'Playlist suggestions'])
-        await expect(dialog.getByRole('checkbox', { name, exact: true })).not.toBeChecked();
+        await expect(
+          dialog.getByRole('checkbox', {
+            name: `${name} (Trial). Can slow the screens while on.`,
+            exact: true,
+          }),
+        ).not.toBeChecked();
+      await expectFits(dialog, `AI settings ${size.width}`);
       await expectNoSeriousA11yIssues(s.win, `AI settings ${size.width}`);
     } finally {
       await s.app.close();
@@ -219,7 +226,12 @@ for (const size of [
       await expect(editor.getByTestId('words-count')).toHaveText('1 group · 2 slides');
       await chooseMenuItem(s.app, 'ai-helpers');
       const settings = s.win.getByRole('dialog', { name: 'AI helpers', exact: true });
-      await settings.getByRole('checkbox', { name: 'Import suggestions', exact: true }).uncheck();
+      await settings
+        .getByRole('checkbox', {
+          name: 'Import suggestions (Trial). Can slow the screens while on.',
+          exact: true,
+        })
+        .uncheck();
       await settings.getByRole('button', { name: 'Close', exact: true }).click();
       await expect(editor.getByRole('button', { name: 'Suggest slide breaks', exact: true })).toHaveCount(0);
       const undo = editor.getByRole('button', { name: 'Undo suggestion', exact: true });

@@ -1,6 +1,6 @@
 # Setup day: the checklist
 
-Use this checklist with **1.0.0-alpha.15**, which adds Books, work on imported slides and PDFs, live captions (off and marked Trial), and five helpers that work offline, including Book references during pravachan and Follow singing (Trial).
+Use this checklist with **1.0.0-alpha.15**, which adds Books, work on imported slides and PDFs, live captions and five helpers that work offline, including Book references during pravachan and Follow singing. Live captions and every helper start off, are **Trial** and can slow the screens while on.
 
 This is the list for the day Drashti is set up on the mandir's two computers: for the admin doing the setup, with the operators there for the parts marked **(operators)**. Tick each line as it is done, and fill in the "Write down" table at the end. The steps say what to do; `docs/admin-guide.md` says how, and `docs/parallel-run.md` has the first evenings beside the old presentation program.
 
@@ -167,13 +167,13 @@ On each computer:
 - [ ] **(operators) PDF insertion and paper**, with two generated PDFs of different page sizes: **Insert pages…** once from the library and once with **Choose a PDF file…**. All pages follow the chosen page, keep their own paper and are one Undo/Redo per insertion. The file choice makes no extra library presentation. Check the selected page's canvas, thumbnail and master fitting, resize with Fit and with pixel positions kept, then Undo; Save/reopen keeps the wanted result. The source PDFs stay unchanged.
 - [ ] **(operators) An older saved slide picture**, using a generated older-import example: **Link source page…**, choose a PDF reading copy and explicitly match the picture and page. For PowerPoint or Keynote, make that copy in the deck's own program. Read warnings before approving; leave a doubtful or unsupported match alone. Added objects, notes and guides stay; Undo restores the picture, and Save/reopen keeps an approved link.
 
-**Live captions (Trial; optional, on each Main that will caption).** Leave them off unless the owner wants a rehearsal. Do not try them for the first time during a sabha (admin guide, section 25).
+**Live captions (Trial; optional, on each Main that will caption).** They can slow the screens while on. Leave them off unless the owner wants a rehearsal. Do not try them for the first time during a sabha (admin guide, section 25).
 
 - [ ] Check **File › Live Captions…** starts **Off on this computer** and is marked **Trial**. On a Mac, check macOS is 13.3 or later. While online, choose Standard (488 MB; start here on the Windows PC) or Most accurate (574 MB; start here on an Apple-silicon Mac), turn on **Live captions on this computer** and wait for the model. Check progress and **Try again** if a download fails.
 - [ ] Choose the mixer's input in the stream's **Sound input** settings; captions hear only this input, not Drashti's music or videos. Use generated speech or made-up rehearsal words, choose English or Hindi, and keep **Show them on the audience screens too** off at first. Check Size and Place on the stage and Program picture without going live. Gujarati is a trial only and is not good enough for the audience; **as heard** may take it for Hindi.
 - [ ] Watch the status: **No sound input** means choose one; **Waiting for the model** means let it finish; **Resting: this computer is busy** means leave captions off on this computer. Check the chosen model works offline after downloading and that phones show no captions. Listening may keep the camera light on off air. Turn captions off after trying them unless the owner chooses otherwise, and write down that choice.
 
-**AI helpers (optional, in Pro Mode on each Main).** Use placeholder words, books and past playlists for these checks (admin guide, section 26; operator guide, section 11).
+**AI helpers (Trial; optional, in Pro Mode on each Main).** Each can slow the screens while on. Use placeholder words, books and past playlists for these checks (admin guide, section 26; operator guide, section 11).
 
 - [ ] Open **File › AI helpers…**: Meaning and spelling search, Import suggestions, Playlist suggestions, Book references and Follow singing (Trial) all start off and are Pro only. Try each wanted helper offline; nothing suggested goes live by itself, starts a stream or recording, or changes Books. Turn off the ones the operators do not want, and write down the choices.
 - [ ] **Meaning and spelling search**: type a meaning, misspelling or Gujarati in English letters and press **Find by meaning**. Check ordinary matches still appear and each suggestion opens the real library item or loaded passage. Preview before adding it to a playlist; switch the helper off and check the usual search still works.

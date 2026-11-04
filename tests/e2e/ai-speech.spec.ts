@@ -56,9 +56,17 @@ for (const size of [
     try {
       await chooseMenuItem(s.app, 'ai-helpers');
       const dialog = s.win.getByRole('dialog', { name: 'AI helpers' });
-      await expect(dialog.getByRole('checkbox', { name: 'Book references', exact: true })).not.toBeChecked();
       await expect(
-        dialog.getByRole('checkbox', { name: 'Follow singing (Trial)', exact: true }),
+        dialog.getByRole('checkbox', {
+          name: 'Book references (Trial). Can slow the screens while on.',
+          exact: true,
+        }),
+      ).not.toBeChecked();
+      await expect(
+        dialog.getByRole('checkbox', {
+          name: 'Follow singing (Trial). Can slow the screens while on.',
+          exact: true,
+        }),
       ).not.toBeChecked();
       await expect(s.win.getByRole('region', { name: 'Speech helpers' })).toHaveCount(0);
       expect(
