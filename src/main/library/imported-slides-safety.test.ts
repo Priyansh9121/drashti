@@ -812,7 +812,10 @@ describe('imported editor provenance and legacy safety', () => {
       const opened = await open(id);
       expect(olderImportNotice(opened.sourceIssues)).toEqual([]);
       const blank = addBlankAfterFirst(opened);
-      expect(blank.pageSize, 'a blank slide after a PowerPoint page has no paper size of its own').toBeUndefined();
+      expect(
+        blank.pageSize,
+        'a blank slide after a PowerPoint page has no paper size of its own',
+      ).toBeUndefined();
       expect(await save(id, opened)).toMatchObject({ ok: true });
 
       const reopened = await open(id);

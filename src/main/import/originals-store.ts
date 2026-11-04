@@ -174,7 +174,7 @@ export class OriginalsStore {
         return {
           ok: false,
           message:
-            'This document is empty, too large, or is not a regular document file. Save a smaller, single-file PDF or deck, then import that copy.',
+            'This document is empty, too large, or is not a single document file. Save a smaller, single-file PDF or deck, then import that copy.',
         };
       await mkdir(this.mediaDir, { recursive: true });
       const free = (this.options.freeBytes ?? diskFreeBytes)(this.mediaDir);
