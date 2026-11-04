@@ -25,6 +25,11 @@ import { LitLamp } from '../ui/Mark';
 
 /** The longest it waits for its first photo and fonts before it starts anyway (black until then). */
 const READY_WAIT = 600;
+/**
+ * Each later photo's file is given this long before it comes in, so the photos are read and decoded one at a time
+ * through the five seconds, never all as the window starts (beside the screens' own first drawing).
+ */
+const LOAD_AHEAD = 700;
 /** The words' fonts: the studio's Noto Serif (with its Gujarati and Devanagari faces), Drashti's Noto after them. */
 const WORDS_FONT = [...OPENING_FONT.families, 'Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari']
   .map((f) => `"${f}"`)
@@ -65,7 +70,7 @@ function partsOf(root: HTMLElement) {
   const all = (selector: string) => [...root.querySelectorAll<HTMLElement>(selector)];
   return {
     photos: all('[data-opening-photo]'),
-    sweeps: all('[data-opening-sweep]'),
+    sweep: root.querySelector<HTMLElement>('[data-opening-sweep]'),
     sparkles: all('[data-opening-sparkle]'),
     lines: all('[data-opening-line]'),
     lamp: root.querySelector<HTMLElement>('[data-opening-lamp]'),
@@ -76,8 +81,15 @@ function partsOf(root: HTMLElement) {
 const token = (name: string): string =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim() || 'ease';
 
-/** Every part's Web Animation, as `times` says (the caller gives them all one start time, in the same task). */
-function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animation[] {
+/**
+ * Every part's Web Animation, as `times` says (the caller gives them all one start time, in the same task), and when
+ * each photo comes in.
+ */
+function animate(
+  root: HTMLElement,
+  plan: OpeningPlan,
+  still: boolean,
+): { animations: Animation[]; photoStarts: number[] } {
   const parts = partsOf(root);
   const times = openingTimes(
     plan.photos.length,
@@ -121,10 +133,10 @@ function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animatio
         t.start,
         covered - t.start,
       );
-      const sweep = parts.sweeps[i];
-      if (sweep)
+      // The one light, across once for each photo: each pass acts only in its own time (unseen between them).
+      if (parts.sweep)
         run(
-          sweep,
+          parts.sweep,
           [
             { transform: 'translateX(-100%) skewX(-16deg)', opacity: 0 },
             { opacity: 1, offset: 0.25 },
@@ -134,6 +146,7 @@ function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animatio
           t.sweep.start,
           t.sweep.length,
           inOut,
+          'none',
         );
     }
     for (const [i, s] of openingSparkles().entries()) {
@@ -164,15 +177,12 @@ function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animatio
   if (parts.lamp && !still) parts.lamp.setAttribute('data-lighting', '');
   // The whole opening fades at its end, back to the window.
   run(root, [{ opacity: 1 }, { opacity: 0 }], times.fadeOut.start, times.fadeOut.length, 'ease-in');
-  return out;
+  return { animations: out, photoStarts: times.photos.map((p) => p.start) };
 }
 
 /** The first photo decoded and the words' fonts loaded, or READY_WAIT, whichever is first. */
 function ready(root: HTMLElement, plan: OpeningPlan): Promise<unknown> {
   const first = root.querySelector<HTMLImageElement>('[data-opening-photo]');
-  // The others are decoded now too, unwaited for, so none is decoded as it comes in.
-  for (const img of root.querySelectorAll<HTMLImageElement>('[data-opening-photo]'))
-    if (img !== first) void img.decode().catch(() => undefined);
   const words = plan.lines.join(' ') || 'Drashti';
   const fonts = OPENING_FONT.families.map((family) =>
     document.fonts.load(`${String(OPENING_WEIGHT)} 48px "${family}"`, words).catch(() => []),
@@ -214,12 +224,28 @@ export function OpeningPlayer({
     if (!root) return;
     let stopped = false;
     let animations: Animation[] = [];
+    const loads: ReturnType<typeof setTimeout>[] = [];
     void ready(root, { photos, lines }).then(() => {
       if (stopped) return;
-      animations = animate(root, { photos, lines }, still);
+      const made = animate(root, { photos, lines }, still);
+      animations = made.animations;
       // Every part from the same moment.
       const now = document.timeline.currentTime;
       for (const a of animations) a.startTime = now;
+      // Each later photo's file, LOAD_AHEAD before it comes in, decoded off the drawing's way.
+      for (const [i, img] of root.querySelectorAll<HTMLImageElement>('[data-opening-photo]').entries()) {
+        const url = photos[i];
+        if (i === 0 || url === undefined) continue;
+        loads.push(
+          setTimeout(
+            () => {
+              img.src = url;
+              void img.decode().catch(() => undefined);
+            },
+            Math.max(0, (made.photoStarts[i] ?? 0) - LOAD_AHEAD),
+          ),
+        );
+      }
       void animations
         .at(-1)
         ?.finished.then(() => {
@@ -229,6 +255,7 @@ export function OpeningPlayer({
     });
     return () => {
       stopped = true;
+      for (const load of loads) clearTimeout(load);
       for (const a of animations) a.cancel();
     };
   }, [photos, lines, still]);
@@ -246,7 +273,8 @@ export function OpeningPlayer({
         <img
           key={i}
           data-opening-photo={i}
-          src={url}
+          // The first now; each later one shortly before it comes in (LOAD_AHEAD).
+          src={i === 0 ? url : undefined}
           alt=""
           draggable={false}
           decoding="async"
@@ -259,19 +287,17 @@ export function OpeningPlayer({
           <LitLamp size={110} />
         </div>
       )}
-      {!still &&
-        photos.map((_, i) => (
-          <div
-            key={i}
-            data-opening-sweep={i}
-            className="pointer-events-none absolute -inset-y-[20%] left-0 w-[45%]"
-            style={{
-              opacity: 0,
-              background:
-                'linear-gradient(90deg, rgba(255,240,205,0) 0%, rgba(255,240,205,0.16) 50%, rgba(255,240,205,0) 100%)',
-            }}
-          />
-        ))}
+      {!still && photos.length > 0 && (
+        <div
+          data-opening-sweep=""
+          className="pointer-events-none absolute -inset-y-[20%] left-0 w-[45%]"
+          style={{
+            opacity: 0,
+            background:
+              'linear-gradient(90deg, rgba(255,240,205,0) 0%, rgba(255,240,205,0.16) 50%, rgba(255,240,205,0) 100%)',
+          }}
+        />
+      )}
       {!still &&
         openingSparkles().map((s, i) => (
           <span
