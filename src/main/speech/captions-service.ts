@@ -179,7 +179,9 @@ export class CaptionsService {
       })
       .catch((error: unknown) => {
         const message =
-          error instanceof Error ? error.message : 'The captions model could not be downloaded.';
+          error instanceof Error
+            ? error.message
+            : 'The captions model could not be downloaded: try again when this computer is online.';
         this.download = { phase: 'failed', done: 0, total, message };
         this.deps.log.warn(`Captions: the ${id} model was not downloaded (${message})`);
       })

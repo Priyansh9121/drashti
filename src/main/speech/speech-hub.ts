@@ -55,7 +55,7 @@ export function heardProblem(h: Heard, state: SpeechState, finals: ReadonlySet<s
   }
   if (!/^s[1-9]\d*$/.test(h.id)) return `its id is ${JSON.stringify(h.id)}, not s1, s2…`;
   if (finals.has(h.id)) {
-    return `phrase ${h.id} was final already: a final phrase's id is never sent again (until listening starts again)`;
+    return `phrase ${h.id} was final already: a final phrase’s id is never sent again (until listening starts again)`;
   }
   if (!(SPEECH_LANGUAGES as readonly string[]).includes(h.language)) {
     return `its language ${JSON.stringify(h.language)} is not one of ${SPEECH_LANGUAGES.join(', ')}`;

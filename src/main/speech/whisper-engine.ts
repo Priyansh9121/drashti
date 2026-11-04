@@ -390,7 +390,10 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         started.once('error', () => {
           if (child !== started || stopped) return;
           child = null;
-          to.state({ phase: 'failed', message: 'The captions engine could not start.' });
+          to.state({
+            phase: 'failed',
+            message: 'The captions engine could not start: turn captions off and on to try again.',
+          });
         });
         // Below the show (the main process and the screens): Windows' below normal, a Mac's nice 10.
         try {
@@ -414,7 +417,10 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         }
         if (!ended() && child === started) {
           end();
-          to.state({ phase: 'failed', message: 'The captions engine did not start in time.' });
+          to.state({
+            phase: 'failed',
+            message: 'The captions engine did not start in time: turn captions off and on to try again.',
+          });
         }
       };
 
