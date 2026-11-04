@@ -1,5 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fileStamp, formatBytes, formatClock, formatDuration } from './format';
+
+it('does not rebuild the fallback clock text for every redraw in the same clock tick', () => {
+  const native = vi.spyOn(Date.prototype, 'toLocaleTimeString').mockReturnValue('placeholder clock');
+  try {
+    const at = Date.UTC(2127, 0, 2, 3, 4, 5);
+    expect(formatClock(at, null)).toBe('placeholder clock');
+    expect(formatClock(at + 800, undefined)).toBe('placeholder clock');
+    expect(native).toHaveBeenCalledTimes(1);
+    native.mockReturnValue('new host clock style');
+    expect(formatClock(at + 1000, null)).toBe('new host clock style');
+  } finally {
+    native.mockRestore();
+  }
+});
+
+it('reuses an explicit clock style’s formatted value within the same tick', () => {
+  const format = vi.spyOn(Intl.DateTimeFormat.prototype, 'format', 'get');
+  try {
+    const at = Date.UTC(2127, 1, 3, 4, 5, 6);
+    const style = { locale: 'en-NZ', timeZone: 'Pacific/Auckland' };
+    expect(formatClock(at, style)).toBe(formatClock(at + 700, style));
+    expect(format).toHaveBeenCalledTimes(1);
+  } finally {
+    format.mockRestore();
+  }
+});
 
 describe('formatting for people', () => {
   it('names a moment in local time, without colons', () => {
