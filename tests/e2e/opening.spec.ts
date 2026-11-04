@@ -98,7 +98,7 @@ test('plays as Drashti starts, over the operator window only, Drashti starting u
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
   const shownAt = Date.now();
   const player = win.getByTestId('opening');
-  await expect(player).toHaveAttribute('data-motion', 'full');
+  await expect(player).toHaveAttribute('data-opening-motion', 'full');
   await expect(player).toHaveAttribute('data-photos', '2');
   await expect(player).toHaveAttribute('data-lines', '2');
   // The words as words, each its own (the studio's word by word).
@@ -147,7 +147,7 @@ test('any key ends it at once, and the show never hears that key: Space changes 
   // playlist open) the first slide of the presentation chosen in the middle. Either way what is live changes.
   const live = async () => {
     const state = await engineState(win);
-    return `${state.live?.presentationId ?? '-'} · ${String(state.layers.slide?.slideIndex ?? '-')}`;
+    return `${state.live.presentationId ?? '-'} · ${String(state.layers.slide?.slideIndex ?? '-')}`;
   };
   await goLive(win, id, 0);
   await expect.poll(live).toBe(`${id} · 0`);
@@ -306,7 +306,7 @@ test('with Interface motion Off, or the computer asking for reduced motion (as i
     const win = await operatorPage(app);
     await expect(opening(win)).toBeVisible({ timeout: 15_000 });
     const player = win.getByTestId('opening');
-    await expect(player).toHaveAttribute('data-motion', 'still');
+    await expect(player).toHaveAttribute('data-opening-motion', 'still');
     await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
     await expect(
       player.locator('[data-opening-sweep], [data-opening-sparkle], [data-opening-word]'),
@@ -338,7 +338,9 @@ test('with Interface motion Off, or the computer asking for reduced motion (as i
   await calm.app.close();
   const reduced = await relaunchApp(userData, ASK);
   const moving = await operatorPage(reduced.app);
-  await expect(moving.getByTestId('opening')).toHaveAttribute('data-motion', 'full', { timeout: 15_000 });
+  await expect(moving.getByTestId('opening')).toHaveAttribute('data-opening-motion', 'full', {
+    timeout: 15_000,
+  });
   await moving.emulateMedia({ reducedMotion: 'reduce' });
   await still(reduced.app);
   await reduced.app.close();

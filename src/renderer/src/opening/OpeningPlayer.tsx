@@ -72,6 +72,10 @@ function partsOf(root: HTMLElement) {
   };
 }
 
+/** One of the window's motion tokens (app.css), or plain `ease` should the page have none. */
+const token = (name: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || 'ease';
+
 /** Every part's Web Animation, as `times` says (the caller gives them all one start time, in the same task). */
 function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animation[] {
   const parts = partsOf(root);
@@ -92,7 +96,9 @@ function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animatio
   ) => {
     out.push(el.animate(frames, { delay, duration: Math.max(1, duration), easing, fill }));
   };
-  const easeOut = 'cubic-bezier(0.23, 1, 0.32, 1)';
+  // The window's own easings (app.css): settling into place, and the light passing across.
+  const easeOut = token('--ease-out');
+  const inOut = token('--ease-in-out');
   if (still) {
     // The first photo (or the lamp) simply there; each line fading in, then out before the next.
     for (const [i, el] of parts.lines.entries()) {
@@ -127,7 +133,7 @@ function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animatio
           ],
           t.sweep.start,
           t.sweep.length,
-          'cubic-bezier(0.65, 0, 0.35, 1)',
+          inOut,
         );
     }
     for (const [i, s] of openingSparkles().entries()) {
@@ -230,7 +236,7 @@ export function OpeningPlayer({
     <div
       ref={ref}
       data-testid={testId}
-      data-motion={still ? 'still' : 'full'}
+      data-opening-motion={still ? 'still' : 'full'}
       data-photos={photos.length}
       data-lines={lines.length}
       aria-hidden="true"

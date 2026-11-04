@@ -255,7 +255,7 @@ export const IPC = {
     /** A photo's copy at the operator window's size, drawn by the window (as a still is). */
     saveCopy: 'opening:save-copy',
     /** main -> operator: a key ended it (main keeps that key from the page and the menu). */
-    end: 'opening:end',
+    key: 'opening:key',
     /** main -> operator: File › Opening… was chosen. */
     open: 'opening:open',
   },
@@ -1563,7 +1563,7 @@ export interface EventContract {
   [IPC.events.open]: { at: number };
   [IPC.drop.changed]: DropFolderView;
   [IPC.drop.open]: { at: number };
-  [IPC.opening.end]: { at: number };
+  [IPC.opening.key]: { at: number };
   [IPC.opening.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;

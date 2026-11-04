@@ -130,7 +130,7 @@ const bridge: DrashtiBridge = {
     atStart: () => invoke(IPC.opening.atStart),
     ended: (how) => invoke(IPC.opening.ended, how),
     onEnd: (listener) =>
-      on(IPC.opening.end, () => {
+      on(IPC.opening.key, () => {
         listener();
       }),
     view: () => invoke(IPC.opening.view),

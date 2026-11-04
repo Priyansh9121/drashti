@@ -195,7 +195,7 @@ describe('File › Opening…', () => {
         'Placeholder Five',
       ],
     });
-    expect(s.lines).toEqual(["Opening: the opening pack's 8 photos and 5 lines are the opening's now"]);
+    expect(s.lines).toEqual(['Opening: the opening pack’s 8 photos and 5 lines are the opening’s now']);
   });
 
   it('a pack that is not complete says what it is missing, and nothing is brought in or changed', async () => {

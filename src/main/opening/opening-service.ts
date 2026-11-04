@@ -168,7 +168,7 @@ export class OpeningService {
       };
     this.keep({ photos: imported.ids, lines: pack.lines });
     this.deps.log(
-      `Opening: the opening pack's ${plural(imported.ids.length, 'photo')} and ${plural(pack.lines.length, 'line')} are the opening's now`,
+      `Opening: the opening pack’s ${plural(imported.ids.length, 'photo')} and ${plural(pack.lines.length, 'line')} are the opening’s now`,
     );
     return { ok: true, view: this.view() };
   }

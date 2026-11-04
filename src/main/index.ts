@@ -5975,7 +5975,7 @@ function start(): void {
   let openingLimit: NodeJS.Timeout | null = null;
   // Any key ends it, and the main process keeps that key from the page and the menu (Space never moves the show on).
   const openingKeys = new OpeningKeys(() => {
-    sendToOperator(IPC.opening.end, { at: Date.now() });
+    sendToOperator(IPC.opening.key, { at: Date.now() });
   });
   const openingOver = () => {
     openingKeys.stop();
