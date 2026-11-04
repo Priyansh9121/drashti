@@ -1,5 +1,5 @@
 import type { MessageBoxOptions } from 'electron';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SCHEDULED_FOLDER } from '../../shared/backups';
@@ -325,7 +325,7 @@ describe('a missing or damaged original never stops a backup or a restore', () =
     }
   });
 
-  it('(c) makes a scheduled backup without a missing original, and copies a whole original over a damaged copy in the pool', async () => {
+  it('(c) makes a scheduled backup without an original that has no whole copy anywhere, and copies a whole original over a damaged copy in the pool', async () => {
     const w = originalWorld();
     try {
       const first = await w.importPdf();
@@ -350,8 +350,10 @@ describe('a missing or damaged original never stops a backup or a restore', () =
       const scheduled = join(w.drive, SCHEDULED_FOLDER);
       const pool = join(scheduled, 'Media');
       expect(bytesHash(readFileSync(join(pool, second.relative)))).toBe(second.hash);
-      // Since then: the fixture's original gone from the library, and the pool's copy of the other damaged.
+      // Since then: the fixture's original gone from the library and its pool copy damaged (so no whole copy is
+      // left anywhere), and the pool's copy of the other damaged.
       rmSync(w.owned);
+      damage(join(pool, w.originalRelative));
       damage(join(pool, second.relative));
       const made = await run(3);
       const folder = join(scheduled, made.folder);
@@ -488,6 +490,109 @@ describe('a missing or damaged original never stops a backup or a restore', () =
       const unknown = { ...original, sha256: 'ab'.repeat(32) };
       expect(namedOriginals(w.dbFile, [unknown])).toEqual([unknown]);
       expect(namedOriginals(join(w.root, 'no library here.sqlite'), [original])).toEqual([original]);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('keeps listing the shared folder’s whole copy when the library’s original is lost, so pruning never takes the last one', async () => {
+    const w = originalWorld();
+    try {
+      const first = await w.importPdf();
+      w.arrangeOwnedBytes();
+      const keep = 2;
+      const run = (day: number) =>
+        pooledBackup(
+          {
+            dbFile: w.dbFile,
+            mediaDir: w.mediaDir,
+            root: w.drive,
+            keep,
+            app: '1.0.0',
+            schema: LATEST_VERSION,
+            now: new Date(2026, 10, day, 8, 0),
+            reserveBytes: 0,
+          },
+          pooledHooks,
+        );
+      await run(1);
+      const scheduled = join(w.drive, SCHEDULED_FOLDER);
+      const shared = join(scheduled, 'Media', w.originalRelative);
+      // Damaged in the library since (cut short: another size), and then gone: never copied over the whole one.
+      writeFileSync(w.owned, w.bytes.subarray(0, 100));
+      let newest = await run(2);
+      expect(bytesHash(readFileSync(shared))).toBe(w.hash);
+      rmSync(w.owned);
+      for (let day = 3; day <= keep + 2; day++) newest = await run(day);
+      // keep + 1 backups since the first: it is pruned, and the shared copy is still there, listed by the newest.
+      expect(readdirSync(scheduled).filter((name) => name.startsWith('Drashti backup'))).toHaveLength(keep);
+      expect(bytesHash(readFileSync(shared))).toBe(w.hash);
+      const folder = join(scheduled, newest.folder);
+      expect(readManifest(folder)).toContain(w.originalManifestPath);
+      expect(readNote(folder)).toMatchObject({ originals: { files: [{ sha256: w.hash }] } });
+      expect(readNote(folder)?.originalsLeftOut).toBeUndefined();
+      expect(newest.originalsLeftOut).toBeUndefined();
+      expect(checkBackup(folder, LATEST_VERSION)).toMatchObject({ ok: true, media: true });
+      // Restoring the newest brings the original back.
+      const target = join(w.root, 'restored-carried');
+      mkdirSync(target);
+      requestRestore(target, folder);
+      expect(applyPendingRestore(target, restoreOptions())).toMatchObject({ restored: true, media: true });
+      expect(bytesHash(readFileSync(join(target, 'Media', w.originalRelative)))).toBe(w.hash);
+      expect(hashInLibrary(join(target, LIBRARY_FILE), first.id)).toBe(w.hash);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('says in plain words that a backup whose own copy of an original is damaged cannot be restored, and changes nothing', async () => {
+    const w = originalWorld();
+    try {
+      await w.importPdf();
+      w.arrangeOwnedBytes();
+      const saved = await backupLibrary(w.db, w.drive, options(null));
+      damage(join(saved.folder, 'Media', w.originalRelative));
+      // Its size is right, so the check before the restart passes; the restore reads every byte.
+      expect(checkBackup(saved.folder, LATEST_VERSION)).toMatchObject({ ok: true });
+      const target = join(w.root, 'restore-damaged-backup');
+      mkdirSync(target);
+      openDatabase(join(target, LIBRARY_FILE)).close();
+      const before = readFileSync(join(target, LIBRARY_FILE));
+      requestRestore(target, saved.folder);
+      expect(applyPendingRestore(target, restoreOptions())).toEqual({
+        restored: false,
+        code: 'copy-failed',
+        message:
+          'The library was not restored: an original document in that backup (a PDF or PowerPoint file kept for editing) is damaged, so the backup cannot be restored whole. The library is as it was: choose another backup to restore.',
+      });
+      expect(readFileSync(join(target, LIBRARY_FILE))).toEqual(before);
+      expect(existsSync(join(target, 'Media.restoring'))).toBe(false);
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('keeps the library from before a restore with media without claiming an original it had already lost', async () => {
+    const w = originalWorld();
+    try {
+      await w.importPdf();
+      w.arrangeOwnedBytes();
+      const saved = await backupLibrary(w.db, w.drive, options(w.mediaDir));
+      w.db.close();
+      rmSync(w.owned);
+      requestRestore(w.userData, saved.folder);
+      const restored = applyPendingRestore(w.userData, restoreOptions());
+      expect(restored).toMatchObject({ restored: true, media: true, originalsNotKept: 1 });
+      if (!restored.restored) throw new Error('The generated library was not restored.');
+      // The backup's whole original is the library's again.
+      expect(bytesHash(readFileSync(w.owned))).toBe(w.hash);
+      const kept = join(w.userData, 'Backups', restored.keptIn);
+      expect(readNote(kept)).toMatchObject({
+        media: true,
+        originalsLeftOut: [{ sha256: w.hash, ext: 'pdf', bytes: w.bytes.length }],
+      });
+      expect(readNote(kept)?.originals).toBeUndefined();
+      expect(checkBackup(kept, LATEST_VERSION)).toMatchObject({ ok: true, media: true });
     } finally {
       w.clean();
     }
