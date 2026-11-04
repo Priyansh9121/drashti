@@ -487,3 +487,5 @@ const githubStyle = (secret, headers, body) =>
 In n8n, the **Crypto** node's HMAC (SHA256, hex, the secret as shown) of the body as it arrived, with `sha256=` before it, should equal `X-Drashti-Signature-256`.
 
 **Answering.** Answer `2xx` quickly (within 15 seconds; the body is not read). Anything else is tried again: at once, then after 5 s, 30 s, 2 min, 10 min and 30 min, and then the event is given up (the dialog counts those). Events to one address go one at a time, in order; slide changes within 250 ms of each other go as the last one. A `410` turns the address off until it is turned on again in the dialog; a `404`, a redirect (never followed) or another `4xx` means the address is set up wrongly, and is tried only twice more. Events waiting when Drashti quits are not sent later.
+
+Live captions (state 26, retained by state 27) are never sent in this API, to a phone or to a node; captions are left out or null.
