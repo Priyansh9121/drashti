@@ -5933,6 +5933,8 @@ function start(): void {
       // A test sees it only when it asks (DRASHTI_TEST_OPENING=1); a packaged Drashti honours no test switch.
       testNotAsking: anyTestSwitch() && sw('DRASHTI_TEST_OPENING') !== '1',
       cleanQuit: startup.cleanQuit,
+      // An unexpected stop longer ago starts afresh, and so the opening plays (the owner's answer of 4 Nov 2026).
+      recentStop: startup.recentStop,
       restored: restored.restored,
       version: appVersion(),
     },

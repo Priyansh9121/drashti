@@ -34,7 +34,14 @@ export interface OpeningServiceDeps {
   /** A write that never holds up the start (the version that started, below). */
   later(name: string, value: unknown): void;
   /** What this start is, known once Drashti has started. */
-  boot: { selfTest: boolean; testNotAsking: boolean; cleanQuit: boolean; restored: boolean; version: string };
+  boot: {
+    selfTest: boolean;
+    testNotAsking: boolean;
+    cleanQuit: boolean;
+    recentStop: boolean;
+    restored: boolean;
+    version: string;
+  };
   /** A picture the opening can show (in the library, not deleted, its file there), or null. */
   picture(mediaId: string): OpeningPicture | null;
   /** Whether a photo's copy for the opening is made. */

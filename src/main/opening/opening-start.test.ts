@@ -13,6 +13,7 @@ const usual: OpeningStartFacts = {
   selfTest: false,
   testNotAsking: false,
   cleanQuit: true,
+  recentStop: false,
   restored: false,
   lastVersion: '1.0.0-alpha.14',
   version: '1.0.0-alpha.14',
@@ -34,7 +35,7 @@ describe('whether it plays', () => {
     [{ testNotAsking: true }, 'in a test that does not ask for it'],
     [{ asked: true }, 'it has played already at this start'],
     [{ pageAgain: true }, 'the operator window was loaded again'],
-    [{ cleanQuit: false }, 'after an unexpected stop'],
+    [{ cleanQuit: false, recentStop: true }, 'after an unexpected stop'],
     [{ restored: true }, 'after a restore'],
     [{ lastVersion: '1.0.0-alpha.13' }, 'at the first start of 1.0.0-alpha.14'],
     [{ lastVersion: null }, 'at the first start of 1.0.0-alpha.14'],
@@ -45,8 +46,15 @@ describe('whether it plays', () => {
     expect(openingAtStart({ ...usual, ...facts })).toEqual({ play: false, why });
   });
 
+  it('after an unexpected stop more than three hours before, it plays: that start is as after a quit on purpose', () => {
+    // The owner's answer of 4 Nov 2026: the same rule by which Drashti then starts afresh (shared/recovery.ts).
+    expect(openingAtStart({ ...usual, cleanQuit: false, recentStop: false })).toEqual({ play: true });
+  });
+
   it('a crash wins over everything a person could change (the show comes back first)', () => {
-    expect(openingAtStart({ ...usual, cleanQuit: false, welcome: true, on: false })).toEqual({
+    expect(
+      openingAtStart({ ...usual, cleanQuit: false, recentStop: true, welcome: true, on: false }),
+    ).toEqual({
       play: false,
       why: 'after an unexpected stop',
     });

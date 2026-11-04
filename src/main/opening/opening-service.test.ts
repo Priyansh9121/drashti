@@ -47,6 +47,7 @@ function service(
       selfTest: false,
       testNotAsking: false,
       cleanQuit: true,
+      recentStop: false,
       restored: false,
       version: '1.0.0-alpha.14',
       ...o.boot,
@@ -114,10 +115,13 @@ describe('as Drashti starts', () => {
     expect(first.opening.atStart(START)).toBeNull();
   });
 
-  it('never after an unexpected stop, nor with the welcome, nor turned off', () => {
-    const crash = service({ boot: { cleanQuit: false } });
+  it('never after an unexpected stop in the last three hours, nor with the welcome, nor turned off', () => {
+    const crash = service({ boot: { cleanQuit: false, recentStop: true } });
     expect(crash.opening.atStart(START)).toBeNull();
     expect(crash.lines).toEqual(['Opening: not played (after an unexpected stop)']);
+    // A stop longer ago (the computer switched off with Drashti open, the day before): it plays.
+    const yesterday = service({ boot: { cleanQuit: false, recentStop: false } });
+    expect(yesterday.opening.atStart(START)).toEqual({ photos: [], lines: [] });
     const welcome = service();
     welcome.setWelcome(true);
     expect(welcome.opening.atStart(START)).toBeNull();
