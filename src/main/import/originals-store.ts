@@ -179,11 +179,15 @@ export class OriginalsStore {
       await mkdir(this.mediaDir, { recursive: true });
       const free = (this.options.freeBytes ?? diskFreeBytes)(this.mediaDir);
       if (before.size + (this.options.reserveBytes ?? 2 * 1024 ** 3) > free)
-        return { ok: false, message: 'There is not enough free space to retain this document safely.' };
+        return { ok: false, message: 'There is not enough free space to keep a copy of this document.' };
       const staging = join(this.mediaDir, ORIGINALS_STAGING_DIR);
       await mkdir(staging, { recursive: true });
       if (!(await realPlaceAsync(this.mediaDir, staging))?.inside)
-        return { ok: false, message: 'The original document staging folder is outside the library.' };
+        return {
+          ok: false,
+          message:
+            'Drashti’s folder for original files leads outside the library, so this document was not copied.',
+        };
       partial = join(staging, randomUUID());
       await pipeline(createReadStream(path), createWriteStream(partial, { flags: 'wx', mode: 0o600 }), {
         signal,
@@ -203,10 +207,18 @@ export class OriginalsStore {
       const originalsDir = join(this.mediaDir, ORIGINALS_DIR);
       await mkdir(originalsDir, { recursive: true });
       if (!(await realPlaceAsync(this.mediaDir, originalsDir))?.inside)
-        return { ok: false, message: 'The retained original folder is outside the library.' };
+        return {
+          ok: false,
+          message:
+            'Drashti’s folder for original files leads outside the library, so this document was not copied.',
+        };
       await mkdir(folder, { recursive: true });
       if (!(await realPlaceAsync(this.mediaDir, folder))?.inside)
-        return { ok: false, message: 'The retained original folder is outside the library.' };
+        return {
+          ok: false,
+          message:
+            'Drashti’s folder for original files leads outside the library, so this document was not copied.',
+        };
       const target = join(this.mediaDir, originalRelative(original));
       try {
         // Exclusive atomic publication: an existing immutable file is never replaced, even by identical input.
@@ -218,7 +230,8 @@ export class OriginalsStore {
       if (!file)
         return {
           ok: false,
-          message: 'The retained original is damaged: it was left unchanged. Restore it from a backup.',
+          message:
+            'Drashti’s copy of this original file is damaged: it was left as it is. Restore it from a backup.',
         };
       if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
       return { ok: true, original, file };
@@ -227,7 +240,7 @@ export class OriginalsStore {
         ok: false,
         message: signal?.aborted
           ? 'Cancelled.'
-          : `The original document could not be retained. ${fileProblem(error, 'own')}`,
+          : `Drashti could not keep a copy of the original file. ${fileProblem(error, 'own')}`,
       };
     } finally {
       if (partial) await rm(partial, { force: true }).catch(() => undefined);

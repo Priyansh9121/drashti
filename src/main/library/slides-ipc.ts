@@ -344,7 +344,7 @@ export function registerSlidesIpc({
       if (!fromOperator(e) || !mayPrepareSource(e)) return onlyOperator;
       const ids = [rawSlide, rawPicture, rawSource].map((value) => idSchema.safeParse(value));
       if (ids.some((id) => !id.success))
-        return { ok: false, message: 'Choose a saved picture and a prepared PDF page.' };
+        return { ok: false, message: 'Choose the slide’s saved picture and a page of the PDF.' };
       const checked = validateDocument(rawId, rawDoc, rawStamp, false);
       if (!checked.ok) return { ok: false, message: checked.message };
       const kind = db.prepare('SELECT source_kind FROM presentations WHERE id = ?').pluck().get(checked.id);

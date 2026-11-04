@@ -3,7 +3,8 @@ import { sourceCheckpoint, type SourceRead, type SourceReader } from './source-r
 
 const refused = (): PreparedSource => ({
   ok: false,
-  message: 'Source preparation is unavailable or cancelled. Saved playback is unchanged.',
+  message:
+    'Reading the original’s words and shapes stopped, or can’t start now. The slides still show as before.',
 });
 interface Queued {
   request: SourceRead;
@@ -63,7 +64,8 @@ export class SourceReaderQueue {
             this.stopped = true;
             job.finish({
               ok: false,
-              message: 'A source process did not stop. Restart Drashti before preparing more source pages.',
+              message:
+                'Drashti’s document reader did not stop. Restart Drashti before editing more imported slides.',
               retainOutput: true,
             });
             for (const waiting of this.waiting.splice(0)) {
@@ -138,7 +140,7 @@ export class SourceReaderQueue {
           timer = setTimeout(() => {
             active.finish({
               ok: false,
-              message: 'A source process did not confirm shutdown.',
+              message: 'Drashti’s document reader did not stop.',
               retainOutput: true,
             });
             resolve();

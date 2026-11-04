@@ -1,5 +1,4 @@
-// Intended destination: src/renderer/src/editor/pdf-context.ts.
-// Requires the separate EditorGroup union change shown in the parent plan.
+// Whether the shown slide is a PDF page, and the editor's PDF pages tab for one.
 import type { EditDoc } from '../../../shared/slide-edit';
 import type { TabItem } from '../ui/Tabs';
 import { FileText } from '../ui/icons';
