@@ -301,6 +301,48 @@ test('a long passage goes on over several slides and Next goes on to the next it
   await app.close();
 });
 
+// alpha.15 (the owner's answer of 4 Nov 2026): loading or removing a book says the playlists changed, so a playlist open
+// in the window (and on a phone) reads its rows again at once.
+test('removing a book marks its passages in an open playlist at once, and loading it again brings them back', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await showExtras(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const files = exampleFiles();
+  await load(win, [files.granth, files.vachan]);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.playlists.create('Placeholder reading', null, false);
+    if (!made.ok) throw new Error(made.message);
+    const added = await d.playlists.addItems(made.ids[0] ?? '', null, [
+      { kind: 'shastra', passageId: 'shastra:pv/ppr#2' },
+    ]);
+    if (!added.ok) throw new Error(added.message);
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
+  const card = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder Vachan' });
+  await expect(card).toBeVisible();
+  await expect(card).not.toContainText('Its book is not loaded');
+  // Removed in the Books dialog: the open playlist says so at once, never opened again.
+  await openLibrary(win);
+  await win.getByTestId('library-tab-shastra').click();
+  await win.getByTestId('open-shastra-texts').click();
+  await win
+    .getByTestId('shastra-texts-dialog')
+    .getByRole('button', { name: 'Remove Placeholder Vachan' })
+    .click();
+  await win.getByTestId('shastra-remove-confirm').getByRole('button', { name: 'Remove' }).click();
+  await win.getByRole('button', { name: 'Close Books' }).click();
+  await expect(card).toContainText('Its book is not loaded');
+  // Loaded again: its passage is there again, at once.
+  const [again] = await load(win, [files.vachan]);
+  expect(again).toMatchObject({ outcome: 'imported' });
+  await expect(card).not.toContainText('Its book is not loaded');
+  await app.close();
+});
+
 const TWO_OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
 
 /** The output showing this screen. */

@@ -37,9 +37,10 @@ import { freeName, madeFrom } from '../playlists/folder-playlist';
  *   imported as a dropped file is (so a deck comes in as any deck does, and what Drashti cannot play is
  *   converted by itself, never on air), named as the phone named it, marked with the device's name, and added to
  *   the playlist "Added from Phones" (made when the first file comes): a picture Add photos sends goes to the end of
- *   the playlist open in Pro Mode (Session 55, Part 8), and, while Drashti is in Simple Mode, a picture however it is
- *   sent goes to the end of Simple Mode's one playlist (question 5, the owner's decision of 3 Nov 2026). It never
- *   goes live by itself. The file sent is removed once imported: the media folder keeps the library's own copy.
+ *   the playlist open in Pro Mode (Session 55, Part 8), and, while Drashti is in Simple Mode, every file however it
+ *   is sent goes to the end of Simple Mode's one playlist (question 5, the owner's decisions of 3 and 4 Nov 2026).
+ *   It never goes live by itself. The file sent is removed once imported: the media folder keeps the library's own
+ *   copy.
  * - The playlists shared with phones, for Remote devices to view.
  */
 
@@ -314,13 +315,14 @@ export class PhoneFiles {
     // same file added before, from anywhere) stays as it was.
     const fresh = item?.outcome === 'imported' || item?.outcome === 'kept-both';
     const renamed: string[] = [];
-    // A picture: in Simple Mode to the end of its one playlist, however it was sent (question 5); in Pro Mode, asked
-    // for the open playlist (Add photos, Session 55, Part 8), to its end. Anything else, or with neither, to Added from
-    // Phones as before.
-    const picture = file.kind === 'image';
+    // In Simple Mode every file to the end of its one playlist, however it was sent (question 5: its pictures, then, the
+    // owner's answer of 4 Nov 2026, its videos, sounds, PDFs and decks), unless that playlist cannot hold it (Repeat
+    // Slides holds no video or sound). In Pro Mode a picture asked for the open playlist (Add photos, Session 55, Part
+    // 8) to its end. Anything else, or with neither, to Added from Phones as before.
+    const simple = this.simplePlaylist();
     const playlist =
-      (picture ? this.simplePlaylist() : null) ??
-      (picture && file.into === INTO_OPEN ? this.openPlaylist() : null) ??
+      (simple !== null && this.deps.playlists.refusal(simple.id, [made]) === null ? simple : null) ??
+      (file.kind === 'image' && file.into === INTO_OPEN ? this.openPlaylist() : null) ??
       this.addedPlaylist();
     this.deps.db.transaction(() => {
       if (fresh && made.kind === 'media')

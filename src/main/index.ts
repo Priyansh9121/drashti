@@ -24,6 +24,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
 import type { ImportOptions, ImportResult } from '../shared/import';
+import { loadedBooks } from '../shared/import';
 import { type LibraryChange, listedKirtan, type NewFromWordsResult } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
@@ -3254,8 +3255,13 @@ function start(): void {
       engine.refreshFiles();
       engine.refreshNext();
       libraryChanged(true);
-      // It may have loaded a Shastra text (or loaded one again).
+      // It may have loaded a book (or loaded one again): its passages in playlists are there now, so the playlists
+      // are read again, in the window and on the phones (alpha.15, the owner's answer of 4 Nov 2026).
       listChanged('shastra');
+      if (run && loadedBooks(importRepo.report(run.id))) {
+        sendToOperator(IPC.playlists.changed, { at: Date.now() });
+        network?.hint('playlists');
+      }
       // Or a calendar.
       calendarService?.refresh();
       // What it found Drashti's player cannot play is converted by itself (Session 50): one file at a time,
@@ -5385,7 +5391,8 @@ function start(): void {
     if (!t.success || !shastra.remove(t.data))
       return { ok: false as const, message: 'That book is not loaded.' };
     listChanged('shastra');
-    engine.refreshNext();
+    // Its passages in playlists are missing now: the playlists are read again (and what comes next).
+    playlistsChanged();
     return { ok: true as const, texts: shastra.list() };
   });
 

@@ -56,8 +56,8 @@ const DEVICES: Record<string, { name: string; kind: 'remote' | 'stage' }> = {
 };
 
 /**
- * The import, as the real one leaves the library: a media item per picture (the same bytes again: the one already
- * there, skipped) or a presentation per deck, named after the file, and its report.
+ * The import, as the real one leaves the library: a media item per picture, sound or video (the same bytes again: the
+ * one already there, skipped) or a presentation per deck, named after the file, and its report.
  */
 function standInImport(paths: string[]): Promise<{ ok: true; runId: string }> {
   imported.push(...paths);
@@ -79,9 +79,10 @@ function standInImport(paths: string[]): Promise<{ ok: true; runId: string }> {
     } else if (same) target = { kind: 'media', id: same.id };
     else {
       const id = randomUUID();
+      const kind = /\.(wav|mp3|m4a)$/u.test(name) ? 'audio' : /\.(mp4|mov)$/u.test(name) ? 'video' : 'image';
       db.prepare(
-        "INSERT INTO media (id, kind, name, path, sha256, source_kind, source_path, listed) VALUES (?, 'image', ?, ?, ?, 'media', ?, 1)",
-      ).run(id, name, `ab/${id}.jpg`, sha, path);
+        "INSERT INTO media (id, kind, name, path, sha256, source_kind, source_path, listed) VALUES (?, ?, ?, ?, ?, 'media', ?, 1)",
+      ).run(id, kind, name, `ab/${id}.jpg`, sha, path);
       target = { kind: 'media', id };
     }
     return {
@@ -151,6 +152,14 @@ afterEach(() => {
 });
 
 const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(300, 0x5a)]);
+/** A sound: a WAV's header, as its first bytes say (file-kind.ts reads no further). */
+const WAV = Buffer.concat([
+  Buffer.from('RIFF'),
+  Buffer.alloc(4),
+  Buffer.from('WAVEfmt '),
+  Buffer.from([16, 0, 0, 0, 1, 0]),
+  Buffer.alloc(14),
+]);
 
 /** A file the network's worker handed over: all of it in the uploads folder, named by Drashti. */
 function sent(
@@ -394,26 +403,70 @@ describe('a phone’s photos in Simple Mode (question 5): at the end of Simple M
     expect(files.policy()).toMatchObject({ simplePlaylist: 'Sabha, 4 Nov 2026', openPlaylist: null });
   });
 
-  it('anything else from a phone goes to Added from Phones as before; in Pro Mode a picture does too', async () => {
+  // The owner's answer of 4 Nov 2026: a phone's other files too, a deck once the stream has ended (as Simple Mode's own
+  // Add files… brings them in).
+  it('a sound, and a deck once the stream has ended, go to the end of Simple Mode’s playlist too, the phone told why a deck waits', async () => {
     const sabha = playlists.create('Sabha, 4 Nov 2026', null, false) ?? '';
     simpleOne = sabha;
     simple = true;
+    expect(await files.arrived(sent(WAV, 'Placeholder tone.wav', { ext: 'wav', kind: 'audio' }))).toEqual({
+      ok: true,
+      message: 'Added to Drashti, in Media and the playlist “Sabha, 4 Nov 2026”.',
+    });
+    onAir = true;
     const pptx = makeZip([{ name: 'ppt/presentation.xml', data: '<p:presentation/>' }]);
-    const deck = await files.arrived(
+    const notes: string[] = [];
+    let signalWaiting = (): void => undefined;
+    const waiting = new Promise<'waiting'>((resolve) => {
+      signalWaiting = () => resolve('waiting');
+    });
+    const deck = files.arrived(
       sent(pptx, 'Placeholder deck.pptx', { ext: 'pptx', kind: 'powerpoint' }),
+      (m) => {
+        notes.push(m);
+        signalWaiting();
+      },
     );
-    expect(deck.ok).toBe(true);
-    expect(deck.message).toContain('the playlist “Added from Phones”');
-    expect(playlists.itemsOf(sabha)).toEqual([]);
-    expect(added().map((p) => p.itemCount)).toEqual([1]);
+    try {
+      expect(await Promise.race([waiting, deck.then(() => 'finished' as const)])).toBe('waiting');
+      expect(notes).toEqual([DECK_WAITS]);
+      onAir = false;
+      expect(await deck).toEqual({
+        ok: true,
+        message: 'Added to Drashti, in the library and the playlist “Sabha, 4 Nov 2026”.',
+      });
+    } finally {
+      onAir = false;
+      await Promise.allSettled([deck]);
+    }
+    expect(playlists.itemsOf(sabha).map((i) => [i.kind, i.label])).toEqual([
+      ['media', 'Placeholder tone.wav'],
+      ['presentation', 'Placeholder deck'],
+    ]);
+    expect(added()).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  it('in Pro Mode a phone’s file goes to Added from Phones as before; a Simple Mode playlist that cannot hold one (Repeat Slides, a sound) passes it there', async () => {
+    const sabha = playlists.create('Sabha, 4 Nov 2026', null, false) ?? '';
+    simpleOne = sabha;
     // Pro Mode: Simple Mode's playlist is told to no one, and a picture goes to Added from Phones, as before.
-    simple = false;
     expect(files.policy()).toMatchObject({ simplePlaylist: null });
     expect(await files.arrived(sent(JPEG, 'Placeholder Pro.jpg'))).toEqual({
       ok: true,
       message: 'Added to Drashti, in Media and the playlist “Added from Phones”.',
     });
     expect(playlists.itemsOf(sabha)).toEqual([]);
+    // Simple Mode's playlist a Repeat Slides one: a picture goes round in it; a sound cannot, so Added from Phones.
+    const going = playlists.createRepeat('Placeholder going round', null) ?? '';
+    simpleOne = going;
+    simple = true;
+    await files.arrived(sent(Buffer.concat([JPEG, Buffer.from('r')]), 'Placeholder round.jpg'));
+    expect(await files.arrived(sent(WAV, 'Placeholder tone.wav', { ext: 'wav', kind: 'audio' }))).toEqual({
+      ok: true,
+      message: 'Added to Drashti, in Media and the playlist “Added from Phones”.',
+    });
+    expect(playlists.itemsOf(going).map((i) => i.label)).toEqual(['Placeholder round.jpg']);
     expect(added().map((p) => p.itemCount)).toEqual([2]);
   });
 

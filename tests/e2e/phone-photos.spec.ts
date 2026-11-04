@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode } from './devices';
 import { closePlaylistIfOpen, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
-import { makeTestImage } from './test-media';
+import { makeTestImage, makeTestTone } from './test-media';
 
 /*
  * Phone photos into the playlist (Session 55, Part 8, the owner's idea J): a paired phone's Add photos sends pictures
@@ -143,12 +143,12 @@ async function addFromPhone(p: Page, files: string[]): Promise<void> {
 }
 
 /*
- * Question 5 (the owner's decision of 3 Nov 2026): while Drashti is in Simple Mode, a photo a paired phone sends, by
- * Add from this Phone… or Add photos, goes to the end of Simple Mode's playlist, and into Media as ever, never live;
- * the phone says so before it is sent. Back in Pro Mode a picture from Add from this Phone… goes to Added from Phones
- * as before.
+ * Question 5 (the owner's decisions of 3 and 4 Nov 2026): while Drashti is in Simple Mode, a photo a paired phone sends,
+ * by Add from this Phone… or Add photos, goes to the end of Simple Mode's playlist, and into Media as ever, never live;
+ * so does a sound (and a video, a PDF or a deck); the phone says so before it is sent. Back in Pro Mode a picture from
+ * Add from this Phone… goes to Added from Phones as before.
  */
-test('in Simple Mode a paired phone’s photos go to the end of Simple Mode’s playlist, said first, never live; in Pro Mode, to Added from Phones as before', async () => {
+test('in Simple Mode a paired phone’s photos and other files go to the end of Simple Mode’s playlist, said first, never live; in Pro Mode, to Added from Phones as before', async () => {
   test.setTimeout(240_000);
   const { app, userData } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -225,8 +225,8 @@ test('in Simple Mode a paired phone’s photos go to the end of Simple Mode’s 
     await expect(p.getByTestId('remote-photos-words')).toHaveText(
       'Add photos puts pictures at the end of Simple Mode’s playlist, “Placeholder sabha”. They never go on the screens by themselves.',
     );
-    await expect(p.getByTestId('remote-add')).toContainText(
-      'a picture to the end of Simple Mode’s playlist “Placeholder sabha”',
+    await expect(p.getByTestId('remote-add-words')).toHaveText(
+      'A picture, video, sound, PDF, PowerPoint or Keynote file, up to 2 GB, goes whole to the end of Simple Mode’s playlist “Placeholder sabha”. It never goes on the screens by itself.',
     );
     await expectNoSeriousA11yIssues(p, 'adding files on a phone in Simple Mode at 375 × 812');
 
@@ -241,6 +241,26 @@ test('in Simple Mode a paired phone’s photos go to the end of Simple Mode’s 
       .poll(labels)
       .toEqual(['Placeholder start', 'Placeholder photo one.png', 'Placeholder photo two.png']);
     await expect(rowsInSimple).toHaveCount(3);
+
+    // A sound (the owner's answer of 4 Nov 2026: a phone's other files too): after them, never playing by itself.
+    const tone = makeTestTone(join(dir, 'Placeholder tone.wav'), { seconds: 1, hz: 440 });
+    await addFromPhone(p, [tone]);
+    const sound = sending.filter({ hasText: 'Placeholder tone.wav' });
+    await expect(sound).toHaveAttribute('data-state', 'added', { timeout: 60_000 });
+    await expect(sound.getByTestId('remote-sending-words')).toHaveText(
+      'Added to Drashti, in Media and the playlist “Placeholder sabha”.',
+    );
+    await expect
+      .poll(labels)
+      .toEqual([
+        'Placeholder start',
+        'Placeholder photo one.png',
+        'Placeholder photo two.png',
+        'Placeholder tone.wav',
+      ]);
+    await expect(rowsInSimple).toHaveCount(4);
+    expect(await addedFromPhones()).toEqual([]);
+    expect((await snapshot(win)).state.layers.audio).toBeNull();
     await expect.poll(() => uploadsLeft(userData)).toEqual([]);
 
     // Pro Mode again, the playlist closed: Add from this Phone…'s picture goes to Added from Phones, as before.
@@ -260,6 +280,7 @@ test('in Simple Mode a paired phone’s photos go to the end of Simple Mode’s 
       'Placeholder start',
       'Placeholder photo one.png',
       'Placeholder photo two.png',
+      'Placeholder tone.wav',
     ]);
     await expect(win.getByTestId('playlist-node').filter({ hasText: 'Added from Phones' })).toHaveCount(1);
   } finally {

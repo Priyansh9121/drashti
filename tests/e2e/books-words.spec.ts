@@ -254,9 +254,7 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
     const removed = await (globalThis as PageGlobals).drashti.shastra.remove(id);
     if (!removed.ok) throw new Error(removed.message);
   }, vachanId);
-  // (An open playlist reads its rows again when the playlists change, not when a book goes: opened again here.)
-  await win.getByTestId('playlist-close').click();
-  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
+  // The open playlist says so at once (alpha.15: removing a book says the playlists changed).
   const missing = card('Placeholder Vachan');
   await expect(missing).toContainText('Its book is not loaded');
   const missingId = await win.evaluate(

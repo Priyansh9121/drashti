@@ -13,8 +13,8 @@ import { cutText } from './text';
  *   makes; checked by what it is, then imported as a dropped file is, into the playlist "Added from Phones" and
  *   Media, marked with the device's name. It never goes live by itself. Off until someone turns the switch on.
  * - Since Session 55: Add photos puts pictures at the end of the playlist open in Pro Mode (Part 8); and while Drashti is
- *   in Simple Mode, a picture, however it is sent, goes to the end of Simple Mode's one playlist (question 5, the
- *   owner's decision of 3 Nov 2026), in Media as ever.
+ *   in Simple Mode, every file, however it is sent, goes to the end of Simple Mode's one playlist (question 5, the
+ *   owner's decisions of 3 and 4 Nov 2026), in Media (or the library, a deck) as ever.
  */
 
 /** The playlist a phone's files go into, made when the first one comes (" (2)" when another has the name). */
@@ -64,8 +64,8 @@ export interface AddFilesView {
    */
   openPlaylist?: string | null;
   /**
-   * Question 5 (the owner's decision of 3 Nov 2026): the name of Simple Mode's one playlist while Drashti is in Simple
-   * Mode, where a phone's pictures go, however they are sent; null in Pro Mode. Left out by an older Drashti.
+   * Question 5 (the owner's decisions of 3 and 4 Nov 2026): the name of Simple Mode's one playlist while Drashti is in
+   * Simple Mode, where a phone's files go, however they are sent; null in Pro Mode. Left out by an older Drashti.
    */
   simplePlaylist?: string | null;
 }
@@ -151,8 +151,8 @@ export const ADD_FILES_WORDS = {
 
 /**
  * Where a phone's files go, as the phone says it before they are sent (the words above its two buttons): `files` for
- * Add from this Phone…, `photos` for Add photos. In Simple Mode a picture goes to the end of Simple Mode's playlist
- * (question 5), and anything else into Added from Phones; in Pro Mode, Add photos goes to the playlist open there.
+ * Add from this Phone…, `photos` for Add photos. In Simple Mode every file goes to the end of Simple Mode's playlist
+ * (question 5); in Pro Mode, Add photos goes to the playlist open there, and the rest into Added from Phones.
  */
 export function addFilesWords(view: Pick<AddFilesView, 'maxBytes' | 'openPlaylist' | 'simplePlaylist'>): {
   files: string;
@@ -163,7 +163,7 @@ export function addFilesWords(view: Pick<AddFilesView, 'maxBytes' | 'openPlaylis
   const size = sizeWords(view.maxBytes);
   if (simple !== null)
     return {
-      files: `A file goes whole, up to ${size}: a picture to the end of Simple Mode’s playlist “${simple}”, and a video, sound, PDF, PowerPoint or Keynote file into Drashti’s playlist “${ADDED_FROM_PHONES}”. Nothing goes on the screens by itself.`,
+      files: `A picture, video, sound, PDF, PowerPoint or Keynote file, up to ${size}, goes whole to the end of Simple Mode’s playlist “${simple}”. It never goes on the screens by itself.`,
       photos: `Add photos puts pictures at the end of Simple Mode’s playlist, “${simple}”. They never go on the screens by themselves.`,
     };
   return {
