@@ -27,8 +27,19 @@ extraResources:
       - screenshots/access-list.png
       - screenshots/access-revoke.png
       - screenshots/access-stopped.png
+      - screenshots/ai-books-heard.png
+      - screenshots/ai-books.png
+      - screenshots/ai-helpers.png
+      - screenshots/ai-lyrics.png
+      - screenshots/ai-playlist.png
+      - screenshots/ai-search.png
+      - screenshots/ai-singing-trial.png
       - screenshots/appearance-window.png
       - screenshots/calendar-dialog.png
+      - screenshots/captions-gujarati-trial.png
+      - screenshots/captions-off.png
+      - screenshots/captions-program.png
+      - screenshots/captions-stage.png
       - screenshots/deck-live-click.png
       - screenshots/deck-transitions.png
       - screenshots/dropbox-playlist.png
@@ -52,6 +63,13 @@ extraResources:
       - screenshots/operator-1920x1080.png
       - screenshots/output-play-bar.png
       - screenshots/output-stage-timer.png
+      - screenshots/pdf-animated-approval.png
+      - screenshots/pdf-edit-source.png
+      - screenshots/pdf-insert.png
+      - screenshots/pdf-legacy-link.png
+      - screenshots/pdf-marks-pages.png
+      - screenshots/pdf-mixed-paper.png
+      - screenshots/pdf-save-copy.png
       - screenshots/phone-add-files.png
       - screenshots/phone-remote-clears.png
       - screenshots/phone-remote-notes.png
