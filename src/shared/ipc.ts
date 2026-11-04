@@ -145,12 +145,12 @@ import type {
  */
 export const IPC = {
   aiSpeech: {
-    get: 'ai-speech:get',
-    set: 'ai-speech:set',
-    search: 'ai-speech:search',
-    showBook: 'ai-speech:show-book',
-    nextVerse: 'ai-speech:next-verse',
-    changed: 'ai-speech:changed',
+    get: 'aispeech:get',
+    set: 'aispeech:set',
+    search: 'aispeech:search',
+    showBook: 'aispeech:show-book',
+    nextVerse: 'aispeech:next-verse',
+    changed: 'aispeech:changed',
   },
   ai: {
     get: 'ai:get',
