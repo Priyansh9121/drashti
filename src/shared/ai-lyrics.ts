@@ -29,7 +29,7 @@ export interface LyricProposal {
   language: Lang | null;
   changes: LyricChange[];
 }
-const lyricProposalSchema = z
+export const lyricProposalSchema = z
   .object({
     source: z.literal('pasted-lyrics'),
     action: z.enum(['breaks', 'transliteration']),

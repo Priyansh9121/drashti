@@ -57,6 +57,7 @@ import { up as documentOriginals } from './migrations/062-document-originals';
 import { up as documentPages } from './migrations/063-document-pages';
 import { up as pageSize } from './migrations/064-page-size';
 import { up as originalLocations } from './migrations/065-original-locations';
+import { up as aiSabhas } from './migrations/068-ai-sabhas';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -134,6 +135,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 63, name: 'document page identity and geometry', up: documentPages },
   { version: 64, name: 'independent native page size', up: pageSize },
   { version: 65, name: 'original document source locations', up: originalLocations },
+  { version: 68, name: 'approved AI sabha suggestions', up: aiSabhas },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

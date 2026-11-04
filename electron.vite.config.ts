@@ -47,6 +47,7 @@ export default defineConfig({
         // The workers are bundles of their own, started as utility processes.
         input: {
           index: resolve('src/main/index.ts'),
+          'ai-worker': resolve('src/main/ai/worker.ts'),
           'import-worker': resolve('src/main/import/worker.ts'),
           'pptx-reader-worker': resolve('src/main/documents/pptx-reader-worker.ts'),
           'pdf-geometry-worker': resolve('src/main/documents/pdf-geometry-worker.ts'),
