@@ -13,6 +13,7 @@ import { lookOf } from '../../../shared/audience-timer';
 import { stageBanner } from '../../../shared/stage-message';
 import { AudienceTimerView } from './AudienceTimer';
 import { StageMessageBanner } from './StageMessageBanner';
+import { CaptionsView } from './CaptionsView';
 
 /**
  * What a stage screen shows over its layout (Session 55, Part 15): the stage message as a banner where the layout has
@@ -83,6 +84,8 @@ export function StageScreen({
         <AudienceBox state={state} hall={hall} />
         {/* The stage message over the audience picture (Session 55): never on the hall's own screens. */}
         <StageMessageBanner state={state} canvas={canvas} />
+        {/* Live captions (Session 55, Part 10): every stage screen shows them. */}
+        <CaptionsView state={state} canvas={canvas} screen="stage" />
       </div>
     );
   const layout = shows === 'layout' ? state.stage?.layout : null;
@@ -98,6 +101,7 @@ export function StageScreen({
         {/* A video's last 10 seconds (Part 6): the time left across the top. */}
         <StageEndsIn state={state} canvas={canvas} />
         <StageOver state={state} canvas={canvas} banner={false} />
+        <CaptionsView state={state} canvas={canvas} screen="stage" />
       </>
     );
   return (
@@ -113,6 +117,7 @@ export function StageScreen({
       </Placed>
       <StageEndsIn state={state} canvas={canvas} />
       <StageOver state={state} canvas={canvas} banner={stageBanner(layout)} />
+      <CaptionsView state={state} canvas={canvas} screen="stage" />
     </>
   );
 }

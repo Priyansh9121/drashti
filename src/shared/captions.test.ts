@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CAPTION_LINE_CHARS, captionLines, DEFAULT_CAPTION_SETTINGS, parseCaptionSettings } from './captions';
+import {
+  CAPTION_LINE_CHARS,
+  captionLines,
+  captionsFor,
+  DEFAULT_CAPTION_SETTINGS,
+  parseCaptionSettings,
+  type CaptionsShown,
+} from './captions';
 
 /* Live captions' lines (Session 55, Part 10): placeholder words only. */
 
@@ -47,5 +54,25 @@ describe('caption settings (Part 10, migration 066)', () => {
     expect(parseCaptionSettings({ language: 'fr', audience: 'yes', size: 'huge', place: 'middle' })).toEqual(
       DEFAULT_CAPTION_SETTINGS,
     );
+  });
+});
+
+describe('where captions show (Part 10)', () => {
+  const shown: CaptionsShown = {
+    lines: ['alpha'],
+    language: 'en',
+    audience: false,
+    size: 'medium',
+    place: 'bottom',
+  };
+  it('on the stream and the stage always, on the audience screens only when chosen', () => {
+    expect(captionsFor(shown, 'stream')).toBe(shown);
+    expect(captionsFor(shown, 'stage')).toBe(shown);
+    expect(captionsFor(shown, 'hall')).toBeNull();
+    const chosen = { ...shown, audience: true };
+    expect(captionsFor(chosen, 'hall')).toBe(chosen);
+    expect(captionsFor(null, 'stream')).toBeNull();
+    expect(captionsFor(undefined, 'stage')).toBeNull();
+    expect(captionsFor({ ...shown, lines: [] }, 'stream')).toBeNull();
   });
 });

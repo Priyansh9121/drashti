@@ -32,6 +32,7 @@ import { PipBox, PipSourcePicture, usePipMainDissolve, usePipRun } from './PipLa
 import { MESSAGE_BAND, MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
 import { AudienceTimerView } from './AudienceTimer';
 import { HallMessages } from './HallMessages';
+import { CaptionsView } from './CaptionsView';
 
 /** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
 export function samvatText(calendar: CalendarDay | null, lang: CalendarLang): string {
@@ -357,6 +358,7 @@ export const Scene = memo(function Scene({
   ticker = true,
   matte = null,
   place = 'hall',
+  captions = true,
 }: {
   state: EngineState;
   canvas: Size;
@@ -375,6 +377,11 @@ export const Scene = memo(function Scene({
   matte?: 'fill' | 'key' | null;
   /** Which picture this is, for a lower third (Session 44): a hall screen, or the stream (a key and fill pair feeds it). */
   place?: 'hall' | 'stream';
+  /**
+   * Draw live captions (Session 55, Part 10) by `place`: the stream always, a hall screen only when chosen. Off where
+   * the screen draws its own (a stage screen's audience picture, the stream's Camera layout).
+   */
+  captions?: boolean;
 }) {
   const { layers } = state;
   const shown = (layer: GroupLayer) => look.layers.includes(layer);
@@ -557,6 +564,15 @@ export const Scene = memo(function Scene({
                         ? Math.round(canvas.height * MESSAGE_BAND)
                         : 0)
                     }
+                  />
+                )}
+                {/* Live captions (Session 55, Part 10), above the ticker's band. */}
+                {captions && (
+                  <CaptionsView
+                    state={state}
+                    canvas={canvas}
+                    screen={matte === null ? place : 'stream'}
+                    lift={bandHeight}
                   />
                 )}
                 {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}

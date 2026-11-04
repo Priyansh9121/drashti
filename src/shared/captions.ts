@@ -120,3 +120,18 @@ export function captionLines(words: readonly string[], max: number, keep = 2): s
   if (line !== '') lines.push(line);
   return lines.slice(Math.max(0, lines.length - keep));
 }
+
+/** Which kind of screen draws: the hall's audience screens, the stage screens or the stream. */
+export type CaptionScreen = 'hall' | 'stage' | 'stream';
+
+/**
+ * The captions a screen of this kind draws now, or null: the stream and the stage always, the audience screens only
+ * when the admin chose them too.
+ */
+export function captionsFor(
+  captions: CaptionsShown | null | undefined,
+  screen: CaptionScreen,
+): CaptionsShown | null {
+  if (!captions || captions.lines.length === 0) return null;
+  return screen === 'hall' && !captions.audience ? null : captions;
+}
