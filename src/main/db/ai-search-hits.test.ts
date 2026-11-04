@@ -41,8 +41,7 @@ const sourceText = (value: string, lang: Lang): TextElement => ({
     shadow: false,
   },
 });
-const ask = (query: string, hints: Hint[], limit = 50): SearchResult =>
-  Reflect.apply(index.search, index, [query, limit, hints]) as SearchResult;
+const ask = (query: string, hints: Hint[], limit = 50): SearchResult => index.search(query, limit, hints);
 beforeEach(() => {
   db = openDatabase(':memory:');
   repo = new PresentationRepo(db);
