@@ -1173,9 +1173,14 @@ function startNodeMode(): void {
   });
   // Its outputs' watchdog events (Sessions 31–36): one given up on is Stopped, and Main hears of it.
   outputWatchdogEvent = node.watchdogEvent;
-  // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would.
+  // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would, on the node's next
+  // turn as the watchdog's own word comes (a test's call can arrive in the middle of the node's own work).
   if (!packaged() && sw('DRASHTI_TEST_GIVE_UP') === '1')
-    (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = node.giveUp;
+    (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = (screenId) => {
+      setImmediate(() => {
+        node.giveUp(screenId);
+      });
+    };
   /** The node's watchdog self-test, its result in a box (the menu) or printed (headless). */
   const showResult = (result: SelfTestResult) => {
     const lines = result.checks.map(
@@ -2022,9 +2027,15 @@ function start(): void {
     if (e.kind === 'gave-up') stopOutput(screenId);
   };
   // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would,
-  // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes).
+  // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes). On Main's next turn,
+  // as the watchdog's own word comes: a test's call can arrive in the middle of Main's own query, its library busy
+  // (alpha.14's gate on Windows, 4 Nov 2026).
   if (!packaged() && sw('DRASHTI_TEST_GIVE_UP') === '1')
-    (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = stopOutput;
+    (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = (screenId) => {
+      setImmediate(() => {
+        stopOutput(screenId);
+      });
+    };
   let eventsScreensWas: ScreenState[] | null = [];
   const manager = new OutputManager({
     listDisplays,
