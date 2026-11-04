@@ -93,6 +93,7 @@ import { useStartMarks } from './start-marks';
 import { BackupsDialog } from '../backups/BackupsDialog';
 import { EventsOutDialog } from '../events/EventsOutDialog';
 import { DropFolderDialog } from '../drop/DropFolderDialog';
+import { OpeningDialog } from '../opening/OpeningDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { LinkDialog } from '../links/LinkDialog';
 import { KeysSheet, showKeysSheet } from './KeysSheet';
@@ -452,6 +453,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <BackupsDialog />
       <EventsOutDialog />
       <DropFolderDialog />
+      {/* File › Opening… (Session 55). */}
+      <OpeningDialog />
       <UpdatesDialog />
       <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />

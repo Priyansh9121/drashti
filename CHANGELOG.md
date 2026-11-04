@@ -18,6 +18,7 @@ A sabha runs differently now: screens set themselves, the playlist is where thin
 - Music lowers under video or slide sound and comes back afterward. Each file can turn even loudness off. Trim black and silence sets a video’s points.
 - One stage layout serves every stage screen; Stage off shows the audience picture. Stage messages have size, flash and recent entries. Audience messages have their own look and duration; timers can show for the audience.
 - The Lower Thirds studio has its own preview, animations, styles, backgrounds and fonts, with timed hiding. Studio fonts load after the first drawing to reduce startup work. QR code makes a slide offline. Picture-review wording and Access List columns are clearer.
+- Drashti can open with five seconds of the mandir's own photos and words, on the operator's screen only: File › Opening… chooses up to eight photos from Media and five lines, previews it, loads the opening pack and turns it off. Any key, click or tap ends it; never after a crash or an update.
 - Removed controls stay stored but unseen in older libraries: Props, Looks, masks, Themes, Logo, idle rotation, Edit words, Kirtan dialog, Show on, test slide and typing pro. Words now change in Edit slides.
 
 ## 1.0.0-alpha.13 (29 Oct 2026)

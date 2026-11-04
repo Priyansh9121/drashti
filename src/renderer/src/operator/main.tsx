@@ -4,6 +4,7 @@ import '../render/fonts.css';
 import '../styles/app.css';
 import { App } from './App';
 import { AccessGate } from '../access/AccessGate';
+import { OpeningAtStart } from '../opening/OpeningAtStart';
 import { WindowBoundary } from '../ui/WindowBoundary';
 import { reportRenderError } from '../ui/render-errors';
 import { setLiveWindowSize } from '../render/live-window';
@@ -30,6 +31,8 @@ createRoot(root, {
     <WindowBoundary reloadLabel="Reload the operator window">
       <AccessGate>
         <App />
+        {/* The opening as Drashti starts (Session 55): over the window, in either mode, once let in. */}
+        <OpeningAtStart />
       </AccessGate>
     </WindowBoundary>
   </StrictMode>,
