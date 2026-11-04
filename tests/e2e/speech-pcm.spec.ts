@@ -1,6 +1,6 @@
 import { _electron, expect, test } from '@playwright/test';
 import { createServer } from 'node:http';
-import { createRequire } from 'node:module';
+import { buildSync } from 'esbuild';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 test('browser microphone PCM reaches Main intact through the preload port', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-speech-port-'));
   const bundle = join(dir, 'speech-tap.js');
-  createRequire(__filename)('esbuild').buildSync({
+  buildSync({
     entryPoints: [join(process.cwd(), 'src/renderer/src/program/speech-tap.ts')],
     outfile: bundle,
     bundle: true,
@@ -71,13 +71,16 @@ app.whenReady().then(()=>{
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('No private audio fixture listener');
-  const env = { ...process.env, PCM_PROBE_URL: `http://127.0.0.1:${String(address.port)}/` };
-  delete env.ELECTRON_RUN_AS_NODE;
+  const env: Record<string, string> = { PCM_PROBE_URL: `http://127.0.0.1:${String(address.port)}/` };
+  for (const [key, value] of Object.entries(process.env))
+    if (value !== undefined && key !== 'ELECTRON_RUN_AS_NODE') env[key] = value;
   const app = await _electron.launch({ args: [bootstrap], env });
   try {
     const page = await app.firstWindow();
     await page.evaluate(async () => {
-      type Tap = { speechPort(port: MessagePort | null, track: () => MediaStreamTrack | null): void };
+      interface Tap {
+        speechPort(port: MessagePort | null, track: () => MediaStreamTrack | null): void;
+      }
       const tap = (globalThis as unknown as { DrashtiSpeechTap: Tap }).DrashtiSpeechTap;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       window.addEventListener('message', (event: MessageEvent<{ speechPort?: boolean }>) => {

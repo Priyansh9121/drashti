@@ -6,13 +6,23 @@ import { MeaningEncoder } from './runtime';
  * repeated-work policy: calls still go through embed(), token construction, pooling, normalization and close().
  */
 function ready() {
-  const run = vi.fn(async () => ({
-    output: { dims: [1, 2, AI_MODEL.dimensions], data: new Float32Array(2 * AI_MODEL.dimensions).fill(1) },
-  }));
-  const release = vi.fn(async () => undefined);
+  const run = vi.fn(() =>
+    Promise.resolve({
+      output: { dims: [1, 2, AI_MODEL.dimensions], data: new Float32Array(2 * AI_MODEL.dimensions).fill(1) },
+    }),
+  );
+  const release = vi.fn(() => Promise.resolve());
   const resources = {
     session: { inputNames: ['input_ids'], outputNames: ['output'], run, release },
-    api: { Tensor: class {} },
+    api: {
+      Tensor: class {
+        constructor(
+          readonly type: string,
+          readonly data: BigInt64Array,
+          readonly dimensions: number[],
+        ) {}
+      },
+    },
     tokenizer: { encode: () => ({ ids: [1, 2] }) },
   };
   const encoder = new MeaningEncoder('/placeholder/verified-model');
