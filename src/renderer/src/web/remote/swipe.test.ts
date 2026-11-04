@@ -100,4 +100,21 @@ describe('swipes on the live picture (Session 55, Part 9)', () => {
     expect(s.justSwiped(1300)).toBe(true);
     expect(s.justSwiped(1800)).toBe(false);
   });
+
+  it('lets a distinct fresh tap open the picture even just after a swipe', () => {
+    const s = new Swipes();
+    expect(drag(s, [300, 100], [100, 100], { at: 1000 })).toBe('next');
+    expect(s.justSwiped(1210)).toBe(true); // the swipe's own click is still ignored
+    expect(drag(s, [200, 100], [200, 100], { at: 1250, ms: 40 })).toBeNull();
+    expect(s.justSwiped(1290)).toBe(false); // a new pointer gesture is an intentional tap
+  });
+
+  it('does not carry an earlier swipe into a new tap with an older click timestamp', () => {
+    const s = new Swipes();
+    expect(drag(s, [300, 100], [100, 100], { at: 1000 })).toBe('next');
+    // An own compatibility click can carry the gesture's earlier timestamp: keep blocking that.
+    expect(s.justSwiped(1000)).toBe(true);
+    expect(drag(s, [200, 100], [200, 100], { at: 2000, ms: 40 })).toBeNull();
+    expect(s.justSwiped(1100)).toBe(false); // but a distinct tap never inherits that suppression
+  });
 });
