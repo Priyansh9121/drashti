@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SPEECH_LANGUAGES, type SpeechLanguage } from './speech';
+import { SPEECH_LANGUAGES, type SpeechLanguage, type SpeechState } from './speech';
 
 /*
  * Live captions (Session 55, Part 10): speech from the stream's sound input, heard on this computer
@@ -152,4 +152,27 @@ export const CAPTION_MODEL_IDS = Object.keys(CAPTION_MODELS) as CaptionModelId[]
 /** The model a computer starts with: Most accurate on a Mac with Apple silicon, Standard everywhere else. */
 export function defaultModel(platform: string, arch: string): CaptionModelId {
   return platform === 'darwin' && arch === 'arm64' ? 'turbo' : 'small';
+}
+
+/** How the captions model stands on this computer: not here, coming (bytes so far), here, or not downloaded (why). */
+export interface CaptionsDownload {
+  phase: 'missing' | 'downloading' | 'ready' | 'failed';
+  done: number;
+  total: number;
+  message: string | null;
+}
+
+/** What the Live captions dialog shows (Pro Mode): never a word heard. */
+export interface CaptionsStatus {
+  /** The admin's switch on this computer. */
+  on: boolean;
+  model: CaptionModelId;
+  settings: CaptionSettings;
+  download: CaptionsDownload;
+  /** What the listening is doing now. */
+  speech: SpeechState;
+  /** Whether this copy of Drashti has the captions engine (scripts/fetch-whisper.mjs bundles it). */
+  engine: boolean;
+  /** Captions are a trial: Gujarati is not good enough yet with any free model (Session 55). */
+  trial: boolean;
 }
