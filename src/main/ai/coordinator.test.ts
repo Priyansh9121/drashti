@@ -195,3 +195,115 @@ describe('operator approval boundary', () => {
     expect(changed).not.toHaveBeenCalled();
   });
 });
+
+describe('meaning-search progress protects the show', () => {
+  it('coalesces a fast scan into at most five Main searches per second and keeps its newest hints', async () => {
+    vi.useFakeTimers();
+    const search = vi.spyOn(SearchIndex.prototype, 'search');
+    let report: Parameters<AiWorkerRpc['run']>[1];
+    let finish: ((value: unknown) => void) | undefined;
+    run.mockImplementationOnce(
+      (_job, progress) =>
+        new Promise((resolve) => {
+          report = progress;
+          finish = resolve;
+        }),
+    );
+    const hint = (i: number) => ({
+      presentationId: 'placeholder-' + String(i),
+      slideId: null,
+      stamp: 'invented',
+      kind: 'meaning' as const,
+      score: 0.9,
+    });
+    try {
+      helpers.set(7, enabled);
+      const progress = vi.fn();
+      const waiting = helpers.search(7, { query: 'Placeholder boat', requestId: 'scan' }, progress);
+      for (let i = 0; i < 50; i += 1) {
+        report?.([hint(i)]);
+        await vi.advanceTimersByTimeAsync(20);
+      }
+      expect(search.mock.calls.length).toBeLessThanOrEqual(5);
+      expect(progress.mock.calls.length).toBeGreaterThan(0);
+      expect(search.mock.calls.at(-1)?.[2]?.[0]?.presentationId).toBe('placeholder-49');
+      finish?.([hint(49)]);
+      expect((await waiting).ok).toBe(true);
+      expect(search.mock.calls.at(-1)?.[2]?.[0]?.presentationId).toBe('placeholder-49');
+    } finally {
+      helpers.suspend();
+      search.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('holds intermediate Main searches during show work and discards a canceled trailing update', async () => {
+    vi.useFakeTimers();
+    const search = vi.spyOn(SearchIndex.prototype, 'search');
+    let report: Parameters<AiWorkerRpc['run']>[1];
+    let finish: ((value: unknown) => void) | undefined;
+    run.mockImplementationOnce(
+      (_job, progress) =>
+        new Promise((resolve) => {
+          report = progress;
+          finish = resolve;
+        }),
+    );
+    try {
+      helpers.set(7, enabled);
+      const progress = vi.fn();
+      const waiting = helpers.search(7, { query: 'Placeholder boat', requestId: 'busy' }, progress);
+      helpers.busy(Date.now() + 1000);
+      report?.([]);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(search).not.toHaveBeenCalled();
+      expect(progress).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(600);
+      expect(search).toHaveBeenCalledTimes(1);
+      report?.([]);
+      helpers.set(7, { ...enabled, search: false });
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(search).toHaveBeenCalledTimes(1);
+      finish?.([]);
+      expect((await waiting).ok).toBe(false);
+    } finally {
+      helpers.suspend();
+      search.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
+
+it('publishes only the newest search’s intermediate results, even when an older scan reports later', async () => {
+  vi.useFakeTimers();
+  const search = vi.spyOn(SearchIndex.prototype, 'search');
+  const reporters: Parameters<AiWorkerRpc['run']>[1][] = [];
+  const finishes: ((value: unknown) => void)[] = [];
+  run.mockImplementation(
+    (_job, progress) =>
+      new Promise((resolve) => {
+        reporters.push(progress);
+        finishes.push(resolve);
+      }),
+  );
+  try {
+    helpers.set(7, enabled);
+    const oldProgress = vi.fn(),
+      newProgress = vi.fn();
+    const oldSearch = helpers.search(7, { query: 'Placeholder old', requestId: 'old' }, oldProgress);
+    const newSearch = helpers.search(7, { query: 'Placeholder new', requestId: 'new' }, newProgress);
+    reporters[1]?.([]);
+    reporters[0]?.([]);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(oldProgress).not.toHaveBeenCalled();
+    expect(newProgress).toHaveBeenCalledTimes(1);
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(search.mock.calls[0]?.[0]).toBe('Placeholder new');
+    for (const finish of finishes) finish([]);
+    await Promise.all([oldSearch, newSearch]);
+  } finally {
+    helpers.suspend();
+    search.mockRestore();
+    vi.useRealTimers();
+  }
+});
