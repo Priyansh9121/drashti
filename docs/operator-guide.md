@@ -389,38 +389,66 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 **Imported words, shapes and pictures.** In alpha.15 an imported PDF or PowerPoint (`.pptx`) slide can offer its original words, supported shapes and pictures to edit in Drashti's own copy. Let preparation finish, then read the source notes: a missing font or an unsupported drawing may change how the page looks. A scanned PDF's words may be only a picture, so they cannot be typed over as text. Check the prepared page against the original before Save. The original file is kept unchanged.
 
+![Editable placeholder PDF source with its font and source limits](screenshots/pdf-edit-source.png)
+
 **An animated slide asks first.** Before a content change replaces an animated slide's original clicks and animations, Drashti asks **Make this slide editable**. Choose it only after reading the source notes; **Keep original** cancels that change. Only the changed slide becomes Drashti's own: untouched slides keep their original playback. Adding notes or editor guides alone does not replace the source. Use Undo if the change is not wanted, and **Save** when the copy is right.
+
+![Approval before editing one placeholder animated source slide](screenshots/pdf-animated-approval.png)
 
 **Mark a PDF page.** Choose the page on the left, then **PDF pages**. **Highlight**, **Underline**, **Strike through**, **Draw** and **Cover** mark it: drag over the part wanted, or draw, and press Esc to cancel a mark before finishing it. Underline and Strike through can also style selected editable words. Finished marks can be selected, moved or removed, with Undo and Redo. **Cover** puts a visible patch over the page; it does not remove the words underneath and must not be used to make a private document safe to share.
 
 **Turn, remove or move a page.** In **PDF pages**, **Turn page right** turns the chosen page a quarter turn; **Delete page** removes that page. Drag a page in the slide list or **Slides across** to change its order. Undo and Redo put each change back. These are changes in the editor until **Save** keeps them in the library; the retained original PDF stays as it was.
 
+![Placeholder PDF marks and the page controls](screenshots/pdf-marks-pages.png)
+
 **Bring in another PDF's pages.** Choose the page they should follow, then **PDF pages › Insert pages…**. Choose a **PDF in the library** and **Insert pages**, or **Choose a PDF file…**. All its pages go after the chosen one, in order. A file chosen here does not make another presentation in the library, and the PDF chosen from the library stays unchanged. **Cancel** stops preparation. All the inserted pages are one Undo or Redo; nothing is kept in this presentation until **Save**.
+
+![Choose a PDF from the library or a separate file for page insertion](screenshots/pdf-insert.png)
 
 **Pages of different sizes.** A PDF page keeps its own paper size and turn: choose it before judging its canvas, rulers, alignment or thumbnail. Inserted pages keep their own sizes too. When **Slide size** resizes mixed pages, **Fit and centre the existing content** fits each from its own paper; with it off, objects keep their pixel positions and sizes. The shared master fits to each page without changing the master itself. Notes and editor guides stay off the audience picture, whatever the page's size.
 
+![Portrait and landscape placeholder PDF pages with shared-master controls](screenshots/pdf-mixed-paper.png)
+
 **An older import needs a matching page.** If an old slide has only a saved picture, use **Link source page…**. For a PowerPoint or Keynote slide, first save a PDF reading copy from the deck's own program. In **Link a PDF reading copy**, **Choose a PDF reading copy…**, choose the **Saved source picture to replace** and its **Matching page in the PDF reading copy**, then **Link selected page**. Check that both pictures are the same page; Drashti leaves an uncertain match to you. Only that picture is replaced: your added objects, notes, guides and canvas size stay. Read warnings before approving an animated slide. An unsupported crop, turn or other change to the source picture may prevent linking; keep the original rather than choose a wrong page. Undo puts the saved picture back, and Save keeps the link.
 
+![Match an older saved source picture to a chosen placeholder PDF reading page](screenshots/pdf-legacy-link.png)
+
 **Save a new PDF.** **PDF pages › Save a PDF copy…** writes the pages as they now look to a new PDF where you choose. It refuses the original file, including another name for the same file. Give the copy a different name and open it to check every page, font, mark, size and turn. Exporting does not save your edits to the library: use **Save** there too. A PDF copy is for reading; do not expect the deck's clicks, video or sound to play in it.
+
+![Confirmation of a separate placeholder PDF copy](screenshots/pdf-save-copy.png)
 
 ## 11. AI helpers while preparing a sabha
 
 **Choose only the helpers you want.** In Pro Mode, **File › AI helpers…** has five switches, all off at first: **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each works offline on this computer; the choices are kept. Suggestions wait for you to check them. They do not change Books. Nothing goes on the screens until you choose it, and no helper starts a stream or recording. These tools are not offered in Simple Mode or on a phone.
 
+![All five offline AI helpers switched off](screenshots/ai-helpers.png)
+
 **Find by meaning.** With Meaning and spelling search on, open **Library**, type in its search box and press **Find by meaning**. The usual exact matches stay, with suggestions for meaning, a misspelling or Gujarati typed in English letters. Each suggestion leads to a real presentation, media item or loaded book passage; look at it before adding it to the playlist. It does not make up words or references. If the helper cannot finish, use the usual search.
+
+![Meaning search results for a placeholder library source](screenshots/ai-search.png)
 
 **Suggestions for newly pasted words.** With Import suggestions on, use the library's **New…** and paste the words for a new presentation. **Suggest slide breaks** offers places to split them; **Suggest transliteration** offers Roman letters using Drashti's existing rules. The review names the language when recognised and shows each change with its source line. Tick only the changes you want, then **Apply selected changes**. **Undo suggestion** restores your input, even after the helper has been switched off. Read the words and the Roman letters before making the presentation. This helper does not rewrite words already in the library or in Books.
 
+![Review placeholder word suggestions with individual choices and Undo](screenshots/ai-lyrics.png)
+
 **Suggest a playlist.** With Playlist suggestions on, choose **Suggest a playlist**, then the **Sabha date** and the **Past sabhas** it may draw from. **Suggest playlist** shows its proposed order and the calendar entry, if there is one; without an entry it uses a past sabha you chose. Check each row and where it came from, change the **Playlist name**, move rows up or down, and **Remove suggestion** for anything unwanted. Only **Make playlist** makes a new playlist; **Cancel** leaves the existing playlists as they were. Open the new one and rehearse it before the sabha.
+
+![Review a proposed placeholder playlist before making it](screenshots/ai-playlist.png)
 
 ### Book references during pravachan
 
 **Find a passage, then choose whether to show it.** In Pro Mode, turn on **Book references** under **File › AI helpers…**; it starts off. The **Speech helpers** panel beside LIVE has **Look in loaded Books**: type Gujarati, Hindi or English and press **Find in Books**. Typed search works with listening and Live captions off. It searches only the original words in Books loaded here, showing their references and quoted words. Exact matches appear first while meaning is checked; **No good match in the loaded Books** means nothing suitable was found.
 
+![Typed search in loaded placeholder Books while listening is off](screenshots/ai-books.png)
+
 **To listen during pravachan**, ask the admin to turn on **Live captions on this computer**, choose the stream's sound input and wait for the model (admin guide, section 25). Both speech helpers need that separate switch for listening; neither turns it on. Heard words can then suggest passages in the same panel. If listening is waiting, let it wait or use typed search. Read the reference and quoted words before pressing **Show passage — …**: only that press puts a passage on the screens. If its book has changed or been removed, or the suggestion has expired, search again and check a fresh result. Books stay as loaded; the helper writes no new passage or translation.
+
+![Heard placeholder words offer source references and Show passage](screenshots/ai-books-heard.png)
 
 ### Follow singing (Trial)
 
 **A suggestion for Next, with the operator in charge.** In Pro Mode, turn on **Follow singing (Trial)** under **File › AI helpers…**; it starts off and also needs Live captions switched on for listening. Put the kirtan's verse on **LIVE** as usual. When heard words clearly match that verse, the Speech helpers panel offers **Next suggested verse**. Check it, then press it when ready, or use the usual **Next**. It follows the current play order, never jumps to another verse and never advances by itself. Without a clear match, carry on with Next yourself.
+
+![Follow singing Trial offers Next while the operator keeps control](screenshots/ai-singing-trial.png)
 
 A suggestion is for the current live state and expires: changing the slide, leaving Pro Mode or losing the operator makes it unusable. Wait for a fresh match if needed. It is a **Trial**: try it in a rehearsal before a sabha, with the admin's chosen captions language. Turn it off again under **AI helpers…** if it is not useful; turning a speech helper off does not turn Live captions off.

@@ -604,11 +604,19 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 **Off until an admin turns them on.** In Pro Mode, **File › Live Captions…** opens the dialog. **Live captions on this computer** starts off; it belongs to this computer, so check each Main separately. Captions are marked **Trial**. Leave them off for a sabha unless a rehearsal on that computer has gone well. There is nothing to set in Simple Mode. A Mac needs **macOS 13.3 or later** for captions.
 
+![Live captions off and marked Trial](screenshots/captions-off.png)
+
 **The model downloads once.** While online, choose **Model** and turn captions on: **Standard**, 488 MB, or **Most accurate**, 574 MB. Start with Standard on the Windows PC and Most accurate on an Apple-silicon Mac. The progress line says how much has arrived; **Try again** retries a failed download. Wait until it says **The model is on this computer**. After that, the chosen model works without the internet; choosing another may need its own download.
 
 **What captions hear.** Choose the mixer's input under **Sound input** in the stream's settings. Captions hear that input, not Drashti's music or videos. The stream's page stays open while listening, even off air, so its chosen camera may be open and its light on. This alone does not start a stream or recording.
 
 **Language and where the words go.** Choose one **Language**: English or Hindi for a rehearsal; **Gujarati (trial)** only to see how it does. Gujarati is not good enough for the audience yet. **Gujarati, Hindi or English, as heard** often takes Gujarati for Hindi. The stream and stage screens show captions; **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large; **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.
+
+![Live captions listening with the Gujarati trial warning](screenshots/captions-gujarati-trial.png)
+
+![Generated placeholder captions on a stage screen](screenshots/captions-stage.png)
+
+![Generated placeholder captions in the stream Program](screenshots/captions-program.png)
 
 **The status line says what to do:**
 
@@ -625,6 +633,8 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 ## 26. AI helpers that work offline
 
 **Five separate switches, all off at first.** In Pro Mode, **File › AI helpers…** has **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Turn on only the ones the operators want; the choices are kept. They work on this computer, with no account or cloud service. With every switch off, no AI helper starts. Simple Mode and phones do not offer these helpers.
+
+![All five offline AI helpers off before the admin chooses any](screenshots/ai-helpers.png)
 
 **The operator decides.** Search points to material already in the library, including meaning, spelling and Gujarati typed in English letters; it does not invent a passage or reference. Import suggestions are for newly pasted words, with each change chosen and **Undo suggestion** to put them back. Playlist suggestions draw from the chosen past sabhas and the loaded calendar: review, rename, move or remove suggestions before **Make playlist**. Books stay as loaded. Nothing suggested goes live by itself or starts a stream or recording. The operator's guide, section 11, has the steps.
 
