@@ -1,3 +1,4 @@
+import { SpeechHelperSwitches } from './AiSpeech';
 import type { AiFeature } from '../../../shared/ai';
 import { useMode } from '../operator/mode-store';
 import { Dialog } from '../ui/Dialog';
@@ -44,6 +45,7 @@ export function AiDialog() {
           </div>
         ))}
       </div>
+      <SpeechHelperSwitches />
       <p className="text-xs text-muted">Helpers are off until you switch them on. Your choices are saved.</p>
       {problem && <Notice tone="danger">{problem}</Notice>}
     </Dialog>

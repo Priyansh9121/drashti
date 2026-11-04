@@ -80,6 +80,7 @@ import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
 import { AiHelpers } from './ai/coordinator';
+import { SpeechHelpers } from './ai/speech-helpers';
 import { AiWorkerRpc } from './ai/rpc';
 import { spawnAiWorker } from './ai/spawn-worker';
 import { SearchIndex } from './db/search';
@@ -3054,6 +3055,7 @@ function start(): void {
   // (Session 55, the list's answer) it is all this computer may use: mode-keeper.ts holds it there, and
   // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
   let aiHelpers: AiHelpers | null = null;
+  let aiSpeech: SpeechHelpers | null = null;
   let mode: OperatorMode = 'pro';
   let rebuildMenu: () => void = () => undefined;
   // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
@@ -3099,6 +3101,7 @@ function start(): void {
       rebuildMenu();
       if (next === 'simple') {
         aiHelpers?.suspend();
+        aiSpeech?.suspend();
         closeStudio();
         closeEditor();
       }
@@ -3124,6 +3127,7 @@ function start(): void {
     if (!isLetIn() || simpleAccess()) {
       cancelSourceEdits();
       aiHelpers?.suspend();
+      aiSpeech?.suspend();
     }
   });
   simpleNow = () => mode === 'simple';
@@ -4044,6 +4048,53 @@ function start(): void {
     },
   });
   aiHelpers = offlineHelpers;
+  const speechHelpers = new SpeechHelpers({
+    hub: captions.hub,
+    settings,
+    books: shastraRepo,
+    owner: () => {
+      const id = operatorWindow?.webContents.id;
+      return id !== undefined && helperOwner(id) ? id : null;
+    },
+    live: () => {
+      const state = engine.current;
+      const up = state.layers.slide;
+      return up
+        ? {
+            presentationId: up.presentationId,
+            slideIndex: up.slideIndex,
+            slideCount: state.live.slideCount,
+            shownAt: up.shownAt,
+            kirtan: up.slide.kirtan === true,
+            text: cutText(
+              up.slide.elements
+                .flatMap((element) => (element.kind === 'text' ? [element.text] : []))
+                .join('\n'),
+              2000,
+            ),
+          }
+        : null;
+    },
+    rpc: new AiWorkerRpc(spawnAiWorker, {
+      assetsRoot:
+        helperAssetsOverride ??
+        (packaged()
+          ? join(process.resourcesPath, 'ai')
+          : join(app.getAppPath(), 'vendor', 'ai', `${process.platform}-${process.arch}`)),
+      libraryFile: libraryFile(),
+      cacheFile: join(app.getPath('userData'), 'ai-speech-vectors.sqlite'),
+    }),
+    showBook: (id) => engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 }).ok,
+    next: () => engine.dispatch({ type: 'next' }).ok,
+    changed: (view) => sendToOperator(IPC.aiSpeech.changed, view),
+  });
+  aiSpeech = speechHelpers;
+  stops.add('speech helpers', () => speechHelpers.suspend());
+  handle(IPC.aiSpeech.get, (e) => speechHelpers.get(e.sender.id));
+  handle(IPC.aiSpeech.set, (e, value) => speechHelpers.set(e.sender.id, value));
+  handle(IPC.aiSpeech.search, (e, value) => speechHelpers.search(e.sender.id, value));
+  handle(IPC.aiSpeech.showBook, (e, value) => speechHelpers.showBook(e.sender.id, value));
+  handle(IPC.aiSpeech.nextVerse, (e, id) => speechHelpers.nextVerse(e.sender.id, id));
   stops.add('offline helpers', () => {
     offlineHelpers.suspend();
   });
@@ -4053,6 +4104,8 @@ function start(): void {
     if (showing !== helperShowing) {
       helperShowing = showing;
       offlineHelpers.busy(Date.now() + 200);
+      speechHelpers.busy(Date.now() + 200);
+      speechHelpers.liveChanged();
     }
   });
   handle(IPC.ai.get, (e) => offlineHelpers.get(e.sender.id));

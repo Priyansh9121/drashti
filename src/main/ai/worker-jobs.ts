@@ -1,9 +1,10 @@
 import { suggestLyrics, applyLyricSuggestions } from '../../shared/ai-lyrics';
 import { spellingScore } from '../../shared/ai-spelling';
 import type { AiSearchHint } from '../../shared/search';
+import type { BookHint } from '../../shared/ai-speech';
 import type { WorkerJob } from './protocol';
 import { MeaningEncoder, cosine } from './runtime';
-import { LibraryCorpus, VectorCache, topHints } from './corpus';
+import { BookCorpus, LibraryCorpus, VectorCache, topHints } from './corpus';
 let encoder: MeaningEncoder | null = null;
 let cache: VectorCache | null = null;
 let contextKey = '';
@@ -41,6 +42,54 @@ export async function runJob(
       ranked.push({ id: row.id, score: Math.max(0, Math.min(1, cosine(query, vector))) });
     }
     return ranked.sort((a, b) => b.score - a.score);
+  }
+  if (job.kind === 'books') {
+    const corpus = new BookCorpus(job.context.libraryFile);
+    const hints: BookHint[] = [];
+    let after = job.after ?? { row: 0, part: 0 };
+    const began = Date.now();
+    const best = () => {
+      const seen = new Set<string>();
+      return hints
+        .sort((a, b) => b.score - a.score)
+        .filter((hint) => {
+          const key = hint.itemId + ':' + hint.lang;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 50);
+    };
+    try {
+      for (const candidate of corpus.candidates(job.after)) {
+        await idle();
+        const key = vectors.key(candidate);
+        let vector = vectors.get(key);
+        if (!vector) {
+          vector = await model.embed(candidate.text, 'passage');
+          vectors.put(key, vector);
+        }
+        const score = cosine(query, vector);
+        if (score >= 0.84)
+          hints.push({
+            itemId: candidate.itemId,
+            lang: candidate.lang,
+            stamp: candidate.stamp,
+            score: Math.min(1, score),
+          });
+        if (hints.length > 100) {
+          const bounded = best();
+          hints.length = 0;
+          hints.push(...bounded);
+        }
+        after = candidate.after;
+        // A bounded page of inference; Main can refresh exact hits and yield between pages.
+        if (Date.now() - began >= 1000) return { hints: best(), after, finished: false };
+      }
+      return { hints: best(), after, finished: true };
+    } finally {
+      corpus.close();
+    }
   }
   const corpus = new LibraryCorpus(job.context.libraryFile);
   let hints: AiSearchHint[] = [];
