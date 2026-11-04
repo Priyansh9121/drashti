@@ -204,4 +204,30 @@ for (const size of [
       await s.app.close();
     }
   });
+  test(`Undo remains available after switching import suggestions off at ${size.width}`, async () => {
+    const s = await start(size);
+    try {
+      await openLibrary(s.win);
+      await s.win.getByRole('button', { name: 'New…', exact: true }).click();
+      const editor = s.win.getByTestId('words-editor');
+      const input = editor.getByTestId('words-text');
+      await input.fill(fixture.lyrics.gu);
+      await editor.getByRole('button', { name: 'Suggest slide breaks', exact: true }).click();
+      const proposals = editor.getByTestId('lyric-suggestions');
+      await proposals.getByRole('checkbox').first().check();
+      await proposals.getByRole('button', { name: 'Apply selected changes' }).click();
+      await expect(editor.getByTestId('words-count')).toHaveText('1 group · 2 slides');
+      await chooseMenuItem(s.app, 'ai-helpers');
+      const settings = s.win.getByRole('dialog', { name: 'AI helpers', exact: true });
+      await settings.getByRole('checkbox', { name: 'Import suggestions', exact: true }).uncheck();
+      await settings.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(editor.getByRole('button', { name: 'Suggest slide breaks', exact: true })).toHaveCount(0);
+      const undo = editor.getByRole('button', { name: 'Undo suggestion', exact: true });
+      await expect(undo).toBeVisible();
+      await undo.click();
+      await expect(input).toHaveValue(fixture.lyrics.gu);
+      await expect.poll(() => s.app.evaluate(({ app }) => app.getAppMetrics().filter((metric) => metric.name === 'Drashti offline helpers').length)).toBe(0);
+    } finally { await s.app.close(); }
+  });
+
 }
