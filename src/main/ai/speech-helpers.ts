@@ -265,18 +265,30 @@ export class SpeechHelpers {
       source,
     };
     this.bookReview = review;
+    this.bookSources.clear();
     this.bookOwner = owner;
     this.bookCreated = Date.now();
     this.problem = null;
     const sources = () => {
+      // An already quoted passage may never gain a new approval fingerprint behind that preview.
+      for (const [id, stamp] of this.bookSources) {
+        if (this.signature(id) === stamp) continue;
+        this.queryGeneration++;
+        this.bookReview = null;
+        this.bookSources.clear();
+        this.problem = STALE;
+        this.tell();
+        return false;
+      }
       this.bookSources = new Map(
         review.hits.flatMap((hit) => {
           const stamp = this.signature(hit.passageId);
           return stamp ? [[hit.passageId, stamp] as const] : [];
         }),
       );
+      return true;
     };
-    sources();
+    if (!sources()) return { ok: false, message: STALE };
     this.tell();
     try {
       if (this.options.books.list().length > 0) {
@@ -305,7 +317,7 @@ export class SpeechHelpers {
             })
             .slice(0, 50);
           review.hits = this.options.books.search(query.data.query, 6, accumulated);
-          sources();
+          if (!sources()) return { ok: false, message: STALE };
           this.tell();
           if (page.data.finished) break;
           if (page.data.after.row === after?.row && page.data.after.part === after.part)
@@ -327,7 +339,7 @@ export class SpeechHelpers {
       return { ok: false, message: STALE };
     }
     review.checking = false;
-    sources();
+    if (!sources()) return { ok: false, message: STALE };
     this.bookReview = review;
     this.tell();
     return { ok: true, value: this.view() };
