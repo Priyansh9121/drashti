@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { SHASTRA_SLOT, slotCategoryName } from '../../shared/playlists';
 import { type Db, openDatabase } from './database';
 import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
@@ -377,7 +378,7 @@ describe('sabha templates', () => {
     // None takes them away.
     expect(playlists.setTimers(playlists.itemsOf(next)[2]?.id ?? '', [])).toBe(true);
     expect(cuesOf(next)[2]).toEqual([]);
-    // A slot: a new name and category (a Shastra passage, then none).
+    // A slot: a new name and category (a passage from a book, then none).
     expect(playlists.editSlot(slot, 'Pravachan reading', 'Shastra')).toBe(true);
     expect(playlists.itemsOf(template).at(-1)).toMatchObject({
       kind: 'placeholder',
@@ -388,6 +389,41 @@ describe('sabha templates', () => {
     expect(playlists.itemsOf(template).at(-1)).toMatchObject({ category: null });
     // Only a slot: not a presentation item, not a placeholder an import left.
     expect(playlists.editSlot(hymnItem?.id ?? '', 'Renamed', null)).toBe(false);
+  });
+
+  // alpha.15 (the owner's words, 3 Nov 2026): Books is the name a person reads; a slot asking for a passage is stored
+  // as libraries always stored it, so one saved before alpha.15 loads unchanged.
+  it('reads a slot asking for a passage as a library saved it before alpha.15 ("Shastra"), and shows it as Books', () => {
+    const template = playlists.saveAsTemplate(week(), 'Sunday template', []) ?? '';
+    // As an older library has it: written straight into its table, as alpha.14 wrote it.
+    db.prepare(
+      "INSERT INTO playlist_items (id, playlist_id, position, kind, label, category) VALUES ('reading', ?, 9, 'placeholder', 'Placeholder reading', 'Shastra')",
+    ).run(template);
+    const slot = playlists.itemsOf(template).find((i) => i.id === 'reading');
+    expect(slot).toMatchObject({
+      kind: 'placeholder',
+      label: 'Placeholder reading',
+      hint: null,
+      category: 'Shastra',
+    });
+    // Still the value a slot asking for a passage is known by (filling it opens Books), and read as Books.
+    expect(SHASTRA_SLOT).toBe('Shastra');
+    const category = slot?.kind === 'placeholder' ? slot.category : null;
+    expect(category).toBe(SHASTRA_SLOT);
+    expect(slotCategoryName(category ?? '')).toBe('Books');
+    // A playlist made from it asks for a passage too; a kirtan's category reads as it is.
+    const next = playlists.newFromTemplate(template, 'Next Sunday', null) ?? '';
+    expect(playlists.itemsOf(next).at(-1)).toMatchObject({ kind: 'placeholder', category: SHASTRA_SLOT });
+    expect(slotCategoryName('Dhun')).toBe('Dhun');
+    // A passage whose book is not loaded here: the show goes past it, saying why in the new words.
+    db.prepare(
+      "INSERT INTO playlist_items (id, playlist_id, position, kind, label, passage) VALUES ('passage', ?, 10, 'shastra', 'Placeholder Granth 14', ?)",
+    ).run(next, JSON.stringify({ text: 'pg', sections: [], from: 14, to: 14 }));
+    expect(playlists.itemsOf(next).at(-1)).toMatchObject({ kind: 'shastra', missing: true });
+    expect(playlists.playItems(next)?.at(-1)).toMatchObject({
+      kind: 'skip',
+      why: '“Placeholder Granth 14”: its book is not loaded',
+    });
   });
 
   it('starts every library with the example templates, once', () => {

@@ -72,9 +72,9 @@ describe('reading a Shastra file', () => {
     ]);
   });
 
-  it('refuses a file that is not a Shastra text, saying where', () => {
+  it('refuses a file that is not a book, saying where', () => {
     const wrong = readShastraFile({ ...flat, format: 'something-else' });
-    expect(wrong.ok ? '' : wrong.message).toContain('not a Shastra text');
+    expect(wrong.ok ? '' : wrong.message).toContain('This is not a book Drashti can read');
     const bad = readShastraFile({ ...flat, items: [{ number: 'one', text: {} }] });
     expect(bad.ok ? '' : bad.message).toContain('items › 0 › number');
     const empty = readShastraFile({ ...flat, items: [{ number: 1, text: { en: ' ' } }] });
@@ -136,7 +136,7 @@ describe('references', () => {
       return r.ok ? 'ok' : r.message;
     };
     expect(say('')).toBe('Type a reference, for example “SD 14”.');
-    expect(say('XY 4')).toBe('No loaded text is called “XY”. The texts are: PG, Vach.');
+    expect(say('XY 4')).toBe('No loaded book is called “XY”. The books are: PG, Vach.');
     expect(say('PG')).toBe('Say which one of Placeholder Granth: for example “PG 1”.');
     expect(say('PG 4')).toBe('Placeholder Granth has no 4: it goes from 1 to 16.');
     expect(say('PG 16-14')).toBe('A range goes up: “PG 14-16”.');
@@ -144,7 +144,7 @@ describe('references', () => {
     expect(say('Vach 1')).toBe('Placeholder Vachan has no section “1”. Its sections are: P.Pr., P.M..');
     expect(say('Vach')).toBe('Say which section of Placeholder Vachan: P.Pr., P.M..');
     expect(say('Vach P.M. 3')).toBe('Placeholder Vachan Placeholder Madhya has no 3: it goes from 1 to 2.');
-    expect(resolveReference('PG 1', [])).toEqual({ ok: false, message: 'No Shastra texts are loaded yet.' });
+    expect(resolveReference('PG 1', [])).toEqual({ ok: false, message: 'No books are loaded yet.' });
   });
 });
 

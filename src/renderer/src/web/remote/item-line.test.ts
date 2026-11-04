@@ -43,7 +43,7 @@ describe('a playlist item’s line on the phone', () => {
     expect(itemLine(media('image'))).toBe('Picture');
   });
 
-  it('names a Shastra passage, a slot and a video input, and says nothing for a header', () => {
+  it('names a passage from a book, a slot and a video input, and says nothing for a header', () => {
     expect(
       itemLine({
         id: 's',
@@ -53,7 +53,7 @@ describe('a playlist item’s line on the phone', () => {
         missing: false,
         timers: [],
       }),
-    ).toBe('Shastra passage');
+    ).toBe('Passage from a book');
     expect(itemLine({ id: 'x', kind: 'placeholder', label: 'Kirtan', hint: null, category: null })).toBe(
       'Slot',
     );

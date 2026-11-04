@@ -570,7 +570,7 @@ export class PlaylistRepo {
         case 'shastra':
           // A passage plays like a presentation (shared/shastra.ts), while its text is loaded.
           return item.missing
-            ? { id: item.id, kind: 'skip', why: `“${item.label}”: its Shastra text is not loaded` }
+            ? { id: item.id, kind: 'skip', why: `“${item.label}”: its book is not loaded` }
             : {
                 id: item.id,
                 kind: 'presentation',

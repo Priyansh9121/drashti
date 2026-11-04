@@ -176,3 +176,17 @@ export function emptyTotals(): ImportTotals {
     issues: 0,
   };
 }
+
+/**
+ * Whether an import brought a book in or updated one (alpha.15, the owner's answer of 4 Nov 2026): its passages in
+ * playlists are there now, so the playlists are read again, as after a book is removed.
+ */
+export function loadedBooks(
+  report: { items: readonly Pick<ImportItemReport, 'format' | 'outcome'>[] } | null,
+): boolean {
+  return (
+    report?.items.some(
+      (i) => i.format === 'shastra' && (i.outcome === 'imported' || i.outcome === 'replaced'),
+    ) === true
+  );
+}

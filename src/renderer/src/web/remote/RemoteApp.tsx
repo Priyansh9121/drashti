@@ -1039,7 +1039,7 @@ function Music() {
   );
 }
 
-/** A Shastra passage by its reference (the loaded texts' own abbreviations): it goes up at once. */
+/** A passage from a book by its reference (the loaded books' own abbreviations): it goes up at once. */
 function Shastra() {
   const texts = useRemote((s) => s.shastra);
   const [reference, setReference] = useState('');
@@ -1048,7 +1048,7 @@ function Shastra() {
   return (
     <section className="space-y-2" aria-labelledby="shastra-title">
       <h2 id="shastra-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Shastra
+        Books
       </h2>
       <form
         className="flex gap-2"
@@ -1083,7 +1083,7 @@ function TimersAndMessages() {
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const templates = useRemote((s) => s.templates);
   const simple = useSimple();
-  // Simple Mode (Part 9): none of what its window has not (the music, the stage screen, messages, timers, Shastra, the
+  // Simple Mode (Part 9): none of what its window has not (the music, the stage screen, messages, timers, Books, the
   // lower thirds, the computer's setup); Audience and Stage turned on stay, as its window turns them.
   if (simple)
     return (
@@ -1093,7 +1093,7 @@ function TimersAndMessages() {
     );
   return (
     // The operator window's right column in its order (Session 54, D5): Music, the stage screen, messages, timers and
-    // Shastra, then its More tools; in two columns where a tablet has the width for them.
+    // Books, then its More tools; in two columns where a tablet has the width for them.
     <div className="@container">
       <div
         className="@lg:columns-2 @lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid"

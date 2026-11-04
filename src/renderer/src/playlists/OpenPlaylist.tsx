@@ -9,7 +9,7 @@ import type { ItemOrder, PlaylistItemInfo, TimerCue } from '../../../shared/play
 import type { PresentationDoc } from '../../../shared/library';
 import { repeatPresentationId } from '../../../shared/repeat';
 import { itemPlayOrder } from '../../../shared/order';
-import { SMART_MAX_FILES } from '../../../shared/playlists';
+import { slotCategoryName, SMART_MAX_FILES } from '../../../shared/playlists';
 import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-folders';
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
@@ -162,7 +162,7 @@ function kindWord(item: PlaylistItemInfo): string {
     case 'header':
       return 'Header';
     case 'shastra':
-      return 'Shastra passage';
+      return 'Passage from a book';
     case 'placeholder':
       return item.hint === null ? 'Slot' : 'Not found';
     case 'input':
@@ -346,7 +346,7 @@ function ItemBody({
             </span>
           ) : null)}
         {item.kind === 'shastra' && item.missing && (
-          <span className="text-xs text-warning-fg">Its Shastra text is not loaded</span>
+          <span className="text-xs text-warning-fg">Its book is not loaded</span>
         )}
         {/* A video input this computer has none of (Session 51): said plainly, and Next goes past it. */}
         {item.kind === 'input' && item.missing && (
@@ -363,7 +363,7 @@ function ItemBody({
             className={cx('block truncate text-xs', item.hint === null ? 'text-muted' : 'text-warning-fg')}
           >
             {item.hint === null
-              ? `A slot${item.category ? ` · ${item.category}` : ''} · choose what goes here`
+              ? `A slot${item.category ? ` · ${slotCategoryName(item.category)}` : ''} · choose what goes here`
               : 'Not found at import · drag a presentation here'}
           </span>
         )}
@@ -636,7 +636,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
     (s) => s.tree.find((n) => n.id === openId) ?? s.templates.find((n) => n.id === openId),
   );
   const isTemplate = usePlaylists(templateOpen);
-  // Slots and templates only with View › Show Shastra, Templates and Kirtan Details (Session 26a).
+  // Slots and templates only with View › Show Books, Templates and Kirtan Details (Session 26a).
   const extras = useExtras((s) => s.on);
   const items = usePlaylists((s) => s.items);
   const itemsUnread = usePlaylists((s) => s.unread.itemsOf === openId);
@@ -1265,7 +1265,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                   item.kind !== 'placeholder'
                     ? undefined
                     : item.hint === null
-                      ? `Slot: ${item.label}${item.category ? ` (${item.category})` : ''}. Press to choose what goes here.`
+                      ? `Slot: ${item.label}${item.category ? ` (${slotCategoryName(item.category)})` : ''}. Press to choose what goes here.`
                       : `Not found: ${item.label}. Drag a presentation here to replace it.`
                 }
                 onClick={(e) => {

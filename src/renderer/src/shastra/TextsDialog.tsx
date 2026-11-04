@@ -14,7 +14,7 @@ import { plural } from '../ui/text';
 import { loadTexts, openTexts, useShastra } from './shastra-store';
 
 /*
- * The loaded Shastra texts (Pro Mode): load one
+ * The loaded books (Pro Mode; Shastra texts until alpha.15): load one
  * (a file prepared from a source BAPS or the mandir has authorised,
  * docs/shastra-format.md), or remove one. Each text's passages are drawn
  * with the theme it had (Session 55: Themes are gone from the window).
@@ -46,15 +46,15 @@ export function TextsDialog() {
 
   return (
     <Dialog
-      title="Shastra texts"
-      subtitle="Load only texts that BAPS or the mandir has authorised."
+      title="Books"
+      subtitle="Load only books that BAPS or the mandir has authorised."
       onClose={close}
-      closeLabel="Close Shastra texts"
+      closeLabel="Close Books"
       size="lg"
       testId="shastra-texts-dialog"
       headerActions={
         <Button icon={Upload} data-testid="load-shastra-text" onClick={() => void importWithDialog('files')}>
-          Load a text…
+          Load a book…
         </Button>
       }
     >
@@ -64,15 +64,15 @@ export function TextsDialog() {
         </Notice>
       )}
       {texts.length === 0 ? (
-        <EmptyState icon={BookOpen} title="No texts loaded">
-          Load a text with Load a text…, or drag its file onto the library. The file format is in Drashti's
+        <EmptyState icon={BookOpen} title="No books loaded">
+          Load a book with Load a book…, or drag its file onto the library. The file format is in Drashti's
           guide (docs/shastra-format.md).
         </EmptyState>
       ) : (
         <table className="w-full text-sm" data-testid="shastra-texts-table">
           <thead className="text-left text-xs text-muted">
             <tr>
-              <th className="py-1 font-medium">Text</th>
+              <th className="py-1 font-medium">Book</th>
               <th className="font-medium">Items</th>
               <th className="font-medium">Languages</th>
               <th className="font-medium">
@@ -156,7 +156,7 @@ export function TextsDialog() {
         >
           <p className="text-sm text-muted">
             Its {plural(removing.itemCount, 'item')} leave the library. Playlists that name its passages show
-            them as missing until the text is loaded again.
+            them as missing until the book is loaded again.
           </p>
         </Dialog>
       )}

@@ -2,7 +2,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { KEYMAP, toAccelerator } from '../shared/keymap';
 import type { ScreenSwitch } from '../shared/screen-switches';
-import { installLockedMenu, installMenu, type MenuActions } from './menu';
+import { installLockedMenu, installMenu, installNodeMenu, type MenuActions } from './menu';
 
 /*
  * View › Audience and View › Stage (Session 50): Pro Mode's, ticked while on, each choosing its own switch. They
@@ -302,6 +302,42 @@ describe('View › Switch to Pro Mode with Simple access (Session 55, Part 19)',
         installMenu({ ...actions('pro').a, simpleOnly: true });
       });
       expect(item('switch-mode')?.label).toBe('Switch to Simple Mode');
+    },
+  );
+});
+
+// alpha.15 (the owner's words, 3 Nov 2026): Shastra is called Books wherever a person sees it, the menus too.
+describe('Books (alpha.15): no menu says Shastra', () => {
+  it.each(PLATFORMS)(
+    'View › Show Books, Templates and Kirtan Details; no item of Pro Mode’s, Simple Mode’s, a node’s or the locked menu names Shastra (%s)',
+    (platform) => {
+      const words: string[] = [];
+      const said = () =>
+        items().flatMap((i) =>
+          [i.label, i.sublabel, i.toolTip].filter((w): w is string => typeof w === 'string'),
+        );
+      on(platform, () => setUp('pro'));
+      expect(item('show-extras')).toMatchObject({
+        label: 'Show Books, Templates and Kirtan Details',
+        type: 'checkbox',
+      });
+      words.push(...said());
+      on(platform, () => setUp('simple'));
+      words.push(...said());
+      on(platform, () => {
+        installNodeMenu({
+          priority: null,
+          saveDiagnostics: nothing,
+          diagnostics: { runSelfTest: nothing, crashWindow: nothing, crashOutputs: nothing },
+        });
+      });
+      words.push(...said());
+      on(platform, () => {
+        installLockedMenu();
+      });
+      words.push(...said());
+      expect(words.length).toBeGreaterThan(30);
+      expect(words.filter((w) => /shastra/iu.test(w))).toEqual([]);
     },
   );
 });

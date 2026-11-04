@@ -84,7 +84,7 @@ export interface MenuActions {
    */
   deckAnimations?: { on: boolean; toggle: () => void } | null;
   /**
-   * View > Show Shastra, Templates and Kirtan Details (Session 26a, Pro Mode): ticked when
+   * View > Show Books, Templates and Kirtan Details (Session 26a, Pro Mode; Shastra until alpha.15): ticked when
    * the operator window shows them (off to begin with).
    */
   extras: { shown: boolean; toggle: () => void };
@@ -248,7 +248,7 @@ export function installMenu(actions: MenuActions): void {
               { type: 'separator' } as MenuItemConstructorOptions,
               {
                 id: 'show-extras',
-                label: 'Show Shastra, Templates and Kirtan Details',
+                label: 'Show Books, Templates and Kirtan Details',
                 type: 'checkbox',
                 checked: actions.extras.shown,
                 click: actions.extras.toggle,

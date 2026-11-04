@@ -20,7 +20,7 @@ import {
 } from './helpers';
 
 /*
- * The Shastra module (Session 12), with the made-up texts in docs/examples
+ * Books (Session 12; the Shastra module until alpha.15), with the made-up books in docs/examples
  * (placeholder words only): a text loads from its file, again unchanged, and
  * updated; references, ranges and abbreviations resolve and nonsense is
  * refused saying why; search finds passages by words in each language; a
@@ -62,7 +62,7 @@ async function load(win: Page, paths: string[]) {
 
 const live = async (win: Page) => (await bridge(win).snapshot()).state.live;
 
-test('a text loads from its file, again unchanged, and updated; references, nonsense and search', async () => {
+test('a book loads from its file, again unchanged, and updated; references, nonsense and search', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -71,26 +71,26 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   await win.setViewportSize({ width: 1280, height: 720 });
   const files = exampleFiles();
 
-  // Dragged onto the library, like any file: the report says what came in, and opens it in Shastra.
+  // Dragged onto the library, like any file: the report says what came in, and opens it in Books.
   await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [files.granth]);
   const report = win.getByTestId('import-report');
   await expect(report).toContainText('Placeholder Granth (PG)');
   await expect(report).toContainText(
-    'Loaded: 21 items. Find a passage in Shastra by typing its reference, for example “PG 1”.',
+    'Loaded: 21 items. Find a passage in Books by typing its reference, for example “PG 1”.',
   );
-  await expectNoSeriousA11yIssues(win, 'the import report with a Shastra text');
+  await expectNoSeriousA11yIssues(win, 'the import report with a book');
   // (A text with notes is listed under those too.)
-  await report.getByRole('button', { name: 'Open in Shastra' }).first().click();
+  await report.getByRole('button', { name: 'Open in Books' }).first().click();
   await expect(win.getByTestId('shastra-texts-dialog').getByTestId('shastra-text-row')).toHaveCount(1);
-  await win.getByRole('button', { name: 'Close Shastra texts' }).click();
+  await win.getByRole('button', { name: 'Close Books' }).click();
   expect((await bridge(win).texts()).map((t) => t.abbreviation)).toEqual(['PG']);
   const [vachan] = await load(win, [files.vachan]);
   expect(vachan).toMatchObject({
     format: 'shastra',
     outcome: 'imported',
     name: 'Placeholder Vachan (PV)',
-    message: 'Loaded: 8 items in 2 sections. Find a passage in Shastra by typing its reference.',
+    message: 'Loaded: 8 items in 2 sections. Find a passage in Books by typing its reference.',
   });
   // Again: nothing changes. Changed: the same text, updated (one more verse).
   const [again] = await load(win, [files.granth]);
@@ -103,18 +103,18 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   const [updated] = await load(win, [files.granth]);
   expect(updated).toMatchObject({
     outcome: 'replaced',
-    message: 'Updated: 22 items. Find a passage in Shastra by typing its reference, for example “PG 1”.',
+    message: 'Updated: 22 items. Find a passage in Books by typing its reference, for example “PG 1”.',
   });
   expect((await bridge(win).texts()).map((t) => [t.abbreviation, t.itemCount])).toEqual([
     ['PG', 22],
     ['PV', 8],
   ]);
 
-  // The Shastra tab (already open, from the report): a reference, a range, a section's abbreviation however it is typed.
-  await win.getByRole('tab', { name: 'Shastra' }).click();
+  // The Books tab (already open, from the report): a reference, a range, a section's abbreviation however it is typed.
+  await win.getByRole('tab', { name: 'Books' }).click();
   const panel = win.getByTestId('shastra-panel');
   await expect(panel.getByTestId('shastra-text')).toHaveCount(2);
-  await expectNoSeriousA11yIssues(win, 'the Shastra tab', '[data-testid="shastra-panel"]');
+  await expectNoSeriousA11yIssues(win, 'the Books tab', '[data-testid="shastra-panel"]');
   const grid = win.getByTestId('slide-grid');
   const show = async (reference: string) => {
     await panel.getByTestId('shastra-reference').fill(reference);
@@ -144,7 +144,7 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   // Nonsense says why, and leaves what was typed to fix.
   await show('XY 3');
   await expect(panel.getByTestId('shastra-problem')).toHaveText(
-    'No loaded text is called “XY”. The texts are: PG, PV.',
+    'No loaded book is called “XY”. The books are: PG, PV.',
   );
   await expect(panel.getByTestId('shastra-reference')).toHaveValue('XY 3');
   await show('PG 99');
@@ -180,12 +180,12 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   await expect(panel.getByText('Nothing found')).toBeVisible();
   await search.fill('');
 
-  // Texts…: Remove (asking first; each text's theme went with Themes, Session 55). Pro Mode only.
+  // Books…: Remove (asking first; each book's theme went with Themes, Session 55). Pro Mode only.
   await panel.getByTestId('open-shastra-texts').click();
   const dialog = win.getByTestId('shastra-texts-dialog');
   await expect(dialog.getByTestId('shastra-text-row')).toHaveCount(2);
-  await expectNoSeriousA11yIssues(win, 'the Shastra texts dialog');
-  await win.getByRole('button', { name: 'Close Shastra texts' }).click();
+  await expectNoSeriousA11yIssues(win, 'the Books dialog');
+  await win.getByRole('button', { name: 'Close Books' }).click();
   // Simple Mode refuses changing the texts, from anywhere.
   const textId = (await bridge(win).texts())[1]?.id ?? '';
   const refused = await win.evaluate(async (id) => {
@@ -301,6 +301,48 @@ test('a long passage goes on over several slides and Next goes on to the next it
   await app.close();
 });
 
+// alpha.15 (the owner's answer of 4 Nov 2026): loading or removing a book says the playlists changed, so a playlist open
+// in the window (and on a phone) reads its rows again at once.
+test('removing a book marks its passages in an open playlist at once, and loading it again brings them back', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await showExtras(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const files = exampleFiles();
+  await load(win, [files.granth, files.vachan]);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.playlists.create('Placeholder reading', null, false);
+    if (!made.ok) throw new Error(made.message);
+    const added = await d.playlists.addItems(made.ids[0] ?? '', null, [
+      { kind: 'shastra', passageId: 'shastra:pv/ppr#2' },
+    ]);
+    if (!added.ok) throw new Error(added.message);
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
+  const card = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder Vachan' });
+  await expect(card).toBeVisible();
+  await expect(card).not.toContainText('Its book is not loaded');
+  // Removed in the Books dialog: the open playlist says so at once, never opened again.
+  await openLibrary(win);
+  await win.getByTestId('library-tab-shastra').click();
+  await win.getByTestId('open-shastra-texts').click();
+  await win
+    .getByTestId('shastra-texts-dialog')
+    .getByRole('button', { name: 'Remove Placeholder Vachan' })
+    .click();
+  await win.getByTestId('shastra-remove-confirm').getByRole('button', { name: 'Remove' }).click();
+  await win.getByRole('button', { name: 'Close Books' }).click();
+  await expect(card).toContainText('Its book is not loaded');
+  // Loaded again: its passage is there again, at once.
+  const [again] = await load(win, [files.vachan]);
+  expect(again).toMatchObject({ outcome: 'imported' });
+  await expect(card).not.toContainText('Its book is not loaded');
+  await app.close();
+});
+
 const TWO_OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
 
 /** The output showing this screen. */
@@ -408,7 +450,7 @@ test('the remote and the API put up a reference', async () => {
   });
   expect(nonsense).toEqual({
     status: 404,
-    json: { ok: false, message: 'No loaded text is called “XY”. The texts are: PG, PV.' },
+    json: { ok: false, message: 'No loaded book is called “XY”. The books are: PG, PV.' },
   });
 
   // A phone: the More tab's reference box.

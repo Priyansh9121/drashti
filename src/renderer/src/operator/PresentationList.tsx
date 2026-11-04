@@ -209,7 +209,7 @@ function SearchBox({ help }: { help: ReactNode }) {
 
 /**
  * Under the search box, where the kirtan filters were (Session 26a): Import…, New… (from pasted words)
- * and, with View › Show Shastra, Templates and Kirtan Details, the filters' button.
+ * and, with View › Show Books, Templates and Kirtan Details, the filters' button.
  */
 function LibraryTools({ media }: { media: boolean }) {
   const filtersOn = useFilters((s) => s.open || filtering(s.f));
@@ -440,17 +440,17 @@ export function PresentationList({ platform }: { platform: string }) {
           className="min-w-0 flex-1"
           value={tab}
           onChange={setTab}
-          // Words only, so the tabs fit the library column's usual width (narrower, they shrink). Shastra only
-          // with View › Show Shastra, Templates and Kirtan Details (Session 26a).
+          // Words only, so the tabs fit the library column's usual width (narrower, they shrink). Books (Shastra
+          // until alpha.15) only with View › Show Books, Templates and Kirtan Details (Session 26a).
           items={[
             { id: 'presentations', label: 'Presentations' },
             { id: 'media', label: 'Media' },
-            ...(extras ? [{ id: 'shastra' as const, label: 'Shastra' }] : []),
+            ...(extras ? [{ id: 'shastra' as const, label: 'Books' }] : []),
           ]}
         />
       </div>
       {help.card}
-      {/* What is this? sits in the search row (or the Shastra tab's first row): the tabs keep their words. */}
+      {/* What is this? sits in the search row (or the Books tab's first row): the tabs keep their words. */}
       {tab !== 'shastra' && <SearchBox help={help.button} />}
       {tab !== 'shastra' && <LibraryTools media={tab === 'media'} />}
       {tab === 'presentations' && !searching && (

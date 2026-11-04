@@ -24,6 +24,7 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { formatBytes, formatClock } from '../shared/format';
 import type { ImportOptions, ImportResult } from '../shared/import';
+import { loadedBooks } from '../shared/import';
 import { type LibraryChange, listedKirtan, type NewFromWordsResult } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
@@ -1413,7 +1414,7 @@ function start(): void {
   // The Shastra texts' index too, when it was folded another way (Session 13's spellings).
   const shastraIndexStart = performance.now();
   if (shastraRepo.reindexIfStale())
-    log.info(`Shastra search index folded again in ${Math.round(performance.now() - shastraIndexStart)} ms`);
+    log.info(`Books' search index folded again in ${Math.round(performance.now() - shastraIndexStart)} ms`);
   // Removed presentations can be restored for 30 days.
   const purged = presentations.purgeRemoved(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
   if (purged > 0) log.info(`Purged ${purged} presentation(s) removed more than 30 days ago`);
@@ -2990,7 +2991,8 @@ function start(): void {
         closeEditor();
       }
       sendToOperator(IPC.app.modeChanged, { mode: next });
-      // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist only: the phones hear of the change.
+      // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist, and in Simple Mode its pictures to
+      // Simple Mode's playlist (question 5): the phones hear of the change.
       network?.uploadsChanged();
       // And (Part 9) a phone shows only what Simple Mode allows, and opens its playlist: it reads the hall again.
       network?.hint('mode');
@@ -3258,8 +3260,13 @@ function start(): void {
       engine.refreshFiles();
       engine.refreshNext();
       libraryChanged(true);
-      // It may have loaded a Shastra text (or loaded one again).
+      // It may have loaded a book (or loaded one again): its passages in playlists are there now, so the playlists
+      // are read again, in the window and on the phones (alpha.15, the owner's answer of 4 Nov 2026).
       listChanged('shastra');
+      if (run && loadedBooks(importRepo.report(run.id))) {
+        sendToOperator(IPC.playlists.changed, { at: Date.now() });
+        network?.hint('playlists');
+      }
       // Or a calendar.
       calendarService?.refresh();
       // What it found Drashti's player cannot play is converted by itself (Session 50): one file at a time,
@@ -4451,6 +4458,8 @@ function start(): void {
     letIn: isLetIn,
     // A phone's Add photos (Session 55, Part 8): the playlist open in Pro Mode's window; none in Simple Mode.
     openPlaylist: () => (mode === 'pro' ? openInPro : null),
+    // Question 5 (3 Nov 2026): in Simple Mode a phone's pictures go to the end of its one playlist.
+    simplePlaylist: () => (mode === 'simple' ? simplePlaylist.current() : null),
   });
   // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
   // below, where the window's own requests for them are registered.
@@ -5385,12 +5394,13 @@ function start(): void {
   });
   handle(IPC.shastra.remove, (e, textId) => {
     if (!fromOperator(e))
-      return { ok: false as const, message: 'Only the operator window can remove a text.' };
+      return { ok: false as const, message: 'Only the operator window can remove a book.' };
     const t = textIdSchema.safeParse(textId);
     if (!t.success || !shastra.remove(t.data))
-      return { ok: false as const, message: 'That text is not loaded.' };
+      return { ok: false as const, message: 'That book is not loaded.' };
     listChanged('shastra');
-    engine.refreshNext();
+    // Its passages in playlists are missing now: the playlists are read again (and what comes next).
+    playlistsChanged();
     return { ok: true as const, texts: shastra.list() };
   });
 
@@ -6466,12 +6476,12 @@ function start(): void {
     }
     installMenu(menuActions());
   };
-  // ---- View > Show Shastra, Templates and Kirtan Details (Session 26a) -----------------------------
+  // ---- View > Show Books, Templates and Kirtan Details (Session 26a) -------------------------------
   // Hidden, not deleted: their code, data and the remote's library stay; the same item brings them back.
   const extrasShown = () => settings.get('showExtras') === true;
   const setExtras = (on: boolean) => {
     settings.set('showExtras', on);
-    log.info(`View: Shastra, Templates and Kirtan Details ${on ? 'shown' : 'hidden'}`);
+    log.info(`View: Books, Templates and Kirtan Details ${on ? 'shown' : 'hidden'}`);
     sendToOperator(IPC.library.extrasChanged, { on });
     rebuildMenu();
   };

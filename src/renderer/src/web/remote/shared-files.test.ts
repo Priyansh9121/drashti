@@ -169,4 +169,17 @@ describe('a shared playlist looked through on a phone (Session 54, D3)', () => {
       'Sound',
     ]);
   });
+
+  // alpha.15: Shastra is called Books wherever a person sees it.
+  it('names a passage as a passage from a book', () => {
+    const passage: PlaylistItemInfo = {
+      id: 'item-passage',
+      kind: 'shastra',
+      label: 'Placeholder Granth 14',
+      passageId: 'shastra:pg#14',
+      missing: false,
+      timers: [],
+    };
+    expect(itemWord(passage)).toBe('Passage from a book');
+  });
 });

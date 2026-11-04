@@ -3,7 +3,7 @@ import type { ShastraHit, ShastraTextInfo, ShastraTree } from '../../../shared/s
 import { leaveItem, selectPresentation, setLibraryTab, useLibrary } from '../library/library-store';
 
 /*
- * The Shastra tab (Session 12): a reference box, search by words, and the
+ * The Books tab (Session 12): a reference box, search by words, and the
  * loaded texts to browse. A passage found any of these ways is shown in the
  * slide grid, as a presentation is, ready to go up.
  */
@@ -102,7 +102,7 @@ export function openTexts(open: boolean): void {
   if (open) void loadTexts();
 }
 
-/** The Shastra tab with the Texts dialog open (from the import report, for example). */
+/** The Books tab with the Texts dialog open (from the import report, for example). */
 export function showTexts(): void {
   setLibraryTab('shastra');
   openTexts(true);

@@ -14,7 +14,7 @@ function kindWord(item: Exclude<PlaylistItemInfo, { kind: 'header' }>): string {
     case 'media':
       return item.media === 'image' ? 'Picture' : item.media === 'video' ? 'Video' : 'Sound';
     case 'shastra':
-      return 'Shastra passage';
+      return 'Passage from a book';
     case 'placeholder':
       return item.hint === null ? 'Slot' : 'Not found';
     case 'input':

@@ -88,7 +88,7 @@ test('the open presentation’s Kirtan and Edit words are gone (Session 55): now
   await expect(win.getByRole('menuitem', { name: 'Edit slides…' })).toBeVisible();
   await expect(win.getByRole('menuitem', { name: /Kirtan|Edit words/u })).toHaveCount(0);
   await win.keyboard.press('Escape');
-  // The app's menus: none either (View's Show Shastra, Templates and Kirtan Details is the library's, and stays).
+  // The app's menus: none either (View's Show Books, Templates and Kirtan Details is the library's, and stays).
   const labels = await app.evaluate(({ Menu }) => {
     const all: string[] = [];
     const walk = (menu: Electron.Menu | null | undefined) => {
@@ -186,7 +186,7 @@ test('kirtan details: a new category, kavi, raag, occasions and a recording, kep
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  // The filters are behind View › Show Shastra, Templates and Kirtan Details (Session 26a).
+  // The filters are behind View › Show Books, Templates and Kirtan Details (Session 26a).
   await showExtras(win);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-details-'));
   const clip = await makeTestVideo(win, join(dir, 'Placeholder recording.webm'), {
@@ -282,7 +282,7 @@ for (const [width, height] of [
     const { app } = await launchApp();
     const win = await operatorPage(app);
     await operatorReady(win);
-    // The filters are behind View › Show Shastra, Templates and Kirtan Details (Session 26a).
+    // The filters are behind View › Show Books, Templates and Kirtan Details (Session 26a).
     await showExtras(win);
     await win.setViewportSize({ width, height });
     await open(win, KIRTAN);

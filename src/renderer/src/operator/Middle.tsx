@@ -191,9 +191,9 @@ function PresentationRows({ doc, platform }: { doc: PresentationDoc; platform: s
         </h2>
         {help.button}
         {doc.passage ? (
-          // A Shastra passage is made from its text: its words and slides are not edited here.
+          // A passage from a book is made from its text: its words and slides are not edited here.
           <span className="text-xs text-muted" data-testid="passage-note">
-            Shastra passage · drag it from Shastra onto a playlist to add it
+            Passage from a book · drag it from Books onto a playlist to add it
           </span>
         ) : doc.repeat ? (
           // Repeat Slides (Session 26d): made from its playlist, changed there.

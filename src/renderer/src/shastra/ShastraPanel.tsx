@@ -25,9 +25,9 @@ import {
 import { textLang } from '../render/lang';
 
 /*
- * The Shastra tab of the left column (Session 12): type a reference ("SD 14",
- * "Vach G.Pr. 1", "SD 14-16"), search the texts' words in any language, or
- * browse a text by its sections. A passage found any way is shown in the
+ * The Books tab of the library (Session 12; Shastra until alpha.15): type a reference ("SD 14",
+ * "Vach G.Pr. 1", "SD 14-16"), search the books' words in any language, or
+ * browse a book by its sections. A passage found any way is shown in the
  * slide grid, ready to go up; dragged onto a playlist, it becomes an item.
  */
 
@@ -140,7 +140,7 @@ function SectionRows({
   );
 }
 
-/** The Shastra tab; `help` is the library's What is this?, at the end of its first row. */
+/** The Books tab; `help` is the library's What is this?, at the end of its first row. */
 export function ShastraPanel({ help }: { help?: ReactNode }) {
   const texts = useShastra((s) => s.texts);
   const loaded = useShastra((s) => s.loaded);
@@ -198,7 +198,7 @@ export function ShastraPanel({ help }: { help?: ReactNode }) {
           <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-2 text-faint" />
           <TextInput
             type="search"
-            aria-label="Search the texts' words"
+            aria-label="Search the books' words"
             placeholder="Search the words…"
             data-testid="shastra-search"
             spellCheck={false}
@@ -246,7 +246,7 @@ export function ShastraPanel({ help }: { help?: ReactNode }) {
               className="mb-1 flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted hover:text-fg"
               onClick={() => void browse(null)}
             >
-              <ArrowLeft size={14} aria-hidden="true" /> All texts
+              <ArrowLeft size={14} aria-hidden="true" /> All books
             </button>
             <h3 className="px-1.5 pb-1 text-sm font-semibold">
               {browsing.text.name}{' '}
@@ -264,8 +264,8 @@ export function ShastraPanel({ help }: { help?: ReactNode }) {
             </ul>
           </div>
         ) : loaded && texts.length === 0 ? (
-          <EmptyState icon={BookOpen} title="No texts loaded" compact className="flex-1">
-            Load the texts the mandir may show: drag a Shastra text file here, or use Texts….
+          <EmptyState icon={BookOpen} title="No books loaded" compact className="flex-1">
+            Load the books the mandir may show: drag a book’s file here, or use Books….
           </EmptyState>
         ) : (
           <ul className="space-y-1" data-testid="shastra-texts-list">
@@ -292,7 +292,7 @@ export function ShastraPanel({ help }: { help?: ReactNode }) {
       </div>
       <div className="flex shrink-0 justify-end border-t border-line px-3 py-2">
         <Button size="sm" data-testid="open-shastra-texts" onClick={() => openTexts(true)}>
-          Texts…
+          Books…
         </Button>
       </div>
       <TextsDialog />

@@ -167,7 +167,7 @@ function Fixes({ item }: { item: ImportItemReport }) {
           showTexts();
         }}
       >
-        Open in Shastra
+        Open in Books
       </Button>,
     );
   }

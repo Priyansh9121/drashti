@@ -1,12 +1,6 @@
 import { useRef } from 'react';
 import { formatBytes } from '../../../../shared/format';
-import {
-  ADD_ACCEPT,
-  ADDED_FROM_PHONES,
-  INTO_OPEN,
-  type SharedPlaylist,
-  sizeWords,
-} from '../../../../shared/phone-files';
+import { ADD_ACCEPT, addFilesWords, INTO_OPEN, type SharedPlaylist } from '../../../../shared/phone-files';
 import type { PlaylistItemInfo } from '../../../../shared/playlists';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
@@ -221,8 +215,10 @@ export function AddToDrashti() {
   const picker = useRef<HTMLInputElement>(null);
   const photos = useRef<HTMLInputElement>(null);
   if (!adding?.on && sending.length === 0) return null;
-  // Add photos (Session 55, Part 8): the playlist open on Drashti, or Added from Phones with none open.
-  const into = adding?.openPlaylist ?? null;
+  // Where they go, said before they are sent: Added from Phones; Add photos into the playlist open on Drashti
+  // (Session 55, Part 8); in Simple Mode a picture, however it is sent, to the end of Simple Mode's playlist
+  // (question 5).
+  const words = adding ? addFilesWords(adding) : null;
   return (
     <section className="space-y-2" aria-labelledby="remote-add-title" data-testid="remote-add">
       <h2 id="remote-add-title" className={HEADING}>
@@ -230,9 +226,8 @@ export function AddToDrashti() {
       </h2>
       {adding?.on ? (
         <>
-          <p className="text-base text-muted">
-            A picture, video, sound, PDF, PowerPoint or Keynote file, up to {sizeWords(adding.maxBytes)}, goes
-            whole into Drashti’s playlist “{ADDED_FROM_PHONES}”. It never goes on the screens by itself.
+          <p className="text-base text-muted" data-testid="remote-add-words">
+            {words?.files}
           </p>
           <Button
             size="xl"
@@ -261,9 +256,7 @@ export function AddToDrashti() {
           />
           {/* Add photos (Session 55, Part 8): pictures from the camera roll into the playlist open on Drashti. */}
           <p className="text-base text-muted" data-testid="remote-photos-words">
-            {into === null
-              ? `No playlist is open on Drashti: Add photos puts pictures into “${ADDED_FROM_PHONES}”.`
-              : `Add photos puts pictures at the end of the playlist open on Drashti, “${into}”. They never go on the screens by themselves.`}
+            {words?.photos}
           </p>
           <Button
             size="xl"

@@ -259,7 +259,7 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
       'the MIDI controller': await d.midi.set({ deviceName: null, mappings: [] }),
       'the single-letter keys off': await d.app.setSingleKeys(false),
       'the single-letter keys on': await d.app.setSingleKeys(true),
-      'Shastra, Templates and Kirtan Details': await d.library.setExtras(true),
+      'Books, Templates and Kirtan Details': await d.library.setExtras(true),
       'the highest video quality': await d.links.setMaxHeight(1440),
       'the daily look for updates': await d.updates.setAutoCheck(false),
       'the transliteration style': await d.kirtans.setTranslitStyle('plain'),
@@ -297,7 +297,7 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
     await win.keyboard.press('Escape');
     await expect(win.getByTestId(opens), item).toHaveCount(0);
   }
-  // View › Show Shastra, Templates and Kirtan Details turns at once, both ways.
+  // View › Show Books, Templates and Kirtan Details turns at once, both ways.
   const extras = () => win.evaluate(() => (globalThis as PageGlobals).drashti.library.extras());
   const before = await extras();
   await chooseMenuItem(app, 'show-extras');

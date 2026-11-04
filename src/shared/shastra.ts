@@ -153,7 +153,7 @@ function sanskritLang(text: string, given: 'sa' | 'sa-gu'): Lang {
 /**
  * Read a file's text as Drashti keeps it, or say why it cannot be loaded.
  * Problems that leave the rest usable (an empty item, a repeated number) are
- * notes; a file that is not a Shastra text, or has no items, is refused.
+ * notes; a file that is not a book (Shastra until alpha.15), or has no items, is refused.
  */
 export function readShastraFile(
   raw: unknown,
@@ -163,7 +163,7 @@ export function readShastraFile(
     const where = parsed.path.length > 0 ? ` (at ${parsed.path.map(String).join(' › ')})` : '';
     return {
       ok: false,
-      message: `This is not a Shastra text Drashti can read${where}: ${asClause(parsed.message)}. Check it against its format, in docs/shastra-format.md.`,
+      message: `This is not a book Drashti can read${where}: ${asClause(parsed.message)}. Check it against its format, in docs/shastra-format.md.`,
     };
   }
   const file = parsed.data;
@@ -332,7 +332,7 @@ function refWords(input: string): string[] {
 export function resolveReference(input: string, texts: readonly RefText[]): RefResult {
   const ws = refWords(input);
   if (ws.length === 0) return { ok: false, message: 'Type a reference, for example “SD 14”.' };
-  if (texts.length === 0) return { ok: false, message: 'No Shastra texts are loaded yet.' };
+  if (texts.length === 0) return { ok: false, message: 'No books are loaded yet.' };
 
   // The text: the longest run of words that is a text's abbreviation or name.
   let text: RefText | null = null;
@@ -351,7 +351,7 @@ export function resolveReference(input: string, texts: readonly RefText[]): RefR
   if (!text) {
     const known = texts.map((t) => t.abbreviation).join(', ');
     const said = input.trim().split(/\s+/u)[0] ?? '';
-    return { ok: false, message: `No loaded text is called “${said}”. The texts are: ${known}.` };
+    return { ok: false, message: `No loaded book is called “${said}”. The books are: ${known}.` };
   }
 
   // The sections, level by level: one or more words that are a section's abbreviation or label.
