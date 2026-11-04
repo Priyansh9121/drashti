@@ -155,22 +155,28 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
     const missing: OriginalDescriptor[] = [];
     /** Pool copies of originals that are damaged: the library's whole one is copied over each. */
     const recopy = new Set<string>();
+    /** Originals lost from the library whose pool copy is whole: listed again, nothing copied (alpha.15). */
+    const carried: string[] = [];
     if (originals) {
       if (!originalMedia) throw new Error('The required original folder is unavailable.');
       for (const original of originals.files) {
         const path = originalRelative(original);
         const source = await verifiedOriginal(originalMedia, original, checksumGuard);
+        const inPool = existsSync(join(pool, path));
+        const poolWhole = inPool && (await verifiedOriginal(pool, original, checksumGuard)) !== null;
         if (!source) {
-          // Missing or damaged in the library (alpha.15): left out, and the library and every other file
-          // still go. Its damaged bytes are not copied as if they were the original.
-          missing.push(original);
+          // Missing or damaged in the library (alpha.15): its damaged bytes are never copied as if they were the
+          // original. A whole copy an earlier backup put in the pool goes on being listed, so the backup is
+          // complete and pruning never takes the last copy; with none, it is left out, and the library and
+          // every other file still go.
           media = media.filter((file) => file.path !== path);
           sources.delete(path);
+          if (poolWhole) carried.push(path);
+          else missing.push(original);
           continue;
         }
         // A damaged copy already in the pool is not used.
-        if (existsSync(join(pool, path)) && !(await verifiedOriginal(pool, original, checksumGuard)))
-          recopy.add(path);
+        if (inPool && !poolWhole) recopy.add(path);
         sources.set(path, source);
         if (!media.some((file) => file.path === path)) media.push({ path, bytes: original.bytes });
       }
@@ -234,6 +240,7 @@ export async function pooledBackup(options: PooledOptions, hooks: PooledHooks): 
     // The files this backup needs: every media file that is now in the shared folder.
     const files: string[] = [];
     for (const f of media) if (existsSync(join(pool, f.path))) files.push(listed(f.path));
+    for (const path of carried) files.push(listed(path));
     await writeFile(join(folder, MANIFEST), `${JSON.stringify({ files })}\n`);
     stop();
     // Written last: a folder without it is a backup that did not finish.
