@@ -78,7 +78,9 @@ async function read(): Promise<void> {
           all.set(part, at);
           at += part.length;
         }
-        to.postMessage({ kind: 'pcm', samples: all.buffer }, [all.buffer]);
+        // Electron's Main port cannot receive a renderer ArrayBuffer transfer: it delivers a null payload.
+        // Clone this small (about 3.2 KB) typed array instead; it contains sound samples, never heard words.
+        to.postMessage({ kind: 'pcm', samples: all });
         waiting = [];
         count = 0;
       }

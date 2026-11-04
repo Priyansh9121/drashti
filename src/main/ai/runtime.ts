@@ -41,6 +41,8 @@ export class MeaningEncoder {
   private api: OrtApi | null = null;
   private tokenizer: InstanceType<TokenizerApi['Tokenizer']> | null = null;
   private loading: Promise<void> | null = null;
+  /** Derived numbers only, shared by every job in this worker; source validation still belongs to Main. */
+  private readonly vectors = new Map<string, Float32Array>();
   constructor(private readonly root: string) {}
   private async load(): Promise<void> {
     if (this.session) return;
@@ -70,6 +72,13 @@ export class MeaningEncoder {
     await this.loading;
   }
   async embed(text: string, role: 'query' | 'passage'): Promise<Float32Array> {
+    const key = role + ':' + createHash('sha256').update(text).digest('hex');
+    const cached = this.vectors.get(key);
+    if (cached) {
+      this.vectors.delete(key);
+      this.vectors.set(key, cached);
+      return cached.slice();
+    }
     await this.load();
     const session = this.session;
     const api = this.api;
@@ -110,13 +119,22 @@ export class MeaningEncoder {
     if (!Number.isFinite(norm) || norm <= 0) throw new Error('MODEL_UNAVAILABLE');
     const vector = Float32Array.from(mean, (value) => value / norm);
     if (!vector.every(Number.isFinite)) throw new Error('MODEL_UNAVAILABLE');
+    if (session === this.session) {
+      this.vectors.set(key, vector.slice());
+      if (this.vectors.size > 256) {
+        const oldest = this.vectors.keys().next().value;
+        if (oldest !== undefined) this.vectors.delete(oldest);
+      }
+    }
     return vector;
   }
   async close(): Promise<void> {
+    this.vectors.clear();
     await this.session?.release();
     this.session = null;
     this.tokenizer = null;
     this.api = null;
+    this.loading = null;
   }
 }
 export function cosine(a: Float32Array, b: Float32Array): number {
