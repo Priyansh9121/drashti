@@ -137,6 +137,35 @@ describe('operator-only speech suggestions', () => {
     s.db.prepare("UPDATE shastra_item_texts SET text='Changed placeholder source' WHERE made=0").run();
     expect(s.helpers.showBook(7, approval).ok).toBe(false);
   });
+  it.each(['completed', 'failed'] as const)(
+    'does not rebind an old Book preview after its source changes while meaning search %s',
+    async (outcome) => {
+      s.helpers.set(7, { books: true, verse: false });
+      let finish: (() => void) | undefined;
+      s.run.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finish = () => {
+              if (outcome === 'failed') reject(new Error('INVENTED_WORKER_FAILURE'));
+              else resolve({ hints: [], after: { row: 0, part: 0 }, finished: true });
+            };
+          }),
+      );
+      const pending = s.helpers.search(7, { query: 'lantern' });
+      const shown = s.helpers.get(7);
+      if (!shown.ok || !shown.value.books) throw new Error('No initial exact preview');
+      const approval = { id: shown.value.books.id, passageId: shown.value.books.hits[0]?.passageId };
+      expect(shown.value.books.hits[0]?.snippet).toBe(
+        'A placeholder lantern shines beside an invented boat.',
+      );
+      s.db.prepare("UPDATE shastra_item_texts SET text='New placeholder source words' WHERE made=0").run();
+      finish?.();
+      await pending;
+      expect(s.helpers.showBook(7, approval).ok).toBe(false);
+      expect(s.showBook).not.toHaveBeenCalled();
+    },
+  );
+
   it('coalesces final phrases and never does work inside the hub listener or sends the transcript', async () => {
     s.helpers.set(7, { books: true, verse: false });
     s.hub.setState({ phase: 'listening', language: 'auto' });
