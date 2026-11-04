@@ -69,6 +69,8 @@ export interface MenuActions {
   eventsOut: () => void;
   /** File > Drop Folder… (Session 28). */
   dropFolder: () => void;
+  /** File › Opening… (Session 55): the photos and lines Drashti opens with, and whether it does. */
+  opening: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
@@ -161,6 +163,7 @@ export function installMenu(actions: MenuActions): void {
                 ? [{ id: 'ai-helpers', label: 'AI helpers…', click: actions.aiHelpers }]
                 : []),
               { id: 'events-out', label: 'Events Out…', click: actions.eventsOut },
+              { id: 'opening', label: 'Opening…', click: actions.opening },
               { type: 'separator' },
               { id: 'use-as-node', label: 'Use This Computer as a Node…', click: actions.useAsNode },
               ...(actions.priority

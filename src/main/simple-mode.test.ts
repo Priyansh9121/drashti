@@ -358,4 +358,15 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_BOUNDED.has(IPC.library.newQrSlide)).toBe(false);
     expect(answers.get(IPC.library.newQrSlide)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   });
+
+  it('the opening (Session 55) plays in both modes; File › Opening…’s changes are Pro Mode’s', () => {
+    for (const c of [IPC.opening.setOn, IPC.opening.setChoice, IPC.opening.loadPack, IPC.opening.saveCopy]) {
+      expect(SIMPLE_MODE_LOCKED).toContain(c);
+      expect(answers.get(c)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    }
+    for (const c of [IPC.opening.atStart, IPC.opening.ended, IPC.opening.view]) {
+      expect(SIMPLE_MODE_LOCKED).not.toContain(c);
+      expect(SIMPLE_MODE_BOUNDED.has(c)).toBe(false);
+    }
+  });
 });

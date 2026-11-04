@@ -45,6 +45,7 @@ function actions(mode: 'pro' | 'simple', on = { audience: true, stage: true }) {
     scheduledBackups: nothing,
     eventsOut: nothing,
     dropFolder: nothing,
+    opening: nothing,
     checkForUpdates: nothing,
     keyboardShortcuts: nothing,
     guides: nothing,
@@ -176,6 +177,25 @@ describe('File (Session 54, E5)', () => {
     const kinds = Array.isArray(file) ? file.map((i) => i.type ?? 'item') : [];
     expect(kinds.join(' ')).not.toContain('separator separator');
   });
+});
+
+describe('File › Opening… (Session 55, the opening as Drashti starts)', () => {
+  it.each(PLATFORMS)(
+    'is Pro Mode’s, and opens the window’s Opening; Simple Mode has none (%s)',
+    (platform) => {
+      const opened: boolean[] = [];
+      on(platform, () => {
+        const made = actions('pro');
+        installMenu({ ...made.a, opening: () => opened.push(true) });
+      });
+      const opening = item('opening');
+      expect(opening).toMatchObject({ label: 'Opening…' });
+      (opening?.click as (() => void) | undefined)?.();
+      expect(opened).toEqual([true]);
+      on(platform, () => setUp('simple'));
+      expect(item('opening')).toBeUndefined();
+    },
+  );
 });
 
 describe('File › Decks With Their Animations on This Computer (Session 54, C review)', () => {

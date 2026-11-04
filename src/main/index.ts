@@ -17,7 +17,7 @@ import {
   session,
   systemPreferences,
 } from 'electron';
-import { mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, promises as fsPromises } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -164,7 +164,9 @@ import { phaseLine, windowStartLine } from './start-phases';
 import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
-import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
+import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './media/media-protocol';
+import { OpeningService } from './opening/opening-service';
+import { OpeningKeys } from './opening/opening-start';
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { BlurredCopies, ffmpegBlurRun } from './media/blurred';
@@ -298,6 +300,7 @@ import {
 import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
+import { OPENING_HOLD_MS, OPENING_MS } from '../shared/opening';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
@@ -5182,6 +5185,8 @@ function start(): void {
   });
   /** Each output page's first painted frame already said (its time, on this computer's clock). */
   const firstPaints = new Map<string, number>();
+  /** Told as each output page's first frame is said (the opening waits for them: set further down). */
+  let firstPainted: () => void = () => undefined;
   handle(IPC.output.report, (e, raw) => {
     const screenId = manager.screenIdFor(e.sender.id);
     const r = raw as {
@@ -5200,6 +5205,7 @@ function start(): void {
       firstPaints.get(screenId) !== first.wallAt
     ) {
       firstPaints.set(screenId, first.wallAt);
+      firstPainted();
       log.info(
         phaseLine(
           `${outputNames.get(screenId) ?? 'an output'} first painted revision ${String(first.rev)}`,
@@ -6082,16 +6088,19 @@ function start(): void {
   // Tests start with it closed, unless a test is about it; the self-tests never open it (a dialog
   // would take the show's keys).
   const wizardOff = sw('DRASHTI_TEST_NO_WIZARD') === '1' || sw('DRASHTI_SELFTEST') !== undefined;
+  // The first start's welcome (Session 26g): once per library, before anything was set up; never in Simple Mode or on
+  // a node. The opening (Session 55) gives way to it, and to Simple Mode's first steps.
+  const welcomeNow = () =>
+    mode === 'pro' &&
+    !wizardOff &&
+    settings.get('welcome') === undefined &&
+    settings.get('setupWizard') === undefined;
+  const simpleStepsNow = () =>
+    mode === 'simple' && !wizardOff && settings.get('simpleFirstRun') === undefined;
   handle(IPC.setup.state, () => ({
     // The wizard by itself on a first start, in Pro Mode (anyone's since Session 54, E5: roles are gone).
     firstRun: mode === 'pro' && !wizardOff && settings.get('setupWizard') === undefined,
-    // The first start's welcome (Session 26g): once per library, before anything was set up; never in
-    // Simple Mode or on a node.
-    welcome:
-      mode === 'pro' &&
-      !wizardOff &&
-      settings.get('welcome') === undefined &&
-      settings.get('setupWizard') === undefined,
+    welcome: welcomeNow(),
     operatorDisplayId: operatorDisplayId(),
     // Session 44: the display the controls are on, windowed outputs or not (Session 55: never taken by itself).
     controlsDisplayId: controlsDisplay(),
@@ -6109,10 +6118,7 @@ function start(): void {
   });
   // Simple Mode's first steps (Sessions 31–36): three, once per library, through channels Simple Mode allows
   // (the welcome's is locked there). Like the wizard, tests start without them unless a test is about them.
-  handle(
-    IPC.app.simpleFirstRun,
-    (e) => fromOperator(e) && mode === 'simple' && !wizardOff && settings.get('simpleFirstRun') === undefined,
-  );
+  handle(IPC.app.simpleFirstRun, (e) => fromOperator(e) && simpleStepsNow());
   handle(IPC.app.simpleFirstRunSeen, (e) => {
     if (fromOperator(e) && settings.get('simpleFirstRun') === undefined) {
       settings.set('simpleFirstRun', new Date().toISOString());
@@ -6120,6 +6126,126 @@ function start(): void {
     }
     return null;
   });
+  // ---- the opening (Session 55, the owner's brief of 3 Nov 2026: shared/opening.ts) ------------------------------
+  // Five seconds as Drashti starts, over the operator window only, decided once (opening/opening-start.ts); its photos
+  // and lines kept with the library and changed in File › Opening… (Pro Mode). Never its words in the log.
+  const opening = new OpeningService({
+    settings,
+    later: laterSetting,
+    boot: {
+      selfTest: selfTestRun,
+      // A test sees it only when it asks (DRASHTI_TEST_OPENING=1); a packaged Drashti honours no test switch.
+      testNotAsking: anyTestSwitch() && sw('DRASHTI_TEST_OPENING') !== '1',
+      cleanQuit: startup.cleanQuit,
+      restored: restored.restored,
+      version: appVersion(),
+    },
+    picture: (mediaId) => {
+      const file = media.file(mediaId);
+      const known = media.kindAndName(mediaId);
+      return known?.kind === 'image' && file && !file.missing && !file.deleted && file.sha256
+        ? { sha256: file.sha256, name: known.name }
+        : null;
+    },
+    hasCopy: (sha256) => existsSync(join(mediaDir, openingCopyPath(sha256))),
+    mediaDir,
+    welcome: () => welcomeNow() || simpleStepsNow(),
+    importPhotos: async (paths) => {
+      const done = await imports.start(paths, {});
+      if (!done.ok) return { ok: false, message: done.message };
+      const items = importRepo.report(done.run.id)?.items ?? [];
+      const ids: string[] = [];
+      for (const [i, path] of paths.entries()) {
+        const item = items.find((it) => it.sourcePath === path);
+        const id = item?.target?.kind === 'media' ? item.target.id : null;
+        if (id === null)
+          return {
+            ok: false,
+            message: `Photo ${String(i + 1)} of the opening pack could not be brought into Media${
+              item?.message ? `: ${item.message}` : ''
+            }. Nothing was changed.`,
+          };
+        ids.push(id);
+      }
+      libraryChanged(true);
+      return { ok: true, ids };
+    },
+    log: (line) => {
+      log.info(line);
+    },
+  });
+  /** When the operator window was made; whether its page was loaded again (or its process ended) since. */
+  let openingWindowAt = 0;
+  let openingPageAgain = false;
+  /** When it started playing, while it plays. */
+  let openingSince: number | null = null;
+  /** The hall's screens on this computer still getting ready: one without its first frame said. */
+  const screensWarming = () => [...outputWindows.keys()].some((id) => !firstPaints.has(id));
+  /** Waiting to tell the operator window that every screen has drawn. */
+  let openingWaits = false;
+  firstPainted = () => {
+    if (!openingWaits || screensWarming()) return;
+    openingWaits = false;
+    sendToOperator(IPC.opening.screens, { at: Date.now() });
+  };
+  let openingLimit: NodeJS.Timeout | null = null;
+  // Any key ends it, and the main process keeps that key from the page and the menu (Space never moves the show on).
+  const openingKeys = new OpeningKeys(() => {
+    sendToOperator(IPC.opening.key, { at: Date.now() });
+  });
+  const openingOver = () => {
+    openingWaits = false;
+    openingKeys.stop();
+    if (openingLimit) clearTimeout(openingLimit);
+    openingLimit = null;
+  };
+  handle(IPC.opening.atStart, (e) => {
+    if (!fromOperator(e)) return null;
+    const plan = opening.atStart({ pageAgain: openingPageAgain, sinceWindow: Date.now() - openingWindowAt });
+    if (!plan) return null;
+    openingSince = Date.now();
+    openingKeys.start();
+    // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its five seconds.
+    openingLimit = setTimeout(openingOver, OPENING_MS + OPENING_HOLD_MS + 3000);
+    // It never moves while the hall's screens are getting ready: told here once they all have drawn.
+    openingWaits = screensWarming();
+    return { ...plan, hold: openingWaits };
+  });
+  handle(IPC.opening.ended, (e, how) => {
+    if (!fromOperator(e) || openingSince === null) return null;
+    openingOver();
+    opening.ended(how === 'key' || how === 'click' ? how : 'itself', Date.now() - openingSince);
+    openingSince = null;
+    return null;
+  });
+  handle(IPC.opening.view, () => opening.view());
+  handle(IPC.opening.setOn, (e, on) =>
+    fromOperator(e) && typeof on === 'boolean'
+      ? opening.setOn(on)
+      : { ok: false as const, message: 'Only the operator window can change the opening.' },
+  );
+  handle(IPC.opening.setChoice, (e, choice) =>
+    fromOperator(e)
+      ? opening.setChoice(choice)
+      : { ok: false as const, message: 'Only the operator window can change the opening.' },
+  );
+  handle(IPC.opening.loadPack, async (e) => {
+    if (!fromOperator(e) || !operatorWindow)
+      return { ok: false as const, message: 'Only the operator window can load the opening pack.' };
+    const picked = await dialog.showOpenDialog(operatorWindow, {
+      title: 'Load the Opening Pack',
+      message: 'Choose the opening pack’s folder: the one with the photos folder and words.txt in it.',
+      buttonLabel: 'Load',
+      properties: ['openDirectory'],
+    });
+    const dir = picked.canceled ? null : (picked.filePaths[0] ?? null);
+    return dir === null ? null : opening.loadPack(dir);
+  });
+  handle(IPC.opening.saveCopy, (e, mediaId, bytes) =>
+    fromOperator(e) && typeof mediaId === 'string'
+      ? opening.saveCopy(mediaId, bytes)
+      : { ok: false as const, message: 'Only the operator window can keep a photo’s copy.' },
+  );
   // ---- Ready? (Session 55, Part 8, H): read only when pressed, never at start and never the keychain; the files on
   // the disk and the notifications' state are read asynchronously, so nothing here holds up the show ----------------
   const readyDeps: ReadyDeps = {
@@ -6303,6 +6429,24 @@ function start(): void {
 
   operatorWindow = createOperatorWindow(appearance.background());
   appearance.track(operatorWindow);
+  // The opening (Session 55): timed from the window's making; a page loaded again (the watchdog's reload, Reload
+  // Operator Window) or gone never plays it; and while it plays, the keys are its own (before the page and the menu).
+  openingWindowAt = Date.now();
+  let operatorPages = 0;
+  operatorWindow.webContents.on('did-navigate', () => {
+    operatorPages += 1;
+    if (operatorPages > 1) {
+      openingPageAgain = true;
+      openingKeys.reset();
+    }
+  });
+  operatorWindow.webContents.on('render-process-gone', () => {
+    openingPageAgain = true;
+    openingKeys.reset();
+  });
+  operatorWindow.webContents.on('before-input-event', (event, input) => {
+    if (openingKeys.take(input)) event.preventDefault();
+  });
   operatorWindow.once('show', () => {
     log.info(phaseLine('operator window shown'));
   });
@@ -6669,6 +6813,9 @@ function start(): void {
     },
     dropFolder: () => {
       if (mode === 'pro') sendToOperator(IPC.drop.open, { at: Date.now() });
+    },
+    opening: () => {
+      if (mode === 'pro') sendToOperator(IPC.opening.open, { at: Date.now() });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
