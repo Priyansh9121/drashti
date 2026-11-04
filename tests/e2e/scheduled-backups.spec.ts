@@ -6,11 +6,13 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { SCHEDULED_FOLDER } from '../../src/shared/backups';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
@@ -197,4 +199,82 @@ test('made at their time, media copied once, the newest kept, a missing drive sk
     mediaPool: '../Media',
   });
   await second.app.close();
+});
+
+test('a backup that left out a missing original document says so once it has finished, by hand and on its schedule (alpha.15)', async () => {
+  test.setTimeout(180_000);
+  const first = await launchApp({ ...CLOCK, DRASHTI_TEST_NO_CONVERTER: '1' });
+  try {
+    const win = await operatorPage(first.app);
+    await win.setViewportSize({ width: 1024, height: 645 });
+    await operatorReady(win);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-left-out-e2e-'));
+    const source = join(dir, 'Placeholder Left Out.pdf');
+    writeFileSync(
+      source,
+      makeTestPdf([{ width: 960, height: 540, color: [30, 58, 138], text: 'Placeholder left out page' }]),
+    );
+    const [id = ''] = await importAndGetIds(win, [source]);
+    expect(id).not.toBe('');
+    const name = await win.evaluate(
+      async (id) =>
+        (await (globalThis as PageGlobals).drashti.library.listPresentations()).find((p) => p.id === id)
+          ?.name,
+      id,
+    );
+    // Its retained original (the PDF kept for editing), gone from the library's Media folder since.
+    const originals = join(first.userData, 'Media', 'Originals');
+    const [kept = ''] = readdirSync(originals, { recursive: true, encoding: 'utf8' }).filter((n) =>
+      n.endsWith('.pdf'),
+    );
+    expect(kept).not.toBe('');
+    rmSync(join(originals, kept));
+    const leftOut = `1 original document was missing or damaged, so it isn’t in this backup: “${name ?? ''}”. Its slides are in the backup.`;
+
+    // File > Back Up Library…: the backup is made, and the operator is told once it has finished.
+    const byHand = mkdtempSync(join(tmpdir(), 'drashti-left-out-hand-'));
+    await first.app.evaluate(({ dialog }, into) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
+      dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
+    }, byHand);
+    await chooseMenuItem(first.app, 'backup-library');
+    await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toContainText(leftOut, {
+      timeout: 30_000,
+    });
+    expect(readdirSync(byHand)).toHaveLength(1);
+
+    // On its schedule: the status bar says so too, with only OK (backing up again would not bring it back).
+    const drive = mkdtempSync(join(tmpdir(), 'drashti-left-out-usb-'));
+    const saved = await win.evaluate(async (folder) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const { schedule } = await d.backups.view();
+      return d.backups.save({ ...schedule, folder, enabled: true, time: '03:00', keep: 2 });
+    }, drive);
+    expect(saved.ok).toBe(true);
+    const last = await backupAt(first.app, win, nextThree(Date.now()));
+    expect(last).toMatchObject({ outcome: 'done', leftOut });
+    const warning = win.getByTestId('backup-warning');
+    await expect(warning).toContainText(
+      'Backup at 03:00 finished, but 1 original document was missing or damaged',
+    );
+    await expect(warning.getByTestId('backup-now')).toHaveCount(0);
+    const ok = warning.getByRole('button', { name: 'Dismiss the backup warning' });
+    for (const size of [
+      { width: 1024, height: 645 },
+      { width: 1280, height: 720 },
+    ]) {
+      await win.setViewportSize(size);
+      await expect(ok).toBeInViewport();
+    }
+    // File > Scheduled Backups…: the Last line says it in full.
+    await chooseMenuItem(first.app, 'scheduled-backups');
+    const dialog = win.getByTestId('backups-dialog');
+    await expect(dialog.getByTestId('backups-last')).toContainText(leftOut);
+    await expectNoSeriousA11yIssues(win, 'scheduled backups with an original left out');
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await ok.click();
+    await expect(warning).toHaveCount(0);
+  } finally {
+    await first.app.close();
+  }
 });
