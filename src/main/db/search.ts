@@ -222,12 +222,13 @@ export class SearchIndex {
   ): SearchResult {
     if (!Array.isArray(suggestions) || suggestions.length === 0 || !Number.isFinite(limit) || limit < 1)
       return original;
-    const candidates = suggestions
+    const payload: readonly unknown[] = suggestions;
+    const candidates = payload
       .slice(0, 200)
-      .filter(
-        (hint) =>
-          hint !== null &&
-          typeof hint === 'object' &&
+      .filter((input): input is AiSearchHint => {
+        if (input === null || typeof input !== 'object') return false;
+        const hint = input as Partial<Record<keyof AiSearchHint, unknown>>;
+        return (
           typeof hint.presentationId === 'string' &&
           typeof hint.slideId === 'string' &&
           typeof hint.stamp === 'string' &&
@@ -235,8 +236,9 @@ export class SearchIndex {
           typeof hint.score === 'number' &&
           Number.isFinite(hint.score) &&
           hint.score >= 0 &&
-          hint.score <= 1,
-      )
+          hint.score <= 1
+        );
+      })
       .sort((a, b) => b.score - a.score);
     if (candidates.length === 0) return original;
     // SQLite returns one existing line, rather than decoding a whole large presentation on Main.

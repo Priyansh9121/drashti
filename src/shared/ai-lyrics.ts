@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Lang } from './model';
+import { LANGS, type Lang } from './model';
 import { detectLang } from './text-runs';
 import { capitalize, hasIndic, readsLike, transliterate } from './translit';
 
@@ -29,6 +29,31 @@ export interface LyricProposal {
   language: Lang | null;
   changes: LyricChange[];
 }
+const lyricProposalSchema = z
+  .object({
+    source: z.literal('pasted-lyrics'),
+    action: z.enum(['breaks', 'transliteration']),
+    sourceText: z.string().max(LYRIC_HELPER_MAX_CHARS),
+    language: z.enum(LANGS).nullable(),
+    changes: z
+      .array(
+        z
+          .object({
+            id: z.string().max(100),
+            kind: z.enum(['break', 'transliteration']),
+            at: z.number().int().min(0).max(LYRIC_HELPER_MAX_CHARS),
+            insert: z.string().max(80_000),
+            afterLine: z.number().int().min(1).max(LYRIC_HELPER_MAX_CHARS),
+            sourceLine: z.string().max(LYRIC_HELPER_MAX_CHARS),
+            preview: z.string().max(80_000),
+          })
+          .strict(),
+      )
+      .max(200),
+  })
+  .strict();
+const lyricSelectionSchema = z.array(z.string().max(100)).max(200);
+
 interface Line {
   text: string;
   eol: string;
@@ -109,19 +134,16 @@ export function suggestLyrics(input: unknown): AiResult<LyricProposal> {
 /** Insert only approved, recomputed changes. Source words can never be replaced or deleted. */
 export function applyLyricSuggestions(
   text: string,
-  proposal: LyricProposal,
-  selected: readonly string[],
+  proposalInput: unknown,
+  selectedInput: unknown,
 ): AiResult<string> {
-  if (
-    !proposal ||
-    typeof proposal !== 'object' ||
-    text !== proposal.sourceText ||
-    !Array.isArray(proposal.changes) ||
-    !Array.isArray(selected) ||
-    selected.length > 200 ||
-    selected.some((id) => typeof id !== 'string') ||
-    new Set(selected).size !== selected.length
-  )
+  const checkedProposal = lyricProposalSchema.safeParse(proposalInput);
+  const checkedSelection = lyricSelectionSchema.safeParse(selectedInput);
+  if (!checkedProposal.success || !checkedSelection.success)
+    return { ok: false, message: 'The suggestion changed. Ask for it again.' };
+  const proposal = checkedProposal.data;
+  const selected = checkedSelection.data;
+  if (text !== proposal.sourceText || new Set(selected).size !== selected.length)
     return { ok: false, message: 'The words or choices changed. Ask for suggestions again.' };
   const fresh = suggestLyrics({ source: proposal.source, text, action: proposal.action });
   if (!fresh.ok) return fresh;
@@ -129,19 +151,31 @@ export function applyLyricSuggestions(
   const approved: LyricChange[] = [];
   for (const id of selected) {
     const change = allowed.get(id);
-    const seen = proposal.changes.find((c) => c?.id === id);
+    const seen = proposal.changes.find((c) => c.id === id);
+    if (!change) return { ok: false, message: 'The suggestion changed. Ask for it again.' };
+    if (!seen) return { ok: false, message: 'The suggestion changed. Ask for it again.' };
     if (
-      !change ||
-      !seen ||
       change.at !== seen.at ||
       change.kind !== seen.kind ||
-      change.insert !== seen.insert
+      change.insert !== seen.insert ||
+      change.preview !== seen.preview ||
+      change.sourceLine !== seen.sourceLine ||
+      change.afterLine !== seen.afterLine
     )
       return { ok: false, message: 'The suggestion changed. Ask for it again.' };
     approved.push(change);
   }
-  let result = text;
-  for (const change of approved.sort((a, b) => b.at - a.at))
-    result = result.slice(0, change.at) + change.insert + result.slice(change.at);
-  return { ok: true, value: result };
+  const inserts = new Map(approved.map((change) => [change.at, change.insert]));
+  // Keep every original code point. Insertions are only at recomputed whole-line boundaries.
+  const parts: string[] = [];
+  let offset = 0;
+  for (const character of text) {
+    const insertion = inserts.get(offset);
+    if (insertion !== undefined) parts.push(insertion);
+    parts.push(character);
+    offset += character.length;
+  }
+  const end = inserts.get(offset);
+  if (end !== undefined) parts.push(end);
+  return { ok: true, value: parts.join('') };
 }

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { applyLyricSuggestions, suggestLyrics, type LyricProposal } from './ai-lyrics';
+import { applyLyricSuggestions, suggestLyrics, type LyricProposal } from '../../shared/ai-lyrics';
 const f = JSON.parse(
-  readFileSync(join(import.meta.dirname, '../../docs/examples/placeholder-ai.json'), 'utf8'),
+  readFileSync(join(import.meta.dirname, '../../../docs/examples/placeholder-ai.json'), 'utf8'),
 ) as { lyrics: { gu: string; hi: string; en: string; romanFirstGu: string; romanFirstHi: string } };
 function proposal(text: string, action: 'breaks' | 'transliteration'): LyricProposal {
   const result = suggestLyrics({ source: 'pasted-lyrics', text, action });
