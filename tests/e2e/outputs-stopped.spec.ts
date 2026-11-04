@@ -3,7 +3,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TEST_LINES } from '../../src/main/db/seed';
 import { clearOfShowControls } from './fit';
-import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen, type PageGlobals } from './helpers';
+import {
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+  type PageGlobals,
+} from './helpers';
 
 /*
  * An output the watchdog gave up on (Session 23): before, it stayed black for
@@ -144,5 +152,62 @@ test('a stopped screen raises a notice naming it, in Pro and Simple Mode, never 
   await simple.getByTestId('screen-stopped-try-again').click();
   await expect.poll(state, { timeout: 20_000 }).toBe('showing');
   await expect(simple).toHaveCount(0);
+  await app.close();
+});
+
+test('an output given up on while Main is in the middle of a query of its own waits its turn, as the watchdog’s own word does (alpha.14’s gate on Windows, 4 Nov 2026)', async () => {
+  test.setTimeout(90_000);
+  const { app } = await launchApp({ DRASHTI_TEST_GIVE_UP: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const screenId = await setUpScreen(win);
+  const out = await outputPage(app);
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  // The library's own connection, as Main's next query opens a statement on it.
+  await app.evaluate((electron) => {
+    // In Main: its own module loader, from the app's folder (the test's imports are not there).
+    const { createRequire } = process.getBuiltinModule('node:module');
+    const sqlite = createRequire(`${electron.app.getAppPath()}/package.json`)('better-sqlite3') as {
+      prototype: { prepare: (this: object, ...args: unknown[]) => unknown };
+    };
+    const prepare = sqlite.prototype.prepare;
+    sqlite.prototype.prepare = function (this: object, ...args: unknown[]) {
+      (globalThis as { drashtiTestLibrary?: object }).drashtiTestLibrary ??= this;
+      return prepare.apply(this, args);
+    };
+  });
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
+  // Main busy for 3 s in the middle of a query of its own (as when an output's report reached it on CI's Windows):
+  // the test's word that the output was given up on arrives meanwhile, between two of Main's own steps.
+  await app.evaluate(() => {
+    const library = (
+      globalThis as {
+        drashtiTestLibrary?: {
+          function: (name: string, run: () => number) => void;
+          prepare: (sql: string) => { get: () => unknown };
+        };
+      }
+    ).drashtiTestLibrary;
+    if (!library) throw new Error('Main opened no statement on its library');
+    // Its query calls back into JavaScript (as the library does to make each row) and takes 3 s there.
+    library.function('drashti_test_busy', () => {
+      const until = Date.now() + 3000;
+      while (Date.now() < until) {
+        // Main in the middle of its query.
+      }
+      return 1;
+    });
+    // In Main: its own query, on its next turn, not inside this call.
+    setTimeout(() => {
+      library.prepare('SELECT drashti_test_busy() AS n').get();
+    }, 0);
+  });
+  await letTimePass(win, 500, 'Main is in the middle of its own query');
+  await app.evaluate((_electron, id) => {
+    (globalThis as unknown as Globals).drashtiTestGiveUp?.(id);
+  }, screenId);
+  // Stopped once Main's own query has finished: the notice rises and the screen is counted as stopped.
+  await expect(win.getByTestId('screen-stopped-notice')).toBeVisible();
+  await expect(win.getByTestId('screens-summary')).toContainText('0 screens showing · 1 stopped');
   await app.close();
 });

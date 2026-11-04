@@ -1,8 +1,10 @@
 /*
  * Whether the opening plays as Drashti starts (Session 55, the owner's brief of 3 Nov 2026, shared/opening.ts): once,
  * when a person starts Drashti, on Main's operator window. Never when Drashti starts again by itself or for a reason
- * of its own: after an unexpected stop (a crash, the watchdog's restart, a computer switched off with Drashti open:
- * the show comes back first, and the recovery figure is as it was), after a restore, at the first start of a new
+ * of its own: after an unexpected stop in the last three hours (a crash, the watchdog's restart: the show comes back
+ * first, and the recovery figure is as it was; a stop longer ago, a computer switched off with Drashti open the day
+ * before, starts afresh as after a quit on purpose, shared/recovery.ts, and so the opening plays: the owner's answer
+ * of 4 Nov 2026), after a restore, at the first start of a new
  * version (an update's), or when the operator window's page is loaded again (the watchdog's reload, Reload Operator
  * Window). Never on a node, in a self-test, or in a test that does not ask for it (DRASHTI_TEST_OPENING=1). Never
  * with the first start's welcome or Simple Mode's first steps: they come instead. And only as the window opens: asked
@@ -25,6 +27,8 @@ export interface OpeningStartFacts {
   testNotAsking: boolean;
   /** The last run quit on purpose. */
   cleanQuit: boolean;
+  /** It stopped unexpectedly less than three hours before this start (RECOVERY_MAX_AGE_MS): what was live comes back. */
+  recentStop: boolean;
   /** A backup was restored at this start. */
   restored: boolean;
   /** The version that last started with this library (null: none said so yet), and this one. */
@@ -52,7 +56,7 @@ export function openingAtStart(f: OpeningStartFacts): OpeningStart {
   if (f.testNotAsking) return not('in a test that does not ask for it');
   if (f.asked) return not('it has played already at this start');
   if (f.pageAgain) return not('the operator window was loaded again');
-  if (!f.cleanQuit) return not('after an unexpected stop');
+  if (!f.cleanQuit && f.recentStop) return not('after an unexpected stop');
   if (f.restored) return not('after a restore');
   if (f.lastVersion !== f.version) return not(`at the first start of ${f.version}`);
   if (f.welcome) return not('the first start’s welcome comes instead');

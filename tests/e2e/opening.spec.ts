@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { swings } from '../../src/shared/flash';
+import { RECOVERY_MAX_AGE_MS } from '../../src/shared/recovery';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
@@ -258,6 +259,42 @@ test('never after an unexpected stop: the show comes back first, as before', asy
   await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder back', { timeout: 30_000 });
   await expect(opening(back)).toHaveCount(0);
   expect(openingLog(userData).at(-1)).toBe('Opening: not played (after an unexpected stop)');
+  await second.app.close();
+});
+
+/** The run named in the restart-recovery file, or null (as simple-mode.spec.ts reads it). */
+function savedRun(userData: string): string | null {
+  try {
+    return (
+      (JSON.parse(readFileSync(join(userData, 'live-state.json'), 'utf8')) as { session?: string }).session ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+test('after an unexpected stop more than three hours before, it plays again: that start is as after a quit on purpose', async () => {
+  test.setTimeout(120_000);
+  const userData = await startedOnce();
+  const before = savedRun(userData);
+  const first = await relaunchApp(userData);
+  await operatorReady(await operatorPage(first.app));
+  // Its own run saved, then stopped dead, as a computer switched off with Drashti open.
+  await expect.poll(() => savedRun(userData)).not.toBe(before);
+  await killApp(first.app);
+  // ...the day before: the saved show's time moved back past the three hours (shared/recovery.ts).
+  const file = join(userData, 'live-state.json');
+  const saved = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  writeFileSync(
+    file,
+    JSON.stringify({ ...saved, savedAt: new Date(Date.now() - RECOVERY_MAX_AGE_MS - 60_000).toISOString() }),
+  );
+  const second = await relaunchApp(userData, ASK);
+  const win = await operatorPage(second.app);
+  await expect(opening(win)).toBeVisible({ timeout: 15_000 });
+  await win.keyboard.press('Escape');
+  await expect(opening(win)).toHaveCount(0);
   await second.app.close();
 });
 
