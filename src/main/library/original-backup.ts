@@ -237,6 +237,9 @@ function verifiedSync(mediaDir: string, original: OriginalDescriptor): string {
     throw new Error('A required original is damaged.');
   return place.path;
 }
+/** The code of the error a merge throws when an original it must copy is missing or damaged where it is read. */
+export const ORIGINAL_DAMAGED = 'EORIGINALDAMAGED';
+
 /**
  * Startup only, before the library opens; optional media is never removed by this originals-only merge.
  * Every original in `from` must be whole, unless `leaveOutBad` (alpha.15: the current library's own, kept
@@ -256,7 +259,13 @@ export function mergeOriginalSetSync(
     try {
       source = verifiedSync(from, original);
     } catch (error) {
-      if (!options.leaveOutBad) throw error;
+      if (!options.leaveOutBad) {
+        // A file that cannot be read keeps its own code (no permission, say); missing or damaged gets ours.
+        if (error instanceof Error && 'code' in error) throw error;
+        throw Object.assign(new Error('An original to copy is missing or damaged.'), {
+          code: ORIGINAL_DAMAGED,
+        });
+      }
       leftOut.push(original);
       continue;
     }

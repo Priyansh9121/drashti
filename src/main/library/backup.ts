@@ -37,6 +37,7 @@ import {
   heldOriginals,
   mergeOriginalSetSync,
   namedOriginals,
+  ORIGINAL_DAMAGED,
   originalRoot,
   originalsPresent,
   originalSet,
@@ -468,6 +469,8 @@ const reason = (error: unknown) => {
   if (code === 'ENOSPC') return 'the disk is full';
   if (code === 'EACCES' || code === 'EPERM') return 'a file could not be written (no permission, or in use)';
   if (code === 'ENOENT') return 'a file of the backup is missing';
+  if (code === ORIGINAL_DAMAGED)
+    return 'an original document (a PDF or PowerPoint file kept for editing) is damaged';
   return code ?? 'an unexpected error';
 };
 
@@ -543,6 +546,13 @@ export function applyPendingRestore(
         leaveOutBad: true,
       });
       if (missing.length) notKept = namedOriginals(current, missing);
+    } else if (check.media && previousOriginals) {
+      // The whole media folder goes into the kept copy as it is: its note claims only the originals there
+      // (by their size; reading each would hold up the start), and says which it lacks.
+      const absent = previousOriginals.files.filter(
+        (original) => !originalsPresent(mediaDir, { version: 1, files: [original] }),
+      );
+      if (absent.length) notKept = namedOriginals(current, absent);
     }
     copyFileSync(join(from, LIBRARY_FILE), incomingDb);
   } catch (error) {
@@ -551,7 +561,11 @@ export function applyPendingRestore(
     return {
       restored: false,
       code: 'copy-failed',
-      message: `The library was not restored: ${reason(error)}.`,
+      message:
+        // Only the backup's own originals can be damaged here: the current library's are left out instead.
+        errorCode(error) === ORIGINAL_DAMAGED
+          ? 'The library was not restored: an original document in that backup (a PDF or PowerPoint file kept for editing) is damaged, so the backup cannot be restored whole. The library is as it was: choose another backup to restore.'
+          : `The library was not restored: ${reason(error)}.`,
     };
   }
 
