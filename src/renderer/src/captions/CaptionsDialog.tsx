@@ -77,7 +77,7 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
         </p>
         <Toggle
           checked={view.on}
-          label="Live captions on this computer"
+          label="Live captions on this computer (Trial). Can slow the screens while on."
           disabled={!view.engine}
           data-testid="captions-on"
           onChange={(on) => {

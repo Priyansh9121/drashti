@@ -65,7 +65,7 @@ Do these about 30 minutes before the sabha starts.
 
 ![Ready? before the sabha: each line green, or amber with what to do](screenshots/ready.png)
 
-**Live captions (Trial).** They start off. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Tell the admin if they are wrong or lag behind; **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
+**Live captions (Trial).** They start off and can slow the screens while on. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Tell the admin if they are wrong or lag behind; **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
 
 ## 2. Running the sabha
 
@@ -419,7 +419,7 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 ## 11. AI helpers while preparing a sabha
 
-**Choose only the helpers you want.** In Pro Mode, **File › AI helpers…** has five switches, all off at first: **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each works offline on this computer; the choices are kept. Suggestions wait for you to check them. They do not change Books. Nothing goes on the screens until you choose it, and no helper starts a stream or recording. These tools are not offered in Simple Mode or on a phone.
+**Choose only the helpers you want.** In Pro Mode, **File › AI helpers…** has five switches, all off at first: **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each is a **Trial** and can slow the screens while on. Rehearse before choosing one for a sabha. Each works offline on this computer; the choices are kept. Suggestions wait for you to check them. They do not change Books. Nothing goes on the screens until you choose it, and no helper starts a stream or recording. These tools are not offered in Simple Mode or on a phone.
 
 ![All five offline AI helpers switched off](screenshots/ai-helpers.png)
 

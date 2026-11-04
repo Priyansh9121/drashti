@@ -11,7 +11,7 @@ export function SpeechHelperSwitches() {
   return (
     <div className="space-y-3 border-t border-line pt-3">
       <Checkbox
-        label="Book references"
+        label="Book references (Trial). Can slow the screens while on."
         checked={settings.books}
         disabled={saving}
         onChange={(e) => void setSpeechHelper('books', e.target.checked)}
@@ -21,7 +21,7 @@ export function SpeechHelperSwitches() {
         Show passage.
       </p>
       <Checkbox
-        label="Follow singing (Trial)"
+        label="Follow singing (Trial). Can slow the screens while on."
         checked={settings.verse}
         disabled={saving}
         onChange={(e) => void setSpeechHelper('verse', e.target.checked)}
@@ -30,8 +30,8 @@ export function SpeechHelperSwitches() {
         When the heard words match the current kirtan verse, review Next and press it yourself.
       </p>
       <p className="text-xs text-muted">
-        Listening uses Part 10’s stream sound input and its Live Captions switch. These helpers never turn it
-        on for you.
+        Listening uses the stream’s sound input and the Live captions switch. These helpers never turn it on
+        for you.
       </p>
     </div>
   );
@@ -53,7 +53,7 @@ export function SpeechHelperPanel() {
       <h2 className="font-semibold">Speech helpers</h2>
       <p className="text-xs text-muted">
         {state.listening === 'listening'
-          ? 'Listening through Part 10. Suggestions stay here.'
+          ? 'Listening through Live captions. Suggestions stay here.'
           : state.listening === 'off'
             ? 'Listening is off. Typed Book search still works.'
             : 'Listening is waiting. The show comes first.'}

@@ -62,6 +62,9 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
     const dialog = win.getByTestId('captions-dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByTestId('captions-trial')).toHaveText('Trial');
+    await expect(dialog.getByTestId('captions-on')).toHaveText(
+      'Live captions on this computer (Trial). Can slow the screens while on.',
+    );
     await expect(dialog.getByTestId('captions-on')).toHaveAttribute('aria-checked', 'false');
     await expect(dialog.getByTestId('captions-state')).toHaveText('Off on this computer.');
     for (const p of outputPages(app)) await expect(p.getByTestId('captions')).toHaveCount(0);

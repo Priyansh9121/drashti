@@ -8,17 +8,17 @@ import { setAi, useAi } from './ai-store';
 const choices: { key: AiFeature; name: string; detail: string }[] = [
   {
     key: 'search',
-    name: 'Meaning and spelling search',
+    name: 'Meaning and spelling search (Trial). Can slow the screens while on.',
     detail: 'Find library material by meaning, misspellings or Gujarati in English letters.',
   },
   {
     key: 'tidy',
-    name: 'Import suggestions',
+    name: 'Import suggestions (Trial). Can slow the screens while on.',
     detail: 'Review slide breaks and Roman letters for pasted lyrics. Undo restores your input.',
   },
   {
     key: 'playlist',
-    name: 'Playlist suggestions',
+    name: 'Playlist suggestions (Trial). Can slow the screens while on.',
     detail: 'Review a coming sabha from your calendar and chosen past sabhas.',
   },
 ];

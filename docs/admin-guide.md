@@ -602,7 +602,7 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 ## 25. Live captions (Trial)
 
-**Off until an admin turns them on.** In Pro Mode, **File › Live Captions…** opens the dialog. **Live captions on this computer** starts off; it belongs to this computer, so check each Main separately. Captions are marked **Trial**. Leave them off for a sabha unless a rehearsal on that computer has gone well. There is nothing to set in Simple Mode. A Mac needs **macOS 13.3 or later** for captions.
+**Off until an admin turns them on.** In Pro Mode, **File › Live Captions…** opens the dialog. **Live captions on this computer** starts off; it belongs to this computer, so check each Main separately. Captions are marked **Trial** and can slow the screens while on. Leave them off for a sabha unless a rehearsal on that computer has gone well. There is nothing to set in Simple Mode. A Mac needs **macOS 13.3 or later** for captions.
 
 ![Live captions off and marked Trial](screenshots/captions-off.png)
 
@@ -632,7 +632,7 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 ## 26. AI helpers that work offline
 
-**Five separate switches, all off at first.** In Pro Mode, **File › AI helpers…** has **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Turn on only the ones the operators want; the choices are kept. They work on this computer, with no account or cloud service. With every switch off, no AI helper starts. Simple Mode and phones do not offer these helpers.
+**Five separate switches, all off at first.** In Pro Mode, **File › AI helpers…** has **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each is a **Trial** and can slow the screens while on. Turn on only the ones the operators want after a rehearsal; the choices are kept. They work on this computer, with no account or cloud service. With every switch off, no AI helper starts. Simple Mode and phones do not offer these helpers.
 
 ![All five offline AI helpers off before the admin chooses any](screenshots/ai-helpers.png)
 
