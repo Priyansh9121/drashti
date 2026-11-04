@@ -150,13 +150,14 @@ export function namedOriginals(dbFile: string, originals: readonly OriginalDescr
           original.sha256,
         ) ??
         pageOf(original) ??
-        basename(
-          first(
-            'SELECT source_path FROM document_original_locations WHERE sha256 = ? AND ext = ? ORDER BY source_path',
-            original.sha256,
-            original.ext,
-          ) ?? '',
-        );
+        // The file's own name, on either system (a library can come from the other one).
+        first(
+          'SELECT source_path FROM document_original_locations WHERE sha256 = ? AND ext = ? ORDER BY source_path',
+          original.sha256,
+          original.ext,
+        )
+          ?.split(/[\\/]/u)
+          .at(-1);
       return name ? { ...original, name: cutText(name, NAME_MAX, '…') } : original;
     });
   } catch {

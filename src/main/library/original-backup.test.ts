@@ -26,6 +26,7 @@ import {
   sameDisk,
 } from './backup';
 import { backUp, restore, type BackupUi } from './backup-ui';
+import { namedOriginals } from './original-backup';
 import { Revisions } from './revisions';
 import { registerSlidesIpc } from './slides-ipc';
 import { themeLook } from './themes';
@@ -470,6 +471,25 @@ describe('a missing or damaged original never stops a backup or a restore', () =
           .sort(),
       ).toEqual([w.hash, second.hash].sort());
       expect(checkBackup(kept, LATEST_VERSION)).toMatchObject({ ok: true, media: false });
+    } finally {
+      w.clean();
+    }
+  });
+
+  it('names a left-out original by its presentation, else by the presentation using its pages, else not at all', async () => {
+    const w = originalWorld();
+    try {
+      const first = await w.importPdf();
+      const name = presentationName(w, first.id);
+      const original = { sha256: w.hash, ext: 'pdf' as const, bytes: w.bytes.length };
+      expect(namedOriginals(w.dbFile, [original])).toEqual([{ ...original, name }]);
+      // Not imported from it (no source hash): the presentation whose pages come from it.
+      w.db.prepare('UPDATE presentations SET source_hash = NULL WHERE id = ?').run(first.id);
+      expect(namedOriginals(w.dbFile, [original])).toEqual([{ ...original, name }]);
+      // Nothing that names it, or a library that cannot be read: no name (the words say what kind it is).
+      const unknown = { ...original, sha256: 'ab'.repeat(32) };
+      expect(namedOriginals(w.dbFile, [unknown])).toEqual([unknown]);
+      expect(namedOriginals(join(w.root, 'no library here.sqlite'), [original])).toEqual([original]);
     } finally {
       w.clean();
     }
