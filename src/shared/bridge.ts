@@ -61,6 +61,7 @@ import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
+import type { SpeechHelperSettings, SpeechHelperView } from './ai-speech';
 import type { Lang, RenderSlide, Transition } from './model';
 import type {
   CopiedElements,
@@ -144,6 +145,14 @@ import type {
  * ipcRenderer, no raw channel names.
  */
 export interface DrashtiBridge {
+  aiSpeech: {
+    get(): Promise<AiResult<SpeechHelperView>>;
+    set(settings: SpeechHelperSettings): Promise<AiResult<SpeechHelperView>>;
+    search(request: unknown): Promise<AiResult<SpeechHelperView>>;
+    showBook(request: unknown): Promise<AiResult<null>>;
+    nextVerse(id: unknown): Promise<AiResult<null>>;
+    onChanged(listener: (view: SpeechHelperView) => void): () => void;
+  };
   ai: {
     get(): Promise<AiResult<AiSettings>>;
     set(settings: unknown): Promise<AiResult<AiSettings>>;

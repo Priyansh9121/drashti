@@ -1,3 +1,5 @@
+import { SpeechHelperPanel } from '../ai/AiSpeech';
+import { connectSpeechHelpers } from '../ai/speech-store';
 import { connectAi } from '../ai/ai-store';
 import { AiDialog } from '../ai/AiDialog';
 import { useCallback, useEffect, useState } from 'react';
@@ -140,6 +142,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectMode();
     connectAppearance();
     connectAi();
+    connectSpeechHelpers();
     // Session 55, Part 7: Audio's Music steps aside, and the menus' Even loudness and Trim black and silence.
     connectSound();
     // The quick bar's pins (Session 55, Part 8): Pro Mode shows them; kept with the library.
@@ -377,6 +380,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
               {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
               <PlayingBars className="px-3 pt-2" />
               <MarkerJumps />
+              <SpeechHelperPanel />
               {/* The chosen video input on the audience in one press (Session 55). */}
               <InputOnAudience />
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away

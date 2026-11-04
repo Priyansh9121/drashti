@@ -5,6 +5,8 @@ import { mkdirSync } from 'node:fs';
 import type { AiSearchHint } from '../../shared/search';
 import { cutText } from '../../shared/text';
 import { AI_MODEL } from '../../shared/ai';
+import type { Lang } from '../../shared/model';
+import { bookStamp } from './book-source';
 export interface SourceCandidate {
   key: string;
   presentationId: string;
@@ -129,7 +131,7 @@ export class VectorCache {
       'CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector BLOB NOT NULL, used_at INTEGER NOT NULL)',
     );
   }
-  key(source: SourceCandidate): string {
+  key(source: Pick<SourceCandidate, 'key' | 'stamp' | 'text'>): string {
     return (
       AI_MODEL.files['model.onnx'].sha256 +
       ':' +
@@ -171,4 +173,48 @@ export function topHints(hints: readonly AiSearchHint[]): AiSearchHint[] {
       return true;
     })
     .slice(0, 50);
+}
+
+/** Only original words in Books, never the presentation corpus or generated translations. */
+export class BookCorpus {
+  private readonly db: Database.Database;
+  constructor(file: string) {
+    this.db = new Database(file, { readonly: true, fileMustExist: true });
+    this.db.pragma('busy_timeout = 50');
+  }
+  *candidates(after = { row: 0, part: 0 }) {
+    let cursor = after.row;
+    const statement = this.db.prepare(`SELECT t.rowid AS row, i.id, t.lang, t.text, x.loaded_at, x.source_hash
+      FROM shastra_item_texts t JOIN shastra_items i ON i.id=t.item_id JOIN shastra_texts x ON x.id=i.text_id
+      WHERE t.rowid >= ? AND t.made=0 ORDER BY t.rowid LIMIT 32`);
+    for (;;) {
+      const rows = statement.all(cursor) as {
+        row: number;
+        id: string;
+        lang: Lang;
+        text: string;
+        loaded_at: string;
+        source_hash: string | null;
+      }[];
+      if (!rows.length) return;
+      for (const row of rows) {
+        cursor = row.row + 1;
+        const stamp = bookStamp(row.id, row.loaded_at, row.source_hash, row.text);
+        for (const [part, text] of chunks(row.text).entries()) {
+          if (row.row === after.row && part < after.part) continue;
+          yield {
+            key: 'book:' + row.id + ':' + row.lang + ':' + String(part),
+            itemId: row.id,
+            lang: row.lang,
+            text,
+            stamp,
+            after: { row: row.row, part: part + 1 },
+          };
+        }
+      }
+    }
+  }
+  close(): void {
+    this.db.close();
+  }
 }

@@ -35,6 +35,14 @@ ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' |
 });
 
 const bridge: DrashtiBridge = {
+  aiSpeech: {
+    get: () => invoke(IPC.aiSpeech.get),
+    set: (settings) => invoke(IPC.aiSpeech.set, settings),
+    search: (request) => invoke(IPC.aiSpeech.search, request),
+    showBook: (request) => invoke(IPC.aiSpeech.showBook, request),
+    nextVerse: (id) => invoke(IPC.aiSpeech.nextVerse, id),
+    onChanged: (listener) => on(IPC.aiSpeech.changed, listener),
+  },
   ai: {
     get: () => invoke(IPC.ai.get),
     set: (settings) => invoke(IPC.ai.set, settings),

@@ -38,6 +38,11 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
 
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // Offline helpers are operator choices in Pro Mode, including their background requests.
+  IPC.aiSpeech.get,
+  IPC.aiSpeech.set,
+  IPC.aiSpeech.search,
+  IPC.aiSpeech.showBook,
+  IPC.aiSpeech.nextVerse,
   IPC.ai.get,
   IPC.ai.set,
   IPC.ai.past,

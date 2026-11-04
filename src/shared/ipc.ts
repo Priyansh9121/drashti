@@ -18,6 +18,7 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { OpeningChoice, OpeningEnd, OpeningPlan, OpeningResult, OpeningView } from './opening';
+import type { SpeechHelperSettings, SpeechHelperView } from './ai-speech';
 import type { CaptionModelId, CaptionSettings, CaptionsStatus } from './captions';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
@@ -143,6 +144,14 @@ import type {
  * the preload script and the main process both import them from here.
  */
 export const IPC = {
+  aiSpeech: {
+    get: 'ai-speech:get',
+    set: 'ai-speech:set',
+    search: 'ai-speech:search',
+    showBook: 'ai-speech:show-book',
+    nextVerse: 'ai-speech:next-verse',
+    changed: 'ai-speech:changed',
+  },
   ai: {
     get: 'ai:get',
     set: 'ai:set',
@@ -1102,6 +1111,11 @@ export const IPC = {
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.aiSpeech.get]: { args: []; result: AiResult<SpeechHelperView> };
+  [IPC.aiSpeech.set]: { args: [settings: SpeechHelperSettings]; result: AiResult<SpeechHelperView> };
+  [IPC.aiSpeech.search]: { args: [request: unknown]; result: AiResult<SpeechHelperView> };
+  [IPC.aiSpeech.showBook]: { args: [request: unknown]; result: AiResult<null> };
+  [IPC.aiSpeech.nextVerse]: { args: [id: unknown]; result: AiResult<null> };
   [IPC.ai.get]: { args: []; result: AiResult<AiSettings> };
   [IPC.ai.set]: { args: [settings: unknown]; result: AiResult<AiSettings> };
   [IPC.ai.past]: { args: []; result: AiResult<{ id: string; name: string }[]> };
@@ -1645,6 +1659,7 @@ export interface InvokeContract {
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
   [IPC.ai.open]: { at: number };
+  [IPC.aiSpeech.changed]: SpeechHelperView;
   [IPC.ai.changed]: AiSettings;
   [IPC.ai.progress]: AiSearchProgress;
   [IPC.appearance.changed]: AppearanceNow;

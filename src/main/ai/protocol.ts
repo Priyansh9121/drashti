@@ -9,7 +9,18 @@ export const workerContextSchema = z
   })
   .strict();
 const base = { id: z.string().min(1).max(100), context: workerContextSchema };
+export const bookCursorSchema = z
+  .object({ row: z.number().int().nonnegative(), part: z.number().int().nonnegative() })
+  .strict();
 export const workerJobSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      ...base,
+      kind: z.literal('books'),
+      query: z.string().trim().min(1).max(500),
+      after: bookCursorSchema.optional(),
+    })
+    .strict(),
   z.object({ ...base, kind: z.literal('search'), query: z.string().trim().min(1).max(500) }).strict(),
   z
     .object({
