@@ -30,7 +30,9 @@ const fixture = JSON.parse(
 };
 const env = {
   DRASHTI_TEST_SEED_PLACEHOLDERS: '0',
-  DRASHTI_TEST_AI_ASSETS: join(process.cwd(), 'test-results/ai-assets'),
+  DRASHTI_TEST_AI_ASSETS:
+    process.env['DRASHTI_TEST_AI_ASSETS'] ??
+    join(process.cwd(), 'vendor', 'ai', `${process.platform}-${process.arch}`),
 };
 async function start(size: { width: number; height: number }, enabled = true) {
   const initial = await launchApp(env);
@@ -89,6 +91,12 @@ for (const size of [
     try {
       await chooseMenuItem(s.app, 'ai-helpers');
       const dialog = s.win.getByRole('dialog', { name: 'AI helpers' });
+      expect(
+        await s.app.evaluate(
+          ({ app }) =>
+            app.getAppMetrics().filter((metric) => metric.name === 'Drashti offline helpers').length,
+        ),
+      ).toBe(0);
       await expect(dialog).toBeVisible();
       for (const name of ['Meaning and spelling search', 'Import suggestions', 'Playlist suggestions'])
         await expect(dialog.getByRole('checkbox', { name, exact: true })).not.toBeChecked();

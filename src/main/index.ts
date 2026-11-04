@@ -3950,7 +3950,9 @@ function start(): void {
     rpc: new AiWorkerRpc(spawnAiWorker, {
       assetsRoot:
         helperAssetsOverride ??
-        (packaged() ? join(process.resourcesPath, 'ai') : join(app.getAppPath(), 'vendor', 'ai')),
+        (packaged()
+          ? join(process.resourcesPath, 'ai')
+          : join(app.getAppPath(), 'vendor', 'ai', `${process.platform}-${process.arch}`)),
       libraryFile: libraryFile(),
       cacheFile: join(app.getPath('userData'), 'ai-helper-cache.sqlite'),
     }),
