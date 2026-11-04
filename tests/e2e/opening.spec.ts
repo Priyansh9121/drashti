@@ -169,6 +169,7 @@ test('a click ends it at once and lands on nothing beneath; a tap ends it too', 
   const again = await operatorPage(second.app);
   await expect(opening(again)).toBeVisible({ timeout: 15_000 });
   const cdp = await again.context().newCDPSession(again);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
   const at = { x: 200, y: 200 };
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });

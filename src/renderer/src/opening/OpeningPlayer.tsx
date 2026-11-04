@@ -67,7 +67,7 @@ function partsOf(root: HTMLElement) {
   };
 }
 
-/** Every part's Web Animation, as `times` says, not started yet (the caller starts them all at one moment). */
+/** Every part's Web Animation, as `times` says (the caller gives them all one start time, in the same task). */
 function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animation[] {
   const parts = partsOf(root);
   const times = openingTimes(
@@ -85,9 +85,7 @@ function animate(root: HTMLElement, plan: OpeningPlan, still: boolean): Animatio
     easing = 'linear',
     fill: FillMode = 'both',
   ) => {
-    const a = el.animate(frames, { delay, duration: Math.max(1, duration), easing, fill });
-    a.pause();
-    out.push(a);
+    out.push(el.animate(frames, { delay, duration: Math.max(1, duration), easing, fill }));
   };
   const easeOut = 'cubic-bezier(0.23, 1, 0.32, 1)';
   if (still) {
