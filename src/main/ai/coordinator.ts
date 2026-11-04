@@ -92,6 +92,11 @@ function eligible(item: PlaylistItemInfo): boolean {
 export class AiHelpers {
   private settings: AiSettings;
   private generation = 0;
+  private searchSerial = 0;
+  private busyUntil = 0;
+  private nextProgressAt = 0;
+  private pendingProgress: (() => void) | null = null;
+  private progressTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly lyrics = new Map<string, PendingLyrics>();
   private readonly playlists = new Map<string, PendingPlaylist>();
   constructor(private readonly options: Options) {
@@ -119,13 +124,44 @@ export class AiHelpers {
     this.options.settingsChanged({ ...this.settings });
     return { ok: true, value: { ...this.settings } };
   }
+  private clearProgress(): void {
+    if (this.progressTimer) clearTimeout(this.progressTimer);
+    this.progressTimer = null;
+    this.pendingProgress = null;
+  }
+  private scheduleProgress(): void {
+    if (this.progressTimer || !this.pendingProgress) return;
+    this.progressTimer = setTimeout(
+      () => {
+        this.progressTimer = null;
+        // A slide may have extended the show's busy window after this timer was scheduled.
+        if (Date.now() < this.busyUntil) {
+          this.scheduleProgress();
+          return;
+        }
+        const publish = this.pendingProgress;
+        this.pendingProgress = null;
+        if (!publish) return;
+        this.nextProgressAt = Date.now() + 200;
+        try {
+          publish();
+        } catch {
+          // An intermediate view can be unavailable; the requested final result still checks its current source.
+        }
+      },
+      Math.max(0, this.nextProgressAt - Date.now(), this.busyUntil - Date.now()),
+    );
+  }
   suspend(): void {
     this.generation++;
+    this.searchSerial++;
+    this.clearProgress();
     this.lyrics.clear();
     this.playlists.clear();
     this.options.rpc.cancel();
   }
   busy(until: number): void {
+    this.busyUntil = Math.max(this.busyUntil, until);
     this.options.rpc.busy(until);
   }
   past(owner: number): AiResult<{ id: string; name: string }[]> {
@@ -148,14 +184,22 @@ export class AiHelpers {
     if (!parsed.success) return { ok: false, message: 'Type a few words to look for.' };
     const request = parsed.data;
     const lease = this.lease(owner);
+    const serial = ++this.searchSerial;
+    this.clearProgress();
+    this.nextProgressAt = Math.max(this.nextProgressAt, Date.now() + 200);
     try {
       const result = await this.options.rpc.run({ kind: 'search', query: request.query }, (hints) => {
-        if (this.current(lease, 'search'))
+        if (!this.current(lease, 'search') || serial !== this.searchSerial) return;
+        // One newest pending view for the coordinator: a scan must not run SQLite/UI work for every row.
+        this.pendingProgress = () => {
+          if (!this.current(lease, 'search') || serial !== this.searchSerial) return;
           progress({
             requestId: request.requestId,
             result: this.options.search.search(request.query, 50, hints),
             checking: true,
           });
+        };
+        this.scheduleProgress();
       });
       if (!this.current(lease, 'search')) return { ok: false, message: OFF };
       const hints = z.array(aiHintSchema).max(50).safeParse(result);
@@ -163,6 +207,8 @@ export class AiHelpers {
       return { ok: true, value: this.options.search.search(request.query, 50, hints.data) };
     } catch {
       return { ok: false, message: UNAVAILABLE };
+    } finally {
+      if (serial === this.searchSerial) this.clearProgress();
     }
   }
   async suggestLyrics(owner: number, input: unknown): Promise<AiResult<AiLyricReview>> {

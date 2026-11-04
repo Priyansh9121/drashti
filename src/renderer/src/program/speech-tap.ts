@@ -34,14 +34,14 @@ async function update(): Promise<void> {
   const track = trackOf();
   const graph = graphOf();
   if (active) {
-    if (active.track === track && active.source === graph?.source && track?.readyState === 'live') {
+    if (active.track === track && active.source === graph?.source && track.readyState === 'live') {
       later();
       return;
     }
     active.stop();
     active = null;
   }
-  if (!track || track.readyState !== 'live' || !graph) {
+  if (track?.readyState !== 'live' || !graph) {
     later();
     return;
   }

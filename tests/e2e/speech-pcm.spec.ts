@@ -158,6 +158,7 @@ app.whenReady().then(()=>{
         while (performance.now() < until) {
           /* generated renderer load */
         }
+        // eslint-disable-next-line no-restricted-syntax -- the measured load deliberately stalls for 400 ms, then lets capture run for 100 ms
         await new Promise<void>((resolve) => setTimeout(resolve, 100));
       }
     });
