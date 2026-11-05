@@ -2925,6 +2925,11 @@ function start(): void {
     arch: process.arch,
   });
   const captionsData = app.getPath('userData');
+  const captionsEngineProblem =
+    testSpeech !== undefined
+      ? null
+      : (whisperProblem(process.platform, process.getSystemVersion()) ??
+        (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
     platform: process.platform,
@@ -2935,16 +2940,12 @@ function start(): void {
         ? createStandInEngine(testSpeech.split('|'))
         : createWhisperEngine({
             program: () => whisperProgram,
-            model: () => modelFile(captionsData, captions.view().model),
-            fallback: () => captions.view().model !== 'turbo',
+            model: () => modelFile(captionsData, captions.selectedModel()),
+            fallback: () => captions.selectedModel() !== 'turbo',
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             log,
           }),
-    engineProblem: () =>
-      testSpeech !== undefined
-        ? null
-        : (whisperProblem(process.platform, process.getSystemVersion()) ??
-          (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null)),
+    engineProblem: () => captionsEngineProblem,
     modelReady: (id) =>
       testSpeech !== undefined || modelReady(modelFile(captionsData, id), MODEL_SOURCES[id]),
     download: (id, progress) =>

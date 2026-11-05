@@ -79,15 +79,20 @@ export class CaptionsService {
       : { phase: 'missing', done: 0, total, message: null };
   }
 
+  selectedModel(): CaptionModelId {
+    return this.switch.model;
+  }
+
   view(): CaptionsStatus {
+    const engineProblem = this.deps.engineProblem();
     return {
       on: this.switch.on,
       model: this.switch.model,
       settings: this.settings(),
       download: this.download,
       speech: this.hub.state(),
-      engine: this.deps.engineProblem() === null,
-      engineProblem: this.deps.engineProblem(),
+      engine: engineProblem === null,
+      engineProblem,
       trial: true,
     };
   }

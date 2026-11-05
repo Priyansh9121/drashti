@@ -199,7 +199,14 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
   const readyMs = o.readyMs ?? 90_000;
   const get = o.fetch ?? fetch;
   const run =
-    o.spawn ?? ((program, args) => spawnChild(program, args, { stdio: 'ignore', windowsHide: true }));
+    o.spawn ??
+    ((program, args) => {
+      const options = { stdio: 'ignore', windowsHide: true } as const;
+      // Keep the model's compute and disk work below the show, including while it loads.
+      return process.platform === 'darwin'
+        ? spawnChild('/usr/sbin/taskpolicy', ['-b', program, ...args], options)
+        : spawnChild(program, args, options);
+    });
 
   return {
     start(language, to) {
@@ -215,6 +222,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       let count = 0;
       let rest: NodeJS.Timeout | null = null;
       let retrySound: NodeJS.Timeout | null = null;
+      let allowFallback = true;
       const abort = new AbortController();
       // The noise floor, learnt as it goes: speech is well above it.
       let floor = 300;
@@ -241,7 +249,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         form.append('file', new Blob([wavOf(samples)], { type: 'audio/wav' }), 'clip.wav');
         form.append('response_format', 'verbose_json');
         form.append('temperature', '0');
-        if (!o.fallback()) form.append('temperature_inc', '0');
+        if (!allowFallback) form.append('temperature_inc', '0');
         const lang = forced ?? (language === 'auto' ? 'auto' : language);
         form.append('language', lang);
         form.append('no_language_probabilities', lang === 'auto' ? 'false' : 'true');
@@ -419,6 +427,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           '-t',
           String(o.threads ?? 4),
         ];
+        allowFallback = o.fallback();
         const started = run(program, args);
         child = started;
         started.once('exit', (code) => {

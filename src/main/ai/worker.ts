@@ -1,9 +1,19 @@
+import { spawnSync } from 'node:child_process';
 import { constants, getPriority, setPriority } from 'node:os';
 const port = process.parentPort;
 let lowPriority = false;
 try {
   setPriority(process.pid, constants.priority.PRIORITY_LOW);
   lowPriority = getPriority() === constants.priority.PRIORITY_LOW;
+  if (lowPriority && process.platform === 'darwin') {
+    // nice alone leaves model loads at ordinary I/O priority. Apply Darwin's background
+    // policy inside this child, before importing the runtime or opening any model files.
+    const result = spawnSync('/usr/sbin/taskpolicy', ['-b', '-p', String(process.pid)], {
+      stdio: 'ignore',
+      timeout: 2_000,
+    });
+    lowPriority = result.status === 0;
+  }
 } catch {
   /* Do not start costly work at normal priority. */
 }
