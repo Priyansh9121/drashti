@@ -85,6 +85,9 @@ export function LowerThirdsPanel({ platform, nested = false }: { platform: strin
         </>
       }
     >
+      <p className="text-xs text-muted">
+        A lower third shows a name, a title or a place across the bottom of the picture.
+      </p>
       {items.length === 0 ? (
         <p className="text-xs text-muted">
           No lower thirds yet. <strong>New…</strong> opens the Lower Thirds studio: up to three lines (a name,
