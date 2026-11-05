@@ -2,8 +2,9 @@
 // quiet test mode (src/main/windows/quiet.ts) never takes over the screen.
 // macOS only. Every half second it asks `lsappinfo front` for the frontmost
 // app, and `lsappinfo` how each running Electron app is set to run ("UIElement"
-// is an accessory app: no Dock icon, no menu bar). It fails if Drashti or
-// Electron ever came to the front.
+// is an accessory app: no Dock icon, no menu bar). It fails if the test binary
+// (com.github.Electron) comes to the front. The owner's installed Drashti
+// (org.drashti.app) can stay in use and does not count as a test takeover.
 //
 //   node scripts/quiet-check.mjs tests/e2e/network.spec.ts    one spec, quietly (pnpm build first)
 //   node scripts/quiet-check.mjs --expect-front <spec>       the control run, with DRASHTI_E2E_LOUD=1:
@@ -11,6 +12,7 @@
 //                                                           check could not see it at all
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { isTestApp } from './quiet-check-front-app.mjs';
 
 if (process.platform !== 'darwin') {
   console.log('quiet-check: macOS only (it asks lsappinfo which app is in front).');
@@ -21,7 +23,6 @@ const args = process.argv.slice(2);
 const expectFront = args.includes('--expect-front');
 const specs = args.filter((a) => a !== '--expect-front');
 const EVERY_MS = 500;
-const DRASHTI = /electron|drashti/iu;
 
 const lsappinfo = (...a) => spawnSync('lsappinfo', a, { encoding: 'utf8' }).stdout ?? '';
 const field = (text, name) => new RegExp(`"${name}"="([^"]*)"`, 'u').exec(text)?.[1] ?? '?';
@@ -52,11 +53,11 @@ const poll = () => {
   const app = frontApp();
   const label = app ? `${app.name} (${app.id})` : 'none';
   fronts.set(label, (fronts.get(label) ?? 0) + 1);
-  if (app && (DRASHTI.test(app.name) || DRASHTI.test(app.id))) {
+  if (isTestApp(app)) {
     drashtiFront += 1;
     if (drashtiFront === 1)
       console.log(
-        `quiet-check: ${label} came to the front ${((Date.now() - started) / 1000).toFixed(1)} s in`,
+        `quiet-check: test app ${label} came to the front ${((Date.now() - started) / 1000).toFixed(1)} s in`,
       );
   }
   for (const t of electronTypes()) types.set(t, (types.get(t) ?? 0) + 1);
@@ -79,15 +80,17 @@ run.on('exit', (code) => {
   if (expectFront) {
     console.log(
       drashtiFront > 0
-        ? `quiet-check: control run: Drashti was seen in front ${drashtiFront} times, so the check can see it.`
-        : 'quiet-check: control run: Drashti was never seen in front, so this check proves nothing here.',
+        ? `quiet-check: control run: test Electron was seen in front ${drashtiFront} times, so the check can see it.`
+        : 'quiet-check: control run: test Electron was never seen in front, so this check proves nothing here.',
     );
     if (drashtiFront === 0) failed = true;
   } else if (drashtiFront > 0) {
-    console.log(`quiet-check: FAILED: Drashti or Electron was the front app ${drashtiFront} times.`);
+    console.log(
+      `quiet-check: FAILED: test Electron (com.github.Electron) was the front app ${drashtiFront} times.`,
+    );
     failed = true;
   } else {
-    console.log('quiet-check: Drashti and Electron never came to the front.');
+    console.log('quiet-check: test Electron (com.github.Electron) never came to the front.');
   }
   if (code !== 0) console.log(`quiet-check: the tests themselves failed (exit ${code}).`);
   process.exit(failed ? 1 : 0);
