@@ -178,10 +178,14 @@ describe('the captions engine (Part 10)', () => {
     const sound = bursts();
     const heard: Heard[] = [];
     const states: SpeechState[] = [];
+    let decoderReads = 0;
     const engine = createWhisperEngine({
       program: () => '/placeholder/whisper-server',
       model: () => '/placeholder/model.bin',
-      fallback: () => true,
+      fallback: () => {
+        decoderReads += 1;
+        return true;
+      },
       sound,
       log: { info: () => undefined, warn: () => undefined },
       spawn: server.spawn,
@@ -211,6 +215,9 @@ describe('the captions engine (Part 10)', () => {
     // Its times are this computer's clock, in order.
     const f = finals[0];
     expect(f && f.endAt >= f.startAt && f.heardAt >= f.endAt).toBe(true);
+    // Decoder settings belong to the loaded model. Do not query them on the audio hot path.
+    expect(server.asked.length).toBeGreaterThan(1);
+    expect(decoderReads).toBe(1);
   });
 
   it('with the language left to it, says which of the three it heard, and how sure', async () => {
