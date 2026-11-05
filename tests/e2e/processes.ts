@@ -1,7 +1,9 @@
 import { spawnSync } from 'node:child_process';
 
 /*
- * This computer's processes, for the tests that check nothing of Drashti's is left running (quit.spec.ts).
+ * This computer's processes, for the tests that check nothing of Drashti's is left running (quit.spec.ts). A process
+ * is known by its number and when it started: Windows keeps a process's parent number after the parent has gone, and
+ * gives a gone process's number to another within seconds (alpha.15's gate, 5 Nov 2026; processes.spec.ts).
  */
 
 /** A process: its number, its parent's, its name, and when it started (ms; NaN when the system did not say). */
@@ -55,16 +57,21 @@ export function processes(): Proc[] {
     }));
 }
 
-/** Those of `all` under `root` (its helpers, workers and what they started). */
+/**
+ * Those of `all` under `root` (its helpers, workers and what they started), each started no earlier than its parent:
+ * one started before is the child of a process gone before its parent number was given to this one.
+ */
 export function underIn(all: Proc[], root: number): Proc[] {
-  const mine = new Set([root]);
+  // Each process under it, with when it started (a start the system did not say compares as nothing).
+  const mine = new Map([[root, all.find((p) => p.pid === root)?.started ?? Number.NaN]]);
   for (let grew = true; grew;) {
     grew = false;
-    for (const p of all)
-      if (mine.has(p.ppid) && !mine.has(p.pid)) {
-        mine.add(p.pid);
-        grew = true;
-      }
+    for (const p of all) {
+      const parent = mine.get(p.ppid);
+      if (parent === undefined || mine.has(p.pid) || p.started < parent) continue;
+      mine.set(p.pid, p.started);
+      grew = true;
+    }
   }
   return all.filter((p) => mine.has(p.pid) && p.pid !== root);
 }
@@ -84,13 +91,17 @@ export const alive = (pid: number) => {
   }
 };
 
-/** Those of `listed` still running, as `now` lists them. */
+/** Those of `listed` still running, as `now` lists them: the same number, started at the same moment. */
 export function stillRunningIn(now: Proc[], listed: Proc[]): Proc[] {
-  return listed.filter((p) => now.some((q) => q.pid === p.pid));
+  return listed.filter((p) =>
+    now.some((q) => q.pid === p.pid && (Number.isNaN(p.started) || q.started === p.started)),
+  );
 }
 
-/** Those of `listed` still running. */
+/** Those of `listed` still running (by number alone if the system lists nothing: never fewer than are there). */
 export function stillRunning(listed: Proc[]): Proc[] {
   const left = listed.filter((p) => alive(p.pid));
-  return left.length === 0 ? [] : stillRunningIn(processes(), left);
+  if (left.length === 0) return [];
+  const now = processes();
+  return now.length === 0 ? left : stillRunningIn(now, left);
 }
