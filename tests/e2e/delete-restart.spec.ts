@@ -246,3 +246,43 @@ test('Simple Mode’s playlist deleted in Pro Mode does not come back under its 
   expect((await library(win2)).playlists).toEqual({ [named]: [] });
   await again.app.close();
 });
+
+test('a picture the drop folder took and the operator deleted from Media stays gone after a restart, even when its file changes while Drashti is closed; a new one still comes in', async () => {
+  test.setTimeout(150_000);
+  const drop = mkdtempSync(join(tmpdir(), 'drashti-delete-drop-'));
+  const made = mkdtempSync(join(tmpdir(), 'drashti-delete-drop-made-'));
+  const { app, userData } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 800 });
+  // File › Drop Folder…: Choose… the folder.
+  await dialogPicks(app, [drop]);
+  await chooseMenuItem(app, 'drop-folder');
+  const dialog = win.getByTestId('drop-dialog');
+  await dialog.getByTestId('drop-choose').click();
+  await expect(dialog.getByTestId('drop-state')).toHaveAttribute('data-state', 'watching');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  // Made elsewhere and moved in whole: one now, one while Drashti is closed.
+  const dropped = await makeTestImage(win, join(made, 'Placeholder Dropped.png'), { color: '#1e3a8a' });
+  const later = await makeTestImage(win, join(made, 'Placeholder Later.png'), { color: '#7c2d12' });
+  renameSync(dropped, join(drop, 'Placeholder Dropped.png'));
+  await expect
+    .poll(async () => (await library(win)).media, { timeout: 30_000 })
+    .toEqual(['Placeholder Dropped.png']);
+  await deleteFromLibrary(win, 'media', 'Placeholder Dropped.png');
+  await app.close();
+
+  // While Drashti is closed: the picture fetched again (a new time, as a cloud folder gives it), and a new one.
+  const at = new Date(Date.now() + 120_000);
+  utimesSync(join(drop, 'Placeholder Dropped.png'), at, at);
+  renameSync(later, join(drop, 'Placeholder Later.png'));
+  const again = await relaunchApp(userData);
+  const win2 = await operatorPage(again.app);
+  await operatorReady(win2);
+  // The new one coming in says the drop folder has looked since the start, and taken what it would.
+  await expect
+    .poll(async () => (await library(win2)).media, { timeout: 30_000 })
+    .toContain('Placeholder Later.png');
+  expect((await library(win2)).media).toEqual(['Placeholder Later.png']);
+  await again.app.close();
+});
