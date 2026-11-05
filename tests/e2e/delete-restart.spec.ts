@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, renameSync, utimesSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
+import { simplePlaylistName } from '../../src/main/simple-playlist';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
@@ -233,12 +234,15 @@ test('Simple Mode’s playlist deleted in Pro Mode does not come back under its 
   const win2 = await operatorPage(again.app);
   await operatorReady(win2);
   expect(Object.keys((await library(win2)).playlists)).not.toContain(day);
-  // Simple Mode again: a new, empty playlist, never one named as the deleted one was.
+  // Simple Mode again: a new, empty playlist, never one named as the deleted one was (a run that has passed midnight
+  // since names it for the new day).
   await chooseMenuItem(again.app, 'switch-mode');
   const simple2 = win2.getByTestId('simple-mode');
   await expect(simple2).toBeVisible();
-  await expect(simple2.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(`${day} (2)`);
+  const today = simplePlaylistName(new Date());
+  const named = today === day ? `${day} (2)` : today;
+  await expect(simple2.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(named);
   await expect(simple2.getByTestId('playlist-item')).toHaveCount(0);
-  expect((await library(win2)).playlists).toEqual({ [`${day} (2)`]: [] });
+  expect((await library(win2)).playlists).toEqual({ [named]: [] });
   await again.app.close();
 });
