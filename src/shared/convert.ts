@@ -29,7 +29,7 @@ export interface ConversionJob {
 
 export type ConvertResult = { ok: true; jobs: ConversionJob[] } | { ok: false; message: string };
 
-/** HEVC plays where the computer can decode it: the window asks Chromium (a common profile). */
+/** HEVC plays where the computer can decode it: Drashti asks Chromium (a common profile; main/convert/plays-hevc.ts). */
 export const HEVC_TYPE = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
 
 /** Is this media item's format HEVC (offered for conversion only where it cannot play)? */
