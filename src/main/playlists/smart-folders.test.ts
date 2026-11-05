@@ -8,6 +8,7 @@ import type { SmartPlaylistView } from '../../shared/playlists';
 import { openDatabase, type Db } from '../db/database';
 import { PlaylistRepo } from '../db/playlists';
 import { PresentationRepo } from '../db/presentations';
+import { MediaRemoval } from '../library/media-removal';
 import { SmartFolders } from './smart-folders';
 
 /*
@@ -418,5 +419,69 @@ describe('a smart playlist following a folder', () => {
     await service.refresh();
     await settle(id);
     expect(shown(id)).toEqual(['A.jpg', 'B.jpg']);
+  });
+
+  it('never brings back by itself what the operator took out or deleted, however its file changes, here or at a restart; Undo lets it in again (alpha.15)', async () => {
+    await put('Talk.pptx', 'deck one');
+    await put('Cover.jpg', 'picture one');
+    await put('Clip.mp4', 'video one');
+    await put('Darshan.jpg', 'picture two');
+    const db = openDatabase(':memory:');
+    const first = setup(db);
+    const made = await first.service.create(folder());
+    const id = made.ok ? made.id : '';
+    await first.settle(id);
+    const item = (label: string) => first.playlists.itemsOf(id).find((i) => i.label === label);
+    const talk = item('Talk') as { id: string; presentationId: string };
+    const cover = item('Cover.jpg') as { id: string; mediaId: string };
+    const clip = item('Clip.mp4') as { id: string };
+    // The deck deleted from the library (its card stays, marked), the picture deleted from the library (its row goes
+    // with it), and the video's row taken out of the playlist (the library keeps the video).
+    first.presentations.remove([talk.presentationId]);
+    const media = new MediaRemoval(db, { onScreens: () => new Set() });
+    expect(media.remove([cover.mediaId])).toEqual([cover.mediaId]);
+    first.playlists.removeItems([clip.id]);
+    // Every file changes (a cloud folder fetching them again), while Drashti runs.
+    for (const [name, content] of [
+      ['Talk.pptx', 'deck one, fetched again'],
+      ['Cover.jpg', 'picture one, fetched again'],
+      ['Clip.mp4', 'video one, fetched again'],
+      ['Darshan.jpg', 'picture two, fetched again'],
+    ] as const)
+      await put(name, content);
+    const imported = first.imports.length;
+    await first.settle(id);
+    expect(first.imports.slice(imported).flatMap((r) => r.paths.map((p) => basename(p)))).toEqual([
+      'Darshan.jpg',
+    ]);
+    expect(first.view(id)).toMatchObject({ adding: 0 });
+    first.service.stop();
+    // And at a restart, after they changed again while Drashti was closed.
+    await put('Talk.pptx', 'deck one, fetched once more');
+    await put('Cover.jpg', 'picture one, fetched once more');
+    const second = setup(db);
+    await second.service.start();
+    second.clock.now += 3000;
+    await second.service.scan(id);
+    expect(second.imports).toEqual([]);
+    expect(second.presentations.get(talk.presentationId)).toBeNull();
+    expect(second.playlists.itemsOf(id).map((i) => i.id)).toEqual([talk.id, item('Darshan.jpg')?.id]);
+    // Undo: each is back, and the next look takes its file as it is now, in place.
+    second.presentations.restore([talk.presentationId]);
+    expect(media.restore([cover.mediaId])).toEqual([cover.mediaId]);
+    second.playlists.restoreItems([clip.id]);
+    await second.settle(id);
+    expect(second.imports.flatMap((r) => r.paths.map((p) => basename(p))).sort()).toEqual([
+      'Clip.mp4',
+      'Cover.jpg',
+      'Talk.pptx',
+    ]);
+    expect(
+      second.playlists
+        .itemsOf(id)
+        .map((i) => i.id)
+        .sort(),
+    ).toEqual([talk.id, cover.id, clip.id, item('Darshan.jpg')?.id].sort());
+    second.service.stop();
   });
 });

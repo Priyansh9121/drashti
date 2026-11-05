@@ -167,6 +167,7 @@ import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './media/media-protocol';
+import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { saveStill } from './media/stills';
@@ -338,7 +339,8 @@ import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { ConvertService, readInfo } from './convert/convert-service';
-import { askPlaysHevc, HevcAnswer } from './convert/plays-hevc';
+import { HevcAnswer, playsHevcScript } from './convert/plays-hevc';
+import { askInOwnPage, type HevcPage } from './convert/hevc-page';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
@@ -1919,6 +1921,15 @@ function start(): void {
   const guideFiles = new GuideFiles(
     guidesDir({ packaged: packaged(), resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
   );
+  // Drashti's default opening photo (the owner's decision of 5 Nov 2026): beside an installed Drashti, in
+  // resources/opening in the repository, and a test's own picture in a test (opening/opening-photo.ts).
+  const openingPhoto = openingPhotoPlace({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    test: sw('DRASHTI_TEST_OPENING_PHOTO'),
+    testing: anyTestSwitch(),
+  });
   const serveMedia = async (request: Request) => {
     const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
@@ -1936,6 +1947,8 @@ function start(): void {
         const file = guideFiles.picture(name);
         return file ? { dir: guideFiles.dir, file } : null;
       },
+      // Drashti's default opening photo (only it, from its own folder).
+      openingPhoto: () => openingPhoto,
       warn: (message) => {
         log.warn(message);
       },
@@ -3081,7 +3094,9 @@ function start(): void {
     usable: (id) => playlists.tree().some((n) => n.id === id && !n.isFolder),
     empty: (id) => playlists.tree().find((n) => n.id === id)?.itemCount === 0,
     create: () => {
-      const id = playlists.createAtTop(freeName(playlists, simplePlaylistName(new Date())));
+      // Never named as a playlist the operator deleted (alpha.15): "Sabha, 30 Oct 2026 (2)" after the day's own was
+      // deleted, so the new, empty one is never taken for the deleted one come back after a restart.
+      const id = playlists.createAtTop(freeName(playlists, simplePlaylistName(new Date()), true));
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
       network?.hint('playlists');
       return id;
@@ -3347,12 +3362,17 @@ function start(): void {
   // Tests only (never a packaged Drashti): imports judge media by their headers alone, as before Session 50,
   // and nothing is converted by itself, so a test can try Convert as an operator does.
   const noConvertAtImport = !packaged() && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';
-  // Whether this computer plays HEVC video (Session 51): the operator window says once it has opened (below), and
-  // each import converts HEVC by itself where it cannot; one starting before the window has said waits for it (a
-  // moment at most). Tests only (never a packaged Drashti): the answer given ('1' plays, '0' cannot), as no test can
-  // rely on a real HEVC decoder.
+  // Whether this computer plays HEVC video (Session 51): Chromium says once the operator window has opened, asked in
+  // a page of its own (below, question 36), and each import converts HEVC by itself where it cannot; one starting
+  // before the answer waits for it (15 s at most). Tests only (never a packaged Drashti): the answer given ('1' plays,
+  // '0' cannot), as no test can rely on a real HEVC decoder.
   const testPlaysHevc = packaged() ? undefined : sw('DRASHTI_TEST_PLAYS_HEVC');
-  const hevc = new HevcAnswer(testPlaysHevc === '1' ? true : testPlaysHevc === '0' ? false : null);
+  const givenHevc = testPlaysHevc === '1' ? true : testPlaysHevc === '0' ? false : null;
+  // Tests only (question 36): the question's answer comes this late (DRASHTI_TEST_HEVC_ANSWER_MS), as Chromium's
+  // did on CI's Mac late in a run; with an answer given, that is what comes then, not known from the start.
+  const hevcHoldMs = swMs('DRASHTI_TEST_HEVC_ANSWER_MS');
+  const hevcTest = hevcHoldMs === null ? null : { holdMs: hevcHoldMs, given: givenHevc };
+  const hevc = new HevcAnswer(hevcTest === null ? givenHevc : null);
   const imports = new ImportService({
     spawn: spawnImportWorker,
     children: {
@@ -3680,6 +3700,8 @@ function start(): void {
       : { ok: false as const, message: 'Only the operator window can convert.' },
   );
   handle(IPC.media.conversions, () => conversions.list());
+  // Whether this computer plays HEVC video, once known (question 36: told again when it comes, below).
+  handle(IPC.media.playsHevc, () => hevc.now);
   handle(IPC.media.undoConversion, (e, id) =>
     fromOperator(e)
       ? conversions.undo(id)
@@ -6300,6 +6322,8 @@ function start(): void {
         : null;
     },
     hasCopy: (sha256) => existsSync(join(mediaDir, openingCopyPath(sha256))),
+    // With nothing chosen, Drashti's default photo; its file missing, the lamp, as before (and the log says so).
+    defaultPhoto: () => openingPhotoThere(openingPhoto),
     mediaDir,
     welcome: () => welcomeNow() || simpleStepsNow(),
     importPhotos: async (paths) => {
@@ -6616,6 +6640,35 @@ function start(): void {
     offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
+  // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
+  // has loaded, and again at its next load while it could not be told. Never of the operator window itself (question
+  // 36): Chromium holds the page that asks until the GPU process has said which video decoders it has (about 15 s on
+  // CI's Mac late in a run), so a page of its own asks (convert/hevc-page.ts), made before the audio player. The
+  // imports waiting for the answer go on then, and the operator window is told (Media offers to convert HEVC only once
+  // it knows this computer cannot play it).
+  let hevcPage: HevcPage | null = null;
+  const askHevc = () => {
+    if (hevc.now !== null || hevcPage !== null || quitStarted) return;
+    const page = askInOwnPage(playsHevcScript(hevcTest));
+    hevcPage = page;
+    void page.answer.then((answer) => {
+      hevcPage = null;
+      // Closed as Drashti quits: nothing to tell.
+      if (hevc.now !== null || quitStarted) return;
+      hevc.tell(answer);
+      if (answer === null) {
+        log.warn('Whether this computer plays HEVC video could not be told');
+        return;
+      }
+      sendToOperator(IPC.media.playsHevcChanged, answer);
+      log.info(
+        answer
+          ? 'This computer plays HEVC video'
+          : 'This computer cannot play HEVC video: imports convert it by itself',
+      );
+    });
+  };
+  if (hevc.now === null) operatorWindow.webContents.on('did-finish-load', askHevc);
   // The audio player once the operator window has loaded (or after 5 s whatever happens). Created
   // first, Chromium 152 can hand the operator window the audio player's list of sound outputs.
   let audioStarted = false;
@@ -6634,25 +6687,6 @@ function start(): void {
     operatorWindow.webContents.once('did-finish-load', () => {
       conversions.resumeWaiting();
     });
-  // Whether this computer plays HEVC video (Session 51): asked of the window as the media list asks it, unless a
-  // test gave the answer; again after a reload while it could not be told. Imports waiting for it go on then.
-  if (hevc.now === null) {
-    const contents = operatorWindow.webContents;
-    contents.on('did-finish-load', () => {
-      if (hevc.now !== null) return;
-      void askPlaysHevc((script) => contents.executeJavaScript(script)).then((answer) => {
-        if (hevc.now !== null) return;
-        hevc.tell(answer);
-        if (answer === null) log.warn('Whether this computer plays HEVC video could not be told');
-        else
-          log.info(
-            answer
-              ? 'This computer plays HEVC video'
-              : 'This computer cannot play HEVC video: imports convert it by itself',
-          );
-      });
-    });
-  }
   operatorWindow.webContents.once('did-finish-load', () => {
     holdPriority('with the operator window open');
   });
@@ -6682,6 +6716,8 @@ function start(): void {
     quitStarted = true;
     streaming.quitting();
     studio.quitting();
+    // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
+    hevcPage?.close();
     slideEditor?.quitting();
     const sourceQuit = documentQuit;
     if (

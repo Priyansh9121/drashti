@@ -14,6 +14,10 @@ import { realPlaceAsync } from './contained';
  * for the opening, Session 55); the library says which file that is, and it
  * is streamed with byte ranges, so video can seek. Whatever the library
  * says, nothing outside the media folder is served: every refusal is a 404.
+ * Two are not the library's, each served only from its own folder: a picture
+ * one of the guides shows (drashti-media://guide/<name>), and Drashti's
+ * default opening photo (drashti-media://opening-default/photo, the owner's
+ * decision of 5 Nov 2026: opening/opening-photo.ts).
  */
 
 /** What the library knows about a media item's file. */
@@ -50,6 +54,8 @@ export interface MediaProtocolDeps {
    * name no guide shows. `dir` is that folder: the file must be inside it.
    */
   guidePicture?: (name: string) => { dir: string; file: string } | null;
+  /** Drashti's default opening photo (opening/opening-photo.ts): its file, inside `dir`, or null for none. */
+  openingPhoto?: () => { dir: string; file: string } | null;
   /** Told about refusals that point at a broken or tampered library. */
   warn?: (message: string) => void;
 }
@@ -166,7 +172,9 @@ export type MediaRequest =
   /** A photo's copy at the operator window's size, for the opening (Session 55). */
   | { what: 'opening'; mediaId: string }
   /** A picture one of the guides shows (the guides inside Drashti, Sessions 31–36). */
-  | { what: 'guide'; name: string };
+  | { what: 'guide'; name: string }
+  /** Drashti's default opening photo (the owner's decision of 5 Nov 2026). */
+  | { what: 'opening-default' };
 
 /** What a drashti-media:// URL asks for, or null if it is not a URL Drashti makes. */
 export function mediaRequestOf(url: string): MediaRequest | null {
@@ -189,6 +197,7 @@ export function mediaRequestOf(url: string): MediaRequest | null {
     const name = parsed.pathname.slice(1);
     return /^[a-z0-9-]{1,80}\.png$/u.test(name) ? { what, name } : null;
   }
+  if (what === 'opening-default') return parsed.pathname === '/photo' ? { what } : null;
   const mediaId = parsed.pathname.slice(1);
   if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
   return what === 'media' || what === 'still' || what === 'blur' || what === 'opening'
@@ -248,6 +257,10 @@ async function fileFor(
 ): Promise<{ path: string; size: number } | null> {
   if (asked.what === 'guide') {
     const found = deps.guidePicture?.(asked.name) ?? null;
+    return found ? fileInside(found.dir, found.file) : null;
+  }
+  if (asked.what === 'opening-default') {
+    const found = deps.openingPhoto?.() ?? null;
     return found ? fileInside(found.dir, found.file) : null;
   }
   const { mediaId } = asked;

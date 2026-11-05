@@ -1,4 +1,6 @@
 import type { ConversionJob } from '../../../shared/convert';
+import { isHevc } from '../../../shared/convert';
+import type { MediaSummary } from '../../../shared/playlists';
 import { plural } from '../../../shared/text';
 
 /*
@@ -6,6 +8,19 @@ import { plural } from '../../../shared/text';
  * waits until it is converted, on its row in Media, on a playlist's item, in Audio and in the import report.
  * Until then it cannot go live: the library marks it as a file Drashti cannot play, and the show refuses it.
  */
+
+/**
+ * A file Drashti can convert: one it cannot play, not yet converted. HEVC only once this computer is known not to play
+ * it (`playsHevc` false: Windows without Microsoft's HEVC extension). Question 36: until Drashti knows, a moment after
+ * the start (null), HEVC is taken as playing, as an import takes it: never said unplayable, never offered.
+ */
+export function convertible(
+  m: Pick<MediaSummary, 'missing' | 'unplayable' | 'format' | 'convertedTo'>,
+  playsHevc: boolean | null,
+): boolean {
+  if (m.missing || m.convertedTo !== null) return false;
+  return m.unplayable !== null || (isHevc(m.format) && playsHevc === false);
+}
 
 /** A conversion waiting or going on. */
 export const jobBusy = (

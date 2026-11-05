@@ -333,7 +333,7 @@ export class ImportService {
       });
     };
     // Once it is known whether this computer plays HEVC (Session 51 review: an import in the first moments after
-    // the start waits for the window's answer, a moment at most).
+    // the start waits for the answer, convert/plays-hevc.ts, 15 s at most).
     if (this.deps.playsHevc)
       void this.deps.playsHevc().then(start, () => {
         start(null);

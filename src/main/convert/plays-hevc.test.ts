@@ -1,6 +1,7 @@
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { HEVC_TYPE } from '../../shared/convert';
-import { askPlaysHevc, HevcAnswer, PLAYS_HEVC_SCRIPT } from './plays-hevc';
+import { askPlaysHevc, HevcAnswer, PLAYS_HEVC_SCRIPT, playsHevcScript } from './plays-hevc';
 
 /*
  * Whether this computer plays HEVC video (Session 51), as the operator window's Chromium says: the import converts
@@ -24,6 +25,32 @@ describe('whether this computer plays HEVC', () => {
     expect(await askPlaysHevc(answer('maybe'))).toBe(true);
     expect(await askPlaysHevc(answer(''))).toBe(false);
     expect(asked).toEqual([PLAYS_HEVC_SCRIPT, PLAYS_HEVC_SCRIPT, PLAYS_HEVC_SCRIPT]);
+  });
+
+  it('a test’s question holds the page asking it first, then says the answer given, or Chromium’s (question 36)', () => {
+    // A page whose Chromium says `canPlay`.
+    const run = (script: string, canPlay: string): unknown =>
+      runInNewContext(script, {
+        document: { createElement: () => ({ canPlayType: () => canPlay }) },
+      }) as unknown;
+    expect(playsHevcScript()).toBe(PLAYS_HEVC_SCRIPT);
+    expect(run(playsHevcScript(), 'maybe')).toBe('maybe');
+    const started = Date.now();
+    expect(run(playsHevcScript({ holdMs: 80, given: null }), 'maybe')).toBe('maybe');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(80);
+    expect(run(playsHevcScript({ holdMs: 0, given: false }), 'probably')).toBe('');
+    expect(run(playsHevcScript({ holdMs: 0, given: true }), '')).toBe('probably');
+  });
+
+  it('asks the script it is given (a test’s), or the plain question', async () => {
+    const asked: string[] = [];
+    const run = (script: string) => {
+      asked.push(script);
+      return Promise.resolve('');
+    };
+    expect(await askPlaysHevc(run, 'a test’s question')).toBe(false);
+    expect(await askPlaysHevc(run)).toBe(false);
+    expect(asked).toEqual(['a test’s question', PLAYS_HEVC_SCRIPT]);
   });
 
   it('is not known when the window cannot answer (gone, or something else came back)', async () => {
