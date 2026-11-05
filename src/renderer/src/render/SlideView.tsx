@@ -33,6 +33,7 @@ import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { hasWords, revealLines, wordUnits } from './reveal';
 import { useMediaUrl } from './media-urls';
 import { useMeasureReport } from './measure';
+import { observeTextSizes } from './observe-text-sizes';
 import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
 import { standsUpright } from '../../../shared/text-runs';
@@ -433,11 +434,11 @@ export function useShrinkToFit(
       b.removeAttribute('data-fit');
       if (report) reportOver(1);
       else {
-        // Passive metadata must not force layout in every show commit. A replaced slide cancels its old read.
-        const frame = requestAnimationFrame(() => {
-          if (box.current === b && words.current === w && b.isConnected) reportOver(1);
+        // RAF runs before layout too. Use the browser's completed sizes without forcing a layout before paint.
+        return observeTextSizes(b, w, ({ height, wordsHeight }) => {
+          if (wordsHeight > height + 0.5) b.setAttribute('data-overset', '');
+          else b.removeAttribute('data-overset');
         });
-        return () => cancelAnimationFrame(frame);
       }
       return undefined;
     }
