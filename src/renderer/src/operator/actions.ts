@@ -237,11 +237,12 @@ export function runBack(): Promise<void> {
 
 /**
  * Simple Mode's Undo (Edit › Undo, its key): what Clear all took down while Put it back is offered (right after it),
- * else the Undo bar's last step (Session 55, Part 18: a row deleted, renamed or dragged in its playlist).
+ * else the last step made in Simple Mode (a row deleted, renamed or dragged in its playlist).
+ * Pro Mode's history stays available when the operator returns there.
  */
 export async function undoSimple(): Promise<void> {
   if (useEngine.getState().state?.canPutBack === true) return dispatch({ type: 'putBack' });
-  await undoRemoval();
+  await undoRemoval('simple');
 }
 
 export function runSimpleAction(action: OperatorAction, start: () => Promise<void>): Promise<void> {
