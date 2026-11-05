@@ -21,8 +21,8 @@ const getHeight=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'offsetHei
 let reads=0;
 Object.defineProperty(HTMLElement.prototype,'offsetHeight',{configurable:true,get(){if(this.dataset.measureWords==='yes'||this.parentElement?.dataset.testid==='stage-next'||this.parentElement?.dataset.testid==='stage-current')reads++;return getHeight.call(this)}});
 globalThis.runTextMeasure=async(on,reporting)=>{
- reads=0;let calls=0,snapshot;const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
- const done=new Promise(resolve=>{
+ reads=0;let calls=0,snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
+ const done=new Promise((resolve,reject)=>{fail=reject;
   function Probe(){const box=useRef(null),words=useRef(null);useShrinkToFit(box,words,{id:'placeholder-text',style:{shrinkToFit:on}});
    useLayoutEffect(()=>{snapshot={readsAtCommit:reads,reportsAtCommit:calls};resolve()});
    return <div ref={box} data-measure-box="yes" style={{width:160,height:16,overflow:'hidden'}}><div ref={words} data-measure-words="yes" style={{fontSize:'calc(24px * var(--fit, 1))',lineHeight:1.1}}>Placeholder words for a narrow box. Placeholder words for a narrow box.</div></div>
@@ -33,9 +33,9 @@ globalThis.runTextMeasure=async(on,reporting)=>{
  const box=host.querySelector('[data-measure-box]');const result={...snapshot,readsAfterPaint:reads,over:box.hasAttribute('data-overset'),fit:box.getAttribute('data-fit')};root.unmount();host.remove();return result;
 };
 globalThis.runStageMeasure=async(long)=>{
- reads=0;let snapshot;const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ reads=0;let snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
  const state={...initialEngineState(),next:{kind:'media',media:'video',label:long?'Placeholder river lantern '.repeat(36):'Placeholder'}};
- await new Promise(resolve=>{
+ await new Promise((resolve,reject)=>{fail=reject;
   function Probe(){useLayoutEffect(()=>{snapshot={readsAtCommit:reads};resolve()});return <StageView state={state}/>}
   root.render(<Probe/>);
  });
@@ -48,6 +48,7 @@ globalThis.runStageMeasure=async(long)=>{
     outfile: bundle,
     bundle: true,
     platform: 'browser',
+    jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"' },
     logLevel: 'silent',
   });
@@ -76,6 +77,7 @@ globalThis.runStageMeasure=async(long)=>{
   const app = await _electron.launch({ args: [bootstrap], env });
   try {
     const page = await app.firstWindow();
+    page.on('pageerror', (error) => console.log('Text fixture error:', error.message));
     await page.waitForLoadState('load');
     expect(
       await page.evaluate(() => (globalThis as unknown as { fixtureErrors: string[] }).fixtureErrors),
