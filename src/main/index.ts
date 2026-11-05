@@ -3348,10 +3348,10 @@ function start(): void {
   // Tests only (never a packaged Drashti): imports judge media by their headers alone, as before Session 50,
   // and nothing is converted by itself, so a test can try Convert as an operator does.
   const noConvertAtImport = !packaged() && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';
-  // Whether this computer plays HEVC video (Session 51): the operator window says once it has opened (below), and
-  // each import converts HEVC by itself where it cannot; one starting before the window has said waits for it (a
-  // moment at most). Tests only (never a packaged Drashti): the answer given ('1' plays, '0' cannot), as no test can
-  // rely on a real HEVC decoder.
+  // Whether this computer plays HEVC video (Session 51): Chromium says once the operator window has opened, asked in
+  // a page of its own (below, question 36), and each import converts HEVC by itself where it cannot; one starting
+  // before the answer waits for it (15 s at most). Tests only (never a packaged Drashti): the answer given ('1' plays,
+  // '0' cannot), as no test can rely on a real HEVC decoder.
   const testPlaysHevc = packaged() ? undefined : sw('DRASHTI_TEST_PLAYS_HEVC');
   const givenHevc = testPlaysHevc === '1' ? true : testPlaysHevc === '0' ? false : null;
   // Tests only (question 36): the question's answer comes this late (DRASHTI_TEST_HEVC_ANSWER_MS), as Chromium's
