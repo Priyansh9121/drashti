@@ -3,14 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mediaUrl } from '../../shared/media';
-import { openingPhotoUrl } from '../../shared/opening';
+import { OPENING_DEFAULT_PHOTO_URL, openingPhotoUrl } from '../../shared/opening';
 import { openingCopyPath } from './opening-files';
 import { type OpeningServiceDeps, OpeningService } from './opening-service';
 
 /*
  * The opening in the main process (Session 55, the owner's brief of 3 Nov 2026): decided once a start, the version
  * that started recorded for the next, each photo from its copy at the window's size (its whole file until that is
- * made), File › Opening…'s choices checked whole, and Load the opening pack…. Its words never reach the log.
+ * made), with nothing chosen Drashti's default photo alone (the owner's decision of 5 Nov 2026; the lamp should its
+ * file be missing), File › Opening…'s choices checked whole, and Load the opening pack…. Its words never reach the log.
  * Placeholder words and generated files only.
  */
 
@@ -25,8 +26,17 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/** What plays with nothing chosen: the default photo alone. */
+const DEFAULT_PHOTO = { photos: [OPENING_DEFAULT_PHOTO_URL], lines: [], defaultPhoto: true };
+
 function service(
-  o: { kept?: unknown; lastVersion?: string | null; boot?: Partial<OpeningServiceDeps['boot']> } = {},
+  o: {
+    kept?: unknown;
+    lastVersion?: string | null;
+    boot?: Partial<OpeningServiceDeps['boot']>;
+    /** Whether the default photo's file is there (it is, unless a test says not). */
+    defaultPhoto?: boolean;
+  } = {},
 ) {
   const store = new Map<string, unknown>();
   if (o.kept !== undefined) store.set('opening', o.kept);
@@ -57,6 +67,7 @@ function service(
       return n === undefined ? null : { sha256: SHA(n), name: `Placeholder ${String(n)}.jpg` };
     },
     hasCopy: (sha) => copies.has(sha),
+    defaultPhoto: () => o.defaultPhoto ?? true,
     mediaDir: dir,
     welcome: () => welcome,
     importPhotos: (paths) => {
@@ -97,10 +108,23 @@ describe('as Drashti starts', () => {
     expect(s.lines.join(' ')).not.toContain('Placeholder');
   });
 
-  it('with nothing chosen it plays the lamp', () => {
+  it('with nothing chosen it plays the default photo alone, no words; its file missing, the lamp as before, said', () => {
     const s = service();
-    expect(s.opening.atStart(START)).toEqual({ photos: [], lines: [] });
-    expect(s.lines).toEqual(['Opening: plays (the lamp, 0 lines)']);
+    expect(s.opening.atStart(START)).toEqual(DEFAULT_PHOTO);
+    expect(s.lines).toEqual(['Opening: plays (the default photo)']);
+    const missing = service({ defaultPhoto: false });
+    expect(missing.opening.atStart(START)).toEqual({ photos: [], lines: [] });
+    expect(missing.lines).toEqual([
+      'Opening: plays (the lamp, 0 lines; the default photo’s file is missing)',
+    ]);
+    // Lines with no photo: the lamp and its lines, as before (the default photo never has words over it).
+    const lines = service({ kept: { lines: ['Placeholder line'] } });
+    expect(lines.opening.atStart(START)).toEqual({ photos: [], lines: ['Placeholder line'] });
+    expect(lines.lines).toEqual(['Opening: plays (the lamp, 1 line)']);
+    // Photos chosen (a pack loaded) that have all left Media, and no line: the default photo.
+    const gone = service({ kept: { photos: ['gone-1'] } });
+    expect(gone.opening.atStart(START)).toEqual(DEFAULT_PHOTO);
+    expect(gone.lines).toEqual(['Opening: plays (the default photo; 1 photo no longer in Media left out)']);
   });
 
   it('records the version that started for the next start, and never plays at a version’s first start', () => {
@@ -121,7 +145,7 @@ describe('as Drashti starts', () => {
     expect(crash.lines).toEqual(['Opening: not played (after an unexpected stop)']);
     // A stop longer ago (the computer switched off with Drashti open, the day before): it plays.
     const yesterday = service({ boot: { cleanQuit: false, recentStop: false } });
-    expect(yesterday.opening.atStart(START)).toEqual({ photos: [], lines: [] });
+    expect(yesterday.opening.atStart(START)).toEqual(DEFAULT_PHOTO);
     const welcome = service();
     welcome.setWelcome(true);
     expect(welcome.opening.atStart(START)).toBeNull();
@@ -142,7 +166,11 @@ describe('File › Opening…', () => {
         { mediaId: 'gone-1', name: '', ready: false, gone: true },
       ],
       lines: ['Placeholder'],
+      defaultPhoto: true,
     });
+    // Nothing chosen: its preview plays the default photo, while its file is there.
+    expect(service().opening.view()).toEqual({ on: true, photos: [], lines: [], defaultPhoto: true });
+    expect(service({ defaultPhoto: false }).opening.view()).toMatchObject({ defaultPhoto: false });
   });
 
   it('keeps photos and lines checked whole: a picture in Media only, lines made tidy, empty ones left out', () => {

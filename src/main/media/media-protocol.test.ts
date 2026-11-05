@@ -16,7 +16,7 @@ import {
   stillUrl,
   VIDEO_EXTENSIONS,
 } from '../../shared/media';
-import { openingPhotoUrl } from '../../shared/opening';
+import { OPENING_DEFAULT_PHOTO_URL, openingPhotoUrl } from '../../shared/opening';
 import type { MediaFileRow, MediaProtocolDeps } from './media-protocol';
 import {
   contentTypeOf,
@@ -174,6 +174,39 @@ describe('drashti-media:// requests', () => {
     for (const id of ['noStill', 'badSha', 'empty', 'missing', 'stale', 'nobody'])
       expect((await get(openingPhotoUrl(id))).status, id).toBe(404);
     expect(mediaRequestOf('drashti-media://opening/image%2F..%2Fx')).toBeNull();
+  });
+
+  it('serves the default opening photo from its own place (the owner’s decision of 5 Nov 2026), and only it', async () => {
+    // A generated picture in a folder of its own, as a test's own (never Drashti's photo).
+    const place = join(root, 'opening-photo');
+    mkdirSync(place, { recursive: true });
+    const PHOTO = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 4, 2, 0xff, 0xd9]);
+    writeFileSync(join(place, 'default.jpg'), PHOTO);
+    expect(mediaRequestOf(OPENING_DEFAULT_PHOTO_URL)).toEqual({ what: 'opening-default' });
+    for (const url of [
+      'drashti-media://opening-default/other.jpg',
+      'drashti-media://opening-default/',
+      'drashti-media://opening-default/photo/x',
+    ])
+      expect(mediaRequestOf(url), url).toBeNull();
+    // None given (an older caller), or its file missing: 404, as any file that is not there.
+    expect((await get(OPENING_DEFAULT_PHOTO_URL)).status).toBe(404);
+    const served = { ...deps, openingPhoto: () => ({ dir: place, file: join(place, 'default.jpg') }) };
+    const res = await handleMediaRequest(new Request(OPENING_DEFAULT_PHOTO_URL), served);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg');
+    expect(await bytesOf(res)).toEqual(PHOTO);
+    for (const at of [
+      { dir: place, file: join(place, 'missing.jpg') },
+      { dir: place, file: join(root, 'outside', 'secret.txt') },
+      null,
+    ]) {
+      const refused = await handleMediaRequest(new Request(OPENING_DEFAULT_PHOTO_URL), {
+        ...deps,
+        openingPhoto: () => at,
+      });
+      expect(refused.status, JSON.stringify(at)).toBe(404);
+    }
   });
 
   it('serves byte ranges, which video seeking needs', async () => {

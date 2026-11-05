@@ -5,6 +5,7 @@ import {
   OPENING_PHOTOS_MAX,
   type OpeningPlan,
   openingPhotoUrl,
+  openingPlanOf,
   type OpeningView,
 } from '../../../shared/opening';
 import { MediaPicker } from '../editor/MediaPicker';
@@ -16,6 +17,7 @@ import { ChevronLeft, ChevronRight, FolderOpen, ImagePlus, Play, X } from '../ui
 import { motionOff } from '../ui/motion';
 import { Notice } from '../ui/Notice';
 import { Toggle } from '../ui/Toggle';
+import { cx } from '../ui/cx';
 import { copyFailed } from './copies';
 import { closeOpening, connectOpening, loadPack, take, useOpening } from './opening-store';
 import { OpeningPlayer } from './OpeningPlayer';
@@ -23,7 +25,8 @@ import { OpeningPlayer } from './OpeningPlayer';
 /*
  * File › Opening… (Session 55, Pro Mode): whether Drashti opens with its five seconds, its photos (from Media, up to
  * eight, in order) and its lines (up to five, in Gujarati, Hindi or English), a preview of it, and Load the opening
- * pack…, which makes the pack's photos and lines the opening's only ones. Every change is kept at once.
+ * pack…, which makes the pack's photos and lines the opening's only ones. Every change is kept at once. With nothing
+ * chosen, its preview is Drashti's default photo (the owner's decision of 5 Nov 2026), as the opening plays it.
  */
 
 export function OpeningDialog() {
@@ -36,14 +39,15 @@ export function OpeningDialog() {
   return <OpeningForm view={view} />;
 }
 
-/** The plan as it would play now: each photo's copy once made (its whole file until then). */
+/** The plan as it would play now: each photo's copy once made (its whole file until then); with nothing chosen, the default photo. */
 function planOf(view: OpeningView): OpeningPlan {
-  return {
-    photos: view.photos
+  return openingPlanOf(
+    view.photos
       .filter((p) => !p.gone)
       .map((p) => (p.ready ? openingPhotoUrl(p.mediaId) : mediaUrl(p.mediaId))),
-    lines: view.lines,
-  };
+    view.lines,
+    view.defaultPhoto,
+  );
 }
 
 function OpeningForm({ view }: { view: OpeningView }) {
@@ -91,7 +95,7 @@ function OpeningForm({ view }: { view: OpeningView }) {
         <p className="text-sm text-muted">
           For five seconds as Drashti starts, the mandir’s own photos and lines, on this screen only: never on
           the hall’s screens, a node, the stream or a phone. Any key, click or tap ends it at once. With
-          nothing chosen, Drashti’s lamp lights.
+          nothing chosen, Drashti’s default photo comes in, with no words over it.
         </p>
         <Toggle
           checked={view.on}
@@ -117,7 +121,12 @@ function OpeningForm({ view }: { view: OpeningView }) {
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
                 {plan.photos[0] ? (
-                  <img src={plan.photos[0]} alt="" draggable={false} className="size-full object-cover" />
+                  <img
+                    src={plan.photos[0]}
+                    alt=""
+                    draggable={false}
+                    className={cx('size-full', plan.defaultPhoto ? 'object-contain' : 'object-cover')}
+                  />
                 ) : (
                   'The lamp lights'
                 )}
