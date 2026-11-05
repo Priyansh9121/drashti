@@ -34,14 +34,15 @@ globalThis.runTextMeasure=async(on,reporting)=>{
 };
 globalThis.runStageMeasure=async(long)=>{
  reads=0;let snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
- const state={...initialEngineState(),next:{kind:'media',media:'video',label:long?'Placeholder river lantern '.repeat(36):'Placeholder'}};
+ const slide={id:'placeholder-stage',width:1920,height:1080,background:null,elements:[{id:'placeholder-words',kind:'text',lang:'en',text:long?'Placeholder river lantern line\\n'.repeat(24):'Placeholder',frame:{x:0,y:0,width:1920,height:1080},opacity:1,rotation:0,style:{fontFamily:null,fontSize:80,fontWeight:400,lineHeight:1.35,color:'#ffffff',align:'center',verticalAlign:'center'}}]};
+ const state={...initialEngineState(),next:{kind:'slide',slide}};
  await new Promise((resolve,reject)=>{fail=reject;
   function Probe(){useLayoutEffect(()=>{snapshot={readsAtCommit:reads};resolve()});return <StageView state={state}/>}
   root.render(<Probe/>);
  });
  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
  const box=host.querySelector('[data-testid="stage-next"]'),words=box.firstElementChild;
- const result={...snapshot,readsAfterPaint:reads,fit:box.getAttribute('data-stage-fit'),over:getHeight.call(words)>box.clientHeight+0.5};root.unmount();host.remove();return result;
+ const result={...snapshot,readsAfterPaint:reads,fit:box.getAttribute('data-stage-fit'),wordsHeight:getHeight.call(words),boxHeight:box.clientHeight,over:getHeight.call(words)>box.clientHeight+0.5};root.unmount();host.remove();return result;
 };`;
   buildSync({
     stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
@@ -142,7 +143,8 @@ globalThis.runStageMeasure=async(long)=>{
     expect(shortStage.fit).toBeNull();
     expect(shortStage.over).toBe(false);
     const longStage = await stage(true);
-    expect(longStage.readsAtCommit).toBe(0);
+    console.log('Stage fit measurements:', { short: shortStage, long: longStage });
+    expect.soft(longStage.readsAtCommit, 'long stage words must wait for observed layout').toBe(0);
     expect(Number(longStage.fit)).toBeGreaterThan(0);
     expect(Number(longStage.fit)).toBeLessThan(1);
     expect(longStage.over).toBe(false);

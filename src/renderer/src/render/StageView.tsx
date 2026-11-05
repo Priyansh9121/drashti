@@ -185,7 +185,7 @@ function StageFit({ testId, children }: { testId: string; children: ReactNode })
     const words = b.firstElementChild;
     if (!(words instanceof HTMLElement)) return;
     return observeTextSizes(b, words, ({ width, height, wordsHeight }) => {
-      const key = `${String(fontsLoaded)} ${width} ${height} ${words.textContent ?? ''}`;
+      const key = `${String(fontsLoaded)} ${width} ${height} ${words.textContent}`;
       const previous = measured.current;
       // Ignore our own fit's resize, and unchanged clock redraws. External text/font/size changes still refit.
       if (previous?.key === key && Math.abs(previous.wordsHeight - wordsHeight) <= 0.5) return;
