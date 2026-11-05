@@ -2,24 +2,46 @@ import { HEVC_TYPE } from '../../shared/convert';
 
 /*
  * Whether this computer plays HEVC video (Session 51). Chromium decodes HEVC only where the computer can (most Macs
- * do; Windows needs Microsoft's HEVC extension), and only a window can ask it: the media list asks so to offer
- * Convert (renderer convert-store.ts playsHevc). The main process asks the operator window the same question once
- * it has opened, and each import is told: where it cannot play, HEVC is converted by itself, as any file Drashti
- * cannot play; where it can, it plays as it is. An import starting before the window has said waits for the answer
- * (Session 51 review: a smart playlist's or the drop folder's first look, a few seconds after the start, took HEVC
+ * do; Windows needs Microsoft's HEVC extension), and only a page can ask it. The main process asks once the operator
+ * window has opened, in a page of its own (question 36: hevc-page.ts; the operator window, which Chromium would hold
+ * until the GPU process has said which video decoders it has, never asks), and each import is told: where it cannot
+ * play, HEVC is converted by itself, as any file Drashti cannot play; where it can, it plays as it is. The media list
+ * is told too, to offer Convert (renderer converting.ts convertible). An import starting before the answer waits for
+ * it (Session 51 review: a smart playlist's or the drop folder's first look, a few seconds after the start, took HEVC
  * as it was), at most HEVC_WAIT_MS.
  */
 
-/** The longest an import waits for the window's answer before it goes on without it. */
+/** The longest an import waits for the answer before it goes on without it. */
 export const HEVC_WAIT_MS = 15_000;
 
 /** The question, as the media list asks it: Chromium's answer is "probably", "maybe" or nothing. */
 export const PLAYS_HEVC_SCRIPT = `document.createElement('video').canPlayType(${JSON.stringify(HEVC_TYPE)})`;
 
+/** A test's HEVC question (never a packaged Drashti's): how late its answer comes, and what it says. */
+export interface HevcTest {
+  /**
+   * The page that asks it is held this long before it answers, as Chromium holds it until the GPU process has said
+   * which video decoders it has (question 36 of Session 54: about 15 s on CI's Mac late in a run).
+   */
+  holdMs: number;
+  /** The answer the page then gives (a test cannot rely on a real HEVC decoder), or null: Chromium's own. */
+  given: boolean | null;
+}
+
+/** The question as a page runs it: the plain question, or a test's (held, and with its answer if given). */
+export function playsHevcScript(test: HevcTest | null = null): string {
+  if (test === null) return PLAYS_HEVC_SCRIPT;
+  const answer = test.given === null ? PLAYS_HEVC_SCRIPT : JSON.stringify(test.given ? 'probably' : '');
+  return `(() => { const until = Date.now() + ${String(Math.max(0, Math.round(test.holdMs)))}; while (Date.now() < until); return ${answer}; })()`;
+}
+
 /** Ask a window (`run` runs a script in it): whether it plays HEVC, or null when it cannot be told. */
-export async function askPlaysHevc(run: (script: string) => Promise<unknown>): Promise<boolean | null> {
+export async function askPlaysHevc(
+  run: (script: string) => Promise<unknown>,
+  script: string = PLAYS_HEVC_SCRIPT,
+): Promise<boolean | null> {
   try {
-    const answer = await run(PLAYS_HEVC_SCRIPT);
+    const answer = await run(script);
     return typeof answer === 'string' ? answer !== '' : null;
   } catch {
     return null;

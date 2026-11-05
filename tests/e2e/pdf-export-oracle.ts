@@ -45,7 +45,9 @@ export async function inspectPdf(file: string): Promise<PdfRasterPage[]> {
     data: new Uint8Array(readFileSync(file)),
     useWorkerFetch: false,
     useSystemFonts: false,
-    disableFontFace: false,
+    // Node has no font loading API: with font faces PDF.js draws text in the canvas's own fallback font, which drew
+    // no glyphs on CI's Windows (5 Nov 2026). The glyph outlines from each font program draw alike everywhere.
+    disableFontFace: true,
     ...nodePdfAssets(root),
   });
   try {

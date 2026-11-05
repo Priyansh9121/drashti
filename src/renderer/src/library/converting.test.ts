@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ConversionJob } from '../../../shared/convert';
 import {
   convertedSummary,
+  convertible,
   convertingWords,
   copyFor,
   jobBusy,
@@ -95,5 +96,30 @@ describe('a file Drashti converts (Session 50)', () => {
     expect(offeredForUndo(job({ ...done, byItself: true }))).toBe(false);
     expect(offeredForUndo(job({ state: 'converting', conversionId: null }))).toBe(false);
     expect(offeredForUndo(job({ state: 'done', conversionId: null }))).toBe(false);
+  });
+});
+
+describe('what Media offers to convert (question 36)', () => {
+  const file = (over: Partial<Parameters<typeof convertible>[0]> = {}) => ({
+    missing: false,
+    unplayable: null,
+    format: 'HEVC (H.265) video (QuickTime)',
+    convertedTo: null,
+    ...over,
+  });
+
+  it('HEVC only once this computer is known not to play it: never while that is not known yet, nor where it plays', () => {
+    expect(convertible(file(), false)).toBe(true);
+    expect(convertible(file(), null)).toBe(false);
+    expect(convertible(file(), true)).toBe(false);
+  });
+
+  it('a file Drashti cannot play whatever the answer; never one missing, converted already, or that plays', () => {
+    for (const plays of [true, false, null]) {
+      expect(convertible(file({ format: 'AVI video', unplayable: 'AVI video' }), plays)).toBe(true);
+      expect(convertible(file({ missing: true }), plays)).toBe(false);
+      expect(convertible(file({ convertedTo: 'Placeholder phone.mp4' }), plays)).toBe(false);
+      expect(convertible(file({ format: 'H.264 video (MP4)' }), plays)).toBe(false);
+    }
   });
 });

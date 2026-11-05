@@ -1,7 +1,5 @@
 import { create } from 'zustand';
 import type { ConversionJob } from '../../../shared/convert';
-import { HEVC_TYPE, isHevc } from '../../../shared/convert';
-import type { MediaSummary } from '../../../shared/playlists';
 import { offeredForUndo } from './converting';
 import { pushRemoval } from './undo';
 
@@ -11,36 +9,22 @@ import { pushRemoval } from './undo';
  * conversion that finished.
  */
 
-// The newest job for a media item (Session 50: in converting.ts, with what a converting file says).
-export { jobFor } from './converting';
+// The newest job for a media item, and what can be converted (Session 50: in converting.ts, with what a converting
+// file says).
+export { convertible, jobFor } from './converting';
 
 interface ConvertStore {
   jobs: ConversionJob[];
   error: string | null;
+  /**
+   * Whether this computer plays HEVC video (most Macs do; Windows needs Microsoft's HEVC extension), as the main
+   * process says: null until it knows. Question 36: this window never asks Chromium itself, which would hold it until
+   * the GPU process has said which video decoders it has (about 15 s on CI's Mac late in a run).
+   */
+  playsHevc: boolean | null;
 }
 
-export const useConvert = create<ConvertStore>(() => ({ jobs: [], error: null }));
-
-/** Whether this computer plays HEVC video (most Macs do; Windows needs Microsoft's HEVC extension). */
-let hevc: boolean | null = null;
-export function playsHevc(): boolean {
-  if (hevc === null) {
-    try {
-      hevc = document.createElement('video').canPlayType(HEVC_TYPE) !== '';
-    } catch {
-      hevc = false;
-    }
-  }
-  return hevc;
-}
-
-/** A file Drashti can convert: one it cannot play (HEVC only where this computer cannot), not yet converted. */
-export function convertible(
-  m: Pick<MediaSummary, 'missing' | 'unplayable' | 'format' | 'convertedTo'>,
-): boolean {
-  if (m.missing || m.convertedTo !== null) return false;
-  return m.unplayable !== null || (isHevc(m.format) && !playsHevc());
-}
+export const useConvert = create<ConvertStore>(() => ({ jobs: [], error: null, playsHevc: null }));
 
 const undoable = new Set<string>();
 let connected = false;
@@ -70,6 +54,13 @@ export function connectConversions(): void {
   if (connected) return;
   connected = true;
   window.drashti.media.onConversions(accept);
+  // Whether this computer plays HEVC: known now, or told once it is (a moment after the start).
+  window.drashti.media.onPlaysHevc((playsHevc) => {
+    useConvert.setState({ playsHevc });
+  });
+  void window.drashti.media.playsHevc().then((playsHevc) => {
+    if (playsHevc !== null) useConvert.setState({ playsHevc });
+  });
   void window.drashti.media.conversions().then((jobs) => {
     // Conversions already finished before this window opened are not offered for Undo here.
     for (const j of jobs) if (j.conversionId) undoable.add(j.conversionId);

@@ -76,6 +76,7 @@ export function CannotPlayBadge({ mediaId }: { mediaId: string }) {
 
 /** Convert (Try again after a failure), or Cancel while it waits or converts, at the end of a row. */
 function ConvertControl({ m, job }: { m: MediaSummary; job: ConversionJob | undefined }) {
+  const playsHevc = useConvert((s) => s.playsHevc);
   if (jobBusy(job))
     return (
       <IconButton
@@ -85,7 +86,7 @@ function ConvertControl({ m, job }: { m: MediaSummary; job: ConversionJob | unde
         onClick={() => void cancelConversion(job.id)}
       />
     );
-  if (!convertible(m)) return null;
+  if (!convertible(m, playsHevc)) return null;
   return (
     <Button
       size="sm"
@@ -103,6 +104,7 @@ function ConvertControl({ m, job }: { m: MediaSummary; job: ConversionJob | unde
 
 /** A row's second line: what the file is, or how converting it is going, or what it became. */
 function MediaNote({ m, job }: { m: MediaSummary; job: ConversionJob | undefined }) {
+  const playsHevc = useConvert((s) => s.playsHevc);
   const line = 'block truncate text-xs';
   if (m.convertedTo !== null)
     return (
@@ -140,7 +142,7 @@ function MediaNote({ m, job }: { m: MediaSummary; job: ConversionJob | undefined
         {job.message ?? 'Could not convert it'}
       </span>
     );
-  if (convertible(m))
+  if (convertible(m, playsHevc))
     return (
       <span
         className={`${line} text-warning-fg`}
@@ -315,7 +317,8 @@ function MediaFiles({ platform }: { platform: string }) {
   });
   const jobs = useConvert((s) => s.jobs);
   const convertError = useConvert((s) => s.error);
-  const toConvert = media.filter((m) => convertible(m) && !jobBusy(jobFor(jobs, m.id)));
+  const playsHevc = useConvert((s) => s.playsHevc);
+  const toConvert = media.filter((m) => convertible(m, playsHevc) && !jobBusy(jobFor(jobs, m.id)));
   const going = jobs.filter(jobBusy);
 
   useEffect(() => {
