@@ -338,7 +338,7 @@ import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { ConvertService, readInfo } from './convert/convert-service';
-import { askPlaysHevc, HevcAnswer } from './convert/plays-hevc';
+import { askPlaysHevc, HevcAnswer, playsHevcScript } from './convert/plays-hevc';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
@@ -3352,7 +3352,12 @@ function start(): void {
   // moment at most). Tests only (never a packaged Drashti): the answer given ('1' plays, '0' cannot), as no test can
   // rely on a real HEVC decoder.
   const testPlaysHevc = packaged() ? undefined : sw('DRASHTI_TEST_PLAYS_HEVC');
-  const hevc = new HevcAnswer(testPlaysHevc === '1' ? true : testPlaysHevc === '0' ? false : null);
+  const givenHevc = testPlaysHevc === '1' ? true : testPlaysHevc === '0' ? false : null;
+  // Tests only (question 36): the question's answer comes this late (DRASHTI_TEST_HEVC_ANSWER_MS), as Chromium's
+  // did on CI's Mac late in a run; with an answer given, that is what comes then, not known from the start.
+  const hevcHoldMs = swMs('DRASHTI_TEST_HEVC_ANSWER_MS');
+  const hevcTest = hevcHoldMs === null ? null : { holdMs: hevcHoldMs, given: givenHevc };
+  const hevc = new HevcAnswer(hevcTest === null ? givenHevc : null);
   const imports = new ImportService({
     spawn: spawnImportWorker,
     children: {
@@ -6640,17 +6645,19 @@ function start(): void {
     const contents = operatorWindow.webContents;
     contents.on('did-finish-load', () => {
       if (hevc.now !== null) return;
-      void askPlaysHevc((script) => contents.executeJavaScript(script)).then((answer) => {
-        if (hevc.now !== null) return;
-        hevc.tell(answer);
-        if (answer === null) log.warn('Whether this computer plays HEVC video could not be told');
-        else
-          log.info(
-            answer
-              ? 'This computer plays HEVC video'
-              : 'This computer cannot play HEVC video: imports convert it by itself',
-          );
-      });
+      void askPlaysHevc((script) => contents.executeJavaScript(script), playsHevcScript(hevcTest)).then(
+        (answer) => {
+          if (hevc.now !== null) return;
+          hevc.tell(answer);
+          if (answer === null) log.warn('Whether this computer plays HEVC video could not be told');
+          else
+            log.info(
+              answer
+                ? 'This computer plays HEVC video'
+                : 'This computer cannot play HEVC video: imports convert it by itself',
+            );
+        },
+      );
     });
   }
   operatorWindow.webContents.once('did-finish-load', () => {
