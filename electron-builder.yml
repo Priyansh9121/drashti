@@ -12,6 +12,13 @@ files:
 extraResources:
   - from: LICENSES
     to: licenses
+  # Drashti's default opening photo (the owner's decision of 5 Nov 2026; LICENSES/opening/): a photograph of
+  # Swamishri, by BAPS, which the opening shows when nothing is chosen, read by the main process
+  # (src/main/opening/opening-photo.ts). The photo alone; on the Mac and Windows both.
+  - from: resources/opening
+    to: opening
+    filter:
+      - default.jpg
   # The guides inside Drashti (Sessions 31–36): the four guides and only the pictures they show, read by the
   # main process (src/main/guides.ts) and never served to phones. src/main/guides.test.ts keeps this list
   # the same as what the guides show.

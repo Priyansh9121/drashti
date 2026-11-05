@@ -11,14 +11,17 @@ import { cutText } from './text';
  * by side, do the lines (five of each: each photo with its own line, a second each; the owner's pack of 4 Nov, eight
  * photos and five lines: a photo every 625 ms under a line a second). Each photo comes in over the one before and
  * slowly zooms, a soft light sweeps across it once, a few sparkles glint, and each line comes in word by word with one
- * of the Lower Thirds studio's moves, in the studio's Noto Serif (its Gujarati and Devanagari faces). With no photo,
- * Drashti's own lamp lights, its lines (or Drashti's name) after it. With reduced motion, or the Appearance window's
+ * of the Lower Thirds studio's moves, in the studio's Noto Serif (its Gujarati and Devanagari faces). With nothing
+ * chosen, Drashti's default photo (the owner's decision of 5 Nov 2026) comes in alone and slowly zooms, with no words,
+ * name or logo over it; should its file be missing, Drashti's own lamp lights with Drashti's name, as it did before.
+ * With lines and no photo, the lamp lights, its lines after it. With reduced motion, or the Appearance window's
  * Interface motion Off, the first photo stays still and the lines fade in, one after another.
  *
  * Only opacity and transform move, each as one Web Animation the compositor plays, so the window's own start goes on
  * beside it; and nothing in it swings in light more than once a second, far under the three a second the screens are
- * held to (shared/flash.ts). Drashti ships no photos and no words for it: the opening pack the owner gives each
- * mandir (photos/1.jpg to 8.jpg and words.txt) is loaded on the setup day.
+ * held to (shared/flash.ts). Drashti ships one photo for it, its default (a photograph of Swamishri, by BAPS:
+ * LICENSES/opening, and main/opening/opening-photo.ts), and no words: the opening pack the owner gives each mandir
+ * (photos/1.jpg to 8.jpg and words.txt), loaded on the setup day, replaces it.
  */
 
 /** The whole opening, in ms. */
@@ -51,7 +54,7 @@ export interface OpeningSetting {
   lines: string[];
 }
 
-/** Nothing kept: on, with nothing chosen (the lamp). */
+/** Nothing kept: on, with nothing chosen (the default photo). */
 export const OPENING_DEFAULT: OpeningSetting = { on: true, photos: [], lines: [] };
 
 /** A line as kept: its spaces made single, trimmed, NFC, and cut to the limit between letters. */
@@ -102,16 +105,37 @@ export interface OpeningPlan {
   lines: string[];
   /** The hall's screens are still getting ready: it waits for them (OPENING_HOLD_MS at most) before it moves. */
   hold?: boolean;
+  /** Drashti's default photo, nothing being chosen: the photo alone, no words, name, light or sparkles over it. */
+  defaultPhoto?: boolean;
+}
+
+/** Drashti's default photo, as the operator window asks for it (main/opening/opening-photo.ts says where it is). */
+export const OPENING_DEFAULT_PHOTO_URL = `${MEDIA_SCHEME}://opening-default/photo`;
+
+/**
+ * What plays, given the photos (their URLs) and lines chosen: those; with neither (nothing chosen, or every chosen photo
+ * gone from Media), Drashti's default photo alone (the owner's decision of 5 Nov 2026), or, its file missing
+ * (`defaultPhoto` false), the lamp and Drashti's name, as before. Lines alone light the lamp, as before: the default
+ * photo never has words over it.
+ */
+export function openingPlanOf(photos: string[], lines: string[], defaultPhoto: boolean): OpeningPlan {
+  if (photos.length === 0 && lines.length === 0 && defaultPhoto)
+    return { photos: [OPENING_DEFAULT_PHOTO_URL], lines: [], defaultPhoto: true };
+  return { photos, lines };
 }
 
 /** How it ended, for the log: by itself, or a key, a click or a tap. */
 export type OpeningEnd = 'itself' | 'key' | 'click';
 
-/** File › Opening…'s view: the switch; each photo, its name, whether its copy is made and whether it left Media. */
+/**
+ * File › Opening…'s view: the switch; each photo, its name, whether its copy is made and whether it left Media; and
+ * whether Drashti's default photo is there (what plays with nothing chosen).
+ */
 export interface OpeningView {
   on: boolean;
   photos: { mediaId: string; name: string; ready: boolean; gone: boolean }[];
   lines: string[];
+  defaultPhoto: boolean;
 }
 
 export type OpeningResult = { ok: true; view: OpeningView } | { ok: false; message: string };

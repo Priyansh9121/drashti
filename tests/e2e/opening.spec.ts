@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { swings } from '../../src/shared/flash';
+import { OPENING_DEFAULT_PHOTO_URL } from '../../src/shared/opening';
 import { RECOVERY_MAX_AGE_MS } from '../../src/shared/recovery';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
@@ -19,6 +20,7 @@ import {
   relaunchApp,
   setUpScreen,
 } from './helpers';
+import { PLACEHOLDER_OPENING_PHOTO } from './opening-photo';
 import { lightOf } from './pixels';
 import { drawPicture, engineState, goLive, halves, makeSlides, plain } from './placeholder-slides';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -29,8 +31,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * (Space never puts up the next slide); never after an unexpected stop, at a new version's first start, when the
  * window is loaded again, or with a library's first welcome; in Simple Mode too; still with reduced motion or
  * Interface motion Off; never more than three swings of light a second; and File › Opening…, with its preview and
- * Load the opening pack…. A test sees it only when it asks (DRASHTI_TEST_OPENING=1). Generated pictures and
- * placeholder words only: the mandir's own pack never comes near a test.
+ * Load the opening pack…. With nothing chosen, Drashti's default photo alone (the owner's decision of 5 Nov 2026),
+ * the lamp should its file be missing. A test sees it only when it asks (DRASHTI_TEST_OPENING=1). Generated pictures
+ * and placeholder words only: the mandir's own pack never comes near a test, and nor does Drashti's default photo
+ * (every Drashti a test starts shows a placeholder made as the run starts instead: tests/e2e/opening-photo.ts).
  */
 
 const ASK = { DRASHTI_TEST_OPENING: '1' } as const;
@@ -124,6 +128,101 @@ test('plays as Drashti starts, over the operator window only, once the hall’s 
   const after = Number(/after (\d+) ms/u.exec(log.at(-1) ?? '')?.[1]);
   expect(after).toBeGreaterThanOrEqual(5000);
   expect(log.join(' ')).not.toContain('Placeholder');
+  await app.close();
+});
+
+/** The parts of the opening that would be words, a name, the lamp, the light or the sparkles. */
+const NOT_THE_PHOTO =
+  '[data-opening-lamp], [data-opening-line], [data-opening-word], [data-opening-sweep], [data-opening-sparkle]';
+
+test('with nothing chosen, the default photo: the photo alone, coming in and slowly zooming, no words, name, lamp, light or sparkles; File › Opening… previews it', async () => {
+  test.setTimeout(120_000);
+  const userData = await startedOnce();
+  const { app } = await relaunchApp(userData, ASK);
+  const win = await operatorPage(app);
+  await expect(opening(win)).toBeVisible({ timeout: 15_000 });
+  const player = win.getByTestId('opening');
+  await expect(player).toHaveAttribute('data-opening-motion', 'full');
+  await expect(player).toHaveAttribute('data-photos', '1');
+  await expect(player).toHaveAttribute('data-lines', '0');
+  const photo = player.locator('img[data-opening-photo="0"]');
+  await expect(photo).toHaveAttribute('src', OPENING_DEFAULT_PHOTO_URL);
+  // The tests' own placeholder, never Drashti's photo.
+  await expect
+    .poll(() => photo.evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight]))
+    .toEqual([PLACEHOLDER_OPENING_PHOTO.width, PLACEHOLDER_OPENING_PHOTO.height]);
+  await expect(player.locator(NOT_THE_PHOTO)).toHaveCount(0);
+  // It comes in and slowly zooms (its own fade and zoom), and the whole fades at its end: nothing else moves.
+  await expect.poll(() => player.evaluate((root) => root.getAnimations({ subtree: true }).length)).toBe(3);
+  const moves = await photo.evaluate((img) =>
+    img
+      .getAnimations()
+      .flatMap((a) => (a.effect as KeyframeEffect).getKeyframes())
+      .flatMap((k) => Object.keys(k))
+      .filter((key) => !['offset', 'computedOffset', 'easing', 'composite'].includes(key)),
+  );
+  expect([...new Set(moves)].sort()).toEqual(['opacity', 'transform']);
+  await win.keyboard.press('Escape');
+  await expect(opening(win)).toHaveCount(0);
+  await expect.poll(() => openingLog(userData)).toContain('Opening: plays (the default photo)');
+  // File › Opening… with nothing chosen: its preview is the default photo, and it plays it alone.
+  await operatorReady(win);
+  await chooseMenuItem(app, 'opening');
+  const dialog = win.getByTestId('opening-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(`img[src="${OPENING_DEFAULT_PHOTO_URL}"]`)).toBeVisible();
+  await dialog.getByTestId('opening-play').click();
+  const preview = dialog.getByTestId('opening-preview');
+  await expect(preview).toHaveAttribute('data-photos', '1');
+  await expect(preview).toHaveAttribute('data-lines', '0');
+  await expect(preview.locator('img[data-opening-photo]')).toHaveAttribute('src', OPENING_DEFAULT_PHOTO_URL);
+  await expect(preview.locator(NOT_THE_PHOTO)).toHaveCount(0);
+  await app.close();
+});
+
+test('with Interface motion Off, the default photo is simply there, nothing moving', async () => {
+  test.setTimeout(120_000);
+  const userData = await startedOnce(async (win) => {
+    const off = await win.evaluate(() => (globalThis as PageGlobals).drashti.appearance.setMotion('off'));
+    expect(off.ok).toBe(true);
+  });
+  const { app } = await relaunchApp(userData, ASK);
+  const win = await operatorPage(app);
+  await expect(opening(win)).toBeVisible({ timeout: 15_000 });
+  const player = win.getByTestId('opening');
+  await expect(player).toHaveAttribute('data-opening-motion', 'still');
+  await expect(player).toHaveAttribute('data-photos', '1');
+  await expect(player).toHaveAttribute('data-lines', '0');
+  const photo = player.locator('img[data-opening-photo="0"]');
+  await expect(photo).toHaveAttribute('src', OPENING_DEFAULT_PHOTO_URL);
+  await expect(photo).toHaveCSS('opacity', '1');
+  await expect(player.locator(NOT_THE_PHOTO)).toHaveCount(0);
+  // Only the whole, fading at its end: the photo itself never moves.
+  await expect.poll(() => player.evaluate((root) => root.getAnimations({ subtree: true }).length)).toBe(1);
+  expect(await photo.evaluate((img) => img.getAnimations().length)).toBe(0);
+  await win.keyboard.press('Space');
+  await expect(opening(win)).toHaveCount(0);
+  await app.close();
+});
+
+test('the default photo’s file missing: the lamp lights with Drashti’s name, as before, and the log says why', async () => {
+  test.setTimeout(120_000);
+  const userData = await startedOnce();
+  const { app } = await relaunchApp(userData, {
+    ...ASK,
+    DRASHTI_TEST_OPENING_PHOTO: join(userData, 'no-such-photo.png'),
+  });
+  const win = await operatorPage(app);
+  await expect(opening(win)).toBeVisible({ timeout: 15_000 });
+  const player = win.getByTestId('opening');
+  await expect(player).toHaveAttribute('data-photos', '0');
+  await expect(player.locator('[data-opening-lamp]')).toHaveCount(1);
+  await expect(player.locator('[data-opening-line="0"]')).toHaveText('Drashti');
+  await expect
+    .poll(() => openingLog(userData))
+    .toContain('Opening: plays (the lamp, 0 lines; the default photo’s file is missing)');
+  await win.keyboard.press('Escape');
+  await expect(opening(win)).toHaveCount(0);
   await app.close();
 });
 

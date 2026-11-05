@@ -4,11 +4,13 @@ import { animationById } from './lower-third-animations';
 import {
   cutLine,
   OPENING_DEFAULT,
+  OPENING_DEFAULT_PHOTO_URL,
   OPENING_LINE_MAX,
   OPENING_LINES_MAX,
   OPENING_MS,
   OPENING_PHOTOS_MAX,
   OPENING_WORDS,
+  openingPlanOf,
   openingSparkles,
   openingTimes,
   packLines,
@@ -127,6 +129,37 @@ describe('the five seconds', () => {
     if (!l) throw new Error('no line');
     expect(l.words.stagger).toBeLessThan(animationById(OPENING_WORDS).timing.stagger ?? 0);
     expect(l.words.start + 13 * l.words.stagger + l.words.each).toBeLessThanOrEqual(l.start + 700);
+  });
+});
+
+describe('with nothing chosen: Drashti’s default photo (the owner’s decision of 5 Nov 2026)', () => {
+  it('plays the default photo alone, with no words and no name; anything chosen (a pack loaded) replaces it as before', () => {
+    expect(openingPlanOf([], [], true)).toEqual({
+      photos: [OPENING_DEFAULT_PHOTO_URL],
+      lines: [],
+      defaultPhoto: true,
+    });
+    expect(OPENING_DEFAULT_PHOTO_URL).toMatch(/^drashti-media:\/\/opening-default\//u);
+    // Its file missing: the lamp and Drashti's name, as before.
+    expect(openingPlanOf([], [], false)).toEqual({ photos: [], lines: [] });
+    // A photo or a line chosen: only what is chosen, exactly as before (lines alone over the lamp: never over it).
+    const photo = 'drashti-media://opening/placeholder-photo-1';
+    expect(openingPlanOf([photo], [], true)).toEqual({ photos: [photo], lines: [] });
+    expect(openingPlanOf([], ['Placeholder line'], true)).toEqual({
+      photos: [],
+      lines: ['Placeholder line'],
+    });
+    expect(openingPlanOf([photo], ['Placeholder line'], true)).toEqual({
+      photos: [photo],
+      lines: ['Placeholder line'],
+    });
+  });
+
+  it('the default photo has the whole five seconds: in from the dark, then slowly zooming to the end', () => {
+    const t = openingTimes(1, []);
+    expect(t.photos.map((p) => [p.start, p.end])).toEqual([[0, OPENING_MS]]);
+    expect(t.photos[0]?.fadeIn).toBeGreaterThan(0);
+    expect(t.lines).toEqual([]);
   });
 });
 

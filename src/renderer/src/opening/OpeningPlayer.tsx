@@ -14,8 +14,10 @@ import { LitLamp } from '../ui/Mark';
 /*
  * The opening as it plays (Session 55, shared/opening.ts): the photos, each coming in over the one before and slowly
  * zooming, a soft light sweeping across each once, a few sparkles, and the lines coming in word by word with the Lower
- * Thirds studio's move, in the studio's Noto Serif; with no photo, Drashti's own lamp lighting. Still (reduced motion,
- * or Interface motion Off): the first photo, or the lamp lit, and the lines fading in, nothing moving.
+ * Thirds studio's move, in the studio's Noto Serif; with no photo, Drashti's own lamp lighting. With nothing chosen,
+ * Drashti's default photo (the owner's decision of 5 Nov 2026) alone: coming in, slowly zooming and fading at the end,
+ * the whole photo always seen, with no words, name, light or sparkles over it. Still (reduced motion, or Interface
+ * motion Off): the first photo (or the default photo), or the lamp lit, and the lines fading in, nothing moving.
  *
  * Every part moves by opacity and transform alone, each one Web Animation, all started at the same moment once the
  * first photo is decoded and the words' fonts are in (at most READY_WAIT), so the compositor plays them while the
@@ -36,6 +38,8 @@ const WORDS_FONT = [...OPENING_FONT.families, 'Noto Sans', 'Noto Sans Gujarati',
   .join(', ');
 /** Where each photo zooms towards, in turn. */
 const ORIGINS = ['30% 40%', '70% 35%', '50% 62%', '35% 65%', '65% 55%', '45% 30%', '60% 45%', '40% 50%'];
+/** Where the default photo zooms towards: its upper middle, so its subject stays where it is. */
+const DEFAULT_ORIGIN = '50% 35%';
 const ZOOM = 1.08;
 
 /** Each word's span in a line (the studio's own cutting: a Gujarati or Devanagari conjunct never split). */
@@ -126,7 +130,9 @@ function animate(
       run(el, [{ opacity: 0 }, { opacity: 1 }], t.start, t.fadeIn, easeOut);
       // Zooming slowly from its coming in until the next has covered it.
       const covered = (times.photos[i + 1]?.start ?? times.end) + (times.photos[i + 1]?.fadeIn ?? 0);
-      el.style.transformOrigin = ORIGINS[i % ORIGINS.length] ?? 'center';
+      el.style.transformOrigin = plan.defaultPhoto
+        ? DEFAULT_ORIGIN
+        : (ORIGINS[i % ORIGINS.length] ?? 'center');
       run(
         el,
         [{ transform: 'scale(1)' }, { transform: `scale(${String(ZOOM)})` }],
@@ -217,7 +223,9 @@ export function OpeningPlayer({
     done.current = onDone;
   });
   const photos = useMemo(() => (still ? plan.photos.slice(0, 1) : plan.photos), [plan, still]);
-  // With no line and no photo, Drashti's own name comes in under its lamp.
+  /** Drashti's default photo, alone: nothing over it. */
+  const defaultPhoto = plan.defaultPhoto === true;
+  // With no line and no photo (the default photo's file missing), Drashti's own name comes in under its lamp.
   const lines = useMemo(
     () => (plan.lines.length > 0 ? plan.lines : plan.photos.length === 0 ? ['Drashti'] : []),
     [plan],
@@ -230,7 +238,7 @@ export function OpeningPlayer({
     const loads: ReturnType<typeof setTimeout>[] = [];
     void ready(root, { photos, lines }).then(() => {
       if (stopped) return;
-      const made = animate(root, { photos, lines }, still);
+      const made = animate(root, { photos, lines, defaultPhoto }, still);
       animations = made.animations;
       // Every part from the same moment.
       const now = document.timeline.currentTime;
@@ -261,7 +269,7 @@ export function OpeningPlayer({
       for (const load of loads) clearTimeout(load);
       for (const a of animations) a.cancel();
     };
-  }, [photos, lines, still, held]);
+  }, [photos, lines, defaultPhoto, still, held]);
   return (
     <div
       ref={ref}
@@ -282,7 +290,8 @@ export function OpeningPlayer({
           alt=""
           draggable={false}
           decoding="async"
-          className="absolute inset-0 size-full object-cover"
+          // The default photo whole, never cut to the window's shape (the black around it); the mandir's filling it.
+          className={cx('absolute inset-0 size-full', defaultPhoto ? 'object-contain' : 'object-cover')}
           style={{ opacity: still && !held ? 1 : 0 }}
         />
       ))}
@@ -295,7 +304,7 @@ export function OpeningPlayer({
           <LitLamp size={110} />
         </div>
       )}
-      {!still && photos.length > 0 && (
+      {!still && photos.length > 0 && !defaultPhoto && (
         <div
           data-opening-sweep=""
           className="pointer-events-none absolute -inset-y-[20%] left-0 w-[45%]"
@@ -307,6 +316,7 @@ export function OpeningPlayer({
         />
       )}
       {!still &&
+        !defaultPhoto &&
         openingSparkles().map((s, i) => (
           <span
             key={i}

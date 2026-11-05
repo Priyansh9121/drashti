@@ -7,6 +7,7 @@ import {
   type OpeningEnd,
   type OpeningPlan,
   openingPhotoUrl,
+  openingPlanOf,
   type OpeningResult,
   type OpeningSetting,
   type OpeningView,
@@ -19,8 +20,9 @@ import { openingAtStart } from './opening-start';
 /*
  * The opening in the main process (Session 55, the owner's brief of 3 Nov 2026; shared/opening.ts says what it is):
  * kept with the library's settings ("opening", no migration), decided once as the operator window opens
- * (opening-start.ts), and changed only from File › Opening… in Pro Mode. The log says whether it played and why
- * not, never its words or its photos.
+ * (opening-start.ts), and changed only from File › Opening… in Pro Mode. With nothing chosen, Drashti's default photo
+ * (opening-photo.ts; the lamp should its file be missing). The log says whether it played and why not, never its words
+ * or its photos.
  */
 
 /** A picture in the library the opening can show: its file's sha256 and its name. */
@@ -46,6 +48,8 @@ export interface OpeningServiceDeps {
   picture(mediaId: string): OpeningPicture | null;
   /** Whether a photo's copy for the opening is made. */
   hasCopy(sha256: string): boolean;
+  /** Whether Drashti's default photo is there (opening-photo.ts). */
+  defaultPhoto(): boolean;
   mediaDir: string;
   /** The first start's welcome, or Simple Mode's first steps, show now. */
   welcome(): boolean;
@@ -100,12 +104,18 @@ export class OpeningService {
       return [this.deps.hasCopy(picture.sha256) ? openingPhotoUrl(id) : mediaUrl(id)];
     });
     const without = kept.photos.length - photos.length;
+    const gone = without > 0 ? `; ${plural(without, 'photo')} no longer in Media left out` : '';
+    // Nothing to show of its own: Drashti's default photo, or the lamp should its file be missing.
+    const nothing = photos.length === 0 && kept.lines.length === 0;
+    const plan = openingPlanOf(photos, kept.lines, nothing && this.deps.defaultPhoto());
     this.deps.log(
-      `Opening: plays (${photos.length === 0 ? 'the lamp' : plural(photos.length, 'photo')}, ${plural(kept.lines.length, 'line')}${
-        without > 0 ? `; ${plural(without, 'photo')} no longer in Media left out` : ''
-      })`,
+      plan.defaultPhoto
+        ? `Opening: plays (the default photo${gone})`
+        : `Opening: plays (${photos.length === 0 ? 'the lamp' : plural(photos.length, 'photo')}, ${plural(kept.lines.length, 'line')}${gone}${
+            nothing ? '; the default photo’s file is missing' : ''
+          })`,
     );
-    return { photos, lines: kept.lines };
+    return plan;
   }
 
   /** It ended. */
@@ -129,6 +139,7 @@ export class OpeningService {
         };
       }),
       lines: kept.lines,
+      defaultPhoto: this.deps.defaultPhoto(),
     };
   }
 

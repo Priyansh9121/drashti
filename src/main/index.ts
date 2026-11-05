@@ -167,6 +167,7 @@ import { parseStartMarks } from '../shared/start-marks';
 import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES, openingCopyPath } from './media/media-protocol';
+import { openingPhotoPlace, openingPhotoThere } from './opening/opening-photo';
 import { OpeningService } from './opening/opening-service';
 import { OpeningKeys } from './opening/opening-start';
 import { saveStill } from './media/stills';
@@ -1920,6 +1921,15 @@ function start(): void {
   const guideFiles = new GuideFiles(
     guidesDir({ packaged: packaged(), resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
   );
+  // Drashti's default opening photo (the owner's decision of 5 Nov 2026): beside an installed Drashti, in
+  // resources/opening in the repository, and a test's own picture in a test (opening/opening-photo.ts).
+  const openingPhoto = openingPhotoPlace({
+    packaged: packaged(),
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+    test: sw('DRASHTI_TEST_OPENING_PHOTO'),
+    testing: anyTestSwitch(),
+  });
   const serveMedia = async (request: Request) => {
     const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
@@ -1937,6 +1947,8 @@ function start(): void {
         const file = guideFiles.picture(name);
         return file ? { dir: guideFiles.dir, file } : null;
       },
+      // Drashti's default opening photo (only it, from its own folder).
+      openingPhoto: () => openingPhoto,
       warn: (message) => {
         log.warn(message);
       },
@@ -6310,6 +6322,8 @@ function start(): void {
         : null;
     },
     hasCopy: (sha256) => existsSync(join(mediaDir, openingCopyPath(sha256))),
+    // With nothing chosen, Drashti's default photo; its file missing, the lamp, as before (and the log says so).
+    defaultPhoto: () => openingPhotoThere(openingPhoto),
     mediaDir,
     welcome: () => welcomeNow() || simpleStepsNow(),
     importPhotos: async (paths) => {
