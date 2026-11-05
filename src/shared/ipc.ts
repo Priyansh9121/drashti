@@ -470,6 +470,13 @@ export const IPC = {
     /** main -> operator: the conversions changed. */
     conversionsChanged: 'media:conversions-changed',
     /**
+     * Whether this computer plays HEVC video (question 36): null until the main process knows (a page of its own
+     * asks Chromium, never the operator window), then told to the operator window once.
+     */
+    playsHevc: 'media:plays-hevc',
+    /** main -> operator: whether this computer plays HEVC video, now known. */
+    playsHevcChanged: 'media:plays-hevc-changed',
+    /**
      * Save as MP4… (Session 26e): where a part saved from a start begins (its keyframe), saving the part
      * (Pro Mode's), the saves going and ended, stopping one, and showing a saved file in the Finder.
      */
@@ -1397,6 +1404,7 @@ export interface InvokeContract {
   [IPC.media.convert]: { args: [mediaIds: string[]]; result: ConvertResult };
   [IPC.media.cancelConversion]: { args: [jobId: string | null]; result: ConvertResult };
   [IPC.media.conversions]: { args: []; result: ConversionJob[] };
+  [IPC.media.playsHevc]: { args: []; result: boolean | null };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
@@ -1721,6 +1729,7 @@ export interface EventContract {
   [IPC.quickBar.changed]: QuickPin[];
   [IPC.stream.changed]: StreamStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
+  [IPC.media.playsHevcChanged]: boolean;
   [IPC.media.savesChanged]: SaveJob[];
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' | 'speech' };

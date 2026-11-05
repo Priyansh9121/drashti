@@ -535,3 +535,40 @@ test('quitting during a YouTube download (Session 25c): no part-file, and no yt-
   expect(drashtiLog).not.toContain('Uncaught exception');
   expect(drashtiLog).not.toContain('did not stop cleanly');
 });
+
+test('quitting while the HEVC question still holds its own page (question 36): at once and cleanly, with nothing of it left running', async () => {
+  test.setTimeout(180_000);
+  // Its answer two minutes away, as if the GPU process took that long to say which video decoders it has.
+  const { app, userData } = await launchApp({ DRASHTI_TEST_HEVC_ANSWER_MS: '120000' });
+  await operatorReady(await operatorPage(app));
+  // The question's own page, held meanwhile: a renderer process of its own, never the operator window's.
+  const pids = () =>
+    app.evaluate(({ BrowserWindow, webContents }) => ({
+      page:
+        webContents
+          .getAllWebContents()
+          .find((c) => c.getURL() === 'about:blank')
+          ?.getOSProcessId() ?? 0,
+      operator:
+        BrowserWindow.getAllWindows()
+          .find((w) => w.webContents.getURL().includes('index.html'))
+          ?.webContents.getOSProcessId() ?? 0,
+    }));
+  await expect.poll(async () => (await pids()).page).toBeGreaterThan(0);
+  const { page, operator } = await pids();
+  expect(operator).toBeGreaterThan(0);
+  expect(page).not.toBe(operator);
+  const mainPid = await app.evaluate(() => process.pid);
+  const helpers = under(mainPid).map((p) => p.pid);
+  expect(helpers).toContain(page);
+  const asked = Date.now();
+  await app.close();
+  // The quit never waits for the answer, and nothing of Drashti is left running.
+  expect(Date.now() - asked).toBeLessThan(60_000);
+  await expect.poll(() => helpers.filter(alive), { timeout: 15_000 }).toEqual([]);
+  const drashtiLog = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  expect(drashtiLog).toContain("Quit: Drashti's own stops took");
+  expect(drashtiLog).not.toMatch(/HEVC video/u);
+  expect(drashtiLog).not.toContain('Uncaught exception');
+  expect(drashtiLog).not.toContain('did not stop cleanly');
+});

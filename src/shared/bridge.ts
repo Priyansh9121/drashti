@@ -576,6 +576,12 @@ export interface DrashtiBridge {
     cancelConversion(jobId: string | null): Promise<ConvertResult>;
     conversions(): Promise<ConversionJob[]>;
     onConversions(listener: (jobs: ConversionJob[]) => void): () => void;
+    /**
+     * Whether this computer plays HEVC video (question 36): null until Drashti knows, a moment after the start
+     * (on a slow computer, several seconds), then told once.
+     */
+    playsHevc(): Promise<boolean | null>;
+    onPlaysHevc(listener: (plays: boolean) => void): () => void;
     /** Undo a conversion: the original is used again wherever it was moved from. */
     undoConversion(conversionId: string): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Save as MP4… (Session 26e): where a part saved from `startMs` begins (its keyframe). */

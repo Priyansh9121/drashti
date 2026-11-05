@@ -35,8 +35,8 @@ export interface StartMessage {
    */
   ffmpeg?: string | null;
   /**
-   * Whether this computer plays HEVC video (Session 51), as the operator window said; null or left out while it
-   * is not known. Where it cannot, an import converts HEVC by itself.
+   * Whether this computer plays HEVC video (Session 51), as Chromium said (convert/plays-hevc.ts); null or left out
+   * while it is not known. Where it cannot, an import converts HEVC by itself.
    */
   playsHevc?: boolean | null;
 }

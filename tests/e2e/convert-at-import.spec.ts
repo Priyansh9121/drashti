@@ -297,6 +297,74 @@ test('HEVC is converted by itself at import where this computer cannot play it; 
   }
 });
 
+test('the HEVC answer, however late, reaches what uses it: an import started before it waits for it, and Media offers Convert once it comes (question 36)', async () => {
+  test.setTimeout(240_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-convert-hevc-late-e2e-'));
+  const hevc = (picture: string, file: string) => {
+    make([
+      '-f',
+      'lavfi',
+      '-i',
+      `${picture}=s=64x48:r=10`,
+      '-t',
+      '1',
+      '-c:v',
+      'libx265',
+      '-tag:v',
+      'hvc1',
+      '-x265-params',
+      'log-level=error',
+      file,
+    ]);
+  };
+  const phone = join(dir, 'Placeholder phone.mov');
+  const later = join(dir, 'Placeholder phone later.mov');
+  hevc('testsrc2', phone);
+  hevc('testsrc', later);
+  const first = await launchApp({ DRASHTI_TEST_PLAYS_HEVC: '1' });
+  let app = first.app;
+  try {
+    // An HEVC video in the library as it is, taken on a start whose answer was that this computer plays HEVC.
+    let win = await operatorPage(app);
+    await operatorReady(win);
+    expect((await importOne(win, phone)).codes).toEqual([]);
+    await app.close();
+
+    // The next start, where this computer cannot play HEVC and its answer comes 12 s late (question 36: Chromium's
+    // took about 15 s on CI's Mac late in a run).
+    ({ app } = await relaunchApp(first.userData, {
+      DRASHTI_TEST_PLAYS_HEVC: '0',
+      DRASHTI_TEST_HEVC_ANSWER_MS: '12000',
+    }));
+    const log = () => readFileSync(join(first.userData, 'logs', 'drashti.log'), 'utf8');
+    win = await operatorPage(app);
+    await operatorReady(win);
+    await openLibrary(win);
+    await win.getByRole('tab', { name: 'Media' }).click();
+    const row = win.getByTestId('media-row').filter({ hasText: 'Placeholder phone.mov' });
+    // Until the answer comes, Media takes the HEVC video as playing: never said unplayable, nothing offered.
+    await expect(noteOf(win, 'Placeholder phone.mov')).toHaveText('Video');
+    await expect(row.getByTestId('convert-one')).toHaveCount(0);
+    expect(log()).not.toContain('This computer cannot play HEVC video');
+    // An import started meanwhile waits for the answer, and converts the HEVC by itself once it comes.
+    const imported = await importOne(win, later);
+    await expect.poll(log).toContain('This computer cannot play HEVC video');
+    expect(imported.codes).toEqual(['converting-media']);
+    // Media now says the first one cannot play as it is, and offers to convert it.
+    await expect(noteOf(win, 'Placeholder phone.mov')).toContainText('can’t play as it is');
+    await expect(row.getByTestId('convert-one')).toBeVisible();
+    await expect
+      .poll(async () => (await conversions(win)).map((j) => [j.mediaId === imported.id, j.state]), {
+        timeout: 60_000,
+      })
+      .toEqual([[true, 'done']]);
+    await app.close();
+  } finally {
+    await app.close().catch(() => undefined);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a conversion waiting when Drashti quits starts again by itself at the next start, never on air (Session 51)', async () => {
   test.setTimeout(180_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-convert-resume-e2e-'));
