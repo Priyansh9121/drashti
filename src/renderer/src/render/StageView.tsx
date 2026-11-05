@@ -15,6 +15,7 @@ import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
 import { stageMessageColors, stageMessageData, stageMessagePx } from './StageMessageBanner';
+import { observeTextSizes } from './observe-text-sizes';
 
 /**
  * What a stage screen says is up when no slide is: the background's kind, never the picture itself (another
@@ -166,55 +167,55 @@ const STAGE_MIN_FIT = 0.2;
  */
 function StageFit({ testId, children }: { testId: string; children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
-  const [fontsAndSize, setFontsAndSize] = useState(0);
-  // What it was last measured for: the clock's tick re-draws the stage every second, and must not measure.
-  const measured = useRef('');
-  // A font arriving, or the screen changing size, changes how far the words reach.
+  const [fontsLoaded, setFontsLoaded] = useState(0);
+  const measured = useRef<{ key: string; wordsHeight: number } | null>(null);
+  // Font replacement can change the best fit even when the already-shrunk height stays the same.
   useEffect(() => {
     const again = () => {
-      setFontsAndSize((n) => n + 1);
+      setFontsLoaded((n) => n + 1);
     };
     document.fonts.addEventListener('loadingdone', again);
-    const b = box.current;
-    const sized = b ? new ResizeObserver(again) : null;
-    if (b) sized?.observe(b);
     return () => {
       document.fonts.removeEventListener('loadingdone', again);
-      sized?.disconnect();
     };
   }, []);
   useLayoutEffect(() => {
     const b = box.current;
     if (!b) return;
     const words = b.firstElementChild;
-    const key = `${String(fontsAndSize)} ${words?.textContent ?? ''}`;
-    if (key === measured.current) return;
-    measured.current = key;
     if (!(words instanceof HTMLElement)) return;
-    const fits = (fit: number) => {
-      b.style.setProperty('--stage-fit', String(fit));
-      return words.offsetHeight <= b.clientHeight + 0.5;
-    };
-    // The usual case, words that fit as they are: nothing is written.
-    const shrunk = b.style.getPropertyValue('--stage-fit') !== '';
-    if (!shrunk && words.offsetHeight <= b.clientHeight + 0.5) return;
-    let lo = 1;
-    if (!fits(1)) {
-      lo = STAGE_MIN_FIT;
-      let hi = 1;
-      for (let i = 0; i < 12; i++) {
-        const mid = (lo + hi) / 2;
-        if (fits(mid)) lo = mid;
-        else hi = mid;
+    return observeTextSizes(b, words, ({ width, height, wordsHeight }) => {
+      const key = `${String(fontsLoaded)} ${width} ${height} ${words.textContent ?? ''}`;
+      const previous = measured.current;
+      // Ignore our own fit's resize, and unchanged clock redraws. External text/font/size changes still refit.
+      if (previous?.key === key && Math.abs(previous.wordsHeight - wordsHeight) <= 0.5) return;
+      const measurement = { key, wordsHeight };
+      measured.current = measurement;
+      const shrunk = b.style.getPropertyValue('--stage-fit') !== '';
+      if (!shrunk && wordsHeight <= height + 0.5) return;
+      const fits = (fit: number) => {
+        b.style.setProperty('--stage-fit', String(fit));
+        measurement.wordsHeight = words.offsetHeight;
+        return measurement.wordsHeight <= height + 0.5;
+      };
+      let lo = 1;
+      if (!fits(1)) {
+        lo = STAGE_MIN_FIT;
+        let hi = 1;
+        for (let i = 0; i < 12; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid;
+          else hi = mid;
+        }
+        fits(lo);
       }
-      fits(lo);
-    }
-    if (lo < 1) b.setAttribute('data-stage-fit', lo.toFixed(3));
-    else {
-      b.style.removeProperty('--stage-fit');
-      b.removeAttribute('data-stage-fit');
-    }
-  });
+      if (lo < 1) b.setAttribute('data-stage-fit', lo.toFixed(3));
+      else {
+        b.style.removeProperty('--stage-fit');
+        b.removeAttribute('data-stage-fit');
+      }
+    });
+  }, [children, fontsLoaded]);
   return (
     <div ref={box} data-testid={testId} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {children}
