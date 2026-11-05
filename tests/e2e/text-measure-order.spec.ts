@@ -15,9 +15,11 @@ test('passive text measurement leaves the commit free, while fit and editor repo
 import {createRoot} from 'react-dom/client';
 import {useShrinkToFit} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/SlideView.tsx'))};
 import {MeasureContext} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/measure.tsx'))};
+import {StageView} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/StageView.tsx'))};
+import {initialEngineState} from ${JSON.stringify(join(process.cwd(), 'src/shared/engine/state.ts'))};
 const getHeight=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'offsetHeight').get;
 let reads=0;
-Object.defineProperty(HTMLElement.prototype,'offsetHeight',{configurable:true,get(){if(this.dataset.measureWords==='yes')reads++;return getHeight.call(this)}});
+Object.defineProperty(HTMLElement.prototype,'offsetHeight',{configurable:true,get(){if(this.dataset.measureWords==='yes'||this.parentElement?.dataset.testid==='stage-next'||this.parentElement?.dataset.testid==='stage-current')reads++;return getHeight.call(this)}});
 globalThis.runTextMeasure=async(on,reporting)=>{
  reads=0;let calls=0,snapshot;const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
  const done=new Promise(resolve=>{
@@ -28,7 +30,18 @@ globalThis.runTextMeasure=async(on,reporting)=>{
   root.render(reporting?<MeasureContext.Provider value={()=>{calls++}}><Probe/></MeasureContext.Provider>:<Probe/>);
  });
  await done;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
- const box=host.querySelector('[data-measure-box]');const result={...snapshot,over:box.hasAttribute('data-overset'),fit:box.getAttribute('data-fit')};root.unmount();host.remove();return result;
+ const box=host.querySelector('[data-measure-box]');const result={...snapshot,readsAfterPaint:reads,over:box.hasAttribute('data-overset'),fit:box.getAttribute('data-fit')};root.unmount();host.remove();return result;
+};
+globalThis.runStageMeasure=async(long)=>{
+ reads=0;let snapshot;const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ const state={...initialEngineState(),next:{kind:'media',media:'video',label:long?'Placeholder river lantern '.repeat(36):'Placeholder'}};
+ await new Promise(resolve=>{
+  function Probe(){useLayoutEffect(()=>{snapshot={readsAtCommit:reads};resolve()});return <StageView state={state}/>}
+  root.render(<Probe/>);
+ });
+ await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+ const box=host.querySelector('[data-testid="stage-next"]'),words=box.firstElementChild;
+ const result={...snapshot,readsAfterPaint:reads,fit:box.getAttribute('data-stage-fit'),over:getHeight.call(words)>box.clientHeight+0.5};root.unmount();host.remove();return result;
 };`;
   buildSync({
     stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
@@ -41,7 +54,7 @@ globalThis.runTextMeasure=async(on,reporting)=>{
   const bootstrap = join(dir, 'main.cjs');
   writeFileSync(
     bootstrap,
-    `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(join(dir, 'profile'))});if(process.platform==='darwin')app.setActivationPolicy('accessory');app.focus=()=>{};app.whenReady().then(()=>{const w=new BrowserWindow({width:640,height:360,show:false,webPreferences:{backgroundThrottling:false}});w.setOpacity(0);w.setIgnoreMouseEvents(true);w.webContents.setAudioMuted(true);w.showInactive();w.loadURL(process.env.TEXT_MEASURE_URL);});`,
+    `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(join(dir, 'profile'))});if(process.platform==='darwin')app.setActivationPolicy('accessory');app.focus=()=>{};app.whenReady().then(()=>{const w=new BrowserWindow({width:1280,height:720,show:false,webPreferences:{backgroundThrottling:false}});w.setOpacity(0);w.setIgnoreMouseEvents(true);w.webContents.setAudioMuted(true);w.showInactive();w.loadURL(process.env.TEXT_MEASURE_URL);});`,
   );
   const server = createServer((request, response) => {
     if (request.url === '/probe.js') {
@@ -82,6 +95,7 @@ globalThis.runTextMeasure=async(on,reporting)=>{
                 reporting: boolean,
               ): Promise<{
                 readsAtCommit: number;
+                readsAfterPaint: number;
                 reportsAtCommit: number;
                 over: boolean;
                 fit: string | null;
@@ -92,6 +106,7 @@ globalThis.runTextMeasure=async(on,reporting)=>{
       );
     const plain = await run(false, false);
     expect(plain.readsAtCommit).toBe(0);
+    expect.soft(plain.readsAfterPaint, 'passive metadata must use sizes supplied by layout').toBe(0);
     expect(plain.over).toBe(true);
     expect(plain.fit).toBeNull();
     const fit = await run(true, false);
@@ -104,6 +119,31 @@ globalThis.runTextMeasure=async(on,reporting)=>{
     expect(editor.readsAtCommit).toBeGreaterThan(0);
     expect(editor.reportsAtCommit).toBeGreaterThan(0);
     expect(editor.over).toBe(true);
+    const stage = (long: boolean) =>
+      page.evaluate(
+        async (long) =>
+          (
+            globalThis as unknown as {
+              runStageMeasure(long: boolean): Promise<{
+                readsAtCommit: number;
+                readsAfterPaint: number;
+                fit: string | null;
+                over: boolean;
+              }>;
+            }
+          ).runStageMeasure(long),
+        long,
+      );
+    const shortStage = await stage(false);
+    expect.soft(shortStage.readsAtCommit, 'ordinary stage words must not force layout in the commit').toBe(0);
+    expect.soft(shortStage.readsAfterPaint, 'ordinary stage words must use observed layout sizes').toBe(0);
+    expect(shortStage.fit).toBeNull();
+    expect(shortStage.over).toBe(false);
+    const longStage = await stage(true);
+    expect(longStage.readsAtCommit).toBe(0);
+    expect(Number(longStage.fit)).toBeGreaterThan(0);
+    expect(Number(longStage.fit)).toBeLessThan(1);
+    expect(longStage.over).toBe(false);
   } finally {
     await app.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
