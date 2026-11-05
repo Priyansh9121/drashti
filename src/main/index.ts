@@ -338,7 +338,8 @@ import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { ConvertService, readInfo } from './convert/convert-service';
-import { askPlaysHevc, HevcAnswer, playsHevcScript } from './convert/plays-hevc';
+import { HevcAnswer, playsHevcScript } from './convert/plays-hevc';
+import { askInOwnPage, type HevcPage } from './convert/hevc-page';
 import { diskFreeBytes, UPLOADS_DIR } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
@@ -3685,6 +3686,8 @@ function start(): void {
       : { ok: false as const, message: 'Only the operator window can convert.' },
   );
   handle(IPC.media.conversions, () => conversions.list());
+  // Whether this computer plays HEVC video, once known (question 36: told again when it comes, below).
+  handle(IPC.media.playsHevc, () => hevc.now);
   handle(IPC.media.undoConversion, (e, id) =>
     fromOperator(e)
       ? conversions.undo(id)
@@ -6621,6 +6624,35 @@ function start(): void {
     offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
+  // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
+  // has loaded, and again at its next load while it could not be told. Never of the operator window itself (question
+  // 36): Chromium holds the page that asks until the GPU process has said which video decoders it has (about 15 s on
+  // CI's Mac late in a run), so a page of its own asks (convert/hevc-page.ts), made before the audio player. The
+  // imports waiting for the answer go on then, and the operator window is told (Media offers to convert HEVC only once
+  // it knows this computer cannot play it).
+  let hevcPage: HevcPage | null = null;
+  const askHevc = () => {
+    if (hevc.now !== null || hevcPage !== null || quitStarted) return;
+    const page = askInOwnPage(playsHevcScript(hevcTest));
+    hevcPage = page;
+    void page.answer.then((answer) => {
+      hevcPage = null;
+      // Closed as Drashti quits: nothing to tell.
+      if (hevc.now !== null || quitStarted) return;
+      hevc.tell(answer);
+      if (answer === null) {
+        log.warn('Whether this computer plays HEVC video could not be told');
+        return;
+      }
+      sendToOperator(IPC.media.playsHevcChanged, answer);
+      log.info(
+        answer
+          ? 'This computer plays HEVC video'
+          : 'This computer cannot play HEVC video: imports convert it by itself',
+      );
+    });
+  };
+  if (hevc.now === null) operatorWindow.webContents.on('did-finish-load', askHevc);
   // The audio player once the operator window has loaded (or after 5 s whatever happens). Created
   // first, Chromium 152 can hand the operator window the audio player's list of sound outputs.
   let audioStarted = false;
@@ -6639,27 +6671,6 @@ function start(): void {
     operatorWindow.webContents.once('did-finish-load', () => {
       conversions.resumeWaiting();
     });
-  // Whether this computer plays HEVC video (Session 51): asked of the window as the media list asks it, unless a
-  // test gave the answer; again after a reload while it could not be told. Imports waiting for it go on then.
-  if (hevc.now === null) {
-    const contents = operatorWindow.webContents;
-    contents.on('did-finish-load', () => {
-      if (hevc.now !== null) return;
-      void askPlaysHevc((script) => contents.executeJavaScript(script), playsHevcScript(hevcTest)).then(
-        (answer) => {
-          if (hevc.now !== null) return;
-          hevc.tell(answer);
-          if (answer === null) log.warn('Whether this computer plays HEVC video could not be told');
-          else
-            log.info(
-              answer
-                ? 'This computer plays HEVC video'
-                : 'This computer cannot play HEVC video: imports convert it by itself',
-            );
-        },
-      );
-    });
-  }
   operatorWindow.webContents.once('did-finish-load', () => {
     holdPriority('with the operator window open');
   });
@@ -6689,6 +6700,8 @@ function start(): void {
     quitStarted = true;
     streaming.quitting();
     studio.quitting();
+    // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
+    hevcPage?.close();
     slideEditor?.quitting();
     const sourceQuit = documentQuit;
     if (

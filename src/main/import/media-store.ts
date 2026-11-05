@@ -37,7 +37,7 @@ export interface MediaStoreOptions {
    */
   readInfo?: (file: string) => Promise<MediaInfo & { timedOut?: true }>;
   /**
-   * Whether this computer plays HEVC video (Session 51: the operator window's answer, null while not known).
+   * Whether this computer plays HEVC video (Session 51: Chromium's answer, convert/plays-hevc.ts; null while not known).
    * Where it cannot, HEVC is converted by itself as any file Drashti cannot play; where it can, it plays as it is.
    */
   playsHevc?: boolean | null;

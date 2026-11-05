@@ -99,8 +99,8 @@ export const PLAYER = {
   /** The H.264 Chromium decodes: 8-bit 4:2:0 (10-bit or 4:2:2 H.264 plays black). */
   h264PixelFormats: new Set(['yuv420p', 'yuvj420p']),
   /**
-   * HEVC plays where the computer decodes it: the window asks (convert-store's playsHevc), and since Session 51
-   * tells the import (convert/plays-hevc.ts), which converts it by itself where it cannot.
+   * HEVC plays where the computer decodes it: Chromium says (convert/plays-hevc.ts, asked in a page of its own), and
+   * since Session 51 the import is told, which converts it by itself where it cannot.
    */
   hevc: 'hevc',
   /** Sounds: AAC, MP3, Opus, Vorbis, FLAC and uncompressed (PCM) sound. AC-3, E-AC-3 and DTS play silent. */
@@ -149,7 +149,7 @@ function pictureVerdict(video: NonNullable<MediaInfo['video']>): 'plays' | 'no' 
 
 /**
  * What an import does with a video or sound file Drashti took, from what FFmpeg read in it (Session 50), and
- * whether this computer plays HEVC (Session 51: the window's answer; null while it is not known).
+ * whether this computer plays HEVC (Session 51: Chromium's answer; null while it is not known).
  */
 export function atImport(
   kind: 'video' | 'audio',

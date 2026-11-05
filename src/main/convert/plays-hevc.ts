@@ -2,15 +2,16 @@ import { HEVC_TYPE } from '../../shared/convert';
 
 /*
  * Whether this computer plays HEVC video (Session 51). Chromium decodes HEVC only where the computer can (most Macs
- * do; Windows needs Microsoft's HEVC extension), and only a window can ask it: the media list asks so to offer
- * Convert (renderer convert-store.ts playsHevc). The main process asks the operator window the same question once
- * it has opened, and each import is told: where it cannot play, HEVC is converted by itself, as any file Drashti
- * cannot play; where it can, it plays as it is. An import starting before the window has said waits for the answer
- * (Session 51 review: a smart playlist's or the drop folder's first look, a few seconds after the start, took HEVC
+ * do; Windows needs Microsoft's HEVC extension), and only a page can ask it. The main process asks once the operator
+ * window has opened, in a page of its own (question 36: hevc-page.ts; the operator window, which Chromium would hold
+ * until the GPU process has said which video decoders it has, never asks), and each import is told: where it cannot
+ * play, HEVC is converted by itself, as any file Drashti cannot play; where it can, it plays as it is. The media list
+ * is told too, to offer Convert (renderer converting.ts convertible). An import starting before the answer waits for
+ * it (Session 51 review: a smart playlist's or the drop folder's first look, a few seconds after the start, took HEVC
  * as it was), at most HEVC_WAIT_MS.
  */
 
-/** The longest an import waits for the window's answer before it goes on without it. */
+/** The longest an import waits for the answer before it goes on without it. */
 export const HEVC_WAIT_MS = 15_000;
 
 /** The question, as the media list asks it: Chromium's answer is "probably", "maybe" or nothing. */

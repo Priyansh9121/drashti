@@ -41,3 +41,29 @@ test('a start says in the log when the operator window loaded, knew what it wait
     expect(at(drawn, what)).toBeLessThanOrEqual(drewAt);
   await app.close();
 });
+
+/** The HEVC question's answer, as the log says it (asked of a page, not given by a test). */
+const HEVC_ANSWERED = /This computer (plays|cannot play) HEVC video/u;
+
+test('the operator window starts without waiting for the HEVC question: its answer 15 s late, as on CI’s Mac late in a run, comes after the window has drawn its controls (question 36)', async () => {
+  test.setTimeout(120_000);
+  // Chromium answers whether this computer plays HEVC only once the GPU process has said which video decoders it
+  // has, holding the page that asks until then: here 15 s.
+  const { app, userData } = await launchApp({ DRASHTI_TEST_HEVC_ANSWER_MS: '15000' });
+  try {
+    const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    const operator = await operatorPage(app);
+    await operatorReady(operator);
+    // The window's whole start (its access, mode, keys and version known, its controls drawn) is in the log...
+    await expect
+      .poll(() => log().includes('Start: operator window drawn at'), { timeout: 10_000 })
+      .toBe(true);
+    // ...while the answer is still on its way.
+    expect(log()).not.toMatch(HEVC_ANSWERED);
+    // It still comes, late: Chromium's own answer, once the question lets go of its page.
+    await expect.poll(log, { timeout: 60_000 }).toMatch(HEVC_ANSWERED);
+    await app.close();
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
