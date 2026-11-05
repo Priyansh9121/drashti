@@ -9,8 +9,9 @@ async function hear(
   spacing: number,
   age: number,
   responseDelay = 0,
+  captureSpan = 100,
 ): Promise<{ final: Heard; endAt: number }> {
-  const captured = { offer: null as ((samples: Int16Array, endAt: number) => void) | null };
+  const captured = { offer: null as Parameters<PcmSource['open']>[0] | null };
   const now = 1_800_000_000_000;
   const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
   let listening!: () => void;
@@ -81,7 +82,8 @@ async function hear(
       const samples = new Int16Array(SAMPLE_RATE / 10);
       if (i < 20) for (let j = 0; j < samples.length; j++) samples[j] = Math.round(3000 * Math.sin(j / 3));
       if (!captured.offer) throw new Error('The generated microphone is not open');
-      captured.offer(samples, endAt - (20 - i) * spacing);
+      const until = endAt - (20 - i) * spacing;
+      captured.offer(samples, until, until - captureSpan);
     }
     return { final: await result, endAt };
   } finally {
@@ -102,4 +104,10 @@ it('preserves genuine capture age instead of refreshing word times at recognitio
   const { final, endAt } = await hear(100, 4_000, 80);
   expect(final.endAt).toBe(endAt - 150);
   expect(final.heardAt - final.endAt).toBeGreaterThanOrEqual(4_080);
+});
+
+it('uses the capture span when an audio batch takes longer than its sample duration', async () => {
+  const { final, endAt } = await hear(600, 0, 0, 500);
+  expect(final.words.at(-1)?.endAt).toBe(endAt - 850);
+  expect(final.endAt).toBe(endAt - 850);
 });
