@@ -475,6 +475,54 @@ describe.skipIf(!ffmpegHere(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     }
   }, 120_000);
 
+  it('with the encoder down and nothing from the stream page, no new file however long it waits: the encoder started again on the last picture is no sign Drashti is still there (Windows CI, 5 Nov 2026)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    const seen: { status: WorkerStatus | null } = { status: null };
+    const logs: string[] = [];
+    const p = new StreamPipeline({
+      status: (s) => {
+        seen.status = s;
+      },
+      log: (_level, message) => {
+        logs.push(message);
+      },
+    });
+    const current = () => seen.status;
+    const files = () =>
+      readdirSync(dir)
+        .filter((f) => f.endsWith('.mkv'))
+        .sort();
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
+    let feeding = feed(p);
+    const stop = () => {
+      feeding.stop();
+    };
+    try {
+      p.record(join(dir, 'recording.mkv'), 1024 ** 2);
+      await until('recording', () => (current()?.recording.bytes ?? 0) > 20_000);
+      stop();
+      (p as unknown as { encodeProcess: ChildProcess | null }).encodeProcess?.kill('SIGKILL');
+      // The encoder starts again after 1 s and goes on by itself, on the last picture and silence...
+      await until(
+        'the encoder started again',
+        () => logs.filter((l) => l.startsWith('Encoding started')).length === 2,
+      );
+      await sleep(4000);
+      // ...and still no new file: only the page's own pictures or sound say Drashti is there.
+      expect(files()).toEqual(['recording.mkv']);
+      expect(current()?.recording.state).toBe('recording');
+      feeding = feed(p);
+      await until('a new part', () => (current()?.recording.file ?? '').includes(' part '));
+      expect(files()).toEqual(['recording part 2.mkv', 'recording.mkv']);
+      stop();
+      p.stop();
+      await sleep(2500);
+    } finally {
+      stop();
+      p.stop();
+    }
+  }, 120_000);
+
   it('a long recording goes on in parts, each from a picture with its own header, none lost or doubled; names never collide, and the disk keeps it every 10 s at most (Session 31, MED-2)', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
     // A part left from an earlier recording of the same name: never written over.

@@ -17,6 +17,7 @@ import {
 } from './helpers';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { releaseServer } from './release-server';
+import { alive, type Proc, stillRunning, under } from './processes';
 import { freePort, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 
 /*
@@ -37,65 +38,10 @@ test.afterEach(() => {
   for (const l of listeners.splice(0)) l.kill('SIGKILL');
 });
 
-/** Every process with its parent and name, from the system. */
-function processes(): { pid: number; ppid: number; name: string }[] {
-  if (process.platform === 'win32') {
-    // Windows PowerShell, without the PowerShell 7 module path CI's steps run under.
-    const env = { ...process.env };
-    delete env['PSModulePath'];
-    const out = spawnSync(
-      `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.Name)" }',
-      ],
-      { encoding: 'utf8', env },
-    ).stdout;
-    return out
-      .split(/\r?\n/u)
-      .map((l) => l.trim().split(' '))
-      .filter((p) => p.length >= 3)
-      .map(([pid, ppid, ...name]) => ({ pid: Number(pid), ppid: Number(ppid), name: name.join(' ') }));
-  }
-  return spawnSync('ps', ['-axo', 'pid=,ppid=,comm='], { encoding: 'utf8' })
-    .stdout.split('\n')
-    .map((l) => /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(l))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: m[3] ?? '' }));
-}
-
-/** Every process under this one (its helpers, workers and what they started). */
-function under(root: number): { pid: number; ppid: number; name: string }[] {
-  const all = processes();
-  const mine = new Set([root]);
-  for (let grew = true; grew;) {
-    grew = false;
-    for (const p of all)
-      if (mine.has(p.ppid) && !mine.has(p.pid)) {
-        mine.add(p.pid);
-        grew = true;
-      }
-  }
-  return all.filter((p) => mine.has(p.pid) && p.pid !== root);
-}
-
 /** The FFmpeg processes started under this process (by its workers). */
-function ffmpegUnder(root: number): number[] {
-  return under(root)
-    .filter((p) => /ffmpeg/iu.test(p.name))
-    .map((p) => p.pid);
+function ffmpegUnder(root: number): Proc[] {
+  return under(root).filter((p) => /ffmpeg/iu.test(p.name));
 }
-
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 /** A placeholder song with enough verses to give the import real work. */
 function song(i: number): string {
@@ -239,7 +185,7 @@ test('quitting with everything going on: each service stops in order, cleanly, w
     const ran = JSON.parse(readFileSync(installLog, 'utf8')) as { file: string };
     expect(readFileSync(ran.file).equals(installer)).toBe(true);
     // No FFmpeg left running.
-    await expect.poll(() => ffmpegs.filter(alive), { timeout: 15_000 }).toEqual([]);
+    await expect.poll(() => stillRunning(ffmpegs), { timeout: 15_000 }).toEqual([]);
   } finally {
     release.close();
     await node.app.close();
@@ -293,14 +239,14 @@ test('quitting during a download from a link (Session 25b): nothing of it is lef
     expect(parts[0]).toMatch(/^\.drashti-download-.+\.part$/u);
 
     const mainPid = await app.evaluate(() => process.pid);
-    const helpers = under(mainPid).map((p) => p.pid);
+    const helpers = under(mainPid);
     expect(helpers.length).toBeGreaterThan(0);
     await app.close();
 
     // Nothing of the download is left: no part-file, no record of one, and no process of Drashti's.
     expect(readdirSync(chosen)).toEqual([]);
     expect(existsSync(join(userData, 'link-downloads.json'))).toBe(false);
-    await expect.poll(() => helpers.filter(alive), { timeout: 15_000 }).toEqual([]);
+    await expect.poll(() => stillRunning(helpers), { timeout: 15_000 }).toEqual([]);
     const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
     expect(log).not.toContain('Uncaught exception');
     expect(log).not.toContain('did not stop cleanly');
@@ -377,7 +323,7 @@ test('quitting during Save as MP4 (Session 26e): no file under its name, no part
   await app.close();
   // Nothing of it is left: no file under its name, no part-file, no FFmpeg.
   expect(readdirSync(out)).toEqual([]);
-  await expect.poll(() => running.filter(alive), { timeout: 15_000 }).toEqual([]);
+  await expect.poll(() => stillRunning(running), { timeout: 15_000 }).toEqual([]);
   const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
   expect(log).not.toContain('Uncaught exception');
   expect(log).not.toContain('did not stop cleanly');
@@ -447,13 +393,13 @@ test('Drashti stopped dead during Save as MP4: on a Mac its FFmpeg runs on and t
   // Node starts each program in a job that Windows closes, ending them, when Drashti's process ends.
   await killMainOnly(app);
   if (process.platform === 'win32')
-    await expect.poll(() => running.filter(alive), { timeout: 10_000 }).toEqual([]);
-  else await expect.poll(() => running.filter(alive).length, { timeout: 3000 }).toBeGreaterThan(0);
+    await expect.poll(() => stillRunning(running), { timeout: 10_000 }).toEqual([]);
+  else await expect.poll(() => stillRunning(running).length, { timeout: 3000 }).toBeGreaterThan(0);
   expect(readdirSync(out).filter((f) => f.startsWith('.'))).toHaveLength(1);
   // The next start stops one still running before anything else, removes the part-file it was writing,
   // and says so.
   const again = await relaunchApp(userData, env);
-  await expect.poll(() => running.filter(alive), { timeout: 20_000 }).toEqual([]);
+  await expect.poll(() => stillRunning(running), { timeout: 20_000 }).toEqual([]);
   await expect.poll(() => readdirSync(out), { timeout: 10_000 }).toEqual([]);
   // Said as it is removed, by Drashti's own process a moment after the file goes: waited for, not read once
   // (CI's Mac read the log in that moment, run 39054667458).
@@ -520,14 +466,16 @@ test('quitting during a YouTube download (Session 25c): no part-file, and no yt-
   expect(started.filter(alive)).toEqual(started);
 
   const mainPid = await app.evaluate(() => process.pid);
-  const helpers = under(mainPid).map((p) => p.pid);
-  for (const pid of started) expect(helpers).toContain(pid);
+  const helpers = under(mainPid);
+  for (const pid of started) expect(helpers.map((p) => p.pid)).toContain(pid);
   await app.close();
 
   // Nothing of it is left: no part-file or work folder, and no yt-dlp (the fake), no child of it.
   expect(readdirSync(chosen)).toEqual([]);
-  await expect.poll(() => started.filter(alive), { timeout: 15_000 }).toEqual([]);
-  await expect.poll(() => helpers.filter(alive), { timeout: 15_000 }).toEqual([]);
+  await expect
+    .poll(() => stillRunning(helpers.filter((p) => started.includes(p.pid))), { timeout: 15_000 })
+    .toEqual([]);
+  await expect.poll(() => stillRunning(helpers), { timeout: 15_000 }).toEqual([]);
   expect(
     existsSync(join(userData, 'Link downloads')) ? readdirSync(join(userData, 'Link downloads')) : [],
   ).toEqual([]);
@@ -559,13 +507,13 @@ test('quitting while the HEVC question still holds its own page (question 36): a
   expect(operator).toBeGreaterThan(0);
   expect(page).not.toBe(operator);
   const mainPid = await app.evaluate(() => process.pid);
-  const helpers = under(mainPid).map((p) => p.pid);
-  expect(helpers).toContain(page);
+  const helpers = under(mainPid);
+  expect(helpers.map((p) => p.pid)).toContain(page);
   const asked = Date.now();
   await app.close();
   // The quit never waits for the answer, and nothing of Drashti is left running.
   expect(Date.now() - asked).toBeLessThan(60_000);
-  await expect.poll(() => helpers.filter(alive), { timeout: 15_000 }).toEqual([]);
+  await expect.poll(() => stillRunning(helpers), { timeout: 15_000 }).toEqual([]);
   const drashtiLog = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
   expect(drashtiLog).toContain("Quit: Drashti's own stops took");
   expect(drashtiLog).not.toMatch(/HEVC video/u);
