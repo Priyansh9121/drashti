@@ -42,9 +42,13 @@ export function madeFrom(
   return out;
 }
 
-/** "Name", or the first "Name (n)" no playlist has. */
-export function freeName(repo: PlaylistRepo, name: string): string {
-  const taken = new Set(repo.tree().map((n) => n.name.toLocaleLowerCase()));
+/**
+ * "Name", or the first "Name (n)" no playlist has; `removedToo`, nor one deleted that Undo could still bring back
+ * (alpha.15: Simple Mode's new playlist for the day is never named as the one the operator deleted).
+ */
+export function freeName(repo: PlaylistRepo, name: string, removedToo = false): string {
+  const names = [...repo.tree().map((n) => n.name), ...(removedToo ? repo.removedNames() : [])];
+  const taken = new Set(names.map((n) => n.toLocaleLowerCase()));
   const base = name.trim() === '' ? 'Dropbox folder' : name.trim();
   if (!taken.has(base.toLocaleLowerCase())) return base;
   for (let n = 2; ; n++) {

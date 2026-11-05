@@ -3,7 +3,7 @@ import { NO_COUNTS, type ImportItemReport } from '../../shared/import';
 import { openDatabase } from '../db/database';
 import { PlaylistRepo } from '../db/playlists';
 import { PresentationRepo } from '../db/presentations';
-import { addToFolderParts, makeFolderPlaylist } from './folder-playlist';
+import { addToFolderParts, freeName, makeFolderPlaylist } from './folder-playlist';
 
 /* A Dropbox folder as one playlist (Session 26c): made-up decks and videos, three folders deep. */
 
@@ -144,5 +144,23 @@ describe('a Dropbox folder as one playlist', () => {
       '# Week 3',
       'Later.png',
     ]);
+  });
+
+  it('names a playlist made by itself apart from one the operator deleted, when asked (alpha.15: Simple Mode’s)', () => {
+    const { repo } = setup();
+    const deleted = repo.create('Sabha, 5 Nov 2026', null, false) ?? '';
+    repo.create('Sabha, 5 Nov 2026 (2)', null, false);
+    expect(freeName(repo, 'Sabha, 5 Nov 2026', true)).toBe('Sabha, 5 Nov 2026 (3)');
+    repo.remove([deleted]);
+    expect(repo.removedNames()).toEqual(['Sabha, 5 Nov 2026']);
+    // Deleted (Undo could bring it back): its name stays taken for a playlist Drashti makes by itself.
+    expect(freeName(repo, 'Sabha, 5 Nov 2026', true)).toBe('Sabha, 5 Nov 2026 (3)');
+    expect(freeName(repo, 'sabha, 5 nov 2026', true)).toBe('sabha, 5 nov 2026 (3)');
+    // A folder's or a phone's playlist, made as the operator asks: named as before.
+    expect(freeName(repo, 'Sabha, 5 Nov 2026')).toBe('Sabha, 5 Nov 2026');
+    // Gone for good (30 days after): free again.
+    repo.purgeRemoved(new Date(Date.now() + 60_000).toISOString());
+    expect(repo.removedNames()).toEqual([]);
+    expect(freeName(repo, 'Sabha, 5 Nov 2026', true)).toBe('Sabha, 5 Nov 2026');
   });
 });
