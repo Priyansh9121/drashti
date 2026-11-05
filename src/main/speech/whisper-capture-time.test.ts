@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import type { Heard } from '../../shared/speech';
 import { createWhisperEngine, SAMPLE_RATE, type PcmSource } from './whisper-engine';
 
@@ -10,7 +10,9 @@ async function hear(
   age: number,
   responseDelay = 0,
 ): Promise<{ final: Heard; endAt: number }> {
-  let offer: ((samples: Int16Array, endAt: number) => void) | null = null;
+  const captured = { offer: null as ((samples: Int16Array, endAt: number) => void) | null };
+  const now = 1_800_000_000_000;
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
   let listening!: () => void;
   let finished!: (heard: Heard) => void;
   const ready = new Promise<void>((resolve) => {
@@ -21,9 +23,9 @@ async function hear(
   });
   const sound: PcmSource = {
     open(chunk) {
-      offer = chunk;
+      captured.offer = chunk;
       return () => {
-        offer = null;
+        captured.offer = null;
       };
     },
   };
@@ -42,7 +44,8 @@ async function hear(
     spawn: () => child as unknown as ChildProcess,
     fetch: async (input) => {
       if (String(input).endsWith('/health')) return new Response('ok');
-      if (responseDelay) await new Promise((resolve) => setTimeout(resolve, responseDelay));
+      // Advance recognition time without a real scheduling budget in this correctness test.
+      clock.mockReturnValue(now + responseDelay);
       return new Response(
         JSON.stringify({
           language: 'english',
@@ -74,12 +77,13 @@ async function hear(
     for (let i = 0; i <= 20; i++) {
       const samples = new Int16Array(SAMPLE_RATE / 10);
       if (i < 20) for (let j = 0; j < samples.length; j++) samples[j] = Math.round(3000 * Math.sin(j / 3));
-      if (!offer) throw new Error('The generated microphone is not open');
-      offer(samples, endAt - (20 - i) * spacing);
+      if (!captured.offer) throw new Error('The generated microphone is not open');
+      captured.offer(samples, endAt - (20 - i) * spacing);
     }
     return { final: await result, endAt };
   } finally {
     stop();
+    clock.mockRestore();
   }
 }
 
