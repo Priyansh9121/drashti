@@ -120,6 +120,14 @@ app.whenReady().then(()=>{
     const app = await _electron.launch({ args: [bootstrap], env });
     try {
       const page = await app.firstWindow();
+      await page.waitForLoadState('load');
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => typeof (globalThis as unknown as { DrashtiSpeechTap?: unknown }).DrashtiSpeechTap,
+          ),
+        )
+        .toBe('object');
       await page.evaluate(async () => {
         interface Tap {
           speechPort(
