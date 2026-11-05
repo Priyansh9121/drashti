@@ -2,7 +2,7 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## 1.0.0-alpha.15
+## 1.0.0-alpha.15 (5 Nov 2026)
 
 Update after a sabha, and update Main and nodes together. Live captions and all five offline AI helpers start off. Each is a Trial and can slow the screens while on. The AI helpers are Pro only: try only what you want in a rehearsal before a sabha.
 
@@ -15,6 +15,11 @@ Update after a sabha, and update Main and nodes together. Live captions and all 
 - File > AI helpers has five separate Trial switches, all off at first, working offline on this computer. Meaning and spelling search adds real library matches for meaning, spelling and Gujarati in English letters. Import suggestions offer slide breaks and Roman letters for newly pasted words: choose each change, with Undo. Playlist suggestions use chosen past sabhas and the loaded calendar: review, edit and approve a new playlist. Books stay as loaded; suggestions never go live by themselves or start a stream or recording.
 - Book references during pravachan offers actual passages from loaded Books beside LIVE, with exact matches first and meaning suggestions. Typed Gujarati, Hindi and English searches work while listening is off. Read the reference and quoted words, then press Show passage to put one up. A changed or removed Book, or an expired suggestion, needs a fresh search and review.
 - Follow singing (Trial) offers the normal next verse when heard words match the kirtan on LIVE. It keeps the play order, never jumps to another verse and never advances by itself: the operator presses Next. Both speech helpers need Live captions switched on for listening; neither turns it on for you.
+- A backup no longer stops for one missing or damaged original document: it keeps the rest and names what it left out.
+- What you delete stays deleted, even from a playlist that follows a folder or the drop folder.
+- With no opening pack, the opening shows a built-in photo of Swamishri (photograph: BAPS), zooming gently, with no words.
+- Drashti's window no longer waits at start for the answer to whether this computer plays HEVC video.
+- Back and Next share the width equally, panel headings use their full width, and each mode keeps its own Undo.
 - The admin and operator guides and setup-day checklist cover all five helpers and their separate choices.
 
 ## 1.0.0-alpha.14 (5 Nov 2026)
