@@ -39,7 +39,10 @@ export function OpeningDialog() {
   return <OpeningForm view={view} />;
 }
 
-/** The plan as it would play now: each photo's copy once made (its whole file until then); with nothing chosen, the default photo. */
+/**
+ * The plan as it would play now: each photo's copy once made (its whole file until then); with nothing chosen, the
+ * default photo.
+ */
 function planOf(view: OpeningView): OpeningPlan {
   return openingPlanOf(
     view.photos
