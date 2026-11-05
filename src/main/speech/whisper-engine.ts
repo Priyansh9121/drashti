@@ -173,6 +173,7 @@ interface CapturedSpan {
 /** Recognizer offsets count samples; gaps or slow capture must not turn recent words into old ones. */
 function capturedAt(spans: readonly CapturedSpan[], seconds: number, beginning: boolean): number {
   const last = spans[spans.length - 1];
+  if (!last) return NaN;
   const sample = Math.max(0, Math.min(last.to, Math.round(seconds * SAMPLE_RATE)));
   const span = spans.find((part) => (beginning ? sample < part.to : sample <= part.to)) ?? last;
   const fraction = Math.max(0, Math.min(1, (sample - span.from) / (span.to - span.from)));
