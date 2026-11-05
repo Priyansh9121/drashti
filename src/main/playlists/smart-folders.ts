@@ -26,6 +26,9 @@ import { addToFolderParts, folderItems, freeName, madeFrom, type FolderFile } fr
  * - A file that is gone shows as missing (its item stays); one button takes
  *   the missing out. A file whose size or time changed is imported again:
  *   when its bytes differ, it replaces its item in place.
+ * - What the operator took out of the playlist, or deleted from the library,
+ *   stays out (alpha.15): its file is never imported again by itself, however
+ *   it changes; Undo brings it back.
  * - A folder that is gone (a USB stick taken out) is said so; the playlist
  *   keeps its items, and carries on when the folder is back.
  * - Nothing it does touches what is on the screens: the screens keep what
@@ -403,6 +406,24 @@ export class SmartFolders {
     ).n;
   }
 
+  /**
+   * Whether the operator took a file's item out: the row taken out of the playlist (Remove from playlist, its folder
+   * removed, its media deleted), what it shows deleted from the library (a deck's card stays, marked), or gone for
+   * good since (purged 30 days after it was deleted).
+   */
+  private takenOut(itemId: string): boolean {
+    const row = this.deps.db
+      .prepare(
+        `SELECT i.deleted_at IS NOT NULL OR p.deleted_at IS NOT NULL OR m.deleted_at IS NOT NULL AS out
+           FROM playlist_items i
+           LEFT JOIN presentations p ON p.id = i.presentation_id
+           LEFT JOIN media m ON m.id = i.media_id
+          WHERE i.id = ?`,
+      )
+      .get(itemId) as { out: number } | undefined;
+    return row === undefined || row.out === 1;
+  }
+
   private setState(playlistId: string, relative: string, state: Row['state']): void {
     this.deps.db
       .prepare('UPDATE smart_files SET state = ? WHERE playlist_id = ? AND relative = ?')
@@ -449,6 +470,13 @@ export class SmartFolders {
           this.setState(playlistId, relative, 'ok');
           marked = true;
         }
+        f.pending.delete(relative);
+        continue;
+      }
+      // Taken out of the playlist, or deleted from the library, by the operator (alpha.15, the owner's "deleted things
+      // come back after a restart"): never imported again by itself, however its file changes (a cloud folder fetching
+      // it again gives it a new time). Undo brings it back, and the next look then takes the file as it is now.
+      if (r?.item_id && this.takenOut(r.item_id)) {
         f.pending.delete(relative);
         continue;
       }
