@@ -3082,7 +3082,9 @@ function start(): void {
     usable: (id) => playlists.tree().some((n) => n.id === id && !n.isFolder),
     empty: (id) => playlists.tree().find((n) => n.id === id)?.itemCount === 0,
     create: () => {
-      const id = playlists.createAtTop(freeName(playlists, simplePlaylistName(new Date())));
+      // Never named as a playlist the operator deleted (alpha.15): "Sabha, 30 Oct 2026 (2)" after the day's own was
+      // deleted, so the new, empty one is never taken for the deleted one come back after a restart.
+      const id = playlists.createAtTop(freeName(playlists, simplePlaylistName(new Date()), true));
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
       network?.hint('playlists');
       return id;

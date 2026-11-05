@@ -411,6 +411,19 @@ export class PlaylistRepo {
   // ---- the operator's editing -----------------------------------------------------
 
   /**
+   * The names of the playlists and folders deleted and not yet gone for good (Undo can still bring them back, for 30
+   * days): a playlist Drashti makes by itself is never named as one of them (alpha.15), so it is never taken for the
+   * deleted one come back.
+   */
+  removedNames(): string[] {
+    return (
+      this.db
+        .prepare('SELECT name FROM playlists WHERE deleted_at IS NOT NULL AND is_template = 0')
+        .all() as { name: string }[]
+    ).map((r) => r.name);
+  }
+
+  /**
    * Every playlist and folder not removed, each parent before its children,
    * in order; or (templates) the sabha templates, kept apart from them.
    */

@@ -26,7 +26,8 @@ import { extOf, mediaKindOf } from './scan';
  *   listed as not taken.
  * - A file is taken once its size and time have held still for 5 s (and, on Windows, once nothing else
  *   has it open): one still being copied or downloaded is never taken half-way. Taken again only if it
- *   changes; a file that goes leaves its media in the library.
+ *   changes; a file that goes leaves its media in the library. One whose media the operator deleted is never
+ *   taken again by itself, however it changes (alpha.15): importing it by hand, or Undo, brings it back.
  * - At most 2 GB a file: a larger one is listed, and Import anyway brings it in.
  * - While the stream is on air or recording, what held still waits.
  * - The folder is only ever read. In Simple Mode it carries on, with no notice.
@@ -266,6 +267,17 @@ export class DropFolder {
       );
   }
 
+  /** Whether the media a file was taken as has been deleted from the library since. */
+  private deletedSince(folder: string, name: string): boolean {
+    const row = this.deps.db
+      .prepare(
+        `SELECT m.deleted_at IS NOT NULL AS gone FROM drop_files d JOIN media m ON m.id = d.media_id
+          WHERE d.folder = ? AND d.name = ?`,
+      )
+      .get(folder, name) as { gone: number } | undefined;
+    return row?.gone === 1;
+  }
+
   view(): DropFolderView {
     const { folder, on } = this.saved();
     const notTaken: DropNotTaken[] = folder
@@ -409,6 +421,13 @@ export class DropFolder {
           this.pending.delete(name);
           continue;
         }
+      }
+      // Taken before, and deleted from the library by the operator since (alpha.15, the owner's "deleted things come
+      // back after a restart"): never taken again by itself, however the file changes (a cloud folder fetching it
+      // again gives it a new time).
+      if (row?.state === 'taken' && this.deletedSince(folder, name)) {
+        this.pending.delete(name);
+        continue;
       }
       // Pictures, videos and (Session 51) sounds: every media file Drashti takes.
       if (kind === null) {

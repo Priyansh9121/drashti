@@ -7,6 +7,7 @@ import { cloudOf, droppedName, type DropFolderView } from '../../shared/drop-fol
 import { NO_COUNTS, type ImportItemReport } from '../../shared/import';
 import { SOUND_EXTENSIONS } from '../../shared/media';
 import { openDatabase, type Db } from '../db/database';
+import { MediaRemoval } from '../library/media-removal';
 import { DropFolder } from './drop-folder';
 import { mediaKindOf } from './scan';
 
@@ -371,6 +372,36 @@ describe('the drop folder', () => {
     await rm(join(folder, 'Darshan.png'));
     await again.settle();
     expect(again.dropped()).toEqual(['Darshan.png', 'Darshan.png']);
+  });
+
+  it('never takes again by itself a file whose media the operator deleted, however it changes, here or after a restart; a new file still comes in (alpha.15)', async () => {
+    const db = openDatabase(':memory:');
+    const first = setup({ db });
+    await put('Darshan.png', 'picture one');
+    await first.service.setFolder(folder);
+    await first.settle();
+    expect(first.imports).toHaveLength(1);
+    const { id } = db.prepare("SELECT id FROM media WHERE name = 'Darshan.png'").get() as { id: string };
+    const media = new MediaRemoval(db, { onScreens: () => new Set() });
+    expect(media.remove([id])).toEqual([id]);
+    // Fetched again by a cloud folder: a new time, and new bytes too.
+    await put('Darshan.png', 'picture one, fetched again');
+    await first.settle();
+    expect(first.imports).toHaveLength(1);
+    first.service.stop();
+    // Drashti again, the file changed once more while it was closed: still not taken; a new file is.
+    await put('Darshan.png', 'picture one, fetched once more');
+    await put('Cover.png', 'picture two');
+    const again = setup({ db });
+    again.settings.set('dropFolder', { folder, on: true });
+    await again.settle();
+    expect(again.imports.map((i) => i.names)).toEqual([['Cover.png']]);
+    expect(again.service.view()).toMatchObject({ waiting: 0, notTaken: [] });
+    // Brought back (Undo): what changes next is taken again, as before.
+    expect(media.restore([id])).toEqual([id]);
+    await put('Darshan.png', 'picture one, edited');
+    await again.settle();
+    expect(again.imports.map((i) => i.names)).toEqual([['Cover.png'], ['Darshan.png']]);
   });
 
   it('never writes to the folder', async () => {
