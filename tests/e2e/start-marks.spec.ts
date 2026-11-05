@@ -62,6 +62,15 @@ test('the operator window starts without waiting for the HEVC question: its answ
     expect(log()).not.toMatch(HEVC_ANSWERED);
     // It still comes, late: Chromium's own answer, once the question lets go of its page.
     await expect.poll(log, { timeout: 60_000 }).toMatch(HEVC_ANSWERED);
+    // And the question's own page (a blank page of its own, never a window) goes once it has answered.
+    await expect
+      .poll(() =>
+        app.evaluate(
+          ({ webContents }) =>
+            webContents.getAllWebContents().filter((c) => c.getURL() === 'about:blank').length,
+        ),
+      )
+      .toBe(0);
     await app.close();
   } finally {
     await app.close().catch(() => undefined);
