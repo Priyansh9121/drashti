@@ -71,7 +71,7 @@ app.whenReady().then(()=>{
  session.defaultSession.setPermissionRequestHandler((_w,_p,yes)=>yes(true));
  const w=new BrowserWindow({width:640,height:360,show:false,webPreferences:{backgroundThrottling:false,preload:${JSON.stringify(preload)}}});
  w.setOpacity(0);w.setIgnoreMouseEvents(true);w.webContents.setAudioMuted(true);w.showInactive();
- globalThis.pcmReceipt={messages:0,chunks:0,samples:0,nonSilent:false};
+ globalThis.pcmReceipt={messages:0,chunks:0,samples:0,nonSilent:false,timed:0,maxTransit:0};
  globalThis.pairPcm=()=>{
   const {port1,port2}=new MessageChannelMain();
   port1.on('message',event=>{
@@ -82,6 +82,9 @@ app.whenReady().then(()=>{
    if(!values)return;
    globalThis.pcmReceipt.chunks++;globalThis.pcmReceipt.samples+=values.length;
    if(values.some(v=>v!==0))globalThis.pcmReceipt.nonSilent=true;
+   if(Number.isFinite(data.startAt)&&Number.isFinite(data.endAt)&&data.startAt<=data.endAt&&data.endAt<=Date.now()+250){
+    globalThis.pcmReceipt.timed++;globalThis.pcmReceipt.maxTransit=Math.max(globalThis.pcmReceipt.maxTransit,Date.now()-data.endAt);
+   }
   });
   port1.start();globalThis.pcmPort=port1;
   w.webContents.postMessage('speech-port',{},[port2]);
@@ -180,8 +183,17 @@ app.whenReady().then(()=>{
       const receipt = () =>
         app.evaluate(
           () =>
-            (globalThis as unknown as { pcmReceipt: { chunks: number; samples: number; nonSilent: boolean } })
-              .pcmReceipt,
+            (
+              globalThis as unknown as {
+                pcmReceipt: {
+                  chunks: number;
+                  samples: number;
+                  nonSilent: boolean;
+                  timed: number;
+                  maxTransit: number;
+                };
+              }
+            ).pcmReceipt,
         );
       await expect.poll(async () => (await receipt()).samples).toBeGreaterThan(8_000);
       expect((await receipt()).chunks).toBeGreaterThan(0);
@@ -199,6 +211,11 @@ app.whenReady().then(()=>{
         }
       });
       expect((await receipt()).samples - before).toBeGreaterThanOrEqual(24_000);
+      const timed = await receipt();
+      expect(timed.timed, 'every batch must retain its audio-thread capture times').toBe(timed.chunks);
+      expect(timed.maxTransit, 'renderer stalls must remain visible as capture age').toBeGreaterThanOrEqual(
+        150,
+      );
       await app.evaluate(() => (globalThis as unknown as { pcmPort: { close(): void } }).pcmPort.close());
       await expect
         .poll(() => page.evaluate(() => (globalThis as unknown as { tapDisconnects: number }).tapDisconnects))

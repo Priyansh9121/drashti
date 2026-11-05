@@ -42,22 +42,25 @@ async function hear(
     fallback: () => false,
     sound,
     spawn: () => child as unknown as ChildProcess,
-    fetch: async (input) => {
-      if (String(input).endsWith('/health')) return new Response('ok');
+    fetch: (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/health')) return Promise.resolve(new Response('ok'));
       // Advance recognition time without a real scheduling budget in this correctness test.
       clock.mockReturnValue(now + responseDelay);
-      return new Response(
-        JSON.stringify({
-          language: 'english',
-          segments: [
-            {
-              words: [
-                { word: ' alpha', start: 0.1, end: 0.4, probability: 0.9 },
-                { word: ' beta', start: 1.75, end: 1.95, probability: 0.9 },
-              ],
-            },
-          ],
-        }),
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            language: 'english',
+            segments: [
+              {
+                words: [
+                  { word: ' alpha', start: 0.1, end: 0.4, probability: 0.9 },
+                  { word: ' beta', start: 1.75, end: 1.95, probability: 0.9 },
+                ],
+              },
+            ],
+          }),
+        ),
       );
     },
     log: { info: () => undefined, warn: () => undefined },
