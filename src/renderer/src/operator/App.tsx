@@ -409,12 +409,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   help="tools"
                   data-testid="more-tools"
                 >
-                  <div>
-                    <PanelNote>
-                      A lower third shows a name, a title or a place across the bottom of the picture.
-                    </PanelNote>
-                    <LowerThirdsPanel nested platform={platform} />
-                  </div>
+                  <LowerThirdsPanel nested platform={platform} />
                   <div>
                     <PanelNote>
                       A MIDI controller’s pads can work Next, Back, Clear all and Black-out.

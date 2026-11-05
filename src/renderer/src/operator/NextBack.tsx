@@ -49,7 +49,7 @@ export function NextBack({
   return (
     <>
       <div
-        className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-2 px-3 pt-2"
+        className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 px-3 pt-2"
         role="group"
         aria-label="Next and Back"
       >

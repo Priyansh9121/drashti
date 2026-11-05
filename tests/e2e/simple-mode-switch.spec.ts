@@ -6,6 +6,7 @@ import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
 import { setUpPlaceholderShow } from './placeholder-show';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+import { layoutPicture } from './operator-layout';
 
 /*
  * Simple Mode, a way of working with no PIN (Session 54, E5: "remove admin/operator logic completely"; these
@@ -22,6 +23,68 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 const OLD_PIN = '481526';
 
 const modeOf = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode());
+
+test('a Pro deletion notice stays in Pro; Simple Undo puts Clear all back and preserves the Pro change', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, { width: 1440, height: 820 });
+  const show = await setUpPlaceholderShow(win);
+  const name = 'Placeholder Pro-only playlist';
+  await win.evaluate(async (name) => {
+    const made = await (globalThis as PageGlobals).drashti.playlists.create(name, null, false);
+    if (!made.ok) throw new Error(made.message);
+  }, name);
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Ravi Sabha' }).click();
+  const deleted = win.getByTestId('playlist-node').filter({ hasText: name });
+  await deleted.click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Delete…', exact: true }).click();
+  await win.getByTestId('remove-confirm').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(deleted).toHaveCount(0);
+  const notice = win.getByTestId('undo-removal');
+  await expect(notice).toContainText(`Deleted playlist “${name}”`);
+  await win.evaluate(async (id) => {
+    await (globalThis as PageGlobals).drashti.engine.dispatch({
+      type: 'goLive',
+      presentationId: id,
+      slideIndex: 0,
+    });
+  }, show.welcomeId);
+
+  await chooseMenuItem(app, 'switch-mode');
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await expect.soft(notice).toHaveCount(0);
+  await expect.soft(win.getByTestId('undo-said')).not.toContainText(`Deleted playlist “${name}”`);
+  await win.keyboard.press('F1');
+  await expect(win.getByTestId('simple-put-back')).toBeVisible();
+  await layoutPicture(win, 'simple-pro-undo');
+  await expect.soft(notice).toHaveCount(0);
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await win.keyboard.press(`${mod}+z`);
+  await expect(win.getByTestId('simple-put-back')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      win.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide,
+      ),
+    )
+    .toMatchObject({ presentationId: show.welcomeId });
+
+  // No Clear all to put back: the Pro step must still be left alone, including its restore callback.
+  await win.keyboard.press(`${mod}+z`);
+  await expect.soft(notice).toHaveCount(0);
+  await chooseMenuItem(app, 'switch-mode');
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  await expect.soft(notice).toContainText(`Deleted playlist “${name}”`);
+  // Pro owns Undo in its native menu (PAGE_KEYMAP excludes menuOnly). CDP key presses do not invoke
+  // a background Mac app's native accelerator; check its binding and invoke that same menu callback.
+  expect(
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('undo')?.accelerator),
+  ).toBe('CommandOrControl+Z');
+  await chooseMenuItem(app, 'undo');
+  await expect(deleted).toBeVisible();
+  await app.close();
+});
 
 /** Nothing asks for a PIN, and nothing says who is at the controls. */
 async function noRoles(win: Page): Promise<void> {

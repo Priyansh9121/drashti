@@ -71,13 +71,16 @@ export function Panel({
     <section aria-labelledby={`${id}-title`} className={cx('flex min-h-0 flex-col', className)} {...data}>
       {/* A title strip (Session 44: the appearance's, data-strip), but not a panel's set in under a group's. */}
       <header
-        className={cx('flex h-9 shrink-0 items-center gap-1 pr-3', nested ? 'pl-6' : 'pl-3')}
+        className={cx(
+          'flex min-h-9 shrink-0 flex-wrap items-center gap-1 py-1 pr-3',
+          nested ? 'pl-6' : 'pl-3',
+        )}
         data-strip={nested ? undefined : ''}
       >
         <Heading
           level={nested ? 3 : 2}
           id={`${id}-title`}
-          className="min-w-0 flex-1 text-2xs font-bold tracking-wider text-heading uppercase"
+          className="min-w-0 flex-1 basis-40 text-2xs font-bold tracking-wider text-heading uppercase"
         >
           {collapsible ? (
             <button
@@ -90,7 +93,7 @@ export function Panel({
                 setOpen(!open);
               }}
               // 24 px tall at least (WCAG 2.5.8): What is this? sits beside it.
-              className="-ml-1 flex min-h-6 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-fg"
+              className="-ml-1 flex min-h-6 max-w-full min-w-0 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-fg"
             >
               {open ? (
                 <ChevronDown size={14} aria-hidden="true" />
@@ -104,7 +107,7 @@ export function Panel({
           )}
         </Heading>
         {help.button}
-        {shown && actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
+        {shown && actions && <div className="ml-auto flex shrink-0 items-center gap-1">{actions}</div>}
       </header>
       {help.card}
       {shown && (
@@ -179,8 +182,11 @@ export function PanelGroup({
   );
   return (
     <section aria-labelledby={`${id}-title`} className="flex min-h-0 flex-col" {...data}>
-      <header className="flex h-9 shrink-0 items-center gap-1 px-3" data-strip="">
-        <h2 id={`${id}-title`} className="min-w-0 flex-1 text-xs font-bold tracking-wider text-fg uppercase">
+      <header className="flex min-h-9 shrink-0 flex-wrap items-center gap-1 px-3 py-1" data-strip="">
+        <h2
+          id={`${id}-title`}
+          className="min-w-0 flex-1 basis-40 text-xs font-bold tracking-wider text-fg uppercase"
+        >
           <button
             type="button"
             aria-expanded={open}
@@ -190,7 +196,7 @@ export function PanelGroup({
               setOpening(!open && livelyNow());
               setOpen(!open);
             }}
-            className="-ml-1 flex min-h-6 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-accent"
+            className="-ml-1 flex min-h-6 max-w-full min-w-0 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-accent"
           >
             {open ? (
               <ChevronDown size={14} aria-hidden="true" />

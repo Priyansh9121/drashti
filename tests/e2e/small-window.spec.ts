@@ -4,6 +4,7 @@ import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
+import { headingProblems, layoutPicture, liveRowProblems } from './operator-layout';
 
 /*
  * The operator window as CI's displays leave it, about 1024 × 645 (Session 51). Start here's three steps had been
@@ -27,6 +28,63 @@ const FIRST_START = {
 
 /** From the smallest operator window (Windows' 1008 px of content at its least) to a full HD display's. */
 const WIDTHS = [1008, 1024, 1280, 1366, 1440, 1600, 1920];
+
+for (const mode of ['pro', 'simple'] as const) {
+  for (const size of [
+    { width: 1024, height: 645 },
+    { width: 1280, height: 720 },
+    { width: 1440, height: 820 },
+  ]) {
+    test(`${mode}: LIVE controls, keys and panel headings fit at ${String(size.width)} × ${String(size.height)}`, async () => {
+      const { app } = await launchApp();
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      await sizeOperatorWindow(app, win, size);
+      if (mode === 'simple') {
+        await chooseMenuItem(app, 'switch-mode');
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+      }
+      await win.evaluate(() => document.fonts.ready.then(() => undefined));
+      // Soft assertions retain every distinct fault and the More tools picture on the old layout.
+      const soft = expect.configure({ soft: true });
+      const splitter = win.getByRole('separator', { name: 'Resize the live column', exact: true });
+      for (const columnWidth of [380, 300]) {
+        // Check a fresh layout and the narrowest remembered column, at each window size and in both modes.
+        await splitter.press(columnWidth === 380 ? 'Enter' : 'Home');
+        await expect(splitter).toHaveAttribute('aria-valuenow', String(columnWidth));
+        await win.getByRole('complementary', { name: 'Live', exact: true }).evaluate((el) => {
+          el.scrollTop = 0;
+        });
+        await expect(win.getByTestId('show-back')).toBeInViewport({ ratio: 1 });
+        await expect(win.getByTestId('show-next')).toBeInViewport({ ratio: 1 });
+        await expect(win.getByTestId('next-up')).toHaveAccessibleName(/^Next up: .+/u);
+        const picture = `${mode}-${String(size.width)}-${String(columnWidth)}`;
+        await layoutPicture(win, `${picture}-live`);
+        await soft.poll(() => liveRowProblems(win)).toEqual([]);
+        if (mode === 'pro') {
+          await win.getByTestId('group-more-tools-toggle').click();
+          const lowerThirds = win.getByTestId('lower-thirds-panel');
+          await lowerThirds.scrollIntoViewIfNeeded();
+          await layoutPicture(win, `${picture}-tools`);
+          const note = win.getByText(
+            'A lower third shows a name, a title or a place across the bottom of the picture.',
+            { exact: true },
+          );
+          const heading = await lowerThirds.getByRole('heading', { name: 'Lower Thirds' }).boundingBox();
+          const explanation = await note.boundingBox();
+          expect.soft(heading).not.toBeNull();
+          expect.soft(explanation).not.toBeNull();
+          if (heading && explanation)
+            expect.soft(explanation.y).toBeGreaterThanOrEqual(heading.y + heading.height);
+          await expect.soft(lowerThirds).toContainText(await note.innerText());
+        }
+        await soft.poll(() => headingProblems(win)).toEqual([]);
+        if (mode === 'pro') await win.getByTestId('group-more-tools-toggle').click();
+      }
+      await app.close();
+    });
+  }
+}
 
 /**
  * A bar along the bottom as it is laid out now: what does not fit (it scrolls sideways, a button sticks out of it
