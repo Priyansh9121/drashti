@@ -153,7 +153,7 @@ export class StreamService {
   /** What else keeps the Program open, by name (Session 48: the window for Zoom), without the preview's port. */
   private readonly holders = new Set<string>();
   /** Live captions' listener (Session 55, Part 10) and its port to the page. */
-  private speech: ((samples: Int16Array, endAt: number) => void) | null = null;
+  private speech: ((samples: Int16Array, endAt: number, startAt?: number) => void) | null = null;
   private speechPort: MessagePortMain | null = null;
   private inputs: ProgramInputs = NO_INPUTS;
   private layout: StreamLayout;
@@ -765,7 +765,7 @@ export class StreamService {
    * a port it sends the input's own sound on (16 kHz mono 16-bit, before the stream's delay, mix and limiter), each
    * piece timed as it arrives. Null when no sound input is chosen, or the computer blocks it. Returns how to stop.
    */
-  listenSound(chunk: (samples: Int16Array, endAt: number) => void): (() => void) | null {
+  listenSound(chunk: (samples: Int16Array, endAt: number, startAt?: number) => void): (() => void) | null {
     if (this.activeProfile().sound === null || this.context().sound === null) return null;
     this.speech = chunk;
     this.hold('captions', true);
@@ -785,7 +785,12 @@ export class StreamService {
     this.speechPort?.close();
     const { port1, port2 } = new MessageChannelMain();
     port1.on('message', (event) => {
-      const data = event.data as { kind?: unknown; samples?: unknown } | null;
+      const data = event.data as {
+        kind?: unknown;
+        samples?: unknown;
+        startAt?: unknown;
+        endAt?: unknown;
+      } | null;
       if (data?.kind !== 'pcm') return;
       const samples =
         data.samples instanceof ArrayBuffer
@@ -793,7 +798,20 @@ export class StreamService {
           : data.samples instanceof Int16Array
             ? data.samples
             : null;
-      if (samples) this.speech?.(samples, this.deps.now());
+      if (
+        !samples?.length ||
+        samples.length > 16_000 ||
+        typeof data.startAt !== 'number' ||
+        !Number.isFinite(data.startAt) ||
+        data.startAt < 0 ||
+        typeof data.endAt !== 'number' ||
+        !Number.isFinite(data.endAt) ||
+        data.startAt > data.endAt ||
+        data.endAt > Date.now() + 250
+      )
+        return;
+      // Renderer queuing is real capture age. Never replace it with this port's delivery time.
+      this.speech?.(samples, data.endAt, data.startAt);
     });
     port1.start();
     this.speechPort = port1;

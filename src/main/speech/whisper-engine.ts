@@ -19,7 +19,7 @@ export const SAMPLE_RATE = 16_000;
 /** The stream's sound input, 16 kHz mono 16-bit, each chunk with when its last sample was heard (epoch ms). */
 export interface PcmSource {
   /** Start; null when there is no sound input. Returns how to stop. */
-  open(chunk: (samples: Int16Array, endAt: number) => void): (() => void) | null;
+  open(chunk: (samples: Int16Array, endAt: number, startAt?: number) => void): (() => void) | null;
 }
 
 export interface WhisperEngineOptions {
@@ -102,7 +102,12 @@ interface Reply {
 }
 
 /** What the engine heard in a clip that began at `clipAt` (epoch ms): its words, in order, never empty. */
-export function wordsOf(reply: Reply, clipAt: number, clipEndAt: number): HeardWord[] {
+export function wordsOf(
+  reply: Reply,
+  clipAt: number,
+  clipEndAt: number,
+  captured?: (seconds: number, beginning: boolean) => number,
+): HeardWord[] {
   const words: { text: string; start: number; end: number; p: number[] }[] = [];
   for (const segment of reply.segments ?? []) {
     // Silence the engine still wrote something for.
@@ -110,8 +115,10 @@ export function wordsOf(reply: Reply, clipAt: number, clipEndAt: number): HeardW
     for (const token of segment.words ?? []) {
       const text = token.word;
       if (text.trim() === '') continue;
-      const start = clipAt + (token.start ?? 0) * 1000;
-      const end = clipAt + (token.end ?? token.start ?? 0) * 1000;
+      const from = token.start ?? 0;
+      const to = token.end ?? from;
+      const start = captured ? captured(from, true) : clipAt + from * 1000;
+      const end = captured ? captured(to, false) : clipAt + to * 1000;
       const last = words.at(-1);
       // A token without a space before it belongs to the word before it (a letter's second part, punctuation).
       if (last && !/^\s/.test(text)) {
@@ -156,9 +163,26 @@ export function writtenIn(reply: Reply): SpeechLanguage | null {
 }
 
 /** A phrase being heard: its samples, from its start, and when its first sample was heard. */
+interface CapturedSpan {
+  from: number;
+  to: number;
+  startAt: number;
+  endAt: number;
+}
+
+/** Recognizer offsets count samples; gaps or slow capture must not turn recent words into old ones. */
+function capturedAt(spans: readonly CapturedSpan[], seconds: number, beginning: boolean): number {
+  const last = spans[spans.length - 1];
+  const sample = Math.max(0, Math.min(last.to, Math.round(seconds * SAMPLE_RATE)));
+  const span = spans.find((part) => (beginning ? sample < part.to : sample <= part.to)) ?? last;
+  const fraction = Math.max(0, Math.min(1, (sample - span.from) / (span.to - span.from)));
+  return span.startAt + fraction * (span.endAt - span.startAt);
+}
+
 interface Growing {
   id: string;
   samples: Int16Array[];
+  captured: CapturedSpan[];
   length: number;
   startAt: number;
   endAt: number;
@@ -269,6 +293,8 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         working = true;
         piece.sentAt = Date.now();
         const samples = joined(piece);
+        // Freeze the clock with the submitted samples: more microphone chunks can arrive during inference.
+        const captured = piece.captured.slice();
         const clipAt = piece.startAt;
         const clipEndAt = piece.endAt;
         try {
@@ -289,7 +315,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
             hold();
             return;
           }
-          const words = wordsOf(asked.reply, clipAt, clipEndAt);
+          const words = wordsOf(asked.reply, clipAt, clipEndAt, (seconds, beginning) =>
+            capturedAt(captured, seconds, beginning),
+          );
           if (final && words.length === 0) return;
           const heard: Heard = {
             id: piece.id,
@@ -311,9 +339,17 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         }
       };
 
-      const chunk = (samples: Int16Array, endAt: number): void => {
+      const chunk = (samples: Int16Array, endAt: number, startAt?: number): void => {
         if (stopped || busy) return;
         const ms = (samples.length / SAMPLE_RATE) * 1000;
+        const capturedStart = startAt ?? endAt - ms;
+        if (
+          !samples.length ||
+          !Number.isFinite(capturedStart) ||
+          !Number.isFinite(endAt) ||
+          capturedStart > endAt
+        )
+          return;
         let sum = 0;
         for (const s of samples) sum += s * s;
         const level = Math.sqrt(sum / Math.max(1, samples.length));
@@ -325,13 +361,20 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           phrase = {
             id: `s${String(count)}`,
             samples: [],
+            captured: [],
             length: 0,
-            startAt: endAt - ms,
+            startAt: capturedStart,
             endAt,
             quietMs: 0,
             sentAt: Date.now(),
           };
         }
+        phrase.captured.push({
+          from: phrase.length,
+          to: phrase.length + samples.length,
+          startAt: capturedStart,
+          endAt,
+        });
         phrase.samples.push(samples);
         phrase.length += samples.length;
         phrase.endAt = endAt;

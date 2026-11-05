@@ -63,9 +63,16 @@ async function update(): Promise<void> {
     });
     node.port.onmessage = (event: MessageEvent<unknown>) => {
       if (port !== to || generation !== mine || track.readyState !== 'live') return;
-      if (!(event.data instanceof Int16Array)) return;
+      if (typeof event.data !== 'object' || event.data === null) return;
+      const data = event.data as { samples?: unknown; startAt?: unknown; endAt?: unknown };
+      if (
+        !(data.samples instanceof Int16Array) ||
+        typeof data.startAt !== 'number' ||
+        typeof data.endAt !== 'number'
+      )
+        return;
       // Electron's Main port turns a transferred ArrayBuffer into null. Clone this bounded 3.2 KB batch instead.
-      to.postMessage({ kind: 'pcm', samples: event.data });
+      to.postMessage({ kind: 'pcm', samples: data.samples, startAt: data.startAt, endAt: data.endAt });
     };
     node.port.start();
     graph.source.connect(node).connect(graph.sink);

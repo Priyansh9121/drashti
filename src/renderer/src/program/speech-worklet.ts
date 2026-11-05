@@ -14,6 +14,7 @@ class SpeechProcessor extends AudioWorkletProcessor {
   private mono = new Float32Array(128);
   private batch = new Int16Array(SPEECH_RATE / 10);
   private count = 0;
+  private startAt = 0;
   private stopped = false;
 
   constructor() {
@@ -35,10 +36,14 @@ class SpeechProcessor extends AudioWorkletProcessor {
       for (let i = 0; i < frames; i += 1)
         this.mono[i] = (this.mono[i] ?? 0) + (channel[i] ?? 0) / channels.length;
     const samples = this.resampler.push(this.mono, sampleRate);
-    for (const sample of samples) {
-      this.batch[this.count++] = sample;
+    // eslint-disable-next-line no-restricted-properties -- raw microphone capture time, never a picture-frame decision
+    const heardAt = Date.now();
+    for (let i = 0; i < samples.length; i++) {
+      const at = heardAt - ((samples.length - 1 - i) / SPEECH_RATE) * 1000;
+      if (this.count === 0) this.startAt = at;
+      this.batch[this.count++] = samples[i] ?? 0;
       if (this.count === this.batch.length) {
-        this.port.postMessage(this.batch, [this.batch.buffer]);
+        this.port.postMessage({ samples: this.batch, startAt: this.startAt, endAt: at }, [this.batch.buffer]);
         this.batch = new Int16Array(SPEECH_RATE / 10);
         this.count = 0;
       }
