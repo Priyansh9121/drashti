@@ -82,7 +82,7 @@ app.whenReady().then(()=>{
    if(!values)return;
    globalThis.pcmReceipt.chunks++;globalThis.pcmReceipt.samples+=values.length;
    if(values.some(v=>v!==0))globalThis.pcmReceipt.nonSilent=true;
-   if(Number.isFinite(data.startAt)&&Number.isFinite(data.endAt)&&data.startAt<=data.endAt&&data.endAt<=Date.now()+250){
+   if(Number.isFinite(data.startAt)&&Number.isFinite(data.endAt)&&data.startAt>=Date.now()-10000&&data.startAt<=data.endAt&&data.endAt<=Date.now()+250){
     globalThis.pcmReceipt.timed++;globalThis.pcmReceipt.maxTransit=Math.max(globalThis.pcmReceipt.maxTransit,Date.now()-data.endAt);
    }
   });
