@@ -399,7 +399,11 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         const port = await freePort().catch(() => 0);
         if (stopped) return;
         if (!port) {
-          to.state({ phase: 'failed', message: 'The captions engine could not open a local connection.' });
+          to.state({
+            phase: 'failed',
+            message:
+              'The captions engine could not open a local connection: turn captions off and on to try again.',
+          });
           return;
         }
         // Both engines require this private path for their handlers. Each child gets a fresh one.
