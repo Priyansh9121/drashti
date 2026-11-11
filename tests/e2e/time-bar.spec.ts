@@ -379,7 +379,7 @@ test('Simple Mode’s bar moves, pauses and plays what plays as Pro Mode’s (no
   // Simple Mode: the bar and its time left (no elapsed time), moved as Pro Mode's, with Pause and Play (Session 56, the
   // owner's words: drag LIVE's time bar in both modes, and Pause under LIVE in Simple Mode; until then it showed the
   // bar, moved nothing and had Play only on what was paused).
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const bg = row(win, 'background');
   const moves = bg.getByRole('slider', { name: 'Time of the background video', exact: true });
@@ -513,7 +513,10 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       // The bar is read-only and Pause is disabled; a paired script asking anyway still gets a refusal in words.
       await row.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
       const simpleBar = row.getByRole('progressbar', { name: 'Time of the background video', exact: true });

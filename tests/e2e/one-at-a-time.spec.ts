@@ -242,7 +242,7 @@ test('Simple Mode: the video and the covers one at a time; Pause and Play under 
   const show = await sabha(win);
   // CI's operator window, about 1024 × 645.
   await sizeOperatorWindow(app, win, CI_WINDOW);
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple).toBeVisible();
   const middle = simple.getByTestId('column-middle');

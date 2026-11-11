@@ -17,7 +17,6 @@ import {
   MAX_ZIP_BYTES,
   MAX_ZIP_FILES,
   NOT_TAKEN_REASON,
-  PERMISSION_WORDS,
   takenKind,
   waitingKind,
   type YouTubeChoice,
@@ -600,15 +599,13 @@ export class LinkService {
     return this.answer();
   }
 
-  /** Is this a choice of the qualities the video offers, within the setting, with the tick ticked? */
+  /** Is this a choice of the qualities the video offers, within the setting? */
   private youtubeChoice(
     video: NonNullable<NonNullable<LinkView['look']>['video']>,
     raw: unknown,
   ): { ok: true; choice: YouTubeChoice; bytes: number | null } | { ok: false; message: string } {
     const c = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<YouTubeChoice>;
-    if (c.permission !== true) return { ok: false, message: `Tick the box first: ${PERMISSION_WORDS}.` };
-    if (c.type === 'mp3')
-      return { ok: true, choice: { type: 'mp3', height: null, permission: true }, bytes: video.soundBytes };
+    if (c.type === 'mp3') return { ok: true, choice: { type: 'mp3', height: null }, bytes: video.soundBytes };
     if (c.type !== 'mp4') return { ok: false, message: 'Choose MP4 (the video) or MP3 (its sound only).' };
     const offered = video.heights.find((h) => h.height === c.height);
     if (!offered) return { ok: false, message: 'Choose one of the qualities this video offers.' };
@@ -616,7 +613,7 @@ export class LinkService {
       return { ok: false, message: aboveTheSetting(this.state.maxHeight) };
     return {
       ok: true,
-      choice: { type: 'mp4', height: offered.height, permission: true },
+      choice: { type: 'mp4', height: offered.height },
       bytes: offered.bytes,
     };
   }

@@ -607,27 +607,22 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     }
   };
 
-  it('looks, refuses a download without the tick or above the setting, then saves under the title', async () => {
+  it('looks, refuses a download above the setting, then saves under the title, with no tick asked', async () => {
     const h = await youtube();
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
     const look = h.service.view().look;
     expect(look?.name).toBe('Placeholder video');
     expect(look?.video?.heights.map((x) => x.height)).toEqual([4320, 2160, 1440, 1080, 720]);
-    // The tick, each time; the qualities offered, never above the setting.
+    // The qualities offered, never above the setting; no tick (the owner, 6 Nov 2026: the sanstha approves Drashti).
     const say = (r: ReturnType<LinkService['download']>) => (r.ok ? '' : r.message);
-    expect(say(h.service.download())).toContain('Tick the box first: This video is the mandir’s own');
-    expect(say(h.service.download({ type: 'mp4', height: 1080, permission: false }))).toContain(
-      'Tick the box',
-    );
-    expect(say(h.service.download({ type: 'mp4', height: 2160, permission: true }))).toContain(
+    expect(say(h.service.download())).toContain('Choose MP4 (the video) or MP3 (its sound only).');
+    expect(say(h.service.download({ type: 'mp4', height: 2160 }))).toContain(
       'Above 1080p, the highest video quality allowed',
     );
-    expect(say(h.service.download({ type: 'mp4', height: 999, permission: true }))).toContain(
-      'qualities this video offers',
-    );
+    expect(say(h.service.download({ type: 'mp4', height: 999 }))).toContain('qualities this video offers');
     expect(h.service.view().phase).toBe('looked');
-    expect(h.service.download({ type: 'mp4', height: 1080, permission: true }).ok).toBe(true);
+    expect(h.service.download({ type: 'mp4', height: 1080 }).ok).toBe(true);
     expect(h.service.view().choice).toEqual({ type: 'mp4', height: 1080 });
     await until(() => h.service.view().phase === 'done', 30_000);
     expect(files(h.folder)).toEqual(['Placeholder video.mp4']);
@@ -637,9 +632,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
       h.service.reset();
       h.service.look('youtube', LINK);
       await until(() => h.service.view().phase === 'looked');
-      expect(h.service.download({ type, height: type === 'mp4' ? 720 : null, permission: true }).ok).toBe(
-        true,
-      );
+      expect(h.service.download({ type, height: type === 'mp4' ? 720 : null }).ok).toBe(true);
       await until(() => h.service.view().phase === 'done', 30_000);
     }
     expect(files(h.folder)).toEqual([
@@ -656,7 +649,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     const h = await youtube({ title: 'Placeholder secret title' });
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
-    h.service.download({ type: 'mp4', height: 720, permission: true });
+    h.service.download({ type: 'mp4', height: 720 });
     await until(() => h.service.view().phase === 'done', 30_000);
     const log = h.logs.join('\n');
     expect(log).toContain('Links: looked at a YouTube video link (up to 4320p (8K))');
@@ -677,7 +670,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
     h.air.on = true;
-    h.service.download({ type: 'mp4', height: 720, permission: true });
+    h.service.download({ type: 'mp4', height: 720 });
     expect(h.service.view().phase).toBe('waiting');
     await new Promise((r) => setTimeout(r, 300));
     expect(starts(h.fakeLog)).toEqual([]);
@@ -735,7 +728,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     const h = await youtube({ steps: 200, stepMs: 60 });
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
-    h.service.download({ type: 'mp4', height: 720, permission: true });
+    h.service.download({ type: 'mp4', height: 720 });
     await until(() => (h.service.view().progress?.done ?? 0) > 1000);
     expect(readdirSync(h.folder).some((n) => n.startsWith('.drashti-youtube-'))).toBe(true);
     h.service.close();
@@ -749,7 +742,7 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     const h = await youtube({ steps: 200, stepMs: 60 }, { workDir });
     h.service.look('youtube', LINK);
     await until(() => h.service.view().phase === 'looked');
-    h.service.download({ type: 'mp4', height: 720, permission: true });
+    h.service.download({ type: 'mp4', height: 720 });
     await until(() => (h.service.view().progress?.done ?? 0) > 1000);
     // Its work folder cannot be removed yet, as on Windows the moment after its programs were stopped.
     chmodSync(workDir, 0o555);
@@ -809,9 +802,15 @@ describe('the playlist a download went into last (Session 54, F1)', () => {
     expect(h.service.view().lastPlaylist).toBeNull();
   });
 
-  it('is every person’s in Pro Mode; in Simple Mode only its one playlist (Session 55, Part 18), as From a Link… goes there', () => {
+  it('is every person’s in Pro Mode; in Simple Mode a playlist, never a template or a folder (Session 56: From a Link… goes into the open one)', () => {
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.links.setPlaylist);
     let simple = true;
+    const kinds: Record<string, 'playlist' | 'folder' | 'template'> = {
+      'placeholder-one': 'playlist',
+      'placeholder-other': 'playlist',
+      'placeholder-folder': 'folder',
+      'placeholder-template': 'template',
+    };
     lockChannels(
       () => simple,
       simpleModeRefusals(() => ({ chosen: null, devices: [], state: 'default' as const, checked: true })),
@@ -820,13 +819,18 @@ describe('the playlist a download went into last (Session 54, F1)', () => {
         playlistOf: () => null,
         holdsMedia: () => false,
         holdsPresentation: () => false,
+        kindOf: (id) => kinds[id] ?? null,
+        listsMedia: () => false,
+        listsPresentation: () => false,
       })),
     );
     expect(refusalFor(IPC.links.setPlaylist, ['placeholder-one'])).toBeUndefined();
-    expect(refusalFor(IPC.links.setPlaylist, ['placeholder-other'])?.()).toEqual({
-      ok: false,
-      message: SIMPLE_MODE_REFUSAL,
-    });
+    expect(refusalFor(IPC.links.setPlaylist, ['placeholder-other'])).toBeUndefined();
+    for (const id of ['placeholder-folder', 'placeholder-template', 'placeholder-none'])
+      expect(refusalFor(IPC.links.setPlaylist, [id])?.(), id).toEqual({
+        ok: false,
+        message: SIMPLE_MODE_REFUSAL,
+      });
     // A request with none of the window's arguments (a phone's, Companion's) is refused.
     expect(refusedNow(IPC.links.setPlaylist)).toBe(true);
     simple = false;

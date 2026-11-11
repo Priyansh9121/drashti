@@ -171,7 +171,7 @@ test('Simple Mode refuses making or deleting an appearance', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const answers = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti.appearance;

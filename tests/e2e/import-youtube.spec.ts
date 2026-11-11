@@ -108,10 +108,9 @@ test('YouTube: details, quality up to the setting, the tick each time, MP4 and M
   await expect(win.getByTestId('link-quality-1080')).toHaveAttribute('aria-checked', 'true');
   await expect(win.getByTestId('link-quality-2160')).toContainText('2160p (4K)');
 
-  // Download waits for the tick.
+  // No tick to tick (the owner, 6 Nov 2026: the sanstha approves Drashti): Download is ready once it has looked.
   const download = win.getByTestId('link-download');
-  await expect(download).toBeDisabled();
-  await win.getByTestId('link-permission').check();
+  await expect(win.getByTestId('link-permission')).toHaveCount(0);
   await expect(download).toBeEnabled();
   await win.getByTestId('link-choose-folder').click();
   await expect(win.getByTestId('link-folder')).toHaveText(chosen);
@@ -153,7 +152,7 @@ test('YouTube: details, quality up to the setting, the tick each time, MP4 and M
   await report.getByRole('button', { name: 'Close', exact: true }).first().click();
   await expect.poll(async () => (await listMedia(win)).map((m) => m.name)).toContain('Placeholder video.mp4');
 
-  // The same video as MP3: the tick again, then its sound alone.
+  // The same video as MP3: its sound alone, with nothing to tick.
   await chooseMenuItem(app, 'import-from-link');
   await win.getByTestId('link-another').click();
   await win.getByTestId('link-kind-youtube').click();
@@ -162,9 +161,8 @@ test('YouTube: details, quality up to the setting, the tick each time, MP4 and M
   await win.getByTestId('link-type-mp3').click();
   await expect(win.getByTestId('link-mp3-words')).toContainText('The best sound the video has');
   await expect(win.getByTestId('link-quality-1080')).toHaveCount(0);
-  await expect(win.getByTestId('link-permission')).not.toBeChecked();
-  await expect(download).toBeDisabled();
-  await win.getByTestId('link-permission').check();
+  await expect(win.getByTestId('link-permission')).toHaveCount(0);
+  await expect(download).toBeEnabled();
   await download.click();
   await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 120_000 });
   expect(readdirSync(chosen).sort()).toEqual(['Placeholder video.mp3', 'Placeholder video.mp4']);

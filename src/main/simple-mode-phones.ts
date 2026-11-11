@@ -2,7 +2,7 @@ import type { EngineCommand, EngineCommandType } from '../shared/engine/commands
 import type { EngineState } from '../shared/engine/state';
 import type { DeviceOp } from '../shared/network-api';
 import { repeatPresentationId } from '../shared/repeat';
-import type { SimpleScope } from './simple-mode';
+import type { SimpleOpenPlaylist } from './simple-mode';
 
 /*
  * A paired phone in Simple Mode (Session 55, the owner's answer of 30 Oct 2026): it may do only what Simple Mode's
@@ -228,8 +228,11 @@ export const COMMANDS_IN_SIMPLE_MODE: Readonly<Record<EngineCommandType, Command
   placePip: 'pro',
 };
 
-/** Simple Mode as a phone's request is weighed (index.ts): its one playlist and what it holds, and the phone's words. */
-export interface SimplePhoneScope extends SimpleScope {
+/**
+ * Simple Mode as a phone's request is weighed (index.ts): its one playlist (since Session 56 the one open in Simple
+ * Mode's window) and what it holds, and the phone's words.
+ */
+export interface SimplePhoneScope extends SimpleOpenPlaylist {
   /** Whether the one playlist plays this presentation: a presentation's row (a PDF's or a deck's too), a passage's. */
   plays(presentationId: string): boolean;
   /** What a phone is told when it asks for what Simple Mode's window does not do (shared/mode.ts). */
@@ -239,15 +242,15 @@ export interface SimplePhoneScope extends SimpleScope {
 const ruleOf = <K extends string, R>(table: Readonly<Record<K, R>>, key: string): R | null =>
   Object.hasOwn(table, key) ? table[key as K] : null;
 
-const theOne = (scope: SimpleScope, playlistId: unknown): boolean =>
+const theOne = (scope: SimpleOpenPlaylist, playlistId: unknown): boolean =>
   scope.playlistId !== null && playlistId === scope.playlistId;
 
 /** An item of the one playlist. */
-const itsItem = (scope: SimpleScope, itemId: unknown): boolean =>
+const itsItem = (scope: SimpleOpenPlaylist, itemId: unknown): boolean =>
   scope.playlistId !== null && typeof itemId === 'string' && scope.playlistOf(itemId) === scope.playlistId;
 
 /** Items, every one of them the one playlist's (one taken out too, for its Undo), at least one. */
-const itsItems = (scope: SimpleScope, ids: unknown): boolean =>
+const itsItems = (scope: SimpleOpenPlaylist, ids: unknown): boolean =>
   Array.isArray(ids) && ids.length > 0 && ids.every((id) => itsItem(scope, id));
 
 /**

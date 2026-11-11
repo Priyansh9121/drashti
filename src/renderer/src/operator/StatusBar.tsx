@@ -322,16 +322,22 @@ export function StatusBar({
 }
 
 /**
- * Things to tell the operator (a restore, saved diagnostics, a command that failed), above the show controls,
- * in the window's flow (Sessions 31–36, A9): it never covers a control the keyboard is on.
+ * Things to tell the operator (a restore, saved diagnostics, a command that failed, a file played at the even
+ * loudness): small and see-through, in the window's bottom-right corner, just above the bars at its foot (the owner,
+ * 11 Nov 2026; until then a card in the window's flow, Sessions 31–36, A9). It takes no room, so nothing moves as one
+ * comes and goes, and it is never in the way: a click on it reaches what is under it, and a control the keyboard is on
+ * stays in sight through it (WCAG 2.4.11); only its Dismiss takes a click.
  */
 export function NoticeArea() {
   const notice = useNotice((s) => s.text);
   if (!notice) return null;
   return (
-    <div className="flex shrink-0 justify-end px-3 pb-2">
-      {/* A new notice arrives (rising 6 px) as the last one leaves. */}
-      <NoticeCard key={notice} notice={notice} />
+    // An anchor with no height on the bars' top edge: the card stands on it, over the bottom of the columns.
+    <div className="relative z-30 h-0 shrink-0">
+      <div className="pointer-events-none absolute right-3 bottom-2 flex w-[min(22rem,calc(100vw-1.5rem))] justify-end">
+        {/* A new notice arrives (rising 6 px) as the last one leaves. */}
+        <NoticeCard key={notice} notice={notice} />
+      </div>
     </div>
   );
 }
@@ -345,9 +351,9 @@ function NoticeCard({ notice }: { notice: string }) {
       role="alert"
       data-testid="operator-notice"
       data-motion={arriving}
-      className="flex w-[min(30rem,100%)] items-start gap-2 rounded-lg border border-line-strong border-l-4 border-l-accent bg-panel-3 px-3 py-2 text-sm text-fg shadow-overlay"
+      className="pointer-events-none flex max-w-full items-start gap-1.5 rounded-md border border-line/60 border-l-2 border-l-accent bg-panel-3/75 px-2 py-1.5 text-xs leading-snug text-fg"
     >
-      <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" />
+      <Info size={13} aria-hidden="true" className="mt-px shrink-0 text-accent" />
       <p className="min-w-0 flex-1 break-words">{notice}</p>
       <button
         type="button"
@@ -355,9 +361,9 @@ function NoticeCard({ notice }: { notice: string }) {
         onClick={() => {
           useNotice.setState({ text: null });
         }}
-        className="-my-0.5 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
+        className="pointer-events-auto -my-0.5 -mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
       >
-        <X size={14} aria-hidden="true" />
+        <X size={12} aria-hidden="true" />
       </button>
     </div>
   );

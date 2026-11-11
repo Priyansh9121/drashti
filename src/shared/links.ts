@@ -10,9 +10,9 @@
  * everything else stays in the folder, listed as not taken.
  *
  * YouTube (Session 25c): one video, as MP4 (video) or MP3 (sound only), at
- * the quality chosen, never above the admin's highest video quality, after
- * a person confirms each time that it is the mandir's own or used with its
- * owner's permission. Drashti runs yt-dlp for it (and yt-dlp runs Deno for
+ * the quality chosen, never above the admin's highest video quality (no
+ * permission tick since alpha.16: the owner, 6 Nov 2026, the sanstha approves
+ * Drashti). Drashti runs yt-dlp for it (and yt-dlp runs Deno for
  * YouTube's player JavaScript); Drashti never signs in to YouTube. A
  * downloaded file holds only the video: YouTube sends its ads apart.
  */
@@ -189,8 +189,6 @@ export interface YouTubeChoice {
   type: YouTubeType;
   /** The height (MP4 only; MP3 takes the best sound). */
   height: number | null;
-  /** The permission tick, ticked this time. */
-  permission: boolean;
 }
 
 /**
@@ -202,9 +200,6 @@ export function chosenHeight(video: VideoDetails, maxHeight: number, picked: num
   if (picked !== null && picked <= maxHeight && video.heights.some((h) => h.height === picked)) return picked;
   return video.heights.find((h) => h.height <= maxHeight)?.height ?? null;
 }
-
-/** The permission tick's words: each time, before Download wakes (PLAN §7). */
-export const PERMISSION_WORDS = 'This video is the mandir’s own, or its owner allows us to use it';
 
 /** Why a quality above the setting cannot be picked, and where it is changed. */
 export const aboveTheSetting = (maxHeight: number): string =>

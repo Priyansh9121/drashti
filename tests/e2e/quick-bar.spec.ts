@@ -272,7 +272,7 @@ test('Simple Mode has no quick bar: none shows, its keys do nothing, and the mai
   expect(set.ok).toBe(true);
   await expect(pins(win)).toHaveCount(1);
 
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(bar(win)).toHaveCount(0);
   // Alt+1 puts nothing up in Simple Mode.

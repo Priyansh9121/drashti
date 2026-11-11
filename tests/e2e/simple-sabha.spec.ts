@@ -40,7 +40,7 @@ async function dialogPicks(app: ElectronApplication, files: string[]): Promise<v
 
 /** Into Simple Mode by the header's button, as a person does. */
 async function intoSimple(win: Page): Promise<Locator> {
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple).toBeVisible();
   return simple;
@@ -169,7 +169,7 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
   await app.close();
 });
 
-test('none open: a new playlist; Add files… and files dropped bring in only what a sabha plays; a row dragged, Rename and Delete, each with Undo; the wallpapers; nothing beyond the one playlist, whoever asks', async () => {
+test('none open: a new playlist; Add files… and files dropped bring in only what a sabha plays; a row dragged, Rename and Delete, each with Undo; the wallpapers; nothing of a playlist that is Pro Mode’s, whoever asks', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -263,37 +263,39 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
   await expect(win.getByRole('menu').getByRole('menuitem')).toHaveText(['Rename…', 'Delete…']);
   await win.keyboard.press('Escape');
 
-  // The main process lets Simple Mode change its one playlist only, whatever a page sends.
-  const refused = await win.evaluate(
-    async ({ otherId, otherPicture }) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const otherItems = await d.playlists.items(otherId);
-      return {
-        add: await d.playlists.addItems(otherId, null, [{ kind: 'media', mediaId: otherPicture }]),
-        takeOut: await d.playlists.removeItems([otherItems[0]?.id ?? '']),
-        move: await d.playlists.moveItems(otherId, [otherItems[0]?.id ?? ''], 3),
-        rename: await d.media.rename(otherPicture, 'Placeholder not allowed'),
-        create: await d.playlists.create('Placeholder new', null, false),
-        remove: await d.playlists.remove([otherId]),
-        quality: await d.links.setMaxHeight(2160),
-      };
-    },
-    { otherId: other.playlistId, otherPicture: other.pictureMediaId },
-  );
+  // The main process lets Simple Mode change the playlists as Pro Mode's left column does (Session 56), never what of
+  // them is Pro Mode's, whatever a page sends: Duplicate, a template, a slot, sharing with phones, a row's timers.
+  const refused = await win.evaluate(async (otherId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [first] = await d.playlists.items(otherId);
+    return {
+      duplicate: await d.playlists.duplicate(otherId),
+      template: await d.playlists.saveAsTemplate(otherId, { name: 'Placeholder template', slots: [] }),
+      slot: await d.playlists.addSlot(otherId, null, { label: 'Placeholder slot', category: null }),
+      share: await d.playlists.share(otherId, true),
+      timers: await d.playlists.setTimers(first?.id ?? '', []),
+      quality: await d.links.setMaxHeight(2160),
+    };
+  }, other.playlistId);
   const no = { ok: false, message: SIMPLE_MODE_REFUSAL };
   expect(refused).toMatchObject({
-    add: no,
-    takeOut: no,
-    move: no,
-    rename: no,
-    create: no,
-    remove: no,
+    duplicate: no,
+    template: no,
+    slot: no,
+    share: no,
+    timers: no,
     quality: no,
   });
   expect(
     (await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.items(id), other.playlistId))
       .length,
   ).toBe(5);
+  // Nothing was made: no copy, no template.
+  const made = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    return [...(await d.playlists.tree()), ...(await d.playlists.templates())].map((n) => n.name);
+  });
+  expect(made.filter((n) => n === 'Placeholder template' || n.endsWith(' copy'))).toEqual([]);
   await app.close();
 });
 
