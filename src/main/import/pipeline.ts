@@ -77,6 +77,7 @@ import {
   picturesMediaIssues,
 } from './deck/deck-import';
 import type { Baker } from './deck/plan';
+import type { OfficeCopies } from './deck/leftovers';
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
 import { readabilityCounts, REFERENCE_LINES } from '../../shared/readable';
@@ -165,6 +166,11 @@ export interface PipelineContext {
   onAir?: () => Promise<boolean>;
   /** Free space on a folder's disk, as a deck's bake sees it (tests only; default: the disk's own). */
   freeBytes?: (dir: string) => number;
+  /**
+   * Drashti's record of the copies a PowerPoint import puts in PowerPoint for Mac's own folder (Session 56): each
+   * written down before it goes there, forgotten once removed, so that only a start after one cut short looks there.
+   */
+  officeCopies?: OfficeCopies | null;
 }
 
 type SourceKind = 'text' | 'docx' | 'pp6' | 'pp7' | 'pictures';
@@ -954,6 +960,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             ended: (pid) => ctx.appEnded?.(pid),
             kept: decided.animate === true,
             ...(ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {}),
+            officeCopies: ctx.officeCopies ?? null,
           },
         );
         time('parse', t);
@@ -1030,6 +1037,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             refocus: ctx.refocus,
             started: (pid) => ctx.appStarted?.(pid, app === 'keynote' ? 'Keynote' : 'PowerPoint'),
             ended: (pid) => ctx.appEnded?.(pid),
+            officeCopies: ctx.officeCopies ?? null,
           });
           time('parse', t);
           if (converted.ok) {

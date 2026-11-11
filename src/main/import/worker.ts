@@ -9,6 +9,7 @@ import { ImportRepo } from '../db/imports';
 import { schemaVersion } from '../db/migrate';
 import { readInfo } from '../convert/read-info';
 import { MediaStore } from './media-store';
+import { OfficeCopies, officeCopiesFile } from './deck/leftovers';
 import { runImport } from './pipeline';
 import { runRelink } from './relink';
 import type { FromWorker, StartMessage, ToWorker } from './protocol';
@@ -175,6 +176,8 @@ async function start(message: StartMessage): Promise<void> {
             converters: message.converters ?? true,
             // A deck with its animations (Session 54, C2): FFmpeg cuts its movie, never while on air.
             baker: message.baker ?? true,
+            // The copies a PowerPoint import puts in PowerPoint for Mac's folder, in Drashti's own record (Session 56).
+            officeCopies: new OfficeCopies(officeCopiesFile(message.userDataDir)),
             ffmpeg,
             onAir,
             onWrote: (wrote) => {
