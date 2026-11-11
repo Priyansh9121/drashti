@@ -281,6 +281,13 @@ export class StreamPipeline {
    * behind as an empty extra part.
    */
   private rollWaiting = false;
+  /**
+   * The stream's page has sent a picture or sound since this encoder started. A held recording goes on
+   * only then: an encoder started again goes on by itself, on the last picture and silence, so its own
+   * first picture is no sign Drashti is still there. With every keyframe starting a cluster (alpha.15),
+   * that picture came within 1.5 s of the encoder going down on CI's Windows (5 Nov 2026).
+   */
+  private programSinceStart = false;
   private keepFree = 2 * 1024 ** 3;
   private recording: WorkerRecording = {
     state: 'off',
@@ -371,9 +378,11 @@ export class StreamPipeline {
       const expected = f ? f.width * f.height * (f.format === 'I420' || f.format === 'NV12' ? 1.5 : 4) : -1;
       if (message.data.byteLength !== expected) return;
       this.lastFrame = Buffer.from(message.data);
+      this.programSinceStart = true;
       this.maybeStartEncoder();
       return;
     }
+    this.programSinceStart = true;
     this.lastAudioAt = Date.now();
     this.writeAudio(Buffer.from(message.data), message.frames);
   }
@@ -404,6 +413,7 @@ export class StreamPipeline {
     this.samples = 0;
     this.frames = 0;
     this.header = null;
+    this.programSinceStart = false;
     const args = [
       '-hide_banner',
       '-loglevel',
@@ -567,8 +577,9 @@ export class StreamPipeline {
 
   private toConsumers(cluster: MkvCluster): void {
     this.hooks.cluster?.(cluster);
-    // A recording held while the encoder was down goes on, in a new file, from the new encoder's first picture.
-    if (this.rollWaiting && this.header && pictureStart(cluster)) {
+    // A recording held while the encoder was down goes on, in a new file, from the new encoder's first picture
+    // once the stream's page has sent something since it started (programSinceStart).
+    if (this.rollWaiting && this.programSinceStart && this.header && pictureStart(cluster)) {
       this.rollWaiting = false;
       this.rollRecording();
     } else if (

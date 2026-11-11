@@ -162,6 +162,15 @@ test('with nothing chosen, the default photo: the photo alone, coming in and slo
       .filter((key) => !['offset', 'computedOffset', 'easing', 'composite'].includes(key)),
   );
   expect([...new Set(moves)].sort()).toEqual(['opacity', 'transform']);
+  // Its zoom starts at 1.08 and settles at 1, so it ends on the whole photo (the owner, 5 Nov 2026).
+  const scales = await photo.evaluate((img) =>
+    img
+      .getAnimations()
+      .flatMap((a) => (a.effect as KeyframeEffect).getKeyframes())
+      .map((k) => k['transform'])
+      .filter((value): value is string => typeof value === 'string'),
+  );
+  expect(scales).toEqual(['scale(1.08)', 'scale(1)']);
   await win.keyboard.press('Escape');
   await expect(opening(win)).toHaveCount(0);
   await expect.poll(() => openingLog(userData)).toContain('Opening: plays (the default photo)');

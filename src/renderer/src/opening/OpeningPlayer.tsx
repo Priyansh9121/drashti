@@ -38,7 +38,7 @@ const WORDS_FONT = [...OPENING_FONT.families, 'Noto Sans', 'Noto Sans Gujarati',
   .join(', ');
 /** Where each photo zooms towards, in turn. */
 const ORIGINS = ['30% 40%', '70% 35%', '50% 62%', '35% 65%', '65% 55%', '45% 30%', '60% 45%', '40% 50%'];
-/** Where the default photo zooms towards: its upper middle, so its subject stays where it is. */
+/** The default photo's zoom is centred on its upper middle, so its subject stays where it is. */
 const DEFAULT_ORIGIN = '50% 35%';
 const ZOOM = 1.08;
 
@@ -128,14 +128,17 @@ function animate(
       const t = times.photos[i];
       if (!t) continue;
       run(el, [{ opacity: 0 }, { opacity: 1 }], t.start, t.fadeIn, easeOut);
-      // Zooming slowly from its coming in until the next has covered it.
+      // Zooming slowly from its coming in until the next has covered it; the default photo the other way, from ZOOM
+      // settling at 1, so it ends whole (the owner, 5 Nov 2026).
       const covered = (times.photos[i + 1]?.start ?? times.end) + (times.photos[i + 1]?.fadeIn ?? 0);
       el.style.transformOrigin = plan.defaultPhoto
         ? DEFAULT_ORIGIN
         : (ORIGINS[i % ORIGINS.length] ?? 'center');
       run(
         el,
-        [{ transform: 'scale(1)' }, { transform: `scale(${String(ZOOM)})` }],
+        plan.defaultPhoto
+          ? [{ transform: `scale(${String(ZOOM)})` }, { transform: 'scale(1)' }]
+          : [{ transform: 'scale(1)' }, { transform: `scale(${String(ZOOM)})` }],
         t.start,
         covered - t.start,
       );

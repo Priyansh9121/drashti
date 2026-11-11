@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { posix, win32 } from 'node:path';
 
 /*
  * Where the captions engine is (scripts/fetch-whisper.mjs puts it there, Session 55, Part 10): in the app's resources
@@ -17,9 +17,11 @@ export interface WhisperPlace {
 
 export function whisperCandidates(p: WhisperPlace): string[] {
   const exe = p.platform === 'win32' ? 'whisper-server.exe' : 'drashti-whisper';
+  // Joined the way that platform writes paths, whichever computer works it out.
+  const paths = p.platform === 'win32' ? win32 : posix;
   return p.packaged
-    ? [join(p.resourcesPath, 'whisper', exe)]
-    : [join(p.appPath, 'vendor', 'whisper', `${p.platform}-${p.arch}`, exe)];
+    ? [paths.join(p.resourcesPath, 'whisper', exe)]
+    : [paths.join(p.appPath, 'vendor', 'whisper', `${p.platform}-${p.arch}`, exe)];
 }
 
 /** The engine program, or null when this copy of Drashti has none (then captions say so). */
