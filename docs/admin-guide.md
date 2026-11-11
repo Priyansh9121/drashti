@@ -612,7 +612,7 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 The download leaves about 2 GB free on the drive. It pauses when the stream or a recording starts. While captions are on, it resumes automatically once the stream and recording stop.
 
-**Windows.** The captions engine needs the Microsoft Visual C++ v14 Redistributable for x64. If Drashti reports a missing Windows library, install or repair that runtime and try captions again. [Microsoft's downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+**Windows.** Drashti includes the Windows libraries its captions engine needs. If Drashti reports a missing captions library, reinstall Drashti to restore those files.
 
 **What captions hear.** Choose the mixer's input under **Sound input** in **Stream settings**. Captions and **Record sound** both hear that input before the stream's delay, mix or limiter. When you record sound with captions on, Drashti saves the finished phrases in a timed WebVTT draft beside the WAV file. Choose the destination in **Stream settings › Recording folder** or from the **Record** menu.
 

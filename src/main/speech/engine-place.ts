@@ -44,5 +44,5 @@ export function whisperProblem(platform: NodeJS.Platform, version: string): stri
 /** Windows' loader could not find one of whisper-server's DLLs. */
 export function whisperDependencyProblem(platform: NodeJS.Platform, code: number | null): string | null {
   if (platform !== 'win32' || code === null || code >>> 0 !== 0xc0000135) return null;
-  return 'The captions engine is missing a Windows library. Install or repair the Microsoft Visual C++ v14 Redistributable (x64). If it is already installed, reinstall Drashti.';
+  return 'The captions engine is missing a Windows library. Reinstall Drashti to restore its captions files.';
 }

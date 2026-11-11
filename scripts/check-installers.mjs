@@ -184,6 +184,8 @@ async function starts(name, command, args, appDir, emulated = false) {
   else if (!within(f.path, appDir))
     fail(name, `it ran an FFmpeg from outside the installed app: ${String(f.path)}`);
   else pass(name, `starts, and runs its own FFmpeg (${f.version}; streams with ${f.chosen ?? 'nothing'})`);
+  if (f && !f.whisper?.passed) fail(name, f.whisper?.detail ?? 'no bundled captions engine startup result');
+  else if (f?.whisper) pass(name, f.whisper.detail);
   // YouTube's two programs (Session 25c): its own yt-dlp and Deno run, and Deno is sandboxed.
   const y = f?.youtube;
   if (f && !y) fail(name, 'its self-test says nothing of yt-dlp and Deno');
