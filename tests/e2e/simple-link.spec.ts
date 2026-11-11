@@ -242,7 +242,10 @@ test('a Dropbox folder link in Simple Mode becomes a playlist of its own, folder
     name: 'Placeholder Sabha folder.zip',
     body: makeDropboxLikeZip([
       { path: 'Opening clip.mp4', data: await video('a.mp4', 30) },
-      { path: 'Welcome.pptx', data: makeTestPptx([{ color: '1E3A8A', text: 'Placeholder welcome', notes: '' }]) },
+      {
+        path: 'Welcome.pptx',
+        data: makeTestPptx([{ color: '1E3A8A', text: 'Placeholder welcome', notes: '' }]),
+      },
       { path: 'Week 1/Second clip.mp4', data: await video('b.mp4', 200) },
       { path: 'Week 1/Placeholder tone.wav', data: readFileSync(tone) },
       { path: 'Week 1/Placeholder picture.png', data: readFileSync(picture) },
