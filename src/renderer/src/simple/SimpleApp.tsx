@@ -13,8 +13,10 @@ import { useLibrary } from '../library/library-store';
 import { RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
 import { LinkDialog } from '../links/LinkDialog';
+import { MarkersDialog } from '../markers/MarkersDialog';
 import { PlayingBars } from '../markers/PlayingBars';
 import { setMidiHandler } from '../midi/midi-store';
+import { AudioGroup } from '../music/AudioGroup';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { useNodes } from '../nodes/nodes-store';
@@ -31,8 +33,6 @@ import { RecoveryBanner } from '../operator/RecoveryBanner';
 import { NoticeArea, StatusBar } from '../operator/StatusBar';
 import { LiveStatus } from '../operator/StatusLine';
 import { useKeymap } from '../operator/useKeymap';
-import { useKeymapNow } from '../operator/single-keys-store';
-import { Kbd } from '../ui/Kbd';
 import { OpenPlaylist } from '../playlists/OpenPlaylist';
 import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
@@ -73,12 +73,17 @@ import { SimpleFirstRun } from './SimpleFirstRun';
  *   one when there was none: the main process says which, main/simple-playlist.ts), as Pro Mode's middle shows it:
  *   PDFs and decks as rows, pictures, videos and sounds; one click puts a row up; rows dragged about, with Undo; Add
  *   files… and From a Link… above it, and files dropped on it (or anywhere on the window: at its end) bring things
- *   in; a folder dropped becomes a smart playlist (Session 56); a row's right-click menu has Rename and Delete.
+ *   in; a folder dropped becomes a smart playlist (Session 56); a row's right-click menu has Rename and Delete, and
+ *   (Session 56, the owner: Pro Mode's own) Trim, Trim black and silence, Even loudness, When it ends and Edit
+ *   slides… (Pro's slide editor).
  * - The left (Session 56, the owner's item 14): Pro Mode's playlists, with folders and smart playlists (New, Rename,
  *   Delete with Undo; a click opens one in the middle), the open folder playlist's folders under them, the wallpapers
  *   (Part 6) under both, and the Undo bar at the foot.
- * - The right: LIVE, Next and Back, and the time bar (Play while something is paused: Session 54's question 14).
- * - Along the bottom: Clear all (and Put it back after it), the Wallpaper and Black-out.
+ * - The right: LIVE, Next and Back, the time bar (Play while something is paused: Session 54's question 14), and
+ *   (Session 56) Pro Mode's Audio under them; no keys line (the owner: "Remove the keys line"), the bar's buttons show
+ *   their keys.
+ * - Along the bottom: Clear all (and Put it back after it), Slide, Background and Audio (Session 56), the Wallpaper
+ *   and Black-out.
  * - Nothing else: no stream, no stage controls, no messages, timers or lower thirds, no screen setup (the screens set
  *   themselves, Part 1). The main process refuses the rest too (main/simple-mode.ts): of the playlists, Simple Mode
  *   changes what Pro Mode's left column and a row's menu do, never a template, a slot or a share.
@@ -97,30 +102,6 @@ const playable = (i: PlaylistItemInfo) =>
   (i.kind === 'presentation' && i.presentationName !== null) ||
   (i.kind === 'media' && !i.missing) ||
   (i.kind === 'input' && !i.missing);
-
-/**
- * The keys, in a line at the foot of the live column (Session 51; Simple Mode has no keys sheet): only keys that act,
- * not B or . while they are turned off (Session 37), the clicker's Page Down and Page Up too.
- */
-function KeysLine({ platform }: { platform: string }) {
-  const keymap = useKeymapNow(SIMPLE_KEYMAP);
-  const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
-  const covering = key('toggleBlackout') !== '';
-  return (
-    <p className="mt-auto px-3 pt-3 text-xs leading-6 text-muted" data-testid="simple-keys">
-      Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·{' '}
-      {covering && (
-        <>
-          Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> ·{' '}
-        </>
-      )}
-      Wallpaper <Kbd>{key('toggleWallpaper')}</Kbd> · Clear all <Kbd>{key('clearAll')}</Kbd> · Put it back{' '}
-      <Kbd>{key('undo')}</Kbd>
-      {/* Left with no key: its button does it. */}
-      {!covering && ' · Black-out: its button'}
-    </p>
-  );
-}
 
 /** This computer's access is Simple Mode only, as the list last said (Session 55). */
 const useSimpleAccess = (): boolean => useAccess((s) => s.view?.mode === 'simple');
@@ -366,25 +347,35 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </main>
         }
         right={
-          <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
+          // Positioned (Session 56), so what is placed in it out of the flow (Audio's lists' screen-reader status
+          // lines, select-many.tsx) is held and scrolled by the column, never runs past the window and scrolls the page.
+          <aside className="relative flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
             {/* Oops's key (F9) still acts here; its button is Pro Mode's. */}
             {/* What Next puts up, in words under them (Session 54: a file it misses named before it goes up). */}
             <NextBack platform={platform} run={run} oops={false} canStart={items.some(playable)} caption />
             {/* The time bar for what plays (Session 54), under Next and Back: Play while paused (question 14). */}
             <PlayingBars className="px-3 pt-2" />
+            {/* Record (Session 56, the owner's item 19): sound or video, on air or off, under the time bar and above
+                Audio; its folder is chosen in Pro Mode. */}
             <div className="px-3 pt-2">
               <RecordButton />
             </div>
-            <KeysLine platform={platform} />
+            {/* Audio (Session 56, the owner: "The Audio panel on the right, under LIVE and above Black-out, in the empty
+                space there"): Pro Mode's own, as under its LIVE; the column scrolls when the window is short. */}
+            <div className="mt-3 border-t border-line">
+              <AudioGroup platform={platform} />
+            </div>
           </aside>
         }
       />
       <NoticeArea />
       <LayerBar platform={platform} run={run} simple />
       <StatusBar info={info} onOpenScreens={null} />
-      {/* A row's right-click menu (Rename and Delete), its Delete's question when it is up, and From a Link…. */}
+      {/* A row's right-click menu, its Delete's question when it is up, and From a Link…. */}
       <FileMenu platform={platform} />
+      {/* A row's Trim (Session 56): Pro Mode's start, end and markers, never a copy (no Save as MP4…). */}
+      <MarkersDialog copies={false} />
       <RemoveItemsConfirm undoKey={shortcutText('undo', platform)} />
       {/* Delete… of a playlist or a folder (Session 56), asked first, with Undo. */}
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
