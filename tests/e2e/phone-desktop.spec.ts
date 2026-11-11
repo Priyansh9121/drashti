@@ -774,7 +774,10 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       }
       // Simple Mode: the slides in the box refused, said on the phone, nothing up.
       await p.getByTestId('remote-open-pip').click();
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
       await expect(p.getByTestId('remote-open-pip')).toHaveCount(0);
@@ -895,7 +898,10 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       }
       // Simple Mode: a new playlist refused in words on the phone, and none made.
       await p.getByTestId('remote-open-library').click();
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
       await expect(p.getByTestId('remote-open-library')).toHaveCount(0);
@@ -975,7 +981,10 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       }
       // Simple Mode: forgetting refused in words, nothing changed.
       await p.getByTestId('remote-open-midi').click();
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
       await expect(p.getByTestId('remote-open-midi')).toHaveCount(0);
@@ -1053,7 +1062,10 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       // Simple Mode: approving refused in words, nothing up.
       const third = await send('Placeholder refused notice');
       await p.getByTestId('remote-open-queue').click();
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode');
       await expect(p.getByTestId('remote-open-queue')).toHaveCount(0);

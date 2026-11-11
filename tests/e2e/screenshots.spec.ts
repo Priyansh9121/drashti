@@ -3093,7 +3093,10 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
       const bar = p.getByTestId('remote-time-bar-row').filter({ has: p.getByTestId('remote-time-bar-play') });
       await expect(bar).toHaveAttribute('data-playing', 'background');
       await expect(bar).toHaveAttribute('data-paused', 'true');
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       const simple = p.getByTestId('remote-simple');
       await expect(simple).toContainText('its playlist “' + PLAYLIST + '”');

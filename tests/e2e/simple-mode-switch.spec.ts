@@ -132,7 +132,9 @@ test('Simple Mode in by a double-click on the header’s Simple Mode, out by a d
   // From the keyboard, Enter twice (Space is Next everywhere in the window): the first press says to press it again.
   await simple.focus();
   await win.keyboard.press('Enter');
-  await expect(win.getByTestId('operator-notice')).toContainText('Press Enter again to switch to Simple Mode');
+  await expect(win.getByTestId('operator-notice')).toContainText(
+    'Press Enter again to switch to Simple Mode',
+  );
   expect(await modeOf(win)).toBe('pro');
   await win.keyboard.press('Enter');
   await expect(win.getByTestId('simple-mode')).toBeVisible();

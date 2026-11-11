@@ -505,7 +505,10 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       // The bar is read-only and Pause is disabled; a paired script asking anyway still gets a refusal in words.
       await row.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
       const simpleBar = row.getByRole('progressbar', { name: 'Time of the background video', exact: true });
