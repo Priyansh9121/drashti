@@ -42,7 +42,6 @@ describe('Simple Mode locks', () => {
       IPC.stream.startRecording,
       IPC.stream.startSoundRecording,
       IPC.stream.stopRecording,
-      IPC.stream.pickFolder,
     ]);
     // Locked, or (Session 55, Part 18) what Simple Mode offers now, each only within its bounds.
     for (const c of changes)
@@ -185,16 +184,16 @@ describe('Simple Mode locks', () => {
     expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length + SIMPLE_MODE_BOUNDED.size);
   });
 
-  it('allows a local recording in Simple Mode while keeping the live stream controls locked', () => {
+  it('allows a local recording in Simple Mode while keeping its destination and the live stream locked', () => {
     for (const channel of [
       IPC.stream.startRecording,
       IPC.stream.startSoundRecording,
       IPC.stream.stopRecording,
-      IPC.stream.pickFolder,
     ])
       expect(answers.has(channel), channel).toBe(false);
     for (const channel of [IPC.stream.goLive, IPC.stream.end, IPC.stream.setInputs])
       expect(answers.has(channel), channel).toBe(true);
+    expect(answers.get(IPC.stream.pickFolder)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   });
 
   it('the Access List’s edits, answered in their own shape; reading the list and saving its CSV are not (Session 54, E4)', () => {
