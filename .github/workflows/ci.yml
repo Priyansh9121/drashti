@@ -130,11 +130,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The FFmpeg Drashti bundles: pinned builds, checked against their SHA-256 (never in git).
-      - name: Cache FFmpeg, yt-dlp and Deno downloads
+      - name: Cache FFmpeg, yt-dlp, Deno and Whisper downloads
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/drashti
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs', 'scripts/fetch-ai-models.mjs') }}
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs', 'scripts/fetch-ai-models.mjs', 'scripts/fetch-whisper.mjs') }}
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
       - name: Fetch pinned offline helper resources
@@ -268,13 +268,19 @@ jobs:
       - name: Restart after a restore (built app)
         if: env.QUICK != 'true'
         run: node scripts/check-relaunch.mjs
+      - name: Fetch the live captions engine
+        if: env.QUICK != 'true'
+        run: node scripts/fetch-whisper.mjs
+      - name: Fetch the live captions engine for Intel Macs too
+        if: runner.os == 'macOS' && env.QUICK != 'true'
+        run: node scripts/fetch-whisper.mjs --target darwin-x64
       - name: Package installers
         if: env.QUICK != 'true'
         run: pnpm exec electron-builder --publish never
       - name: Restart after a restore (packaged app)
         if: env.QUICK != 'true'
         run: node scripts/check-relaunch.mjs --packaged
-      - name: Drashti finds and runs its FFmpeg, yt-dlp and Deno (each packaged app)
+      - name: Drashti finds and runs its FFmpeg, yt-dlp, Deno and Whisper (each packaged app)
         if: env.QUICK != 'true'
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Upload installers

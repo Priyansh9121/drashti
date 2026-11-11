@@ -611,6 +611,10 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 **The model downloads once.** While online, choose **Model** and turn captions on: **Standard**, 488 MB, or **Most accurate**, 574 MB. Start with Standard on the Windows PC and Most accurate on an Apple-silicon Mac. The progress line says how much has arrived; **Try again** retries a failed download. Wait until it says **The model is on this computer**. After that, the chosen model works without the internet; choosing another may need its own download.
 
+The download leaves about 2 GB free on the drive. It pauses when the stream or a recording starts. While captions are on, it resumes automatically once the stream and recording stop.
+
+**Windows.** The captions engine needs the Microsoft Visual C++ v14 Redistributable for x64. If Drashti reports a missing Windows library, install or repair that runtime and try captions again. [Microsoft's downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+
 **What captions hear.** Choose the mixer's input under **Sound input** in the stream's settings. Captions hear that input, not Drashti's music or videos. The stream's page stays open while listening, even off air, so its chosen camera may be open and its light on. This alone does not start a stream or recording.
 
 **Language and where the words go.** Choose one **Language**: English or Hindi for a rehearsal; **Gujarati (trial)** only to see how it does. Gujarati is not good enough for the audience yet. **Gujarati, Hindi or English, as heard** often takes Gujarati for Hindi. The stream and stage screens show captions; **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large; **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.

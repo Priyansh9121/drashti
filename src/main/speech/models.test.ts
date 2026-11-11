@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CAPTION_MODELS, defaultModel } from '../../shared/captions';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady, type ModelSource } from './models';
 
@@ -24,7 +24,10 @@ async function serve(body: Buffer, cut?: number): Promise<string> {
     const range = /^bytes=(\d+)-$/.exec(req.headers.range ?? '');
     const from = range ? Number(range[1]) : 0;
     const part = body.subarray(from);
-    res.writeHead(range ? 206 : 200, { 'Content-Length': String(part.length) });
+    res.writeHead(range ? 206 : 200, {
+      'Content-Length': String(part.length),
+      ...(range ? { 'Content-Range': `bytes ${from}-${body.length - 1}/${body.length}` } : {}),
+    });
     if (cut !== undefined && from === 0) {
       // The first bytes reach the other end, then the line drops.
       res.write(part.subarray(0, cut), () => setTimeout(() => res.destroy(), 50));
@@ -101,6 +104,108 @@ describe('the captions model (Part 10)', () => {
     );
     expect(existsSync(dest)).toBe(false);
     expect(existsSync(`${dest}.part`)).toBe(false);
+  });
+
+  it('checks the space for the remaining bytes before reaching the network', async () => {
+    const data = mkdtempSync(join(tmpdir(), 'drashti-captions-model-'));
+    const dest = modelFile(data, 'small');
+    const body = Buffer.alloc(32, 1);
+    const part = body.subarray(0, 12);
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(`${dest}.part`, part);
+    const fetch = vi.fn(() => Promise.resolve(new Response(new Uint8Array(body))));
+    await expect(
+      downloadModel({
+        dest,
+        source: source('https://example.invalid/model.bin', body),
+        progress: () => undefined,
+        freeBytes: () => Promise.resolve(2 * 1024 ** 3 + body.length - part.length - 1),
+        fetch,
+      }),
+    ).rejects.toThrow(/Free .* on this computer/);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(readFileSync(`${dest}.part`)).toEqual(part);
+  });
+
+  it('stops a response that exceeds the pinned size even without a Content-Length', async () => {
+    const data = mkdtempSync(join(tmpdir(), 'drashti-captions-model-'));
+    const dest = modelFile(data, 'small');
+    const body = Buffer.alloc(16, 1);
+    const wrong = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(12));
+        controller.enqueue(new Uint8Array(12));
+        controller.close();
+      },
+    });
+    const seen: number[] = [];
+    await expect(
+      downloadModel({
+        dest,
+        source: source('https://example.invalid/model.bin', body),
+        progress: (done) => seen.push(done),
+        fetch: () => Promise.resolve(new Response(wrong)),
+      }),
+    ).rejects.toThrow(/larger than expected/);
+    expect(seen.every((done) => done <= body.length)).toBe(true);
+    expect(existsSync(`${dest}.part`)).toBe(false);
+    expect(existsSync(dest)).toBe(false);
+  });
+
+  it('cancels a stalled response, without discarding the bytes already saved', async () => {
+    const data = mkdtempSync(join(tmpdir(), 'drashti-captions-model-'));
+    const dest = modelFile(data, 'small');
+    const body = Buffer.alloc(16, 1);
+    const abort = new AbortController();
+    const cancelled = vi.fn();
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(`${dest}.part`, body.subarray(0, 8));
+    const stalled = new ReadableStream<Uint8Array>(
+      {
+        pull: () => {
+          setImmediate(() => abort.abort());
+        },
+        cancel: cancelled,
+      },
+      { highWaterMark: 0 },
+    );
+    await expect(
+      downloadModel({
+        dest,
+        source: source('https://example.invalid/model.bin', body),
+        progress: () => undefined,
+        signal: abort.signal,
+        fetch: () =>
+          Promise.resolve(
+            new Response(stalled, { status: 206, headers: { 'Content-Range': 'bytes 8-15/16' } }),
+          ),
+      }),
+    ).rejects.toThrow(/download was stopped/);
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(readFileSync(`${dest}.part`)).toEqual(body.subarray(0, 8));
+    expect(existsSync(dest)).toBe(false);
+  });
+
+  it('reports a write-stream failure without leaving the request running', async () => {
+    const data = mkdtempSync(join(tmpdir(), 'drashti-captions-model-'));
+    const dest = modelFile(data, 'small');
+    const body = Buffer.alloc(16, 1);
+    const cancelled = vi.fn();
+    const stalled = new ReadableStream<Uint8Array>({ cancel: cancelled });
+    await expect(
+      downloadModel({
+        dest,
+        source: source('https://example.invalid/model.bin', body),
+        progress: () => undefined,
+        fetch: () => {
+          // The file became unavailable after the preflight, before opening the write stream.
+          mkdirSync(`${dest}.part`);
+          return Promise.resolve(new Response(stalled));
+        },
+      }),
+    ).rejects.toThrow(/could not save the captions model/);
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(existsSync(dest)).toBe(false);
   });
 
   it('says plainly when there is no internet', async () => {

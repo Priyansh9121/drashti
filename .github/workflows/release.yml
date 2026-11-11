@@ -100,7 +100,7 @@ jobs:
         run: node scripts/package-release.mjs
       - name: Check the signatures (when signed)
         run: node scripts/verify-signing.mjs
-      - name: Each packaged app finds and runs its FFmpeg, yt-dlp and Deno
+      - name: Each packaged app finds and runs its FFmpeg, yt-dlp, Deno and Whisper
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Restart after a restore (packaged app)
         run: node scripts/check-relaunch.mjs --packaged
