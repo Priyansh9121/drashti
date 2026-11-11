@@ -25,10 +25,11 @@ const STEPS: readonly Step[] = [
     title: 'This is Simple Mode',
     text: () => (
       <>
-        Only what a sabha with one projector needs: <b className="text-fg">the playlist</b> in the middle, the{' '}
-        <b className="text-fg">wallpapers</b> on the left, and what is on the screens on the right.{' '}
-        <b className="text-fg">Add files…</b> and <b className="text-fg">From a Link…</b> above the playlist
-        bring things into it, and so do files dropped on the window.
+        Only what a sabha with one projector needs: <b className="text-fg">the open playlist</b> in the
+        middle, the <b className="text-fg">playlists</b> and the <b className="text-fg">wallpapers</b> on the
+        left, and what is on the screens on the right. <b className="text-fg">Add files…</b> and{' '}
+        <b className="text-fg">From a Link…</b> above the playlist bring things into it, and so do files
+        dropped on the window.
       </>
     ),
   },

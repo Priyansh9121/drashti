@@ -367,10 +367,8 @@ export function registerPlaylistIpc({
         files: [],
         problems: [list.success ? ONLY_OPERATOR : 'Those files could not be read.'],
       };
-    if (!smart) return { made: [], files: list.data, problems: [] };
-    const dropped = await smart.fromDrop(list.data);
-    if (dropped.made.length > 0) changed();
-    return dropped;
+    // Each one made tells the window and the engine itself (as Smart Playlist from a Folder… does).
+    return smart ? smart.fromDrop(list.data) : { made: [], files: list.data, problems: [] };
   });
   handle(IPC.playlists.removeMissing, (e, playlistId) =>
     change(e, () => {
