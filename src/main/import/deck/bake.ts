@@ -27,9 +27,20 @@ import {
 } from './cut';
 import { diskFreeBytes } from '../media-store';
 import { keynoteMusic } from './keynote-music';
-import { type Baker, keynotePlan, type MoviePlan, plannedLength, powerPointPlan } from './plan';
+import {
+  type Baker,
+  inMovie,
+  keynotePlan,
+  leavesOut,
+  type MovieChoice,
+  movieChoice,
+  type MoviePlan,
+  plannedLength,
+  powerPointPlan,
+} from './plan';
 import { macProgress, NO_PROGRESS_MS, noProgress } from './progress';
 import { standInMovie, standInSize } from './stand-in-baker';
+import { standInPdf } from '../stand-in-converter';
 import { writeTimedCopy } from './timed-copy';
 
 /*
@@ -75,6 +86,11 @@ export interface BakedDeck {
   bakeMs: number;
   movie: { width: number; height: number; fps: number; durationMs: number };
   keynoteMedia: KeynoteMedia[];
+  /**
+   * Which slides went through the movie (Session 56), when not every shown slide did: the rest come in as their
+   * pictures (`pdf` has every shown slide); null when every one did.
+   */
+  choice: MovieChoice | null;
 }
 
 /** Why a deck came in as pictures instead. */
@@ -138,6 +154,8 @@ type Made =
       plan: MoviePlan;
       pdf: string | null;
       keynoteMedia: KeynoteMedia[];
+      /** Which slides went through the movie, when not every shown slide did (its PDF has them all). */
+      choice: MovieChoice | null;
     }
   | {
       ok: false;
@@ -255,7 +273,13 @@ async function powerPointOnMac(
           reason: 'no deck',
           message: 'The deck could not be read: save it again in PowerPoint or Keynote and import that.',
         };
-      const plan = powerPointPlan(deck.slides);
+      // Only the slides that move go through the movie (Session 56), when any do not: the rest come in as their
+      // pictures, so the PDF is then saved from a copy with every shown slide, and the movie from one with them hidden.
+      const deckPath = deckFile;
+      const choice = movieChoice(deck.slides);
+      const leaving = leavesOut(choice);
+      const all = powerPointPlan(deck.slides);
+      const plan = leaving ? powerPointPlan(deck.slides, 'powerpoint', inMovie(choice)) : all;
       if (plan.slides.length === 0)
         return {
           ok: false,
@@ -264,30 +288,56 @@ async function powerPointOnMac(
           deck,
           deckFile,
         };
-      // The timed copy, opened as any copy is (in PowerPoint's own folder).
+      const timedCopy = async (file: string, of: MoviePlan, hide: Iterable<number>) => {
+        const copyFrom = performance.now();
+        await writeTimedCopy(deckPath, file, of, hide);
+        options.steps?.add('timed-copy', performance.now() - copyFrom);
+      };
+      /** The pictures of the copy open as `document`, saved as PDF into the import's folder (null: they were not). */
+      const savePdf = async (document: { doc: string; slides: number; copy: string }) => {
+        const pdfInApp = join(dirname(document.copy), 'pictures.pdf');
+        const pdfFrom = performance.now();
+        const savedPdf = await s.tell(
+          ['save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as PDF', 'return ""'],
+          [document.doc, pdfInApp],
+          seconds(document.slides),
+        );
+        let saved: string | null = null;
+        if (savedPdf.code === 0 && (await written(pdfInApp, s.signal))) {
+          saved = join(work, 'pictures.pdf');
+          await copyFile(pdfInApp, saved);
+        } else s.log(`could not save it as PDF: ${firstLine(savedPdf.stderr)}`);
+        options.steps?.add('app-pdf', performance.now() - pdfFrom);
+        return saved;
+      };
+      if (leaving) {
+        // Every shown slide's picture first, from the timed copy of them all, which then closes.
+        const allCopy = join(work, 'timed-all.pptx');
+        await timedCopy(allCopy, all, []);
+        const openedAll = await s.open(allCopy);
+        if (!openedAll.ok) return openedAll.failed;
+        await s.hide();
+        pdf = await savePdf(openedAll.document);
+        await s.close(openedAll.document);
+        if (!pdf)
+          return {
+            ok: false,
+            reason: 'it could not save the slides as PDF',
+            message: 'PowerPoint could not save the deck’s pictures.',
+          };
+      }
+      // The timed copy, opened as any copy is (in PowerPoint's own folder): the slides that come in as their pictures
+      // hidden in it, so the movie leaves them out.
       const timed = join(work, 'timed.pptx');
-      const copyFrom = performance.now();
-      await writeTimedCopy(deckFile, timed, plan);
-      options.steps?.add('timed-copy', performance.now() - copyFrom);
+      await timedCopy(timed, plan, leaving ? choice.pictures : []);
       const opened = await s.open(timed);
       if (!opened.ok) return opened.failed;
       // PowerPoint shows itself as it opens a document: hidden while it works.
       await s.hide();
-      const { doc, slides } = opened.document;
+      const { doc } = opened.document;
       const inside = dirname(opened.document.copy);
       // The pictures first (a moment): should the movie not do, the deck comes in as them.
-      const pdfInApp = join(inside, 'pictures.pdf');
-      const pdfFrom = performance.now();
-      const savedPdf = await s.tell(
-        ['save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as PDF', 'return ""'],
-        [doc, pdfInApp],
-        seconds(slides),
-      );
-      if (savedPdf.code === 0 && (await written(pdfInApp, s.signal))) {
-        pdf = join(work, 'pictures.pdf');
-        await copyFile(pdfInApp, pdf);
-      } else s.log(`could not save it as PDF: ${firstLine(savedPdf.stderr)}`);
-      options.steps?.add('app-pdf', performance.now() - pdfFrom);
+      if (!leaving) pdf = await savePdf(opened.document);
       // The movie: asked for, then written in the background.
       const movieInApp = join(inside, 'movie.mov');
       const movieFrom = performance.now();
@@ -329,7 +379,16 @@ async function powerPointOnMac(
       options.steps?.add('movie', performance.now() - movieFrom);
       s.log('made the movie');
       await s.close(opened.document);
-      return { ok: true, movie, deckFile, deck, plan, pdf, keynoteMedia: [] };
+      return {
+        ok: true,
+        movie,
+        deckFile,
+        deck,
+        plan,
+        pdf,
+        keynoteMedia: [],
+        choice: leaving ? choice : null,
+      };
     },
   );
   return 'movie' in result
@@ -446,8 +505,10 @@ async function keynoteOnMac(
       // Its sounds across slides as the deck plays them (Session 54, keynote-music.ts): a .pptx's own say across how
       // many slides, how loud and whether they loop; a .key's soundtrack plays across the whole deck, at full volume.
       deck = keynoteMusic(await readPptxDeck(deckFile), { original: read, movieSound: null });
-      const plan = keynotePlan(deck.slides);
-      if (plan.slides.length === 0)
+      const choice = movieChoice(deck.slides);
+      let leaving = leavesOut(choice);
+      const all = keynotePlan(deck.slides);
+      if (all.slides.length === 0)
         return {
           ok: false,
           failed: { kind: 'nothing', detail: 'every slide is skipped' },
@@ -474,6 +535,30 @@ async function keynoteOnMac(
         await copyFile(pdfInApp, pdf);
       }
       options.steps?.add('app-pdf', performance.now() - pdfFrom);
+      // Only the slides that move go through the movie (Session 56): the rest, which come in as their pictures, are
+      // skipped in Keynote's copy (never saved), which its movie leaves out. Asked back: if Keynote did not skip them
+      // all, none is, and every slide goes through the movie as before.
+      if (leaving && !pdf) leaving = false;
+      if (leaving) {
+        const numbers = [...choice.pictures].map((i) => String(i + 1));
+        const skipping = (on: boolean) => [
+          'set d to document id (item 1 of argv)',
+          'set c to 0',
+          'repeat with i from 2 to (count of argv)',
+          'set n to (item i of argv) as integer',
+          `set skipped of slide n of d to ${on ? 'true' : 'false'}`,
+          `if (skipped of slide n of d) is ${on ? 'true' : 'false'} then set c to c + 1`,
+          'end repeat',
+          'return c as text',
+        ];
+        const skipped = await s.tell(skipping(true), [doc, ...numbers], seconds);
+        if (skipped.code !== 0 || Number(skipped.stdout.trim()) !== numbers.length) {
+          s.log(`could not skip the slides that come in as pictures: ${firstLine(skipped.stderr)}`);
+          await s.tell(skipping(false), [doc, ...numbers], seconds);
+          leaving = false;
+        }
+      }
+      const plan = leaving ? keynotePlan(deck.slides, inMovie(choice)) : all;
       const deleted = await s.tell(
         [
           'set d to document id (item 1 of argv)',
@@ -528,7 +613,7 @@ async function keynoteOnMac(
       options.steps?.add('movie', performance.now() - movieFrom);
       s.log('made the movie');
       await s.close(opened.document);
-      return { ok: true, movie, deckFile, deck, plan, pdf, keynoteMedia };
+      return { ok: true, movie, deckFile, deck, plan, pdf, keynoteMedia, choice: leaving ? choice : null };
     },
   );
   return 'movie' in result
@@ -567,7 +652,13 @@ async function powerPointOnWindows(
       deck,
       deckFile,
     };
-  const plan = powerPointPlan(deck.slides);
+  // Only the slides that move go through the movie (Session 56), when any do not: the PDF is then saved from a copy
+  // with every shown slide first, and the movie from one with the rest hidden.
+  const choice = movieChoice(deck.slides);
+  const leaving = leavesOut(choice);
+  const plan = leaving
+    ? powerPointPlan(deck.slides, 'powerpoint', inMovie(choice))
+    : powerPointPlan(deck.slides);
   if (plan.slides.length === 0)
     return {
       ok: false,
@@ -577,23 +668,65 @@ async function powerPointOnWindows(
       deckFile,
     };
   const timed = join(work, 'timed.pptx');
-  const copyFrom = performance.now();
-  await writeTimedCopy(deckFile, timed, plan);
-  options.steps?.add('timed-copy', performance.now() - copyFrom);
   const pdf = join(work, 'pictures.pdf');
+  if (leaving) {
+    // Every shown slide's picture first: a run of PowerPoint for the PDF of the timed copy of them all.
+    const all = join(work, 'timed-all.pptx');
+    const copyFrom = performance.now();
+    await writeTimedCopy(deckFile, all, powerPointPlan(deck.slides));
+    options.steps?.add('timed-copy', performance.now() - copyFrom);
+    const pdfFrom = performance.now();
+    const saved = await deckOnWindows({ input: all, pdf }, work, {
+      ...options,
+      slideCount: deck.slides.length,
+    });
+    options.steps?.add('app-pdf', performance.now() - pdfFrom);
+    if (!saved.ok || !exists(pdf))
+      return {
+        ok: false,
+        failed: saved.ok
+          ? {
+              ok: false,
+              reason: 'it could not save the slides as PDF',
+              message: 'PowerPoint could not save the deck’s pictures.',
+            }
+          : saved,
+        pdf: null,
+        deck,
+        deckFile,
+      };
+  }
+  const copyFrom = performance.now();
+  await writeTimedCopy(deckFile, timed, plan, leaving ? choice.pictures : []);
+  options.steps?.add('timed-copy', performance.now() - copyFrom);
   const movie = join(work, 'movie.mp4');
   options.progress?.('PowerPoint is making the movie');
   // One run of PowerPoint for all of it (its start, the PDF and the movie): the movie's step, as one.
   const movieFrom = performance.now();
   const made = await deckOnWindows(
-    { input: timed, pdf, movie, movieLimitMs: movieLimit(limits, plan), stallMs: NO_PROGRESS_MS },
+    {
+      input: timed,
+      ...(leaving ? {} : { pdf }),
+      movie,
+      movieLimitMs: movieLimit(limits, plan),
+      stallMs: NO_PROGRESS_MS,
+    },
     work,
     { ...options, slideCount: deck.slides.length },
   );
   options.steps?.add('movie', performance.now() - movieFrom);
   const pictures = exists(pdf) ? pdf : null;
   if (!made.ok) return { ok: false, failed: made, pdf: pictures, deck, deckFile };
-  return { ok: true, movie, deckFile, deck, plan, pdf: pictures, keynoteMedia: [] };
+  return {
+    ok: true,
+    movie,
+    deckFile,
+    deck,
+    plan,
+    pdf: pictures,
+    keynoteMedia: [],
+    choice: leaving ? choice : null,
+  };
 }
 
 // ---- the stand-in (tests) -----------------------------------------------------------------------------
@@ -612,7 +745,11 @@ async function standIn(
       deck: null,
       deckFile: null,
     };
-  const plan = powerPointPlan(read.slides, 'stand-in');
+  // Only the slides that move go through the movie (Session 56), when any do not: the rest come in as their
+  // pictures, saved as PDF first as PowerPoint saves them (every shown slide).
+  const choice = movieChoice(read.slides);
+  const leaving = leavesOut(choice);
+  const plan = powerPointPlan(read.slides, 'stand-in', leaving ? inMovie(choice) : undefined);
   if (plan.slides.length === 0)
     return {
       ok: false,
@@ -621,11 +758,26 @@ async function standIn(
       deck: read,
       deckFile: input,
     };
+  let pdf: string | null = null;
+  if (leaving) {
+    const pdfFrom = performance.now();
+    pdf = await standInPdf(input, read.slides, work);
+    options.steps?.add('app-pdf', performance.now() - pdfFrom);
+  }
   const movie = join(work, 'movie.mp4');
   const movieFrom = performance.now();
   await standInMovie(options.ffmpeg, plan, movie, options.signal, standInSize(options.standInLines ?? null));
   options.steps?.add('movie', performance.now() - movieFrom);
-  return { ok: true, movie, deckFile: input, deck: read, plan, pdf: null, keynoteMedia: [] };
+  return {
+    ok: true,
+    movie,
+    deckFile: input,
+    deck: read,
+    plan,
+    pdf,
+    keynoteMedia: [],
+    choice: leaving ? choice : null,
+  };
 }
 
 // ---- the bake -----------------------------------------------------------------------------------------
@@ -760,7 +912,12 @@ export async function bakeDeck(
     );
     if (!onPlan(cuts)) return failed({ kind: 'off-plan', cuts });
     const cutFrom = performance.now();
+    // A lead-in is in the movie only for the slide after it (Session 56): never cut.
+    const leadIns = new Set(
+      made.plan.slides.flatMap((slide, i) => (made.choice?.leadIns.has(slide.index) ? [i] : [])),
+    );
     const files = await cutMovie(options.ffmpeg, made.movie, cuts, join(work, 'steps'), {
+      leadIns,
       signal: options.signal,
       progress: (done, total) => {
         options.progress?.(`Cutting step ${String(done)} of ${String(total)}`);
@@ -783,6 +940,7 @@ export async function bakeDeck(
         bakeMs: Date.now() - started,
         movie: { width: motion.width, height: motion.height, fps: motion.fps, durationMs: motion.durationMs },
         keynoteMedia: made.keynoteMedia,
+        choice: made.choice,
       },
     };
   } catch (error) {

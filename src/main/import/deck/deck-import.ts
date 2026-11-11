@@ -211,11 +211,19 @@ export async function bakedPresentation(
   ffmpeg: string | null,
   /** The deck's own folder: its links are followed only inside it. */
   deckDir: string,
+  /**
+   * The pictures of the slides that came in as their pictures, never cut (Session 56: those that do not move, and the
+   * lead-ins), by the deck's own index; null when every shown slide went through the movie.
+   */
+  still: ReadonlyMap<number, string> | null = null,
 ): Promise<ParsedPresentation> {
   const { deck, plan, cuts, files } = baked;
   const width = baked.movie.width > 0 ? baked.movie.width : 1920;
   const height = baked.movie.height > 0 ? baked.movie.height : 1080;
   const shown = plan.slides.map((s) => s.index);
+  /** Every shown slide, in order (those that came in as their pictures too). */
+  const shownAll = deck.slides.flatMap((s, index) => (s.hidden ? [] : [index]));
+  const choice = baked.choice;
   const { media, posters, sounds } = await takeMedia(
     baked.deckFile,
     deckDir,
@@ -242,27 +250,55 @@ export async function bakedPresentation(
   /** Slides whose steps came off their moments: each comes in as its picture (C review). */
   const off = new Set(cuts.offSlides);
   const offWords: { slide: number; offsetMs: number }[] = [];
-  for (const [i, planned] of plan.slides.entries()) {
-    const source = deck.slides[planned.index];
-    const d = source?.deck;
-    const cut = cuts.slides[i];
-    const made = files[i] ?? [];
-    const at = `${sourcePath}#slide=${String(planned.index + 1)}`;
+  /** Slides that came in as their pictures, never cut (Session 56). */
+  let stillSlides = 0;
+  for (const [n, index] of (choice ? shownAll : shown).entries()) {
+    const source = deck.slides[index];
+    const at = `${sourcePath}#slide=${String(index + 1)}`;
     // Readable names for the steps' files (they show where what plays is named).
     const named = async (from: string, label: string) => {
       const to = join(steps, `${label}${extname(from)}`);
       await rename(from, to);
       return to;
     };
+    // Nothing on it moves (Session 56): its picture, the page of the PDF; a lead-in has that picture as a still step
+    // of its own, so the slide after it plays its own transition from it, as from a slide cut into steps.
+    if (choice && !choice.moving.has(index)) {
+      const file = still?.get(index);
+      if (!file) throw new Error(`Slide ${String(n + 1)} has no picture.`);
+      const picture = refs.ref(await named(file, `Slide ${String(n + 1)}`), 'image', `${at}&picture`);
+      const elements: SlideElement[] = [
+        { id: 'picture', kind: 'image', frame: { x: 0, y: 0, width, height }, mediaId: picture, fit: 'fit' },
+      ];
+      const stillStep: DeckSlide = { steps: [{ clipId: picture, clipMs: 0, lastId: picture }], media: [] };
+      slides.push({
+        label: '',
+        notes: tidyNotes(source?.notes ?? ''),
+        background: null,
+        enabled: true,
+        elements,
+        cues: [] as ParsedCue[],
+        ...(choice.leadIns.has(index) ? { deck: stillStep } : {}),
+      });
+      before = picture;
+      stillSlides++;
+      continue;
+    }
+    const i = plan.slides.findIndex((s) => s.index === index);
+    const planned = plan.slides[i];
+    if (!planned) continue;
+    const d = source?.deck;
+    const cut = cuts.slides[i];
+    const made = files[i] ?? [];
     // A slide whose steps came off their moments comes in as its picture (C review: slide by slide, never the
     // whole deck for one slide): its last step's last still, its videos where they sit, its sound as its own.
     const isOff = off.has(i);
     const deckSteps: DeckStep[] = [];
     for (const [k, f] of made.entries()) {
-      const label = `Slide ${String(i + 1)} step ${String(k)}`;
+      const label = `Slide ${String(n + 1)} step ${String(k)}`;
       if (isOff) {
         if (k < made.length - 1) continue;
-        const last = refs.ref(await named(f.last, `Slide ${String(i + 1)}`), 'image', `${at}&last`);
+        const last = refs.ref(await named(f.last, `Slide ${String(n + 1)}`), 'image', `${at}&last`);
         deckSteps.push({ clipId: last, clipMs: 0, lastId: last });
         continue;
       }
@@ -410,7 +446,7 @@ export async function bakedPresentation(
           .filter((o) => o.slide === i && o.offsetMs !== null)
           .map((o) => Math.abs(o.offsetMs ?? 0)),
       );
-      offWords.push({ slide: i + 1, offsetMs: worst });
+      offWords.push({ slide: n + 1, offsetMs: worst });
     }
     slides.push({
       label: '',
@@ -422,7 +458,7 @@ export async function bakedPresentation(
       ...(isOff ? {} : { deck: deckSlide }),
     });
   }
-  const hidden = deck.slides.length - plan.slides.length;
+  const hidden = deck.slides.length - shownAll.length;
   const stepsCount = slides.reduce(
     (n, s) => n + (s.deck && s.deck.steps.length > 0 ? s.deck.steps.length - 1 : 0),
     0,
@@ -443,7 +479,8 @@ export async function bakedPresentation(
     issues: bakedIssues({
       baker: baked.baker,
       bakeMs: baked.bakeMs,
-      slides: slides.length,
+      slides: slides.length - stillSlides,
+      still: stillSlides,
       clicks: stepsCount,
       worstMs: worstOn,
       offSlides: offWords,
@@ -457,7 +494,7 @@ export async function bakedPresentation(
       transitionSounds,
       advancing,
       trimmed,
-      triggers: shown.reduce((n, index) => n + (deck.slides[index]?.deck?.triggers ?? 0), 0),
+      triggers: shownAll.reduce((n, index) => n + (deck.slides[index]?.deck?.triggers ?? 0), 0),
     }),
   };
 }
@@ -509,6 +546,8 @@ export function bakedIssues(d: {
   triggers: number;
   /** Slides (from 1) that came in as their pictures, a step off its moment by so much (C review). */
   offSlides?: readonly { slide: number; offsetMs: number }[];
+  /** Slides with nothing that moves, which came in as their pictures straight away (Session 56). */
+  still?: number;
 }): ImportIssue[] {
   const info = (code: string, message: string): ImportIssue => ({
     severity: 'info',
@@ -522,6 +561,14 @@ export function bakedIssues(d: {
       `${APP[d.baker]} made this deck’s movie with its animations in ${took(d.bakeMs)}: ${plural(d.slides, 'slide')} with ${plural(d.clicks, 'click')}. Next and Back step through the clicks as in its slide show, then on to the next slide; each slide’s own transition plays as it comes in.`,
     ),
   ];
+  const still = d.still ?? 0;
+  if (still > 0)
+    out.push(
+      info(
+        'deck-still-slides',
+        `${still === 1 ? '1 slide has' : `${String(still)} slides have`} nothing that moves (no animations, transition, video or sound), so ${still === 1 ? 'it came in as its picture' : 'they came in as their pictures'} straight away.`,
+      ),
+    );
   const offs = d.offSlides ?? [];
   if (offs.length > 0) {
     const names = offs.map((o) => String(o.slide));
@@ -647,6 +694,17 @@ export function whyPictures(why: BakeFailure, baker: Baker, kept = false): Impor
                 ? `Cancelled while its animations were being made: ${lost}.`
                 : `${app} could not make the deck’s movie (${why.reason}): ${lost}.`;
   return { severity: 'warning', code: 'deck-pictures', message, fix: null };
+}
+
+/** A deck where nothing moves (Session 56): no movie made, its pictures straight away. */
+export function stillDeckIssue(): ImportIssue {
+  return {
+    severity: 'info',
+    code: 'deck-still',
+    message:
+      'Nothing on this deck’s slides moves (no animations, transitions, videos or sounds), so it came in as its pictures straight away, with no movie made of it.',
+    fix: null,
+  };
 }
 
 /** The report's word on a deck's videos and sounds, brought in beside its pictures. */

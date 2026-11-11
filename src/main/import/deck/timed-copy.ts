@@ -28,7 +28,8 @@ import { copyZipReplacing } from './zip-copy';
  *   transition's sound too: Drashti plays them as real media, from the deck's own XML;
  * - shape triggers (interactive sequences) are left out: a click on a shape is never a Next.
  *
- * Hidden slides are left as they are (no movie shows them). A deck set not to use its timings in its slide show
+ * Hidden slides are left as they are (no movie shows them), and so are those asked to be hidden (Session 56: the
+ * slides that come in as their pictures, never in the movie). A deck set not to use its timings in its slide show
  * (Set Up Slide Show, useTimings="0") uses them in the copy, or the advance times would be no one's.
  */
 
@@ -222,6 +223,15 @@ export function timedSlideXml(xml: string, plan: PlannedSlide): string {
   return writeTree(root);
 }
 
+/** A slide's XML hidden in the copy (show="0"), as a hidden slide is: no movie shows it. */
+export function hiddenSlideXml(xml: string): string {
+  const root = parseTree(xml);
+  const sld = elementsOf(root).find((e) => e.name === 'p:sld');
+  if (!sld) throw new Error('Not a slide');
+  setAttr(sld, 'show', '0');
+  return writeTree(root);
+}
+
 /** Where a deck keeps how its slide show runs (p:showPr): its show properties, or (older files) the presentation. */
 const SHOW_PARTS = ['ppt/presProps.xml', 'ppt/presentation.xml'];
 
@@ -230,12 +240,15 @@ export function usingTimings(xml: string): string {
   return xml.replace(/(<p:showPr\b[^>]*?)\s+useTimings=(["'])(?:0|false)\2/gu, '$1');
 }
 
-/** Write the timed copy of `deck` to `copy`, its shown slides by `plan` (PowerPoint's, ./plan.ts). */
+/**
+ * Write the timed copy of `deck` to `copy`, its shown slides by `plan` (PowerPoint's, ./plan.ts), and the slides at
+ * `hide` (the deck's own indices) hidden.
+ */
 export async function writeTimedCopy(
   deck: string,
   copy: string,
   plan: MoviePlan,
-  _hide: Iterable<number> = [],
+  hide: Iterable<number> = [],
 ): Promise<void> {
   const order = await slideParts(deck);
   const wanted = new Map<string, PlannedSlide>();
@@ -243,9 +256,14 @@ export async function writeTimedCopy(
     const part = order[s.index];
     if (part) wanted.set(part, s);
   }
+  const hidden = new Set<string>();
+  for (const index of hide) {
+    const part = order[index];
+    if (part && !wanted.has(part)) hidden.add(part);
+  }
   const parts = await readZipEntries(
     deck,
-    (name) => wanted.has(name) || SHOW_PARTS.includes(name),
+    (name) => wanted.has(name) || hidden.has(name) || SHOW_PARTS.includes(name),
     64 * 1024 * 1024,
   );
   const replace = new Map<string, Buffer>();
@@ -253,6 +271,11 @@ export async function writeTimedCopy(
     const xml = parts.get(part);
     if (!xml) throw new Error(`The deck has no ${part}`);
     replace.set(part, Buffer.from(timedSlideXml(xml.toString('utf8'), slide), 'utf8'));
+  }
+  for (const part of hidden) {
+    const xml = parts.get(part);
+    if (!xml) throw new Error(`The deck has no ${part}`);
+    replace.set(part, Buffer.from(hiddenSlideXml(xml.toString('utf8')), 'utf8'));
   }
   for (const part of SHOW_PARTS) {
     const xml = parts.get(part)?.toString('utf8');

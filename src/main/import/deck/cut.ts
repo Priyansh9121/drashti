@@ -447,14 +447,24 @@ export async function cutMovie(
     onAir?: () => Promise<boolean>;
     /** Asked before each step: the disk under the 2 GB always kept free stops the cut (C review). */
     full?: () => boolean;
+    /**
+     * Slides (their places in the plan) in the movie only as lead-ins (Session 56): never cut, each its own empty
+     * list of files.
+     */
+    leadIns?: ReadonlySet<number>;
   } = {},
 ): Promise<CutFiles[][]> {
   await mkdir(dir, { recursive: true });
-  const total = cuts.slides.reduce((n, s) => n + s.steps.length, 0);
+  const cut = (_: SlideCut, i: number) => !options.leadIns?.has(i);
+  const total = cuts.slides.filter(cut).reduce((n, s) => n + s.steps.length, 0);
   let done = 0;
   const out: CutFiles[][] = [];
-  for (const slide of cuts.slides) {
+  for (const [i, slide] of cuts.slides.entries()) {
     const files: CutFiles[] = [];
+    if (!cut(slide, i)) {
+      out.push(files);
+      continue;
+    }
     for (const [k, step] of slide.steps.entries()) {
       if (await options.onAir?.()) throw new OnAir();
       if (options.full?.()) throw new DiskFull();

@@ -996,6 +996,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             officeCopies: ctx.officeCopies ?? null,
             steps,
             standInLines: ctx.standInLines ?? null,
+            // The slides that come in as their pictures (Session 56): the PDF the app saved, drawn by the main process.
+            drawPdf: ctx.drawPdf,
           },
         );
         time('parse', t);

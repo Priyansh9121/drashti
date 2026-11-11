@@ -1,13 +1,13 @@
 import { mkdtemp } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ImportIssue } from '../../../shared/import';
-import type { PictureSource } from '../../../shared/pictures';
+import type { PictureSource, PicturesResult } from '../../../shared/pictures';
 import type { Converter } from '../deck-converters';
 import type { ParsedPresentation } from '../model';
-import type { PptxDeck } from '../pictures';
+import type { PptxDeck, PptxSlide } from '../pictures';
 import { type BakeOptions, bakeDeck, type BakeResult } from './bake';
-import { bakedPresentation, whyPictures } from './deck-import';
-import type { Baker } from './plan';
+import { bakedPresentation, stillDeckIssue, whyPictures } from './deck-import';
+import { type Baker, movieChoice } from './plan';
 
 /*
  * A PowerPoint or Keynote file at import (Session 54, C2): with its animations where this computer can make them,
@@ -15,7 +15,35 @@ import type { Baker } from './plan';
  * files, then Keynote on a Mac), only while one could not at all; a movie off its plan, the stream on air or a
  * cancel stops there. Then the import (pipeline.ts) writes the deck with its steps, or its pictures: those the app
  * saved as it went, or saved as PDF as before.
+ *
+ * Only the slides that move go through the movie (Session 56: plan.ts `movieChoice`): the others come in as their
+ * pictures, the pages of the PDF the app saved of every shown slide, drawn here; a deck where nothing moves comes in
+ * as its pictures straight away, with no movie made at all.
  */
+
+/**
+ * Each shown slide's page among a PDF's drawn pages, for the slides in `need` (a saved PDF leaves hidden slides out,
+ * unless it has every slide): by the deck's own index; null when a page cannot be matched or was not drawn.
+ */
+export function pagesOfShown(
+  slides: readonly PptxSlide[],
+  drawn: { total: number; pages: readonly { index: number; file: string }[] },
+  need: ReadonlySet<number>,
+): Map<number, string> | null {
+  const shown = slides.flatMap((s, i) => (s.hidden ? [] : [i]));
+  // The k-th shown slide, the deck's i-th: the PDF's k-th page, or its i-th when it has every slide.
+  const byShown = drawn.total === shown.length;
+  if (!byShown && drawn.total !== slides.length) return null;
+  const pageOf = (k: number, i: number) => (byShown ? k : i);
+  const files = new Map(drawn.pages.map((p) => [p.index, p.file]));
+  const out = new Map<number, string>();
+  for (const [k, i] of shown.entries()) {
+    const file = files.get(pageOf(k, i));
+    if (file) out.set(i, file);
+    else if (need.has(i)) return null;
+  }
+  return out;
+}
 
 export type DeckFlow =
   | { kind: 'baked'; parsed: ParsedPresentation; sourceIndices?: number[] }
@@ -65,6 +93,8 @@ export async function runDeck(
     kept?: boolean;
     /** Keynote or PowerPoint started by Drashti itself (Session 31: the leftovers record). */
     appStarted?: (pid: number, app: 'PowerPoint' | 'Keynote') => void;
+    /** Draws a PDF's pages as pictures: the slides that come in as their pictures (Session 56). */
+    drawPdf?: (pdf: string, outDir: string) => Promise<PicturesResult>;
   },
 ): Promise<DeckFlow> {
   const { source, file, read, bakers } = request;
@@ -79,6 +109,8 @@ export async function runDeck(
   });
   const first = bakers[0];
   if (!first) return pictures(null, []);
+  // Nothing on it moves (Session 56): no movie is made; it comes in as its pictures straight away.
+  if (read && movieChoice(read.slides).moving.size === 0) return pictures(null, [stillDeckIssue()]);
   // Never while the stream is on air or recording (Session 50's rule for converting).
   if (await options.onAir()) return pictures(null, [whyPictures({ kind: 'on-air' }, first, options.kept)]);
   const tried: { baker: Baker; reason: string }[] = [];
@@ -94,6 +126,35 @@ export async function runDeck(
       },
     );
     if (result.ok) {
+      // The slides that come in as their pictures (Session 56): the pages of the PDF the app saved, drawn now.
+      const choice = result.baked.choice;
+      let still: Map<number, string> | null = null;
+      if (choice) {
+        const drawPdf = options.drawPdf;
+        const pdf = result.pdf;
+        const drawn =
+          pdf && drawPdf
+            ? await (options.steps?.time('pictures', () => drawPdf(pdf, join(work, 'pages'))) ??
+                drawPdf(pdf, join(work, 'pages')))
+            : null;
+        still = drawn?.ok
+          ? pagesOfShown(result.baked.deck.slides, drawn, new Set([...choice.pictures, ...choice.leadIns]))
+          : null;
+        if (!still) {
+          last = {
+            ok: false,
+            why: {
+              kind: 'cut',
+              detail: drawn && !drawn.ok ? drawn.message : 'the pictures of its slides could not be matched',
+            },
+            pdf: result.pdf,
+            deck: result.baked.deck,
+            deckFile: result.baked.deckFile,
+            baker,
+          };
+          break;
+        }
+      }
       const deckFrom = performance.now();
       const parsed = await bakedPresentation(
         request.fileName,
@@ -102,6 +163,7 @@ export async function runDeck(
         work,
         options.ffmpeg,
         request.sourceDir ?? dirname(file),
+        still,
       );
       options.steps?.add('deck', performance.now() - deckFrom);
       const before = tried[0];
