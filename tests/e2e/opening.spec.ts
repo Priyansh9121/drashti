@@ -780,7 +780,7 @@ test('Load the opening pack…: its photo 1 is enough; an alpha.15 pack loads it
   const count = await mediaCount(win);
   await loadPack(app, win, await packOf(win, { photos: [1] }));
   await expect(dialog.getByTestId('opening-problem')).toHaveCount(0);
-  await expect(dialog.getByTestId('opening-photo')).toContainText('1.png', { timeout: 30_000 });
+  await expect(dialog.getByTestId('opening-photo')).toHaveText('1.png', { timeout: 30_000 });
   expect(await mediaCount(win)).toBe(count + 1);
   // An alpha.15 pack: eight photos and five lines. Its photo 1 only comes into Media; its words are left alone.
   await loadPack(app, win, await packOf(win, { photos: [1, 2, 3, 4, 5, 6, 7, 8], lines: 5 }));
@@ -867,7 +867,7 @@ test('the pack’s sound (a generated tone, any case) plays gently with its phot
     await loadPack(app, win, await packOf(win, { photos: [1], top: { 'SOUND.WAV': tone } }));
     await expect(dialog.getByTestId('opening-sound')).toContainText('SOUND.WAV', { timeout: 30_000 });
     await expect(dialog.getByTestId('opening-problem')).toHaveCount(0);
-    await expect(dialog.getByTestId('opening-photo')).toContainText('1.png', { timeout: 30_000 });
+    await expect(dialog.getByTestId('opening-photo')).toHaveText('1.png', { timeout: 30_000 });
     const copies = readdirSync(join(userData, 'Media', 'opening'));
     expect(copies.filter((f) => f.endsWith('.wav'))).toHaveLength(1);
     // The preview: in gently with the photo, out by the end of its two seconds, and stopped there.
