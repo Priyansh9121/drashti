@@ -251,7 +251,11 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
           return d.library.saveSlides(welcomeId, { ...opened.doc, loop: true }, opened.stamp, true);
         })(),
         transition: await d.library.setDefaultTransition({ kind: 'dissolve', durationMs: 500 }),
-        playlist: await d.playlists.create('Placeholder new', null, false),
+        // A playlist's Duplicate (Session 56: making, renaming and deleting one is Simple Mode's, as Pro Mode's left
+        // column offers them; a copy is Pro Mode's).
+        playlist: await d.playlists.duplicate(
+          (await d.playlists.tree()).find((n) => !n.isFolder)?.id ?? 'placeholder-none',
+        ),
         timer: await d.timers.create({
           name: 'x',
           kind: 'countup',
@@ -276,7 +280,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         // Session 25c: the highest video quality, an admin's setting (From a Link… itself is Simple Mode's since
         // Part 18, into its one playlist: simple-sabha.spec.ts, through a local stand-in).
         linkQuality: await d.links.setMaxHeight(2160),
-        // Another playlist's rows (Part 18: Simple Mode changes its one playlist only).
+        // Rows of what is no playlist (Session 56: a playlist's rows are Simple Mode's in any playlist, never a
+        // template's or a folder's).
         otherRows: await d.playlists.addItems('placeholder-other-playlist', null, [
           { kind: 'presentation', presentationId: welcomeId },
         ]),
