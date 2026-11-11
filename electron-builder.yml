@@ -3,6 +3,7 @@ productName: Drashti
 directories:
   buildResources: build
   output: release/${version}
+afterPack: scripts/copy-whisper-windows-runtime.mjs
 files:
   - out/**/*
   - package.json
@@ -217,7 +218,7 @@ win:
       arch: [x64]
   # Signing (Session 14): only when a certificate is given (WIN_CSC_LINK, or Azure Trusted Signing; see
   # scripts/package-release.mjs). The app, the installer, the bundled ffmpeg.exe, the native module and
-  # every DLL are signed then.
+  # the DLLs in the normal packaging pass are signed then.
   signExts: ['.node', '.dll']
   extraResources:
     - from: vendor/ffmpeg/win32-${arch}
@@ -233,7 +234,14 @@ win:
     # DLLs: LICENSES/whisper/.
     - from: vendor/whisper/win32-${arch}
       to: whisper
-      filter: ['**/*', '!SOURCE.txt']
+      # afterPack copies these four Microsoft files with their original signatures intact.
+      filter:
+        - '**/*'
+        - '!SOURCE.txt'
+        - '!msvcp140.dll'
+        - '!vcruntime140.dll'
+        - '!vcruntime140_1.dll'
+        - '!vcomp140.dll'
     - from: build/icon.ico
       to: icon.ico
 nsis:
