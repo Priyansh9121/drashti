@@ -78,8 +78,11 @@ export function openingSound(url: string): OpeningSoundPlayer | null {
   };
   const ready = new Promise<void>((resolve) => {
     if (el.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) resolve();
-    el.addEventListener('canplaythrough', () => resolve(), { once: true });
-    el.addEventListener('error', () => resolve(), { once: true });
+    const done = () => {
+      resolve();
+    };
+    el.addEventListener('canplaythrough', done, { once: true });
+    el.addEventListener('error', done, { once: true });
   });
   return {
     ready,
