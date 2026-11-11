@@ -229,9 +229,9 @@ export class OpeningService {
     }
     const before = this.kept();
     this.keep({ on: before.on, photo, sound });
-    // The sound it replaced goes (unless it is the same file).
-    if (before.sound && (before.sound.sha256 !== sound?.sha256 || before.sound.kind !== sound?.kind))
-      await dropSoundCopy(this.deps.mediaDir, before.sound);
+    // The sound it replaced goes, unless it is the very file kept now (the same pack loaded again).
+    const same = sound !== null && before.sound?.sha256 === sound.sha256 && before.sound.kind === sound.kind;
+    if (before.sound && !same) await dropSoundCopy(this.deps.mediaDir, before.sound);
     this.deps.log(`Opening: the opening pack’s photo ${sound ? 'and sound are' : 'is'} the opening’s now`);
     return { ok: true, view: this.view() };
   }

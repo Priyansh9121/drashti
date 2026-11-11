@@ -293,6 +293,26 @@ describe('File › Opening…', () => {
     expect(s.lines).toEqual(['Opening: the opening pack’s photo and sound are the opening’s now']);
   });
 
+  it('the same pack loaded again keeps its sound’s copy (it is the very file kept)', async () => {
+    const s = service();
+    const root = join(dir, 'pack');
+    mkdirSync(join(root, 'photos'), { recursive: true });
+    writeFileSync(join(root, 'photos', '1.jpg'), jpeg());
+    const bytes = wav(770);
+    writeFileSync(join(root, 'sound.wav'), bytes);
+    expect(await s.opening.loadPack(root)).toMatchObject({
+      ok: true,
+      view: { sound: { name: 'sound.wav' } },
+    });
+    expect(await s.opening.loadPack(root)).toMatchObject({
+      ok: true,
+      view: { sound: { name: 'sound.wav' } },
+    });
+    const sound = { sha256: shaOf(bytes), kind: 'wav' as const };
+    expect(readFileSync(join(dir, openingSoundPath(sound)))).toEqual(bytes);
+    expect(s.opening.soundFile(sound.sha256)).toBe(openingSoundPath(sound));
+  });
+
   it('an alpha.15 pack (eight photos and words.txt, no sound) loads its photo 1 only, and no sound', async () => {
     const old = keptSound();
     const s = service({ kept: { photo: 'photo-9', sound: old } });

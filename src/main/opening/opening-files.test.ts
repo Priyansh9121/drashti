@@ -223,9 +223,9 @@ describe('the copy of the pack’s sound Drashti keeps', () => {
     expect(
       await keepSoundCopy(dir, { path: join(root, 'sound.wav'), name: 'sound.wav', kind: 'wav' }),
     ).toMatchObject({ ok: false });
-    expect(
-      await keepSoundCopy(dir, { path: join(root, 'gone.wav'), name: 'gone.wav', kind: 'wav' }),
-    ).toMatchObject({ ok: false, message: expect.stringMatching(/^Could not keep the opening’s sound\./u) });
+    const gone = await keepSoundCopy(dir, { path: join(root, 'gone.wav'), name: 'gone.wav', kind: 'wav' });
+    expect(gone.ok).toBe(false);
+    expect(gone.ok ? '' : gone.message).toMatch(/^Could not keep the opening’s sound\./u);
     expect(existsSync(join(dir, 'opening')) ? readdirSync(join(dir, 'opening')) : []).toEqual([]);
   });
 });
