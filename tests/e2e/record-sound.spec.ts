@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
-import { freePort, setUpStream, testFfmpeg } from './stream-helpers';
+import { freePort, setUpStream, streamPage, testFfmpeg } from './stream-helpers';
 
 test('Record sound off air saves generated audio and adds a draft only when captions run', async () => {
   test.setTimeout(90_000);
@@ -69,12 +69,14 @@ test('Simple Mode records locally with the Pro Mode folder and cannot change it'
     const win = await operatorPage(app);
     await operatorReady(win);
     await setUpStream(app, win, await freePort(), folder);
+    const preview = await streamPage(app);
     const status = () => win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
     const menu = win.getByRole('menu', { name: 'Record', exact: true });
     await win.getByTestId('stream-panel').getByRole('button', { name: 'Record', exact: true }).click();
     await expect(menu.getByRole('menuitem', { name: 'Change recording folder…' })).toBeVisible();
     await win.keyboard.press('Escape');
     await win.getByRole('button', { name: 'Close stream' }).click();
+    await expect.poll(() => preview.isClosed()).toBe(true);
     await win.getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     const simple = win.getByTestId('simple-mode');
     await expect(simple).toBeVisible();
@@ -84,7 +86,29 @@ test('Simple Mode records locally with the Pro Mode folder and cannot change it'
     });
     await simple.getByRole('button', { name: 'Record', exact: true }).click();
     await expect(menu.getByRole('menuitem')).toHaveText(['Record sound', 'Record video']);
+
+    // Make the new Program receive its saved input before the fake devices are listed.
+    const delayedDevices = await app.context().addInitScript(() => {
+      if (!location.pathname.endsWith('/stream.html')) return;
+      const devices = navigator.mediaDevices;
+      const enumerate = devices.enumerateDevices.bind(devices);
+      const ready = new Promise<void>((resolve) => {
+        window.addEventListener('drashti-test-list-devices', () => resolve(), { once: true });
+      });
+      devices.enumerateDevices = async () => {
+        document.documentElement.dataset['testDevicesDelayed'] = 'yes';
+        await ready;
+        return enumerate();
+      };
+    });
     await menu.getByRole('menuitem', { name: 'Record sound', exact: true }).click();
+    const program = await streamPage(app);
+    const programRoot = program.getByTestId('program-root');
+    await expect(program.locator('html')).toHaveAttribute('data-test-devices-delayed', 'yes');
+    await expect(programRoot).toHaveAttribute('data-layout', /^(camera|slides)$/u);
+    await program.evaluate(() => window.dispatchEvent(new Event('drashti-test-list-devices')));
+    await delayedDevices.dispose();
+    await expect(programRoot).toHaveAttribute('data-sound', 'on');
     await expect.poll(status).toMatchObject({
       live: { state: 'off' },
       recording: { state: 'recording', kind: 'sound', folder },
