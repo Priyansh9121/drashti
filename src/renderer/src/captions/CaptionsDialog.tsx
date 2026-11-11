@@ -24,14 +24,14 @@ import { captionsStateText, downloadText, megabytes } from './captions-words';
 /*
  * File › Live Captions… (Session 55, Part 10; Pro Mode): speech from the stream's sound input as captions on the
  * stream and the stage screens, and on the audience screens if chosen. On or off on this computer (off until an
- * admin turns it on), the model (downloaded once), the language, and the captions' size and place. Marked Trial:
- * Gujarati is not good enough yet with any free model.
+ * admin turns it on), the model (downloaded once), the language, and the captions' size and place.
  */
 
 const LANGUAGES: { id: SpeechLanguage | 'auto'; name: string }[] = [
-  { id: 'auto', name: 'Gujarati, Hindi or English, as heard' },
+  { id: 'auto', name: 'Gujarati, Hindi, Sanskrit or English, as heard' },
   { id: 'gu', name: 'Gujarati (trial)' },
   { id: 'hi', name: 'Hindi' },
+  { id: 'sa', name: 'Sanskrit (trial)' },
   { id: 'en', name: 'English' },
 ];
 const SIZE_NAMES: Record<CaptionSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
@@ -67,14 +67,14 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
             Trial
           </Badge>
           <p className="text-sm text-muted">
-            English is good, Hindi fair (best with Most accurate), Gujarati not good enough yet.
+            Try captions in rehearsal. Accuracy varies by language and sound.
           </p>
         </div>
         <p className="text-sm text-muted">
           What is said into the stream’s sound input shows as captions on the stream and the stage screens,
-          and on the audience screens if you choose. Captions are worked out on this computer: Drashti does
-          not keep or log the sound or the words it hears, and phones never get them. The captions are part of
-          the stream’s picture, so they go to YouTube and into the stream’s recordings.
+          and on the audience screens if you choose. Drashti works out captions on this computer and draws
+          them on the stream and its video recording. Phones do not receive the captions. When you record
+          sound with captions on, Drashti saves a timed draft beside the audio file.
         </p>
         <Toggle
           checked={view.on}
@@ -146,8 +146,12 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
         </Field>
         {settings.language === 'gu' && (
           <Notice tone="warning" data-testid="captions-gujarati-trial">
-            Gujarati is a trial: no free model hears it well yet, so many words will be wrong. Try it before a
-            sabha, never for the first time during one.
+            Gujarati is a trial. The current models can get many words wrong. Try it in rehearsal.
+          </Notice>
+        )}
+        {settings.language === 'sa' && (
+          <Notice tone="warning">
+            Sanskrit is a trial and uses Gujarati letters. Check speech and shloks in rehearsal.
           </Notice>
         )}
         {settings.language === 'auto' && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { whisperCandidates, whisperProblem } from './engine-place';
+import { whisperCandidates, whisperDependencyProblem, whisperProblem } from './engine-place';
 
 /* Where the captions engine is, and whether this computer can run it (Part 10). */
 
@@ -30,5 +30,14 @@ describe('the captions engine’s place (Part 10)', () => {
     expect(whisperProblem('darwin', '13.3')).toBeNull();
     expect(whisperProblem('darwin', '15.5')).toBeNull();
     expect(whisperProblem('win32', '10.0.19045')).toBeNull();
+  });
+
+  it('explains a missing Windows library and accepts either representation of the exit code', () => {
+    const code = 0xc0000135;
+    const message = whisperDependencyProblem('win32', code);
+    expect(message).toMatch(/Reinstall Drashti/u);
+    expect(whisperDependencyProblem('win32', code | 0)).toBe(message);
+    expect(whisperDependencyProblem('win32', 3)).toBeNull();
+    expect(whisperDependencyProblem('darwin', code)).toBeNull();
   });
 });

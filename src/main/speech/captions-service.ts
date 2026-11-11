@@ -7,6 +7,7 @@ import {
   type CaptionsShown,
   type CaptionsStatus,
 } from '../../shared/captions';
+import type { Heard } from '../../shared/speech';
 import { createCaptionsFeed, type CaptionsFeed } from './captions-feed';
 import { readCaptionsSwitch, writeCaptionsSwitch, type CaptionsSwitch } from './captions-switch';
 import { createSpeechHub, type SpeechEngine, type SpeechHubControl } from './hub';
@@ -29,9 +30,14 @@ export interface CaptionsServiceDeps {
   /** Why this computer cannot run captions (no engine here, or too old a Mac), or null when it can. */
   engineProblem: () => string | null;
   modelReady: (id: CaptionModelId) => boolean;
-  download: (id: CaptionModelId, progress: (done: number, total: number) => void) => Promise<void>;
+  download: (
+    id: CaptionModelId,
+    progress: (done: number, total: number) => void,
+    signal: AbortSignal,
+  ) => Promise<void>;
   /** The engine's setCaptions. */
   show: (captions: CaptionsShown | null) => void;
+  onFinalPhrase?: (phrase: Heard) => void;
   /** Tell the operator window (the dialog). */
   changed: (view: CaptionsStatus) => void;
   log: { info(message: string): void; warn(message: string): void };
@@ -42,7 +48,9 @@ export class CaptionsService {
   private readonly feed: CaptionsFeed;
   private switch: CaptionsSwitch;
   private download: CaptionsDownload;
-  private downloading: Promise<void> | null = null;
+  private downloading: { controller: AbortController; promise: Promise<void> } | null = null;
+  private streamInUse = false;
+  private closed = false;
   private toldAt = 0;
   private telling: NodeJS.Timeout | null = null;
 
@@ -61,7 +69,12 @@ export class CaptionsService {
       },
       log: deps.log,
     });
-    this.feed = createCaptionsFeed({ hub: this.hub, show: deps.show, settings: () => this.settings() });
+    this.feed = createCaptionsFeed({
+      hub: this.hub,
+      show: deps.show,
+      onFinalPhrase: (phrase) => deps.onFinalPhrase?.(phrase),
+      settings: () => this.settings(),
+    });
     this.hub.onState(() => {
       this.tell();
     });
@@ -76,18 +89,31 @@ export class CaptionsService {
     const total = CAPTION_MODELS[this.switch.model].bytes;
     return this.deps.modelReady(this.switch.model)
       ? { phase: 'ready', done: total, total, message: null }
-      : { phase: 'missing', done: 0, total, message: null };
+      : {
+          phase: 'missing',
+          done: 0,
+          total,
+          message:
+            this.switch.on && this.streamInUse
+              ? 'The model download waits until the stream and recording stop.'
+              : null,
+        };
+  }
+
+  selectedModel(): CaptionModelId {
+    return this.switch.model;
   }
 
   view(): CaptionsStatus {
+    const engineProblem = this.deps.engineProblem();
     return {
       on: this.switch.on,
       model: this.switch.model,
       settings: this.settings(),
       download: this.download,
       speech: this.hub.state(),
-      engine: this.deps.engineProblem() === null,
-      engineProblem: this.deps.engineProblem(),
+      engine: engineProblem === null,
+      engineProblem,
       trial: true,
     };
   }
@@ -99,24 +125,27 @@ export class CaptionsService {
   }
 
   async setOn(on: boolean): Promise<CaptionsStatus> {
-    this.switch = { ...this.switch, on };
-    writeCaptionsSwitch(this.deps.userData, this.switch);
+    const next = { ...this.switch, on };
+    writeCaptionsSwitch(this.deps.userData, next);
+    this.switch = next;
     this.deps.log.info(`Captions: turned ${on ? 'on' : 'off'} on this computer.`);
-    if (on) await this.turnOn();
-    else this.turnOff();
+    if (on) {
+      if (!this.downloading || this.downloading.controller.signal.aborted) this.download = this.modelState();
+      await this.turnOn();
+    } else this.turnOff();
     this.tell();
     return this.view();
   }
 
   async setModel(model: CaptionModelId): Promise<CaptionsStatus> {
     if (model === this.switch.model) return this.view();
-    this.switch = { ...this.switch, model };
-    writeCaptionsSwitch(this.deps.userData, this.switch);
-    this.download = this.modelState();
+    const next = { ...this.switch, model };
+    writeCaptionsSwitch(this.deps.userData, next);
+    this.switch = next;
     if (this.switch.on) {
       this.turnOff();
       await this.turnOn();
-    }
+    } else this.download = this.modelState();
     this.tell();
     return this.view();
   }
@@ -132,11 +161,24 @@ export class CaptionsService {
 
   /** Try the download again (after no internet). */
   async retry(): Promise<CaptionsStatus> {
-    if (this.switch.on && !this.deps.modelReady(this.switch.model)) await this.fetchModel();
+    await this.fetchModel();
     return this.view();
   }
 
+  /** Downloads give way to the show; a model already on disk keeps listening. */
+  setStreamInUse(inUse: boolean): void {
+    if (this.streamInUse === inUse || this.closed) return;
+    this.streamInUse = inUse;
+    if (!this.switch.on) return;
+    if (inUse) {
+      this.stopDownload();
+      this.tell();
+    } else void this.fetchModel();
+  }
+
   close(): void {
+    this.closed = true;
+    this.downloading?.controller.abort();
     this.feed.stop();
     this.hub.close();
     if (this.telling) clearTimeout(this.telling);
@@ -146,54 +188,85 @@ export class CaptionsService {
     if (this.deps.engineProblem() !== null) return;
     this.hub.setOn(true);
     this.feed.start();
-    if (!this.deps.modelReady(this.switch.model)) await this.fetchModel();
+    await this.fetchModel();
   }
 
   private turnOff(): void {
+    this.stopDownload();
     this.feed.stop();
     this.hub.setOn(false);
   }
 
-  private fetchModel(): Promise<void> {
-    if (this.downloading) return this.downloading;
+  private stopDownload(): void {
+    this.downloading?.controller.abort();
+    this.download = this.modelState();
+  }
+
+  private async fetchModel(): Promise<void> {
     const id = this.switch.model;
+    if (
+      this.closed ||
+      !this.switch.on ||
+      this.streamInUse ||
+      this.deps.engineProblem() !== null ||
+      this.deps.modelReady(id)
+    )
+      return;
+    const running = this.downloading;
+    if (running) {
+      await running.promise;
+      // Even when the operator switches right back, wait for the old writer to close the partial file.
+      if (running.controller.signal.aborted) await this.fetchModel();
+      return;
+    }
     const total = CAPTION_MODELS[id].bytes;
+    const controller = new AbortController();
     this.download = { phase: 'downloading', done: 0, total, message: null };
+    const promise = Promise.resolve().then(() => this.runDownload(id, total, controller.signal));
+    this.downloading = { controller, promise };
     this.tell();
-    this.deps.log.info(
-      `Captions: downloading the ${id} model (${String(Math.round(total / 1_000_000))} MB).`,
-    );
-    this.downloading = this.deps
-      .download(id, (done, of) => {
-        this.download = { phase: 'downloading', done, total: of, message: null };
-        this.tellSoon();
-      })
-      .then(() => {
-        this.download = { phase: 'ready', done: total, total, message: null };
-        this.deps.log.info(`Captions: the ${id} model is downloaded and checked.`);
-        // Listening starts again, now with its model.
-        if (this.switch.on && this.switch.model === id) {
-          this.hub.setOn(false);
-          this.hub.setOn(true);
-        }
-      })
-      .catch((error: unknown) => {
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'The captions model could not be downloaded: try again when this computer is online.';
-        this.download = { phase: 'failed', done: 0, total, message };
-        this.deps.log.warn(`Captions: the ${id} model was not downloaded (${message})`);
-      })
-      .finally(() => {
-        this.downloading = null;
-        this.tell();
-      });
-    return this.downloading;
+    await promise;
+  }
+
+  private async runDownload(id: CaptionModelId, total: number, signal: AbortSignal): Promise<void> {
+    const stopped = (): boolean => signal.aborted || this.switch.model !== id;
+    try {
+      if (stopped()) return;
+      this.deps.log.info(
+        `Captions: downloading the ${id} model (${String(Math.round(total / 1_000_000))} MB).`,
+      );
+      await this.deps.download(
+        id,
+        (done, of) => {
+          if (stopped()) return;
+          this.download = { phase: 'downloading', done, total: of, message: null };
+          this.tellSoon();
+        },
+        signal,
+      );
+      if (stopped()) return;
+      this.download = { phase: 'ready', done: total, total, message: null };
+      this.deps.log.info(`Captions: the ${id} model is downloaded and checked.`);
+      // Listening starts again, now with its model.
+      this.hub.setOn(false);
+      this.hub.setOn(true);
+    } catch (error) {
+      if (stopped()) return;
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'The captions model could not be downloaded: try again when this computer is online.';
+      this.download = { phase: 'failed', done: 0, total, message };
+      this.deps.log.warn(`Captions: the ${id} model was not downloaded (${message})`);
+    } finally {
+      this.downloading = null;
+      this.tell();
+    }
   }
 
   /** Tell the dialog now. */
   private tell(): void {
+    if (this.closed) return;
     if (this.telling) clearTimeout(this.telling);
     this.telling = null;
     this.toldAt = Date.now();

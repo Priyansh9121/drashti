@@ -42,6 +42,10 @@ describe('the Live captions dialog’s words (Part 10)', () => {
     expect(
       downloadText(view({ download: { phase: 'missing', done: 0, total: 487_601_967, message: null } })),
     ).toBe('The model (488 MB) downloads once, when captions are turned on.');
+    const paused = 'The model download waits until the stream and recording stop.';
+    expect(
+      downloadText(view({ download: { phase: 'missing', done: 0, total: 487_601_967, message: paused } })),
+    ).toBe(paused);
     expect(
       downloadText(
         view({ download: { phase: 'downloading', done: 120_000_000, total: 487_601_967, message: null } }),

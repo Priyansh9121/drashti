@@ -1055,6 +1055,39 @@ test('stage layouts, key and fill, MIDI and the slide editor (Session 11; Looks 
   await app.close();
 });
 
+test('Live captions off and the Gujarati Trial warning', async () => {
+  const { app } = await launchApp({
+    DRASHTI_EXTRA_DISPLAYS: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
+    DRASHTI_TEST_SPEECH: 'Placeholder caption line|Placeholder spoken words',
+  });
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await win.setViewportSize({ width: 1280, height: 800 });
+    const stage = await setUpScreen(win, 'Placeholder stage', 1);
+    await win.evaluate(async (screenId) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const group = (await d.screens.get()).groups.find((g) => g.screens.some((s) => s.id === screenId));
+      const changed = await d.screens.setGroupRole(group?.id ?? '', 'stage');
+      if (!changed.ok) throw new Error(changed.message);
+    }, stage);
+    await chooseMenuItem(app, 'live-captions');
+    const dialog = win.getByTestId('captions-dialog');
+    const on = dialog.getByTestId('captions-on');
+    await expect(on).toHaveAttribute('aria-checked', 'false');
+    await on.focus();
+    await part(win, 'captions-off', [dialog]);
+    await on.click();
+    await dialog.getByTestId('captions-language').selectOption('gu');
+    await expect(dialog.getByTestId('captions-gujarati-trial')).toBeVisible();
+    await expect(dialog.getByTestId('captions-state')).toHaveText('Listening to the stream’s sound input.');
+    await part(win, 'captions-gujarati-trial', [dialog]);
+  } finally {
+    await app.close();
+  }
+});
+
 test('Books, timers in the running order, Samvat and tithi (Session 12; the idle rotation went in Session 55)', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp({
@@ -1195,7 +1228,10 @@ test('Books, timers in the running order, Samvat and tithi (Session 12; the idle
   await expect(passage).toHaveAttribute('data-presentation-id', 'shastra:pg#14-15');
   await passage.getByTestId('slide-thumb').first().click();
   await expect(win.getByTestId('live-text')).toHaveText(/^Live: Placeholder Granth 14–15 · slide 1 of \d+$/u);
+  await panel.getByTestId('shastra-search').fill('placeholder meaning 14');
+  await expect(panel.getByTestId('shastra-hit').first()).toContainText('Placeholder Granth 14');
   await shot(win, 'shastra-tab');
+  await panel.getByTestId('shastra-search').fill('');
   await panel.getByTestId('open-shastra-texts').click();
   await expect(win.getByTestId('shastra-texts-dialog')).toBeVisible();
   await shot(win, 'shastra-texts');

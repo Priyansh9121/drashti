@@ -1,6 +1,6 @@
 # The admin's guide: looking after Drashti
 
-These instructions describe **1.0.0-alpha.15**: Books, editing imported slides and PDFs, live captions (off and marked Trial), and five helpers that work offline, including Book references during pravachan and Follow singing (Trial). Keep Main, nodes and phone pages on the matching build when updating.
+These instructions describe **1.0.0-alpha.16**, including Books, editing imported slides and PDFs, and live captions (off and marked Trial). Keep Main, nodes and phone pages on the matching build when updating.
 
 This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside the old presentation program are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`.
 
@@ -19,7 +19,7 @@ Drashti runs on both of the mandir's computers. One is **Main**: it keeps the li
 - **A graphics chip that decodes video by itself**: every Mac that runs macOS 13 has one; a PC needs Intel, AMD or NVIDIA graphics (not a basic display adapter). Section 13 has what the speed tests found.
 - **The internet** on Main (and on any other computer used as a Main), to check its access every 15 seconds while it runs (section 3; without it, Drashti keeps working for up to 15 days): a wired connection if at all possible, and a phone's hotspot ready as a spare. A node needs none for this: it follows its Main.
 - **A wired network between Main and the node** if at all possible, and a fixed address for Main (section 8).
-- **Room on the disk**: the media library (with a copy beside each file Drashti converts, section 20), plus 2 GB that Drashti keeps free, plus the recordings (about 3 GB an hour). A recording goes on in parts of 3.5 GB (`… part 2.mkv`, `part 3`…), so even a USB stick formatted FAT32 takes a long sabha; Drashti says so when the folder is on one, and when the disk has room for less than an hour.
+- **Room on the disk**: the media library (with a copy beside each file Drashti converts, section 20), plus 2 GB that Drashti keeps free, plus the recordings. **Record sound** saves about 115 MB an hour in 16 kHz mono WAV files. **Record video** saves about 3 GB an hour at the Good internet setting in MKV files. A recording goes on in parts of up to 3.5 GB, so a FAT32 USB stick can take a long sabha. Drashti warns when the folder is on one or the disk has room for less than an hour.
 - Each computer's **user account with a password of its own**: once the computer is let in (section 3), anyone who can use its account can use Drashti there.
 
 ---
@@ -612,9 +612,13 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 **The model downloads once.** While online, choose **Model** and turn captions on: **Standard**, 488 MB, or **Most accurate**, 574 MB. Start with Standard on the Windows PC and Most accurate on an Apple-silicon Mac. The progress line says how much has arrived; **Try again** retries a failed download. Wait until it says **The model is on this computer**. After that, the chosen model works without the internet; choosing another may need its own download.
 
-**What captions hear.** Choose the mixer's input under **Sound input** in the stream's settings. Captions hear that input, not Drashti's music or videos. The stream's page stays open while listening, even off air, so its chosen camera may be open and its light on. This alone does not start a stream or recording.
+The download leaves about 2 GB free on the drive. It pauses when the stream or a recording starts. While captions are on, it resumes automatically once the stream and recording stop.
 
-**Language and where the words go.** Choose one **Language**: English or Hindi for a rehearsal; **Gujarati (trial)** only to see how it does. Gujarati is not good enough for the audience yet. **Gujarati, Hindi or English, as heard** often takes Gujarati for Hindi. The stream and stage screens show captions; **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large; **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.
+**Windows.** Drashti includes the Windows libraries its captions engine needs. If Drashti reports a missing captions library, reinstall Drashti to restore those files.
+
+**What captions hear.** Choose the mixer's input under **Sound input** in **Stream settings**. Captions and **Record sound** both hear that input before the stream's delay, mix or limiter. When you record sound with captions on, Drashti saves the finished phrases in a timed WebVTT draft beside the WAV file. In Pro Mode, choose the destination in **Stream settings › Recording folder** or from the **Record** menu.
+
+**Language and where the words go.** Under **Language**, choose Gujarati, Hindi, Sanskrit or English if you know which one the speaker will use. **Gujarati, Hindi, Sanskrit or English, as heard** lets Drashti choose for each phrase. It leaves out phrases the model identifies as another language. Sanskrit uses Gujarati letters on screen and in the sound recording's caption draft. Drashti can mistake Gujarati for Hindi. Check the words in rehearsal, especially for Gujarati and Sanskrit. The stream and stage screens show captions. **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large. **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.
 
 ![Live captions listening with the Gujarati trial warning](screenshots/captions-gujarati-trial.png)
 
@@ -632,24 +636,4 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 - **Resting: this computer is busy**: the show comes first. Captions try again in a minute. If this happens in the rehearsal, leave them off on that computer.
 - A message about the engine or macOS means this copy or computer cannot start it. Put that right before trying again; there is no need to turn captions on to run the show.
 
-**What stays private.** Captions are worked out on this computer. Drashti does not keep or log what it hears for captions, or send the sound to a speech service. Words shown in the stream are part of its picture, so take the same care with them as with any words put on the screens. Turn **Live captions on this computer** off to stop listening.
-
-## 26. AI helpers that work offline
-
-**Five separate switches, all off at first.** In Pro Mode, **File › AI helpers…** has **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each is a **Trial** and can slow the screens while on. Turn on only the ones the operators want after a rehearsal; the choices are kept. They work on this computer, with no account or cloud service. With every switch off, no AI helper starts. Simple Mode and phones do not offer these helpers.
-
-![All five offline AI helpers off before the admin chooses any](screenshots/ai-helpers.png)
-
-**The operator decides.** Search points to material already in the library, including meaning, spelling and Gujarati typed in English letters; it does not invent a passage or reference. Import suggestions are for newly pasted words, with each change chosen and **Undo suggestion** to put them back. Playlist suggestions draw from the chosen past sabhas and the loaded calendar: review, rename, move or remove suggestions before **Make playlist**. Books stay as loaded. Nothing suggested goes live by itself or starts a stream or recording. The operator's guide, section 11, has the steps.
-
-**Listening needs a separate choice.** Both speech helpers start off and work only for the Pro operator. To let either listen, an admin must also turn on **Live captions on this computer**, with its model ready and the stream's sound input chosen (section 25). A helper never turns captions on for you. Captions will then show in the places chosen there; keep the audience choice off while rehearsing. The Speech helpers panel beside LIVE shows whether listening is off, listening or waiting. Heard words are used on Main without a transcript file or log, and are not sent to phones.
-
-### Book references during pravachan
-
-With **Book references** on, the **Speech helpers** panel offers passages from the original words of Books loaded here, each with its reference and quoted words. Exact matches appear first while the meaning search finishes. The operator checks the passage and presses **Show passage** to put it on the screens; finding it alone changes nothing on the screens. No passage or translation is made up.
-
-**Typed search works while listening is off.** Leave Live captions off if only typed search is wanted: in **Look in loaded Books**, type Gujarati, Hindi or English, then **Find in Books**. If a book changes or is removed, or a suggestion expires, the old approval is refused: search again and check the fresh passage before showing it. Load authorised Books first (section 9).
-
-### Follow singing (Trial)
-
-With **Follow singing (Trial)** on and Live captions listening, the helper compares heard words with the kirtan verse on **LIVE**. A clear match offers the normal next verse in the current play order. It never advances by itself or jumps to a different verse: the operator presses **Next suggested verse**, or the usual **Next**, when ready. A suggestion expires and is no longer usable after the live slide changes, Pro Mode is left or the operator disconnects. Wait for a fresh match if needed. Keep it off until the owner has tried this Trial in a rehearsal; the captions' language limits still apply.
+**What stays private.** Drashti works out captions on this computer. The words are kept out of logs. They can appear in the video picture and in the timed draft saved beside a sound recording. Turn **Live captions on this computer** off to stop listening.

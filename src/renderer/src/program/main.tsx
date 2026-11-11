@@ -52,7 +52,8 @@ function apply(context: ProgramContext): void {
  * took longer to start finished last and won: a microphone chosen and then taken away at once (or as the
  * stream went live) came back on (Session 31).
  */
-let inputsDone: Promise<void> = Promise.resolve();
+// Wait for the first device list before trying the saved inputs on a newly opened Program.
+let inputsDone: Promise<void> = listDevices().catch(() => undefined);
 let newestInputs: ProgramContext | null = null;
 
 function inputsInTurn(context: ProgramContext): void {
@@ -98,7 +99,6 @@ function Program() {
     });
     // Videos that failed with a GPU process that stopped play again once another starts (ROB-5).
     watchGpuRestarts();
-    void listDevices();
     navigator.mediaDevices.addEventListener('devicechange', () => {
       void listDevices().then(() => {
         const c = useProgram.getState().context;
@@ -131,7 +131,7 @@ function Program() {
       data-fonts={ready ? 'ready' : 'loading'}
       data-warm-up={warmed ? 'done' : 'warming'}
     >
-      {fontsReady && !warmed && (
+      {context?.picture && fontsReady && !warmed && (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
           <WarmUp
             page="stream"
@@ -143,7 +143,7 @@ function Program() {
           />
         </PlacedInParent>
       )}
-      {state && ready && context && !stop.black && (
+      {state && ready && context?.picture && !stop.black && (
         // The stream's picture: black if it fails as it draws, until the next change (Session 23).
         <SceneBoundary resetKey={rev}>
           {/* Main's way of writing the time (Sessions 31–36, I18N-8), for clocks in messages. */}
@@ -173,6 +173,7 @@ startCapture(
   () => sound.level(),
   () => sound.track(),
   () => sound.inputTrack(),
+  () => sound.speechGraph(),
 );
 
 const root = document.getElementById('root');

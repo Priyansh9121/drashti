@@ -1,4 +1,3 @@
-import { AiPlaylist } from '../ai/AiPlaylist';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { PlaylistNode } from '../../../shared/playlists';
@@ -663,7 +662,7 @@ function TemplateList() {
  * + New; a click opens one in the centre (OpenPlaylist.tsx). With View › Show Books, Templates and Kirtan
  * Details, the sabha templates beside them. `simple` (Session 56, the owner's item 14: "Several playlists on the left,
  * with folders, as in Pro Mode, and smart playlists"): Simple Mode's, the same playlists, folders and smart playlists,
- * without what is Pro Mode's (templates and slots, the AI's playlist, Repeat Slides made, sharing, Practise, Duplicate).
+ * without what is Pro Mode's (templates and slots, Repeat Slides made, sharing, Practise, Duplicate).
  */
 export function PlaylistPanel({ platform, simple = false }: { platform: string; simple?: boolean }) {
   const view = usePlaylists((s) => s.view);
@@ -671,7 +670,6 @@ export function PlaylistPanel({ platform, simple = false }: { platform: string; 
   return (
     // In the left column's "Playlists" landmark (operator/Layout.tsx, Session 44), with the Library button.
     <div data-testid="playlists" className="flex min-h-0 flex-1 flex-col">
-      {!simple && <AiPlaylist />}
       {view === 'templates' && !simple ? (
         <TemplateList />
       ) : (

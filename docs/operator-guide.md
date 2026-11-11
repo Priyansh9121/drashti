@@ -59,13 +59,15 @@ Do these about 30 minutes before the sabha starts.
 
 6. **The wallpaper.** In **Wallpapers**, under the playlists, click the one the hall should see while nothing is up (the mandir's darshan pictures going round, say, or **Idle rotation**). It shows until the first thing goes up, and again whenever nothing is up.
 7. **A countdown for the start** (if wanted): in **Timers**, press **Countdown to the start…**, set **The sabha’s time** and press **Show the countdown**. The hall's screens and the stage screens show the time left to it over the wallpaper ("The sabha starts in"), and it goes by itself at zero; a time already passed today is refused, saying so. **Hide the countdown** takes it off sooner. For any other timer on the hall's screens, use its **Show for the audience** (section 2), a timer slide ("Starting in 4:59": section 2), or a message such as "Sabha starts in {time}", with {time} set to **Timer: Sabha starts in** in place of **Typed in**.
-8. **The stream** (only on the computer that streams, and only if tonight's sabha is streamed): press **Stream** in the header, choose **Camera and words** or **Slides**, press **Record** if it should be recorded, then **Go live…** and **Go live**. The header says **ON AIR** (and **REC**). Section 6 of `docs/parallel-run.md` has the details.
+8. **The stream** (only on the computer that streams, and only if tonight's sabha is streamed): press **Stream** in the header, choose **Camera and words** or **Slides**, then press **Go live…** and **Go live**. The header says **ON AIR**. Section 6 of `docs/parallel-run.md` has the details.
 9. **Phones** (if a phone remote or a stage tablet is used): press **Phones**, check **Let paired phones and tablets connect** is on, and check each phone says **Connected**.
 10. **Ready?** Last, press **Ready?** in the top bar. It checks eight things and shows each green, or amber with what to do: the **Screens** (each connected and showing, **Audience** and **Stage** on, the projector extended, not mirrored), the **Sound output** (**Test sound** plays a short tone to it), the chosen **Video input**, **Access**, the open playlist's **Files** (**Find missing media…** when some are gone), the **Charger**, **Sleep** and **Notifications**. Put each amber line right, then press **Check again**, until every line is green. Under them, **What Ready? can’t check** lists what to look at yourself: the projector's picture, the hall's sound, the stream's internet and the phones' batteries. It looks only when you press it.
 
 ![Ready? before the sabha: each line green, or amber with what to do](screenshots/ready.png)
 
-**Live captions (Trial).** They start off and can slow the screens while on. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Tell the admin if they are wrong or lag behind; **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
+**Live captions (Trial).** They start off and can slow the screens while on. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Sanskrit captions use Gujarati letters. Tell the admin if they are wrong or lag behind. **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
+
+**Record the sabha.** Open **Record** in **Stream** in Pro Mode, or under **LIVE** in Simple Mode. Pick **Record sound** to save the chosen sound input as a 16 kHz mono WAV file. If Live captions is on, a timed caption draft is saved beside the sound. **Record video** saves the stream’s chosen layout and takes about 3 GB an hour at the Good internet setting. Both choices work off air or while the stream is on air. In Pro Mode, choose the folder in **Stream settings** or from the **Record** menu. Press the recording’s **Stop** button when finished.
 
 ## 2. Running the sabha
 
@@ -252,7 +254,7 @@ In the studio, **Save** keeps it, **Show** puts it up (**Save and show** when it
 
 ## 4. After the sabha
 
-1. **The stream**: **End the stream…**, then **End the stream**, and **Stop recording**. End the broadcast in YouTube Studio too.
+1. **The stream and recording**: if streaming, press **End the stream…**, then **End the stream**, and end the broadcast in YouTube Studio. If recording, press **Stop sound recording** or **Stop video recording**.
 2. **F1** (Clear all), so nothing is left up.
 3. If anything went wrong, **Help**, then **Save Diagnostics…**: a file appears on the Desktop. Send it to whoever looks after Drashti with the time and what you saw. It holds no kirtan words, names or file paths. If Drashti asks about crash files, leave **Include crash files** unticked unless whoever looks after Drashti asks for them: they can hold words from slides.
 4. Quit Drashti, or switch to Simple Mode for the next volunteer (**View**, then **Switch to Simple Mode**).
@@ -332,7 +334,7 @@ In Drashti, **Help**, then **Keyboard Shortcuts…** (or press **?** when no fie
 
 ## 9. Simple Mode, for a sabha with one projector
 
-Simple Mode is this window with only what a small sabha with one projector needs, for a volunteer: the open playlist in the middle, the playlists (in folders, with smart playlists, as in Pro Mode) and the wallpapers on the left, and on the right **LIVE**, **Next** and **Back** and the time bar, with the keys in a line under them; along the bottom, **Clear all**, **Wallpaper** and **Black-out**. It has no stream, no stage screen, no messages, timers or lower thirds, and no screens to set up: a display plugged in sets itself (above). The first time it opens, three short first steps under the top bar say what it is; **Skip** puts them away.
+Simple Mode is this window with only what a small sabha with one projector needs, for a volunteer: the open playlist in the middle, the playlists (in folders, with smart playlists, as in Pro Mode) and the wallpapers on the left, and on the right **LIVE**, **Next** and **Back**, the time bar and **Record**, with the keys in a line under them; along the bottom, **Clear all**, **Wallpaper** and **Black-out**. The stage screen, messages, timers, lower thirds, screen setup and live stream controls are in Pro Mode. A display plugged in sets itself (above). The first time it opens, three short first steps under the top bar say what it is; **Skip** puts them away.
 
 **Switching to it.** Open the night's playlist, then double-click **Simple Mode** at the top right (one click only says to double-click it; or **View**, then **Switch to Simple Mode**). Simple Mode opens that playlist; with none open, it makes a new one, "Sabha, " and the day's date, at the top of the list (or uses again an empty one it made before). After that a click on any playlist on the left opens it, as in Pro Mode. After a restart it opens the playlist it had open. If that playlist was deleted, Simple Mode makes a new, empty one, named apart from the deleted one ("Sabha, 30 Oct 2026 (2)"), so it is never taken for the deleted one come back.
 
@@ -417,38 +419,8 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 ![Confirmation of a separate placeholder PDF copy](screenshots/pdf-save-copy.png)
 
-## 11. AI helpers while preparing a sabha
+## 11. Finding a passage in Books
 
-**Choose only the helpers you want.** In Pro Mode, **File › AI helpers…** has five switches, all off at first: **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each is a **Trial** and can slow the screens while on. Rehearse before choosing one for a sabha. Each works offline on this computer; the choices are kept. Suggestions wait for you to check them. They do not change Books. Nothing goes on the screens until you choose it, and no helper starts a stream or recording. These tools are not offered in Simple Mode or on a phone.
+In Pro Mode, choose **View › Show Books, Templates and Kirtan Details** if the **Books** tab is hidden. Open **Library › Books**. Enter a reference in **Reference** and press **Show**, or type words from the passage into **Search the words…** and choose a result. The passage opens in the middle for you to check. Click one of its slides to put it on the screens, or choose **Add to playlist** to use it later.
 
-![All five offline AI helpers switched off](screenshots/ai-helpers.png)
-
-**Find by meaning.** With Meaning and spelling search on, open **Library**, type in its search box and press **Find by meaning**. The usual exact matches stay, with suggestions for meaning, a misspelling or Gujarati typed in English letters. Each suggestion leads to a real presentation, media item or loaded book passage; look at it before adding it to the playlist. It does not make up words or references. If the helper cannot finish, use the usual search.
-
-![Meaning search results for a placeholder library source](screenshots/ai-search.png)
-
-**Suggestions for newly pasted words.** With Import suggestions on, use the library's **New…** and paste the words for a new presentation. **Suggest slide breaks** offers places to split them; **Suggest transliteration** offers Roman letters using Drashti's existing rules. The review names the language when recognised and shows each change with its source line. Tick only the changes you want, then **Apply selected changes**. **Undo suggestion** restores your input, even after the helper has been switched off. Read the words and the Roman letters before making the presentation. This helper does not rewrite words already in the library or in Books.
-
-![Review placeholder word suggestions with individual choices and Undo](screenshots/ai-lyrics.png)
-
-**Suggest a playlist.** With Playlist suggestions on, choose **Suggest a playlist**, then the **Sabha date** and the **Past sabhas** it may draw from. **Suggest playlist** shows its proposed order and the calendar entry, if there is one; without an entry it uses a past sabha you chose. Check each row and where it came from, change the **Playlist name**, move rows up or down, and **Remove suggestion** for anything unwanted. Only **Make playlist** makes a new playlist; **Cancel** leaves the existing playlists as they were. Open the new one and rehearse it before the sabha.
-
-![Review a proposed placeholder playlist before making it](screenshots/ai-playlist.png)
-
-### Book references during pravachan
-
-**Find a passage, then choose whether to show it.** In Pro Mode, turn on **Book references** under **File › AI helpers…**; it starts off. The **Speech helpers** panel beside LIVE has **Look in loaded Books**: type Gujarati, Hindi or English and press **Find in Books**. Typed search works with listening and Live captions off. It searches only the original words in Books loaded here, showing their references and quoted words. Exact matches appear first while meaning is checked; **No good match in the loaded Books** means nothing suitable was found.
-
-![Typed search in loaded placeholder Books while listening is off](screenshots/ai-books.png)
-
-**To listen during pravachan**, ask the admin to turn on **Live captions on this computer**, choose the stream's sound input and wait for the model (admin guide, section 25). Both speech helpers need that separate switch for listening; neither turns it on. Heard words can then suggest passages in the same panel. If listening is waiting, let it wait or use typed search. Read the reference and quoted words before pressing **Show passage — …**: only that press puts a passage on the screens. If its book has changed or been removed, or the suggestion has expired, search again and check a fresh result. Books stay as loaded; the helper writes no new passage or translation.
-
-![Heard placeholder words offer source references and Show passage](screenshots/ai-books-heard.png)
-
-### Follow singing (Trial)
-
-**A suggestion for Next, with the operator in charge.** In Pro Mode, turn on **Follow singing (Trial)** under **File › AI helpers…**; it starts off and also needs Live captions switched on for listening. Put the kirtan's verse on **LIVE** as usual. When heard words clearly match that verse, the Speech helpers panel offers **Next suggested verse**. Check it, then press it when ready, or use the usual **Next**. It follows the current play order, never jumps to another verse and never advances by itself. Without a clear match, carry on with Next yourself.
-
-![Follow singing Trial offers Next while the operator keeps control](screenshots/ai-singing-trial.png)
-
-A suggestion is for the current live state and expires: changing the slide, leaving Pro Mode or losing the operator makes it unusable. Wait for a fresh match if needed. It is a **Trial**: try it in a rehearsal before a sabha, with the admin's chosen captions language. Turn it off again under **AI helpers…** if it is not useful; turning a speech helper off does not turn Live captions off.
+![The Books tab with a placeholder passage selected](screenshots/shastra-tab.png)

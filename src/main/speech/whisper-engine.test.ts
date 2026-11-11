@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Heard, SpeechState } from '../../shared/speech';
 import {
   createWhisperEngine,
-  likeliest,
   SAMPLE_RATE,
   wavOf,
   wordsOf,
@@ -61,13 +60,11 @@ describe('what the engine heard (whisper-server’s verbose_json)', () => {
     expect(words[1]).toMatchObject({ startAt: 500, endAt: 2_000 });
   });
 
-  it('finds the likeliest of Gujarati, Hindi and English, and the language it wrote in', () => {
-    expect(likeliest({ language_probabilities: { mr: 0.5, hi: 0.3, gu: 0.1, en: 0.05 } })).toEqual({
-      language: 'hi',
-      p: 0.3,
-    });
-    expect(likeliest({})).toBeNull();
+  it('reads the supported language the engine wrote in', () => {
     expect(writtenIn({ language: 'gujarati' })).toBe('gu');
+    expect(writtenIn({ language: 'hindi' })).toBe('hi');
+    expect(writtenIn({ language: 'sanskrit' })).toBe('sa');
+    expect(writtenIn({ language: 'english' })).toBe('en');
     expect(writtenIn({ language: 'marathi' })).toBeNull();
   });
 
@@ -86,13 +83,22 @@ describe('what the engine heard (whisper-server’s verbose_json)', () => {
 function standIn(o: { delayMs?: number; language?: string } = {}) {
   const servers: Server[] = [];
   const asked: string[] = [];
+  const requestPaths: string[] = [];
   const spawn = (_program: string, args: string[]): ChildProcess => {
     const port = Number(args[args.indexOf('--port') + 1]);
+    const requestPath = args.includes('--request-path')
+      ? (args[args.indexOf('--request-path') + 1] ?? '')
+      : '';
+    requestPaths.push(requestPath);
     const child = new EventEmitter() as ChildProcess & EventEmitter;
     Object.assign(child, { pid: undefined, exitCode: null });
     const server = createServer((req, res) => {
-      if (req.url === '/health') {
+      if (req.url === `${requestPath}/health`) {
         res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"status":"ok"}');
+        return;
+      }
+      if (req.url !== `${requestPath}/inference`) {
+        res.writeHead(404).end();
         return;
       }
       let body = '';
@@ -105,7 +111,6 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
           res.writeHead(200, { 'Content-Type': 'application/json' }).end(
             JSON.stringify({
               language: o.language ?? 'english',
-              language_probabilities: { en: 0.9, hi: 0.05 },
               segments: [
                 {
                   no_speech_prob: 0,
@@ -130,7 +135,7 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
     };
     return child;
   };
-  return { spawn, asked, close: () => servers.forEach((s) => s.close()) };
+  return { spawn, asked, requestPaths, close: () => servers.forEach((s) => s.close()) };
 }
 
 /** Sound: a burst of tone (`ms` long) then quiet, as 100 ms chunks timed on the real clock. */
@@ -178,10 +183,14 @@ describe('the captions engine (Part 10)', () => {
     const sound = bursts();
     const heard: Heard[] = [];
     const states: SpeechState[] = [];
+    let decoderReads = 0;
     const engine = createWhisperEngine({
       program: () => '/placeholder/whisper-server',
       model: () => '/placeholder/model.bin',
-      fallback: () => true,
+      fallback: () => {
+        decoderReads += 1;
+        return true;
+      },
       sound,
       log: { info: () => undefined, warn: () => undefined },
       spawn: server.spawn,
@@ -208,12 +217,16 @@ describe('the captions engine (Part 10)', () => {
     expect(heard.at(-1)?.final).toBe(true);
     expect(heard.every((h) => h.id === 's1')).toBe(true);
     expect(server.asked.every((l) => l === 'en')).toBe(true);
+    expect(server.requestPaths.every((path) => /^\/[a-f0-9]{32}$/u.test(path))).toBe(true);
     // Its times are this computer's clock, in order.
     const f = finals[0];
     expect(f && f.endAt >= f.startAt && f.heardAt >= f.endAt).toBe(true);
+    // Decoder settings belong to the loaded model. Do not query them on the audio hot path.
+    expect(server.asked.length).toBeGreaterThan(1);
+    expect(decoderReads).toBe(1);
   });
 
-  it('with the language left to it, says which of the three it heard, and how sure', async () => {
+  it('uses the language detected by the decoder in as-heard mode', async () => {
     const server = standIn();
     const sound = bursts();
     const heard: Heard[] = [];
@@ -235,9 +248,51 @@ describe('the captions engine (Part 10)', () => {
     await waitFor(() => states.some((s) => s.phase === 'listening'));
     await sound.play(1_200, 500);
     await waitFor(() => heard.some((h) => h.final));
-    expect(heard.find((h) => h.final)).toMatchObject({ language: 'en', languageConfidence: 0.9 });
+    expect(heard.find((h) => h.final)).toMatchObject({ language: 'en', languageConfidence: null });
     expect(server.asked[0]).toBe('auto');
   });
+
+  it.each([
+    { replyLanguage: 'sanskrit', expected: 'sa' },
+    { replyLanguage: 'marathi', expected: null },
+  ])(
+    'limits as-heard captions to supported languages ($replyLanguage)',
+    async ({ replyLanguage, expected }) => {
+      const server = standIn({ language: replyLanguage });
+      const sound = bursts();
+      const heard: Heard[] = [];
+      const states: SpeechState[] = [];
+      const requests: { language: unknown; noProbabilities: unknown }[] = [];
+      const engine = createWhisperEngine({
+        program: () => '/placeholder/whisper-server',
+        model: () => '/placeholder/model.bin',
+        fallback: () => false,
+        sound,
+        log: { info: () => undefined, warn: () => undefined },
+        spawn: server.spawn,
+        stepMs: 3_000,
+        pauseMs: 200,
+        fetch: (url, options) => {
+          if (options?.body instanceof FormData) {
+            requests.push({
+              language: options.body.get('language'),
+              noProbabilities: options.body.get('no_language_probabilities'),
+            });
+          }
+          return fetch(url, options);
+        },
+      });
+      stops.push(
+        engine.start('auto', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+        server.close,
+      );
+      await waitFor(() => states.some((s) => s.phase === 'listening'));
+      await sound.play(300, 500);
+      await waitFor(() => server.asked.length > 0);
+      expect(requests).toEqual([{ language: 'auto', noProbabilities: 'true' }]);
+      expect(heard.map((h) => h.language)).toEqual(expected ? [expected] : []);
+    },
+  );
 
   it('rests by itself when the computer cannot keep up (the show comes first), then tries again', async () => {
     const server = standIn({ delayMs: 700 });
@@ -263,6 +318,7 @@ describe('the captions engine (Part 10)', () => {
     expect(warnings.join('\n')).toMatch(/cannot keep up/);
     // A rest later it starts again by itself.
     await waitFor(() => states.filter((s) => s.phase === 'listening').length >= 2, 8_000);
+    expect(new Set(server.requestPaths).size).toBe(2);
   }, 20_000);
 
   it('is held with no sound input, and fails plainly with no engine program', async () => {

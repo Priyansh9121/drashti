@@ -1,6 +1,6 @@
 # Setup day: the checklist
 
-Use this checklist with **1.0.0-alpha.15**, which adds Books, work on imported slides and PDFs, live captions and five helpers that work offline, including Book references during pravachan and Follow singing. Live captions and every helper start off, are **Trial** and can slow the screens while on.
+Use this checklist with **1.0.0-alpha.16**. Live captions start off, are marked **Trial** and can slow the screens while on.
 
 This is the list for the day Drashti is set up on the mandir's two computers: for the admin doing the setup, with the operators there for the parts marked **(operators)**. Tick each line as it is done, and fill in the "Write down" table at the end. The steps say what to do; `docs/admin-guide.md` says how, and `docs/parallel-run.md` has the first evenings beside the old presentation program.
 
@@ -170,26 +170,8 @@ On each computer:
 **Live captions (Trial; optional, on each Main that will caption).** They can slow the screens while on. Leave them off unless the owner wants a rehearsal. Do not try them for the first time during a sabha (admin guide, section 25).
 
 - [ ] Check **File › Live Captions…** starts **Off on this computer** and is marked **Trial**. On a Mac, check macOS is 13.3 or later. While online, choose Standard (488 MB; start here on the Windows PC) or Most accurate (574 MB; start here on an Apple-silicon Mac), turn on **Live captions on this computer** and wait for the model. Check progress and **Try again** if a download fails.
-- [ ] Choose the mixer's input in the stream's **Sound input** settings; captions hear only this input, not Drashti's music or videos. Use generated speech or made-up rehearsal words, choose English or Hindi, and keep **Show them on the audience screens too** off at first. Check Size and Place on the stage and Program picture without going live. Gujarati is a trial only and is not good enough for the audience; **as heard** may take it for Hindi.
-- [ ] Watch the status: **No sound input** means choose one; **Waiting for the model** means let it finish; **Resting: this computer is busy** means leave captions off on this computer. Check the chosen model works offline after downloading and that phones show no captions. Listening may keep the camera light on off air. Turn captions off after trying them unless the owner chooses otherwise, and write down that choice.
-
-**AI helpers (Trial; optional, in Pro Mode on each Main).** Each can slow the screens while on. Use placeholder words, books and past playlists for these checks (admin guide, section 26; operator guide, section 11).
-
-- [ ] Open **File › AI helpers…**: Meaning and spelling search, Import suggestions, Playlist suggestions, Book references and Follow singing (Trial) all start off and are Pro only. Try each wanted helper offline; nothing suggested goes live by itself, starts a stream or recording, or changes Books. Turn off the ones the operators do not want, and write down the choices.
-- [ ] **Meaning and spelling search**: type a meaning, misspelling or Gujarati in English letters and press **Find by meaning**. Check ordinary matches still appear and each suggestion opens the real library item or loaded passage. Preview before adding it to a playlist; switch the helper off and check the usual search still works.
-- [ ] **Import suggestions**: **New…**, paste made-up words, then Suggest slide breaks and Suggest transliteration. Choose individual changes, **Apply selected changes**, then **Undo suggestion**, including after switching the helper off. The original input returns; existing words and Books stay as they were.
-- [ ] **Playlist suggestions**: choose a date and placeholder past sabhas, review the calendar entry and each row's source, rename/reorder/remove, then **Make playlist**. Check it is a new playlist, with the chosen rows; rehearse it. Try **Cancel** once too: no playlist changes.
-
-### Book references during pravachan (optional, Pro Mode)
-
-- [ ] Load a made-up Book file and turn on **Book references** in **File › AI helpers…**, leaving Live captions off. Beside LIVE, type Gujarati, Hindi or English into **Look in loaded Books**, then **Find in Books**: typed search still works. Check the reference and quoted words against that Book; exact matches appear first, then meaning suggestions. Nothing goes up until **Show passage** is pressed.
-- [ ] Only if the owner wants listening: turn on **Live captions on this computer** separately, wait for its model and choose the stream's sound input as above. Both speech helpers need this; neither turns it on. Use generated speech or made-up rehearsal words to find a loaded passage. Read it, then press **Show passage — …**: that press alone puts it up. Phones receive no heard transcript.
-- [ ] Try a missing match, then change or remove the placeholder Book after a result was offered: an old **Show passage** must not show a changed passage. An expired result also needs a fresh search and review. Leave the Book's original words unchanged. Turn Book references off after trying it unless the owner chooses otherwise.
-
-### Follow singing (Trial; optional, Pro Mode)
-
-- [ ] With Live captions switched on and its input/model ready, turn on **Follow singing (Trial)**, then put a made-up kirtan verse on **LIVE**. Use generated speech or made-up rehearsal words that match it. A clear match may offer **Next suggested verse**; wait without pressing it and confirm nothing advances. Then the operator presses it, or the usual **Next**: only the normal next verse in the play order follows, with no jump to another verse. With no clear match, Next remains the operator's choice.
-- [ ] Change the live slide, leave Pro Mode or disconnect the operator: the old suggestion must be unusable; a fresh match is needed. Check Simple Mode offers neither speech helper. Leave this Trial off unless its rehearsal was useful and the owner wants it. Write down both speech choices, and turn Live captions off separately if listening should stop.
+- [ ] Choose the mixer's input in the stream's **Sound input** settings; captions hear only this input, not Drashti's music or videos. Use generated speech or made-up rehearsal words, choose English or Hindi, and keep **Show them on the audience screens too** off at first. Check Size and Place on the stage and Program picture without going live. Gujarati is a trial only and is not good enough for the audience; **as heard** may take it for Hindi. It leaves out phrases the model identifies as a language outside Gujarati, Hindi, Sanskrit and English.
+- [ ] Watch the captions status. Choose a sound input if prompted. Wait for the model to finish while off air and between recordings. If captions rest because the computer is busy, leave them off on this computer. Check the chosen model works offline and that phones show no captions. Turn captions off after trying them unless the owner chooses otherwise, and write down that choice.
 
 ### The remaining checks (each computer)
 

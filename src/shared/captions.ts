@@ -4,8 +4,8 @@ import { SPEECH_LANGUAGES, type SpeechLanguage, type SpeechState } from './speec
 /*
  * Live captions (Session 55, Part 10): speech from the stream's sound input, heard on this computer
  * (src/main/speech/), drawn as one or two lines on the stream and the stage, and on the audience screens only if
- * chosen. The screens get only the lines to draw now, through the engine's state (engine state 26); the words are
- * never kept, logged or sent to a phone or a node (src/shared/engine/captions-filter.ts).
+ * chosen. The screens get the lines to draw through engine state. Phones and nodes receive the filtered state.
+ * During a sound recording, final phrases can also go into the draft beside the audio.
  */
 
 /** How big the captions are drawn. */
@@ -18,9 +18,9 @@ export type CaptionPlace = (typeof CAPTION_PLACES)[number];
 
 /**
  * The library's captions settings (migration 066): the language listened for ('auto': the engine's own choice among
- * Gujarati, Hindi and English, phrase by phrase), whether the audience screens show the captions too (the stream and
- * the stage always do), and their size and place. Whether captions are on at all belongs to the computer, not the
- * library (src/main/speech/captions-switch.ts): the model and the work are this computer's.
+ * Gujarati, Hindi, Sanskrit and English, phrase by phrase), whether the audience screens show the captions too
+ * (the stream and the stage always do), and their size and place. Whether captions are on belongs to the
+ * computer (src/main/speech/captions-switch.ts).
  */
 export interface CaptionSettings {
   language: SpeechLanguage | 'auto';
@@ -65,6 +65,7 @@ export function parseCaptionSettings(raw: unknown): CaptionSettings {
  */
 export interface CaptionsShown {
   lines: string[];
+  /** The spoken language. Sanskrit captions use Gujarati letters. */
   language: SpeechLanguage;
   /** The audience screens draw them too (the admin's choice); the stream and the stage always do. */
   audience: boolean;

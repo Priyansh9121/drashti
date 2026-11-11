@@ -4,6 +4,7 @@ import {
   type CaptionSettings,
   type CaptionsShown,
 } from '../../shared/captions';
+import { toGujaratiScript } from '../../shared/scripts';
 import type { Heard, SpeechLanguage } from '../../shared/speech';
 import type { SpeechHub } from './speech-hub';
 
@@ -11,13 +12,15 @@ import type { SpeechHub } from './speech-hub';
  * Live captions (Session 55, Part 10): the speech hub's first listener. It turns what is heard into the one or two
  * lines the screens draw (engine state 26, set as bookkeeping), at most every few hundred milliseconds, and takes
  * them off a few seconds after the last words, or at once when the hub stops listening. It keeps only the phrase
- * being heard and the one before it, in memory, and never logs or stores a word (the interface's rule 7).
+ * being heard and the one before it, in memory. A local sound recording can receive final phrases for its draft.
  */
 
 export interface CaptionsFeedOptions {
   hub: SpeechHub;
   /** Put the lines on the screens (the engine's setCaptions), or take them off (null). */
   show: (captions: CaptionsShown | null) => void;
+  /** The local sound recorder can save settled phrases while this feed is on. */
+  onFinalPhrase?: (phrase: Heard) => void;
   /** The library's captions settings, read at each change. */
   settings: () => CaptionSettings;
   /** Captions go this long after the last words (default 6 s). */
@@ -104,10 +107,16 @@ export function createCaptionsFeed(options: CaptionsFeedOptions): CaptionsFeed {
   };
 
   const heard = (h: Heard): void => {
-    const phrase: Phrase = { id: h.id, words: h.words.map((w) => w.text), language: h.language };
+    const sanskrit = h.language === 'sa';
+    // The screens and recording draft share these converted words and the original capture times.
+    const words = sanskrit
+      ? h.words.map((word) => ({ ...word, text: toGujaratiScript(word.text).normalize('NFC') }))
+      : h.words;
+    const phrase: Phrase = { id: h.id, words: words.map((w) => w.text), language: h.language };
     if (h.final) {
       before = phrase;
       now = null;
+      options.onFinalPhrase?.(sanskrit ? { ...h, words, text: phrase.words.join(' ') } : h);
     } else {
       // A new phrase: the last one (heard whole, or as far as it got) goes above it.
       if (now !== null && now.id !== h.id) before = now;

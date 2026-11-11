@@ -80,10 +80,6 @@ import { ImportRepo } from './db/imports';
 import { carryInputName } from './db/input-renames';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
-import { AiHelpers } from './ai/coordinator';
-import { SpeechHelpers } from './ai/speech-helpers';
-import { AiWorkerRpc } from './ai/rpc';
-import { spawnAiWorker } from './ai/spawn-worker';
 import { SearchIndex } from './db/search';
 import { TimerRepo } from './db/timers';
 import { ThemeRepo } from './db/themes';
@@ -352,6 +348,7 @@ import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
+import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import type { EngineState } from '../shared/engine/state';
@@ -393,7 +390,7 @@ const selfTest = sw('DRASHTI_SELFTEST') === 'watchdog';
 // A node's own watchdog self-test (Session 17): starts as a node, with the pairing in its data folder.
 const nodeSelfTest = sw('DRASHTI_SELFTEST') === 'node-watchdog';
 const perfTest = sw('DRASHTI_SELFTEST') === 'performance';
-// Check the bundled FFmpeg (scripts/check-ffmpeg.mjs): print what works, and exit.
+// Check the bundled programs (scripts/check-ffmpeg.mjs): print what works, and exit.
 const ffmpegCheck = sw('DRASHTI_SELFTEST') === 'ffmpeg';
 // The restart after a restore, for real (scripts/check-relaunch.mjs; see relaunch-selftest.ts).
 const relaunchTest = sw('DRASHTI_SELFTEST') === 'restore-relaunch';
@@ -1279,11 +1276,24 @@ function start(): void {
     void (async () => {
       const ffmpeg = await ffmpegSelfTest(path, process.platform);
       const youtube = await youtubeSelfTest(tools, process.platform);
+      const whisper = packaged()
+        ? await whisperSelfTest(
+            findWhisper({
+              packaged: true,
+              resourcesPath: process.resourcesPath,
+              appPath: app.getAppPath(),
+              platform: process.platform,
+              arch: process.arch,
+            }),
+            process.platform,
+          )
+        : null;
       const result = {
         ...ffmpeg,
         ffmpegPassed: ffmpeg.passed,
         youtube,
-        passed: ffmpeg.passed && youtube.passed,
+        whisper,
+        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true),
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);
@@ -2832,6 +2842,7 @@ function start(): void {
 
   // ---- streaming -------------------------------------------------------------
   let eventsStreamWas: StreamStatus | null = null;
+  let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
@@ -2871,6 +2882,7 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      captionsStreamUseChanged?.(stream?.inUse() === true);
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
       // Each stream and recording started, counted for the Access List (Session 54): never what.
@@ -2929,6 +2941,11 @@ function start(): void {
     arch: process.arch,
   });
   const captionsData = app.getPath('userData');
+  const captionsEngineProblem =
+    testSpeech !== undefined
+      ? null
+      : (whisperProblem(process.platform, process.getSystemVersion()) ??
+        (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null));
   const captions: CaptionsService = new CaptionsService({
     userData: captionsData,
     platform: process.platform,
@@ -2939,30 +2956,29 @@ function start(): void {
         ? createStandInEngine(testSpeech.split('|'))
         : createWhisperEngine({
             program: () => whisperProgram,
-            model: () => modelFile(captionsData, captions.view().model),
-            fallback: () => captions.view().model !== 'turbo',
+            model: () => modelFile(captionsData, captions.selectedModel()),
+            fallback: () => captions.selectedModel() !== 'turbo',
             sound: { open: (chunk) => streaming.listenSound(chunk) },
             log,
           }),
-    engineProblem: () =>
-      testSpeech !== undefined
-        ? null
-        : (whisperProblem(process.platform, process.getSystemVersion()) ??
-          (whisperProgram === null ? 'This copy of Drashti has no captions engine.' : null)),
+    engineProblem: () => captionsEngineProblem,
     modelReady: (id) =>
       testSpeech !== undefined || modelReady(modelFile(captionsData, id), MODEL_SOURCES[id]),
-    download: (id, progress) =>
-      downloadModel({ dest: modelFile(captionsData, id), source: MODEL_SOURCES[id], progress }),
+    download: (id, progress, signal) =>
+      downloadModel({ dest: modelFile(captionsData, id), source: MODEL_SOURCES[id], progress, signal }),
     show: (shown) => {
       engine.setCaptions(shown);
     },
+    onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     changed: (view) => {
       sendToOperator(IPC.captions.changed, view);
     },
     log,
   });
+  captionsStreamUseChanged = (inUse) => captions.setStreamInUse(inUse);
   captions.start();
   stops.add('captions', () => {
+    captionsStreamUseChanged = undefined;
     captions.close();
   });
   handle(IPC.captions.view, () => captions.view());
@@ -3035,7 +3051,7 @@ function start(): void {
   passageTargets = () => {
     const look = engine.snapshot().state.look;
     const context = streaming.context();
-    const camera = context.layout === 'camera' && streaming.inUse();
+    const camera = context.layout === 'camera' && context.capturing;
     return fitTargets(
       look,
       screenRepo.groupIds(),
@@ -3076,8 +3092,6 @@ function start(): void {
   // is a way of working, never a lock (Session 54, E5: roles and PINs are gone), but with Simple access
   // (Session 55, the list's answer) it is all this computer may use: mode-keeper.ts holds it there, and
   // brings Pro Mode back by itself when Pro access comes again, if the access put it in Simple Mode.
-  let aiHelpers: AiHelpers | null = null;
-  let aiSpeech: SpeechHelpers | null = null;
   let mode: OperatorMode = 'pro';
   let rebuildMenu: () => void = () => undefined;
   // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
@@ -3124,8 +3138,6 @@ function start(): void {
       if (next === 'simple') simplePlaylist.adopt();
       rebuildMenu();
       if (next === 'simple') {
-        aiHelpers?.suspend();
-        aiSpeech?.suspend();
         closeStudio();
         closeEditor();
       }
@@ -3151,8 +3163,6 @@ function start(): void {
     modes.accessChanged();
     if (!isLetIn() || simpleAccess()) {
       cancelSourceEdits();
-      aiHelpers?.suspend();
-      aiSpeech?.suspend();
     }
   });
   simpleNow = () => mode === 'simple';
@@ -3529,10 +3539,14 @@ function start(): void {
   stops.add('imports', () => {
     imports.stop();
   });
-  // An operator's edit during an import (Session 16): every request that changes something (the
-  // ones Simple Mode refuses) waits, without holding up the main process, for the import to give
-  // way between files, then writes with nothing in its way. Starting or stopping an import does not.
-  const edits = new Set<string>([...SIMPLE_MODE_LOCKED, ...SIMPLE_MODE_BOUNDED.keys()]);
+  // An operator's edit during an import (Session 16) waits for the import to give way between files.
+  // Starting and stopping video recording had the same wait before Simple Mode gained Record.
+  const edits = new Set<string>([
+    ...SIMPLE_MODE_LOCKED,
+    ...SIMPLE_MODE_BOUNDED.keys(),
+    IPC.stream.startRecording,
+    IPC.stream.stopRecording,
+  ]);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
   setGiveWay((channel) => {
@@ -4076,113 +4090,6 @@ function start(): void {
   // Themes, Props and the Logo are gone from the window (Session 55, Part 12): a presentation keeps the look its theme
   // gave it, new words start in the library's default look (themeLook, styleNewText), and the props, the logo's
   // setting and the themes stay in the library, unseen.
-  // Offline helpers have only the operator's review channels, never a show command.
-  const helperOwner = (owner: number) =>
-    owner === operatorWindow?.webContents.id &&
-    !operatorWindow.isDestroyed() &&
-    mode === 'pro' &&
-    isLetIn() &&
-    !simpleAccess() &&
-    !stops.done &&
-    !quitStarted;
-  const helperAssetsOverride = !packaged() ? sw('DRASHTI_TEST_AI_ASSETS') : undefined;
-  const offlineHelpers = new AiHelpers({
-    db,
-    settings,
-    playlists,
-    calendar: new CalendarRepo(db),
-    search,
-    authorised: helperOwner,
-    rpc: new AiWorkerRpc(spawnAiWorker, {
-      assetsRoot:
-        helperAssetsOverride ??
-        (packaged()
-          ? join(process.resourcesPath, 'ai')
-          : join(app.getAppPath(), 'vendor', 'ai', `${process.platform}-${process.arch}`)),
-      libraryFile: libraryFile(),
-      cacheFile: join(app.getPath('userData'), 'ai-helper-cache.sqlite'),
-    }),
-    settingsChanged: (value) => sendToOperator(IPC.ai.changed, value),
-    changed: () => {
-      sendToOperator(IPC.playlists.changed, { at: Date.now() });
-      network?.hint('playlists');
-    },
-  });
-  aiHelpers = offlineHelpers;
-  const speechHelpers = new SpeechHelpers({
-    hub: captions.hub,
-    settings,
-    books: shastraRepo,
-    owner: () => {
-      const id = operatorWindow?.webContents.id;
-      return id !== undefined && helperOwner(id) ? id : null;
-    },
-    live: () => {
-      const state = engine.current;
-      const up = state.layers.slide;
-      return up
-        ? {
-            presentationId: up.presentationId,
-            slideIndex: up.slideIndex,
-            slideCount: state.live.slideCount,
-            shownAt: up.shownAt,
-            kirtan: up.slide.kirtan === true,
-            text: cutText(
-              up.slide.elements
-                .flatMap((element) => (element.kind === 'text' ? [element.text] : []))
-                .join('\n'),
-              2000,
-            ),
-          }
-        : null;
-    },
-    rpc: new AiWorkerRpc(spawnAiWorker, {
-      assetsRoot:
-        helperAssetsOverride ??
-        (packaged()
-          ? join(process.resourcesPath, 'ai')
-          : join(app.getAppPath(), 'vendor', 'ai', `${process.platform}-${process.arch}`)),
-      libraryFile: libraryFile(),
-      cacheFile: join(app.getPath('userData'), 'ai-speech-vectors.sqlite'),
-    }),
-    showBook: (id) => engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 }).ok,
-    next: () => engine.dispatch({ type: 'next' }).ok,
-    changed: (view) => sendToOperator(IPC.aiSpeech.changed, view),
-  });
-  aiSpeech = speechHelpers;
-  stops.add('speech helpers', () => speechHelpers.suspend());
-  handle(IPC.aiSpeech.get, (e) => speechHelpers.get(e.sender.id));
-  handle(IPC.aiSpeech.set, (e, value) => speechHelpers.set(e.sender.id, value));
-  handle(IPC.aiSpeech.search, (e, value) => speechHelpers.search(e.sender.id, value));
-  handle(IPC.aiSpeech.showBook, (e, value) => speechHelpers.showBook(e.sender.id, value));
-  handle(IPC.aiSpeech.nextVerse, (e, id) => speechHelpers.nextVerse(e.sender.id, id));
-  stops.add('offline helpers', () => {
-    offlineHelpers.suspend();
-  });
-  let helperShowing: number | undefined;
-  engine.onChange((state) => {
-    const showing = state.layers.slide?.shownAt;
-    if (showing !== helperShowing) {
-      helperShowing = showing;
-      offlineHelpers.busy(Date.now() + 200);
-      speechHelpers.busy(Date.now() + 200);
-      speechHelpers.liveChanged();
-    }
-  });
-  handle(IPC.ai.get, (e) => offlineHelpers.get(e.sender.id));
-  handle(IPC.ai.set, (e, value) => offlineHelpers.set(e.sender.id, value));
-  handle(IPC.ai.past, (e) => offlineHelpers.past(e.sender.id));
-  handle(IPC.ai.search, (e, value) =>
-    offlineHelpers.search(e.sender.id, value, (progress) => sendToOperator(IPC.ai.progress, progress)),
-  );
-  handle(IPC.ai.lyrics, (e, value) => offlineHelpers.suggestLyrics(e.sender.id, value));
-  handle(IPC.ai.approveLyrics, (e, value) => offlineHelpers.approveLyrics(e.sender.id, value));
-  handle(IPC.ai.playlist, (e, value) => offlineHelpers.suggestPlaylist(e.sender.id, value));
-  handle(IPC.ai.approvePlaylist, (e, value) => offlineHelpers.approvePlaylist(e.sender.id, value));
-  handle(IPC.ai.cancel, (e) => {
-    if (helperOwner(e.sender.id)) offlineHelpers.suspend();
-    return null;
-  });
   handle(IPC.library.search, (_e, query) =>
     search.search(typeof query === 'string' ? cutText(query, 200) : ''),
   );
@@ -6170,6 +6077,9 @@ function start(): void {
       : { ok: false as const, message: 'Ending the stream needs the operator to confirm it.' },
   );
   handle(IPC.stream.startRecording, (e) => (fromOperator(e) ? streaming.startRecording() : notOperator));
+  handle(IPC.stream.startSoundRecording, (e) =>
+    fromOperator(e) ? streaming.startSoundRecording() : notOperator,
+  );
   handle(IPC.stream.stopRecording, (e) => (fromOperator(e) ? streaming.stopRecording() : notOperator));
   handle(IPC.stream.pickFolder, (e) =>
     fromOperator(e) ? streaming.pickFolder(operatorWindow) : notOperator,
@@ -6669,11 +6579,9 @@ function start(): void {
   // Audience and Stage's question on an output over the controls is the window's (Session 51): as the window loads
   // again, or its page stops, the question goes from the outputs too, never left there.
   operatorWindow.webContents.on('did-start-loading', () => {
-    offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
   operatorWindow.webContents.on('render-process-gone', () => {
-    offlineHelpers.suspend();
     switchQuestion.asking(null);
   });
   // Whether this computer plays HEVC video (Session 51), unless a test gave the answer: asked once the operator window
@@ -6740,6 +6648,7 @@ function start(): void {
     // Output windows would otherwise keep the app alive.
     app.quit();
   });
+  let quitSavingSound = false;
   app.on('before-quit', (event) => {
     if (!confirmQuit()) {
       event.preventDefault();
@@ -6750,11 +6659,26 @@ function start(): void {
     // quit says whether Drashti or what came after was slow.
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
-    streaming.quitting();
+    const soundSaved = streaming.quitting();
     studio.quitting();
     // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
     hevcPage?.close();
     slideEditor?.quitting();
+    if (soundSaved) {
+      event.preventDefault();
+      if (!quitSavingSound) {
+        quitSavingSound = true;
+        void soundSaved
+          .catch(() => {
+            log.warn('The sound recording could not be finished before quitting.');
+          })
+          .then(() => {
+            quitSavingSound = false;
+            app.quit();
+          });
+      }
+      return;
+    }
     const sourceQuit = documentQuit;
     if (
       sourceQuit &&
@@ -7000,10 +6924,6 @@ function start(): void {
     stage: choiceGuard(REPEAT_CHOICE_MS),
   };
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
-    aiHelpers: () => {
-      const owner = operatorWindow?.webContents.id;
-      if (owner !== undefined && helperOwner(owner)) sendToOperator(IPC.ai.open, { at: Date.now() });
-    },
     mode,
     // Simple access (Session 55): no way back to Pro Mode in the menu.
     simpleOnly: modes.simpleOnly(),

@@ -49,9 +49,15 @@ const CLOCK_TIME = { hour: 'numeric', minute: '2-digit' } as const;
 /**
  * Each clock style's formatter, made once (Sessions 31–36, PERF-5d): a stage clock writes the time every
  * second, and making the formatter took 30 µs a time, using it 1.5. Only a style's, as it names its time
- * zone: this computer's own way follows a change of the computer's zone, so it is made each time.
+ * zone: this computer's own way follows a change of the computer's zone, so its text is refreshed each clock tick.
  */
 const clockFormats = new Map<string, Intl.DateTimeFormat>();
+interface ClockText {
+  tick: number;
+  text: string;
+}
+const clockText = new WeakMap<Intl.DateTimeFormat, ClockText>();
+let ownClockText: ClockText | undefined;
 
 function clockFormat(style: ClockStyle): Intl.DateTimeFormat {
   const key = `${style.locale}\n${style.timeZone}`;
@@ -70,7 +76,20 @@ function clockFormat(style: ClockStyle): Intl.DateTimeFormat {
 
 /** The time of day as a clock style writes it ("7:05 PM", "19:05"); without one, this computer's own way. */
 export function formatClock(ms: number, style: ClockStyle | null | undefined): string {
-  return style ? clockFormat(style).format(ms) : new Date(ms).toLocaleTimeString([], CLOCK_TIME);
+  // A redraw cannot change a clock's words within this second. Do not rebuild Intl work for every slide/box.
+  const tick = Math.floor(Math.trunc(ms) / 1000);
+  if (style) {
+    const format = clockFormat(style);
+    const cached = clockText.get(format);
+    if (cached?.tick === tick) return cached.text;
+    const text = format.format(ms);
+    clockText.set(format, { tick, text });
+    return text;
+  }
+  if (ownClockText?.tick === tick) return ownClockText.text;
+  const text = new Date(ms).toLocaleTimeString([], CLOCK_TIME);
+  ownClockText = { tick, text };
+  return text;
 }
 
 /** A clock style as given (by Main, or over the network), when it is one this computer can write in. */

@@ -137,7 +137,7 @@ export async function startPerfStream(
     },
     stop: async () => {
       stream.end();
-      stream.stopRecording();
+      void stream.stopRecording();
       stream.watchPreview(operator, false);
       await sleep(1000);
     },

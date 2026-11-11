@@ -1,4 +1,3 @@
-import { AiSearch } from '../ai/AiSearch';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
 import type { PresentationSummary } from '../../../shared/library';
@@ -203,7 +202,6 @@ function SearchBox({ help }: { help: ReactNode }) {
           className="w-full pl-7"
         />
       </span>
-      <AiSearch />
       {help}
     </div>
   );
