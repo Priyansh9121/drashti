@@ -330,7 +330,8 @@ export const IPC = {
   },
   /**
    * Import from a Link (Session 25b, shared/links.ts): anyone's in Pro
-   * Mode; Simple Mode never sees it.
+   * Mode; Simple Mode's window's too (Session 55, Part 18; whole, as Pro
+   * Mode's, since Session 56), never a phone's or Companion's there.
    */
   links: {
     view: 'links:view',

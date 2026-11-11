@@ -326,7 +326,9 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
     return {
       group: await d.screens.createGroup('Placeholder Refused'),
       keys: await d.app.setSingleKeys(false),
-      quality: await d.links.setMaxHeight(2160),
+      // The highest video quality is Simple Mode's From a Link…'s too since Session 56; the daily look for updates
+      // is not.
+      updates: await d.updates.setAutoCheck(true),
     };
   });
   for (const [what, answer] of Object.entries(refused))

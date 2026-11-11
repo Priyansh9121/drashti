@@ -8,6 +8,7 @@ import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { useAccess } from '../access/access-store';
 import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
+import { ImportReportDialog } from '../library/ImportReport';
 import { useLibrary } from '../library/library-store';
 import { RemoveItemsConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
@@ -346,6 +347,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}
       <JumpBox />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
+      {/* The import report when asked (Session 56: From a Link…'s See the import report, the status bar's Report). */}
+      <ImportReportDialog platform={platform} />
     </div>
   );
 }
