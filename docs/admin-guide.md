@@ -613,7 +613,7 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 
 **What captions hear.** Choose the mixer's input under **Sound input** in the stream's settings. Captions hear that input, not Drashti's music or videos. The stream's page stays open while listening, even off air, so its chosen camera may be open and its light on. This alone does not start a stream or recording.
 
-**Language and where the words go.** Choose one **Language**: English or Hindi for a rehearsal; **Gujarati (trial)** only to see how it does. Gujarati is not good enough for the audience yet. **Gujarati, Hindi or English, as heard** often takes Gujarati for Hindi. The stream and stage screens show captions; **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large; **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.
+**Language and where the words go.** Under **Language**, choose Gujarati, Hindi, Sanskrit or English if you know which one the speaker will use. **Gujarati, Hindi, Sanskrit or English, as heard** lets Drashti choose for each phrase. It can mistake Gujarati for Hindi. Check the words in rehearsal, especially for Gujarati and Sanskrit. The stream and stage screens show captions. **Show them on the audience screens too** adds them to the hall. Leave that off while trying them. **Size** chooses Small, Medium or Large. **Place** chooses Along the bottom or Along the top. Phones and output nodes never receive captions.
 
 ![Live captions listening with the Gujarati trial warning](screenshots/captions-gujarati-trial.png)
 

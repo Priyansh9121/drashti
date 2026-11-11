@@ -12,7 +12,7 @@ import { SPEECH_LANGUAGES, type Heard, type HeardWord, type SpeechState } from '
  *    s1, s2… from each start of listening, so a listener keyed by id starts afresh when listening does.
  * 5. Every time is epoch ms on this computer's clock, a word's good to about ±0.3 s; heardAt − endAt is how
  *    far behind the engine runs, and a phrase more than 10 s behind is dropped, never sent.
- * 6. Each phrase's language is the engine's own detection among Gujarati, Hindi and English, or the one
+ * 6. Each phrase's language is the engine's own detection among Gujarati, Hindi, Sanskrit and English, or the one
  *    language the admin chose.
  * 7. The words are never kept and never logged: listeners get them in memory only, never the log,
  *    Diagnostics, the library, a file, a phone, a node or the network. The log says counts and times only.

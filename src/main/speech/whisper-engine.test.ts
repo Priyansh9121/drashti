@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Heard, SpeechState } from '../../shared/speech';
 import {
   createWhisperEngine,
-  likeliest,
   SAMPLE_RATE,
   wavOf,
   wordsOf,
@@ -61,13 +60,11 @@ describe('what the engine heard (whisper-server’s verbose_json)', () => {
     expect(words[1]).toMatchObject({ startAt: 500, endAt: 2_000 });
   });
 
-  it('finds the likeliest of Gujarati, Hindi and English, and the language it wrote in', () => {
-    expect(likeliest({ language_probabilities: { mr: 0.5, hi: 0.3, gu: 0.1, en: 0.05 } })).toEqual({
-      language: 'hi',
-      p: 0.3,
-    });
-    expect(likeliest({})).toBeNull();
+  it('reads the supported language the engine wrote in', () => {
     expect(writtenIn({ language: 'gujarati' })).toBe('gu');
+    expect(writtenIn({ language: 'hindi' })).toBe('hi');
+    expect(writtenIn({ language: 'sanskrit' })).toBe('sa');
+    expect(writtenIn({ language: 'english' })).toBe('en');
     expect(writtenIn({ language: 'marathi' })).toBeNull();
   });
 
@@ -105,7 +102,6 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
           res.writeHead(200, { 'Content-Type': 'application/json' }).end(
             JSON.stringify({
               language: o.language ?? 'english',
-              language_probabilities: { en: 0.9, hi: 0.05 },
               segments: [
                 {
                   no_speech_prob: 0,
@@ -220,7 +216,7 @@ describe('the captions engine (Part 10)', () => {
     expect(decoderReads).toBe(1);
   });
 
-  it('with the language left to it, says which of the three it heard, and how sure', async () => {
+  it('uses the language detected by the decoder in as-heard mode', async () => {
     const server = standIn();
     const sound = bursts();
     const heard: Heard[] = [];
@@ -242,9 +238,51 @@ describe('the captions engine (Part 10)', () => {
     await waitFor(() => states.some((s) => s.phase === 'listening'));
     await sound.play(1_200, 500);
     await waitFor(() => heard.some((h) => h.final));
-    expect(heard.find((h) => h.final)).toMatchObject({ language: 'en', languageConfidence: 0.9 });
+    expect(heard.find((h) => h.final)).toMatchObject({ language: 'en', languageConfidence: null });
     expect(server.asked[0]).toBe('auto');
   });
+
+  it.each([
+    { replyLanguage: 'sanskrit', expected: 'sa' },
+    { replyLanguage: 'marathi', expected: null },
+  ])(
+    'limits as-heard captions to supported languages ($replyLanguage)',
+    async ({ replyLanguage, expected }) => {
+      const server = standIn({ language: replyLanguage });
+      const sound = bursts();
+      const heard: Heard[] = [];
+      const states: SpeechState[] = [];
+      const requests: { language: unknown; noProbabilities: unknown }[] = [];
+      const engine = createWhisperEngine({
+        program: () => '/placeholder/whisper-server',
+        model: () => '/placeholder/model.bin',
+        fallback: () => false,
+        sound,
+        log: { info: () => undefined, warn: () => undefined },
+        spawn: server.spawn,
+        stepMs: 3_000,
+        pauseMs: 200,
+        fetch: (url, options) => {
+          if (options?.body instanceof FormData) {
+            requests.push({
+              language: options.body.get('language'),
+              noProbabilities: options.body.get('no_language_probabilities'),
+            });
+          }
+          return fetch(url, options);
+        },
+      });
+      stops.push(
+        engine.start('auto', { heard: (h) => heard.push(h), state: (s) => states.push(s) }),
+        server.close,
+      );
+      await waitFor(() => states.some((s) => s.phase === 'listening'));
+      await sound.play(300, 500);
+      await waitFor(() => server.asked.length > 0);
+      expect(requests).toEqual([{ language: 'auto', noProbabilities: 'true' }]);
+      expect(heard.map((h) => h.language)).toEqual(expected ? [expected] : []);
+    },
+  );
 
   it('rests by itself when the computer cannot keep up (the show comes first), then tries again', async () => {
     const server = standIn({ delayMs: 700 });

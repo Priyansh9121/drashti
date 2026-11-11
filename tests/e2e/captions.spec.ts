@@ -105,6 +105,10 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
     }
     await expectNoSeriousA11yIssues(win, 'Live captions');
 
+    await dialog.getByTestId('captions-language').selectOption('sa');
+    await expect(stage.getByTestId('captions')).toHaveAttribute('lang', 'sa');
+    await expect(hall.getByTestId('captions')).toHaveAttribute('lang', 'sa');
+
     // Off: off every screen at once.
     await dialog.getByTestId('captions-on').click();
     await expect(dialog.getByTestId('captions-state')).toHaveText('Off on this computer.');

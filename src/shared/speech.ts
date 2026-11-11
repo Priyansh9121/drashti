@@ -4,8 +4,8 @@
  * everything else drawn does. The words are never kept or logged (src/main/speech/speech-hub.ts).
  */
 
-/** The languages Drashti listens for: Gujarati, Hindi, English. */
-export const SPEECH_LANGUAGES = ['gu', 'hi', 'en'] as const;
+/** The languages Drashti listens for: Gujarati, Hindi, Sanskrit and English. */
+export const SPEECH_LANGUAGES = ['gu', 'hi', 'sa', 'en'] as const;
 export type SpeechLanguage = (typeof SPEECH_LANGUAGES)[number];
 
 /** One word as it was heard. */

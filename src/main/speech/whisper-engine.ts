@@ -1,7 +1,7 @@
 import { spawn as spawnChild, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { constants, setPriority } from 'node:os';
-import { SPEECH_LANGUAGES, type Heard, type HeardWord, type SpeechLanguage } from '../../shared/speech';
+import type { Heard, HeardWord, SpeechLanguage } from '../../shared/speech';
 import type { SpeechEngine } from './hub';
 
 /*
@@ -43,11 +43,12 @@ export interface WhisperEngineOptions {
   restMs?: number;
 }
 
-const LANGUAGE_NAMES: Readonly<Record<string, SpeechLanguage>> = {
-  gujarati: 'gu',
-  hindi: 'hi',
-  english: 'en',
-};
+const LANGUAGE_CODES = new Map<string, SpeechLanguage>([
+  ['gujarati', 'gu'],
+  ['hindi', 'hi'],
+  ['sanskrit', 'sa'],
+  ['english', 'en'],
+]);
 
 /** A free port on 127.0.0.1 for the engine. */
 async function freePort(): Promise<number> {
@@ -97,7 +98,6 @@ interface Token {
 }
 interface Reply {
   language?: string;
-  language_probabilities?: Record<string, number>;
   segments?: { words?: Token[]; no_speech_prob?: number }[];
 }
 
@@ -145,21 +145,9 @@ export function wordsOf(
   return out;
 }
 
-/** The language among Gujarati, Hindi and English the engine finds likeliest, and how likely. */
-export function likeliest(reply: Reply): { language: SpeechLanguage; p: number } | null {
-  const probabilities = reply.language_probabilities;
-  if (!probabilities) return null;
-  let best: { language: SpeechLanguage; p: number } | null = null;
-  for (const language of SPEECH_LANGUAGES) {
-    const p = probabilities[language] ?? 0;
-    if (!best || p > best.p) best = { language, p };
-  }
-  return best && best.p > 0 ? best : null;
-}
-
-/** The language the engine wrote the words in, if it is one of the three. */
+/** The language the engine used, if Drashti captions it. */
 export function writtenIn(reply: Reply): SpeechLanguage | null {
-  return LANGUAGE_NAMES[(reply.language ?? '').toLowerCase()] ?? null;
+  return LANGUAGE_CODES.get((reply.language ?? '').toLowerCase()) ?? null;
 }
 
 /** A phrase being heard: its samples, from its start, and when its first sample was heard. */
@@ -241,18 +229,15 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       };
 
       /** Send one clip; null when the engine said nothing usable or the piece was dropped. */
-      const ask = async (
-        samples: Int16Array,
-        forced: SpeechLanguage | null,
-      ): Promise<{ reply: Reply; tookMs: number } | null> => {
+      const ask = async (samples: Int16Array): Promise<{ reply: Reply; tookMs: number } | null> => {
         const form = new FormData();
         form.append('file', new Blob([wavOf(samples)], { type: 'audio/wav' }), 'clip.wav');
         form.append('response_format', 'verbose_json');
         form.append('temperature', '0');
         if (!allowFallback) form.append('temperature_inc', '0');
-        const lang = forced ?? (language === 'auto' ? 'auto' : language);
-        form.append('language', lang);
-        form.append('no_language_probabilities', lang === 'auto' ? 'false' : 'true');
+        form.append('language', language);
+        // The decode already reports its language. Asking for probabilities runs detection again.
+        form.append('no_language_probabilities', 'true');
         const began = Date.now();
         const response = await get(`http://127.0.0.1:${String(port)}/inference`, {
           method: 'POST',
@@ -307,23 +292,16 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         const clipAt = piece.startAt;
         const clipEndAt = piece.endAt;
         try {
-          let asked = await ask(samples, null);
+          const asked = await ask(samples);
           if (!asked || ended()) return;
-          let heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
-          const guess = language === 'auto' ? likeliest(asked.reply) : null;
-          if (language === 'auto' && heardIn === null) {
-            // Written in a fourth language: a whole phrase is heard again in the likeliest of the three.
-            if (!final || !guess) return;
-            asked = await ask(samples, guess.language);
-            if (!asked || ended()) return;
-            heardIn = guess.language;
-          }
           const behind = Date.now() - clipEndAt;
           slowInARow = asked.tookMs > stepMs * 1.5 ? slowInARow + 1 : 0;
           if (slowInARow >= 3 || behind > 8_000) {
             hold();
             return;
           }
+          const heardIn = language === 'auto' ? writtenIn(asked.reply) : language;
+          if (heardIn === null) return;
           const words = wordsOf(asked.reply, clipAt, clipEndAt, (seconds, beginning) =>
             capturedAt(captured, seconds, beginning),
           );
@@ -331,8 +309,8 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           const heard: Heard = {
             id: piece.id,
             final: final !== undefined,
-            language: heardIn ?? 'en',
-            languageConfidence: language === 'auto' ? (guess?.p ?? null) : null,
+            language: heardIn,
+            languageConfidence: null,
             words,
             text: words.map((w) => w.text).join(' '),
             startAt: Math.min(clipAt, words[0]?.startAt ?? clipAt),

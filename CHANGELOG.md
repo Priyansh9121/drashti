@@ -5,6 +5,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 ## 1.0.0-alpha.16
 
 - Live captions stay off by default and marked Trial. The five optional AI helpers from alpha.15 have been removed. Find passages by typing their reference or words in the library's Books tab. Saved playlists and loaded Books still work.
+- Live captions can listen for Gujarati, Hindi, Sanskrit or English. Choose the language yourself or let Drashti choose from those four as it listens.
 
 ## 1.0.0-alpha.15 (5 Nov 2026)
 

@@ -18,9 +18,9 @@ export type CaptionPlace = (typeof CAPTION_PLACES)[number];
 
 /**
  * The library's captions settings (migration 066): the language listened for ('auto': the engine's own choice among
- * Gujarati, Hindi and English, phrase by phrase), whether the audience screens show the captions too (the stream and
- * the stage always do), and their size and place. Whether captions are on at all belongs to the computer, not the
- * library (src/main/speech/captions-switch.ts): the model and the work are this computer's.
+ * Gujarati, Hindi, Sanskrit and English, phrase by phrase), whether the audience screens show the captions too
+ * (the stream and the stage always do), and their size and place. Whether captions are on belongs to the
+ * computer (src/main/speech/captions-switch.ts).
  */
 export interface CaptionSettings {
   language: SpeechLanguage | 'auto';
