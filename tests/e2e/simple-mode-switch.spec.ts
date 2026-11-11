@@ -10,10 +10,11 @@ import { layoutPicture } from './operator-layout';
 
 /*
  * Simple Mode, a way of working with no PIN (Session 54, E5: "remove admin/operator logic completely"; these
- * are the roles spec's Simple Mode parts, kept when roles went). In by the header's Simple Mode, at once; out by a
- * double-click on its own Pro Mode (Session 55, Part 18: the owner's answer to question 12, changed on 29 Oct 2026,
- * replacing the word pro typed since Session 20), with nothing typed and nothing asked: one click is not enough, and
- * from the keyboard it takes two presses of Enter; View › Switch to Pro Mode switches at once too. Nothing
+ * are the roles spec's Simple Mode parts, kept when roles went). In by a double-click on the header's Simple Mode (the
+ * owner, 11 Nov 2026: a double-click each way, nothing else); out by a double-click on its own Pro Mode (Session 55,
+ * Part 18: the owner's answer to question 12, changed on 29 Oct 2026, replacing the word pro typed since Session 20),
+ * with nothing typed and nothing asked: one click is not enough either way, and from the keyboard it takes two presses
+ * of Enter; View › Switch to Simple Mode and Switch to Pro Mode switch at once too. Nothing
  * asks for a PIN anywhere, and the header has no button saying who is at the controls. In CI's window, about
  * 1024 × 645 (Session 51), in Pro Mode and in Simple Mode: the header, Simple Mode's screen and its way out fit and
  * pass the accessibility checks. Placeholder words only.
