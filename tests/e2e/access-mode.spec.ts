@@ -47,9 +47,15 @@ const tryAll = (win: Page) =>
     return {
       // Pro Mode asked for, as its double-click asks (Session 55, Part 18: nothing typed).
       pro: await said(() => d.app.setMode('pro')),
-      // A change Simple Mode refuses (a playlist made), and an engine command it refuses (picture in picture swapped:
-      // switching the Look, refused here before, went with Looks in Part 12).
-      playlist: await said(() => d.playlists.create('Placeholder playlist', null, false)),
+      // A change Simple Mode refuses (a template made: Session 56 made a playlist Simple Mode's), and an engine command
+      // it refuses (picture in picture swapped: switching the Look, refused here before, went with Looks in Part 12).
+      playlist: await said(async () => {
+        const [first] = (await d.playlists.tree()).filter((n) => !n.isFolder);
+        return d.playlists.saveAsTemplate(first?.id ?? 'placeholder-none', {
+          name: 'Placeholder',
+          slots: [],
+        });
+      }),
       look: await said(() => d.engine.dispatch({ type: 'swapPip' })),
     };
   });
@@ -138,7 +144,7 @@ test('Pro access: Simple Mode the operator chose stays when the owner gives Simp
   }
 });
 
-test('Simple access refuses exactly what Simple Mode refuses (Session 55, Parts 18 and 19, one list): its one playlist takes files, and nothing beyond it, in words with no way to Pro Mode', async () => {
+test('Simple access refuses exactly what Simple Mode refuses (Session 55, Parts 18 and 19, one list): its playlist takes files, and nothing of a playlist that is Pro Mode’s, in words with no way to Pro Mode', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp({}, undefined, { as: { gmail: SIMPLE_PERSON }, mode: 'simple' });
   try {
@@ -161,19 +167,22 @@ test('Simple access refuses exactly what Simple Mode refuses (Session 55, Parts 
     }, picture);
     await simple.getByTestId('playlist-add-files').click();
     await expect(simple.getByTestId('playlist-item')).toHaveCount(1);
-    // Beyond it, refused in Simple access's words, which offer no way to Pro Mode.
-    const refused = await win.evaluate(async () => {
+    // Beyond what Simple Mode does with the playlists (Session 56: as Pro Mode's left column), refused in Simple
+    // access's words, which offer no way to Pro Mode: rows of what is no playlist, a copy, a template.
+    const refused = await win.evaluate(async (playlistId) => {
       const d = (globalThis as PageGlobals).drashti;
       return {
         other: await d.playlists.addItems('placeholder-other-playlist', null, [
           { kind: 'header', label: 'Placeholder' },
         ]),
-        made: await d.playlists.create('Placeholder playlist', null, false),
+        copy: await d.playlists.duplicate(playlistId ?? ''),
+        template: await d.playlists.saveAsTemplate(playlistId ?? '', { name: 'Placeholder', slots: [] }),
       };
-    });
+    }, one);
     expect(refused).toEqual({
       other: { ok: false, message: SIMPLE_ACCESS_LOCKED_REFUSAL },
-      made: { ok: false, message: SIMPLE_ACCESS_LOCKED_REFUSAL },
+      copy: { ok: false, message: SIMPLE_ACCESS_LOCKED_REFUSAL },
+      template: { ok: false, message: SIMPLE_ACCESS_LOCKED_REFUSAL },
     });
   } finally {
     await app.close();

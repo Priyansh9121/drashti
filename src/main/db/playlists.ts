@@ -663,6 +663,41 @@ export class PlaylistRepo {
     return row?.is_template === 1;
   }
 
+  /**
+   * What an id names among the playlists (Session 56, Simple Mode's bounds): a playlist (a smart, Repeat Slides or
+   * folder playlist too), a folder of playlists, or a template; a deleted one too (for its Undo). Null: none.
+   */
+  kindOf(id: string): 'playlist' | 'folder' | 'template' | null {
+    const row = this.db.prepare('SELECT is_folder, is_template FROM playlists WHERE id = ?').get(id) as
+      { is_folder: number; is_template: number } | undefined;
+    if (!row) return null;
+    if (row.is_template === 1) return 'template';
+    return row.is_folder === 1 ? 'folder' : 'playlist';
+  }
+
+  /** Whether a playlist (never a template; neither deleted) has a row of this picture, video or sound now (Session 56). */
+  listsMedia(mediaId: string): boolean {
+    return this.lists("kind = 'media' AND media_id = ?", mediaId);
+  }
+
+  /** Whether a playlist (never a template; neither deleted) has a row of this presentation now (Session 56). */
+  listsPresentation(presentationId: string): boolean {
+    return this.lists("kind = 'presentation' AND presentation_id = ?", presentationId);
+  }
+
+  private lists(row: string, id: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM playlist_items
+            WHERE ${row} AND deleted_at IS NULL
+              AND playlist_id IN (SELECT id FROM playlists WHERE deleted_at IS NULL AND is_folder = 0 AND is_template = 0)
+            LIMIT 1`,
+        )
+        .get(id) !== undefined
+    );
+  }
+
   private isOpenPlaylist(id: string, folder: boolean): boolean {
     const row = this.db
       .prepare('SELECT is_folder FROM playlists WHERE id = ? AND deleted_at IS NULL')
