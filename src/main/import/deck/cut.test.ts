@@ -275,9 +275,10 @@ describe('cutting a movie into its steps', () => {
     };
     const cuts = planCuts(plan, motionOf(plan, {}, [1]));
     const starts = plannedStarts(plan);
-    expect(cuts.slides.map((s) => Math.round(s.steps[0]?.fromMs ?? 0))).toEqual(
-      starts.map((t) => Math.round(t)),
-    );
+    // Each where the plan puts it, to the frame (the motion is measured frame by frame).
+    expect(
+      cuts.slides.map((s, i) => Math.abs((s.steps[0]?.fromMs ?? 0) - (starts[i] ?? 0)) <= FRAME),
+    ).toEqual([true, true, true]);
     // Its clicks found at their own moments, so it keeps them.
     expect(cuts.offSlides).toEqual([]);
     expect(cuts.offsets.filter((o) => o.slide === 1).map((o) => Math.abs(o.offsetMs ?? 0) <= FRAME)).toEqual([

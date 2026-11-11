@@ -58,10 +58,16 @@ test('a deck’s slides show at once, those with animations marked Preparing; Ne
     return (await d.library.listPresentations()).find((p) => p.name === name)?.id ?? '';
   }, DECK);
   await win.evaluate(async (presentationId) => {
-    await (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 2 });
+    await (globalThis as PageGlobals).drashti.engine.dispatch({
+      type: 'goLive',
+      presentationId,
+      slideIndex: 2,
+    });
   }, id);
   const liveIndex = () =>
-    win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.live.slideIndex);
+    win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.live.slideIndex,
+    );
   await expect.poll(liveIndex).toBe(2);
   await win.getByRole('button', { name: /^Next/u }).click();
   await expect(win.getByTestId('operator-notice')).toContainText(

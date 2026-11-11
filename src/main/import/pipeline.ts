@@ -885,7 +885,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     remember(where, file, result.wrote.presentationId);
     // Shown at once (Session 56): its group committed now, not with the next file's.
     if (phase && 'early' in phase) batch.commit();
-    return { id: result.wrote.presentationId, name: result.item.name, rev: result.rev };
+    return { id: result.wrote.presentationId, name: result.item.name ?? parsed.name, rev: result.rev };
   };
 
   /**
@@ -1149,7 +1149,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           told.slides = slideCount(flow.parsed);
           // Its pictures changed or deleted meanwhile: the operator's edit wins (Session 56).
           if (keptAsChanged(file, where, early)) return;
-          const shown = early.shown;
+          const earlyShown = early.shown;
           await steps.time('write', () =>
             importPresentation(
               file,
@@ -1159,7 +1159,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               flow.parsed,
               decided,
               retained,
-              shown ? { after: shown } : undefined,
+              earlyShown ? { after: earlyShown } : undefined,
             ),
           );
           early.done = true;
@@ -1342,7 +1342,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       told.slides = slideCount(parsed);
       // In place of its slides shown as these pictures while its animations were tried (Session 56), unless changed.
       if (keptAsChanged(file, where, early)) return;
-      const shown = early.shown;
+      const earlyShown = early.shown;
       await steps.time('write', () =>
         importPresentation(
           file,
@@ -1352,7 +1352,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           parsed,
           decided,
           retained,
-          shown ? { after: shown } : undefined,
+          earlyShown ? { after: earlyShown } : undefined,
         ),
       );
       early.done = true;
