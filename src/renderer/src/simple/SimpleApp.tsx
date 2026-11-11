@@ -140,6 +140,8 @@ function useComingPlaylist(): boolean {
   const cameWith = useRef<string | null>(null);
   useEffect(() => {
     let current = true;
+    // Simple Mode shows the playlists, never the templates Pro Mode may have had in view.
+    if (usePlaylists.getState().view !== 'playlists') usePlaylists.setState({ view: 'playlists' });
     void (async () => {
       const id = await window.drashti.app.simplePlaylist().catch(() => null);
       if (!current) return;

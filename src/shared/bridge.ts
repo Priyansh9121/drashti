@@ -207,7 +207,10 @@ export interface DrashtiBridge {
      */
     setMode(mode: OperatorMode): Promise<ModeResult>;
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
-    /** Simple Mode's one playlist (Session 55, Part 18): the one it shows; null in Pro Mode. */
+    /**
+     * Simple Mode's playlist (Session 55, Part 18): the one open in its window (Session 56: as it comes, then whichever
+     * it opened); null in Pro Mode, or with none open.
+     */
     simplePlaylist(): Promise<string | null>;
     /** Help > Keyboard Shortcuts… was chosen (Pro Mode). */
     onShowKeys(listener: () => void): () => void;

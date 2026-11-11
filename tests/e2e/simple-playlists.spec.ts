@@ -163,16 +163,22 @@ test('Simple Mode has Pro Mode’s playlists on the left: a playlist and a folde
   await expect(title).toHaveText('Placeholder Youth night');
   await expect(middle.getByTestId('playlist-item')).toHaveCount(1);
 
-  // The folder deleted with the playlist in it, and put back.
+  // The folder renamed from its menu, then deleted with the playlist in it, and put back.
   await node(win, 'Placeholder Youth').click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Rename…' }).click();
+  await nameIt(win, 'Placeholder Youth group');
+  await expect(node(win, 'Placeholder Youth group')).toHaveAttribute('data-kind', 'folder');
+  await node(win, 'Placeholder Youth group').click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Delete…' }).click();
   await expect(win.getByTestId('remove-confirm')).toContainText('The playlist in it goes too.');
   await win.getByTestId('remove-confirm').getByRole('button', { name: 'Delete', exact: true }).click();
-  await expect(node(win, 'Placeholder Youth')).toHaveCount(0);
+  await expect(node(win, 'Placeholder Youth group')).toHaveCount(0);
   await expect(node(win, 'Placeholder Youth night')).toHaveCount(0);
+  await expect(middle.getByTestId('no-playlist-open')).toBeVisible();
   await undo(win);
-  await expect(node(win, 'Placeholder Youth')).toBeVisible();
+  await expect(node(win, 'Placeholder Youth group')).toBeVisible();
   await expect(node(win, 'Placeholder Youth night')).toBeVisible();
+  await expect(title).toHaveText('Placeholder Youth night');
 
   // A smart playlist from a folder chosen in the system's dialog: made, opened, filling itself.
   const followed = join(dir, 'Placeholder Simple Smart');

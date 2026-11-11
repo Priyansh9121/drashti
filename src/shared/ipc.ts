@@ -210,7 +210,10 @@ export const IPC = {
     setMode: 'app:set-mode',
     /** main -> operator: the mode changed. */
     modeChanged: 'app:mode-changed',
-    /** Simple Mode's one playlist (Session 55, Part 18): the one it shows; null in Pro Mode. */
+    /**
+     * Simple Mode's playlist (Session 55, Part 18): the one open in its window (Session 56: as it comes, then whichever
+     * it opened); null in Pro Mode, or with none open.
+     */
     simplePlaylist: 'app:simple-playlist',
     /** Any of Drashti's windows: a render error, for the log (Session 23). */
     renderError: 'app:render-error',
