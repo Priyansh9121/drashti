@@ -43,22 +43,30 @@ const playlistNamed = (win: Page, name: string) =>
     name,
   );
 
-/** A folder of a generated picture, and a tone in a folder of its own inside it. */
-async function placeholderFolder(win: Page, name: string, color: string): Promise<string> {
+/**
+ * A folder of a generated picture, and a tone in a folder of its own inside it; each folder's own colour and pitch, so
+ * its files are its own (the library keeps one copy of the same bytes, named as it first came).
+ */
+async function placeholderFolder(win: Page, name: string, color: string, hz: number): Promise<string> {
   const folder = join(mkdtempSync(join(tmpdir(), 'drashti-folder-smart-')), name);
   mkdirSync(join(folder, 'Talks'), { recursive: true });
   await makeTestImage(win, join(folder, `${name} picture.png`), { color });
-  makeTestTone(join(folder, 'Talks', `${name} talk.wav`), { seconds: 1, hz: 330 });
+  makeTestTone(join(folder, 'Talks', `${name} talk.wav`), { seconds: 1, hz });
   return folder;
 }
 
-/** It was made at once, named after its folder, a smart playlist, and opened in the middle, with nothing asked. */
-async function madeAndOpened(win: Page, name: string): Promise<string> {
+/**
+ * It was made at once, named after its folder, a smart playlist, and opened in the middle, with nothing asked (unless
+ * files came with it: their import says what it did, as files dropped always have in Pro Mode).
+ */
+async function madeAndOpened(win: Page, name: string, { withFiles = false } = {}): Promise<string> {
   await expect(node(win, name)).toHaveAttribute('data-playlist-kind', 'smart');
   await expect(win.getByTestId('column-middle').getByTestId('playlist-title')).toHaveText(name);
   await expect(win.getByTestId('smart-bar')).toBeVisible();
-  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
-  await expect(win.getByTestId('report-add')).toHaveCount(0);
+  if (!withFiles) {
+    await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+    await expect(win.getByTestId('report-add')).toHaveCount(0);
+  }
   const made = await playlistNamed(win, name);
   expect(made?.kind).toBe('smart');
   // It fills itself as its files hold still: the picture, then the talk under its folder's header.
@@ -79,27 +87,34 @@ test('Pro Mode: a folder dropped on the open playlist, a playlist’s row or any
   await node(win, PLAYLIST).click();
   await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
 
-  // On the open playlist: a folder, and a picture with it.
-  const week = await placeholderFolder(win, 'Placeholder Week', '#365314');
-  const loose = await makeTestImage(
-    win,
-    join(mkdtempSync(join(tmpdir(), 'drashti-loose-')), 'Placeholder loose.png'),
-  );
-  await dropPaths(win, win.getByTestId('open-playlist'), [week, loose]);
+  // On the open playlist.
+  const week = await placeholderFolder(win, 'Placeholder Week', '#365314', 330);
+  await dropPaths(win, win.getByTestId('open-playlist'), [week]);
   await madeAndOpened(win, 'Placeholder Week');
-  // The picture went into the playlist open when it was dropped, at its end, as files dropped there always did.
-  await expect.poll(() => itemsOf(win, show.playlistId)).toEqual([...before, 'Placeholder loose.png']);
 
   // Anywhere else on the window (the live column).
-  const festival = await placeholderFolder(win, 'Placeholder Festival', '#1e3a8a');
+  const festival = await placeholderFolder(win, 'Placeholder Festival', '#1e3a8a', 392);
   await dropPaths(win, win.getByTestId('column-right'), [festival]);
   await madeAndOpened(win, 'Placeholder Festival');
 
   // On another playlist's row in the list: a smart playlist of its own, never into that playlist.
-  const youth = await placeholderFolder(win, 'Placeholder Youth', '#7c2d12');
+  const youth = await placeholderFolder(win, 'Placeholder Youth', '#7c2d12', 440);
   await dropPaths(win, node(win, PLAYLIST), [youth]);
   await madeAndOpened(win, 'Placeholder Youth');
-  expect(await itemsOf(win, show.playlistId)).toEqual([...before, 'Placeholder loose.png']);
+  expect(await itemsOf(win, show.playlistId)).toEqual(before);
+
+  // A folder and a picture together on the open playlist: the folder a smart playlist, opened; the picture into the
+  // playlist open when it was dropped, at its end, as files dropped there always went (their import says so).
+  await node(win, PLAYLIST).click();
+  await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
+  const later = await placeholderFolder(win, 'Placeholder Later', '#4c1d95', 494);
+  const loose = await makeTestImage(
+    win,
+    join(mkdtempSync(join(tmpdir(), 'drashti-loose-')), 'Placeholder loose.png'),
+  );
+  await dropPaths(win, win.getByTestId('open-playlist'), [later, loose]);
+  await madeAndOpened(win, 'Placeholder Later', { withFiles: true });
+  await expect.poll(() => itemsOf(win, show.playlistId)).toEqual([...before, 'Placeholder loose.png']);
   await app.close();
 });
 
@@ -116,7 +131,7 @@ test('Simple Mode: a folder dropped becomes a smart playlist following it at onc
   await expect(simple.getByTestId('playlist-title')).toHaveText(/^Sabha, /u);
 
   // On its open playlist.
-  const week = await placeholderFolder(win, 'Placeholder Simple Week', '#365314');
+  const week = await placeholderFolder(win, 'Placeholder Simple Week', '#365314', 330);
   await dropPaths(win, simple.getByTestId('open-playlist'), [week]);
   const made = await madeAndOpened(win, 'Placeholder Simple Week');
   // Simple Mode's playlist is the one open now (a phone works on it); the day's is left as it was.
@@ -124,7 +139,7 @@ test('Simple Mode: a folder dropped becomes a smart playlist following it at onc
   expect(await itemsOf(win, day ?? '')).toEqual([]);
 
   // Anywhere else on the window (the live column).
-  const later = await placeholderFolder(win, 'Placeholder Simple Later', '#1e3a8a');
+  const later = await placeholderFolder(win, 'Placeholder Simple Later', '#1e3a8a', 392);
   await dropPaths(win, simple.getByTestId('column-right'), [later]);
   await madeAndOpened(win, 'Placeholder Simple Later');
   await expect(win.getByText('Simple Mode is on', { exact: false })).toHaveCount(0);
