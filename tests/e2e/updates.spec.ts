@@ -90,7 +90,7 @@ test('an update is offered with what changed, downloads (waiting while on air), 
     await expect(win.getByTestId('update-status')).toContainText('installs when Drashti quits');
     expect(existsSync(installLog)).toBe(false);
     // Simple Mode never sees it: no menu item, no word in the status bar, and the main process refuses.
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect(win.getByTestId('update-status')).toHaveCount(0);
     expect(await menuHas(app, 'check-for-updates')).toBe(false);
     const refused = await win.evaluate(() => (globalThis as PageGlobals).drashti.updates.check());

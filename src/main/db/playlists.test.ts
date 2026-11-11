@@ -184,6 +184,37 @@ describe('playlists the operator edits', () => {
     expect(playlists.restore([other])).toEqual([]);
   });
 
+  it('says what an id is, a deleted one too, and whether a playlist (never a template) lists a file, for Simple Mode’s bounds (Session 56)', () => {
+    const folder = playlists.create('Placeholder week', null, true) ?? '';
+    const list = playlists.create('Placeholder sabha', folder, false) ?? '';
+    const template = playlists.create('Placeholder template', null, false, true) ?? '';
+    expect([folder, list, template, 'nowhere'].map((id) => playlists.kindOf(id))).toEqual([
+      'folder',
+      'playlist',
+      'template',
+      null,
+    ]);
+    playlists.addItems(template, null, [
+      { kind: 'presentation', presentationId: dhun },
+      { kind: 'media', mediaId: 'prores' },
+    ]);
+    // Only a template has them: no playlist lists them.
+    expect(playlists.listsPresentation(dhun)).toBe(false);
+    expect(playlists.listsMedia('prores')).toBe(false);
+    const [hymnRow] = playlists.addItems(list, null, [
+      { kind: 'presentation', presentationId: hymn },
+      { kind: 'media', mediaId: 'loop' },
+    ]);
+    expect(playlists.listsPresentation(hymn)).toBe(true);
+    expect(playlists.listsMedia('loop')).toBe(true);
+    // A row taken out, or its playlist deleted (a folder with it): no longer listed; the deleted are still named.
+    playlists.removeItems([hymnRow ?? '']);
+    expect(playlists.listsPresentation(hymn)).toBe(false);
+    playlists.remove([folder]);
+    expect(playlists.listsMedia('loop')).toBe(false);
+    expect([folder, list].map((id) => playlists.kindOf(id))).toEqual(['folder', 'playlist']);
+  });
+
   it('hands the show engine what each item plays, and why the others are stepped over', () => {
     const id = playlists.create('Ravi Sabha', null, false) ?? '';
     const [header, own, all, arranged, gone, video, old] = playlists.addItems(id, null, [

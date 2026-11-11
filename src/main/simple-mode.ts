@@ -17,10 +17,15 @@ import { NO_VIEW } from '../shared/access-list';
  *
  * Since Session 55 (Part 18, Simple Mode for a one-projector sabha) Simple Mode also offers, each only within its
  * bounds (SIMPLE_MODE_BOUNDED): bringing things in (the main process gives Simple Mode's import its own limits: only
- * sounds, videos, pictures, PDFs and decks, and a changed file kept beside the old one, never replacing it), its one
- * playlist's rows (added to, moved in, taken out of and put back in that playlist only: main/simple-playlist.ts says
- * which), Rename of a file that playlist holds, and From a Link… into it. Everything else stays locked. This is the
- * one list for Simple access too (Session 55, Part 19): the mode keeper holds the mode in Simple, and so this lock.
+ * sounds, videos, pictures, PDFs and decks, and a changed file kept beside the old one, never replacing it), a
+ * playlist's rows (added to, moved in, taken out of and put back in), Rename of a file a playlist holds, and From a
+ * Link… into the open playlist. Since Session 56 (the owner's words of 11 Nov 2026: "several playlists on the left,
+ * with folders, as in Pro Mode, and smart playlists") the playlists and folders themselves too, as Pro Mode's left
+ * column offers them: New playlist and New folder (at the top or in a folder), Rename…, Delete… and its Undo, and
+ * Smart Playlist from a Folder…; the window opens any of them (main/simple-playlist.ts follows which). A template, a
+ * slot, sharing with phones, Repeat Slides and its settings, Duplicate and a row's timers stay Pro Mode's, and so does
+ * everything else. This is the one list for Simple access too (Session 55, Part 19): the mode keeper holds the mode
+ * in Simple, and so this lock.
  */
 
 /** The Access List's edits (Session 54, E4). */
@@ -63,10 +68,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.kirtans.makeTransliteration,
   IPC.kirtans.setTranslitStyle,
   IPC.kirtans.addCategory,
-  IPC.playlists.create,
-  IPC.playlists.rename,
-  IPC.playlists.remove,
-  IPC.playlists.restore,
+  // The playlists and folders themselves are Simple Mode's too since Session 56 (bounded below); a slot is not.
   IPC.playlists.fillPlaceholder,
   IPC.playlists.renameHeader,
   IPC.playlists.saveAsTemplate,
@@ -90,8 +92,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // wallpapers since Part 18, bounded below, without the editor).
   IPC.playlists.setWhenEnds,
   IPC.wallpapers.setTiming,
-  // Smart playlists (Session 26c): Simple Mode sees what their folders bring, and changes no setup.
-  IPC.playlists.createSmart,
+  // Smart playlists (Session 26c): Simple Mode makes one since Session 56 (bounded below); taking a smart playlist's
+  // missing items out, its banner's button, stays Pro Mode's (a row's Delete takes one out in either mode).
   IPC.playlists.removeMissing,
   // Repeat Slides (Session 26d): Simple Mode starts and stops it (engine commands), and changes no setting.
   IPC.playlists.createRepeat,
@@ -226,8 +228,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.updates.setInstallOnQuit,
   IPC.updates.setAutoCheck,
   IPC.updates.showFile,
-  // Import from a Link (Session 25b): Simple Mode downloads into its one playlist since Session 55 (bounded below);
-  // where downloads are saved and the highest video quality stay Pro Mode's, and so does showing a saved one.
+  // Import from a Link (Session 25b): Simple Mode downloads into its playlist since Session 55 (the open one since
+  // Session 56, bounded below); where downloads are saved and the highest video quality stay Pro Mode's, and so does
+  // showing a saved one.
   IPC.links.pickFolder,
   IPC.links.showSaved,
   IPC.links.setMaxHeight,
@@ -260,33 +263,72 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.opening.saveCopy,
 ];
 
+/** What an id names among the playlists (Session 56), as the lock reads it: a template is Pro Mode's. */
+export type ListKind = 'playlist' | 'folder' | 'template' | null;
+
 /**
- * Simple Mode's one playlist and what it holds, as the lock reads them (index.ts, from the library), for the bounds of
- * what Simple Mode offers.
+ * The playlist open in Simple Mode's window and what it holds, as the lock reads them (index.ts, from the library): what
+ * a phone in Simple Mode works on (simple-mode-phones.ts).
  */
-export interface SimpleScope {
-  /** The one playlist (Session 55, Part 18), or null before Simple Mode has needed one. */
+export interface SimpleOpenPlaylist {
+  /**
+   * The playlist open in Simple Mode's window, or null when none is (before Simple Mode needed one, or its open one
+   * deleted). Session 55 (Part 18) kept it to one playlist; since Session 56 it is whichever the window opened
+   * (simple-playlist.ts).
+   */
   playlistId: string | null;
   /** The playlist an item is in (one taken out too), or null. */
   playlistOf(itemId: string): string | null;
-  /** Whether the one playlist has a row of this picture, video or sound. */
+  /** Whether the open playlist has a row of this picture, video or sound. */
   holdsMedia(mediaId: string): boolean;
-  /** Whether the one playlist has a row of this presentation (a PDF's or a deck's too). */
+  /** Whether the open playlist has a row of this presentation (a PDF's or a deck's too). */
   holdsPresentation(presentationId: string): boolean;
+}
+
+/**
+ * Simple Mode as the lock reads it for the bounds of what its window offers (index.ts, from the library, as each
+ * request comes): since Session 56 every playlist and folder, as Pro Mode's left column offers them, never a template.
+ */
+export interface SimpleScope extends SimpleOpenPlaylist {
+  /** What an id names among the playlists, a deleted one too (for its Undo); null when it names none. */
+  kindOf(id: string): ListKind;
+  /** Whether a playlist (never a template) has a row of this picture, video or sound. */
+  listsMedia(mediaId: string): boolean;
+  /** Whether a playlist (never a template) has a row of this presentation (a PDF's or a deck's too). */
+  listsPresentation(presentationId: string): boolean;
 }
 
 /** Whether a request on a bounded channel, with its arguments as sent, stays within Simple Mode's bounds. */
 export type SimpleBound = (args: readonly unknown[], scope: SimpleScope) => boolean;
 
 const anything: SimpleBound = () => true;
-const theOne = (scope: SimpleScope, playlistId: unknown): boolean =>
-  scope.playlistId !== null && playlistId === scope.playlistId;
-/** Every one an item of the one playlist (one taken out too, for its Undo). */
-const itsItems = (scope: SimpleScope, ids: unknown): boolean =>
-  scope.playlistId !== null &&
-  Array.isArray(ids) &&
-  ids.length > 0 &&
-  ids.every((id) => typeof id === 'string' && scope.playlistOf(id) === scope.playlistId);
+/**
+ * A playlist (a smart, Repeat Slides or folder playlist too, a deleted one for its Undo), never a folder of playlists
+ * or a template: the bounds of a request on a playlist's rows (Session 56).
+ */
+export const aPlaylist = (scope: SimpleScope, id: unknown): boolean =>
+  typeof id === 'string' && scope.kindOf(id) === 'playlist';
+/** A playlist or a folder of playlists (a deleted one too, for its Undo), never a template. */
+export const aPlaylistOrFolder = (scope: SimpleScope, id: unknown): boolean => {
+  if (typeof id !== 'string') return false;
+  const kind = scope.kindOf(id);
+  return kind === 'playlist' || kind === 'folder';
+};
+/** A folder of playlists, for something new made in it (New playlist here, New folder here). */
+const aFolder = (scope: SimpleScope, id: unknown): boolean =>
+  typeof id === 'string' && scope.kindOf(id) === 'folder';
+/** A playlist's item (one taken out too, for its Undo), never a template's. */
+export const aPlaylistsItem = (scope: SimpleScope, itemId: unknown): boolean =>
+  typeof itemId === 'string' && aPlaylist(scope, scope.playlistOf(itemId));
+/** Items, every one a playlist's (as aPlaylistsItem), at least one. */
+export const playlistsItems = (scope: SimpleScope, ids: unknown): boolean =>
+  Array.isArray(ids) && ids.length > 0 && ids.every((id) => aPlaylistsItem(scope, id));
+/** A picture, video or sound a playlist has a row of (never only a template). */
+export const aPlaylistsMedia = (scope: SimpleScope, mediaId: unknown): boolean =>
+  typeof mediaId === 'string' && scope.listsMedia(mediaId);
+/** A presentation (a PDF's or a deck's too) a playlist has a row of (never only a template). */
+export const aPlaylistsPresentation = (scope: SimpleScope, presentationId: unknown): boolean =>
+  typeof presentationId === 'string' && scope.listsPresentation(presentationId);
 /** What Simple Mode's imports add: a presentation (a PDF's or a deck's), a picture, video or sound, a folder's part. */
 const SIMPLE_ADDS: ReadonlySet<unknown> = new Set(['presentation', 'media', 'header']);
 const itsAdds = (items: unknown): boolean =>
@@ -298,7 +340,7 @@ const itsAdds = (items: unknown): boolean =>
  * What Simple Mode offers since Session 55 (Part 18), each with its bounds. Never also in SIMPLE_MODE_LOCKED. Each has
  * a refusal as a locked channel has (simpleModeRefusals), so the lock fails closed: a request runs only when its bounds
  * say it is within them (simpleModeBounds); one with none of its arguments (the phones' and Companion's API asks
- * refusedNow) is outside them: a phone changes no playlist in Simple Mode, as before.
+ * refusedNow) is outside them: a phone makes, renames or deletes no playlist in Simple Mode, as before.
  */
 export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new Map<
   InvokeChannel,
@@ -307,31 +349,46 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   // Bringing things in: Add files… and files dropped. The main process gives Simple Mode's import its own limits.
   [IPC.library.importPaths, anything],
   [IPC.library.pickImportPaths, anything],
-  // The one playlist's rows: what its imports made added to it, dragged about, taken out (Delete) and put back (Undo).
-  [IPC.playlists.addItems, ([playlistId, , items], scope) => theOne(scope, playlistId) && itsAdds(items)],
-  [IPC.playlists.moveItems, ([playlistId], scope) => theOne(scope, playlistId)],
-  [IPC.playlists.removeItems, ([ids], scope) => itsItems(scope, ids)],
-  [IPC.playlists.restoreItems, ([ids], scope) => itsItems(scope, ids)],
-  // A slide's row dragged within its deck or out of it (Part 4b), and its Undo: the one playlist's items.
-  [IPC.playlists.setItemOrder, ([itemId], scope) => itsItems(scope, [itemId])],
-  [IPC.playlists.splitItem, ([itemId], scope) => itsItems(scope, [itemId])],
-  [IPC.playlists.undoSplit, ([itemId, , madeId], scope) => itsItems(scope, [itemId, madeId])],
-  // Rename… on a row: a file the one playlist holds.
+  // The playlists and folders (Session 56), as Pro Mode's left column offers them: New playlist and New folder, at the
+  // top or in a folder (New playlist here, New folder here); Rename…; Delete… (several chosen together too) and its
+  // Undo. Never a template.
   [
-    IPC.library.renamePresentation,
-    ([id], scope) => scope.playlistId !== null && typeof id === 'string' && scope.holdsPresentation(id),
+    IPC.playlists.create,
+    ([, parentId, isFolder], scope) =>
+      typeof isFolder === 'boolean' && (parentId === null || aFolder(scope, parentId)),
+  ],
+  [IPC.playlists.rename, ([id], scope) => aPlaylistOrFolder(scope, id)],
+  [
+    IPC.playlists.remove,
+    ([ids], scope) => Array.isArray(ids) && ids.length > 0 && ids.every((id) => aPlaylistOrFolder(scope, id)),
   ],
   [
-    IPC.media.rename,
-    ([id], scope) => scope.playlistId !== null && typeof id === 'string' && scope.holdsMedia(id),
+    IPC.playlists.restore,
+    ([ids], scope) => Array.isArray(ids) && ids.length > 0 && ids.every((id) => aPlaylistOrFolder(scope, id)),
   ],
-  // From a Link… (YouTube and Dropbox), into the one playlist; a Dropbox folder too (index.ts adds its files there).
+  // Smart Playlist from a Folder… (Session 56): the folder chosen in the system's dialog, which the main process asks.
+  [IPC.playlists.createSmart, anything],
+  // A playlist's rows (Session 56: whichever is open; another too, as Pro Mode's own parts do: files dropped on its row
+  // in the list, an import that ends after another was opened, an Undo there): what its imports made added to it,
+  // dragged about, taken out (Delete) and put back (Undo). Never a template's.
+  [IPC.playlists.addItems, ([playlistId, , items], scope) => aPlaylist(scope, playlistId) && itsAdds(items)],
+  [IPC.playlists.moveItems, ([playlistId], scope) => aPlaylist(scope, playlistId)],
+  [IPC.playlists.removeItems, ([ids], scope) => playlistsItems(scope, ids)],
+  [IPC.playlists.restoreItems, ([ids], scope) => playlistsItems(scope, ids)],
+  // A slide's row dragged within its deck or out of it (Part 4b), and its Undo: a playlist's items.
+  [IPC.playlists.setItemOrder, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
+  [IPC.playlists.splitItem, ([itemId], scope) => aPlaylistsItem(scope, itemId)],
+  [IPC.playlists.undoSplit, ([itemId, , madeId], scope) => playlistsItems(scope, [itemId, madeId])],
+  // Rename… on a row: a file a playlist holds.
+  [IPC.library.renamePresentation, ([id], scope) => aPlaylistsPresentation(scope, id)],
+  [IPC.media.rename, ([id], scope) => aPlaylistsMedia(scope, id)],
+  // From a Link… (YouTube and Dropbox), into the open playlist; a Dropbox folder too (index.ts adds its files there).
   [IPC.links.look, anything],
   [IPC.links.download, anything],
   [IPC.links.stop, anything],
   [IPC.links.reset, anything],
   [IPC.links.addWaiting, anything],
-  [IPC.links.setPlaylist, ([playlistId], scope) => theOne(scope, playlistId)],
+  [IPC.links.setPlaylist, ([playlistId], scope) => aPlaylist(scope, playlistId)],
   // The wallpapers (Part 6): added (Import…, or pictures dropped), chosen, renamed, deleted and put back (Undo), and
   // pictures dropped on one to go round. They belong to no playlist: nothing bounds them but what they are.
   [IPC.wallpapers.add, anything],
@@ -353,7 +410,7 @@ export function simpleModeRefusesWhole(channel: InvokeChannel): boolean {
 
 /**
  * Each bounded channel's test as the lock asks it (ipc/handle.ts): whether a request, its arguments as sent, is within
- * its bounds, the one playlist read as each request comes (`scope`).
+ * its bounds, the playlists read as each request comes (`scope`).
  */
 export function simpleModeBounds(
   scope: () => SimpleScope,

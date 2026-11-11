@@ -11,6 +11,7 @@ import { openAnnouncements, useAnnouncements } from '../network/announcements-st
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { openStreamPanel } from '../stream/stream-store';
 import { enterSimpleMode } from './mode-store';
+import { useDoubleClickSwitch } from './mode-switch';
 import { openReady } from './ready-store';
 import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
@@ -92,6 +93,8 @@ export function Header({
   const cards = [stream.card, phones.card, announcements.card].filter(Boolean);
   // Phones on (Session 51, S2-3): below 1680 px wide, some buttons show their icon alone (top-bar.ts).
   const crowded = useAnnouncementsShown();
+  // To Simple Mode: a double-click (or Enter twice), nothing else (the owner, 11 Nov 2026); one click says so.
+  const toSimple = useDoubleClickSwitch('Simple Mode', () => void enterSimpleMode());
   return (
     <>
       <header
@@ -170,15 +173,16 @@ export function Header({
           <Tooltip
             content={
               crowded
-                ? 'Simple Mode: this window with only what a sabha with one projector needs, for volunteers.'
-                : 'This window with only what a sabha with one projector needs, for volunteers.'
+                ? 'Simple Mode: double-click (or press Enter twice) for this window with only what a sabha with one projector needs, for volunteers.'
+                : 'Double-click (or press Enter twice) for this window with only what a sabha with one projector needs, for volunteers.'
             }
             side="bottom"
           >
             <Button
               variant="ghost"
               icon={LayoutGrid}
-              onClick={() => void enterSimpleMode()}
+              onClick={toSimple.onClick}
+              onDoubleClick={toSimple.onDoubleClick}
               className={cx(crowded && ICON_IF_NARROW)}
             >
               <Words crowded={crowded}>Simple Mode</Words>

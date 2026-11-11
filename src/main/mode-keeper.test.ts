@@ -164,11 +164,16 @@ describe('every way in, refused in the main process while Simple access holds Si
 
   it('what Simple Mode offers (Session 55, Part 18) runs only within its bounds, the same with Simple access; a phone’s request, which has none of its arguments, is refused', () => {
     const { k } = keeper({ access: 'simple' });
+    // Session 56: every playlist is Simple Mode's (as Pro Mode's left column offers them), never a template.
     const scope = {
       playlistId: 'one',
-      playlistOf: (itemId: string) => (itemId === 'i-one' ? 'one' : itemId === 'i-other' ? 'other' : null),
+      playlistOf: (itemId: string) => (itemId === 'i-one' ? 'one' : itemId === 'i-tpl' ? 'tpl' : null),
       holdsMedia: (mediaId: string) => mediaId === 'm-in',
       holdsPresentation: () => false,
+      kindOf: (id: string) =>
+        id === 'one' || id === 'other' ? 'playlist' : id === 'tpl' ? 'template' : null,
+      listsMedia: (mediaId: string) => mediaId === 'm-in',
+      listsPresentation: () => false,
     };
     lockChannels(
       () => k.mode === 'simple',
@@ -182,11 +187,11 @@ describe('every way in, refused in the main process while Simple access holds Si
     expect(
       refusalFor(IPC.playlists.addItems, ['one', null, [{ kind: 'media', mediaId: 'x' }]]),
     ).toBeUndefined();
-    expect(
-      refusalFor(IPC.playlists.addItems, ['other', null, [{ kind: 'media', mediaId: 'x' }]])?.(),
-    ).toEqual(refused);
+    expect(refusalFor(IPC.playlists.addItems, ['tpl', null, [{ kind: 'media', mediaId: 'x' }]])?.()).toEqual(
+      refused,
+    );
     expect(refusalFor(IPC.playlists.removeItems, [['i-one']])).toBeUndefined();
-    expect(refusalFor(IPC.playlists.removeItems, [['i-other']])?.()).toEqual(refused);
+    expect(refusalFor(IPC.playlists.removeItems, [['i-tpl']])?.()).toEqual(refused);
     expect(refusalFor(IPC.media.rename, ['m-in', 'Placeholder'])).toBeUndefined();
     expect(refusalFor(IPC.media.rename, ['m-out', 'Placeholder'])?.()).toEqual(refused);
     expect(refusalFor(IPC.library.importPaths, [['/placeholder/x.png']])).toBeUndefined();

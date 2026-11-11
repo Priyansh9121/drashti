@@ -85,7 +85,7 @@ test('a phone on a computer in Simple Mode does only what Simple Mode’s window
   // The placeholder playlist open as Drashti switches: Simple Mode's one playlist (Part 18).
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist())).toBe(
     show.playlistId,
@@ -297,7 +297,7 @@ test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it 
     await expect(p.getByTestId('remote-simple')).toHaveCount(0);
 
     // Simple Mode on the computer: the phone opens its playlist, the only one it offers.
-    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     const note = p.getByTestId('remote-simple');
     await expect(note).toContainText(`its playlist “${PLAYLIST}”`);
