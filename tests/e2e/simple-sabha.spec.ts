@@ -49,7 +49,7 @@ async function intoSimple(win: Page): Promise<Locator> {
 /** The one playlist's rows' names, as the middle shows them. */
 const rowNames = (middle: Locator) => middle.getByTestId('playlist-item').locator('[data-label]');
 
-test('Pro Mode’s window with only what a one-projector sabha needs: the playlist open when it switched, in the middle; the wallpapers; LIVE, Next and Back and the time bar; Clear all, the Wallpaper and Black-out', async () => {
+test('Pro Mode’s window with only what a one-projector sabha needs: the playlist open when it switched, in the middle; the playlists and the wallpapers; LIVE, Next and Back and the time bar; Clear all, the Wallpaper and Black-out', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -62,14 +62,20 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
   const simple = await intoSimple(win);
   expect(await onePlaylist(win)).toBe(show.playlistId);
 
-  // Pro Mode's columns: the one playlist in the middle (its rows as Part 4 made them), no list of playlists to choose.
+  // Pro Mode's columns: the playlist open as it switched in the middle (its rows as Part 4 made them), and since Session
+  // 56 (the owner's item 14) the playlists on the left, as in Pro Mode, that one marked open.
   const middle = simple.getByTestId('column-middle');
   await expect(middle.getByTestId('playlist-title')).toHaveText(PLAYLIST);
   await expect(middle.getByTestId('playlist-item')).toHaveCount(6);
-  await expect(simple.getByTestId('playlist-tree')).toHaveCount(0);
+  const left = simple.getByTestId('column-left');
+  await expect(left.getByTestId('playlist-tree')).toBeVisible();
+  await expect(left.getByTestId('playlist-node').filter({ hasText: PLAYLIST })).toHaveAttribute(
+    'data-open',
+    'true',
+  );
   await expect(simple.getByTestId('simple-playlist')).toHaveCount(0);
-  // The wallpapers on the left, as in Pro Mode (Part 6).
-  await expect(simple.getByTestId('column-left').getByTestId('wallpapers')).toBeVisible();
+  // The wallpapers on the left, under the playlists, as in Pro Mode (Part 6).
+  await expect(left.getByTestId('wallpapers')).toBeVisible();
   // LIVE, Next and Back on the right.
   const right = simple.getByTestId('column-right');
   await expect(right.getByTestId('live-preview')).toBeVisible();
@@ -100,9 +106,11 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
     'layer-bar',
     'playlist-close',
     'show-oops',
-    'row-delete',
   ])
     await expect(win.getByTestId(id), id).toHaveCount(0);
+  // No trash on the playlist's rows (Simple Mode's Delete is a row's right-click); the chosen playlist on the left has
+  // its Delete, as in Pro Mode (Session 56).
+  await expect(middle.getByTestId('row-delete')).toHaveCount(0);
 
   // One click on a slide's row puts it up; Next and Back go on from it.
   const kirtan = middle.getByTestId('slide-thumb').filter({ hasText: 'Placeholder Kirtan_2' });
@@ -274,7 +282,6 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
       slot: await d.playlists.addSlot(otherId, null, { label: 'Placeholder slot', category: null }),
       share: await d.playlists.share(otherId, true),
       timers: await d.playlists.setTimers(first?.id ?? '', []),
-      quality: await d.links.setMaxHeight(2160),
     };
   }, other.playlistId);
   const no = { ok: false, message: SIMPLE_MODE_REFUSAL };
@@ -284,7 +291,6 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
     slot: no,
     share: no,
     timers: no,
-    quality: no,
   });
   expect(
     (await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.items(id), other.playlistId))
@@ -299,7 +305,7 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
   await app.close();
 });
 
-test('From a Link…: a Dropbox file goes into the one playlist, with nothing to choose but the link (a local stand-in, never the internet)', async () => {
+test('From a Link…: a Dropbox file goes into the open playlist, with Pro Mode’s choices there (the highest video quality, where it is saved, which playlist: the open one to begin with); a local stand-in, never the internet', async () => {
   test.setTimeout(150_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-simple-link-'));
   const tone = makeTestTone(join(work, 'Placeholder link tone.wav'), { seconds: 2, hz: 523 });
@@ -316,6 +322,7 @@ test('From a Link…: a Dropbox file goes into the one playlist, with nothing to
     await operatorReady(win);
     await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
     const simple = await intoSimple(win);
+    const one = await onePlaylist(win);
     const middle = simple.getByTestId('column-middle');
     await middle.getByTestId('playlist-from-link').click();
     const dialog = win.getByTestId('link-dialog');
@@ -323,10 +330,11 @@ test('From a Link…: a Dropbox file goes into the one playlist, with nothing to
     await win.getByTestId('link-kind-dropbox').click();
     await win.getByTestId('link-text').fill(fileLink('toneSSSSSSSSSSS', 'Placeholder link tone.wav'));
     await expect(win.getByTestId('link-name')).toHaveText('Placeholder link tone.wav');
-    // Where it goes is the one playlist; the highest quality and where downloads are saved are Pro Mode's.
-    await expect(win.getByTestId('link-into-simple')).toContainText('“Sabha, ');
-    for (const id of ['link-add-to', 'link-choose-folder', 'link-max-height', 'link-new-playlist'])
-      await expect(win.getByTestId(id), id).toHaveCount(0);
+    // Pro Mode's own dialog (Session 56, the owner's item 11: From a Link…, whole): the highest quality, where
+    // downloads are saved, and which playlist, the open one to begin with (its own From a Link…).
+    for (const id of ['link-max-height', 'link-choose-folder'])
+      await expect(win.getByTestId(id), id).toBeVisible();
+    await expect(win.getByTestId('link-add-to')).toHaveValue(`playlist:${one ?? ''}`);
     await win.getByTestId('link-download').click();
     await expect(rowNames(middle)).toHaveText([/^Placeholder link tone/u], { timeout: 60_000 });
     expect(standIn.requests.every((r) => r.host.includes('dropbox'))).toBe(true);

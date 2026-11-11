@@ -96,6 +96,7 @@ import {
   closePlaylist,
   duplicatePlaylist,
   fillPlaceholder,
+  dropFolders,
   importIntoPlaylist,
   itemName,
   markedItems,
@@ -414,7 +415,8 @@ function SmartBar({ playlistId, simple }: { playlistId: string; simple: boolean 
       data-state={view.state}
       className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-1.5 text-xs"
     >
-      <span className="text-muted">Follows</span>
+      {/* What it is, in a line (Session 56, the owner's item 4: "a smart playlist follows a folder on the computer"). */}
+      <span className="text-muted">A smart playlist, following</span>
       <Truncate
         text={view.folder}
         className="min-w-24 max-w-full flex-1 font-medium"
@@ -668,9 +670,9 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
   }, [items]);
   const marked = usePlaylists((s) => s.marked);
   const anchorId = usePlaylists((s) => s.anchorId);
-  // Made from a folder (Session 44): the folder shown has its own items here, its folders in the bottom left. Simple
-  // Mode has no folders to go through (Session 55, Part 18): it shows the whole playlist, headers and all.
-  const byFolder = usePlaylists(showsFolders) && !simple;
+  // Made from a folder (Session 44): the folder shown has its own items here, its folders in the bottom left (in Simple
+  // Mode too since Session 56, which has Pro Mode's left column).
+  const byFolder = usePlaylists(showsFolders);
   const folder = usePlaylists((s) => s.folder);
   const view = useMemo(() => playlistFolders(items), [items]);
   const shownFolder = byFolder && hasFolder(view, folder) ? folder : '';
@@ -881,14 +883,16 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
   const onDrop = (e: DragEvent) => {
     const kind = dragKind(e);
     // Files from the Finder or Explorer: imported as anywhere, then added where they landed, in the
-    // order dropped (Session 26a). The window's own drop, which only imports, never sees them.
+    // order dropped (Session 26a). The window's own drop, which only imports, never sees them. A folder (Session 56,
+    // item 5): a smart playlist following it, at once, opened here.
     if (!kind && hasFiles(e)) {
       e.preventDefault();
       e.stopPropagation();
       const where = spotFor(e);
       setSpot(null);
       const at = 'at' in where ? where.at : items.findIndex((i) => i.id === where.fill);
-      void importIntoPlaylist(openId, at, droppedPaths(e), 'at' in where ? (where.header ?? null) : null);
+      const header = 'at' in where ? (where.header ?? null) : null;
+      void dropFolders(droppedPaths(e), (files) => importIntoPlaylist(openId, at, files, header));
       return;
     }
     if (!kind) return;
@@ -963,10 +967,10 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           <h2
             className="min-w-40 flex-1 truncate text-base font-bold"
             data-testid="playlist-title"
-            // Simple Mode renames no playlist (Session 55, Part 18).
-            title={simple ? (node?.name ?? '') : `${node?.name ?? ''} (double-click to rename)`}
+            // Simple Mode renames playlists too since Session 56 (its left column has them).
+            title={`${node?.name ?? ''} (double-click to rename)`}
             onDoubleClick={() => {
-              if (!simple) startRenaming(openId, 'centre');
+              startRenaming(openId, 'centre');
             }}
           >
             {node?.name ?? ''}
@@ -998,7 +1002,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           </>
         )}
         {help.button}
-        {/* Simple Mode's one playlist (Session 55, Part 18): no menu of the playlist's own, and never closed. */}
+        {/* Simple Mode (Session 55, Part 18): no menu of the playlist's own (its Rename and Delete are on the left since
+            Session 56, beside the other playlists), and no Close. */}
         {!simple && (
           <MenuButton
             label="Playlist"
@@ -1476,10 +1481,11 @@ async function addFilesTo(playlistId: string): Promise<void> {
 
 /**
  * The open playlist (Session 26a: in the centre, above the chosen item's slides): its items as cards, in
- * order, to drag about, drop library rows and files on, and download into. `simple`: Simple Mode's one playlist
+ * order, to drag about, drop library rows and files on, and download into. `simple`: Simple Mode's open playlist
  * (Session 55, Part 18), with only what Simple Mode offers: its rows, one click, dragging, Add files…, From a Link…
  * and files dropped, and the right-click menu's Rename and Delete; no menu of the playlist's own, no Close, no Up,
- * Down or order under a row, no trash buttons, no bar of chosen rows, nothing renamed in place, no Edit slides.
+ * Down or order under a row, no trash buttons, no bar of chosen rows, no header renamed in place, no Edit slides
+ * (since Session 56 its folders go through the left column's, and its name is renamed as Pro Mode's is).
  */
 export function OpenPlaylist({ platform, simple = false }: { platform: string; simple?: boolean }) {
   const openId = usePlaylists((s) => s.openId);

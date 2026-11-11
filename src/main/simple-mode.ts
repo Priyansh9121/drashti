@@ -19,7 +19,8 @@ import { NO_VIEW } from '../shared/access-list';
  * bounds (SIMPLE_MODE_BOUNDED): bringing things in (the main process gives Simple Mode's import its own limits: only
  * sounds, videos, pictures, PDFs and decks, and a changed file kept beside the old one, never replacing it), a
  * playlist's rows (added to, moved in, taken out of and put back in), Rename of a file a playlist holds, and From a
- * Link… into the open playlist. Since Session 56 (the owner's words of 11 Nov 2026: "several playlists on the left,
+ * Link… (since Session 56 whole, as Pro Mode's: the owner's words of 11 Nov 2026, "Import from a Link, whole (YouTube
+ * and Dropbox)"). Since Session 56 (the owner's words of 11 Nov 2026: "several playlists on the left,
  * with folders, as in Pro Mode, and smart playlists") the playlists and folders themselves too, as Pro Mode's left
  * column offers them: New playlist and New folder (at the top or in a folder), Rename…, Delete… and its Undo, and
  * Smart Playlist from a Folder…; the window opens any of them (main/simple-playlist.ts follows which). A template, a
@@ -245,12 +246,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.updates.setInstallOnQuit,
   IPC.updates.setAutoCheck,
   IPC.updates.showFile,
-  // Import from a Link (Session 25b): Simple Mode downloads into its playlist since Session 55 (the open one since
-  // Session 56, bounded below); where downloads are saved and the highest video quality stay Pro Mode's, and so does
-  // showing a saved one.
-  IPC.links.pickFolder,
-  IPC.links.showSaved,
-  IPC.links.setMaxHeight,
   // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
   IPC.announcements.edit,
   IPC.announcements.approve,
@@ -383,8 +378,11 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
     IPC.playlists.restore,
     ([ids], scope) => Array.isArray(ids) && ids.length > 0 && ids.every((id) => aPlaylistOrFolder(scope, id)),
   ],
-  // Smart Playlist from a Folder… (Session 56): the folder chosen in the system's dialog, which the main process asks.
+  // Smart Playlist from a Folder… (Session 56): the folder chosen in the system's dialog, which the main process asks;
+  // and (the owner's item 5) a folder dropped, a smart playlist at once, nothing asked (the main process looks at
+  // what was dropped; the files among it come back to go through Simple Mode's import, as files dropped do).
   [IPC.playlists.createSmart, anything],
+  [IPC.playlists.createSmartFrom, anything],
   // A playlist's rows (Session 56: whichever is open; another too, as Pro Mode's own parts do: files dropped on its row
   // in the list, an import that ends after another was opened, an Undo there): what its imports made added to it,
   // dragged about, taken out (Delete) and put back (Undo). Never a template's.
@@ -399,13 +397,21 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   // Rename… on a row: a file a playlist holds.
   [IPC.library.renamePresentation, ([id], scope) => aPlaylistsPresentation(scope, id)],
   [IPC.media.rename, ([id], scope) => aPlaylistsMedia(scope, id)],
-  // From a Link… (YouTube and Dropbox), into the open playlist; a Dropbox folder too (index.ts adds its files there).
+  // From a Link… (YouTube and Dropbox), whole since Session 56 (the owner's words of 11 Nov 2026: "Import from a Link,
+  // whole"): Pro Mode's dialog, into the playlist chosen (or a new one), a Dropbox folder a playlist of its own. The
+  // link service keeps its own limits (a quality it offers, nothing changed while a download goes, only what it saved
+  // shown); the playlist a download went into is a playlist, never a template or a folder.
   [IPC.links.look, anything],
   [IPC.links.download, anything],
   [IPC.links.stop, anything],
   [IPC.links.reset, anything],
   [IPC.links.addWaiting, anything],
   [IPC.links.setPlaylist, ([playlistId], scope) => aPlaylist(scope, playlistId)],
+  // Its settings and its way to the files (Pro Mode's until Session 56): the highest video quality, the folder to save
+  // in (the system's dialog), and Show in Finder (Explorer) of what a download saved.
+  [IPC.links.setMaxHeight, anything],
+  [IPC.links.pickFolder, anything],
+  [IPC.links.showSaved, anything],
   // The wallpapers (Part 6): added (Import…, or pictures dropped), chosen, renamed, deleted and put back (Undo), and
   // pictures dropped on one to go round. They belong to no playlist: nothing bounds them but what they are.
   [IPC.wallpapers.add, anything],
@@ -457,6 +463,8 @@ export function simpleModeRefusals(
   // These answer in shapes of their own: no files picked, and the sound output as it is.
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.wallpapers.pickFiles, () => []);
+  // Nothing made from what was dropped, saying why.
+  answers.set(IPC.playlists.createSmartFrom, () => ({ made: [], files: [], problems: [words()] }));
   answers.set(IPC.audio.setOutput, sound);
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));

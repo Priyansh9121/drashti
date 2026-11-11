@@ -4,6 +4,7 @@ import { allChannels, IPC } from '../shared/ipc';
 import { initialEngineState } from '../shared/engine/state';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../shared/mode';
 import type { InvokeChannel } from '../shared/ipc';
+import { OP_CHANNEL } from './network/network-service';
 import {
   SIMPLE_MODE_BOUNDED,
   SIMPLE_MODE_LOCKED,
@@ -271,6 +272,10 @@ describe('Simple Mode locks', () => {
       IPC.links.reset,
       IPC.links.addWaiting,
       IPC.links.setPlaylist,
+      // From a Link…, whole (Session 56): the highest video quality, the folder to save in, Show in Finder/Explorer.
+      IPC.links.setMaxHeight,
+      IPC.links.pickFolder,
+      IPC.links.showSaved,
       // A slide's row dragged within its deck or out of it (Part 4b), and its Undo.
       IPC.playlists.setItemOrder,
       IPC.playlists.splitItem,
@@ -290,16 +295,14 @@ describe('Simple Mode locks', () => {
     // Nothing is both.
     for (const channel of SIMPLE_MODE_BOUNDED.keys())
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
-    // A header's name, Duplicate, a video's When it ends, a wallpaper's seconds and fade, the highest quality and the
-    // folder for downloads, a file's points and looks, and deleting a file from the library stay Pro Mode's.
+    // A header's name, Duplicate, a video's When it ends, a wallpaper's seconds and fade, a file's points and looks,
+    // and deleting a file from the library stay Pro Mode's.
     for (const channel of [
       IPC.playlists.duplicate,
       IPC.playlists.renameHeader,
       IPC.playlists.fillPlaceholder,
       IPC.playlists.setWhenEnds,
       IPC.wallpapers.setTiming,
-      IPC.links.setMaxHeight,
-      IPC.links.pickFolder,
       IPC.media.remove,
       IPC.media.restore,
       IPC.media.setMarkers,
@@ -396,6 +399,13 @@ describe('Simple Mode locks', () => {
     expect(within(IPC.playlists.restore)).toBe(false);
     // Smart Playlist from a Folder…: the folder chosen in the system's dialog.
     expect(within(IPC.playlists.createSmart)).toBe(true);
+    // A folder dropped (the owner's item 5): a smart playlist at once; the main process looks at what was dropped.
+    expect(within(IPC.playlists.createSmartFrom, ['/placeholder/Week 1'])).toBe(true);
+    expect(answers.get(IPC.playlists.createSmartFrom)?.()).toEqual({
+      made: [],
+      files: [],
+      problems: [SIMPLE_MODE_REFUSAL],
+    });
   });
 
   it('fails closed (Session 56): a phone or Companion, asking with none of the arguments, is refused each of them whole', () => {
@@ -411,6 +421,7 @@ describe('Simple Mode locks', () => {
       expect(simpleModeRefusesWhole(channel), channel).toBe(true);
       expect(answers.get(channel)?.(), channel).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     }
+    expect(simpleModeRefusesWhole(IPC.playlists.createSmartFrom)).toBe(true);
   });
 
   it('what is Pro Mode’s stays as strict as before (Session 56): templates and slots, sharing with phones, Repeat Slides and its settings, Duplicate, a row’s timers and a header’s name, the missing taken out of a smart playlist', () => {
@@ -454,6 +465,33 @@ describe('Simple Mode locks', () => {
       IPC.links.addWaiting,
     ])
       expect(within(channel, ['/placeholder/x.txt']), channel).toBe(true);
+  });
+
+  it('From a Link…, whole (Session 56, the owner’s item 11): the highest video quality, the folder to save in and Show in Finder/Explorer from the window; never from a phone or Companion', () => {
+    // The window's own requests, as Pro Mode's dialog sends them (the link service says no to a quality it does not
+    // offer, or to any change while a download goes, in its own words).
+    expect(within(IPC.links.setMaxHeight, 2160)).toBe(true);
+    expect(within(IPC.links.pickFolder)).toBe(true);
+    expect(within(IPC.links.showSaved, null)).toBe(true);
+    expect(within(IPC.links.showSaved, 'placeholder-run')).toBe(true);
+    const link = [
+      IPC.links.look,
+      IPC.links.download,
+      IPC.links.stop,
+      IPC.links.reset,
+      IPC.links.addWaiting,
+      IPC.links.setPlaylist,
+      IPC.links.setMaxHeight,
+      IPC.links.pickFolder,
+      IPC.links.showSaved,
+    ];
+    for (const channel of link) {
+      // Asked with none of the window's arguments (as the network asks for a phone or Companion): refused whole.
+      expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+      expect(answers.get(channel)?.(), channel).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+      // And no request a phone or Companion makes is one of them, in either mode.
+      expect(Object.values(OP_CHANNEL), channel).not.toContain(channel);
+    }
   });
 
   it('the quick bar (Session 55, Part 8) is Pro Mode’s: its pins are read in either mode, never changed in Simple Mode', () => {
