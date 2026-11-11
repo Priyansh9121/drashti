@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,6 +44,18 @@ const ffmpeg = testFfmpeg();
 test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
 const real = process.env['DRASHTI_IMPORT_TIMING_REAL'] === '1';
 const realApp = process.env['DRASHTI_IMPORT_TIMING_APP'] === 'keynote' ? 'keynote' : 'powerpoint';
+
+/** Whether an app of this name is running for this user (a Mac). */
+const running = (name: string) =>
+  spawnSync('pgrep', ['-x', '-U', String(process.getuid?.() ?? 0), name]).status === 0;
+
+// This computer's own apps only when neither is open: the check never works beside anyone's documents.
+test.beforeAll(() => {
+  if (real && (running('Microsoft PowerPoint') || running('Keynote')))
+    throw new Error(
+      'Quit PowerPoint and Keynote first: the timing check never works beside anyone’s documents.',
+    );
+});
 
 interface Placeholder {
   name: string;
