@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { swings } from '../../src/shared/flash';
-import { OPENING_DEFAULT_PHOTO_URL } from '../../src/shared/opening';
+import { OPENING_DEFAULT_PHOTO_URL, OPENING_MS, OPENING_SOUND_VOLUME } from '../../src/shared/opening';
 import { RECOVERY_MAX_AGE_MS } from '../../src/shared/recovery';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
@@ -42,10 +42,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  */
 
 const ASK = { DRASHTI_TEST_OPENING: '1' } as const;
-/** The whole opening (shared/opening.ts, OPENING_MS). */
-const TWO_SECONDS = 2000;
-/** The most its sound plays at (shared/opening.ts, OPENING_SOUND_VOLUME). */
-const GENTLY = 0.25;
+/** The whole opening: two seconds. */
+const TWO_SECONDS = OPENING_MS;
+/** The most its sound plays at. */
+const GENTLY = OPENING_SOUND_VOLUME;
 /** makeTestTone's placeholder tone at full gain, as the meter reads it (dBFS): about -24. */
 const TONE_DB = 20 * Math.log10(3000 / 32768 / Math.SQRT2);
 /** That tone played gently (about -36 dBFS). */
@@ -79,10 +79,7 @@ async function pictures(
 /** The opening's photo, from Media (null: Drashti's default photo). */
 async function choose(win: Page, photo: string | null): Promise<void> {
   const result = await win.evaluate(
-    (choice) =>
-      (globalThis as PageGlobals).drashti.opening.setChoice(
-        choice as unknown as Parameters<PageGlobals['drashti']['opening']['setChoice']>[0],
-      ),
+    (choice) => (globalThis as PageGlobals).drashti.opening.setChoice(choice),
     { photo },
   );
   expect(result.ok).toBe(true);
@@ -148,7 +145,6 @@ test('plays as Drashti starts, over the operator window only, once the hall’s 
   const { app } = await relaunchApp(userData, { ...ASK, DRASHTI_TEST_SKIP_WARM_UP: '1' });
   const win = await operatorPage(app);
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
-  const shownAt = Date.now();
   const player = win.getByTestId('opening');
   await expect(player).toHaveAttribute('data-opening-motion', 'full');
   await expect(player).toHaveAttribute('data-photos', '1');
@@ -169,15 +165,15 @@ test('plays as Drashti starts, over the operator window only, once the hall’s 
   await expect(output.getByTestId('opening-start')).toHaveCount(0);
   // Gone by itself once its two seconds are.
   await expect(opening(win)).toHaveCount(0, { timeout: 10_000 });
-  expect(Date.now() - shownAt).toBeGreaterThanOrEqual(TWO_SECONDS - 300);
   await expect.poll(() => openingLog(userData).join(' | ')).toContain('Opening: ended by itself after');
   const log = openingLog(userData);
   // The first start (a test not asking) said why it did not play; this one, that it did.
   expect(log).toContain('Opening: not played (in a test that does not ask for it)');
   expect(log).toContain('Opening: plays (its photo)');
+  // Two seconds from when it was asked for, and the time it waited for its photo: never the five it was.
   const after = Number(/after (\d+) ms/u.exec(log.at(-1) ?? '')?.[1]);
   expect(after).toBeGreaterThanOrEqual(TWO_SECONDS);
-  expect(after).toBeLessThan(4500);
+  expect(after).toBeLessThan(5000);
   expect(log.join(' ')).not.toContain('placeholder');
   await app.close();
 });
@@ -704,6 +700,9 @@ test('File › Opening… at 1024 × 645 and 1280 × 720: a photo from Media, a 
   await again.app.close();
 });
 
+/** Each pack's photos a colour of their own, so no two packs' photos are the same file (an import would see one). */
+let packs = 0;
+
 /** An opening pack of its own: `photos` numbered photos, words.txt with `lines` lines if asked, and files at its top. */
 async function packOf(
   win: Page,
@@ -711,8 +710,13 @@ async function packOf(
 ): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), 'drashti-opening-pack-'));
   mkdirSync(join(root, 'photos'));
+  const shade = 40 + 15 * (packs++ % 12);
   for (const n of o.photos)
-    await drawPicture(win, join(root, 'photos', `${String(n)}.png`), plain(`${String(20 * n)},60,120`));
+    await drawPicture(
+      win,
+      join(root, 'photos', `${String(n)}.png`),
+      plain(`${String(20 * n)},${String(shade)},120`),
+    );
   if (o.lines !== undefined)
     writeFileSync(
       join(root, 'words.txt'),

@@ -266,8 +266,8 @@ export const IPC = {
     open: 'drop:open',
   },
   /**
-   * The opening (Session 55, shared/opening.ts): five seconds as Drashti starts, in the operator window only; its
-   * photos and lines chosen in File › Opening… (Pro Mode).
+   * The opening (Session 55, shared/opening.ts; alpha.16: two seconds, one photo, the pack's own sound): as Drashti
+   * starts, in the operator window only; its photo chosen in File › Opening… (Pro Mode).
    */
   opening: {
     /** The operator window, as it opens: what to play, or null (main decides: once, and only at the start). */
@@ -276,10 +276,12 @@ export const IPC = {
     ended: 'opening:ended',
     view: 'opening:view',
     setOn: 'opening:set-on',
-    /** The photos (from Media) and the lines, in order. */
+    /** The photo (from Media), or none: Drashti's default photo. */
     setChoice: 'opening:set-choice',
-    /** Load the opening pack…: a folder chosen, its photos into Media and they and its lines made the opening's. */
+    /** Load the opening pack…: a folder chosen, its photo 1 into Media and it and its sound made the opening's. */
     loadPack: 'opening:load-pack',
+    /** The pack's sound taken out (alpha.16). */
+    removeSound: 'opening:remove-sound',
     /** A photo's copy at the operator window's size, drawn by the window (as a still is). */
     saveCopy: 'opening:save-copy',
     /** main -> operator: a key ended it (main keeps that key from the page and the menu). */
@@ -1208,6 +1210,7 @@ export interface InvokeContract {
   [IPC.opening.setOn]: { args: [on: boolean]; result: OpeningResult };
   [IPC.opening.setChoice]: { args: [choice: OpeningChoice]; result: OpeningResult };
   [IPC.opening.loadPack]: { args: []; result: OpeningResult | null };
+  [IPC.opening.removeSound]: { args: []; result: OpeningResult };
   [IPC.opening.saveCopy]: {
     args: [mediaId: string, bytes: Uint8Array];
     result: { ok: true } | { ok: false; message: string };

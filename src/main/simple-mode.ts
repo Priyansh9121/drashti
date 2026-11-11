@@ -278,6 +278,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.opening.setChoice,
   IPC.opening.loadPack,
   IPC.opening.saveCopy,
+  IPC.opening.removeSound,
 ];
 
 /** What an id names among the playlists (Session 56), as the lock reads it: a template is Pro Mode's. */

@@ -54,9 +54,9 @@ afterEach(() => {
 /** What plays with nothing chosen: the default photo alone. */
 const DEFAULT_PHOTO = { photo: OPENING_DEFAULT_PHOTO_URL, defaultPhoto: true };
 
-/** A sound kept, its copy in the media folder (unless `copy` is false). */
-function keptSound(copy = true) {
-  const bytes = wav();
+/** A sound kept (a tone of its own), its copy in the media folder (unless `copy` is false). */
+function keptSound(copy = true, hz = 440) {
+  const bytes = wav(hz);
   const sound = { sha256: shaOf(bytes), kind: 'wav' as const, name: 'sound.wav' };
   if (copy) {
     mkdirSync(join(dir, 'opening'), { recursive: true });
@@ -222,7 +222,7 @@ describe('File › Opening…', () => {
     expect(service().opening.view()).toEqual({ on: true, photo: null, sound: null, defaultPhoto: true });
     expect(service({ defaultPhoto: false }).opening.view()).toMatchObject({ defaultPhoto: false });
     // A sound whose copy is gone is not loaded.
-    expect(service({ kept: { photo: 'photo-2', sound: keptSound(false) } }).opening.view()).toMatchObject({
+    expect(service({ kept: { photo: 'photo-2', sound: keptSound(false, 550) } }).opening.view()).toMatchObject({
       sound: null,
     });
   });

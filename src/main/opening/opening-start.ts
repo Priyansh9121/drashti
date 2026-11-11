@@ -48,7 +48,7 @@ export interface OpeningStartFacts {
 
 export type OpeningStart = { play: true } | { play: false; why: string };
 
-/** Whether it plays, or why not (for the log: never the words or the photos). */
+/** Whether it plays, or why not (for the log: never the name of its photo or its sound). */
 export function openingAtStart(f: OpeningStartFacts): OpeningStart {
   const not = (why: string): OpeningStart => ({ play: false, why });
   if (f.node) return not('on a node');
