@@ -49,7 +49,14 @@ test('Record sound off air saves generated audio and adds a draft only when capt
 
     await win.evaluate(() => (globalThis as PageGlobals).drashti.captions.setOn(true));
     await recordSound();
-    await expect.poll(() => soundFiles('.draft.vtt')).toHaveLength(1);
+    // The draft keeps only the words heard after the recording began, so a first phrase heard across its start comes
+    // in cut ("tone"); the stand-in hears the whole phrase again every 1.5 s (Session 56: a slow Windows VM stopped on
+    // the cut one). Stop once a whole phrase is in.
+    const draftText = async () => {
+      const [file] = await soundFiles('.draft.vtt');
+      return file ? readFile(join(folder, file), 'utf8') : '';
+    };
+    await expect.poll(draftText).toMatch(/\d:\d\d\.\d\d\d --> .*\nTest tone/u);
     await stopSound();
     const [draft] = await soundFiles('.draft.vtt');
     expect(await soundFiles('.wav')).toContain(draft?.replace(/\.draft\.vtt$/u, '.wav'));
