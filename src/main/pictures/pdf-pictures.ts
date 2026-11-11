@@ -58,6 +58,13 @@ export interface PdfPicturesDeps {
   /** Folders pdf.js's own data may be read from, by kind (the built app's, then node_modules'). */
   assetDirs(kind: PictureAssetKind): string[];
   log(message: string): void;
+  /**
+   * Whether a document's pages may be drawn several at once now (Session 56): only while nothing is up on the screens
+   * and the stream is neither on air nor recording. Left out: one at a time, always.
+   */
+  wide?: () => boolean;
+  /** How many windows draw at once when they may (tests; else by the computer's processors). */
+  atOnce?: number;
 }
 
 interface Drawing {
