@@ -2,6 +2,27 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.16
+
+Update after a sabha, and update Main and nodes together. Simple Mode now has Pro Mode's playlists, Audio, Trim, Edit slides, From a Link and Record. Live captions stay off and marked Trial, and the five AI helpers are gone.
+
+- LIVE shows one thing at a time. Putting up a video, a slide or a picture takes Black-out and the Wallpaper off. Either cover takes a playing video off; a slide or picture stays under it and comes back as it was. Music plays on.
+- Drag LIVE's time bar as in any video player, in both modes: every screen follows and plays on from where you let go. Simple Mode's bar has Pause beside Play.
+- Double-click Simple Mode to switch to it, and double-click Pro Mode to switch back; one click only says so. With Simple-only access Drashti stays in Simple Mode.
+- Notices are small and see-through in the bottom-right corner and never cover a button.
+- Simple Mode has Pro Mode's playlists on the left: several, in folders, with smart playlists, each saying in a line what it is. Templates, sharing, Duplicate and Repeat Slides stay in Pro Mode.
+- A folder dragged onto Drashti becomes a smart playlist at once, with nothing asked. Deleting the open or last playlist closes it; Undo brings it back open.
+- Simple Mode has Record under the time bar and Pro Mode's Audio under it. Slide, Background and Audio sit beside Clear all, and the line of keys is gone: every button shows its key.
+- In Simple Mode a row's right-click menu has Trim (never a copy), Trim black and silence, Even loudness, When it ends, and Edit slides… for a presentation, PDF or deck.
+- Simple Mode's From a Link… is Pro Mode's whole: quality, Save in, which playlist, a Dropbox folder as a playlist of its own, Show in Finder and the import report. The permission tick is gone.
+- A PowerPoint or Keynote deck shows its slides at once. Slides with animations say Preparing until their clicks are ready, and Next waits for them. Only moving slides go through the movie, so a 30-slide deck took 21 s instead of 32 s on a Mac. PDF pages are drawn several at once while nothing is live.
+- On a Mac, Drashti no longer looks in PowerPoint's folder at every start, so macOS no longer asks about another app's data.
+- The opening is two seconds: one photo, no words. An opening pack may hold the mandir's own sound (sound.mp3, .m4a or .wav), played gently on this computer only. File > Opening… shows it and takes it out.
+- Live captions hear Gujarati, Hindi, Sanskrit or English. Choose one, or "as heard", which leaves out other languages. Sanskrit shows in Gujarati letters.
+- The five AI helpers from alpha.15 are removed. Find passages by typing in the library's Books tab. Saved playlists and loaded Books still work.
+- Record sound saves the chosen sound input as a WAV file (16 kHz mono, speech quality); with captions on, a timed draft goes beside it. Record video saves the stream's picture and sound, even off air. Choose the folder in Pro Mode.
+- Windows copies include the libraries the captions engine needs.
+
 ## 1.0.0-alpha.15 (5 Nov 2026)
 
 Update after a sabha, and update Main and nodes together. Live captions and all five offline AI helpers start off. Each is a Trial and can slow the screens while on. The AI helpers are Pro only: try only what you want in a rehearsal before a sabha.
