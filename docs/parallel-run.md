@@ -184,7 +184,7 @@ Simple Mode is the same window with only what a sabha with one projector needs, 
 4. **Add files…** and **From a Link…** above the playlist, or files dropped on it, bring sounds, videos, pictures, PDFs and PowerPoint or Keynote decks into this playlist; anything else is left out, saying why. Drag a row to move it, or right-click it for **Rename…** and **Remove from playlist**; **Undo** puts each back.
 5. **Black-out** (B or .) and the **Wallpaper** (F12) cover the picture, and pressing them again brings back exactly what was there. The stage screens keep showing the words.
 6. **Clear all** (F1) takes everything down; straight after it, **Put it back** (or Cmd+Z, Ctrl+Z on Windows) brings it all back. **F9** (Oops) puts back what was up before the last change.
-7. Nothing in Simple Mode can change the screens, the sound, the stream or backups, or anything but its one playlist and the wallpapers; its time bars show what plays without moving it. It can turn **Audience** or **Stage** back on (**Turn on** in its status bar), never off. If Drashti stops unexpectedly and is started again within 3 hours, it comes back in Simple Mode, on the same playlist. After Drashti is quit on purpose (or started 3 hours or more after a stop) it starts in Pro Mode.
+7. Nothing in Simple Mode can change the screens, the sound, the stream or backups, or anything but its one playlist and the wallpapers; its time bars move what plays, pause it and play it on, as in Pro Mode (since alpha.16). It can turn **Audience** or **Stage** back on (**Turn on** in its status bar), never off. If Drashti stops unexpectedly and is started again within 3 hours, it comes back in Simple Mode, on the same playlist. After Drashti is quit on purpose (or started 3 hours or more after a stop) it starts in Pro Mode.
 8. To leave it: double-click **Pro Mode** at the top right (one click says so; with the keyboard, Enter twice), or choose **View**, then **Switch to Pro Mode**. Nothing is typed. A computer whose access is Simple Mode only shows **Simple Mode only on this computer** there instead, with no way to Pro Mode (**Access by Gmail**, below).
 
 ![Simple Mode with a slide's video and the music playing: their bars and the time left under the live picture](screenshots/simple-mode-time-bar.png)
@@ -452,7 +452,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 
 In **Start, end and markers** (a video's timeline): **I** and **O** set the start and the end at the play head, and the arrow keys move a handle (with **Shift**, a second at a time).
 
-On a **time bar** (under **Next** and **Back**, in Pro Mode): the arrow keys move what plays 5 seconds, **Page Up** and **Page Down** 30, and **Home** and **End** go to its start and end points.
+On a **time bar** (under **Next** and **Back**, in Pro Mode and Simple Mode): the arrow keys move what plays 5 seconds, **Page Up** and **Page Down** 30, and **Home** and **End** go to its start and end points.
 
 **Preparing a presentation in alpha.14.** In Pro Mode, Edit slides… opens its own window with **Words**, **Insert**, **Arrange**, **Design**, **Motion** and **Slides**, while the show controls remain in the operator window. Words handles bundled fonts, lists/effects and Find/Replace; Insert adds text, editable shapes/icons, grouped table cells, slide-only cropped pictures, video/sound cues and timers. Arrange gives group-aware align/distribute, front/back, turn/flip and snapping, with saved guides and editor-only rulers/grid.
 
