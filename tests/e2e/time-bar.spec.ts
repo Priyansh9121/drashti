@@ -58,7 +58,7 @@ import {
  * bar (B2). Generated media only, quiet, on displays no wider than 1024; codes and tokens made at run time.
  */
 
-test('the background video: a click on its bar moves it in step on two screens and the audio player; a drag shows the time under the finger and moves once, on release; Pause holds every copy where it is and Play plays them on', async () => {
+test('the background video: a click on its bar moves it in step on two screens and the audio player; a drag moves it like an ordinary player, every copy following the finger, paused, and playing on from where it is let go; Pause holds every copy where it is and Play plays them on', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
@@ -118,13 +118,11 @@ test('the background video: a click on its bar moves it in step on two screens a
     .toBeLessThan(durationMs * 0.03);
   await inStep(copies, () => backgroundTiming(win), 'clicked three quarters along');
 
-  // A drag: the time under the finger shows, nothing moves until it is let go, then it moves there, once.
+  // A drag, as an ordinary player (Session 56, the owner's words: "Drag LIVE's time bar ... like an ordinary player";
+  // until then nothing moved until it was let go, once): the time under the finger shows, and every copy follows the
+  // finger, waiting there paused (the sound silent); let go, it plays on from there, and nothing moves it after.
   const box = await bar.boundingBox();
   if (!box) throw new Error('the bar is not drawn');
-  const before = await win.evaluate(
-    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,
-  );
-  const seekBefore = (await backgroundTiming(win)).seek;
   await win.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
   await win.mouse.down();
   await win.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2, { steps: 6 });
@@ -134,15 +132,22 @@ test('the background video: a click on its bar moves it in step on two screens a
   await expect(under).toHaveText(/^\d+:\d\d$/);
   const held = Number(await bar.getAttribute('data-held'));
   expect(Math.abs(held - durationMs * 0.3)).toBeLessThan(durationMs * 0.03);
-  expect((await backgroundTiming(win)).seek).toEqual(seekBefore);
+  await expect
+    .poll(async () => (await backgroundTiming(win)).seek)
+    .toMatchObject({ toMs: held, paused: true });
+  await heldAt(copies, held / 1000, 'held where the finger is, while dragging');
   await win.mouse.up();
   await expect(under).toHaveCount(0);
-  await expect.poll(async () => (await backgroundTiming(win)).seek?.toMs).toBe(held);
-  await letTimePass(win, 500, 'nothing else moves it');
+  await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
+  expect((await backgroundTiming(win)).seek?.toMs).toBe(held);
+  const before = await win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,
+  );
+  await letTimePass(win, 500, 'nothing else moves it once let go');
   const after = await win.evaluate(
     async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).rev,
   );
-  expect(after - before, 'one move for the whole drag').toBe(1);
+  expect(after, 'no move after the drag was let go').toBe(before);
   await inStep(copies, () => backgroundTiming(win), 'dragged to three tenths along');
 
   // Pause: every copy held where the engine's pause put it; the row says so, and offers Play.
@@ -322,7 +327,7 @@ test('a single sound and an audio playlist’s track: moved in step in the audio
   await app.close();
 });
 
-test('Simple Mode shows the bar and its time left and moves nothing (no move, no skip, no Pause but the music’s; Play always); the bars fit 1024 × 645 in both modes', async () => {
+test('Simple Mode’s bar moves, pauses and plays what plays as Pro Mode’s (no skip), with its time left; the bars fit 1024 × 645 in both modes', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -367,52 +372,55 @@ test('Simple Mode shows the bar and its time left and moves nothing (no move, no
   await expect(row(win, 'audio').getByRole('slider')).toBeVisible({ timeout: 15_000 });
   await fits('Pro Mode', win.getByTestId('show-next'));
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Pro Mode');
-  // The sound paused in Pro Mode: Simple Mode can play it on (its bar shows Play while something is paused, the owner's
-  // answer to question 14), never pause it again.
+  // The sound paused in Pro Mode: Simple Mode plays it on.
   await row(win, 'audio').getByRole('button', { name: 'Pause' }).click();
   await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
-  // Simple Mode: the bar and its time left, no elapsed time, never Pause, nothing to move; Play only on what is paused
-  // (Session 55, question 14).
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  // Simple Mode: the bar and its time left (no elapsed time), moved as Pro Mode's, with Pause and Play (Session 56, the
+  // owner's words: drag LIVE's time bar in both modes, and Pause under LIVE in Simple Mode; until then it showed the
+  // bar, moved nothing and had Play only on what was paused).
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const bg = row(win, 'background');
-  const shows = bg.getByRole('progressbar', { name: 'Time of the background video', exact: true });
-  await expect(shows).toBeVisible();
-  await expect(bg.getByRole('slider')).toHaveCount(0);
+  const moves = bg.getByRole('slider', { name: 'Time of the background video', exact: true });
+  await expect(moves).toBeVisible();
+  await expect(bg.getByRole('progressbar')).toHaveCount(0);
   await expect(bg.getByTestId('time-bar-left')).toHaveText(/^-\d+:\d\d$/);
   await expect(bg.getByTestId('time-bar-elapsed')).toHaveCount(0);
-  await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
-  await expect(bg.getByTestId('time-bar-play')).toHaveCount(0);
+  await expect(bg.getByTestId('time-bar-pause')).toBeEnabled();
   await expect(row(win, 'audio').getByTestId('time-bar-play')).toBeVisible();
   // Pro Mode's layout since Session 55 (Part 18): the bars under Next and Back there too, the bar of clears in view.
   await fits('Simple Mode', win.getByTestId('simple-mode').getByTestId('show-next'));
   await expect(win.getByTestId('simple-buttons')).toBeInViewport({ ratio: 1 });
-  const seek = (await backgroundTiming(win)).seek;
-  await clickAlong(win, shows, 0.8);
-  await letTimePass(win, 500, 'a click on Simple Mode’s bar moves nothing');
-  expect((await backgroundTiming(win)).seek).toEqual(seek);
-  // The engine refuses a move in Simple Mode, from the window, a phone or the API alike, and so Back 15 s and the
-  // rest, and the bar's Pause; never Play, so nothing paused stays so (Session 54's review).
+  const length = (await snapshot(win)).layers.background;
+  const durationMs = length?.kind === 'media' ? (length.durationMs ?? 0) : 0;
+  await clickAlong(win, moves, 0.8);
+  await expect
+    .poll(async () => Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - durationMs * 0.8))
+    .toBeLessThan(durationMs * 0.05);
+  // The engine moves and pauses in Simple Mode, from the window and the API alike, and never refuses Play; Back 15 s
+  // and the rest stay Pro Mode's.
   for (const command of [
     { type: 'moveTo', playing: { layer: 'background' }, toMs: 1000 },
-    { type: 'skip', layer: 'background', jump: 'back' },
     { type: 'pausePlaying', playing: { layer: 'background' } },
   ])
-    expect(await dispatch(win, command), JSON.stringify(command)).toMatchObject({
-      ok: false,
-      error: 'forbidden',
-    });
-  expect((await backgroundTiming(win)).seek).toEqual(seek);
-  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
-  expect(await dispatch(win, { type: 'resumePlaying', playing: { layer: 'audio' } })).toMatchObject({
-    ok: true,
+    expect(await dispatch(win, command), JSON.stringify(command)).toMatchObject({ ok: true });
+  expect(await dispatch(win, { type: 'skip', layer: 'background', jump: 'back' })).toMatchObject({
+    ok: false,
+    error: 'forbidden',
   });
+  await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
+  expect(Math.abs(((await backgroundTiming(win)).seek?.toMs ?? 0) - 1000)).toBeLessThan(500);
+  await expect(bg.getByTestId('time-bar-paused')).toBeVisible();
+  await bg.getByTestId('time-bar-play').click();
+  await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBeUndefined();
+  await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
+  await row(win, 'audio').getByTestId('time-bar-play').click();
   await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBeUndefined();
   await expect(row(win, 'audio').getByTestId('time-bar-paused')).toHaveCount(0);
-  // Playing again: no Play, and never Pause.
+  // Both playing: Pause on each row, no Play.
   await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
-  await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
+  await expect(win.getByTestId('time-bar-pause')).toHaveCount(2);
   await expectNoSeriousA11yIssues(win, 'the time bars at 1024 × 645, Simple Mode');
   await app.close();
 });
@@ -505,7 +513,10 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       // The bar is read-only and Pause is disabled; a paired script asking anyway still gets a refusal in words.
       await row.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(async () => (await backgroundTiming(win)).seek?.paused).toBe(true);
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       await expect(p.getByTestId('remote-simple')).toContainText('Simple Mode on Drashti’s computer');
       const simpleBar = row.getByRole('progressbar', { name: 'Time of the background video', exact: true });
@@ -520,11 +531,12 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
         token: script,
         body: { playing: { layer: 'background' }, toMs: Math.round(durationMs * 0.9) },
       });
+      // In the phone's own words since Session 56: Simple Mode's window moves and pauses what plays, a phone does not.
       expect(refusedMove.status).toBe(403);
       expect(refusedMove.json).toMatchObject({
         ok: false,
         error: 'forbidden',
-        message: expect.stringContaining('Simple Mode is on'),
+        message: expect.stringContaining('Simple Mode on Drashti’s computer'),
       });
       expect((await backgroundTiming(win)).seek).toEqual(seek);
       await row.getByRole('button', { name: 'Play' }).click();
@@ -541,7 +553,7 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       expect(refusedPause.json).toMatchObject({
         ok: false,
         error: 'forbidden',
-        message: expect.stringContaining('Simple Mode is on'),
+        message: expect.stringContaining('Simple Mode on Drashti’s computer'),
       });
       expect((await backgroundTiming(win)).seek).toEqual(playedOn);
       await inStep(

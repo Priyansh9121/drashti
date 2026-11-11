@@ -391,7 +391,7 @@ test('the worst fit: the background (two hours long, paused), two slide videos, 
 
   // Simple Mode: the same five, each whole under its Next and Back (Pro Mode's layout since Session 55, Part 18), its
   // bar of clears in view.
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(rows(win)).toHaveCount(5);
   await rowsFit(win, rows(win), 1024, 'Simple Mode');
@@ -439,9 +439,9 @@ test('in Simple Mode, a phone’s Pause of a sound is dimmed (Part 9: refused in
     await phoneRow.getByRole('button', { name: 'Pause' }).click();
     await expect.poll(async () => (await soundTiming(win)).seek?.paused).toBe(true);
 
-    // Simple Mode: its window shows the bar, paused, with its Play (Session 54's question 14: Play while paused, Pause
-    // still refused); the phone's Play plays it on.
-    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+    // Simple Mode: its window shows the bar, paused, with its Play (Session 54's question 14: Play while paused; its
+    // Pause, while it plays, Simple Mode's own since Session 56); the phone's Play plays it on.
+    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     await expect(row(win, 'audio').getByTestId('time-bar-paused')).toBeVisible();
     await expect(win.getByTestId('time-bar-play')).toHaveCount(1);
@@ -480,7 +480,7 @@ test('in Simple Mode, a phone’s Pause of a sound is dimmed (Part 9: refused in
     await p.getByTestId('remote-item').filter({ hasText: 'Placeholder second tone' }).click();
     await expect.poll(async () => (await snapshot(win)).layers.audio?.mediaId).toBe(second);
     await p.getByTestId('remote-tab-show').click();
-    // Its Pause dimmed (Simple Mode's bar has Play only, while paused), and it plays on.
+    // Its Pause dimmed (a phone in Simple Mode has Play only: main/simple-mode-phones.ts), and it plays on.
     await expect(phoneRow.getByRole('button', { name: 'Pause' })).toBeDisabled({ timeout: 15_000 });
     const playing = (await soundTiming(win)).seek;
     expect((await soundTiming(win)).seek).toEqual(playing);

@@ -82,7 +82,7 @@ for (const id of ['dhaja', 'tiranga']) {
     expect(await style(win.locator(PANEL_HEADING).first(), 'color')).toBe(rgb(d.heading));
 
     await expectNoSeriousA11yIssues(win, `${id}: Pro Mode in a show`);
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     expect(await style(win.getByTestId('simple-mode').locator('header').first(), 'background-color')).toBe(
       rgb(d.header),

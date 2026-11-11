@@ -3084,8 +3084,8 @@ function start(): void {
   let drainSourceEdits: () => Promise<void> = () => Promise.resolve();
   let cancelPdfCopies: () => void = () => undefined;
   let drainPdfCopies: () => Promise<void> = () => Promise.resolve();
-  // Simple Mode's one playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple
-  // Mode, or a new one when there was none (simple-playlist.ts); Simple Mode changes that one only.
+  // Simple Mode's playlist (Session 55, Part 18): the playlist open in Pro Mode when Drashti switched to Simple Mode, or
+  // a new one when there was none; since Session 56 whichever its window opens after that (simple-playlist.ts).
   const simplePlaylist = new SimplePlaylist({
     saved: settings.get('simplePlaylist'),
     save: (id) => {
@@ -3116,7 +3116,7 @@ function start(): void {
     },
     changed: (next) => {
       mode = next;
-      // Its one playlist first, so the window opens it as it shows Simple Mode.
+      // Its playlist first, so the window opens it as it shows Simple Mode.
       if (next === 'simple') simplePlaylist.adopt();
       rebuildMenu();
       if (next === 'simple') {
@@ -3152,7 +3152,10 @@ function start(): void {
     }
   });
   simpleNow = () => mode === 'simple';
-  /** Simple Mode's one playlist and what it holds, read as each request comes (simple-mode.ts's bounds). */
+  /**
+   * Simple Mode's open playlist and what it holds, and (Session 56) every playlist and folder as the bounds read them,
+   * read as each request comes (simple-mode.ts's bounds).
+   */
   const simpleScope = (): SimpleScope => {
     const one = simplePlaylist.current();
     const rows = () => (one === null ? [] : playlists.itemsOf(one));
@@ -3162,6 +3165,9 @@ function start(): void {
       holdsMedia: (mediaId) => rows().some((i) => i.kind === 'media' && i.mediaId === mediaId),
       holdsPresentation: (presentationId) =>
         rows().some((i) => i.kind === 'presentation' && i.presentationId === presentationId),
+      kindOf: (id) => playlists.kindOf(id),
+      listsMedia: (mediaId) => playlists.listsMedia(mediaId),
+      listsPresentation: (presentationId) => playlists.listsPresentation(presentationId),
     };
   };
   /**
@@ -4417,7 +4423,8 @@ function start(): void {
       },
     },
     // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts); in Simple Mode (Session
-    // 55, Part 18) its files at the end of Simple Mode's one playlist, never a playlist of their own.
+    // 55, Part 18) its files at the end of Simple Mode's playlist (the one open there since Session 56), never a
+    // playlist of their own.
     folderPlaylist: ({ name, runId, files }) => {
       const one = mode === 'simple' ? simplePlaylist.current() : null;
       const made =
@@ -4849,7 +4856,7 @@ function start(): void {
     letIn: isLetIn,
     // A phone's Add photos (Session 55, Part 8): the playlist open in Pro Mode's window; none in Simple Mode.
     openPlaylist: () => (mode === 'pro' ? openInPro : null),
-    // Question 5 (3 Nov 2026): in Simple Mode a phone's pictures go to the end of its one playlist.
+    // Question 5 (3 Nov 2026): in Simple Mode a phone's pictures go to the end of its playlist (the open one, Session 56).
     simplePlaylist: () => (mode === 'simple' ? simplePlaylist.current() : null),
   });
   // The library's changes a phone makes as the window does (Session 54, the phone as a full Drashti): filled in
@@ -5735,8 +5742,13 @@ function start(): void {
       refresh: () => smartFolders.refresh(),
     },
     opened: (playlistId) => {
-      // Pro Mode's window says which it has open, or that it closed it: Simple Mode takes that one (Session 55).
-      if (mode === 'pro') simplePlaylist.opened(playlistId);
+      // The window says which it has open, or that it closed it: Simple Mode takes Pro Mode's as it comes (Session 55),
+      // and since Session 56 follows what its own window opens; a phone then opens that one (it reads the hall again),
+      // and its pictures go there.
+      if (simplePlaylist.opened(playlistId, mode)) {
+        network.uploadsChanged();
+        network.hint('mode');
+      }
       // A phone's Add photos go to it (Session 55, Part 8): the phones hear which.
       if (mode === 'pro' && playlistId !== openInPro) {
         openInPro = playlistId;

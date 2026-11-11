@@ -163,29 +163,38 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   const playing = (await state(win)).layers.background;
   expect(playing).toMatchObject({ kind: 'media', mediaId: show.videoMediaId });
 
-  // Black-out (the clicker's "." key) and back: exactly what was there, the stage carrying on. One
-  // spelling in every mode, and its state in words, said once (Session 25).
+  // Black-out (the clicker's "." key) and back, the stage carrying on: the video comes off as it goes on (Session 56,
+  // the owner's words: LIVE shows one thing at a time; until then it played on under it), and Oops (F9) puts it back,
+  // carrying on where it would be. One spelling in every mode, and its state in words, said once (Session 25).
   await win.keyboard.press('.');
   await expect(audience.getByTestId('blackout')).toBeVisible();
+  await expect(video).toHaveCount(0);
   // Its words, then its key (Session 51: Simple Mode's big buttons show their keys).
   await expect(win.getByTestId('simple-blackout')).toHaveAccessibleName(/^Black-out is on/u);
   await expect(win.getByTestId('simple-blackout')).not.toHaveAttribute('aria-pressed');
   await expect(stage.getByTestId('stage-view')).toContainText('AUDIENCE SCREENS BLACK');
   await win.keyboard.press('b');
   await expect(audience.getByTestId('blackout')).toHaveCount(0);
+  expect((await state(win)).layers.background).toBeNull();
+  await win.keyboard.press('F9');
+  await expect(video).toHaveCount(1);
   expect((await state(win)).layers.background).toEqual(playing);
 
-  // The Wallpaper (F12, the Logo's key as the operators press it: Session 55, Part 13) and back; L does nothing.
+  // The Wallpaper (F12, the Logo's key as the operators press it: Session 55, Part 13) and back, the same way; L does
+  // nothing.
   await win.keyboard.press('F12');
   await expect(audience.getByTestId('wallpaper')).toBeVisible();
+  await expect(video).toHaveCount(0);
   await expect(win.getByTestId('simple-wallpaper')).toHaveText(/Wallpaper is on/u);
   await expect(stage.getByTestId('stage-view')).toContainText('WALLPAPER ON THE AUDIENCE SCREENS');
   await win.keyboard.press('l');
   await expect(audience.getByTestId('wallpaper')).toBeVisible();
   await win.keyboard.press('F12');
   await expect(audience.getByTestId('wallpaper')).toHaveCount(0);
-  expect((await state(win)).layers.background).toEqual(playing);
+  expect((await state(win)).layers.background).toBeNull();
+  await win.keyboard.press('F9');
   await expect(video).toHaveCount(1);
+  expect((await state(win)).layers.background).toEqual(playing);
 
   // Clear all by mistake (F1), then put it right (Cmd/Ctrl+Z, or the big Put it back).
   await win.keyboard.press('F1');
@@ -251,7 +260,11 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
           return d.library.saveSlides(welcomeId, { ...opened.doc, loop: true }, opened.stamp, true);
         })(),
         transition: await d.library.setDefaultTransition({ kind: 'dissolve', durationMs: 500 }),
-        playlist: await d.playlists.create('Placeholder new', null, false),
+        // A playlist's Duplicate (Session 56: making, renaming and deleting one is Simple Mode's, as Pro Mode's left
+        // column offers them; a copy is Pro Mode's).
+        playlist: await d.playlists.duplicate(
+          (await d.playlists.tree()).find((n) => !n.isFolder)?.id ?? 'placeholder-none',
+        ),
         timer: await d.timers.create({
           name: 'x',
           kind: 'countup',
@@ -276,7 +289,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         // Session 25c: the highest video quality, an admin's setting (From a Link… itself is Simple Mode's since
         // Part 18, into its one playlist: simple-sabha.spec.ts, through a local stand-in).
         linkQuality: await d.links.setMaxHeight(2160),
-        // Another playlist's rows (Part 18: Simple Mode changes its one playlist only).
+        // Rows of what is no playlist (Session 56: a playlist's rows are Simple Mode's in any playlist, never a
+        // template's or a folder's).
         otherRows: await d.playlists.addItems('placeholder-other-playlist', null, [
           { kind: 'presentation', presentationId: welcomeId },
         ]),
@@ -338,7 +352,7 @@ test('leaving Simple Mode asks nothing (Session 55, Part 18): the View menu’s 
   const win = await operatorPage(app);
   await setUpPlaceholderShow(win);
   await openTheSabha(win);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'Simple Mode');
 
@@ -357,7 +371,7 @@ test('Simple Mode fits a 1280 x 720 operator display, its way out at the top, fa
   await win.setViewportSize({ width: 1280, height: 720 });
   await setUpPlaceholderShow(win);
   await openTheSabha(win);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('PageDown');
   await expect(win.getByTestId('live-text')).toContainText('slide 1 of 5');
@@ -413,7 +427,7 @@ test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode a
   const first = await launchApp();
   let win = await operatorPage(first.app);
   await operatorReady(win);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await first.app.close();
   let run = await relaunchApp(first.userData);
@@ -424,7 +438,7 @@ test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode a
 
   // Simple Mode, then a crash with nothing on the screens: back in Simple Mode. How the last run ended
   // decides, not whether anything was live.
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await thisRunSaved(first.userData);
   const crashedRun = sessionIn(first.userData, 'live-state.json');
@@ -454,7 +468,7 @@ test('Pro Mode on Simple Mode’s own screen, by keyboard alone: one press of En
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const leave = win.getByTestId('simple-leave');
 

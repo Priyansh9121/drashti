@@ -72,7 +72,7 @@ for (const a of BUILT_IN) {
     await gallery.close();
 
     // Simple Mode: the same mark and plain header.
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     const simple = win.getByTestId('simple-mode');
     await expect(simple).toBeVisible();
     await plainHeader(simple.locator('header').first(), 'Drashti', a);
@@ -227,7 +227,7 @@ for (const a of BUILT_IN)
     expect(await newWaysToDraw(gallery), 'the gallery’s dialog').toEqual([]);
     await gallery.close();
 
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
     await app.close();

@@ -157,7 +157,7 @@ test('Simple Mode shows the chosen appearance, with no switch, and refuses a cha
   await operatorReady(win);
   await chooseMenuItem(app, 'appearance-white');
   await expect(win.locator('html')).toHaveAttribute('data-appearance', 'white');
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect.poll(() => drawn(app, win)).toEqual(looksLike(WHITE, 'light'));
   const items = await app.evaluate(({ Menu }) =>
@@ -222,7 +222,7 @@ for (const id of BUILT_IN.map((a) => a.id)) {
     ).not.toBe('none');
     await win.emulateMedia({ forcedColors: 'none' });
     await win.keyboard.press('Escape');
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     await expectNoSeriousA11yIssues(win, `${id}: Simple Mode`);
     await app.close();

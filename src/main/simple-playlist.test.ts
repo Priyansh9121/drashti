@@ -36,8 +36,8 @@ describe('Simple Mode’s one playlist', () => {
         ['B', 2],
       ],
     });
-    p.opened('A');
-    p.opened('B');
+    p.opened('A', 'pro');
+    p.opened('B', 'pro');
     expect(p.adopt()).toBe('B');
     expect(p.current()).toBe('B');
     expect(saved).toEqual(['B']);
@@ -47,8 +47,8 @@ describe('Simple Mode’s one playlist', () => {
   it('is a new one when none was open (closed, or never opened), kept for the next time', () => {
     const { p, saved, made } = make({ playlists: [['A', 3]] });
     expect(p.adopt()).toBe('new-1');
-    p.opened('A');
-    p.opened(null);
+    p.opened('A', 'pro');
+    p.opened(null, 'pro');
     // An empty one Drashti made for Simple Mode is still as good as new: never a second empty one.
     expect(p.adopt()).toBe('new-1');
     expect(made).toEqual(['new-1']);
@@ -65,22 +65,56 @@ describe('Simple Mode’s one playlist', () => {
 
   it('never a playlist since deleted, a folder or a template (none is usable): a new one instead', () => {
     const { p, made } = make({ playlists: [['A', 1]] });
-    p.opened('gone');
+    p.opened('gone', 'pro');
     expect(p.adopt()).toBe('new-1');
     expect(made).toEqual(['new-1']);
   });
 
-  it('stays the same while in Simple Mode: what opens there changes nothing until the next switch', () => {
-    const { p } = make({
+  it('follows what Simple Mode’s window opens (Session 56): any playlist, never forced back to the one it came with, kept for a start back in Simple Mode', () => {
+    const { p, saved } = make({
       playlists: [
         ['A', 1],
         ['B', 1],
       ],
     });
-    p.opened('A');
+    p.opened('A', 'pro');
     expect(p.adopt()).toBe('A');
-    p.opened('B');
+    expect(p.opened('B', 'simple')).toBe(true);
+    expect(p.current()).toBe('B');
+    expect(saved).toEqual(['A', 'B']);
+    // Opened again: nothing changes, nothing more kept.
+    expect(p.opened('B', 'simple')).toBe(false);
+    expect(saved).toEqual(['A', 'B']);
+  });
+
+  it('none open once Simple Mode’s window closes it (its open playlist deleted), and never a folder or a template it says it opened', () => {
+    const { p, saved } = make({ playlists: [['A', 1]] });
+    p.opened('A', 'pro');
+    p.adopt();
+    expect(p.opened(null, 'simple')).toBe(true);
+    expect(p.current()).toBeNull();
+    // A folder of playlists or a template is no playlist (none is usable here): none open, nothing kept.
+    p.opened('A', 'simple');
+    expect(p.opened('a-folder', 'simple')).toBe(true);
+    expect(p.current()).toBeNull();
+    expect(saved).toEqual(['A', 'A']);
+  });
+
+  it('what Pro Mode’s window opens changes nothing in Simple Mode until the next switch; what Simple Mode had open is what Pro Mode has open after it', () => {
+    const { p } = make({
+      playlists: [
+        ['A', 1],
+        ['B', 1],
+        ['C', 1],
+      ],
+    });
+    p.opened('A', 'pro');
+    expect(p.adopt()).toBe('A');
+    expect(p.opened('C', 'pro')).toBe(false);
     expect(p.current()).toBe('A');
+    // Simple Mode opened B and left it open: back in Pro Mode it is still open there, so the next switch takes it.
+    p.opened('B', 'simple');
+    expect(p.adopt()).toBe('B');
   });
 
   it('at a start in Simple Mode: the one kept from before, or a new one when it is gone', () => {

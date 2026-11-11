@@ -83,12 +83,14 @@ export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode })
  * a phone, the API): a picture-in-picture box is set up, swapped and moved in Pro Mode only (Session 50; Take off and
  * Clear all still take one off); Simple Mode does not choose a video
  * input (Session 50: Pro Mode's Media puts one up; Simple Mode may clear it,
- * as any background); and Simple Mode shows the time bar but never moves what
- * plays (Session 54): neither the bar's move nor Back 15 s, Forward 15 s and
- * Last 10 s. The bar's Pause is refused too, but on the audio layer
- * (simpleModeRefuses), and its Play never is. The live zoom is Simple Mode's
- * too since Session 55 (Part 5: pinch, drag, a double tap to reset, from the
- * window and a phone); keeping it as the picture's own stays Pro Mode's.
+ * as any background); and Back 15 s, Forward 15 s and Last 10 s are Pro Mode's
+ * (Session 54: Simple Mode's window has no skips). The time bar is Simple
+ * Mode's as Pro Mode's since Session 56 (the owner's words of 11 Nov: drag LIVE's
+ * time bar in both modes, and Pause under LIVE in Simple Mode): its move, Pause
+ * and Play; until then Simple Mode showed the bar, moved nothing and paused only
+ * an audio playlist's track. The live zoom is Simple Mode's too since Session 55
+ * (Part 5: pinch, drag, a double tap to reset, from the window and a phone);
+ * keeping it as the picture's own stays Pro Mode's.
  */
 export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'showPip',
@@ -97,24 +99,17 @@ export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
   'showInput',
   // LIVE's one press for the chosen video input (Session 55), as showInput.
   'toggleInput',
-  'moveTo',
   'skip',
 ];
 
 /**
- * Whether Simple Mode refuses an engine command (the engine's refuse option, src/main/index.ts), with the show as it is
- * (`state`): those listed above, and the time bar's Pause (Session 54's review: Simple Mode shows the bar and moves
- * nothing), but an audio playlist's track's, which is Music's own (Simple Mode's Pause music). A single sound's is
- * refused too: Simple Mode's window could never play it on (its bar has no Play, its music strip only knows the
- * music). The bar's Play is never refused, so nothing paused can stay paused there.
+ * Whether Simple Mode refuses an engine command (the engine's refuse option, src/main/index.ts): those listed above.
+ * `state`, the show as it is, decided the time bar's Pause until Session 56 (an audio playlist's track's only); kept so
+ * every caller (the engine, the phones' server) asks the same way.
  */
 export function simpleModeRefuses(
   command: EngineCommand,
-  state: Pick<EngineState, 'layers'> | null,
+  _state: Pick<EngineState, 'layers'> | null,
 ): boolean {
-  if (SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type)) return true;
-  return (
-    command.type === 'pausePlaying' &&
-    (command.playing.layer !== 'audio' || state?.layers.audio?.music === undefined)
-  );
+  return SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type);
 }

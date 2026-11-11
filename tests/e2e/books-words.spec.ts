@@ -296,7 +296,7 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
   // Simple Mode, with the passages' playlist as its one playlist (open as Drashti switches).
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
   await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder reading');
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(card('Placeholder Granth 14').getByTestId('item-what')).toHaveText('Passage from a book');
   await saysBooks(win, 'Simple Mode');
@@ -376,7 +376,7 @@ test('a phone’s pages say Books, never Shastra: its pairing page and every tab
 
     // Simple Mode: the passages' playlist is its one playlist, on the phone too.
     await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder reading' }).click();
-    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     await expect(win.getByTestId('simple-mode')).toBeVisible();
     await expect(p.getByTestId('remote-simple')).toBeVisible();
     for (const tab of ['show', 'playlist', 'library', 'more']) {

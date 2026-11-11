@@ -317,7 +317,7 @@ export interface DrashtiBridge {
     view(): Promise<LinkView>;
     look(kind: LinkKind, link: string): Promise<LinkResult>;
     pickFolder(): Promise<LinkResult>;
-    /** Download what was looked at: a YouTube video with its type, quality and the permission tick. */
+    /** Download what was looked at: a YouTube video with its type and quality. */
     download(choice?: YouTubeChoice | null): Promise<LinkResult>;
     stop(): Promise<LinkResult>;
     reset(): Promise<LinkResult>;

@@ -39,8 +39,8 @@ interface LinkStore {
   error: string | null;
   /** Import runs from a link: where their files were saved, and which videos were made smaller first. */
   savedFor: Record<string, SavedFrom>;
-  /** A YouTube video's choices before Download (Session 25c): the tick starts unticked each time. */
-  choice: { type: YouTubeType; height: number | null; permission: boolean };
+  /** A YouTube video's choices before Download (Session 25c). */
+  choice: { type: YouTubeType; height: number | null };
   /**
    * When it's imported, add it to (Session 26a): chosen before Download; null until the operator picks one,
    * which means the playlist a download went into last, else the open one, else a new one (Session 54).
@@ -54,7 +54,7 @@ interface LinkStore {
   forAudio: { playlistId: string | null } | null;
 }
 
-const NO_CHOICE = { type: 'mp4' as const, height: null, permission: false };
+const NO_CHOICE = { type: 'mp4' as const, height: null };
 /** A YouTube video's choices to begin with: its sound only from Audio. */
 const freshChoice = (forAudio: LinkStore['forAudio']): LinkStore['choice'] =>
   forAudio ? { ...NO_CHOICE, type: 'mp3' } : NO_CHOICE;
@@ -209,7 +209,7 @@ async function act(run: () => Promise<LinkResult>): Promise<boolean> {
 
 export const lookAtLink = (kind: LinkKind, link: string) => act(() => window.drashti.links.look(kind, link));
 export const pickSaveFolder = () => act(() => window.drashti.links.pickFolder());
-/** Download: a YouTube video with its choices (the tick is needed again for the next one). */
+/** Download: a YouTube video with its choices. */
 export async function startDownload(): Promise<boolean> {
   const { view, choice } = useLinks.getState();
   const video = view?.look?.video;
@@ -226,8 +226,6 @@ export async function startDownload(): Promise<boolean> {
     pendingAdd = target;
     pendingAudio = forAudio;
   }
-  const youtube = video !== undefined;
-  if (ok && youtube) useLinks.setState((s) => ({ choice: { ...s.choice, permission: false } }));
   return ok;
 }
 

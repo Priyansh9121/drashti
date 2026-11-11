@@ -41,6 +41,10 @@ const SCOPE: SimpleScope = {
   playlistOf: (itemId) => ROWS[itemId]?.playlist ?? null,
   holdsMedia: (mediaId) => Object.values(ROWS).some((r) => r.playlist === 'one' && r.media === mediaId),
   holdsPresentation: (id) => Object.values(ROWS).some((r) => r.playlist === 'one' && r.presentation === id),
+  // The window's bounds (Session 56): every playlist, as Pro Mode's left column offers them; a phone keeps to its one.
+  kindOf: (id) => (id === 'one' || id === 'other' ? 'playlist' : null),
+  listsMedia: (mediaId) => Object.values(ROWS).some((r) => r.media === mediaId),
+  listsPresentation: (id) => Object.values(ROWS).some((r) => r.presentation === id),
 };
 const SIMPLE: SimplePhoneScope = {
   ...SCOPE,
