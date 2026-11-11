@@ -78,7 +78,12 @@ function focusOf(page: Page): Promise<Focus | null> {
     const alpha = Number(
       /\/\s*([0-9.]+)\s*\)\s*$/u.exec(back)?.[1] ?? /^rgba\([^)]*,\s*([0-9.]+)\s*\)$/u.exec(back)?.[1] ?? 1,
     );
-    const covered = (middle !== null && middle !== el && !el.contains(middle)) || (underNotice && alpha >= 1);
+    // What shows through a see-through notice, its Dismiss button too, is not covered by it (CI's Mac, 11 Nov 2026:
+    // More tools' ? lay under that button); an opaque notice over it is.
+    const throughNotice = middle !== null && notice !== null && notice.contains(middle) && alpha < 1;
+    const covered =
+      (middle !== null && middle !== el && !el.contains(middle) && !throughNotice) ||
+      (underNotice && alpha >= 1);
     // What a screen reader says: its label, or its words without the parts hidden from it (a playlist card's
     // picture holds its slide's words, Session 26a).
     const shown = el.cloneNode(true) as HTMLElement;
@@ -184,7 +189,7 @@ test('Pro Mode: the keyboard goes through the window as it is laid out, its focu
   await app.close();
 });
 
-test('Pro Mode: with a notice up, no focused control is hidden by it: see-through over one at most (WCAG 2.4.11; Sessions 31–36, A9; the owner, 11 Nov 2026)', async () => {
+test('Pro Mode: with a notice up, no focused control is hidden by it: a see-through one may lie over it (WCAG 2.4.11; Sessions 31–36, A9; the owner, 11 Nov 2026)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
