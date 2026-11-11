@@ -52,7 +52,8 @@ function apply(context: ProgramContext): void {
  * took longer to start finished last and won: a microphone chosen and then taken away at once (or as the
  * stream went live) came back on (Session 31).
  */
-let inputsDone: Promise<void> = Promise.resolve();
+// Wait for the first device list before trying the saved inputs on a newly opened Program.
+let inputsDone: Promise<void> = listDevices().catch(() => undefined);
 let newestInputs: ProgramContext | null = null;
 
 function inputsInTurn(context: ProgramContext): void {
@@ -98,7 +99,6 @@ function Program() {
     });
     // Videos that failed with a GPU process that stopped play again once another starts (ROB-5).
     watchGpuRestarts();
-    void listDevices();
     navigator.mediaDevices.addEventListener('devicechange', () => {
       void listDevices().then(() => {
         const c = useProgram.getState().context;
