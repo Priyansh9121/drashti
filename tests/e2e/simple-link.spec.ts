@@ -325,8 +325,10 @@ test('a Dropbox folder link in Simple Mode becomes a playlist of its own, folder
   const earlier = report.getByRole('combobox', { name: 'Earlier imports' });
   const folderRun = await earlier.locator('option', { hasText: 'presentation' }).getAttribute('value');
   await earlier.selectOption(folderRun ?? '');
+  // Listed under Imported with notes and under Imported.
   const deck = report.getByTestId('report-item').filter({ hasText: 'Welcome' });
-  await expect(deck).toHaveAttribute('data-outcome', 'imported');
+  await expect(deck).toHaveCount(2);
+  await expect(deck.first()).toHaveAttribute('data-outcome', 'imported');
   await expect(report.getByRole('button', { name: 'Open', exact: true })).toHaveCount(0);
   await report.getByRole('button', { name: 'Close', exact: true }).first().click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
