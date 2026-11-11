@@ -85,6 +85,13 @@ export function TimeBar({
   const track = useRef<HTMLDivElement>(null);
   // The time under the finger while a drag (or a press) is held, and which pointer holds it.
   const [held, setHeld] = useState<number | null>(null);
+  // The same time, read when the bar is let go: it moves to what it showed (Session 56: on a scaled Windows display the
+  // let-go point can lie a fraction of a pixel from the last move's, a few milliseconds away).
+  const heldAt = useRef<number | null>(null);
+  const hold = (ms: number | null) => {
+    heldAt.current = ms;
+    setHeld(ms);
+  };
   const pointer = useRef<number | null>(null);
   // Where the press began (CSS px), whether the picture has followed it yet, and the last time it was given.
   const pressX = useRef<number | null>(null);
@@ -110,7 +117,7 @@ export function TimeBar({
     pressX.current = null;
     scrubbed.current = false;
     lastScrub.current = null;
-    setHeld(null);
+    hold(null);
     if (el && id !== null && el.hasPointerCapture(id)) el.releasePointerCapture(id);
     if (moveTo !== null && movable) onMove(moveTo);
     // The picture followed a drag let go of with no move: it goes back.
@@ -125,12 +132,12 @@ export function TimeBar({
     pressX.current = e.clientX;
     scrubbed.current = false;
     lastScrub.current = null;
-    setHeld(timeUnder(e.clientX));
+    hold(timeUnder(e.clientX));
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (pointer.current !== e.pointerId) return;
     const under = timeUnder(e.clientX);
-    setHeld(under);
+    hold(under);
     // The picture follows (Session 56) once the pointer has moved a few pixels: a click stays one move.
     if (!onScrub) return;
     if (!scrubbed.current && Math.abs(e.clientX - (pressX.current ?? e.clientX)) < SCRUB_SLOP_PX) return;
@@ -139,9 +146,9 @@ export function TimeBar({
     lastScrub.current = under;
     onScrub(under);
   };
-  // Let go: it moves there, once. Taken away (the system's own gesture, a phone's scroll): nothing moves.
+  // Let go: it moves where it was held, once. Taken away (the system's own gesture, a phone's scroll): nothing moves.
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    if (pointer.current === e.pointerId) letGo(timeUnder(e.clientX));
+    if (pointer.current === e.pointerId) letGo(heldAt.current ?? timeUnder(e.clientX));
   };
   const onPointerCancel = (e: PointerEvent<HTMLDivElement>) => {
     if (pointer.current === e.pointerId) letGo(null);
