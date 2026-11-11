@@ -354,7 +354,7 @@ import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
-import type { EngineState } from '../shared/engine/state';
+import { type EngineState, nothingUp } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { PhoneFiles } from './network/phone-files';
@@ -3268,6 +3268,9 @@ function start(): void {
     log: (message) => {
       log.info(message);
     },
+    // Several pages at once (Session 56) only while nothing is up on the screens and the stream is neither on air nor
+    // recording: an import never takes from the show.
+    wide: () => !(streaming.inUse() || testOnAir) && nothingUp(engine.snapshot().state.layers),
   });
   const documentReaders = new SourceReaderQueue(
     sourceReader((request) => pdfPictures.readEditable(request), pptxReader(spawnPptxReaderWorker)),

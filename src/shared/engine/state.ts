@@ -802,6 +802,14 @@ export function initialEngineState(): EngineState {
   };
 }
 
+/**
+ * Nothing up at all (Session 56): every layer empty and no timer for the audience, as after Clear all. Then an import
+ * may draw a PDF's pages several at once.
+ */
+export function nothingUp(layers: Layers): boolean {
+  return LAYER_NAMES.every((layer) => isLayerEmpty(layers, layer)) && !layers.timer;
+}
+
 /** True when the layer shows nothing. */
 export function isLayerEmpty(layers: Layers, layer: LayerName): boolean {
   const value = layers[layer];
