@@ -159,9 +159,9 @@ describe('the one right-click menu', () => {
         remove: video.remove,
       }),
     ).toEqual(['Edit slides…', '— Remove from playlist']);
-    expect(simple({ kind: 'input', name: 'Placeholder camera', place: 'playlist', remove: video.remove })).toEqual(
-      ['Remove from playlist'],
-    );
+    expect(
+      simple({ kind: 'input', name: 'Placeholder camera', place: 'playlist', remove: video.remove }),
+    ).toEqual(['Remove from playlist']);
     // A wallpaper's Edit wallpaper… (its order, seconds and fade) stays Pro Mode's.
     expect(
       simple({

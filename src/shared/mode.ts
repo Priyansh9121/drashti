@@ -5,12 +5,13 @@ import type { EngineState } from './engine/state';
  * Simple Mode and Pro Mode (PLAN.md section 3). Simple Mode (Session 55, Part 18: for a small sabha, or anywhere
  * with one projector) is Pro Mode's window with everything taken out but one playlist, bringing things into it (Add
  * files…, files dropped, From a Link…), the wallpapers, Next and Back, Clear all, Black-out, the Wallpaper and the time
- * bar, and a row's Rename and Delete; the main process refuses everything else while it is on (main/simple-mode.ts),
- * and a paired phone may do only what that window does (main/simple-mode-phones.ts, the owner's answer of 30 Oct
- * 2026). Leaving it takes a deliberate step with nothing to type (the owner's answer to question 12, changed on 29 Oct
- * 2026): a double-click on Pro Mode at the top of its window, or View › Switch to Pro Mode. Never a PIN (Session 54,
- * E5: roles and PINs are gone): it is a way of working, not a lock, but with Simple access (Part 19) it is all this
- * computer may use.
+ * bar, and a row's Rename and Delete (since Session 56 also Pro Mode's Audio, the bar's Slide, Background and
+ * Audio, and a row's Trim, When it ends and Edit slides); the main process refuses everything else while it is on
+ * (main/simple-mode.ts), and a paired phone may do only what that window does (main/simple-mode-phones.ts, the
+ * owner's answer of 30 Oct 2026). Leaving it takes a deliberate step with nothing to type (the owner's answer to
+ * question 12, changed on 29 Oct 2026): a double-click on Pro Mode at the top of its window, or View › Switch to Pro
+ * Mode. Never a PIN (Session 54, E5: roles and PINs are gone): it is a way of working, not a lock, but with Simple
+ * access (Part 19) it is all this computer may use.
  */
 
 export type OperatorMode = 'pro' | 'simple';
@@ -112,6 +113,10 @@ export function simpleModeRefuses(
   command: EngineCommand,
   state: Pick<EngineState, 'layers'> | null,
 ): boolean {
+  // Session 56: Audio's own Back 15 s, Forward 15 s and Last 10 s (Simple Mode has Pro Mode's Audio), on an audio
+  // playlist's track only, as its Pause is Music's own; a single sound's and the background's stay refused.
+  if (command.type === 'skip' && command.layer === 'audio' && state?.layers.audio?.music !== undefined)
+    return false;
   if (SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type)) return true;
   return (
     command.type === 'pausePlaying' &&

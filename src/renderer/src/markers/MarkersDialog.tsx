@@ -30,6 +30,9 @@ import { Timeline } from './Timeline';
  * part played, I and O for the play head, its new length beside the old,
  * and Save as MP4... (the part copied as it is from the clean frame at or
  * before its start, which the dialog says first).
+ *
+ * Session 56: Simple Mode's row menu has it too (the owner: "Trim as in Pro
+ * Mode … it never makes a copy"), without Save as MP4… (`copies` false).
  */
 
 export const useMarkersDialog = create<{ media: MediaSummary | null }>(() => ({ media: null }));
@@ -53,7 +56,8 @@ const close = () => {
   useMarkersDialog.setState({ media: null });
 };
 
-export function MarkersDialog() {
+/** `copies`: whether it offers Save as MP4… (a copy of the part): Pro Mode's, never Simple Mode's (Session 56). */
+export function MarkersDialog({ copies = true }: { copies?: boolean } = {}) {
   const media = useMarkersDialog((s) => s.media);
   const [loaded, setLoaded] = useState<{ id: string; markers: MediaMarkers } | null>(null);
   useEffect(() => {
@@ -67,7 +71,7 @@ export function MarkersDialog() {
     };
   }, [media]);
   if (!media || loaded?.id !== media.id) return null;
-  return <MarkersForm key={media.id} media={media} start={loaded.markers} />;
+  return <MarkersForm key={media.id} media={media} start={loaded.markers} copies={copies} />;
 }
 
 const timeText = (ms: number | null) => (ms === null ? '' : markerTime(ms));
@@ -93,7 +97,15 @@ function useKeyframe(mediaId: string, startMs: number, video: boolean): number |
   return found?.startMs === startMs ? found.atMs : null;
 }
 
-function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarkers }) {
+function MarkersForm({
+  media,
+  start,
+  copies,
+}: {
+  media: MediaSummary;
+  start: MediaMarkers;
+  copies: boolean;
+}) {
   const preview = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [startText, setStartText] = useState(timeText(start.startMs));
   const [endText, setEndText] = useState(timeText(start.endMs));
@@ -125,7 +137,8 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
     partStart,
     Math.min(durationMs ?? Number.MAX_SAFE_INTEGER, typedEnd ?? durationMs ?? 0),
   );
-  const keyframeMs = useKeyframe(media.id, partStart, isVideo);
+  // Where a saved part would begin: asked only where Save as MP4… is offered.
+  const keyframeMs = useKeyframe(media.id, partStart, isVideo && copies);
   const playPart = () => {
     const v = preview.current;
     if (!v) return;
@@ -273,9 +286,9 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
           </div>
         )}
         <p className="text-xs text-muted">
-          It plays between its start and end points wherever it is used (a background video loops between
-          them), and the markers can be jumped to while it plays, from under the live picture or a phone. The
-          preview is silent: only the audio player makes sound.
+          {copies
+            ? 'It plays between its start and end points wherever it is used (a background video loops between them), and the markers can be jumped to while it plays, from under the live picture or a phone. The preview is silent: only the audio player makes sound.'
+            : 'It plays between its start and end points wherever it is used (a background video loops between them), and its markers show on its time bar under the live picture. Its file is never cut or copied. The preview is silent: only the audio player makes sound.'}
         </p>
         <div className="flex flex-wrap gap-4">
           <Field label="Start (empty: the beginning)">
@@ -360,7 +373,7 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
             </Button>
           </div>
         </section>
-        {isVideo && (
+        {isVideo && copies && (
           <section className="space-y-2 rounded-md border border-line p-3" aria-label="Save as MP4">
             <p className="text-sm" data-testid="markers-keyframe">
               {partStart <= 0

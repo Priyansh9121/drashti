@@ -67,7 +67,8 @@ let added = false;
 export function addWhenEndsToMenu(): void {
   if (added) return;
   added = true;
-  addFileMenuItems(whenEndsEntries);
+  // Simple Mode's menu has them too (Session 56: the owner's "When it ends: Wallpaper").
+  addFileMenuItems(whenEndsEntries, { simple: true });
 }
 
 /**

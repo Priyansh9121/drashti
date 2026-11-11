@@ -196,7 +196,9 @@ test('Simple Mode’s right column: no keys line; Audio under LIVE, as Pro Mode�
     const audio = at('audio-group');
     const next = at('show-next');
     const bar = at('simple-buttons');
-    return audio && next && bar ? { underNext: audio.top >= next.bottom, aboveBar: audio.top < bar.top } : null;
+    return audio && next && bar
+      ? { underNext: audio.top >= next.bottom, aboveBar: audio.top < bar.top }
+      : null;
   });
   expect(placed).toEqual({ underNext: true, aboveBar: true });
   await expectNoSeriousA11yIssues(win, 'Simple Mode’s Audio with none yet', '[data-testid="audio-group"]');
@@ -431,7 +433,10 @@ test('Edit slides in Simple Mode opens Pro’s slide editor from a row: its save
   await rowOf('Placeholder simple notes').click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Edit slides…' }).click();
   const second = await slideEditorWindow(app);
-  const words = second.editor.getByTestId('editor-slide').locator('[data-element]').filter({ hasText: original });
+  const words = second.editor
+    .getByTestId('editor-slide')
+    .locator('[data-element]')
+    .filter({ hasText: original });
   await expect(words, 'the PDF page’s own words, an editable box').toHaveCount(1);
   await words.click();
   await second.ed.keyboard.press('Delete');
@@ -545,16 +550,22 @@ test('Simple Mode from CI’s 1024 × 645 up: Audio under the time bar and above
   const sounds = ['Placeholder one', 'Placeholder two', 'Placeholder three'].map((n, i) =>
     makeTestTone(join(dir, `${n}.wav`), { seconds: 30, hz: 330 + i * 110 }),
   );
-  const ids = await importAndGetIds(win, [...sounds, videoWithSound(join(dir, 'Placeholder long talk.mp4'), 60)]);
+  const ids = await importAndGetIds(win, [
+    ...sounds,
+    videoWithSound(join(dir, 'Placeholder long talk.mp4'), 60),
+  ]);
   const videoId = ids[3] ?? '';
   // An audio playlist of three sounds, playing; a video playing from the playlist (the time bar shows both).
-  await win.evaluate(async (soundIds) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const list = await d.music.create('Placeholder before sabha');
-    if (!list.ok || list.id === undefined) throw new Error('not made');
-    await d.music.addTracks(list.id, soundIds, null);
-    await d.music.play(list.id, 0);
-  }, ids.slice(0, 3));
+  await win.evaluate(
+    async (soundIds) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const list = await d.music.create('Placeholder before sabha');
+      if (!list.ok || list.id === undefined) throw new Error('not made');
+      await d.music.addTracks(list.id, soundIds, null);
+      await d.music.play(list.id, 0);
+    },
+    ids.slice(0, 3),
+  );
   await playlistWith(win, 'Placeholder layout sabha', [{ kind: 'media', mediaId: videoId }]);
   const simple = await toSimple(win);
   await simple.getByTestId('playlist-item').filter({ hasText: 'Placeholder long talk' }).click();
@@ -582,7 +593,8 @@ test('Simple Mode from CI’s 1024 × 645 up: Audio under the time bar and above
       if (live.bottom > bar.top + 0.5) out.push('the right column runs under the bar along the bottom');
       if (bar.bottom > status.top + 0.5) out.push('the bar runs under the status bar');
       if (status.bottom > innerHeight + 0.5) out.push('the status bar is cut off');
-      if (audio.left < live.left - 0.5 || audio.right > live.right + 0.5) out.push('Audio sticks out of its column');
+      if (audio.left < live.left - 0.5 || audio.right > live.right + 0.5)
+        out.push('Audio sticks out of its column');
       return out;
     });
     expect(problems, where).toEqual([]);

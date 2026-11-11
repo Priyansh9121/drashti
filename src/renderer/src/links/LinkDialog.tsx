@@ -785,10 +785,11 @@ export function LinkDialog({ platform }: { platform: string }) {
             and Stop stay in view. */}
         {view.look?.video && !finished && !busy && <YouTubeChoices video={view.look.video} view={view} />}
         {view.look && !finished && !simple && <SaveIn view={view} locked={locked} />}
+        {/* From Audio's From a Link… (Simple Mode's too since Session 56), Audio takes it, in either mode. */}
         {view.look &&
           !finished &&
           !busy &&
-          (simple ? <IntoSimplePlaylist view={view} /> : <AddWhenImported view={view} />)}
+          (simple && !forAudio ? <IntoSimplePlaylist view={view} /> : <AddWhenImported view={view} />)}
         {busy && <Going view={view} />}
         {(view.phase === 'failed' || view.phase === 'stopped') && view.message && (
           <Notice tone={view.phase === 'failed' ? 'warning' : 'info'} role="alert" data-testid="link-message">

@@ -86,35 +86,24 @@ export function revealLabel(platform: string): string {
 /**
  * The menu's entries, in one order everywhere: the place's own first, then Edit, Trim, a later Part's items, Rename,
  * Show in Finder (Explorer), and Delete last, apart. In Simple Mode (Session 55, Part 18: "Right-click Delete and
- * Rename"), those two alone: a file's Rename (never a header's, which names a part of the playlist), and Delete.
+ * Rename"; Session 56, the owner: Pro Mode's Trim, When it ends and Edit slides too), in the same order: Edit slides…
+ * (Pro's slide editor; never the Picture editor or a wallpaper's editor), Trim, the later Parts' items that serve
+ * Simple Mode (Trim black and silence, Even loudness, When it ends), a file's Rename (never a header's, which names a
+ * part of the playlist), and Delete; never the place's own first entries or Show in Finder.
  */
 export function fileMenuEntries(
   target: FileTarget,
   platform: string,
   { simple = false }: { simple?: boolean } = {},
 ): MenuEntry[] {
-  if (simple) {
-    const out: MenuEntry[] = [];
-    if (target.rename && target.kind !== 'header')
-      out.push({ label: 'Rename…', icon: Pencil, onSelect: target.rename });
-    if (target.remove)
-      out.push({
-        label: target.remove.label,
-        icon: Trash2,
-        danger: true,
-        separatorBefore: out.length > 0,
-        onSelect: target.remove.run,
-      });
-    return out;
-  }
-  const entries: MenuEntry[] = [...(target.first ?? [])];
+  const entries: MenuEntry[] = simple ? [] : [...(target.first ?? [])];
   const group = (more: MenuEntry[]) => {
     const [head, ...rest] = more;
     if (!head) return;
     entries.push({ ...head, separatorBefore: entries.length > 0 || head.separatorBefore }, ...rest);
   };
   const editing: MenuEntry[] = [];
-  if (target.edit)
+  if (target.edit && (!simple || target.edit.label === 'Edit slides…'))
     editing.push({
       label: target.edit.label,
       icon: target.edit.label === 'Picture editor…' ? SlidersHorizontal : SquarePen,
@@ -122,11 +111,13 @@ export function fileMenuEntries(
     });
   if (target.trim)
     editing.push({ label: 'Trim (start, end and markers)…', icon: Bookmark, onSelect: target.trim });
-  for (const { items } of added) editing.push(...items(target));
+  for (const later of added) if (!simple || later.simple) editing.push(...later.items(target));
   group(editing);
   const naming: MenuEntry[] = [];
-  if (target.rename) naming.push({ label: 'Rename…', icon: Pencil, onSelect: target.rename });
-  if (target.reveal) naming.push({ label: revealLabel(platform), icon: FolderOpen, onSelect: target.reveal });
+  if (target.rename && !(simple && target.kind === 'header'))
+    naming.push({ label: 'Rename…', icon: Pencil, onSelect: target.rename });
+  if (target.reveal && !simple)
+    naming.push({ label: revealLabel(platform), icon: FolderOpen, onSelect: target.reveal });
   group(naming);
   if (target.remove)
     entries.push({

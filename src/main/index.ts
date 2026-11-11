@@ -219,6 +219,7 @@ import {
   SIMPLE_MODE_BOUNDED,
   SIMPLE_MODE_LOCKED,
   type SimpleScope,
+  simpleHoldsPresentation,
   simpleModeBounds,
   simpleModeRefusals,
 } from './simple-mode';
@@ -3076,10 +3077,9 @@ function start(): void {
   let aiSpeech: SpeechHelpers | null = null;
   let mode: OperatorMode = 'pro';
   let rebuildMenu: () => void = () => undefined;
-  // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below.
+  // The Lower Thirds studio closes in Simple Mode (Session 55, Part 16): set once it is made, below. (The slide
+  // editor's window stays: Simple Mode edits the slides of what its playlists hold since Session 56.)
   let closeStudio: () => void = () => undefined;
-  // So does the slide editor's window (Session 55, Part 17a): Simple Mode edits no slides.
-  let closeEditor: () => void = () => undefined;
   let cancelSourceEdits: () => void = () => undefined;
   let drainSourceEdits: () => Promise<void> = () => Promise.resolve();
   let cancelPdfCopies: () => void = () => undefined;
@@ -3123,7 +3123,6 @@ function start(): void {
         aiHelpers?.suspend();
         aiSpeech?.suspend();
         closeStudio();
-        closeEditor();
       }
       sendToOperator(IPC.app.modeChanged, { mode: next });
       // A phone's Add photos (Session 55, Part 8) go to Pro Mode's open playlist, and in Simple Mode its pictures to
@@ -3891,10 +3890,6 @@ function start(): void {
     },
   });
   const editorWindow = slideEditor;
-  closeEditor = () => {
-    cancelSourceEdits();
-    editorWindow.close();
-  };
   stops.add('slide editor', () => {
     editorWindow.close();
   });
@@ -3930,13 +3925,16 @@ function start(): void {
     settings,
     // The operator window, and the slide editor's own window (Session 55, Part 17a).
     fromOperator: (e) => fromOperator(e) || editorWindow.isPage(e.sender),
-    mayPrepareSource: (e) =>
+    // Pro Mode's; and Simple Mode's (Session 56: Pro's slide editor there too) for a presentation its playlists hold, as
+    // its lock bounds the editor's save; the library's PDFs listed for Insert pages (naming none) are a read.
+    mayPrepareSource: (e, presentationId) =>
       !stops.done &&
       !quitStarted &&
       documentQuit?.closing !== true &&
       isLetIn() &&
-      !simpleAccess() &&
-      mode === 'pro' &&
+      (mode === 'pro'
+        ? !simpleAccess()
+        : presentationId === undefined || simpleHoldsPresentation(simpleScope(), presentationId)) &&
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
     sourceReader: async (request) => {

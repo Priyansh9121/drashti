@@ -40,8 +40,12 @@ export interface SlidesIpcDeps {
   /** Main selects secure production adapters; omitted readers never fall back to Node canvas. */
   sourceReader?: SourceReader;
   sourceWrite?: SourceWrite;
-  /** Main's current Pro/access/sender authority, rechecked throughout preparation. */
-  mayPrepareSource?: (event: IpcMainInvokeEvent) => boolean;
+  /**
+   * Main's current Pro/access/sender authority, rechecked throughout preparation; `presentationId`, the presentation it
+   * is for (Session 56: Simple Mode's slide editor, for a presentation its playlists hold), none for the library's PDFs
+   * listed for Insert pages.
+   */
+  mayPrepareSource?: (event: IpcMainInvokeEvent, presentationId?: string) => boolean;
   /** Only Main selects files through the native PDF dialog. */
   choosePdfFile?: (event: IpcMainInvokeEvent) => Promise<string | null>;
 }
@@ -116,7 +120,7 @@ export function registerSlidesIpc({
       .pluck()
       .get(rows.presentationId);
     if (source === 'pictures' || rows.slides.some((slide) => slide.document_page)) {
-      if (!fromOperator(e) || !mayPrepareSource(e))
+      if (!fromOperator(e) || !mayPrepareSource(e, rows.presentationId))
         return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
       cancelSourcePreparation();
       const controller = new AbortController();
@@ -125,7 +129,7 @@ export function registerSlidesIpc({
         !controller.signal.aborted &&
         generations.get(rows.presentationId) === controller &&
         fromOperator(e) &&
-        mayPrepareSource(e) &&
+        mayPrepareSource(e, rows.presentationId) &&
         stampOf(rows.presentationId)?.stamp === stamp.stamp;
       const preparing: Promise<EditSlidesResult> = imported
         .prepare(rows, doc, stamp.stamp, { signal: controller.signal, allowed })
@@ -184,7 +188,8 @@ export function registerSlidesIpc({
   handle(
     IPC.library.insertPdfPages,
     (e, rawId, rawStamp, rawSource): InsertPdfPagesResult | Promise<InsertPdfPagesResult> => {
-      if (!fromOperator(e) || !mayPrepareSource(e)) return onlyOperator;
+      if (!fromOperator(e) || !mayPrepareSource(e, typeof rawId === 'string' ? rawId : ''))
+        return onlyOperator;
       const id = idSchema.safeParse(rawId),
         sourceId = idSchema.safeParse(rawSource);
       if (
@@ -217,7 +222,7 @@ export function registerSlidesIpc({
         !controller.signal.aborted &&
         generations.get(id.data) === controller &&
         fromOperator(e) &&
-        mayPrepareSource(e) &&
+        mayPrepareSource(e, id.data) &&
         stampOf(id.data)?.stamp === rawStamp &&
         stampOf(sourceId.data)?.stamp === sourceStamp.stamp;
       const preparing: Promise<InsertPdfPagesResult> = imported
@@ -246,7 +251,8 @@ export function registerSlidesIpc({
   handle(
     IPC.library.insertPdfFile,
     (e, rawId, rawStamp): InsertPdfPagesResult | Promise<InsertPdfPagesResult> => {
-      if (!fromOperator(e) || !mayPrepareSource(e)) return onlyOperator;
+      if (!fromOperator(e) || !mayPrepareSource(e, typeof rawId === 'string' ? rawId : ''))
+        return onlyOperator;
       const id = idSchema.safeParse(rawId);
       if (!id.success || typeof rawStamp !== 'string' || rawStamp.length > 1024 || !choosePdfFile)
         return {
@@ -265,7 +271,7 @@ export function registerSlidesIpc({
         !controller.signal.aborted &&
         generations.get(id.data) === controller &&
         fromOperator(e) &&
-        mayPrepareSource(e) &&
+        mayPrepareSource(e, id.data) &&
         stampOf(id.data)?.stamp === rawStamp;
       const preparing: Promise<InsertPdfPagesResult> = Promise.resolve()
         .then(async () => {
@@ -341,7 +347,8 @@ export function registerSlidesIpc({
   handle(
     IPC.library.linkPdfPage,
     (e, rawId, rawDoc, rawStamp, rawSlide, rawPicture, rawSource): LinkPdfPageResult => {
-      if (!fromOperator(e) || !mayPrepareSource(e)) return onlyOperator;
+      if (!fromOperator(e) || !mayPrepareSource(e, typeof rawId === 'string' ? rawId : ''))
+        return onlyOperator;
       const ids = [rawSlide, rawPicture, rawSource].map((value) => idSchema.safeParse(value));
       if (ids.some((id) => !id.success))
         return { ok: false, message: 'Choose the slide’s saved picture and a page of the PDF.' };

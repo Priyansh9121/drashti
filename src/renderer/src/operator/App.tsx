@@ -47,7 +47,7 @@ import { Middle } from './Middle';
 import { JumpBox } from './JumpBox';
 import { FileMenu } from '../files/FileMenu';
 import { PanelGroup, PanelNote } from '../ui/Panel';
-import { Music, Wrench } from '../ui/icons';
+import { Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { ScreensSaidNotice } from '../screens/ScreensSaid';
@@ -79,8 +79,7 @@ import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { undoStage, useStageLayouts } from '../stage/stage-layouts-store';
-import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
-import { MusicStepsAside } from '../sound/MusicStepsAside';
+import { AudioGroup } from '../music/AudioGroup';
 import { connectSound } from '../sound/sound-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
@@ -386,18 +385,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, then More tools folded away
                 (Session 55: Props and Looks went). */}
               <div className="mt-3 divide-y divide-line border-t border-line">
-                <PanelGroup
-                  title="Audio"
-                  icon={Music}
-                  remember="audio"
-                  help="audio"
-                  actions={<AudioAddMenu />}
-                  data-testid="audio-group"
-                >
-                  <MusicPanel platform={platform} />
-                  {/* Music steps aside under a video with sound (Session 55, Part 7). */}
-                  <MusicStepsAside />
-                </PanelGroup>
+                {/* Audio, one part with Simple Mode's (Session 56). */}
+                <AudioGroup platform={platform} />
                 <StageMessageControl />
                 <MessagesPanel />
                 <TimersPanel />
