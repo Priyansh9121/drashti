@@ -175,7 +175,11 @@ export async function runDeck(
           message: `${APP[before.baker]} could not make the deck’s movie (${before.reason}), so ${APP[baker]} did: check that its slides look right.`,
           fix: null,
         });
-      return { kind: 'baked', parsed, sourceIndices: result.baked.plan.slides.map((slide) => slide.index) };
+      // Each slide's own page of the original: every shown slide's, when some were left out of the movie (Session 56).
+      const sourceIndices = choice
+        ? result.baked.deck.slides.flatMap((slide, index) => (slide.hidden ? [] : [index]))
+        : result.baked.plan.slides.map((slide) => slide.index);
+      return { kind: 'baked', parsed, sourceIndices };
     }
     last = result;
     // Only an app that could not do it at all gives way to the next.
