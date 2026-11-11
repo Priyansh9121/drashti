@@ -24,10 +24,12 @@ let reads=0;
 Object.defineProperty(HTMLElement.prototype,'offsetHeight',{configurable:true,get(){if(this.dataset.measureWords==='yes'||this.parentElement?.dataset.testid==='stage-next'||this.parentElement?.dataset.testid==='stage-current')reads++;return getHeight.call(this)}});
 const NativeResizeObserver = globalThis.ResizeObserver;
 let stageBoxesObserved = 0;
+let stageWordsObserved = 0;
+const stageBox = (id) => id === 'stage-current' || id === 'stage-next';
 globalThis.ResizeObserver = class extends NativeResizeObserver {
  observe(target, options) {
-  const id = target.dataset?.testid;
-  if (id === 'stage-current' || id === 'stage-next') stageBoxesObserved++;
+  if (stageBox(target.dataset?.testid)) stageBoxesObserved++;
+  if (stageBox(target.parentElement?.dataset.testid)) stageWordsObserved++;
   super.observe(target, options);
  }
 };
@@ -47,13 +49,16 @@ globalThis.runTextMeasure=async(on,reporting)=>{
 globalThis.runStageMeasure=async(long)=>{
  reads=0;let snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
  stageBoxesObserved = 0;
+ stageWordsObserved = 0;
  const start = Date.UTC(2026, 0, 1, 12);
  holdClock(start);
  const slide={id:'placeholder-stage',width:1920,height:1080,background:null,elements:[{id:'placeholder-words',kind:'text',lang:'en',text:long?'Placeholder river lantern line\\n'.repeat(24):'Placeholder',frame:{x:0,y:0,width:1920,height:1080},opacity:1,rotation:0,style:{fontFamily:null,fontSize:80,fontWeight:400,lineHeight:1.35,color:'#ffffff',align:'center',verticalAlign:'center'}}]};
  const state={...initialEngineState(),next:{kind:'slide',slide}};
+ let renderStage;
  await new Promise((resolve,reject)=>{fail=reject;
-  function Probe(){useLayoutEffect(()=>{snapshot={readsAtCommit:reads};resolve()});return <StageView state={state}/>}
-  root.render(<Probe/>);
+  function Probe({nextState}){useLayoutEffect(()=>{snapshot={readsAtCommit:reads};resolve()});return <StageView state={nextState}/>}
+  renderStage = (nextState) => root.render(<Probe nextState={nextState}/>);
+  renderStage(state);
  });
  await settle();
  const mountObservations = stageBoxesObserved;
@@ -69,7 +74,19 @@ globalThis.runStageMeasure=async(long)=>{
   ...snapshot, readsAfterPaint:reads, fit:box.getAttribute('data-stage-fit'),
   over:getHeight.call(words)>box.clientHeight+0.5,
   mountObservations, redrawObservations: stageBoxesObserved - mountObservations, clockTexts: clocks.size,
+  fontRefreshes: 0, grewBack: false, observationsAfterChanges: stageBoxesObserved,
  };
+ if (long) {
+  const beforeFont = stageWordsObserved;
+  document.fonts.dispatchEvent(new Event('loadingdone'));
+  await settle();
+  result.fontRefreshes = stageWordsObserved - beforeFont;
+  const shorter = {...slide, elements: [{...slide.elements[0], text: 'Shorter placeholder'}]};
+  flushSync(() => renderStage({...state, next: {kind: 'slide', slide: shorter}}));
+  await settle();
+  result.grewBack = box.textContent === 'Shorter placeholder' && !box.hasAttribute('data-stage-fit');
+  result.observationsAfterChanges = stageBoxesObserved;
+ }
  root.unmount();host.remove();holdClock(null);return result;
 };`;
   buildSync({
@@ -163,6 +180,9 @@ globalThis.runStageMeasure=async(long)=>{
                 mountObservations: number;
                 redrawObservations: number;
                 clockTexts: number;
+                fontRefreshes: number;
+                grewBack: boolean;
+                observationsAfterChanges: number;
               }>;
             }
           ).runStageMeasure(long),
@@ -185,6 +205,9 @@ globalThis.runStageMeasure=async(long)=>{
     expect(Number(longStage.fit)).toBeGreaterThan(0);
     expect(Number(longStage.fit)).toBeLessThan(1);
     expect(longStage.over).toBe(false);
+    expect(longStage.fontRefreshes).toBe(1);
+    expect(longStage.grewBack).toBe(true);
+    expect(longStage.observationsAfterChanges).toBe(2);
   } finally {
     await app.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
