@@ -12,14 +12,26 @@ test('passive text measurement leaves the commit free, while fit and editor repo
   const dir = mkdtempSync(join(tmpdir(), 'drashti-text-measure-'));
   const bundle = join(dir, 'probe.js');
   const entry = `import React,{useRef,useLayoutEffect} from 'react';
+import {flushSync} from 'react-dom';
 import {createRoot} from 'react-dom/client';
 import {useShrinkToFit} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/SlideView.tsx'))};
 import {MeasureContext} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/measure.tsx'))};
 import {StageView} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/StageView.tsx'))};
+import {holdClock} from ${JSON.stringify(join(process.cwd(), 'src/renderer/src/render/clock.ts'))};
 import {initialEngineState} from ${JSON.stringify(join(process.cwd(), 'src/shared/engine/state.ts'))};
 const getHeight=Object.getOwnPropertyDescriptor(HTMLElement.prototype,'offsetHeight').get;
 let reads=0;
 Object.defineProperty(HTMLElement.prototype,'offsetHeight',{configurable:true,get(){if(this.dataset.measureWords==='yes'||this.parentElement?.dataset.testid==='stage-next'||this.parentElement?.dataset.testid==='stage-current')reads++;return getHeight.call(this)}});
+const NativeResizeObserver = globalThis.ResizeObserver;
+let stageBoxesObserved = 0;
+globalThis.ResizeObserver = class extends NativeResizeObserver {
+ observe(target, options) {
+  const id = target.dataset?.testid;
+  if (id === 'stage-current' || id === 'stage-next') stageBoxesObserved++;
+  super.observe(target, options);
+ }
+};
+const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 globalThis.runTextMeasure=async(on,reporting)=>{
  reads=0;let calls=0,snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
  const done=new Promise((resolve,reject)=>{fail=reject;
@@ -34,15 +46,31 @@ globalThis.runTextMeasure=async(on,reporting)=>{
 };
 globalThis.runStageMeasure=async(long)=>{
  reads=0;let snapshot,fail;const host=document.createElement('div');document.body.append(host);const root=createRoot(host,{onUncaughtError:e=>fail(e)});
+ stageBoxesObserved = 0;
+ const start = Date.UTC(2026, 0, 1, 12);
+ holdClock(start);
  const slide={id:'placeholder-stage',width:1920,height:1080,background:null,elements:[{id:'placeholder-words',kind:'text',lang:'en',text:long?'Placeholder river lantern line\\n'.repeat(24):'Placeholder',frame:{x:0,y:0,width:1920,height:1080},opacity:1,rotation:0,style:{fontFamily:null,fontSize:80,fontWeight:400,lineHeight:1.35,color:'#ffffff',align:'center',verticalAlign:'center'}}]};
  const state={...initialEngineState(),next:{kind:'slide',slide}};
  await new Promise((resolve,reject)=>{fail=reject;
   function Probe(){useLayoutEffect(()=>{snapshot={readsAtCommit:reads};resolve()});return <StageView state={state}/>}
   root.render(<Probe/>);
  });
- await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+ await settle();
+ const mountObservations = stageBoxesObserved;
+ const clock = host.querySelector('[data-testid="stage-clock"]');
+ const clocks = new Set([clock.textContent]);
+ for (let minute = 1; minute <= 5; minute++) {
+  flushSync(() => holdClock(start + minute * 60_000));
+  clocks.add(clock.textContent);
+ }
+ await settle();
  const box=host.querySelector('[data-testid="stage-next"]'),words=box.firstElementChild;
- const result={...snapshot,readsAfterPaint:reads,fit:box.getAttribute('data-stage-fit'),wordsHeight:getHeight.call(words),boxHeight:box.clientHeight,over:getHeight.call(words)>box.clientHeight+0.5};root.unmount();host.remove();return result;
+ const result = {
+  ...snapshot, readsAfterPaint:reads, fit:box.getAttribute('data-stage-fit'),
+  over:getHeight.call(words)>box.clientHeight+0.5,
+  mountObservations, redrawObservations: stageBoxesObserved - mountObservations, clockTexts: clocks.size,
+ };
+ root.unmount();host.remove();holdClock(null);return result;
 };`;
   buildSync({
     stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' },
@@ -132,6 +160,9 @@ globalThis.runStageMeasure=async(long)=>{
                 readsAfterPaint: number;
                 fit: string | null;
                 over: boolean;
+                mountObservations: number;
+                redrawObservations: number;
+                clockTexts: number;
               }>;
             }
           ).runStageMeasure(long),
@@ -140,11 +171,17 @@ globalThis.runStageMeasure=async(long)=>{
     const shortStage = await stage(false);
     expect.soft(shortStage.readsAtCommit, 'ordinary stage words must not force layout in the commit').toBe(0);
     expect.soft(shortStage.readsAfterPaint, 'ordinary stage words must use observed layout sizes').toBe(0);
+    expect(shortStage.clockTexts).toBe(6);
+    expect(shortStage.mountObservations).toBe(2);
+    expect
+      .soft(shortStage.redrawObservations, 'stage boxes keep their observers through clock redraws')
+      .toBe(0);
     expect(shortStage.fit).toBeNull();
     expect(shortStage.over).toBe(false);
     const longStage = await stage(true);
     console.log('Stage fit measurements:', { short: shortStage, long: longStage });
     expect.soft(longStage.readsAtCommit, 'long stage words must wait for observed layout').toBe(0);
+    expect.soft(longStage.redrawObservations, 'fitted stage boxes also keep their observers').toBe(0);
     expect(Number(longStage.fit)).toBeGreaterThan(0);
     expect(Number(longStage.fit)).toBeLessThan(1);
     expect(longStage.over).toBe(false);
