@@ -153,6 +153,12 @@ describe('drawing a PDF as pictures (the main process)', () => {
     );
   });
 
+  /** The pages a window was given to draw (none said: every page). */
+  const shareOf = (t: ReturnType<typeof setup>, id: number) => {
+    const job = t.pictures.job(t.sender(id));
+    return job && 'share' in job ? job.share : undefined;
+  };
+
   /** Wait for this many windows to have opened. */
   const windowsOpen = async (t: ReturnType<typeof setup>, n: number) => {
     for (let i = 0; i < 100 && t.windows.length < n; i++) await new Promise((r) => setTimeout(r, 5));
@@ -164,7 +170,7 @@ describe('drawing a PDF as pictures (the main process)', () => {
     const drawn = t.pictures.draw(t.pdf, join(t.dir, 'pages'));
     const ids = await windowsOpen(t, 3);
     expect(ids).toHaveLength(3);
-    expect(ids.map((id) => t.pictures.job(t.sender(id))?.share)).toEqual([
+    expect(ids.map((id) => shareOf(t, id))).toEqual([
       { every: 3, from: 0 },
       { every: 3, from: 1 },
       { every: 3, from: 2 },
@@ -187,7 +193,7 @@ describe('drawing a PDF as pictures (the main process)', () => {
     const w = await t.opened();
     await new Promise((r) => setTimeout(r, 30));
     expect(t.windows).toHaveLength(1);
-    expect(t.pictures.job(t.sender(w.webContents.id))?.share).toBeUndefined();
+    expect(shareOf(t, w.webContents.id)).toBeUndefined();
     await t.pictures.page(t.sender(w.webContents.id), { index: 0, png: PNG, notes: '' });
     t.pictures.done(t.sender(w.webContents.id), { total: 1, failed: [] });
     expect((await drawn).ok).toBe(true);
@@ -210,7 +216,7 @@ describe('drawing a PDF as pictures (the main process)', () => {
     // One window of its own for the page the second left.
     const ids = await windowsOpen(t, 3);
     const third = ids[2] ?? 0;
-    expect(t.pictures.job(t.sender(third))?.share).toEqual({ pages: [5] });
+    expect(shareOf(t, third)).toEqual({ pages: [5] });
     await t.pictures.page(t.sender(third), { index: 5, png: PNG, notes: '' });
     t.pictures.done(t.sender(third), { total: 6, failed: [] });
     const result = await drawn;

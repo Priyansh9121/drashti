@@ -101,7 +101,8 @@ export async function runDeck(
   const pictures = (result: Extract<BakeResult, { ok: false }> | null, issues: ImportIssue[]): DeckFlow => ({
     kind: 'pictures',
     pdf: result?.pdf ?? null,
-    converter: result?.pdf && result.baker !== 'stand-in' ? result.baker : null,
+    // The tests' stand-in saves its PDF as PowerPoint does, and is named as PowerPoint (Session 56: it saves one now).
+    converter: result?.pdf ? (result.baker === 'stand-in' ? 'powerpoint' : result.baker) : null,
     deck: result?.deck ?? read,
     deckFile: result?.deckFile ?? (source === 'pptx' ? file : null),
     issues,
