@@ -32,3 +32,15 @@ export function writeDeckAnimations(userData: string, on: boolean): void {
   writeFileSync(`${file}.writing`, JSON.stringify({ on }, null, 2));
   renameSync(`${file}.writing`, file);
 }
+
+/**
+ * Tests only (Session 56's timing check, DRASHTI_TEST_DECK_APPS): the apps a switch names ("keynote",
+ * "powerpoint,keynote"), in its order; null when it names none.
+ */
+export function deckAppsOf(value: string | undefined): ('powerpoint' | 'keynote')[] | null {
+  const apps = (value ?? '')
+    .split(',')
+    .map((a) => a.trim().toLowerCase())
+    .filter((a): a is 'powerpoint' | 'keynote' => a === 'keynote' || a === 'powerpoint');
+  return apps.length > 0 ? [...new Set(apps)] : null;
+}

@@ -382,3 +382,37 @@ describe('a deck’s slide stepped through its clicks (Session 54, C2)', () => {
     expect(up(second.engine).step).toBe(2);
   });
 });
+
+describe('a deck’s slide still being prepared (Session 56)', () => {
+  /** A deck's slide whose animations are still being made: its picture as a still step of its own. */
+  const preparing = (id: string): RenderSlide => ({
+    ...deckSlide(id, 1),
+    deck: {
+      preparing: true,
+      steps: [{ clipId: `${id}-picture`, clipMs: 0, lastId: `${id}-picture` }],
+      media: [],
+    },
+  });
+
+  it('Next waits on it, saying so; a click on it shows its picture; once its clips are in, Next goes on to it', () => {
+    const { engine, source } = setup([deckSlide('a', 1), preparing('b'), deckSlide('c', 1)]);
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    expect(engine.dispatch({ type: 'next' })).toMatchObject({
+      ok: false,
+      error: 'preparing',
+      message:
+        'Slide 2 is still being prepared: its animations are being made. Press Next again once it is ready.',
+    });
+    expect(up(engine).id).toBe('a');
+    // Put up any other way, it shows its picture.
+    expect(engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 1 }).ok).toBe(true);
+    expect(up(engine).id).toBe('b');
+    // Its clips in: Next goes on to it, and through its clicks.
+    engine.dispatch({ type: 'goLive', presentationId: 'deck', slideIndex: 0 });
+    source.set('deck', chained([deckSlide('a', 1), deckSlide('b', 2), deckSlide('c', 1)]), [], {
+      transition: dissolve(600),
+    });
+    expect(engine.dispatch({ type: 'next' }).ok).toBe(true);
+    expect(up(engine)).toMatchObject({ id: 'b', step: 0 });
+  });
+});

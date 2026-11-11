@@ -189,3 +189,45 @@ describe('a deck’s slide in the library (Session 54, C2)', () => {
     expect(repo.get(id)?.groups[0]?.slides[0]?.slide.deck).toEqual(DECK);
   });
 });
+
+describe('a deck’s slides still being prepared (Session 56)', () => {
+  it('are made plain pictures, the presentation’s content moving on: one presentation’s, or every one at a start', () => {
+    const db = openDatabase(':memory:');
+    const repo = new PresentationRepo(db);
+    const still = (id: string): DeckSlide => ({ steps: [{ clipId: id, clipMs: 0, lastId: id }], media: [] });
+    const make = (name: string) =>
+      repo.insert({
+        libraryId: repo.ensureLibrary('Default'),
+        name,
+        groups: [
+          {
+            name: '',
+            slides: [
+              { elements: [picture('p1')], deck: { ...still('p1'), preparing: true } },
+              { elements: [picture('p2')], deck: still('p2') },
+              { elements: [picture('p3')] },
+              { elements: [picture('p4')], deck: DECK },
+            ],
+          },
+        ],
+      });
+    const first = make('Placeholder one');
+    const second = make('Placeholder two');
+    const rev = (id: string) =>
+      db.prepare('SELECT content_rev FROM presentations WHERE id = ?').pluck().get(id) as number;
+    const decks = (id: string) =>
+      repo.get(id)?.groups.flatMap((g) => g.slides.map((s) => s.slide.deck ?? null));
+    const before = { first: rev(first), second: rev(second) };
+    expect(repo.clearPreparing(first)).toBe(1);
+    // Its preparing slide a plain picture; its still step, its picture alone and its deck's steps as they were.
+    expect(decks(first)).toEqual([null, still('p2'), null, DECK]);
+    expect(rev(first)).toBe(before.first + 1);
+    expect(decks(second)?.[0]).toMatchObject({ preparing: true });
+    expect(rev(second)).toBe(before.second);
+    // At a start: every one; and none left, nothing changes.
+    expect(repo.clearPreparing()).toBe(1);
+    expect(decks(second)?.[0]).toBeNull();
+    expect(repo.clearPreparing()).toBe(0);
+    expect(rev(second)).toBe(before.second + 1);
+  });
+});

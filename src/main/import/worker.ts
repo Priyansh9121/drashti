@@ -178,6 +178,10 @@ async function start(message: StartMessage): Promise<void> {
             baker: message.baker ?? true,
             // The copies a PowerPoint import puts in PowerPoint for Mac's folder, in Drashti's own record (Session 56).
             officeCopies: new OfficeCopies(officeCopiesFile(message.userDataDir)),
+            // Tests only (the timing check, Session 56).
+            standInLines: message.standInLines ?? null,
+            deckApps: message.deckApps ?? null,
+            standInHold: message.standInHold ?? null,
             ffmpeg,
             onAir,
             onWrote: (wrote) => {

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ScreenConfig } from '../../shared/screens';
-import { PdfPictures, pictureSize } from './pdf-pictures';
+import { PdfPictures, type PdfPicturesDeps, pictureSize } from './pdf-pictures';
 
 /*
  * Drawing a PDF's pages as pictures, the main process's side (Session 15): the
@@ -42,7 +42,7 @@ class FakeWindow {
   }
 }
 
-function setup(assets: string[] = []) {
+function setup(assets: string[] = [], more: Pick<PdfPicturesDeps, 'wide' | 'atOnce'> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-pdf-pictures-'));
   const pdf = join(dir, 'Placeholder.pdf');
   writeFileSync(pdf, '%PDF-1.4 placeholder');
@@ -57,6 +57,7 @@ function setup(assets: string[] = []) {
     size: () => ({ width: 1920, height: 1080 }),
     assetDirs: () => assets,
     log: (m) => log.push(m),
+    ...more,
   });
   const sender = (id: number) => ({ id }) as unknown as WebContents;
   // The window opens once the PDF has been read: wait for it.
@@ -150,6 +151,77 @@ describe('drawing a PDF as pictures (the main process)', () => {
     expect(!result.ok && result.message).toMatch(
       /^The window drawing the pages stopped unexpectedly: import the PDF again/u,
     );
+  });
+
+  /** The pages a window was given to draw (none said: every page). */
+  const shareOf = (t: ReturnType<typeof setup>, id: number) => {
+    const job = t.pictures.job(t.sender(id));
+    return job && 'share' in job ? job.share : undefined;
+  };
+
+  /** Wait for this many windows to have opened. */
+  const windowsOpen = async (t: ReturnType<typeof setup>, n: number) => {
+    for (let i = 0; i < 100 && t.windows.length < n; i++) await new Promise((r) => setTimeout(r, 5));
+    return t.windows.map((w) => w.webContents.id);
+  };
+
+  it('draws several pages at once while nothing is up and the stream is off: each window its share (Session 56)', async () => {
+    const t = setup([], { wide: () => true, atOnce: 3 });
+    const drawn = t.pictures.draw(t.pdf, join(t.dir, 'pages'));
+    const ids = await windowsOpen(t, 3);
+    expect(ids).toHaveLength(3);
+    expect(ids.map((id) => shareOf(t, id))).toEqual([
+      { every: 3, from: 0 },
+      { every: 3, from: 1 },
+      { every: 3, from: 2 },
+    ]);
+    // A page that is not a window's own is not kept from it.
+    expect(await t.pictures.page(t.sender(ids[1] ?? 0), { index: 0, png: PNG, notes: '' })).toBe(true);
+    for (const [k, id] of ids.entries())
+      for (let i = k; i < 7; i += 3) await t.pictures.page(t.sender(id), { index: i, png: PNG, notes: '' });
+    for (const id of ids) t.pictures.done(t.sender(id), { total: 7, failed: [] });
+    const result = await drawn;
+    expect(result.ok && result.pages.map((p) => p.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(result.ok && result.total).toBe(7);
+    expect(t.windows.every((w) => w.destroyed)).toBe(true);
+    expect(t.log.at(-1)).toMatch(/^Pictures: drew 7 page\(s\) of 7 in \d+ ms, 3 at once$/u);
+  });
+
+  it('draws one page at a time while anything is up or the stream is on air, as before (Session 56)', async () => {
+    const t = setup([], { wide: () => false, atOnce: 3 });
+    const drawn = t.pictures.draw(t.pdf, join(t.dir, 'pages'));
+    const w = await t.opened();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(t.windows).toHaveLength(1);
+    expect(shareOf(t, w.webContents.id)).toBeUndefined();
+    await t.pictures.page(t.sender(w.webContents.id), { index: 0, png: PNG, notes: '' });
+    t.pictures.done(t.sender(w.webContents.id), { total: 1, failed: [] });
+    expect((await drawn).ok).toBe(true);
+    expect(t.log.at(-1)).toMatch(/, 1 at once$/u);
+  });
+
+  it('stops the windows beside the first once the show starts, then draws the pages they left with one (Session 56)', async () => {
+    let wide = true;
+    const t = setup([], { wide: () => wide, atOnce: 2 });
+    const drawn = t.pictures.draw(t.pdf, join(t.dir, 'pages'));
+    const [first = 0, second = 0] = await windowsOpen(t, 2);
+    expect(await t.pictures.page(t.sender(second), { index: 1, png: PNG, notes: '' })).toBe(true);
+    // A slide goes up: the second window stops at its next page, which is kept; the first goes on.
+    wide = false;
+    expect(await t.pictures.page(t.sender(second), { index: 3, png: PNG, notes: '' })).toBe(false);
+    t.pictures.done(t.sender(second), { total: 6, failed: [] });
+    for (const i of [0, 2, 4])
+      expect(await t.pictures.page(t.sender(first), { index: i, png: PNG, notes: '' })).toBe(true);
+    t.pictures.done(t.sender(first), { total: 6, failed: [] });
+    // One window of its own for the page the second left.
+    const ids = await windowsOpen(t, 3);
+    const third = ids[2] ?? 0;
+    expect(shareOf(t, third)).toEqual({ pages: [5] });
+    await t.pictures.page(t.sender(third), { index: 5, png: PNG, notes: '' });
+    t.pictures.done(t.sender(third), { total: 6, failed: [] });
+    const result = await drawn;
+    expect(result.ok && result.pages.map((p) => p.index)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(t.windows.every((w) => w.destroyed)).toBe(true);
   });
 
   it('gives pdf.js its own data by plain name only, from the first folder that has it', async () => {

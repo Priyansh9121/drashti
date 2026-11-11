@@ -19,6 +19,12 @@ import { HOLD_SETTLE_MS, plannedLength } from './plan';
 export const MAX_OFFSET_MS = 200;
 /** How far from where the plan puts it a slide's transition is looked for (C1: −77 to +157 ms over 20 slides). */
 const SLIDE_WINDOW_MS = 600;
+/**
+ * A slide with no transition (an instant cut) is looked for only this far short of its own first click's motion
+ * (Session 56): a cut that cannot be seen (two slides alike) is then never taken for that click, which would put the
+ * slide, and every slide found after it, late by as much.
+ */
+const BEFORE_CLICK_MS = 100;
 /** A step's motion is looked for from this long before its moment to this long after it. */
 const STEP_BEFORE_MS = 300;
 const STEP_AFTER_MS = 800;
@@ -253,10 +259,15 @@ export function planCuts(plan: MoviePlan, motion: Motion): CutPlan {
     // a transition moves for a few frames at least, a cut for one. Two slides alike look alike all through a fade,
     // their words aside, so no stretch need be big.
     const least = Math.min(3, Math.max(1, Math.floor(s.transitionMs / frameMs)));
+    const firstClick = s.steps.find((step, k) => k > 0 && !step.still);
+    const window =
+      s.transitionMs > 0 || !firstClick
+        ? SLIDE_WINDOW_MS
+        : Math.min(SLIDE_WINDOW_MS, Math.max(frameMs, plan.settleMs + firstClick.startMs - BEFORE_CLICK_MS));
     let found: MotionRun | null = null;
     for (const r of runs) {
       const off = Math.abs(r.startMs - frameMs - predicted);
-      if (r.frames < least || off > SLIDE_WINDOW_MS) continue;
+      if (r.frames < least || off > window) continue;
       if (!found || off < Math.abs(found.startMs - frameMs - predicted)) found = r;
     }
     // The frame before its first change is the transition's first.
@@ -447,14 +458,24 @@ export async function cutMovie(
     onAir?: () => Promise<boolean>;
     /** Asked before each step: the disk under the 2 GB always kept free stops the cut (C review). */
     full?: () => boolean;
+    /**
+     * Slides (their places in the plan) in the movie only as lead-ins (Session 56): never cut, each its own empty
+     * list of files.
+     */
+    leadIns?: ReadonlySet<number>;
   } = {},
 ): Promise<CutFiles[][]> {
   await mkdir(dir, { recursive: true });
-  const total = cuts.slides.reduce((n, s) => n + s.steps.length, 0);
+  const cut = (_: SlideCut, i: number) => !options.leadIns?.has(i);
+  const total = cuts.slides.filter(cut).reduce((n, s) => n + s.steps.length, 0);
   let done = 0;
   const out: CutFiles[][] = [];
-  for (const slide of cuts.slides) {
+  for (const [i, slide] of cuts.slides.entries()) {
     const files: CutFiles[] = [];
+    if (!cut(slide, i)) {
+      out.push(files);
+      continue;
+    }
     for (const [k, step] of slide.steps.entries()) {
       if (await options.onAir?.()) throw new OnAir();
       if (options.full?.()) throw new DiskFull();

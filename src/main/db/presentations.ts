@@ -825,6 +825,46 @@ export class PresentationRepo {
     );
   }
 
+  /**
+   * Slides still marked as preparing (Session 56) made plain pictures: their deck's import ended without their clips
+   * (cut short, or the slides changed meanwhile), or Drashti stopped before it was done (every one, at a start). Their
+   * presentations' content moves on. How many slides.
+   */
+  clearPreparing(presentationId?: string): number {
+    const marked = `s.deck IS NOT NULL AND json_valid(s.deck) AND json_extract(s.deck, '$.preparing') = 1`;
+    let cleared = 0;
+    this.db.transaction(() => {
+      const ids = (
+        presentationId === undefined
+          ? this.db
+              .prepare(
+                `SELECT DISTINCT g.presentation_id FROM slides s JOIN slide_groups g ON g.id = s.group_id
+                  WHERE ${marked}`,
+              )
+              .pluck()
+              .all()
+          : [presentationId]
+      ) as string[];
+      for (const id of ids) {
+        const changed = this.db
+          .prepare(
+            `UPDATE slides SET deck = NULL WHERE id IN (SELECT s.id FROM slides s JOIN slide_groups g ON g.id = s.group_id
+               WHERE g.presentation_id = ? AND ${marked})`,
+          )
+          .run(id).changes;
+        if (changed === 0) continue;
+        cleared += changed;
+        this.db
+          .prepare(
+            `UPDATE presentations SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), content_rev = content_rev + 1
+              WHERE id = ?`,
+          )
+          .run(id);
+      }
+    })();
+    return cleared;
+  }
+
   /** A presentation imported from a file with exactly these bytes (from anywhere). */
   findByHash(kind: ImportSource['kind'], hash: string): ImportedMatch | null {
     const r = this.db
