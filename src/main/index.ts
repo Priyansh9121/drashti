@@ -348,6 +348,7 @@ import { createWhisperEngine } from './speech/whisper-engine';
 import { createStandInEngine } from './speech/stand-in-engine';
 import { findWhisper, whisperProblem } from './speech/engine-place';
 import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/models';
+import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
 import type { EngineState } from '../shared/engine/state';
@@ -389,7 +390,7 @@ const selfTest = sw('DRASHTI_SELFTEST') === 'watchdog';
 // A node's own watchdog self-test (Session 17): starts as a node, with the pairing in its data folder.
 const nodeSelfTest = sw('DRASHTI_SELFTEST') === 'node-watchdog';
 const perfTest = sw('DRASHTI_SELFTEST') === 'performance';
-// Check the bundled FFmpeg (scripts/check-ffmpeg.mjs): print what works, and exit.
+// Check the bundled programs (scripts/check-ffmpeg.mjs): print what works, and exit.
 const ffmpegCheck = sw('DRASHTI_SELFTEST') === 'ffmpeg';
 // The restart after a restore, for real (scripts/check-relaunch.mjs; see relaunch-selftest.ts).
 const relaunchTest = sw('DRASHTI_SELFTEST') === 'restore-relaunch';
@@ -1275,11 +1276,24 @@ function start(): void {
     void (async () => {
       const ffmpeg = await ffmpegSelfTest(path, process.platform);
       const youtube = await youtubeSelfTest(tools, process.platform);
+      const whisper = packaged()
+        ? await whisperSelfTest(
+            findWhisper({
+              packaged: true,
+              resourcesPath: process.resourcesPath,
+              appPath: app.getAppPath(),
+              platform: process.platform,
+              arch: process.arch,
+            }),
+            process.platform,
+          )
+        : null;
       const result = {
         ...ffmpeg,
         ffmpegPassed: ffmpeg.passed,
         youtube,
-        passed: ffmpeg.passed && youtube.passed,
+        whisper,
+        passed: ffmpeg.passed && youtube.passed && (whisper?.passed ?? true),
       };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);
@@ -2824,6 +2838,7 @@ function start(): void {
 
   // ---- streaming -------------------------------------------------------------
   let eventsStreamWas: StreamStatus | null = null;
+  let captionsStreamUseChanged: ((inUse: boolean) => void) | undefined;
   const countStreams = streamCounter((kind) => behind?.service.count(kind));
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
@@ -2863,6 +2878,7 @@ function start(): void {
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
     },
     statusChanged: (status) => {
+      captionsStreamUseChanged?.(stream?.inUse() === true);
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
       // Each stream and recording started, counted for the Access List (Session 54): never what.
@@ -2944,8 +2960,8 @@ function start(): void {
     engineProblem: () => captionsEngineProblem,
     modelReady: (id) =>
       testSpeech !== undefined || modelReady(modelFile(captionsData, id), MODEL_SOURCES[id]),
-    download: (id, progress) =>
-      downloadModel({ dest: modelFile(captionsData, id), source: MODEL_SOURCES[id], progress }),
+    download: (id, progress, signal) =>
+      downloadModel({ dest: modelFile(captionsData, id), source: MODEL_SOURCES[id], progress, signal }),
     show: (shown) => {
       engine.setCaptions(shown);
     },
@@ -2954,8 +2970,10 @@ function start(): void {
     },
     log,
   });
+  captionsStreamUseChanged = (inUse) => captions.setStreamInUse(inUse);
   captions.start();
   stops.add('captions', () => {
+    captionsStreamUseChanged = undefined;
     captions.close();
   });
   handle(IPC.captions.view, () => captions.view());

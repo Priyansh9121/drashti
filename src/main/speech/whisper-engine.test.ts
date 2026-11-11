@@ -83,13 +83,22 @@ describe('what the engine heard (whisper-server’s verbose_json)', () => {
 function standIn(o: { delayMs?: number; language?: string } = {}) {
   const servers: Server[] = [];
   const asked: string[] = [];
+  const requestPaths: string[] = [];
   const spawn = (_program: string, args: string[]): ChildProcess => {
     const port = Number(args[args.indexOf('--port') + 1]);
+    const requestPath = args.includes('--request-path')
+      ? (args[args.indexOf('--request-path') + 1] ?? '')
+      : '';
+    requestPaths.push(requestPath);
     const child = new EventEmitter() as ChildProcess & EventEmitter;
     Object.assign(child, { pid: undefined, exitCode: null });
     const server = createServer((req, res) => {
-      if (req.url === '/health') {
+      if (req.url === `${requestPath}/health`) {
         res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"status":"ok"}');
+        return;
+      }
+      if (req.url !== `${requestPath}/inference`) {
+        res.writeHead(404).end();
         return;
       }
       let body = '';
@@ -126,7 +135,7 @@ function standIn(o: { delayMs?: number; language?: string } = {}) {
     };
     return child;
   };
-  return { spawn, asked, close: () => servers.forEach((s) => s.close()) };
+  return { spawn, asked, requestPaths, close: () => servers.forEach((s) => s.close()) };
 }
 
 /** Sound: a burst of tone (`ms` long) then quiet, as 100 ms chunks timed on the real clock. */
@@ -208,6 +217,7 @@ describe('the captions engine (Part 10)', () => {
     expect(heard.at(-1)?.final).toBe(true);
     expect(heard.every((h) => h.id === 's1')).toBe(true);
     expect(server.asked.every((l) => l === 'en')).toBe(true);
+    expect(server.requestPaths.every((path) => /^\/[a-f0-9]{32}$/u.test(path))).toBe(true);
     // Its times are this computer's clock, in order.
     const f = finals[0];
     expect(f && f.endAt >= f.startAt && f.heardAt >= f.endAt).toBe(true);
@@ -308,6 +318,7 @@ describe('the captions engine (Part 10)', () => {
     expect(warnings.join('\n')).toMatch(/cannot keep up/);
     // A rest later it starts again by itself.
     await waitFor(() => states.filter((s) => s.phase === 'listening').length >= 2, 8_000);
+    expect(new Set(server.requestPaths).size).toBe(2);
   }, 20_000);
 
   it('is held with no sound input, and fails plainly with no engine program', async () => {

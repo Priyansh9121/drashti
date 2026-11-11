@@ -1,7 +1,9 @@
 import { spawn as spawnChild, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { constants, setPriority } from 'node:os';
 import type { Heard, HeardWord, SpeechLanguage } from '../../shared/speech';
+import { whisperDependencyProblem } from './engine-place';
 import type { SpeechEngine } from './hub';
 
 /*
@@ -203,7 +205,7 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
       const ended = (): boolean => stopped;
       let child: ChildProcess | null = null;
       let closeSound: (() => void) | null = null;
-      let port = 0;
+      let address = '';
       let busy = false;
       let slowInARow = 0;
       let phrase: Growing | null = null;
@@ -239,10 +241,11 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         // The decode already reports its language. Asking for probabilities runs detection again.
         form.append('no_language_probabilities', 'true');
         const began = Date.now();
-        const response = await get(`http://127.0.0.1:${String(port)}/inference`, {
+        const response = await get(`${address}/inference`, {
           method: 'POST',
           body: form,
           signal: abort.signal,
+          redirect: 'error',
         });
         if (!response.ok) return null;
         const reply = (await response.json()) as Reply;
@@ -393,8 +396,15 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           return;
         }
         to.state({ phase: 'starting' });
-        port = await freePort();
+        const port = await freePort().catch(() => 0);
         if (stopped) return;
+        if (!port) {
+          to.state({ phase: 'failed', message: 'The captions engine could not open a local connection.' });
+          return;
+        }
+        // Both engines require this private path for their handlers. Each child gets a fresh one.
+        const requestPath = `/${randomBytes(16).toString('hex')}`;
+        address = `http://127.0.0.1:${String(port)}${requestPath}`;
         const args = [
           '-m',
           o.model(),
@@ -402,9 +412,13 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           '127.0.0.1',
           '--port',
           String(port),
+          '--request-path',
+          requestPath,
           '-t',
           String(o.threads ?? 4),
         ];
+        // The Windows server has an optional public files directory. Drashti serves no files.
+        if (process.platform === 'win32') args.push('--public', '');
         allowFallback = o.fallback();
         const started = run(program, args);
         child = started;
@@ -415,7 +429,9 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
           end();
           to.state({
             phase: 'failed',
-            message: 'The captions engine stopped. Turn captions off and on to try again.',
+            message:
+              whisperDependencyProblem(process.platform, code) ??
+              'The captions engine stopped. Turn captions off and on to try again.',
           });
         });
         started.once('error', () => {
@@ -435,8 +451,8 @@ export function createWhisperEngine(o: WhisperEngineOptions): SpeechEngine {
         const deadline = Date.now() + readyMs;
         while (!ended() && child === started && Date.now() < deadline) {
           try {
-            const health = await get(`http://127.0.0.1:${String(port)}/health`, { signal: abort.signal });
-            if (health.ok) {
+            const health = await get(`${address}/health`, { signal: abort.signal, redirect: 'error' });
+            if (health.ok && !ended() && child === started) {
               o.log.info(`Speech: the captions engine is ready (pid ${String(started.pid)}).`);
               openSound();
               return;
