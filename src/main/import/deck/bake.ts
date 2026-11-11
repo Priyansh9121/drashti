@@ -29,7 +29,7 @@ import { diskFreeBytes } from '../media-store';
 import { keynoteMusic } from './keynote-music';
 import { type Baker, keynotePlan, type MoviePlan, plannedLength, powerPointPlan } from './plan';
 import { macProgress, NO_PROGRESS_MS, noProgress } from './progress';
-import { standInMovie } from './stand-in-baker';
+import { standInMovie, standInSize } from './stand-in-baker';
 import { writeTimedCopy } from './timed-copy';
 
 /*
@@ -112,6 +112,8 @@ export interface BakeOptions extends ConvertOptions {
   progress?: (note: string) => void;
   /** The free space on the disk of a folder (tests give their own). */
   freeBytes?: (dir: string) => number;
+  /** Tests only (Session 56's timing check): the stand-in's movie this many lines high (else 180). */
+  standInLines?: number | null;
 }
 
 /** Always kept free on the disk, as converting keeps it (Session 50). */
@@ -264,7 +266,9 @@ async function powerPointOnMac(
         };
       // The timed copy, opened as any copy is (in PowerPoint's own folder).
       const timed = join(work, 'timed.pptx');
+      const copyFrom = performance.now();
       await writeTimedCopy(deckFile, timed, plan);
+      options.steps?.add('timed-copy', performance.now() - copyFrom);
       const opened = await s.open(timed);
       if (!opened.ok) return opened.failed;
       // PowerPoint shows itself as it opens a document: hidden while it works.
@@ -273,6 +277,7 @@ async function powerPointOnMac(
       const inside = dirname(opened.document.copy);
       // The pictures first (a moment): should the movie not do, the deck comes in as them.
       const pdfInApp = join(inside, 'pictures.pdf');
+      const pdfFrom = performance.now();
       const savedPdf = await s.tell(
         ['save presentation (item 1 of argv) in (POSIX file (item 2 of argv)) as save as PDF', 'return ""'],
         [doc, pdfInApp],
@@ -282,8 +287,10 @@ async function powerPointOnMac(
         pdf = join(work, 'pictures.pdf');
         await copyFile(pdfInApp, pdf);
       } else s.log(`could not save it as PDF: ${firstLine(savedPdf.stderr)}`);
+      options.steps?.add('app-pdf', performance.now() - pdfFrom);
       // The movie: asked for, then written in the background.
       const movieInApp = join(inside, 'movie.mov');
+      const movieFrom = performance.now();
       options.progress?.('PowerPoint is making the movie');
       const asked = await s.tell(
         [
@@ -319,6 +326,7 @@ async function powerPointOnMac(
       }
       const movie = join(work, 'movie.mov');
       await copyFile(movieInApp, movie);
+      options.steps?.add('movie', performance.now() - movieFrom);
       s.log('made the movie');
       await s.close(opened.document);
       return { ok: true, movie, deckFile, deck, plan, pdf, keynoteMedia: [] };
@@ -452,6 +460,7 @@ async function keynoteOnMac(
       if (told.code !== 0) s.log(`could not tell its movies and sounds: ${firstLine(told.stderr)}`);
       const keynoteMedia = told.code === 0 ? parseKeynoteMedia(told.stdout) : [];
       const pdfInApp = join(inside, 'pictures.pdf');
+      const pdfFrom = performance.now();
       const savedPdf = await s.tell(
         [
           'export (document id (item 1 of argv)) to (POSIX file (item 2 of argv)) as PDF with properties {PDF image quality:Best, skipped slides:false}',
@@ -464,6 +473,7 @@ async function keynoteOnMac(
         pdf = join(work, 'pictures.pdf');
         await copyFile(pdfInApp, pdf);
       }
+      options.steps?.add('app-pdf', performance.now() - pdfFrom);
       const deleted = await s.tell(
         [
           'set d to document id (item 1 of argv)',
@@ -480,6 +490,7 @@ async function keynoteOnMac(
         return s.fromError(deleted, 'taking out its movies and sounds', 'take out its movies and sounds');
       options.progress?.('Keynote is making the movie');
       const movieInApp = join(inside, 'movie.m4v');
+      const movieFrom = performance.now();
       // Its export answers only once the movie is made: watched meanwhile, and given up on after a minute with no
       // progress, neither the movie growing nor Keynote at work (Session 54, C review).
       const pids = await s.pids();
@@ -514,6 +525,7 @@ async function keynoteOnMac(
         return s.fromError(made, 'making its movie', 'make its movie');
       const movie = join(work, 'movie.m4v');
       await copyFile(movieInApp, movie);
+      options.steps?.add('movie', performance.now() - movieFrom);
       s.log('made the movie');
       await s.close(opened.document);
       return { ok: true, movie, deckFile, deck, plan, pdf, keynoteMedia };
@@ -565,15 +577,20 @@ async function powerPointOnWindows(
       deckFile,
     };
   const timed = join(work, 'timed.pptx');
+  const copyFrom = performance.now();
   await writeTimedCopy(deckFile, timed, plan);
+  options.steps?.add('timed-copy', performance.now() - copyFrom);
   const pdf = join(work, 'pictures.pdf');
   const movie = join(work, 'movie.mp4');
   options.progress?.('PowerPoint is making the movie');
+  // One run of PowerPoint for all of it (its start, the PDF and the movie): the movie's step, as one.
+  const movieFrom = performance.now();
   const made = await deckOnWindows(
     { input: timed, pdf, movie, movieLimitMs: movieLimit(limits, plan), stallMs: NO_PROGRESS_MS },
     work,
     { ...options, slideCount: deck.slides.length },
   );
+  options.steps?.add('movie', performance.now() - movieFrom);
   const pictures = exists(pdf) ? pdf : null;
   if (!made.ok) return { ok: false, failed: made, pdf: pictures, deck, deckFile };
   return { ok: true, movie, deckFile, deck, plan, pdf: pictures, keynoteMedia: [] };
@@ -605,7 +622,9 @@ async function standIn(
       deckFile: input,
     };
   const movie = join(work, 'movie.mp4');
-  await standInMovie(options.ffmpeg, plan, movie, options.signal);
+  const movieFrom = performance.now();
+  await standInMovie(options.ffmpeg, plan, movie, options.signal, standInSize(options.standInLines ?? null));
+  options.steps?.add('movie', performance.now() - movieFrom);
   return { ok: true, movie, deckFile: input, deck: read, plan, pdf: null, keynoteMedia: [] };
 }
 
@@ -727,6 +746,7 @@ export async function bakeDeck(
   if (await options.onAir?.()) return failed({ kind: 'on-air' });
   try {
     options.progress?.('Finding the steps in the movie');
+    const findFrom = performance.now();
     const motion = await measureMotion(options.ffmpeg, made.movie, options.signal);
     // Keynote's movie silent: a .key's soundtrack Keynote copied is Off, so it never plays (keynote-music.ts).
     const deck =
@@ -734,10 +754,12 @@ export async function bakeDeck(
         ? keynoteMusic(made.deck, { original: read, movieSound: false })
         : made.deck;
     const cuts = planCuts(made.plan, motion);
+    options.steps?.add('find-steps', performance.now() - findFrom);
     options.log?.(
       `Deck: ${String(cuts.offsets.length)} steps checked, the furthest ${cuts.worst ? `${String(cuts.worst.offsetMs)} ms (slide ${String(cuts.worst.slide + 1)}, step ${String(cuts.worst.step)})` : 'not measured'}; slides not found: ${cuts.lostSlides.map((i) => String(i + 1)).join(', ') || 'none'}`,
     );
     if (!onPlan(cuts)) return failed({ kind: 'off-plan', cuts });
+    const cutFrom = performance.now();
     const files = await cutMovie(options.ffmpeg, made.movie, cuts, join(work, 'steps'), {
       signal: options.signal,
       progress: (done, total) => {
@@ -747,6 +769,7 @@ export async function bakeDeck(
       // Under the 2 GB always kept free, the cut stops too.
       full: () => free(work) < KEEP_FREE_BYTES,
     });
+    options.steps?.add('cut', performance.now() - cutFrom);
     return {
       ok: true,
       pdf: made.pdf,

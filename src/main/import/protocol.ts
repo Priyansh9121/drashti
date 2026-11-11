@@ -39,6 +39,10 @@ export interface StartMessage {
    * while it is not known. Where it cannot, an import converts HEVC by itself.
    */
   playsHevc?: boolean | null;
+  /** Tests only (Session 56's timing check): the stand-in's movie this many lines high (else 180). */
+  standInLines?: number | null;
+  /** Tests only (the timing check): only these apps make a deck's movie or PDF, in this order (else every one here). */
+  deckApps?: ('powerpoint' | 'keynote')[] | null;
 }
 
 export interface CancelMessage {

@@ -94,6 +94,7 @@ export async function runDeck(
       },
     );
     if (result.ok) {
+      const deckFrom = performance.now();
       const parsed = await bakedPresentation(
         request.fileName,
         request.sourcePath,
@@ -102,6 +103,7 @@ export async function runDeck(
         options.ffmpeg,
         request.sourceDir ?? dirname(file),
       );
+      options.steps?.add('deck', performance.now() - deckFrom);
       const before = tried[0];
       if (before)
         parsed.issues.unshift({

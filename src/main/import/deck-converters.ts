@@ -10,6 +10,7 @@ import { readZipEntries } from './zip';
 import { cutText } from '../../shared/text';
 import { realPlaceAsync } from '../media/contained';
 import { dropOfficeCopy, OFFICE_DRASHTI, type OfficeCopies, officeCopyFolder } from './deck/leftovers';
+import type { StepTimes } from './step-times';
 
 /*
  * Saving a PowerPoint or Keynote file as PDF with the app installed on this
@@ -319,6 +320,8 @@ export interface ConvertOptions {
    * it goes there and forgotten once it is removed, so that only a start after one cut short looks in that folder.
    */
   officeCopies?: OfficeCopies | null;
+  /** Where the time goes, step by step (Session 56: the log's "Import steps" line). */
+  steps?: StepTimes;
 }
 
 export const appName = (converter: Converter) => (converter === 'keynote' ? 'Keynote' : 'PowerPoint');
@@ -771,6 +774,7 @@ export async function withMacSession<T>(
 
   try {
     // ---- start the app, hidden, without reopening anything --------------------------------
+    const startFrom = performance.now();
     const deadline = Date.now() + limits.startMs;
     let launches = 0;
     for (;;) {
@@ -821,12 +825,13 @@ export async function withMacSession<T>(
       // Not answering yet, or gone (it quit while starting, as a first start after an update can).
       await sleep(500, signal);
     }
+    options.steps?.add('app', performance.now() - startFrom);
     return await use({
       converter,
       name,
       folder,
       log,
-      open,
+      open: (file) => (options.steps ? options.steps.time('app', () => open(file)) : open(file)),
       tell,
       pids: () => pidsOf(app),
       stuck: silentFail,
@@ -838,6 +843,7 @@ export async function withMacSession<T>(
     });
   } finally {
     // ---- leave the app as the operator had it ----------------------------------------------
+    const closeFrom = performance.now();
     clearInterval(watching);
     for (const document of [...opened]) await close(document);
     if (before.length > 0) log('left open, as the operator had it');
@@ -852,6 +858,7 @@ export async function withMacSession<T>(
       options.refocus?.();
     }
     for (const inside of insides) await dropOfficeCopy(record, inside);
+    options.steps?.add('app-close', performance.now() - closeFrom);
   }
 }
 
@@ -877,6 +884,7 @@ async function convertOnMac(
     const wantBuilds =
       converter === 'keynote' && ext === '.key' && (await stat(input)).size <= BUILDS_MAX_BYTES;
     const seconds = Math.ceil((limits.saveMs + limits.perSlideMs * Math.max(slides, 1)) / 1000);
+    const pdfFrom = performance.now();
     const saved =
       converter === 'keynote'
         ? await session.tell(
@@ -917,6 +925,7 @@ async function convertOnMac(
         message: `${name} could not save it as PDF. ${byHand(converter)}`,
       };
     await copyFile(inApp, pdf);
+    options.steps?.add('app-pdf', performance.now() - pdfFrom);
     session.log('saved as PDF');
 
     let fileSlides: PptxSlide[] | null = null;
