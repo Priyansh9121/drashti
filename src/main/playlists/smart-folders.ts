@@ -170,24 +170,22 @@ export async function filesIn(
  * systems leave are passed over, as filesIn does; it stops at the first file a smart playlist follows.
  */
 export async function folderHolds(folder: string): Promise<'follows' | 'imports' | 'nothing'> {
-  let imports = false;
-  const walk = async (dir: string): Promise<boolean> => {
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-    for (const e of entries) {
-      if (e.name.startsWith('.')) continue;
-      const full = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (!SKIPPED_DIRS.has(e.name.toLowerCase()) && (await walk(full))) return true;
-        continue;
-      }
-      const format = e.isFile() ? formatOf(e.name) : 'unknown';
-      if (format === 'media' || format === 'pictures') return true;
-      if (format !== 'unknown') imports = true;
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  let holds: 'imports' | 'nothing' = 'nothing';
+  for (const e of entries) {
+    if (e.name.startsWith('.')) continue;
+    if (e.isDirectory()) {
+      if (SKIPPED_DIRS.has(e.name.toLowerCase())) continue;
+      const inside = await folderHolds(join(folder, e.name));
+      if (inside === 'follows') return 'follows';
+      if (inside === 'imports') holds = 'imports';
+      continue;
     }
-    return false;
-  };
-  if (await walk(folder)) return 'follows';
-  return imports ? 'imports' : 'nothing';
+    const format = e.isFile() ? formatOf(e.name) : 'unknown';
+    if (format === 'media' || format === 'pictures') return 'follows';
+    if (format !== 'unknown') holds = 'imports';
+  }
+  return holds;
 }
 
 /** The folder a smart playlist's settings name, or null. */

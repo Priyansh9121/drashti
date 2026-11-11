@@ -136,20 +136,22 @@ function useComingPlaylist(): boolean {
   // The playlist Simple Mode came with, once the main process said.
   const cameWith = useRef<string | null>(null);
   useEffect(() => {
-    let current = true;
+    // Still the Simple Mode that asked (a switch back before the answer leaves it be).
+    let gone = false;
+    const asked = () => !gone;
     // Simple Mode shows the playlists, never the templates Pro Mode may have had in view.
     if (usePlaylists.getState().view !== 'playlists') usePlaylists.setState({ view: 'playlists' });
     void (async () => {
       const id = await window.drashti.app.simplePlaylist().catch(() => null);
-      if (!current) return;
+      if (!asked()) return;
       cameWith.current = id;
       // A day's new playlist is made as Simple Mode comes: read the list again when it is not in it yet.
       if (id !== null && !usePlaylists.getState().tree.some((n) => n.id === id)) await loadTree();
-      if (current && id !== null && usePlaylists.getState().openId !== id) await openPlaylist(id);
-      if (current) setComing(false);
+      if (asked() && id !== null && usePlaylists.getState().openId !== id) await openPlaylist(id);
+      if (asked()) setComing(false);
     })();
     return () => {
-      current = false;
+      gone = true;
     };
   }, []);
   // Leaving Simple Mode with the playlist it came with still empty (nothing brought in), Pro Mode shows what it had open
