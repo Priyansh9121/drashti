@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { constants as fsConstants, existsSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
 import { basename, dirname, extname, join } from 'node:path';
 import type { PictureSource } from '../../shared/pictures';
@@ -9,6 +9,7 @@ import { type PptxDeck, type PptxSlide, readPptx, readPptxDeck } from './picture
 import { readZipEntries } from './zip';
 import { cutText } from '../../shared/text';
 import { realPlaceAsync } from '../media/contained';
+import { dropOfficeCopy, OFFICE_DRASHTI, type OfficeCopies, officeCopyFolder } from './deck/leftovers';
 
 /*
  * Saving a PowerPoint or Keynote file as PDF with the app installed on this
@@ -313,6 +314,11 @@ export interface ConvertOptions {
   ended?: (pid: number) => void;
   /** Windows: runs PowerShell (tests give a stand-in: CI has no Office). */
   runPowerShell?: PowerShellRunner;
+  /**
+   * Drashti's record of the copies it puts in PowerPoint for Mac's own folder (Session 56): each written down before
+   * it goes there and forgotten once it is removed, so that only a start after one cut short looks in that folder.
+   */
+  officeCopies?: OfficeCopies | null;
 }
 
 export const appName = (converter: Converter) => (converter === 'keynote' ? 'Keynote' : 'PowerPoint');
@@ -531,11 +537,9 @@ export async function withMacSession<T>(
   const opened: MacDocument[] = [];
   /** The app's processes, when Drashti started it. */
   let ours: number[] = [];
-  // PowerPoint for Mac may only read and write in its own folders: work there.
-  const folder =
-    app.converter === 'powerpoint'
-      ? join(homedir(), 'Library', 'Group Containers', 'UBF8T346G9.Office', 'Drashti')
-      : work;
+  // PowerPoint for Mac may only read and write in its own folders: work there, each copy in Drashti's own record.
+  const folder = app.converter === 'powerpoint' ? OFFICE_DRASHTI : work;
+  const record = app.converter === 'powerpoint' ? (options.officeCopies ?? null) : null;
   const insides: string[] = [];
   /**
    * The name the copies are opened under: the file's own (the app may show it in a
@@ -582,8 +586,7 @@ export async function withMacSession<T>(
     file: string,
   ): Promise<{ ok: true; document: MacDocument } | { ok: false; failed: ConvertFailed }> => {
     // ---- open a copy of the file, made for the purpose -----------------------------------
-    await mkdir(folder, { recursive: true });
-    const inside = await mkdtemp(join(folder, 'convert-'));
+    const inside = await officeCopyFolder(record, folder);
     insides.push(inside);
     const copyName = copies === 0 ? stem : `${stem} ${String(copies + 1)}`;
     copies++;
@@ -848,7 +851,7 @@ export async function withMacSession<T>(
       log('Drashti back in front');
       options.refocus?.();
     }
-    for (const inside of insides) await rm(inside, { recursive: true, force: true }).catch(() => undefined);
+    for (const inside of insides) await dropOfficeCopy(record, inside);
   }
 }
 

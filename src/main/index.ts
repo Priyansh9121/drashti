@@ -149,7 +149,7 @@ import { SoundRepo } from './db/sound';
 import { SoundPass } from './sound/sound-pass';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
-import { clearDeckLeftovers } from './import/deck/leftovers';
+import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/deck/leftovers';
 import { readDeckAnimations, writeDeckAnimations } from './import/deck/deck-setting';
 import { LinkService } from './links/link-service';
 import { libraryProblem } from './library-problem';
@@ -3358,7 +3358,25 @@ function start(): void {
   });
   leftovers.stopLeft();
   // A deck's import cut short last time (Session 54, C review): its copies in PowerPoint's folder and its work folders.
-  void clearDeckLeftovers();
+  // Tests only (never a packaged Drashti): PowerPoint's folder is this one instead, and what the start does in it is
+  // counted (globalThis.drashtiTestOfficeFolder), so a test can see a start leave it alone (Session 56).
+  const testOffice = packaged() ? undefined : sw('DRASHTI_TEST_OFFICE_FOLDER');
+  const officeSeen = { touched: 0, done: false };
+  if (testOffice !== undefined)
+    (globalThis as { drashtiTestOfficeFolder?: () => typeof officeSeen }).drashtiTestOfficeFolder = () => ({
+      ...officeSeen,
+    });
+  void clearDeckLeftovers({
+    copies: new OfficeCopies(officeCopiesFile(userDataDir)),
+    ...(testOffice !== undefined ? { office: testOffice } : {}),
+    touched: () => {
+      officeSeen.touched++;
+    },
+  })
+    .catch(() => 0)
+    .then(() => {
+      officeSeen.done = true;
+    });
   // Tests only (never a packaged Drashti): imports judge media by their headers alone, as before Session 50,
   // and nothing is converted by itself, so a test can try Convert as an operator does.
   const noConvertAtImport = !packaged() && sw('DRASHTI_TEST_NO_CONVERT_AT_IMPORT') === '1';
