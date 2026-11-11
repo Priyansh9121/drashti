@@ -10,7 +10,7 @@ describe('nothing up', () => {
   it('is so with every layer empty, and not with anything on a layer or a timer for the audience', () => {
     const empty = emptyLayers();
     expect(nothingUp(empty)).toBe(true);
-    expect(nothingUp({ ...empty, messages: [{ id: 'm', text: 'Placeholder' } as never] })).toBe(false);
+    expect(nothingUp({ ...empty, messages: [{ id: 'm', text: 'Placeholder' }] })).toBe(false);
     expect(nothingUp({ ...empty, slide: {} as never })).toBe(false);
     expect(nothingUp({ ...empty, audio: {} as never })).toBe(false);
     expect(nothingUp({ ...empty, timer: {} as never })).toBe(false);
