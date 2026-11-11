@@ -1208,15 +1208,17 @@ describe('ShowEngine', () => {
       );
       const seen: number[] = [];
       engine.onChange((state) => seen.push(state.layers.slide?.slideIndex ?? -1));
+      // A picture: a video never comes back under black-out (Session 56, one-at-a-time.test.ts).
+      const picture = { ...background, mediaId: 'still', media: 'image', loop: false } as const;
       const put = engine.restore({
         slide: { presentationId: 'cued', slideIndex: 0 },
-        background,
+        background: picture,
         blackout: true,
       });
       expect(put).toMatchObject({ slide: true, background: true, blackout: true, audio: false, messages: 0 });
       expect(engine.current.layers.slide?.slide).toEqual(textSlide('c1', 'One'));
       // The saved background, with its start time; not the slide's own cue.
-      expect(engine.current.layers.background).toEqual(background);
+      expect(engine.current.layers.background).toEqual(picture);
       expect(engine.current.blackout).toBe(true);
       expect(transport.messages).toHaveLength(1);
       expect(seen).toEqual([0]);
@@ -1518,17 +1520,22 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.slide).not.toBeNull();
     });
 
-    it('is covered by black-out and the Wallpaper, never taken off by them', () => {
-      const { engine } = withInputs();
-      engine.dispatch(show('in-1'));
-      const up = engine.current.layers.background;
-      expect(up?.kind).toBe('input');
-      engine.dispatch({ type: 'setBlackout', on: true });
-      engine.dispatch({ type: 'setWallpaper', on: true });
-      expect(engine.current.layers.background).toBe(up);
-      engine.dispatch({ type: 'setWallpaper', on: false });
-      engine.dispatch({ type: 'setBlackout', on: false });
-      expect(engine.current.layers.background).toBe(up);
+    it('is taken off by black-out or the Wallpaper going on, as clearing the background does (Session 56: LIVE shows one thing at a time)', () => {
+      // Until Session 56 both covered it, and it came back as they came off.
+      for (const cover of ['setBlackout', 'setWallpaper'] as const) {
+        const { engine } = withInputs();
+        engine.dispatch(show('in-1'));
+        expect(engine.current.layers.background?.kind).toBe('input');
+        engine.dispatch({ type: cover, on: true });
+        expect(engine.current.layers.background).toBeNull();
+        engine.dispatch({ type: cover, on: false });
+        expect(engine.current.layers.background).toBeNull();
+        // Put up again, it takes the cover off.
+        engine.dispatch({ type: cover, on: true });
+        engine.dispatch(show('in-1'));
+        expect(engine.current.layers.background?.kind).toBe('input');
+        expect([engine.current.blackout, engine.current.wallpaper]).toEqual([false, false]);
+      }
     });
 
     it('stays under the slides that follow; a slide’s video replaces it, and Back brings it back', () => {

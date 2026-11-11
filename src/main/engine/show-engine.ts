@@ -71,6 +71,7 @@ import {
 } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
+import { oneAtATime } from './one-at-a-time';
 import {
   clipLeftMs,
   type DeckEntry,
@@ -674,6 +675,9 @@ export class ShowEngine {
     if (slide && repeating && request.slide?.presentationId === repeatPresentationId(repeating.playlistId))
       actions.push({ type: 'repeat/set', repeat: repeating });
     this.apply(actions);
+    // A video or a video input under black-out or the Wallpaper (a file saved before Session 56 could hold both) did not
+    // come back: the cover did (one-at-a-time.ts), so the notice never names it.
+    const kept = this.state.layers.background !== null;
     if (recent.length > 0) {
       const stageRecent = [...(this.state.stageRecent ?? []), ...recent].slice(0, STAGE_RECENT);
       if (!sameData(this.state.stageRecent ?? [], stageRecent))
@@ -695,7 +699,7 @@ export class ShowEngine {
     }
     return {
       slide,
-      background: background !== null && background.kind !== 'input',
+      background: background !== null && background.kind !== 'input' && kept,
       blackout: request.blackout,
       wallpaper: request.wallpaper === true,
       // Not an audio playlist that would have ended meanwhile (caughtUp took it off): the notice says no sound.
@@ -708,7 +712,7 @@ export class ShowEngine {
       timers,
       window,
       pipWindow: box.window,
-      input: input?.name ?? null,
+      input: kept ? (input?.name ?? null) : null,
       inputGone: wasInput && !input ? wasInput.name : null,
       ...(box.inputGone === null ? {} : { pipInputGone: box.inputGone }),
       ...(alone ? { timer: true } : {}),
@@ -723,12 +727,22 @@ export class ShowEngine {
    */
   showWindow(window: Pick<WindowBackground, 'sourceId' | 'name'>): CommandResult {
     return this.atOnce(() =>
-      this.apply([
-        {
-          type: 'background/set',
-          background: { kind: 'window', sourceId: window.sourceId, name: window.name, startedAt: this.now() },
-        },
-      ]),
+      this.apply(
+        [
+          {
+            type: 'background/set',
+            background: {
+              kind: 'window',
+              sourceId: window.sourceId,
+              name: window.name,
+              startedAt: this.now(),
+            },
+          },
+        ],
+        null,
+        // The operator chose it (Session 56): put up, as Media's click is.
+        true,
+      ),
     );
   }
 
@@ -2639,15 +2653,31 @@ export class ShowEngine {
     return (next.canOops ?? false) === canOops ? next : { ...next, canOops };
   }
 
-  private apply(actions: readonly EngineAction[], cause: EngineCommandType | null = null): CommandResult {
-    return this.atOnce(() => this.applyAt(actions, cause));
+  /**
+   * Make a change. `operator`: the operator's own (a command's, or Main's put up of the window the operator chose), never
+   * one the engine makes by itself: only the operator's own takes a cover off (Session 56, one-at-a-time.ts).
+   */
+  private apply(
+    actions: readonly EngineAction[],
+    cause: EngineCommandType | null = null,
+    operator = cause !== null,
+  ): CommandResult {
+    return this.atOnce(() => this.applyAt(actions, cause, operator));
   }
 
-  private applyAt(actions: readonly EngineAction[], cause: EngineCommandType | null): CommandResult {
+  private applyAt(
+    actions: readonly EngineAction[],
+    cause: EngineCommandType | null,
+    operator: boolean,
+  ): CommandResult {
     const prev = this.state;
     // Stopped (Session 54): nothing made in here (a slide moving on by itself, a refresh) changes it either.
     if (prev.stopped) return this.unchanged();
     let next = actions.reduce(reduce, prev);
+    // LIVE shows one thing at a time (Session 56, one-at-a-time.ts): a video the operator puts up takes the Wallpaper and
+    // Black-out off; a cover going on, or a video the engine would bring up by itself under one, stops what plays.
+    // Before all that follows from the layers (what comes next, the time bars, the sound, Oops).
+    next = oneAtATime(prev, next, operator, this.now()).reduce(reduce, next);
     // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the
     // slide cleared ends it (Stop and Esc leave its slide up).
     if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))
