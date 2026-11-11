@@ -214,7 +214,6 @@ test('a Dropbox file link, and a YouTube download, each land in the open playlis
   await win.getByTestId('link-text').fill(YOUTUBE_LINK);
   await expect(win.getByTestId('link-name')).toHaveText('Placeholder video', { timeout: 60_000 });
   await expect(win.getByTestId('link-add-to')).toHaveValue(`playlist:${sunday ?? ''}`);
-  await win.getByTestId('link-permission').check();
   await win.getByTestId('link-download').click();
   await expect
     .poll(() => labels(win), { timeout: 180_000 })
