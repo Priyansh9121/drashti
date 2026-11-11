@@ -53,6 +53,11 @@ export class StepTimes {
     }
   }
 
+  /** Time since this began (ms). */
+  elapsed(): number {
+    return performance.now() - this.started;
+  }
+
   /** Each step that took any time, in ms, in the steps' order, and the whole file's time since this began. */
   summary(): { steps: Partial<Record<ImportStep, number>>; totalMs: number } {
     const steps: Partial<Record<ImportStep, number>> = {};
@@ -69,7 +74,8 @@ export const STEPS_LINE = 'Import steps: ';
 
 /** The log line for a file: its name, kind and slides, and where its time went (JSON after STEPS_LINE). */
 export function stepsLine(
-  file: { name: string; kind: string; slides: number; how: string },
+  /** `shownMs`: when its slides were first in the library (Session 56: a deck's pictures, before its animations). */
+  file: { name: string; kind: string; slides: number; how: string; shownMs?: number },
   times: StepTimes,
 ): string {
   return `${STEPS_LINE}${JSON.stringify({ ...file, ...times.summary() })}`;

@@ -182,6 +182,14 @@ export interface PipelineContext {
 
 type SourceKind = 'text' | 'docx' | 'pp6' | 'pp7' | 'pictures';
 
+/** What the log's "Import steps" line says of a file (Session 56): how it came in, and when its slides first showed. */
+interface Told {
+  how: string;
+  slides: number;
+  /** Ms from its start until its slides were first in the library. */
+  shownMs?: number;
+}
+
 /** A deck's slides written as their pictures while its animations are made (Session 56), and whether that is over. */
 interface EarlyDeck {
   /** Where they went, and the presentation's content revision just after (null: none yet). */
@@ -909,7 +917,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   const importPictures = async (file: ScannedFile, where: Where) => {
     // Where its time goes, step by step (Session 56): a line in Drashti's log once it is done, for the timing check.
     const steps = new StepTimes();
-    const told = { how: 'failed', slides: 0 };
+    const told: Told = { how: 'failed', slides: 0 };
     // A deck's slides written as their pictures while its animations are made (Session 56): should the file end
     // without the deck taking their place, its slides stay as those pictures, their Preparing marks gone.
     const early: EarlyDeck = { shown: null, done: false };
@@ -920,7 +928,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         ctx.onWrote?.({ presentationId: early.shown.id, replaced: true });
       ctx.log?.(
         stepsLine(
-          { name: basename(file.path), kind: extOf(file.path), slides: told.slides, how: told.how },
+          {
+            name: basename(file.path),
+            kind: extOf(file.path),
+            slides: told.slides,
+            how: told.how,
+            ...(told.shownMs === undefined ? {} : { shownMs: told.shownMs }),
+          },
           steps,
         ),
       );
@@ -959,7 +973,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     file: ScannedFile,
     where: Where,
     steps: StepTimes,
-    told: { how: string; slides: number },
+    told: Told,
     early: EarlyDeck,
   ) => {
     const fileName = basename(file.path);
@@ -1115,7 +1129,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
                       retained,
                       { early: true },
                     );
-                    if (wrote) early.shown = wrote;
+                    if (wrote) {
+                      early.shown = wrote;
+                      told.shownMs ??= Math.round(steps.elapsed());
+                    }
                   },
                 }),
           },
@@ -1146,6 +1163,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             ),
           );
           early.done = true;
+          told.shownMs ??= Math.round(steps.elapsed());
           return;
         }
         // Asked for its animations in place of its pictures, and they could not be made: the earlier import stays,
@@ -1338,6 +1356,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         ),
       );
       early.done = true;
+      told.shownMs ??= Math.round(steps.elapsed());
     } finally {
       await rm(work, { recursive: true, force: true });
     }

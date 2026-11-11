@@ -79,6 +79,8 @@ interface Row {
   steps: Record<string, number>;
   /** The file's own time in the import (the log line's). */
   totalMs: number;
+  /** From its start until its slides were first in the library (Session 56: a deck's pictures, before its clips). */
+  shownMs?: number;
   /** Edit slides, from asking to the first slide's own words being there to edit. */
   editMs: number;
 }
@@ -104,6 +106,7 @@ interface StepsEntry {
   slides: number;
   steps: Record<string, number>;
   totalMs: number;
+  shownMs?: number;
 }
 
 /** The file's line among Drashti's log's "Import steps". */
@@ -136,7 +139,16 @@ const STEP_COLUMNS = [
 /** The rows as a table in seconds: a step's column only where any row took time in it. */
 function table(all: readonly Row[]): string {
   const columns = STEP_COLUMNS.filter((c) => all.some((r) => r.steps[c] !== undefined));
-  const head = ['placeholder', 'how', 'slides', ...columns, 'file total', 'import (waited)', 'Edit slides'];
+  const head = [
+    'placeholder',
+    'how',
+    'slides',
+    ...columns,
+    'file total',
+    'slides show',
+    'import (waited)',
+    'Edit slides',
+  ];
   const lines = [
     `| ${head.join(' | ')} |`,
     `| ${head.map(() => '---').join(' | ')} |`,
@@ -148,6 +160,7 @@ function table(all: readonly Row[]): string {
           String(r.slides),
           ...columns.map((c) => seconds(r.steps[c])),
           seconds(r.totalMs),
+          seconds(r.shownMs),
           seconds(r.importMs),
           seconds(r.editMs),
         ].join(' | ')} |`,
