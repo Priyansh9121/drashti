@@ -115,7 +115,7 @@ test('Simple Mode: the open playlist, the last one, deleted leaves the middle em
   await operatorReady(win);
   await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
   // Simple Mode with nothing open: the day's new playlist, the only one.
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple.getByTestId('playlist-title')).toHaveText(/^Sabha, /u);
   const day = (await simple.getByTestId('playlist-title').textContent()) ?? '';

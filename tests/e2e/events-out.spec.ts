@@ -280,7 +280,7 @@ test('Simple Mode cannot open events out, nor read them; Pro Mode opens it with 
     await expect(dialog).toHaveCount(0);
 
     // Simple Mode: no File menu, and the main process refuses.
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect
       .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode()))
       .toBe('simple');

@@ -66,7 +66,7 @@ async function menuOf(win: Page, row: Locator): Promise<string[]> {
 const undo = (win: Page) => win.getByTestId('undo-removal').getByRole('button', { name: 'Undo' }).click();
 
 async function intoSimple(win: Page): Promise<Locator> {
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple).toBeVisible();
   return simple;

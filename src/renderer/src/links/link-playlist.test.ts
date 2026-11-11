@@ -159,7 +159,7 @@ beforeEach(() => {
     view: VIEW,
     open: true,
     addTo: null,
-    choice: { type: 'mp4', height: null, permission: true },
+    choice: { type: 'mp4', height: null },
   });
 });
 

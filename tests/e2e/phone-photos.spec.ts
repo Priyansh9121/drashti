@@ -175,7 +175,7 @@ test('in Simple Mode a paired phone’s photos and other files go to the end of 
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder sabha' }).click();
   await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder sabha');
   await setAddFiles(win, true);
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist())).toBe(playlistId);
   const rowsInSimple = win.getByTestId('open-playlist').getByTestId('playlist-item');

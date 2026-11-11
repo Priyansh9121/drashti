@@ -118,7 +118,7 @@ test('an alpha.12 data folder with roles on opens straight into Pro Mode with no
   await expect(win.getByTestId('setup-wizard')).toHaveCount(0);
 
   // Simple Mode's button, with no PIN, both ways.
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await noRoles(win);
   await leaveWithoutAPin(win);
@@ -160,7 +160,7 @@ test('stopped dead in Simple Mode with roles on, it comes back in Simple Mode, l
   const userData = first.userData;
   const win1 = await operatorPage(first.app);
   await operatorReady(win1);
-  await win1.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win1.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win1.getByTestId('simple-mode')).toBeVisible();
   // This run has saved the show under its own name (Session 20): a stop dead now counts as this run's.
   await expect.poll(() => sessionIn(userData, 'live-state.json')).not.toBeNull();
@@ -319,7 +319,7 @@ test('everything an admin did is anyone’s in Pro Mode: no prompt, no refusal; 
   await noRoles(win);
 
   // Simple Mode refuses them as it always has: its own refusal, never a PIN.
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const refused = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;

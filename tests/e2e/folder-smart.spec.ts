@@ -109,7 +109,7 @@ test('Simple Mode: a folder dropped becomes a smart playlist following it at onc
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple).toBeVisible();
   const day = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist());

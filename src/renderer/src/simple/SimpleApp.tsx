@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
@@ -25,6 +24,7 @@ import { LayerBar } from '../operator/LayerBar';
 import { Columns, LeftColumn } from '../operator/Layout';
 import { LivePreview } from '../operator/LivePreview';
 import { leaveSimpleMode } from '../operator/mode-store';
+import { useDoubleClickSwitch } from '../operator/mode-switch';
 import { NextBack } from '../operator/NextBack';
 import { RecoveryBanner } from '../operator/RecoveryBanner';
 import { NoticeArea, StatusBar } from '../operator/StatusBar';
@@ -88,9 +88,6 @@ import { SimpleFirstRun } from './SimpleFirstRun';
 /** What Next says when it has nothing to start because the playlist could not be read (Session 39). */
 const NEXT_UNREAD =
   'Next has nothing to start: Drashti couldn’t read the playlist. Press Try again beside it.';
-
-/** How soon the second press of Enter must come to count as Pro Mode's double-click (ms). */
-const AGAIN_MS = 2000;
 
 // A video input item (Session 51) goes up through the playlist, as its Next does; Simple Mode never chooses one in
 // Media (the engine refuses showInput).
@@ -204,35 +201,24 @@ function useDropsIntoPlaylist(): void {
 }
 
 /**
- * The way back to Pro Mode (Session 55, Part 18): a double-click, nothing typed. One click says to double-click it; from
- * the keyboard, Enter pressed twice (a second press within two seconds), the first saying to press it again. Small and
- * at the top right, far from the show's controls (Session 20).
+ * The way back to Pro Mode (Session 55, Part 18; the owner, 11 Nov 2026: a double-click each way, nothing else): one
+ * click says to double-click it; from the keyboard, Enter twice (mode-switch.ts). Small and at the top right, far from
+ * the show's controls (Session 20).
  */
 function ProModeButton() {
-  const pressedAt = useRef(-Infinity);
-  const leave = () => {
-    pressedAt.current = -Infinity;
-    useNotice.setState({ text: null });
+  const toPro = useDoubleClickSwitch('Pro Mode', () => {
     void leaveSimpleMode().then((message) => {
       if (message !== null) useNotice.setState({ text: message });
     });
-  };
-  const click = (e: MouseEvent<HTMLButtonElement>) => {
-    // A double-click's first click says what to do; its second waits for the double-click itself.
-    if (e.detail === 1) useNotice.setState({ text: 'Double-click Pro Mode to switch to Pro Mode.' });
-    if (e.detail !== 0) return;
-    // From the keyboard (Enter; Space is Next everywhere in the window): twice.
-    const now = performance.now();
-    if (now - pressedAt.current <= AGAIN_MS) {
-      leave();
-      return;
-    }
-    pressedAt.current = now;
-    useNotice.setState({ text: 'Press Enter again to switch to Pro Mode.' });
-  };
+  });
   return (
     <Tooltip content="Double-click (or press Enter twice) to switch to Pro Mode" side="bottom">
-      <Button className="shrink-0" data-testid="simple-leave" onClick={click} onDoubleClick={leave}>
+      <Button
+        className="shrink-0"
+        data-testid="simple-leave"
+        onClick={toPro.onClick}
+        onDoubleClick={toPro.onDoubleClick}
+      >
         Pro Mode
       </Button>
     </Tooltip>
