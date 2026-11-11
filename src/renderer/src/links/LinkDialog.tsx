@@ -685,8 +685,9 @@ function Saved({ view, platform, simple }: { view: LinkView; platform: string; s
 }
 
 /**
- * Where a download goes in Simple Mode (Session 55, Part 18): its one playlist, at the end, with nothing to choose; a
- * Dropbox folder's files there too, never a playlist of their own.
+ * Where a download goes in Simple Mode (Session 55, Part 18): the open playlist (since Session 56, when Simple Mode opens
+ * any playlist; its one playlist before), at the end, with nothing to choose; a Dropbox folder's files there too, never
+ * a playlist of their own.
  */
 function IntoSimplePlaylist({ view }: { view: LinkView }) {
   const name = usePlaylists((s) => s.tree.find((n) => n.id === s.openId)?.name ?? 'this playlist');
