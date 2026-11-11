@@ -240,16 +240,16 @@ describe('the time bar’s move (Session 54)', () => {
       { layer: 'logo', mediaId: 'v' },
     ])
       expect(parseEngineCommand({ type: 'resumePlaying', playing }).ok).toBe(false);
-    // Simple Mode shows the bar only (Session 54's review): no move, no Pause but an audio playlist's track's (Music's
-    // own), and Play always, so nothing stays paused there.
+    // Simple Mode moves it, pauses it and plays it on as Pro Mode does (Session 56, the owner's words: drag LIVE's time
+    // bar, Pause under LIVE; until then it showed the bar only, with Play).
     const { engine } = setup();
     engine.dispatch(playSound('sound'));
     const sound = engine.current;
     expect(simpleModeRefuses({ type: 'moveTo', playing: { layer: 'background' }, toMs: 1 }, sound)).toBe(
-      true,
+      false,
     );
-    expect(simpleModeRefuses({ type: 'pausePlaying', playing: { layer: 'pip' } }, sound)).toBe(true);
-    expect(simpleModeRefuses({ type: 'pausePlaying', playing: { layer: 'audio' } }, sound)).toBe(true);
+    expect(simpleModeRefuses({ type: 'pausePlaying', playing: { layer: 'pip' } }, sound)).toBe(false);
+    expect(simpleModeRefuses({ type: 'pausePlaying', playing: { layer: 'audio' } }, sound)).toBe(false);
     expect(simpleModeRefuses({ type: 'resumePlaying', playing: { layer: 'audio' } }, sound)).toBe(false);
     engine.dispatch({ type: 'playMusic', music: music(), index: 0 });
     expect(simpleModeRefuses({ type: 'pausePlaying', playing: { layer: 'audio' } }, engine.current)).toBe(
@@ -257,15 +257,19 @@ describe('the time bar’s move (Session 54)', () => {
     );
   });
 
-  it('in Simple Mode refuses a single sound’s Pause, which its window could not play on, and never a track’s, Music’s own: the engine gives the refusal what plays (Session 54’s review)', () => {
+  it('in Simple Mode a single sound and a track are moved, paused and played on, as its bar now has Pause and Play (Session 56; until then a single sound’s Pause was refused)', () => {
     const lengths: Record<string, number> = { sound: 90_000, a: 60_000 };
     const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => 1_000_000, undefined, {
       mediaLength: (id) => lengths[id] ?? null,
       refuse: (command, state) => (simpleModeRefuses(command, state) ? 'Placeholder Simple Mode' : null),
     });
     engine.dispatch(playSound('sound'));
-    expect(engine.dispatch(pause(AUDIO))).toMatchObject({ ok: false, error: 'forbidden' });
-    expect(engine.current.layers.audio?.seek).toBeUndefined();
+    expect(engine.dispatch(pause(AUDIO))).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.audio?.seek).toMatchObject({ toMs: 0, paused: true });
+    expect(engine.dispatch(moveTo(AUDIO, 30_000))).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.audio?.seek).toMatchObject({ toMs: 30_000, paused: true });
+    expect(engine.dispatch(play(AUDIO))).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.audio?.seek).toEqual({ at: 1_000_000, toMs: 30_000 });
     engine.dispatch({ type: 'playMusic', music: music(), index: 0 });
     expect(engine.dispatch(pause(AUDIO))).toMatchObject({ ok: true, changed: true });
     expect(engine.current.layers.audio?.pausedAtMs).toBe(0);
