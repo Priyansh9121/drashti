@@ -4,6 +4,7 @@ import { allChannels, IPC } from '../shared/ipc';
 import { initialEngineState } from '../shared/engine/state';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../shared/mode';
 import type { InvokeChannel } from '../shared/ipc';
+import { OP_CHANNEL } from './network/network-service';
 import {
   SIMPLE_MODE_BOUNDED,
   SIMPLE_MODE_LOCKED,
@@ -73,8 +74,8 @@ describe('Simple Mode locks', () => {
     // The engine refuses (from anywhere) in Simple Mode zooming the live picture (Session 26e, Pro Mode's; switching
     // the Look was refused too, until Looks went in Session 55), setting up, swapping or moving a
     // picture-in-picture box (Session 50; taking one off is not refused), choosing a video input (Session 50:
-    // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the time bar's move and the
-    // skips (Session 54: Simple Mode shows the bar only).
+    // Pro Mode's Media puts one up; Simple Mode may clear it, as any background), and the skips (Session 54; the time
+    // bar's move too until Session 56, when the owner asked for the bar to be dragged in Simple Mode as well).
     // Session 55 (Part 5): the live zoom is Simple Mode's too, from the window and a phone.
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('zoomLive');
     expect(SIMPLE_MODE_REFUSED_COMMANDS).not.toContain('resetLiveZoom');
@@ -85,12 +86,13 @@ describe('Simple Mode locks', () => {
       'showInput',
       // LIVE's one press for the chosen video input (Session 55), as showInput.
       'toggleInput',
-      'moveTo',
       'skip',
     ]);
   });
 
-  it('shows the time bar but moves nothing: the move, the skips and Pause are refused, Play never is, and a track’s Pause is Music’s own (Session 54)', () => {
+  it('lets the time bar move what plays, Pause it and Play it on, a video or a sound (Session 56, the owner’s words: drag LIVE’s time bar, Pause under LIVE); the skips stay Pro Mode’s', () => {
+    // Until Session 56 Simple Mode showed the bar and moved nothing: the move and Pause were refused, but an audio
+    // playlist's track's Pause (Music's own), and Play never was.
     // What plays on the audio layer: an audio playlist's track, or a single sound (put up from a phone's Media, say).
     const none = initialEngineState();
     const track = {
@@ -120,20 +122,13 @@ describe('Simple Mode locks', () => {
     ] as const;
     for (const state of [music, sound, none])
       for (const playing of everything) {
-        expect(simpleModeRefuses({ type: 'moveTo', playing, toMs: 1000 }, state), playing.layer).toBe(true);
-        // Paused, it can always be played on: Simple Mode's LIVE has no Play, so nothing stays stuck.
+        expect(simpleModeRefuses({ type: 'moveTo', playing, toMs: 1000 }, state), playing.layer).toBe(false);
+        expect(simpleModeRefuses({ type: 'pausePlaying', playing }, state), playing.layer).toBe(false);
         expect(simpleModeRefuses({ type: 'resumePlaying', playing }, state), playing.layer).toBe(false);
       }
-    // Pause is refused, but on an audio playlist's track, where it is Music's own (Simple Mode's Pause music). A
-    // single sound's is refused too (Session 54's review): Simple Mode's window could never play it on.
-    for (const playing of everything) {
-      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, music), playing.layer).toBe(
-        playing.layer !== 'audio',
-      );
-      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, sound), playing.layer).toBe(true);
-      expect(simpleModeRefuses({ type: 'pausePlaying', playing }, none), playing.layer).toBe(true);
-    }
+    // Back 15 s, Forward 15 s and Last 10 s stay Pro Mode's: Simple Mode's window has no skips.
     expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump: 'back' }, music)).toBe(true);
+    expect(simpleModeRefuses({ type: 'skip', layer: 'background', jump: 'forward' }, sound)).toBe(true);
     // As before: a marker jump and Music's own buttons are not refused (switching the Look, refused here before, went
     // with Looks in Session 55).
     expect(simpleModeRefuses({ type: 'jumpToMarker', layer: 'background', markerId: 'm1' }, sound)).toBe(
@@ -277,6 +272,10 @@ describe('Simple Mode locks', () => {
       IPC.links.reset,
       IPC.links.addWaiting,
       IPC.links.setPlaylist,
+      // From a Link…, whole (Session 56): the highest video quality, the folder to save in, Show in Finder/Explorer.
+      IPC.links.setMaxHeight,
+      IPC.links.pickFolder,
+      IPC.links.showSaved,
       // A slide's row dragged within its deck or out of it (Part 4b), and its Undo.
       IPC.playlists.setItemOrder,
       IPC.playlists.splitItem,
@@ -296,16 +295,14 @@ describe('Simple Mode locks', () => {
     // Nothing is both.
     for (const channel of SIMPLE_MODE_BOUNDED.keys())
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
-    // A header's name, Duplicate, a video's When it ends, a wallpaper's seconds and fade, the highest quality and the
-    // folder for downloads, a file's points and looks, and deleting a file from the library stay Pro Mode's.
+    // A header's name, Duplicate, a video's When it ends, a wallpaper's seconds and fade, a file's points and looks,
+    // and deleting a file from the library stay Pro Mode's.
     for (const channel of [
       IPC.playlists.duplicate,
       IPC.playlists.renameHeader,
       IPC.playlists.fillPlaceholder,
       IPC.playlists.setWhenEnds,
       IPC.wallpapers.setTiming,
-      IPC.links.setMaxHeight,
-      IPC.links.pickFolder,
       IPC.media.remove,
       IPC.media.restore,
       IPC.media.setMarkers,
@@ -468,6 +465,33 @@ describe('Simple Mode locks', () => {
       IPC.links.addWaiting,
     ])
       expect(within(channel, ['/placeholder/x.txt']), channel).toBe(true);
+  });
+
+  it('From a Link…, whole (Session 56, the owner’s item 11): the highest video quality, the folder to save in and Show in Finder/Explorer from the window; never from a phone or Companion', () => {
+    // The window's own requests, as Pro Mode's dialog sends them (the link service says no to a quality it does not
+    // offer, or to any change while a download goes, in its own words).
+    expect(within(IPC.links.setMaxHeight, 2160)).toBe(true);
+    expect(within(IPC.links.pickFolder)).toBe(true);
+    expect(within(IPC.links.showSaved, null)).toBe(true);
+    expect(within(IPC.links.showSaved, 'placeholder-run')).toBe(true);
+    const link = [
+      IPC.links.look,
+      IPC.links.download,
+      IPC.links.stop,
+      IPC.links.reset,
+      IPC.links.addWaiting,
+      IPC.links.setPlaylist,
+      IPC.links.setMaxHeight,
+      IPC.links.pickFolder,
+      IPC.links.showSaved,
+    ];
+    for (const channel of link) {
+      // Asked with none of the window's arguments (as the network asks for a phone or Companion): refused whole.
+      expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+      expect(answers.get(channel)?.(), channel).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+      // And no request a phone or Companion makes is one of them, in either mode.
+      expect(Object.values(OP_CHANNEL), channel).not.toContain(channel);
+    }
   });
 
   it('the quick bar (Session 55, Part 8) is Pro Mode’s: its pins are read in either mode, never changed in Simple Mode', () => {

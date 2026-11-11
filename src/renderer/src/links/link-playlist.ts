@@ -51,11 +51,9 @@ export async function landInPlaylist(target: AddTarget, items: NewItem[]): Promi
   return landed.name;
 }
 
-/**
- * Open the playlist a download went into, its new items chosen, the first brought into view. In Simple Mode too since
- * Session 56: it went into the playlist open when Download was pressed, and Simple Mode opens any playlist now.
- */
+/** Open the playlist a download went into, its new items chosen, the first brought into view. */
 async function showLanded(playlistId: string, itemIds: readonly string[]): Promise<void> {
+  // In Simple Mode too since Session 56: its window opens any playlist, as Pro Mode's does.
   if (usePlaylists.getState().openId !== playlistId) await openPlaylist(playlistId);
   const state = usePlaylists.getState();
   const first = state.openId === playlistId ? state.items.find((i) => itemIds.includes(i.id)) : undefined;

@@ -41,7 +41,7 @@ export const PANEL_HELP = {
   live: {
     title: 'LIVE',
     doc: 'operator',
-    text: 'What the hall sees this moment: a picture up there zooms on the screens as you scroll or pinch over it, moves as you drag it, and goes back as it was kept with a double-click. Under it, each video or sound playing has a time bar, with Play or Pause: click it, or drag along it and let go, to move there on every screen at once; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
+    text: 'What the hall sees this moment: a picture up there zooms on the screens as you scroll or pinch over it, moves as you drag it, and goes back as it was kept with a double-click. Under it, each video or sound playing has a time bar, with Play or Pause: a click moves it there on every screen at once, and a drag moves a video’s picture with your finger, playing on from where you let go; with the keyboard on it, the arrows move 5 s, Page Up and Page Down 30 s, and Home and End to its start and end. Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, and a picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
     guide: 'headed **LIVE**',
   },
   lowerthirds: {
@@ -83,7 +83,7 @@ export const PANEL_HELP = {
   controls: {
     title: 'Show controls',
     doc: 'operator',
-    text: 'Clear all, the layers’ clear buttons in the order of their keys, the Wallpaper and Black-out, each with its key; a button with nothing of its own up is dimmed, so what is on the screens shows at a glance. Each changes the hall’s screens at once: the Wallpaper puts the chosen wallpaper up instead of the picture, and Put it back, straight after Clear all, brings back what it took off.',
+    text: 'Clear all, the layers’ clear buttons in the order of their keys, the Wallpaper and Black-out, each with its key; a button with nothing of its own up is dimmed, so what is on the screens shows at a glance. Each changes the hall’s screens at once: the Wallpaper puts the chosen wallpaper up instead of the picture, and Put it back, straight after Clear all, brings back what it took off. One thing at a time: a slide, picture or video put up takes the Wallpaper and Black-out off, and either going on takes a video off.',
     guide: '**Covering and clearing:**',
   },
   nextback: {

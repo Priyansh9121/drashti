@@ -276,13 +276,17 @@ describe('when a download is in', () => {
     expect(usePlaylists.getState().openId).toBeNull();
   });
 
-  it('in Simple Mode too (Session 56: it opens any playlist), the playlist it went into opens with it chosen', async () => {
+  it('in Simple Mode too since Session 56 (its window opens any playlist, as Pro Mode’s does): the playlist it went into opens with the new item chosen, never up by itself', async () => {
     await playlists(node('sunday', 'Placeholder Sunday'), node('youth', 'Placeholder Youth'));
     usePlaylists.setState({ openId: 'sunday' });
     useMode.setState({ mode: 'simple' });
     await landInPlaylist({ kind: 'playlist', id: 'youth' }, [{ kind: 'media', mediaId: 'media-new' }]);
-    expect(usePlaylists.getState().openId).toBe('youth');
-    expect(useLanded.getState().itemId).not.toBeNull();
+    const state = usePlaylists.getState();
+    expect(state.openId).toBe('youth');
+    const [first] = itemsOf['youth'] ?? [];
+    expect(state.marked).toEqual([first?.id]);
+    expect(useLanded.getState().itemId).toBe(first?.id);
+    expect(commands).toEqual([]);
   });
 });
 
