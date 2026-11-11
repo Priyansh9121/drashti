@@ -9,7 +9,7 @@ Update after a sabha, and update Main and nodes together. Simple Mode now has Pr
 - LIVE shows one thing at a time. Putting up a video, a slide or a picture takes Black-out and the Wallpaper off. Either cover takes a playing video off; a slide or picture stays under it and comes back as it was. Music plays on.
 - Drag LIVE's time bar as in any video player, in both modes: every screen follows and plays on from where you let go. Simple Mode's bar has Pause beside Play.
 - Double-click Simple Mode to switch to it, and double-click Pro Mode to switch back; one click only says so. With Simple-only access Drashti stays in Simple Mode.
-- Notices are small and see-through in the bottom-right corner and never cover a button.
+- Notices are small and see-through in the bottom-right corner: what is under them still shows.
 - Simple Mode has Pro Mode's playlists on the left: several, in folders, with smart playlists, each saying in a line what it is. Templates, sharing, Duplicate and Repeat Slides stay in Pro Mode.
 - A folder dragged onto Drashti becomes a smart playlist at once, with nothing asked. Deleting the open or last playlist closes it; Undo brings it back open.
 - Simple Mode has Record under the time bar and Pro Mode's Audio under it. Slide, Background and Audio sit beside Clear all, and the line of keys is gone: every button shows its key.
