@@ -9,11 +9,17 @@ import { barFraction, barSpan, keyPress, leftText, timeAt, timeWords } from './t
  * played on the phone alone. The bar is the whole file: the part outside its start and end points dimmed, a short
  * upright line at each point it has, a tick at each marker, what has played from the start point filled, and the play
  * head; the elapsed time (into the file) before it and the time left (to the end point) after it. Given `onMove`, a
- * click or a drag moves it, once, on release: while dragging, the time under the finger shows above it and nothing
- * moves (Esc, or the pointer taken away, moves nothing); and it is a slider for the keyboard (the arrows 5 s, Page Up
- * and Page Down 30 s, Home and End its points), each key a move. Without it, the bar only shows (Simple Mode). Purely
- * what it is given: where it is now comes from its parent, each drawing.
+ * click or a drag moves it, once, on release: while dragging, the time under the finger shows above it and the head
+ * follows the finger (Esc, or the pointer taken away, moves nothing); and it is a slider for the keyboard (the arrows
+ * 5 s, Page Up and Page Down 30 s, Home and End its points), each key a move. Given `onScrub` too (Session 56: LIVE's
+ * bar for a video, markers/scrub.ts), the picture follows a drag as an ordinary player's does: once the pointer held on
+ * the bar has moved a few pixels, each new time under it, and null if the drag is let go of with no move (Esc, the
+ * pointer taken away), to put it back. Without `onMove`, the bar only shows. Purely what it is given: where it is now
+ * comes from its parent, each drawing.
  */
+
+/** How far (CSS px) the pointer held on the bar moves before the picture follows it: a click stays one move. */
+export const SCRUB_SLOP_PX = 4;
 
 /** A marker of the file, a tick on the bar. */
 export interface TimeBarMarker {
@@ -37,6 +43,11 @@ export interface TimeBarProps {
   markers?: readonly TimeBarMarker[];
   /** Move it there (ms into the file, between its points), once, on release; left out, the bar only shows. */
   onMove?: (ms: number) => void;
+  /**
+   * The picture follows a drag (Session 56): each new time under the pointer held and moved on the bar; null when the
+   * drag is let go of with no move (Esc, the pointer taken away). onMove still has where it is let go.
+   */
+  onScrub?: (ms: number | null) => void;
   /** 'lg' for a finger (a phone's: 44 px tall, larger words); 'sm' beside LIVE's small buttons. */
   size?: 'sm' | 'lg';
   /** The elapsed time before the bar (Simple Mode shows the time left alone). */
@@ -64,6 +75,7 @@ export function TimeBar({
   endMs = null,
   markers = [],
   onMove,
+  onScrub,
   size = 'sm',
   elapsed = true,
   warning = false,
@@ -74,6 +86,10 @@ export function TimeBar({
   // The time under the finger while a drag (or a press) is held, and which pointer holds it.
   const [held, setHeld] = useState<number | null>(null);
   const pointer = useRef<number | null>(null);
+  // Where the press began (CSS px), whether the picture has followed it yet, and the last time it was given.
+  const pressX = useRef<number | null>(null);
+  const scrubbed = useRef(false);
+  const lastScrub = useRef<number | null>(null);
   const known = durationMs !== null && durationMs > 0;
   const span = barSpan(known ? durationMs : 0, startMs, endMs);
   const at = Math.min(span.endMs, Math.max(span.startMs, atMs));
@@ -89,10 +105,16 @@ export function TimeBar({
   const letGo = (moveTo: number | null) => {
     const el = track.current;
     const id = pointer.current;
+    const followed = scrubbed.current;
     pointer.current = null;
+    pressX.current = null;
+    scrubbed.current = false;
+    lastScrub.current = null;
     setHeld(null);
     if (el && id !== null && el.hasPointerCapture(id)) el.releasePointerCapture(id);
     if (moveTo !== null && movable) onMove(moveTo);
+    // The picture followed a drag let go of with no move: it goes back.
+    else if (followed) onScrub?.(null);
   };
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (!movable || e.button !== 0) return;
@@ -100,10 +122,22 @@ export function TimeBar({
     e.currentTarget.focus();
     e.currentTarget.setPointerCapture(e.pointerId);
     pointer.current = e.pointerId;
+    pressX.current = e.clientX;
+    scrubbed.current = false;
+    lastScrub.current = null;
     setHeld(timeUnder(e.clientX));
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (pointer.current === e.pointerId) setHeld(timeUnder(e.clientX));
+    if (pointer.current !== e.pointerId) return;
+    const under = timeUnder(e.clientX);
+    setHeld(under);
+    // The picture follows (Session 56) once the pointer has moved a few pixels: a click stays one move.
+    if (!onScrub) return;
+    if (!scrubbed.current && Math.abs(e.clientX - (pressX.current ?? e.clientX)) < SCRUB_SLOP_PX) return;
+    scrubbed.current = true;
+    if (under === lastScrub.current) return;
+    lastScrub.current = under;
+    onScrub(under);
   };
   // Let go: it moves there, once. Taken away (the system's own gesture, a phone's scroll): nothing moves.
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {

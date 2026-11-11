@@ -163,29 +163,38 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   const playing = (await state(win)).layers.background;
   expect(playing).toMatchObject({ kind: 'media', mediaId: show.videoMediaId });
 
-  // Black-out (the clicker's "." key) and back: exactly what was there, the stage carrying on. One
-  // spelling in every mode, and its state in words, said once (Session 25).
+  // Black-out (the clicker's "." key) and back, the stage carrying on: the video comes off as it goes on (Session 56,
+  // the owner's words: LIVE shows one thing at a time; until then it played on under it), and Oops (F9) puts it back,
+  // carrying on where it would be. One spelling in every mode, and its state in words, said once (Session 25).
   await win.keyboard.press('.');
   await expect(audience.getByTestId('blackout')).toBeVisible();
+  await expect(video).toHaveCount(0);
   // Its words, then its key (Session 51: Simple Mode's big buttons show their keys).
   await expect(win.getByTestId('simple-blackout')).toHaveAccessibleName(/^Black-out is on/u);
   await expect(win.getByTestId('simple-blackout')).not.toHaveAttribute('aria-pressed');
   await expect(stage.getByTestId('stage-view')).toContainText('AUDIENCE SCREENS BLACK');
   await win.keyboard.press('b');
   await expect(audience.getByTestId('blackout')).toHaveCount(0);
+  expect((await state(win)).layers.background).toBeNull();
+  await win.keyboard.press('F9');
+  await expect(video).toHaveCount(1);
   expect((await state(win)).layers.background).toEqual(playing);
 
-  // The Wallpaper (F12, the Logo's key as the operators press it: Session 55, Part 13) and back; L does nothing.
+  // The Wallpaper (F12, the Logo's key as the operators press it: Session 55, Part 13) and back, the same way; L does
+  // nothing.
   await win.keyboard.press('F12');
   await expect(audience.getByTestId('wallpaper')).toBeVisible();
+  await expect(video).toHaveCount(0);
   await expect(win.getByTestId('simple-wallpaper')).toHaveText(/Wallpaper is on/u);
   await expect(stage.getByTestId('stage-view')).toContainText('WALLPAPER ON THE AUDIENCE SCREENS');
   await win.keyboard.press('l');
   await expect(audience.getByTestId('wallpaper')).toBeVisible();
   await win.keyboard.press('F12');
   await expect(audience.getByTestId('wallpaper')).toHaveCount(0);
-  expect((await state(win)).layers.background).toEqual(playing);
+  expect((await state(win)).layers.background).toBeNull();
+  await win.keyboard.press('F9');
   await expect(video).toHaveCount(1);
+  expect((await state(win)).layers.background).toEqual(playing);
 
   // Clear all by mistake (F1), then put it right (Cmd/Ctrl+Z, or the big Put it back).
   await win.keyboard.press('F1');
@@ -216,9 +225,11 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     'New timer',
   ])
     await expect(win.getByRole('button', { name, exact: true })).toHaveCount(0);
-  // No trash button anywhere (Session 26a's visible deletes are Pro Mode's; Simple Mode's Delete is in the menu).
-  await expect(win.getByTestId('row-delete')).toHaveCount(0);
-  await expect(win.getByRole('button', { name: /^(Delete|Remove) / })).toHaveCount(0);
+  // No trash button on the playlist's rows (Session 26a's visible deletes are Pro Mode's; Simple Mode's Delete is in a
+  // row's menu). The chosen playlist on the left has its Rename and Delete, as in Pro Mode (Session 56).
+  const middle = win.getByTestId('column-middle');
+  await expect(middle.getByTestId('row-delete')).toHaveCount(0);
+  await expect(middle.getByRole('button', { name: /^(Delete|Remove) / })).toHaveCount(0);
   await expect(win.getByRole('textbox', { name: 'Search presentations' })).toHaveCount(0);
   // ...or on a key...
   await win.keyboard.press(`${mod}+Shift+s`);
@@ -230,7 +241,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     return {
       backup: m?.getMenuItemById('backup-library') ?? null,
       restore: m?.getMenuItemById('restore-library') ?? null,
-      // Import from a Link (Session 25b): never in Simple Mode.
+      // File › Import from a Link… (Session 25b) is Pro Mode's menu: Simple Mode has no File menu, and its From a
+      // Link… is the playlist's own (Pro Mode's whole dialog since Session 56).
       link: m?.getMenuItemById('import-from-link') ?? null,
       switchLabel: m?.getMenuItemById('switch-mode')?.label ?? '',
     };
@@ -280,9 +292,6 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         fromTemplate: await d.playlists.newFromTemplate('x', 'Placeholder', null),
         slot: await d.playlists.addSlot('x', null, { label: 'Placeholder', category: null }),
         setup: await d.setup.finish({ outputs: [], sound: 'skip' }),
-        // Session 25c: the highest video quality, an admin's setting (From a Link… itself is Simple Mode's since
-        // Part 18, into its one playlist: simple-sabha.spec.ts, through a local stand-in).
-        linkQuality: await d.links.setMaxHeight(2160),
         // Rows of what is no playlist (Session 56: a playlist's rows are Simple Mode's in any playlist, never a
         // template's or a folder's).
         otherRows: await d.playlists.addItems('placeholder-other-playlist', null, [
@@ -312,7 +321,6 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     fromTemplate: no,
     slot: no,
     setup: no,
-    linkQuality: no,
     otherRows: no,
   });
 

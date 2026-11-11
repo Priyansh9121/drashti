@@ -137,7 +137,7 @@ A token works once, for one computer, and runs out after **3 days**. If yours ru
 - **Never share the Sheet or the script** with anyone: whoever can edit them can let people in.
 - Times in the emails follow the Sheet's time zone (**File › Settings**).
 
-**What the modes cover in this release.** Pro includes preparing presentations in the slide editor’s own window: Words, Insert, Arrange, Design, Motion and Slides, with Undo/Redo, background/master/layout and timed effects, and saved stage/phone notes. The operator guide gives the editing steps; reading it in Simple Mode grants no editing permission. A paired phone in Simple Mode follows that computer’s one playlist and its permitted clears/zoom/Play, with its own-row Rename/Remove/Undo and wallpapers; the presenter guide explains the limits. Files and photos keep going to Added from Phones, not into the Simple playlist. Pair phones and enable their connection/files in Pro first.
+**What the modes cover in this release.** Pro includes preparing presentations in the slide editor’s own window: Words, Insert, Arrange, Design, Motion and Slides, with Undo/Redo, background/master/layout and timed effects, and saved stage/phone notes. The operator guide gives the editing steps; reading it in Simple Mode grants no editing permission. A paired phone in Simple Mode follows the playlist open in that computer’s Simple Mode and its permitted clears/zoom/Play, with its own-row Rename/Remove/Undo and wallpapers; the presenter guide explains the limits. Files and photos keep going to Added from Phones, not into the Simple playlist. Pair phones and enable their connection/files in Pro first.
 
 ## 11. Putting in a change later (always the same deployment)
 

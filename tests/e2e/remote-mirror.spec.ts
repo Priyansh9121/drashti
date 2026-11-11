@@ -435,12 +435,19 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       ...NEW_LOWER_THIRD,
       lines: ['Placeholder Speaker', 'Placeholder title', ''],
     });
-    // Everything the phone can have up at once (D5 review): an audio playlist playing (Music's rows), a video behind
-    // Repeat Slides going round (the time bars, the Playing row and
-    // LIVE's own line, "Moves on by itself"), so each is laid out and checked at every size.
+    // Everything the phone can have up at once (D5 review): an audio playlist playing (Music's rows, the time bars, and
+    // its track's marker in the Playing row) and Repeat Slides going round (LIVE's own line, "Moves on by itself"),
+    // so each is laid out and checked at every size. Under black-out no video plays (Session 56: LIVE shows one thing
+    // at a time), so the Playing row is the track's marker's, not a background video's skips as before.
     const repeatId = await win.evaluate(
       async ({ toneId, pictureId, secondPictureId }) => {
         const d = (globalThis as PageGlobals).drashti;
+        const marked = await d.media.setMarkers(toneId, {
+          startMs: null,
+          endMs: null,
+          markers: [{ id: 'm1', name: 'Placeholder chorus', atMs: 30_000 }],
+        });
+        if (!marked.ok) throw new Error(marked.message);
         const made = await d.music.create('Placeholder tunes');
         if (!made.ok || !made.id) throw new Error('no audio playlist');
         const added = await d.music.addTracks(made.id, [toneId], null);
@@ -470,10 +477,6 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       },
       { toneId, pictureId: show.pictureMediaId, secondPictureId },
     );
-    await dispatch(win, {
-      type: 'setBackground',
-      background: { kind: 'media', mediaId: show.videoMediaId, media: 'video', fit: 'fit', loop: true },
-    });
     await dispatch(win, { type: 'startRepeat', playlistId: repeatId, slideIndex: 0 });
     await expect.poll(async () => (await snapshot(win)).state.autoAdvance).not.toBeNull();
     // Something on every clear's layer it can be: the clears lit, their words at their longest.

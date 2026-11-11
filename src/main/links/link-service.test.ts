@@ -538,11 +538,26 @@ describe('the highest video quality (Session 25c)', () => {
     h.service.stop();
   });
 
-  it('is refused in Simple Mode, and anyone’s in Pro Mode (Session 54, E5: roles are gone)', () => {
-    expect(SIMPLE_MODE_LOCKED).toContain(IPC.links.setMaxHeight);
+  it('is anyone’s in Pro Mode (Session 54, E5: roles are gone), and Simple Mode’s window’s too since Session 56 (From a Link…, whole); never a phone’s or Companion’s in Simple Mode', () => {
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.links.setMaxHeight);
     const sound = () => ({ chosen: null, devices: [], state: 'default' as const, checked: true });
     let simple = true;
-    lockChannels(() => simple, simpleModeRefusals(sound));
+    lockChannels(
+      () => simple,
+      simpleModeRefusals(sound),
+      simpleModeBounds(() => ({
+        playlistId: null,
+        playlistOf: () => null,
+        holdsMedia: () => false,
+        holdsPresentation: () => false,
+        kindOf: () => null,
+        listsMedia: () => false,
+        listsPresentation: () => false,
+      })),
+    );
+    // The window's request, with its height.
+    expect(refusalFor(IPC.links.setMaxHeight, [2160])).toBeUndefined();
+    // A request with none of the window's arguments (a phone's, Companion's) is refused.
     expect(refusedNow(IPC.links.setMaxHeight)).toBe(true);
     expect(refusalFor(IPC.links.setMaxHeight)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     simple = false;
