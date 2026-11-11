@@ -34,11 +34,21 @@ import { showTexts } from '../shastra/shastra-store';
 import { openCalendar } from '../calendar/calendar-store';
 import { heightLabel } from '../../../shared/links';
 import { lastPart, useLinks } from '../links/link-store';
+import { useMode } from '../operator/mode-store';
 
 /*
  * The migration report (PLAN.md 4.4): what came across, what did not, and a
  * way to fix each item.
  */
+
+/**
+ * Simple Mode shows the report when asked (Session 56: From a Link…'s See the import report, the status bar's Report),
+ * offering only what Simple Mode does: Try again, Add to playlist and Show in Finder (Explorer). Converting, finding
+ * missing media and Replace, Keep both or Skip are Pro Mode's (its main process refuses them; Simple Mode's imports
+ * keep a changed file beside the old one), and so are Open, Open Calendar and Open in Books (Simple Mode's window shows
+ * no presentation outside a playlist, no calendar and no Books).
+ */
+const useSimple = (): boolean => useMode((s) => s.mode === 'simple');
 
 const WRITTEN = new Set(['imported', 'replaced', 'kept-both']);
 
@@ -58,6 +68,7 @@ function tryAgain(sourcePath: string) {
 function ConvertFix({ mediaId, advice }: { mediaId: string; advice: string }) {
   const job = useConvert((s) => jobFor(s.jobs, mediaId));
   const converted = useMedia((s) => s.media.find((m) => m.id === mediaId)?.convertedTo ?? null);
+  const simple = useSimple();
   if (converted !== null || job?.state === 'done')
     return (
       <span className="text-success-fg" data-testid="report-converted-file">
@@ -71,6 +82,7 @@ function ConvertFix({ mediaId, advice }: { mediaId: string; advice: string }) {
         {convertingWords(job)}
       </span>
     );
+  if (simple) return null;
   return (
     <Button size="sm" icon={Wand2} title={advice} onClick={() => void convert([mediaId])}>
       {job?.state === 'failed' ? 'Try again' : 'Convert'}
@@ -80,6 +92,7 @@ function ConvertFix({ mediaId, advice }: { mediaId: string; advice: string }) {
 
 /** The buttons that fix an item, from its issues and outcome. */
 function Fixes({ item }: { item: ImportItemReport }) {
+  const simple = useSimple();
   const out: ReactNode[] = [];
   const seen = new Set<string>();
   for (const issue of item.issues) {
@@ -90,6 +103,7 @@ function Fixes({ item }: { item: ImportItemReport }) {
     seen.add(key);
     switch (fix.kind) {
       case 'relink-media':
+        if (simple) break;
         out.push(
           <Button key="relink" size="sm" onClick={() => void relinkMedia([fix.mediaId])}>
             Find…
@@ -115,6 +129,7 @@ function Fixes({ item }: { item: ImportItemReport }) {
         seen.add('import-again');
         break;
       case 'open-presentation':
+        if (simple) break;
         out.push(
           <Button key="open" size="sm" onClick={() => openPresentation(fix.presentationId)}>
             Open
@@ -136,14 +151,19 @@ function Fixes({ item }: { item: ImportItemReport }) {
     }
   }
   const target = item.target;
-  if (target?.kind === 'presentation' && !seen.has('open-presentation') && item.outcome !== 'conflict') {
+  if (
+    !simple &&
+    target?.kind === 'presentation' &&
+    !seen.has('open-presentation') &&
+    item.outcome !== 'conflict'
+  ) {
     out.push(
       <Button key="open" size="sm" onClick={() => openPresentation(target.id)}>
         Open
       </Button>,
     );
   }
-  if (target?.kind === 'calendar') {
+  if (!simple && target?.kind === 'calendar') {
     out.push(
       <Button
         key="open"
@@ -157,7 +177,7 @@ function Fixes({ item }: { item: ImportItemReport }) {
       </Button>,
     );
   }
-  if (target?.kind === 'shastra') {
+  if (!simple && target?.kind === 'shastra') {
     out.push(
       <Button
         key="open"
@@ -315,6 +335,7 @@ export function ImportReportDialog({ platform }: { platform: string }) {
   }, [reportId]);
   const media = useMedia((s) => s.media);
   const jobs = useConvert((s) => s.jobs);
+  const simple = useSimple();
   if (!report) return null;
 
   const items = report.items;
@@ -464,7 +485,7 @@ export function ImportReportDialog({ platform }: { platform: string }) {
           {convertedWords}
         </Notice>
       )}
-      {toConvert.length > 0 && (
+      {!simple && toConvert.length > 0 && (
         <Notice
           tone="info"
           role="none"
@@ -484,7 +505,7 @@ export function ImportReportDialog({ platform }: { platform: string }) {
           media folder, and uses it everywhere; the original stays as it is, and Undo puts it back.
         </Notice>
       )}
-      {missingMedia > 0 && (
+      {!simple && missingMedia > 0 && (
         <Notice
           tone="warning"
           role="none"
@@ -503,15 +524,19 @@ export function ImportReportDialog({ platform }: { platform: string }) {
         title="Changed since they were imported"
         items={conflicts}
         actions={
-          conflicts.length > 1 ? (
+          !simple && conflicts.length > 1 ? (
             <span className="flex gap-1">{conflictButtons(conflictPaths, ' for all')}</span>
           ) : null
         }
-        render={(item) => (
-          <Row key={item.id} item={item}>
-            <span className="flex shrink-0 gap-1">{conflictButtons([item.sourcePath])}</span>
-          </Row>
-        )}
+        render={(item) =>
+          simple ? (
+            <Row key={item.id} item={item} />
+          ) : (
+            <Row key={item.id} item={item}>
+              <span className="flex shrink-0 gap-1">{conflictButtons([item.sourcePath])}</span>
+            </Row>
+          )
+        }
       />
       <Section title="Problems" items={problems} />
       <Section title="Imported with notes" items={withNotes} />

@@ -274,7 +274,6 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
       slot: await d.playlists.addSlot(otherId, null, { label: 'Placeholder slot', category: null }),
       share: await d.playlists.share(otherId, true),
       timers: await d.playlists.setTimers(first?.id ?? '', []),
-      quality: await d.links.setMaxHeight(2160),
     };
   }, other.playlistId);
   const no = { ok: false, message: SIMPLE_MODE_REFUSAL };
@@ -284,7 +283,6 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
     slot: no,
     share: no,
     timers: no,
-    quality: no,
   });
   expect(
     (await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.items(id), other.playlistId))
@@ -299,7 +297,7 @@ test('none open: a new playlist; Add files… and files dropped bring in only wh
   await app.close();
 });
 
-test('From a Link…: a Dropbox file goes into the one playlist, with nothing to choose but the link (a local stand-in, never the internet)', async () => {
+test('From a Link…: a Dropbox file goes into the open playlist, with Pro Mode’s choices there (the highest video quality, where it is saved, which playlist: the open one to begin with); a local stand-in, never the internet', async () => {
   test.setTimeout(150_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-simple-link-'));
   const tone = makeTestTone(join(work, 'Placeholder link tone.wav'), { seconds: 2, hz: 523 });
@@ -316,6 +314,7 @@ test('From a Link…: a Dropbox file goes into the one playlist, with nothing to
     await operatorReady(win);
     await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
     const simple = await intoSimple(win);
+    const one = await onePlaylist(win);
     const middle = simple.getByTestId('column-middle');
     await middle.getByTestId('playlist-from-link').click();
     const dialog = win.getByTestId('link-dialog');
@@ -323,10 +322,11 @@ test('From a Link…: a Dropbox file goes into the one playlist, with nothing to
     await win.getByTestId('link-kind-dropbox').click();
     await win.getByTestId('link-text').fill(fileLink('toneSSSSSSSSSSS', 'Placeholder link tone.wav'));
     await expect(win.getByTestId('link-name')).toHaveText('Placeholder link tone.wav');
-    // Where it goes is the one playlist; the highest quality and where downloads are saved are Pro Mode's.
-    await expect(win.getByTestId('link-into-simple')).toContainText('“Sabha, ');
-    for (const id of ['link-add-to', 'link-choose-folder', 'link-max-height', 'link-new-playlist'])
-      await expect(win.getByTestId(id), id).toHaveCount(0);
+    // Pro Mode's own dialog (Session 56, the owner's item 11: From a Link…, whole): the highest quality, where
+    // downloads are saved, and which playlist, the open one to begin with (its own From a Link…).
+    for (const id of ['link-max-height', 'link-choose-folder'])
+      await expect(win.getByTestId(id), id).toBeVisible();
+    await expect(win.getByTestId('link-add-to')).toHaveValue(`playlist:${one ?? ''}`);
     await win.getByTestId('link-download').click();
     await expect(rowNames(middle)).toHaveText([/^Placeholder link tone/u], { timeout: 60_000 });
     expect(standIn.requests.every((r) => r.host.includes('dropbox'))).toBe(true);
