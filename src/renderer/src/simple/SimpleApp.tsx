@@ -10,7 +10,7 @@ import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { ImportReportDialog } from '../library/ImportReport';
 import { useLibrary } from '../library/library-store';
-import { RemoveItemsConfirm } from '../library/RemoveConfirm';
+import { RemoveItemsConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
 import { LinkDialog } from '../links/LinkDialog';
 import { PlayingBars } from '../markers/PlayingBars';
@@ -22,7 +22,7 @@ import { playItem, runSimpleAction, useNotice } from '../operator/actions';
 import { EngineUnread } from '../operator/EngineUnread';
 import { JumpBox } from '../operator/JumpBox';
 import { LayerBar } from '../operator/LayerBar';
-import { Columns } from '../operator/Layout';
+import { Columns, LeftColumn } from '../operator/Layout';
 import { LivePreview } from '../operator/LivePreview';
 import { leaveSimpleMode } from '../operator/mode-store';
 import { useDoubleClickSwitch } from '../operator/mode-switch';
@@ -34,9 +34,13 @@ import { useKeymap } from '../operator/useKeymap';
 import { useKeymapNow } from '../operator/single-keys-store';
 import { Kbd } from '../ui/Kbd';
 import { OpenPlaylist } from '../playlists/OpenPlaylist';
+import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
+import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import {
   closePlaylist,
+  dropFolders,
   importIntoPlaylist,
+  loadTree,
   openPlaylist,
   playlistsUnread,
   usePlaylists,
@@ -54,7 +58,8 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Band, HeaderStates } from '../ui/Decoration';
 import { WordMark } from '../ui/Mark';
-import { Loading } from '../ui/States';
+import { ListMusic } from '../ui/icons';
+import { CentredPlace, EmptyState, Loading } from '../ui/States';
 import { Tooltip } from '../ui/Tooltip';
 import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
 import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
@@ -64,17 +69,19 @@ import { SimpleFirstRun } from './SimpleFirstRun';
  * Simple Mode (PLAN.md section 3; Session 55, Part 18: for a small sabha in the hall, or anywhere with one projector):
  * Pro Mode's window with everything taken out but what such a sabha needs, so a volunteer who has seen Pro Mode finds
  * everything where it was.
- * - The middle: ONE playlist (the one open when Drashti switched to Simple Mode, or a new one when there was none: the
- *   main process says which, main/simple-playlist.ts), as Pro Mode's middle shows it: PDFs and decks as rows, pictures,
- *   videos and sounds; one click puts a row up; rows dragged about, with Undo; Add files… and From a Link… above it,
- *   and files dropped on it (or anywhere on the window: at its end) bring things in; a row's right-click menu has
- *   Rename and Delete.
- * - The left: the wallpapers (Part 6), and the Undo bar under them.
+ * - The middle: the open playlist (as it comes, the one open when Drashti switched to Simple Mode, or the day's new
+ *   one when there was none: the main process says which, main/simple-playlist.ts), as Pro Mode's middle shows it:
+ *   PDFs and decks as rows, pictures, videos and sounds; one click puts a row up; rows dragged about, with Undo; Add
+ *   files… and From a Link… above it, and files dropped on it (or anywhere on the window: at its end) bring things
+ *   in; a folder dropped becomes a smart playlist (Session 56); a row's right-click menu has Rename and Delete.
+ * - The left (Session 56, the owner's item 14): Pro Mode's playlists, with folders and smart playlists (New, Rename,
+ *   Delete with Undo; a click opens one in the middle), the open folder playlist's folders under them, the wallpapers
+ *   (Part 6) under both, and the Undo bar at the foot.
  * - The right: LIVE, Next and Back, and the time bar (Play while something is paused: Session 54's question 14).
  * - Along the bottom: Clear all (and Put it back after it), the Wallpaper and Black-out.
  * - Nothing else: no stream, no stage controls, no messages, timers or lower thirds, no screen setup (the screens set
- *   themselves, Part 1). The main process refuses the rest too (main/simple-mode.ts), and lets Simple Mode change its
- *   one playlist only.
+ *   themselves, Part 1). The main process refuses the rest too (main/simple-mode.ts): of the playlists, Simple Mode
+ *   changes what Pro Mode's left column and a row's menu do, never a template, a slot or a share.
  * Back to Pro Mode: a double-click on Pro Mode at the top right, nothing typed (the owner's answer to question 12,
  * changed on 29 Oct 2026); from the keyboard, Enter twice. With Simple access (Part 19) there is no way to Pro Mode:
  * one line says so in its place, and the main process refuses it whatever asks.
@@ -119,42 +126,56 @@ function KeysLine({ platform }: { platform: string }) {
 const useSimpleAccess = (): boolean => useAccess((s) => s.view?.mode === 'simple');
 
 /**
- * Simple Mode's one playlist, as the main process keeps it (asked again whenever the playlists change), opened in the
- * middle and kept open there.
+ * The playlist Simple Mode opens as it comes (Session 56, the owner's item 14): what Pro Mode had open, else the day's
+ * "Sabha, <date>" playlist, as the main process says (main/simple-playlist.ts), opened in the middle once. After that
+ * the volunteer opens any playlist on the left, as in Pro Mode, and none is forced back (until Session 56 the one
+ * playlist was kept open there). True while that first answer is still to come.
  */
-function useOnePlaylist(): void {
-  const [one, setOne] = useState<string | null>(null);
+function useComingPlaylist(): boolean {
+  const [coming, setComing] = useState(true);
   // What Pro Mode had open as Simple Mode came (null: none), for when it goes.
   const proHad = useRef(usePlaylists.getState().openId);
-  const tree = usePlaylists((s) => s.tree);
-  const openId = usePlaylists((s) => s.openId);
+  // The playlist Simple Mode came with, once the main process said.
+  const cameWith = useRef<string | null>(null);
   useEffect(() => {
-    let current = true;
-    void window.drashti.app.simplePlaylist().then((id) => {
-      if (current) setOne(id);
-    });
+    // Still the Simple Mode that asked (a switch back before the answer leaves it be).
+    let gone = false;
+    const asked = () => !gone;
+    // Simple Mode shows the playlists, never the templates Pro Mode may have had in view.
+    if (usePlaylists.getState().view !== 'playlists') usePlaylists.setState({ view: 'playlists' });
+    void (async () => {
+      const id = await window.drashti.app.simplePlaylist().catch(() => null);
+      if (!asked()) return;
+      cameWith.current = id;
+      // A day's new playlist is made as Simple Mode comes: read the list again when it is not in it yet.
+      if (id !== null && !usePlaylists.getState().tree.some((n) => n.id === id)) await loadTree();
+      if (asked() && id !== null && usePlaylists.getState().openId !== id) await openPlaylist(id);
+      if (asked()) setComing(false);
+    })();
     return () => {
-      current = false;
+      gone = true;
     };
-  }, [tree]);
-  useEffect(() => {
-    if (one !== null && openId !== one && tree.some((n) => n.id === one)) void openPlaylist(one);
-  }, [one, openId, tree]);
-  // Leaving Simple Mode with the playlist it made still empty (nothing brought in), Pro Mode shows what it had open
-  // before rather than an empty new playlist; one with rows stays open there, what the volunteer worked on.
+  }, []);
+  // Leaving Simple Mode with the playlist it came with still empty (nothing brought in), Pro Mode shows what it had open
+  // before rather than an empty new playlist; any other stays open there, what the volunteer worked on.
   useEffect(
     () => () => {
       const { openId: open, items, unread } = usePlaylists.getState();
       const had = proHad.current;
-      if (open === null || open === had || items.length > 0 || unread.itemsOf === open) return;
+      if (open === null || open !== cameWith.current || open === had) return;
+      if (items.length > 0 || unread.itemsOf === open) return;
       if (had === null) closePlaylist();
       else void openPlaylist(had);
     },
     [],
   );
+  return coming;
 }
 
-/** Files dropped anywhere on the window (not on a row, or on the wallpapers, which take their own): at the end. */
+/**
+ * Files dropped anywhere on the window (not on a row, or on the wallpapers, which take their own): at the end of the
+ * open playlist. A folder (Session 56, the owner's item 5): a smart playlist following it, at once, nothing asked.
+ */
 function useDropsIntoPlaylist(): void {
   useEffect(() => {
     const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') === true;
@@ -170,7 +191,9 @@ function useDropsIntoPlaylist(): void {
       const paths = Array.from(e.dataTransfer.files)
         .map((f) => window.drashti.files.pathFor(f))
         .filter((p) => p !== '');
-      if (playlistId !== null && paths.length > 0) void importIntoPlaylist(playlistId, null, paths);
+      void dropFolders(paths, (files) =>
+        playlistId !== null ? importIntoPlaylist(playlistId, null, files) : undefined,
+      );
     };
     window.addEventListener('dragover', over);
     window.addEventListener('drop', drop);
@@ -210,8 +233,10 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   const platform = info?.platform ?? 'darwin';
   const simpleAccess = useSimpleAccess();
   const dashboardOpen = useNodes((s) => s.dashboard);
-  useOnePlaylist();
+  const coming = useComingPlaylist();
   useDropsIntoPlaylist();
+  // The open folder playlist's folders under the playlists, as in Pro Mode (Session 56).
+  const byFolder = usePlaylistFolders();
   const items = usePlaylists((s) => s.items);
   const openId = usePlaylists((s) => s.openId);
   const treeUnread = usePlaylists((s) => s.unread.playlists);
@@ -304,11 +329,18 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <SimpleFirstRun platform={platform} />
       <Columns
         left={
-          // The wallpapers (Part 6) have the whole column; Undo under them, as in Pro Mode.
-          <section aria-label="Wallpapers" className="flex min-h-0 flex-1 flex-col">
-            <WallpapersPanel fill />
-            <UndoBar platform={platform} />
-          </section>
+          // Pro Mode's left column but the library (Session 56, the owner's item 14: "Several playlists on the left,
+          // with folders, as in Pro Mode, and smart playlists"): the playlists, the open folder playlist's folders under
+          // them, the wallpapers (Part 6) under both, and Undo at the foot.
+          <LeftColumn
+            head={null}
+            top={<PlaylistPanel platform={platform} simple />}
+            bottom={byFolder ? <PlaylistFolders /> : null}
+            wallpapers={<WallpapersPanel />}
+            over={null}
+            covered={false}
+            foot={<UndoBar platform={platform} />}
+          />
         }
         middle={
           <main aria-label="Playlist" className="flex min-h-0 flex-1 flex-col">
@@ -319,8 +351,16 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
                 <div className="p-3">
                   <PlaylistsUnread what="playlists" size="lg" />
                 </div>
-              ) : (
+              ) : coming ? (
                 <Loading label="Opening the playlist…" className="flex-1" />
+              ) : (
+                // None open (Session 56: its open one deleted, or the last one): empty, never a stale one.
+                <CentredPlace data-testid="no-playlist-open">
+                  <EmptyState icon={ListMusic} title="No playlist open">
+                    Open one on the left, or make one with New there. Files dropped then go into it; a folder
+                    dropped becomes a smart playlist.
+                  </EmptyState>
+                </CentredPlace>
               )}
             </div>
           </main>
@@ -346,6 +386,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       {/* A row's right-click menu (Rename and Delete), its Delete's question when it is up, and From a Link…. */}
       <FileMenu platform={platform} />
       <RemoveItemsConfirm undoKey={shortcutText('undo', platform)} />
+      {/* Delete… of a playlist or a folder (Session 56), asked first, with Undo. */}
+      <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <LinkDialog platform={platform} />
       <GuidesDialog />
       {/* Jump by number (Session 55, Part 4): a row's number and Enter, as in Pro Mode. */}

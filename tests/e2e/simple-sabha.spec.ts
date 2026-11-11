@@ -49,7 +49,7 @@ async function intoSimple(win: Page): Promise<Locator> {
 /** The one playlist's rows' names, as the middle shows them. */
 const rowNames = (middle: Locator) => middle.getByTestId('playlist-item').locator('[data-label]');
 
-test('Pro Mode’s window with only what a one-projector sabha needs: the playlist open when it switched, in the middle; the wallpapers; LIVE, Next and Back and the time bar; Clear all, the Wallpaper and Black-out', async () => {
+test('Pro Mode’s window with only what a one-projector sabha needs: the playlist open when it switched, in the middle; the playlists and the wallpapers; LIVE, Next and Back and the time bar; Clear all, the Wallpaper and Black-out', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -62,14 +62,20 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
   const simple = await intoSimple(win);
   expect(await onePlaylist(win)).toBe(show.playlistId);
 
-  // Pro Mode's columns: the one playlist in the middle (its rows as Part 4 made them), no list of playlists to choose.
+  // Pro Mode's columns: the playlist open as it switched in the middle (its rows as Part 4 made them), and since Session
+  // 56 (the owner's item 14) the playlists on the left, as in Pro Mode, that one marked open.
   const middle = simple.getByTestId('column-middle');
   await expect(middle.getByTestId('playlist-title')).toHaveText(PLAYLIST);
   await expect(middle.getByTestId('playlist-item')).toHaveCount(6);
-  await expect(simple.getByTestId('playlist-tree')).toHaveCount(0);
+  const left = simple.getByTestId('column-left');
+  await expect(left.getByTestId('playlist-tree')).toBeVisible();
+  await expect(left.getByTestId('playlist-node').filter({ hasText: PLAYLIST })).toHaveAttribute(
+    'data-open',
+    'true',
+  );
   await expect(simple.getByTestId('simple-playlist')).toHaveCount(0);
-  // The wallpapers on the left, as in Pro Mode (Part 6).
-  await expect(simple.getByTestId('column-left').getByTestId('wallpapers')).toBeVisible();
+  // The wallpapers on the left, under the playlists, as in Pro Mode (Part 6).
+  await expect(left.getByTestId('wallpapers')).toBeVisible();
   // LIVE, Next and Back on the right.
   const right = simple.getByTestId('column-right');
   await expect(right.getByTestId('live-preview')).toBeVisible();
@@ -100,9 +106,11 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
     'layer-bar',
     'playlist-close',
     'show-oops',
-    'row-delete',
   ])
     await expect(win.getByTestId(id), id).toHaveCount(0);
+  // No trash on the playlist's rows (Simple Mode's Delete is a row's right-click); the chosen playlist on the left has
+  // its Delete, as in Pro Mode (Session 56).
+  await expect(middle.getByTestId('row-delete')).toHaveCount(0);
 
   // One click on a slide's row puts it up; Next and Back go on from it.
   const kirtan = middle.getByTestId('slide-thumb').filter({ hasText: 'Placeholder Kirtan_2' });

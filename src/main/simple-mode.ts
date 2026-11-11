@@ -362,8 +362,11 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
     IPC.playlists.restore,
     ([ids], scope) => Array.isArray(ids) && ids.length > 0 && ids.every((id) => aPlaylistOrFolder(scope, id)),
   ],
-  // Smart Playlist from a Folder… (Session 56): the folder chosen in the system's dialog, which the main process asks.
+  // Smart Playlist from a Folder… (Session 56): the folder chosen in the system's dialog, which the main process asks;
+  // and (the owner's item 5) a folder dropped, a smart playlist at once, nothing asked (the main process looks at
+  // what was dropped; the files among it come back to go through Simple Mode's import, as files dropped do).
   [IPC.playlists.createSmart, anything],
+  [IPC.playlists.createSmartFrom, anything],
   // A playlist's rows (Session 56: whichever is open; another too, as Pro Mode's own parts do: files dropped on its row
   // in the list, an import that ends after another was opened, an Undo there): what its imports made added to it,
   // dragged about, taken out (Delete) and put back (Undo). Never a template's.
@@ -444,6 +447,8 @@ export function simpleModeRefusals(
   // These answer in shapes of their own: no files picked, and the sound output as it is.
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.wallpapers.pickFiles, () => []);
+  // Nothing made from what was dropped, saying why.
+  answers.set(IPC.playlists.createSmartFrom, () => ({ made: [], files: [], problems: [words()] }));
   answers.set(IPC.audio.setOutput, sound);
   answers.set(IPC.events.view, () => ({ available: false, message: words(), addresses: [] }));
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
