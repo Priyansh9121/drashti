@@ -4,7 +4,12 @@ import { allChannels, IPC } from '../shared/ipc';
 import { initialEngineState } from '../shared/engine/state';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS, simpleModeRefuses } from '../shared/mode';
 import type { InvokeChannel } from '../shared/ipc';
-import { SIMPLE_MODE_BOUNDED, SIMPLE_MODE_LOCKED, type SimpleScope, simpleModeRefusals } from './simple-mode';
+import {
+  SIMPLE_MODE_BOUNDED,
+  SIMPLE_MODE_LOCKED,
+  simpleModeRefusals,
+  simpleModeRefusesWhole,
+} from './simple-mode';
 
 describe('Simple Mode locks', () => {
   const status = {
@@ -214,12 +219,34 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.nodes.remove)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   });
 
-  /** The one playlist and what is in it, as index.ts tells the lock from the library. */
-  const scope: SimpleScope = {
+  /**
+   * The playlists as index.ts tells the lock from the library (Session 56: every one of them, as Pro Mode's left column
+   * offers them): "one" open in Simple Mode's window, "other" beside it, the folder "week", a deleted playlist and a
+   * deleted folder (for their Undo), and a template, Pro Mode's.
+   */
+  const KINDS: Record<string, 'playlist' | 'folder' | 'template'> = {
+    one: 'playlist',
+    other: 'playlist',
+    gone: 'playlist',
+    week: 'folder',
+    'old-folder': 'folder',
+    tpl: 'template',
+  };
+  const ITEMS: Record<string, string> = {
+    'i-one': 'one',
+    'i-gone': 'one',
+    'i-other': 'other',
+    'i-in-gone': 'gone',
+    'i-tpl': 'tpl',
+  };
+  const scope = {
     playlistId: 'one',
-    playlistOf: (itemId) => ({ 'i-one': 'one', 'i-gone': 'one', 'i-other': 'other' })[itemId] ?? null,
-    holdsMedia: (mediaId) => mediaId === 'm-in',
-    holdsPresentation: (presentationId) => presentationId === 'p-in',
+    playlistOf: (itemId: string) => ITEMS[itemId] ?? null,
+    holdsMedia: (mediaId: string) => mediaId === 'm-in',
+    holdsPresentation: (presentationId: string) => presentationId === 'p-in',
+    kindOf: (id: string) => KINDS[id] ?? null,
+    listsMedia: (mediaId: string) => mediaId === 'm-in' || mediaId === 'm-other',
+    listsPresentation: (presentationId: string) => presentationId === 'p-in' || presentationId === 'p-other',
   };
   const within = (channel: InvokeChannel, ...args: unknown[]): boolean => {
     const bound = SIMPLE_MODE_BOUNDED.get(channel);
@@ -228,8 +255,14 @@ describe('Simple Mode locks', () => {
   };
 
   it('what Simple Mode offers since Session 55 (Part 18) runs within its bounds, never locked; the rest stays locked', () => {
-    // Bringing things in, the one playlist's rows, Rename and Delete, and From a Link….
+    // Bringing things in, the playlists' rows, Rename and Delete, and From a Link…; since Session 56 the playlists and
+    // folders themselves, as Pro Mode's left column offers them, and a smart playlist from a folder.
     for (const channel of [
+      IPC.playlists.create,
+      IPC.playlists.rename,
+      IPC.playlists.remove,
+      IPC.playlists.restore,
+      IPC.playlists.createSmart,
       IPC.library.importPaths,
       IPC.library.pickImportPaths,
       IPC.playlists.addItems,
@@ -263,14 +296,9 @@ describe('Simple Mode locks', () => {
     // Nothing is both.
     for (const channel of SIMPLE_MODE_BOUNDED.keys())
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
-    // A playlist of its own, other playlists, a header's name, Duplicate, a video's When it ends, a wallpaper's seconds
-    // and fade, the highest quality and the folder for downloads, a file's points and looks, and deleting a file from
-    // the library stay Pro Mode's.
+    // A header's name, Duplicate, a video's When it ends, a wallpaper's seconds and fade, the highest quality and the
+    // folder for downloads, a file's points and looks, and deleting a file from the library stay Pro Mode's.
     for (const channel of [
-      IPC.playlists.create,
-      IPC.playlists.rename,
-      IPC.playlists.remove,
-      IPC.playlists.restore,
       IPC.playlists.duplicate,
       IPC.playlists.renameHeader,
       IPC.playlists.fillPlaceholder,
@@ -288,7 +316,7 @@ describe('Simple Mode locks', () => {
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
   });
 
-  it('the one playlist’s rows only: added to, moved in, taken out of and put back in it, and nothing else of a playlist', () => {
+  it('a playlist’s rows, whichever is open (Session 56): added to, moved in, taken out of and put back in it; never a template’s or a folder’s', () => {
     expect(within(IPC.playlists.addItems, 'one', null, [{ kind: 'media', mediaId: 'x' }])).toBe(true);
     // An import of a folder brings its parts' headers with its files.
     expect(
@@ -297,38 +325,123 @@ describe('Simple Mode locks', () => {
         { kind: 'presentation', presentationId: 'p' },
       ]),
     ).toBe(true);
-    expect(within(IPC.playlists.addItems, 'other', null, [{ kind: 'media', mediaId: 'x' }])).toBe(false);
+    // Another playlist too (files dropped on its row in the list, an import that ends after another was opened, an
+    // Undo there), as in Pro Mode; never a template (Pro Mode's), a folder of playlists, or what is none.
+    expect(within(IPC.playlists.addItems, 'other', null, [{ kind: 'media', mediaId: 'x' }])).toBe(true);
+    expect(within(IPC.playlists.addItems, 'tpl', null, [{ kind: 'media', mediaId: 'x' }])).toBe(false);
+    expect(within(IPC.playlists.addItems, 'week', null, [{ kind: 'media', mediaId: 'x' }])).toBe(false);
+    expect(within(IPC.playlists.addItems, 'nowhere', null, [{ kind: 'media', mediaId: 'x' }])).toBe(false);
+    expect(within(IPC.playlists.addItems, null, null, [{ kind: 'media', mediaId: 'x' }])).toBe(false);
     // What Simple Mode never brings in: a Shastra passage, a video input, a slot.
     expect(within(IPC.playlists.addItems, 'one', null, [{ kind: 'shastra', passageId: 'x' }])).toBe(false);
     expect(within(IPC.playlists.addItems, 'one', null, [{ kind: 'input', name: 'x' }])).toBe(false);
     expect(within(IPC.playlists.addItems, 'one', null, 'not a list')).toBe(false);
     expect(within(IPC.playlists.moveItems, 'one', ['i-one'], 0)).toBe(true);
-    expect(within(IPC.playlists.moveItems, 'other', ['i-other'], 0)).toBe(false);
+    expect(within(IPC.playlists.moveItems, 'other', ['i-other'], 0)).toBe(true);
+    expect(within(IPC.playlists.moveItems, 'tpl', ['i-tpl'], 0)).toBe(false);
     expect(within(IPC.playlists.removeItems, ['i-one'])).toBe(true);
-    expect(within(IPC.playlists.removeItems, ['i-one', 'i-other'])).toBe(false);
+    expect(within(IPC.playlists.removeItems, ['i-one', 'i-other'])).toBe(true);
+    expect(within(IPC.playlists.removeItems, ['i-one', 'i-tpl'])).toBe(false);
+    expect(within(IPC.playlists.removeItems, ['i-one', 'i-none'])).toBe(false);
+    expect(within(IPC.playlists.removeItems, [])).toBe(false);
     expect(within(IPC.playlists.removeItems, 'i-one')).toBe(false);
     expect(within(IPC.playlists.restoreItems, ['i-gone'])).toBe(true);
-    expect(within(IPC.playlists.restoreItems, ['i-other'])).toBe(false);
+    // An Undo of rows taken out of a playlist since deleted: they go back into it, and come back with it.
+    expect(within(IPC.playlists.restoreItems, ['i-in-gone'])).toBe(true);
+    expect(within(IPC.playlists.restoreItems, ['i-tpl'])).toBe(false);
     expect(within(IPC.links.setPlaylist, 'one')).toBe(true);
-    expect(within(IPC.links.setPlaylist, 'other')).toBe(false);
-    // Part 4b's drags of a slide's row: an item of the one playlist (and, for Undo, the item the drag made).
+    expect(within(IPC.links.setPlaylist, 'other')).toBe(true);
+    expect(within(IPC.links.setPlaylist, 'tpl')).toBe(false);
+    expect(within(IPC.links.setPlaylist, 'week')).toBe(false);
+    expect(within(IPC.links.setPlaylist, null)).toBe(false);
+    // Part 4b's drags of a slide's row: a playlist's item (and, for Undo, the item the drag made).
     expect(within(IPC.playlists.setItemOrder, 'i-one', { mode: 'all' })).toBe(true);
-    expect(within(IPC.playlists.setItemOrder, 'i-other', { mode: 'all' })).toBe(false);
+    expect(within(IPC.playlists.setItemOrder, 'i-other', { mode: 'all' })).toBe(true);
+    expect(within(IPC.playlists.setItemOrder, 'i-tpl', { mode: 'all' })).toBe(false);
     expect(within(IPC.playlists.splitItem, 'i-one', { mode: 'all' }, { mode: 'all' }, 0)).toBe(true);
-    expect(within(IPC.playlists.splitItem, 'i-other', { mode: 'all' }, { mode: 'all' }, 0)).toBe(false);
+    expect(within(IPC.playlists.splitItem, 'i-tpl', { mode: 'all' }, { mode: 'all' }, 0)).toBe(false);
     expect(within(IPC.playlists.undoSplit, 'i-one', { mode: 'all' }, 'i-gone')).toBe(true);
-    expect(within(IPC.playlists.undoSplit, 'i-one', { mode: 'all' }, 'i-other')).toBe(false);
-    // With no one playlist yet, nothing of a playlist is within.
+    expect(within(IPC.playlists.undoSplit, 'i-one', { mode: 'all' }, 'i-tpl')).toBe(false);
+    // With none open (its open one deleted, say), the window still changes the playlists it shows.
     const none = { ...scope, playlistId: null };
-    const bound = SIMPLE_MODE_BOUNDED.get(IPC.playlists.addItems);
-    expect(bound?.(['one', null, [{ kind: 'media', mediaId: 'x' }]], none)).toBe(false);
-    expect(SIMPLE_MODE_BOUNDED.get(IPC.playlists.removeItems)?.([['i-one']], none)).toBe(false);
+    expect(SIMPLE_MODE_BOUNDED.get(IPC.playlists.addItems)?.(['one', null, [{ kind: 'media', mediaId: 'x' }]], none)).toBe(
+      true,
+    );
+    expect(SIMPLE_MODE_BOUNDED.get(IPC.playlists.removeItems)?.([['i-other']], none)).toBe(true);
   });
 
-  it('Rename: only a file the one playlist holds', () => {
+  it('the playlists and folders, as Pro Mode’s left column offers them (Session 56): New playlist and New folder, at the top or in a folder; Rename…, Delete… and its Undo; Smart Playlist from a Folder…', () => {
+    expect(within(IPC.playlists.create, 'Placeholder playlist', null, false)).toBe(true);
+    expect(within(IPC.playlists.create, 'Placeholder folder', null, true)).toBe(true);
+    // In a folder: New playlist here, New folder here.
+    expect(within(IPC.playlists.create, 'Placeholder playlist', 'week', false)).toBe(true);
+    expect(within(IPC.playlists.create, 'Placeholder folder', 'week', true)).toBe(true);
+    // Never in a playlist, a template or what is none; never with what it is left out (fails closed).
+    expect(within(IPC.playlists.create, 'Placeholder playlist', 'one', false)).toBe(false);
+    expect(within(IPC.playlists.create, 'Placeholder playlist', 'tpl', false)).toBe(false);
+    expect(within(IPC.playlists.create, 'Placeholder playlist', 'nowhere', false)).toBe(false);
+    expect(within(IPC.playlists.create, 'Placeholder playlist', null)).toBe(false);
+    expect(within(IPC.playlists.create)).toBe(false);
+    // Rename…: a playlist or a folder, never a template.
+    expect(within(IPC.playlists.rename, 'other', 'Placeholder name')).toBe(true);
+    expect(within(IPC.playlists.rename, 'week', 'Placeholder name')).toBe(true);
+    expect(within(IPC.playlists.rename, 'tpl', 'Placeholder name')).toBe(false);
+    expect(within(IPC.playlists.rename, 'nowhere', 'Placeholder name')).toBe(false);
+    expect(within(IPC.playlists.rename, 42, 'Placeholder name')).toBe(false);
+    // Delete… (several chosen together too), and its Undo: playlists and folders, a deleted one too.
+    expect(within(IPC.playlists.remove, ['one', 'week'])).toBe(true);
+    expect(within(IPC.playlists.remove, ['one', 'tpl'])).toBe(false);
+    expect(within(IPC.playlists.remove, ['nowhere'])).toBe(false);
+    expect(within(IPC.playlists.remove, [])).toBe(false);
+    expect(within(IPC.playlists.remove, 'one')).toBe(false);
+    expect(within(IPC.playlists.restore, ['gone', 'old-folder'])).toBe(true);
+    expect(within(IPC.playlists.restore, ['tpl'])).toBe(false);
+    expect(within(IPC.playlists.restore)).toBe(false);
+    // Smart Playlist from a Folder…: the folder chosen in the system's dialog.
+    expect(within(IPC.playlists.createSmart)).toBe(true);
+  });
+
+  it('fails closed (Session 56): a phone or Companion, asking with none of the arguments, is refused each of them whole', () => {
+    for (const channel of [
+      IPC.playlists.create,
+      IPC.playlists.rename,
+      IPC.playlists.remove,
+      IPC.playlists.restore,
+      IPC.playlists.createSmart,
+      IPC.playlists.addItems,
+      IPC.playlists.removeItems,
+    ]) {
+      expect(simpleModeRefusesWhole(channel), channel).toBe(true);
+      expect(answers.get(channel)?.(), channel).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    }
+  });
+
+  it('what is Pro Mode’s stays as strict as before (Session 56): templates and slots, sharing with phones, Repeat Slides and its settings, Duplicate, a row’s timers and a header’s name, the missing taken out of a smart playlist', () => {
+    for (const channel of [
+      IPC.playlists.saveAsTemplate,
+      IPC.playlists.newFromTemplate,
+      IPC.playlists.addSlot,
+      IPC.playlists.editSlot,
+      IPC.playlists.fillPlaceholder,
+      IPC.playlists.share,
+      IPC.playlists.createRepeat,
+      IPC.playlists.setRepeat,
+      IPC.playlists.duplicate,
+      IPC.playlists.setTimers,
+      IPC.playlists.renameHeader,
+      IPC.playlists.removeMissing,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+    }
+  });
+
+  it('Rename: a file a playlist holds (Session 56: any playlist, never only a template)', () => {
     expect(within(IPC.library.renamePresentation, 'p-in', 'Placeholder new name')).toBe(true);
+    expect(within(IPC.library.renamePresentation, 'p-other', 'Placeholder new name')).toBe(true);
     expect(within(IPC.library.renamePresentation, 'p-out', 'Placeholder new name')).toBe(false);
     expect(within(IPC.media.rename, 'm-in', 'Placeholder new name')).toBe(true);
+    expect(within(IPC.media.rename, 'm-other', 'Placeholder new name')).toBe(true);
     expect(within(IPC.media.rename, 'm-out', 'Placeholder new name')).toBe(false);
     expect(within(IPC.media.rename, 42, 'Placeholder new name')).toBe(false);
   });
