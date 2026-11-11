@@ -4,6 +4,7 @@ import {
   type CaptionSettings,
   type CaptionsShown,
 } from '../../shared/captions';
+import { toGujaratiScript } from '../../shared/scripts';
 import type { Heard, SpeechLanguage } from '../../shared/speech';
 import type { SpeechHub } from './speech-hub';
 
@@ -106,11 +107,16 @@ export function createCaptionsFeed(options: CaptionsFeedOptions): CaptionsFeed {
   };
 
   const heard = (h: Heard): void => {
-    const phrase: Phrase = { id: h.id, words: h.words.map((w) => w.text), language: h.language };
+    const sanskrit = h.language === 'sa';
+    // The screens and recording draft share these converted words and the original capture times.
+    const words = sanskrit
+      ? h.words.map((word) => ({ ...word, text: toGujaratiScript(word.text).normalize('NFC') }))
+      : h.words;
+    const phrase: Phrase = { id: h.id, words: words.map((w) => w.text), language: h.language };
     if (h.final) {
       before = phrase;
       now = null;
-      options.onFinalPhrase?.(h);
+      options.onFinalPhrase?.(sanskrit ? { ...h, words, text: phrase.words.join(' ') } : h);
     } else {
       // A new phrase: the last one (heard whole, or as far as it got) goes above it.
       if (now !== null && now.id !== h.id) before = now;
