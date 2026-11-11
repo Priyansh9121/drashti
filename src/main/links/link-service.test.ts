@@ -809,9 +809,15 @@ describe('the playlist a download went into last (Session 54, F1)', () => {
     expect(h.service.view().lastPlaylist).toBeNull();
   });
 
-  it('is every person’s in Pro Mode; in Simple Mode only its one playlist (Session 55, Part 18), as From a Link… goes there', () => {
+  it('is every person’s in Pro Mode; in Simple Mode a playlist, never a template or a folder (Session 56: From a Link… goes into the open one)', () => {
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.links.setPlaylist);
     let simple = true;
+    const kinds: Record<string, 'playlist' | 'folder' | 'template'> = {
+      'placeholder-one': 'playlist',
+      'placeholder-other': 'playlist',
+      'placeholder-folder': 'folder',
+      'placeholder-template': 'template',
+    };
     lockChannels(
       () => simple,
       simpleModeRefusals(() => ({ chosen: null, devices: [], state: 'default' as const, checked: true })),
@@ -820,13 +826,18 @@ describe('the playlist a download went into last (Session 54, F1)', () => {
         playlistOf: () => null,
         holdsMedia: () => false,
         holdsPresentation: () => false,
+        kindOf: (id) => kinds[id] ?? null,
+        listsMedia: () => false,
+        listsPresentation: () => false,
       })),
     );
     expect(refusalFor(IPC.links.setPlaylist, ['placeholder-one'])).toBeUndefined();
-    expect(refusalFor(IPC.links.setPlaylist, ['placeholder-other'])?.()).toEqual({
-      ok: false,
-      message: SIMPLE_MODE_REFUSAL,
-    });
+    expect(refusalFor(IPC.links.setPlaylist, ['placeholder-other'])).toBeUndefined();
+    for (const id of ['placeholder-folder', 'placeholder-template', 'placeholder-none'])
+      expect(refusalFor(IPC.links.setPlaylist, [id])?.(), id).toEqual({
+        ok: false,
+        message: SIMPLE_MODE_REFUSAL,
+      });
     // A request with none of the window's arguments (a phone's, Companion's) is refused.
     expect(refusedNow(IPC.links.setPlaylist)).toBe(true);
     simple = false;

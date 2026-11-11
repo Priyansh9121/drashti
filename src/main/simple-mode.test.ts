@@ -364,9 +364,12 @@ describe('Simple Mode locks', () => {
     expect(within(IPC.playlists.undoSplit, 'i-one', { mode: 'all' }, 'i-tpl')).toBe(false);
     // With none open (its open one deleted, say), the window still changes the playlists it shows.
     const none = { ...scope, playlistId: null };
-    expect(SIMPLE_MODE_BOUNDED.get(IPC.playlists.addItems)?.(['one', null, [{ kind: 'media', mediaId: 'x' }]], none)).toBe(
-      true,
-    );
+    expect(
+      SIMPLE_MODE_BOUNDED.get(IPC.playlists.addItems)?.(
+        ['one', null, [{ kind: 'media', mediaId: 'x' }]],
+        none,
+      ),
+    ).toBe(true);
     expect(SIMPLE_MODE_BOUNDED.get(IPC.playlists.removeItems)?.([['i-other']], none)).toBe(true);
   });
 
