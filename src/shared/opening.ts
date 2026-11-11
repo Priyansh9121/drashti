@@ -95,10 +95,10 @@ const soundSchema = z.object({
 });
 const settingSchema = z.object({
   on: z.boolean().optional().catch(undefined),
-  photo: z.unknown(),
+  photo: z.unknown().optional(),
   /** alpha.15's photos, in order (up to eight): its first is the photo now. */
   photos: z.array(z.unknown()).optional().catch(undefined),
-  sound: z.unknown(),
+  sound: z.unknown().optional(),
 });
 
 /**
@@ -151,7 +151,11 @@ export const OPENING_DEFAULT_PHOTO_URL = `${MEDIA_SCHEME}://opening-default/phot
  * the chosen one gone from Media), Drashti's default photo alone and never a sound (the owner, 11 Nov 2026); its file
  * missing (`defaultPhoto` false), the lamp alone.
  */
-export function openingPlanOf(photo: string | null, sound: string | null, defaultPhoto: boolean): OpeningPlan {
+export function openingPlanOf(
+  photo: string | null,
+  sound: string | null,
+  defaultPhoto: boolean,
+): OpeningPlan {
   if (photo !== null) return sound ? { photo, sound } : { photo };
   return defaultPhoto ? { photo: OPENING_DEFAULT_PHOTO_URL, defaultPhoto: true } : { photo: null };
 }
@@ -193,9 +197,8 @@ export function openingSoundGain(t: number, length: number = OPENING_MS): number
 /** That loudness at `points` even steps from the start to its end, as Web Audio's setValueCurveAtTime takes it. */
 export function openingSoundCurve(length: number = OPENING_MS, points = 101): number[] {
   const end = Math.max(0, Math.min(OPENING_MS, length));
-  return Array.from({ length: Math.max(2, points) }, (_, i, all) =>
-    openingSoundGain((i * end) / (all.length - 1), end),
-  );
+  const n = Math.max(2, points);
+  return Array.from({ length: n }, (_, i) => openingSoundGain((i * end) / (n - 1), end));
 }
 
 /** The opening pack (the owner's, on the setup day): its folder of photos, of which photo 1 is the opening's. */
@@ -220,7 +223,8 @@ export function packSoundOf(
   const found = [...names].sort().filter((n) => PACK_SOUND_NAME.test(n));
   if (found.length > 1) return { several: found };
   const [name] = found;
-  const kind = name === undefined ? undefined : OPENING_SOUND_KINDS.find((k) => name.toLowerCase().endsWith(`.${k}`));
+  const kind =
+    name === undefined ? undefined : OPENING_SOUND_KINDS.find((k) => name.toLowerCase().endsWith(`.${k}`));
   return name !== undefined && kind !== undefined ? { name, kind } : null;
 }
 
@@ -229,9 +233,7 @@ const list = (items: readonly string[]) =>
 
 /** What a pack is missing (its photo 1), in words; null when it has it. */
 export function packMissing(found: { photo: boolean }): string | null {
-  return found.photo
-    ? null
-    : `The opening pack has no photo 1 (${PACK_PHOTOS}/1.jpg). Nothing was changed.`;
+  return found.photo ? null : `The opening pack has no photo 1 (${PACK_PHOTOS}/1.jpg). Nothing was changed.`;
 }
 
 /** A pack with more than one sound, in words. */

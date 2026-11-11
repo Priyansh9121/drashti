@@ -88,7 +88,9 @@ export function openingSound(url: string): OpeningSoundPlayer | null {
       started = true;
       // The two seconds, or the file's own length when it is shorter.
       const length =
-        Number.isFinite(el.duration) && el.duration > 0 ? Math.min(OPENING_MS, el.duration * 1000) : OPENING_MS;
+        Number.isFinite(el.duration) && el.duration > 0
+          ? Math.min(OPENING_MS, el.duration * 1000)
+          : OPENING_MS;
       const from = context.currentTime;
       shape.gain.setValueCurveAtTime(Float32Array.from(openingSoundCurve(length)), from, length / 1000);
       void el.play().catch(() => undefined);

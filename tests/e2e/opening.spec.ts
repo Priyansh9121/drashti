@@ -1,4 +1,4 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -105,7 +105,15 @@ async function startedOnce(
 const opening = (win: Page) => win.getByTestId('opening-start');
 
 /** Its parts that would be words, a name, the light or the sparkles (none now). */
-const WORDS_AND_SPARKLES = '[data-opening-line], [data-opening-word], [data-opening-sweep], [data-opening-sparkle]';
+const WORDS_AND_SPARKLES =
+  '[data-opening-line], [data-opening-word], [data-opening-sweep], [data-opening-sparkle]';
+
+/**
+ * How many of these the opening (or its preview) holds now, asked once of it while it is there: never true of one
+ * already gone (a check that waited could pass once it had ended).
+ */
+const countIn = (player: Locator, selector: string) =>
+  player.evaluate((root, within) => root.querySelectorAll(within).length, selector);
 
 /**
  * Hold the opening where it is (every part paused as soon as they have started), so a test can act while it plays:
@@ -153,7 +161,7 @@ test('plays as Drashti starts, over the operator window only, once the hall’s 
     /^drashti-media:\/\/(opening|media)\//u,
   );
   // No words, no light passing, no sparkles.
-  await expect(player.locator(WORDS_AND_SPARKLES)).toHaveCount(0);
+  expect(await countIn(player, WORDS_AND_SPARKLES)).toBe(0);
   // Two seconds, every part: the whole has gone into the window by then.
   await expect.poll(async () => Math.max(0, ...(await endTimes(win)))).toBe(TWO_SECONDS);
   // Underneath, the window has started: its controls are there and listening.
@@ -194,7 +202,7 @@ test('with nothing chosen, the default photo: the photo alone, coming in and slo
   await expect
     .poll(() => photo.evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight]))
     .toEqual([PLACEHOLDER_OPENING_PHOTO.width, PLACEHOLDER_OPENING_PHOTO.height]);
-  await expect(player.locator(`[data-opening-lamp], ${WORDS_AND_SPARKLES}`)).toHaveCount(0);
+  expect(await countIn(player, `[data-opening-lamp], ${WORDS_AND_SPARKLES}`)).toBe(0);
   // It comes in and slowly zooms (its own fade and zoom), and the whole fades at its end: nothing else moves.
   expect(await player.evaluate((root) => root.getAnimations({ subtree: true }).length)).toBe(3);
   const moves = await photo.evaluate((img) =>
@@ -230,7 +238,7 @@ test('with nothing chosen, the default photo: the photo alone, coming in and slo
   const preview = dialog.getByTestId('opening-preview');
   await expect(preview).toHaveAttribute('data-photos', '1');
   await expect(preview.locator('img[data-opening-photo]')).toHaveAttribute('src', OPENING_DEFAULT_PHOTO_URL);
-  await expect(preview.locator(`[data-opening-lamp], ${WORDS_AND_SPARKLES}`)).toHaveCount(0);
+  expect(await countIn(preview, `[data-opening-lamp], ${WORDS_AND_SPARKLES}`)).toBe(0);
   await app.close();
 });
 
@@ -249,7 +257,7 @@ test('with Interface motion Off, the default photo is still: it comes in and goe
   const photo = player.locator('img[data-opening-photo="0"]');
   await expect(photo).toHaveAttribute('src', OPENING_DEFAULT_PHOTO_URL);
   await holdOpening(win);
-  await expect(player.locator(`[data-opening-lamp], ${WORDS_AND_SPARKLES}`)).toHaveCount(0);
+  expect(await countIn(player, `[data-opening-lamp], ${WORDS_AND_SPARKLES}`)).toBe(0);
   // The photo's plain fade in, and the whole's plain fade out: opacity only, the photo never moving.
   const changed = await player.evaluate((root) =>
     root
@@ -277,10 +285,11 @@ test('the default photo’s file missing: the lamp lights alone, with no words, 
   const win = await operatorPage(app);
   await expect(opening(win)).toBeVisible({ timeout: 15_000 });
   const player = win.getByTestId('opening');
+  await holdOpening(win);
   await expect(player).toHaveAttribute('data-photos', '0');
   await expect(player.locator('[data-opening-lamp]')).toHaveCount(1);
-  await expect(player.locator(WORDS_AND_SPARKLES)).toHaveCount(0);
-  await expect(player).toHaveText('');
+  expect(await countIn(player, WORDS_AND_SPARKLES)).toBe(0);
+  expect(await player.evaluate((root) => root.textContent)).toBe('');
   await expect
     .poll(() => openingLog(userData))
     .toContain('Opening: plays (the lamp; the default photo’s file is missing)');
@@ -304,7 +313,7 @@ test('while the hall’s screens are still getting ready it never moves: it wait
   await expect(player).toHaveAttribute('data-opening-motion', 'still', { timeout: 10_000 });
   await expect(player).toHaveAttribute('data-opening-held', 'false');
   await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
-  await expect(player.locator(WORDS_AND_SPARKLES)).toHaveCount(0);
+  expect(await countIn(player, WORDS_AND_SPARKLES)).toBe(0);
   // Never on a hall screen.
   const output = await outputPage(app);
   await expect(output.locator('#root')).toBeAttached();
@@ -547,7 +556,7 @@ test('with Interface motion Off, or the computer asking for reduced motion (as i
     await expect(player).toHaveAttribute('data-opening-motion', 'still');
     await holdOpening(win);
     await expect(player.locator('[data-opening-photo]')).toHaveCount(1);
-    await expect(player.locator(WORDS_AND_SPARKLES)).toHaveCount(0);
+    expect(await countIn(player, WORDS_AND_SPARKLES)).toBe(0);
     // What changes: only opacity (the photo's coming in, and the whole at its end); no transform anywhere.
     const changed = await player.evaluate((root) =>
       root
@@ -648,7 +657,13 @@ test('File › Opening… at 1024 × 645 and 1280 × 720: a photo from Media, a 
     const dialog = win.getByTestId('opening-dialog');
     await expect(dialog).toBeVisible();
     await expectNoSeriousA11yIssues(win, `File › Opening… at ${String(size.width)} × ${String(size.height)}`);
-    for (const id of ['opening-on', 'opening-play', 'opening-choose-photo', 'opening-sound', 'opening-load-pack']) {
+    for (const id of [
+      'opening-on',
+      'opening-play',
+      'opening-choose-photo',
+      'opening-sound',
+      'opening-load-pack',
+    ]) {
       await dialog.getByTestId(id).scrollIntoViewIfNeeded();
       await expect(dialog.getByTestId(id)).toBeInViewport();
     }
@@ -661,7 +676,10 @@ test('File › Opening… at 1024 × 645 and 1280 × 720: a photo from Media, a 
   await chooseMenuItem(app, 'opening');
   const dialog = win.getByTestId('opening-dialog');
   await dialog.getByTestId('opening-choose-photo').click();
-  await win.getByTestId('media-picker').getByRole('button', { name: /placeholder-1/u }).click();
+  await win
+    .getByTestId('media-picker')
+    .getByRole('button', { name: /placeholder-1/u })
+    .click();
   // Its copy for the opening is made, at most the window's size, and kept in the media folder.
   await expect(dialog.getByTestId('opening-photo')).toContainText('placeholder-1', { timeout: 20_000 });
   expect(readdirSync(join(userData, 'Media', 'opening')).filter((f) => f.endsWith('.jpg'))).toHaveLength(1);
@@ -669,7 +687,10 @@ test('File › Opening… at 1024 × 645 and 1280 × 720: a photo from Media, a 
   expect(kept).toMatchObject({ photo: { ready: true, gone: false }, sound: null });
   // Another chosen replaces it: one photo.
   await dialog.getByTestId('opening-choose-photo').click();
-  await win.getByTestId('media-picker').getByRole('button', { name: /placeholder-2/u }).click();
+  await win
+    .getByTestId('media-picker')
+    .getByRole('button', { name: /placeholder-2/u })
+    .click();
   await expect(dialog.getByTestId('opening-photo')).toContainText('placeholder-2', { timeout: 20_000 });
   // The preview plays it in the dialog, and ends by itself.
   await dialog.getByTestId('opening-play').click();
@@ -752,7 +773,9 @@ test('Load the opening pack…: its photo 1 is enough; an alpha.15 pack loads it
   await expect(dialog.getByTestId('opening-problem')).toHaveText(
     'The opening pack has no photo 1 (photos/1.jpg). Nothing was changed.',
   );
-  expect((await win.evaluate(() => (globalThis as PageGlobals).drashti.opening.view())).photo?.mediaId).toBe(before);
+  expect((await win.evaluate(() => (globalThis as PageGlobals).drashti.opening.view())).photo?.mediaId).toBe(
+    before,
+  );
   // Photo 1 alone is a whole pack.
   const count = await mediaCount(win);
   await loadPack(app, win, await packOf(win, { photos: [1] }));
@@ -926,4 +949,3 @@ test('the pack’s sound (a generated tone, any case) plays gently with its phot
   await expect.poll(() => openingLog(userData).at(-1)).toBe('Opening: its sound was taken out');
   await second.app.close();
 });
-

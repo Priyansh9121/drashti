@@ -36,7 +36,9 @@ describe('what is kept', () => {
     expect(OPENING_DEFAULT).toEqual({ on: true, photo: null, sound: null });
     expect(readOpening(undefined)).toEqual(OPENING_DEFAULT);
     expect(readOpening('on')).toEqual(OPENING_DEFAULT);
-    expect(readOpening({ on: 'yes', photo: 'not a media id!', sound: { sha256: 'x' } })).toEqual(OPENING_DEFAULT);
+    expect(readOpening({ on: 'yes', photo: 'not a media id!', sound: { sha256: 'x' } })).toEqual(
+      OPENING_DEFAULT,
+    );
   });
 
   it('keeps one photo and the pack’s sound', () => {
@@ -89,7 +91,10 @@ describe('what plays', () => {
   });
 
   it('with no photo, Drashti’s default photo, never with a sound; its file missing, the lamp alone', () => {
-    expect(openingPlanOf(null, sound, true)).toEqual({ photo: OPENING_DEFAULT_PHOTO_URL, defaultPhoto: true });
+    expect(openingPlanOf(null, sound, true)).toEqual({
+      photo: OPENING_DEFAULT_PHOTO_URL,
+      defaultPhoto: true,
+    });
     expect(openingPlanOf(null, null, true)).toEqual({ photo: OPENING_DEFAULT_PHOTO_URL, defaultPhoto: true });
     expect(OPENING_DEFAULT_PHOTO_URL).toMatch(/^drashti-media:\/\/opening-default\//u);
     expect(openingPlanOf(null, sound, false)).toEqual({ photo: null });
@@ -119,7 +124,8 @@ describe('the two seconds', () => {
   it('one rise and one fall of light in two seconds: well under three swings a second', () => {
     const t = OPENING_TIMES;
     const at = (ms: number) =>
-      Math.min(1, ms / t.fadeIn) * (ms <= t.fadeOut.start ? 1 : 1 - (ms - t.fadeOut.start) / t.fadeOut.length);
+      Math.min(1, ms / t.fadeIn) *
+      (ms <= t.fadeOut.start ? 1 : 1 - (ms - t.fadeOut.start) / t.fadeOut.length);
     const series = Array.from({ length: 121 }, (_, i) => at((i * 1000) / 60));
     expect(swings(series, 60).worst).toBeLessThanOrEqual(2);
   });
@@ -154,7 +160,8 @@ describe('the pack’s sound, played gently', () => {
     expect(openingSoundGain(400, 800)).toBeGreaterThan(0);
     expect(openingSoundGain(1200, 800)).toBe(0);
     // Very short: in and out, never louder than the most.
-    for (let t = 0; t <= 200; t += 10) expect(openingSoundGain(t, 200)).toBeLessThanOrEqual(OPENING_SOUND_VOLUME);
+    for (let t = 0; t <= 200; t += 10)
+      expect(openingSoundGain(t, 200)).toBeLessThanOrEqual(OPENING_SOUND_VOLUME);
   });
 
   it('as Web Audio’s curve: the same loudness at even steps from its start to its end', () => {
@@ -194,7 +201,13 @@ describe('the opening pack', () => {
 
   it('takes a sound Drashti plays, at most 10 MB; says in plain words why not', () => {
     expect(OPENING_SOUND_MAX_BYTES).toBe(10 * 1024 * 1024);
-    const ok = { name: 'sound.m4a', bytes: 200_000, kind: 'audio', playable: true, format: 'AAC sound file (M4A)' } as const;
+    const ok = {
+      name: 'sound.m4a',
+      bytes: 200_000,
+      kind: 'audio',
+      playable: true,
+      format: 'AAC sound file (M4A)',
+    } as const;
     expect(packSoundProblem(ok)).toBeNull();
     expect(packSoundProblem({ ...ok, bytes: OPENING_SOUND_MAX_BYTES })).toBeNull();
     expect(packSoundProblem({ ...ok, bytes: OPENING_SOUND_MAX_BYTES + 1 })).toBe(
@@ -205,9 +218,7 @@ describe('the opening pack', () => {
     ).toBe(
       'Drashti cannot play the opening pack’s sound.mp3 as it is: PNG picture. Its sound must be an MP3, an M4A (AAC) or a WAV. Nothing was changed.',
     );
-    expect(
-      packSoundProblem({ ...ok, playable: false, format: 'Apple Lossless sound file (M4A)' }),
-    ).toBe(
+    expect(packSoundProblem({ ...ok, playable: false, format: 'Apple Lossless sound file (M4A)' })).toBe(
       'Drashti cannot play the opening pack’s sound.m4a as it is: Apple Lossless sound file (M4A). Its sound must be an MP3, an M4A (AAC) or a WAV. Nothing was changed.',
     );
     // Not sure it plays is not a sound it plays.
@@ -217,8 +228,8 @@ describe('the opening pack', () => {
     expect(packSoundProblem({ ...ok, bytes: 0 })).toBe(
       'Drashti cannot play the opening pack’s sound.m4a as it is: empty file. Its sound must be an MP3, an M4A (AAC) or a WAV. Nothing was changed.',
     );
-    expect(
-      packSoundProblem({ ...ok, kind: 'video', playable: true, format: 'H.264 video (MP4)' }),
-    ).toMatch(/as it is: H\.264 video \(MP4\)\./u);
+    expect(packSoundProblem({ ...ok, kind: 'video', playable: true, format: 'H.264 video (MP4)' })).toMatch(
+      /as it is: H\.264 video \(MP4\)\./u,
+    );
   });
 });

@@ -88,7 +88,12 @@ const m4a = (codec: string) =>
   ]);
 
 /** An MP3's head: its ID3 tag, then a frame's sync. */
-const mp3 = () => Buffer.concat([Buffer.from('ID3\u0004\0\0\0\0\0\0', 'latin1'), Buffer.from([0xff, 0xfb, 0x90, 0x64]), Buffer.alloc(400)]);
+const mp3 = () =>
+  Buffer.concat([
+    Buffer.from('ID3\u0004\0\0\0\0\0\0', 'latin1'),
+    Buffer.from([0xff, 0xfb, 0x90, 0x64]),
+    Buffer.alloc(400),
+  ]);
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'drashti-opening-'));
@@ -98,7 +103,11 @@ afterEach(() => {
 });
 
 /** A pack of its own with these photos (by number and extension), these files at its top, and these words. */
-function pack(photos: [number, string][], top: Record<string, Uint8Array | string> = {}, words: string | null = null): string {
+function pack(
+  photos: [number, string][],
+  top: Record<string, Uint8Array | string> = {},
+  words: string | null = null,
+): string {
   const root = mkdtempSync(join(dir, 'pack-'));
   mkdirSync(join(root, 'photos'), { recursive: true });
   for (const [n, ext] of photos) writeFileSync(join(root, 'photos', `${String(n)}.${ext}`), jpeg());
@@ -127,7 +136,10 @@ describe('the opening pack', () => {
 
   it('a pack without its photo 1 says so, and nothing changes', async () => {
     const missing = 'The opening pack has no photo 1 (photos/1.jpg). Nothing was changed.';
-    expect(await readPack(pack([[2, 'jpg']], { 'sound.wav': wav() }))).toEqual({ ok: false, message: missing });
+    expect(await readPack(pack([[2, 'jpg']], { 'sound.wav': wav() }))).toEqual({
+      ok: false,
+      message: missing,
+    });
     mkdirSync(join(dir, 'empty'));
     expect(await readPack(join(dir, 'empty'))).toEqual({ ok: false, message: missing });
     expect(await readPack(join(dir, 'not-there'))).toEqual({ ok: false, message: missing });
@@ -195,7 +207,9 @@ describe('the copy of the pack’s sound Drashti keeps', () => {
     expect(openingSoundPath({ sha256, kind: 'wav' })).toBe(`opening/${sha256}.wav`);
     expect(readFileSync(join(dir, 'opening', `${sha256}.wav`))).toEqual(bytes);
     // Kept again: the same file, nothing left over.
-    expect(await keepSoundCopy(dir, { path: join(root, 'Sound.WAV'), name: 'Sound.WAV', kind: 'wav' })).toEqual(kept);
+    expect(
+      await keepSoundCopy(dir, { path: join(root, 'Sound.WAV'), name: 'Sound.WAV', kind: 'wav' }),
+    ).toEqual(kept);
     expect(readdirSync(join(dir, 'opening'))).toEqual([`${sha256}.wav`]);
     // Taken out: gone; taking out one that is not there is no harm.
     await dropSoundCopy(dir, { sha256, kind: 'wav', name: 'Sound.WAV' });
@@ -206,9 +220,9 @@ describe('the copy of the pack’s sound Drashti keeps', () => {
   it('never keeps more than the most a sound may be, nor a file that is gone', async () => {
     const root = pack([[1, 'jpg']], { 'sound.wav': wav() });
     truncateSync(join(root, 'sound.wav'), OPENING_SOUND_MAX_BYTES + 1);
-    expect(await keepSoundCopy(dir, { path: join(root, 'sound.wav'), name: 'sound.wav', kind: 'wav' })).toMatchObject(
-      { ok: false },
-    );
+    expect(
+      await keepSoundCopy(dir, { path: join(root, 'sound.wav'), name: 'sound.wav', kind: 'wav' }),
+    ).toMatchObject({ ok: false });
     expect(
       await keepSoundCopy(dir, { path: join(root, 'gone.wav'), name: 'gone.wav', kind: 'wav' }),
     ).toMatchObject({ ok: false, message: expect.stringMatching(/^Could not keep the opening’s sound\./u) });

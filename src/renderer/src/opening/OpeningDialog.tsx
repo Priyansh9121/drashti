@@ -67,8 +67,8 @@ function OpeningForm({ view }: { view: OpeningView }) {
       <div className="space-y-5">
         <p className="text-sm text-muted">
           For two seconds as Drashti starts, the mandir’s own photo, with the opening pack’s sound if it has
-          one, on this screen only: never on the hall’s screens, a node, the stream or a phone. Any key, click or
-          tap ends it at once. With no photo chosen, Drashti’s default photo comes in, with no sound.
+          one, on this screen only: never on the hall’s screens, a node, the stream or a phone. Any key, click
+          or tap ends it at once. With no photo chosen, Drashti’s default photo comes in, with no sound.
         </p>
         <Toggle
           checked={view.on}
@@ -163,8 +163,8 @@ function OpeningForm({ view }: { view: OpeningView }) {
           <p data-testid="opening-sound" className={view.sound ? 'text-sm' : 'text-sm text-muted'}>
             {view.sound ? (
               <>
-                <span className="font-medium">{view.sound.name}</span>, from the opening pack: it plays gently with
-                the photo for its two seconds, never with Drashti’s default photo.
+                <span className="font-medium">{view.sound.name}</span>, from the opening pack: it plays gently
+                with the photo for its two seconds, never with Drashti’s default photo.
               </>
             ) : (
               'No sound. An opening pack may hold one beside its photos folder: sound.mp3, sound.m4a or sound.wav.'
@@ -188,8 +188,8 @@ function OpeningForm({ view }: { view: OpeningView }) {
           </h3>
           <p className="text-sm text-muted">
             A folder with its photo (photos/1.jpg) and, if it has one, its sound beside the photos folder
-            (sound.mp3, sound.m4a or sound.wav). Its photo comes into Media, and it and its sound replace what is
-            chosen here.
+            (sound.mp3, sound.m4a or sound.wav). Its photo comes into Media, and it and its sound replace what
+            is chosen here.
           </p>
           <Button
             icon={FolderOpen}

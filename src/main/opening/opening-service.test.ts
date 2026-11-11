@@ -222,7 +222,9 @@ describe('File › Opening…', () => {
     expect(service().opening.view()).toEqual({ on: true, photo: null, sound: null, defaultPhoto: true });
     expect(service({ defaultPhoto: false }).opening.view()).toMatchObject({ defaultPhoto: false });
     // A sound whose copy is gone is not loaded.
-    expect(service({ kept: { photo: 'photo-2', sound: keptSound(false, 550) } }).opening.view()).toMatchObject({
+    expect(
+      service({ kept: { photo: 'photo-2', sound: keptSound(false, 550) } }).opening.view(),
+    ).toMatchObject({
       sound: null,
     });
   });
@@ -325,7 +327,10 @@ describe('File › Opening…', () => {
     expect(s.imported).toEqual([]);
     expect(s.store.get('opening')).toEqual({ photo: 'photo-9', sound });
     expect(existsSync(join(dir, openingSoundPath(sound)))).toBe(true);
-    expect(s.lines).toEqual(['Opening: the opening pack was not loaded', 'Opening: the opening pack was not loaded']);
+    expect(s.lines).toEqual([
+      'Opening: the opening pack was not loaded',
+      'Opening: the opening pack was not loaded',
+    ]);
   });
 
   it('keeps a photo’s copy for the opening under its sha256, for a picture in Media only', async () => {

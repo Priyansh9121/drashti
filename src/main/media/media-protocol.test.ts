@@ -191,19 +191,33 @@ describe('drashti-media:// requests', () => {
       expect(mediaRequestOf(bad), bad).toBeNull();
     // None kept (an older caller, or no sound): 404.
     expect((await get(url)).status).toBe(404);
-    const kept = (path: string | null) => ({ ...deps, openingSound: (sha: string) => (sha === SHA ? path : null) });
+    const kept = (path: string | null) => ({
+      ...deps,
+      openingSound: (sha: string) => (sha === SHA ? path : null),
+    });
     const res = await handleMediaRequest(new Request(url), kept(`opening/${SHA}.mp3`));
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('audio/mpeg');
     expect(await bytesOf(res)).toEqual(SOUND);
     // In byte ranges, as a sound plays.
-    const part = await handleMediaRequest(new Request(url, { headers: { Range: 'bytes=2-5' } }), kept(`opening/${SHA}.mp3`));
+    const part = await handleMediaRequest(
+      new Request(url, { headers: { Range: 'bytes=2-5' } }),
+      kept(`opening/${SHA}.mp3`),
+    );
     expect(part.status).toBe(206);
     expect(await bytesOf(part)).toEqual(SOUND.subarray(2, 6));
     // Only inside the media folder, and only a file that is there.
-    for (const path of [`opening/${SHA}.wav`, '../outside/secret.txt', join(root, 'outside', 'secret.txt'), 'gh/secret.txt'])
+    for (const path of [
+      `opening/${SHA}.wav`,
+      '../outside/secret.txt',
+      join(root, 'outside', 'secret.txt'),
+      'gh/secret.txt',
+    ])
       expect((await handleMediaRequest(new Request(url), kept(path))).status, path).toBe(404);
-    expect((await handleMediaRequest(new Request(openingSoundUrl('cd'.repeat(32))), kept(`opening/${SHA}.mp3`))).status).toBe(404);
+    expect(
+      (await handleMediaRequest(new Request(openingSoundUrl('cd'.repeat(32))), kept(`opening/${SHA}.mp3`)))
+        .status,
+    ).toBe(404);
   });
 
   it('serves the default opening photo from its own place (the owner’s decision of 5 Nov 2026), and only it', async () => {

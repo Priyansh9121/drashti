@@ -95,7 +95,14 @@ export async function keepSoundCopy(
     if (bytes.length > OPENING_SOUND_MAX_BYTES)
       return {
         ok: false,
-        message: packSoundProblem({ name: sound.name, bytes: bytes.length, kind: 'audio', playable: true, format: '' }) ?? '',
+        message:
+          packSoundProblem({
+            name: sound.name,
+            bytes: bytes.length,
+            kind: 'audio',
+            playable: true,
+            format: '',
+          }) ?? '',
       };
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     const kept: OpeningSound = { sha256, kind: sound.kind, name: sound.name };
@@ -108,7 +115,7 @@ export async function keepSoundCopy(
 }
 
 /** The copy of a sound the opening no longer keeps, gone (none there is no harm). */
-export async function dropSoundCopy(mediaDir: string, sound: Pick<OpeningSound, 'sha256' | 'kind'>): Promise<void> {
+export async function dropSoundCopy(mediaDir: string, sound: OpeningSound): Promise<void> {
   if (!SHA256.test(sound.sha256)) return;
   await rm(join(mediaDir, openingSoundPath(sound)), { force: true }).catch(() => undefined);
 }

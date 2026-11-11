@@ -6434,7 +6434,7 @@ function start(): void {
     const dir = picked.canceled ? null : (picked.filePaths[0] ?? null);
     return dir === null ? null : opening.loadPack(dir);
   });
-  handle(IPC.opening.removeSound, async (e) =>
+  handle(IPC.opening.removeSound, (e) =>
     fromOperator(e)
       ? opening.removeSound()
       : { ok: false as const, message: 'Only the operator window can change the opening.' },
