@@ -21,6 +21,18 @@ export type PlaylistKind = 'normal' | 'smart' | 'repeat';
 /** The most files a smart playlist follows (Session 26c): past that, it says so and adds nothing more. */
 export const SMART_MAX_FILES = 2000;
 
+/**
+ * Files and folders dropped on Drashti (Session 56, the owner's words of 11 Nov 2026, item 5: "A folder dragged in is
+ * added straight away, with no questions … it becomes a smart playlist that follows that folder"): the smart playlists
+ * made, one for each folder, in the order dropped; the rest (files, a Keynote package, a folder holding only lyrics or
+ * the other program's files) for the drop's own place, as before; and what went wrong, in words.
+ */
+export interface SmartFromDrop {
+  made: string[];
+  files: string[];
+  problems: string[];
+}
+
 /** A smart playlist as the window shows it (Session 26c): the folder it follows, and how the following goes. */
 export interface SmartPlaylistView {
   playlistId: string;

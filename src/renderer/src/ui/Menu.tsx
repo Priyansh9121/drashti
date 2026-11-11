@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { ButtonSize, ButtonVariant } from './Button';
@@ -35,6 +35,11 @@ export interface MenuEntry {
   checked?: boolean;
   /** With `checked`: one of a few choices (a radio choice to a screen reader), not a switch. */
   radio?: true;
+  /**
+   * A short line under its words, saying what it is (Session 56: New's playlist, folder and smart playlist); a screen
+   * reader hears it as the entry's description, its name staying its words.
+   */
+  note?: string;
 }
 
 export interface MenuPlace {
@@ -70,6 +75,8 @@ export function Menu({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const arriving = useArrival('pop');
+  // The entries' notes, for a screen reader (Session 56).
+  const notesId = useId();
   const [place, setPlace] = useState(at);
   const close = useRef(onClose);
   useEffect(() => {
@@ -174,9 +181,10 @@ export function Menu({
       style={{ position: 'fixed', left: place.x, top: place.y }}
       className="z-50 min-w-48 rounded-lg border border-line-strong bg-panel-2 p-1 shadow-overlay"
     >
-      {entries.map((entry) => {
+      {entries.map((entry, index) => {
         // A switch shows its tick where an icon goes.
         const IconShape = entry.checked === undefined ? entry.icon : entry.checked ? Check : undefined;
+        const noteId = entry.note === undefined ? undefined : `${notesId}-${String(index)}`;
         return (
           <Fragment key={entry.label}>
             {entry.separatorBefore && <div role="separator" className="my-1 h-px bg-line" />}
@@ -186,6 +194,8 @@ export function Menu({
                 entry.checked === undefined ? 'menuitem' : entry.radio ? 'menuitemradio' : 'menuitemcheckbox'
               }
               aria-checked={entry.checked}
+              aria-label={noteId === undefined ? undefined : entry.label}
+              aria-describedby={noteId}
               disabled={entry.disabled}
               className={cx(
                 'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-panel-3 focus-visible:bg-panel-3 disabled:cursor-not-allowed disabled:opacity-40',
@@ -201,7 +211,16 @@ export function Menu({
                   ? IconShape && <IconShape size={15} aria-hidden="true" />
                   : entry.checked && <Check size={15} aria-hidden="true" />}
               </span>
-              <span className="flex-1">{entry.label}</span>
+              {noteId === undefined ? (
+                <span className="flex-1">{entry.label}</span>
+              ) : (
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span>{entry.label}</span>
+                  <span id={noteId} className="max-w-72 text-xs text-muted" data-testid="menu-note">
+                    {entry.note}
+                  </span>
+                </span>
+              )}
               {entry.kbd && <Kbd className="text-muted">{entry.kbd}</Kbd>}
             </button>
           </Fragment>

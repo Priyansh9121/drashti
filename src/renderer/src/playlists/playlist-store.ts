@@ -7,6 +7,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  SmartFromDrop,
   TimerCue,
 } from '../../../shared/playlists';
 import { POSITION_MAX } from '../../../shared/playlists';
@@ -15,7 +16,7 @@ import { useEngine } from '../engine/engine-store';
 import { importPaths } from '../library/import-store';
 import { useNotice } from '../operator/actions';
 import { useMode } from '../operator/mode-store';
-import { leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
+import { chooseNothing, leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
 import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../shared/repeat';
 import { describeSome, pushRemoval } from '../library/undo';
 import { useDocs } from './docs-store';
@@ -167,13 +168,29 @@ export async function loadTree(): Promise<void> {
   const [tree, templates] = read;
   const ids = new Set([...tree, ...templates].map((n) => n.id));
   const { openId, selectedNodeId } = usePlaylists.getState();
+  // The open playlist deleted (here, from a phone, or with its folder): the middle closes it (Session 56, the owner's
+  // item 3), never going on showing it or what of it was chosen.
+  const gone = openId !== null && !ids.has(openId);
   usePlaylists.setState((s) => ({
     tree,
     templates,
-    openId: openId && ids.has(openId) ? openId : null,
+    ...(gone ? { openId: null, items: [], folder: '', marked: [], anchorId: null } : {}),
     selectedNodeId: selectedNodeId && ids.has(selectedNodeId) ? selectedNodeId : null,
     unread: { ...s.unread, playlists: false },
   }));
+  if (gone) closedGone();
+}
+
+/**
+ * The open playlist is gone (Session 56, item 3: "when the open playlist, or the last one, is deleted, the middle closes
+ * it too"): nothing of it stays chosen (a presentation of it put up from its row would show in Pro Mode's middle on its
+ * own), and the main process hears that none is open (Simple Mode's playlist, a phone's Add photos).
+ */
+function closedGone(): void {
+  chooseNothing();
+  void api()
+    .opened(null)
+    .catch(() => undefined);
 }
 
 export async function loadItems(): Promise<void> {
@@ -616,19 +633,23 @@ export function cancelRemoveNode(): void {
 }
 
 export async function confirmRemoveNode(): Promise<void> {
-  const pending = usePlaylists.getState().confirmRemove;
+  const { confirmRemove: pending, openId } = usePlaylists.getState();
   if (!pending) return;
   usePlaylists.setState({ confirmRemove: null });
   const result = await api().remove(pending.ids);
   if (!settled(result) || result.ids.length === 0) return;
   const removed = result.ids;
+  // The open one deleted (itself, or with its folder): the middle closes it as the list is read again (loadTree), and
+  // Undo brings it back open, as Undo brings rows back into the playlist they were in (Session 56, item 3).
+  const reopen = openId !== null && removed.includes(openId) ? openId : null;
   usePlaylists.setState({ markedNodes: [], nodeAnchor: null });
   pushRemoval({
     text: `Deleted ${removingWhat(pending)}`,
     restore: async () => {
       await api().restore(removed);
       await loadTree();
-      usePlaylists.setState({ selectedNodeId: removed[0] ?? null });
+      if (reopen !== null) await openPlaylist(reopen);
+      else usePlaylists.setState({ selectedNodeId: removed[0] ?? null });
     },
   });
   await reload();
@@ -739,6 +760,37 @@ export async function importIntoPlaylist(
     index >= 0 ? index : null,
     header === null ? made : [{ kind: 'header', label: header }, ...made],
   );
+}
+
+/**
+ * Files and folders dropped on the window, a playlist or its rows (Session 56, the owner's words of 11 Nov 2026, item
+ * 5: "A folder dragged in is added straight away, with no questions … it becomes a smart playlist that follows that
+ * folder", in both modes): each folder becomes at once a new smart playlist following it, named after it, the last of
+ * them opened in the middle; nothing is asked. What is left (files, a Keynote deck saved as a package, a folder of only
+ * lyrics or the other program's files) goes to `rest`, the drop's own place as before, before the new playlist opens,
+ * so it lands where it was dropped.
+ */
+export async function dropFolders(
+  paths: string[],
+  rest: (files: string[]) => Promise<unknown> | undefined,
+): Promise<void> {
+  if (paths.length === 0) return;
+  let dropped: SmartFromDrop;
+  try {
+    dropped = await api().createSmartFrom(paths);
+  } catch {
+    // Never lost: what could not be looked at goes where files go.
+    dropped = { made: [], files: paths, problems: [] };
+  }
+  if (dropped.problems.length > 0) useNotice.setState({ text: dropped.problems.join(' ') });
+  // The files' place is taken as their import starts (importIntoPlaylist), before another playlist opens.
+  const files = dropped.files.length > 0 ? rest(dropped.files) : undefined;
+  const last = dropped.made.at(-1);
+  if (last !== undefined) {
+    await loadTree();
+    await openPlaylist(last);
+  }
+  await files;
 }
 
 /** Add to the open playlist, after its chosen item, or at the end when none is chosen (Add to playlist). */

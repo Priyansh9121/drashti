@@ -91,7 +91,7 @@ const folders = (win: Page) =>
 
 const shownFolder = (win: Page) => win.getByTestId('playlist-items');
 
-test('a folder playlist shows a folder at a time: its own items in the middle, its folders bottom left, back by the playlist; Next follows the whole order; Simple Mode keeps it whole', async () => {
+test('a folder playlist shows a folder at a time: its own items in the middle, its folders bottom left, back by the playlist; Next follows the whole order; Simple Mode shows it so too (Session 56)', async () => {
   test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');
   test.setTimeout(240_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-folders-'));
@@ -174,16 +174,18 @@ test('a folder playlist shows a folder at a time: its own items in the middle, i
   await expect(shownFolder(win)).toHaveAttribute('data-folder', 'Week 2 › Pictures');
   await expect(item('Cover.png')).toHaveAttribute('data-live', 'true');
 
-  // Simple Mode, on the playlist open in Pro Mode (Session 55, Part 18): the whole playlist, headers and all (it has no
-  // folders to go through).
+  // Simple Mode, on the playlist open in Pro Mode: a folder at a time, its folders in the left column under the
+  // playlists, as in Pro Mode (Session 56, the owner's item 14; Session 55's Simple Mode showed it whole, headers and
+  // all, having no folders to go through).
   await chooseMenuItem(app, 'switch-mode');
   const simple = win.getByTestId('simple-mode');
-  await expect(simple.locator('[data-testid="playlist-item"][data-kind="header"] [data-label]')).toHaveText([
-    'Week 1',
-    'Week 1 › Videos',
-    'Week 2 › Pictures',
-  ]);
-  await expect(simple.locator('[data-testid="playlist-item"]:not([data-kind="header"])')).toHaveCount(5);
+  await expect(simple).toBeVisible();
+  await simple.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sabha' }).click();
+  await expect.poll(() => middle(win)).toEqual(['Opening.mp4', 'Welcome.png']);
+  await expect.poll(() => folders(win)).toEqual(['Week 1', 'Week 2']);
+  await expect(simple.getByTestId('column-left').getByTestId('playlist-folders')).toBeVisible();
+  await simple.getByTestId('playlist-folder').filter({ hasText: 'Week 1' }).click();
+  await expect.poll(() => middle(win)).toEqual(['Clip.mp4']);
   await expectNoSeriousA11yIssues(win, 'Simple Mode with a folder playlist');
   await app.close();
 });

@@ -260,7 +260,7 @@ test('with Simple access, a phone is refused the same in words naming no way to 
   }
 });
 
-test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it shows less, dims what Simple Mode may not do, and a row’s long press offers what its window’s right-click does: Rename and Remove with Undo (Part 9)', async () => {
+test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it shows less, dims what Simple Mode may not do, and a row’s long press offers what its window’s right-click does: Rename and Remove with Undo (Part 9); it follows the playlist the window opens (Session 56)', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -360,6 +360,13 @@ test('in Simple Mode the phone opens Simple Mode’s playlist, says once why it 
         .filter({ hasText: 'Placeholder backdrop, simple' }),
     ).toBeVisible();
     await expect(refusal(p)).toHaveCount(0);
+
+    // Session 56: Simple Mode's window opens another playlist (its left column has them all): the phone follows it,
+    // still the only one it offers.
+    await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder other evening' }).click();
+    await expect(win.getByTestId('playlist-title')).toHaveText('Placeholder other evening');
+    await expect(p.getByTestId('remote-playlist')).toHaveValue(other ?? '');
+    await expect(p.getByTestId('remote-playlist').locator('option')).toHaveCount(1);
   } finally {
     await phone.close();
   }

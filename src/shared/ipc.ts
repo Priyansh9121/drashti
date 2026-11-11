@@ -93,6 +93,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  SmartFromDrop,
   SmartPlaylistView,
   TemplateRequest,
   TimerCue,
@@ -185,7 +186,10 @@ export const IPC = {
     setMode: 'app:set-mode',
     /** main -> operator: the mode changed. */
     modeChanged: 'app:mode-changed',
-    /** Simple Mode's one playlist (Session 55, Part 18): the one it shows; null in Pro Mode. */
+    /**
+     * Simple Mode's playlist (Session 55, Part 18): the one open in its window (Session 56: as it comes, then whichever
+     * it opened); null in Pro Mode, or with none open.
+     */
     simplePlaylist: 'app:simple-playlist',
     /** Any of Drashti's windows: a render error, for the log (Session 23). */
     renderError: 'app:render-error',
@@ -568,6 +572,8 @@ export const IPC = {
     smartViews: 'playlists:smart-views',
     /** A smart playlist from a folder chosen in a dialog. */
     createSmart: 'playlists:create-smart',
+    /** Session 56 (item 5): a smart playlist from each folder dropped, at once, nothing asked; the rest given back. */
+    createSmartFrom: 'playlists:create-smart-from',
     /** Take a smart playlist's missing items out (their files are gone from the folder). */
     removeMissing: 'playlists:remove-missing',
     /** A new Repeat Slides playlist (Session 26d), and its settings (Pro Mode's). */
@@ -1283,6 +1289,7 @@ export interface InvokeContract {
   };
   [IPC.playlists.smartViews]: { args: []; result: SmartPlaylistView[] };
   [IPC.playlists.createSmart]: { args: []; result: PlaylistResult };
+  [IPC.playlists.createSmartFrom]: { args: [paths: string[]]; result: SmartFromDrop };
   [IPC.playlists.removeMissing]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.playlists.createRepeat]: { args: [parentId: string | null]; result: PlaylistResult };
   [IPC.playlists.share]: { args: [playlistId: string, on: boolean]; result: PlaylistResult };

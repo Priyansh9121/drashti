@@ -56,6 +56,7 @@ import {
   createRepeatPlaylist,
   createSmartPlaylist,
   dismissProblem,
+  dropFolders,
   importIntoPlaylist,
   newFromTemplate,
   openPlaylist,
@@ -73,7 +74,31 @@ import {
 
 // ---- the tree of playlists and folders ------------------------------------------------
 
-function nodeMenu(node: PlaylistNode): MenuEntry[] {
+/**
+ * What each is, in one short line (Session 56, the owner's words of 11 Nov 2026, item 4: "Playlists and folders: keep
+ * both, and make the difference clear. A short line explains each"): under New's entries, and in the empty list.
+ */
+export const WHAT_EACH_IS = {
+  playlist: {
+    note: 'The running order: Next puts its rows up one after another.',
+    line: 'A playlist is the running order: Next puts its rows up one after another.',
+  },
+  folder: {
+    note: 'Holds playlists, to keep them together.',
+    line: 'A folder holds playlists, to keep them together.',
+  },
+  smart: {
+    note: 'Follows a folder on this computer: what goes in it joins by itself.',
+    line: 'A smart playlist follows a folder on this computer: what goes in it joins by itself.',
+  },
+} as const;
+
+/**
+ * A playlist's or folder's menu. `simple` (Session 56: Simple Mode has the playlists and folders): Open, Rename… and
+ * Delete…, and a folder's New playlist here and New folder here; sharing with phones, Practise and Duplicate stay Pro
+ * Mode's (as the main process keeps them), and Simple Mode shows no template.
+ */
+function nodeMenu(node: PlaylistNode, simple: boolean): MenuEntry[] {
   const rename = { label: 'Rename…', icon: Pencil, onSelect: () => startRenaming(node.id) };
   if (node.template)
     return [
@@ -95,6 +120,8 @@ function nodeMenu(node: PlaylistNode): MenuEntry[] {
     separatorBefore: true,
     onSelect: () => requestRemoveNode(node.id),
   };
+  if (!node.isFolder && simple)
+    return [{ label: 'Open', icon: ListMusic, onSelect: () => void openPlaylist(node.id) }, rename, remove];
   // Shared with phones and tablets, or not (Session 54).
   if (!node.isFolder)
     return [
@@ -114,7 +141,7 @@ function nodeMenu(node: PlaylistNode): MenuEntry[] {
   ];
 }
 
-function PlaylistTree({ platform }: { platform: string }) {
+function PlaylistTree({ platform, simple }: { platform: string; simple: boolean }) {
   const tree = usePlaylists((s) => s.tree);
   const unread = usePlaylists((s) => s.unread.playlists);
   const closed = usePlaylists((s) => s.closed);
@@ -156,6 +183,11 @@ function PlaylistTree({ platform }: { platform: string }) {
   // The rows to show: everything not inside a shut folder, with how deep it is.
   /** Folders' names, for a screen reader: a playlist in a folder says which. */
   const nameOf = useMemo(() => new Map(tree.map((n) => [n.id, n.name])), [tree]);
+  /** Folders with something in them (an open one with nothing says what a folder is for: Session 56). */
+  const filled = useMemo(
+    () => new Set(tree.flatMap((n) => (n.parentId === null ? [] : [n.parentId]))),
+    [tree],
+  );
   const rows = useMemo(() => {
     const depth = new Map<string, number>();
     const hidden = new Set<string>();
@@ -182,25 +214,39 @@ function PlaylistTree({ platform }: { platform: string }) {
   return (
     <>
       <div className="flex h-11 shrink-0 items-center gap-1 px-3" data-strip="">
-        <ViewTabs />
+        <ViewTabs simple={simple} />
         {/* + New (Session 26a: words, not just an icon): a playlist, a folder, or a smart playlist
-            following a folder on the computer (Session 26c). */}
+            following a folder on the computer (Session 26c), each with a line saying what it is (Session 56);
+            Repeat Slides (Session 26d) is Pro Mode's. */}
         <MenuButton
           label="New"
           title="New playlist or folder"
           icon={Plus}
           variant="secondary"
           entries={[
-            { label: 'New playlist', icon: ListPlus, onSelect: () => void createNode(false) },
-            { label: 'New folder', icon: FolderPlus, onSelect: () => void createNode(true) },
+            {
+              label: 'New playlist',
+              icon: ListPlus,
+              note: WHAT_EACH_IS.playlist.note,
+              onSelect: () => void createNode(false),
+            },
+            {
+              label: 'New folder',
+              icon: FolderPlus,
+              note: WHAT_EACH_IS.folder.note,
+              onSelect: () => void createNode(true),
+            },
             {
               label: 'Smart Playlist from a Folder…',
               icon: FolderSync,
+              note: WHAT_EACH_IS.smart.note,
               separatorBefore: true,
               onSelect: () => void createSmartPlaylist(),
             },
             // Session 26d: its slides go round by themselves.
-            { label: 'Repeat Slides', icon: Repeat2, onSelect: () => void createRepeatPlaylist() },
+            ...(simple
+              ? []
+              : [{ label: 'Repeat Slides', icon: Repeat2, onSelect: () => void createRepeatPlaylist() }]),
           ]}
         >
           New
@@ -215,7 +261,14 @@ function PlaylistTree({ platform }: { platform: string }) {
         {tree.length === 0 && !unread && (
           <div data-testid="playlist-tree" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             <EmptyState icon={ListMusic} title="No playlists yet" compact lamp>
-              Make one with the New button above, or import a playlist file.
+              {simple
+                ? 'Make one with the New button above, or drop a folder here.'
+                : 'Make one with the New button above, or import a playlist file.'}
+              <span className="mt-2 block space-y-1" data-testid="what-each-is">
+                <span className="block">{WHAT_EACH_IS.playlist.line}</span>
+                <span className="block">{WHAT_EACH_IS.folder.line}</span>
+                <span className="block">{WHAT_EACH_IS.smart.line}</span>
+              </span>
             </EmptyState>
           </div>
         )}
@@ -264,7 +317,18 @@ function PlaylistTree({ platform }: { platform: string }) {
                   />
                 </li>
               );
-            return (
+            // An open folder with nothing in it says what a folder is for (Session 56, item 4).
+            const emptyFolder = open && !filled.has(node.id) && (
+              <li
+                key={`${node.id}-empty`}
+                className="py-1 text-xs text-muted"
+                style={{ paddingLeft: 8 + (depth + 1) * 14 + 20 }}
+                data-testid="folder-empty"
+              >
+                {WHAT_EACH_IS.folder.line} Right-click it for New playlist here.
+              </li>
+            );
+            return [
               <li key={node.id} className="group relative flex items-center" data-select-id={node.id}>
                 <button
                   type="button"
@@ -273,6 +337,14 @@ function PlaylistTree({ platform }: { platform: string }) {
                   data-playlist-kind={node.kind}
                   data-node-id={node.id}
                   data-open={openId === node.id ? 'true' : undefined}
+                  // What it is, in a line (Session 56, item 4), under the pointer and to a screen reader.
+                  title={
+                    node.isFolder
+                      ? WHAT_EACH_IS.folder.line
+                      : node.kind === 'smart'
+                        ? WHAT_EACH_IS.smart.line
+                        : WHAT_EACH_IS.playlist.line
+                  }
                   aria-expanded={node.isFolder ? open : undefined}
                   aria-current={selectedNodeId === node.id ? 'true' : undefined}
                   aria-pressed={many ? markedNodes.includes(node.id) : undefined}
@@ -321,11 +393,12 @@ function PlaylistTree({ platform }: { platform: string }) {
                   onDrop={(e) => {
                     setDropOn(null);
                     if (node.isFolder) return;
-                    // Files from the Finder or Explorer: imported, then added at its end (Session 26a).
+                    // Files from the Finder or Explorer: imported, then added at its end (Session 26a); a folder, a
+                    // smart playlist following it, at once (Session 56, item 5).
                     if (hasFiles(e)) {
                       e.preventDefault();
                       e.stopPropagation();
-                      void importIntoPlaylist(node.id, null, droppedPaths(e));
+                      void dropFolders(droppedPaths(e), (files) => importIntoPlaylist(node.id, null, files));
                       return;
                     }
                     if (!fromLibrary(e)) return;
@@ -427,8 +500,9 @@ function PlaylistTree({ platform }: { platform: string }) {
                     }}
                   />
                 </span>
-              </li>
-            );
+              </li>,
+              emptyFolder,
+            ];
           })}
         </ul>
       </TabPanel>
@@ -436,7 +510,7 @@ function PlaylistTree({ platform }: { platform: string }) {
         <Menu
           at={menu.at}
           label={menu.node.name}
-          entries={nodeMenu(menu.node)}
+          entries={nodeMenu(menu.node, simple)}
           onClose={() => {
             setMenu(null);
           }}
@@ -471,10 +545,11 @@ function RepeatRowButton({ playlistId, name }: { playlistId: string; name: strin
  * Templates only with View › Show Books, Templates and Kirtan Details (Session 26a); otherwise a
  * heading.
  */
-function ViewTabs() {
+function ViewTabs({ simple }: { simple: boolean }) {
   const view = usePlaylists((s) => s.view);
   const extras = useExtras((s) => s.on);
-  if (!extras)
+  // Simple Mode (Session 56) has the playlists, never the templates.
+  if (!extras || simple)
     return (
       <h2 className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-sm font-bold">
         <ListMusic size={15} aria-hidden="true" className="shrink-0 text-muted" />
@@ -507,7 +582,7 @@ function TemplateList() {
   return (
     <>
       <div className="flex h-11 shrink-0 items-center gap-1 px-3" data-strip="">
-        <ViewTabs />
+        <ViewTabs simple={false} />
       </div>
       <TabPanel group="playlist-view" id="templates" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         <p className="px-1 pb-2 text-xs text-muted">
@@ -562,7 +637,7 @@ function TemplateList() {
         <Menu
           at={menu.at}
           label={menu.node.name}
-          entries={nodeMenu(menu.node)}
+          entries={nodeMenu(menu.node, false)}
           onClose={() => {
             setMenu(null);
           }}
@@ -575,20 +650,30 @@ function TemplateList() {
 /**
  * The playlists (Session 26a: always at the top of the left column): many of them, in folders, made with
  * + New; a click opens one in the centre (OpenPlaylist.tsx). With View › Show Books, Templates and Kirtan
- * Details, the sabha templates beside them.
+ * Details, the sabha templates beside them. `simple` (Session 56, the owner's item 14: "Several playlists on the left,
+ * with folders, as in Pro Mode, and smart playlists"): Simple Mode's, the same playlists, folders and smart playlists,
+ * without what is Pro Mode's (templates and slots, Repeat Slides made, sharing, Practise, Duplicate).
  */
-export function PlaylistPanel({ platform }: { platform: string }) {
+export function PlaylistPanel({ platform, simple = false }: { platform: string; simple?: boolean }) {
   const view = usePlaylists((s) => s.view);
   const problem = usePlaylists((s) => s.problem);
   return (
     // In the left column's "Playlists" landmark (operator/Layout.tsx, Session 44), with the Library button.
     <div data-testid="playlists" className="flex min-h-0 flex-1 flex-col">
-      {view === 'templates' ? <TemplateList /> : <PlaylistTree platform={platform} />}
-      <SaveTemplateDialog />
-      <AddSlotDialog />
-      <FillSlotDialog />
-      <EditSlotDialog />
-      <TimerCuesDialog />
+      {view === 'templates' && !simple ? (
+        <TemplateList />
+      ) : (
+        <PlaylistTree platform={platform} simple={simple} />
+      )}
+      {!simple && (
+        <>
+          <SaveTemplateDialog />
+          <AddSlotDialog />
+          <FillSlotDialog />
+          <EditSlotDialog />
+          <TimerCuesDialog />
+        </>
+      )}
       {problem && (
         <Notice tone="warning" compact className="mx-2 mb-2" onDismiss={dismissProblem}>
           {problem}

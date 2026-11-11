@@ -415,6 +415,13 @@ describe('Simple Mode locks', () => {
     expect(within(IPC.playlists.restore)).toBe(false);
     // Smart Playlist from a Folder…: the folder chosen in the system's dialog.
     expect(within(IPC.playlists.createSmart)).toBe(true);
+    // A folder dropped (the owner's item 5): a smart playlist at once; the main process looks at what was dropped.
+    expect(within(IPC.playlists.createSmartFrom, ['/placeholder/Week 1'])).toBe(true);
+    expect(answers.get(IPC.playlists.createSmartFrom)?.()).toEqual({
+      made: [],
+      files: [],
+      problems: [SIMPLE_MODE_REFUSAL],
+    });
   });
 
   it('fails closed (Session 56): a phone or Companion, asking with none of the arguments, is refused each of them whole', () => {
@@ -430,6 +437,7 @@ describe('Simple Mode locks', () => {
       expect(simpleModeRefusesWhole(channel), channel).toBe(true);
       expect(answers.get(channel)?.(), channel).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     }
+    expect(simpleModeRefusesWhole(IPC.playlists.createSmartFrom)).toBe(true);
   });
 
   it('what is Pro Mode’s stays as strict as before (Session 56): templates and slots, sharing with phones, Repeat Slides and its settings, Duplicate, a row’s timers and a header’s name, the missing taken out of a smart playlist', () => {
