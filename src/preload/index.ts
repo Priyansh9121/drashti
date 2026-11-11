@@ -331,6 +331,7 @@ const bridge: DrashtiBridge = {
     undoSplit: (itemId, order, madeId) => invoke(IPC.playlists.undoSplit, itemId, order, madeId),
     smartViews: () => invoke(IPC.playlists.smartViews),
     createSmart: () => invoke(IPC.playlists.createSmart),
+    createSmartFrom: (paths) => invoke(IPC.playlists.createSmartFrom, paths),
     removeMissing: (playlistId) => invoke(IPC.playlists.removeMissing, playlistId),
     createRepeat: (parentId) => invoke(IPC.playlists.createRepeat, parentId),
     setRepeat: (playlistId, settings) => invoke(IPC.playlists.setRepeat, playlistId, settings),

@@ -112,6 +112,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  SmartFromDrop,
   SmartPlaylistView,
   TemplateRequest,
   TimerCue,
@@ -206,7 +207,10 @@ export interface DrashtiBridge {
      */
     setMode(mode: OperatorMode): Promise<ModeResult>;
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
-    /** Simple Mode's one playlist (Session 55, Part 18): the one it shows; null in Pro Mode. */
+    /**
+     * Simple Mode's playlist (Session 55, Part 18): the one open in its window (Session 56: as it comes, then whichever
+     * it opened); null in Pro Mode, or with none open.
+     */
     simplePlaylist(): Promise<string | null>;
     /** Help > Keyboard Shortcuts… was chosen (Pro Mode). */
     onShowKeys(listener: () => void): () => void;
@@ -522,6 +526,11 @@ export interface DrashtiBridge {
     smartViews(): Promise<SmartPlaylistView[]>;
     /** A smart playlist from a folder chosen in a dialog (none made: no ids). */
     createSmart(): Promise<PlaylistResult>;
+    /**
+     * Files and folders dropped (Session 56, item 5): a smart playlist from each folder, at once, nothing asked; the
+     * rest given back for the drop's own place.
+     */
+    createSmartFrom(paths: string[]): Promise<SmartFromDrop>;
     /** Take a smart playlist's missing items out (their files are gone from its folder). */
     removeMissing(playlistId: string): Promise<PlaylistResult>;
     /** A new Repeat Slides playlist (Session 26d) in a folder or at the top level, and its settings. */

@@ -5726,6 +5726,7 @@ function start(): void {
         return picked.canceled ? null : (picked.filePaths[0] ?? null);
       },
       create: (folder) => smartFolders.create(folder),
+      fromDrop: (paths) => smartFolders.fromDrop(paths),
       views: () => smartFolders.views(),
       removeMissing: (playlistId) => smartFolders.removeMissing(playlistId),
       itemsRestored: (itemIds) => {

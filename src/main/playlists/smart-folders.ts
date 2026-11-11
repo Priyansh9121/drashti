@@ -3,7 +3,7 @@ import { watch } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { ImportItemReport, ImportOptions } from '../../shared/import';
-import type { NewItem, SmartPlaylistView } from '../../shared/playlists';
+import type { NewItem, SmartFromDrop, SmartPlaylistView } from '../../shared/playlists';
 import { SMART_MAX_FILES } from '../../shared/playlists';
 import type { Db } from '../db/database';
 import type { PlaylistRepo } from '../db/playlists';
@@ -163,6 +163,31 @@ export async function filesIn(
   return { files, tooMany };
 }
 
+/**
+ * What a folder dropped on Drashti holds (Session 56): something a smart playlist follows (a video, picture, sound,
+ * deck or PDF, in it or its folders: 'follows'), only what Drashti imports otherwise (lyrics, the other program's
+ * files: 'imports'), or nothing Drashti takes ('nothing', an empty folder too). Hidden files and the folders operating
+ * systems leave are passed over, as filesIn does; it stops at the first file a smart playlist follows.
+ */
+export async function folderHolds(folder: string): Promise<'follows' | 'imports' | 'nothing'> {
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  let holds: 'imports' | 'nothing' = 'nothing';
+  for (const e of entries) {
+    if (e.name.startsWith('.')) continue;
+    if (e.isDirectory()) {
+      if (SKIPPED_DIRS.has(e.name.toLowerCase())) continue;
+      const inside = await folderHolds(join(folder, e.name));
+      if (inside === 'follows') return 'follows';
+      if (inside === 'imports') holds = 'imports';
+      continue;
+    }
+    const format = e.isFile() ? formatOf(e.name) : 'unknown';
+    if (format === 'media' || format === 'pictures') return 'follows';
+    if (format !== 'unknown') holds = 'imports';
+  }
+  return holds;
+}
+
 /** The folder a smart playlist's settings name, or null. */
 export function folderOfSettings(json: string | null): string | null {
   if (!json) return null;
@@ -227,6 +252,29 @@ export class SmartFolders {
     // The first look only notes the files (none has held still yet): quick, even for a large folder.
     await this.scan(id);
     return { ok: true, id };
+  }
+
+  /**
+   * Files and folders dropped on Drashti (Session 56, the owner's words of 11 Nov 2026, item 5: "A folder dragged in is
+   * added straight away, with no questions … it becomes a smart playlist that follows that folder"): each folder, at
+   * once, a new smart playlist following it, named after it (create), nothing asked. The rest are given back, in the
+   * order dropped, for the drop's own place as before: files, a Keynote deck saved as a package, and a folder holding
+   * only what a smart playlist never takes but Drashti imports (lyrics, the other program's files), which the import
+   * brings into the library as it always did.
+   */
+  async fromDrop(paths: readonly string[]): Promise<SmartFromDrop> {
+    const out: SmartFromDrop = { made: [], files: [], problems: [] };
+    for (const path of paths) {
+      const found = await stat(path).catch(() => null);
+      if (!found?.isDirectory() || formatOf(path) !== 'unknown' || (await folderHolds(path)) === 'imports') {
+        out.files.push(path);
+        continue;
+      }
+      const made = await this.create(path);
+      if (made.ok) out.made.push(made.id);
+      else out.problems.push(made.message);
+    }
+    return out;
   }
 
   /** How each smart playlist's following goes, for the window. */
