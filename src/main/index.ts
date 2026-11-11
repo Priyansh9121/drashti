@@ -3162,6 +3162,11 @@ function start(): void {
       holdsMedia: (mediaId) => rows().some((i) => i.kind === 'media' && i.mediaId === mediaId),
       holdsPresentation: (presentationId) =>
         rows().some((i) => i.kind === 'presentation' && i.presentationId === presentationId),
+      // Session 56: Audio's tracks (its right-click Trim and Rename), and what an edit kept for Undo covers (made
+      // below, before any request reaches the lock).
+      inMusic: (mediaId) =>
+        musicService?.view().playlists.some((p) => p.tracks.some((t) => t.mediaId === mediaId)) ?? false,
+      revisionCovers: (revisionId) => revisions.covers(revisionId),
     };
   };
   /**

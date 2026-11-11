@@ -128,7 +128,14 @@ describe('Simple Mode locks', () => {
       expect(simpleModeRefuses({ type: 'pausePlaying', playing }, sound), playing.layer).toBe(true);
       expect(simpleModeRefuses({ type: 'pausePlaying', playing }, none), playing.layer).toBe(true);
     }
-    expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump: 'back' }, music)).toBe(true);
+    // Back 15 s, Forward 15 s and Last 10 s: Music's own buttons since Session 56 (the owner: Audio in Simple Mode, as in
+    // Pro Mode), on an audio playlist's track only; a single sound's and the background's stay refused.
+    for (const jump of ['back', 'forward', 'last'] as const) {
+      expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump }, music), jump).toBe(false);
+      expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump }, sound), jump).toBe(true);
+      expect(simpleModeRefuses({ type: 'skip', layer: 'audio', jump }, none), jump).toBe(true);
+      expect(simpleModeRefuses({ type: 'skip', layer: 'background', jump }, music), jump).toBe(true);
+    }
     // As before: a marker jump and Music's own buttons are not refused (switching the Look, refused here before, went
     // with Looks in Session 55).
     expect(simpleModeRefuses({ type: 'jumpToMarker', layer: 'background', markerId: 'm1' }, sound)).toBe(
@@ -220,6 +227,10 @@ describe('Simple Mode locks', () => {
     playlistOf: (itemId) => ({ 'i-one': 'one', 'i-gone': 'one', 'i-other': 'other' })[itemId] ?? null,
     holdsMedia: (mediaId) => mediaId === 'm-in',
     holdsPresentation: (presentationId) => presentationId === 'p-in',
+    // Session 56: an audio playlist's sound, and the presentations an edit kept for Undo covers.
+    inMusic: (mediaId) => mediaId === 'm-music',
+    revisionCovers: (revisionId) =>
+      ({ 'r-in': ['p-in'], 'r-out': ['p-out'], 'r-mixed': ['p-in', 'p-out'] })[revisionId] ?? null,
   };
   const within = (channel: InvokeChannel, ...args: unknown[]): boolean => {
     const bound = SIMPLE_MODE_BOUNDED.get(channel);
@@ -263,9 +274,9 @@ describe('Simple Mode locks', () => {
     // Nothing is both.
     for (const channel of SIMPLE_MODE_BOUNDED.keys())
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
-    // A playlist of its own, other playlists, a header's name, Duplicate, a video's When it ends, a wallpaper's seconds
-    // and fade, the highest quality and the folder for downloads, a file's points and looks, and deleting a file from
-    // the library stay Pro Mode's.
+    // A playlist of its own, other playlists, a header's name, Duplicate, a wallpaper's seconds and fade, the highest
+    // quality and the folder for downloads, a file's looks, and deleting a file from the library stay Pro Mode's (a
+    // video's When it ends and a file's points are Simple Mode's since Session 56, within their bounds: below).
     for (const channel of [
       IPC.playlists.create,
       IPC.playlists.rename,
@@ -274,13 +285,11 @@ describe('Simple Mode locks', () => {
       IPC.playlists.duplicate,
       IPC.playlists.renameHeader,
       IPC.playlists.fillPlaceholder,
-      IPC.playlists.setWhenEnds,
       IPC.wallpapers.setTiming,
       IPC.links.setMaxHeight,
       IPC.links.pickFolder,
       IPC.media.remove,
       IPC.media.restore,
-      IPC.media.setMarkers,
       IPC.media.setLook,
       IPC.library.removePresentations,
       IPC.library.relinkMedia,
@@ -344,6 +353,133 @@ describe('Simple Mode locks', () => {
       IPC.links.addWaiting,
     ])
       expect(within(channel, ['/placeholder/x.txt']), channel).toBe(true);
+  });
+
+  /*
+   * Session 56 (alpha.16), the owner: Simple Mode's right column and bottom bar from Pro Mode's own parts. Audio as Pro
+   * Mode has it (the audio playlists, their Play, and Music steps aside); a row's Trim (start, end and markers, Trim
+   * black and silence, Even loudness: it never makes a copy) and When it ends; Edit slides (Pro's slide editor, and its
+   * save's Undo). Each within its bounds, so a phone or Companion (no arguments) is still refused; what makes a copy
+   * (Save as MP4, a conversion, a PDF copy), a library-wide setting (the default transition) and the rest stay Pro Mode's.
+   */
+  it('Audio’s own actions (Session 56): the audio playlists made, renamed, deleted and put back, their sounds and order, and Music steps aside', () => {
+    for (const [channel, args] of [
+      [IPC.music.create, ['Placeholder before sabha']],
+      [IPC.music.rename, ['list-1', 'Placeholder dhun']],
+      [IPC.music.remove, ['list-1']],
+      [IPC.music.restore, ['list-1']],
+      [IPC.music.setOptions, ['list-1', { loop: true, shuffle: false }]],
+      [IPC.music.addTracks, ['list-1', ['m-anything'], null]],
+      [IPC.music.moveTrack, ['track-1', 2]],
+      [IPC.music.removeTrack, ['track-1']],
+      [IPC.music.restoreTrack, ['track-1', 0]],
+      [IPC.sound.setStepsAside, [false]],
+    ] as const) {
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(true);
+      // The window's request: within (they belong to no playlist: nothing bounds them but what they are).
+      expect(within(channel, ...args), channel).toBe(true);
+      // With none of its arguments (a phone's or Companion's, as the network asks): outside, so refused.
+      expect(within(channel), channel).toBe(false);
+    }
+    // What is not one of them: outside.
+    expect(within(IPC.music.create, 42)).toBe(false);
+    expect(within(IPC.music.rename, 42, 'Placeholder')).toBe(false);
+    expect(within(IPC.music.addTracks, 'list-1', 'not a list', null)).toBe(false);
+    expect(within(IPC.sound.setStepsAside, 'yes')).toBe(false);
+  });
+
+  it('a row’s Trim, Trim black and silence and Even loudness (Session 56): a file a playlist or an audio playlist holds', () => {
+    const markers = { startMs: 1000, endMs: null, markers: [] };
+    for (const [channel, rest] of [
+      [IPC.media.setMarkers, [markers]],
+      [IPC.sound.trimEdges, []],
+      [IPC.sound.setEven, [false]],
+      [IPC.media.rename, ['Placeholder new name']],
+    ] as const) {
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+      expect(within(channel, 'm-in', ...rest), channel).toBe(true);
+      // A track's, from Audio's own right-click menu.
+      expect(within(channel, 'm-music', ...rest), channel).toBe(true);
+      expect(within(channel, 'm-out', ...rest), channel).toBe(false);
+      expect(within(channel, 42, ...rest), channel).toBe(false);
+      expect(within(channel), channel).toBe(false);
+    }
+    // Before Simple Mode has a playlist: none of its rows' files, but Audio's tracks still.
+    const none = { ...scope, playlistId: null };
+    expect(SIMPLE_MODE_BOUNDED.get(IPC.media.setMarkers)?.(['m-in', markers], none)).toBe(false);
+    expect(SIMPLE_MODE_BOUNDED.get(IPC.media.setMarkers)?.(['m-music', markers], none)).toBe(true);
+  });
+
+  it('a video row’s When it ends (Session 56): an item of the playlist', () => {
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.playlists.setWhenEnds);
+    expect(within(IPC.playlists.setWhenEnds, 'i-one', 'wallpaper')).toBe(true);
+    expect(within(IPC.playlists.setWhenEnds, 'i-one', 'next')).toBe(true);
+    expect(within(IPC.playlists.setWhenEnds, 'i-other', 'wallpaper')).toBe(false);
+    expect(within(IPC.playlists.setWhenEnds, ['i-one'], 'wallpaper')).toBe(false);
+    expect(within(IPC.playlists.setWhenEnds)).toBe(false);
+  });
+
+  it('Edit slides (Session 56): Pro’s slide editor on a presentation the playlist holds, its save, what it copies, and its save’s Undo', () => {
+    for (const channel of [
+      IPC.slideEditor.open,
+      IPC.slideEditor.copy,
+      IPC.library.saveSlides,
+      IPC.library.restoreRevision,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(true);
+      expect(within(channel), channel).toBe(false);
+    }
+    expect(within(IPC.slideEditor.open, 'p-in', null)).toBe(true);
+    expect(within(IPC.slideEditor.open, 'p-in', 'slide-2')).toBe(true);
+    expect(within(IPC.slideEditor.open, 'p-out', null)).toBe(false);
+    expect(within(IPC.library.saveSlides, 'p-in', { presentationId: 'p-in' }, 'stamp', false)).toBe(true);
+    expect(within(IPC.library.saveSlides, 'p-out', { presentationId: 'p-out' }, 'stamp', false)).toBe(false);
+    expect(within(IPC.library.saveSlides, 42, {}, 'stamp', false)).toBe(false);
+    // Undo of a save: every presentation the edit kept is one the playlist holds.
+    expect(within(IPC.library.restoreRevision, 'r-in')).toBe(true);
+    expect(within(IPC.library.restoreRevision, 'r-out')).toBe(false);
+    expect(within(IPC.library.restoreRevision, 'r-mixed')).toBe(false);
+    expect(within(IPC.library.restoreRevision, 'r-forgotten')).toBe(false);
+    // What the editor copied, kept for its next window (the main process takes it from the editor's page only).
+    expect(within(IPC.slideEditor.copy, { elements: [] })).toBe(true);
+    expect(within(IPC.slideEditor.copy, null)).toBe(false);
+    // Before Simple Mode has a playlist: no presentation of it.
+    const none = { ...scope, playlistId: null };
+    expect(SIMPLE_MODE_BOUNDED.get(IPC.slideEditor.open)?.(['p-in', null], none)).toBe(false);
+  });
+
+  it('what makes a copy, a library-wide setting, and the rest of the editor’s and Audio’s neighbours stay Pro Mode’s (Session 56)', () => {
+    for (const channel of [
+      // Save as MP4… and its stop: a copy of the part (the owner: Trim "never makes a copy").
+      IPC.media.saveTrim,
+      IPC.media.stopSave,
+      // Conversions make copies.
+      IPC.media.convert,
+      IPC.media.cancelConversion,
+      IPC.media.undoConversion,
+      // The slide editor's Save a PDF copy…, and the default transition (every presentation's).
+      IPC.library.exportPdf,
+      IPC.library.setDefaultTransition,
+      // A timer slide's timer (Timers are Pro Mode's), words, and New › QR code….
+      IPC.timers.update,
+      IPC.library.saveWords,
+      IPC.library.newQrSlide,
+      // A picture's look and a live zoom kept, Save picture…, the sound output.
+      IPC.media.setLook,
+      IPC.media.keepLiveZoom,
+      IPC.media.savePicture,
+      IPC.audio.setOutput,
+      // A file or a presentation deleted from the library.
+      IPC.media.remove,
+      IPC.library.removePresentations,
+    ]) {
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+      expect(SIMPLE_MODE_BOUNDED.has(channel), channel).toBe(false);
+    }
+    expect(answers.get(IPC.media.saveTrim)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(answers.get(IPC.library.exportPdf)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
   });
 
   it('the quick bar (Session 55, Part 8) is Pro Mode’s: its pins are read in either mode, never changed in Simple Mode', () => {

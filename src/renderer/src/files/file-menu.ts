@@ -59,13 +59,21 @@ export interface FileTarget {
 /** A later Part's items for the menu (Save picture…, When it ends): those that fit the thing, or none. */
 export type FileMenuItems = (target: FileTarget) => MenuEntry[];
 
-const added: FileMenuItems[] = [];
+/** A later Part's items, and whether Simple Mode's menu has them too (Session 56). */
+const added: { items: FileMenuItems; simple: boolean }[] = [];
 
-/** Add items to every file's menu (Part 5's Save picture…, Part 6's When it ends): returns how to take them out. */
-export function addFileMenuItems(items: FileMenuItems): () => void {
-  added.push(items);
+/**
+ * Add items to every file's menu (Part 5's Save picture…, Part 6's When it ends): returns how to take them out.
+ * `simple`: Simple Mode's menu has them too (Session 56: Trim black and silence, Even loudness, When it ends).
+ */
+export function addFileMenuItems(
+  items: FileMenuItems,
+  { simple = false }: { simple?: boolean } = {},
+): () => void {
+  const entry = { items, simple };
+  added.push(entry);
   return () => {
-    const at = added.indexOf(items);
+    const at = added.indexOf(entry);
     if (at >= 0) added.splice(at, 1);
   };
 }
@@ -114,7 +122,7 @@ export function fileMenuEntries(
     });
   if (target.trim)
     editing.push({ label: 'Trim (start, end and markers)…', icon: Bookmark, onSelect: target.trim });
-  for (const items of added) editing.push(...items(target));
+  for (const { items } of added) editing.push(...items(target));
   group(editing);
   const naming: MenuEntry[] = [];
   if (target.rename) naming.push({ label: 'Rename…', icon: Pencil, onSelect: target.rename });

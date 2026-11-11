@@ -290,6 +290,12 @@ export interface SimpleScope {
   holdsMedia(mediaId: string): boolean;
   /** Whether the one playlist has a row of this presentation (a PDF's or a deck's too). */
   holdsPresentation(presentationId: string): boolean;
+  // Session 56 (alpha.16): Audio, a row's Trim and Edit slides in Simple Mode. Left out (as in a scope made for a
+  // phone's test), each answers no: the lock fails closed.
+  /** Whether an audio playlist has this sound (a track of one): Audio's own right-click menu trims and renames it. */
+  inMusic?(mediaId: string): boolean;
+  /** The presentations an edit kept for Undo covers (main/library/revisions.ts), or null when it is not kept. */
+  revisionCovers?(revisionId: string): readonly string[] | null;
 }
 
 /** Whether a request on a bounded channel, with its arguments as sent, stays within Simple Mode's bounds. */

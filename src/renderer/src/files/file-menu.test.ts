@@ -104,20 +104,87 @@ describe('the one right-click menu', () => {
     expect(labels(video)).not.toContain('When it ends');
   });
 
-  it('in Simple Mode (Session 55, Part 18): Rename and Delete only, whatever else fits the thing or a later Part adds', () => {
+  it('in Simple Mode (Session 56, the owner: Pro Mode’s parts): Edit slides…, Trim, the later Parts’ items that serve Simple Mode, Rename and Delete; nothing else that fits the thing or a later Part adds', () => {
     const off = addFileMenuItems(() => [{ label: 'Save picture…', onSelect: noop }]);
+    // Trim black and silence, Even loudness and When it ends (Pro Mode's menu's too) say they serve Simple Mode.
+    const offBoth = addFileMenuItems(
+      (t) => (t.kind === 'video' ? [{ label: 'When it ends: Wallpaper', onSelect: noop }] : []),
+      { simple: true },
+    );
     const simple = (target: FileTarget) =>
       fileMenuEntries(target, 'darwin', { simple: true }).map(
         (e) => `${e.separatorBefore === true ? '— ' : ''}${e.label}`,
       );
-    expect(simple({ ...video, edit: { label: 'Picture editor…', run: noop } })).toEqual([
-      'Rename…',
+    // A video's row: Trim and When it ends, Rename, Delete; never the place's own (Timers when it goes up…), Show in
+    // Finder or Save picture….
+    expect(simple(video)).toEqual([
+      'Trim (start, end and markers)…',
+      'When it ends: Wallpaper',
+      '— Rename…',
       '— Remove from playlist',
     ]);
-    // A slide's row, or a video input's: Delete alone (neither is a file to rename).
+    // A picture's row: its Picture editor is Pro Mode's.
     expect(
-      simple({ kind: 'slide', name: 'Placeholder deck_2', place: 'playlist', remove: video.remove }),
-    ).toEqual(['Remove from playlist']);
+      simple({
+        kind: 'picture',
+        name: 'Placeholder backdrop.png',
+        place: 'playlist',
+        mediaId: 'm3',
+        edit: { label: 'Picture editor…', run: noop },
+        rename: noop,
+        reveal: noop,
+        remove: video.remove,
+      }),
+    ).toEqual(['Rename…', '— Remove from playlist']);
+    // A deck's row: Edit slides… (Pro's slide editor), Rename and Delete.
+    expect(
+      simple({
+        kind: 'deck',
+        name: 'Placeholder katha',
+        place: 'playlist',
+        presentationId: 'p2',
+        edit: { label: 'Edit slides…', run: noop },
+        rename: noop,
+        reveal: noop,
+        remove: video.remove,
+      }),
+    ).toEqual(['Edit slides…', '— Rename…', '— Remove from playlist']);
+    // A slide's row: Edit slides… at it, and Delete (it is no file to rename); a video input's: Delete alone.
+    expect(
+      simple({
+        kind: 'slide',
+        name: 'Placeholder deck_2',
+        place: 'playlist',
+        edit: { label: 'Edit slides…', run: noop },
+        remove: video.remove,
+      }),
+    ).toEqual(['Edit slides…', '— Remove from playlist']);
+    expect(simple({ kind: 'input', name: 'Placeholder camera', place: 'playlist', remove: video.remove })).toEqual(
+      ['Remove from playlist'],
+    );
+    // A wallpaper's Edit wallpaper… (its order, seconds and fade) stays Pro Mode's.
+    expect(
+      simple({
+        kind: 'picture',
+        name: 'Placeholder wallpaper',
+        place: 'wallpapers',
+        edit: { label: 'Edit wallpaper…', run: noop },
+        rename: noop,
+        remove: { label: 'Delete…', run: noop },
+      }),
+    ).toEqual(['Rename…', '— Delete…']);
+    // Pro Mode's menu has them as before, the rest with them.
+    expect(labels(video)).toEqual([
+      'Timers when it goes up…',
+      '— Trim (start, end and markers)…',
+      'Save picture…',
+      'When it ends: Wallpaper',
+      '— Rename…',
+      'Show in Finder',
+      '— Remove from playlist',
+    ]);
+    offBoth();
+    expect(simple(video)).toEqual(['Trim (start, end and markers)…', '— Rename…', '— Remove from playlist']);
     // A header names a part of the playlist, not a file: Simple Mode never renames it.
     expect(
       simple({
