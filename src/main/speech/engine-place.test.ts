@@ -35,7 +35,7 @@ describe('the captions engine’s place (Part 10)', () => {
   it('explains a missing Windows library and accepts either representation of the exit code', () => {
     const code = 0xc0000135;
     const message = whisperDependencyProblem('win32', code);
-    expect(message).toMatch(/Microsoft Visual C\+\+ v14 Redistributable \(x64\)/u);
+    expect(message).toMatch(/Reinstall Drashti/u);
     expect(whisperDependencyProblem('win32', code | 0)).toBe(message);
     expect(whisperDependencyProblem('win32', 3)).toBeNull();
     expect(whisperDependencyProblem('darwin', code)).toBeNull();

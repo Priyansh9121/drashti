@@ -9,6 +9,8 @@ Drashti's live captions (Session 55, Part 10) use **whisper.cpp 1.9.5** (its bui
 
 Each download is pinned to one SHA-256 in `scripts/fetch-whisper.mjs` and checked before it is unpacked. Nothing of it is ever committed to this repository. The library needs macOS 13.3 or later.
 
+Windows builds copy the four unmodified x64 C++ runtime DLLs that Whisper and ggml need from the build machine's Visual Studio `VC/Redist` directory. They sit beside `whisper-server.exe` and are distributed under Microsoft's Visual Studio terms. [Microsoft's redistribution list](https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution)
+
 **The models are not bundled.** When an admin turns captions on, Drashti downloads the chosen model once into its own data folder (`speech-models/`), from whisper.cpp's models on Hugging Face (`https://huggingface.co/ggerganov/whisper.cpp`, MIT), pinned to one revision and to each file's SHA-256 (`src/main/speech/models.ts`): `ggml-small.bin` (Standard) or `ggml-large-v3-turbo-q5_0.bin` (Most accurate). They are converted from OpenAI's Whisper models, which are MIT too.
 
 **Copyright:** whisper.cpp is copyright (c) 2023-2026 The ggml authors. Its full licence is in `LICENSE`.

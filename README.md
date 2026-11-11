@@ -175,7 +175,7 @@ pnpm install
 
 The Electron binary downloads the first time something needs it (for example `pnpm dev` or `pnpm test`).
 
-Streaming and video recording need the bundled **FFmpeg**, and YouTube in Import from a Link needs **yt-dlp** and **Deno**; none of them is ever in git. Fetch them once (each is checked against a pinned SHA-256, kept in `~/.cache/drashti/`, and put in `vendor/`):
+Streaming and video recording need the bundled **FFmpeg**, and YouTube in Import from a Link needs **yt-dlp** and **Deno**; none of them is ever in git. Windows builds also stage Whisper's app-local C++ runtime from Visual Studio's x64 redistribution folder, beside the engine. Fetch the bundled programs once (each download is checked against a pinned SHA-256, kept in `~/.cache/drashti/`, and put in `vendor/`):
 
 ```bash
 node scripts/fetch-ffmpeg.mjs            # this computer's (add --target darwin-x64 to package Intel Macs too)
