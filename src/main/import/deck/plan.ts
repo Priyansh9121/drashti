@@ -98,11 +98,61 @@ function stepsOf(
   return steps;
 }
 
-/** The plan of PowerPoint's timed copy (./timed-copy.ts writes it into the deck): its shown slides. */
-export function powerPointPlan(slides: readonly PptxSlide[], baker: Baker = 'powerpoint'): MoviePlan {
+/**
+ * Whether a slide has anything to go through the deck's movie for (Session 56): its animations (a click's group, or
+ * one that runs by itself), a transition of its own, or a video or sound the deck plays.
+ */
+export const moves = (slide: PptxSlide): boolean =>
+  (slide.deck?.groups.length ?? 0) > 0 ||
+  (slide.deck?.transition?.name ?? '') !== '' ||
+  (slide.deck?.media.length ?? 0) > 0;
+
+/**
+ * Which of a deck's shown slides go through its movie (Session 56: only slides that move). A slide with animations,
+ * a transition or media comes in with its steps. The shown slide before each of those goes into the movie too, as a
+ * lead-in, because that slide's transition (or its first frame) starts from it there; it comes in as its picture all
+ * the same. Every other shown slide comes in as its picture (the deck's PDF) straight away, never in the movie.
+ * Indices are the deck's own, hidden slides counted.
+ */
+export interface MovieChoice {
+  /** In the movie, coming in with their steps. */
+  moving: ReadonlySet<number>;
+  /** In the movie only for the slide after each: coming in as their pictures. */
+  leadIns: ReadonlySet<number>;
+  /** Never in the movie: coming in as their pictures. */
+  pictures: ReadonlySet<number>;
+}
+
+export function movieChoice(slides: readonly PptxSlide[]): MovieChoice {
+  const shown = slides.flatMap((s, i) => (s.hidden ? [] : [i]));
+  const moving = new Set(shown.filter((i) => slides[i] !== undefined && moves(slides[i])));
+  const leadIns = new Set<number>();
+  shown.forEach((index, k) => {
+    const before = k > 0 ? shown[k - 1] : undefined;
+    if (moving.has(index) && before !== undefined && !moving.has(before)) leadIns.add(before);
+  });
+  return { moving, leadIns, pictures: new Set(shown.filter((i) => !moving.has(i) && !leadIns.has(i))) };
+}
+
+/** The slides a choice puts in the movie: the moving ones and their lead-ins. */
+export const inMovie = (choice: MovieChoice): ReadonlySet<number> =>
+  new Set([...choice.moving, ...choice.leadIns]);
+
+/** Whether a choice leaves any shown slide to come in as its picture: else the whole deck goes through the movie. */
+export const leavesOut = (choice: MovieChoice): boolean => choice.pictures.size + choice.leadIns.size > 0;
+
+/**
+ * The plan of PowerPoint's timed copy (./timed-copy.ts writes it into the deck): its shown slides, or only those in
+ * `only` (Session 56: the slides in the movie).
+ */
+export function powerPointPlan(
+  slides: readonly PptxSlide[],
+  baker: Baker = 'powerpoint',
+  only?: ReadonlySet<number>,
+): MoviePlan {
   const planned: PlannedSlide[] = [];
   for (const [index, slide] of slides.entries()) {
-    if (slide.hidden) continue;
+    if (slide.hidden || (only && !only.has(index))) continue;
     const groups = slide.deck?.groups ?? [];
     let at = 0;
     let turn: number | null = null;
@@ -160,12 +210,13 @@ export function powerPointPlan(slides: readonly PptxSlide[], baker: Baker = 'pow
 
 /**
  * The plan of Keynote's own movie of a deck, from what its own PowerPoint copy says (its builds' structure and
- * lengths, and its transitions' lengths): its shown slides.
+ * lengths, and its transitions' lengths): its shown slides, or only those in `only` (Session 56: those in the movie,
+ * the rest skipped in Keynote's copy).
  */
-export function keynotePlan(slides: readonly PptxSlide[]): MoviePlan {
+export function keynotePlan(slides: readonly PptxSlide[], only?: ReadonlySet<number>): MoviePlan {
   const planned: PlannedSlide[] = [];
   for (const [index, slide] of slides.entries()) {
-    if (slide.hidden) continue;
+    if (slide.hidden || (only && !only.has(index))) continue;
     const groups = slide.deck?.groups ?? [];
     let at = 0;
     let built = false;

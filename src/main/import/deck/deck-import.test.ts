@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -17,6 +17,7 @@ import { ffmpegHere } from '../../testing/ffmpeg-here';
 import { MediaStore, UPLOADS_DIR } from '../media-store';
 import { runImport } from '../pipeline';
 import { makeDeckMedia, makeTestDeck, type TestDeckSlide, TRIAL_SLIDES } from '../testing/make-deck';
+import { placeholderSlides } from '../testing/timing-placeholders';
 
 /*
  * A deck imported "with its animations" (Session 54, C2), end to end in the import: C1's trial deck, its media made
@@ -214,6 +215,59 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       // Imported again, unchanged: it is in the library already, with its animations.
       const again = await t.run({ baker: 'stand-in', converters: 'stand-in' });
       expect(t.report(again.id)?.items[0]?.outcome).toBe('skipped');
+    }, 240_000);
+
+    it('only the slides that move go through its movie: the rest come in as their pictures straight away (Session 56)', async () => {
+      const t = setup();
+      // A transition and three clicks, plain, plain, two clicks, plain, plain.
+      const mixed = join(dir, 'Placeholder mixed.pptx');
+      writeFileSync(mixed, makeTestDeck(placeholderSlides(6), makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in', pages: 6 }, [mixed]);
+      const item = t.report(summary.id)?.items[0];
+      expect(item?.outcome).toBe('imported');
+      const slides = t.slidesOf(item?.target?.id ?? '');
+      expect(slides).toHaveLength(6);
+      const decks = slides.map((s) => s.slide.deck);
+      // The two that move with their steps; the slide before the second as its picture, a still step of its own;
+      // the rest as their pictures, no deck at all.
+      expect(decks.map((d) => d?.steps.length)).toEqual([4, undefined, 1, 3, undefined, undefined]);
+      expect(decks[2]?.steps[0]?.clipMs).toBe(0);
+      const pictureOf = (i: number) => {
+        const e = slides[i]?.slide.elements[0];
+        return e?.kind === 'image' ? e.mediaId : '';
+      };
+      expect(decks[2]?.steps[0]?.lastId).toBe(pictureOf(2));
+      // The second plays its own transition-free coming in after that very picture.
+      expect(decks[3]?.after).toBe(pictureOf(2));
+      // The still slides' pictures are the PDF's pages (the stand-in's 4 × 3), the others the movie's (320 × 180).
+      const widthOf = (i: number) => {
+        const file = new MediaRepo(t.db).kindAndFile(pictureOf(i));
+        return readFileSync(join(t.mediaDir, file?.path ?? '')).readUInt32BE(16);
+      };
+      expect([0, 1, 2, 3, 4, 5].map(widthOf)).toEqual([320, 4, 4, 320, 4, 4]);
+      expect(slides.map((s) => s.notes)).toEqual(placeholderSlides(6).map((s) => s.notes));
+      expect(item?.issues.find((i) => i.code === 'deck-animations')?.message).toMatch(
+        /^PowerPoint made this deck’s movie with its animations in \d+ s: 2 slides with 5 clicks\./u,
+      );
+      expect(item?.issues.find((i) => i.code === 'deck-still-slides')?.message).toBe(
+        '4 slides have nothing that moves (no animations, transition, video or sound), so they came in as their pictures straight away.',
+      );
+    }, 240_000);
+
+    it('a deck where nothing moves comes in as its pictures straight away, with no movie made (Session 56)', async () => {
+      const t = setup();
+      const still = join(dir, 'Placeholder still.pptx');
+      const plain = placeholderSlides(6).filter((_, i) => i % 3 !== 0);
+      writeFileSync(still, makeTestDeck(plain, makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const summary = await t.run({ baker: 'stand-in', converters: 'stand-in', pages: 4 }, [still]);
+      const item = t.report(summary.id)?.items[0];
+      expect(item?.outcome).toBe('imported');
+      const slides = t.slidesOf(item?.target?.id ?? '');
+      expect(slides).toHaveLength(4);
+      expect(slides.every((s) => !s.slide.deck)).toBe(true);
+      const codes = item?.issues.map((i) => i.code) ?? [];
+      expect(codes).toContain('deck-still');
+      expect(codes).not.toContain('deck-animations');
     }, 240_000);
 
     it('a slide after a hidden one was made after the shown slide before it', async () => {

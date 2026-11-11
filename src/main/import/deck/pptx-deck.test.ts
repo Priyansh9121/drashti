@@ -12,7 +12,8 @@ import {
   twentySlides,
 } from '../testing/make-deck';
 import { readZipEntries } from '../zip';
-import { keynotePlan, plannedLength, powerPointPlan } from './plan';
+import { inMovie, keynotePlan, leavesOut, movieChoice, plannedLength, powerPointPlan } from './plan';
+import { placeholderSlides } from '../testing/timing-placeholders';
 import { stepOfGroup, stepsOf } from './pptx-deck';
 import { usingTimings, writeTimedCopy } from './timed-copy';
 
@@ -305,6 +306,38 @@ describe('the movie’s plan', () => {
     expect(plan.slides).toHaveLength(20);
     // 87.4 s as the trial planned it, and 6.2 s more for each of the four spinning slides' holds and stillness.
     expect(plannedLength(plan)).toBe(87_400 + 4 * 6_200);
+  });
+});
+
+describe('which slides go through the movie (Session 56)', () => {
+  it('only those that move, each with the slide before it as a lead-in; the rest come in as their pictures', async () => {
+    // Six alike: a transition and three clicks, plain, plain, two clicks, plain, plain; then the trial's hidden one,
+    // and one more plain after it.
+    const [hidden] = TRIAL_SLIDES.filter((s) => s.hidden);
+    if (!hidden) throw new Error('no hidden trial slide');
+    const [plain] = placeholderSlides(2).slice(1);
+    if (!plain) throw new Error('no placeholder slide');
+    const file = join(dir, 'Placeholder mixed.pptx');
+    writeFileSync(file, makeTestDeck([...placeholderSlides(6), hidden, plain], media));
+    const deck = await readPptxDeck(file);
+    const choice = movieChoice(deck.slides);
+    expect([...choice.moving]).toEqual([0, 3]);
+    // The slide before the one with two clicks: its first frame starts from it in the movie.
+    expect([...choice.leadIns]).toEqual([2]);
+    // The hidden slide is no one's; the slide after it is plain.
+    expect([...choice.pictures].sort((a, b) => a - b)).toEqual([1, 4, 5, 7]);
+    expect(leavesOut(choice)).toBe(true);
+    const plan = powerPointPlan(deck.slides, 'powerpoint', inMovie(choice));
+    expect(plan.slides.map((s) => s.index)).toEqual([0, 2, 3]);
+    expect(keynotePlan(deck.slides, inMovie(choice)).slides.map((s) => s.index)).toEqual([0, 2, 3]);
+    // The whole trial deck moves: every shown slide goes through the movie, as before.
+    expect(leavesOut(movieChoice((await readPptxDeck(trial)).slides))).toBe(false);
+    // Its timed copy hides the slides that come in as their pictures, so PowerPoint's movie leaves them out.
+    const copy = join(dir, 'Placeholder mixed timed.pptx');
+    await writeTimedCopy(file, copy, plan, choice.pictures);
+    const timed = await readPptxDeck(copy);
+    expect(timed.slides.map((s) => s.hidden)).toEqual([false, true, false, false, true, true, true, true]);
+    expect(powerPointPlan(timed.slides).slides.map((s) => s.index)).toEqual([0, 2, 3]);
   });
 });
 

@@ -231,7 +231,12 @@ export function usingTimings(xml: string): string {
 }
 
 /** Write the timed copy of `deck` to `copy`, its shown slides by `plan` (PowerPoint's, ./plan.ts). */
-export async function writeTimedCopy(deck: string, copy: string, plan: MoviePlan): Promise<void> {
+export async function writeTimedCopy(
+  deck: string,
+  copy: string,
+  plan: MoviePlan,
+  _hide: Iterable<number> = [],
+): Promise<void> {
   const order = await slideParts(deck);
   const wanted = new Map<string, PlannedSlide>();
   for (const s of plan.slides) {
