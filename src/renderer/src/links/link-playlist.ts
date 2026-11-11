@@ -2,7 +2,6 @@ import { useLayoutEffect, type RefObject } from 'react';
 import { create } from 'zustand';
 import { playlistFolders } from '../../../shared/playlist-folders';
 import type { NewItem } from '../../../shared/playlists';
-import { useMode } from '../operator/mode-store';
 import type { AddTarget } from '../playlists/add-made';
 import { addMadeInto } from '../playlists/add-made';
 import { openPlaylist, showsFolders, usePlaylists } from '../playlists/playlist-store';
@@ -54,8 +53,7 @@ export async function landInPlaylist(target: AddTarget, items: NewItem[]): Promi
 
 /** Open the playlist a download went into, its new items chosen, the first brought into view. */
 async function showLanded(playlistId: string, itemIds: readonly string[]): Promise<void> {
-  // Simple Mode shows its one playlist only, which the download went into (Session 55, Part 18): nothing to open.
-  if (useMode.getState().mode === 'simple') return;
+  // In Simple Mode too since Session 56: its window opens any playlist, as Pro Mode's does.
   if (usePlaylists.getState().openId !== playlistId) await openPlaylist(playlistId);
   const state = usePlaylists.getState();
   const first = state.openId === playlistId ? state.items.find((i) => itemIds.includes(i.id)) : undefined;

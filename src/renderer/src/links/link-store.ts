@@ -18,6 +18,7 @@ import { useEngine } from '../engine/engine-store';
 import { itemsMadeBy } from '../../../shared/import-items';
 import { openReport, useImports } from '../library/import-store';
 import { useNotice } from '../operator/actions';
+import { useMode } from '../operator/mode-store';
 import type { AddTarget } from '../playlists/add-made';
 import { nameAfter } from '../playlists/add-made';
 import { loadTree, openPlaylist } from '../playlists/playlist-store';
@@ -150,14 +151,17 @@ function heard(view: LinkView): void {
         : s.savedFor,
   }));
   // The import of what was saved ended: its report comes up, as an import's does (unless the show is on).
-  // Never over the link dialog: while that is open, it offers the report itself (See the import report).
+  // Never over the link dialog: while that is open, it offers the report itself (See the import report). In Simple
+  // Mode (Session 56) only when asked, as for its other imports (See the import report, the status bar's Report); the
+  // playlist it went into opens all the same.
   if (view.phase === 'done' && view.runId && view.runId !== reported) {
     reported = view.runId;
     const runId = view.runId;
     void addImported(runId);
     void window.drashti.library.getImportReport(runId).then((report) => {
       if (report) useImports.setState({ finished: report });
-      if (!somethingLive() && !useLinks.getState().open) void openReport(runId);
+      if (!somethingLive() && !useLinks.getState().open && useMode.getState().mode !== 'simple')
+        void openReport(runId);
     });
   }
 }

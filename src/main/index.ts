@@ -48,7 +48,7 @@ import {
   simpleImportExtensions,
   SOUND_EXTENSIONS,
 } from './import/scan';
-import { addFolderAtEnd, addToFolderParts, freeName, makeFolderPlaylist } from './playlists/folder-playlist';
+import { addToFolderParts, freeName, makeFolderPlaylist } from './playlists/folder-playlist';
 import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
@@ -4322,15 +4322,10 @@ function start(): void {
         leftovers.forget(pid);
       },
     },
-    // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts); in Simple Mode (Session
-    // 55, Part 18) its files at the end of Simple Mode's playlist (the one open there since Session 56), never a
-    // playlist of their own.
+    // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts), in either mode: Simple Mode
+    // (Session 55, Part 18) put its files at the end of its own playlist until Session 56 made its From a Link… whole.
     folderPlaylist: ({ name, runId, files }) => {
-      const one = mode === 'simple' ? simplePlaylist.current() : null;
-      const made =
-        one === null
-          ? makeFolderPlaylist(playlists, name, importRepo.report(runId)?.items ?? [], files)
-          : addFolderAtEnd(playlists, one, importRepo.report(runId)?.items ?? [], files);
+      const made = makeFolderPlaylist(playlists, name, importRepo.report(runId)?.items ?? [], files);
       if (made) {
         sendToOperator(IPC.playlists.changed, { at: Date.now() });
         syncAudios();

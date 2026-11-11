@@ -125,7 +125,9 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await chooseMenuItem(app, 'import-from-link');
   const dialog = win.getByTestId('link-dialog');
   await expect(dialog).toBeVisible();
-  await expect(win.getByTestId('link-kind-youtube-hint')).toContainText('only the mandir’s own');
+  // No words on whose video it may be since the permission tick went (the owner, 6 Nov 2026: the sanstha approves
+  // Drashti).
+  await expect(win.getByTestId('link-kind-youtube-hint')).toHaveText('One video, as MP4 or MP3.');
   await expect(win.getByTestId('link-text')).toHaveCount(0);
   await win.getByTestId('link-kind-dropbox').click();
   await expect(win.getByTestId('link-kind-dropbox')).toHaveAttribute('aria-checked', 'true');

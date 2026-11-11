@@ -239,7 +239,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     return {
       backup: m?.getMenuItemById('backup-library') ?? null,
       restore: m?.getMenuItemById('restore-library') ?? null,
-      // Import from a Link (Session 25b): never in Simple Mode.
+      // File › Import from a Link… (Session 25b) is Pro Mode's menu: Simple Mode has no File menu, and its From a
+      // Link… is the playlist's own (Pro Mode's whole dialog since Session 56).
       link: m?.getMenuItemById('import-from-link') ?? null,
       switchLabel: m?.getMenuItemById('switch-mode')?.label ?? '',
     };
@@ -286,9 +287,6 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         fromTemplate: await d.playlists.newFromTemplate('x', 'Placeholder', null),
         slot: await d.playlists.addSlot('x', null, { label: 'Placeholder', category: null }),
         setup: await d.setup.finish({ outputs: [], sound: 'skip' }),
-        // Session 25c: the highest video quality, an admin's setting (From a Link… itself is Simple Mode's since
-        // Part 18, into its one playlist: simple-sabha.spec.ts, through a local stand-in).
-        linkQuality: await d.links.setMaxHeight(2160),
         // Rows of what is no playlist (Session 56: a playlist's rows are Simple Mode's in any playlist, never a
         // template's or a folder's).
         otherRows: await d.playlists.addItems('placeholder-other-playlist', null, [
@@ -318,7 +316,6 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     fromTemplate: no,
     slot: no,
     setup: no,
-    linkQuality: no,
     otherRows: no,
   });
 
