@@ -1937,6 +1937,8 @@ function start(): void {
     test: sw('DRASHTI_TEST_OPENING_PHOTO'),
     testing: anyTestSwitch(),
   });
+  /** The opening pack's sound the opening keeps (alpha.16), by its sha256: set once the opening's service is made. */
+  let openingSoundFile: (sha256: string) => string | null = () => null;
   const serveMedia = async (request: Request) => {
     const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
@@ -1956,6 +1958,8 @@ function start(): void {
       },
       // Drashti's default opening photo (only it, from its own folder).
       openingPhoto: () => openingPhoto,
+      // The opening pack's sound, as Drashti keeps its copy in the media folder (only the one the opening keeps).
+      openingSound: (sha256) => openingSoundFile(sha256),
       warn: (message) => {
         log.warn(message);
       },
@@ -6341,9 +6345,9 @@ function start(): void {
     }
     return null;
   });
-  // ---- the opening (Session 55, the owner's brief of 3 Nov 2026: shared/opening.ts) ------------------------------
-  // Five seconds as Drashti starts, over the operator window only, decided once (opening/opening-start.ts); its photos
-  // and lines kept with the library and changed in File › Opening… (Pro Mode). Never its words in the log.
+  // ---- the opening (Session 55, the owner's brief of 3 Nov 2026; alpha.16, his words of 11 Nov: shared/opening.ts) ---
+  // Two seconds as Drashti starts, over the operator window only, decided once (opening/opening-start.ts); its photo
+  // and the pack's sound kept with the library and changed in File › Opening… (Pro Mode). Never their names in the log.
   const opening = new OpeningService({
     settings,
     later: laterSetting,
@@ -6393,6 +6397,7 @@ function start(): void {
       log.info(line);
     },
   });
+  openingSoundFile = (sha256) => opening.soundFile(sha256);
   /** When the operator window was made; whether its page was loaded again (or its process ended) since. */
   let openingWindowAt = 0;
   let openingPageAgain = false;
@@ -6424,7 +6429,7 @@ function start(): void {
     if (!plan) return null;
     openingSince = Date.now();
     openingKeys.start();
-    // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its five seconds.
+    // A page that never says it ended (it stopped, say) leaves the keys to the show soon after its two seconds.
     openingLimit = setTimeout(openingOver, OPENING_MS + OPENING_HOLD_MS + 3000);
     // It never moves while the hall's screens are getting ready: told here once they all have drawn.
     openingWaits = screensWarming();
@@ -6453,13 +6458,18 @@ function start(): void {
       return { ok: false as const, message: 'Only the operator window can load the opening pack.' };
     const picked = await dialog.showOpenDialog(operatorWindow, {
       title: 'Load the Opening Pack',
-      message: 'Choose the opening pack’s folder: the one with the photos folder and words.txt in it.',
+      message: 'Choose the opening pack’s folder: the one with the photos folder in it.',
       buttonLabel: 'Load',
       properties: ['openDirectory'],
     });
     const dir = picked.canceled ? null : (picked.filePaths[0] ?? null);
     return dir === null ? null : opening.loadPack(dir);
   });
+  handle(IPC.opening.removeSound, (e) =>
+    fromOperator(e)
+      ? opening.removeSound()
+      : { ok: false as const, message: 'Only the operator window can change the opening.' },
+  );
   handle(IPC.opening.saveCopy, (e, mediaId, bytes) =>
     fromOperator(e) && typeof mediaId === 'string'
       ? opening.saveCopy(mediaId, bytes)

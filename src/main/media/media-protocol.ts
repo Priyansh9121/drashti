@@ -17,7 +17,9 @@ import { realPlaceAsync } from './contained';
  * Two are not the library's, each served only from its own folder: a picture
  * one of the guides shows (drashti-media://guide/<name>), and Drashti's
  * default opening photo (drashti-media://opening-default/photo, the owner's
- * decision of 5 Nov 2026: opening/opening-photo.ts).
+ * decision of 5 Nov 2026: opening/opening-photo.ts). And the opening pack's
+ * sound (alpha.16), as Drashti keeps its copy in the media folder:
+ * drashti-media://opening-sound/<sha256>, only the one the opening keeps.
  */
 
 /** What the library knows about a media item's file. */
@@ -41,6 +43,11 @@ export function openingCopyPath(sha256: string): string {
   return `opening/${sha256}.jpg`;
 }
 
+/** Where the copy of the opening pack's sound is kept (alpha.16), relative to the media folder. */
+export function openingSoundPath(sound: { sha256: string; kind: string }): string {
+  return `opening/${sound.sha256}.${sound.kind}`;
+}
+
 export interface MediaProtocolDeps {
   /** The media folder. */
   mediaDir: string;
@@ -56,6 +63,11 @@ export interface MediaProtocolDeps {
   guidePicture?: (name: string) => { dir: string; file: string } | null;
   /** Drashti's default opening photo (opening/opening-photo.ts): its file, inside `dir`, or null for none. */
   openingPhoto?: () => { dir: string; file: string } | null;
+  /**
+   * The opening's sound with this sha256 (alpha.16): its copy, relative to the media folder, while the opening keeps
+   * it; null for any other.
+   */
+  openingSound?: (sha256: string) => string | null;
   /** Told about refusals that point at a broken or tampered library. */
   warn?: (message: string) => void;
 }
@@ -174,7 +186,12 @@ export type MediaRequest =
   /** A picture one of the guides shows (the guides inside Drashti, Sessions 31–36). */
   | { what: 'guide'; name: string }
   /** Drashti's default opening photo (the owner's decision of 5 Nov 2026). */
-  | { what: 'opening-default' };
+  | { what: 'opening-default' }
+  /** The opening pack's sound, as Drashti keeps it (alpha.16): by its sha256. */
+  | { what: 'opening-sound'; sha256: string };
+
+/** A file's sha256, as Drashti names its copies by it. */
+const SHA256 = /^[0-9a-f]{64}$/;
 
 /** What a drashti-media:// URL asks for, or null if it is not a URL Drashti makes. */
 export function mediaRequestOf(url: string): MediaRequest | null {
@@ -198,6 +215,10 @@ export function mediaRequestOf(url: string): MediaRequest | null {
     return /^[a-z0-9-]{1,80}\.png$/u.test(name) ? { what, name } : null;
   }
   if (what === 'opening-default') return parsed.pathname === '/photo' ? { what } : null;
+  if (what === 'opening-sound') {
+    const sha256 = parsed.pathname.slice(1);
+    return SHA256.test(sha256) ? { what, sha256 } : null;
+  }
   const mediaId = parsed.pathname.slice(1);
   if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
   return what === 'media' || what === 'still' || what === 'blur' || what === 'opening'
@@ -240,8 +261,6 @@ function refused(status: 404 | 405): Response {
   return new Response(null, { status, headers });
 }
 
-const SHA256 = /^[0-9a-f]{64}$/;
-
 /** A regular file, by its real path, if it is inside `dir`. */
 async function fileInside(dir: string, file: string): Promise<{ path: string; size: number } | null> {
   const place = await realPlaceAsync(dir, file);
@@ -263,6 +282,10 @@ async function fileFor(
     const found = deps.openingPhoto?.() ?? null;
     return found ? fileInside(found.dir, found.file) : null;
   }
+  if (asked.what === 'opening-sound') {
+    const path = deps.openingSound?.(asked.sha256) ?? null;
+    return path ? inMediaFolder(deps, path, 'The opening’s sound') : null;
+  }
   const { mediaId } = asked;
   const found = deps.lookup(mediaId);
   if (!found || found.missing) return null;
@@ -282,15 +305,24 @@ async function fileFor(
     row = { path: copy };
   }
   if (row.path === '') return null;
+  return inMediaFolder(deps, row.path, `Media ${mediaId}`);
+}
+
+/** A file the library (or the opening) names, relative to the media folder: served only if it is a file inside it. */
+async function inMediaFolder(
+  deps: MediaProtocolDeps,
+  relative: string,
+  what: string,
+): Promise<{ path: string; size: number } | null> {
   // Library paths are relative to the media folder; anything else was not written by Drashti.
-  if (isAbsolute(row.path)) {
-    deps.warn?.(`Media ${mediaId} points outside the media folder; not served.`);
+  if (isAbsolute(relative)) {
+    deps.warn?.(`${what} points outside the media folder; not served.`);
     return null;
   }
-  const place = await realPlaceAsync(deps.mediaDir, join(deps.mediaDir, row.path));
+  const place = await realPlaceAsync(deps.mediaDir, join(deps.mediaDir, relative));
   if (!place) return null;
   if (!place.inside) {
-    deps.warn?.(`Media ${mediaId} points outside the media folder; not served.`);
+    deps.warn?.(`${what} points outside the media folder; not served.`);
     return null;
   }
   const s = await stat(place.path).catch(() => null);

@@ -3,8 +3,9 @@ import type { OpeningResult, OpeningView } from '../../../shared/opening';
 import { makeOpeningCopies } from './copies';
 
 /*
- * File › Opening… in the operator window (Session 55, Pro Mode): its view, asked for as it opens, and each photo's
- * copy for the opening made here as a photo is chosen or the opening pack is loaded (copies.ts).
+ * File › Opening… in the operator window (Session 55, Pro Mode; alpha.16: one photo and the pack's sound): its view,
+ * asked for as it opens, and the photo's copy for the opening made here as a photo is chosen or the opening pack is
+ * loaded (copies.ts).
  */
 
 export const useOpening = create<{
@@ -13,9 +14,7 @@ export const useOpening = create<{
   problem: string | null;
   /** Load the opening pack… is under way. */
   loading: boolean;
-  /** Bumped when the lines come from elsewhere than the typing (opened, a pack loaded): the fields take them then. */
-  linesFrom: number;
-}>(() => ({ open: false, view: null, problem: null, loading: false, linesFrom: 0 }));
+}>(() => ({ open: false, view: null, problem: null, loading: false }));
 
 let connected = false;
 
@@ -31,18 +30,18 @@ async function refresh(): Promise<void> {
   if (useOpening.getState().open) useOpening.setState({ view });
 }
 
-/** Make the copies the view's photos are waiting for. */
+/** Make the copy the view's photo is waiting for. */
 function makeCopies(view: OpeningView): void {
-  const waiting = view.photos.filter((p) => !p.ready && !p.gone).map((p) => p.mediaId);
-  if (waiting.length > 0)
-    void makeOpeningCopies(waiting, () => {
+  const { photo } = view;
+  if (photo && !photo.ready && !photo.gone)
+    void makeOpeningCopies([photo.mediaId], () => {
       void refresh();
     });
 }
 
 export function openOpening(): void {
   void window.drashti.opening.view().then((view) => {
-    useOpening.setState((s) => ({ open: true, view, problem: null, linesFrom: s.linesFrom + 1 }));
+    useOpening.setState({ open: true, view, problem: null });
     // A copy not made yet (the window closed while it was being made, say) is made now.
     makeCopies(view);
   });
@@ -52,7 +51,7 @@ export function closeOpening(): void {
   useOpening.setState({ open: false, view: null, problem: null, loading: false });
 }
 
-/** Take what a change answered: its view (and the copies it now waits for), or why not. */
+/** Take what a change answered: its view (and the copy it now waits for), or why not. */
 export function take(result: OpeningResult | null): void {
   if (result === null) return;
   if (!result.ok) {
@@ -66,9 +65,7 @@ export function take(result: OpeningResult | null): void {
 export async function loadPack(): Promise<void> {
   useOpening.setState({ loading: true, problem: null });
   try {
-    const loaded = await window.drashti.opening.loadPack();
-    take(loaded);
-    if (loaded?.ok) useOpening.setState((s) => ({ linesFrom: s.linesFrom + 1 }));
+    take(await window.drashti.opening.loadPack());
   } finally {
     useOpening.setState({ loading: false });
   }

@@ -256,7 +256,10 @@ export interface DrashtiBridge {
     /** File > Drop Folder… was chosen. */
     onOpen(listener: () => void): () => void;
   };
-  /** The opening (Session 55, operator window): played as Drashti starts; chosen in File › Opening… (Pro Mode). */
+  /**
+   * The opening (Session 55, operator window; alpha.16: two seconds, one photo, the pack's own sound): played as
+   * Drashti starts; chosen in File › Opening… (Pro Mode).
+   */
   opening: {
     /** What to play as the window opens, or null (main decides, once). */
     atStart(): Promise<OpeningPlan | null>;
@@ -270,6 +273,8 @@ export interface DrashtiBridge {
     setChoice(choice: OpeningChoice): Promise<OpeningResult>;
     /** Load the opening pack… (null: no folder chosen). */
     loadPack(): Promise<OpeningResult | null>;
+    /** The pack's sound taken out. */
+    removeSound(): Promise<OpeningResult>;
     saveCopy(mediaId: string, bytes: Uint8Array): Promise<{ ok: true } | { ok: false; message: string }>;
     /** File › Opening… was chosen. */
     onOpen(listener: () => void): () => void;
