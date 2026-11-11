@@ -113,7 +113,7 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
     await expect(dialog).toHaveCount(0);
 
     // Simple Mode: no File menu, and the main process refuses to show or change captions.
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect
       .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode()))
       .toBe('simple');

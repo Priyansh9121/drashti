@@ -203,7 +203,7 @@ test('Simple Mode (Session 55, Part 18: no Audio panel) shows the music playing 
   // Started in Pro Mode, as Audio's Play starts it.
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id), made);
   await expect.poll(async () => (await audioLayer(win))?.music?.playlistId).toBe(made);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   const simple = win.getByTestId('simple-mode');
   // No Audio panel and no strip of its own: the track's time bar under Next and Back says what plays.
   await expect(simple.getByTestId('simple-music')).toHaveCount(0);

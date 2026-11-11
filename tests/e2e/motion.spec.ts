@@ -145,7 +145,7 @@ test('show controls, thumbnails and the live picture never move, in Pro Mode and
     .getByTestId('playlist-node')
     .filter({ hasText: /^Placeholder motion/u })
     .click();
-  await win.getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(win.getByTestId('simple-mode').getByTestId('playlist-item')).toHaveCount(1);
   expect(

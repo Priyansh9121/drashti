@@ -40,7 +40,7 @@ async function dialogPicks(app: ElectronApplication, files: string[]): Promise<v
 
 /** Into Simple Mode by the header's button, as a person does. */
 async function intoSimple(win: Page): Promise<Locator> {
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple).toBeVisible();
   return simple;

@@ -118,7 +118,7 @@ test('Pro access: Simple Mode the operator chose stays when the owner gives Simp
     await operatorReady(win);
     expect(await modeOf(win)).toBe('pro');
     // The operator's own choice: Simple Mode.
-    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+    await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
     const simple = win.getByTestId('simple-mode');
     await expect(simple).toBeVisible();
     await expect(win.getByTestId('simple-leave')).toBeVisible();

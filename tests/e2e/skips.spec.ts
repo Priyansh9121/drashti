@@ -277,7 +277,7 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
   await inStep(copy(two), timingOf(await audioLayer(win)), 'playing from where the skips left it');
 
   // Simple Mode, as asked, has none (and no Audio panel since Session 55, Part 18: the track shows in its time bar).
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode').getByTestId('time-bars')).toBeVisible();
   for (const name of ['Back 15 s', 'Forward 15 s', 'Last 10 s'])
     await expect(win.getByRole('button', { name })).toHaveCount(0);

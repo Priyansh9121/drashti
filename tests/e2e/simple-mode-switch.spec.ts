@@ -92,7 +92,7 @@ async function noRoles(win: Page): Promise<void> {
     await expect(win.getByTestId(id), id).toHaveCount(0);
 }
 
-test('Simple Mode in by the header’s button, out by a double-click on Pro Mode with nothing typed (one click is not enough; the View menu at once), never a PIN; no role button in the header', async () => {
+test('Simple Mode in by a double-click on the header’s Simple Mode, out by a double-click on Pro Mode, nothing else (one click is not enough either way; Enter twice from the keyboard; the View menu at once), never a PIN; no role button in the header', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -103,10 +103,17 @@ test('Simple Mode in by the header’s button, out by a double-click on Pro Mode
   const header = win.getByTestId('app-header');
   await noRoles(win);
 
-  // In: one press, nothing asked.
-  await header.getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  // In (the owner, 11 Nov 2026: a double-click each way, nothing else): one click on Simple Mode says to double-click
+  // it, and stays in Pro Mode; a double-click goes, with no question and no word.
+  const simple = header.getByRole('button', { name: 'Simple Mode', exact: true });
+  await simple.click();
+  await expect(win.getByTestId('operator-notice')).toContainText('Double-click Simple Mode');
+  expect(await modeOf(win)).toBe('pro');
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+  await simple.dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   expect(await modeOf(win)).toBe('simple');
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
   await noRoles(win);
 
   // Out: one click on Pro Mode says to double-click it, and stays; a double-click goes, with no question and no word.
@@ -122,9 +129,16 @@ test('Simple Mode in by the header’s button, out by a double-click on Pro Mode
   await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
   await noRoles(win);
 
-  // The main process asks for nothing either: a request is enough, whatever a page adds to it (a PIN is no part of it).
-  await header.getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  // From the keyboard, Enter twice (Space is Next everywhere in the window): the first press says to press it again.
+  await simple.focus();
+  await win.keyboard.press('Enter');
+  await expect(win.getByTestId('operator-notice')).toContainText('Press Enter again to switch to Simple Mode');
+  expect(await modeOf(win)).toBe('pro');
+  await win.keyboard.press('Enter');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
+  expect(await modeOf(win)).toBe('simple');
+
+  // The main process asks for nothing either: a request is enough, whatever a page adds to it (a PIN is no part of it).
   expect(
     await win.evaluate(
       (pin) =>
@@ -172,8 +186,8 @@ test('in CI’s window (1024 × 645): Pro Mode’s header and Simple Mode’s sc
   await noRoles(win);
   await expectNoSeriousA11yIssues(win, 'the header in Pro Mode at 1024 × 645', '[data-testid="app-header"]');
 
-  // Simple Mode: its screen, with its way out at the top, in sight.
-  await header.getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  // Simple Mode (a double-click): its screen, with its way out at the top, in sight.
+  await header.getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expectFits(simple, 'Simple Mode at 1024 × 645');
   await expect(win.getByTestId('simple-leave')).toBeInViewport({ ratio: 1 });
