@@ -65,6 +65,7 @@ export function parseCaptionSettings(raw: unknown): CaptionSettings {
  */
 export interface CaptionsShown {
   lines: string[];
+  /** The spoken language. Sanskrit captions use Gujarati letters. */
   language: SpeechLanguage;
   /** The audience screens draw them too (the admin's choice); the stream and the stage always do. */
   audience: boolean;

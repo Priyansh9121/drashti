@@ -23,7 +23,7 @@ import {
  */
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
-const SPEECH = { DRASHTI_TEST_SPEECH: 'alpha beta gamma|delta epsilon zeta' };
+const SPEECH = { DRASHTI_TEST_SPEECH: 'alpha beta gamma कखग|delta epsilon zeta कखग' };
 const HEARD = /alpha beta gamma|delta epsilon zeta/u;
 
 const roleOf = (p: Page) => p.getByTestId('output-root').getAttribute('data-role');
@@ -106,8 +106,12 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
     await expectNoSeriousA11yIssues(win, 'Live captions');
 
     await dialog.getByTestId('captions-language').selectOption('sa');
-    await expect(stage.getByTestId('captions')).toHaveAttribute('lang', 'sa');
-    await expect(hall.getByTestId('captions')).toHaveAttribute('lang', 'sa');
+    for (const output of [stage, hall]) {
+      const captions = output.getByTestId('captions');
+      await expect(captions).toHaveAttribute('lang', 'sa-Gujr');
+      await expect(captions).toContainText('કખગ');
+      await expect(captions.locator(':scope > div')).toHaveCSS('font-family', /^["']?Noto Sans Gujarati/u);
+    }
 
     // Off: off every screen at once.
     await dialog.getByTestId('captions-on').click();

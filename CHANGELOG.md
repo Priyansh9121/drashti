@@ -5,7 +5,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 ## 1.0.0-alpha.16
 
 - Live captions stay off by default and marked Trial. The five optional AI helpers from alpha.15 have been removed. Find passages by typing their reference or words in the library's Books tab. Saved playlists and loaded Books still work.
-- Live captions can listen for Gujarati, Hindi, Sanskrit or English. Choose the language yourself or let Drashti choose from those four as it listens.
+- Live captions can listen for Gujarati, Hindi, Sanskrit or English. Choose the language yourself or let Drashti choose from those four as it listens. Sanskrit captions use Gujarati letters.
 - In Pro and Simple Mode, Record sound saves the chosen sound input to a WAV file. While captions are on, it saves a timed draft beside the audio. Record video saves the stream's picture and sound, including when it is off air.
 - Windows copies include the libraries needed by the captions engine.
 

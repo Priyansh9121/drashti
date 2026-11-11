@@ -151,7 +151,7 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
         )}
         {settings.language === 'sa' && (
           <Notice tone="warning">
-            Sanskrit is a trial. Check how well it hears both speech and shloks in rehearsal.
+            Sanskrit is a trial and uses Gujarati letters. Check speech and shloks in rehearsal.
           </Notice>
         )}
         {settings.language === 'auto' && (

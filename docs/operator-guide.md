@@ -65,7 +65,7 @@ Do these about 30 minutes before the sabha starts.
 
 ![Ready? before the sabha: each line green, or amber with what to do](screenshots/ready.png)
 
-**Live captions (Trial).** They start off and can slow the screens while on. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Tell the admin if they are wrong or lag behind; **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
+**Live captions (Trial).** They start off and can slow the screens while on. When an admin has turned them on, captions may show along the bottom of that computer's stage screens and the stream (or at the top, if chosen), and on the audience screens only if chosen too. Sanskrit captions use Gujarati letters. Tell the admin if they are wrong or lag behind. **File › Live Captions…** turns them off. There is nothing to do in Simple Mode. The admin's guide, section 25, has the settings and the rehearsal.
 
 **Record the sabha.** Open **Record** in **Stream** in Pro Mode, or under **LIVE** in Simple Mode. Pick **Record sound** to save the chosen sound input as a WAV file. If Live captions is on, a timed caption draft is saved beside the sound. **Record video** saves the stream’s chosen layout and takes about 3 GB an hour at the Good internet setting. Both choices work off air or while the stream is on air. Choose the folder in **Stream settings** or from the **Record** menu, and press the recording’s **Stop** button when finished.
 
