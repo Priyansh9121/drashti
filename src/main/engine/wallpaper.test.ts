@@ -32,7 +32,10 @@ describe('the Wallpaper (Session 55, Part 13)', () => {
     const engine = setup();
     expect(engine.dispatch({ type: 'setWallpaper', on: true })).toMatchObject({ ok: true, changed: true });
     expect(engine.dispatch({ type: 'setWallpaper', on: true })).toMatchObject({ ok: true, changed: false });
+    // A slide put up takes it off (Session 56: LIVE shows one thing at a time, one-at-a-time.test.ts); on again over it.
     engine.dispatch({ type: 'goLive', presentationId: 'p2', slideIndex: 0 });
+    expect(engine.current.wallpaper).toBe(false);
+    engine.dispatch({ type: 'setWallpaper', on: true });
     engine.dispatch({ type: 'clearAll' });
     expect(engine.current.wallpaper).toBe(true);
     engine.dispatch({ type: 'setBlackout', on: true });

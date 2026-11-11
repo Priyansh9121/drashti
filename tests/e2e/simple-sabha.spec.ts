@@ -119,19 +119,29 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
     .toMatchObject({ mediaId: show.videoMediaId });
   await expect(right.getByTestId('time-bars')).toBeVisible();
 
-  // Black-out and the Wallpaper, on and off; Clear all, then Put it back.
+  // Clear all, then Put it back; Black-out and the Wallpaper, on and off, each taking the video off as it goes on, and
+  // the video's row putting it up again, taking them off (Session 56, the owner's words: LIVE shows one thing at a
+  // time; until then they covered it, playing on).
+  await bar.getByTestId('simple-clear-all').click();
+  await expect.poll(async () => (await state(win)).layers.background).toBeNull();
+  await bar.getByTestId('simple-put-back').click();
+  await expect
+    .poll(async () => (await state(win)).layers.background)
+    .toMatchObject({ mediaId: show.videoMediaId });
   await bar.getByTestId('simple-blackout').click();
   await expect.poll(async () => (await state(win)).blackout).toBe(true);
   await expect(bar.getByTestId('simple-blackout')).toHaveText(/^Black-out is on/u);
+  await expect.poll(async () => (await state(win)).layers.background).toBeNull();
   await bar.getByTestId('simple-blackout').click();
   await expect.poll(async () => (await state(win)).blackout).toBe(false);
   await bar.getByTestId('simple-wallpaper').click();
   await expect.poll(async () => (await state(win)).wallpaper).toBe(true);
   await bar.getByTestId('simple-wallpaper').click();
   await expect.poll(async () => (await state(win)).wallpaper).toBe(false);
-  await bar.getByTestId('simple-clear-all').click();
-  await expect.poll(async () => (await state(win)).layers.background).toBeNull();
-  await bar.getByTestId('simple-put-back').click();
+  await bar.getByTestId('simple-wallpaper').click();
+  await expect.poll(async () => (await state(win)).wallpaper).toBe(true);
+  await middle.getByTestId('playlist-item').filter({ hasText: 'Placeholder clip' }).click();
+  await expect.poll(async () => (await state(win)).wallpaper).toBe(false);
   await expect
     .poll(async () => (await state(win)).layers.background)
     .toMatchObject({ mediaId: show.videoMediaId });

@@ -15,7 +15,8 @@ import { useSimple } from './simple';
  * markers (D5's Playing): the same rows as under LIVE in Drashti (markers/playing-rows.ts), each named and with its
  * elapsed time and time left, its start and end points and its markers as ticks, at a finger's size (44 px), with
  * Play or Pause beside it. A tap or a drag moves it (once, as the finger lets go), in step on every screen, as the
- * operator's does; when Drashti is in Simple Mode it says the move is refused.
+ * operator's does (the operator's own bar has the picture follow a drag since Session 56; a phone's moves once); when
+ * Drashti is in Simple Mode it says the move is refused.
  */
 
 const send = (path: string, body: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
@@ -38,8 +39,9 @@ export function RemotePlaying({ state }: { state: EngineState | null }) {
 function Row({ row }: { row: PlayingRow }) {
   // Where it is, from the engine's time as this phone knows it, a few times a second.
   const now = useNow(250);
-  // Simple Mode (Session 55, Part 9): its window's bar has Play while paused, and moves nothing: Pause and the move
-  // are dimmed here (the main process refuses them all the same).
+  // Simple Mode (Session 55, Part 9): a phone has Play only there (main/simple-mode-phones.ts; Simple Mode's window
+  // moves and pauses since Session 56, a phone does not): Pause and the move are dimmed here (the main process refuses
+  // them all the same).
   const simple = useSimple() !== null;
   const { playing } = row;
   const bar = barNow(playing, now);

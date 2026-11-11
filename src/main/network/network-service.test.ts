@@ -351,13 +351,12 @@ describe('the network in the main process', () => {
     expect(commands).toHaveLength(3);
   });
 
-  it('in Simple Mode, refuses a Remote’s move and Pause in words, and lets its Play through: nothing stays paused (Session 54’s review; Session 55: the music’s Pause too)', () => {
+  it('in Simple Mode, refuses a Remote’s move and Pause in words, and lets its Play through: nothing stays paused (Session 54’s review; Session 55: the music’s Pause too; Session 56: in the phone’s own words)', () => {
     const { service, commands, state } = setup({ locked: true });
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const answer = (args: Record<string, unknown>) =>
       service.answer({ address: PHONE, deviceId: remote, op: 'command', args });
-    // A single sound playing (put up from the phone's Media, say): its Pause too, as Simple Mode's window could never
-    // play it on (Session 54's review: until then a phone could pause it there).
+    // A single sound playing (put up from the phone's Media, say).
     const sound = {
       id: 'placeholder-sound',
       title: 'Placeholder tone',
@@ -367,15 +366,22 @@ describe('the network in the main process', () => {
       startedAt: 1,
     };
     state.layers.audio = sound;
+    // The skips: Simple Mode refuses them its window too, so in the window's words.
+    expect(answer({ type: 'skip', layer: 'background', jump: 'back' })).toMatchObject({
+      status: 403,
+      body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+    });
+    // The bar's move and Pause: Simple Mode's window has them since Session 56 (the owner's words: drag LIVE's time bar,
+    // Pause under LIVE), a phone does not (main/simple-mode-phones.ts, as it was): refused in the phone's own words, as
+    // anything else its window does and a phone may not. Until Session 56 in the window's, which refused them too.
     for (const args of [
       { type: 'moveTo', playing: { layer: 'background' }, toMs: 12_000 },
       { type: 'pausePlaying', playing: { layer: 'pip' } },
       { type: 'pausePlaying', playing: { layer: 'audio' } },
-      { type: 'skip', layer: 'background', jump: 'back' },
     ])
-      expect(answer(args), JSON.stringify(args)).toMatchObject({
+      expect(answer(args), JSON.stringify(args)).toEqual({
         status: 403,
-        body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+        body: { ok: false, error: 'forbidden', message: PHONE_WORDS },
       });
     // Play, anything. An audio playlist's track's Pause was Simple Mode's own (its Pause music) until Part 18 took the
     // music strip out of its window (Session 55): a phone is refused it now, in its own words (the owner's answer of

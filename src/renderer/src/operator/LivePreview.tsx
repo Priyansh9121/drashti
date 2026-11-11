@@ -170,7 +170,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
       </div>
       <PipLiveStrip />
-      {/* The time bar for what plays (Session 54), in Simple Mode: it shows it, and moves nothing. */}
+      {/* The time bar for what plays (Session 54), where a page asks for it under the picture. */}
       {bars && <PlayingBars />}
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">

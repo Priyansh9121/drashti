@@ -8,8 +8,9 @@ import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
 import { Monitor, MonitorOff, Music } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
-import type { SlideLayer } from '../../../shared/engine/state';
+import type { Layers, SlideLayer } from '../../../shared/engine/state';
 import { lastStep, stepOf } from '../../../shared/deck-show';
+import type { PlaylistItemInfo } from '../../../shared/playlists';
 import { repeatPlaylistOf } from '../../../shared/repeat';
 
 /** A deck's slide's click, in words, after "slide N of M" (Session 54, C2): "click 1 of 2", "2 clicks to come". */
@@ -20,6 +21,23 @@ export function clickWords(layer: SlideLayer | null | undefined): string {
   return at === 0
     ? ` · ${String(clicks)} ${clicks === 1 ? 'click' : 'clicks'} to come`
     : ` · click ${String(at)} of ${String(clicks)}`;
+}
+
+/**
+ * Whether a picture, video, sound or video input row put up from a playlist is still up (Session 56: LIVE shows one
+ * thing at a time): its picture or input as the background, its sound on the audio layer. Black-out or the Wallpaper
+ * going on takes a video off, and a clear or Clear all takes any of them off: LIVE's line then says the row was cleared,
+ * never that it is live beside the cover. The row not known here (its playlist not open): a picture or a sound is up.
+ */
+export function itemStillUp(item: PlaylistItemInfo | undefined, layers: Layers | null | undefined): boolean {
+  if (!layers) return false;
+  const bg = layers.background;
+  if (item?.kind === 'media')
+    return item.media === 'audio'
+      ? layers.audio?.mediaId === item.mediaId
+      : bg?.kind === 'media' && bg.mediaId === item.mediaId;
+  if (item?.kind === 'input') return bg?.kind === 'input' && bg.name === item.name;
+  return bg !== null || layers.audio !== null;
 }
 
 const NO_STATUS: ScreenStatus[] = [];
@@ -44,20 +62,23 @@ export function LiveStatus() {
     return playlistId === null ? undefined : s.tree.find((n) => n.id === playlistId)?.name;
   });
   const repeating = useEngine((s) => s.state?.repeat?.name);
-  // A picture, video or sound from a playlist: its name, when that playlist is open.
-  const itemLabel = usePlaylists((s) => s.items.find((i) => i.id === live?.playlist?.itemId)?.label);
+  // A picture, video or sound from a playlist: its name, when that playlist is open; and whether it is still up
+  // (Session 56: a cover going on takes a video off).
+  const item = usePlaylists((s) => s.items.find((i) => i.id === live?.playlist?.itemId));
+  const layers = useEngine((s) => s.state?.layers);
+  const itemUp = itemStillUp(item, layers);
   let text = 'Nothing live';
   if (timerAlone !== null) {
     text = `Live: Timer · ${timerAlone}`;
   } else if (live?.presentationId && live.slideIndex !== null) {
     text = `Live: ${name ?? passage ?? repeatName ?? repeating ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? click : ' (cleared)'}`;
   } else if (live?.playlist) {
-    text = `Live: ${itemLabel ?? 'playlist item'}`;
+    text = `Live: ${item?.label ?? 'playlist item'}${itemUp ? '' : ' (cleared)'}`;
   }
   const onAir =
     timerAlone !== null ||
     Boolean(live?.presentationId && slideShown) ||
-    Boolean(live?.playlist && !live.presentationId);
+    Boolean(live?.playlist && !live.presentationId && itemUp);
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm" data-testid="live-status" aria-live="polite">
       {onAir ? <LiveBadge /> : <Badge>Off</Badge>}

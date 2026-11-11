@@ -303,10 +303,10 @@ test('Rename and Delete from the library, each with Undo: Delete at once when no
   await app.close();
 });
 
-test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Play while something is paused', async () => {
+test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Play while something is paused, and again once it has played to its end', async () => {
   test.setTimeout(180_000);
   const { app, win, items, ids } = await start();
-  // A video up and paused (in Pro Mode here; a phone's Pause the same), then Simple Mode, which refuses Pause itself.
+  // A video up and paused (in Pro Mode here; a phone's Pause the same), then Simple Mode.
   await row(win, items.video).getByTestId('playlist-item').click();
   await expect.poll(async () => (await state(win)).layers.background).toMatchObject({ mediaId: ids.video });
   await expect
@@ -323,7 +323,8 @@ test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Pla
   );
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  // Its bar shows Play (the owner's answer to question 14), never Pause.
+  // Its bar shows Play (the owner's answer to question 14); Pause while it plays since Session 56 (the owner's words:
+  // Pause under LIVE in Simple Mode; one-at-a-time.spec.ts), and this clip's last 2 s soon pass.
   await expect(win.getByTestId('time-bar-play')).toBeVisible();
   await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
   await win.getByTestId('time-bar-play').click();
@@ -333,7 +334,8 @@ test('Simple Mode: one tap on a slide’s row puts it up; its time bar shows Pla
       return bg?.kind === 'media' ? (bg.seek?.paused ?? false) : null;
     })
     .toBe(false);
-  await expect(win.getByTestId('time-bar-play')).toHaveCount(0);
+  // Played to its end, it holds its last picture, Play offered again (until Session 56 Simple Mode's showed none then).
+  await expect(win.getByTestId('time-bar-play')).toBeVisible();
   await expect(win.getByTestId('time-bar-pause')).toHaveCount(0);
 
   // One tap on a slide's row puts it up, from the playlist (Pro Mode's rows since Session 55, Part 18).

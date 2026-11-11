@@ -184,7 +184,7 @@ async function plugIn(page: Page): Promise<void> {
   });
 }
 
-test('Add a Video Input… names the fake camera; one click puts it on the hall’s screen, LIVE and the stream’s Slides layout with the slide over it; black-out and the Wallpaper cover it; Clear all, Put it back and F3', async () => {
+test('Add a Video Input… names the fake camera; one click puts it on the hall’s screen, LIVE and the stream’s Slides layout with the slide over it; black-out and the Wallpaper take it off and it takes them off (one thing at a time); Clear all, Put it back and F3', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...FAKE, DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
@@ -273,16 +273,25 @@ test('Add a Video Input… names the fake camera; one click puts it on the hall�
   await expect(program.locator('[data-layer="slide"]')).toBeVisible();
   await win.getByRole('button', { name: 'Close stream' }).click();
 
-  // Black-out and the Wallpaper (Session 55, in the logo's place) cover it, and take nothing off.
+  // Black-out and the Wallpaper (Session 55, in the logo's place) take it off, as they take a video off, the slide
+  // staying under them; put up again, it takes them off (Session 56, the owner's words: LIVE shows one thing at a time;
+  // until then they covered it and took nothing off).
   await dispatch(win, { type: 'setBlackout', on: true });
   await expect(hall.getByTestId('blackout')).toBeVisible();
-  await expect(hall.locator('[data-kind="input"]')).toHaveCount(1);
+  await expect(hall.locator('[data-kind="input"]')).toHaveCount(0);
+  await expect.poll(() => background(win)).toBeNull();
   await dispatch(win, { type: 'setBlackout', on: false });
+  await expect(hall.getByTestId('blackout')).toHaveCount(0);
+  await expect(hall.locator('[data-layer="slide"]')).toBeVisible();
+  await expect(hall.locator('[data-kind="input"]')).toHaveCount(0);
+  await row.getByTestId('video-input-show').click();
+  await playsOn(hall, HALL);
   await dispatch(win, { type: 'setWallpaper', on: true });
   await expect(hall.getByTestId('wallpaper')).toBeVisible();
-  await expect(hall.locator('[data-kind="input"]')).toHaveCount(1);
-  await dispatch(win, { type: 'setWallpaper', on: false });
+  await expect(hall.locator('[data-kind="input"]')).toHaveCount(0);
+  await row.getByTestId('video-input-show').click();
   await expect(hall.getByTestId('wallpaper')).toHaveCount(0);
+  await playsOn(hall, HALL);
   expect(await background(win)).toMatchObject({ kind: 'input' });
 
   // Clear all takes it off; Put it back brings it back.

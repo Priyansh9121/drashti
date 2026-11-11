@@ -642,13 +642,19 @@ export interface EngineState {
   version: typeof ENGINE_STATE_VERSION;
   live: LiveCursor;
   layers: Layers;
-  /** Output-wide black-out. Independent of the layers, so turning it off restores the picture. */
+  /**
+   * Output-wide black-out. It covers the layers without clearing them, so turning it off brings back the slide and the
+   * picture as they were. But LIVE shows one thing at a time (Session 56, main/engine/one-at-a-time.ts): no video plays
+   * under it. Going on, it takes the background's video or video input off, and a video on the slide or in the
+   * picture-in-picture box waits there, paused; a video the operator puts up takes it off.
+   */
   blackout: boolean;
   /**
    * The Wallpaper (Session 55, Part 13, in the Logo's place): the chosen wallpaper on the audience screens instead of
    * the picture (render/NothingUp.tsx: `chosenWallpaper`, black with none chosen). Like black-out it covers the layers
-   * without clearing them, so taking it off brings back exactly what was there; black-out covers it in turn. Stage
-   * screens ignore it.
+   * without clearing them, so taking it off brings back the slide and the picture as they were, and like black-out
+   * (Session 56) it stops a video going on and a video put up takes it off; black-out covers it in turn. Stage screens
+   * ignore it.
    */
   wallpaper: boolean;
   /** What Clear all took down can be put back: nothing else has gone up since. */
