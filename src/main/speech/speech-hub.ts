@@ -1,9 +1,7 @@
 import { SPEECH_LANGUAGES, type Heard, type HeardWord, type SpeechState } from '../../shared/speech';
 
 /*
- * The speech hub (Session 55, Part 10): what the stream's sound input says, for every main-process listener
- * (live captions first, then the speech helpers). The rules every listener can count on
- * (assister/s55-notes/part10-interface.md):
+ * The speech hub (Session 55, Part 10): what the stream's sound input says. The rules for listeners:
  * 1. Off unless an admin turned it on (Settings, Live captions). While off, listen() registers, nothing
  *    arrives, and the state is off. Pro Mode or Simple Mode does not change what the hub hears.
  * 2. It runs only while someone listens: the engine starts with the first listener and stops a few seconds
@@ -26,7 +24,7 @@ import { SPEECH_LANGUAGES, type Heard, type HeardWord, type SpeechState } from '
  */
 
 export interface SpeechHub {
-  /** Hear speech from now on. `who` names the listener in the log ('captions', 'helper:<name>'). Returns how to stop. */
+  /** Hear speech from now on. `who` names the listener in the log (for example, 'captions'). Returns how to stop. */
   listen(who: string, heard: (h: Heard) => void): () => void;
   /** The state now, and each change. */
   state(): SpeechState;

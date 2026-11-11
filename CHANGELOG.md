@@ -2,6 +2,10 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.16
+
+- Live captions stay off by default and marked Trial. The five optional AI helpers from alpha.15 have been removed. Find passages by typing their reference or words in the library's Books tab. Saved playlists and loaded Books still work.
+
 ## 1.0.0-alpha.15 (5 Nov 2026)
 
 Update after a sabha, and update Main and nodes together. Live captions and all five offline AI helpers start off. Each is a Trial and can slow the screens while on. The AI helpers are Pro only: try only what you want in a rehearsal before a sabha.

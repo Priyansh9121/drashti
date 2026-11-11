@@ -417,38 +417,8 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 ![Confirmation of a separate placeholder PDF copy](screenshots/pdf-save-copy.png)
 
-## 11. AI helpers while preparing a sabha
+## 11. Finding a passage in Books
 
-**Choose only the helpers you want.** In Pro Mode, **File › AI helpers…** has five switches, all off at first: **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each is a **Trial** and can slow the screens while on. Rehearse before choosing one for a sabha. Each works offline on this computer; the choices are kept. Suggestions wait for you to check them. They do not change Books. Nothing goes on the screens until you choose it, and no helper starts a stream or recording. These tools are not offered in Simple Mode or on a phone.
+In Pro Mode, choose **View › Show Books, Templates and Kirtan Details** if the **Books** tab is hidden. Open **Library › Books**. Enter a reference in **Reference** and press **Show**, or type words from the passage into **Search the words…** and choose a result. The passage opens in the middle for you to check. Click one of its slides to put it on the screens, or choose **Add to playlist** to use it later.
 
-![All five offline AI helpers switched off](screenshots/ai-helpers.png)
-
-**Find by meaning.** With Meaning and spelling search on, open **Library**, type in its search box and press **Find by meaning**. The usual exact matches stay, with suggestions for meaning, a misspelling or Gujarati typed in English letters. Each suggestion leads to a real presentation, media item or loaded book passage; look at it before adding it to the playlist. It does not make up words or references. If the helper cannot finish, use the usual search.
-
-![Meaning search results for a placeholder library source](screenshots/ai-search.png)
-
-**Suggestions for newly pasted words.** With Import suggestions on, use the library's **New…** and paste the words for a new presentation. **Suggest slide breaks** offers places to split them; **Suggest transliteration** offers Roman letters using Drashti's existing rules. The review names the language when recognised and shows each change with its source line. Tick only the changes you want, then **Apply selected changes**. **Undo suggestion** restores your input, even after the helper has been switched off. Read the words and the Roman letters before making the presentation. This helper does not rewrite words already in the library or in Books.
-
-![Review placeholder word suggestions with individual choices and Undo](screenshots/ai-lyrics.png)
-
-**Suggest a playlist.** With Playlist suggestions on, choose **Suggest a playlist**, then the **Sabha date** and the **Past sabhas** it may draw from. **Suggest playlist** shows its proposed order and the calendar entry, if there is one; without an entry it uses a past sabha you chose. Check each row and where it came from, change the **Playlist name**, move rows up or down, and **Remove suggestion** for anything unwanted. Only **Make playlist** makes a new playlist; **Cancel** leaves the existing playlists as they were. Open the new one and rehearse it before the sabha.
-
-![Review a proposed placeholder playlist before making it](screenshots/ai-playlist.png)
-
-### Book references during pravachan
-
-**Find a passage, then choose whether to show it.** In Pro Mode, turn on **Book references** under **File › AI helpers…**; it starts off. The **Speech helpers** panel beside LIVE has **Look in loaded Books**: type Gujarati, Hindi or English and press **Find in Books**. Typed search works with listening and Live captions off. It searches only the original words in Books loaded here, showing their references and quoted words. Exact matches appear first while meaning is checked; **No good match in the loaded Books** means nothing suitable was found.
-
-![Typed search in loaded placeholder Books while listening is off](screenshots/ai-books.png)
-
-**To listen during pravachan**, ask the admin to turn on **Live captions on this computer**, choose the stream's sound input and wait for the model (admin guide, section 25). Both speech helpers need that separate switch for listening; neither turns it on. Heard words can then suggest passages in the same panel. If listening is waiting, let it wait or use typed search. Read the reference and quoted words before pressing **Show passage — …**: only that press puts a passage on the screens. If its book has changed or been removed, or the suggestion has expired, search again and check a fresh result. Books stay as loaded; the helper writes no new passage or translation.
-
-![Heard placeholder words offer source references and Show passage](screenshots/ai-books-heard.png)
-
-### Follow singing (Trial)
-
-**A suggestion for Next, with the operator in charge.** In Pro Mode, turn on **Follow singing (Trial)** under **File › AI helpers…**; it starts off and also needs Live captions switched on for listening. Put the kirtan's verse on **LIVE** as usual. When heard words clearly match that verse, the Speech helpers panel offers **Next suggested verse**. Check it, then press it when ready, or use the usual **Next**. It follows the current play order, never jumps to another verse and never advances by itself. Without a clear match, carry on with Next yourself.
-
-![Follow singing Trial offers Next while the operator keeps control](screenshots/ai-singing-trial.png)
-
-A suggestion is for the current live state and expires: changing the slide, leaving Pro Mode or losing the operator makes it unusable. Wait for a fresh match if needed. It is a **Trial**: try it in a rehearsal before a sabha, with the admin's chosen captions language. Turn it off again under **AI helpers…** if it is not useful; turning a speech helper off does not turn Live captions off.
+![The Books tab with a placeholder passage selected](screenshots/shastra-tab.png)

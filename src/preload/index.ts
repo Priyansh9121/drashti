@@ -35,31 +35,6 @@ ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' |
 });
 
 const bridge: DrashtiBridge = {
-  aiSpeech: {
-    get: () => invoke(IPC.aiSpeech.get),
-    set: (settings) => invoke(IPC.aiSpeech.set, settings),
-    search: (request) => invoke(IPC.aiSpeech.search, request),
-    showBook: (request) => invoke(IPC.aiSpeech.showBook, request),
-    nextVerse: (id) => invoke(IPC.aiSpeech.nextVerse, id),
-    onChanged: (listener) => on(IPC.aiSpeech.changed, listener),
-  },
-  ai: {
-    get: () => invoke(IPC.ai.get),
-    set: (settings) => invoke(IPC.ai.set, settings),
-    past: () => invoke(IPC.ai.past),
-    search: (request) => invoke(IPC.ai.search, request),
-    lyrics: (request) => invoke(IPC.ai.lyrics, request),
-    approveLyrics: (request) => invoke(IPC.ai.approveLyrics, request),
-    playlist: (request) => invoke(IPC.ai.playlist, request),
-    approvePlaylist: (request) => invoke(IPC.ai.approvePlaylist, request),
-    cancel: () => invoke(IPC.ai.cancel),
-    onOpen: (listener) =>
-      on(IPC.ai.open, () => {
-        listener();
-      }),
-    onChanged: (listener) => on(IPC.ai.changed, listener),
-    onProgress: (listener) => on(IPC.ai.progress, listener),
-  },
   app: {
     getInfo: () => invoke(IPC.app.getInfo),
     renderError: (report) => invoke(IPC.app.renderError, report),

@@ -134,17 +134,12 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/drashti
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs', 'scripts/fetch-ai-models.mjs') }}
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
-      - name: Fetch pinned offline helper resources
-        run: node scripts/fetch-ai-models.mjs
       - name: Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-ffmpeg.mjs --target darwin-x64
-      - name: Fetch offline helpers for Intel Macs too
-        if: runner.os == 'macOS'
-        run: node scripts/fetch-ai-models.mjs --target darwin-x64
       # YouTube's two programs (Session 25c): yt-dlp and Deno, pinned and checked the same way.
       - name: Fetch yt-dlp and Deno
         run: node scripts/fetch-youtube-tools.mjs
@@ -339,11 +334,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/drashti
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs', 'scripts/fetch-ai-models.mjs') }}
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
-      - name: Fetch pinned offline helper resources
-        run: node scripts/fetch-ai-models.mjs
       - name: Fetch yt-dlp and Deno
         run: node scripts/fetch-youtube-tools.mjs
       - name: Cache Playwright's browsers
@@ -408,11 +401,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/drashti
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs', 'scripts/fetch-ai-models.mjs') }}
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
-      - name: Fetch pinned offline helper resources
-        run: node scripts/fetch-ai-models.mjs
       - name: Fetch yt-dlp and Deno
         run: node scripts/fetch-youtube-tools.mjs
       - name: Cache Playwright's browsers

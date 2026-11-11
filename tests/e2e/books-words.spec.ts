@@ -280,6 +280,8 @@ test('the operator window: the Books tab, its dialogs, notices and errors, a pas
   // The menus, as on this computer (menu.test.ts builds them as on the Mac and on Windows).
   const menus = await menuWords(app);
   expect(menus).toContain('Show Books, Templates and Kirtan Details');
+  expect(menus).toContain('Live Captions…');
+  expect(menus).not.toContain('AI helpers…');
   expect(menus.filter((w) => /shastra/iu.test(w))).toEqual([]);
 
   // The guides inside Drashti: the admin's has the books' section.

@@ -1,6 +1,6 @@
 # The admin's guide: looking after Drashti
 
-These instructions describe **1.0.0-alpha.15**: Books, editing imported slides and PDFs, live captions (off and marked Trial), and five helpers that work offline, including Book references during pravachan and Follow singing (Trial). Keep Main, nodes and phone pages on the matching build when updating.
+These instructions describe **1.0.0-alpha.16**, including Books, editing imported slides and PDFs, and live captions (off and marked Trial). Keep Main, nodes and phone pages on the matching build when updating.
 
 This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside the old presentation program are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`.
 
@@ -632,23 +632,3 @@ The tick belongs to this computer, not the library: it is kept in Drashti's data
 - A message about the engine or macOS means this copy or computer cannot start it. Put that right before trying again; there is no need to turn captions on to run the show.
 
 **What stays private.** Captions are worked out on this computer. Drashti does not keep or log what it hears for captions, or send the sound to a speech service. Words shown in the stream are part of its picture, so take the same care with them as with any words put on the screens. Turn **Live captions on this computer** off to stop listening.
-
-## 26. AI helpers that work offline
-
-**Five separate switches, all off at first.** In Pro Mode, **File › AI helpers…** has **Meaning and spelling search**, **Import suggestions**, **Playlist suggestions**, **Book references** and **Follow singing (Trial)**. Each is a **Trial** and can slow the screens while on. Turn on only the ones the operators want after a rehearsal; the choices are kept. They work on this computer, with no account or cloud service. With every switch off, no AI helper starts. Simple Mode and phones do not offer these helpers.
-
-![All five offline AI helpers off before the admin chooses any](screenshots/ai-helpers.png)
-
-**The operator decides.** Search points to material already in the library, including meaning, spelling and Gujarati typed in English letters; it does not invent a passage or reference. Import suggestions are for newly pasted words, with each change chosen and **Undo suggestion** to put them back. Playlist suggestions draw from the chosen past sabhas and the loaded calendar: review, rename, move or remove suggestions before **Make playlist**. Books stay as loaded. Nothing suggested goes live by itself or starts a stream or recording. The operator's guide, section 11, has the steps.
-
-**Listening needs a separate choice.** Both speech helpers start off and work only for the Pro operator. To let either listen, an admin must also turn on **Live captions on this computer**, with its model ready and the stream's sound input chosen (section 25). A helper never turns captions on for you. Captions will then show in the places chosen there; keep the audience choice off while rehearsing. The Speech helpers panel beside LIVE shows whether listening is off, listening or waiting. Heard words are used on Main without a transcript file or log, and are not sent to phones.
-
-### Book references during pravachan
-
-With **Book references** on, the **Speech helpers** panel offers passages from the original words of Books loaded here, each with its reference and quoted words. Exact matches appear first while the meaning search finishes. The operator checks the passage and presses **Show passage** to put it on the screens; finding it alone changes nothing on the screens. No passage or translation is made up.
-
-**Typed search works while listening is off.** Leave Live captions off if only typed search is wanted: in **Look in loaded Books**, type Gujarati, Hindi or English, then **Find in Books**. If a book changes or is removed, or a suggestion expires, the old approval is refused: search again and check the fresh passage before showing it. Load authorised Books first (section 9).
-
-### Follow singing (Trial)
-
-With **Follow singing (Trial)** on and Live captions listening, the helper compares heard words with the kirtan verse on **LIVE**. A clear match offers the normal next verse in the current play order. It never advances by itself or jumps to a different verse: the operator presses **Next suggested verse**, or the usual **Next**, when ready. A suggestion expires and is no longer usable after the live slide changes, Pro Mode is left or the operator disconnects. Wait for a fresh match if needed. Keep it off until the owner has tried this Trial in a rehearsal; the captions' language limits still apply.

@@ -38,20 +38,6 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
 
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // Offline helpers are operator choices in Pro Mode, including their background requests.
-  IPC.aiSpeech.get,
-  IPC.aiSpeech.set,
-  IPC.aiSpeech.search,
-  IPC.aiSpeech.showBook,
-  IPC.aiSpeech.nextVerse,
-  IPC.ai.get,
-  IPC.ai.set,
-  IPC.ai.past,
-  IPC.ai.search,
-  IPC.ai.lyrics,
-  IPC.ai.approveLyrics,
-  IPC.ai.playlist,
-  IPC.ai.approvePlaylist,
-  IPC.ai.cancel,
   IPC.library.saveWords,
   IPC.library.newFromWords,
   // New › QR code… (Session 55, Part 8): Pro Mode's.
@@ -409,6 +395,5 @@ export function simpleModeRefusals(
   answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: words() }));
   answers.set(IPC.liveWindow.access, () => null);
   answers.set(IPC.zoom.open, () => null);
-  answers.set(IPC.ai.cancel, () => null);
   return answers;
 }

@@ -34,13 +34,6 @@ extraResources:
       - screenshots/access-list.png
       - screenshots/access-revoke.png
       - screenshots/access-stopped.png
-      - screenshots/ai-books-heard.png
-      - screenshots/ai-books.png
-      - screenshots/ai-helpers.png
-      - screenshots/ai-lyrics.png
-      - screenshots/ai-playlist.png
-      - screenshots/ai-search.png
-      - screenshots/ai-singing-trial.png
       - screenshots/appearance-window.png
       - screenshots/calendar-dialog.png
       - screenshots/captions-gujarati-trial.png
@@ -99,6 +92,7 @@ extraResources:
       - screenshots/screens-pair-node.png
       - screenshots/setup-wizard.png
       - screenshots/share-with-phones.png
+      - screenshots/shastra-tab.png
       - screenshots/shastra-texts.png
       - screenshots/simple-mode-1280x720.png
       - screenshots/smart-playlist.png
@@ -172,8 +166,6 @@ mac:
   # its framework's symbolic links kept), and Deno: LICENSES/yt-dlp/ and LICENSES/deno/. Signed with the
   # rest of the app.
   extraResources:
-    - from: vendor/ai/darwin-${arch}
-      to: ai
     - from: vendor/ffmpeg/darwin-${arch}
       to: ffmpeg
       filter: [ffmpeg]
@@ -228,8 +220,6 @@ win:
   # every DLL are signed then.
   signExts: ['.node', '.dll']
   extraResources:
-    - from: vendor/ai/win32-${arch}
-      to: ai
     - from: vendor/ffmpeg/win32-${arch}
       to: ffmpeg
       filter: [ffmpeg.exe]
