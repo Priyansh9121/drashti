@@ -407,9 +407,11 @@ export function useShrinkToFit(
 ): void {
   const on = el.style.shrinkToFit === true;
   const report = useMeasureReport();
+  const passive = !on && report === null;
   const [fontsLoaded, setFontsLoaded] = useState(0);
-  // A font arriving changes how far the words reach, shrunk or not.
+  // Measured text must refit or report when a font arrives. The observer covers passive size changes.
   useEffect(() => {
+    if (passive) return;
     const again = () => {
       setFontsLoaded((n) => n + 1);
     };
@@ -417,9 +419,23 @@ export function useShrinkToFit(
     return () => {
       document.fonts.removeEventListener('loadingdone', again);
     };
-  }, []);
+  }, [passive]);
   useEffect(() => () => report?.(el.id, null), [report, el.id]);
   useLayoutEffect(() => {
+    if (!passive) return undefined;
+    const b = box.current;
+    const w = words.current;
+    if (!b || !w) return undefined;
+    if (b.style.getPropertyValue('--fit') !== '') b.style.removeProperty('--fit');
+    if (b.hasAttribute('data-fit')) b.removeAttribute('data-fit');
+    // These nodes stay mounted through text and font changes. Use the browser's completed sizes.
+    return observeTextSizes(b, w, ({ height, wordsHeight }) => {
+      const over = wordsHeight > height + 0.5;
+      if (b.hasAttribute('data-overset') !== over) b.toggleAttribute('data-overset', over);
+    });
+  }, [box, words, passive]);
+  useLayoutEffect(() => {
+    if (passive) return undefined;
     const b = box.current;
     const w = words.current;
     if (!b || !w) return undefined;
@@ -432,14 +448,7 @@ export function useShrinkToFit(
     if (!on) {
       if (b.style.getPropertyValue('--fit') !== '') b.style.removeProperty('--fit');
       b.removeAttribute('data-fit');
-      if (report) reportOver(1);
-      else {
-        // RAF runs before layout too. Use the browser's completed sizes without forcing a layout before paint.
-        return observeTextSizes(b, w, ({ height, wordsHeight }) => {
-          if (wordsHeight > height + 0.5) b.setAttribute('data-overset', '');
-          else b.removeAttribute('data-overset');
-        });
-      }
+      reportOver(1);
       return undefined;
     }
     const fits = (fit: number) => {
@@ -463,7 +472,7 @@ export function useShrinkToFit(
     // The words still past the box, at that fit.
     reportOver(lo);
     return undefined;
-  }, [box, words, el, on, fontsLoaded, again, report]);
+  }, [box, words, el, on, passive, fontsLoaded, again, report]);
 }
 
 /** How a text box is drawn (the slide editor draws the box it edits the same way). */
