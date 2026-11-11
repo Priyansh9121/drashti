@@ -130,6 +130,8 @@ export interface BakeOptions extends ConvertOptions {
   freeBytes?: (dir: string) => number;
   /** Tests only (Session 56's timing check): the stand-in's movie this many lines high (else 180). */
   standInLines?: number | null;
+  /** Tests only (Session 56): the stand-in makes its movie only once this file is there (a deck seen preparing). */
+  standInHold?: string | null;
   /**
    * The PDF of every shown slide is saved, before the movie is made, and the deck as read (Session 56): the slides can
    * show as their pictures while their animations are made. Once, by every app and the stand-in.
@@ -774,6 +776,9 @@ async function standIn(
   const pdf = await standInPdf(input, read.slides, work);
   options.steps?.add('app-pdf', performance.now() - pdfFrom);
   options.pdfReady?.(pdf, read);
+  // Held by a test until it has seen the slides preparing (Session 56).
+  const hold = options.standInHold;
+  if (hold) while (!exists(hold) && !options.signal?.aborted) await sleep(100, options.signal);
   const movie = join(work, 'movie.mp4');
   const movieFrom = performance.now();
   await standInMovie(options.ffmpeg, plan, movie, options.signal, standInSize(options.standInLines ?? null));

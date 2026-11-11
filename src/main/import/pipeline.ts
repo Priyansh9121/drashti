@@ -176,6 +176,8 @@ export interface PipelineContext {
   standInLines?: number | null;
   /** Tests only (the timing check): only these apps make a deck's movie or PDF, in this order (else every one here). */
   deckApps?: Converter[] | null;
+  /** Tests only (Session 56): the stand-in makes its movie only once this file is there (a deck seen preparing). */
+  standInHold?: string | null;
 }
 
 type SourceKind = 'text' | 'docx' | 'pp6' | 'pp7' | 'pictures';
@@ -720,6 +722,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     return { latest, choice };
   };
 
+  /** The content's revision of a presentation in the library, or null when it is gone. */
+  const revisionOf = (id: string): number | null =>
+    (ctx.db
+      .prepare('SELECT content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
+      .pluck()
+      .get(id) as number | undefined) ?? null;
+
   /**
    * Write a presentation, and say so in the report. Two writes for a deck whose slides show as their pictures while
    * its animations are made (Session 56): `early`, the pictures (no report line, committed at once, so the operator
@@ -735,7 +744,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     decidedAlready?: Decided,
     retained: readonly OriginalDescriptor[] = [],
     phase?: { early: true } | { after: { id: string; name: string } },
-  ): Promise<{ id: string; name: string } | null> => {
+  ): Promise<{ id: string; name: string; rev: number | null } | null> => {
     const base = { sourcePath: where.sourcePath, format: reportFormat(kind), counts: NO_COUNTS };
     const decided = decidedAlready ?? decideEarlier(file, where, kind, parsed.ref, hash);
     if (!decided) return null;
@@ -843,7 +852,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         // The pictures shown first (Session 56): the report's line comes with the deck itself.
         if (!phase || !('early' in phase)) imports.addItem(ctx.runId, at, item);
         time('write', started);
-        return { item, wrote, marked: media.marked };
+        // Its content's revision as written, before anyone is told of it (an edit after it is the operator's).
+        return { item, wrote, marked: media.marked, rev: revisionOf(wrote.presentationId) };
       },
       {
         committed: ({ item, wrote, marked }) => {
@@ -867,7 +877,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     remember(where, file, result.wrote.presentationId);
     // Shown at once (Session 56): its group committed now, not with the next file's.
     if (phase && 'early' in phase) batch.commit();
-    return { id: result.wrote.presentationId, name: result.item.name };
+    return { id: result.wrote.presentationId, name: result.item.name, rev: result.rev };
   };
 
   /**
@@ -916,13 +926,6 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       );
     }
   };
-
-  /** The content's revision of a presentation in the library, or null when it is gone. */
-  const revisionOf = (id: string): number | null =>
-    (ctx.db
-      .prepare('SELECT content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
-      .pluck()
-      .get(id) as number | undefined) ?? null;
 
   /**
    * A deck's slides written as their pictures while its animations were made (Session 56) and then changed or deleted
@@ -1086,6 +1089,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             officeCopies: ctx.officeCopies ?? null,
             steps,
             standInLines: ctx.standInLines ?? null,
+            standInHold: ctx.standInHold ?? null,
             // The slides that come in as their pictures (Session 56): the PDF the app saved, drawn by the main process.
             drawPdf: ctx.drawPdf,
             // The slides as their pictures at once (Session 56), the ones that move marked as preparing; never in place
@@ -1111,7 +1115,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
                       retained,
                       { early: true },
                     );
-                    if (wrote) early.shown = { ...wrote, rev: revisionOf(wrote.id) };
+                    if (wrote) early.shown = wrote;
                   },
                 }),
           },

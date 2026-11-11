@@ -181,6 +181,7 @@ async function start(message: StartMessage): Promise<void> {
             // Tests only (the timing check, Session 56).
             standInLines: message.standInLines ?? null,
             deckApps: message.deckApps ?? null,
+            standInHold: message.standInHold ?? null,
             ffmpeg,
             onAir,
             onWrote: (wrote) => {

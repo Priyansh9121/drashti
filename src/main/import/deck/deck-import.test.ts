@@ -89,6 +89,8 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           freeBytes?: number;
           /** How many pages the stand-in's PDF has (one per shown slide; the trial deck's five). */
           pages?: number;
+          /** Each presentation written, as soon as its group is committed. */
+          onWrote?: (wrote: { presentationId: string; replaced: boolean }) => void;
         },
         paths = [deck],
       ) =>
@@ -104,6 +106,7 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
           baker: options.baker,
           converters: options.converters,
           ...(options.freeBytes === undefined ? {} : { freeBytes: () => options.freeBytes ?? 0 }),
+          ...(options.onWrote ? { onWrote: options.onWrote } : {}),
           onAir: (() => {
             let asked = 0;
             const on = options.onAir;
@@ -262,6 +265,84 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       expect(item?.issues.find((i) => i.code === 'deck-still-slides')?.message).toBe(
         '4 slides have nothing that moves (no animations, transition, video or sound), so they came in as their pictures straight away.',
       );
+    }, 240_000);
+
+    /** Each slide's deck in the library now, in a word: preparing, its steps, or a plain picture. */
+    const decksNow = (t: ReturnType<typeof setup>, id: string) =>
+      t.slidesOf(id).map((s) => {
+        const d = s.slide.deck;
+        return d?.preparing ? 'preparing' : d ? `${String(d.steps.length)} steps` : 'picture';
+      });
+
+    it('shows its slides as their pictures at once, those that move marked as preparing, then their steps in their place (Session 56)', async () => {
+      const t = setup();
+      const deckFile = join(dir, 'Placeholder preparing.pptx');
+      writeFileSync(deckFile, makeTestDeck(placeholderSlides(6), makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      const writes: { id: string; replaced: boolean; decks: string[] }[] = [];
+      const summary = await t.run(
+        {
+          baker: 'stand-in',
+          converters: 'stand-in',
+          pages: 6,
+          onWrote: (w) =>
+            writes.push({ id: w.presentationId, replaced: w.replaced, decks: decksNow(t, w.presentationId) }),
+        },
+        [deckFile],
+      );
+      // First its pictures, the two that move preparing (the lead-in a still step of its own); then the deck in place.
+      expect(writes).toEqual([
+        {
+          id: writes[0]?.id,
+          replaced: false,
+          decks: ['preparing', 'picture', '1 steps', 'preparing', 'picture', 'picture'],
+        },
+        {
+          id: writes[0]?.id,
+          replaced: true,
+          decks: ['4 steps', 'picture', '1 steps', '3 steps', 'picture', 'picture'],
+        },
+      ]);
+      // One line in the report, as an import of it.
+      const items = t.report(summary.id)?.items ?? [];
+      expect(items.map((i) => [i.outcome, i.target?.id])).toEqual([['imported', writes[0]?.id]]);
+      expect(summary.totals).toMatchObject({ imported: 1, presentations: 1, slides: 6 });
+    }, 240_000);
+
+    it('an edit to its slides while their animations are made wins: they stay as they are, the marks gone, said in the report (Session 56)', async () => {
+      const t = setup();
+      const deckFile = join(dir, 'Placeholder edited.pptx');
+      writeFileSync(deckFile, makeTestDeck(placeholderSlides(6), makeDeckMedia(ffmpeg, join(dir, 'made'))));
+      let edited = false;
+      const summary = await t.run(
+        {
+          baker: 'stand-in',
+          converters: 'stand-in',
+          pages: 6,
+          // The operator changes it as soon as it shows (its content moves on, as a save in Edit slides moves it).
+          onWrote: (w) => {
+            if (edited) return;
+            edited = true;
+            t.db
+              .prepare('UPDATE presentations SET content_rev = content_rev + 1 WHERE id = ?')
+              .run(w.presentationId);
+          },
+        },
+        [deckFile],
+      );
+      const item = t.report(summary.id)?.items[0];
+      expect(item).toMatchObject({
+        outcome: 'imported',
+        message:
+          'It was changed while its animations were being made, so it was kept as it was, as its pictures: import it again for its animations.',
+      });
+      expect(decksNow(t, item?.target?.id ?? '')).toEqual([
+        'picture',
+        'picture',
+        '1 steps',
+        'picture',
+        'picture',
+        'picture',
+      ]);
     }, 240_000);
 
     it('a deck where nothing moves comes in as its pictures straight away, with no movie made (Session 56)', async () => {

@@ -13,6 +13,7 @@ import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
 import { Badge, LiveBadge, MissingBadge } from '../ui/Badge';
+import { PreparingMark, preparingWords } from './PreparingMark';
 import { cx } from '../ui/cx';
 import { AlertTriangle, Music, Video } from '../ui/icons';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
@@ -218,7 +219,7 @@ export const SlideRow = memo(function SlideRow({
         data-found={found ? 'true' : undefined}
         aria-current={live ? 'true' : undefined}
         aria-keyshortcuts={keyShortcuts}
-        aria-label={`${label}${line !== '' ? `: ${line}` : ''}${groupName !== '' ? `, ${groupName}` : ''}${live ? ' (live)' : ''}${over ? ', words run past a box' : ''}${fileGone !== null ? `, its background file “${fileGone}” is missing` : ''}${soundGone !== null ? `, its sound file “${soundGone}” is missing` : ''}`}
+        aria-label={`${label}${line !== '' ? `: ${line}` : ''}${groupName !== '' ? `, ${groupName}` : ''}${live ? ' (live)' : ''}${preparingWords(info.slide)}${over ? ', words run past a box' : ''}${fileGone !== null ? `, its background file “${fileGone}” is missing` : ''}${soundGone !== null ? `, its sound file “${soundGone}” is missing` : ''}`}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
@@ -276,6 +277,7 @@ export const SlideRow = memo(function SlideRow({
                 {group.name}
               </span>
             )}
+            <PreparingMark slide={info.slide} />
           </span>
           {line !== '' && (
             <span className="block truncate text-xs text-muted" data-testid="slide-line">

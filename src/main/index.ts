@@ -3445,6 +3445,9 @@ function start(): void {
       // PowerPoint's own is (1080), and only these apps for a deck (DRASHTI_TEST_DECK_APPS=keynote: Keynote's times).
       standInLines: packaged() ? null : swMs('DRASHTI_TEST_DECK_BAKER_LINES'),
       deckApps: packaged() ? null : deckAppsOf(sw('DRASHTI_TEST_DECK_APPS')),
+      // Tests only (never a packaged Drashti; Session 56): the stand-in holds its movie until this file is there, so a
+      // test sees a deck's slides preparing.
+      standInHold: packaged() ? null : (sw('DRASHTI_TEST_DECK_BAKER_HOLD') ?? null),
     },
     drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
     // A deck with its animations where this computer's setting says so (Session 54, C2 and its review). Tests only

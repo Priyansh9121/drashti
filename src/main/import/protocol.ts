@@ -43,6 +43,8 @@ export interface StartMessage {
   standInLines?: number | null;
   /** Tests only (the timing check): only these apps make a deck's movie or PDF, in this order (else every one here). */
   deckApps?: ('powerpoint' | 'keynote')[] | null;
+  /** Tests only (Session 56): the stand-in makes its movie only once this file is there (a deck seen preparing). */
+  standInHold?: string | null;
 }
 
 export interface CancelMessage {
