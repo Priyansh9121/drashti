@@ -74,6 +74,26 @@ describe('live captions from the hub (Part 10)', () => {
     expect(last()?.lines).toEqual(['alpha beta gamma', 'delta']);
   });
 
+  it('offers only settled phrases to the recorder while the captions feed is running', () => {
+    const hub = createFakeSpeechHub();
+    hub.setState({ phase: 'listening', language: 'auto' });
+    const onFinalPhrase = vi.fn();
+    const feed = createCaptionsFeed({
+      hub,
+      show: vi.fn(),
+      onFinalPhrase,
+      settings: () => DEFAULT_CAPTION_SETTINGS,
+    });
+    hub.say(phrase('s1', true, 'Before'));
+    feed.start();
+    hub.say(phrase('s2', false, 'Partial'));
+    hub.say(phrase('s2', true, 'Generated placeholder'));
+    feed.stop();
+    hub.say(phrase('s3', true, 'After'));
+    expect(onFinalPhrase).toHaveBeenCalledTimes(1);
+    expect(onFinalPhrase).toHaveBeenCalledWith(expect.objectContaining({ text: 'Generated placeholder' }));
+  });
+
   it('change the screens at most every 300 ms (the last change always shown)', () => {
     const { hub, feed, shown, last } = setup();
     feed.start();

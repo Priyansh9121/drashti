@@ -841,6 +841,7 @@ export const IPC = {
     goLive: 'stream:go-live',
     end: 'stream:end',
     startRecording: 'stream:start-recording',
+    startSoundRecording: 'stream:start-sound-recording',
     stopRecording: 'stream:stop-recording',
     /** Choose the recordings' folder. */
     pickFolder: 'stream:pick-folder',
@@ -1572,6 +1573,7 @@ export interface InvokeContract {
   [IPC.stream.goLive]: { args: [confirm: { confirmed: true }]; result: StreamResult };
   [IPC.stream.end]: { args: [confirm: { confirmed: true }]; result: StreamResult };
   [IPC.stream.startRecording]: { args: []; result: StreamResult };
+  [IPC.stream.startSoundRecording]: { args: []; result: StreamResult };
   [IPC.stream.stopRecording]: { args: []; result: StreamResult };
   [IPC.stream.pickFolder]: { args: []; result: StreamResult };
   [IPC.stream.dismissResume]: { args: []; result: null };

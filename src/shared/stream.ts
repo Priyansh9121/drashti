@@ -187,6 +187,8 @@ export interface ProgramContext {
   sound: DeviceChoice | null;
   soundDelayMs: number;
   mixOwnSound: boolean;
+  /** Draw the Program when someone needs its picture. A raw sound tap alone needs no camera or picture. */
+  picture: boolean;
   /** Frames are wanted by the encoder (live or recording). */
   capturing: boolean;
   /** The operator is watching the preview (a port for it comes separately). */
@@ -200,6 +202,10 @@ export type StreamHealth = 'good' | 'struggling' | 'reconnecting' | 'off';
 
 export type LiveState = 'off' | 'starting' | 'live' | 'reconnecting' | 'ending';
 export type RecordingState = 'off' | 'starting' | 'recording';
+export type RecordingKind = 'sound' | 'video';
+
+/** Recordings roll over in parts that fit on FAT32. */
+export const RECORD_PART_BYTES = 3.5 * 1024 ** 3;
 
 export interface StreamStatus {
   /** The stream's page is drawing the Program. */
@@ -230,6 +236,7 @@ export interface StreamStatus {
     destinations: PlaceStatus[];
   };
   recording: {
+    kind: RecordingKind;
     state: RecordingState;
     since: number | null;
     /** The file being written (its name only). */

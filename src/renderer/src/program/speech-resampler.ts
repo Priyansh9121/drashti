@@ -1,4 +1,5 @@
-export const SPEECH_RATE = 16_000;
+import { SPEECH_RATE } from '../../../shared/speech';
+export { SPEECH_RATE } from '../../../shared/speech';
 
 /** Mono samples at any rate to 16 kHz 16-bit: each output sample the average of the input it stands for. */
 export class SpeechResampler {

@@ -2953,6 +2953,7 @@ function start(): void {
     show: (shown) => {
       engine.setCaptions(shown);
     },
+    onFinalPhrase: (phrase) => streaming.recordCaption(phrase),
     changed: (view) => {
       sendToOperator(IPC.captions.changed, view);
     },
@@ -3032,7 +3033,7 @@ function start(): void {
   passageTargets = () => {
     const look = engine.snapshot().state.look;
     const context = streaming.context();
-    const camera = context.layout === 'camera' && streaming.inUse();
+    const camera = context.layout === 'camera' && context.capturing;
     return fitTargets(
       look,
       screenRepo.groupIds(),
@@ -6141,6 +6142,9 @@ function start(): void {
       : { ok: false as const, message: 'Ending the stream needs the operator to confirm it.' },
   );
   handle(IPC.stream.startRecording, (e) => (fromOperator(e) ? streaming.startRecording() : notOperator));
+  handle(IPC.stream.startSoundRecording, (e) =>
+    fromOperator(e) ? streaming.startSoundRecording() : notOperator,
+  );
   handle(IPC.stream.stopRecording, (e) => (fromOperator(e) ? streaming.stopRecording() : notOperator));
   handle(IPC.stream.pickFolder, (e) =>
     fromOperator(e) ? streaming.pickFolder(operatorWindow) : notOperator,
@@ -6705,6 +6709,7 @@ function start(): void {
     // Output windows would otherwise keep the app alive.
     app.quit();
   });
+  let quitSavingSound = false;
   app.on('before-quit', (event) => {
     if (!confirmQuit()) {
       event.preventDefault();
@@ -6715,11 +6720,26 @@ function start(): void {
     // quit says whether Drashti or what came after was slow.
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
-    streaming.quitting();
+    const soundSaved = streaming.quitting();
     studio.quitting();
     // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
     hevcPage?.close();
     slideEditor?.quitting();
+    if (soundSaved) {
+      event.preventDefault();
+      if (!quitSavingSound) {
+        quitSavingSound = true;
+        void soundSaved
+          .catch(() => {
+            log.warn('The sound recording could not be finished before quitting.');
+          })
+          .then(() => {
+            quitSavingSound = false;
+            app.quit();
+          });
+      }
+      return;
+    }
     const sourceQuit = documentQuit;
     if (
       sourceQuit &&
