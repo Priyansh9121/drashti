@@ -35,6 +35,7 @@ import { Kbd } from '../ui/Kbd';
 import { OpenPlaylist } from '../playlists/OpenPlaylist';
 import {
   closePlaylist,
+  dropFolders,
   importIntoPlaylist,
   openPlaylist,
   playlistsUnread,
@@ -155,7 +156,10 @@ function useOnePlaylist(): void {
   );
 }
 
-/** Files dropped anywhere on the window (not on a row, or on the wallpapers, which take their own): at the end. */
+/**
+ * Files dropped anywhere on the window (not on a row, or on the wallpapers, which take their own): at the end of the
+ * open playlist. A folder (Session 56, the owner's item 5): a smart playlist following it, at once, nothing asked.
+ */
 function useDropsIntoPlaylist(): void {
   useEffect(() => {
     const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') === true;
@@ -171,7 +175,9 @@ function useDropsIntoPlaylist(): void {
       const paths = Array.from(e.dataTransfer.files)
         .map((f) => window.drashti.files.pathFor(f))
         .filter((p) => p !== '');
-      if (playlistId !== null && paths.length > 0) void importIntoPlaylist(playlistId, null, paths);
+      void dropFolders(paths, (files) =>
+        playlistId !== null ? importIntoPlaylist(playlistId, null, files) : undefined,
+      );
     };
     window.addEventListener('dragover', over);
     window.addEventListener('drop', drop);

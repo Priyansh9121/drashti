@@ -1,7 +1,8 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
 import type { RenderSlide } from '../../shared/model';
-import type { PlaylistResult, SmartPlaylistView } from '../../shared/playlists';
+import { importPathsSchema } from '../../shared/import-schema';
+import type { PlaylistResult, SmartFromDrop, SmartPlaylistView } from '../../shared/playlists';
 import { repeatSettingsSchema } from '../../shared/repeat';
 import {
   idListSchema,
@@ -43,6 +44,8 @@ export interface PlaylistIpcDeps {
     /** The folder an admin chooses for a new one (a dialog), or null. */
     pickFolder(): Promise<string | null>;
     create(folder: string): Promise<{ ok: true; id: string } | { ok: false; message: string }>;
+    /** Files and folders dropped (Session 56): a smart playlist from each folder; the rest given back. */
+    fromDrop(paths: readonly string[]): Promise<SmartFromDrop>;
     views(): SmartPlaylistView[];
     removeMissing(playlistId: string): string[];
     itemsRestored(itemIds: readonly string[]): void;
@@ -51,7 +54,8 @@ export interface PlaylistIpcDeps {
   };
 }
 
-const refused: PlaylistResult = { ok: false, message: 'Only the operator window can change playlists.' };
+const ONLY_OPERATOR = 'Only the operator window can change playlists.';
+const refused: PlaylistResult = { ok: false, message: ONLY_OPERATOR };
 const failed = (message: string): PlaylistResult => ({ ok: false, message });
 
 /**
@@ -352,6 +356,21 @@ export function registerPlaylistIpc({
     if (folder === null) return { ok: true, ids: [] };
     const made = await smart.create(folder);
     return made.ok ? { ok: true, ids: [made.id] } : failed(made.message);
+  });
+  // Files and folders dropped (Session 56, the owner's item 5): a smart playlist from each folder, at once, nothing
+  // asked; the rest given back, for the drop's own place (with no smart playlists here, all of them).
+  handle(IPC.playlists.createSmartFrom, async (e, paths): Promise<SmartFromDrop> => {
+    const list = importPathsSchema.safeParse(paths);
+    if (!fromOperator(e) || !list.success)
+      return {
+        made: [],
+        files: [],
+        problems: [list.success ? ONLY_OPERATOR : 'Those files could not be read.'],
+      };
+    if (!smart) return { made: [], files: list.data, problems: [] };
+    const dropped = await smart.fromDrop(list.data);
+    if (dropped.made.length > 0) changed();
+    return dropped;
   });
   handle(IPC.playlists.removeMissing, (e, playlistId) =>
     change(e, () => {

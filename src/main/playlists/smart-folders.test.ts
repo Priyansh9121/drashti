@@ -485,3 +485,66 @@ describe('a smart playlist following a folder', () => {
     second.service.stop();
   });
 });
+
+describe('files and folders dropped on Drashti (Session 56, the owner’s item 5)', () => {
+  /** A folder of its own under the test's, with these files in it (none: an empty folder). */
+  const folderWith = async (name: string, files: Record<string, string>) => {
+    const dir = join(root, name);
+    await mkdir(dir, { recursive: true });
+    for (const [relative, content] of Object.entries(files)) {
+      const path = join(dir, ...relative.split('/'));
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, content);
+    }
+    return dir;
+  };
+
+  it('makes each folder a smart playlist following it, at once, named after it; files are given back in the order dropped', async () => {
+    const week = await folderWith('Placeholder Week 1', {
+      'Clip.mp4': 'video one',
+      'Talks/Notes.pdf': 'pdf one',
+    });
+    const empty = await folderWith('Placeholder Later', {});
+    const loose = join(root, 'Placeholder loose.jpg');
+    await writeFile(loose, 'picture one');
+    const { service, playlists, settle, shown } = setup();
+    const dropped = await service.fromDrop([loose, week, empty, join(root, 'Placeholder not there.mp4')]);
+    expect(dropped.problems).toEqual([]);
+    expect(dropped.files).toEqual([loose, join(root, 'Placeholder not there.mp4')]);
+    expect(dropped.made).toHaveLength(2);
+    const [weekId = '', emptyId = ''] = dropped.made;
+    // Smart playlists at the top of the list (the last made first), each following its folder.
+    expect(playlists.tree().slice(0, 2)).toMatchObject([
+      { id: emptyId, name: 'Placeholder Later', kind: 'smart' },
+      { id: weekId, name: 'Placeholder Week 1', kind: 'smart' },
+    ]);
+    expect(service.views().map((v) => v.folder)).toEqual([week, empty]);
+    await settle(weekId);
+    expect(shown(weekId)).toEqual(['Clip.mp4', '# Talks', 'Notes']);
+  });
+
+  it('gives back a Keynote deck saved as a package, and a folder of only lyrics or the other program’s files, for the import as before', async () => {
+    const deck = await folderWith('Placeholder talk.key', {
+      'Index.zip': 'deck inside',
+      'Data/one.jpg': 'inside',
+    });
+    const lyrics = await folderWith('Placeholder lyrics', { 'Kirtan.txt': 'words', 'Old/Song.pro6': 'old' });
+    const both = await folderWith('Placeholder both', { 'Kirtan.txt': 'words', 'Hall.jpg': 'picture' });
+    const { service, playlists } = setup();
+    const dropped = await service.fromDrop([deck, lyrics, both]);
+    expect(dropped.files).toEqual([deck, lyrics]);
+    expect(dropped.made).toHaveLength(1);
+    expect(playlists.tree().map((n) => n.name)).toEqual(['Placeholder both']);
+  });
+
+  it('says why a folder too big to follow made none', async () => {
+    const big = await folderWith('Placeholder big', { 'a.jpg': '1', 'b.jpg': '2', 'c.jpg': '3' });
+    const { service, playlists } = setup(undefined, 2);
+    const dropped = await service.fromDrop([big]);
+    expect(dropped.made).toEqual([]);
+    expect(dropped.files).toEqual([]);
+    expect(dropped.problems).toHaveLength(1);
+    expect(dropped.problems[0]).toContain('a smart playlist follows at most 2');
+    expect(playlists.tree()).toEqual([]);
+  });
+});

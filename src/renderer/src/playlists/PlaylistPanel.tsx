@@ -57,6 +57,7 @@ import {
   createRepeatPlaylist,
   createSmartPlaylist,
   dismissProblem,
+  dropFolders,
   importIntoPlaylist,
   newFromTemplate,
   openPlaylist,
@@ -322,11 +323,12 @@ function PlaylistTree({ platform }: { platform: string }) {
                   onDrop={(e) => {
                     setDropOn(null);
                     if (node.isFolder) return;
-                    // Files from the Finder or Explorer: imported, then added at its end (Session 26a).
+                    // Files from the Finder or Explorer: imported, then added at its end (Session 26a); a folder, a
+                    // smart playlist following it, at once (Session 56, item 5).
                     if (hasFiles(e)) {
                       e.preventDefault();
                       e.stopPropagation();
-                      void importIntoPlaylist(node.id, null, droppedPaths(e));
+                      void dropFolders(droppedPaths(e), (files) => importIntoPlaylist(node.id, null, files));
                       return;
                     }
                     if (!fromLibrary(e)) return;

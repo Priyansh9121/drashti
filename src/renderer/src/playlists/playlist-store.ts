@@ -7,6 +7,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  SmartFromDrop,
   TimerCue,
 } from '../../../shared/playlists';
 import { POSITION_MAX } from '../../../shared/playlists';
@@ -759,6 +760,37 @@ export async function importIntoPlaylist(
     index >= 0 ? index : null,
     header === null ? made : [{ kind: 'header', label: header }, ...made],
   );
+}
+
+/**
+ * Files and folders dropped on the window, a playlist or its rows (Session 56, the owner's words of 11 Nov 2026, item
+ * 5: "A folder dragged in is added straight away, with no questions … it becomes a smart playlist that follows that
+ * folder", in both modes): each folder becomes at once a new smart playlist following it, named after it, the last of
+ * them opened in the middle; nothing is asked. What is left (files, a Keynote deck saved as a package, a folder of only
+ * lyrics or the other program's files) goes to `rest`, the drop's own place as before, before the new playlist opens,
+ * so it lands where it was dropped.
+ */
+export async function dropFolders(
+  paths: string[],
+  rest: (files: string[]) => Promise<unknown> | undefined,
+): Promise<void> {
+  if (paths.length === 0) return;
+  let dropped: SmartFromDrop;
+  try {
+    dropped = await api().createSmartFrom(paths);
+  } catch {
+    // Never lost: what could not be looked at goes where files go.
+    dropped = { made: [], files: paths, problems: [] };
+  }
+  if (dropped.problems.length > 0) useNotice.setState({ text: dropped.problems.join(' ') });
+  // The files' place is taken as their import starts (importIntoPlaylist), before another playlist opens.
+  const files = dropped.files.length > 0 ? rest(dropped.files) : undefined;
+  const last = dropped.made.at(-1);
+  if (last !== undefined) {
+    await loadTree();
+    await openPlaylist(last);
+  }
+  await files;
 }
 
 /** Add to the open playlist, after its chosen item, or at the end when none is chosen (Add to playlist). */

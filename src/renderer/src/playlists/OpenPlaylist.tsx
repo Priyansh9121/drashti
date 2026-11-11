@@ -95,6 +95,7 @@ import {
   closePlaylist,
   duplicatePlaylist,
   fillPlaceholder,
+  dropFolders,
   importIntoPlaylist,
   itemName,
   markedItems,
@@ -879,14 +880,16 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
   const onDrop = (e: DragEvent) => {
     const kind = dragKind(e);
     // Files from the Finder or Explorer: imported as anywhere, then added where they landed, in the
-    // order dropped (Session 26a). The window's own drop, which only imports, never sees them.
+    // order dropped (Session 26a). The window's own drop, which only imports, never sees them. A folder (Session 56,
+    // item 5): a smart playlist following it, at once, opened here.
     if (!kind && hasFiles(e)) {
       e.preventDefault();
       e.stopPropagation();
       const where = spotFor(e);
       setSpot(null);
       const at = 'at' in where ? where.at : items.findIndex((i) => i.id === where.fill);
-      void importIntoPlaylist(openId, at, droppedPaths(e), 'at' in where ? (where.header ?? null) : null);
+      const header = 'at' in where ? (where.header ?? null) : null;
+      void dropFolders(droppedPaths(e), (files) => importIntoPlaylist(openId, at, files, header));
       return;
     }
     if (!kind) return;

@@ -112,6 +112,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  SmartFromDrop,
   SmartPlaylistView,
   TemplateRequest,
   TimerCue,
@@ -517,6 +518,11 @@ export interface DrashtiBridge {
     smartViews(): Promise<SmartPlaylistView[]>;
     /** A smart playlist from a folder chosen in a dialog (none made: no ids). */
     createSmart(): Promise<PlaylistResult>;
+    /**
+     * Files and folders dropped (Session 56, item 5): a smart playlist from each folder, at once, nothing asked; the
+     * rest given back for the drop's own place.
+     */
+    createSmartFrom(paths: string[]): Promise<SmartFromDrop>;
     /** Take a smart playlist's missing items out (their files are gone from its folder). */
     removeMissing(playlistId: string): Promise<PlaylistResult>;
     /** A new Repeat Slides playlist (Session 26d) in a folder or at the top level, and its settings. */

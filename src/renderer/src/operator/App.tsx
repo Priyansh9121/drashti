@@ -24,7 +24,7 @@ import { connectAppearance } from '../appearance/appearance-store';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import { WallpapersPanel } from '../wallpapers/WallpapersPanel';
-import { loadTree, watchPlaylists } from '../playlists/playlist-store';
+import { dropFolders, loadTree, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
@@ -261,7 +261,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
   // Pin to the quick bar (Session 55, Part 8) in the one right-click menu, while Pro Mode's window is up.
   useEffect(() => addFileMenuItems(quickMenuItems), []);
   // Files dropped anywhere on the window are imported, as on the presentation list (which takes
-  // its own drops): an operator drags a deck onto Drashti, wherever it lands (Session 16).
+  // its own drops): an operator drags a deck onto Drashti, wherever it lands (Session 16). A folder becomes a smart
+  // playlist following it, at once, nothing asked (Session 56, the owner's item 5).
   useEffect(() => {
     const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') === true;
     const over = (e: DragEvent) => {
@@ -275,7 +276,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       const paths = Array.from(e.dataTransfer.files)
         .map((f) => window.drashti.files.pathFor(f))
         .filter((p) => p !== '');
-      if (paths.length > 0) void importPaths(paths);
+      if (paths.length > 0) void dropFolders(paths, (files) => importPaths(files));
     };
     window.addEventListener('dragover', over);
     window.addEventListener('drop', drop);
