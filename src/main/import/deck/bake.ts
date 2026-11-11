@@ -329,8 +329,8 @@ async function powerPointOnMac(
         if (!pdf)
           return {
             ok: false,
-            reason: 'it could not save the slides as PDF',
-            message: 'PowerPoint could not save the deck’s pictures.',
+            reason: 'it did not save the slides as PDF',
+            message: 'PowerPoint could not save the deck’s pictures: save the deck again in PowerPoint and import that.',
           };
         options.pdfReady?.(pdf, deck);
       }
@@ -700,8 +700,8 @@ async function powerPointOnWindows(
         failed: saved.ok
           ? {
               ok: false,
-              reason: 'it could not save the slides as PDF',
-              message: 'PowerPoint could not save the deck’s pictures.',
+              reason: 'it did not save the slides as PDF',
+              message: 'PowerPoint could not save the deck’s pictures: save the deck again in PowerPoint and import that.',
             }
           : saved,
         pdf: null,

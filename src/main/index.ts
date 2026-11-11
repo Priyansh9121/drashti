@@ -1418,7 +1418,7 @@ function start(): void {
   const unprepared = presentations.clearPreparing();
   if (unprepared > 0)
     log.warn(
-      `Start: ${String(unprepared)} slide(s) of a deck's import cut short are its pictures, without animations`,
+      `Start: ${String(unprepared)} slide(s) of a deck’s import cut short are its pictures, without animations`,
     );
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);

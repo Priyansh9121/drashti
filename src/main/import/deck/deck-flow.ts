@@ -198,7 +198,7 @@ export async function runDeck(
             ok: false,
             why: {
               kind: 'cut',
-              detail: drawn && !drawn.ok ? drawn.message : 'the pictures of its slides could not be matched',
+              detail: drawn && !drawn.ok ? drawn.message : 'its PDF’s pages did not match its slides one for one',
             },
             pdf: result.pdf,
             deck: result.baked.deck,
