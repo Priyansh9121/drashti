@@ -102,7 +102,8 @@ describe('alpha.14 editor instructions in the bundled guide', () => {
       'Pro Mode',
       'Simple Mode',
       'Added from Phones',
-      'end of Simple Mode’s playlist',
+      // Several playlists (alpha.16): the one open in Simple Mode, no longer "Simple Mode’s playlist".
+      'end of the playlist open in Simple Mode',
     ]) {
       expect(summary?.text).toContain(detail);
     }

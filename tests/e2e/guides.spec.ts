@@ -216,12 +216,14 @@ test('Simple Mode can read its phone exceptions without gaining the setup guides
   await expect(hit).toHaveCount(1);
   await hit.click();
   const shown = guides.locator('[data-passage][data-current="true"]');
-  await expect(shown).toContainText('own playlist');
+  // Several playlists (alpha.16): the phone opens the playlist open on the computer and follows it.
+  await expect(shown).toContainText('opens the playlist open there');
+  await expect(shown).toContainText('follows it when another is opened');
   await expect(shown).toContainText('Play resumes');
   await expect(shown).toContainText('Pause and marker jumps');
   await expect(shown).toContainText('refused');
-  // Question 5 (alpha.15): a phone's files go to the end of this playlist, a PDF or deck once the stream has ended.
-  await expect(shown).toContainText('goes to the end of this playlist');
+  // Question 5 (alpha.15): a phone's files go to the end of the open playlist, a PDF or deck once the stream has ended.
+  await expect(shown).toContainText('goes to the end of the open playlist');
   await expect(shown).toContainText('a PDF or deck waits');
   await expect(shown).toBeInViewport();
   const permissions = await win.evaluate(async () => {
