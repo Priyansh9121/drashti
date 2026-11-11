@@ -597,19 +597,20 @@ test('Simple Mode from CI’s 1024 × 645 up: Audio under the time bar and above
       const status = at('footer[aria-label="Status"]');
       if (!live || !audio || !times || !bar || !status) return ['a part is missing'];
       if (document.documentElement.scrollHeight > innerHeight + 1) {
-        // Named: what runs below the window, where its parent does not.
+        // Named: what is placed out of the flow below the window (it escapes any column's scroll), and where.
         const below = [...document.body.querySelectorAll('*')].filter((el) => {
           const r = el.getBoundingClientRect();
-          const p = el.parentElement?.getBoundingClientRect();
-          return r.height > 0 && r.bottom > innerHeight + 1 && (!p || p.bottom <= innerHeight + 1);
+          const at = getComputedStyle(el).position;
+          return r.height > 0 && r.bottom > innerHeight + 1 && (at === 'absolute' || at === 'fixed');
         });
-        const what = below
-          .slice(0, 3)
-          .map(
-            (el) =>
-              el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName.toLowerCase(),
-          );
-        out.push(`the page scrolls down (${what.join(', ')})`);
+        const what = below.slice(0, 3).map((el) => {
+          const place = el.closest('[data-testid]')?.getAttribute('data-testid') ?? '';
+          const kind = el.getAttribute('data-testid') ?? el.tagName.toLowerCase();
+          return `${kind} in ${place}`;
+        });
+        out.push(
+          `the page scrolls down to ${String(document.documentElement.scrollHeight)} px (${what.join(', ')})`,
+        );
       }
       if (document.documentElement.scrollWidth > innerWidth + 1) out.push('the page scrolls sideways');
       if (audio.top < times.bottom - 0.5) out.push('Audio is not under the time bar');

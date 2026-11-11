@@ -304,7 +304,9 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </main>
         }
         right={
-          <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
+          // Positioned (Session 56), so what is placed in it out of the flow (Audio's lists' screen-reader status
+          // lines, select-many.tsx) is held and scrolled by the column, never runs past the window and scrolls the page.
+          <aside className="relative flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
             {/* Oops's key (F9) still acts here; its button is Pro Mode's. */}
             {/* What Next puts up, in words under them (Session 54: a file it misses named before it goes up). */}
