@@ -127,7 +127,7 @@ export async function runDeck(
     );
     if (result.ok) {
       // The slides that come in as their pictures (Session 56): the pages of the PDF the app saved, drawn now.
-      const choice = result.baked.choice;
+      const choice = result.baked.choice ?? null;
       let still: Map<number, string> | null = null;
       if (choice) {
         const drawPdf = options.drawPdf;

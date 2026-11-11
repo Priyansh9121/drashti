@@ -223,7 +223,7 @@ export async function bakedPresentation(
   const shown = plan.slides.map((s) => s.index);
   /** Every shown slide, in order (those that came in as their pictures too). */
   const shownAll = deck.slides.flatMap((s, index) => (s.hidden ? [] : [index]));
-  const choice = baked.choice;
+  const choice = baked.choice ?? null;
   const { media, posters, sounds } = await takeMedia(
     baked.deckFile,
     deckDir,

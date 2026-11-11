@@ -88,9 +88,9 @@ export interface BakedDeck {
   keynoteMedia: KeynoteMedia[];
   /**
    * Which slides went through the movie (Session 56), when not every shown slide did: the rest come in as their
-   * pictures (`pdf` has every shown slide); null when every one did.
+   * pictures (`pdf` has every shown slide); null or left out when every one did.
    */
-  choice: MovieChoice | null;
+  choice?: MovieChoice | null;
 }
 
 /** Why a deck came in as pictures instead. */
