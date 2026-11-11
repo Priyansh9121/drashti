@@ -265,7 +265,7 @@ export function RecordingControls({ status }: { status: StreamStatus }) {
     <section className="space-y-2" data-testid="stream-recording">
       <SectionTitle>Recording</SectionTitle>
       <div className="flex flex-wrap items-center gap-2">
-        <RecordButton size="lg" />
+        <RecordButton size="lg" allowFolderChoice />
       </div>
       <p className="truncate text-xs text-muted" title={rec.folder ?? undefined}>
         {rec.folder ? `Recordings go in ${rec.folder}` : 'Choose where recordings go first.'}

@@ -42,7 +42,7 @@ const ACCESS_LIST_EDITS: readonly InvokeChannel[] = [
 ];
 
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
-  // Offline helpers are operator choices in Pro Mode, including their background requests.
+  // Writing and saving slides from words are Pro Mode's.
   IPC.library.saveWords,
   IPC.library.newFromWords,
   // New › QR code… (Session 55, Part 8): Pro Mode's.
@@ -144,6 +144,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.removeKey,
   IPC.stream.goLive,
   IPC.stream.end,
+  IPC.stream.pickFolder,
   IPC.media.convert,
   IPC.media.setMarkers,
   IPC.media.cancelConversion,
