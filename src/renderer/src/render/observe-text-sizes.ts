@@ -1,9 +1,12 @@
-/** Sizes supplied by the browser's layout pass; observing never flushes style/layout from a show commit. */
-export function observeTextSizes(
-  box: HTMLElement,
-  words: HTMLElement,
-  measured: (size: { width: number; height: number; wordsHeight: number }) => void,
-): () => void {
+export interface TextSizes {
+  width: number;
+  height: number;
+  wordsHeight: number;
+}
+
+/** Observe layout sizes while allowing the box's contents to change. */
+export function createTextSizeObserver(box: HTMLElement, measured: (size: TextSizes) => void) {
+  let words: HTMLElement | null = null;
   let frame: { width: number; height: number } | null = null;
   let wordsHeight: number | null = null;
   const observer = new ResizeObserver((entries) => {
@@ -14,6 +17,25 @@ export function observeTextSizes(
     if (frame && wordsHeight !== null) measured({ ...frame, wordsHeight });
   });
   observer.observe(box);
-  observer.observe(words, { box: 'border-box' });
-  return () => observer.disconnect();
+  return {
+    /** Observe new words, or ask for a fresh size of the same words after layout. */
+    observeWords(next: HTMLElement | null) {
+      if (words) observer.unobserve(words);
+      words = next;
+      wordsHeight = null;
+      if (words) observer.observe(words, { box: 'border-box' });
+    },
+    disconnect: () => observer.disconnect(),
+  };
+}
+
+/** Sizes supplied by the browser's layout pass; observing never flushes style/layout from a show commit. */
+export function observeTextSizes(
+  box: HTMLElement,
+  words: HTMLElement,
+  measured: (size: TextSizes) => void,
+): () => void {
+  const observer = createTextSizeObserver(box, measured);
+  observer.observeWords(words);
+  return observer.disconnect;
 }
