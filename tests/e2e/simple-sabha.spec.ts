@@ -106,9 +106,11 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
     'layer-bar',
     'playlist-close',
     'show-oops',
-    'row-delete',
   ])
     await expect(win.getByTestId(id), id).toHaveCount(0);
+  // No trash on the playlist's rows (Simple Mode's Delete is a row's right-click); the chosen playlist on the left has
+  // its Delete, as in Pro Mode (Session 56).
+  await expect(middle.getByTestId('row-delete')).toHaveCount(0);
 
   // One click on a slide's row puts it up; Next and Back go on from it.
   const kirtan = middle.getByTestId('slide-thumb').filter({ hasText: 'Placeholder Kirtan_2' });
