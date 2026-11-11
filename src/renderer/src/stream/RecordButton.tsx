@@ -2,7 +2,7 @@ import type { StreamResult } from '../../../shared/stream';
 import { useNotice } from '../operator/actions';
 import { Button, type ButtonSize } from '../ui/Button';
 import { CircleDot, FolderOpen, Mic, Square } from '../ui/icons';
-import { MenuButton } from '../ui/Menu';
+import { MenuButton, type MenuEntry } from '../ui/Menu';
 import { streamAction, useStream } from './stream-store';
 
 function recordAction(run: () => Promise<StreamResult>): void {
@@ -26,7 +26,13 @@ export function RecordingFolder() {
 }
 
 /** The same Record control in Pro and Simple Mode. */
-export function RecordButton({ size = 'md' }: { size?: ButtonSize }) {
+export function RecordButton({
+  size = 'md',
+  allowFolderChoice = false,
+}: {
+  size?: ButtonSize;
+  allowFolderChoice?: boolean;
+}) {
   const status = useStream((s) => s.status);
   const rec = status?.recording;
   if (!rec) return null;
@@ -41,6 +47,39 @@ export function RecordButton({ size = 'md' }: { size?: ButtonSize }) {
         {rec.kind === 'sound' ? 'Stop sound recording' : 'Stop video recording'}
       </Button>
     );
+  if (!rec.folder && !allowFolderChoice)
+    return (
+      <Button
+        size={size}
+        icon={CircleDot}
+        data-testid="start-recording"
+        onClick={() =>
+          useNotice.setState({ text: 'An admin needs to choose a recording folder in Pro Mode.' })
+        }
+      >
+        Record
+      </Button>
+    );
+  const entries: MenuEntry[] = [
+    {
+      label: 'Record sound',
+      icon: Mic,
+      disabled: !rec.folder,
+      onSelect: () => recordAction(() => window.drashti.stream.startSoundRecording()),
+    },
+    {
+      label: 'Record video',
+      disabled: !rec.folder || !status.ffmpeg.available,
+      onSelect: () => recordAction(() => window.drashti.stream.startRecording()),
+    },
+  ];
+  if (allowFolderChoice)
+    entries.push({
+      label: rec.folder ? 'Change recording folder…' : 'Choose recording folder…',
+      icon: FolderOpen,
+      separatorBefore: true,
+      onSelect: () => recordAction(() => window.drashti.stream.pickFolder()),
+    });
   return (
     <MenuButton
       label="Record"
@@ -48,25 +87,7 @@ export function RecordButton({ size = 'md' }: { size?: ButtonSize }) {
       variant="secondary"
       icon={CircleDot}
       testId="start-recording"
-      entries={[
-        {
-          label: 'Record sound',
-          icon: Mic,
-          disabled: !rec.folder,
-          onSelect: () => recordAction(() => window.drashti.stream.startSoundRecording()),
-        },
-        {
-          label: 'Record video',
-          disabled: !rec.folder || !status.ffmpeg.available,
-          onSelect: () => recordAction(() => window.drashti.stream.startRecording()),
-        },
-        {
-          label: rec.folder ? 'Change recording folder…' : 'Choose recording folder…',
-          icon: FolderOpen,
-          separatorBefore: true,
-          onSelect: () => recordAction(() => window.drashti.stream.pickFolder()),
-        },
-      ]}
+      entries={entries}
     >
       Record
     </MenuButton>

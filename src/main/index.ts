@@ -3517,10 +3517,14 @@ function start(): void {
   stops.add('imports', () => {
     imports.stop();
   });
-  // An operator's edit during an import (Session 16): every request that changes something (the
-  // ones Simple Mode refuses) waits, without holding up the main process, for the import to give
-  // way between files, then writes with nothing in its way. Starting or stopping an import does not.
-  const edits = new Set<string>([...SIMPLE_MODE_LOCKED, ...SIMPLE_MODE_BOUNDED.keys()]);
+  // An operator's edit during an import (Session 16) waits for the import to give way between files.
+  // Starting and stopping video recording had the same wait before Simple Mode gained Record.
+  const edits = new Set<string>([
+    ...SIMPLE_MODE_LOCKED,
+    ...SIMPLE_MODE_BOUNDED.keys(),
+    IPC.stream.startRecording,
+    IPC.stream.stopRecording,
+  ]);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
   setGiveWay((channel) => {
