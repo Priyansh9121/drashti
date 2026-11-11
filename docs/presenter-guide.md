@@ -1,6 +1,6 @@
 # Drashti on your phone or iPad: a guide for presenters
 
-This guide describes **1.0.0-alpha.16**, including the phone’s playlist rows, gestures and Simple Mode limits (in Simple Mode the phone follows the playlist open on the Drashti computer), and the screens showing one thing at a time: **Black-out** and the **Wallpaper** take a video off, and anything put up takes them off.
+This guide describes **1.0.0-alpha.16**, including the phone’s playlist rows, gestures and Simple Mode limits (the phone follows the playlist open in Simple Mode on the Drashti computer), and the screens showing one thing at a time: **Black-out** and the **Wallpaper** take a video off, and anything put up takes them off.
 
 Live captions are **Trial** and start off. They can slow the screens while on. Ask the operator about a slowdown. The switch is on the Drashti computer.
 
