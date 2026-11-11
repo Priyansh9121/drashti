@@ -60,6 +60,7 @@ export const deckSlideSchema = z.looseObject({
   after: idSchema.optional(),
   steps: z.array(stepSchema).max(10_000),
   media: z.array(mediaSchema).max(1000),
+  preparing: z.literal(true).optional(),
   drashti: z.object({ transition: transitionSchema, mode: z.enum(['over', 'instead']) }).optional(),
   // Each click's own, over its motion or instead of it (C2's show: the slide editor sets both).
   stepTransitions: z

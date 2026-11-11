@@ -1413,6 +1413,13 @@ function start(): void {
   if (perfTest && !userDataOverride && seedPerfLibrary(libraryDb))
     log.info('The performance check added its placeholder presentations');
   const presentations = new PresentationRepo(db);
+  // A deck's slides still marked as preparing when Drashti stopped in the middle of its import (Session 56): they
+  // show their pictures, without their animations, and Next no longer waits for them.
+  const unprepared = presentations.clearPreparing();
+  if (unprepared > 0)
+    log.warn(
+      `Start: ${String(unprepared)} slide(s) of a deck's import cut short are its pictures, without animations`,
+    );
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
   // A playlist item naming a video input (Session 51) finds this computer's input of that name: the inputs are read

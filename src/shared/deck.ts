@@ -103,6 +103,11 @@ export interface DeckSlide {
   /** Step 0 (coming in), then one per click; at least one. */
   steps: DeckStep[];
   media: DeckMedia[];
+  /**
+   * Its animations are still being made (Session 56): it shows its picture, a still step, while the import makes its
+   * clips; Next waits for it, saying so, and the mark goes once its clips are in. Left out: ready.
+   */
+  preparing?: true;
   /** Set in Drashti's editor: its own transition into this slide; left out, the deck's own. */
   drashti?: DeckDrashtiTransition;
   /**

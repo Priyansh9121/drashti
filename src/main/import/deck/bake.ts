@@ -130,6 +130,11 @@ export interface BakeOptions extends ConvertOptions {
   freeBytes?: (dir: string) => number;
   /** Tests only (Session 56's timing check): the stand-in's movie this many lines high (else 180). */
   standInLines?: number | null;
+  /**
+   * The PDF of every shown slide is saved, before the movie is made, and the deck as read (Session 56): the slides can
+   * show as their pictures while their animations are made. Once, by every app and the stand-in.
+   */
+  pdfReady?: (pdf: string, deck: PptxDeck) => void;
 }
 
 /** Always kept free on the disk, as converting keeps it (Session 50). */
@@ -325,6 +330,7 @@ async function powerPointOnMac(
             reason: 'it could not save the slides as PDF',
             message: 'PowerPoint could not save the deck’s pictures.',
           };
+        options.pdfReady?.(pdf, deck);
       }
       // The timed copy, opened as any copy is (in PowerPoint's own folder): the slides that come in as their pictures
       // hidden in it, so the movie leaves them out.
@@ -337,7 +343,10 @@ async function powerPointOnMac(
       const { doc } = opened.document;
       const inside = dirname(opened.document.copy);
       // The pictures first (a moment): should the movie not do, the deck comes in as them.
-      if (!leaving) pdf = await savePdf(opened.document);
+      if (!leaving) {
+        pdf = await savePdf(opened.document);
+        if (pdf) options.pdfReady?.(pdf, deck);
+      }
       // The movie: asked for, then written in the background.
       const movieInApp = join(inside, 'movie.mov');
       const movieFrom = performance.now();
@@ -533,6 +542,7 @@ async function keynoteOnMac(
       if (savedPdf.code === 0 && (await written(pdfInApp, s.signal))) {
         pdf = join(work, 'pictures.pdf');
         await copyFile(pdfInApp, pdf);
+        options.pdfReady?.(pdf, deck);
       }
       options.steps?.add('app-pdf', performance.now() - pdfFrom);
       // Only the slides that move go through the movie (Session 56): the rest, which come in as their pictures, are
@@ -669,8 +679,9 @@ async function powerPointOnWindows(
     };
   const timed = join(work, 'timed.pptx');
   const pdf = join(work, 'pictures.pdf');
-  if (leaving) {
-    // Every shown slide's picture first: a run of PowerPoint for the PDF of the timed copy of them all.
+  // Every shown slide's picture first, in a run of PowerPoint of its own (Session 56): the PDF of the timed copy of them
+  // all, so that the slides show as their pictures while the movie is made, and those left out of the movie come in so.
+  {
     const all = join(work, 'timed-all.pptx');
     const copyFrom = performance.now();
     await writeTimedCopy(deckFile, all, powerPointPlan(deck.slides));
@@ -695,18 +706,18 @@ async function powerPointOnWindows(
         deck,
         deckFile,
       };
+    options.pdfReady?.(pdf, deck);
   }
   const copyFrom = performance.now();
   await writeTimedCopy(deckFile, timed, plan, leaving ? choice.pictures : []);
   options.steps?.add('timed-copy', performance.now() - copyFrom);
   const movie = join(work, 'movie.mp4');
   options.progress?.('PowerPoint is making the movie');
-  // One run of PowerPoint for all of it (its start, the PDF and the movie): the movie's step, as one.
+  // One run of PowerPoint for the movie (its start and the movie): the movie's step, as one.
   const movieFrom = performance.now();
   const made = await deckOnWindows(
     {
       input: timed,
-      ...(leaving ? {} : { pdf }),
       movie,
       movieLimitMs: movieLimit(limits, plan),
       stallMs: NO_PROGRESS_MS,
@@ -758,12 +769,11 @@ async function standIn(
       deck: read,
       deckFile: input,
     };
-  let pdf: string | null = null;
-  if (leaving) {
-    const pdfFrom = performance.now();
-    pdf = await standInPdf(input, read.slides, work);
-    options.steps?.add('app-pdf', performance.now() - pdfFrom);
-  }
+  // Every shown slide's picture first, as PowerPoint saves them (Session 56).
+  const pdfFrom = performance.now();
+  const pdf = await standInPdf(input, read.slides, work);
+  options.steps?.add('app-pdf', performance.now() - pdfFrom);
+  options.pdfReady?.(pdf, read);
   const movie = join(work, 'movie.mp4');
   const movieFrom = performance.now();
   await standInMovie(options.ffmpeg, plan, movie, options.signal, standInSize(options.standInLines ?? null));

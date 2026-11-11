@@ -16,7 +16,7 @@ import { fileNameOf, pathFromReference } from '../media-resolver';
 import { realPlaceAsync } from '../../media/contained';
 import type { BakedDeck, BakeFailure, KeynoteMedia } from './bake';
 import { MAX_OFFSET_MS } from './cut';
-import type { Baker } from './plan';
+import { type Baker, movieChoice } from './plan';
 import { type PptxMedia, stepOfGroup } from './pptx-deck';
 
 /*
@@ -201,6 +201,69 @@ const frameOf = (box: PptxMedia['box'], width: number, height: number) => ({
   width: Math.max(1, Math.round(box.w * width)),
   height: Math.max(1, Math.round(box.h * height)),
 });
+
+/**
+ * A deck as its pictures while its animations are made (Session 56): every shown slide its picture, the page of the PDF
+ * the app saved; a slide that moves marked as preparing, its picture a still step of its own until its clips are in; a
+ * lead-in a still step too (./plan.ts `movieChoice`). With the deck's own index of each slide, in order.
+ */
+export function preparingPresentation(
+  fileName: string,
+  sourcePath: string,
+  deck: PptxDeck,
+  pictures: ReadonlyMap<number, string>,
+  size: { width: number; height: number },
+): { parsed: ParsedPresentation; indices: number[] } {
+  const choice = movieChoice(deck.slides);
+  const refs = new MediaRefs();
+  const indices: number[] = [];
+  const slides = [];
+  for (const [index, source] of deck.slides.entries()) {
+    const file = pictures.get(index);
+    if (source.hidden || !file) continue;
+    indices.push(index);
+    const picture = refs.ref(file, 'image', `${sourcePath}#slide=${String(index + 1)}&picture`);
+    const step = { clipId: picture, clipMs: 0, lastId: picture };
+    const elements: SlideElement[] = [
+      {
+        id: 'picture',
+        kind: 'image',
+        frame: { x: 0, y: 0, width: size.width, height: size.height },
+        mediaId: picture,
+        fit: 'fit',
+      },
+    ];
+    const deckSlide: DeckSlide | null = choice.moving.has(index)
+      ? { preparing: true, steps: [step], media: [] }
+      : choice.leadIns.has(index)
+        ? { steps: [step], media: [] }
+        : null;
+    slides.push({
+      label: '',
+      notes: tidyNotes(source.notes),
+      background: null,
+      enabled: true,
+      elements,
+      cues: [] as ParsedCue[],
+      ...(deckSlide ? { deck: deckSlide } : {}),
+    });
+  }
+  return {
+    parsed: {
+      name: nameFromFile(basename(fileName)),
+      ref: null,
+      width: size.width,
+      height: size.height,
+      notes: '',
+      groups: [{ name: '', color: null, slides }],
+      arrangements: [],
+      selectedArrangement: null,
+      media: refs.list,
+      issues: [],
+    },
+    indices,
+  };
+}
 
 /** What the import makes of a deck with its steps: the presentation, with its media references and report. */
 export async function bakedPresentation(

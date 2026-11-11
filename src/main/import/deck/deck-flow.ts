@@ -6,7 +6,7 @@ import type { Converter } from '../deck-converters';
 import type { ParsedPresentation } from '../model';
 import type { PptxDeck, PptxSlide } from '../pictures';
 import { type BakeOptions, bakeDeck, type BakeResult } from './bake';
-import { bakedPresentation, stillDeckIssue, whyPictures } from './deck-import';
+import { bakedPresentation, preparingPresentation, stillDeckIssue, whyPictures } from './deck-import';
 import { type Baker, movieChoice } from './plan';
 
 /*
@@ -58,6 +58,8 @@ export type DeckFlow =
       /** Why it came in as pictures, for the report (none when nothing here could make its movie). */
       issues: ImportIssue[];
       cancelled: boolean;
+      /** The pages of `pdf`, drawn already as the movie was made (Session 56): not drawn again. */
+      drawn?: PicturesResult;
     };
 
 export interface DeckFlowRequest {
@@ -95,12 +97,23 @@ export async function runDeck(
     appStarted?: (pid: number, app: 'PowerPoint' | 'Keynote') => void;
     /** Draws a PDF's pages as pictures: the slides that come in as their pictures (Session 56). */
     drawPdf?: (pdf: string, outDir: string) => Promise<PicturesResult>;
+    /**
+     * The slides as their pictures as soon as those are drawn (Session 56), with each one's own index in the deck: the
+     * slides that move marked as preparing while their clips are made. The import writes them at once; the deck with
+     * its steps (or as its pictures) then takes their place.
+     */
+    early?: (parsed: ParsedPresentation, indices: number[]) => Promise<void>;
   },
 ): Promise<DeckFlow> {
   const { source, file, read, bakers } = request;
-  const pictures = (result: Extract<BakeResult, { ok: false }> | null, issues: ImportIssue[]): DeckFlow => ({
+  const pictures = (
+    result: Extract<BakeResult, { ok: false }> | null,
+    issues: ImportIssue[],
+    drawn?: PicturesResult | null,
+  ): DeckFlow => ({
     kind: 'pictures',
     pdf: result?.pdf ?? null,
+    ...(drawn && result?.pdf ? { drawn } : {}),
     // The tests' stand-in saves its PDF as PowerPoint does, and is named as PowerPoint (Session 56: it saves one now).
     converter: result?.pdf ? (result.baker === 'stand-in' ? 'powerpoint' : result.baker) : null,
     deck: result?.deck ?? read,
@@ -116,28 +129,67 @@ export async function runDeck(
   if (await options.onAir()) return pictures(null, [whyPictures({ kind: 'on-air' }, first, options.kept)]);
   const tried: { baker: Baker; reason: string }[] = [];
   let last: Extract<BakeResult, { ok: false }> | null = null;
+  let drawnLast: PicturesResult | null = null;
   for (const baker of bakers) {
     const work = await mkdtemp(join(request.work, 'bake-'));
+    // Every shown slide's picture, drawn as soon as the app has saved the PDF, while the movie is made; and (Session 56)
+    // the slides written as those pictures at once, the ones that move marked as preparing.
+    const early: { drawing: Promise<Drawn | null> | null; written: Promise<void> | null } = {
+      drawing: null,
+      written: null,
+    };
     const result = await bakeDeck(
       baker,
       { source, input: file, read, work },
       {
         ...options,
         started: (pid) => options.appStarted?.(pid, baker === 'keynote' ? 'Keynote' : 'PowerPoint'),
+        pdfReady: (pdf, deck) => {
+          const draw = options.drawPdf;
+          if (!draw || early.drawing) return;
+          const pages = join(work, 'pages');
+          const drawing = (options.steps?.time('pictures', () => draw(pdf, pages)) ?? draw(pdf, pages)).then(
+            (drawn): Drawn => ({ deck, drawn }),
+            () => null,
+          );
+          early.drawing = drawing;
+          const write = options.early;
+          if (write)
+            early.written = drawing
+              .then(async (d) => {
+                const shown = new Set(d?.deck.slides.flatMap((s, i) => (s.hidden ? [] : [i])) ?? []);
+                const each = d?.drawn.ok ? pagesOfShown(d.deck.slides, d.drawn, shown) : null;
+                if (!d?.drawn.ok || !each) return;
+                const made = preparingPresentation(
+                  request.fileName,
+                  request.sourcePath,
+                  d.deck,
+                  each,
+                  d.drawn,
+                );
+                await write(made.parsed, made.indices);
+              })
+              .catch(() => undefined);
+        },
       },
     );
+    // The slides as their pictures are in before anything takes their place.
+    await early.written;
+    const done = early.drawing ? await early.drawing : null;
+    drawnLast = done?.drawn ?? null;
     if (result.ok) {
-      // The slides that come in as their pictures (Session 56): the pages of the PDF the app saved, drawn now.
+      // The slides that come in as their pictures (Session 56): the pages of the PDF the app saved, drawn as it worked.
       const choice = result.baked.choice ?? null;
       let still: Map<number, string> | null = null;
       if (choice) {
         const drawPdf = options.drawPdf;
         const pdf = result.pdf;
         const drawn =
-          pdf && drawPdf
+          done?.drawn ??
+          (pdf && drawPdf
             ? await (options.steps?.time('pictures', () => drawPdf(pdf, join(work, 'pages'))) ??
                 drawPdf(pdf, join(work, 'pages')))
-            : null;
+            : null);
         still = drawn?.ok
           ? pagesOfShown(result.baked.deck.slides, drawn, new Set([...choice.pictures, ...choice.leadIns]))
           : null;
@@ -186,5 +238,11 @@ export async function runDeck(
     if (result.why.kind !== 'app') break;
     tried.push({ baker, reason: result.why.reason });
   }
-  return pictures(last, last ? [whyPictures(last.why, last.baker, options.kept)] : []);
+  return pictures(last, last ? [whyPictures(last.why, last.baker, options.kept)] : [], drawnLast);
+}
+
+/** The pages of an app's PDF as drawn, and the deck they are of. */
+interface Drawn {
+  deck: PptxDeck;
+  drawn: PicturesResult;
 }
