@@ -107,3 +107,27 @@ test('Pro Mode: the open playlist deleted closes in the middle, never its kirtan
   await expect.poll(() => middleShows(win)).toBe('the steps to start');
   await app.close();
 });
+
+test('Simple Mode: the open playlist, the last one, deleted leaves the middle empty, saying none is open, and the list says what each kind is; Undo opens it again', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, { width: 1280, height: 720 });
+  // Simple Mode with nothing open: the day's new playlist, the only one.
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  const simple = win.getByTestId('simple-mode');
+  await expect(simple.getByTestId('playlist-title')).toHaveText(/^Sabha, /u);
+  const day = (await simple.getByTestId('playlist-title').textContent()) ?? '';
+  await deleteFromList(win, day);
+  await expect.poll(() => middleShows(win)).toBe('no playlist open');
+  await expect(simple.getByTestId('playlist-tree').getByTestId('what-each-is')).toContainText(
+    'A playlist is the running order: Next puts its rows up one after another.',
+  );
+  // The main process heard it closed: Simple Mode has no playlist open now (a phone none either).
+  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist())).toBeNull();
+  await win.getByTestId('undo-removal').getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(() => middleShows(win)).toBe(`playlist ${day}`);
+  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simplePlaylist())).not.toBeNull();
+  await app.close();
+});
