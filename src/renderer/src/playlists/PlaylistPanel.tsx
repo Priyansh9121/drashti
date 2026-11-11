@@ -29,6 +29,7 @@ import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
 import { glideHighlight } from '../ui/motion';
 import { EmptyState } from '../ui/States';
+import { useScrolls } from '../ui/scrolls';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
 import { RowDelete, RowRename } from '../ui/RowDelete';
@@ -155,6 +156,8 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
   const [menu, setMenu] = useState<{ at: MenuPlace; node: PlaylistNode } | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const help = useWhatIsThis('playlists');
+  // The empty list's words scroll in a short window (1024 × 645): the keyboard can scroll them then (ui/scrolls.ts).
+  const [emptyBox, emptyScrolls] = useScrolls();
   // Lively (Session 40): the chosen row's highlight glides from the row chosen before.
   const listRef = useRef<HTMLUListElement>(null);
   const boxBase = useRef<string[]>([]);
@@ -260,7 +263,14 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
         {unread && <PlaylistsUnread what="playlists" className="mx-2 mb-2" />}
         {/* An empty tree is no tree: the note stands on its own until there are playlists. */}
         {tree.length === 0 && !unread && (
-          <div data-testid="playlist-tree" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+          <div
+            ref={emptyBox}
+            data-testid="playlist-tree"
+            role="group"
+            aria-label="No playlists yet"
+            tabIndex={emptyScrolls ? 0 : undefined}
+            className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+          >
             <EmptyState icon={ListMusic} title="No playlists yet" compact lamp>
               {simple
                 ? 'Make one with the New button above, or drop a folder here.'
