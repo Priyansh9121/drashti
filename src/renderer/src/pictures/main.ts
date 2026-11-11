@@ -3,14 +3,16 @@ import { drawEditablePdf } from './editable-main';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import * as pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs';
 import type { PictureAssetKind } from '../../../shared/pictures';
-import { fitPage, tidyNotes } from '../../../shared/pictures';
+import { fitPage, inShare, tidyNotes } from '../../../shared/pictures';
 
 /*
  * The hidden window that draws a PDF's pages as pictures (Session 15): each
  * page fitted into the canvas size on black, as a PNG, with the page's
  * comments (sticky notes) as its notes. One page at a time, handed to the
  * main process as each is done; the main process runs this window's process
- * at the lowest priority, so it never takes from the show.
+ * at the lowest priority, so it never takes from the show. While nothing is
+ * on the screens or the stream, several such windows draw a document at once
+ * (Session 56), each its own share of the pages.
  */
 
 // pdf.js parses in this page, not in a worker: a worker script cannot be started from a page on disk.
@@ -93,6 +95,7 @@ async function draw(): Promise<void> {
     return;
   }
   for (let i = 0; i < count; i++) {
+    if (!inShare(job.share, i)) continue;
     try {
       const page = await doc.getPage(i + 1);
       const base = page.getViewport({ scale: 1 });

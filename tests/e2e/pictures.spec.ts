@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
@@ -150,6 +150,73 @@ test('a PDF dropped on the library becomes slides of its pages as pictures, with
   expect(near((await canvasPixels(output, [side]))[0], [0, 0, 0], 12)).toBe(true);
   await thumbs.nth(2).click();
   await expect.poll(async () => near((await canvasPixels(output, [top]))[0], GREEN)).toBe(true);
+  await app.close();
+});
+
+test('a PDF’s pages are drawn several at once while nothing is up and the stream is off, else one at a time (Session 56)', async () => {
+  test.setTimeout(150_000);
+  const { app, userData } = await launchApp({
+    DRASHTI_TEST_NO_CONVERTER: '1',
+    DRASHTI_TEST_ON_AIR_HOOK: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-pictures-e2e-'));
+  const pdf = (name: string) => {
+    const file = join(dir, `${name}.pdf`);
+    writeFileSync(
+      file,
+      makeTestPdf(
+        Array.from({ length: 6 }, (_, i) => ({
+          width: 960,
+          height: 540,
+          color: [20 + i * 30, 40, 90] as [number, number, number],
+          text: `${name} page ${String(i + 1)}`,
+        })),
+      ),
+    );
+    return file;
+  };
+  /** How many windows drew the last PDF at once, as Drashti's log says. */
+  const atOnce = () => {
+    const lines = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
+      .split('\n')
+      .filter((l) => l.includes('Pictures: drew 6 page(s) of 6'));
+    return Number(/, (\d+) at once/u.exec(lines.at(-1) ?? '')?.[1] ?? 0);
+  };
+  const slidesOf = (id: string) =>
+    win.evaluate(
+      async (presentation) =>
+        (
+          (await (globalThis as PageGlobals).drashti.library.getPresentation(presentation))?.groups ?? []
+        ).flatMap((g) => g.slides).length,
+      id,
+    );
+  // Nothing up and the stream off: two or three windows, every page in its place.
+  const [quiet = ''] = await importAndGetIds(win, [pdf('Placeholder quiet')]);
+  expect(await slidesOf(quiet)).toBe(6);
+  expect(atOnce()).toBeGreaterThanOrEqual(2);
+  // The stream on air: one at a time.
+  await app.evaluate(() => {
+    (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
+  });
+  const [onAir = ''] = await importAndGetIds(win, [pdf('Placeholder on air')]);
+  expect(await slidesOf(onAir)).toBe(6);
+  expect(atOnce()).toBe(1);
+  await app.evaluate(() => {
+    (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
+  });
+  // A slide up on the screens (a show): one at a time too.
+  await win.evaluate(async (id) => {
+    await (globalThis as PageGlobals).drashti.engine.dispatch({
+      type: 'goLive',
+      presentationId: id,
+      slideIndex: 0,
+    });
+  }, quiet);
+  const [showing = ''] = await importAndGetIds(win, [pdf('Placeholder during the show')]);
+  expect(await slidesOf(showing)).toBe(6);
+  expect(atOnce()).toBe(1);
   await app.close();
 });
 

@@ -76,8 +76,9 @@ import {
   noAppIssue,
   picturesMediaIssues,
 } from './deck/deck-import';
-import type { Baker } from './deck/plan';
+import { type Baker, movieChoice } from './deck/plan';
 import type { OfficeCopies } from './deck/leftovers';
+import { StepTimes, stepsLine } from './step-times';
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
 import { readabilityCounts, REFERENCE_LINES } from '../../shared/readable';
@@ -171,9 +172,31 @@ export interface PipelineContext {
    * written down before it goes there, forgotten once removed, so that only a start after one cut short looks there.
    */
   officeCopies?: OfficeCopies | null;
+  /** Tests only (Session 56's timing check): the stand-in's movie this many lines high (else 180). */
+  standInLines?: number | null;
+  /** Tests only (the timing check): only these apps make a deck's movie or PDF, in this order (else every one here). */
+  deckApps?: Converter[] | null;
+  /** Tests only (Session 56): the stand-in makes its movie only once this file is there (a deck seen preparing). */
+  standInHold?: string | null;
 }
 
 type SourceKind = 'text' | 'docx' | 'pp6' | 'pp7' | 'pictures';
+
+/** What the log's "Import steps" line says of a file (Session 56): how it came in, and when its slides first showed. */
+interface Told {
+  how: string;
+  slides: number;
+  /** Ms from its start until its slides were first in the library. */
+  shownMs?: number;
+}
+
+/** A deck's slides written as their pictures while its animations are made (Session 56), and whether that is over. */
+interface EarlyDeck {
+  /** Where they went, and the presentation's content revision just after (null: none yet). */
+  shown: { id: string; name: string; rev: number | null } | null;
+  /** The deck (or its pictures) took their place, or they were kept as changed: nothing left to clear. */
+  done: boolean;
+}
 
 /** A source's format in the report: a Word file's lyrics are lyrics, as a text file's are (Session 26f). */
 const reportFormat = (kind: SourceKind): ImportFormat => (kind === 'docx' ? 'text' : kind);
@@ -707,6 +730,19 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     return { latest, choice };
   };
 
+  /** The content's revision of a presentation in the library, or null when it is gone. */
+  const revisionOf = (id: string): number | null =>
+    (ctx.db
+      .prepare('SELECT content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
+      .pluck()
+      .get(id) as number | undefined) ?? null;
+
+  /**
+   * Write a presentation, and say so in the report. Two writes for a deck whose slides show as their pictures while
+   * its animations are made (Session 56): `early`, the pictures (no report line, committed at once, so the operator
+   * sees them), then `after` that one, the deck itself in its place, said in the report as the first would have been.
+   * Returns where it went, or null.
+   */
   const importPresentation = async (
     file: ScannedFile,
     where: Where,
@@ -715,10 +751,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     parsed: ParsedPresentation,
     decidedAlready?: Decided,
     retained: readonly OriginalDescriptor[] = [],
-  ) => {
+    phase?: { early: true } | { after: { id: string; name: string } },
+  ): Promise<{ id: string; name: string; rev: number | null } | null> => {
     const base = { sourcePath: where.sourcePath, format: reportFormat(kind), counts: NO_COUNTS };
     const decided = decidedAlready ?? decideEarlier(file, where, kind, parsed.ref, hash);
-    if (!decided) return;
+    if (!decided) return null;
     const { latest, choice } = decided;
     if ((kind === 'text' || kind === 'docx') && slideCount(parsed) === 0) {
       record({
@@ -729,7 +766,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         message: parsed.issues.find((i) => i.severity === 'error')?.message ?? 'The file has no text.',
         issues: parsed.issues,
       });
-      return;
+      return null;
     }
     const staged = await stageMedia(parsed.media, where);
     const source: ImportSource = {
@@ -770,7 +807,25 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         const counts = { ...countsOf(parsed), media: media.count };
         let item: NewImportItem;
         let wrote: { presentationId: string; replaced: boolean };
-        if (choice === 'replace' && latest && presentations.replace(latest.id, input)) {
+        const after = phase && 'after' in phase ? phase.after : null;
+        if (after && presentations.replace(after.id, input)) {
+          // In place of its pictures (Session 56), said as the import of it would have been.
+          const replacing = choice === 'replace' && latest !== null;
+          item = {
+            ...base,
+            outcome: replacing ? 'replaced' : choice === 'keep-both' ? 'kept-both' : 'imported',
+            name: after.name,
+            target: { kind: 'presentation', id: after.id },
+            counts,
+            message: replacing
+              ? 'Replaced the earlier import with the new version.'
+              : choice === 'keep-both' && latest
+                ? `Kept both; the earlier import is still “${latest.name}”.`
+                : null,
+            issues,
+          };
+          wrote = { presentationId: after.id, replaced: true };
+        } else if (choice === 'replace' && latest && presentations.replace(latest.id, input)) {
           item = {
             ...base,
             outcome: 'replaced',
@@ -802,13 +857,15 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           for (const mediaId of media.ids)
             if (ctx.db.prepare("SELECT 1 FROM media WHERE id = ? AND kind = 'image'").get(mediaId))
               originals.registerPreview(original, mediaId);
-        imports.addItem(ctx.runId, at, item);
+        // The pictures shown first (Session 56): the report's line comes with the deck itself.
+        if (!phase || !('early' in phase)) imports.addItem(ctx.runId, at, item);
         time('write', started);
-        return { item, wrote, marked: media.marked };
+        // Its content's revision as written, before anyone is told of it (an edit after it is the operator's).
+        return { item, wrote, marked: media.marked, rev: revisionOf(wrote.presentationId) };
       },
       {
         committed: ({ item, wrote, marked }) => {
-          addToTotals(totals, item);
+          if (!phase || !('early' in phase)) addToTotals(totals, item);
           ctx.onWrote?.(wrote);
           told(marked);
         },
@@ -824,7 +881,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         },
       },
     );
-    if (result) remember(where, file, result.wrote.presentationId);
+    if (!result) return null;
+    remember(where, file, result.wrote.presentationId);
+    // Shown at once (Session 56): its group committed now, not with the next file's.
+    if (phase && 'early' in phase) batch.commit();
+    return { id: result.wrote.presentationId, name: result.item.name ?? parsed.name, rev: result.rev };
   };
 
   /**
@@ -849,7 +910,72 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
    * PowerPoint or Keynote file comes in with its animations where PowerPoint or Keynote can make them
    * (./deck/deck-flow.ts), else as pictures with its own videos and sounds.
    */
+  /** The apps a test asked for (the timing check), among those here, in its order; else those here. */
+  const onlyAsked = (here: Converter[]): Converter[] =>
+    ctx.deckApps ? ctx.deckApps.filter((app) => here.includes(app)) : here;
+
   const importPictures = async (file: ScannedFile, where: Where) => {
+    // Where its time goes, step by step (Session 56): a line in Drashti's log once it is done, for the timing check.
+    const steps = new StepTimes();
+    const told: Told = { how: 'failed', slides: 0 };
+    // A deck's slides written as their pictures while its animations are made (Session 56): should the file end
+    // without the deck taking their place, its slides stay as those pictures, their Preparing marks gone.
+    const early: EarlyDeck = { shown: null, done: false };
+    try {
+      await picturesOf(file, where, steps, told, early);
+    } finally {
+      if (early.shown && !early.done && presentations.clearPreparing(early.shown.id) > 0)
+        ctx.onWrote?.({ presentationId: early.shown.id, replaced: true });
+      ctx.log?.(
+        stepsLine(
+          {
+            name: basename(file.path),
+            kind: extOf(file.path),
+            slides: told.slides,
+            how: told.how,
+            ...(told.shownMs === undefined ? {} : { shownMs: told.shownMs }),
+          },
+          steps,
+        ),
+      );
+    }
+  };
+
+  /**
+   * A deck's slides written as their pictures while its animations were made (Session 56) and then changed or deleted
+   * by the operator: an edit wins, so they are kept as they are, their Preparing marks gone, and the report says so.
+   * Whether it was so.
+   */
+  const keptAsChanged = (file: ScannedFile, where: Where, early: EarlyDeck): boolean => {
+    const shown = early.shown;
+    if (!shown || revisionOf(shown.id) === shown.rev) return false;
+    early.done = true;
+    const gone = revisionOf(shown.id) === null;
+    if (!gone && presentations.clearPreparing(shown.id) > 0)
+      ctx.onWrote?.({ presentationId: shown.id, replaced: true });
+    record({
+      sourcePath: where.sourcePath,
+      format: 'pictures',
+      outcome: gone ? 'skipped' : 'imported',
+      name: shown.name,
+      target: gone ? null : { kind: 'presentation', id: shown.id },
+      counts: NO_COUNTS,
+      message: gone
+        ? 'It was deleted while its animations were being made, so it stays deleted.'
+        : 'It was changed while its animations were being made, so it was kept as it was, as its pictures: import it again for its animations.',
+      issues: [],
+    });
+    if (!gone) remember(where, file, shown.id);
+    return true;
+  };
+
+  const picturesOf = async (
+    file: ScannedFile,
+    where: Where,
+    steps: StepTimes,
+    told: Told,
+    early: EarlyDeck,
+  ) => {
     const fileName = basename(file.path);
     const source = pictureSourceOf(extOf(file.path));
     const fail = (code: string, message: string) => {
@@ -877,7 +1003,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     let t = performance.now();
     const sourceDir = dirname(file.path);
     const fromPhone = isInside(resolve(ctx.media.dir, UPLOADS_DIR), resolve(file.path));
-    const kept = await originals.stage(file.path, source, ctx.signal);
+    const kept = await steps.time('original', () => originals.stage(file.path, source, ctx.signal));
     if (!kept.ok) {
       fail('original-not-retained', kept.message);
       return;
@@ -895,9 +1021,18 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           ? source === 'pptx'
             ? ['stand-in']
             : []
-          : convertersFor(source, process.platform, await findConverters());
+          : onlyAsked(convertersFor(source, process.platform, await findConverters()));
     const onAir = ctx.onAir ?? (() => Promise.resolve(false));
     const canBake = bakers.length > 0 && !(await onAir());
+    // A deck where nothing moves comes in as its pictures with no movie at all (Session 56): it is never asked to come
+    // in again for animations it has none of.
+    const moves =
+      canBake && source === 'pptx'
+        ? await readPptxDeck(kept.file).then(
+            (d) => movieChoice(d.slides).moving.size > 0,
+            () => true,
+          )
+        : true;
     // Unchanged since it was imported, or waiting for the operator's choice: nothing to draw. A deck that came in
     // as pictures only comes in again in its place, with its animations, where they can be made now.
     const decided = decideEarlier(
@@ -906,9 +1041,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       'pictures',
       null,
       hash,
-      (id) => canBake && !presentations.hasDeckSlides(id),
+      (id) => canBake && moves && !presentations.hasDeckSlides(id),
     );
-    if (!decided) return;
+    if (!decided) {
+      told.how = 'skipped';
+      return;
+    }
     const work = await mkdtemp(join(ctx.tempDir ?? tmpdir(), 'drashti-pictures-'));
     try {
       let pdf = kept.file;
@@ -920,10 +1058,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       /** The deck as read, for its videos and sounds beside its pictures (Session 54, C2), and why no animations. */
       let deckRead: { deck: PptxDeck; file: string } | null = null;
       const deckIssues: ImportIssue[] = [];
+      /** The PDF's pages, drawn already as the deck's movie was tried (Session 56). */
+      let reuse: PicturesResult | null = null;
       if (source !== 'pdf') {
         // A plainly damaged file never reaches Keynote or PowerPoint, which would ask about it in a
         // window nobody sees and stop answering (Session 16).
-        const checked = await checkDeck(source, kept.file);
+        const checked = await steps.time('read', () => checkDeck(source, kept.file));
         if (!checked.ok) {
           fail('pictures-damaged', checked.message);
           return;
@@ -961,6 +1101,40 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             kept: decided.animate === true,
             ...(ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {}),
             officeCopies: ctx.officeCopies ?? null,
+            steps,
+            standInLines: ctx.standInLines ?? null,
+            standInHold: ctx.standInHold ?? null,
+            // The slides that come in as their pictures (Session 56): the PDF the app saved, drawn by the main process.
+            drawPdf: ctx.drawPdf,
+            // The slides as their pictures at once (Session 56), the ones that move marked as preparing; never in place
+            // of pictures asked for again with their animations, which stay untouched until those are made.
+            ...(decided.animate
+              ? {}
+              : {
+                  early: async (parsed: ParsedPresentation, indices: number[]) => {
+                    parsed.groups
+                      .flatMap((g) => g.slides)
+                      .forEach((slide, k) => {
+                        slide.documentPage = { sha256: hash, ext: source, page: indices[k] ?? k };
+                      });
+                    // A second app trying after the first could not: in place of the first's.
+                    const before = early.shown;
+                    const wrote = await importPresentation(
+                      file,
+                      where,
+                      'pictures',
+                      hash,
+                      parsed,
+                      before ? { latest: { id: before.id, name: before.name }, choice: 'replace' } : decided,
+                      retained,
+                      { early: true },
+                    );
+                    if (wrote) {
+                      early.shown = wrote;
+                      told.shownMs ??= Math.round(steps.elapsed());
+                    }
+                  },
+                }),
           },
         );
         time('parse', t);
@@ -971,7 +1145,25 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             .forEach((slide, index) => {
               slide.documentPage = { sha256: hash, ext: source, page: indices[index] ?? index };
             });
-          await importPresentation(file, where, 'pictures', hash, flow.parsed, decided, retained);
+          told.how = 'baked';
+          told.slides = slideCount(flow.parsed);
+          // Its pictures changed or deleted meanwhile: the operator's edit wins (Session 56).
+          if (keptAsChanged(file, where, early)) return;
+          const earlyShown = early.shown;
+          await steps.time('write', () =>
+            importPresentation(
+              file,
+              where,
+              'pictures',
+              hash,
+              flow.parsed,
+              decided,
+              retained,
+              earlyShown ? { after: earlyShown } : undefined,
+            ),
+          );
+          early.done = true;
+          told.shownMs ??= Math.round(steps.elapsed());
           return;
         }
         // Asked for its animations in place of its pictures, and they could not be made: the earlier import stays,
@@ -990,11 +1182,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           remember(where, file, decided.latest.id);
           return;
         }
-        if (flow.cancelled) {
+        // Cancelled once its slides were shown as their pictures (Session 56): they stay so, said in the report.
+        if (flow.cancelled && !early.shown) {
           fail('pictures-cancelled', 'Cancelled while its animations were being made.');
           return;
         }
         deckIssues.push(...flow.issues);
+        if (flow.drawn) reuse = flow.drawn;
         if (flow.deck && flow.deckFile) deckRead = { deck: flow.deck, file: flow.deckFile };
         // A Keynote file's or an old .ppt's notes, from the .pptx made of it as it was tried.
         if (!slides && flow.deck) slides = flow.deck.slides;
@@ -1006,12 +1200,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         const apps =
           flow.pdf || ctx.converters === false || ctx.converters === 'stand-in'
             ? []
-            : convertersFor(source, process.platform, await findConverters());
+            : onlyAsked(convertersFor(source, process.platform, await findConverters()));
         if (flow.pdf) {
           // Saved already.
         } else if (ctx.converters === 'stand-in' && source === 'pptx') {
           // Tests only: saved as PDF as PowerPoint would (Session 26a, so CI can make decks).
-          pdf = await standInPdf(deckPath, slides, work);
+          pdf = await steps.time('app-pdf', () => standInPdf(deckPath, slides, work));
           converter = 'powerpoint';
         } else if (apps.length === 0) {
           // Nothing here makes pictures of it: its own videos and sounds come in as media all the same.
@@ -1038,6 +1232,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             started: (pid) => ctx.appStarted?.(pid, app === 'keynote' ? 'Keynote' : 'PowerPoint'),
             ended: (pid) => ctx.appEnded?.(pid),
             officeCopies: ctx.officeCopies ?? null,
+            steps,
           });
           time('parse', t);
           if (converted.ok) {
@@ -1069,7 +1264,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       }
       let editableOriginal = kept.original;
       if ((source === 'ppt' || source === 'key') && pdf !== kept.file) {
-        const convertedOriginal = await originals.stage(pdf, 'pdf', ctx.signal);
+        const convertedOriginal = await steps.time('original', () => originals.stage(pdf, 'pdf', ctx.signal));
         if (!convertedOriginal.ok) {
           fail('converted-original-not-retained', convertedOriginal.message);
           return;
@@ -1079,7 +1274,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         pdf = convertedOriginal.file;
       }
       t = performance.now();
-      const drawn = await ctx.drawPdf(pdf, join(work, 'pages'));
+      const drawPdf = ctx.drawPdf;
+      // Drawn already as the deck's movie was made (Session 56): its slides shown as these pictures.
+      const drawn = reuse ?? (await steps.time('pictures', () => drawPdf(pdf, join(work, 'pages'))));
       time('parse', t);
       if (!drawn.ok) {
         fail('pictures-not-drawn', drawn.message);
@@ -1112,14 +1309,16 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       // The deck's own videos on its pictures' slides, and a sound that starts with its slide (Session 54, C2).
       const added =
         deckRead && drawn.pages.length === drawn.total
-          ? await addDeckMedia(
-              parsed,
-              deckRead.deck,
-              deckRead.file,
-              where.sourcePath,
-              work,
-              ctx.ffmpeg ?? null,
-              sourceDir,
+          ? await steps.time('deck', () =>
+              addDeckMedia(
+                parsed,
+                deckRead.deck,
+                deckRead.file,
+                where.sourcePath,
+                work,
+                ctx.ffmpeg ?? null,
+                sourceDir,
+              ),
             )
           : { videos: 0, cued: 0, left: 0, unmatched: deckRead ? deckMediaCount(deckRead.deck) : 0 };
       const shown = slides?.filter((sl) => !sl.hidden) ?? [];
@@ -1139,7 +1338,25 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         notesUnmatched: slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
       });
       parsed.issues.splice(1, 0, ...deckIssues, ...picturesMediaIssues(added));
-      await importPresentation(file, where, 'pictures', hash, parsed, decided, retained);
+      told.how = 'pictures';
+      told.slides = slideCount(parsed);
+      // In place of its slides shown as these pictures while its animations were tried (Session 56), unless changed.
+      if (keptAsChanged(file, where, early)) return;
+      const earlyShown = early.shown;
+      await steps.time('write', () =>
+        importPresentation(
+          file,
+          where,
+          'pictures',
+          hash,
+          parsed,
+          decided,
+          retained,
+          earlyShown ? { after: earlyShown } : undefined,
+        ),
+      );
+      early.done = true;
+      told.shownMs ??= Math.round(steps.elapsed());
     } finally {
       await rm(work, { recursive: true, force: true });
     }

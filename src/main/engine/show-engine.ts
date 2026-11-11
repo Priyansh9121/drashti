@@ -1450,6 +1450,14 @@ export class ShowEngine {
         message: `Slide ${slideIndex + 1} of ${order.slides.length} does not exist`,
       };
     }
+    // A deck's slide whose animations are still being made (Session 56): Next waits for it, saying so; anything else
+    // that puts it up (a click on it, a jump) shows its picture.
+    if (this.byNext && played.slide.deck?.preparing)
+      return {
+        ok: false,
+        error: 'preparing',
+        message: `Slide ${String(slideIndex + 1)} is still being prepared: its animations are being made. Press Next again once it is ready.`,
+      };
     const at = this.now();
     // A deck's slide (Session 54, C2): the step it comes in at, and its transition, the deck's own in its clip or
     // Drashti's (deck-steps.ts deckShow).
@@ -2054,7 +2062,19 @@ export class ShowEngine {
     return shown.ok ? { ok: true, actions: [...shown.actions, { type: 'cue/set', cue: null }] } : shown;
   }
 
+  /** Next is being pressed (Session 56): a deck's slide still being prepared waits (showSlide). */
+  private byNext = false;
+
   private step(delta: 1 | -1): Resolved {
+    this.byNext = delta > 0;
+    try {
+      return this.stepping(delta);
+    } finally {
+      this.byNext = false;
+    }
+  }
+
+  private stepping(delta: 1 | -1): Resolved {
     // Next plays what was cued.
     const cued = delta > 0 ? this.playCue() : null;
     if (cued) return cued;

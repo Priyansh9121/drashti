@@ -31,6 +31,19 @@ export interface PictureJob {
   width: number;
   height: number;
   maxPages: number;
+  /**
+   * The pages this window draws (Session 56: several windows draw a document's pages at once while nothing is on the
+   * screens or the stream): every `every`th from `from`, or the pages listed (from 0). Left out: every page.
+   */
+  share?: PageShare;
+}
+
+export type PageShare = { every: number; from: number } | { pages: number[] };
+
+/** Whether page `index` (from 0) is a share's to draw (every page, with no share). */
+export function inShare(share: PageShare | undefined, index: number): boolean {
+  if (!share) return true;
+  return 'pages' in share ? share.pages.includes(index) : index % share.every === share.from;
 }
 
 /** One page as the hidden window drew it: a PNG of the canvas size, and the page's comments. */

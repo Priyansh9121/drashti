@@ -146,7 +146,7 @@ import { SoundPass } from './sound/sound-pass';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { clearDeckLeftovers, OfficeCopies, officeCopiesFile } from './import/deck/leftovers';
-import { readDeckAnimations, writeDeckAnimations } from './import/deck/deck-setting';
+import { deckAppsOf, readDeckAnimations, writeDeckAnimations } from './import/deck/deck-setting';
 import { LinkService } from './links/link-service';
 import { libraryProblem } from './library-problem';
 import { parsePlain } from '../shared/plain-parse';
@@ -352,7 +352,7 @@ import { downloadModel, MODEL_SOURCES, modelFile, modelReady } from './speech/mo
 import { whisperSelfTest } from './speech/whisper-selftest';
 import { CaptionSettingsRepo } from './db/captions';
 import { isCaptionModel, parseCaptionSettings } from '../shared/captions';
-import type { EngineState } from '../shared/engine/state';
+import { type EngineState, nothingUp } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { PhoneFiles } from './network/phone-files';
@@ -1424,6 +1424,13 @@ function start(): void {
   if (perfTest && !userDataOverride && seedPerfLibrary(libraryDb))
     log.info('The performance check added its placeholder presentations');
   const presentations = new PresentationRepo(db);
+  // A deck's slides still marked as preparing when Drashti stopped in the middle of its import (Session 56): they
+  // show their pictures, without their animations, and Next no longer waits for them.
+  const unprepared = presentations.clearPreparing();
+  if (unprepared > 0)
+    log.warn(
+      `Start: ${String(unprepared)} slide(s) of a deck’s import cut short are its pictures, without animations`,
+    );
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
   // A playlist item naming a video input (Session 51) finds this computer's input of that name: the inputs are read
@@ -3292,6 +3299,9 @@ function start(): void {
     log: (message) => {
       log.info(message);
     },
+    // Several pages at once (Session 56) only while nothing is up on the screens and the stream is neither on air nor
+    // recording: an import never takes from the show.
+    wide: () => !(streaming.inUse() || testOnAir) && nothingUp(engine.snapshot().state.layers),
   });
   const documentReaders = new SourceReaderQueue(
     sourceReader((request) => pdfPictures.readEditable(request), pptxReader(spawnPptxReaderWorker)),
@@ -3449,6 +3459,13 @@ function start(): void {
             arch: process.arch,
             override: sw('DRASHTI_FFMPEG'),
           }),
+      // Tests only (never a packaged Drashti; Session 56's timing check): the stand-in's movie this many lines high, as
+      // PowerPoint's own is (1080), and only these apps for a deck (DRASHTI_TEST_DECK_APPS=keynote: Keynote's times).
+      standInLines: packaged() ? null : swMs('DRASHTI_TEST_DECK_BAKER_LINES'),
+      deckApps: packaged() ? null : deckAppsOf(sw('DRASHTI_TEST_DECK_APPS')),
+      // Tests only (never a packaged Drashti; Session 56): the stand-in holds its movie until this file is there, so a
+      // test sees a deck's slides preparing.
+      standInHold: packaged() ? null : (sw('DRASHTI_TEST_DECK_BAKER_HOLD') ?? null),
     },
     drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
     // A deck with its animations where this computer's setting says so (Session 54, C2 and its review). Tests only

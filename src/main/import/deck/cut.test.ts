@@ -240,6 +240,53 @@ describe('cutting a movie into its steps', () => {
     expect(onPlan(cuts)).toBe(true);
   });
 
+  it('a slide with no transition whose cut cannot be seen (two slides alike) is found by the plan, never at its own first click, and the slides after it as planned (Session 56)', () => {
+    // A plain slide, then one with two clicks and no transition (its first click 0.46 s after it comes in), then one
+    // with a fade: the second's cut shows nothing.
+    const still = { byClick: false, startMs: 0, endMs: 0, holdMs: null, still: true };
+    const plain = {
+      index: 0,
+      transitionName: '',
+      transitionMs: 0,
+      groups: [],
+      steps: [still],
+      advanceMs: 800,
+      endlessUntilMs: null,
+    };
+    const clicks = {
+      ...plain,
+      index: 1,
+      groups: [
+        { startMs: 400, endMs: 900 },
+        { startMs: 1300, endMs: 1800 },
+      ],
+      steps: [
+        still,
+        { byClick: true, startMs: 400, endMs: 900, holdMs: null, still: false },
+        { byClick: true, startMs: 1300, endMs: 1800, holdMs: null, still: false },
+      ],
+      advanceMs: 2600,
+    };
+    const faded = { ...plain, index: 2, transitionName: 'p:fade', transitionMs: 700 };
+    const plan: MoviePlan = {
+      baker: 'powerpoint',
+      settleMs: POWERPOINT_SETTLE_MS,
+      slides: [plain, clicks, faded],
+    };
+    const cuts = planCuts(plan, motionOf(plan, {}, [1]));
+    const starts = plannedStarts(plan);
+    // Each where the plan puts it, to the frame (the motion is measured frame by frame).
+    expect(
+      cuts.slides.map((s, i) => Math.abs((s.steps[0]?.fromMs ?? 0) - (starts[i] ?? 0)) <= FRAME),
+    ).toEqual([true, true, true]);
+    // Its clicks found at their own moments, so it keeps them.
+    expect(cuts.offSlides).toEqual([]);
+    expect(cuts.offsets.filter((o) => o.slide === 1).map((o) => Math.abs(o.offsetMs ?? 0) <= FRAME)).toEqual([
+      true,
+      true,
+    ]);
+  });
+
   it('a movie much longer or shorter than its plan, or with most slides off, sends the whole deck back to pictures', () => {
     const motion = motionOf(PLAN);
     // PowerPoint ignoring the copy's timings (5 s a slide, say): a movie of quite another length.
