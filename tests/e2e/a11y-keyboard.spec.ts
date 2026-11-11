@@ -27,7 +27,11 @@ interface Focus {
   region: string;
   ring: boolean;
   inView: boolean;
-  /** Something else drawn over its middle (a notice, a banner: WCAG 2.4.11, Sessions 31–36's A9). */
+  /**
+   * Something else drawn over its middle that hides it (a banner: WCAG 2.4.11, Sessions 31–36's A9). A notice may lie
+   * over it since 11 Nov 2026 (the owner: small and see-through in the bottom-right corner), but only see-through, so
+   * the control and its ring stay in sight: an opaque one over it counts as covering it.
+   */
   covered: boolean;
   testid: string;
   tag: string;
@@ -55,9 +59,26 @@ function focusOf(page: Page): Promise<Focus | null> {
       r.right > 0 &&
       r.top < innerHeight &&
       r.left < innerWidth;
-    // What is drawn at its middle: itself (or something inside it), never a notice or a banner over it.
-    const middle = inView ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
-    const covered = middle !== null && middle !== el && !el.contains(middle);
+    // What is drawn at its middle: itself (or something inside it), never a banner over it; and a notice over it only
+    // see-through (it lets clicks through, so the hit test alone cannot see it).
+    const mx = r.left + r.width / 2;
+    const my = r.top + r.height / 2;
+    const middle = inView ? document.elementFromPoint(mx, my) : null;
+    const notice = document.querySelector('[data-testid="operator-notice"]');
+    const n = notice?.getBoundingClientRect();
+    const underNotice =
+      notice !== null &&
+      n !== undefined &&
+      !notice.contains(el) &&
+      mx >= n.left &&
+      mx <= n.right &&
+      my >= n.top &&
+      my <= n.bottom;
+    const back = notice ? getComputedStyle(notice).backgroundColor : '';
+    const alpha = Number(
+      /\/\s*([0-9.]+)\s*\)\s*$/u.exec(back)?.[1] ?? /^rgba\([^)]*,\s*([0-9.]+)\s*\)$/u.exec(back)?.[1] ?? 1,
+    );
+    const covered = (middle !== null && middle !== el && !el.contains(middle)) || (underNotice && alpha >= 1);
     // What a screen reader says: its label, or its words without the parts hidden from it (a playlist card's
     // picture holds its slide's words, Session 26a).
     const shown = el.cloneNode(true) as HTMLElement;
@@ -163,7 +184,7 @@ test('Pro Mode: the keyboard goes through the window as it is laid out, its focu
   await app.close();
 });
 
-test('Pro Mode: with a notice up, no focused control is covered by it (WCAG 2.4.11; Sessions 31–36, A9)', async () => {
+test('Pro Mode: with a notice up, no focused control is hidden by it: see-through over one at most (WCAG 2.4.11; Sessions 31–36, A9; the owner, 11 Nov 2026)', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
