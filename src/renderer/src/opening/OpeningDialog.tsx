@@ -1,32 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { mediaUrl } from '../../../shared/media';
-import {
-  OPENING_LINES_MAX,
-  OPENING_PHOTOS_MAX,
-  type OpeningPlan,
-  openingPhotoUrl,
-  openingPlanOf,
-  type OpeningView,
-} from '../../../shared/opening';
+import { type OpeningPlan, openingPhotoUrl, openingPlanOf, type OpeningView } from '../../../shared/opening';
 import { MediaPicker } from '../editor/MediaPicker';
 import { MediaStill } from '../render/MediaStill';
-import { Button, IconButton } from '../ui/Button';
+import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
-import { Field, TextInput } from '../ui/Field';
-import { ChevronLeft, ChevronRight, FolderOpen, ImagePlus, Play, X } from '../ui/icons';
+import { FolderOpen, ImagePlus, Play, X } from '../ui/icons';
 import { motionOff } from '../ui/motion';
 import { Notice } from '../ui/Notice';
 import { Toggle } from '../ui/Toggle';
-import { cx } from '../ui/cx';
 import { copyFailed } from './copies';
 import { closeOpening, connectOpening, loadPack, take, useOpening } from './opening-store';
 import { OpeningPlayer } from './OpeningPlayer';
 
 /*
- * File › Opening… (Session 55, Pro Mode): whether Drashti opens with its five seconds, its photos (from Media, up to
- * eight, in order) and its lines (up to five, in Gujarati, Hindi or English), a preview of it, and Load the opening
- * pack…, which makes the pack's photos and lines the opening's only ones. Every change is kept at once. With nothing
- * chosen, its preview is Drashti's default photo (the owner's decision of 5 Nov 2026), as the opening plays it.
+ * File › Opening… (Session 55, Pro Mode; alpha.16, the owner's words of 11 Nov 2026): whether Drashti opens with its
+ * two seconds, its one photo (from Media), the opening pack's sound if one is loaded (taken out here), a preview of
+ * it, and Load the opening pack…, which makes the pack's photo 1 and its sound the opening's. Every change is kept at
+ * once. With no photo chosen, its preview is Drashti's default photo (the owner's decision of 5 Nov 2026), as the
+ * opening plays it, with no sound.
  */
 
 export function OpeningDialog() {
@@ -40,15 +32,14 @@ export function OpeningDialog() {
 }
 
 /**
- * The plan as it would play now: each photo's copy once made (its whole file until then); with nothing chosen, the
- * default photo.
+ * The plan as it would play now: the photo's copy once made (its whole file until then), with the pack's sound; with
+ * no photo chosen (or it gone from Media), the default photo, with no sound.
  */
 function planOf(view: OpeningView): OpeningPlan {
+  const { photo } = view;
   return openingPlanOf(
-    view.photos
-      .filter((p) => !p.gone)
-      .map((p) => (p.ready ? openingPhotoUrl(p.mediaId) : mediaUrl(p.mediaId))),
-    view.lines,
+    photo && !photo.gone ? (photo.ready ? openingPhotoUrl(photo.mediaId) : mediaUrl(photo.mediaId)) : null,
+    view.sound?.url ?? null,
     view.defaultPhoto,
   );
 }
@@ -57,34 +48,13 @@ function OpeningForm({ view }: { view: OpeningView }) {
   const problem = useOpening((s) => s.problem);
   const loading = useOpening((s) => s.loading);
   const [picking, setPicking] = useState(false);
-  // The preview plays again each time Play is pressed (a new key), and shows its first moment until then.
+  // The preview plays again each time Play is pressed (a new key), and shows its photo until then.
   const [play, setPlay] = useState(0);
-  // The lines as typed: they take the kept ones as the window opens and when a pack is loaded, never from a save of
-  // their own (one coming back while the next line is typed would wipe it).
-  const linesFrom = useOpening((s) => s.linesFrom);
-  const [typed, setTyped] = useState<{ from: number; lines: string[] }>(() => ({
-    from: linesFrom,
-    lines: view.lines,
-  }));
-  if (typed.from !== linesFrom) setTyped({ from: linesFrom, lines: view.lines });
-  const lines = typed.lines;
-  const setLines = (next: string[]) => {
-    setTyped({ from: linesFrom, lines: next });
-  };
-  const photos = view.photos.filter((p) => !p.gone).map((p) => p.mediaId);
   const plan = useMemo(() => planOf(view), [view]);
-  const keep = (next: { photos?: string[]; lines?: string[] }) => {
-    void window.drashti.opening
-      .setChoice({ photos: next.photos ?? photos, lines: next.lines ?? lines.filter((l) => l.trim() !== '') })
-      .then(take);
+  const keep = (photo: string | null) => {
+    void window.drashti.opening.setChoice({ photo }).then(take);
   };
-  const move = (from: number, to: number) => {
-    const next = view.photos.map((p) => p.mediaId);
-    const [one] = next.splice(from, 1);
-    if (one === undefined) return;
-    next.splice(to, 0, one);
-    keep({ photos: next.filter((id) => photos.includes(id)) });
-  };
+  const chosen = view.photo;
   return (
     <Dialog
       title="Opening"
@@ -96,9 +66,9 @@ function OpeningForm({ view }: { view: OpeningView }) {
     >
       <div className="space-y-5">
         <p className="text-sm text-muted">
-          For five seconds as Drashti starts, the mandir’s own photos and lines, on this screen only: never on
-          the hall’s screens, a node, the stream or a phone. Any key, click or tap ends it at once. With
-          nothing chosen, Drashti’s default photo comes in, with no words over it.
+          For two seconds as Drashti starts, the mandir’s own photo, with the opening pack’s sound if it has
+          one, on this screen only: never on the hall’s screens, a node, the stream or a phone. Any key, click
+          or tap ends it at once. With no photo chosen, Drashti’s default photo comes in, with no sound.
         </p>
         <Toggle
           checked={view.on}
@@ -123,13 +93,8 @@ function OpeningForm({ view }: { view: OpeningView }) {
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
-                {plan.photos[0] ? (
-                  <img
-                    src={plan.photos[0]}
-                    alt=""
-                    draggable={false}
-                    className={cx('size-full', plan.defaultPhoto ? 'object-contain' : 'object-cover')}
-                  />
+                {plan.photo ? (
+                  <img src={plan.photo} alt="" draggable={false} className="size-full object-contain" />
                 ) : (
                   'The lamp lights'
                 )}
@@ -146,102 +111,85 @@ function OpeningForm({ view }: { view: OpeningView }) {
             Play the preview
           </Button>
         </section>
-        <section aria-labelledby="opening-photos-title" className="space-y-2">
-          <h3 id="opening-photos-title" className="text-sm font-medium">
-            Photos ({view.photos.length} of {OPENING_PHOTOS_MAX}), in the order they come
+        <section aria-labelledby="opening-photo-title" className="space-y-2">
+          <h3 id="opening-photo-title" className="text-sm font-medium">
+            Photo
           </h3>
-          {view.photos.length > 0 && (
-            <ol className="grid grid-cols-4 gap-2">
-              {view.photos.map((p, i) => (
-                <li key={`${p.mediaId}-${String(i)}`} data-testid="opening-photo" className="space-y-1">
-                  <div className="relative aspect-video overflow-hidden rounded-md bg-black">
-                    {!p.gone && <MediaStill mediaId={p.mediaId} media="image" fit="fill" />}
-                    <span className="absolute top-1 left-1 rounded bg-black/70 px-1.5 text-xs text-white">
-                      {i + 1}
-                    </span>
-                  </div>
-                  <p className="truncate text-xs text-muted" title={p.name}>
-                    {p.gone
-                      ? 'No longer in Media: left out'
-                      : p.ready || copyFailed(p.mediaId)
-                        ? p.name
-                        : 'Getting it ready…'}
-                  </p>
-                  <div className="flex gap-1">
-                    <IconButton
-                      size="sm"
-                      icon={ChevronLeft}
-                      label={`Move photo ${String(i + 1)} earlier`}
-                      disabled={i === 0 || p.gone}
-                      onClick={() => {
-                        move(i, i - 1);
-                      }}
-                    />
-                    <IconButton
-                      size="sm"
-                      icon={ChevronRight}
-                      label={`Move photo ${String(i + 1)} later`}
-                      disabled={i === view.photos.length - 1 || p.gone}
-                      onClick={() => {
-                        move(i, i + 1);
-                      }}
-                    />
-                    <IconButton
-                      size="sm"
-                      icon={X}
-                      label={`Take photo ${String(i + 1)} out of the opening`}
-                      onClick={() => {
-                        keep({
-                          photos: view.photos.filter((q, k) => k !== i && !q.gone).map((q) => q.mediaId),
-                        });
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-          <Button
-            icon={ImagePlus}
-            data-testid="opening-add-photo"
-            disabled={view.photos.length >= OPENING_PHOTOS_MAX}
-            onClick={() => {
-              setPicking(true);
-            }}
-          >
-            Add a photo from Media…
-          </Button>
+          <div data-testid="opening-photo" className="flex items-center gap-3">
+            {chosen ? (
+              <>
+                <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-black">
+                  {!chosen.gone && <MediaStill mediaId={chosen.mediaId} media="image" fit="fit" />}
+                </div>
+                <p className="min-w-0 truncate text-sm" title={chosen.name}>
+                  {chosen.gone
+                    ? 'No longer in Media: Drashti’s default photo plays instead'
+                    : chosen.ready || copyFailed(chosen.mediaId)
+                      ? chosen.name
+                      : 'Getting it ready…'}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted">None chosen: Drashti’s default photo plays, with no sound.</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              icon={ImagePlus}
+              data-testid="opening-choose-photo"
+              onClick={() => {
+                setPicking(true);
+              }}
+            >
+              {chosen ? 'Choose another photo from Media…' : 'Choose a photo from Media…'}
+            </Button>
+            {chosen && (
+              <Button
+                icon={X}
+                data-testid="opening-remove-photo"
+                onClick={() => {
+                  keep(null);
+                }}
+              >
+                Take the photo out
+              </Button>
+            )}
+          </div>
         </section>
-        <section aria-labelledby="opening-lines-title" className="space-y-2">
-          <h3 id="opening-lines-title" className="text-sm font-medium">
-            Lines (up to {OPENING_LINES_MAX}), in Gujarati, Hindi or English, sharing the five seconds
+        <section aria-labelledby="opening-sound-title" className="space-y-2">
+          <h3 id="opening-sound-title" className="text-sm font-medium">
+            Sound
           </h3>
-          {Array.from({ length: OPENING_LINES_MAX }, (_, i) => (
-            <Field key={i} label={`Line ${String(i + 1)}`} layout="inline">
-              <TextInput
-                data-testid={`opening-line-${String(i + 1)}`}
-                value={lines[i] ?? ''}
-                maxLength={120}
-                onChange={(e) => {
-                  const next = [...lines];
-                  while (next.length <= i) next.push('');
-                  next[i] = e.target.value;
-                  setLines(next);
-                }}
-                onBlur={() => {
-                  if (lines.join('\n') !== view.lines.join('\n')) keep({});
-                }}
-              />
-            </Field>
-          ))}
+          <p data-testid="opening-sound" className={view.sound ? 'text-sm' : 'text-sm text-muted'}>
+            {view.sound ? (
+              <>
+                <span className="font-medium">{view.sound.name}</span>, from the opening pack: it plays gently
+                with the photo for its two seconds, never with Drashti’s default photo.
+              </>
+            ) : (
+              'No sound. An opening pack may hold one beside its photos folder: sound.mp3, sound.m4a or sound.wav.'
+            )}
+          </p>
+          {view.sound && (
+            <Button
+              icon={X}
+              data-testid="opening-remove-sound"
+              onClick={() => {
+                void window.drashti.opening.removeSound().then(take);
+              }}
+            >
+              Take the sound out
+            </Button>
+          )}
         </section>
         <section aria-labelledby="opening-pack-title" className="space-y-2">
           <h3 id="opening-pack-title" className="text-sm font-medium">
             The opening pack
           </h3>
           <p className="text-sm text-muted">
-            A folder with the photos (photos/1.jpg to 8.jpg) and their lines (words.txt, one to a line). Its
-            photos come into Media, and they and its lines replace what is chosen here.
+            A folder with its photo (photos/1.jpg) and, if it has one, its sound beside the photos folder
+            (sound.mp3, sound.m4a or sound.wav). Its photo comes into Media, and it and its sound replace what
+            is chosen here.
           </p>
           <Button
             icon={FolderOpen}
@@ -266,7 +214,7 @@ function OpeningForm({ view }: { view: OpeningView }) {
           picturesOnly
           onChoose={(media) => {
             setPicking(false);
-            keep({ photos: [...photos, media.id] });
+            keep(media.id);
           }}
           onClose={() => {
             setPicking(false);

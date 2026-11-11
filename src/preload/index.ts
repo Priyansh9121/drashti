@@ -167,6 +167,7 @@ const bridge: DrashtiBridge = {
     setOn: (on) => invoke(IPC.opening.setOn, on),
     setChoice: (choice) => invoke(IPC.opening.setChoice, choice),
     loadPack: () => invoke(IPC.opening.loadPack),
+    removeSound: () => invoke(IPC.opening.removeSound),
     saveCopy: (mediaId, bytes) => invoke(IPC.opening.saveCopy, mediaId, bytes),
     onOpen: (listener) =>
       on(IPC.opening.open, () => {

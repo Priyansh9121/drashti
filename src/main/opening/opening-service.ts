@@ -1,8 +1,7 @@
-import { basename } from 'node:path';
+import { existsSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { mediaUrl } from '../../shared/media';
 import {
-  cleanLine,
-  type OpeningChoice,
   openingChoiceSchema,
   type OpeningEnd,
   type OpeningPlan,
@@ -10,19 +9,21 @@ import {
   openingPlanOf,
   type OpeningResult,
   type OpeningSetting,
+  type OpeningSound,
+  openingSoundUrl,
   type OpeningView,
   readOpening,
 } from '../../shared/opening';
-import { plural } from '../../shared/text';
-import { readPack, saveOpeningCopy } from './opening-files';
+import { dropSoundCopy, keepSoundCopy, openingSoundPath, readPack, saveOpeningCopy } from './opening-files';
 import { openingAtStart } from './opening-start';
 
 /*
- * The opening in the main process (Session 55, the owner's brief of 3 Nov 2026; shared/opening.ts says what it is):
- * kept with the library's settings ("opening", no migration), decided once as the operator window opens
- * (opening-start.ts), and changed only from File › Opening… in Pro Mode. With nothing chosen, Drashti's default photo
- * (opening-photo.ts; the lamp should its file be missing). The log says whether it played and why not, never its words
- * or its photos.
+ * The opening in the main process (Session 55, the owner's brief of 3 Nov 2026; alpha.16, his words of 11 Nov 2026:
+ * shared/opening.ts says what it is): kept with the library's settings ("opening", no migration: alpha.15's several
+ * photos and lines read as its first photo), decided once as the operator window opens (opening-start.ts), and changed
+ * only from File › Opening… in Pro Mode. With no photo chosen, Drashti's default photo (opening-photo.ts; the lamp
+ * should its file be missing), never with a sound. The log says whether it played and why not, never the name of its
+ * photo or its sound.
  */
 
 /** A picture in the library the opening can show: its file's sha256 and its name. */
@@ -50,6 +51,7 @@ export interface OpeningServiceDeps {
   hasCopy(sha256: string): boolean;
   /** Whether Drashti's default photo is there (opening-photo.ts). */
   defaultPhoto(): boolean;
+  /** The media folder: the opening's copies are kept in its opening/. */
   mediaDir: string;
   /** The first start's welcome, or Simple Mode's first steps, show now. */
   welcome(): boolean;
@@ -71,6 +73,15 @@ export class OpeningService {
 
   private kept(): OpeningSetting {
     return readOpening(this.deps.settings.get('opening'));
+  }
+
+  private keep(setting: OpeningSetting): void {
+    this.deps.settings.set('opening', setting);
+  }
+
+  /** Whether the copy of a kept sound is in the media folder. */
+  private soundThere(sound: OpeningSound | null): sound is OpeningSound {
+    return sound !== null && existsSync(join(this.deps.mediaDir, openingSoundPath(sound)));
   }
 
   /**
@@ -96,24 +107,26 @@ export class OpeningService {
       if (first) this.deps.log(`Opening: not played (${decided.why})`);
       return null;
     }
-    const photos = kept.photos.flatMap((id) => {
-      const picture = this.deps.picture(id);
-      if (!picture) return [];
-      // Its copy at the window's size (backups carry the copies); a photo whose copy is not made yet (File › Opening…
-      // closed while it was being made, say) shows its whole file this time, and File › Opening… makes the copy.
-      return [this.deps.hasCopy(picture.sha256) ? openingPhotoUrl(id) : mediaUrl(id)];
-    });
-    const without = kept.photos.length - photos.length;
-    const gone = without > 0 ? `; ${plural(without, 'photo')} no longer in Media left out` : '';
-    // Nothing to show of its own: Drashti's default photo, or the lamp should its file be missing.
-    const nothing = photos.length === 0 && kept.lines.length === 0;
-    const plan = openingPlanOf(photos, kept.lines, nothing && this.deps.defaultPhoto());
+    const picture = kept.photo === null ? null : this.deps.picture(kept.photo);
+    // Its copy at the window's size (backups carry the copies); a photo whose copy is not made yet (File › Opening…
+    // closed while it was being made, say) shows its whole file this time, and File › Opening… makes the copy.
+    const photo =
+      kept.photo === null || picture === null
+        ? null
+        : this.deps.hasCopy(picture.sha256)
+          ? openingPhotoUrl(kept.photo)
+          : mediaUrl(kept.photo);
+    const sound = photo !== null && this.soundThere(kept.sound) ? openingSoundUrl(kept.sound.sha256) : null;
+    const plan = openingPlanOf(photo, sound, photo === null && this.deps.defaultPhoto());
+    const gone = kept.photo !== null && picture === null ? '; its photo is no longer in Media' : '';
     this.deps.log(
       plan.defaultPhoto
         ? `Opening: plays (the default photo${gone})`
-        : `Opening: plays (${photos.length === 0 ? 'the lamp' : plural(photos.length, 'photo')}, ${plural(kept.lines.length, 'line')}${gone}${
-            nothing ? '; the default photo’s file is missing' : ''
-          })`,
+        : plan.photo === null
+          ? `Opening: plays (the lamp${gone}; the default photo’s file is missing)`
+          : `Opening: plays (its photo${
+              plan.sound ? ' and sound' : kept.sound ? '; its sound’s copy is missing' : ''
+            })`,
     );
     return plan;
   }
@@ -127,67 +140,99 @@ export class OpeningService {
 
   view(): OpeningView {
     const kept = this.kept();
+    const picture = kept.photo === null ? null : this.deps.picture(kept.photo);
     return {
       on: kept.on,
-      photos: kept.photos.map((mediaId) => {
-        const picture = this.deps.picture(mediaId);
-        return {
-          mediaId,
-          name: picture?.name ?? '',
-          ready: picture !== null && this.deps.hasCopy(picture.sha256),
-          gone: picture === null,
-        };
-      }),
-      lines: kept.lines,
+      photo:
+        kept.photo === null
+          ? null
+          : {
+              mediaId: kept.photo,
+              name: picture?.name ?? '',
+              ready: picture !== null && this.deps.hasCopy(picture.sha256),
+              gone: picture === null,
+            },
+      sound: this.soundThere(kept.sound)
+        ? { name: kept.sound.name, url: openingSoundUrl(kept.sound.sha256) }
+        : null,
       defaultPhoto: this.deps.defaultPhoto(),
     };
   }
 
   setOn(on: boolean): OpeningResult {
-    this.deps.settings.set('opening', { ...this.kept(), on });
+    this.keep({ ...this.kept(), on });
     this.deps.log(`Opening: turned ${on ? 'on' : 'off'}`);
     return { ok: true, view: this.view() };
   }
 
-  /** The photos and lines chosen in File › Opening…, checked whole. */
+  /** The photo chosen in File › Opening… (null: Drashti's default photo), checked whole; the sound stays. */
   setChoice(raw: unknown): OpeningResult {
     const choice = openingChoiceSchema.safeParse(raw);
-    if (!choice.success) return { ok: false, message: 'That choice of photos and lines cannot be kept.' };
-    if (choice.data.photos.some((id) => this.deps.picture(id) === null))
-      return { ok: false, message: 'Only a picture in Media can be one of the opening’s photos.' };
-    this.keep(choice.data);
+    if (!choice.success) return { ok: false, message: 'That photo cannot be the opening’s.' };
+    const { photo } = choice.data;
+    if (photo !== null && this.deps.picture(photo) === null)
+      return { ok: false, message: 'Only a picture in Media can be the opening’s photo.' };
+    this.keep({ ...this.kept(), photo });
     return { ok: true, view: this.view() };
   }
 
-  private keep(choice: OpeningChoice): void {
-    const lines = choice.lines.map(cleanLine).filter((line) => line !== '');
-    this.deps.settings.set('opening', { on: this.kept().on, photos: choice.photos, lines });
+  /** The pack's sound taken out: none plays, and its copy goes. */
+  async removeSound(): Promise<OpeningResult> {
+    const kept = this.kept();
+    this.keep({ ...kept, sound: null });
+    if (kept.sound) await dropSoundCopy(this.deps.mediaDir, kept.sound);
+    this.deps.log('Opening: its sound was taken out');
+    return { ok: true, view: this.view() };
+  }
+
+  /** The kept sound's copy with this sha256, relative to the media folder (for drashti-media://), or null. */
+  soundFile(sha256: string): string | null {
+    const { sound } = this.kept();
+    return sound !== null && sound.sha256 === sha256 ? openingSoundPath(sound) : null;
   }
 
   /**
-   * Load the opening pack…: the folder's photos brought into Media, and they and its lines made the opening's only
-   * ones, in order, replacing any chosen before. A pack missing a photo or a line says what, and nothing changes.
+   * Load the opening pack…: its photo 1 brought into Media and made the opening's photo, and its sound (or none) the
+   * opening's sound, replacing what was chosen before. A pack without its photo 1, or whose sound Drashti cannot take,
+   * says why, and nothing changes.
    */
   async loadPack(dir: string): Promise<OpeningResult> {
     const pack = await readPack(dir);
+    const notLoaded = () => {
+      this.deps.log('Opening: the opening pack was not loaded');
+    };
     if (!pack.ok) {
-      this.deps.log('Opening: a pack that was not complete was not loaded');
+      notLoaded();
       return pack;
     }
-    const imported = await this.deps.importPhotos(pack.photos);
-    if (!imported.ok) return imported;
-    const notPictures = imported.ids.flatMap((id, i) =>
-      this.deps.picture(id) ? [] : [basename(pack.photos[i] ?? '')],
-    );
-    if (notPictures.length > 0)
+    const imported = await this.deps.importPhotos([pack.photo]);
+    if (!imported.ok) {
+      notLoaded();
+      return imported;
+    }
+    const [photo] = imported.ids;
+    if (photo === undefined || this.deps.picture(photo) === null) {
+      notLoaded();
       return {
         ok: false,
-        message: `In the opening pack, ${notPictures.join(', ')} did not come into Media as ${notPictures.length === 1 ? 'a picture' : 'pictures'}. Nothing was changed.`,
+        message: `In the opening pack, ${basename(pack.photo)} did not come into Media as a picture. Nothing was changed.`,
       };
-    this.keep({ photos: imported.ids, lines: pack.lines });
-    this.deps.log(
-      `Opening: the opening pack’s ${plural(imported.ids.length, 'photo')} and ${plural(pack.lines.length, 'line')} are the opening’s now`,
-    );
+    }
+    let sound: OpeningSound | null = null;
+    if (pack.sound) {
+      const copied = await keepSoundCopy(this.deps.mediaDir, pack.sound);
+      if (!copied.ok) {
+        notLoaded();
+        return copied;
+      }
+      sound = copied.sound;
+    }
+    const before = this.kept();
+    this.keep({ on: before.on, photo, sound });
+    // The sound it replaced goes, unless it is the very file kept now (the same pack loaded again).
+    const same = sound !== null && before.sound?.sha256 === sound.sha256 && before.sound.kind === sound.kind;
+    if (before.sound && !same) await dropSoundCopy(this.deps.mediaDir, before.sound);
+    this.deps.log(`Opening: the opening pack’s photo ${sound ? 'and sound are' : 'is'} the opening’s now`);
     return { ok: true, view: this.view() };
   }
 
