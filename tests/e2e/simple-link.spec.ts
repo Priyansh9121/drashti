@@ -7,7 +7,7 @@ import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeDropboxLikeZip } from '../../src/main/import/testing/zip-writer';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, folderLink, type StandIn, type StandInFile } from './dropbox-stand-in';
-import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { holdStill, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
@@ -93,7 +93,7 @@ async function fromALink(win: Page): Promise<void> {
   await expect(win.getByTestId('link-dialog')).toBeVisible();
 }
 
-test('YouTube in Simple Mode, as in Pro Mode: the highest video quality, a quality, the folder to save in and the playlist chosen; Show in Finder (Explorer) and the import report', async () => {
+test('YouTube in Simple Mode, as in Pro Mode: the highest video quality, a quality, the folder to save in and the playlist chosen; Show in Finder (Explorer) and the import report, which comes only when asked', async () => {
   test.setTimeout(300_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-simple-link-'));
   const chosen = join(work, 'Chosen folder');
@@ -101,7 +101,14 @@ test('YouTube in Simple Mode, as in Pro Mode: the highest video quality, a quali
   const { app, win } = await open(
     {
       DRASHTI_TEST_FAKE_YT_DLP: FAKE,
-      DRASHTI_TEST_FAKE_YT_DLP_CONFIG: JSON.stringify({ log, title: 'Placeholder video', duration: 65 }),
+      // Slow enough (about 9 s) for the dialog to be closed while one goes.
+      DRASHTI_TEST_FAKE_YT_DLP_CONFIG: JSON.stringify({
+        log,
+        title: 'Placeholder video',
+        duration: 65,
+        steps: 60,
+        stepMs: 150,
+      }),
       DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
     },
     chosen,
@@ -176,6 +183,35 @@ test('YouTube in Simple Mode, as in Pro Mode: the highest video quality, a quali
   await report.getByRole('button', { name: 'Close', exact: true }).first().click();
   await expect(report).toHaveCount(0);
   await expect(win.getByTestId('simple-mode')).toBeVisible();
+
+  // Another, its sound only (MP3), the dialog closed while it downloads (the status bar says how it goes): it goes into
+  // the playlist chosen, and its report comes only when asked, as for Simple Mode's other imports: the status bar's
+  // Report opens it.
+  await fromALink(win);
+  await win.getByTestId('link-another').click();
+  await win.getByTestId('link-kind-youtube').click();
+  await win.getByTestId('link-text').fill(LINK);
+  await expect(win.getByTestId('link-name')).toHaveText('Placeholder video', { timeout: 60_000 });
+  await win.getByTestId('link-type-mp3').click();
+  await target.selectOption(`playlist:${youth}`);
+  await download.click();
+  await expect(win.getByTestId('link-going')).toBeVisible();
+  await win.getByTestId('link-dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(win.getByTestId('link-dialog')).toHaveCount(0);
+  await expect(win.getByTestId('link-status')).toBeVisible();
+  await expect
+    .poll(() => labels(win, youth), { timeout: 120_000 })
+    .toEqual(['Placeholder video.mp4', 'Placeholder video.mp3']);
+  await holdStill(
+    async () => (await report.count()) === 0,
+    1500,
+    'in Simple Mode the report of a download comes only when asked',
+  );
+  await win.getByTestId('import-result').getByRole('button', { name: 'Report', exact: true }).click();
+  await expect(report).toBeVisible();
+  await expect(report.getByTestId('report-item').first()).toContainText('Placeholder video.mp3');
+  await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await expect(report).toHaveCount(0);
   await app.close();
 });
 
