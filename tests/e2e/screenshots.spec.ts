@@ -1673,10 +1673,8 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
   await first.win.getByTestId('link-choose-folder').click();
   await expect(first.win.getByTestId('link-folder')).toHaveText(chosen);
   await shot(first.win, 'import-link-youtube', [first.win.getByTestId('link-folder')]);
-  // The tick, and Download wakes; then downloading.
-  await first.win.getByTestId('link-permission').check();
+  // Download is ready (no tick since alpha.16); then downloading.
   await expect(first.win.getByTestId('link-download')).toBeEnabled();
-  await shot(first.win, 'import-link-youtube-ticked', [first.win.getByTestId('link-folder')]);
   await first.win.getByTestId('link-download').click();
   await expect(first.win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p', {
     timeout: 60_000,

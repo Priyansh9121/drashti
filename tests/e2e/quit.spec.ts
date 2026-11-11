@@ -445,7 +445,7 @@ test('quitting during a YouTube download (Session 25c): no part-file, and no yt-
   await win.evaluate(async () => {
     const links = (globalThis as PageGlobals).drashti.links;
     await links.pickFolder();
-    const started = await links.download({ type: 'mp4', height: 1080, permission: true });
+    const started = await links.download({ type: 'mp4', height: 1080 });
     if (!started.ok) throw new Error(started.message);
   });
   await expect

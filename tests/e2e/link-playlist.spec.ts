@@ -79,11 +79,8 @@ async function lookAtVideo(win: Page): Promise<void> {
   await expect(win.getByTestId('link-name')).toHaveText('Placeholder video', { timeout: 60_000 });
 }
 
-/** The permission tick, then Download; waits until what it saved is in. */
+/** Download (no tick to tick since alpha.16); waits until what it saved is in. */
 async function download(win: Page): Promise<void> {
-  const tick = win.getByTestId('link-permission');
-  await tick.click();
-  await expect(tick).toBeChecked();
   await win.getByTestId('link-download').click();
   await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 120_000 });
 }
@@ -103,9 +100,6 @@ test('with no playlist, it asks for one’s name before the download, makes it, 
   const name = win.getByTestId('link-new-playlist');
   await expect(name).toHaveValue('Placeholder video');
   await expect(dialog.getByLabel('There are no playlists yet: name one for it')).toBeVisible();
-  const tick = win.getByTestId('link-permission');
-  await tick.click();
-  await expect(tick).toBeChecked();
   const go = win.getByTestId('link-download');
   await expect(go).toBeEnabled();
   // Emptied, Download waits for a name, and says why.
