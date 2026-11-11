@@ -246,6 +246,16 @@ describe.skipIf(!ffmpegHere(ffmpeg))(
       };
       expect([0, 1, 2, 3, 4, 5].map(widthOf)).toEqual([320, 4, 4, 320, 4, 4]);
       expect(slides.map((s) => s.notes)).toEqual(placeholderSlides(6).map((s) => s.notes));
+      // Each slide knows its own page of the original (Edit slides reads its words from it).
+      const pages = (
+        t.db
+          .prepare(
+            `SELECT s.document_page AS page FROM slides s JOIN slide_groups g ON g.id = s.group_id
+             WHERE g.presentation_id = ? ORDER BY g.position, s.position`,
+          )
+          .all(item?.target?.id ?? '') as { page: string | null }[]
+      ).map((r) => (JSON.parse(r.page ?? 'null') as { page?: number } | null)?.page);
+      expect(pages).toEqual([0, 1, 2, 3, 4, 5]);
       expect(item?.issues.find((i) => i.code === 'deck-animations')?.message).toMatch(
         /^PowerPoint made this deck’s movie with its animations in \d+ s: 2 slides with 5 clicks\./u,
       );
