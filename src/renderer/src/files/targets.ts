@@ -280,7 +280,8 @@ export function slideRowTarget(
 /**
  * Make it an item of its own (Session 55, Part 4b's keyboard move): in the menu of a slide's row of a deck or
  * presentation in a playlist (one of more than one slide there), as the place's own, so the keyboard (Shift+F10) can do
- * what dragging the row out of its deck does. Pro Mode's: Simple Mode's menu has Rename and Delete only (Part 18).
+ * what dragging the row out of its deck does. Pro Mode's: Simple Mode's menu leaves out a place's own entries (Part 18;
+ * Session 56).
  */
 export function slideOutEntry(run: () => void): MenuEntry {
   return { label: 'Make it an item of its own', icon: ListPlus, onSelect: run };

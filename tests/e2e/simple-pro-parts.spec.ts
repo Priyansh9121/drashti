@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -149,9 +149,14 @@ async function audioPage(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
-/** Every file in Drashti's own media folder (a copy made would be one more). */
+/**
+ * Every file in Drashti's own media folder (a copy made would be one more), but its still pictures (`stills/`, a
+ * video's first picture made for its thumbnail as it is first shown, never a copy of the file).
+ */
 const mediaFiles = (userData: string): string[] =>
-  readdirSync(join(userData, 'Media'), { recursive: true, encoding: 'utf8' }).sort();
+  readdirSync(join(userData, 'Media'), { recursive: true, encoding: 'utf8' })
+    .filter((f) => f !== 'stills' && !f.startsWith(`stills${sep}`))
+    .sort();
 
 /** The words of a presentation's slides, as the library keeps them. */
 const wordsOf = (win: Page, presentationId: string) =>
@@ -246,10 +251,14 @@ test('Simple Mode’s right column: no keys line; Audio under LIVE, as Pro Mode�
   const at = await music.evaluate((el: HTMLAudioElement) => el.currentTime);
   await forward.click();
   await expect.poll(() => music.evaluate((el: HTMLAudioElement) => el.currentTime)).toBeGreaterThan(at + 10);
-  // Pause and Play.
+  // Pause: it fades out and makes no sound (the audio player lets its element go); Play goes on from there.
   await group.getByTestId('music-pause').click();
-  await expect.poll(playing).toBe(false);
+  await expect(music).toHaveCount(0);
+  // Paused where Forward 15 s took it.
+  await expect.poll(async () => (await layers(win)).audio?.pausedAtMs ?? 0).toBeGreaterThan(10_000);
   await group.getByTestId('music-play').click();
+  await expect.poll(async () => (await layers(win)).audio?.pausedAtMs).toBeUndefined();
+  await expect(music).toHaveCount(1);
   await expect.poll(playing).toBe(true);
 
   // Music steps aside's switch: Simple Mode's too.
@@ -587,7 +596,21 @@ test('Simple Mode from CI’s 1024 × 645 up: Audio under the time bar and above
       const bar = at('[data-testid="simple-buttons"]');
       const status = at('footer[aria-label="Status"]');
       if (!live || !audio || !times || !bar || !status) return ['a part is missing'];
-      if (document.documentElement.scrollHeight > innerHeight + 1) out.push('the page scrolls down');
+      if (document.documentElement.scrollHeight > innerHeight + 1) {
+        // Named: what runs below the window, where its parent does not.
+        const below = [...document.body.querySelectorAll('*')].filter((el) => {
+          const r = el.getBoundingClientRect();
+          const p = el.parentElement?.getBoundingClientRect();
+          return r.height > 0 && r.bottom > innerHeight + 1 && (!p || p.bottom <= innerHeight + 1);
+        });
+        const what = below
+          .slice(0, 3)
+          .map(
+            (el) =>
+              el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName.toLowerCase(),
+          );
+        out.push(`the page scrolls down (${what.join(', ')})`);
+      }
       if (document.documentElement.scrollWidth > innerWidth + 1) out.push('the page scrolls sideways');
       if (audio.top < times.bottom - 0.5) out.push('Audio is not under the time bar');
       if (live.bottom > bar.top + 0.5) out.push('the right column runs under the bar along the bottom');

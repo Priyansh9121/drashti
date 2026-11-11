@@ -392,7 +392,7 @@ test('the welcome and the practice show at 1024 × 645, every button clickable; 
   await app.close();
 });
 
-test('Simple Mode’s bar fits from 1008 px wide, with Black-out and the Wallpaper on and Put it back offered; its Next and Back in sight', async () => {
+test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audio too, with Black-out and the Wallpaper on and Put it back offered; its Next and Back in sight', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -409,13 +409,21 @@ test('Simple Mode’s bar fits from 1008 px wide, with Black-out and the Wallpap
   expect(problem).toBe('');
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  // Pro Mode's bar since Session 55 (Part 18), with Clear all, the Wallpaper and Black-out alone, each with its key;
-  // Put it back in Clear all's place after it. Next and Back are under LIVE, as in Pro Mode.
-  const simpleBar = (clear: string, wallpaper: string, blackout: string) => [clear, wallpaper, blackout];
+  // Pro Mode's bar since Session 55 (Part 18), with Clear all, Slide, Background and Audio beside it (Session 56), the
+  // Wallpaper and Black-out, each with its key; Put it back in Clear all's place after it. Next and Back are under
+  // LIVE, as in Pro Mode.
+  const simpleBar = (clear: string, slideUp: boolean, wallpaper: string, blackout: string) => [
+    clear,
+    `Clear slide${slideUp ? ' (on screen)' : ''} F2`,
+    'Clear background F3',
+    'Clear audio F5',
+    wallpaper,
+    blackout,
+  ];
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Clear all F1', 'Wallpaper F12', 'Black-out B'),
+    simpleBar('Clear all F1', true, 'Wallpaper F12', 'Black-out B'),
     'as it opens',
   );
   await win.keyboard.press('b');
@@ -425,7 +433,7 @@ test('Simple Mode’s bar fits from 1008 px wide, with Black-out and the Wallpap
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Clear all F1', 'Wallpaper is on F12', 'Black-out is on B'),
+    simpleBar('Clear all F1', true, 'Wallpaper is on F12', 'Black-out is on B'),
     'Black-out and the Wallpaper on',
   );
   await win.keyboard.press('F1');
@@ -433,7 +441,7 @@ test('Simple Mode’s bar fits from 1008 px wide, with Black-out and the Wallpap
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    simpleBar('Put it back', 'Wallpaper is on F12', 'Black-out is on B'),
+    simpleBar('Put it back', false, 'Wallpaper is on F12', 'Black-out is on B'),
     'Put it back offered, Black-out and the Wallpaper on',
   );
   // Next and Back whole and in sight, at the narrowest as at CI's.

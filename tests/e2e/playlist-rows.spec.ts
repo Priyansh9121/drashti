@@ -533,7 +533,7 @@ for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
   });
 }
 
-test('Simple Mode: Alt+↓ moves a slide’s row within its deck as its drag does there, with Undo; its menu stays Rename and Delete', async () => {
+test('Simple Mode: Alt+↓ moves a slide’s row within its deck as its drag does there, with Undo; its menu has Edit slides… and Delete', async () => {
   test.setTimeout(180_000);
   const { app, win, items } = await start(CI_WINDOW, 3);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
@@ -547,10 +547,14 @@ test('Simple Mode: Alt+↓ moves a slide’s row within its deck as its drag doe
   await expect(win.getByTestId('undo-said')).toHaveText(`Moved “${PDF}_2” down in this playlist`);
   await undo(win);
   await expect(labels).toHaveText([`${PDF}_1`, `${PDF}_2`, `${PDF}_3`]);
-  // A slide's row's menu in Simple Mode: Delete alone (Rename and Delete only, as the owner asked for Simple Mode).
+  // A slide's row's menu in Simple Mode: Edit slides… at it (Pro's slide editor, Session 56) and Delete; never the
+  // keyboard's Make it an item of its own (Pro Mode's), nor Rename (a slide is no file).
   await deck.nth(1).focus();
   await win.keyboard.press('Shift+F10');
-  await expect(win.getByRole('menu').getByRole('menuitem')).toHaveText([`Remove “${PDF}” from playlist`]);
+  await expect(win.getByRole('menu').getByRole('menuitem')).toHaveText([
+    'Edit slides…',
+    `Remove “${PDF}” from playlist`,
+  ]);
   await win.keyboard.press('Escape');
   await app.close();
 });

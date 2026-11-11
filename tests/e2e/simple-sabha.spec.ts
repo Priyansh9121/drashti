@@ -19,10 +19,12 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * with everything taken out but one playlist (the one open when Drashti switched to Simple Mode, or a new one when
  * there was none: PDFs and decks as rows, pictures, videos and sounds, moved about by dragging), bringing things into
  * it (Add files…, files dropped, From a Link…), the wallpapers, Next and Back, Clear all, Black-out, the Wallpaper
- * and the time bar, and a row's Rename and Delete from the right-click menu. Nothing else: no stream, no stage
- * controls, no messages, timers or lower thirds, no screen setup. Back to Pro Mode with a double-click on Pro Mode,
- * nothing typed. The main process lets Simple Mode change its one playlist only. Generated pictures and sounds and
- * placeholder names only; From a Link… through a local stand-in, never the internet.
+ * and the time bar, and a row's Rename and Delete from the right-click menu (since Session 56 also Pro Mode's
+ * Audio, Slide, Background and Audio beside Clear all, and a row's Trim, When it ends and Edit slides:
+ * simple-pro-parts.spec.ts). Nothing else: no stream, no stage controls, no messages, timers or lower thirds, no
+ * screen setup. Back to Pro Mode with a double-click on Pro Mode, nothing typed. The main process lets Simple Mode
+ * change its one playlist only. Generated pictures and sounds and placeholder names only; From a Link… through a
+ * local stand-in, never the internet.
  */
 
 const state = (win: Page) =>
@@ -49,7 +51,7 @@ async function intoSimple(win: Page): Promise<Locator> {
 /** The one playlist's rows' names, as the middle shows them. */
 const rowNames = (middle: Locator) => middle.getByTestId('playlist-item').locator('[data-label]');
 
-test('Pro Mode’s window with only what a one-projector sabha needs: the playlist open when it switched, in the middle; the wallpapers; LIVE, Next and Back and the time bar; Clear all, the Wallpaper and Black-out', async () => {
+test('Pro Mode’s window with only what a one-projector sabha needs: the playlist open when it switched, in the middle; the wallpapers; LIVE, Next and Back, the time bar and Audio; Clear all, Slide, Background and Audio, the Wallpaper and Black-out', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -70,17 +72,26 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
   await expect(simple.getByTestId('simple-playlist')).toHaveCount(0);
   // The wallpapers on the left, as in Pro Mode (Part 6).
   await expect(simple.getByTestId('column-left').getByTestId('wallpapers')).toBeVisible();
-  // LIVE, Next and Back on the right.
+  // LIVE, Next and Back on the right, and Audio under them (Session 56, the owner: Pro Mode's own).
   const right = simple.getByTestId('column-right');
   await expect(right.getByTestId('live-preview')).toBeVisible();
   await expect(right.getByTestId('show-next')).toBeVisible();
   await expect(right.getByTestId('show-back')).toBeVisible();
-  // Along the bottom: Clear all, the Wallpaper and Black-out, and no other clear.
+  await expect(right.getByTestId('audio-group')).toBeVisible();
+  // Along the bottom: Clear all, Slide, Background and Audio beside it (Session 56), the Wallpaper and Black-out, and
+  // no other clear.
   const bar = simple.getByTestId('simple-buttons');
-  await expect(bar.getByRole('button')).toHaveText([/^Clear all/u, /^Wallpaper/u, /^Black-out/u]);
+  await expect(bar.getByRole('button')).toHaveText([
+    /^Clear all/u,
+    /^Slide/u,
+    /^Background/u,
+    /^Audio/u,
+    /^Wallpaper/u,
+    /^Black-out/u,
+  ]);
 
-  // Nothing else: no stream, phones, screens or library; no Audio, stage, messages, timers or lower thirds (More
-  // tools); no Oops button, no playlist's menu, no Close.
+  // Nothing else: no stream, phones, screens or library; no stage, messages, timers or lower thirds (More tools); no
+  // Oops button, no playlist's menu, no Close.
   for (const name of [
     'Stream',
     'Phones',
@@ -92,7 +103,6 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
   ])
     await expect(win.getByRole('button', { name, exact: true }), name).toHaveCount(0);
   for (const id of [
-    'group-audio-toggle',
     'group-stage-toggle',
     'group-messages-toggle',
     'group-timers-toggle',

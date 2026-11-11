@@ -179,7 +179,7 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
   await second2.app.close();
 });
 
-test('Simple Mode (Session 55, Part 18: no Audio panel) shows the music playing in its time bar, takes it off with Clear all, and changes no list', async () => {
+test('Simple Mode has Pro Mode’s Audio (Session 56): the music playing shows there and in its time bar, Clear all takes it off, and its lists change as in Pro Mode', async () => {
   test.setTimeout(90_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -205,21 +205,23 @@ test('Simple Mode (Session 55, Part 18: no Audio panel) shows the music playing 
   await expect.poll(async () => (await audioLayer(win))?.music?.playlistId).toBe(made);
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   const simple = win.getByTestId('simple-mode');
-  // No Audio panel and no strip of its own: the track's time bar under Next and Back says what plays.
+  // Pro Mode's Audio under LIVE (the owner, 11 Nov 2026: "build nothing new for it, just make it reachable"), no strip
+  // of its own: the track there, and its time bar under Next and Back.
   await expect(simple.getByTestId('simple-music')).toHaveCount(0);
-  await expect(simple.getByTestId('group-audio-toggle')).toHaveCount(0);
+  await expect(simple.getByTestId('group-audio-toggle')).toHaveCount(1);
+  await expect(simple.getByTestId('music-now')).toContainText('Placeholder simple tone');
   await expect(simple.getByTestId('time-bars')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'Simple Mode with music');
   // Clear all takes it off (and Put it back would bring it back).
   await simple.getByTestId('simple-clear-all').click();
   await expect.poll(async () => (await audioLayer(win))?.music?.playlistId ?? null).toBeNull();
-  // No list can be changed in Simple Mode.
-  const refused = await win.evaluate(
-    (id) => (globalThis as PageGlobals).drashti.music.rename(id, 'Changed'),
+  // Its lists change in Simple Mode as in Pro Mode, within Simple Mode's bounds (main/simple-mode.ts).
+  const renamed = await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.music.rename(id, 'Placeholder changed'),
     made,
   );
-  expect(refused.ok).toBe(false);
-  // It still fits at 1280 x 720 with nothing scrolling.
+  expect(renamed.ok).toBe(true);
+  // It still fits at 1280 x 720 with nothing scrolling (the live column scrolls on its own).
   const scrolls = await win.evaluate(() => document.scrollingElement?.scrollHeight ?? 0);
   expect(scrolls).toBeLessThanOrEqual(720);
   await app.close();
