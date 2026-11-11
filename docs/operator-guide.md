@@ -122,13 +122,13 @@ Do these about 30 minutes before the sabha starts.
 
 **Covering and clearing:**
 
-| Key or button                          | What it does                                                                                                                                        |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key or button                          | What it does                                                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **B** (or **.**), **Black-out**        | Black on the hall's screens. A video playing comes off; a slide or a picture stays under it and comes back as it was. The stage screens keep the words. |
-| **F12**, **Wallpaper**                 | The chosen wallpaper over the picture (black until a wallpaper is chosen). A video playing comes off; a slide or a picture comes back as it was. |
-| **F1**, **Clear all**                  | Everything off the hall's screens. Straight after it, **Put it back** brings it all back.                                                           |
-| **F2**, **F3**, **F5**, **F6**, **F7** | One layer off each, in this order: the slide's words (the background stays), the background, the sound, messages, the ticker. F4 and F8 do nothing. |
-| **F9**, **Oops**                       | What was on the screens before the last change comes back, one step a press (the last 20)                                                           |
+| **F12**, **Wallpaper**                 | The chosen wallpaper over the picture (black until a wallpaper is chosen). A video playing comes off; a slide or a picture comes back as it was.        |
+| **F1**, **Clear all**                  | Everything off the hall's screens. Straight after it, **Put it back** brings it all back.                                                               |
+| **F2**, **F3**, **F5**, **F6**, **F7** | One layer off each, in this order: the slide's words (the background stays), the background, the sound, messages, the ticker. F4 and F8 do nothing.     |
+| **F9**, **Oops**                       | What was on the screens before the last change comes back, one step a press (the last 20)                                                               |
 
 The clear buttons along the bottom go in this order too, left to right, each with its key beside its word. A clear button is lit, with a dot beside its key, while its layer is on the screens, and dimmed while its layer has nothing up; **Wallpaper** and **Black-out** are dimmed while off, and in LIVE's red while on. LIVE shows one thing at a time: anything put up (a slide, a picture, a deck's slide or a video, by a click, **Next**, **Back** or from a phone) takes **Wallpaper** and **Black-out** off, so it is seen, and either going on takes a video off (a video on the slide, or in the picture in picture, waits there, paused, until **Play**). Music and sounds play on. **Oops**, under **Back**, puts back the slide, the background, the sound and every other layer as they were before the last change, a video carrying on where it would be by now; it is dimmed while there is nothing to put back.
 

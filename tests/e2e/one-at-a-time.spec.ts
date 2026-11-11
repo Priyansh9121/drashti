@@ -84,7 +84,11 @@ const playingThere = (page: Page, mediaId: string) =>
 async function up(win: Page): Promise<{ blackout: boolean; wallpaper: boolean; background: string | null }> {
   const s = await snapshot(win);
   const bg = s.layers.background;
-  return { blackout: s.blackout, wallpaper: s.wallpaper, background: bg?.kind === 'media' ? bg.mediaId : null };
+  return {
+    blackout: s.blackout,
+    wallpaper: s.wallpaper,
+    background: bg?.kind === 'media' ? bg.mediaId : null,
+  };
 }
 
 /**
@@ -183,7 +187,10 @@ async function dragAndHold(win: Page, bar: Locator, from: number, to: number): P
  */
 async function dragsLikeAPlayer(win: Page, hall: Page, mediaId: string, mode: string): Promise<void> {
   const copies: Copy[] = [{ name: 'the screen', page: hall, selector: onScreen(mediaId) }];
-  const bar = row(win, 'background').getByRole('slider', { name: 'Time of the background video', exact: true });
+  const bar = row(win, 'background').getByRole('slider', {
+    name: 'Time of the background video',
+    exact: true,
+  });
   await expect(bar, `${mode}: the bar moves`).toBeVisible({ timeout: 15_000 });
   await inStep(copies, () => backgroundTiming(win), `${mode}: playing`);
   const held = await dragAndHold(win, bar, 0.15, 0.6);
