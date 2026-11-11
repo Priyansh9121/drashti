@@ -71,7 +71,7 @@ import {
 } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, learnedFiles, resolvePlaying, videoFilesFor } from './playing';
-import { oneAtATime } from './one-at-a-time';
+import { oneAtATime, putsUp } from './one-at-a-time';
 import {
   clipLeftMs,
   type DeckEntry,
@@ -2675,9 +2675,11 @@ export class ShowEngine {
     if (prev.stopped) return this.unchanged();
     let next = actions.reduce(reduce, prev);
     // LIVE shows one thing at a time (Session 56, one-at-a-time.ts): a video the operator puts up takes the Wallpaper and
-    // Black-out off; a cover going on, or a video the engine would bring up by itself under one, stops what plays.
+    // Black-out off, and so does a slide or a picture (the lead's open question: never the time bar's moves, which are
+    // bookkeeping); a cover going on, or a video the engine would bring up by itself under one, stops what plays.
     // Before all that follows from the layers (what comes next, the time bars, the sound, Oops).
-    next = oneAtATime(prev, next, operator, this.now()).reduce(reduce, next);
+    const putUp = operator && !this.bookkeeping && putsUp(actions, next);
+    next = oneAtATime(prev, next, { operator, putUp }, this.now()).reduce(reduce, next);
     // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the
     // slide cleared ends it (Stop and Esc leave its slide up).
     if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))

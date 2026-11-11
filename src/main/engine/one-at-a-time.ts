@@ -86,29 +86,57 @@ function stopped(state: EngineState, now: number): EngineAction[] {
   return actions;
 }
 
+/** What puts something up on the audience's picture: a slide (a deck's click too), a background, or layers put back. */
+const PUTS_UP: ReadonlySet<EngineAction['type']> = new Set([
+  'slide/show',
+  'slide/put',
+  'background/set',
+  'show/put',
+]);
+
+/**
+ * Whether a change puts something up on the audience's picture (Session 56, the lead's open question to the owner,
+ * slides and pictures): a slide (a click on the slide already up too, Next, Back, a deck's click, a timer shown alone),
+ * a picture, a colour or another app's window as the background, or what Back, Oops and Put it back bring back; and
+ * something is up there after it. Only the operator's own changes count (show-engine.ts: never the time bar's moves, a
+ * jump to a marker or what the engine does by itself), and never what is heard or laid over the picture (a sound, a
+ * message, a lower third, the ticker, the picture-in-picture box).
+ */
+export function putsUp(actions: readonly EngineAction[], next: EngineState): boolean {
+  return (
+    (next.layers.slide !== null || next.layers.background !== null) &&
+    actions.some((a) => PUTS_UP.has(a.type))
+  );
+}
+
+/** Both covers off. */
+function coversOff(state: EngineState): EngineAction[] {
+  const off: EngineAction[] = [];
+  if (state.blackout) off.push({ type: 'blackout/set', on: false });
+  if (state.wallpaper) off.push({ type: 'wallpaper/set', on: false });
+  return off;
+}
+
 /**
  * What keeps LIVE to one thing at a time after a change from `prev` to `next` at `now` (see above): the covers taken off,
  * or what plays stopped; none while no video plays under a cover. `operator`: the operator's own change (a command's),
- * never one the engine makes by itself.
+ * never one the engine makes by itself; `putUp`: it put a slide or a picture up (putsUp), which takes the covers off
+ * too, so what is put up is always seen (the lead's open question: a cover going on keeps a slide or a picture under it).
  */
 export function oneAtATime(
   prev: EngineState,
   next: EngineState,
-  operator: boolean,
+  how: { operator: boolean; putUp: boolean },
   now: number,
 ): EngineAction[] {
   if (!next.blackout && !next.wallpaper) return [];
+  const coverWentOn = (next.blackout && !prev.blackout) || (next.wallpaper && !prev.wallpaper);
+  if (how.operator && how.putUp && !coverWentOn) return coversOff(next);
   const bg = backgroundVideo(next);
   const playing = videosPlaying(next, now);
   if (bg === null && playing.length === 0) return [];
-  const coverWentOn = (next.blackout && !prev.blackout) || (next.wallpaper && !prev.wallpaper);
   const before = new Set(videosPlaying(prev, now).map(keyOf));
   const cameUp = (bg !== null && bg !== backgroundVideo(prev)) || playing.some((p) => !before.has(keyOf(p)));
-  if (operator && cameUp && !coverWentOn) {
-    const off: EngineAction[] = [];
-    if (next.blackout) off.push({ type: 'blackout/set', on: false });
-    if (next.wallpaper) off.push({ type: 'wallpaper/set', on: false });
-    return off;
-  }
+  if (how.operator && cameUp && !coverWentOn) return coversOff(next);
   return stopped(next, now);
 }
