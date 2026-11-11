@@ -8,7 +8,6 @@ import {
   LINK_HEIGHTS,
   type LinkKind,
   type LinkView,
-  PERMISSION_WORDS,
   type VideoDetails,
 } from '../../../shared/links';
 import { useMode } from '../operator/mode-store';
@@ -23,7 +22,6 @@ import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { plural } from '../ui/text';
-import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
 import { usePlaylists } from '../playlists/playlist-store';
 import { PlaylistsUnread } from '../playlists/PlaylistsUnread';
@@ -56,15 +54,15 @@ import {
  * saved in that folder (Drashti never moves or deletes them), then imported
  * through the normal import. Closing this never stops a download: the status
  * bar shows it, and a press on that opens this again. YouTube (Session 25c):
- * MP4 or MP3, the quality up to the highest one set, and the permission tick
- * each time.
+ * MP4 or MP3, the quality up to the highest one set (no permission tick since
+ * alpha.16: the owner, 6 Nov 2026, the sanstha approves Drashti).
  */
 
 const KINDS: { id: LinkKind; label: string; hint: string; icon: Icon; ready: boolean }[] = [
   {
     id: 'youtube',
     label: 'YouTube',
-    hint: 'One video, as MP4 or MP3: only the mandir’s own, or one its owner allows us to use.',
+    hint: 'One video, as MP4 or MP3.',
     icon: MonitorPlay,
     ready: true,
   },
@@ -357,7 +355,7 @@ const about = (bytes: number | null) => (bytes === null ? '' : `about ${formatBy
 
 /**
  * A YouTube video's choices (Session 25c): MP4 or MP3; for MP4 the qualities it offers, those above the
- * setting shown but not to be picked, with why; and the permission tick, each time.
+ * setting shown but not to be picked, with why.
  */
 function YouTubeChoices({ video, view }: { video: VideoDetails; view: LinkView }) {
   const choice = useLinks((s) => s.choice);
@@ -472,14 +470,6 @@ function YouTubeChoices({ video, view }: { video: VideoDetails; view: LinkView }
           The best sound the video has{video.soundBytes !== null ? `, ${about(video.soundBytes)}` : ''}.
         </p>
       )}
-      <Checkbox
-        label={PERMISSION_WORDS}
-        checked={choice.permission}
-        data-testid="link-permission"
-        onChange={(e) => {
-          choose({ permission: e.target.checked });
-        }}
-      />
     </div>
   );
 }
@@ -720,10 +710,9 @@ export function LinkDialog({ platform }: { platform: string }) {
   const kind = busy || finished || view.phase === 'looked' ? (view.kind ?? chosen) : chosen;
   const locked = busy || finished;
   const video = view.look?.video;
-  // YouTube: a quality the setting allows (or the MP3), and the tick, each time.
+  // YouTube: a quality the setting allows (or the MP3).
   const youtubeReady =
-    !video ||
-    (choice.permission && (choice.type === 'mp3' || video.heights.some((h) => h.height <= view.maxHeight)));
+    !video || choice.type === 'mp3' || video.heights.some((h) => h.height <= view.maxHeight);
   // A new playlist for it is named first (Session 54); a folder makes its own; from Audio, Audio takes it (Session 55).
   const named = view.look?.shape === 'folder' || forAudio !== null || !unnamed(addToNow({ addTo, view }));
   const canDownload =

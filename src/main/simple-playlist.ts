@@ -1,13 +1,18 @@
+import type { OperatorMode } from '../shared/mode';
+
 /*
- * Simple Mode's one playlist (Session 55, Part 18, the owner's words of 29 Oct 2026): "It's the playlist open when
- * Drashti switched to Simple Mode, or a new one when there's none." Simple Mode shows that playlist alone, and the main
- * process lets Simple Mode change that one only (its rows added, moved, taken out and put back: simple-mode.ts's
- * bounds), so which playlist it is is decided here, never by the window while Simple Mode is on.
+ * Simple Mode's playlist (Session 55, Part 18, the owner's words of 29 Oct 2026): "It's the playlist open when
+ * Drashti switched to Simple Mode, or a new one when there's none." Since Session 56 (the owner's words of 11 Nov 2026:
+ * "several playlists on the left, with folders, as in Pro Mode") Simple Mode's window opens any playlist, as Pro Mode's
+ * does, and is never forced back to that one: this follows the one it has open, which a phone in Simple Mode works on
+ * (simple-mode-phones.ts). Which one Simple Mode opens as it comes is decided here, never by the window.
  *
- * - Pro Mode's window says which playlist it has open, or that it closed it (playlists:opened); at the switch to
- *   Simple Mode (the window's, the View menu's, or Simple access's at an answer) that one is adopted. With none open,
- *   a new one is made at the top of the playlists; an empty one made before is used again rather than a second empty
- *   one.
+ * - The window says which playlist it has open, or that it closed it (playlists:opened). At the switch to Simple Mode
+ *   (the window's, the View menu's, or Simple access's at an answer) the one open in Pro Mode is adopted. With none
+ *   open, a new one is made at the top of the playlists; an empty one Simple Mode had before is used again rather than
+ *   a second empty one.
+ * - While Simple Mode is on, what its window opens is its playlist; what it had open stays open when Pro Mode comes
+ *   back, so it is the one the next switch adopts. None open (the one it had deleted): none, until it opens another.
  * - Kept in the library's settings, so a start back in Simple Mode (after an unexpected stop, or with Simple access)
  *   has it again; a new one when it has gone.
  */
@@ -27,9 +32,9 @@ export interface SimplePlaylistDeps {
 }
 
 export class SimplePlaylist {
-  /** The playlist Pro Mode's window has open now, as it last said (null: none). */
+  /** The playlist the operator window has open now, as it last said (null: none). */
   private open: string | null = null;
-  /** Simple Mode's one playlist, once Simple Mode has needed one. */
+  /** Simple Mode's playlist: the one its window has open, once Simple Mode has needed one (null: none open). */
   private id: string | null = null;
   /** The one kept from the run before. */
   private readonly kept: string | null;
@@ -38,12 +43,23 @@ export class SimplePlaylist {
     this.kept = typeof d.saved === 'string' && d.saved !== '' ? d.saved : null;
   }
 
-  /** Pro Mode's window opened a playlist, or closed it (null). Only Pro Mode's: Simple Mode's never changes it. */
-  opened(id: string | null): void {
+  /**
+   * The operator window opened a playlist, or closed it (null), in this mode. In Simple Mode (Session 56) that is
+   * Simple Mode's playlist now (a folder or a template is none: none open), kept for a start back in Simple Mode.
+   * Whether Simple Mode's playlist changed (a phone then hears of it).
+   */
+  opened(id: string | null, mode: OperatorMode): boolean {
     this.open = id;
+    if (mode !== 'simple') return false;
+    const now = id !== null && this.d.usable(id) ? id : null;
+    if (now === this.id) return false;
+    this.id = now;
+    if (now !== null) this.d.save(now);
+    this.d.log(`Simple Mode’s playlist: ${now === null ? 'none open' : 'one its window opened'}`);
+    return true;
   }
 
-  /** Simple Mode's one playlist, or null before Simple Mode has needed one. */
+  /** Simple Mode's playlist (the one its window has open), or null before Simple Mode has needed one or with none open. */
   current(): string | null {
     return this.id;
   }

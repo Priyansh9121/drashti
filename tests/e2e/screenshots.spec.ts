@@ -516,7 +516,7 @@ test('Simple Mode', async () => {
   // The playlist open in Pro Mode is Simple Mode's one playlist (Session 55, Part 18).
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   await expect(win.getByTestId('playlist-title')).toHaveText(PLAYLIST);
-  await simpleModeButton(win).click();
+  await simpleModeButton(win).dblclick();
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('PageDown');
   await win.keyboard.press('PageDown');
@@ -1410,7 +1410,7 @@ test('music, markers, scheduled backups, and Simple Mode with music (Session 14)
     const list = (await d.music.view()).playlists.find((p) => p.name === 'Placeholder before sabha');
     if (list) await d.music.play(list.id);
   });
-  await simpleModeButton(win).click();
+  await simpleModeButton(win).dblclick();
   await expect(win.getByTestId('simple-mode').getByTestId('time-bars')).toBeVisible();
   await shot(win, 'simple-mode-music');
   await app.close();
@@ -1673,10 +1673,8 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
   await first.win.getByTestId('link-choose-folder').click();
   await expect(first.win.getByTestId('link-folder')).toHaveText(chosen);
   await shot(first.win, 'import-link-youtube', [first.win.getByTestId('link-folder')]);
-  // The tick, and Download wakes; then downloading.
-  await first.win.getByTestId('link-permission').check();
+  // Download is ready (no tick since alpha.16); then downloading.
   await expect(first.win.getByTestId('link-download')).toBeEnabled();
-  await shot(first.win, 'import-link-youtube-ticked', [first.win.getByTestId('link-folder')]);
   await first.win.getByTestId('link-download').click();
   await expect(first.win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p', {
     timeout: 60_000,
@@ -2356,7 +2354,7 @@ test('the time bar: under LIVE in Pro Mode and in Simple Mode, Music’s own, an
   await shot(hall, 'output-play-bar');
 
   // Simple Mode: the bars under its LIVE picture, each with its time left, moving nothing.
-  await simpleModeButton(win).click();
+  await simpleModeButton(win).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(win.locator(`[data-testid="time-bar-row"][data-playing="slide:${clipId}"]`)).toBeVisible();
   await shot(win, 'simple-mode-time-bar');
@@ -3095,7 +3093,10 @@ test('alpha.14 phone playlist rows, row menus and Simple Mode controls at 375 by
       const bar = p.getByTestId('remote-time-bar-row').filter({ has: p.getByTestId('remote-time-bar-play') });
       await expect(bar).toHaveAttribute('data-playing', 'background');
       await expect(bar).toHaveAttribute('data-paused', 'true');
-      await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+      await win
+        .getByTestId('app-header')
+        .getByRole('button', { name: 'Simple Mode', exact: true })
+        .dblclick();
       await expect(win.getByTestId('simple-mode')).toBeVisible();
       const simple = p.getByTestId('remote-simple');
       await expect(simple).toContainText('its playlist “' + PLAYLIST + '”');

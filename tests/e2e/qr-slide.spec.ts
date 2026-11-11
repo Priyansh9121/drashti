@@ -122,7 +122,7 @@ test('Simple Mode refuses making a QR-code slide; words too long are turned down
   );
   expect(tooLong.ok).toBe(false);
   if (!tooLong.ok) expect(tooLong.message).toContain('too long');
-  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).click();
+  await win.getByTestId('app-header').getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   const refused = await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.library.newQrSlide('https://example.org/placeholder'),

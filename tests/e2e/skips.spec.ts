@@ -279,7 +279,7 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
 
   // Simple Mode (Session 56, the owner: Pro Mode's Audio there too): the track's three in Audio, beside its Play and
   // Pause, as in Pro Mode, and they move it there too; none under the live picture.
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple.getByTestId('time-bars')).toBeVisible();
   await expect(simple.getByTestId('marker-jumps')).toHaveCount(0);

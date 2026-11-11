@@ -137,7 +137,7 @@ A click on a column's heading sorts by it, a second the other way (it opens with
 
 **Setting the list up** (once, in the owner's Google account), what to do when something goes wrong there, and **what a free Google account allows** (about 50 new people a day by email, and about 400 Drashtis checking at once) are in `docs/access-setup.md`.
 
-**No roles and no PINs.** Since alpha.13 Drashti has neither: on a computer let in with Pro access, everything in this guide is anyone's, in Pro Mode, except the Access List. The file an earlier Drashti kept its PINs in (`roles.json`) is removed from the data folder at the first start. With Pro access, **Simple Mode** is a way of working, not a lock. To hand Drashti to a volunteer, press **Simple Mode** in the header (or **View**, then **Switch to Simple Mode**); to leave it, double-click **Pro Mode** at its top right, or press Enter twice with the keyboard on it, or choose **View**, then **Switch to Pro Mode**: nothing is typed. With Simple access it is a lock (above). Drashti starts in **Pro Mode** whenever it was quit on purpose (with Pro access), even if a volunteer was using Simple Mode; after an unexpected stop it comes back in the mode it was in, if it is started again within 3 hours (started later, it starts as after a quit on purpose).
+**No roles and no PINs.** Since alpha.13 Drashti has neither: on a computer let in with Pro access, everything in this guide is anyone's, in Pro Mode, except the Access List. The file an earlier Drashti kept its PINs in (`roles.json`) is removed from the data folder at the first start. With Pro access, **Simple Mode** is a way of working, not a lock. To hand Drashti to a volunteer, double-click **Simple Mode** in the header (or **View**, then **Switch to Simple Mode**); to leave it, double-click **Pro Mode** at its top right, or press Enter twice with the keyboard on it, or choose **View**, then **Switch to Pro Mode**: nothing is typed. With Simple access it is a lock (above). Drashti starts in **Pro Mode** whenever it was quit on purpose (with Pro access), even if a volunteer was using Simple Mode; after an unexpected stop it comes back in the mode it was in, if it is started again within 3 hours (started later, it starts as after a quit on purpose).
 
 ---
 
@@ -429,9 +429,8 @@ The performance check (section 12) on each mandir computer says whether that com
 2. **Paste the link.** On YouTube, use **Share**, then **Copy**; in Dropbox, **Share**, then **Copy link**. Drashti takes only `https` links to their own addresses, and says plainly when a link is not one. A YouTube playlist is refused (Drashti downloads one video at a time); a video's link copied while it played in a playlist takes only that video.
 3. **What it holds** shows next. For YouTube, the video's title and length (Drashti asks YouTube, through yt-dlp: nothing is downloaded yet). While the stream is on air or recording, this waits, as a download does: the window says "Waiting: the stream is on air or recording. It goes on by itself afterwards." For Dropbox, a file's name and size, or a folder's name (Dropbox sends a folder as one zip, which Drashti unpacks).
 4. **For YouTube, choose** **MP4** or **MP3**, and for an MP4 its **quality**: the heights the video offers (720p, 1080p, 1440p, 2160p (4K), 4320p (8K)), each with about how big the file will be. Those above **Highest video quality** (below) are shown, but cannot be picked, and the window says why. An MP3 takes the best sound the video has.
-5. **Tick "This video is the mandir's own, or its owner allows us to use it".** Each time: **Download** stays off until it is ticked.
-6. **Save in.** The first time, a folder called **Drashti downloads** in **Movies** (Mac) or **Videos** (Windows). **Choose…** picks another; Drashti remembers it.
-7. **Download.**
+5. **Save in.** The first time, a folder called **Drashti downloads** in **Movies** (Mac) or **Videos** (Windows). **Choose…** picks another; Drashti remembers it.
+6. **Download.**
 
 ![Import from a Link, a YouTube video](screenshots/import-link-youtube.png)
 
@@ -460,7 +459,7 @@ What it does with them:
 
 ![A Dropbox folder as one playlist, a folder at a time: Week 1's own decks in the middle, its Videos folder at the bottom left, and the way back up above them](screenshots/dropbox-playlist.png)
 
-**What may be downloaded.** Only the mandir's own videos and files, or those whose owner allows the mandir to use them: that is what the tick says, each time. Ask before using anyone else's. For YouTube, YouTube's own terms say the rest (youtube.com/t/terms): they forbid downloading, except as YouTube allows or with written permission from YouTube and the rights holders.
+**What may be downloaded.** Only the mandir's own videos and files, or those whose owner allows the mandir to use them (the sanstha approves Drashti for this, so since alpha.16 there is no tick to tick each time). Ask before using anyone else's. For YouTube, YouTube's own terms say the rest (youtube.com/t/terms): they forbid downloading, except as YouTube allows or with written permission from YouTube and the rights holders.
 
 **No adverts.** A downloaded video holds only the video: YouTube sends its adverts apart from it, and Drashti takes only the video's own picture and sound. Drashti shows no adverts anywhere, and asks no outside service (such as SponsorBlock) about a video. A sponsor message the maker speaks in the video is part of the video: set its **markers** (start and end) to play the video round it.
 

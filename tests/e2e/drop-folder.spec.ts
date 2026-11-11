@@ -193,7 +193,7 @@ test('File › Drop Folder… opens in Pro Mode with no PIN asked; in Simple Mod
 
     // Simple Mode: no File menu, the main process refuses to show or change it, and the folder carries on,
     // saying nothing.
-    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
     await expect
       .poll(() => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode()))
       .toBe('simple');

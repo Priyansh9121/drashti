@@ -203,7 +203,7 @@ test('Simple Mode has Pro Mode’s Audio (Session 56): the music playing shows t
   // Started in Pro Mode, as Audio's Play starts it.
   await win.evaluate((id) => (globalThis as PageGlobals).drashti.music.play(id), made);
   await expect.poll(async () => (await audioLayer(win))?.music?.playlistId).toBe(made);
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   const simple = win.getByTestId('simple-mode');
   // Pro Mode's Audio under LIVE (the owner, 11 Nov 2026: "build nothing new for it, just make it reachable"), no strip
   // of its own: the track there, and its time bar under Next and Back.

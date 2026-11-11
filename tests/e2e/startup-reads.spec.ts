@@ -58,7 +58,7 @@ async function stoppedInSimpleMode(): Promise<string> {
     .getByTestId('playlist-node')
     .filter({ hasText: /^Placeholder sabha/u })
     .click();
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   await expect(win.getByTestId('simple-mode').getByTestId('playlist-item')).toHaveCount(2);
   // This run has saved the show under its own name (from its start): only then is a stop dead this run's.
   const clean = (() => {
@@ -169,7 +169,7 @@ test('an open playlist whose items could not be read says so in both modes, neve
   await expect(items).toContainText('Drashti couldn’t read this playlist');
   await expect(win.getByText('This playlist is empty')).toHaveCount(0);
   // Simple Mode says it too, beside the playlist it opened.
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await win.getByRole('button', { name: 'Simple Mode' }).dblclick();
   const simple = win.getByTestId('simple-mode');
   await expect(simple.getByTestId('playlist-items-unread')).toBeVisible();
   await expect(simple.getByTestId('playlist-item')).toHaveCount(0);
